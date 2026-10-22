@@ -185,6 +185,7 @@ internal static partial class Program
     public static int Main(string[] args)
     {
         if (args.Length == 1 && args[0] == "--sandbox-launch") return RunSandbox();
+        if (args.Length == 1 && args[0] == "--sandbox-diagnostics") return DiagnoseSandbox();
         if (args.Length == 1 && args[0] == "--sandbox-support")
         {
             try

@@ -3,7 +3,7 @@
 Connected to the Windows ci.yml path behind the actual short smoke gate. This is not a product execution backend and accepts no arbitrary
 command, user, token, directory or credentials. Product native helper remains unchanged.
 
-The executable accepts `--smoke` or `--run-check`. The latter executes the original fixed
+The executable accepts `--smoke`, `--run-check` or `--run-psec-acceptance`. `--run-check` executes the original fixed
 `npm.cmd run check` through a canonical, non-reparse System32 cmd.exe and npm.cmd found in
 the current job PATH. It keeps the exact current environment and cwd. Paths containing shell
 metacharacters are rejected, not rewritten. Non-elevated current tokens use CreateProcessW;
@@ -50,6 +50,28 @@ GitHub cancellation integration remains a separate Windows acceptance check.
 Internal fixed `--smoke-*` modes are process probes, never a free command interface. The
 grandchild sleeps for at most 60 seconds if a test is interrupted. The full check has no new
 timeout or test filtering; original CI cancellation remains in force.
+
+## Strict real PSEC acceptance
+
+`--run-psec-acceptance` uses the same validated ordinary-user token, suspended-child
+checks and kill-on-close Job, but executes only the fixed `psec-acceptance.mjs` with
+the current job's trusted Node. It accepts no caller command or arguments. Prepare
+the current dependency closure and a newly built native helper, set the explicit
+`PA_TEST_JOB_HOST_EXE` and task-specific external TEMP/TMP, then pass the original
+smoke and compatibility gate before using this entrypoint.
+
+The helper's fixed `--sandbox-diagnostics` reports OS, ordinary/AppContainer/elevated
+token booleans, System32 DLL load stage/Win32 code and the four required exports;
+`--sandbox-support` separately queries the PSEC contract. Neither diagnostic claims
+enforcement. The acceptance refuses elevated, outer AppContainer or unknown token
+receipts and always requires `PA_TEST_NATIVE_SANDBOX_REQUIRED=1` for both real root
+scenarios. Each must execute its expected root and minimum scenario count, exit 0,
+and have zero fail/cancelled/skipped/TODO. Diagnostics alone cannot count as success.
+
+The output directory contains safe diagnostics, exact TAP hashes and only newly
+created synthetic authorization receipts. It excludes the SQLite/cache tree. The
+current real Windows result and Hosted boundary are recorded in
+`docs/competition/evidence/PSEC_REAL_COMPLETION_20261022.md`.
 
 ## Verification status
 

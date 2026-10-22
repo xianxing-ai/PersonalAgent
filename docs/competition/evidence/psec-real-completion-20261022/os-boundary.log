@@ -1,0 +1,54 @@
+TAP version 13
+# Subtest: real Windows PSEC boundary, generation guards and lifecycle
+    # Subtest: rejects ambiguous grants, volume grants, writeable helper, env secrets and unavailable network policy
+    ok 1 - rejects ambiguous grants, volume grants, writeable helper, env secrets and unavailable network policy
+      ---
+      duration_ms: 4.0203
+      type: 'test'
+      ...
+    # Subtest: runtime-created junction cannot grant outside file write
+    ok 2 - runtime-created junction cannot grant outside file write
+      ---
+      duration_ms: 255.0502
+      type: 'test'
+      ...
+    # Subtest: root and ancestor handles prevent replacement before resume
+    ok 3 - root and ancestor handles prevent replacement before resume
+      ---
+      duration_ms: 242.4777
+      type: 'test'
+      ...
+    # Subtest: revoked original lease never resumes target
+    ok 4 - revoked original lease never resumes target
+      ---
+      duration_ms: 183.6216
+      type: 'test'
+      ...
+    # Subtest: timeout kills descendants and output overflow stays unknown
+    ok 5 - timeout kills descendants and output overflow stays unknown
+      ---
+      duration_ms: 680.3206
+      type: 'test'
+      ...
+    # Subtest: junction root is rejected before target start
+    ok 6 - junction root is rejected before target start
+      ---
+      duration_ms: 1.3996
+      type: 'test'
+      ...
+    1..6
+ok 1 - real Windows PSEC boundary, generation guards and lifecycle
+  ---
+  duration_ms: 4442.0466
+  type: 'test'
+  ...
+# Native probe inherited token: {"platform":"win32","administratorToken":false}
+1..1
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4509.4743

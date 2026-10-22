@@ -9,7 +9,7 @@ on:
         description: Confirm registration, online state and host-owner readiness before selecting ECS
         required: true
         type: choice
-        options: [windows-github, windows-pool, windows-pool-pair, windows-pool-three, ecs-17f8]
+        options: [windows-github, windows-pool, windows-pool-pair, windows-pool-three, ecs-17f8, psec-strict]
 permissions:
   contents: read
 jobs:
@@ -73,6 +73,7 @@ jobs:
         shell: pwsh
         run: ./scripts/ci/windows-admission.ps1
       - name: Run a short routing and toolchain probe
+        if: matrix.psecStrict != true
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         shell: pwsh
         run: |
@@ -84,3 +85,37 @@ jobs:
           node --test scripts/ci/pr-route.test.mjs scripts/ci/check-result.test.mjs scripts/ci/runner-probe.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Routing regressions failed' }
           "Short probe only; runner_name=$env:RUNNER_NAME; SHA=$env:GITHUB_SHA. This is not a full CI pass." | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+      - name: Prepare exact strict PSEC acceptance inputs
+        if: matrix.psecStrict == true && github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          if ((& git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Acceptance checkout mismatch' }
+          $sdks = & dotnet --list-sdks
+          if ($LASTEXITCODE -ne 0 -or -not ($sdks -match '^8\.0\.\d+\s')) { throw '.NET 8 SDK missing' }
+          if ((& npm.cmd --version).Trim() -ne '11.12.1') {
+            npm.cmd install --global npm@11.12.1
+            if ($LASTEXITCODE -ne 0) { throw 'Required npm version unavailable' }
+          }
+          npm.cmd ci --foreground-scripts --loglevel=error
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency install failed' }
+          node scripts/ci/windows-standard-token/build-psec-inputs.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Required dependency build failed' }
+          $built = & node packages/coding-tools/native/build-helper.mjs --target-dir (Join-Path $env:RUNNER_TEMP 'psec-acceptance-helper')
+          if ($LASTEXITCODE -ne 0) { throw 'Native helper build failed' }
+          $helper = ($built -join "`n") | ConvertFrom-Json
+          "PA_TEST_JOB_HOST_EXE=$($helper.helperPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          ./scripts/ci/windows-standard-token/smoke.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Standard token smoke failed' }
+      - name: Require both real ordinary-user PSEC scenarios without skips
+        if: matrix.psecStrict == true && github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          & $env:PA_CI_CHECK_LAUNCHER --run-psec-acceptance
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.psecStrict == true && github.event_name == 'workflow_dispatch'
+        with:
+          name: psec-strict-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/psec-positive-acceptance
+          if-no-files-found: warn
+          retention-days: 7
