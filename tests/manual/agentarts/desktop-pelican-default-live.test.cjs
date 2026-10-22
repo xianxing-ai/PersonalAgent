@@ -1,10 +1,37 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {mkdtempSync,rmSync}=require('node:fs');
+const {mkdtempSync,readFileSync,rmSync}=require('node:fs');
+const {EventEmitter}=require('node:events');
+const {runInNewContext}=require('node:vm');
 const {tmpdir}=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {originalQuestionBinding,approveOriginalQuestion}=require('./desktop-pelican-default-live.cjs');
+const {originalQuestionBinding,approveOriginalQuestion,electronLaunchOptions}=require('./desktop-pelican-default-live.cjs');
+
+test('explicit Electron startup loads the pinned ready gate and retains only the runner-owned PA settings',()=>{
+  const options=electronLaunchOptions({executablePath:path.resolve('Synthetic-electron.exe'),userData:path.resolve('Synthetic-public-fixture/user-data')},
+    {SyntheticMarker:'public',PA_RUNTIME_PROFILE:'local',PA_PRIVATE_SENTINEL:'must not inherit',pa_other_override:'must not inherit',ELECTRON_RUN_AS_NODE:'1'});
+  assert.equal(options.args[0],'-r');assert.ok(options.args[1].endsWith(path.join('server','electron','loader.js')));
+  assert.equal(options.args[2],path.resolve(__dirname,'../../../apps/desktop'));
+  assert.equal(options.args[3],'--pa-public-pelican-acceptance=Synthetic-public-fixture');
+  assert.equal(options.env.PA_RUNTIME_PROFILE,'huawei_ict_agentarts');assert.equal(options.env.SyntheticMarker,'public');
+  assert.equal(Object.hasOwn(options.env,'PA_PRIVATE_SENTINEL'),false);assert.equal(Object.hasOwn(options.env,'pa_other_override'),false);
+  assert.equal(options.env.ELECTRON_RUN_AS_NODE,undefined);assert.equal(options.env.PA_DESKTOP_SYNTHETIC_MVP,undefined);
+});
+
+test('the actual pinned loader defers ready and whenReady until the driver attaches, with an explicit Fake Electron event source',async()=>{
+  const options=electronLaunchOptions({executablePath:path.resolve('Synthetic-electron.exe'),userData:path.resolve('Synthetic-public-fixture/user-data')},{});
+  let ready;const originalReady=new Promise(resolve=>{ready=resolve;}),events=[];
+  const app=new EventEmitter();app.whenReady=()=>originalReady;app.commandLine={appendSwitch(){}};app.isReady=()=>true;
+  const context={require:name=>{assert.equal(name,'electron');return {app};},process:{argv:['Synthetic-electron','--inspect=0','--remote-debugging-port=0',...options.args],env:{}}};
+  runInNewContext(readFileSync(options.args[1],'utf8'),context,{filename:'pinned-playwright-electron-loader.js'});
+  app.on('ready',()=>events.push('product-ready-event'));
+  const startup=app.whenReady().then(()=>events.push('product-window-created'));
+  app.emit('ready','Synthetic OS ready');ready('Synthetic OS ready');await Promise.resolve();
+  assert.deepEqual(events,[],'OS readiness cannot race ahead of driver attachment');assert.equal(app.isReady(),false);
+  events.push('driver-connected');await context.__playwright_run();await startup;
+  assert.equal(app.isReady(),true);assert.deepEqual(events,['driver-connected','product-ready-event','product-window-created']);
+});
 
 test('public Pelican question automation verifies the original descendant and exact pending invocation read-only',async t=>{
   const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
