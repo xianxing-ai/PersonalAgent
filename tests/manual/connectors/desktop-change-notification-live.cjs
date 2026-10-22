@@ -5,14 +5,14 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {createHash}=require('node:crypto');
 const {isDeepStrictEqual}=require('node:util');
-const {_electron}=require('playwright');
 const {databaseRead,checkpoint}=require('./desktop-authorization-live.cjs');
-const {snapshot,pageFor,close,wait,submit,approveConversationQuestions}=require('./desktop-weather-watch-live.cjs');
+const {snapshot,pageFor,close,wait,submit,launch,approveConversationQuestions}=require('./desktop-weather-watch-live.cjs');
 const {openSettings,settingsNavigationState}=require('../agentarts/desktop-pelican-default-live.cjs');
 const {validateManifest}=require('./mail-header-batch-fixture.cjs');
 const {authorizationMode,readCohortBindings,canFinishCohort,cohortCaseForEvent}=require('./mail-header-batch-audit.cjs');
 const root=path.resolve(__dirname,'../../..'),desktop=path.join(root,'apps/desktop');
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const fileHash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const choiceReasons=new Set(['selected','high_risk','uncertain','insufficient_candidates','invalid_response','unavailable',
   'cancelled','deadline','candidate_expired']);
 const required=['real_source_baseline','real_source_change','original_local_laya_decision',
@@ -155,6 +155,19 @@ async function configureNotifications(session,database,policy,report,persist,exp
   },Date.parse(expiresAt),'original notification policy confirmation');
   report.notificationPolicy={configured:true,source:'original_settings_and_unified_card',policy};persist();
 }
+async function stopOriginalWatch(session,database,source,expiresAt,report,persist){
+  if(!report.watchId||report.stopAttempt)return;
+  report.stopAttempt={state:'started',watchId:report.watchId};persist();
+  try{
+    await submit(session,database,'停止本次验收的原订阅。请实际调用connector.watch.stop，精确参数为'+JSON.stringify({watchId:report.watchId})+'，不要新建或重启订阅。',
+      ['subagent.dispatch','connector.watch.stop',...(source==='mail'?['mail.inbox']:[])],
+      {purpose:'stop_original_change_watch',toolName:'connector.watch.stop',arguments:{watchId:report.watchId},
+        authorizeAdditional:(question,binding)=>validateMailPage(question,binding,{database,watchId:report.watchId,expiresAt})},report,persist);
+    assert.equal(changeAudit(database).watches.find(item=>item.watchId===report.watchId)?.enabled,false);
+    report.stopAttempt.state='confirmed';
+  }catch(error){report.stopAttempt.state='not_confirmed';report.stopAttempt.code=error?.code??'ORIGINAL_WATCH_STOP_NOT_CONFIRMED';throw error;}
+  finally{persist();}
+}
 async function main(){
   assert.equal(process.env.PA_MANUAL_CHANGE_NOTIFICATION_LIVE,'1','explicit real change/notification opt-in required');
   assert.equal(process.platform,'win32');
@@ -192,7 +205,9 @@ async function main(){
     provenanceAttestation:'operator_declared_real_source_event',
     status:'in_progress',stage:'launch',startedAt:new Date().toISOString(),expiresAt,intervalMs,turns:[],questions:[],
     checks:Object.fromEntries([...required,...(manifest?cohortRequired:[])].map(key=>[key,'not_run'])),fakeRuntime:false,fakeProvider:false,fakeModel:false,
-    ...(mailAuthorizationMode?{mailAuthorizationMode}:{}),
+    ...(mailAuthorizationMode?{mailAuthorizationMode}:{}),...(manifest?{mailCohortId:manifest.cohortId}:{}),
+    sourceFiles:{mainSha256:fileHash(path.join(desktop,'electron/main.js')),runnerSha256:fileHash(__filename),
+      ...(manifest?{manifestSha256:fileHash(process.env.PA_CHANGE_MAIL_BATCH_MANIFEST)}:{})},
     privacy:{configuration:'encrypted_copy_only',historyCopied:false,publicHeaderInboxDeclared:mailAuthorizationMode==='public_only_inbox',
       mailBodyRead:false,mailWrite:false,publicReceiptPrivateContent:false},physicalHumanClick:false,physicalHumanView:'not_run'};
   const persist=()=>fs.writeFileSync(receipt,JSON.stringify(report,null,2)+'\n');let session,interrupted=false;persist();
@@ -200,15 +215,31 @@ async function main(){
   process.once('SIGINT',interrupt);process.once('SIGTERM',interrupt);
   console.log(JSON.stringify({status:'started',output,source,provenance}));
   try{
-    const env=Object.fromEntries(Object.entries(process.env).filter(([name])=>!/^PA_/i.test(name)));
-    Object.assign(env,{ELECTRON_RUN_AS_NODE:undefined,PA_RUNTIME_PROFILE:'huawei_ict_agentarts',PA_DESKTOP_TEST_USER_DATA:userData});
-    const app=await _electron.launch({executablePath,args:[desktop,'--pa-change-notification-acceptance='+path.basename(output)],env});
-    session={app,report};await app.firstWindow();const orb=await pageFor(app,'orb');await orb.evaluate(()=>window.desktop.invoke('orb.open'));
-    session.panel=await pageFor(app,'panel');const initial=await snapshot(session.panel);
+    session=await launch(executablePath,userData,report);session.report=report;const initial=await snapshot(session.panel);
     assert.equal(initial.fake,false);assert.equal(initial.fakeModel,false);assert.equal(initial.agentArts?.configured,true);
-    report.stage='start-original-local-laya';persist();const admin=await adminPage(session,'connections');
+    const admin=await adminPage(session,'connections');
     if(source==='mail'){assert.equal((await snapshot(admin)).mail.configured,true);assert.equal((await snapshot(admin)).mail.requiresRestart,false);
       assert.equal((await snapshot(admin)).mail.cloudAnalysisAllowed,false,'local header processing cannot enable cloud analysis');}
+    if(process.env.PA_CHANGE_PREFLIGHT_ONLY==='1'){
+      report.preflight={originalDesktop:true,agentArtsConfigured:true,mailConfigured:source==='mail',mailConfigurationBound:source==='mail',
+        localLayaStarted:false,sourceConnection:'not_run',sourceHeadersRead:false,sourceBodyRead:false,sourceWrites:false};
+      report.status='passed_configuration_preflight_only';report.stage='configuration_preflight_complete';return;
+    }
+    if(process.env.PA_CHANGE_LAYA_RELEASE_FILE){
+      const releaseFile=process.env.PA_CHANGE_LAYA_RELEASE_FILE;assert.ok(path.isAbsolute(releaseFile));
+      report.stage='await-original-laya-resource-slot';report.awaitingSlot={releaseFile,source,...(manifest?{cohortId:manifest.cohortId}:{})};persist();
+      await wait(()=>{
+        if(!fs.existsSync(releaseFile))return false;
+        const info=fs.lstatSync(releaseFile);assert.ok(info.isFile()&&!info.isSymbolicLink()&&info.size<=4096);
+        const release=JSON.parse(fs.readFileSync(releaseFile,'utf8'));
+        assert.equal(release.kind,'connector_laya_slot_release');assert.equal(release.source,source);
+        if(manifest)assert.equal(release.cohortId,manifest.cohortId);
+        assert.ok(Date.parse(release.releasedAt)>=Date.parse(report.startedAt),'an earlier slot release cannot authorize this process');
+        return true;
+      },Date.parse(expiresAt),'original local Laya resource handoff');
+      report.awaitingSlot.state='released';persist();
+    }
+    report.stage='start-original-local-laya';persist();
     if((await snapshot(admin)).laya?.ready!==true)await admin.locator('[data-laya="start"]').click();
     report.laya=await wait(async()=>{const value=(await snapshot(admin)).laya;
       if(['unavailable','memory_insufficient','error','stop_unconfirmed','identity_changed'].includes(value?.state))throw Error('Original local Laya startup refused');
@@ -272,9 +303,7 @@ async function main(){
     },Date.parse(expiresAt),'real source event, autonomous Laya notify and original native show');
     assert.equal(report.checks.original_main_conversation,'passed');report.deliveredEventId=delivered.id;
     report.stage='stop-exact-original-watch';persist();
-    await submit(session,database,'停止本次验收的原订阅。请实际调用connector.watch.stop，精确参数为'+JSON.stringify({watchId:watch.watchId})+'，不要新建或重启订阅。',
-      ['subagent.dispatch','connector.watch.stop',...(source==='mail'?['mail.inbox']:[])],
-      {purpose:'stop_original_change_watch',toolName:'connector.watch.stop',arguments:{watchId:watch.watchId},authorizeAdditional:extra},report,persist);
+    await stopOriginalWatch(session,database,source,expiresAt,report,persist);
     const stopped=changeAudit(database);assert.equal(stopped.watches.find(item=>item.watchId===watch.watchId).enabled,false);
     await new Promise(resolve=>setTimeout(resolve,intervalMs+2000));assert.equal(changeAudit(database).readCount,stopped.readCount);
     report.checks.stop_fences_future_reads='passed';await close(session.app);session=undefined;
@@ -290,6 +319,7 @@ async function main(){
     report.status='passed_real_source_laya_conversation_native_show';report.stage='complete';
   }catch(error){report.status='failed';report.failure={stage:report.stage,code:error?.code??'REQUIRED_REAL_ACCEPTANCE_NOT_SATISFIED'};
     for(const key of Object.keys(report.checks))if(!['passed','review_required'].includes(report.checks[key]))report.checks[key]='not_satisfied';
+    if(session&&report.watchId&&!report.stopAttempt)await stopOriginalWatch(session,database,source,expiresAt,report,persist).catch(()=>{});
     process.exitCode=1;
   }finally{process.removeListener('SIGINT',interrupt);process.removeListener('SIGTERM',interrupt);
     if(session)await close(session.app);if(fs.existsSync(database))try{report.persistence=changeAudit(database,{manifest});}catch{}
