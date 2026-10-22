@@ -1,0 +1,729 @@
+{
+  "version": 1,
+  "cohortId": "pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe",
+  "total": 120,
+  "perLabel": 20,
+  "pageSize": 100,
+  "cases": [
+    {
+      "caseIndex": 1,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 001 Team meeting invitation",
+      "body": "Public synthetic sample 001. Team meeting invitation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 2,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 002 Engineering code review discussion",
+      "body": "Public synthetic sample 002. Engineering code review discussion. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 3,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 003 Technology newsletter edition",
+      "body": "Public synthetic sample 003. Technology newsletter edition. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 4,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 004 Fictional order receipt",
+      "body": "Public synthetic sample 004. Fictional order receipt. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 5,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 005 A friendly note about the weekend",
+      "body": "Public synthetic sample 005. A friendly note about the weekend. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 6,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 006 Untitled fragment",
+      "body": "Public synthetic sample 006. Untitled fragment. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 7,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 007 Appointment moved to Thursday",
+      "body": "Public synthetic sample 007. Appointment moved to Thursday. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 8,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 008 Project technical design notes",
+      "body": "Public synthetic sample 008. Project technical design notes. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 9,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 009 Weekly science digest",
+      "body": "Public synthetic sample 009. Weekly science digest. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 10,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 010 Sample invoice number",
+      "body": "Public synthetic sample 010. Sample invoice number. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 11,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 011 Family picnic memories",
+      "body": "Public synthetic sample 011. Family picnic memories. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 12,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 012 A miscellaneous note",
+      "body": "Public synthetic sample 012. A miscellaneous note. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 13,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 013 Planning meeting agenda",
+      "body": "Public synthetic sample 013. Planning meeting agenda. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 14,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 014 Pull request review summary",
+      "body": "Public synthetic sample 014. Pull request review summary. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 15,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 015 Subscribed product update",
+      "body": "Public synthetic sample 015. Subscribed product update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 16,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 016 Fictional parcel delivery notice",
+      "body": "Public synthetic sample 016. Fictional parcel delivery notice. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 17,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 017 A greeting from a fictional friend",
+      "body": "Public synthetic sample 017. A greeting from a fictional friend. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 18,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 018 Several unrelated words",
+      "body": "Public synthetic sample 018. Several unrelated words. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 19,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 019 Calendar invitation for a workshop",
+      "body": "Public synthetic sample 019. Calendar invitation for a workshop. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 20,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 020 Development task progress",
+      "body": "Public synthetic sample 020. Development task progress. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 21,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 021 Monthly astronomy news",
+      "body": "Public synthetic sample 021. Monthly astronomy news. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 22,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 022 Sample payment receipt",
+      "body": "Public synthetic sample 022. Sample payment receipt. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 23,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 023 Photos from a pretend family outing",
+      "body": "Public synthetic sample 023. Photos from a pretend family outing. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 24,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 024 An unclear short fragment",
+      "body": "Public synthetic sample 024. An unclear short fragment. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 25,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 025 Meeting time changed to 14:00",
+      "body": "Public synthetic sample 025. Meeting time changed to 14:00. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 26,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 026 Software test results discussion",
+      "body": "Public synthetic sample 026. Software test results discussion. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 27,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 027 Open source newsletter",
+      "body": "Public synthetic sample 027. Open source newsletter. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 28,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 028 Fictional purchase confirmation",
+      "body": "Public synthetic sample 028. Fictional purchase confirmation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 29,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 029 A personal thank you note",
+      "body": "Public synthetic sample 029. A personal thank you note. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 30,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 030 A vague message",
+      "body": "Public synthetic sample 030. A vague message. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 31,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 031 Weekly meeting room update",
+      "body": "Public synthetic sample 031. Weekly meeting room update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 32,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 032 Project deliverable status",
+      "body": "Public synthetic sample 032. Project deliverable status. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 33,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 033 Weekly technology news digest",
+      "body": "Public synthetic sample 033. Weekly technology news digest. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 34,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 034 Sample billing statement",
+      "body": "Public synthetic sample 034. Sample billing statement. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 35,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 035 A friendly holiday greeting",
+      "body": "Public synthetic sample 035. A friendly holiday greeting. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 36,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 036 Unspecified subject",
+      "body": "Public synthetic sample 036. Unspecified subject. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 37,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 037 Project meeting postponed",
+      "body": "Public synthetic sample 037. Project meeting postponed. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 38,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 038 Engineering design document",
+      "body": "Public synthetic sample 038. Engineering design document. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 39,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 039 Museum newsletter edition",
+      "body": "Public synthetic sample 039. Museum newsletter edition. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 40,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 040 Fictional order shipment notice",
+      "body": "Public synthetic sample 040. Fictional order shipment notice. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 41,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 041 Family garden conversation",
+      "body": "Public synthetic sample 041. Family garden conversation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 42,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 042 Assorted fragments",
+      "body": "Public synthetic sample 042. Assorted fragments. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 43,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 043 Appointment confirmation",
+      "body": "Public synthetic sample 043. Appointment confirmation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 44,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 044 Build pipeline technical notes",
+      "body": "Public synthetic sample 044. Build pipeline technical notes. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 45,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 045 Subscribed gardening digest",
+      "body": "Public synthetic sample 045. Subscribed gardening digest. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 46,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 046 Sample refund receipt",
+      "body": "Public synthetic sample 046. Sample refund receipt. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 47,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 047 A fictional birthday greeting",
+      "body": "Public synthetic sample 047. A fictional birthday greeting. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 48,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 048 No clear topic",
+      "body": "Public synthetic sample 048. No clear topic. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 49,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 049 Design workshop calendar event",
+      "body": "Public synthetic sample 049. Design workshop calendar event. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 50,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 050 Bug investigation progress",
+      "body": "Public synthetic sample 050. Bug investigation progress. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 51,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 051 Monthly public library news",
+      "body": "Public synthetic sample 051. Monthly public library news. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 52,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 052 Fictional delivery tracking update",
+      "body": "Public synthetic sample 052. Fictional delivery tracking update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 53,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 053 Catching up after a long time",
+      "body": "Public synthetic sample 053. Catching up after a long time. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 54,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 054 A small miscellaneous memo",
+      "body": "Public synthetic sample 054. A small miscellaneous memo. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 55,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 055 Meeting invitation for Friday",
+      "body": "Public synthetic sample 055. Meeting invitation for Friday. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 56,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 056 Repository code review notes",
+      "body": "Public synthetic sample 056. Repository code review notes. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 57,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 057 Product release newsletter",
+      "body": "Public synthetic sample 057. Product release newsletter. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 58,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 058 Sample subscription payment receipt",
+      "body": "Public synthetic sample 058. Sample subscription payment receipt. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 59,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 059 A personal note about a new hobby",
+      "body": "Public synthetic sample 059. A personal note about a new hobby. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 60,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 060 Uncategorized words",
+      "body": "Public synthetic sample 060. Uncategorized words. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 61,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 061 Public seminar appointment",
+      "body": "Public synthetic sample 061. Public seminar appointment. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 62,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 062 Technical implementation proposal",
+      "body": "Public synthetic sample 062. Technical implementation proposal. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 63,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 063 Weekly mathematics digest",
+      "body": "Public synthetic sample 063. Weekly mathematics digest. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 64,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 064 Fictional order cancellation receipt",
+      "body": "Public synthetic sample 064. Fictional order cancellation receipt. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 65,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 065 A greeting from an old friend",
+      "body": "Public synthetic sample 065. A greeting from an old friend. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 66,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 066 An incomplete phrase",
+      "body": "Public synthetic sample 066. An incomplete phrase. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 67,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 067 Agenda coordination for Tuesday",
+      "body": "Public synthetic sample 067. Agenda coordination for Tuesday. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 68,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 068 Development milestone report",
+      "body": "Public synthetic sample 068. Development milestone report. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 69,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 069 Science magazine update",
+      "body": "Public synthetic sample 069. Science magazine update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 70,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 070 Sample invoice payment confirmation",
+      "body": "Public synthetic sample 070. Sample invoice payment confirmation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 71,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 071 Family cooking conversation",
+      "body": "Public synthetic sample 071. Family cooking conversation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 72,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 072 A vague observation",
+      "body": "Public synthetic sample 072. A vague observation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 73,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 073 Review meeting rescheduled",
+      "body": "Public synthetic sample 073. Review meeting rescheduled. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 74,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 074 API design feedback",
+      "body": "Public synthetic sample 074. API design feedback. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 75,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 075 Subscribed transport news",
+      "body": "Public synthetic sample 075. Subscribed transport news. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 76,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 076 Fictional shop order confirmation",
+      "body": "Public synthetic sample 076. Fictional shop order confirmation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 77,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 077 A friendly note about a book",
+      "body": "Public synthetic sample 077. A friendly note about a book. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 78,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 078 A fragment without context",
+      "body": "Public synthetic sample 078. A fragment without context. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 79,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 079 Calendar event location update",
+      "body": "Public synthetic sample 079. Calendar event location update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 80,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 080 Testing task summary",
+      "body": "Public synthetic sample 080. Testing task summary. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 81,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 081 Monthly photography digest",
+      "body": "Public synthetic sample 081. Monthly photography digest. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 82,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 082 Sample electronic receipt",
+      "body": "Public synthetic sample 082. Sample electronic receipt. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 83,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 083 A personal travel memory",
+      "body": "Public synthetic sample 083. A personal travel memory. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 84,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 084 Several disconnected ideas",
+      "body": "Public synthetic sample 084. Several disconnected ideas. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 85,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 085 Workshop meeting reminder",
+      "body": "Public synthetic sample 085. Workshop meeting reminder. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 86,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 086 Project documentation update",
+      "body": "Public synthetic sample 086. Project documentation update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 87,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 087 Technology trend newsletter",
+      "body": "Public synthetic sample 087. Technology trend newsletter. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 88,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 088 Fictional parcel arrival notice",
+      "body": "Public synthetic sample 088. Fictional parcel arrival notice. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 89,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 089 A fictional family celebration",
+      "body": "Public synthetic sample 089. A fictional family celebration. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 90,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 090 An unspecified update",
+      "body": "Public synthetic sample 090. An unspecified update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 91,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 091 Planning session moved to Monday",
+      "body": "Public synthetic sample 091. Planning session moved to Monday. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 92,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 092 Engineering release checklist discussion",
+      "body": "Public synthetic sample 092. Engineering release checklist discussion. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 93,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 093 Public education newsletter",
+      "body": "Public synthetic sample 093. Public education newsletter. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 94,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 094 Sample transaction statement",
+      "body": "Public synthetic sample 094. Sample transaction statement. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 95,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 095 A friendly congratulations note",
+      "body": "Public synthetic sample 095. A friendly congratulations note. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 96,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 096 A general miscellaneous item",
+      "body": "Public synthetic sample 096. A general miscellaneous item. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 97,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 097 Team appointment cancellation",
+      "body": "Public synthetic sample 097. Team appointment cancellation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 98,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 098 Software architecture notes",
+      "body": "Public synthetic sample 098. Software architecture notes. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 99,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 099 Weekly environment digest",
+      "body": "Public synthetic sample 099. Weekly environment digest. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 100,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 100 Fictional purchase refund notice",
+      "body": "Public synthetic sample 100. Fictional purchase refund notice. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 101,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 101 A personal postcard greeting",
+      "body": "Public synthetic sample 101. A personal postcard greeting. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 102,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 102 An unclear remark",
+      "body": "Public synthetic sample 102. An unclear remark. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 103,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 103 Meeting agenda for next week",
+      "body": "Public synthetic sample 103. Meeting agenda for next week. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 104,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 104 Code quality discussion",
+      "body": "Public synthetic sample 104. Code quality discussion. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 105,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 105 Subscribed space news",
+      "body": "Public synthetic sample 105. Subscribed space news. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 106,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 106 Sample monthly invoice",
+      "body": "Public synthetic sample 106. Sample monthly invoice. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 107,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 107 Family pet conversation",
+      "body": "Public synthetic sample 107. Family pet conversation. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 108,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 108 A short unstructured note",
+      "body": "Public synthetic sample 108. A short unstructured note. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 109,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 109 Calendar invitation update",
+      "body": "Public synthetic sample 109. Calendar invitation update. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 110,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 110 Development work item status",
+      "body": "Public synthetic sample 110. Development work item status. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 111,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 111 Monthly digital magazine",
+      "body": "Public synthetic sample 111. Monthly digital magazine. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 112,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 112 Fictional order dispatch notice",
+      "body": "Public synthetic sample 112. Fictional order dispatch notice. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 113,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 113 A fictional reunion memory",
+      "body": "Public synthetic sample 113. A fictional reunion memory. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 114,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 114 An unknown topic",
+      "body": "Public synthetic sample 114. An unknown topic. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 115,
+      "expectedLabel": "meeting",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 115 Appointment moved to next month",
+      "body": "Public synthetic sample 115. Appointment moved to next month. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 116,
+      "expectedLabel": "work",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 116 Project delivery report",
+      "body": "Public synthetic sample 116. Project delivery report. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 117,
+      "expectedLabel": "subscription",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 117 Public research newsletter",
+      "body": "Public synthetic sample 117. Public research newsletter. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 118,
+      "expectedLabel": "transaction",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 118 Sample billing receipt",
+      "body": "Public synthetic sample 118. Sample billing receipt. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 119,
+      "expectedLabel": "personal",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 119 A friendly seasonal greeting",
+      "body": "Public synthetic sample 119. A friendly seasonal greeting. All events and transactions are fictional."
+    },
+    {
+      "caseIndex": 120,
+      "expectedLabel": "other",
+      "subject": "[pa-header-batch-ec0d7710-cc70-4026-95b0-d65d8a3493fe] 120 An ambiguous fragment",
+      "body": "Public synthetic sample 120. An ambiguous fragment. All events and transactions are fictional."
+    }
+  ]
+}
