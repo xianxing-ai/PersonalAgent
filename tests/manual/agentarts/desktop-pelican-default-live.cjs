@@ -104,29 +104,57 @@ async function openSettings(session, section) {
   return admin;
 }
 
-async function approveOriginalButton(admin,pending) {
-  const selector=`[data-approval="allow_once"][data-id="${pending.approvalId}"]`;
-  const button=admin.locator(selector);
+async function originalQuestionBinding(database,sourceTaskId,question) {
+  const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
+  const db=new DatabaseSync(database,{readOnly:true});
+  try {
+    const load=(id,key)=>{const row=db.prepare('SELECT value_json FROM task_checkpoints WHERE task_id=? AND checkpoint_key=?').get(id,key);
+      return row?JSON.parse(row.value_json):undefined;};
+    let ancestor=question.taskId;const seen=new Set();
+    while(ancestor!==sourceTaskId&&seen.size<32&&!seen.has(ancestor)) {
+      seen.add(ancestor);ancestor=load(ancestor,'coding-repair:parent')?.taskId??load(ancestor,'subtask-parent')?.parentTaskId;
+      if(!ancestor)break;
+    }
+    assert.equal(ancestor,sourceTaskId,'only descendants of this new original main turn may receive an automated decision');
+    const original=load(question.taskId,'application-tool-invocation:'+question.sourceApprovalId);
+    assert.ok(original&&original.toolName===question.toolName,'the question must name its original pending tool invocation');
+    assert.equal(original.argumentsDigest,toolArgumentsDigest(original.arguments),'the original exact arguments must remain bound');
+    assert.ok(Date.parse(question.expiresAt)<=Date.parse(original.deadline),'a question cannot extend the original operation deadline');
+    if(['workspace.read_text','coding.repair.read'].includes(question.toolName))assert.equal(original.arguments.path,fixtureName,
+      'source export is restricted to the new public SVG');
+    return {argumentsDigest:original.argumentsDigest,deadline:original.deadline};
+  } finally {db.close();}
+}
+
+async function approveOriginalQuestion(panel,pending) {
+  await panel.bringToFront();
+  const selector=`[data-question-id="${pending.questionId}"] [data-authorization-decision="allow_once"]`;
+  const button=panel.locator(selector);
   await button.waitFor({state:'visible'});
-  assert.equal(await button.isEnabled(),true,'the original approval button must be enabled');
-  // The settings view replaces this table on each status update. Activate its
-  // exact live DOM button once, through the original UI handler, without a
-  // pointer-stability wait across replacement nodes. This is not a human click.
-  await button.evaluate((element,expected)=>{
+  assert.equal(await button.isEnabled(),true,'the original question button must be enabled');
+  await button.scrollIntoViewIfNeeded({timeout:10_000});
+  // Recheck the current host question, then activate its exact live card through
+  // the production UI handler. This is automation, never a physical human click.
+  await button.evaluate(async(_element,expected)=>{
+    const response=await window.desktop.invoke('snapshot');
+    const current=response.ok&&response.value.authorizationQuestions?.find(item=>item.questionId===expected.questionId);
+    if(!current||current.state!=='pending'||Date.parse(current.expiresAt)<=Date.now()
+      ||['questionId','taskId','sourceApprovalId','conversationId','revision','toolName','expiresAt'].some(key=>current[key]!==expected[key])
+      ||JSON.stringify(current.requirements)!==JSON.stringify(expected.requirements))throw Error('Original question binding changed before activation');
+    const card=[...document.querySelectorAll('[data-question-id]')].find(node=>node.dataset.questionId===expected.questionId);
+    const element=card?.querySelector('[data-authorization-decision="allow_once"]');
+    if(!element)throw Error('Original question card is unavailable');
     const bounds=element.getBoundingClientRect(),style=getComputedStyle(element);
     if(!element.isConnected||element.disabled||bounds.width<=0||bounds.height<=0
+      ||bounds.bottom<=0||bounds.top>=innerHeight||bounds.right<=0||bounds.left>=innerWidth
       ||style.display==='none'||style.visibility!=='visible'
-      ||element.dataset.id!==expected.approvalId||element.dataset.task!==expected.taskId
-      ||Number(element.dataset.revision)!==expected.revision||element.dataset.approval!=='allow_once')
-      throw Error('Original approval UI binding changed before activation');
+      ||element.dataset.authorizationDecision!=='allow_once')throw Error('Original question UI is not actionable');
     element.click();
-  },{approvalId:pending.approvalId,taskId:pending.taskId,revision:pending.revision});
+  },pending);
 }
 
 async function installPublicDialogAutomation(app, inputs) {
   await app.evaluate(({dialog}, values) => {
-    const fs = process.getBuiltinModule('node:fs');
-    const {createHash} = process.getBuiltinModule('node:crypto');
     const originalOpen = dialog.showOpenDialog.bind(dialog);
     const originalMessage = dialog.showMessageBox.bind(dialog);
     const selections = new Map([
@@ -145,22 +173,6 @@ async function installPublicDialogAutomation(app, inputs) {
     };
     dialog.showMessageBox = async (...args) => {
       const options = args.at(-1);
-      if (options?.title === '本任务公开资料许可') {
-        const detail = String(options.detail ?? '');
-        const current = fs.readFileSync(values.fixture);
-        const digest = createHash('sha256').update(current).digest('hex');
-        const exactFile = detail.split('\n').includes('资料：' + values.fixtureName);
-        const taskBound = /^原任务：[0-9a-f-]{36}$/m.test(detail);
-        const phase = options.message?.startsWith('允许读取') ? 'preflight'
-          : options.message?.startsWith('允许向 AgentArts 发送') ? 'confirmed' : 'unknown';
-        const exactBytes = phase !== 'confirmed' || detail.includes('SHA256：' + digest)
-          && detail.includes('实际大小：' + current.length + ' 字节');
-        const allowed = exactFile && taskBound && exactBytes && phase !== 'unknown'
-          && options.buttons?.[1] === '确认仅本任务使用此公开资料';
-        globalThis.__pelicanNativeActions.push({kind:'public_fixture_export',phase,allowed,
-          ...(phase === 'confirmed' ? {sha256:digest,byteLength:current.length} : {})});
-        return {response:allowed ? 1 : 0, checkboxChecked:false};
-      }
       // Unexpected requests receive no extra authorization and remain observable.
       if (options?.type === 'question') {
         globalThis.__pelicanNativeActions.push({kind:'unrecognized_question',allowed:false});
@@ -183,7 +195,7 @@ async function launch({executablePath,userData,workspace,node,npm,fixture}, repo
     '--pa-public-pelican-acceptance='+path.basename(path.dirname(userData))],env:environment});
   try {
     await app.firstWindow();
-    await installPublicDialogAutomation(app,{workspace,node,npm,check:path.join(workspace,checkName),fixture,fixtureName});
+    await installPublicDialogAutomation(app,{workspace,node,npm,check:path.join(workspace,checkName)});
     const orb = await pageFor(app,'orb');
     const opened = await orb.evaluate(() => window.desktop.invoke('orb.open'));
     assert.equal(opened.ok,true,'production main conversation must open');
@@ -217,6 +229,7 @@ function readDeadline(database, taskId) {
 
 async function readback(database, sourceTaskId, requireComplete, {workflow=false}={}) {
   const {createRuntimeApplication} = await import('@personal-agent/runtime/application');
+  const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
   const application = createRuntimeApplication({path:database,profile:'huawei_ict_agentarts'});
   try {
     const runtime = application.runtime;
@@ -243,6 +256,33 @@ async function readback(database, sourceTaskId, requireComplete, {workflow=false
     const records = rows.map(row=>({taskId:row.taskId,toolName:row.toolName,toolVersion:row.toolVersion,
       state:row.state,policyDecision:row.policyDecision,executionStarted:row.executionStarted,
       evidenceId:row.evidenceId}));
+    const localDecisions=originalHosts.filter(host=>host.request.toolName==='decision.choose_candidate').map(host=>{
+      const runId='host-tool-'+host.localTaskId,args=host.request.arguments;
+      const saved=runtime.loadCheckpoint(host.localTaskId,'coding-repair:local-decision:v1:'+runId);
+      if(!saved){assert.ok(!requireComplete,'every original local coding decision must retain its typed diagnostic');
+        return {taskId:host.localTaskId,diagnostic:'not_captured'};}
+      assert.equal(saved.version,1);assert.equal(saved.taskId,host.localTaskId);assert.equal(saved.runId,runId);
+      assert.equal(saved.requestId,args.requestId);assert.equal(saved.argumentsDigest,toolArgumentsDigest(args));
+      assert.equal(saved.contextDigest,sha(args.context));assert.equal(saved.candidateDigest,toolArgumentsDigest(args.candidates));
+      assert.equal(saved.deadline,host.request.deadline);assert.equal(saved.authority,'diagnostic_no_tool_grant');
+      assert.equal(saved.selection.receipt.contextDigest,saved.contextDigest);
+      const candidates=args.candidates.map(candidate=>({id:candidate.id,revision:1,kind:'noop',description:candidate.description,
+        sources:[],scopeRef:args.requestId,expiresAt:host.request.deadline,risk:'low',argumentsDigest:toolArgumentsDigest({})}));
+      assert.equal(saved.selection.receipt.id,toolArgumentsDigest({context:args.context,candidates}));
+      assert.deepEqual(saved.selection.receipt.candidates.map(item=>({candidate:item.candidate,digest:item.digest})),
+        candidates.map(candidate=>({candidate:{id:candidate.id,revision:1},digest:toolArgumentsDigest(candidate)})));
+      const read=application.readHostToolTask(host.localTaskId);
+      if(read.confirmed)assert.equal(saved.selectedId,read.confirmed.result.selectedId,'diagnostics cannot replace the original confirmed choice');
+      const lease=runtime.loadCheckpoint(host.localTaskId,'authorization-question-export:'+runId+':workspace-metadata-export');
+      if(requireComplete) {
+        assert.ok(lease?.leaseRef&&lease.questionId,'the original unified decision card must produce its exact metadata export lease');
+        assert.equal(lease.resultDigest,sha(JSON.stringify(read.confirmed.result)));
+        assert.equal(lease.stage,'workspace-metadata-export');
+      }
+      return {...saved,toolExecutionState:rows.find(row=>row.taskId===host.localTaskId&&row.toolName==='decision.choose_candidate')?.state??'not_recorded',
+        exportReceipt:lease?{questionId:lease.questionId,revision:lease.revision,resultDigest:lease.resultDigest,
+          schemaDigest:lease.schemaDigest,policyVersion:lease.policyVersion,stage:lease.stage}:{state:'not_captured'}};
+    });
     if(requireComplete) {
       assert.equal(parent.state,'succeeded','original main conversation task must succeed');
       assert.ok(descendants.length>0,'default production delegation must create an original child task');
@@ -311,7 +351,7 @@ async function readback(database, sourceTaskId, requireComplete, {workflow=false
         advanceCount:graph.state.sequence,hostTaskIds:originalHosts.filter(host=>host.ownerTaskId===graph.taskId).map(host=>host.localTaskId),
         verification:graph.state.confirmedHost?.['workflow.host.f15_n05']?.result?.verification,
         publication:graph.state.confirmedHost?.['workflow.host.f15_n06']?.result}))}:{}),
-      records,evidenceRefs:[...new Set(evidence.map(item=>item.evidenceId))],cloudRequests:clouds};
+      records,localDecisions,evidenceRefs:[...new Set(evidence.map(item=>item.evidenceId))],cloudRequests:clouds};
   } finally {application.close();}
 }
 
@@ -398,13 +438,16 @@ async function main() {
       internalArtifactsExcludedFromSourceInventory:true},
     source:{desktopMainSha256:fileSha(path.join(desktop,'electron/main.js')),
       toolSurfaceSha256:fileSha(path.join(desktop,'electron/conversation-tool-surface.js')),
+      workspaceConfigHostSha256:fileSha(path.join(desktop,'electron/workspace-config-host.js')),
+      codingDecisionSourceSha256:fileSha(path.join(root,'apps/runtime/src/application/coding-decision-tool.ts')),
+      codingDecisionBuildSha256:fileSha(path.join(root,'apps/runtime/dist/application/coding-decision-tool.js')),
       runnerSha256:fileSha(__filename)},
     nativeHelper:{sha256:fileSha(helper),processIdentityQuery:'passed',sourceBuildProvenance:'not_reestablished'},
     wiringSurface:workflowMode?'apps/desktop production main panel → original delegated child → published coding.repair.workflow/F15'
       :'apps/desktop production main panel → original delegated child → original workspace tools',
     automation:{nativeSelectors:'new public fixture and explicitly supplied host executables only',
-      exactPublicExport:'current fixture bytes and original task only',
-      approvalActivation:'visible enabled original DOM button and production UI handler',
+      exactPublicExport:'original unified question requirement plus confirmed source digest and export lease',
+      approvalActivation:'visible enabled original unified question card and production UI handler; allow_once only',
       physicalHumanClick:'not_run',fakeModel:false,fakeTools:false},
     limitations:[...(!workflowMode?['not F15 workflow-advance graph acceptance']:[]),'not a platform trace/API readback',
       'not a physical user approval interaction','not general autonomous coding acceptance'],approvals:[]};
@@ -428,13 +471,7 @@ async function main() {
     const ready=(await snapshot(admin)).coding;
     assert.equal(ready.authorizationAvailable,true,'original production workspace assembly must be ready');
     assert.equal(ready.projectScriptsAvailable,true,'original bounded project test host must be available');
-    for(const selector of ['cloud','write','command','project-code'])await admin.locator(`[data-workspace="${selector}"]`).check();
-    await admin.locator('[data-workspace="authorize"]').click();
-    await waitUntil(async()=>{
-      const value=(await snapshot(admin)).coding;
-      return value.cloudExportAllowed&&value.writeAllowed&&value.commandAllowed&&value.projectCodeAllowed;
-    },Date.now()+30_000,'current fixture workspace authorization');
-    report.workspaceAuthorization='production settings UI confirmed';
+    report.workspaceAuthorization='configuration only; each original operation requires its unified question';
     if(workflowMode) {
       report.stage='start-original-local-laya';persist();
       admin=await openSettings(session,'connections');
@@ -442,7 +479,10 @@ async function main() {
       report.laya={state:'startup_requested',activation:'production settings UI',
         systemFreeBytesBefore:before,systemTotalBytes:os.totalmem()};persist();
       const existing=(await snapshot(admin)).laya;
-      if(existing?.ready!==true)await admin.locator('[data-laya="start"]').click();
+      if(existing?.ready!==true) {
+        assert.ok(before>=2*1024**3,'original 2 GiB free-memory admission must hold before Laya startup');
+        await admin.locator('[data-laya="start"]').click();
+      }
       const laya=await waitUntil(async()=>{
         const value=(await snapshot(admin)).laya;
         if(['unavailable','memory_insufficient','error','stop_unconfirmed','identity_changed'].includes(value?.state)) {
@@ -484,18 +524,26 @@ async function main() {
         assert.equal(task.state,'succeeded','original default conversation task must succeed');
         return task;
       }
-      for(const pending of value.approvals??[]) {
-        if(pending.state!=='pending'||report.approvals.some(item=>item.approvalId===pending.approvalId))continue;
+      assert.ok(!(value.approvals??[]).some(item=>item.state==='pending'
+        &&!(value.authorizationQuestions??[]).some(question=>question.sourceApprovalId===item.approvalId)),
+        'legacy approval controls cannot replace the original unified question');
+      for(const pending of value.authorizationQuestions??[]) {
+        if(pending.state!=='pending'||report.approvals.some(item=>item.questionId===pending.questionId&&item.revision===pending.revision))continue;
         // This fresh userData has one original main turn; deny any unrelated tool.
         assert.ok(['workspace.read_text','workspace.preview_text_patch','workspace.stage_text_patch',
           'workspace.apply_text_patch','workspace.node_check','workspace.npm_test','workspace.git_diff_check',
           'subagent.dispatch',...(workflowMode?['coding.repair.start','coding.repair.read','decision.choose_candidate',
-            'workflow.host.f15_n04','workflow.host.f15_n05','workflow.host.f15_n06']:[])].includes(pending.action),
-          'only original fixture coding approvals may be automated');
-        await openSettings(session,'authorizations');
-        await approveOriginalButton(admin,pending);
-        report.approvals.push({approvalId:pending.approvalId,taskId:pending.taskId,revision:pending.revision,
-          toolName:pending.action,argumentsDigest:pending.argumentsDigest});persist();
+            'workflow.host.f15_n04','workflow.host.f15_n05','workflow.host.f15_n06']:[])].includes(pending.toolName),
+          'only original fixture coding questions may be automated');
+        assert.ok(pending.requirements.every(item=>['tool','connector_session','export'].includes(item.kind)),
+          'only the declared original operation, workspace and export requirements may be approved');
+        const binding=await originalQuestionBinding(database,source.taskId,pending);
+        if(pending.sandbox?.native?.required===true)assert.ok(pending.sandbox.native.available===true&&pending.sandbox.native.enforced===true,
+          'a missing native process boundary cannot be approved as available');
+        await approveOriginalQuestion(session.panel,pending);
+        report.approvals.push({questionId:pending.questionId,approvalId:pending.sourceApprovalId,taskId:pending.taskId,
+          revision:pending.revision,toolName:pending.toolName,...binding,decision:'allow_once',
+          requirements:pending.requirements.map(({requirementId,kind,scopes})=>({requirementId,kind,scopes}))});persist();
       }
       return undefined;
     },deadline+15_000,'production task terminal readback');
@@ -549,7 +597,7 @@ async function main() {
   }
 }
 
-module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot};
+module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot,originalQuestionBinding,approveOriginalQuestion};
 if(require.main===module)main().catch(error=>{
   console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
     message:String(error?.message??'Acceptance prerequisites are unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));

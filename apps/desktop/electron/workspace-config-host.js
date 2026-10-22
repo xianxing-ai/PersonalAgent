@@ -8,6 +8,7 @@ import * as coding from '@personal-agent/coding-tools';
 import {harnessCandidateRecipeFingerprint,parseHarnessCandidateBinding} from '@personal-agent/contracts/harness-candidates';
 import {readRuntimeCodingVerificationEvidence} from '@personal-agent/runtime/application';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
+import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import {createDesktopCodingToolHost} from './coding-tool-host.js';
 import {findWindowsExecutable} from './windows-executable-discovery.js';
 import {codingRepairExportOperation,projectCodingRepairResult} from './coding-repair-result-export.js';
@@ -352,7 +353,10 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const entry=matches.length===1?matches[0]:undefined;
     if(!entry||!questionReady()||scope.signal?.aborted||!bound(scope.taskId)||entry.generation!==generation
       ||Date.parse(entry.scope.deadline)<=Date.now()||!selectionsCurrent()||!identityCurrent()
-      ||entry.resource!==resourceIdentity()||question.readResourceGeneration(entry.resource)!==entry.resourceGeneration)
+      ||entry.resource!==resourceIdentity()||question.readResourceGeneration(entry.resource)!==entry.resourceGeneration
+      ||entry.decision&&!isDeepStrictEqual(entry.decision,readCodingDecision(entry.scope,
+        application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId)
+          ??application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId,true))))
       throw new ProtocolError('UNAUTHORIZED','原工作区操作、配置或授权范围已变化');
     return entry;
   }
@@ -376,11 +380,36 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(codingRepairExportOperation(name))return workspaceRepairProjectionSchema(codingRepairExportOperation(name));
     return tool.descriptor.outputSchema;
   }
+  function readCodingDecision(scope,source) {
+    if(source?.toolName!=='decision.choose_candidate'||source.toolVersion!=='1.0.0')return undefined;
+    const parent=application?.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent');
+    if(!parent)return undefined;
+    const original=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId)?.request;
+    const linked=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId);
+    const graph=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:graph');
+    if(scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId||!original
+      ||graph?.version!==1||graph.input?.codingRepair?.session?.taskId!==parent.taskId
+      ||graph.sessionId!==graph.input.codingRepair.session.sessionId
+      ||original.commandId!==parent.operationId||original.toolName!==source.toolName||original.toolVersion!==source.toolVersion
+      ||original.deadline!==scope.deadline||!isDeepStrictEqual(original.arguments,source.arguments))
+      throw new ProtocolError('UNAUTHORIZED','本地编码判断缺少原 F15 操作关联');
+    const descriptor=createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Descriptor only');}}}).descriptor;
+    validateToolValue(descriptor.inputSchema,source.arguments);
+    if(new Set(source.arguments.candidates.map(candidate=>candidate.id)).size!==source.arguments.candidates.length)
+      throw new ProtocolError('INVALID_ARGUMENT','原编码判断候选重复');
+    return {ownerTaskId:parent.taskId,operationId:parent.operationId,argumentsDigest:toolArgumentsDigest(original.arguments),
+      candidateIds:source.arguments.candidates.map(candidate=>candidate.id)};
+  }
+  function decisionProjectionSchema(decision) {
+    return {type:'object',properties:{selectedId:{type:'string',enum:[...decision.candidateIds]}},required:['selectedId'],additionalProperties:false};
+  }
   function prepareQuestion(scope,exportRequested=false) {
     if(!question)return;
     const source=scope.proposal?{...scope.proposal,argumentsDigest:toolArgumentsDigest(scope.proposal.arguments)}
       :application?.readAuthorizationQuestionInvocation?.(scope.taskId,scope.runId);
-    const tool=implementations.find(item=>item.descriptor.name===source?.toolName&&item.descriptor.version===source?.toolVersion);
+    const decision=readCodingDecision(scope,source);
+    const tool=implementations.find(item=>item.descriptor.name===source?.toolName&&item.descriptor.version===source?.toolVersion)
+      ??(decision?{descriptor:createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Descriptor only');}}}).descriptor}:undefined);
     const delegated=source?.toolName==='workspace.run_allowed_command'&&source.toolVersion===developerCommand?.descriptor.version;
     const candidate=['coding.repair.trial','coding.repair.prepare_adoption','coding.repair.reconcile_trial','harness.candidates.compare'].includes(source?.toolName);
     if(!tool&&!delegated&&!candidate)return;
@@ -396,7 +425,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const key=JSON.stringify([request.taskId,request.runId]),previous=prepared.get(key);
     const signature=hash({request:{...request,signal:undefined},generation,resource,resourceGeneration});
     if(previous&&previous.signature!==signature)throw new ProtocolError('UNAUTHORIZED','原工作区操作不能替换参数或配置');
-    const entry=previous??{scope:request,argumentsDigest:request.argumentsDigest,generation,resource,resourceGeneration,signature};
+    const entry=previous??{scope:request,argumentsDigest:request.argumentsDigest,generation,resource,resourceGeneration,signature,
+      ...(decision?{decision}: {})};
     prepared.set(key,entry);
     const ruleBindingDigest=hash({resource,resourceGeneration,toolName:request.toolName,toolVersion:request.toolVersion,
       scopes:descriptor?.requiredScopes??source.scopes,projectionVersion:'workspace-redacted-v3'});
@@ -406,7 +436,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       assertCurrent:()=>{try{preparedEntry(request);return true;}catch{return false;}}});
     const workflowRun=application.runtime.loadCheckpoint(scope.taskId,'coding-repair:graph')?.initialRunId===scope.runId
       ||Boolean(application.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent'));
-    if(tool&&workflowRun&&codingRepairExportOperation(tool.descriptor.name)) {
+    if(tool&&workflowRun&&(decision||codingRepairExportOperation(tool.descriptor.name))) {
       const sourceRead=codingRepairExportOperation(tool.descriptor.name)==='read';
       const sourceRule=sourceRead?{path:source.arguments.path,maxBytes:source.arguments.maxBytes??262144,
         configurationRef:readWorkspaceExportConfigurationRef()}:{};
@@ -415,8 +445,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         ruleBindingDigest:hash({ruleBindingDigest,kind:'public-read',...sourceRule}),
         summary:'仅将本操作指定的源码作为公开参考资料读取；源码出机仍核原来源、版本、精确字节与 digest'}]});
       question.prepareExport(request,{requirementId:sourceRead?'public-reference-export':'workspace-metadata-export',
-        projectionSchema:sourceRead?readTool.descriptor.outputSchema:projectionSchema(tool),
-        summary:sourceRead?'把本操作指定的公开参考源码发送到原任务选定模型，严格限原 maxBytes 与最终已确认内容，不包括其他文件'
+        projectionSchema:decision?decisionProjectionSchema(decision):sourceRead?readTool.descriptor.outputSchema:projectionSchema(tool),
+        summary:decision?'仅向原 F15 工作流发送本次原候选中的 selectedId；本地 typed 判断原因、概率与上下文均不出机':sourceRead?'把本操作指定的公开参考源码发送到原任务选定模型，严格限原 maxBytes 与最终已确认内容，不包括其他文件'
           :'仅将原隔离编码工具的固定脱敏元数据发送到该工作流模型，不含源码、stdout 或本机绝对路径',
         bindingDigest:hash({signature,kind:sourceRead?'public-source':'workflow-metadata'}),
         ruleBindingDigest:hash({ruleBindingDigest,kind:sourceRead?'public-source':'workflow-metadata',
@@ -948,7 +978,12 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
               throw new ProtocolError('UNAUTHORIZED','F15 初始元数据不匹配原固定结构');
             result=result.codingRepair;
           }
-          const projection=projectCodingRepairResult(entry.scope.toolName,result);
+          let projection;
+          if(entry.decision) {
+            if(input.stage!=='receipt')throw new ProtocolError('UNAUTHORIZED','本地判断只能导出原确认回执');
+            validateToolValue(decisionProjectionSchema(entry.decision),result);
+            projection={selectedId:result.selectedId};
+          }else projection=projectCodingRepairResult(entry.scope.toolName,result);
           question.authorizeConsumedExport({...entry.scope,signal:input.signal},projection,'workspace-metadata-export');
           return input.stage==='initial'?{...input.value,codingRepair:projection}:projection;
         }
