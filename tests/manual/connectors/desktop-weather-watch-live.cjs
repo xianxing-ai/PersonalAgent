@@ -8,6 +8,7 @@ const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {DatabaseSync}=require('node:sqlite');
 const {_electron}=require('playwright');
+const {approveQuestions}=require('./desktop-authorization-live.cjs');
 const root=path.resolve(__dirname,'../../..'),desktop=path.join(root,'apps/desktop');
 const sha=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const hashValue=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -118,8 +119,6 @@ async function launch(executablePath,userData,report){
 async function authorizationPage(session){const response=await session.panel.evaluate(()=>window.desktop.invoke('admin.open',{page:'authorizations'}));
   assert.equal(response.ok,true);const admin=await pageFor(session.app,'admin');
   const nav=admin.locator('.side [data-page="authorizations"]');await nav.waitFor();if(await nav.getAttribute('aria-current')!=='page')await nav.click();return admin;}
-function originalArguments(db,pending){const loop=checkpoint(db,pending.taskId,'competition-loop');
-  return loop?.pending?.toolName===pending.action?loop.pending.arguments:checkpoint(db,pending.taskId,'application-tool-invocation:'+pending.approvalId)?.arguments;}
 async function submit(session,database,goal,allowed,expected,report,persist){
   await session.panel.locator('textarea[aria-label="任务内容"]').fill(goal);await session.panel.locator('#send').click();
   const task=await wait(async()=>{const value=await snapshot(session.panel);return value.tasks.find(item=>item.userMessage===goal||item.goal===goal);},Date.now()+30_000,'original main submission');
@@ -129,17 +128,14 @@ async function submit(session,database,goal,allowed,expected,report,persist){
     const admin=await authorizationPage(session),value=await snapshot(admin),state=value.tasks.find(item=>item.taskId===task.taskId);
     if(state?.state==='waiting_reconciliation')throw Error('Original task requires reconciliation; no resubmission is allowed');
     if(terminal(state?.state)){assert.equal(state.state,'succeeded','original main task must succeed');return state;}
-    for(const pending of value.approvals??[]){
-      if(pending.state!=='pending'||report.approvals.some(item=>item.approvalId===pending.approvalId))continue;
-      assert.ok(allowed.includes(pending.action),'unrelated approval is not authorized by this public test');
-      databaseRead(database,db=>{
-        const parent=checkpoint(db,pending.taskId,'subtask-parent');assert.ok(pending.taskId===task.taskId||parent?.parentTaskId===task.taskId,'approval belongs to this original main/child');
-        const args=originalArguments(db,pending);assert.ok(args&&typeof args==='object','original frozen arguments required');
-        if(pending.action!=='subagent.dispatch')assert.deepEqual(args,expected.arguments,'approval must bind exact public query/watch/stop parameters');
-      });
-      await admin.locator(`[data-approval="allow_once"][data-id="${pending.approvalId}"]`).click();
-      report.approvals.push({approvalId:pending.approvalId,taskId:pending.taskId,toolName:pending.action,revision:pending.revision,argumentsDigest:pending.argumentsDigest});persist();
-    }
+    await approveQuestions({page:admin,database,value,allowed,report,persist,validate(question,binding){
+      if(expected.authorizeAdditional?.(question,binding)===true)return;
+      assert.ok(question.taskId===task.taskId||binding.parent?.parentTaskId===task.taskId,'question belongs to this original main/child');
+      if(question.toolName!=='subagent.dispatch')assert.deepEqual(binding.arguments,expected.arguments,
+        'question must bind exact public query/watch/stop parameters');
+    }});
+    assert.equal((value.approvals??[]).filter(item=>item.state==='pending').length,0,
+      'this runner requires the unified card; a legacy approval is not silently approved');
     return undefined;
   },deadline+15_000,'original default task terminal');
   const value=audit(database),children=databaseRead(database,db=>value.tasks.filter(item=>checkpoint(db,item.taskId,'subtask-parent')?.parentTaskId===task.taskId));
@@ -234,6 +230,6 @@ async function main(){
     process.exitCode=1;
   }finally{report.finishedAt=new Date().toISOString();persist();console.log(JSON.stringify({status:report.status,stage:report.stage,watchId:report.watchId,receipt}));}
 }
-module.exports={audit,publicAudit,validatePublicRead,validateWatchRead};
+module.exports={audit,publicAudit,validatePublicRead,validateWatchRead,submit,launch,snapshot,pageFor,close,capture,wait};
 if(require.main===module)main().catch(error=>{console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
   message:String(error?.message??'Acceptance prerequisites unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));process.exitCode=1;});
