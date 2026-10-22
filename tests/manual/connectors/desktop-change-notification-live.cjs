@@ -72,6 +72,13 @@ function completeBaselineReady(audit,source,watchId){
 }
 function completedNotification(manifest,cohort,delivered){return manifest
   ?cohort&&canFinishCohort(cohort,delivered)?delivered:undefined:delivered;}
+function assertWatchCanContinue(audit,watchId){
+  const watch=audit.watches.find(item=>item.watchId===watchId);assert.ok(watch,'original watch must remain available');
+  if(!watch.enabled||['waiting_reconciliation','stop_unconfirmed','classification_unavailable','resync_required','failed','unavailable'].includes(watch.state)){
+    const error=Error('Original source watch cannot continue; no restart or source replay is permitted');
+    error.code=['waiting_reconciliation','stop_unconfirmed'].includes(watch.state)?'RESULT_UNKNOWN':'ORIGINAL_SOURCE_WATCH_STOPPED';throw error;
+  }
+}
 function readDeviceDelivery(userData,roundId){
   const file=path.join(userData,'desktop-notifications.json');if(!fs.existsSync(file))return;
   const info=fs.lstatSync(file);assert.ok(info.isFile()&&!info.isSymbolicLink()&&info.size<=1024*1024);
@@ -274,6 +281,7 @@ async function main(){
         validate:(question,binding)=>validateMailPage(question,binding,{database,watchId:watch.watchId,expiresAt})});};
     report.stage='wait-original-complete-baseline';persist();
     await wait(async()=>{await approveMail();const audit=changeAudit(database);report.persistence=audit;persist();
+      assertWatchCanContinue(audit,watch.watchId);
       return completeBaselineReady(audit,source,watch.watchId);
     },Date.parse(expiresAt),'original complete source baseline');report.checks.real_source_baseline='passed';
     report.baselineReadyAt=new Date().toISOString();report.stage='wait-real-source-change';persist();
@@ -282,6 +290,7 @@ async function main(){
       externalInput:source==='mail'?'user_or_authorized_sender_must_create_new_public_test_mail':'wait_for_natural_significant_same_location_weather_change'}));
     let deliveredEvent,lastCohortRead=0;
     const delivered=await wait(async()=>{await approveMail();const audit=changeAudit(database,{manifest});report.persistence=audit;
+      assertWatchCanContinue(audit,watch.watchId);
       const events=audit.events.filter(item=>item.sourceWatch===watch.watchId&&Date.parse(item.observedAt)>=Date.parse(report.baselineReadyAt));
       const relevant=manifest?events.filter(item=>Number.isSafeInteger(item.cohortCaseIndex)):events;
       if(relevant.length)report.checks.real_source_change='passed';
@@ -355,5 +364,5 @@ async function main(){
     if(session)await close(session.app);if(fs.existsSync(database))try{report.persistence=changeAudit(database,{manifest});}catch{}
     report.finishedAt=new Date().toISOString();persist();console.log(JSON.stringify({status:report.status,stage:report.stage,receipt}));}
 }
-module.exports={changeAudit,validateMailPage,readCohortAudit,adminPage,completeBaselineReady,completedNotification,readDeviceDelivery,failureFrames};
+module.exports={changeAudit,validateMailPage,readCohortAudit,adminPage,completeBaselineReady,completedNotification,readDeviceDelivery,failureFrames,assertWatchCanContinue};
 if(require.main===module)main().catch(()=>{console.error('Real source/notification acceptance prerequisites unavailable; no private data printed.');process.exitCode=1;});
