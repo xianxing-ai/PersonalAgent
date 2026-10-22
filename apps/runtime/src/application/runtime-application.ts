@@ -1308,13 +1308,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   readAuthorizationQuestionBinding(input:Omit<AuthorizationQuestionRequest,'signal'>):{conversationId:string;digest:string}|undefined {
-    const original=this.readAuthorizationQuestionInvocation(input.taskId,input.runId);
+    const original=this.readAuthorizationQuestionInvocation(input.taskId,input.runId)||this.readAuthorizationQuestionInvocation(input.taskId,input.runId,true);
     if(!original||['proposalId','runId','toolName','toolVersion','argumentsDigest','deadline'].some(key=>
       original[key as keyof typeof original]!==input[key as keyof typeof input]))return undefined;
     const conversationId=this.readToolConversation(input.taskId)??this.runtime.getTask(input.taskId).conversationId;
     if(!conversationId)return undefined;
     const toolRequirement=input.requirements.find(item=>item.kind==='tool');
     if(toolRequirement&&!isDeepStrictEqual([...toolRequirement.scopes].sort(),[...original.scopes].sort()))return undefined;
+    const anchor=this.runtime.loadCheckpoint(input.taskId,'authorization-question-binding:'+input.runId) as
+      {binding:{conversationId:string;digest:string};proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;deadline:string}|undefined;
+    if(anchor&&!['proposalId','runId','toolName','toolVersion','argumentsDigest','deadline'].some(key=>
+      anchor[key as keyof typeof anchor]!==input[key as keyof typeof input]))return structuredClone(anchor.binding);
     const loop=this.runtime.loadCheckpoint(input.taskId,'competition-loop') as {pendingRevision?:number};
     return {conversationId,digest:hashJson({conversationId,taskId:input.taskId,proposalId:original.proposalId,
       runId:original.runId,toolName:original.toolName,toolVersion:original.toolVersion,argumentsDigest:original.argumentsDigest,

@@ -56,7 +56,9 @@ test('repository-root workspace keeps default helper isolation and accepts expli
   const rootPath = fileURLToPath(new URL('../../../', import.meta.url));
   assert.throws(() => createWorkspacePatchApplyTool({rootPath, recoveryRootPath, powerShellPath}), {code: 'INVALID_ARGUMENT'});
   const helperScriptPath = await installSyntheticHelper(base);
-  const tool = createWorkspacePatchApplyTool({rootPath, recoveryRootPath, powerShellPath, ...nativeIdentityOptions, helperScriptPath});
+  // The identity helper lives inside this repository, so it is correctly rejected for a
+  // repository-root workspace; this case exercises the external bundled script instead.
+  const tool = createWorkspacePatchApplyTool({rootPath, recoveryRootPath, powerShellPath, helperScriptPath});
   assert.equal(tool.descriptor.name, WORKSPACE_PATCH_APPLY_TOOL_NAME);
   assert.deepEqual(await readdir(recoveryRootPath), []);
 });

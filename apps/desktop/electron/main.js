@@ -243,6 +243,9 @@ const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
 const notifications = new Map();
 let runtimeApplication;
+// The public-reference consent belongs to one Runtime instance. It is bound after the
+// Runtime is created; capturing it earlier left every native export preflight denied.
+let referenceApplication;
 let authorizationQuestionHost;
 let nativeExecutionHost,localAuthorizationOnly=false;
 let authorizationIntentHost;
@@ -1904,7 +1907,6 @@ async function initializeRuntime() {
       }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();
-      const referenceApplication=runtimeApplication;
       const confirmPublicReference=createPublicReferenceQuestionConsent({question:authorizationQuestionPort,confirmApplicationAuthorization,
         readMcpDescriptor:()=>referenceHost?.tools?.[0]?.descriptor,readSkillManifest:()=>runtimeApplication?.referenceSkillSnapshot().manifest,
         bindOriginalReference:request=>{
@@ -2369,6 +2371,7 @@ async function initializeRuntime() {
       windowsControlHost?.bind(runtimeApplication);
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
+      referenceApplication=runtimeApplication;
       const cloudSkillSelector=referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
       runtimeApplication.configureCloudSkillSelection({
         cloudSkillCatalog:input=>referenceHost.cloudSkillCatalog(input),

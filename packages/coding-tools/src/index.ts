@@ -19,6 +19,7 @@ import { lstat, open, opendir, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep, win32 } from 'node:path';
 import { MAX_FRAME_BYTES, ProtocolError, validateToolValue } from '@personal-agent/contracts';
 import type { RegisteredTool, ToolContext, ToolDescriptor, ToolHost } from '@personal-agent/contracts';
+import {MAX_RELATIVE_PATH_LENGTH, canonicalRelativePath, canonicalRelativeDirectoryPath, pathIsWithinRoot, pathIsAtOrWithinRoot, sameCanonicalPath, isSensitivePath} from './workspace-paths.js';
 import {
   createWorkspacePatchPreviewToolFromReader,
   MAX_WORKSPACE_PATCH_PREVIEW_BYTES,
@@ -36,6 +37,10 @@ export type {
   WorkspacePatchReconcileOptions,
   WorkspacePatchReconciliationResult,
 } from './patch-reconcile.js';
+export {createWorkspaceCreateTextTool, reconcileWorkspaceCreateText, WORKSPACE_CREATE_TEXT_TOOL_NAME,
+  WORKSPACE_CREATE_TEXT_TOOL_VERSION, WORKSPACE_CREATE_TEXT_SCOPE, DEFAULT_MAX_CREATE_BYTES} from './create-text.js';
+export type {WorkspaceCreateTextOptions, WorkspaceCreateTextResult,
+  WorkspaceCreateTextReconcileOptions, WorkspaceCreateTextReconciliation} from './create-text.js';
 export {
   WORKSPACE_PATCH_APPLY_SCOPE,
   WORKSPACE_PATCH_APPLY_TOOL_NAME,
@@ -82,51 +87,9 @@ export const MAX_WORKSPACE_LIST_LIMIT = 1000;
 
 const MAX_SCHEMA_BYTES = 1024 * 1024;
 const DEFAULT_READ_CHUNK_BYTES = 64 * 1024;
-const MAX_RELATIVE_PATH_LENGTH = 1024;
-
-const blockedDirectoryNames = new Set([
-  '.aws',
-  '.azure',
-  '.codex',
-  '.direnv',
-  '.docker',
-  '.git',
-  '.gnupg',
-  '.kube',
-  '.ssh',
-]);
-
-const blockedFileNames = new Set([
-  '.git-credentials',
-  '.netrc',
-  '.npmrc',
-  '.pypirc',
-  '.envrc',
-  'application-default-credentials.json',
-  'credentials',
-  'credentials.json',
-  'id_dsa',
-  'id_ecdsa',
-  'id_ed25519',
-  'id_rsa',
-  'secrets',
-  'secrets.json',
-  'service-account.json',
-]);
-
-const blockedPrivateKeyExtensions = new Set([
-  '.jks',
-  '.key',
-  '.keystore',
-  '.p12',
-  '.pem',
-  '.pfx',
-  '.ppk',
-]);
 
 const privateKeyMarker = /-----BEGIN (?:DSA |EC |ENCRYPTED |OPENSSH |PGP |RSA )?PRIVATE KEY(?: BLOCK)?-----/u;
 const disallowedTextControls = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
-const windowsReservedName = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/iu;
 
 export interface WorkspaceReadOptions {
   /** Trusted host-provided workspace root. It is canonicalized before registration. */
@@ -289,63 +252,6 @@ function canonicalRoot(rootPath: string): string {
     if (error instanceof ProtocolError) throw error;
     throw new ProtocolError('INVALID_ARGUMENT', 'Workspace rootPath is not an accessible directory');
   }
-}
-
-function canonicalRelativePath(value: string): {normalized: string; segments: string[]} {
-  if (value.length > MAX_RELATIVE_PATH_LENGTH || value.includes('\0')) {
-    throw new ProtocolError('INVALID_ARGUMENT', 'Workspace path is invalid');
-  }
-  if (isAbsolute(value) || win32.isAbsolute(value) || value.startsWith('/') || value.startsWith('\\')) {
-    throw new ProtocolError('INVALID_ARGUMENT', 'Workspace path must be relative');
-  }
-  if (value.includes(':')) {
-    throw new ProtocolError('INVALID_ARGUMENT', 'Drive-qualified and alternate data stream paths are not allowed');
-  }
-
-  const segments = value.split(/[\\/]/u);
-  if (segments.some(segment => segment === '' || segment === '.' || segment === '..')) {
-    throw new ProtocolError('INVALID_ARGUMENT', 'Workspace path must use canonical child segments');
-  }
-  for (const segment of segments) {
-    if (/[. ]$/u.test(segment)) {
-      throw new ProtocolError('INVALID_ARGUMENT', 'Workspace path contains a Windows-ambiguous segment');
-    }
-    const deviceCandidate = segment.split('.')[0] ?? segment;
-    if (windowsReservedName.test(deviceCandidate)) {
-      throw new ProtocolError('INVALID_ARGUMENT', 'Windows device names are not allowed');
-    }
-  }
-  return {normalized: segments.join('/'), segments};
-}
-
-function canonicalRelativeDirectoryPath(value: string): {normalized: string; segments: string[]} {
-  if (value === '.') return {normalized: '.', segments: []};
-  return canonicalRelativePath(value);
-}
-
-function pathIsWithinRoot(root: string, candidate: string): boolean {
-  const relation = relative(root, candidate);
-  return relation !== '' && relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation);
-}
-
-function pathIsAtOrWithinRoot(root: string, candidate: string): boolean {
-  const relation = relative(root, candidate);
-  return relation === '' || (relation !== '..' && !relation.startsWith(`..${sep}`) && !isAbsolute(relation));
-}
-
-function sameCanonicalPath(left: string, right: string): boolean {
-  return process.platform === 'win32' ? left.toLocaleLowerCase('en-US') === right.toLocaleLowerCase('en-US') : left === right;
-}
-
-function isSensitivePath(normalizedPath: string): boolean {
-  const segments = normalizedPath.toLocaleLowerCase('en-US').split('/');
-  if (segments.some(segment => blockedDirectoryNames.has(segment))) return true;
-  const fileName = segments.at(-1) ?? '';
-  if (blockedFileNames.has(fileName) || /^\.env(?:\..+)?$/u.test(fileName)) return true;
-  if (/^(?:credentials|secrets|service-account)(?:\..+)?$/u.test(fileName)) return true;
-  const extensionIndex = fileName.lastIndexOf('.');
-  const extension = extensionIndex >= 0 ? fileName.slice(extensionIndex) : '';
-  return blockedPrivateKeyExtensions.has(extension);
 }
 
 function checkContext(
