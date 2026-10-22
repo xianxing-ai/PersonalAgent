@@ -1,5 +1,7 @@
 # PersonalAgent 产品需求文档
 
+2026-10-22 本轮限定修订：用户明确要求新邮件/显著天气变化走既有本机 Laya 有界提醒选择，并继续默认桌面编码修复真实验收。该限定覆盖下文 2026-10-18 的全面禁用表述；云端编排、权限、执行和事实读回仍沿原 Competition 主路径，不新增 Local Agent 或云失败回退。详见 [Profile 修订](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)。
+
 <!-- current-design-alignment-20261015 -->
 ## 当前需求修订与验收范围（2026-10-18）
 
