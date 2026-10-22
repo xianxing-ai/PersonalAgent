@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {inspectDotnetInfo,nativePublishArguments,probeNativeToolchain,readPeArchitecture,
-  requireNativeArchitecture,requireNativeRuntime} from '../native/host-architecture.mjs';
+  requireNativeArchitecture,requireNativeRuntime,toolchainFailureDiagnostic} from '../native/host-architecture.mjs';
 
 const arm={platform:'win32',nodeArchitecture:'arm64',osArchitecture:'ARM64',expectedArchitecture:'arm64'};
 const info=architecture=>`Host:\n  Version:      8.0.31\n  Architecture: ${architecture}\n  Commit:       fixture\n\n.NET SDKs installed:\n  8.0.425 [private-path]\n`;
+test('toolchain failure diagnostics distinguish query failure without exporting native output',()=>{
+  let observed;
+  try{probeNativeToolchain({host:arm,run:()=>({status:null,error:{code:'ENOENT',message:'private-token'},stderr:'private-output'})});}
+  catch(error){observed=toolchainFailureDiagnostic(error);}
+  assert.deepEqual(observed,{status:'failed',reason:'Native dotnet query failed',query:'--info',processError:'ENOENT',exitCode:null});
+  assert.deepEqual(toolchainFailureDiagnostic({message:'private-token',query:'private-path',stderr:'private-output'}),
+    {status:'failed',reason:'Native Windows toolchain architecture preflight failed'});
+});
 test('native Windows builds refuse emulated Node, wrong requested target and unsupported architectures',()=>{
   assert.deepEqual(requireNativeArchitecture(arm),{architecture:'arm64',runtimeIdentifier:'win-arm64'});
   assert.deepEqual(requireNativeArchitecture({...arm,nodeArchitecture:'x64',osArchitecture:'AMD64',expectedArchitecture:'x64'}),

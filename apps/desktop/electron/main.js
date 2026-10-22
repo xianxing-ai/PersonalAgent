@@ -870,7 +870,7 @@ function movePanelGroup(point) {
 }
 
 function openAdmin(page) {
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','connections','memory'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
