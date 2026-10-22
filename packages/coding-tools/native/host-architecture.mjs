@@ -8,7 +8,9 @@ export function normalizeArchitecture(value) {
   if (typeof value !== 'string') throw Error('Unknown Windows architecture');
   if (/^(x64|amd64|x86_64)$/iu.test(value)) return 'x64';
   if (/^(arm64|aarch64)$/iu.test(value)) return 'arm64';
-  throw Error('Unsupported Windows architecture');
+  const error=Error('Unsupported Windows architecture');
+  error.unsupportedArchitecture=['x86','ia32','arm','arm64ec'].includes(value.toLowerCase())?value.toLowerCase():'other';
+  throw error;
 }
 
 export function requireNativeArchitecture({platform=process.platform, nodeArchitecture=process.arch,
@@ -82,6 +84,7 @@ export function toolchainFailureDiagnostic(error) {
     'Emulated Node is not native acceptance','Requested Windows architecture mismatch','Emulated or mismatched dotnet host',
     'Native dotnet query failed','Native .NET 8 SDK and runtime required']);
   const result={status:'failed',reason:reasons.has(error?.message)?error.message:'Native Windows toolchain architecture preflight failed'};
+  if(['x86','ia32','arm','arm64ec','other'].includes(error?.unsupportedArchitecture))result.unsupportedArchitecture=error.unsupportedArchitecture;
   if(['--info','--list-sdks','--list-runtimes'].includes(error?.query))result.query=error.query;
   if(['ENOENT','EACCES','EPERM','ETIMEDOUT','UNKNOWN'].includes(error?.processError))result.processError=error.processError;
   if(error?.exitCode===null||Number.isInteger(error?.exitCode))result.exitCode=error.exitCode;
@@ -90,5 +93,5 @@ export function toolchainFailureDiagnostic(error) {
 }
 if (process.argv[1] && path.resolve(process.argv[1])===path.resolve(import.meta.filename)) {
   try { console.log(JSON.stringify(probeNativeToolchain())); }
-  catch(error) { console.error(JSON.stringify(toolchainFailureDiagnostic(error))); process.exitCode=1; }
+  catch(error) { console.error(JSON.stringify({...toolchainFailureDiagnostic(error),nodeArchitecture:process.arch,osMachine:os.machine()})); process.exitCode=1; }
 }
