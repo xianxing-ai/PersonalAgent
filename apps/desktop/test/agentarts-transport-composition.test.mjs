@@ -185,9 +185,37 @@ test('HTTPS fallback remains explicit and cannot bypass the final host send guar
     assert.equal((await runTask(app)).state,'failed');
     assert.equal(guards,1);
     assert.equal(fetches,0);
-    assert.match(desktop.notice(),/HTTPS 备用/);
+    assert.equal(desktop.notice(),'','a rejected final guard cannot claim an HTTPS attempt was made');
   } finally {app.close();}
   assert.throws(() => desktopOptions({PA_AGENTARTS_TRANSPORT:'https',PA_AGENTARTS_HTTPS_FALLBACK:'1'}),/wss/);
+});
+
+test('actual Desktop configured same-pin HTTPS completes after a never-sent Upgrade failure and shows the attempted version',async()=>{
+  const version='configured-version-r3',http=[],sockets=[],states=[];
+  const desktop=desktopOptions({...wssEnvironment,PA_AGENTARTS_HTTPS_FALLBACK:'1'},'',{
+    readTransportOptions:()=>({appToken:wssEnvironment.PA_AGENTARTS_APP_TOKEN,deploymentVersion:version}),
+  },async(url,init)=>{
+    http.push({url,init});return new Response(JSON.stringify(events('Original configured HTTPS result')),
+      {headers:{'content-type':'application/json'}});
+  });
+  const app=createAgentArtsRuntimeApplication({...desktop.options,path:':memory:',authorizationProvider:outer,
+    onTransportState:state=>{states.push(state);desktop.options.onTransportState(state);},
+    websocketFactory:()=>{
+      const socket=new SyntheticWebSocket(undefined,{autoReady:false});sockets.push(socket);
+      queueMicrotask(()=>socket.emit('unexpected-response',undefined,{statusCode:404,resume(){}}));return socket;
+    }});
+  try {
+    const task=await runTask(app,'configured-upgrade-https');
+    assert.equal(task.state,'succeeded');assert.match(task.resultSummary,/Original configured HTTPS result/);
+    assert.equal(sockets.length,1);assert.equal(sockets[0].sent.length,0);assert.equal(http.length,1);
+    assert.equal(http[0].url,'https://agentarts.example.test/runtimes/synthetic/invocations?endpoint='+version);
+    assert.equal(new Headers(http[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+wssEnvironment.PA_AGENTARTS_APP_TOKEN);
+    const fallback=states.find(state=>state.state==='https_fallback');
+    assert.equal(fallback.transport,'https');assert.equal(fallback.deploymentSelection,'pinned');assert.equal(fallback.deploymentVersion,version);
+    assert.match(desktop.notice(),/WSS 调用尚未发送.*HTTPS 备用.*固定部署 configured-version-r3/);
+    assert.equal(app.runtime.loadCheckpoint(task.taskId,'competition-cloud-unknown'),undefined);
+    assert.equal(desktop.notice().includes(wssEnvironment.PA_AGENTARTS_APP_TOKEN),false);
+  }finally{app.close();}
 });
 
 test('an actual accepted WSS disconnect retains its unknown notice and original Runtime reconciliation hold', async () => {

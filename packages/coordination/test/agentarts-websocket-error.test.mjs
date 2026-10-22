@@ -71,10 +71,10 @@ test('unrecognized codes, added content and mismatched identity stay unknown and
   }
 });
 
-test('WSS upgrade diagnostics retain bounded HTTP status without changing rejection or fallback', async () => {
+test('WSS upgrade diagnostics retain bounded HTTP status when HTTPS recovery is disabled', async () => {
   for (const status of [401, 403, 426, '403', 403.5, 99, 600, NaN, undefined]) {
     const diagnostics = []; let socket, http = 0, resumed = 0, dispatched = 0;
-    const port = new AgentArtsCloudAgentPort(configuration, {read: async () => 'Bearer PRIVATE_TOKEN'},
+    const port = new AgentArtsCloudAgentPort({...configuration,allowHttpsFallback:false}, {read: async () => 'Bearer PRIVATE_TOKEN'},
       async () => { http++; throw Error('Unexpected HTTPS'); }, undefined, undefined,
       receipt => { diagnostics.push(receipt); }, {
         factory: () => (socket = new SyntheticWebSocket(undefined, {autoReady: false})),

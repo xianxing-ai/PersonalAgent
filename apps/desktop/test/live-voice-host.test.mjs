@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {Client} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createRuntimeClientTranscriptConsumer} from '@personal-agent/voice';
 import {createLiveVoiceHost} from '../electron/live-voice-host.js';
 
-test('trusted final consumer binds the captured speech item and current question; missing metadata, echo and old items never authorize',async()=>{
+test('Live final audio never invokes a legacy approval consumer, including a captured current yes or no',async()=>{
   let host,request,frames,token;
   const receipts=[],asked=[],time=Date.now();
   const question={questionId:'current-question',revision:4,state:'pending',summary:'是否确认当前参数？',argumentsDigest:'a'.repeat(64),
@@ -22,21 +23,31 @@ test('trusted final consumer binds the captured speech item and current question
   assert.equal(host.askCurrentQuestion().state,'unavailable');
   await host.start();
   assert.equal(host.askCurrentQuestion().state,'queued');assert.equal(asked.length,1);
+  assert.match(asked[0],/原授权卡/);assert.doesNotMatch(asked[0],/是否确认当前参数/);
+  assert.match(request.instructions,/审批只能在原卡发生，音频和转写都不能消费批准/);
+  assert.doesNotMatch(request.instructions,/需要您点头确认|现在执行吗|只有可信最终音频/);
+  const preserved=request.instructions.split('\n').filter(line=>!line.startsWith('read_context 里的工具与参数')
+    &&!line.startsWith('被打断后立刻')).join('\n');
+  assert.equal(createHash('sha256').update(preserved).digest('hex'),
+    '041ab85d5829b44e6eebc2cdc065808f9120a104f8e6bba47733e40bd405bfae','all non-approval persona paragraphs are unchanged');
   assert.equal(host.snapshot().questionDelivery.playbackVerified,false);
   frames.onFrame({data:Uint8Array.of(0,0)});
   const speech=id=>{request.onEvent({type:'speech_started',utteranceId:id});request.onEvent({type:'speech_stopped',utteranceId:id});};
   const final=(id,extra={})=>request.onEvent({type:'transcript',id,utteranceId:id,role:'user',text:'同意',phase:'final',source:'input_audio',...extra});
   speech('current');final('old-item');final('current',{phase:'partial'});final('current',{source:undefined});
   await new Promise(setImmediate);assert.equal(receipts.length,0);
-  final('current');await new Promise(setImmediate);assert.equal(receipts.length,1);
-  assert.equal(receipts[0].utteranceId,'current');assert.equal(receipts[0].questionRevision,4);assert.equal(receipts[0].source,'live_input_audio');
-  final('current');await new Promise(setImmediate);assert.equal(receipts.length,1);
+  final('current');await new Promise(setImmediate);assert.equal(receipts.length,0);
+  final('current');await new Promise(setImmediate);assert.equal(receipts.length,0);
+  speech('deny');final('deny',{text:'不同意'});await new Promise(setImmediate);assert.equal(receipts.length,0);
   request.onEvent({type:'audio',responseId:'assistant-output',data:Uint8Array.of(0,0)});
-  speech('echo');final('echo');await new Promise(setImmediate);assert.equal(receipts.length,1);
+  speech('echo');final('echo');await new Promise(setImmediate);assert.equal(receipts.length,0);
   host.receive({sender:contents,senderFrame:contents.mainFrame},{token,type:'drained'});
   speech('fresh');request.onEvent({type:'speech_stopped',utteranceId:'wrong-item'});final('fresh');
-  await new Promise(setImmediate);assert.equal(receipts.length,1);
-  await host.stop();final('fresh');await new Promise(setImmediate);assert.equal(receipts.length,1);
+  await new Promise(setImmediate);assert.equal(receipts.length,0);
+  assert.equal(question.state,'pending');
+  const context=JSON.parse(await request.onTool('read_context',{},'card-context'));
+  assert.equal(context.handoff.phase,'awaiting_card');assert.equal(context.voiceConfirmation,undefined);
+  await host.stop();final('fresh');await new Promise(setImmediate);assert.equal(receipts.length,0);
 });
 
 test('Live work shares desktop-panel and stopping audio never cancels an accepted Runtime task', async () => {
@@ -461,12 +472,12 @@ test('expired session rejects new work even if a deadline timer has not fired', 
 });
 
 test('Synthetic approval waits return promptly and continue the original task without another submission', async () => {
-  let state='waiting_approval',submits=0,prepares=0;
+  let state='waiting_approval',submits=0,prepares=0,audioApprovals=0;
   const question={kind:'approval',taskId:'accepted-task',questionId:'current-approval',revision:3,state:'pending',
     summary:'fixture.write 当前参数：value=Original，是否同意？',argumentsDigest:'a'.repeat(64),expiresAt:new Date(Date.now()+30_000).toISOString()};
   const fixture=harness({readCurrentQuestion:()=>question,prepareTaskApproval:async scope=>{
     assert.equal(scope.taskId,'accepted-task');assert.equal(scope.conversationId,'desktop-panel');prepares++;return question;
-  },client:{async call(operation,payload){
+  },onFinalUserCommand(){audioApprovals++;state='succeeded';return {consumed:true};},client:{async call(operation,payload){
     if(operation==='task.submit'){submits++;return {taskId:'accepted-task'};}
     assert.equal(operation,'task.get');return {taskId:payload.taskId,state,resultSummary:'Original tool readback'};
   }},createConsumer:options=>({consume(value){return {result:(async()=>{
@@ -476,8 +487,14 @@ test('Synthetic approval waits return promptly and continue the original task wi
   })()};}})});
   await fixture.host.start();
   const first=await fixture.request.onTool('request_work',{goal:'Synthetic approval task'},'approval-call');
-  assert.match(first,/当前参数：value=Original/);assert.equal(prepares,1);assert.equal(submits,1);
+  assert.match(first,/原授权卡/);assert.doesNotMatch(first,/当前参数：value=Original|ask_current_parameters_once/);
+  assert.equal(prepares,0);assert.equal(submits,1);
+  fixture.request.onEvent({type:'speech_started',utteranceId:'oral-yes'});
+  fixture.request.onEvent({type:'speech_stopped',utteranceId:'oral-yes'});
+  fixture.request.onEvent({type:'transcript',id:'oral-yes',utteranceId:'oral-yes',role:'user',text:'同意',phase:'final',source:'input_audio'});
+  await new Promise(setImmediate);assert.equal(audioApprovals,0);assert.equal(state,'waiting_approval');
   assert.equal(await fixture.request.onTool('request_work',{goal:'Synthetic approval task'},'approval-call'),first);
+  // Explicit Fake of the existing card's external Runtime progression; Live grants nothing.
   state='succeeded';
   assert.equal(await fixture.request.onTool('wait_for_task',{taskId:'accepted-task'},'read-result'),'Original tool readback');
   assert.equal(submits,1);assert.equal(fixture.host.snapshot().workRequests[0].state,'result_returned');
@@ -538,13 +555,13 @@ test('Synthetic expired local work wait retains the accepted task for a later bo
   await fixture.host.stop();
 });
 
-test('Synthetic original parent wait can ask a strictly bound child approval and still waits for the parent result',async()=>{
+test('Synthetic original parent wait points to its existing bound child card and still reads the parent result',async()=>{
   let state='waiting_reconciliation',submits=0;
   const question={kind:'approval',taskId:'persisted-child',questionId:'child-question',revision:2,state:'pending',
     summary:'子任务当前参数：value=Child，是否允许本次？',argumentsDigest:'b'.repeat(64),expiresAt:new Date(Date.now()+30_000).toISOString()};
   const fixture=harness({readConversationId:()=> 'dynamic-parent-ui',readCurrentQuestion:()=>question,
     authorizeTaskRead:scope=>scope.taskId==='persisted-child' && scope.conversationId==='dynamic-parent-ui',
-    prepareTaskApproval:async scope=>{assert.equal(scope.taskId,'parent');return question;},
+    prepareTaskApproval:async()=>{assert.fail('Live cannot prepare an oral approval');},
     client:{async call(operation,payload){if(operation==='task.submit'){submits++;return {taskId:'parent'};}
       assert.equal(operation,'task.get');assert.equal(payload.taskId,'parent');
       return {taskId:'parent',state,resultSummary:'Parent original final answer'};}},
@@ -553,7 +570,8 @@ test('Synthetic original parent wait can ask a strictly bound child approval and
     })()};}})});
   await fixture.host.start();
   const result=await fixture.request.onTool('request_work',{goal:'Synthetic delegated work'},'parent-request');
-  assert.match(result,/子任务当前参数/);assert.match(result,/"taskId":"parent"/);assert.equal(submits,1);
+  assert.match(result,/原授权卡/);assert.doesNotMatch(result,/子任务当前参数|是否允许本次/);
+  assert.match(result,/"taskId":"parent"/);assert.match(result,/"questionId":"child-question"/);assert.equal(submits,1);
   state='succeeded';
   assert.equal(await fixture.request.onTool('wait_for_task',{taskId:'parent'},'parent-read'),'Parent original final answer');
   assert.equal(submits,1);await fixture.host.stop();

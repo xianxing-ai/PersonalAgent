@@ -36,6 +36,11 @@ export interface AgentArtsTransportState {
     | 'unsupported' | 'result_unknown' | 'closed';
   readonly sessionId: string;
   readonly requestId?: string;
+  /** The selected outbound attempt, never a claim that the application completed. */
+  readonly transport?: 'wss' | 'https';
+  readonly deploymentSelection?: 'pinned' | 'latest';
+  /** Exact configured endpoint pin; Latest's actual version is not inferred. */
+  readonly deploymentVersion?: string;
 }
 
 export interface AgentArtsUnknownReceipt {
@@ -447,9 +452,18 @@ export class AgentArtsWebSocketTransport {
       }
     }
   }
-  canFallback(error: unknown): boolean { return error instanceof BeforeInvokeConnectionError; }
-  reportFallback(sessionId: string, requestId: string): void {
-    this.report({state: 'https_fallback', sessionId, requestId});
+  canFallback(error: unknown): boolean {
+    // An Upgrade response cannot have consumed an invoke. After a send attempt,
+    // breakConnection replaces this failure with ResultUnknown for that request.
+    // Keep authentication failures, redirects and malformed statuses terminal.
+    return error instanceof BeforeInvokeConnectionError || error instanceof AgentArtsWebSocketUpgradeError
+      && error.httpStatus !== undefined && error.httpStatus >= 400
+      && error.httpStatus !== 401 && error.httpStatus !== 403;
+  }
+  reportFallback(sessionId: string, requestId: string, deploymentVersion?: string): void {
+    this.report({state: 'https_fallback', sessionId, requestId, transport: 'https',
+      deploymentSelection: deploymentVersion === undefined ? 'latest' : 'pinned',
+      ...(deploymentVersion === undefined ? {} : {deploymentVersion})});
   }
   close(): void {
     if (this.disposed) return;

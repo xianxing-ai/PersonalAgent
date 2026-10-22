@@ -60,6 +60,12 @@ test('Transport notices make fallback and unknown outcomes visible without forwa
   assert.match(agentArtsTransportNotice({state:'result_unknown',requestId:'private'}),/停止自动重发/);
   assert.doesNotMatch(agentArtsTransportNotice({state:'result_unknown',requestId:'private'}),/private/);
   assert.equal(agentArtsTransportNotice({state:'wss_ready'}),'');
+  assert.match(agentArtsTransportNotice({state:'https_fallback',transport:'https',deploymentSelection:'pinned',
+    deploymentVersion:'configured-r3',url:'PRIVATE_URL',headers:{Authorization:'PRIVATE_TOKEN'}}),/固定部署 configured-r3/);
+  assert.match(agentArtsTransportNotice({state:'https_fallback',deploymentSelection:'latest'}),/Latest，实际版本尚未读回/);
+  for(const deploymentVersion of ['https://PRIVATE_URL?token=PRIVATE_TOKEN','PRIVATE HEADER','x'.repeat(129)]){
+    assert.doesNotMatch(agentArtsTransportNotice({state:'https_fallback',deploymentSelection:'pinned',deploymentVersion}),/PRIVATE_|xxx/);
+  }
 });
 
 const invocationUrl=binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations';
