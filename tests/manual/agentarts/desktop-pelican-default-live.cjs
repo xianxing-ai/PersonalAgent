@@ -239,20 +239,35 @@ async function installPublicDialogAutomation(app, inputs) {
   }, inputs);
 }
 
-async function launch({executablePath,userData,workspace,node,npm,fixture}, report) {
-  const {_electron} = require('playwright');
-  const environment = {...Object.fromEntries(Object.entries(process.env).filter(([key])=>!/^PA_/i.test(key))),ELECTRON_RUN_AS_NODE:undefined,
+function electronLaunchOptions({executablePath,userData},inheritedEnvironment=process.env) {
+  const loader=regularFile(path.join(path.dirname(require.resolve('playwright-core/package.json')),
+    'lib/server/electron/loader.js'),'Pinned Playwright Electron readiness loader');
+  const environment = {...Object.fromEntries(Object.entries(inheritedEnvironment).filter(([key])=>!/^PA_/i.test(key))),ELECTRON_RUN_AS_NODE:undefined,
     PA_RUNTIME_PROFILE:'huawei_ict_agentarts',PA_USER_DATA_DIR:undefined,
     PA_DESKTOP_TEST_USER_DATA:userData,PA_DESKTOP_MODEL_MODE:undefined,
     PA_DESKTOP_EPHEMERAL_MODEL:undefined,PA_DESKTOP_SYNTHETIC_MVP:undefined,
     PA_DESKTOP_SYNTHETIC_FACT_SOURCE:undefined,PA_DEVELOPER_CONFIG_FILE:undefined,
     PA_AGENTARTS_INVOKE_MODE:'published',PA_AGENTARTS_RESPONSE_MODE:'tool-proposal-json'};
-  const app = await _electron.launch({executablePath,args:[desktop,
-    '--pa-public-pelican-acceptance='+path.basename(path.dirname(userData))],env:environment});
+  // Playwright adds this gate automatically only when executablePath is absent.
+  // The explicit trusted Electron must pause app.ready until both CDP channels
+  // and the original Electron application handle have attached.
+  return {executablePath,args:['-r',loader,desktop,
+    '--pa-public-pelican-acceptance='+path.basename(path.dirname(userData))],env:environment};
+}
+
+async function launch({executablePath,userData,workspace,node,npm}, report) {
+  const {_electron} = require('playwright');
+  const started=Date.now(),attempt={sequence:(report.launchAttempts?.length??0)+1,state:'starting',phase:'electron-launch',
+    readinessGate:'pinned-playwright-electron-loader'};
+  (report.launchAttempts??=[]).push(attempt);let app;
   try {
-    await app.firstWindow();
+    app=await _electron.launch(electronLaunchOptions({executablePath,userData}));
+    attempt.phase='electron-connected';
+    assert.equal(await app.evaluate(()=>typeof globalThis.__playwright_run==='function'),true,
+      'the pinned Playwright ready gate must be installed before production Desktop startup');
     await installPublicDialogAutomation(app,{workspace,node,npm,check:path.join(workspace,checkName)});
     const orb = await pageFor(app,'orb');
+    attempt.phase='orb-ready';
     const opened = await orb.evaluate(() => window.desktop.invoke('orb.open'));
     assert.equal(opened.ok,true,'production main conversation must open');
     const panel = await pageFor(app,'panel');
@@ -265,9 +280,11 @@ async function launch({executablePath,userData,workspace,node,npm,fixture}, repo
       urlEndpoint:(()=>{try{return new URL(value.agentArts?.websocketUrl).searchParams.get('endpoint')??'';}catch{return '';}})(),
       platformVersionReadback:'not_run'};
     report.launches = (report.launches ?? 0) + 1;
+    attempt.state='ready';attempt.phase='panel-ready';attempt.elapsedMs=Date.now()-started;
     return {app,panel,orb,report};
   } catch(error) {
-    await closeDesktop(app);
+    attempt.state='failed';attempt.elapsedMs=Date.now()-started;
+    if(app)await closeDesktop(app);
     throw error;
   }
 }
@@ -670,7 +687,7 @@ async function main() {
 }
 
 module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot,originalQuestionBinding,
-  approveOriginalQuestion,openSettings,settingsNavigationState};
+  approveOriginalQuestion,openSettings,settingsNavigationState,electronLaunchOptions};
 if(require.main===module)main().catch(error=>{
   console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
     message:String(error?.message??'Acceptance prerequisites are unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));
