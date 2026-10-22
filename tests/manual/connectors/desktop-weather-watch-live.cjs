@@ -116,26 +116,31 @@ async function launch(executablePath,userData,report){
       transport:value.agentArts.effectiveTransport??'unknown',platformVersionReadback:'not_run'};return {app,panel};
   }catch(error){await close(app);throw error;}
 }
-async function authorizationPage(session){const response=await session.panel.evaluate(()=>window.desktop.invoke('admin.open',{page:'authorizations'}));
-  assert.equal(response.ok,true);const admin=await pageFor(session.app,'admin');
-  const nav=admin.locator('.side [data-page="authorizations"]');await nav.waitFor();if(await nav.getAttribute('aria-current')!=='page')await nav.click();return admin;}
+// Unified questions live only in their original conversation, never in settings.
+async function approveConversationQuestions(session,options){
+  const value=await snapshot(session.panel);
+  assert.ok(!(value.approvals??[]).some(item=>item.state==='pending'
+    &&!(value.authorizationQuestions??[]).some(question=>question.sourceApprovalId===item.approvalId)),
+  'a legacy approval cannot replace the original unified question');
+  if((value.authorizationQuestions??[]).some(question=>question.state==='pending'))await session.panel.bringToFront();
+  await approveQuestions({...options,page:session.panel,value});
+  return value;
+}
 async function submit(session,database,goal,allowed,expected,report,persist){
   await session.panel.locator('textarea[aria-label="任务内容"]').fill(goal);await session.panel.locator('#send').click();
   const task=await wait(async()=>{const value=await snapshot(session.panel);return value.tasks.find(item=>item.userMessage===goal||item.goal===goal);},Date.now()+30_000,'original main submission');
   const deadline=databaseRead(database,db=>Date.parse(checkpoint(db,task.taskId,'application-deadline')));assert.ok(Number.isFinite(deadline));
   report.turns.push({taskId:task.taskId,purpose:expected.purpose,deadline:new Date(deadline).toISOString()});persist();
   await wait(async()=>{
-    const admin=await authorizationPage(session),value=await snapshot(admin),state=value.tasks.find(item=>item.taskId===task.taskId);
+    const value=await snapshot(session.panel),state=value.tasks.find(item=>item.taskId===task.taskId);
     if(state?.state==='waiting_reconciliation')throw Error('Original task requires reconciliation; no resubmission is allowed');
     if(terminal(state?.state)){assert.equal(state.state,'succeeded','original main task must succeed');return state;}
-    await approveQuestions({page:admin,database,value,allowed,report,persist,validate(question,binding){
+    await approveConversationQuestions(session,{database,allowed,report,persist,validate(question,binding){
       if(expected.authorizeAdditional?.(question,binding)===true)return;
       assert.ok(question.taskId===task.taskId||binding.parent?.parentTaskId===task.taskId,'question belongs to this original main/child');
       if(question.toolName!=='subagent.dispatch')assert.deepEqual(binding.arguments,expected.arguments,
         'question must bind exact public query/watch/stop parameters');
     }});
-    assert.equal((value.approvals??[]).filter(item=>item.state==='pending').length,0,
-      'this runner requires the unified card; a legacy approval is not silently approved');
     return undefined;
   },deadline+15_000,'original default task terminal');
   const value=audit(database),children=databaseRead(database,db=>value.tasks.filter(item=>checkpoint(db,item.taskId,'subtask-parent')?.parentTaskId===task.taskId));
@@ -230,6 +235,6 @@ async function main(){
     process.exitCode=1;
   }finally{report.finishedAt=new Date().toISOString();persist();console.log(JSON.stringify({status:report.status,stage:report.stage,watchId:report.watchId,receipt}));}
 }
-module.exports={audit,publicAudit,validatePublicRead,validateWatchRead,submit,launch,snapshot,pageFor,close,capture,wait};
+module.exports={audit,publicAudit,validatePublicRead,validateWatchRead,submit,launch,snapshot,pageFor,close,capture,wait,approveConversationQuestions};
 if(require.main===module)main().catch(error=>{console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
   message:String(error?.message??'Acceptance prerequisites unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));process.exitCode=1;});
