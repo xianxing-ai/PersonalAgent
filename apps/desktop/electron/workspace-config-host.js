@@ -351,13 +351,31 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const matches=[...prepared.values()].filter(entry=>entry.scope.taskId===scope.taskId
       &&(scope.runId?entry.scope.runId===scope.runId:entry.scope.proposalId===(scope.proposalId??scope.proposal?.proposalId)));
     const entry=matches.length===1?matches[0]:undefined;
-    if(!entry||!questionReady()||scope.signal?.aborted||!bound(scope.taskId)||entry.generation!==generation
-      ||Date.parse(entry.scope.deadline)<=Date.now()||!selectionsCurrent()||!identityCurrent()
-      ||entry.resource!==resourceIdentity()||question.readResourceGeneration(entry.resource)!==entry.resourceGeneration
-      ||entry.decision&&!isDeepStrictEqual(entry.decision,readCodingDecision(entry.scope,
-        application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId)
-          ??application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId,true))))
+    const fail=reason=>{
+      if(entry&&/^(?:coding\.repair\.|workflow\.host\.f15_|decision\.choose_candidate$)/u.test(entry.scope.toolName)){
+        try {const key='coding-repair:authorization-diagnostic:v1:'+entry.scope.runId;
+          const value={version:1,authority:'diagnostic_no_tool_grant',taskId:entry.scope.taskId,runId:entry.scope.runId,
+            toolName:entry.scope.toolName,toolVersion:entry.scope.toolVersion,argumentsDigest:entry.argumentsDigest,
+            deadline:entry.scope.deadline,resourceDigest:entry.resource,stage:'workspace-current',reason};
+          if(typeof application.runtime.saveCheckpointOnce==='function')application.runtime.saveCheckpointOnce(entry.scope.taskId,key,value);
+          else if(application.runtime.loadCheckpoint(entry.scope.taskId,key)===undefined)application.runtime.saveCheckpoint(entry.scope.taskId,key,value);
+        }catch{/* Keep the original denial even if diagnostic storage is unavailable. */}
+      }
       throw new ProtocolError('UNAUTHORIZED','原工作区操作、配置或授权范围已变化');
+    };
+    if(!entry)fail('preparation_missing');
+    if(!questionReady())fail('question_unavailable');
+    if(scope.signal?.aborted)fail('cancelled');
+    if(!bound(scope.taskId))fail('task_scope_changed');
+    if(entry.generation!==generation)fail('workspace_generation_changed');
+    if(Date.parse(entry.scope.deadline)<=Date.now())fail('deadline_expired');
+    if(!selectionsCurrent())fail('selection_changed');
+    if(!identityCurrent())fail('workspace_identity_changed');
+    if(entry.resource!==resourceIdentity())fail('resource_identity_changed');
+    if(question.readResourceGeneration(entry.resource)!==entry.resourceGeneration)fail('resource_generation_changed');
+    if(entry.decision&&!isDeepStrictEqual(entry.decision,readCodingDecision(entry.scope,
+      application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId)
+        ??application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId,true))))fail('decision_binding_changed');
     return entry;
   }
   function assertQuestionAccess(context,input,toolName) {

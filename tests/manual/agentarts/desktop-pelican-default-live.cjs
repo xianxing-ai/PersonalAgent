@@ -308,6 +308,20 @@ async function readback(database, sourceTaskId, requireComplete, {workflow=false
     const records = rows.map(row=>({taskId:row.taskId,toolName:row.toolName,toolVersion:row.toolVersion,
       state:row.state,policyDecision:row.policyDecision,executionStarted:row.executionStarted,
       evidenceId:row.evidenceId}));
+    const authorizationDiagnostics=tasks.flatMap(task=>runtime.listCheckpointKeys(task.taskId)
+      .filter(key=>key.startsWith('coding-repair:start-failure:v1:')||key.startsWith('coding-repair:authorization-diagnostic:v1:'))
+      .map(key=>{
+        const saved=runtime.loadCheckpoint(task.taskId,key);
+        const invocation=runtime.loadCheckpoint(task.taskId,'application-tool-invocation:'+saved.runId);
+        assert.equal(saved.version,1);assert.equal(saved.authority,'diagnostic_no_tool_grant');assert.equal(saved.taskId,task.taskId);
+        assert.ok(invocation,'a diagnostic must retain its original invocation');
+        assert.equal(saved.toolName,invocation.toolName);assert.equal(saved.toolVersion,invocation.toolVersion);
+        assert.equal(saved.argumentsDigest,toolArgumentsDigest(invocation.arguments));assert.equal(saved.deadline,invocation.deadline);
+        assert.match(saved.reason,/^[a-z_]{1,64}$/);assert.ok(['isolation-start','workspace-current'].includes(saved.stage));
+        return {taskId:task.taskId,runId:saved.runId,toolName:saved.toolName,toolVersion:saved.toolVersion,
+          argumentsDigest:saved.argumentsDigest,deadline:saved.deadline,stage:saved.stage,reason:saved.reason,
+          ...(saved.code?{code:saved.code}:{}),...(saved.resourceDigest?{resourceDigest:saved.resourceDigest}:{})};
+      }));
     const localDecisions=originalHosts.filter(host=>host.request.toolName==='decision.choose_candidate').map(host=>{
       const runId='host-tool-'+host.localTaskId,args=host.request.arguments;
       const saved=runtime.loadCheckpoint(host.localTaskId,'coding-repair:local-decision:v1:'+runId);
@@ -403,7 +417,7 @@ async function readback(database, sourceTaskId, requireComplete, {workflow=false
         advanceCount:graph.state.sequence,hostTaskIds:originalHosts.filter(host=>host.ownerTaskId===graph.taskId).map(host=>host.localTaskId),
         verification:graph.state.confirmedHost?.['workflow.host.f15_n05']?.result?.verification,
         publication:graph.state.confirmedHost?.['workflow.host.f15_n06']?.result}))}:{}),
-      records,localDecisions,evidenceRefs:[...new Set(evidence.map(item=>item.evidenceId))],cloudRequests:clouds};
+      records,localDecisions,authorizationDiagnostics,evidenceRefs:[...new Set(evidence.map(item=>item.evidenceId))],cloudRequests:clouds};
   } finally {application.close();}
 }
 
