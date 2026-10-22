@@ -24,8 +24,8 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     try{return !closed&&verified?.available&&configuration().identity===verified.configuration.identity
       &&digest(coding.readWindowsNativeHelperAttestation(verified.pins.helperPath))===digest(verified.pins);}catch{return false;}
   }
-  async function prepare(scope){
-    if(!external(scope.toolName))return;
+  async function prepare(scope,{forTaskConsent=false}={}){
+    if(!external(scope.toolName)&&!forTaskConsent)return;
     const original=getApplication()?.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);if(!original)blocked();
     const config=configuration();
     if(!current()){

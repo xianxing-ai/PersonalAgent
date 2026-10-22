@@ -28,7 +28,8 @@ async function approveQuestions({page,database,value,allowed,validate,report,per
     assert.equal(toolArgumentsDigest(binding.arguments),binding.anchor.argumentsDigest,'original argument digest must match');
     assert.ok(Date.parse(question.expiresAt)<=Date.parse(binding.anchor.deadline),'card cannot extend the operation deadline');
     await validate(question,binding);
-    const button=page.locator(`[data-question-id="${question.questionId}"] [data-authorization-decision="allow_once"]`);
+    const decision=question.canReuseTask===true&&question.suggestedDecision==='allow_task'?'allow_task':'allow_once';
+    const button=page.locator(`[data-question-id="${question.questionId}"] [data-authorization-decision="${decision}"]`);
     await button.waitFor({state:'visible'});assert.equal(await button.isEnabled(),true);
     await button.evaluate(async(element,expected)=>{
       const response=await window.desktop.invoke('snapshot');
@@ -36,15 +37,15 @@ async function approveQuestions({page,database,value,allowed,validate,report,per
       if(!current||current.state!=='pending'||current.revision!==expected.revision||current.taskId!==expected.taskId
         ||current.sourceApprovalId!==expected.sourceApprovalId||current.toolName!==expected.toolName
         ||Date.parse(current.expiresAt)<=Date.now()||element.disabled||!element.isConnected
-        ||element.dataset.authorizationDecision!=='allow_once'||!element.getClientRects().length
+        ||element.dataset.authorizationDecision!==expected.decision||!element.getClientRects().length
         ||element.closest('[data-question-id]')?.dataset.questionId!==expected.questionId)throw Error('Original visible authorization card changed');
       element.click();
     },{questionId:question.questionId,revision:question.revision,taskId:question.taskId,
-      sourceApprovalId:question.sourceApprovalId,toolName:question.toolName});
+      sourceApprovalId:question.sourceApprovalId,toolName:question.toolName,decision});
     report.questions.push({questionId:question.questionId,taskId:question.taskId,runId:question.sourceApprovalId,
       toolName:question.toolName,revision:question.revision,argumentsDigest:binding.anchor.argumentsDigest,
       requirements:question.requirements.map(item=>({requirementId:item.requirementId,kind:item.kind,scopes:item.scopes})),
-      decision:'allow_once',physicalHumanClick:false});persist();
+      decision,physicalHumanClick:false});persist();
   }
 }
 module.exports={databaseRead,checkpoint,questionBinding,approveQuestions};
