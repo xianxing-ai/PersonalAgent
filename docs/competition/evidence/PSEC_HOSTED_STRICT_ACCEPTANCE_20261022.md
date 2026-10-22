@@ -22,3 +22,5 @@ exit $LASTEXITCODE
 artifact 另定点保存本次新 case 的 `receipt.json` / `unavailable-receipt.json`，外层回执绑定其散列；不上传 SQLite 或整个 cache。采集拒绝符号链接、非普通文件与超过 256 KiB 的回执。
 
 本地已完成 Node 语法、2/2 路由测试、workflow YAML 解析与 diff 空白检查；未运行 Windows、不构建 Windows helper、不称实际通过。真实 runner 的结果须补充 run/attempt、确切 source/helper、OS 与上述 receipt。
+
+后续本地主控基于 `dbc0bdea` 新构建 helper/launcher，补齐固定 DLL/export/token 分层诊断及 REQUIRED 缺 helper 必失败；两项原生正例已在普通用户 Windows 11 上真实通过，7/7 与 1/1 均 0 skip。该新结果见[独立本机回执](PSEC_REAL_COMPLETION_20261022.md)，不回写为 Hosted 已通过；Hosted run/attempt 仍 `not_run`。
