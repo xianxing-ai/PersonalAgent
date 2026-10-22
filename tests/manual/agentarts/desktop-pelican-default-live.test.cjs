@@ -18,7 +18,7 @@ test('owned cleanup accepts normal process exit and refuses an unregistered appl
   await closeDesktop(app);assert.equal(attempt.cleanup.state,'closed');assert.equal(attempt.cleanup.method,'graceful');
   await assert.rejects(closeDesktop({close:()=>{throw Error('foreign app touched');}}),/unowned Desktop/u);
 });
-test('blocked quit and blocked evaluate are bounded, force only the pinned owned tree once, and reject a replaced identity',async t=>{
+test('blocked quit is bounded, force only the pinned owned tree once, and reject a replaced identity',async t=>{
   t.mock.timers.enable({apis:['Date','setTimeout'],now:0});
   for(const replaced of [false,true]){
     const child=new EventEmitter();let forces=0,childKills=0,evaluations=0;
@@ -32,7 +32,7 @@ test('blocked quit and blocked evaluate are bounded, force only the pinned owned
     }});
     const closing=closeDesktop(app),checked=replaced?assert.rejects(closing,/foreign process tree was not touched/u):closing;
     for(let seconds=0;seconds<20;seconds++){t.mock.timers.tick(1000);for(let flush=0;flush<12;flush++)await Promise.resolve();}
-    await checked;assert.equal(evaluations,1);assert.equal(forces,1);assert.equal(childKills,0);
+    await checked;assert.equal(evaluations,0);assert.equal(forces,1);assert.equal(childKills,0);
     assert.ok(attempt.cleanup.elapsedMs<=20000);assert.equal(attempt.cleanup.state,replaced?'unconfirmed':'closed');
     if(!replaced){await closeDesktop(app);assert.equal(forces,1,'repeated cleanup must not repeat termination');}
   }

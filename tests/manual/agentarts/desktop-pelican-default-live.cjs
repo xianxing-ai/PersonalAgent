@@ -158,8 +158,6 @@ async function closeDesktop(app) {
     try {
       phase('graceful-close');await bounded(()=>app.close(),10_000,'Owned Desktop normal quit timed out').catch(()=>{});
       if(await waitOwnedExit(owned.child,500)){cleanup.method='graceful';return;}
-      phase('bounded-app-exit');await evaluateBounded(app,({app})=>app.exit(1),undefined,2000).catch(()=>{});
-      if(await waitOwnedExit(owned.child,500)){cleanup.method='app-exit';return;}
       phase('verified-owned-tree-termination');
       if(owned.identity){const result=owned.terminate(owned.identity);
         assert.ok(['terminated','exited'].includes(result.state),'owned process identity changed; foreign process tree was not touched');
