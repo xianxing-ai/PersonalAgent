@@ -103,7 +103,7 @@ test('non-auth HTTP Upgrade failures before invoke use one configured same-pin H
     const h=harness({autoReady:false,config:{allowHttpsFallback:true,websocketUrl:config.websocketUrl+'?endpoint='+version},
       onDispatch:(_request,receipt)=>{dispatches.push(receipt);}});
     try {
-      const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(setImmediate);
+      const pending=new CompetitionCoordinator(h.port).execute(request());while(!h.sockets.length)await new Promise(setImmediate);
       h.sockets[0].emit('unexpected-response',{}, {statusCode:status,resume(){},
         get body(){throw Error('PRIVATE_BODY');},get headers(){throw Error('PRIVATE_HEADERS');}});
       assert.equal((await pending).text,'HTTPS answer');
@@ -160,7 +160,7 @@ test('only locally proven pre-invoke WSS failures retain the public safe error t
   for(const failure of ['connection',401,403,404,426]){
     const h=harness({autoReady:false});
     try {
-      const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(setImmediate);
+      const pending=new CompetitionCoordinator(h.port).execute(request());while(!h.sockets.length)await new Promise(setImmediate);
       if(failure==='connection')h.sockets[0].emit('error',Object.assign(Error('PRIVATE_BODY'),{code:'EXTERNAL_FAILURE'}));
       else h.sockets[0].emit('unexpected-response',{}, {statusCode:failure,resume(){}});
       await assert.rejects(pending,error=>{
@@ -172,14 +172,14 @@ test('only locally proven pre-invoke WSS failures retain the public safe error t
   }
   const denied=harness({beforeSend:()=>{throw Object.assign(Error('PRIVATE_GUARD'),{name:'AgentArtsBeforeInvokeError'});}});
   try {
-    await assert.rejects(denied.port.invoke(request()),error=>{
-      assert.equal(error instanceof AgentArtsBeforeInvokeError,false);assert.equal(error.code,'UNAUTHORIZED');return true;
+    await assert.rejects(new CompetitionCoordinator(denied.port).execute(request()),error=>{
+      assert.equal(error instanceof AgentArtsBeforeInvokeError,false);assert.equal(error.code,'EXTERNAL_FAILURE');return true;
     });
   }finally{denied.port.close();}
   const http=new AgentArtsCloudAgentPort({gatewayUrl:config.gatewayUrl,runtimeName:config.runtimeName},
     {read:async()=> 'Bearer fixture'},async()=>{throw Error('PRIVATE_HTTP');});
   try {
-    await assert.rejects(http.invoke(request()),error=>{
+    await assert.rejects(new CompetitionCoordinator(http).execute(request()),error=>{
       assert.equal(error instanceof AgentArtsBeforeInvokeError,false);assert.doesNotMatch(error.message,/PRIVATE_/);return true;
     });
   }finally{http.close();}

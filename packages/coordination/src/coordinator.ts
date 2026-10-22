@@ -1,7 +1,7 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult,parseExecutionModelSelection} from './index.js';
 import type {ExecutionModelSelection} from './index.js';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError} from './agentarts-websocket.js';
+import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminalError} from './agentarts-websocket.js';
 import type {
   CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationPort, CoordinationRequest,
   CoordinationResult,
@@ -149,6 +149,7 @@ function sanitizeProviderError(error: unknown): never {
   // promote itself into a trusted Runtime reconciliation decision.
   if (error instanceof AgentArtsResultUnknownError) throw error;
   if (error instanceof AgentArtsTerminalError) throw error;
+  if (error instanceof AgentArtsBeforeInvokeError) throw error;
   let code: unknown;
   try {
     if (error instanceof ProtocolError) code = error.code;
