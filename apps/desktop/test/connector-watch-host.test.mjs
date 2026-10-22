@@ -202,6 +202,20 @@ test('mail starting intent without a saved token is unknown and never starts a s
   await f.restart();await f.host.tick();assert.equal(starts,1);assert.equal(f.host.snapshot().watches[0].state,'needs_reauthorization');
 });
 
+test('mail resource generation replacement retires an approved watch without starting a fresh batch',async t=>{
+  let starts=0,session;const stops=[];
+  const f=await fixture(t,{mailCallbacks:{startMailRead:request=>{starts++;session={watchId:request.watchId,sessionId:'original-generation'};return session;},
+    readMailStatus:()=>session?{sessionId:session.sessionId,state:'reading'}:undefined,stopMailRead:request=>{stops.push(request);session=undefined;}}});
+  const original=await f.invoke('start',{source:'mail',intervalMs:1000,expiresAt:f.input().expiresAt});
+  await f.host.tick();assert.equal(starts,1);
+  // Main includes the trusted mail resource generation in configurationRef;
+  // configuration readiness may stay true when the user revokes the old grant.
+  f.rotate();await f.host.tick();await f.host.tick();
+  const watch=f.host.snapshot().watches[0];assert.equal(watch.enabled,false);assert.equal(watch.state,'revoked');
+  assert.equal(starts,1);assert.deepEqual(stops,[{watchId:original.result.result.watchId,sessionId:'original-generation'}]);
+  await f.restart();await f.host.tick();assert.equal(starts,1);
+});
+
 test('changed original arguments cannot mint a background read grant',async t=>{
   const f=await fixture(t);await f.invoke('start',f.input());
   f.mutate(value=>{Object.values(value.watches)[0].input.query.location='替换的地点';});
