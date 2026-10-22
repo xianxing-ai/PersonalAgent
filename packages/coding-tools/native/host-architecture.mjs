@@ -19,6 +19,9 @@ const WINDOWS_POWERSHELL='C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powers
 // Cold Windows PowerShell/.NET initialization and Add-Type compilation are included.
 // This is a bounded read-only query, not a PSEC execution or a retry allowance.
 const NATIVE_ARCHITECTURE_TIMEOUT_MS=60000;
+// dotnet --info may initialize the installed SDK on a cold Hosted image.
+// Bound each read-only query independently; never retry or accept partial output.
+const DOTNET_QUERY_TIMEOUT_MS=120000;
 const NATIVE_ARCHITECTURE_STAGE_PREFIX='PSEC_NATIVE_OS_ARCH_V1:';
 const NATIVE_ARCHITECTURE_STAGES=['powershell-started','type-compiled','query-complete'];
 function nativeArchitectureStage(stderr) {
@@ -122,17 +125,27 @@ export function inspectDotnetInfo(output, expectedArchitecture) {
   return {architecture:expectedArchitecture};
 }
 
-export function probeNativeToolchain({host,expectedArchitecture,run=spawnSync}={}) {
+export function probeNativeToolchain({host,expectedArchitecture,run=spawnSync,onProgress}={}) {
+  const nativeStarted=performance.now();
+  onProgress?.({stage:'native-architecture',state:'started'});
   const native=requireNativeArchitecture({...host,expectedArchitecture:expectedArchitecture??host?.expectedArchitecture});
+  onProgress?.({stage:'native-architecture',state:'passed',architecture:native.architecture,
+    elapsedMs:Math.max(0,Math.round(performance.now()-nativeStarted))});
   function query(argument) {
-    const result=run('dotnet',[argument],{encoding:'utf8',windowsHide:true,shell:false,timeout:10000,maxBuffer:65536,
+    const started=performance.now();
+    onProgress?.({stage:'dotnet-query',state:'started',query:argument,timeoutMs:DOTNET_QUERY_TIMEOUT_MS});
+    const result=run('dotnet',[argument],{encoding:'utf8',windowsHide:true,shell:false,timeout:DOTNET_QUERY_TIMEOUT_MS,maxBuffer:65536,
       env:{...process.env,DOTNET_CLI_UI_LANGUAGE:'en-US'}});
     if (result.error || result.status!==0 || result.signal) {
       const error=Error('Native dotnet query failed');
       error.query=argument;error.exitCode=Number.isInteger(result.status)?result.status:null;
       error.processError=['ENOENT','EACCES','EPERM','ETIMEDOUT'].includes(result.error?.code)?result.error.code:'UNKNOWN';
+      error.queryTimeoutMs=DOTNET_QUERY_TIMEOUT_MS;
+      error.queryElapsedMs=Math.max(0,Math.round(performance.now()-started));
       throw error;
     }
+    onProgress?.({stage:'dotnet-query',state:'passed',query:argument,
+      elapsedMs:Math.max(0,Math.round(performance.now()-started))});
     return result.stdout??'';
   }
   const dotnet=inspectDotnetInfo(query('--info'),native.architecture);
@@ -180,6 +193,10 @@ export function toolchainFailureDiagnostic(error) {
   if(['--info','--list-sdks','--list-runtimes','native-os-architecture'].includes(error?.query))result.query=error.query;
   if(['ENOENT','EACCES','EPERM','ETIMEDOUT','UNKNOWN'].includes(error?.processError))result.processError=error.processError;
   if(error?.exitCode===null||Number.isInteger(error?.exitCode))result.exitCode=error.exitCode;
+  if (['--info','--list-sdks','--list-runtimes'].includes(result.query)) {
+    if (error?.queryTimeoutMs===DOTNET_QUERY_TIMEOUT_MS) result.queryTimeoutMs=error.queryTimeoutMs;
+    if (Number.isSafeInteger(error?.queryElapsedMs)&&error.queryElapsedMs>=0) result.queryElapsedMs=error.queryElapsedMs;
+  }
   if (result.query==='native-os-architecture') {
     if (error?.probeTimeoutMs===NATIVE_ARCHITECTURE_TIMEOUT_MS) result.probeTimeoutMs=error.probeTimeoutMs;
     if (Number.isSafeInteger(error?.probeElapsedMs)&&error.probeElapsedMs>=0) result.probeElapsedMs=error.probeElapsedMs;
@@ -189,6 +206,6 @@ export function toolchainFailureDiagnostic(error) {
   return result;
 }
 if (process.argv[1] && path.resolve(process.argv[1])===path.resolve(import.meta.filename)) {
-  try { console.log(JSON.stringify(probeNativeToolchain())); }
+  try { console.log(JSON.stringify(probeNativeToolchain({onProgress:progress=>console.error(JSON.stringify(progress))}))); }
   catch(error) { console.error(JSON.stringify({...toolchainFailureDiagnostic(error),nodeArchitecture:process.arch,osMachine:os.machine()})); process.exitCode=1; }
 }

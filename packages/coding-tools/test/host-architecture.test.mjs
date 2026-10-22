@@ -9,7 +9,9 @@ test('toolchain failure diagnostics distinguish query failure without exporting 
   let observed;
   try{probeNativeToolchain({host:arm,run:()=>({status:null,error:{code:'ENOENT',message:'private-token'},stderr:'private-output'})});}
   catch(error){observed=toolchainFailureDiagnostic(error);}
-  assert.deepEqual(observed,{status:'failed',reason:'Native dotnet query failed',query:'--info',processError:'ENOENT',exitCode:null});
+  assert.equal(observed.queryTimeoutMs,120000);assert.ok(Number.isSafeInteger(observed.queryElapsedMs)&&observed.queryElapsedMs>=0);
+  const {queryTimeoutMs,queryElapsedMs,...failure}=observed;
+  assert.deepEqual(failure,{status:'failed',reason:'Native dotnet query failed',query:'--info',processError:'ENOENT',exitCode:null});
   assert.deepEqual(toolchainFailureDiagnostic({message:'private-token',query:'private-path',stderr:'private-output'}),
     {status:'failed',reason:'Native Windows toolchain architecture preflight failed'});
 });
@@ -111,7 +113,7 @@ test('dotnet host must be native with a preinstalled .NET 8 SDK and runtime',()=
     ['--list-runtimes','Microsoft.NETCore.App 8.0.31 [private-runtime-path]\r\n']]);
   function run(_command,args,options){
     assert.equal(_command,'dotnet');assert.equal(options.shell,false);
-    assert.equal(options.timeout,10000,'only the native OS PowerShell probe has a cold-start allowance');
+    assert.equal(options.timeout,120000,'read-only dotnet cold initialization has a fixed independent deadline');
     assert.equal(options.env.DOTNET_CLI_UI_LANGUAGE,'en-US');
     return {status:0,signal:null,stdout:outputs.get(args[0])};
   }
@@ -130,6 +132,28 @@ test('dotnet host must be native with a preinstalled .NET 8 SDK and runtime',()=
   assert.throws(()=>probeNativeToolchain({host:arm,run}));
   assert.throws(()=>probeNativeToolchain({host:{...arm,osArchitecture:'unknown',readNativeArchitecture:()=>nativeProbe()},run}));
   assert.throws(()=>probeNativeToolchain({host:arm,run:()=>({status:1,stderr:'private failure'})}));
+});
+test('dotnet query timeouts reject partial receipts without retry and progress contains only fixed metadata',()=>{
+  const outputs=new Map([['--info',info('arm64')],['--list-sdks','8.0.425 [PRIVATE_SDK_PATH]\n'],
+    ['--list-runtimes','Microsoft.NETCore.App 8.0.31 [PRIVATE_RUNTIME_PATH]\n']]);
+  for (const failQuery of outputs.keys()) {
+    const calls=[],progress=[];let diagnostic;
+    assert.throws(()=>{try {probeNativeToolchain({host:arm,onProgress:value=>progress.push(value),run:(command,args,options)=>{
+      assert.equal(command,'dotnet');assert.equal(options.timeout,120000);assert.equal(options.shell,false);
+      assert.equal(options.maxBuffer,65536);assert.equal(options.windowsHide,true);
+      calls.push(args[0]);return args[0]===failQuery?{status:null,error:{code:'ETIMEDOUT',message:'PRIVATE_TOKEN'},
+        stdout:outputs.get(args[0]),stderr:'PRIVATE_PATH'}:{status:0,stdout:outputs.get(args[0])};
+    }});}catch(error){diagnostic=toolchainFailureDiagnostic(error);throw error;}},/Native dotnet query failed/u);
+    assert.equal(calls.at(-1),failQuery);assert.equal(calls.filter(query=>query===failQuery).length,1);
+    assert.equal(diagnostic.query,failQuery);assert.equal(diagnostic.processError,'ETIMEDOUT');
+    assert.equal(diagnostic.queryTimeoutMs,120000);assert.ok(Number.isSafeInteger(diagnostic.queryElapsedMs)&&diagnostic.queryElapsedMs>=0);
+    assert.deepEqual(progress.slice(0,2).map(({stage,state})=>({stage,state})),
+      [{stage:'native-architecture',state:'started'},{stage:'native-architecture',state:'passed'}]);
+    assert.deepEqual(progress.at(-1),{stage:'dotnet-query',state:'started',query:failQuery,timeoutMs:120000});
+    assert.doesNotMatch(JSON.stringify({diagnostic,progress}),/PRIVATE_|Version:|Architecture:|Commit:/u);
+  }
+  assert.deepEqual(toolchainFailureDiagnostic({query:'--info',queryTimeoutMs:'PRIVATE_TOKEN',queryElapsedMs:-1}),
+    {status:'failed',reason:'Native Windows toolchain architecture preflight failed',query:'--info'});
 });
 test('native apphost RID and PE machine are checked for both supported architectures',()=>{
   for(const [architecture,machine] of [['arm64',0xaa64],['x64',0x8664]]){
