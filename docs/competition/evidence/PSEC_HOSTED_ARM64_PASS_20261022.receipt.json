@@ -1,0 +1,158 @@
+{
+  "startedAt": "2026-10-22T08:30:36.289Z",
+  "sourceSha": "5392c71453d5218dec1818b2cbfdc755c4bc914d",
+  "platform": "win32",
+  "release": "10.0.26200",
+  "osVersion": "Windows 11 Enterprise",
+  "node": "v24.15.0",
+  "required": true,
+  "imageOS": "win11-vs2026-arm64",
+  "imageVersion": "20261018.189.1",
+  "runId": "39747596372",
+  "runAttempt": "1",
+  "runnerName": "GitHub Actions 1000000782",
+  "helperSha256": "b15a9f96fe1c53e383ce8743b14508c06c6bd38cc27aaad550d4a6e943796600",
+  "helperFilesSha256": {
+    "WindowsJobProcessHost.dll": "12286997dc76b9b0eab322c72505d4adfefa7b3594f47652f46a987598df6085",
+    "WindowsJobProcessHost.deps.json": "4d354b8ced12feda99c6d3c8869e0b8d0694d68a150d07687e078ca568446315",
+    "WindowsJobProcessHost.runtimeconfig.json": "ca1a6b5b185174698e0f5f9ae732ad3d2d3ed5b122ed666f35cc214283e83b7f"
+  },
+  "processmodel": {
+    "exists": true,
+    "sha256": "c34533f60f4c507838c91865a27fda040a438c44655c2de81f9ea73f7ac5e7f6"
+  },
+  "results": [
+    {
+      "name": "os-boundary",
+      "file": "packages/coding-tools/test/windows-native-sandbox.test.mjs",
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "wallMs": 4816,
+      "logSha256": "f0ba7ea1204bca3dcc7756eb26345ebc3559b23e33aea2a960facd63c2ebd05a",
+      "summary": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "reason": "all-real-scenarios-passed",
+      "status": "passed"
+    },
+    {
+      "name": "authorization-chain",
+      "file": "apps/desktop/test/authorization-native-execution.integration.test.mjs",
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "wallMs": 5181,
+      "logSha256": "c16a07048b2bfc788b7decde3f0ba7fe378c945dca9a0372de2bb3a07cb858c6",
+      "summary": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "reason": "all-real-scenarios-passed",
+      "status": "passed"
+    }
+  ],
+  "toolchain": {
+    "architecture": "arm64",
+    "runtimeIdentifier": "win-arm64",
+    "osArchitectureProbe": {
+      "architecture": "arm64",
+      "api": "IsWow64Process2",
+      "processMachine": 0,
+      "nativeMachine": 43620
+    },
+    "nodeVersion": "v24.15.0",
+    "dotnet": {
+      "architecture": "arm64",
+      "sdkVersions": [
+        "8.0.132",
+        "8.0.206",
+        "8.0.319",
+        "8.0.426"
+      ],
+      "runtimeVersions": [
+        "8.0.6",
+        "8.0.22",
+        "8.0.32"
+      ]
+    }
+  },
+  "launcherArchitecture": {
+    "processArchitecture": "arm64",
+    "osArchitecture": "arm64",
+    "framework": ".NET 8.0.32"
+  },
+  "nativeDiagnostics": {
+    "loader": {
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "data": {
+        "backend": "windows-psec",
+        "diagnosticOnly": true,
+        "enforced": false,
+        "runtime": {
+          "framework": ".NET 8.0.32"
+        },
+        "os": {
+          "version": "10.0.26200.0",
+          "kernelVersion": "10.0.26100.9549 (WinBuild.160101.0800)",
+          "architecture": "Arm64",
+          "processArchitecture": "Arm64"
+        },
+        "token": {
+          "available": true,
+          "elevated": false,
+          "appContainer": false,
+          "administrator": false
+        },
+        "loader": {
+          "stage": "exports-present",
+          "exists": true,
+          "version": "10.0.26100.9711 (WinBuild.160101.0800)",
+          "loaded": true,
+          "win32": null,
+          "exports": {
+            "IsProcessSecurityEnvironmentVersionSupported": true,
+            "QueryProcessSecurityEnvironmentSupport": true,
+            "CreateProcessSecurityEnvironment": true,
+            "CloseProcessSecurityEnvironment": true
+          }
+        }
+      }
+    },
+    "contract": {
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "data": {
+        "backend": "windows-psec",
+        "detected": true,
+        "major": 1,
+        "minor": 1,
+        "flags": 15,
+        "enforced": false
+      }
+    }
+  },
+  "ordinaryUser": true,
+  "nativeHelper": true,
+  "finishedAt": "2026-10-22T08:31:10.307Z",
+  "businessReceipts": [
+    {
+      "artifact": "authorization-0-receipt.json",
+      "sha256": "55187d30495faefacd332ffcabe5b250ff52e727a19c9df09cce048144a0d703"
+    }
+  ],
+  "wallMs": 34020,
+  "status": "passed"
+}
