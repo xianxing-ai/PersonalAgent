@@ -54,3 +54,40 @@ test('missing or malformed databases fail without creation or private error text
   assert.equal(cli.status,1);assert.deepEqual(JSON.parse(cli.stdout),{diagnosticVersion:'1.0',readOnly:true,error:'DATABASE_READ_FAILED'});
   assert.equal((cli.stdout+cli.stderr).includes(input.directory),false);assert.equal((cli.stdout+cli.stderr).includes(secret),false);
 });
+
+test('a selected parent exposes only bounded direct child metadata and its own matching safe adapter receipt',()=>{
+  const input=fixture(),db=new DatabaseSync(input.databasePath),childId='synthetic-child',childRequest='synthetic-child-request';
+  const insert=db.prepare('INSERT INTO tasks VALUES (?,?,?,?,?)'),save=db.prepare('INSERT INTO task_checkpoints VALUES (?,?,?)');
+  insert.run(childId,'waiting_reconciliation',JSON.stringify({code:'UNAUTHORIZED',message:secret}),secret,secret);
+  save.run(childId,'subtask-parent',JSON.stringify({parentTaskId:taskId,goal:secret,model:secret,subtaskId:'user-work'}));
+  save.run(childId,'competition-cloud-inflight',JSON.stringify({requestId:childRequest,accepted:true,payload:secret}));
+  save.run(childId,'competition-export-withheld',JSON.stringify({result:secret}));
+  save.run(taskId,'subagent-parent-wait',JSON.stringify({arguments:secret}));
+  insert.run('grandchild','failed',null,secret,secret);
+  save.run('grandchild','subtask-parent',JSON.stringify({parentTaskId:childId,goal:secret}));
+  insert.run('foreign-child','waiting_reconciliation',null,secret,secret);
+  save.run('foreign-child','subtask-parent',JSON.stringify({parentTaskId:'foreign-parent',goal:secret}));db.close();
+  writeFileSync(input.desktopLogPath,JSON.stringify({event:'agentarts-failure',detail:JSON.stringify({requestId:childRequest,
+    stage:'export_guard',code:'UNAUTHORIZED',headers:secret,body:secret})}));
+  const before=readFileSync(input.databasePath),result=collectReconciliationDiagnostic(input),serialized=JSON.stringify(result);
+  assert.equal(result.checkpoints['subagent-parent-wait'],true);assert.equal(result.adapterReceipt.available,false);
+  assert.equal(result.relatedTasks.depth,1);assert.equal(result.relatedTasks.childrenTruncated,false);
+  assert.equal(result.relatedTasks.children.length,1);assert.deepEqual(result.relatedTasks.children[0].task,{taskId:childId,state:'waiting_reconciliation',errorCode:'UNAUTHORIZED'});
+  assert.equal(result.relatedTasks.children[0].checkpoints['competition-export-withheld'],true);
+  assert.deepEqual(result.relatedTasks.children[0].adapterReceipt,{source:'matching_explicit_desktop_log',available:true,stage:'export_guard',code:'UNAUTHORIZED'});
+  assert.equal(serialized.includes(secret),false);assert.equal(serialized.includes('grandchild'),false);assert.equal(serialized.includes('foreign-child'),false);
+  assert.deepEqual(readFileSync(input.databasePath),before);
+  const child=collectReconciliationDiagnostic({...input,taskId:childId});assert.equal(child.relatedTasks.parents[0].task.taskId,taskId);
+});
+
+test('direct related child inventory is capped and explicitly reports truncation',()=>{
+  const input=fixture(),db=new DatabaseSync(input.databasePath);
+  for(let i=0;i<35;i++) {
+    const id='child-'+String(i).padStart(2,'0');
+    db.prepare('INSERT INTO tasks VALUES (?,?,?,?,?)').run(id,'failed',null,secret,secret);
+    db.prepare('INSERT INTO task_checkpoints VALUES (?,?,?)').run(id,'subtask-parent',JSON.stringify({parentTaskId:taskId,goal:secret}));
+  }
+  db.close();const result=collectReconciliationDiagnostic(input);
+  assert.equal(result.relatedTasks.children.length,32);assert.equal(result.relatedTasks.childrenTruncated,true);
+  assert.equal(JSON.stringify(result).includes(secret),false);
+});

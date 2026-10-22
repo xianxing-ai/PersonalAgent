@@ -39,7 +39,7 @@ import type {WorkerContext,WorkerResult,SubmitTaskInput} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import type {QwenRealtimeModelGateway} from '@personal-agent/models';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError, parseCoordinationRepairCandidate,parseCoordinationContinuation} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError, parseCoordinationRepairCandidate,parseCoordinationContinuation} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
@@ -1979,6 +1979,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private holdCompetitionExport(taskId:string,error?:unknown):void {
+    // The adapter's typed never-sent proof is required in addition to local effect
+    // readback. Missing inflight alone cannot establish this (plain HTTPS may send).
+    if(error instanceof AgentArtsBeforeInvokeError&&this.runtime.canFailTrackedCoordinationWithoutEffects(taskId))return;
     // A matched terminal transport error has ended this exchange. Let the original
     // worker persist failure and consume that receipt; confirmed local tools stay intact.
     if(error instanceof AgentArtsTerminalError
@@ -4095,7 +4098,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private async refreshSubagentParent(childTaskId: string): Promise<void> {
-    const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string} | undefined;
+    const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string;subtaskId?:string} | undefined;
     if (typeof binding?.parentTaskId !== 'string') return;
     const child=this.runtime.getTask(childTaskId);
     if(child.state==='succeeded'&&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-user-work`)?.taskId===childTaskId)
@@ -4119,6 +4122,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const child = this.runtime.getTask(childTaskId);
       await proactive.ingestSubtaskFeedback({childTaskId, expectedRevision: child.revision},
         {signal: new AbortController().signal, deadline: proactive.binding.taskDeadline});
+    }
+    const parent=this.runtime.getTask(binding.parentTaskId);
+    if(parent.state==='waiting_approval'&&child.state==='waiting_reconciliation'
+      &&typeof binding.subtaskId==='string'
+      &&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-${binding.subtaskId}`)?.taskId===childTaskId
+      &&this.confirmedSubagentWait(parent.taskId,false)) {
+      // State projection only: the original dispatch is confirmed but its child is
+      // unresolved. Do not resume either loop or describe this as another approval.
+      this.runtime.transitionTask(parent.taskId,'waiting_reconciliation',{error:{code:'RESULT_UNKNOWN',
+        message:'Original child execution requires reconciliation',retryable:false}});
+      return;
     }
     if(this.confirmedSubagentWait(binding.parentTaskId)) {
       if(this.runtime.getTask(binding.parentTaskId).state==='waiting_reconciliation')this.resumeConfirmedTask(binding.parentTaskId);
@@ -4285,7 +4299,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(typeof deadline!=='string' || this.now().getTime()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','Original continuation expired');
     this.runtime.prepareConfirmedReplay(taskId,input);this.resumeTask(taskId);
   }
-  private confirmedSubagentWait(taskId: string): boolean {
+  private confirmedSubagentWait(taskId: string, terminalChildren=true): boolean {
     const wait = this.runtime.loadCheckpoint(taskId, 'subagent-parent-wait') as
       {runId?: string; argumentsDigest?: string; toolVersion?: string} | undefined;
     if (!wait || typeof wait.runId !== 'string') return false;
@@ -4304,7 +4318,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return Array.isArray(subtasks) && subtasks.length>0 && children.length===subtasks.length
       && children.every(child=> {
         const binding=this.runtime.loadCheckpoint(child.taskId,'subtask-parent') as {subtaskId?:string;parentTaskId?:string;goal?:string}|undefined;
-        return ['succeeded','failed','cancelled'].includes(child.state) && binding?.parentTaskId===taskId
+        return (!terminalChildren||['succeeded','failed','cancelled'].includes(child.state)) && binding?.parentTaskId===taskId
           && subtasks.some(subtask=>plainObject(subtask) && subtask.subtaskId===binding.subtaskId && subtask.goal===binding.goal);
       });
   }

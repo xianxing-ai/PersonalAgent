@@ -110,6 +110,8 @@ export interface ToolApproval {
 }
 
 export interface WorkerContext {
+  /** Trusted Competition loop only; arbitrary host workers retain conservative timeout handling. */
+  declareRuntimeToolTracking?: () => void;
   taskId: string;
   deadline: string;
   signal: AbortSignal;
@@ -377,6 +379,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly toolGateway: RuntimeToolGateway | undefined;
   private readonly sessionRef = 'runtime-' + randomUUID();
   private readonly active = new Map<string, AbortController>();
+  private readonly runtimeToolTracking = new Set<string>();
   private readonly activeToolExecutions = new Map<string,string>();
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
@@ -1629,6 +1632,53 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return this.transitionTask(taskId, 'cancelled', {cancelRequested: true});
   }
 
+  /** Absence is proof only for the explicitly tracked loop, never arbitrary host workers. */
+  canFailTrackedCoordinationWithoutEffects(taskId:string):boolean {
+    try{return this.runtimeToolTracking.has(taskId)&&this.getTask(taskId).state==='running'&&this.noUnresolvedTrackedEffects(taskId);}
+    catch{return false;}
+  }
+
+  private noUnresolvedTrackedEffects(taskId:string,visited=new Set<string>()):boolean {
+    try {
+      if(visited.has(taskId)||visited.size>=64)return false;
+      visited.add(taskId);
+      const task=this.getTask(taskId);
+      if(!this.runtimeToolTracking.has(taskId))return false;
+      if(task.state==='waiting_reconciliation'||task.error?.code==='RESULT_UNKNOWN')return false;
+      for(const key of ['competition-cloud-inflight','competition-cloud-received','competition-cloud-unknown',
+        'competition-export-withheld','runtime-interruption:v1','private-copy-erasure']) {
+        if(this.loadCheckpoint(taskId,key))return false;
+      }
+      const descriptors=this.toolGateway?.list()??[];
+      const exact=(name:string,version:string)=>descriptors.find(tool=>tool.name===name&&tool.version===version);
+      const loop=this.loadCheckpoint(taskId,'competition-loop') as {pending?:{toolName?:string;toolVersion?:string}}|undefined;
+      // Worker capabilities may execute through another trusted host. Without its exact
+      // Gateway descriptor this proof does not cover that path, even before a local record.
+      if(loop?.pending&&!exact(loop.pending.toolName??'',loop.pending.toolVersion??''))return false;
+      for(const record of this.readToolExecutions(taskId)) {
+        if(typeof record.executionStarted!=='boolean'||!['started','confirmed','failed'].includes(record.state)||record.reconciliationOutcome==='unknown')return false;
+        if(record.executionStarted) {
+          if(record.policyDecision!=='allow'||exact(record.toolName,record.toolVersion)?.sideEffect!=='read')return false;
+          if(record.state==='confirmed'&&this.loadCheckpoint(taskId,'tool-result-'+record.evidenceId)===undefined)return false;
+          if(record.errorCode==='RESULT_UNKNOWN')return false;
+        } else if(record.policyDecision!=='deny'&&record.policyDecision!=='not_evaluated')return false;
+      }
+      // A read-only dispatch can own real child writes. Follow only the original
+      // Runtime child identity, with a global bound; a read failure cannot waive it.
+      const children=this.db.prepare(`SELECT task_id, json_extract(value_json,'$.subtaskId') AS subtask_id
+        FROM task_checkpoints WHERE checkpoint_key='subtask-parent' AND json_valid(value_json)
+        AND json_extract(value_json,'$.parentTaskId')=? ORDER BY task_id LIMIT 65`).all(taskId) as unknown as {task_id:string;subtask_id:unknown}[];
+      if(children.length>64)return false;
+      for(const child of children) {
+        if(typeof child.subtask_id!=='string'
+          ||this.findTaskByIdempotencyKey(`subagent-dispatch-${taskId}-${child.subtask_id}`)?.taskId!==child.task_id
+          ||this.getTask(child.task_id).conversationId!==`desktop-subtask:${taskId}`
+          ||!this.noUnresolvedTrackedEffects(child.task_id,visited))return false;
+      }
+      return true;
+    }catch{return false;}
+  }
+
   async runTask(taskId: string, worker: (context: WorkerContext) => Promise<WorkerResult>, options: RunOptions): Promise<TaskSnapshot> {
     const deadlineMs = parseTime(options.deadline, 'deadline');
     const initial = this.getTask(taskId);
@@ -1636,9 +1686,12 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       throw new RuntimeError('REVISION_CONFLICT', 'Task is not ready to start');
     }
     const controller = new AbortController();
+    // A new/resumed worker must declare its own path; old process-local proof does not transfer.
+    this.runtimeToolTracking.delete(taskId);
     this.active.set(taskId, controller);
     let timer: NodeJS.Timeout | undefined;
     let timedOut = false;
+    let effectsTrackedByRuntime = false;
     try {
       if (initial.state === 'created') this.transitionTask(taskId, 'planning');
       this.transitionTask(taskId, 'running');
@@ -1660,6 +1713,12 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           taskId,
           deadline: options.deadline,
           signal: controller.signal,
+          declareRuntimeToolTracking: () => {
+            effectsTrackedByRuntime=true;this.runtimeToolTracking.add(taskId);
+            // Retain settled child provenance for its parent's final summary. Eviction
+            // loses a proof conservatively; it never creates execution authority.
+            if(this.runtimeToolTracking.size>4096)this.runtimeToolTracking.delete(this.runtimeToolTracking.values().next().value!);
+          },
           saveCheckpoint: (key, value) => this.saveCheckpoint(taskId, key, value),
           loadCheckpoint: key => this.loadCheckpoint(taskId, key),
           reportProgress: progress => this.recordProgress(taskId, progress)
@@ -1679,9 +1738,10 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       if (terminal.has(current.state)) return current;
       if (current.state === 'waiting_reconciliation') return current;
       if (timedOut) {
-        if (options.sideEffect !== 'read') {
+        const unresolved=effectsTrackedByRuntime?!this.noUnresolvedTrackedEffects(taskId):options.sideEffect!=='read';
+        if (unresolved) {
           return this.transitionTask(taskId, 'waiting_reconciliation', {
-            error: {code: 'RESULT_UNKNOWN', message: `${options.sideEffect === 'local_write' ? 'Local' : 'External'} write exceeded its deadline; verify before retrying`, retryable: false}
+            error: {code: 'RESULT_UNKNOWN', message: 'Task exceeded its deadline with an unresolved execution; verify before retrying', retryable: false}
           });
         }
         return this.transitionTask(taskId, 'failed', {
