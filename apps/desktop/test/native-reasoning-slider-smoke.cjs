@@ -66,7 +66,24 @@ const {_electron}=require('playwright');
     assert.equal(await workspace.locator('input[type=range]').count(),1);
     await chooseModel(workspace,'Synthetic B');assert.equal(await range(workspace).getAttribute('max'),'1');await rangeTo(workspace,1);
     assert.equal((await read(workspace)).conversationPreference.executionModel.reasoningEffort,'max');
+    const drag=async(from,to)=>{
+      // Hover waits for the actual slider to settle and scroll into view before measuring.
+      await range(workspace).hover();const box=await range(workspace).boundingBox();
+      assert.equal(await range(workspace).evaluate((el,{box,from})=>document.elementFromPoint(box.x+box.width*from,box.y+box.height/2)===el,{box,from}),true,'mouse starts on the actual slider');
+      await workspace.mouse.move(box.x+box.width*from,box.y+box.height/2);await workspace.mouse.down();await workspace.mouse.move(box.x+box.width*to,box.y+box.height/2,{steps:6});await workspace.mouse.up();await settled(workspace);
+    };
+    await drag(.9,.1);assert.equal((await read(workspace)).conversationPreference.executionModel.reasoningEffort,undefined,'mouse drag to provider default saves without a guessed native effort');
+    await drag(.1,.9);assert.equal((await read(workspace)).conversationPreference.executionModel.reasoningEffort,'max','mouse release persists the advertised native effort');
     await geometry(workspace);await shot(workspace,'workspace-manual-max.png');
+    const workspacePreference=(await read(workspace)).conversationPreference;
+    const saved=JSON.parse(fs.readFileSync(path.join(userData,'conversations.json'),'utf8'));
+    assert.deepEqual(new Map(saved.preferences).get('desktop-workspace'),workspacePreference,'workspace slider persists through the original conversation store');
+    const beforeWorkspaceQueries=(await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries)).length;
+    await workspace.keyboard.press('Escape');
+    await workspace.getByRole('textbox',{name:'工作区任务内容',exact:true}).fill('synthetic workspace picker max');await workspace.locator('[data-send]').click();
+    await workspace.waitForFunction(async()=>{const s=(await window.desktop.invoke('snapshot')).value;return s.tasks.some(t=>t.userMessage==='synthetic workspace picker max'&&t.state==='succeeded');});
+    const workspaceQueries=(await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries)).slice(beforeWorkspaceQueries);
+    assert.equal(workspaceQueries.length,2);for(const query of workspaceQueries){assert.equal(query.executionModel.modelId,'qwen3.8-max');assert.equal(query.executionModel.reasoningEffort,'max');}
     await invoke(orb,'orb.open');
     await app.evaluate(({BrowserWindow})=>{const target=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('mode=panel'));target.setMinimumSize(251,420);target.setBounds({width:251,height:600});target.show();target.focus();});
     await panel.bringToFront();await open(panel);await geometry(panel);await shot(panel,'panel-narrow.png');

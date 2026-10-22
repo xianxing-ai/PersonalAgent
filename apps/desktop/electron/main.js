@@ -11,8 +11,8 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
-import {projectSubagentActivity, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
-import {handleSubagentWindowAction,handleSubagentListAction} from './subagent-window-actions.js';
+import {projectSubagentActivity,scopeSubagentConversations, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
+import {handleSubagentWindowAction,handleSubagentListAction,handleWorkspaceSubagentAction} from './subagent-window-actions.js';
 import {createMemoryWatchdog} from './memory-watchdog.js';
 import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, safeStorage, screen, session, Tray} from 'electron';
 import {createDesktopVoiceStartupHost} from './voice-startup-host.js';
@@ -27,6 +27,7 @@ import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.j
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
 import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
+import {workspaceWindowAppearance,bindWorkspaceMaterial} from './workspace-material.js';
 import {desktopDataPaths} from './data-paths.js';
 import {restoreSyntheticRepairSubmission} from './competition-repair-submission.js';
 import {readCapabilityDirectory} from './capability-directory.js';
@@ -51,6 +52,7 @@ import {acquireHuaweiSisToken} from './huawei-iam-login.js';
 import {createLiveVoiceConfig} from './live-voice-config.js';
 import {createLiveVoiceHost} from './live-voice-host.js';
 import {needsMicrophoneApproval} from './authorization-operation-policy.js';
+import {workspaceLiveEntry} from './workspace-live-entry.js';
 import {createDesktopWakeVoiceHost} from './wake-voice-host.js';
 import {createDesktopProactiveHost} from './proactive-host.js';
 import {createP5SystemObservationSource} from './p5-system-observation-source.js';
@@ -73,6 +75,7 @@ import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed
 import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
 import {createPublicConnectorHost} from './public-connector-host.js';
+import {createWeatherCardHost} from './weather-card-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
 import {projectDeveloperConversationStatus} from './developer-deployment-config.js';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
@@ -328,6 +331,7 @@ function withReviewedRepairLock(work) {
   return result;
 }
 let productTools;
+let weatherCardHost;
 let connectorConversationTools;
 let codingWorkspace;
 let developerDeployment;
@@ -618,6 +622,8 @@ function visibleConversationTask(task,surface){return !surface||taskSurface(task
 function snapshot(surface) {
   const cloudSettings=agentArtsSnapshot();
   const authorizationQuestions=authorizationQuestionHost?.snapshot(surface?conversations?.activeConversationId(surface):undefined)??[];
+  const workspaceChildren=surface==='workspace'&&!fakeMode?scopeSubagentConversations(runtimeApplication?.listSubagentConversations({limit:100}).items??[],
+    taskId=>runtimeApplication.runtime.getTask(taskId),parent=>visibleConversationTask(parent,'workspace')):[];
   return {
     connection: connectionLabel,
     connectionError: runtimeError || cloudRequestFailureNotice || cloudTransportNotice,
@@ -627,7 +633,7 @@ function snapshot(surface) {
     adminNavigation: {...adminNavigation},
     audioLevel,
     orbStateOverride,
-    subagentTasks:fakeMode?[]:(surface==='workspace'?runtimeApplication?.listSubagentConversations({limit:6}).items??[]:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
+    subagentTasks:fakeMode?[]:(surface==='workspace'?workspaceChildren:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(original => {const task=conversationDelivery.project(original);return ({...structuredClone(task),
@@ -651,6 +657,7 @@ function snapshot(surface) {
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     authorizationQuestions,
+    authorizationSandbox:runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined,
     approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
       &&!authorizationQuestions.some(question=>question.state==='pending'&&question.taskId===approval.taskId))
       .map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime)),
@@ -680,6 +687,7 @@ function snapshot(surface) {
     mail: mailSnapshot(),
     calendar: calendarMeetingHost?.snapshot() ?? calendarConfig?.snapshot(),
     feeds: feedsHost?.snapshot(),
+    weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
     goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
@@ -872,7 +880,7 @@ function movePanelGroup(point) {
 }
 
 function openAdmin(page) {
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory','voice'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -1086,12 +1094,16 @@ async function testPangu() {
 }
 
 async function openWorkspace() {
+  if(weatherCardHost?.snapshot().configured&&!weatherCardHost.snapshot().busy&&(!weatherCardHost.snapshot().fetchedAt||weatherCardHost.snapshot().ageMs>600000)){
+    try{weatherCardHost.refresh();}catch{/* Preserve the unavailable state; never substitute a provider. */}
+  }
   await hidePanel();
   if (workspace && !workspace.isDestroyed()) { workspace.maximize(); workspace.show(); workspace.focus(); publish(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
-    {title: 'PersonalAgent · 工作区', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: false, hasShadow: false, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+    {title: 'PersonalAgent · 工作区', frame: false, ...workspaceWindowAppearance(nativeTheme), roundedCorners: true, hasShadow: true, minWidth: Math.min(760,width), minHeight: Math.min(540,height)});
+  bindWorkspaceMaterial(workspace,nativeTheme);
   workspace.once('ready-to-show', () => workspace.focus());
   workspace.on('closed', () => { workspace = undefined; });
 }
@@ -2917,6 +2929,25 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel');
+  if(name==='weather.configure'||name==='weather.refresh'){
+    if(!competitionMode||fakeMode||sender!==workspace&&sender!==admin||!weatherCardHost)throw Error('请从正式应用配置天气');
+    if(name==='weather.refresh'&&payload!==undefined)throw Error('天气刷新不接受额外字段');
+    const value=name==='weather.configure'?weatherCardHost.configure(payload):weatherCardHost.refresh();publish();return value;
+  }
+  if(name==='workspace.appearance'){
+    if(sender!==workspace||!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).some(key=>key!=='theme')||!['dark','light','system'].includes(payload.theme))throw Error('工作区主题参数无效');
+    if(nativeTheme.themeSource!==payload.theme)nativeTheme.themeSource=payload.theme;
+    return {theme:payload.theme};
+  }
+  if(name==='workspace.live.toggle'){
+    // Capture, playback, conversation ownership and approvals stay with the original panel host.
+    return workspaceLiveEntry({sender,workspace,payload,competitionMode,configuration:liveConfig,openSettings:openAdmin,toggle:()=>toggleLive()});
+  }
+  if(name.startsWith('workspace.subagent.')){
+    if(sender!==workspace)throw Error('请从可信主工作区打开内嵌子对话');
+    if(!runtimeApplication)throw Error('当前没有可读取的子对话记录');
+    return handleWorkspaceSubagentAction({event,name,payload,window:workspace,readDetail:readChildConversation,submit:submitChildConversation,cancel:cancelChildConversation});
+  }
   if(name==='authorization.question.respond'){
     if(sender!==panel&&sender!==workspace&&sender!==admin||!authorizationQuestionHost)throw Error('当前对话授权卡不可用');
     const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
@@ -3660,7 +3691,8 @@ async function action(event, name, payload) {
   }
   if (name === 'task.submit' || name==='skill.run') {
     const skillRun=name==='skill.run';
-    if(!skillRun&&sender===workspace)throw Error('请在主面板协调，或进入具体子智能体对话发送消息');
+    // The redesigned workspace consumes the original trusted Runtime submit path.
+    if(!skillRun&&sender===workspace&&!competitionMode&&!fakeMode)throw Error('主工作区任务入口需要 AgentArts 比赛配置；本地模式请使用原主面板');
     if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
     const text=typeof payload==='string'?payload:payload?.text;
     if(!skillRun&&payload&&typeof payload==='object'&&(Object.keys(payload).some(k=>!['text','conversationId','delivery'].includes(k))
@@ -4014,6 +4046,9 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  if(competitionMode&&!fakeMode)weatherCardHost=createWeatherCardHost({userData:app.getPath('userData'),getApplication:()=>runtimeApplication,
+    readToolVersion:()=>productTools?.tools.find(tool=>tool.descriptor.name==='weather.forecast')?.descriptor.version,onUpdate:publish});
+  app.once('will-quit',()=>weatherCardHost?.dispose());
   ipcMain.on('desktop:draft-close',(event,entries)=>{
     try{flushConversationDrafts(event,entries,{panel,workspace,conversations});event.returnValue={ok:true};}
     catch{event.returnValue={ok:false,error:'关闭前草稿保存未确认，请保持窗口打开并重试'};}

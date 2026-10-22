@@ -1,6 +1,6 @@
 const previews = {
-  weather: '<p class="connector-empty">暂无天气数据，连接天气服务后显示。</p>',
-  calendar: '<p class="connector-empty">暂无待办记录，连接服务后可在这里查看。</p>',
+  weather: '<p class="connector-empty">暂无天气数据，点击后在主对话填写要查询的城市。</p>',
+  calendar: '<p class="connector-empty">暂无待办记录，可在主对话创建或查询。</p>',
   mail: '<p class="connector-empty">连接邮箱后显示邮件状态与未读数量。</p>',
   knowledge: '<p class="connector-empty">连接知识库后显示已挂载的笔记来源。</p>',
   feeds: '<p class="connector-empty">添加订阅后显示已配置的来源。</p>',
@@ -14,17 +14,18 @@ const definitions = [
     path: 'M7 16a4 4 0 1 1 1-7 5 5 0 0 1 9 3 3 3 0 0 1 0 6H7M7 21l1-2m5 2 1-2m5 2 1-2',
     defaultPreview: previews.weather,
     render(data, escape) {
-      if (data.weather && typeof data.weather.temp !== 'undefined') {
+      if (Number.isFinite(data.weather?.temp)||Number.isFinite(data.weather?.temperatureMin)&&Number.isFinite(data.weather?.temperatureMax)) {
         return {
-          status: '实时',
-          preview: `<div class="weather-preview"><strong>${escape(data.weather.temp)}<span>°</span></strong><div>${escape(data.weather.condition ?? '晴')}<small>${escape(data.weather.city ?? '当前城市')} · ${escape(data.weather.range ?? '')}</small></div></div>`,
-          footer: '已连接 · 实时天气数据',
+          status: data.weather.busy?'刷新中':data.weather.reason?'刷新失败':data.weather.stale||data.weather.ageMs>600000?'待刷新':'已更新',
+          preview: `<div class="weather-preview"><strong>${Number.isFinite(data.weather.temp)?`${escape(data.weather.temp)}<span>°</span>`:escape(data.weather.range)}</strong><div>${escape(data.weather.condition ?? '天气预报')}<small>${escape(data.weather.city ?? '查询城市')} · ${escape(data.weather.range ?? '')}</small></div></div>`,
+          footer: escape(data.weather.reason||`${data.weather.source??'天气来源'} · ${data.weather.fetchedAt?new Date(data.weather.fetchedAt).toLocaleString():data.weather.date??''} · 点击刷新`),
         };
       }
+      const ready=(data.health??[]).some(item=>item.id==='weather.forecast'&&item.state==='ready');
       return {
-        status: '未连接',
+        status: data.weather?.busy?'查询中':data.weather?.reason?'查询失败':ready?'待查询':'未就绪',
         preview: previews.weather,
-        footer: '天气服务未连接',
+        footer: data.weather?.reason??(ready?'天气查询入口已接入；尚未获取数据':'天气查询能力尚未就绪'),
       };
     },
   },
@@ -58,7 +59,7 @@ const definitions = [
       }
       return {
         status: '未连接',
-        preview: previews.calendar,
+        preview: '<p class="connector-empty">待办服务尚未就绪，请检查 Runtime 状态。</p>',
         footer: '待办服务未连接',
       };
     },
@@ -92,10 +93,11 @@ const definitions = [
     defaultPreview: previews.knowledge,
     render(data, escape) {
       if (data.knowledge?.configured) {
+        const ready=data.knowledge.available===true;
         return {
-          status: '已就绪',
-          preview: `<div class="note-preview"><span>知识库</span><strong>${escape(data.knowledge.name || '本地知识与笔记')}</strong><p>${escape(data.knowledge.reason || '已连接')}</p></div>`,
-          footer: '本地知识库已挂载',
+          status: data.knowledge.enabled===false?'已停用':ready?'已就绪':data.knowledge.available===false?'未就绪':'已配置',
+          preview: `<div class="note-preview"><span>知识库</span><strong>${escape(data.knowledge.displayName || data.knowledge.name || '本地知识与笔记')}</strong><p>${escape(data.knowledge.reason || (ready?'已连接，只读':'等待知识源就绪'))}</p></div>`,
+          footer: ready?'本地知识库已挂载':'知识源尚未就绪，请检查目录与权限',
         };
       }
       return {
@@ -114,9 +116,9 @@ const definitions = [
       const subs = Array.isArray(data.feeds?.subscriptions) ? data.feeds.subscriptions : [];
       if (subs.length > 0) {
         return {
-          status: data.feeds.sessionAllowed ? '已允许' : '已配置',
+          status: data.feeds.requiresRestart?'待重启':data.feeds.available?'已接入':'已配置',
           preview: `<div class="feed-preview"><span>已订阅 ${subs.length} 个源</span><strong>${escape(subs[0].title)}</strong><p>${subs.length > 1 ? `以及 ${escape(subs[1].title)} 等` : ''}</p><small>${data.feeds.sessionAllowed ? '会话已授权' : '会话未授权'}</small></div>`,
-          footer: `${data.feeds.sessionAllowed ? '已授权本会话' : '已配置'} · ${subs.length} 个订阅源`,
+          footer: `${data.feeds.requiresRestart?'重启应用接入新来源':data.feeds.sessionAllowed?'具体操作继续核对原授权':data.feeds.available?'读取时按原流程批准':'已保存配置'} · ${subs.length} 个订阅源`,
         };
       }
       if (data.feeds?.available) {
@@ -125,6 +127,9 @@ const definitions = [
           preview: previews.feeds,
           footer: '订阅服务已就绪',
         };
+      }
+      if(data.feeds?.configured===false&&Array.isArray(data.feeds.subscriptions)){
+        return {status:'待添加订阅',preview:previews.feeds,footer:'点击添加 RSS / Atom 来源；读取时按原流程批准'};
       }
       return {
         status: '未连接',
@@ -135,6 +140,9 @@ const definitions = [
   },
 ];
 const labels = {ready: '已连接', connecting: '连接中', reauth_required: '需要授权', degraded: '连接异常', disconnected: '未连接', unavailable: '未接入'};
+export function connectorDestination(id,data={}){
+  return id==='weather'?(data.weather?.configured?{action:'weather.refresh'}:{draft:'查询天气：'}):{page:id==='obsidian'?'memory':'connections'};
+}
 export function connectorCards(data, escape) {
   const cards = definitions.map(item => {
     const health = (data.health || []).find(entry => entry.id === item.id);
@@ -142,7 +150,7 @@ export function connectorCards(data, escape) {
     const status = rendered?.status ?? '未连接';
     const preview = rendered?.preview ?? item.defaultPreview;
     const footer = rendered?.footer ?? escape(health ? labels[health.state] || health.state : '未连接');
-    return `<article class="connector-card" data-connector="${item.id}"><header><span class="connector-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${item.path}"/></svg></span><h3>${item.name}</h3><span class="connector-status">${escape(status)}</span></header>${preview}<footer>${footer}</footer></article>`;
+    return `<article class="connector-card" data-connector="${item.id}" role="button" tabindex="0" aria-label="${item.id==='weather'?'查询天气':'配置'+item.name}"><header><span class="connector-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${item.path}"/></svg></span><h3>${item.name}</h3><span class="connector-status">${escape(status)}</span></header>${preview}<footer>${footer}</footer></article>`;
   }).join('');
 
   const notifList = Array.isArray(data.notifications) ? data.notifications : [];

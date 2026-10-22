@@ -122,7 +122,7 @@ export function mountSubagentConversations(root, invoke, escape) {
 }
 
 /** Dedicated child conversation; the host binds all new executions to its original child. */
-export function mountSubagentConversationPage(root, invoke) {
+export function mountSubagentConversationPage(root, invoke, {embedded=false}={}) {
   ensureStylesheet();
   const page = node('section', '', 'subagent-conversation-page');
   page.setAttribute('aria-label', '独立子对话');
@@ -136,6 +136,8 @@ export function mountSubagentConversationPage(root, invoke) {
   original.append(node('summary', '查看原始子任务记录'), originalBody);
   const messages = node('div', '', 'subagent-conversation-messages');
   messages.setAttribute('aria-label', '追加对话记录');
+  const origin=embedded?node('article','','subagent-conversation-origin-turn'):null;
+  if(origin)content.append(origin);
   content.append(original, node('h2', '对话记录'), messages);
 
   const composer = node('form', '', 'subagent-conversation-composer');
@@ -149,6 +151,10 @@ export function mountSubagentConversationPage(root, invoke) {
   const composerActions = node('div', '', 'subagent-conversation-compose-actions');
   const sendButton = action('发送', () => submit());
   const stopButton = action('停止', () => cancel());
+  const headerStopButton = action('停止子智能体', () => cancel());
+  headerStopButton.className='subagent-conversation-stop';
+  const bindingLabel=embedded?node('span','','subagent-conversation-model'):null;
+  if(embedded){sendButton.textContent='↑';sendButton.setAttribute('aria-label','发送');sendButton.className='subagent-conversation-send';input.placeholder='给这个子智能体发送消息…';composerActions.append(bindingLabel);}
   composerActions.append(stopButton, sendButton);
   composer.append(input, composerStatus, availability, composerActions);
   composer.onsubmit = event => { event.preventDefault(); return submit(); };
@@ -165,7 +171,7 @@ export function mountSubagentConversationPage(root, invoke) {
   const refreshButton = action('刷新子对话', () => refresh());
   const mainButton = action('返回主对话', () => navigate('subagentConversation.main', '无法返回主对话'));
   const closeButton = action('关闭子对话', () => navigate('subagentConversation.close', '无法关闭子对话'));
-  header.append(title, closeButton);
+  header.append(title, headerStopButton, closeButton);
   footer.append(refreshButton, mainButton);
   page.append(header, status, content, composer, footer);
   root.append(page);
@@ -180,7 +186,7 @@ export function mountSubagentConversationPage(root, invoke) {
   const beforeUnload=event=>{
     if(!closed&&(input.value.trim()||sending)){event.preventDefault();event.returnValue=false;}
   };
-  const dispose=()=>{closed=true;readVersion++;globalThis.window?.removeEventListener('beforeunload',beforeUnload);};
+  const dispose=()=>{closed=true;readVersion++;globalThis.window?.removeEventListener('beforeunload',beforeUnload);globalThis.window?.removeEventListener('unload',dispose);};
   globalThis.window?.addEventListener('beforeunload',beforeUnload);
   globalThis.window?.addEventListener('unload',dispose,{once:true});
 
@@ -191,10 +197,12 @@ export function mountSubagentConversationPage(root, invoke) {
     sendButton.disabled = busy || Boolean(sending || activeTaskId)
       || !canSubmit || !input.value.trim();
     stopButton.disabled = busy || Boolean(sending || cancelling) || !activeTaskId;
+    headerStopButton.disabled=stopButton.disabled;
     refreshButton.disabled = busy || Boolean(sending || cancelling);
     mainButton.disabled = closeButton.disabled = busy;
     sendButton.setAttribute('aria-busy', String(Boolean(sending)));
     stopButton.setAttribute('aria-busy', String(Boolean(cancelling)));
+    headerStopButton.setAttribute('aria-busy',String(Boolean(cancelling)));
     availability.textContent = activeTaskId
       ? '当前任务正在执行或等待结果，可先编写下一条消息。'
       : canSubmit ? '' : submitUnavailableReason || '当前子对话暂不能发送新消息。';
@@ -217,7 +225,7 @@ export function mountSubagentConversationPage(root, invoke) {
       submitUnavailableReason = text(record.submitUnavailableReason);
       if (!reportedActive) truncated = false;
     }
-    title.textContent = (text(record.role) || '子智能体') + ' · ' + record.taskId.slice(-8);
+    title.textContent = embedded?(text(record.goal).replace(/^\[任务执行\]\s*/,'').trim()||text(record.role)||'分对话'):(text(record.role)||'子智能体')+' · '+record.taskId.slice(-8);
     title.setAttribute('title', '子任务 ' + record.taskId + '\n父任务 ' + record.parentTaskId);
     status.setAttribute('role', 'status');
     status.textContent = record.transcriptAvailable === true
@@ -225,6 +233,9 @@ export function mountSubagentConversationPage(root, invoke) {
       : '仅展示已保存的任务与回答；完整逐轮会话暂不可读。';
     originalBody.replaceChildren();
     renderRecord(originalBody, record);
+    if(origin)origin.replaceChildren(node('p',text(record.goal)||'任务目标未记录','subagent-conversation-user'),
+      node('p',text(record.resultSummary)||stateLabel(record.state),'subagent-conversation-reply'));
+    if(bindingLabel)bindingLabel.textContent=text(record.modelId)||'原子任务模型';
     renderMessages(messages, record.messages);
     syncControls();
   }
@@ -316,7 +327,7 @@ export function mountSubagentConversationPage(root, invoke) {
     submitUnavailableReason = '';
     content.setAttribute('aria-busy', 'false');
     composerStatus.setAttribute('role', 'status');
-    composerStatus.textContent = '已停止当前执行，可以继续发送新消息；是否停止以任务状态为准。';
+    composerStatus.textContent = '正在请求停止；当前输出已截断，可以继续发送新消息；执行是否停止仍待确认。';
     syncControls();
     try {
       const result = await invoke('subagentConversation.cancel', {taskId});
@@ -364,7 +375,7 @@ export function mountSubagentConversationPage(root, invoke) {
 
   syncControls();
   void refresh();
-  return {refresh};
+  return {refresh,dispose,hasUnsentChanges:()=>Boolean(input.value.trim()||sending||cancelling)};
 }
 
 function renderMessages(container, values) {

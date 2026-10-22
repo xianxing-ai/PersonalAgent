@@ -19,6 +19,24 @@ export async function handleSubagentWindowAction({event,name,payload,record,read
   throw Error('子对话不支持此操作');
 }
 
+/** Inline workspace tabs consume the same child ports with an explicit immutable binding. */
+export async function handleWorkspaceSubagentAction({event,name,payload,window,readDetail,submit,cancel}) {
+  if(!window||window.isDestroyed()||event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame)
+    throw Error('工作区子对话窗口不可信');
+  const actions={'workspace.subagent.snapshot':'subagentConversation.snapshot','workspace.subagent.submit':'subagentConversation.submit','workspace.subagent.cancel':'subagentConversation.cancel'};
+  const mapped=actions[name],exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>keys.includes(key));
+  if(!mapped||!exact(payload,mapped==='subagentConversation.snapshot'?['binding']:['binding','request'])
+    ||!exact(payload.binding,['parentTaskId','taskId'])
+    ||!['parentTaskId','taskId'].every(key=>typeof payload.binding[key]==='string'&&payload.binding[key].trim()===payload.binding[key]&&payload.binding[key]))
+    throw Error('工作区子对话参数无效');
+  const binding=Object.freeze({parentTaskId:payload.binding.parentTaskId,taskId:payload.binding.taskId});
+  // Revalidate the original parent-child relationship for every operation.
+  const detail=await readDetail(binding);
+  if(detail?.parentTaskId!==binding.parentTaskId||detail?.taskId!==binding.taskId)throw Error('子对话记录与原任务绑定不一致');
+  if(mapped==='subagentConversation.snapshot')return detail;
+  return handleSubagentWindowAction({event,name:mapped,payload:payload.request,record:{window,binding},readDetail,submit,cancel});
+}
+
 /** The all-conversations window may page local history and open a validated child, never execute work. */
 export async function handleSubagentListAction({event,name,payload,window,list,open,collapse}) {
   if(window.isDestroyed()||event.sender!==window.webContents||event.senderFrame!==window.webContents.mainFrame)throw Error('子对话列表窗口不可信');
