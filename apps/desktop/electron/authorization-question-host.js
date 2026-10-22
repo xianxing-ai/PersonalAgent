@@ -8,6 +8,23 @@ const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const key=scope=>JSON.stringify([scope.taskId,scope.runId]);
 const requestFields=scope=>({taskId:scope.taskId,proposalId:scope.proposalId,runId:scope.runId,toolName:scope.toolName,
   toolVersion:scope.toolVersion,argumentsDigest:scope.argumentsDigest,deadline:scope.deadline,signal:scope.signal});
+const questionFailureReasons=Object.freeze({
+  'Host state must be bounded lossless JSON':'state_not_lossless_json',
+  'Host state must be lossless JSON':'state_not_lossless_json',
+  'Host state must be JSON':'state_not_json',
+  'Invalid host state size':'state_size_invalid',
+  'Authorization state changed':'state_cas_conflict',
+  'Invalid authorization question binding':'invalid_question_binding',
+  'Invalid authorization requirement':'invalid_requirement',
+  'Invalid trusted task consent scope':'invalid_task_consent',
+  '当前对话授权卡不可用，操作未获允许':'question_unavailable',
+  '原任务或权限策略已变化，操作未获允许':'question_current_changed',
+  'Original question binding is unavailable':'original_binding_unavailable',
+  '原授权请求已失效，未执行操作':'question_invalidated',
+  '原操作的精确授权已失效，未执行或发送新的资料':'original_scope_changed',
+  '不允许自动扩大为完全访问':'sandbox_escalation_denied',
+  '授权决定期限已过':'decision_deadline_expired',
+});
 
 /** Enforce declared fields recursively even when an old descriptor permits arbitrary keys. */
 function boundedProjection(schema,value,depth=0) {
@@ -112,28 +129,45 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       requirements:[tool,...(prepared?.requirements??[]).filter(item=>item.requirementId!=='tool')]};
   }
   async function requestToolAuthorization(scope) {
-    const source=original(scope),identity=key(source),prepared=preparations.get(identity),request=buildRequest(source,prepared);
-    const current=()=>getApplication()===application&&(prepared?.assertCurrent?.()??true);
-    const api=service();
-    getApplication().bindAuthorizationQuestion(request);
-    const expiry=getApplication().runtime.getApproval(source.runId).expiresAt;
-    const derived=batchDerivations.get(identity);
-    let receipt;
-    if(derived){
-      if(derived.kind==='intent')getApplication().assertHostIntentQuestionDerivative(derived.parent.request.taskId,source.taskId,derived.operationDigest);
-      else getApplication().assertMailReadQuestionPage(derived.parent.request.taskId,source.taskId,derived.batchId);
-      const parentConsumer=derived.parent.request.runId+':'+derived.requirementId;
-      receipt=api.deriveConsumedResult(derived.parent.receipt,derived.parent.request,derived.requirementId,parentConsumer,request,
-        ()=>current()&&derived.assertCurrent());
-      getApplication().runtime.saveCheckpoint(source.taskId,'authorization-question-derived:'+source.runId,
-        {questionId:receipt.questionId,parentQuestionId:derived.parent.receipt.questionId,requirementId:derived.requirementId,
-          ...(derived.kind==='intent'?{operationDigest:derived.operationDigest}:{batchId:derived.batchId}),argumentsDigest:source.argumentsDigest,deadline:source.deadline});
-      batchDerivations.delete(identity);
-    }else receipt=await api.request(request,current,expiry);
-    if(receipt.decision==='deny')return 'deny';
-    api.consume(receipt,request,'tool',source.runId+':tool');
-    operations.set(identity,{request,receipt,consumers:new Map([['tool',source.runId+':tool']]),outputSchema:source.outputSchema});
-    return 'allow_once';
+    const owner=getApplication(),source=original(scope);let stage='question-service';
+    try{
+      const identity=key(source),prepared=preparations.get(identity),request=buildRequest(source,prepared);
+      const current=()=>getApplication()===application&&(prepared?.assertCurrent?.()??true);
+      const api=service();
+      stage='original-binding';
+      getApplication().bindAuthorizationQuestion(request);
+      const expiry=getApplication().runtime.getApproval(source.runId).expiresAt;
+      const derived=batchDerivations.get(identity);
+      let receipt;
+      stage='question-open';
+      if(derived){
+        if(derived.kind==='intent')getApplication().assertHostIntentQuestionDerivative(derived.parent.request.taskId,source.taskId,derived.operationDigest);
+        else getApplication().assertMailReadQuestionPage(derived.parent.request.taskId,source.taskId,derived.batchId);
+        const parentConsumer=derived.parent.request.runId+':'+derived.requirementId;
+        receipt=api.deriveConsumedResult(derived.parent.receipt,derived.parent.request,derived.requirementId,parentConsumer,request,
+          ()=>current()&&derived.assertCurrent());
+        getApplication().runtime.saveCheckpoint(source.taskId,'authorization-question-derived:'+source.runId,
+          {questionId:receipt.questionId,parentQuestionId:derived.parent.receipt.questionId,requirementId:derived.requirementId,
+            ...(derived.kind==='intent'?{operationDigest:derived.operationDigest}:{batchId:derived.batchId}),argumentsDigest:source.argumentsDigest,deadline:source.deadline});
+        batchDerivations.delete(identity);
+      }else receipt=await api.request(request,current,expiry);
+      if(receipt.decision==='deny')return 'deny';
+      stage='tool-requirement';
+      api.consume(receipt,request,'tool',source.runId+':tool');
+      operations.set(identity,{request,receipt,consumers:new Map([['tool',source.runId+':tool']]),outputSchema:source.outputSchema});
+      return 'allow_once';
+    }catch(error){
+      // Runtime may subsequently invalidate the pending approval and report a
+      // generic revision conflict. Preserve only the first fixed local cause.
+      try{owner.runtime.saveCheckpointOnce(source.taskId,'authorization-question-diagnostic:v1:'+source.runId,{
+        version:1,authority:'diagnostic_no_tool_grant',taskId:source.taskId,runId:source.runId,
+        toolName:source.toolName,toolVersion:source.toolVersion,argumentsDigest:source.argumentsDigest,deadline:source.deadline,stage,
+        code:['INVALID_ARGUMENT','UNAUTHORIZED','REVISION_CONFLICT','UNSUPPORTED_CAPABILITY','NOT_FOUND','TIMEOUT','CANCELLED','RESULT_UNKNOWN','EXTERNAL_FAILURE']
+          .includes(error?.code)?error.code:'EXTERNAL_FAILURE',
+        reason:error instanceof Error&&Object.hasOwn(questionFailureReasons,error.message)?questionFailureReasons[error.message]:'unclassified_local_failure',
+      });}catch{/* Diagnostic storage never replaces the original failure or issues authority. */}
+      throw error;
+    }
   }
   function operation(scope) {
     const source=original(scope),entry=operations.get(key(source));

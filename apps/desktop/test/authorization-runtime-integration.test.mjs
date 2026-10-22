@@ -7,6 +7,8 @@ import {AuthorizationQuestions,createRuntimeApplication} from '@personal-agent/r
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 import {createDesktopTodoHost} from '../electron/todo-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from '../electron/authorization-intent-host.js';
+import {createDesktopNativeExecutionHost} from '../electron/native-execution-host.js';
+import {createMicrophoneCaptureHost} from '../electron/microphone-capture-host.js';
 
 const cache=new URL('../../../.cache/authorization-runtime-integration/',import.meta.url);mkdirSync(cache,{recursive:true});
 const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()};
@@ -91,6 +93,83 @@ test('no-cloud original Competition Runtime serves local intent cards and reject
     operation:'tool.invoke',deadline:new Date(Date.now()+60000).toISOString(),payload:{toolName:AUTHORIZATION_INTENT_TOOL,toolVersion:'1.0.0',scopeRef:'forged',
       arguments:{action:'memory.save',payloadDigest:'a'.repeat(64),scopeDigest:'b'.repeat(64)}}},new AbortController().signal),{code:'UNAUTHORIZED'});
   assert.equal(writes,1);intent.close();question.close();await wait(()=>app.activeTaskCount===0);app.close();
+});
+
+test('original microphone intent publishes its SQLite question before an unverified native executor is needed',async t=>{
+  let app,native,preparationError;const directory=mkdtempSync(new URL('microphone-intent-',cache));
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,
+    namespace:'Synthetic microphone',resolveConversation:()=> 'Synthetic microphone conversation',available:()=>true,
+    profiles:[{ref:'default-read-only',label:'Synthetic application read-only',mode:'read-only',revision:1,available:true}],
+    defaultProfileRef:'default-read-only',describeExecution:(request,profile)=>native.describeExecution(request,profile)});
+  const intent=createDesktopAuthorizationIntentHost({getApplication:()=>app,question,openConversation(){}});
+  native=createDesktopNativeExecutionHost({coding:{},question,getApplication:()=>app,
+    readConfiguration:()=>assert.fail('Application-only microphone approval must not inspect an external command configuration'),
+    ensureHelper:()=>assert.fail('Microphone approval must not launch a native helper'),probeRootPath:directory,
+    systemRoot:directory,localAppData:directory});
+  app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'Synthetic-microphone',
+    tools:[intent.tool],hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],requiresToolAuthorization:()=>true,
+    requestToolAuthorization:async scope=>{
+      try{intent.prepareQuestion(scope);await native.prepare(scope);return await question.requestToolAuthorization(scope);}
+      catch(error){preparationError=error;throw error;}
+    }});
+  const panel={isDestroyed:()=>false,isVisible:()=>true,webContents:{id:17,isDestroyed:()=>false}};
+  const microphone=createMicrophoneCaptureHost({getPanel:()=>panel,permissionGate:{grant:()=>assert.fail('No physical capture in this Synthetic test')},
+    confirmAuthorization:request=>{
+      const {signal,isCurrent,...payload}=request;
+      return intent.request({action:'voice.capture',payload,scope:{panelId:payload.panelId,purpose:payload.purpose,expiresAt:payload.expiresAt},
+        summary:'Synthetic Live microphone purpose',deadline:payload.expiresAt,signal,isCurrent});
+    }});
+  t.after(async()=>{await microphone.revoke();intent.close();question.close();native.close();await wait(()=>app.activeTaskCount===0);app.close();});
+  const operation=microphone.authorize({purpose:'live',deadline:new Date(Date.now()+60000).toISOString()});operation.catch(()=>{});
+  const outcome=await wait(()=>{
+    const card=question.snapshot().find(item=>item.state==='pending');if(card)return {card};
+    const task=app.runtime.listTasks({limit:1}).items[0];if(task?.state==='failed')return {task};
+  });
+  if(!outcome.card)t.diagnostic(JSON.stringify({preparationCode:preparationError?.code,
+    preparationReason:preparationError?.message==='Host state must be bounded lossless JSON'?'state_not_lossless_json':'unclassified',
+    taskCode:outcome.task.error?.code,taskReason:outcome.task.error?.message==='原授权请求已失效，本次操作未执行；请在当前对话重新提出。'
+      ?'question_invalidated_before_execution':'unclassified',questionCount:question.snapshot().length,
+    executionStarted:app.runtime.readToolExecutions(outcome.task.taskId).some(item=>item.executionStarted)}));
+  assert.ok(outcome.card,'the original microphone purpose must remain visible for an explicit current card decision');
+  const {card}=outcome;assert.equal(microphone.snapshot().authorized,false);assert.equal(microphone.snapshot().busy,true);
+  assert.equal(question.sandboxSnapshot().selected.mode,'read-only');assert.equal(card.sandbox.native.required,false);
+  assert.equal(card.sandbox.native.available,false);assert.equal(card.sandbox.native.enforced,false);
+  const description=native.describeExecution({toolName:AUTHORIZATION_INTENT_TOOL,requirements:[]},{mode:'read-only'});
+  assert.equal(Object.hasOwn(description,'bindingDigest'),false);
+  assert.deepEqual(description,JSON.parse(JSON.stringify(description)));
+  assert.equal(app.runtime.loadCheckpoint(card.taskId,'host-tool-intent').arguments.action,'voice.capture');
+  assert.equal(app.runtime.readToolExecutions(card.taskId).length,0);
+  question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_once'},card.conversationId);
+  assert.equal((await operation).authorized,true);assert.equal(microphone.snapshot().active,false);
+  await wait(()=>app.activeTaskCount===0);assert.equal(app.runtime.getTask(card.taskId).state,'succeeded');
+  assert.equal(app.runtime.policy.get(card.sourceApprovalId).usesRemaining,0);
+});
+
+test('a malformed internal execution description retains its fixed cause before Runtime invalidation',async t=>{
+  let app;const directory=mkdtempSync(new URL('malformed-question-',cache));
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,
+    namespace:'Synthetic malformed backend',resolveConversation:()=> 'Synthetic microphone conversation',available:()=>true,
+    profiles:[{ref:'read',label:'Synthetic application read-only',mode:'read-only',revision:1,available:true}],defaultProfileRef:'read',
+    // Explicit defective host port; no executor, microphone or external input runs.
+    describeExecution:()=>({required:false,available:false,backend:'unavailable',enforced:false,bindingDigest:undefined})});
+  const intent=createDesktopAuthorizationIntentHost({getApplication:()=>app,question,openConversation(){}});
+  app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'Synthetic-malformed',
+    tools:[intent.tool],hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],requiresToolAuthorization:()=>true,
+    requestToolAuthorization:scope=>{intent.prepareQuestion(scope);return question.requestToolAuthorization(scope);}});
+  t.after(async()=>{intent.close();question.close();await wait(()=>app.activeTaskCount===0);app.close();});
+  assert.equal(await intent.request({action:'voice.capture',payload:{purpose:'live',panelId:17},scope:{purpose:'live',panelId:17},
+    summary:'Synthetic microphone intent',isCurrent:()=>true}),false);
+  await wait(()=>app.activeTaskCount===0);
+  const task=app.runtime.listTasks({limit:1}).items[0],runId='host-tool-'+task.taskId;
+  const invocation=app.runtime.loadCheckpoint(task.taskId,'application-tool-invocation:'+runId);
+  const saved=app.runtime.loadCheckpoint(task.taskId,'authorization-question-diagnostic:v1:'+runId);
+  assert.deepEqual(saved,{version:1,authority:'diagnostic_no_tool_grant',taskId:task.taskId,runId,
+    toolName:AUTHORIZATION_INTENT_TOOL,toolVersion:'1.0.0',argumentsDigest:invocation.argumentsDigest,deadline:invocation.deadline,
+    stage:'question-open',code:'INVALID_ARGUMENT',reason:'state_not_lossless_json'});
+  assert.equal(task.state,'failed');assert.equal(task.error.code,'REVISION_CONFLICT');
+  assert.equal(question.snapshot().length,0);assert.equal(app.runtime.getApproval(runId).state,'denied');
+  assert.equal(app.runtime.policy.get(runId),undefined);
+  assert.ok(app.runtime.readToolExecutions(task.taskId).every(item=>item.executionStarted===false));
 });
 
 test('one original workflow decision derives distinct exact payload/run receipts, and cancellation invalidates later stages',async()=>{
