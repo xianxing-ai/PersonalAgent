@@ -28,7 +28,7 @@ export function authorizationQuestionResponse(questionId,decision,questions,now=
 }
 
 export function authorizationQuestionMarkup(question,{now=Date.now(),busy=false,feedback='',expanded=false}={}) {
-  if(!valid(question))return '';
+  if(!valid(question)||question.state!=='pending')return '';
   const escape=escapeAuthorizationText,active=pending(question,now),expired=question.state==='pending'&&!active;
   const status=expired?'请求已过期':states[question.state];
   const purpose=question.title||'允许这次操作吗？';
@@ -62,7 +62,7 @@ export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},on
   ensureAuthorizationStyles(document);
   root.classList.add('authorization-question-list');
   let current=[],closed=false,timer,markup='';
-  const submissions=new Map();
+  const submissions=new Map(),settledRevisions=new Map();
   const key=q=>`${q.questionId}:${q.revision}`;
   function paint() {
     if(closed)return;
@@ -102,11 +102,14 @@ export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},on
     try {
       const result=await invoke('authorization.question.respond',body);
       if(closed||!current.some(item=>key(item)===token)||submissions.get(token)!==submission)return;
-      submission.feedback=result?.accepted===true&&result.questionId===id
-        ?(result.state==='allowed'?'已同意':result.state==='denied'?'已拒绝':'已提交'):'请求已更新，请查看最新卡片';
+      if(result?.accepted===true&&result.questionId===id&&['allowed','denied'].includes(result.state)
+        &&Number.isSafeInteger(result.revision)&&result.revision>question.revision){
+        settledRevisions.set(id,Math.max(settledRevisions.get(id)??-1,result.revision));
+        current=current.filter(item=>item.questionId!==id||item.revision>result.revision);
+      }else submission.feedback='请求已更新，请查看最新卡片';
       paint();
       // A failed snapshot refresh cannot undo the host's decision or invite a second answer.
-      try {await onChanged();}catch {/* The next ordinary snapshot will refresh this card. */}
+      try {await onChanged();}catch {/* A confirmed card remains removed while snapshots catch up. */}
     } catch {
       if(closed||!current.some(item=>key(item)===token))return;
       submissions.delete(token);paint();
@@ -118,11 +121,13 @@ export function mountAuthorizationQuestionCards(root,{invoke,onChanged=()=>{},on
   return {update(questions=[],{conversationId}={}) {
     if(closed)return;
     const previous=new Set(current.filter(question=>pending(question,now())).map(question=>question.questionId));
-    current=Array.isArray(questions)?questions.filter(q=>valid(q)&&(conversationId===undefined||q.conversationId===conversationId)):[];
+    const visible=Array.isArray(questions)?questions.filter(q=>valid(q)&&(conversationId===undefined||q.conversationId===conversationId)):[];
+    for(const q of visible)if(q.state!=='pending')settledRevisions.set(q.questionId,Math.max(settledRevisions.get(q.questionId)??-1,q.revision));
+    current=visible.filter(q=>q.state==='pending'&&q.revision>(settledRevisions.get(q.questionId)??-1));
     const keys=new Set(current.map(key));for(const token of submissions.keys())if(!keys.has(token))submissions.delete(token);
     paint();
     const added=current.find(question=>pending(question,now())&&!previous.has(question.questionId));
     if(added)onPending({questionId:added.questionId,element:[...root.querySelectorAll('[data-question-id]')]
       .find(node=>node.dataset.questionId===added.questionId)});
-  },dispose(){closed=true;clearTimeout(timer);submissions.clear();root.removeEventListener('click',choose);root.replaceChildren();}};
+  },dispose(){closed=true;clearTimeout(timer);submissions.clear();settledRevisions.clear();root.removeEventListener('click',choose);root.replaceChildren();}};
 }

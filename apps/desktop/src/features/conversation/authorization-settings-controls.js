@@ -4,15 +4,15 @@ export function authorizationSettingsMarkup(value,{busy=false,message=''}={}) {
   const profiles=Array.isArray(value?.profiles)?value.profiles:[],rules=Array.isArray(value?.rules)?value.rules:[];
   const ready=Number.isSafeInteger(value?.selected?.revision);
   return `<section class="authorization-sandbox-panel" aria-label="沙箱与授权规则"><h2>沙箱与授权规则</h2>
-    <p>操作需要授权时，会在当前对话显示提问卡。你可选择仅本次、永久允许匹配范围或拒绝，无需先在设置授权一次。</p>
+    <p>受限权限下，在当前对话选择同意或拒绝。完全访问会自动同意应用授权，不弹卡。决定后的卡片会自动移除。</p>
     <p>应用内权限配置：<strong>${escape(value?.selected?.label||'尚未装配')}</strong> · ${escape(value?.selected?.mode||'不可用')}</p>
     <p>应用内工具不启动外部进程，无需先配置 Node 或原生隔离组件。外部进程隔离另行检查，不以应用内权限代替。</p>
     <p>外部进程后端：<strong>${escape(value?.nativeExecution?.backend||'未提供')}</strong> · ${value?.nativeExecution?.available===true?'可用':'不可用'} · ${value?.nativeExecution?.enforced===true?'执行边界已启用':'执行边界尚未确认'}${value?.nativeExecution?.reason?` · ${escape(value.nativeExecution.reason)}`:''}</p>
     <label>切换沙箱 <select data-authorization-profile ${!ready||busy?'disabled':''}><option value="">选择可用沙箱…</option>${profiles.map(profile=>
-      `<option value="${escape(profile.ref)}" ${profile.available!==true?'disabled':''}>${escape(profile.label)}${profile.available===true?'':'（不可用）'}</option>`).join('')}</select></label>
+      `<option value="${escape(profile.ref)}" ${profile.available!==true?'disabled':''}>${escape(profile.label)}${profile.mode==='full-access'&&!String(profile.label).includes('自动同意')?'（自动同意）':''}${profile.available===true?'':'（不可用）'}</option>`).join('')}</select></label>
     <ul class="authorization-question-hint">${profiles.filter(profile=>profile.available!==true).map(profile=>`<li>${escape(profile.label)}：${escape(profile.reason||'宿主尚未提供此能力')}</li>`).join('')}</ul>
     <h3>已保存的受限规则</h3><p class="authorization-question-hint">规则由可信宿主保存，仅匹配列出的沙箱和范围；撤销不撤回已经发生的操作。账号和凭据仍在各自原配置入口管理。</p>
-    ${rules.length?rules.map(rule=>`<div class="authorization-sandbox-rule"><div><p>${escape(rule.summary)}</p><small>${escape(rule.sandboxLabel)} · ${rule.active===true?'有效':'已撤销'}</small></div><button type="button" data-authorization-rule="${escape(rule.ruleId)}" ${rule.active!==true||busy?'disabled':''}>撤销规则</button></div>`).join(''):'<p>当前没有已保存规则。未保存规则不代表任务已授权。</p>'}
+    ${rules.length?rules.map(rule=>`<div class="authorization-sandbox-rule"><div><p>${escape(rule.summary)}</p><small>${escape(rule.sandboxLabel)} · ${rule.active===true?'有效':'已撤销'}</small></div><button type="button" data-authorization-rule="${escape(rule.ruleId)}" ${rule.active!==true||busy?'disabled':''}>撤销规则</button></div>`).join(''):'<p>当前没有已保存规则。</p>'}
     <button type="button" data-authorization-refresh ${busy?'disabled':''}>刷新状态</button><p role="status" aria-live="polite">${escape(message||(!value?'正在读取可信宿主状态…':''))}</p></section>`;
 }
 
