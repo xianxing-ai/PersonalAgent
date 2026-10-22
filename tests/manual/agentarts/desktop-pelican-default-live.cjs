@@ -189,35 +189,91 @@ async function originalQuestionBinding(database,sourceTaskId,question) {
   } finally {db.close();}
 }
 
-async function approveOriginalQuestion(panel,pending) {
+async function readAllowedOriginalQuestion(database,sourceTaskId,pending,observed,binding) {
+  assert.deepEqual(await originalQuestionBinding(database,sourceTaskId,observed),binding,'the original invocation binding must remain unchanged');
+  const db=new DatabaseSync(database,{readOnly:true});
+  try {
+    db.exec('PRAGMA query_only=ON');
+    const fields=['questionId','taskId','runId','conversationId','toolName','revision','state','decision','receiptRef',
+      'argumentsDigest','deadline','expiresAt','baseSandboxRef','sandbox','requirements'];
+    const rows=db.prepare('SELECT '+fields.map(key=>`json_extract(q.value,'$.${key}') AS ${key}`).join(',')
+      +",json_extract(h.value_json,'$.revision') AS selectedRevision,json_extract(h.value_json,'$.selectedRef') AS selectedRef"
+      +" FROM trusted_host_state h,json_each(h.value_json,'$.questions') q WHERE h.namespace LIKE 'desktop-authorization:%'"
+      +" AND h.state_key='state' AND json_extract(q.value,'$.questionId')=?").all(pending.questionId);
+    assert.equal(rows.length,1,'one exact original persisted question must exist');const saved=rows[0];
+    for(const key of ['questionId','taskId','conversationId','toolName','expiresAt'])assert.equal(saved[key],pending[key],'persisted question binding changed');
+    assert.equal(saved.runId,pending.sourceApprovalId,'persisted original run changed');
+    assert.equal(saved.state,'allowed','only a real allowed host decision may continue');
+    assert.ok(Number.isSafeInteger(saved.revision)&&saved.revision>pending.revision&&saved.revision===observed.revision,'allowed question revision must advance');
+    assert.ok(['allow_once','allow_task','allow_always'].includes(saved.decision)&&typeof saved.receiptRef==='string'&&saved.receiptRef,
+      'a persisted exact allowed receipt is required');
+    assert.equal(saved.argumentsDigest,binding.argumentsDigest,'persisted original arguments changed');
+    assert.equal(saved.deadline,binding.deadline,'persisted original deadline changed');
+    assert.ok(Date.parse(saved.deadline)>Date.now()&&Date.parse(saved.expiresAt)>Date.now(),'original question deadline expired');
+    const sandbox=JSON.parse(saved.sandbox);assert.equal(saved.selectedRevision,sandbox.revision,'selected sandbox revision changed');
+    assert.equal(saved.selectedRef,saved.baseSandboxRef??sandbox.ref,'selected sandbox changed');
+    assert.equal(sandbox.revision,pending.sandbox.revision,'original question sandbox revision changed');
+    assert.deepEqual(JSON.parse(saved.requirements).map(({requirementId,kind,summary,scopes})=>({requirementId,kind,summary,scopes})),
+      pending.requirements,'persisted original requirements changed');
+    return saved.decision;
+  } finally {db.close();}
+}
+
+async function approveOriginalQuestion(panel,pending,{verifyAllowed,onObservation=()=>{}}={}) {
   await panel.bringToFront();
   const decision=pending.canReuseTask===true&&pending.suggestedDecision==='allow_task'?'allow_task':'allow_once';
-  const selector=`[data-question-id="${pending.questionId}"] [data-authorization-decision="${decision}"]`;
-  const button=panel.locator(selector);
-  await button.waitFor({state:'visible'});
-  assert.equal(await button.isEnabled(),true,'the original question button must be enabled');
-  await button.scrollIntoViewIfNeeded({timeout:10_000});
-  // Recheck the current host question, then activate its exact live card through
-  // the production UI handler. This is automation, never a physical human click.
-  await button.evaluate(async(_element,{expected,decision})=>{
-    const response=await window.desktop.invoke('snapshot');
+  const deadline=Math.min(Date.now()+30_000,Date.parse(pending.expiresAt));let runnerClicked=false;
+  while(Date.now()<deadline){
+    // Fresh host state and the exact DOM are checked together on every poll.
+    const observed=await panel.evaluate(async({expected,decision,activate,deadline})=>{
+    let timer;
+    const response=await Promise.race([window.desktop.invoke('snapshot'),new Promise((_,reject)=>{
+      timer=setTimeout(()=>reject(Error('Original question snapshot did not respond before its deadline')),
+        Math.max(1,Math.min(10_000,deadline-Date.now())));
+    })]).finally(()=>clearTimeout(timer));
     const current=response.ok&&response.value.authorizationQuestions?.find(item=>item.questionId===expected.questionId);
-    if(!current||current.state!=='pending'||Date.parse(current.expiresAt)<=Date.now()
-      ||['questionId','taskId','sourceApprovalId','conversationId','revision','toolName','expiresAt'].some(key=>current[key]!==expected[key])
+    if(!current||Date.parse(current.expiresAt)<=Date.now()
+      ||['questionId','taskId','sourceApprovalId','conversationId','toolName','expiresAt'].some(key=>current[key]!==expected[key])
       ||current.canReuseTask!==expected.canReuseTask||current.suggestedDecision!==expected.suggestedDecision
-      ||JSON.stringify(current.requirements)!==JSON.stringify(expected.requirements))throw Error('Original question binding changed before activation');
+      ||JSON.stringify(current.requirements)!==JSON.stringify(expected.requirements)
+      ||JSON.stringify(current.sandbox)!==JSON.stringify(expected.sandbox))throw Error('Original question binding changed before activation');
+    const activeConversationId=response.value.conversationState?.activeId;
+    const domConversationId=document.querySelector('[data-session-list]')?.value??null;
+    if(activeConversationId!==expected.conversationId||domConversationId!==null&&domConversationId!==expected.conversationId)
+      throw Error('Original question is not in the active panel conversation');
+    const metadata={activeConversationId,domConversationId,state:current.state,revision:current.revision};
+    if(current.state==='allowed'){
+      if(!Number.isSafeInteger(current.revision)||current.revision<=expected.revision)throw Error('Allowed question revision did not advance');
+      return{...metadata,current,activated:false};
+    }
+    if(current.state!=='pending')throw Error('Original question ended without allowance');
+    if(current.revision!==expected.revision)throw Error('Original question binding changed before activation');
     const card=[...document.querySelectorAll('[data-question-id]')].find(node=>node.dataset.questionId===expected.questionId);
     if(decision==='allow_task'&&(current.canReuseTask!==true||current.suggestedDecision!=='allow_task'))throw Error('Original task consent is unavailable');
     const element=card?.querySelector(`[data-authorization-decision="${decision}"]`);
-    if(!element)throw Error('Original question card is unavailable');
+    if(!element||!activate)return{...metadata,activated:false};
+    element.scrollIntoView?.({block:'center'});
     const bounds=element.getBoundingClientRect(),style=getComputedStyle(element);
     if(!element.isConnected||element.disabled||bounds.width<=0||bounds.height<=0
       ||bounds.bottom<=0||bounds.top>=innerHeight||bounds.right<=0||bounds.left>=innerWidth
       ||style.display==='none'||style.visibility!=='visible'
-      ||element.dataset.authorizationDecision!==decision)throw Error('Original question UI is not actionable');
+      ||element.dataset.authorizationDecision!==decision)return{...metadata,activated:false};
     element.click();
-  },{expected:pending,decision});
-  return decision;
+    return{...metadata,activated:true};
+    },{expected:pending,decision,activate:!runnerClicked,deadline});
+    onObservation({activeConversationId:observed.activeConversationId,domConversationId:observed.domConversationId,
+      state:observed.state,revision:observed.revision,runnerClicked:runnerClicked||observed.activated});
+    runnerClicked||=observed.activated;
+    if(observed.state==='allowed'){
+      assert.equal(typeof verifyAllowed,'function','original persisted allowed receipt verification is required');
+      const actual=await verifyAllowed(observed.current);
+      assert.ok(['allow_once','allow_task','allow_always'].includes(actual),'actual persisted allowed decision is required');
+      return{decision:actual,observedRevision:observed.revision,decisionSource:runnerClicked?'runner_ui_activation':'observed_existing',
+        runnerClicked,physicalHumanClick:runnerClicked?false:'unknown'};
+    }
+    await new Promise(resolve=>setTimeout(resolve,150));
+  }
+  throw Error('Original question did not become actionable or allowed before its deadline');
 }
 
 async function installPublicDialogAutomation(app, inputs) {
@@ -653,9 +709,13 @@ async function main() {
         if(pending.sandbox?.native?.required===true)assert.ok(pending.sandbox.native.available===true&&pending.sandbox.native.enforced===true,
           'a missing native process boundary cannot be approved as available');
         assert.ok(!workflowMode||report.approvals.length<3,'one original F15 repair must use at most three core question cards');
-        const decision=await approveOriginalQuestion(session.panel,pending);
+        const observation=await approveOriginalQuestion(session.panel,pending,{
+          verifyAllowed:current=>readAllowedOriginalQuestion(database,source.taskId,pending,current,binding),
+          onObservation:value=>{const current={questionId:pending.questionId,...value};
+            if(JSON.stringify(current)!==JSON.stringify(report.lastQuestionObservation)){report.lastQuestionObservation=current;persist();}}});
+        if(observation.decisionSource==='observed_existing')report.physicalHumanClick='unknown';
         report.approvals.push({questionId:pending.questionId,approvalId:pending.sourceApprovalId,taskId:pending.taskId,
-          revision:pending.revision,toolName:pending.toolName,...binding,decision,
+          revision:pending.revision,toolName:pending.toolName,...binding,...observation,
           requirements:pending.requirements.map(({requirementId,kind,scopes})=>({requirementId,kind,scopes}))});persist();
       }
       return undefined;
@@ -712,7 +772,7 @@ async function main() {
 }
 
 module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot,originalQuestionBinding,
-  approveOriginalQuestion,openSettings,settingsNavigationState,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata};
+  approveOriginalQuestion,readAllowedOriginalQuestion,openSettings,settingsNavigationState,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata};
 if(require.main===module)main().catch(error=>{
   console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
     message:String(error?.message??'Acceptance prerequisites are unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));
