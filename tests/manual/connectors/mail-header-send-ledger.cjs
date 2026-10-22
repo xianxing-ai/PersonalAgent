@@ -7,6 +7,9 @@ const {completeBaselineReady}=require('./desktop-change-notification-live.cjs');
 const cache=path.resolve(__dirname,'../../../.cache');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const fail=code=>{const error=Error(code);error.code=code;throw error;};
+function writeDurable(file,value){const descriptor=fs.openSync(file,'wx');try{
+  fs.writeFileSync(descriptor,JSON.stringify(value,null,2)+'\n');fs.fsyncSync(descriptor);
+}finally{fs.closeSync(descriptor);}}
 function read(file){const info=fs.lstatSync(file);assert.ok(info.isFile()&&!info.isSymbolicLink()&&info.size<=1024*1024);
   return JSON.parse(fs.readFileSync(file,'utf8'));}
 function entry(directory,index){
@@ -27,7 +30,7 @@ function begin({directory,manifestPath,receiptPath,caseIndex,recipientDigest}){
   const file=entry(directory,caseIndex),value={version:1,cohortId:manifest.cohortId,watchId:receipt.watchId,caseIndex,
     status:'attempting',attemptedAt:new Date().toISOString(),recipientDigest,
     subjectDigest:hash(sample.subject),bodyDigest:hash(sample.body)};
-  try{fs.writeFileSync(file,JSON.stringify(value,null,2)+'\n',{flag:'wx'});}catch(error){if(error.code==='EEXIST')fail('MAIL_SEND_ALREADY_ATTEMPTED');throw error;}
+  try{writeDurable(file,value);}catch(error){if(error.code==='EEXIST')fail('MAIL_SEND_ALREADY_ATTEMPTED');throw error;}
   return{caseIndex,status:value.status,cohortId:manifest.cohortId};
 }
 function settle({directory,caseIndex,status,messageId,threadId}){
@@ -37,7 +40,7 @@ function settle({directory,caseIndex,status,messageId,threadId}){
   if(status==='sent'&&(typeof messageId!=='string'||!messageId||messageId.length>256||/[\r\n\0]/.test(messageId)))fail('MAIL_SEND_RECEIPT_INVALID');
   if(threadId!==undefined)assert.ok(typeof threadId==='string'&&threadId.length<=256&&!/[\r\n\0]/.test(threadId));
   const next={...value,status,finishedAt:new Date().toISOString(),...(status==='sent'?{messageId,...(threadId?{threadId}:{})}:{})};
-  const temporary=file+'.tmp-'+randomUUID();fs.writeFileSync(temporary,JSON.stringify(next,null,2)+'\n',{flag:'wx'});fs.renameSync(temporary,file);
+  const temporary=file+'.tmp-'+randomUUID();writeDurable(temporary,next);fs.renameSync(temporary,file);
   return{caseIndex,status,...(status==='sent'?{messageId}:{}),retryAllowed:false};
 }
 function summary(directory){
