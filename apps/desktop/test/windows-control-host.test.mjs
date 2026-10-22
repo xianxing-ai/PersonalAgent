@@ -39,7 +39,8 @@ test('request access waits for an actual local gesture without any upstream UI c
 });
 test('result export is explicit and stays scoped to the locally confirmed original task',async()=>{
   const denied=fixture({allowObservationExport:false});await denied.host.start(context());
-  assert.deepEqual(denied.host.competitionToolExports.map(item=>item.toolName),['computer.request_access']);
+  assert.deepEqual(denied.host.competitionToolExports.map(item=>item.toolName),['computer.request_access','computer.desktop.observe']);
+  assert.equal(denied.host.competitionToolExports.find(item=>item.toolName==='computer.desktop.observe').accepts({taskId:'task-1'}),false);
   assert.equal(denied.host.snapshot().observationExportAllowed,false);
   assert.equal(denied.host.snapshot().providerAvailable,true);
   assert.equal(denied.host.snapshot().available,false);
@@ -92,7 +93,7 @@ test('restart binding preserves an original Runtime unknown result and blocks th
 });
 test('shared broker receipt is authoritative even before a local lease expires',async()=>{
   let current=false;
-  const broker={async requestPresence(input){current=true;return {taskId:input.taskId,expiresAt:new Date(clock+30000).toISOString()};},isUserPresent(){return current;}};
+  const broker={async requestPresence(input){current=true;return {taskId:input.taskId,expiresAt:new Date(clock+30000).toISOString(),source:'native-gesture'};},isUserPresent(){return current;}};
   const f=fixture({presenceHost:broker});await f.host.start(context());await f.host.preparePresence(context());
   assert.equal(f.host.hasPresence('task-1'),true);
   current=false;assert.equal(f.host.hasPresence('task-1'),false);
@@ -101,7 +102,7 @@ test('shared broker receipt is authoritative even before a local lease expires',
 });
 test('public provider factory is consumed through request access, gesture, observation and original Runtime attempt',async()=>{
   const calls=[],checkpoints=new Map();let gesture,current=false;
-  const broker={async requestPresence(input){await new Promise(resolve=>{gesture=resolve;});current=true;return {taskId:input.taskId,expiresAt:new Date(clock+30000).toISOString()};},isUserPresent(){return current;}};
+  const broker={async requestPresence(input){await new Promise(resolve=>{gesture=resolve;});current=true;return {taskId:input.taskId,expiresAt:new Date(clock+30000).toISOString(),source:'native-gesture'};},isUserPresent(){return current;}};
   const backend={source:'synthetic',start:async()=>{},close:async()=>{},async call(name,args){
     calls.push({name,args});return {content:[{type:'text',text:name==='Snapshot'?JSON.stringify([
       'Focused Window:\nName    Depth  Status    Width  Height  Handle\n----  -------  ------  -------  ------  ------\nEditor      0  Normal      800     600    1234\n\nOpened Windows:\nEditor\n\nUI Tree:\nButton: Save (10,20)']):'Click sent.'}]};
@@ -129,4 +130,66 @@ test('public provider factory is consumed through request access, gesture, obser
   assert.deepEqual(calls.map(item=>item.name),['Snapshot','Snapshot','Click','Snapshot']);
   assert.equal(checkpoints.size,1);assert.equal([...checkpoints.values()][0].argumentsDigest,argumentsDigest);
   current=false;assert.equal(host.hasPresence('task-1'),false);await host.close();
+});
+
+test('captured provider policies become available in Full access and revoke immediately on restricted mode',async()=>{
+  let full=false,current=false,requests=0;
+  const broker={async requestPresence(input){requests++;current=true;return{taskId:input.taskId,
+    expiresAt:new Date(clock+30000).toISOString(),source:'full-access-policy'};},isUserPresent(){return current&&full;}};
+  const f=fixture({allowObservationExport:false,isFullAccess:()=>full,presenceHost:broker,
+    registerConfirmation:()=>assert.fail('Full access must not register F9')});
+  // Root captures both arrays before mode changes; no second registration occurs.
+  const policies=f.host.competitionToolExports,availability=f.host.competitionToolAvailability;
+  const policy=policies.find(item=>item.toolName==='computer.desktop.observe');assert.ok(policy);
+  const available=availability.find(item=>item.toolName==='computer.desktop.observe');
+  await f.host.start(context());assert.equal(await available.available(context()),false);assert.equal(policy.accepts({taskId:'task-1'}),false);
+  full=true;assert.equal(await available.available(context()),true);
+  const request=f.host.tools.find(item=>item.descriptor.name==='computer.request_access'),result=await request.execute({},context());
+  assert.equal(result.state,'policy_allowed');assert.equal(result.authorizationGranted,false);assert.equal(requests,1);
+  assert.equal(f.host.snapshot().waitingConfirmation,false);assert.doesNotMatch(f.host.snapshot().reason,/F9|已收到.*确认/u);
+  assert.equal(f.host.snapshot().presenceTasks[0].source,'full-access-policy');
+  assert.equal(policy.accepts({taskId:'task-1'}),true);assert.equal(policy.accepts({taskId:'task-2'}),false);
+  assert.deepEqual(policy.project({taskId:'task-1',result:{state:'observed'},signal:context().signal}),{state:'observed'});
+  full=false;
+  assert.equal(await available.available(context()),false);assert.equal(policy.accepts({taskId:'task-1'}),false);
+  assert.throws(()=>policy.project({taskId:'task-1',result:{},signal:context().signal}),{code:'UNAUTHORIZED'});
+  assert.equal(f.host.hasPresence('task-1'),false);assert.equal(f.host.snapshot().available,false);
+  full=true;assert.equal(f.host.hasPresence('task-1'),false,'an observed policy revocation cannot revive an old local lease');
+  await f.host.close();
+});
+
+test('full policy never claims an earlier native gesture and malformed broker sources fail closed',async()=>{
+  let full=false;
+  const broker={async requestPresence(input){return{taskId:input.taskId,expiresAt:new Date(clock+30000).toISOString(),
+    source:full?'full-access-policy':'native-gesture'};},isUserPresent:()=>true};
+  const f=fixture({isFullAccess:()=>full,presenceHost:broker});await f.host.start(context());
+  const request=f.host.tools.find(item=>item.descriptor.name==='computer.request_access');
+  assert.equal((await request.execute({},context())).state,'presence_confirmed');
+  full=true;assert.equal((await request.execute({},context())).state,'policy_allowed');
+  for(const source of [undefined,'model-claimed','full-access-policy']){
+    const invalid=fixture({presenceHost:{requestPresence:async input=>({taskId:input.taskId,expiresAt:new Date(clock+30000).toISOString(),source}),
+      isUserPresent:()=>true}});await invalid.host.start(context());
+    await assert.rejects(invalid.host.preparePresence(context()),{code:'UNAUTHORIZED'});assert.equal(invalid.host.hasPresence('task-1'),false);
+    await invalid.host.close();
+  }
+  await f.host.close();
+});
+
+test('trusted Full access policy does not weaken original Runtime attempt identity or unknown replay protection',async()=>{
+  const f=fixture({isFullAccess:()=>true,allowObservationExport:false,registerConfirmation:()=>assert.fail('no F9 in Full access')});
+  await f.host.start(context());
+  const result=await f.host.tools.find(item=>item.descriptor.name==='computer.request_access').execute({},context());
+  assert.equal(result.state,'policy_allowed');assert.equal(result.authorizationGranted,false);
+  const args={targetRef:'f74ab5a9-51ee-4c14-b592-33b60fb443dd',loc:[10,20]};
+  const identity={taskId:'task-1',runId:'run-1',toolName:'computer.desktop.click',toolVersion:'1.0.0',authorizationRef:'grant-1',
+    argumentsDigest:toolArgumentsDigest(args),observationDigest:'b'.repeat(64),targetRef:args.targetRef};
+  const record={evidenceId:'run-1',taskId:'task-1',toolName:identity.toolName,toolVersion:'1.0.0',policyDecision:'allow',executionStarted:true,state:'started'};
+  f.application.runtime.readToolExecutions=()=>[{...record,policyDecision:'deny'}];
+  await assert.rejects(f.options.attempts.record(identity,{...context(),arguments:args}),{code:'UNAUTHORIZED'});
+  f.application.runtime.readToolExecutions=()=>[record];
+  await assert.rejects(f.options.attempts.record({...identity,targetRef:'f74ab5a9-51ee-4c14-b592-33b60fb443de'},{...context(),arguments:args}),{code:'UNAUTHORIZED'});
+  await assert.rejects(f.options.attempts.record(identity,{...context({deadline:new Date(clock+50000).toISOString()}),arguments:args}),{code:'UNAUTHORIZED'});
+  await f.options.attempts.record(identity,{...context(),arguments:args});
+  await assert.rejects(f.options.attempts.record(identity,{...context(),arguments:args}),{code:'RESULT_UNKNOWN'});
+  assert.equal(f.checkpoints.size,1);await f.host.close();
 });
