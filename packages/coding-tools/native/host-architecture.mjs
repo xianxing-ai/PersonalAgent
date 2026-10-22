@@ -34,14 +34,21 @@ export function probeNativeToolchain({host,expectedArchitecture,run=spawnSync}={
   function query(argument) {
     const result=run('dotnet',[argument],{encoding:'utf8',windowsHide:true,shell:false,timeout:10000,maxBuffer:65536,
       env:{...process.env,DOTNET_CLI_UI_LANGUAGE:'en-US'}});
-    if (result.error || result.status!==0 || result.signal) throw Error('Native dotnet query failed');
+    if (result.error || result.status!==0 || result.signal) {
+      const error=Error('Native dotnet query failed');
+      error.query=argument;error.exitCode=Number.isInteger(result.status)?result.status:null;
+      error.processError=['ENOENT','EACCES','EPERM','ETIMEDOUT'].includes(result.error?.code)?result.error.code:'UNKNOWN';
+      throw error;
+    }
     return result.stdout??'';
   }
   const dotnet=inspectDotnetInfo(query('--info'),native.architecture);
   const sdks=query('--list-sdks'),runtimes=query('--list-runtimes');
   const sdkVersions=[...sdks.matchAll(/^8\.0\.\d+(?:-[\w.-]+)?(?=\s)/gmu)].map(match=>match[0]);
   const runtimeVersions=[...runtimes.matchAll(/^Microsoft\.NETCore\.App (8\.0\.\d+)(?=\s)/gmu)].map(match=>match[1]);
-  if (!sdkVersions.length || !runtimeVersions.length) throw Error('Native .NET 8 SDK and runtime required');
+  if (!sdkVersions.length || !runtimeVersions.length) {
+    const error=Error('Native .NET 8 SDK and runtime required');error.sdk8Count=sdkVersions.length;error.runtime8Count=runtimeVersions.length;throw error;
+  }
   return {...native,nodeVersion:process.version,dotnet:{...dotnet,sdkVersions,runtimeVersions}};
 }
 
@@ -70,7 +77,18 @@ export function nativePublishArguments(project,target,configuration,architecture
     '--self-contained','false','-o',target,'--nologo','-v','quiet'];
 }
 
+export function toolchainFailureDiagnostic(error) {
+  const reasons=new Set(['Unknown Windows architecture','Unsupported Windows architecture','Native Windows required',
+    'Emulated Node is not native acceptance','Requested Windows architecture mismatch','Emulated or mismatched dotnet host',
+    'Native dotnet query failed','Native .NET 8 SDK and runtime required']);
+  const result={status:'failed',reason:reasons.has(error?.message)?error.message:'Native Windows toolchain architecture preflight failed'};
+  if(['--info','--list-sdks','--list-runtimes'].includes(error?.query))result.query=error.query;
+  if(['ENOENT','EACCES','EPERM','ETIMEDOUT','UNKNOWN'].includes(error?.processError))result.processError=error.processError;
+  if(error?.exitCode===null||Number.isInteger(error?.exitCode))result.exitCode=error.exitCode;
+  for(const field of ['sdk8Count','runtime8Count'])if(Number.isInteger(error?.[field])&&error[field]>=0)result[field]=error[field];
+  return result;
+}
 if (process.argv[1] && path.resolve(process.argv[1])===path.resolve(import.meta.filename)) {
   try { console.log(JSON.stringify(probeNativeToolchain())); }
-  catch { console.error('Native Windows toolchain architecture preflight failed'); process.exitCode=1; }
+  catch(error) { console.error(JSON.stringify(toolchainFailureDiagnostic(error))); process.exitCode=1; }
 }
