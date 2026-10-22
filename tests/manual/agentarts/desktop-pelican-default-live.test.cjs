@@ -6,7 +6,7 @@ const {runInNewContext}=require('node:vm');
 const {tmpdir}=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {originalQuestionBinding,approveOriginalQuestion,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata}=require('./desktop-pelican-default-live.cjs');
+const {originalQuestionBinding,approveOriginalQuestion,readAllowedOriginalQuestion,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata}=require('./desktop-pelican-default-live.cjs');
 
 test('pre-submission startup waits for a real matching window beyond thirty seconds without accepting another window',async t=>{
   t.mock.timers.enable({apis:['Date','setTimeout'],now:0});
@@ -58,11 +58,13 @@ test('public Pelican question automation verifies the original descendant and ex
   const directory=mkdtempSync(path.join(tmpdir(),'pa-pelican-question-')),file=path.join(directory,'runtime.sqlite');
   t.after(()=>rmSync(directory,{recursive:true,force:true}));
   const db=new DatabaseSync(file);
-  db.exec('CREATE TABLE task_checkpoints(task_id TEXT, checkpoint_key TEXT, value_json TEXT, PRIMARY KEY(task_id,checkpoint_key))');
+  db.exec('CREATE TABLE task_checkpoints(task_id TEXT, checkpoint_key TEXT, value_json TEXT, PRIMARY KEY(task_id,checkpoint_key));'
+    +'CREATE TABLE trusted_host_state(namespace TEXT,state_key TEXT,value_json TEXT)');
   const save=(task,key,value)=>db.prepare('INSERT OR REPLACE INTO task_checkpoints VALUES(?,?,?)').run(task,key,JSON.stringify(value));
   const args={sessionId:'Synthetic-original-session',path:'pelican.svg'},deadline=new Date(Date.now()+60_000).toISOString();
   const question={questionId:'Synthetic-question',taskId:'Synthetic-host',sourceApprovalId:'host-tool-Synthetic-host',
-    toolName:'coding.repair.read',expiresAt:deadline};
+    toolName:'coding.repair.read',expiresAt:deadline,conversationId:'Synthetic-conversation',revision:1,sandbox:{revision:1},
+    requirements:[{requirementId:'tool',kind:'tool',summary:'Synthetic public fixture',scopes:['workspace:read']}]};
   save('Synthetic-host','coding-repair:parent',{taskId:'Synthetic-worker',operationId:'Synthetic-original-operation'});
   save('Synthetic-worker','subtask-parent',{parentTaskId:'Synthetic-original-main'});
   const invocation={toolName:question.toolName,arguments:args,argumentsDigest:toolArgumentsDigest(args),deadline};
@@ -70,6 +72,20 @@ test('public Pelican question automation verifies the original descendant and ex
   const before=db.prepare('SELECT * FROM task_checkpoints ORDER BY task_id,checkpoint_key').all();
   assert.deepEqual(await originalQuestionBinding(file,'Synthetic-original-main',question),{argumentsDigest:invocation.argumentsDigest,deadline});
   assert.deepEqual(db.prepare('SELECT * FROM task_checkpoints ORDER BY task_id,checkpoint_key').all(),before,'the verifier must not update original checkpoints');
+  const allowed={...question,runId:question.sourceApprovalId,revision:2,state:'allowed',decision:'allow_task',receiptRef:'Synthetic-receipt',
+    argumentsDigest:invocation.argumentsDigest,deadline,sandbox:{ref:'Synthetic-restricted',revision:1}};
+  const persistAllowed=value=>{db.prepare('DELETE FROM trusted_host_state').run();
+    db.prepare('INSERT INTO trusted_host_state VALUES(?,?,?)').run('desktop-authorization:Synthetic','state',JSON.stringify({
+      revision:1,selectedRef:'Synthetic-restricted',questions:[value]}));};
+  persistAllowed(allowed);
+  const binding={argumentsDigest:invocation.argumentsDigest,deadline},observed={...question,state:'allowed',revision:2};
+  assert.equal(await readAllowedOriginalQuestion(file,'Synthetic-original-main',question,observed,binding),'allow_task');
+  for(const patch of [{state:'stale'},{revision:1},{runId:'Synthetic-other-run'},{argumentsDigest:'0'.repeat(64)},
+    {decision:'deny'},{receiptRef:''},{requirements:[]},{sandbox:{ref:'Synthetic-restricted',revision:2}},
+    {deadline:new Date(Date.now()+30_000).toISOString()}]){
+    persistAllowed({...allowed,...patch});
+    await assert.rejects(readAllowedOriginalQuestion(file,'Synthetic-original-main',question,observed,binding));
+  }
   await assert.rejects(originalQuestionBinding(file,'Synthetic-sibling-main',question),/descendants/);
   await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',{...question,toolName:'mail.inbox'}),/original pending/);
   save(question.taskId,'application-tool-invocation:'+question.sourceApprovalId,{...invocation,arguments:{...args,path:'other.svg'}});
@@ -90,17 +106,50 @@ test('public Pelican approval follows only the current suggested task decision a
       revision:1,state:'pending',toolName:'coding.repair.start',expiresAt:new Date(Date.now()+60_000).toISOString(),requirements:[],...hints};
     let current=structuredClone(pending),clicks=0;
     const element={isConnected:true,disabled:false,dataset:{authorizationDecision:decision},
-      getBoundingClientRect:()=>({width:100,height:30,top:10,bottom:40,left:10,right:110}),click:()=>clicks++};
+      getBoundingClientRect:()=>({width:100,height:30,top:10,bottom:40,left:10,right:110}),click:()=>{clicks++;current={...current,state:'allowed',revision:current.revision+1};}};
     const card={dataset:{questionId:pending.questionId},querySelector:selector=>{
       assert.equal(selector,`[data-authorization-decision="${decision}"]`);return element;}};
-    globalThis.window={desktop:{invoke:async()=>({ok:true,value:{authorizationQuestions:[current]}})}};
-    globalThis.document={querySelectorAll:()=>[card]};globalThis.getComputedStyle=()=>({display:'block',visibility:'visible'});
+    globalThis.window={desktop:{invoke:async()=>({ok:true,value:{authorizationQuestions:[current],conversationState:{activeId:pending.conversationId}}})}};
+    globalThis.document={querySelector:()=>({value:pending.conversationId}),querySelectorAll:()=>[card]};globalThis.getComputedStyle=()=>({display:'block',visibility:'visible'});
     globalThis.innerHeight=800;globalThis.innerWidth=1200;
-    const panel={bringToFront:async()=>{},locator:selector=>{
-      assert.ok(selector.endsWith(`[data-authorization-decision="${decision}"]`));
-      return{waitFor:async()=>{},isEnabled:async()=>true,scrollIntoViewIfNeeded:async()=>{},evaluate:(fn,args)=>fn(element,args)};}};
-    assert.equal(await approveOriginalQuestion(panel,pending),decision);assert.equal(clicks,1);
+    const panel={bringToFront:async()=>{},evaluate:(fn,args)=>fn(args)};
+    const result=await approveOriginalQuestion(panel,pending,{verifyAllowed:async()=>decision});
+    assert.equal(result.decision,decision);assert.equal(result.decisionSource,'runner_ui_activation');
+    assert.equal(result.runnerClicked,true);assert.equal(result.physicalHumanClick,false);assert.equal(clicks,1);
     current={...current,canReuseTask:!current.canReuseTask};
     await assert.rejects(approveOriginalQuestion(panel,pending),/binding changed/);assert.equal(clicks,1,'a stale task suggestion grants nothing');
   }
+});
+
+test('a card settled while invisible is accepted only from a fresh exact allowed receipt, with no runner click',async t=>{
+  const names=['window','document'];const originals=new Map(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  t.after(()=>{for(const name of names){const value=originals.get(name);if(value)Object.defineProperty(globalThis,name,value);else delete globalThis[name];}});
+  const pending={questionId:'Synthetic-question',taskId:'Synthetic-task',sourceApprovalId:'Synthetic-run',conversationId:'desktop-panel',
+    revision:1,state:'pending',toolName:'coding.repair.start',expiresAt:new Date(Date.now()+60_000).toISOString(),requirements:[],
+    sandbox:{revision:1},canReuseTask:true,suggestedDecision:'allow_task'};
+  let current=pending,reads=0,active='desktop-panel';const observations=[];
+  globalThis.document={querySelector:()=>({value:active}),querySelectorAll:()=>[]};
+  globalThis.window={desktop:{invoke:async()=>{reads++;if(reads===2)current={...pending,state:'allowed',revision:2};
+    return{ok:true,value:{authorizationQuestions:[current],conversationState:{activeId:active}}};}}};
+  const panel={bringToFront:async()=>{},evaluate:(fn,args)=>fn(args)};
+  const result=await approveOriginalQuestion(panel,pending,{verifyAllowed:async value=>{
+    assert.equal(value.state,'allowed');assert.equal(value.revision,2);return 'allow_once';},onObservation:value=>observations.push(value)});
+  assert.deepEqual(result,{decision:'allow_once',observedRevision:2,decisionSource:'observed_existing',runnerClicked:false,physicalHumanClick:'unknown'});
+  assert.equal(reads,2);assert.deepEqual(observations.map(item=>item.state),['pending','allowed']);
+  for(const patch of [{state:'denied'},{state:'stale'},{state:'expired'},{state:'cancelled'},{revision:1},
+    {taskId:'Synthetic-other'},{sourceApprovalId:'Synthetic-other'},{requirements:[{kind:'export'}]},
+    {sandbox:{revision:2}},{expiresAt:new Date(Date.now()-1).toISOString()}]){
+    current={...pending,state:'allowed',revision:2,...patch};
+    await assert.rejects(approveOriginalQuestion(panel,pending,{verifyAllowed:async()=> 'allow_task'}));
+  }
+  current={...pending,state:'allowed',revision:2};active='Synthetic-other-conversation';
+  await assert.rejects(approveOriginalQuestion(panel,pending,{verifyAllowed:async()=> 'allow_task'}),/active panel conversation/u);
+  active='desktop-panel';
+  await assert.rejects(approveOriginalQuestion(panel,pending),/persisted allowed receipt verification/u);
+  await assert.rejects(approveOriginalQuestion(panel,pending,{verifyAllowed:async()=> 'deny'}),/actual persisted allowed decision/u);
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:0});current=pending;reads=100;let allowedChecks=0;
+  const absent=assert.rejects(approveOriginalQuestion(panel,pending,{verifyAllowed:async()=>{allowedChecks++;return 'allow_task';}}),
+    /did not become actionable or allowed before its deadline/u);
+  for(let seconds=0;seconds<31;seconds++){t.mock.timers.tick(1000);for(let flush=0;flush<12;flush++)await Promise.resolve();}
+  await absent;assert.equal(allowedChecks,0,'missing DOM and pending host state never imply consent');
 });
