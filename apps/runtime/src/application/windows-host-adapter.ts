@@ -1,7 +1,7 @@
 import {randomBytes, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import type {ChildProcessWithoutNullStreams} from 'node:child_process';
-import {basename, isAbsolute} from 'node:path';
+import {basename, isAbsolute, win32} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -34,6 +34,8 @@ export function createWindowsHostBridgeTransport(options: {
   bridgePath: string;
   hostPath: string;
   timeoutMs?: number;
+  /** Trusted host-only local state directory, never taken from a tool argument. */
+  journalDirectory?: string;
 }): WindowsHostTransport & {close(): Promise<void>} {
   if (process.platform !== 'win32' || !isAbsolute(options.bridgePath)
     || !isAbsolute(options.hostPath)
@@ -47,6 +49,12 @@ export function createWindowsHostBridgeTransport(options: {
   }
   const bridgePath = options.bridgePath;
   const hostPath = options.hostPath;
+  const journalDirectory = options.journalDirectory;
+  if (journalDirectory !== undefined && (typeof journalDirectory !== 'string'
+    || !/^[A-Za-z]:[\\/]/u.test(journalDirectory) || /[\x00-\x1f"|<>*?]/u.test(journalDirectory)
+    || journalDirectory.slice(2).includes(':') || !win32.isAbsolute(journalDirectory))) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'A local absolute journal directory is required');
+  }
   const timeout = options.timeoutMs ?? 5000;
   const children = new Set<ChildProcessWithoutNullStreams>();
   let closed = false;
@@ -77,7 +85,8 @@ export function createWindowsHostBridgeTransport(options: {
     async openVerifiedConnection() {
       if (closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Windows Host transport is closed');
       if (releaseFailed) throw new ProtocolError('EXTERNAL_FAILURE', 'Windows Host bridge release is unconfirmed');
-      const child = spawn(bridgePath, ['--host', hostPath],
+      const child = spawn(bridgePath, ['--host', hostPath,
+        ...(journalDirectory === undefined ? [] : ['--journal-directory', win32.normalize(journalDirectory)])],
         {windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']});
       children.add(child);
       child.on('error', () => undefined);

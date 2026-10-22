@@ -9,14 +9,16 @@ namespace PersonalAgent.WindowsHost.Service;
 internal sealed class HostLaunchBinding
 {
     internal string PipeName { get; }
+    internal string? JournalDirectory { get; }
     private readonly int _clientPid;
     private readonly DateTime _clientStartUtc;
     private readonly int _sessionId;
     private readonly SecurityIdentifier _userSid;
 
-    private HostLaunchBinding(string pipeName, int clientPid)
+    private HostLaunchBinding(string pipeName, int clientPid, string? journalDirectory)
     {
         PipeName = pipeName;
+        JournalDirectory = journalDirectory;
         _clientPid = clientPid;
         using var client = Process.GetProcessById(clientPid);
         _clientStartUtc = client.StartTime.ToUniversalTime();
@@ -31,11 +33,13 @@ internal sealed class HostLaunchBinding
 
     internal static HostLaunchBinding Parse(string[] args)
     {
-        if (args.Length != 4 || args[0] != "--pipe" || args[2] != "--client-pid" ||
+        if ((args.Length != 4 && args.Length != 6) || args[0] != "--pipe" || args[2] != "--client-pid" ||
+            (args.Length == 6 && args[4] != "--journal-directory") ||
             !Regex.IsMatch(args[1], "^pa_[0-9a-f]{32}$", RegexOptions.CultureInvariant) ||
             !int.TryParse(args[3], out var pid) || pid <= 0)
             throw new ArgumentException("Windows Host requires a random pipe name and trusted client PID");
-        return new HostLaunchBinding(args[1], pid);
+        return new HostLaunchBinding(args[1], pid,
+            args.Length == 6 ? LocalJournalDirectory.Validate(args[5]) : null);
     }
 
     internal void VerifyProcess(NamedPipeServerStream pipe)
