@@ -6,7 +6,55 @@ const {runInNewContext}=require('node:vm');
 const {tmpdir}=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {originalQuestionBinding,approveOriginalQuestion,readAllowedOriginalQuestion,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata}=require('./desktop-pelican-default-live.cjs');
+const {originalQuestionBinding,approveOriginalQuestion,readAllowedOriginalQuestion,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata,
+  closeDesktop,trackOwnedDesktop,windowsOwnedProcess}=require('./desktop-pelican-default-live.cjs');
+
+test('owned cleanup accepts normal process exit and refuses an unregistered application',async()=>{
+  const child=new EventEmitter();Object.assign(child,{pid:12345,exitCode:null,signalCode:null,kill:()=>{throw Error('unexpected kill');}});
+  const executablePath=path.resolve('Synthetic-electron.exe'),identity={state:'alive',pid:child.pid,executablePath,
+    startTicks:String(BigInt(Date.now())*10000n+621355968000000000n)};
+  const app={process:()=>child,close:async()=>{child.exitCode=0;child.emit('exit',0);},evaluate:()=>{throw Error('unexpected evaluate');}};
+  const attempt={};trackOwnedDesktop(app,{executablePath},attempt,Date.now(),{inspect:()=>identity,terminate:()=>{throw Error('unexpected force');}});
+  await closeDesktop(app);assert.equal(attempt.cleanup.state,'closed');assert.equal(attempt.cleanup.method,'graceful');
+  await assert.rejects(closeDesktop({close:()=>{throw Error('foreign app touched');}}),/unowned Desktop/u);
+});
+test('blocked quit and blocked evaluate are bounded, force only the pinned owned tree once, and reject a replaced identity',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:0});
+  for(const replaced of [false,true]){
+    const child=new EventEmitter();let forces=0,childKills=0,evaluations=0;
+    Object.assign(child,{pid:12345,exitCode:null,signalCode:null,kill:()=>{childKills++;return true;}});
+    const executablePath=path.resolve('Synthetic-electron.exe'),identity={state:'alive',pid:child.pid,executablePath,
+      startTicks:String(BigInt(Date.now())*10000n+621355968000000000n)};
+    const app={process:()=>child,close:()=>new Promise(()=>{}),evaluate:()=>{evaluations++;return new Promise(()=>{});}};
+    const attempt={};trackOwnedDesktop(app,{executablePath},attempt,Date.now(),{inspect:()=>identity,terminate:binding=>{
+      forces++;assert.deepEqual(binding,identity);if(replaced)return{state:'identity-mismatch'};
+      child.signalCode='SIGKILL';child.emit('exit',null,'SIGKILL');return{state:'terminated'};
+    }});
+    const closing=closeDesktop(app),checked=replaced?assert.rejects(closing,/foreign process tree was not touched/u):closing;
+    for(let seconds=0;seconds<20;seconds++){t.mock.timers.tick(1000);for(let flush=0;flush<12;flush++)await Promise.resolve();}
+    await checked;assert.equal(evaluations,1);assert.equal(forces,1);assert.equal(childKills,0);
+    assert.ok(attempt.cleanup.elapsedMs<=20000);assert.equal(attempt.cleanup.state,replaced?'unconfirmed':'closed');
+    if(!replaced){await closeDesktop(app);assert.equal(forces,1,'repeated cleanup must not repeat termination');}
+  }
+});
+test('Windows cleanup control pins the root handle, executable and birth time before fixed tree termination',()=>{
+  const binding={pid:12345,startTicks:'621355968000000000',executablePath:path.resolve('Synthetic-electron.exe')};
+  const result=windowsOwnedProcess(binding,true,(command,args,options)=>{
+    assert.equal(command,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    assert.equal(options.shell,false);assert.equal(options.windowsHide,true);assert.equal(options.timeout,15000);
+    assert.equal(options.env.PATH,undefined);assert.equal(options.env.PA_PRIVATE_TOKEN,undefined);
+    const script=Buffer.from(args[4],'base64').toString('utf16le');
+    assert.ok(script.indexOf('$null=$owned.Handle')<script.indexOf('taskkill.exe'));
+    assert.ok(script.indexOf('$ticks -ne $binding.startTicks')<script.indexOf('taskkill.exe'));
+    assert.ok(script.indexOf('[string]::Equals($image,$binding.executablePath')<script.indexOf('taskkill.exe'));
+    assert.match(script,/taskkill\.exe' \/PID \$binding.pid \/T \/F/u);
+    assert.match(script,/finally.*\$owned.Dispose\(\)/su);assert.doesNotMatch(script,/ExecutionPolicy|Stop-Process|Get-Process -Name/u);
+    return{status:0,signal:null,stdout:'{"state":"terminated"}'};
+  });assert.deepEqual(result,{state:'terminated'});
+  assert.throws(()=>windowsOwnedProcess({...binding,pid:-1},true,()=>{throw Error('must not query');}));
+  assert.throws(()=>windowsOwnedProcess(binding,true,()=>({status:null,error:{code:'ETIMEDOUT'},stderr:'PRIVATE_TOKEN'})),
+    /owned process identity\/control query failed/u);
+});
 
 test('pre-submission startup waits for a real matching window beyond thirty seconds without accepting another window',async t=>{
   t.mock.timers.enable({apis:['Date','setTimeout'],now:0});

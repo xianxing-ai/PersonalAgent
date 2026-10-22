@@ -22,6 +22,64 @@ const checkName = 'pelican.test.cjs';
 const workflowMode=process.argv.includes('--workflow');
 const neutralize = text => text.replace(/<animateTransform\b[^>]*>/g,
   tag => tag.replace(/\sbegin="[^"]*"/, ''));
+const ownedDesktops=new WeakMap();
+async function bounded(operation,milliseconds,label){
+  let timer;try{return await Promise.race([Promise.resolve().then(operation),new Promise((_,reject)=>{
+    timer=setTimeout(()=>reject(Error(label)),milliseconds);
+  })]);}finally{clearTimeout(timer);}
+}
+const evaluateBounded=(target,fn,argument,milliseconds=10_000)=>bounded(()=>target.evaluate(fn,argument),milliseconds,
+  'Owned Desktop evaluation did not finish before its deadline');
+
+function windowsOwnedProcess(binding,terminate=false,run=spawnSync){
+  assert.ok(Number.isSafeInteger(binding.pid)&&binding.pid>0&&binding.pid<=0xffffffff,'valid owned PID required');
+  const encoded=Buffer.from(JSON.stringify(binding),'utf8').toString('base64');
+  const script=`$ErrorActionPreference='Stop'
+$binding=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')) | ConvertFrom-Json
+$owned=$null
+try {
+  try { $owned=[Diagnostics.Process]::GetProcessById([int]$binding.pid); $null=$owned.Handle }
+  catch [ArgumentException] { Write-Output '{"state":"exited"}'; exit 0 }
+  $ticks=$owned.StartTime.ToUniversalTime().Ticks.ToString([Globalization.CultureInfo]::InvariantCulture)
+  $image=$owned.MainModule.FileName
+  ${terminate?`if($ticks -ne $binding.startTicks -or -not [string]::Equals($image,$binding.executablePath,[StringComparison]::OrdinalIgnoreCase)) {
+    Write-Output '{"state":"identity-mismatch"}'; exit 0
+  }
+  # Keep the original process handle open through taskkill, preventing PID reuse.
+  & 'C:\\Windows\\System32\\taskkill.exe' /PID $binding.pid /T /F 1>$null 2>$null
+  if(-not $owned.WaitForExit(3000)) { throw 'Owned process did not stop' }
+  Write-Output '{"state":"terminated"}'`:`@{state='alive';pid=$owned.Id;startTicks=$ticks;executablePath=$image} | ConvertTo-Json -Compress`}
+} finally { if($owned) { $owned.Dispose() } }`;
+  const result=run('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
+    {encoding:'utf8',windowsHide:true,shell:false,timeout:15_000,maxBuffer:8192,
+      env:{SystemRoot:'C:\\Windows',windir:'C:\\Windows',TEMP:os.tmpdir(),TMP:os.tmpdir()}});
+  assert.ok(!result.error&&result.status===0&&!result.signal,'owned process identity/control query failed');
+  let value;try{value=JSON.parse(result.stdout);}catch{throw Error('Invalid owned process identity receipt');}
+  assert.ok(value&&['alive','exited','terminated','identity-mismatch'].includes(value.state),'Invalid owned process identity receipt');
+  if(value.state==='alive')assert.ok(value.pid===binding.pid&&/^\d{17,19}$/u.test(value.startTicks)
+    &&typeof value.executablePath==='string'&&path.isAbsolute(value.executablePath),'Invalid owned process identity receipt');
+  return value;
+}
+function trackOwnedDesktop(app,{executablePath},attempt,started=Date.now(),{inspect=windowsOwnedProcess,terminate=binding=>windowsOwnedProcess(binding,true)}={}){
+  const child=app.process();assert.ok(child&&Number.isSafeInteger(child.pid)&&typeof child.kill==='function','original runner ChildProcess required');
+  const record={child,pid:child.pid,attempt,terminate,identity:undefined};ownedDesktops.set(app,record);
+  attempt.processIdentity={pid:child.pid,state:'unconfirmed'};
+  const identity=inspect({pid:child.pid});
+  assert.equal(identity.state,'alive','owned Desktop must still be alive when tracked');
+  assert.equal(path.resolve(identity.executablePath).toLowerCase(),path.resolve(executablePath).toLowerCase(),'owned executable identity mismatch');
+  const createdMs=Number((BigInt(identity.startTicks)-621355968000000000n)/10000n);
+  assert.ok(createdMs>=started-2000&&createdMs<=Date.now()+2000,'owned process start identity mismatch');
+  record.identity=identity;
+  attempt.processIdentity={pid:child.pid,state:'verified',createdAt:new Date(createdMs).toISOString(),
+    executablePathDigest:sha(path.resolve(identity.executablePath).toLowerCase())};
+  return record;
+}
+async function waitOwnedExit(child,milliseconds){
+  if(child.exitCode!==null&&child.exitCode!==undefined||child.signalCode)return true;
+  let listener;try{return await bounded(()=>new Promise(resolve=>{listener=()=>resolve(true);child.once('exit',listener);}),
+    milliseconds,'Owned Desktop process exit did not finish');}catch{return false;}finally{if(listener)child.off('exit',listener);}
+}
 
 function regularFile(file, label) {
   assert.ok(typeof file === 'string' && path.isAbsolute(file), label + ' needs an absolute path');
@@ -92,15 +150,27 @@ async function snapshot(page) {
 }
 
 async function closeDesktop(app) {
-  let timer;
-  try {
-    await Promise.race([app.close(),new Promise((_,reject)=>{
-      timer=setTimeout(()=>reject(Error('Isolated Desktop did not close')),10_000);
-    })]);
-  } catch {
-    // Only this runner-created application, never an existing user instance.
-    await app.evaluate(({app})=>app.exit(1)).catch(()=>{});
-  } finally {clearTimeout(timer);}
+  const owned=ownedDesktops.get(app);assert.ok(owned,'refusing cleanup of an unowned Desktop');
+  if(owned.closing)return owned.closing;
+  owned.closing=(async()=>{
+    const started=Date.now(),cleanup=owned.attempt.cleanup={state:'closing',phases:[]};
+    const phase=name=>cleanup.phases.push({phase:name,elapsedMs:Date.now()-started});
+    try {
+      phase('graceful-close');await bounded(()=>app.close(),10_000,'Owned Desktop normal quit timed out').catch(()=>{});
+      if(await waitOwnedExit(owned.child,500)){cleanup.method='graceful';return;}
+      phase('bounded-app-exit');await evaluateBounded(app,({app})=>app.exit(1),undefined,2000).catch(()=>{});
+      if(await waitOwnedExit(owned.child,500)){cleanup.method='app-exit';return;}
+      phase('verified-owned-tree-termination');
+      if(owned.identity){const result=owned.terminate(owned.identity);
+        assert.ok(['terminated','exited'].includes(result.state),'owned process identity changed; foreign process tree was not touched');
+        cleanup.method='verified-owned-tree';
+      }else{owned.child.kill('SIGKILL');cleanup.method='original-owned-child';}
+      assert.equal(await waitOwnedExit(owned.child,3000),true,'Owned Desktop process did not exit after bounded cleanup');
+      assert.ok(owned.identity,'owned child stopped; descendant identity remains unconfirmed');
+    }finally{cleanup.elapsedMs=Date.now()-started;cleanup.processExited=owned.child.exitCode!==null&&owned.child.exitCode!==undefined||Boolean(owned.child.signalCode);
+      cleanup.state=cleanup.processExited&&cleanup.method?'closed':'unconfirmed';}
+  })();
+  return owned.closing;
 }
 
 async function openSettings(session, section) {
@@ -109,7 +179,7 @@ async function openSettings(session, section) {
   if(session.report)(session.report.settingsNavigation??=[]).push(entry);
   let admin;
   try {
-    const response = await session.panel.evaluate(page => window.desktop.invoke('admin.open', {page}), section);
+    const response = await evaluateBounded(session.panel,page => window.desktop.invoke('admin.open', {page}), section);
     assert.equal(response.ok, true, 'production settings must open');
     admin = await pageFor(session.app, 'admin');
     const host=(await snapshot(admin)).adminNavigation;
@@ -144,7 +214,7 @@ async function openSettings(session, section) {
 }
 
 async function settingsNavigationState(admin) {
-  return admin.evaluate(()=>{
+  return evaluateBounded(admin,()=>{
     const pages=['settings','import','profile','appearance','voice','notifications','configuration','personalization','pets',
       'shortcuts','usage','analytics','account','computer','capabilities','browser','hooks','connections','git','environment',
       'worktrees','tasks','authorizations','models','memory','archive','overview'];
@@ -225,7 +295,7 @@ async function approveOriginalQuestion(panel,pending,{verifyAllowed,onObservatio
   const deadline=Math.min(Date.now()+30_000,Date.parse(pending.expiresAt));let runnerClicked=false;
   while(Date.now()<deadline){
     // Fresh host state and the exact DOM are checked together on every poll.
-    const observed=await panel.evaluate(async({expected,decision,activate,deadline})=>{
+    const observed=await evaluateBounded(panel,async({expected,decision,activate,deadline})=>{
     let timer;
     const response=await Promise.race([window.desktop.invoke('snapshot'),new Promise((_,reject)=>{
       timer=setTimeout(()=>reject(Error('Original question snapshot did not respond before its deadline')),
@@ -277,7 +347,7 @@ async function approveOriginalQuestion(panel,pending,{verifyAllowed,onObservatio
 }
 
 async function installPublicDialogAutomation(app, inputs) {
-  await app.evaluate(({dialog}, values) => {
+  await evaluateBounded(app,({dialog}, values) => {
     const originalOpen = dialog.showOpenDialog.bind(dialog);
     const originalMessage = dialog.showMessageBox.bind(dialog);
     const selections = new Map([
@@ -332,6 +402,7 @@ async function launch({executablePath,userData,workspace,node,npm}, report) {
   try {
     app=await _electron.launch(electronLaunchOptions({executablePath,userData}));
     mark('electron-connected');
+    trackOwnedDesktop(app,{executablePath},attempt,started);
     stdout=app.process()?.stdout;
     onOutput=chunk=>{
       buffer+=chunk.toString('utf8');
@@ -340,13 +411,13 @@ async function launch({executablePath,userData,workspace,node,npm}, report) {
         if(metadata&&attempt.startupOutput.length<3)attempt.startupOutput.push({...metadata,elapsedMs:Date.now()-started});}
     };
     stdout?.on('data',onOutput);
-    assert.equal(await app.evaluate(()=>typeof globalThis.__playwright_run==='function'),true,
+    assert.equal(await evaluateBounded(app,()=>typeof globalThis.__playwright_run==='function'),true,
       'the pinned Playwright ready gate must be installed before production Desktop startup');
     await installPublicDialogAutomation(app,{workspace,node,npm,check:path.join(workspace,checkName)});
     mark('orb-wait');
     const orb = await waitForStartupWindow(app,'orb');
     mark('orb-ready');
-    const opened = await orb.evaluate(() => window.desktop.invoke('orb.open'));
+    const opened = await evaluateBounded(orb,() => window.desktop.invoke('orb.open'));
     assert.equal(opened.ok,true,'production main conversation must open');
     mark('panel-wait');
     const panel = await waitForStartupWindow(app,'panel');
@@ -524,15 +595,15 @@ async function readback(database, sourceTaskId, requireComplete, {workflow=false
 }
 
 async function observePlayback(session, fixture, output) {
-  const opened=session.app.waitForEvent('window');
-  await session.app.evaluate(async ({BrowserWindow}, url)=>{
+  const opened=session.app.waitForEvent('window',{timeout:10_000});void opened.catch(()=>{});
+  await evaluateBounded(session.app,async ({BrowserWindow}, url)=>{
     const viewer=new BrowserWindow({show:true,width:820,height:650,
       webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
     await viewer.loadURL(url);
   },pathToFileURL(fixture).href);
   const page=await opened;
   await page.waitForSelector('#wheel-back');
-  const frame=()=>page.evaluate(()=>({at:document.documentElement.getCurrentTime(),
+  const frame=()=>evaluateBounded(page,()=>({at:document.documentElement.getCurrentTime(),
     matrices:['wheel-back','wheel-front','pedal'].map(id=>{
       const matrix=document.getElementById(id).getCTM();
       return {id,a:matrix.a,b:matrix.b,c:matrix.c,d:matrix.d,e:matrix.e,f:matrix.f};
@@ -632,7 +703,7 @@ async function main() {
       await admin.waitForFunction(()=>document.querySelector('.coding-workspace')?.getAttribute('aria-busy')==='false');
     }
     const selected=await snapshot(admin);assert.equal(selected.coding.configured,true,'fixture selection must persist');
-    report.selectionDialogs=await session.app.evaluate(()=>globalThis.__pelicanNativeActions);
+    report.selectionDialogs=await evaluateBounded(session.app,()=>globalThis.__pelicanNativeActions);
     await closeDesktop(session.app);session=undefined;
     report.stage='restart-original-tool-assembly';persist();
     session=await launch(launchInputs,report);admin=await openSettings(session,'environment');
@@ -722,7 +793,7 @@ async function main() {
     },deadline+15_000,'production task terminal readback');
     report.stage='capture-production-result';persist();
     await captureMode(session.app,'panel',path.join(output,'desktop-result.png'));
-    report.nativeActions=await session.app.evaluate(()=>globalThis.__pelicanNativeActions);
+    report.nativeActions=await evaluateBounded(session.app,()=>globalThis.__pelicanNativeActions);
     await closeDesktop(session.app);session=undefined;
     report.stage='reopen-original-runtime-evidence';persist();
     report.persistence=await readback(database,source.taskId,true,{workflow:workflowMode});
@@ -754,10 +825,10 @@ async function main() {
       message:String(error?.message??'Acceptance failed').replace(/\u001b\[[0-9;]*m/g,'')
         .replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]')};
     if(session) {
-      try{report.nativeActions=await session.app.evaluate(()=>globalThis.__pelicanNativeActions);}catch{}
+      try{report.nativeActions=await evaluateBounded(session.app,()=>globalThis.__pelicanNativeActions);}catch{}
       try{await captureMode(session.app,'panel',path.join(output,'desktop-failed.png'));}catch{}
       try{const admin=session.app.windows().find(page=>page.url().includes('mode=admin'));
-        if(admin){report.settingsFailure=await settingsNavigationState(admin);
+        if(admin){report.settingsFailure=await bounded(()=>settingsNavigationState(admin),10_000,'Owned settings diagnostic timed out');
           await captureMode(session.app,'admin',path.join(output,'settings-failed.png'));}}catch{}
       await closeDesktop(session.app);session=undefined;
     }
@@ -772,7 +843,8 @@ async function main() {
 }
 
 module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot,originalQuestionBinding,
-  approveOriginalQuestion,readAllowedOriginalQuestion,openSettings,settingsNavigationState,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata};
+  approveOriginalQuestion,readAllowedOriginalQuestion,openSettings,settingsNavigationState,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata,
+  closeDesktop,trackOwnedDesktop,windowsOwnedProcess,evaluateBounded};
 if(require.main===module)main().catch(error=>{
   console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
     message:String(error?.message??'Acceptance prerequisites are unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));
