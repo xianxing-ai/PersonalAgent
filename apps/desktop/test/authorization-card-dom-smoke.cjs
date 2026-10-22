@@ -16,7 +16,7 @@ const {_electron}=require('playwright');
     import {approvalCards,approvalResponse} from ${JSON.stringify(legacy)};
     const now=Date.parse('2030-10-21T02:00:00Z');
     const question={questionId:'synthetic-question',conversationId:'main',revision:2,state:'pending',
-      title:'允许读取这份记录吗？',description:'Synthetic 绑定与校验详情',toolName:'workspace.read_text',
+      title:'允许读取这份记录吗？',description:'Synthetic 读取记录，并将必要结果用于本次云端对话',toolName:'workspace.read_text',
       expiresAt:new Date(now+60000).toISOString(),canAlways:true,
       requirements:[{kind:'tool',summary:'读取 meeting.txt',scopes:['workspace:read']},
         {kind:'connector_session',summary:'访问本次选定的记录',scopes:['record:read']},
@@ -24,7 +24,7 @@ const {_electron}=require('playwright');
       sandbox:{label:'Synthetic 应用内受限权限',native:{required:false}}};
     window.calls=[];window.current=question;
     window.controls=mountAuthorizationQuestionCards(document.querySelector('#questions'),{now:()=>now,
-      invoke:async(name,body)=>{window.calls.push({name,body});return {accepted:true,questionId:body.questionId,revision:3,state:body.decision==='deny'?'denied':'allowed'};}});
+      invoke:async(name,body)=>{window.calls.push({name,body});return {accepted:true,questionId:body.questionId,revision:window.current.revision+1,state:body.decision==='deny'?'denied':'allowed'};}});
     window.show=extra=>{window.current={...question,...extra};window.controls.update([window.current],{conversationId:'main'});};
     window.show({});
     const task={taskId:'legacy-task',state:'waiting_approval'},approval={approvalId:'legacy-approval',taskId:task.taskId,
@@ -41,7 +41,8 @@ const {_electron}=require('playwright');
     window.loadFile(${JSON.stringify(html)});});app.on('window-all-closed',()=>app.quit());`);
   const env=Object.fromEntries(['SystemRoot','WINDIR','TEMP','TMP','USERPROFILE','APPDATA','LOCALAPPDATA','PATH','COMSPEC']
     .filter(key=>process.env[key]).map(key=>[key,process.env[key]]));
-  const app=await _electron.launch({executablePath:process.env.PA_TEST_ELECTRON_EXE||path.join(repo,'node_modules/electron/dist/electron.exe'),args:[bootstrap],env});
+  const app=await _electron.launch({executablePath:process.env.PA_TEST_ELECTRON_EXE||path.join(repo,'node_modules/electron/dist/electron.exe'),
+    args:['-r',path.join(path.dirname(require.resolve('playwright-core/package.json')),'lib/server/electron/loader.js'),bootstrap],env});
   const receipt={kind:'Synthetic real DOM only',models:0,accounts:0,tools:0,phases:[]};
   try {
     const page=await app.firstWindow(),errors=[];page.on('pageerror',error=>errors.push(error.name));await page.waitForFunction(()=>window.ready);
@@ -49,25 +50,32 @@ const {_electron}=require('playwright');
     assert.deepEqual(await question.locator('button').allTextContents(),['同意','拒绝']);
     assert.equal(await question.locator('input,textarea,select').count(),0);assert.equal(await details.evaluate(node=>node.open),false);
     assert.equal(await question.getByText('workspace:read',{exact:true}).isVisible(),false);
-    assert.equal(await question.getByText('将记录摘要发送到 AgentArts',{exact:true}).first().isVisible(),true);
+    assert.equal(await question.getByText('Synthetic 读取记录，并将必要结果用于本次云端对话',{exact:true}).first().isVisible(),true);
+    assert.equal(await question.getByText('将记录摘要发送到 AgentArts',{exact:true}).first().isVisible(),false);
     await page.screenshot({path:path.join(fixture,'01-compact.png')});
     await details.locator('summary').focus();await details.locator('summary').press('Enter');
     assert.equal(await details.evaluate(node=>node.open),true);
+    assert.equal(await question.getByText('将记录摘要发送到 AgentArts',{exact:true}).first().isVisible(),true);
     await page.evaluate(()=>window.controls.update([window.current,{...window.current,questionId:'other'}]));
     assert.equal(await details.evaluate(node=>node.open),true);assert.equal(await details.locator('summary').evaluate(node=>node===document.activeElement),true);
     await page.evaluate(()=>window.show({}));
+    const decidedButton=await question.locator('.authorization-question-primary').elementHandle();
     await question.locator('.authorization-question-primary').click();
     assert.deepEqual(await page.evaluate(()=>window.calls),[{name:'authorization.question.respond',body:{questionId:'synthetic-question',expectedRevision:2,decision:'allow_once'}}]);
-    assert.equal(await question.locator('button:enabled').count(),0);assert.match(await question.locator('[role="status"]').textContent(),/已同意/);
-    await question.locator('.authorization-question-primary').dispatchEvent('click');assert.equal(await page.evaluate(()=>window.calls.length),1);
+    await page.locator('#questions [data-question-id="synthetic-question"]').waitFor({state:'detached'});
+    await decidedButton.evaluate(node=>node.dispatchEvent(new MouseEvent('click',{bubbles:true})));
+    assert.equal(await page.evaluate(()=>window.calls.length),1,'a late detached-button event cannot resubmit');
+    await page.evaluate(()=>window.controls.update([window.current],{conversationId:'main'}));
+    assert.equal(await page.locator('#questions [data-question-id]').count(),0,'an old pending snapshot cannot restore a decided card');
     receipt.phases.push('compact-two-buttons','details-keyboard-and-progress-focus','one-click-once-and-duplicate-suppression');
     await page.evaluate(()=>window.show({questionId:'task-reuse',revision:4,canReuseTask:true,suggestedDecision:'allow_task'}));
     await question.locator('.authorization-question-primary').focus();await question.locator('.authorization-question-primary').press('Enter');
     assert.deepEqual(await page.evaluate(()=>window.calls.at(-1).body),{questionId:'task-reuse',expectedRevision:4,decision:'allow_task'});
+    await page.locator('#questions [data-question-id="task-reuse"]').waitFor({state:'detached'});
     await page.evaluate(()=>window.show({questionId:'deny-reuse',revision:6,canReuseTask:true,suggestedDecision:'allow_task'}));
     await question.locator('[data-authorization-decision="deny"]').click();
     assert.deepEqual(await page.evaluate(()=>window.calls.at(-1).body),{questionId:'deny-reuse',expectedRevision:6,decision:'deny'});
-    assert.match(await question.locator('[role="status"]').textContent(),/已拒绝/);
+    await page.locator('#questions [data-question-id="deny-reuse"]').waitFor({state:'detached'});
     await page.evaluate(()=>window.show({questionId:'fallback',canReuseTask:false,suggestedDecision:'allow_task'}));
     assert.equal(await question.locator('.authorization-question-primary').getAttribute('data-authorization-decision'),'allow_once');
     receipt.phases.push('trusted-task-default','one-click-deny','untrusted-task-default-falls-back');
