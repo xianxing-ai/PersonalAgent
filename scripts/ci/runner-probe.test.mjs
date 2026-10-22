@@ -14,3 +14,6 @@ test('short probes target only the selected hosted, common or explicitly pinned 
   assert.equal(probeMatrix('ecs-17f8').include[0].runner.at(-1),'ecs-17f8');
   assert.throws(()=>probeMatrix('unregistered-node'));
 });
+test('strict PSEC acceptance selects exactly one explicit hosted Windows slot',()=>{
+  assert.deepEqual(probeMatrix('psec-strict'),{include:[{name:'Strict real Windows PSEC acceptance',runner:['windows-2025'],psecStrict:true}]});
+});
