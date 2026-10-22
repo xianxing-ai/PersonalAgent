@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),{DatabaseSync}=require('node:sqlite');
-const {testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback,calendarUpdateArgs}=require('./desktop-calendar-update-live.cjs');
+const {testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback,calendarUpdateArgs,failureDiagnostic}=require('./desktop-calendar-update-live.cjs');
 const {weatherLaunchOptions}=require('./desktop-weather-watch-live.cjs');
 const before={uid:'pa-public-synthetic-uid',summary:'Public original',startUtc:'2026-10-23T10:00:00.000Z',endUtc:'2026-10-23T11:00:00.000Z'};
 test('calendar tool args use externalId while independent GET retains the original UID',()=>{
@@ -33,15 +33,35 @@ test('independent public ICS GET verifies exact fields, strong ETag change and s
     {...changed,text:publicIcs(before)},{...changed,text:changed.text.replace('SEQUENCE:1','SEQUENCE:2')},
     {...changed,text:changed.text.replace(expected.uid,'another-uid')}])await assert.rejects(verifyCalendarGet(bad,expected,initial));
 });
-test('restricted cards are exactly dispatch plus merged update, disappear from DOM and retain allowed history',()=>{
+test('restricted cards require one merged update with optional dispatch, removed DOM and allowed history',()=>{
   const questions=[{questionId:'synthetic-dispatch',toolName:'subagent.dispatch',requirements:[]},
     {questionId:'synthetic-update',toolName:'calendar.update',requirements:['tool','connector_session','export'].map(kind=>({kind}))}];
   const history=questions.map(item=>({...item,state:'allowed'})),observed={ids:questions.map(item=>item.questionId),remaining:0};
   verifyCards('restricted',questions,history,observed);
+  verifyCards('restricted',[questions[1]],[history[1]],{ids:[questions[1].questionId],remaining:0});
   assert.throws(()=>verifyCards('restricted',questions,history,{...observed,remaining:1}));
   assert.throws(()=>verifyCards('restricted',questions,[{...history[0],state:'pending'},history[1]],observed));
   assert.throws(()=>verifyCards('restricted',questions,[],observed));
   assert.throws(()=>verifyCards('restricted',[questions[0],{...questions[1],requirements:[{kind:'tool'}]}],history,observed));
+  for(const invalid of [[],[questions[0]],[questions[1],{...questions[1],questionId:'duplicate-update'}],
+    [questions[1],{...questions[0],toolName:'calendar.create'}],
+    [questions[1],questions[0],{...questions[0],questionId:'duplicate-dispatch'}],
+    [questions[1],{...questions[0],questionId:questions[1].questionId}]])
+    assert.throws(()=>verifyCards('restricted',invalid,invalid.map(item=>({...item,state:'allowed'})),
+      {ids:invalid.map(item=>item.questionId),remaining:0}));
+  assert.throws(()=>verifyCards('restricted',[questions[1]],[history[1]],{ids:['wrong-original-id'],remaining:0}));
+});
+test('calendar failure diagnostics expose only fixed safe assertion reasons and messages',()=>{
+  let error;
+  try{verifyCards('restricted',[],[],{ids:[],remaining:0});}catch(value){error=value;}
+  assert.deepEqual(failureDiagnostic(error,'verify_authorization_cards'),{stage:'verify_authorization_cards',code:'ERR_ASSERTION',
+    reason:'restricted_card_count',message:'restricted mode requires one or two original cards'});
+  for(const value of [{code:'ERR_ASSERTION',message:'PRIVATE_CONFIG credentials=PRIVATE_TOKEN'},
+    {code:'PRIVATE_TOKEN',message:'PRIVATE_CONFIG'},
+    {code:'ERR_ASSERTION',message:'restricted mode requires one or two original cards\nPRIVATE_TOKEN'}]){
+    const diagnostic=failureDiagnostic(value,'verify_authorization_cards');
+    assert.doesNotMatch(JSON.stringify(diagnostic),/PRIVATE_|credentials/u);
+  }
 });
 test('Full access passes only when no manual question and no rendered card were observed',()=>{
   verifyCards('full-access',[],[],{ids:[],remaining:0});

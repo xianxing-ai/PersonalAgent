@@ -14,8 +14,10 @@
 
 在已构建的集成树运行 `node tests/manual/connectors/desktop-calendar-update-live.cjs`。脚本创建独立 userData，原设置 UI 选择权限模式并配置专用日历，再由原主对话、原 AgentArts 子任务及 Runtime/Policy/ToolGateway 执行 `calendar.update`。不改变正式应用或原配置。
 
-受限模式必须实际展示且只批准原 dispatch 与合并日历卡两张；Full access 通过原 UI 选择，任何 pending 卡都直接失败，不替它点击。DOM 记录卡片出现，完成时卡片须移除，原 snapshot 保留 allowed 历史。真实回执还要求父子任务 succeeded、一次 confirmed 日历修改、原云请求及结果续接。
+受限模式必须实际展示且只批准一张原 `calendar.update` 合并卡，包含 tool、connector_session、export 三类要求；原 Policy 若需要 `subagent.dispatch` 审批，可额外出现一张 dispatch 卡，总数最多两张。dispatch 审批不是必需项，不为满足脚本而新增授权。重复卡、缺少 update 卡及其他工具卡均失败。Full access 通过原 UI 选择，任何 pending 卡都直接失败，不替它点击。DOM 记录并精确核对原卡 ID，完成时卡片须移除，原 snapshot 保留 allowed 历史。真实回执还要求父子任务 succeeded、一次 confirmed 日历修改、原云请求及结果续接。
 
 独立 HTTP GET 用真实 ICS 核对 UID、标题、起止时间、强 ETag 改变及 SEQUENCE 只增加 1；关闭本脚本自己启动的 Desktop 后再次 GET，核对持久效果。遇 unknown/waiting_reconciliation 不重发。输出只含公开测试字段与安全元数据，保存在忽略的 `.cache/desktop-calendar-update-live-*`。
+
+失败回执保留阶段及固定安全 reason/message；仅精确匹配已知卡片断言的首行，其余错误使用固定概括，不导出原始异常、配置或凭据。旧失败记录保留；修复后须使用全新集合和 UID 重新执行，不把旧任务重放或断言修正当作真实服务验收通过。
 
 离线直测：`node --test tests/manual/connectors/desktop-calendar-update-live.test.cjs`。这些是合成输入断言，不证明真实 Radicale、云端、卡片或设备验收已通过。

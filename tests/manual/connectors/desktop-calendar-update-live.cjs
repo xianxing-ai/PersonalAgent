@@ -78,15 +78,41 @@ function verifyCards(mode,questions,history,observed){
     assert.equal(observed.ids.length,0,'Full access must never render an approval card');
   }
   else{
-    assert.equal(questions.length,2,'restricted mode requires one dispatch and one merged calendar card');
-    assert.deepEqual(questions.map(item=>item.toolName).sort(),['calendar.update','subagent.dispatch']);
+    assert.ok(questions.length>=1&&questions.length<=2,'restricted mode requires one or two original cards');
+    assert.equal(questions.filter(item=>item.toolName==='calendar.update').length,1,'exactly one merged calendar update card required');
+    assert.ok(questions.every(item=>['calendar.update','subagent.dispatch'].includes(item.toolName)),
+      'only calendar update and optional dispatch cards are permitted');
+    assert.ok(questions.filter(item=>item.toolName==='subagent.dispatch').length<=1,'at most one optional dispatch card permitted');
+    assert.equal(new Set(questions.map(item=>item.questionId)).size,questions.length,'original question IDs must be unique');
     const update=questions.find(item=>item.toolName==='calendar.update');
     assert.ok(['tool','connector_session','export'].every(kind=>update.requirements.some(item=>item.kind===kind)),
       'calendar execution, configured session and result export must share one original card');
-    assert.deepEqual([...observed.ids].sort(),questions.map(item=>item.questionId).sort(),'actual DOM must show precisely the two original cards');
+    assert.deepEqual([...observed.ids].sort(),questions.map(item=>item.questionId).sort(),'actual DOM must show precisely the original cards');
   }
   for(const question of questions)assert.ok(history.some(item=>item.questionId===question.questionId&&item.state==='allowed'),
     'decided cards must remain only as allowed snapshot history');
+}
+const safeAssertions=new Map([
+  ['no pending authorization may survive completion','pending_authorization'],
+  ['decided cards must be removed from the real DOM','decided_card_still_rendered'],
+  ['restricted mode requires one or two original cards','restricted_card_count'],
+  ['exactly one merged calendar update card required','calendar_update_card_count'],
+  ['only calendar update and optional dispatch cards are permitted','unexpected_card_tool'],
+  ['at most one optional dispatch card permitted','duplicate_dispatch_card'],
+  ['original question IDs must be unique','duplicate_question_id'],
+  ['calendar execution, configured session and result export must share one original card','calendar_requirements_not_merged'],
+  ['actual DOM must show precisely the original cards','dom_question_id_mismatch'],
+  ['decided cards must remain only as allowed snapshot history','allowed_history_missing'],
+  ['Full access must complete without a manual card','full_access_manual_card'],
+  ['Full access must never render an approval card','full_access_rendered_card']
+]);
+function failureDiagnostic(error,stage){
+  const assertion=error?.code==='ERR_ASSERTION';
+  const firstLine=typeof error?.message==='string'?error.message.split(/\r?\n/u,1)[0]:'';
+  const reason=assertion?safeAssertions.get(firstLine):undefined;
+  return{stage,code:assertion?'ERR_ASSERTION':'REAL_CALENDAR_ACCEPTANCE_NOT_SATISFIED',
+    reason:reason??(assertion?'assertion_failed':'acceptance_failed'),
+    message:reason?firstLine:(assertion?'Public calendar acceptance assertion failed':'Public calendar acceptance failed')};
 }
 function readback(database,parentTaskId,expected){return databaseRead(database,db=>{
   const parent=db.prepare('SELECT task_id,state,evidence_refs_json FROM tasks WHERE task_id=?').get(parentTaskId);assert.equal(parent?.state,'succeeded');
@@ -158,6 +184,7 @@ async function main(){
       const tracker=globalThis.__paCalendarCardObservation;tracker.observer.disconnect();delete globalThis.__paCalendarCardObservation;
       return{ids:[...tracker.ids],remaining:document.querySelectorAll('[data-question-id]').length};
     });
+    report.stage='verify_authorization_cards';report.cardObservation=observed;persist();
     const state=await snapshot(session.panel);verifyCards(mode,report.questions,state.authorizationQuestions??[],observed);
     report.cards={count:report.questions.length,pending:0,decidedCardsRemoved:true,allowedSnapshotHistory:true};
     report.cardObservation=observed;
@@ -168,9 +195,9 @@ async function main(){
     const closed=await verifyCalendarGet(await http('GET',resource),expected);assert.equal(closed.etag,changed.etag);
     report.independentGet={verified:true,strongEtagChanged:true,sequenceDelta:changed.sequence-original.sequence,stableAfterDesktopClose:true};
     report.status='passed_real_public_radicale_calendar_update';report.stage='complete';
-  }catch(error){report.status='failed';report.failure={stage:report.stage,code:error?.code??'REAL_CALENDAR_ACCEPTANCE_NOT_SATISFIED'};process.exitCode=1;
+  }catch(error){report.status='failed';report.failure=failureDiagnostic(error,report.stage);process.exitCode=1;
   }finally{if(session)await close(session.app);report.finishedAt=new Date().toISOString();persist();
     console.log(JSON.stringify({status:report.status,stage:report.stage,receipt,publicUid:uid}));}
 }
-module.exports={testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback,calendarUpdateArgs};
+module.exports={testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback,calendarUpdateArgs,failureDiagnostic};
 if(require.main===module)main().catch(()=>{console.error('Real public CalDAV acceptance prerequisites unavailable; no credentials or private contents printed.');process.exitCode=1;});
