@@ -42,6 +42,7 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
   const runtime=application.runtime,atomic=createRuntimeAtomicStatePort(runtime,'desktop-connector-changes');
   const key=digest(namespace),lifetime=new AbortController();
   let active,closed=false,lastError;
+  const projectedDecisions=new Set();
   const load=()=>atomic.read(key);
   const empty=()=>({version:1,sources:{},events:{},watches:{}});
   const state=()=>{const value=load()?.value??empty();if(value.version!==1)fail('REVISION_CONFLICT');return structuredClone(value);};
@@ -174,7 +175,6 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
     currentEvent(item);
     update(value=>{Object.assign(value.events[item.id],{state:decision.action==='notify'?'notify':'settled',action:decision.action});});
     if(decision.action==='notify') {
-      onDecisionTask({taskId:task.taskId,goal:summary,conversationId});
       await deliver({...item,state:'notify',decisionTaskId:task.taskId});
     }
   }
@@ -182,19 +182,33 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
     currentEvent(item);
     const task=runtime.getTask(item.decisionTaskId),decision=runtime.loadCheckpoint(task.taskId,'connector-change-decision');
     if(task.state!=='succeeded'||decision?.action!=='notify')return;
+    // Projection may have been interrupted after the notify state was saved.
+    // The caller upserts this exact task; re-project once per host before any
+    // original-round delivery/readback, without choosing or sending it again.
+    if(!projectedDecisions.has(task.taskId)) {
+      onDecisionTask({taskId:task.taskId,goal:task.resultSummary,conversationId:task.conversationId});
+      projectedDecisions.add(task.taskId);
+    }
     const connectorId=item.kind==='mail.new'?'mail':'weather',body=task.resultSummary;
     // A generic local summary carries no sender, subject, address or private result to the OS.
     const record={source:connectorId,accountRef:namespace,externalId:item.id,dedupeKey:item.id,contentRef:body,
       occurredAt:item.observedAt,fetchedAt:item.observedAt,sensitivity:connectorId==='mail'?'private':'public'};
-    notifications.ingest([record],{scope:{kind:'connector',connectorId}});
-    const report=notifications.drain();
-    for(const batch of report.batches.filter(batch=>batch.itemRefs.includes(item.id))) {
+    let batchId=state().events[item.id].notificationBatchId;
+    if(!batchId) {
+      notifications.ingest([record],{scope:{kind:'connector',connectorId}});
+      const batch=notifications.drain().batches.find(batch=>batch.itemRefs.includes(item.id));
+      if(!batch)return;
       currentEvent(item);
-      const outcome=await notifications.deliverBatch({batchId:batch.id,scope:{kind:'connector',connectorId},
-        expiresAt:new Date(now()+60_000).toISOString(),title:'PersonalAgent · 变化提醒',body,source:connectorId});
-      // The notification host owns exact round recovery and never sends an unknown attempt twice.
-      if(outcome?.attempts?.banner?.state==='delivered')update(value=>{value.events[item.id].state='delivered';});
+      // A native show callback may settle the batch before the next drain. Keep
+      // its identity before send so that callback/SQLite recovery reads this
+      // same interruption round even when drain no longer returns the batch.
+      update(value=>{value.events[item.id].notificationBatchId=batch.id;});batchId=batch.id;
     }
+    currentEvent(item);
+    const outcome=await notifications.deliverBatch({batchId,scope:{kind:'connector',connectorId},
+      expiresAt:new Date(now()+60_000).toISOString(),title:'PersonalAgent · 变化提醒',body,source:connectorId});
+    // The notification host owns exact round recovery and never sends an unknown attempt twice.
+    if(outcome?.attempts?.banner?.state==='delivered')update(value=>{value.events[item.id].state='delivered';});
   }
   async function flush() {
     if(closed)return;

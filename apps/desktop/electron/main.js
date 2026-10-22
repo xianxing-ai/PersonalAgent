@@ -384,8 +384,17 @@ function mailSnapshot() {
 function readConnectorSourceAuthorization(source) {
   if(source==='mail') {
     const status=mailConfig?.snapshot(),config=mailConfig?.current();
-    return {available:Boolean(mailHost&&status?.sessionAllowed&&!status.requiresRestart&&config),
-      configurationRef:createHash('sha256').update(JSON.stringify(['mail',config?.user,config?.revision])).digest('hex')};
+    let generation;
+    const batchAuthorization=mailConfig?.batchAuthorization;
+    const ready=Boolean(mailHost&&config&&!status?.requiresRestart
+      &&(batchAuthorization?batchAuthorization.canRequest():status?.sessionAllowed));
+    if(ready&&batchAuthorization) {
+      const resource=createHash('sha256').update(JSON.stringify({namespace:desktopHost.userNamespace,
+        kind:'mail-local-batch',user:config.user,revision:config.revision})).digest('hex');
+      try{generation=authorizationQuestionPort.readResourceGeneration(resource);}catch{return {available:false};}
+    }
+    return {available:ready,
+      configurationRef:createHash('sha256').update(JSON.stringify(['mail',config?.user,config?.revision,generation])).digest('hex')};
   }
   const descriptor=runtimeApplication?.tools?.list().find(tool=>tool.name==='weather.forecast');
   return {available:source==='weather'&&descriptor?.sideEffect==='read',
@@ -1634,6 +1643,8 @@ function initializeAuthorizationHosts(runtimeModule){
   authorizationQuestionHost=createDesktopAuthorizationQuestionHost({createQuestions:options=>new runtimeModule.AuthorizationQuestions(options),
     getApplication:()=>runtimeApplication,namespace:desktopHost.userNamespace,
     resolveConversation:taskId=>conversationToolAccess?.resolveConversation(taskId)
+      ??connectorWatchHost?.resolveUserConversation(taskId)
+      ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
     available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
     profiles:[{ref:'default-read-only',label:'应用内只读权限',mode:'read-only',revision:1,available:true},

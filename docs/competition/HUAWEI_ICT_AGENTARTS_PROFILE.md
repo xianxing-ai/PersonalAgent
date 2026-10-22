@@ -1,5 +1,9 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
+## 本轮限定修订（2026-10-22）
+
+用户在连接器闭环工作包中明确要求“连接器发生改动就通知主对话走 Laya 是否告知用户那条路”，并要求恢复默认桌面鹈鹕真实验收。本轮因此保留既有本机有界候选判断端口，用于邮件/天气提醒选择及默认编码修复原有判断；这是对下文 2026-10-18 “Competition 不调用 Laya”限制的限定修订。AgentArts 继续承担原云端编排，Laya 不授予权限、不接管工具执行、不成为云端失败后的回退 Agent。来源、Laya 实际决定、原主对话和最终通知回执分别验收，未满足的环节不能算通过。接线及边界见 [ADR-0035](../adr/0035-connector-change-triggers.md)。
+
 ## 当前架构决定（2026-10-18）
 
 Owner 已确认：Laya 仅能由独立 Local Profile 使用，当前仍是实验候选，不属于当前 Competition 产品路径。当前只实施 `huawei_ict_agentarts` Competition Profile；AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署，本地 Runtime 经 `CloudAgentPort` 调用已部署工作流。Competition 路径不调用 Laya，AgentArts 失败也不得静默回退到 Local Profile。本决定不表示候选方案已通过资格验证、外部比赛资格已获认可或真实平台端到端验收完成；既有回执只证明对应固定版本与场景。

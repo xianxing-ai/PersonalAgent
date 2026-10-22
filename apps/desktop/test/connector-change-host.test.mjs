@@ -291,6 +291,29 @@ test('SQLite reopen preserves pending changes and exact decisions; an unknown na
   assert.equal(f.native.length,1);
 });
 
+test('a saved successful notify restores the original main conversation projection before delivery after reopen',async t=>{
+  const f=await fixture(t);await f.mail();f.addMail(2);await f.mail();
+  const original=f.seedInterruptedDecision({saved:true,notifyState:true});
+  f.app.runtime.transitionTask(original.taskId,'verifying');
+  f.app.runtime.transitionTask(original.taskId,'succeeded',{resultSummary:'收到一封新邮件'});
+  assert.equal(f.displayed.length,0);await f.restart();await f.host.flush();
+  assert.equal(f.choices.length,0,'saved choice is not recomputed');
+  assert.deepEqual(f.displayed,[{taskId:original.taskId,goal:'收到一封新邮件',conversationId:'desktop-panel'}]);
+  assert.equal(f.native.length,1);assert.equal(f.host.snapshot().notified,1);
+  await f.host.flush();assert.equal(f.displayed.length,1);assert.equal(f.native.length,1);
+});
+
+test('a late native show in the same process settles the original event after drain stops returning its batch',async t=>{
+  const f=await fixture(t,{autoShow:false});await f.mail();f.addMail(2);await f.mail();await f.host.flush();
+  assert.equal(f.native.length,1);assert.equal(f.host.snapshot().notified,0);
+  f.callbacks.get(f.native[0].id).onShow();
+  assert.ok(f.notifications.snapshot().feed.items[0].deliveredAt,'original native show receipt is persisted');
+  assert.equal(f.notifications.drain().batches.length,0,'delivered batch is no longer outstanding');
+  await f.host.flush();assert.equal(f.host.snapshot().notified,1);
+  assert.equal(f.native.length,1);assert.equal(f.choices.length,1);assert.equal(f.displayed.length,1);
+  await f.restart();await f.host.flush();assert.equal(f.native.length,1);assert.equal(f.choices.length,1);
+});
+
 test('interrupted local inference resumes only its original task and deadline before any decision was saved',async t=>{
   const f=await fixture(t);await f.mail();f.addMail(2);await f.mail();
   const original=f.seedInterruptedDecision();f.advance(1000);await f.restart();f.app.runtime.recoverInterruptedTasks();

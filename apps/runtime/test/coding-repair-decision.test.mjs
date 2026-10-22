@@ -2,20 +2,29 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {OwnedWorkflowEngine} from '@personal-agent/agentarts';
 import {createRuntimeApplication} from '../dist/application.js';
+import {CODING_DECISION_CHECKPOINT} from '../dist/application/coding-decision-tool.js';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
+import {createHash} from 'node:crypto';
 
 const name='decision.choose_candidate',version='1.0.0';
 const candidates=(review='owned-review')=>[{id:'public-read',description:'Explicit Fake public source-read proposal'},
   {id:review,description:'Keep the original graph for review; do not execute a business operation'}];
 const chosen=(id='public-read')=>({state:'selected',eligibleForRuntime:true,selected:{id,revision:1},reason:'selected'});
+const typed=(input,selection)=>({...selection,calibrated:false,
+  scores:selection.scores??input.candidates.map(candidate=>({candidate:{id:candidate.id,revision:candidate.revision},probability:null})),
+  receipt:{id:toolArgumentsDigest({context:input.context,candidates:input.candidates}),promptVersion:'action-choice-v1',
+    contextDigest:createHash('sha256').update(input.context).digest('hex'),
+    candidates:input.candidates.map(candidate=>({candidate:{id:candidate.id,revision:candidate.revision},digest:toolArgumentsDigest(candidate)}))}});
 
 // Only the chooser/image are explicit Fakes. The default Runtime-generated decision
 // adapter, original host task, SQLite, Policy, ToolGateway and Evidence are real.
-function fixture(t,selection,{onChoose}={}) {
+function fixture(t,selection,{onChoose,transformSelection=value=>value}={}) {
   let app,sequence=0;const calls=[];
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-decision-review',
     codingRepair:{image:{bindingId:'explicit-fake-unused-image',receiptSecret:async()=>assert.fail('no image request is expected'),
       advance:async()=>assert.fail('no image request is expected')}},
-    proactiveDecision:{localChooser:{choose:async input=>{calls.push(input);await onChoose?.(input,app);return structuredClone(selection);}}},
+    proactiveDecision:{localChooser:{choose:async input=>{calls.push(input);await onChoose?.(input,app);
+      return {...transformSelection(typed(input,structuredClone(selection))),untrustedModelText:'Synthetic body must not persist'};}}},
     automaticTools:[{toolName:name,toolVersion:version}]});
   t.after(()=>app.close());
   return {app,calls,descriptor:app.tools.list().find(tool=>tool.name===name),
@@ -46,12 +55,22 @@ for(const [label,selection,ids,expected] of [
   assert.equal(record.executionStarted,true);assert.ok(f.app.runtime.readEvidence(read.task.taskId).some(item=>item.evidenceId===record.evidenceId));
   assert.deepEqual(f.app.runtime.listTasks({limit:20}).items.map(task=>task.taskId),[read.task.taskId],
     'a local review result does not claim or create a teacher task');
+  const saved=f.app.runtime.loadCheckpoint(read.task.taskId,CODING_DECISION_CHECKPOINT+'host-tool-'+read.task.taskId);
+  assert.equal(saved.taskId,read.task.taskId);assert.equal(saved.runId,'host-tool-'+read.task.taskId);
+  assert.equal(saved.requestId,'synthetic-'+label);assert.equal(saved.selectedId,expected);
+  assert.equal(saved.disposition,selection.state==='selected'&&ids.some(item=>item.id===selection.selected?.id)?'selected':'review_fallback');
+  assert.equal(saved.argumentsDigest,toolArgumentsDigest({context:'Explicit Fake public decision',candidates:ids,requestId:'synthetic-'+label}));
+  assert.equal(saved.candidateDigest,toolArgumentsDigest(ids));assert.deepEqual(saved.selection,typed(f.calls[0],selection));
+  assert.equal(saved.authority,'diagnostic_no_tool_grant');
+  assert.equal(JSON.stringify(saved).includes('Synthetic body must not persist'),false);
+  assert.equal(JSON.stringify(saved).includes('Explicit Fake public decision'),false,'context body stays outside diagnostics');
 });
 
 test('an ineligible business choice without a supplied review candidate remains unavailable',async t=>{
   const f=fixture(t,{state:'review',eligibleForRuntime:false,selected:{id:'public-read',revision:1},reason:'uncertain'});
   const read=await f.run({context:'Explicit Fake insufficient evidence',candidates:[candidates()[0],{id:'other-read',description:'Other business proposal'}],requestId:'no-review'});
   assert.equal(read.task.state,'failed');assert.equal(read.task.error.code,'UNSUPPORTED_CAPABILITY');assert.equal(read.confirmed,undefined);
+  assert.equal(f.app.runtime.loadCheckpoint(read.task.taskId,CODING_DECISION_CHECKPOINT+'host-tool-'+read.task.taskId).disposition,'unavailable');
 });
 
 test('cancellation during an abstaining chooser cannot confirm the review fallback',async t=>{
@@ -68,6 +87,30 @@ test('the original deadline still prevents a late review fallback from confirmin
   })});
   const read=await f.run(undefined,{deadlineMs:100});assert.equal(f.calls.length,1);
   assert.equal(read.task.state,'failed');assert.equal(read.task.error.code,'TIMEOUT');assert.equal(read.confirmed,undefined);
+});
+
+test('typed probabilities and uncertainty remain local while concurrent original hosts retain independent bindings',async t=>{
+  const selection={state:'review',eligibleForRuntime:false,selected:{id:'public-read',revision:1},reason:'uncertain',
+    scores:[{candidate:{id:'public-read',revision:1},probability:0.61},{candidate:{id:'owned-review',revision:1},probability:0.39}],
+    answerConfidence:0.61,entropyConcentration:0.04};
+  const f=fixture(t,selection),reads=await Promise.all(['first','second'].map(requestId=>f.run({context:requestId,candidates:candidates(),requestId})));
+  assert.equal(f.calls.length,2);
+  for(const [index,read]of reads.entries()) {
+    assert.equal(read.task.state,'succeeded');assert.deepEqual(read.confirmed.result,{selectedId:'owned-review'});
+    const saved=f.app.runtime.loadCheckpoint(read.task.taskId,CODING_DECISION_CHECKPOINT+'host-tool-'+read.task.taskId);
+    assert.equal(saved.requestId,['first','second'][index]);assert.equal(saved.disposition,'review_fallback');
+    assert.equal(saved.selection.answerConfidence,0.61);assert.deepEqual(saved.selection.scores,selection.scores);
+  }
+});
+
+for(const [label,transformSelection]of [
+  ['another original context',value=>({...value,receipt:{...value.receipt,contextDigest:'a'.repeat(64)}})],
+  ['a free-text reason',value=>({...value,reason:'Synthetic body must not become a diagnostic reason'})],
+])test(`a typed receipt with ${label} cannot be persisted or confirm a choice`,async t=>{
+  const f=fixture(t,chosen(),{transformSelection});
+  const read=await f.run();assert.equal(read.task.state,'failed');assert.equal(read.task.error.code,'EXTERNAL_FAILURE');
+  assert.equal(read.confirmed,undefined);
+  assert.equal(f.app.runtime.loadCheckpoint(read.task.taskId,CODING_DECISION_CHECKPOINT+'host-tool-'+read.task.taskId),undefined);
 });
 
 test('the confirmed owned-review result leaves the original sealed graph unknown with zero business proposals',async t=>{

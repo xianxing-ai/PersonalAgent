@@ -2,7 +2,7 @@ import {ProtocolError, validateToolValue,validateContract} from '@personal-agent
 import {createHash} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
-import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
+import {createRuntimeCodingDecisionTool} from './coding-decision-tool.js';
 import type {AgentToolPort} from '@personal-agent/agents';
 import type {SubtaskDefinition} from '@personal-agent/agents';
 import {createRuntimeCodingRepairDispatchTool,codingRepairWorkflowInputSchema,readRuntimeCodingRepairRequest,runRuntimeCodingRepairWorkflow,
@@ -690,15 +690,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const harnessTool = harnessHost ? createRuntimeDeveloperHarnessTool(harnessHost) : undefined;
     const configuredTools = [...(options.tools ?? []),...(harnessTool?[harnessTool]:[]),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
       ...(options.proactiveDecision?.localChooser&&!options.tools?.some(tool=>tool.descriptor.name==='decision.choose_candidate')
-        ?[createWorkflowDecisionTool({selector:{select:async input=>{
-          const value=await options.proactiveDecision!.localChooser!.choose({context:input.context,deadline:input.deadline,signal:input.signal,
-            candidates:input.candidates.map(candidate=>({id:candidate.id,revision:1,kind:'noop',description:candidate.description,sources:[],
-              scopeRef:input.requestId,expiresAt:input.deadline,risk:'low',argumentsDigest:actionArgumentsDigest({})}))});
-          if(value.state==='selected'&&value.eligibleForRuntime&&value.selected&&input.candidates.some(candidate=>candidate.id===value.selected!.id))return value.selected.id;
-          const review=input.candidates.find(candidate=>candidate.id==='owned-review')
-            ??input.candidates.find(candidate=>candidate.id==='review');if(review)return review.id;
-          throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local Laya requires review for this original coding decision');
-        }}})]:[])]:[]), ...createRuntimeOwnedWorkflowTools(
+        ?[createRuntimeCodingDecisionTool({localChooser:options.proactiveDecision.localChooser,
+          save:(key,receipt)=>{
+            if(!this.runtime.saveCheckpointOnce(receipt.taskId,key,receipt)
+              &&!isDeepStrictEqual(this.runtime.loadCheckpoint(receipt.taskId,key),receipt))
+              throw new ProtocolError('REVISION_CONFLICT','Original local coding decision receipt changed');
+          }})]:[])]:[]), ...createRuntimeOwnedWorkflowTools(
       options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
       ...(options.proactiveWorkflows ? createRuntimeProactiveDecisionTools({
         ...(options.proactiveDecision?.localChooser ? {localChooser: options.proactiveDecision.localChooser} : {}),
