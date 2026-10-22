@@ -1,0 +1,180 @@
+{
+  "copiedImages": [
+    {
+      "source": "product/product-panel-default.png",
+      "target": "product-panel-default.png"
+    },
+    {
+      "source": "renderer/panel-model-choices.png",
+      "target": "renderer-model-choices.png"
+    },
+    {
+      "source": "renderer/panel-narrow.png",
+      "target": "renderer-narrow-dark.png"
+    },
+    {
+      "source": "renderer/panel-narrow-light.png",
+      "target": "renderer-narrow-light.png"
+    },
+    {
+      "source": "product/product-workspace-manual-max.png",
+      "target": "product-workspace-manual-max.png"
+    }
+  ],
+  "visualResult": "no blocking visual issue found in reviewed surfaces",
+  "review": "independent read-only screenshots, receipts and source boundary; not a GitHub Approve",
+  "sourceHead": "bff0688008afa681d1b8e0e27643d4fb398b3dc7",
+  "ownerRenderer": {
+    "state": "passed",
+    "defaultCombinationPreserved": true,
+    "runtime": "not exercised",
+    "errorCount": 0,
+    "bridge": "explicit synthetic",
+    "oneSliderPerSurface": true,
+    "realModelCalls": 0,
+    "checks": [
+      "all published models",
+      "search",
+      "native enums",
+      "default combination",
+      "save failure and retry",
+      "Escape focus",
+      "251px dark and light",
+      "workspace selection"
+    ],
+    "renderer": "actual panel and workspace source"
+  },
+  "limits": [
+    "251px captures the single-slider popover only; expanded search list not separately verified",
+    "no real model, cloud, microphone, account, installer or physical DPI acceptance",
+    "reviewer did not rerun original business matrix"
+  ],
+  "images": [
+    {
+      "height": 640,
+      "width": 420,
+      "sha256": "a6cba6f8cb22155d605d23189f1d604bb4b281f720e808fec47a21d81818290a",
+      "surface": "product",
+      "file": "product-panel-default.png"
+    },
+    {
+      "height": 640,
+      "width": 420,
+      "sha256": "4a6901e76c2bc2ca47470cdebc1ae922e9e3d01a4bec0e04e7bb266c02021cb3",
+      "surface": "product",
+      "file": "product-panel-manual-high.png"
+    },
+    {
+      "height": 600,
+      "width": 251,
+      "sha256": "609cc1ec79388e85ebbb562bfb6d6a77bae880ba5e4854a1991c1afc935d6b31",
+      "surface": "product",
+      "file": "product-panel-narrow-light.png"
+    },
+    {
+      "height": 600,
+      "width": 251,
+      "sha256": "e593bfa5e8b451e91fc4f1aead8c52e591020bfe53c50b621cd5ab96dd13b21b",
+      "surface": "product",
+      "file": "product-panel-narrow.png"
+    },
+    {
+      "height": 1032,
+      "width": 1920,
+      "sha256": "b2c0f67c8618cf46611f66c4a9a1595a121322c7a88c2223552846295456d4dd",
+      "surface": "product",
+      "file": "product-workspace-manual-max.png"
+    },
+    {
+      "height": 33,
+      "width": 144,
+      "sha256": "62b8984e4d6e58d713fae3a80c27867281e10a371885890827cd893024e09885",
+      "surface": "renderer",
+      "file": "panel-compact-entry.png"
+    },
+    {
+      "height": 700,
+      "width": 420,
+      "sha256": "dd08505a3a4f45e7dea66861b28c7f5705e462d6a49c5a35e4ed444c2a43e372",
+      "surface": "renderer",
+      "file": "panel-default.png"
+    },
+    {
+      "height": 700,
+      "width": 420,
+      "sha256": "f41c58a0ad8fdf0c0a541ccb1ce3e1b55afff0c7269cf7833826b878583f7801",
+      "surface": "renderer",
+      "file": "panel-manual-high.png"
+    },
+    {
+      "height": 700,
+      "width": 420,
+      "sha256": "df907373cb6b67217183aea462258c28059f27232828eb37fa280b0102fe0252",
+      "surface": "renderer",
+      "file": "panel-model-choices.png"
+    },
+    {
+      "height": 600,
+      "width": 251,
+      "sha256": "f3a6987b72316ece390d11a212af39ef09c1f59488f3fc9e2e9849b55d57425b",
+      "surface": "renderer",
+      "file": "panel-narrow-light.png"
+    },
+    {
+      "height": 600,
+      "width": 251,
+      "sha256": "ca2ec3eaace2f3548cb8e15e02625cdfc96b515a905435fb8e316d1a9ea0dba3",
+      "surface": "renderer",
+      "file": "panel-narrow.png"
+    },
+    {
+      "height": 95,
+      "width": 235,
+      "sha256": "ce4427c87fb7297326c6f126b80d7ad7e653457552006c639aa72552fc6e19c2",
+      "surface": "renderer",
+      "file": "power-slider.png"
+    },
+    {
+      "height": 760,
+      "width": 1000,
+      "sha256": "a2ee65da22bd3a660b0521b3a19f5ac5741ca7426c5a3c44b60f9fef9ff53b59",
+      "surface": "renderer",
+      "file": "workspace-max.png"
+    }
+  ],
+  "newRequests": 0,
+  "newAppRuns": 0,
+  "ownerProduct": {
+    "state": "passed",
+    "errorCount": 0,
+    "transport": "synthetic fetch",
+    "defaultCombinationPreserved": true,
+    "renderer": "panel and workspace",
+    "preload": "actual IPC",
+    "oneSliderPerSurface": true,
+    "realModelCalls": 0,
+    "main": "actual Electron product",
+    "syntheticRequests": [
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "high"
+      },
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "deepseek-v4.1-flash",
+        "reasoningEffort": "high"
+      },
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "qwen3.8-max",
+        "reasoningEffort": "max"
+      },
+      {
+        "catalogRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "modelId": "qwen3.8-max",
+        "reasoningEffort": "max"
+      }
+    ]
+  }
+}

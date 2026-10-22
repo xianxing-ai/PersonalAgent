@@ -78,7 +78,7 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
     const record = {senderId, controller: new AbortController(), expiresAtMs: now() + LEASE_MS};
     active = record; phase = 'enabling'; reason = '正在检查唤醒检测器和麦克风'; publish();
     try {
-      const grant = microphoneHost.authorize({deadline: new Date(record.expiresAtMs).toISOString()});
+      const grant = await microphoneHost.authorize({deadline: new Date(record.expiresAtMs).toISOString(),purpose:'wake',signal:record.controller.signal});
       record.ownsLease = true;
       const expiry = Date.parse(grant?.expiresAt);
       if (!grant?.authorized || !Number.isFinite(expiry) || expiry <= now() || expiry > record.expiresAtMs) {

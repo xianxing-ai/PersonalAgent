@@ -1,0 +1,19 @@
+{
+  "kind": "Synthetic local Skill + actual product authorization",
+  "profile": "huawei_ict_agentarts",
+  "sourceHead": "71ab24eb1c077a71b26e1bf261148c5f075ecaa2",
+  "main": "actual",
+  "runtime": "actual TaskRuntime/Policy",
+  "preload": "actual",
+  "renderer": "actual",
+  "business": "isolated Synthetic Skill only",
+  "models": 0,
+  "accounts": 0,
+  "microphones": 0,
+  "phases": [],
+  "state": "failed",
+  "failedPhase": "allow-once",
+  "failureName": "Error",
+  "consoleErrors": [],
+  "pending": []
+}

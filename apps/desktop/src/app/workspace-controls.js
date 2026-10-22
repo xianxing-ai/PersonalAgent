@@ -15,13 +15,8 @@ export function mountWorkspaceControls(root, invoke) {
     <p class="notice">Node --check 只检查所选文件的语法，不运行项目脚本；可执行文件和文件路径由本机宿主固定，Agent 无法指定。</p>
     <p class="notice" data-workspace="project-status"></p>
     <button class="btn" type="button" data-workspace="select-npm">找不到 npm 时选择本机 npm 文件</button>
-    <label class="setting-row"><input type="checkbox" data-workspace="cloud">允许将此工作区的工具结果发送给 AgentArts</label>
-    <label class="setting-row"><input type="checkbox" data-workspace="write">额外允许写入工作区</label>
-    <label class="setting-row"><input type="checkbox" data-workspace="command">额外允许执行受限命令</label>
-    <label class="setting-row"><input type="checkbox" data-workspace="project-code" disabled><span data-workspace="project-label">允许执行项目构建/测试（尚未准备好）</span></label>
-    <p class="notice">项目构建和测试会执行工作区中的代码，可读写当前用户有权访问的内容。这不是隔离沙箱；只有本机执行组件就绪且你在本会话单独勾选后才会开放，每次执行仍需本地审批。</p>
-    <p class="notice">发送范围与写入、命令许可由宿主保存；每次实际执行仍须经过本地 Policy 校验与必要审批。</p>
-    <button class="btn" type="button" data-workspace="authorize">授权本地读取及所选权限</button>
+    <p class="notice">选择目录和运行组件只保存配置。读取、写入、受限命令和结果出机的具体范围，会在执行请求的对话提问卡一次确认，无需在设置重复允许。</p>
+    <p class="notice">项目构建和测试会运行工作区代码。是否具备隔离能力以可信宿主报告的沙箱为准；组件未就绪不能通过卡片放行，每次执行仍经原 Policy 校验。</p>
     <button class="btn" type="button" data-workspace="revoke">撤销工作区授权</button>
     <p class="notice" data-workspace="status" role="status"></p>`;
   root.append(section);
@@ -29,7 +24,6 @@ export function mountWorkspaceControls(root, invoke) {
   const field = name => section.querySelector(`[data-workspace="${name}"]`);
   let state = {};
   let busy = false;
-  let consentDirty = false;
   let feedback = '';
   let unconfirmed = false;
   let originatingFocus,restoreFocus=false;
@@ -45,10 +39,8 @@ export function mountWorkspaceControls(root, invoke) {
 
   function updateStatus() {
     const hostReason = (typeof state.reason === 'string' ? state.reason : '')
-      || (state.configured === true ? '请按需选择授权范围；设置状态以宿主读回为准。' : '请先由本机宿主选择工作区。');
-    field('status').textContent = feedback || (consentDirty && !busy && !unconfirmed
-      ? `权限选择尚未生效。点击“授权本地读取及所选权限”应用；要停止当前权限，请撤销授权。当前生效状态：${hostReason}`
-      : hostReason);
+      || (state.configured === true ? '配置状态以宿主读回为准；操作授权在当前对话提问卡确认。' : '请先由本机宿主选择工作区。');
+    field('status').textContent = feedback || hostReason;
   }
 
   function updateButtons() {
@@ -57,11 +49,6 @@ export function mountWorkspaceControls(root, invoke) {
     field('select-node').disabled = busy || !configured;
     field('select-file').disabled = busy || !configured;
     field('select-npm').disabled = busy || !configured || state.nodeConfigured !== true;
-    field('cloud').disabled = busy || !configured;
-    field('write').disabled = busy || !configured;
-    field('command').disabled = busy || !configured;
-    field('project-code').disabled = busy || !configured || state.projectScriptsAvailable !== true || !field('command').checked;
-    field('authorize').disabled = busy || !configured || state.authorizationAvailable !== true;
     field('revoke').disabled = busy || (!configured && state.cloudExportAllowed !== true);
     updateStatus();
   }
@@ -69,8 +56,6 @@ export function mountWorkspaceControls(root, invoke) {
   function render(snapshot = {}, {keepFeedback = false} = {}) {
     if (!keepFeedback && !busy && !unconfirmed) feedback = '';
     const next = snapshot?.coding ?? {};
-    const previousName = state.displayName;
-    const previouslyAllowed = state.cloudExportAllowed === true;
     state = next && typeof next === 'object' && !Array.isArray(next) ? next : {};
     const configured = state.configured === true;
     const displayName = configured && typeof state.displayName === 'string' && state.displayName.trim()
@@ -88,22 +73,6 @@ export function mountWorkspaceControls(root, invoke) {
     field('project-status').textContent = configured
       ? `npm 文件：${state.npmCliConfigured === true ? '已确定' : '未找到，可手动选择'} · ${projectReady && !projectCommands.length ? '项目命令信息待读回' : `项目${projectDescription || '命令'}：${projectReady ? '可授权' : '暂不可用'}`}${typeof state.projectReason === 'string' && state.projectReason ? ` · ${state.projectReason}` : ''}`
       : '选择工作区后才会检查项目构建和测试是否可用。';
-    field('project-label').textContent = projectReady
-      ? `单独允许本会话执行项目${projectDescription || '命令'}（先勾选受限命令）`
-      : '允许执行项目构建/测试（尚未准备好）';
-    if (!projectReady) field('project-code').checked = false;
-    if (!configured || previousName !== state.displayName || (previouslyAllowed && state.cloudExportAllowed !== true)) {
-      field('write').checked = false;
-      field('command').checked = false;
-      field('project-code').checked = false;
-      consentDirty = false;
-    }
-    if (!consentDirty) {
-      field('cloud').checked = configured && state.cloudExportAllowed === true;
-      field('write').checked = configured && state.writeAllowed === true;
-      field('command').checked = configured && state.commandAllowed === true;
-      field('project-code').checked = projectReady && field('command').checked && state.projectCodeAllowed === true;
-    }
     updateButtons();
   }
 
@@ -123,9 +92,6 @@ export function mountWorkspaceControls(root, invoke) {
       if (result && typeof result === 'object' && result.coding && typeof result.coding === 'object'
         && !Array.isArray(result.coding) && typeof result.coding.configured === 'boolean') {
         feedback = '';
-        const cancelledSelection = ['coding.select','coding.selectNode','coding.selectCheckFile','coding.selectNpmCli'].includes(action)
-          && result.codingSelectionCancelled === true;
-        if (!cancelledSelection) consentDirty = false;
         render(result);
       } else {
         unconfirmed = true;
@@ -148,27 +114,10 @@ export function mountWorkspaceControls(root, invoke) {
     }
   }
 
-  field('cloud').addEventListener('change', () => { consentDirty = true; updateButtons(); });
-  field('write').addEventListener('change', () => { consentDirty = true; updateButtons(); });
-  field('command').addEventListener('change', () => {
-    consentDirty = true;
-    if (!field('command').checked) field('project-code').checked = false;
-    updateButtons();
-  });
-  field('project-code').addEventListener('change', () => { consentDirty = true; updateButtons(); });
   field('select').addEventListener('click', () => run('coding.select'));
   field('select-node').addEventListener('click', () => run('coding.selectNode'));
   field('select-file').addEventListener('click', () => run('coding.selectCheckFile'));
   field('select-npm').addEventListener('click', () => run('coding.selectNpmCli'));
-  field('authorize').addEventListener('click', () => {
-    if (state.configured !== true || state.authorizationAvailable !== true) return;
-    run('coding.authorize', {
-      cloudExportAllowed: field('cloud').checked,
-      writeAllowed: field('write').checked,
-      commandAllowed: field('command').checked,
-      projectCodeAllowed: state.projectScriptsAvailable === true && field('project-code').checked,
-    });
-  });
   field('revoke').addEventListener('click', () => run('coding.revoke'));
 
   render();

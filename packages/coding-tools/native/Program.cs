@@ -8,7 +8,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace PersonalAgent.CodingTools.Native;
 
-internal static class Program
+internal static partial class Program
 {
     private const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
     private const int JobObjectExtendedLimitInformation = 9;
@@ -184,6 +184,23 @@ internal static class Program
 
     public static int Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--sandbox-launch") return RunSandbox();
+        if (args.Length == 1 && args[0] == "--sandbox-support")
+        {
+            try
+            {
+                var support = PsecEnvironment.Probe();
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new {backend = "windows-psec", detected = true,
+                    major = 1, minor = support.Minor, flags = support.Flags, enforced = false}));
+                return 0;
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new {backend = "windows-psec", detected = false,
+                    error = error.GetType().Name, hresult = error.HResult, enforced = false}));
+                return 5;
+            }
+        }
         if (args.Length > 0 && args[0] == "--query-process-start-time")
         {
             return QueryProcessStartTime(args);

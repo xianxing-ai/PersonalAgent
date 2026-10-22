@@ -1,0 +1,18 @@
+Applied only to an ignored copy of authorization-question-product-smoke.cjs.
+Original renderOnly block focused allow_once before its existing screenshot.
+Replace that single focus statement with the following; retain the original
+screenshot, choose(current,'allow_once'), assertions and finally/app.close.
+
+await panel.locator(`[data-question-id="${current.questionId}"] h3`).focus();
+for (const decision of ['allow_once', 'allow_always', 'deny']) {
+  await panel.keyboard.press('Tab');
+  assert.equal(await panel.locator(`[data-question-id="${current.questionId}"] [data-authorization-decision="${decision}"]`)
+    .evaluate(node => node === document.activeElement), true,
+    'actual Tab follows the three question choices');
+}
+await panel.keyboard.press('Shift+Tab');
+await panel.keyboard.press('Shift+Tab');
+assert.equal(await panel.locator(`[data-question-id="${current.questionId}"] [data-authorization-decision="allow_once"]`)
+  .evaluate(node => node === document.activeElement), true);
+receipt.phases.push({phase:'keyboard-tab-order',state:'verified',
+  order:['allow_once','allow_always','deny'],reverseToOnce:true});

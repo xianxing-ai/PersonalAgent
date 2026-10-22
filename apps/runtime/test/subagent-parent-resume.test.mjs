@@ -93,3 +93,39 @@ for(const action of ['deny','cancel']) test(`terminal child ${action} refreshes 
   assert.equal(app.runtime.getTask(taskId).state,'succeeded');assert.equal(app.runtime.getTask(child.taskId).state,'cancelled');
   assert.equal(calls,0);assert.equal(port.requests.length,2);assert.equal(app.runtime.readToolExecutions(taskId).length,1);
 });
+
+test('system expiry refreshes the original waiting parent without approving or replaying the child',async t=>{
+  let app,calls=0,clock=Date.now();
+  const provider=new FakeModelProvider([
+    ()=>({kind:'tool_proposal',proposal:{toolName:descriptor.name,toolVersion:descriptor.version,arguments:{value:'never'}}}),
+  ]);
+  const gateway=new ModelGateway(provider);
+  const selection={getModelGateway:()=>gateway};
+  const dispatch=createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,getTools:()=>app.tools,...selection});
+  const port=new FakeCoordinationPort(request=>{
+    if(!request.continuation)return {kind:'tool_proposal',proposalId:'expiry-child',
+      toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:SUBAGENT_DISPATCH_TOOL_VERSION,
+      arguments:{subtasks:[{subtaskId:'child',role:'researcher',goal:'Read only after an explicit decision'}]},verification:'mock'};
+    assert.equal(request.continuation.result.failed,1);assert.equal(request.continuation.result.succeeded,0);
+    return {kind:'text',text:'Child authorization expired; no tool action completed',verification:'mock'};
+  });
+  app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',coordination:port,subagentModels:selection,
+    now:()=>new Date(clock),tools:[dispatch,{descriptor,execute:async input=>{calls++;return input;}}],
+    automaticTools:[{toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:SUBAGENT_DISPATCH_TOOL_VERSION}]});
+  t.after(()=>app.close());
+  const client=new Client(app,()=>clock);await client.connect();
+  const parent=await client.call('task.submit',{goal:'Delegate bounded synthetic work',conversationId:'competition'},
+    {idempotencyKey:'expiry-parent',timeoutMs:1_800_000});
+  await until(()=>app.runtime.getTask(parent.taskId).state==='waiting_approval'&&app.activeTaskCount===0);
+  const child=app.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-child`);
+  const approval=app.runtime.getApproval(`agent-run-${child.taskId}-1`);
+  clock=Date.parse(approval.expiresAt);app.runtime.expirePendingApprovals();
+  await until(()=>app.runtime.getTask(parent.taskId).state==='succeeded'&&app.activeTaskCount===0);
+  assert.equal(app.runtime.getTask(child.taskId).state,'failed');
+  assert.equal(app.runtime.getTask(child.taskId).error.code,'TIMEOUT');
+  assert.equal(app.runtime.getApproval(approval.approvalId).resolution.actor,'system');
+  assert.equal(app.runtime.policy.get(approval.approvalId),undefined);
+  assert.equal(calls,0);assert.equal(provider.requests.length,1);
+  assert.equal(port.requests.length,2);assert.match(app.runtime.getTask(parent.taskId).resultSummary,/expired/);
+  assert.equal(app.runtime.readToolExecutions(parent.taskId).length,1,'the original confirmed dispatch is not executed again');
+});

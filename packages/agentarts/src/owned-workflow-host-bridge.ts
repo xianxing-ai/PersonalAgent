@@ -304,6 +304,27 @@ export class OwnedWorkflowHostBridge {
     return {nodeId:proposal.nodeId,proposalId:proposal.proposalId,operationId:proposal.operationId,inputDigest:proposal.inputDigest,
       state,result,evidenceRefs,proof:{...body,signature:this.sign(body)}};
   }
+  /** Host-only fixed projection after its separate export permission. Local execution facts remain unchanged. */
+  projectReceiptResult(request:Pick<OwnedWorkflowAdvanceRequest,'taskId'|'sessionId'|'workflowId'|'controlRevision'>,
+    proposal:WorkflowProposal,receipt:WorkflowReceipt,projection:unknown,
+    authorization:{policyVersion:string;schemaDigest:string;leaseRef:string;stage:string}):WorkflowReceipt {
+    this.options.assertActive(request.taskId,request.controlRevision);
+    const original=this.readReceipt(request,proposal);
+    if(!original||hash(original)!==hash(receipt)||!plain(original.proof)||original.state!=='confirmed'
+      ||!authentic(original.proof,this.sign)||typeof authorization?.policyVersion!=='string'||!authorization.policyVersion
+      ||!/^\w[\w:.-]*$/u.test(authorization.stage)||!authorization.leaseRef||!/^[a-f0-9]{64}$/u.test(authorization.schemaDigest))
+      invalid('Projection requires the exact original confirmed receipt');
+    const confirmed=original!;
+    const {signature:ignored,...body}=confirmed.proof as Record<string,unknown>;
+    const projected=structuredClone(projection),proof={...body,resultDigest:hash(projected),
+      originalResultDigest:hash(confirmed.result),projection:'host-authorized-fixed-fields-v1'};
+    const key='owned-workflow:projection:'+proposal.operationId,
+      audit={originalReceiptDigest:hash(confirmed),originalResultDigest:hash(confirmed.result),projectedResultDigest:hash(projected),...authorization};
+    this.options.checkpoints.writeOnce(request.taskId,key,audit);
+    if(hash(this.options.checkpoints.read(request.taskId,key))!==hash(audit))
+      invalid('Original receipt projection audit cannot change');
+    return {...confirmed,result:projected,proof:{...proof,signature:this.sign(proof)}};
+  }
   migration(previous:WorkflowRevisionIdentity,next:WorkflowRevisionIdentity,invalidatedNodeIds:readonly string[]):WorkflowRevisionMigration {
     this.options.assertActive(next.taskId,next.controlRevision);
     if(previous.taskId!==next.taskId||previous.sessionId!==next.sessionId||previous.workflowId!==next.workflowId

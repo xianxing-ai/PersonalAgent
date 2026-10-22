@@ -1,0 +1,392 @@
+{
+  "version": 1,
+  "profile": "huawei_ict_agentarts",
+  "scope": "explicit cross-PR manual integration; not standalone required CI",
+  "pr491Source": "db87cbd74202c3c36a0907db5a8666898947eaa7",
+  "pr484Source": "e7607ecbb28b201b84b117c5586afa20137b3b52",
+  "stopMainSource": "f89de58a40bf7a2e7257193f9827868f08e0397f",
+  "manualTest": "tests/manual/desktop/model-thinking-authorization.compat.mjs",
+  "testSha256": "a99d09278a7b2e78546eee1d0c3161c919b9075a3b033b9424a1ac54536153ba",
+  "compositions": [
+    {
+      "head": "0b8e6b75f1d3d3cf60a819c3acea905a63c8db29",
+      "includesStopMain": false,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "head": "1c5439077b0c378ef4d7288eb5bbf73cf377a332",
+      "includesStopMain": true,
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "real": {
+    "runtime": true,
+    "policy": true,
+    "toolGateway": true,
+    "questionServiceAndHost": true,
+    "todoModule": true,
+    "desktopDefaultSelection": true
+  },
+  "synthetic": {
+    "coordination": true,
+    "userDecisions": true,
+    "encryptedStorage": true,
+    "modelsCalled": 0,
+    "accountsCalled": 0
+  },
+  "asserted": {
+    "tasks": 5,
+    "confirmedToolAndExportRuns": 3,
+    "shownCards": 4,
+    "defaultModelCheckpoint": {
+      "modelId": "qwen3.8-max",
+      "reasoningEffort": "max"
+    },
+    "manualModelCheckpoint": {
+      "modelId": "deepseek-v4.1-flash",
+      "reasoningEffort": "high"
+    },
+    "oldTaskDestinationNotRebound": true,
+    "exportRuleChangesWithDestination": true,
+    "exactLeaseResultHashAndOriginalQuestion": true,
+    "policyUsesRemaining": 0,
+    "onceCannotAuthorizeNextOperation": true,
+    "sameDestinationPermanentDerivesFreshExactRun": true,
+    "permanentDoesNotAuthorizeOtherModelDestination": true,
+    "differentToolAndScopesReask": true,
+    "settingsOrGlobalSessionPrecondition": false,
+    "globalModelPreferencesUnchanged": true
+  },
+  "dependencyPreparation": {
+    "independentOfflineNpmCi": true,
+    "initialWorkspaceLinkEpermRetriedAsOrdinaryUser": true,
+    "reusedArtifacts": {
+      "sourceHead": "2a2075dd5aafcaec86a7f1b4ec3c6efafcf154c3",
+      "targetHead": "45aefcfcd657de3ce70c64d0b87928b335aa5aea",
+      "commonBuildInputsIdentical": true,
+      "productionBuildInputsIdentical": true,
+      "copiedArtifactFiles": 568,
+      "workspaces": [
+        {
+          "name": "@personal-agent/contracts",
+          "folder": "packages/contracts",
+          "inputTreeSha256": "66a0bd90311cc6b065bf05c0eb0f67796898737f2645a3e300603206804fd49b",
+          "files": 22,
+          "reusedDistSha256": "69b38fdbf4758389918020bb5930524e6b04a2e759385fe712b8036b41e13418"
+        },
+        {
+          "name": "@personal-agent/coordination",
+          "folder": "packages/coordination",
+          "inputTreeSha256": "e8c6fb586df91fe91bf8aa44ec5e4b1e272f187c1216d420476a1423e0c7dc6d",
+          "files": 12,
+          "reusedDistSha256": "7f867ce6036a1621cd244cbd82f6b718439b19ceb5aa477ecec7ced695e61b64"
+        },
+        {
+          "name": "@personal-agent/models",
+          "folder": "packages/models",
+          "inputTreeSha256": "280d48d3407bfb29ab4adb27542aedefa69997155b883944713e9a8115724fe1",
+          "files": 10,
+          "reusedDistSha256": "82cd46e09eb1a345f2227dbff5132bc1b772467dc8947dc14cf3e5fe6fbfe5a2"
+        },
+        {
+          "name": "@personal-agent/agentarts",
+          "folder": "packages/agentarts",
+          "inputTreeSha256": "574376a9bae613f1e20cdf3276a3c6921a0d4d790cf75ce447f80ce48403131b",
+          "files": 42,
+          "reusedDistSha256": "99934be4aeb2d5696e424f6fcaa78bdccd5ab73c9ccdc9be4f06f9c2e0b7c0fb"
+        },
+        {
+          "name": "@personal-agent/agents",
+          "folder": "packages/agents",
+          "inputTreeSha256": "952561f8854d157acb71acc847b5e6359a0776efd8e6bf36250b6c17d7153beb",
+          "files": 2,
+          "reusedDistSha256": "fb14a8d97117e377a47c5655937375b9b60ee464e93e7818a8915248beddf986"
+        },
+        {
+          "name": "@personal-agent/github",
+          "folder": "packages/connectors/github",
+          "inputTreeSha256": "bd52a5071819a8337c23c4847dd1476e52e2f0975b3e859b9cc257abea3f59c7",
+          "files": 22,
+          "reusedDistSha256": "36d2e4b6790ffd7155bfc74d15d61f3e50256bb45fbd75714b80d4ce3c39680f"
+        },
+        {
+          "name": "@personal-agent/coding-tools",
+          "folder": "packages/coding-tools",
+          "inputTreeSha256": "723cfcc8fff3b02ff26926d5034698bbba190d2387761e12621d2bfc7de4a229",
+          "files": 42,
+          "reusedDistSha256": "0648078fc8584f1cc0be4ae03a1d32e1f258ddfab7acfe121418aea38bbf1127"
+        },
+        {
+          "name": "@personal-agent/connector-host",
+          "folder": "packages/connector-host",
+          "inputTreeSha256": "3f2760b81ffc906d0810c1521b69a9b41eb62fea5e9ad71f33366dd0eaa56466",
+          "files": 4,
+          "reusedDistSha256": "5e964667aebc6d575780c85d79082d8b66fb2a31840d4bfa6eb70d89b175254c"
+        },
+        {
+          "name": "@personal-agent/mcp",
+          "folder": "packages/mcp",
+          "inputTreeSha256": "a76152b3f07a93237f43cd69fc1c6692fd440e9a32db0c3741d4f1ce94972c7a",
+          "files": 12,
+          "reusedDistSha256": "d49e333329ea26e72b34f36b3be6199ecee9f6c6a1c59675961ade73d2e6d3f2"
+        },
+        {
+          "name": "@personal-agent/skills",
+          "folder": "packages/skills",
+          "inputTreeSha256": "07ee9eaca8407bc0cc238af7df7a7031d706727227d07caf47fca524e20c772a",
+          "files": 8,
+          "reusedDistSha256": "3ab84cb53a36acdd95bec4b3f672cea69ba1177f2fba409d74991049c07242be"
+        },
+        {
+          "name": "@personal-agent/client",
+          "folder": "packages/client",
+          "inputTreeSha256": "35f5b348793acba0d8a8eb25d0c8bb9b43df5568933f0249be4bb0e94c45f197",
+          "files": 2,
+          "reusedDistSha256": "d5cfd989798aa22ae8392e3f747f54f787945537214fbfe6b9f5d2a3397f4e1b"
+        },
+        {
+          "name": "@personal-agent/knowledge",
+          "folder": "packages/knowledge",
+          "inputTreeSha256": "7c04d42d2ba253abfeb1a37f3589f7790df2194fd749d7a70f2862b457c4f1b2",
+          "files": 22,
+          "reusedDistSha256": "5328814bf97bb25b426dd17fe9b7d10a09b0b9a0c5f331eba473cf7e7637ef71"
+        },
+        {
+          "name": "@personal-agent/goals",
+          "folder": "packages/goals",
+          "inputTreeSha256": "724a23f315bf27c6e72f4c6ca2a9895b62d5d68a745cd2acc18d13a76b91e2a3",
+          "files": 8,
+          "reusedDistSha256": "469cafb0bbddf467ee9684f8f6439838e5daa6d72aea569c66ddfd8ad90559e2"
+        },
+        {
+          "name": "@personal-agent/cognition",
+          "folder": "packages/cognition",
+          "inputTreeSha256": "f187f06d83383164b81c1af988e3998c953ba435750192ed70e4413cf51875d1",
+          "files": 58,
+          "reusedDistSha256": "a2d84a4ca303dc3620985da7ff24dc4bc510f3099a887ddcc1992bda836f930b"
+        },
+        {
+          "name": "@personal-agent/storage",
+          "folder": "packages/storage",
+          "inputTreeSha256": "efed94fe7ed1e3f489b11dd6ccd1955f02cb705aa1f4db8318b0ba0e609bbcc7",
+          "files": 2,
+          "reusedDistSha256": "a1c419df1f38eef64a277a8adb917724141b046ee14b44c99be7b69f5af4c4fd"
+        },
+        {
+          "name": "@personal-agent/learning",
+          "folder": "packages/learning",
+          "inputTreeSha256": "fb94799411354c798db461d4f9a15f9d194cc159441b60a1b7492a1a5f8d4fe7",
+          "files": 6,
+          "reusedDistSha256": "01461fd16e6d0ab6131cc3af6705dcd1156bc2749928980d0bfbe89fcf8a03bc"
+        },
+        {
+          "name": "@personal-agent/mail",
+          "folder": "packages/connectors/mail",
+          "inputTreeSha256": "5f2ae40b01822dac95585faa66560f009894218000ccfd4a333e1b9bbeb8d0e1",
+          "files": 14,
+          "reusedDistSha256": "dc816b919a6dea4aa4da23b41118cf311eba5b6888f1668a7019604956653da8"
+        },
+        {
+          "name": "@personal-agent/calendar",
+          "folder": "packages/connectors/calendar",
+          "inputTreeSha256": "e7af8845aef9cdccb0d06cb546884d592fc905beb198436394ae20e053e32b22",
+          "files": 16,
+          "reusedDistSha256": "6c51e8969e2f6852da789f7d9ff3375c0d0e277349e4b832409cc77b1956dc72"
+        },
+        {
+          "name": "@personal-agent/feeds",
+          "folder": "packages/connectors/feeds",
+          "inputTreeSha256": "0786c6beb79784e61ecf70065a38660455f8dbd117d3f487726ce6bd3c22b8f5",
+          "files": 20,
+          "reusedDistSha256": "ac92bdb5682afd23515a7204ef1ba0da68da1fc5456381442f015923d77e0046"
+        },
+        {
+          "name": "@personal-agent/productivity",
+          "folder": "packages/productivity",
+          "inputTreeSha256": "8e27d861e7504c2fcd82f18f6d38022a6b2dea2adf8bd81d20814d7e478d8b42",
+          "files": 10,
+          "reusedDistSha256": "9ba13dc1e37d82c56a6d26f2317d4baf3fbbc3bc7f635bd0c6018eeeac0f677c"
+        },
+        {
+          "name": "@personal-agent/notifications",
+          "folder": "packages/notifications",
+          "inputTreeSha256": "9c7bba634bb9f83e494d9649c73fd1b88b70418fd2e068c24309e960e048fd56",
+          "files": 8,
+          "reusedDistSha256": "f05eb4ee59449e61c2e82a58ad2764b132186a79127f26045082890f21a16a19"
+        },
+        {
+          "name": "@personal-agent/memory",
+          "folder": "packages/memory",
+          "inputTreeSha256": "590cbceb42325a22ea7c53d602e302d423ddf0ad47ccfc53a66886c4068aa06a",
+          "files": 12,
+          "reusedDistSha256": "8d0e004b3193765ec1b585523e84629d4a164837bd88abf7b972dd46da93f53a"
+        },
+        {
+          "name": "@personal-agent/weather",
+          "folder": "packages/connectors/weather",
+          "inputTreeSha256": "0eb45756dd3fdf17b6b37d47c0bd43020a0a516ede1d7c5a0ce152540bf52b0f",
+          "files": 12,
+          "reusedDistSha256": "1da346717a94a55e47fc9a439a90d2b4c5373389bd1b094a509a2fc05e5999a6"
+        },
+        {
+          "name": "@personal-agent/research",
+          "folder": "packages/connectors/research",
+          "inputTreeSha256": "1ca1dd680665e71349e2d5bb0f315c0450348faeeae91c84dedd885437e32ad7",
+          "files": 14,
+          "reusedDistSha256": "25a29441942718afaf4c6ec8c6dce69e9ff2018cc1348cc41bf3334a45162b14"
+        },
+        {
+          "name": "@personal-agent/policy",
+          "folder": "packages/policy",
+          "inputTreeSha256": "19b2902d72bb6217eea800feeef023a759f3de8472817d7c4dade90e7092cd31",
+          "files": 2,
+          "reusedDistSha256": "97e68a53eedf584771069c579b24eef4c1a96e2d24b1c23c00a41d7704bfa47d"
+        },
+        {
+          "name": "@personal-agent/tool-gateway",
+          "folder": "packages/tool-gateway",
+          "inputTreeSha256": "d9addef372718498e3df6c9fa9e415621fdf90e2a21fd45158701e0a0427a428",
+          "files": 2,
+          "reusedDistSha256": "9cd1c738ac328074b363395fca76d68c271dadb0101057990bf28a22cec988e2"
+        },
+        {
+          "name": "@personal-agent/windows-client",
+          "folder": "packages/windows-client",
+          "inputTreeSha256": "a7cef784789167e73e53c2222df805a45d2a2ceb878004e30c362636f05266c4",
+          "files": 4,
+          "reusedDistSha256": "c3d117729466b60e3294eb9fd18a9f71fa2582cfa0860ec31a190438b80410ed"
+        },
+        {
+          "name": "@personal-agent/runtime",
+          "folder": "apps/runtime",
+          "inputTreeSha256": "5682f9738b61918287319db059b22e8edd99f3dd9dbb3f233488f39ca6f9c8b1",
+          "files": 146,
+          "reusedDistSha256": "73fd21400eb78da58458e861f7bdcab03da613c1a8c2b3bc1bff5cde287413da"
+        },
+        {
+          "name": "@personal-agent/voice-wake",
+          "folder": "packages/voice-wake",
+          "inputTreeSha256": "3c6e5fe28ed04ea798c5be7c860070222677b8095bbc72076fd7a42f3b4c5dea",
+          "files": 6,
+          "reusedDistSha256": "3159148ecba3abad97d2f9e4e3c114a4ad7d06f25b7c3067b0b82ec7c97e2c44"
+        },
+        {
+          "name": "@personal-agent/voice",
+          "folder": "packages/voice",
+          "inputTreeSha256": "efa05efe76293ce97e134722f240cb7b8998f8698d17de7399d0d32aa6a2893f",
+          "files": 28,
+          "reusedDistSha256": "73e73112f914b41a9ee284d0bde6df9bde4815ce8dced09194042d0792209006"
+        }
+      ]
+    },
+    "runtimeRebuiltInComposition": true,
+    "initialBuildBeforeCopyCompletedRejectedMissingModules": true,
+    "correctedSingleRuntimeBuildPassed": true,
+    "fixtureNamespaceFormatErrorCorrected": true,
+    "borrowedMismatchedSourceDist": false
+  },
+  "logs": [
+    {
+      "name": "npm-offline.log",
+      "sha256": "61a42f44f3587c02e81d56e3915e2524bad04721941d818781789659b04e25a3"
+    },
+    {
+      "name": "npm-offline-normal-user.log",
+      "sha256": "9ca0f01af8a5f1b44f1612fc7ad0ccaf48254ec41d79c1ca9c245afe5259cdbd"
+    },
+    {
+      "name": "runtime-build.log",
+      "sha256": "929c77e629e330c3e22684b2fd871a2c0a2c0e62e4e7704638e87db389ae1ac8"
+    },
+    {
+      "name": "runtime-build-complete-inputs.log",
+      "sha256": "1627c92aaf6a8249f75a7948563c5f0b7549024dd4106cb51c5d1549f543be15"
+    },
+    {
+      "name": "run.log",
+      "sha256": "5efe76587f3c959cadc2d31d8b28741dffc56bf4ec230ba0c3d5bf869f52530a"
+    },
+    {
+      "name": "run-valid-namespace.log",
+      "sha256": "92a2ff6155c25efbf6ec2b8d393142eca63ec51917e7a6b9e556aa8cd777a463"
+    }
+  ],
+  "postStopFocused": {
+    "compositionHead": "2de44c1ec689565eedabe90ddaa0ddc35414be3e",
+    "authSourceMerged": "186aaac68debcdd824489689ba22a2828c027f9a",
+    "stopMainSource": "f89de58a40bf7a2e7257193f9827868f08e0397f",
+    "focused": {
+      "files": [
+        "apps/desktop/test/panel-preference-feedback.test.mjs",
+        "apps/desktop/test/workspace-preference-feedback.test.mjs",
+        "apps/desktop/test/panel-task-feedback-order.test.mjs"
+      ],
+      "passed": 30,
+      "failed": 0,
+      "skipped": 0
+    },
+    "renderer": {
+      "state": "passed",
+      "renderer": "actual merged panel source",
+      "bridge": "explicit synthetic",
+      "runtime": "not exercised",
+      "realModelCalls": 0,
+      "checks": [
+        "queue does not submit while running",
+        "stop retains paused draft",
+        "late result remains truncated",
+        "picker and Fast remain usable",
+        "one slider",
+        "no page or console errors"
+      ],
+      "errors": [],
+      "mode": "PA_PICKER_STOP_QA=1",
+      "testSha256": "b5352c66c40586e372450034ef4f3512fbbcadc91f6b0b6ea3be26c93ee80f89",
+      "initialFixtureAttempts": [
+        "legacy hidden #stop selector timed out",
+        "legacy task.cancel expectation timed out; actual unified route is conversation.interrupt"
+      ],
+      "finalVisibleControlAndOriginalRoutePassed": true,
+      "image": {
+        "name": "stop-queue-picker.png",
+        "width": 420,
+        "height": 700,
+        "sha256": "f7dcde9fee94ae339ffa6f1e0806193fdc096e36a73987fea79375242b3ee483",
+        "path": "model-picker-stop-compat-20261021/stop-queue-picker.png"
+      }
+    },
+    "logs": [
+      {
+        "name": "run-with-stop-main.log",
+        "sha256": "9e7fe727f32d7611e467f2c6e1e4f85a8477dc6e9b7e49cffc7e2037cec6244b"
+      },
+      {
+        "name": "stop-model-focused.log",
+        "sha256": "f5a701590b7cd54449ff2af79c0ef130e03d75bb8a36f92b82447d14de3cd423"
+      },
+      {
+        "name": "stop-model-renderer.log",
+        "sha256": "3fa8aef2ab03d38df16f1cd3b821dba26cebc735a513c984188061bc0522a592"
+      },
+      {
+        "name": "stop-model-renderer-visible-control.log",
+        "sha256": "f44f058a12bd1b55bd8054573a46ca9222c39311e31ff4c761f0d37e89a2ab76"
+      },
+      {
+        "name": "stop-model-renderer-conversation-route.log",
+        "sha256": "5420084ba2ee411b2df49d730da8e255c63c1556e9b42d62eee3b4f0f88f80ab"
+      }
+    ]
+  },
+  "limits": {
+    "notStandalonePrRequiredCi": true,
+    "notRealProviderOrAgentArtsAcceptance": true,
+    "noUiOrOsVerificationInThisManualCase": true,
+    "doesNotAuthorizeArbitraryConversationTools": true,
+    "noMergeQueueOrAutoMutation": true
+  }
+}

@@ -16,6 +16,23 @@ function createTempDir(prefix) {
   return mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+test('native fixed Node recipes preserve symlink resolution for checks and project helpers without accepting model argv',t=>{
+  const base=createTempDir('pa-native-node-recipes-');t.after(()=>rmSync(base,{recursive:true,force:true}));
+  const root=path.join(base,'workspace');mkdirSync(root);mkdirSync(path.join(root,'node_modules'));
+  writeFileSync(path.join(root,'index.js'),'1;');writeFileSync(path.join(root,'package.json'),JSON.stringify({scripts:{build:'node index.js',test:'node --test'}}));
+  const helper=path.join(base,'WindowsJobProcessHost.exe'),npm=path.join(base,'npm-cli.js');
+  writeFileSync(helper,'Synthetic helper metadata; never executed');writeFileSync(npm,'Synthetic npm metadata; never executed');
+  const options={workspaceRoot:root,nodeExecutable:process.execPath,jobHelperExecutable:helper,npmCliPath:npm,
+    checkFiles:['index.js'],allowProjectScripts:true,projectScriptEnvSource:{}};
+  const native=buildWorkspaceCommandRecipes({...options,nativeNodeResolution:true});
+  const flags=['--preserve-symlinks','--preserve-symlinks-main'];
+  assert.deepEqual(native.recipes.find(r=>r.id==='node-check').args,[...flags,'--check','index.js']);
+  for(const script of ['build','test'])assert.deepEqual(native.recipes.find(r=>r.id==='npm-'+script).args,
+    ['--cwd',native.workspaceRoot,'--exe',realpathSync.native(process.execPath),'--',...flags,realpathSync.native(npm),'run',script]);
+  const legacy=buildWorkspaceCommandRecipes(options);assert.deepEqual(legacy.recipes.find(r=>r.id==='node-check').args,['--check','index.js']);
+  assert.throws(()=>buildWorkspaceCommandRecipes({...options,nativeNodeResolution:'model-choice'}));
+});
+
 test('candidate npm recipes use empty private config/cache/home and reject later config replacement',async t=>{
   const base=createTempDir('pa-isolated-npm-config-');t.after(()=>rmSync(base,{recursive:true,force:true}));
   const root=path.join(base,'candidate'),profile=path.join(base,'user-profile');mkdirSync(root);mkdirSync(profile);

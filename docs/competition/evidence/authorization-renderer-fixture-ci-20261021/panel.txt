@@ -1,0 +1,29 @@
+✔ next panel expiry includes only valid pending approvals for waiting tasks (2.0257ms)
+✔ actual renderer expiry callback replaces only approval cards and removes expired decisions (1.5917ms)
+✔ expiry callbacks use latest task and approval snapshots rather than the scheduled snapshot (0.6135ms)
+✔ pending and submitted decision locks survive unrelated updates and approval card refresh (1.2708ms)
+✔ actual unload clears expiry timer and ignores an already queued callback (0.51ms)
+✔ long browser delays are capped and elapsed or invalid deadlines schedule no timer (0.5797ms)
+✔ actual submit waits for native preference acknowledgement and a failed flush never submits (6.0902ms)
+✔ failed submit retains draft and operation feedback through ordinary snapshots (1.192ms)
+✔ older submit success cannot clear newer workspace or Host feedback (1.3871ms)
+✔ current submit success clears old operation error while retaining current Host error (1.4118ms)
+✔ Host recovery clears its own feedback but never a newer operation with identical text (0.6872ms)
+✔ feedback-preserving refresh retains newer operation feedback and updates the Host readback (0.9259ms)
+✔ current explicit Wake readback clears old operation feedback and Host recovery keeps ownership (0.6675ms)
+✔ a changed draft remains intact and busy until the receipt settles (0.8046ms)
+✔ panel stop interrupts host playback and cancels active tasks together (2.7568ms)
+✔ panel stop still attempts both channels when voice.stop fails (1.6218ms)
+✔ panel stop still attempts both channels when task.cancel fails (1.2669ms)
+✔ panel natural-language stop remains sendable during work and never submits a new task (2.9962ms)
+✔ panel stop without an active task only interrupts playback (1.2812ms)
+✔ task-row actions retain the like limit and truncate stopped output before the receipt (1.849ms)
+✔ 21 locate requests clear evicted progress and stale replies cannot overwrite a retry (2.6934ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1569.6487

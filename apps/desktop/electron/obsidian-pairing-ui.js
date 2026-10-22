@@ -1,7 +1,7 @@
 import {fileURLToPath} from 'node:url';
 
 /** Dedicated secret-entry window. The regular Renderer never receives the code. */
-export function createObsidianPairingUI({BrowserWindow, ipcMain, dialog, owner}) {
+export function createObsidianPairingUI({BrowserWindow, ipcMain, owner, confirmAuthorization=async()=>false}) {
   let current, closed = false;
   const channel = 'desktop:obsidian-pairing-code';
   ipcMain.handle(channel, (event, code) => {
@@ -37,11 +37,13 @@ export function createObsidianPairingUI({BrowserWindow, ipcMain, dialog, owner})
     async confirm({peer, signal, displayName}) {
       const parent = owner();
       if (closed || signal.aborted || !parent || parent.isDestroyed()) return false;
-      const result = await dialog.showMessageBox(parent, {type: 'question', title: '确认 Obsidian 配对',
-        message: '允许这个插件会话读取所选知识库？',
-        detail: `所选知识库：${displayName}\n插件文件夹：${peer.folder}\n仅私人、本机、只读，最多 15 分钟。\n配对不授权笔记写入、保存长期记忆或云端发送。`,
-        buttons: ['确认只读配对', '取消'], defaultId: 1, cancelId: 1, noLink: true, signal});
-      return result.response === 0 && !signal.aborted && !parent.isDestroyed();
+      const serialized=JSON.stringify({peer,displayName});
+      const isCurrent=()=>!closed&&!signal.aborted&&owner()===parent&&!parent.isDestroyed()
+        &&JSON.stringify({peer,displayName})===serialized;
+      const accepted=await confirmAuthorization({payload:{peer,displayName},scope:{displayName,folder:peer.folder},
+        summary:`允许所选知识库 ${displayName} 与插件 ${peer.folder} 本机只读配对，最多15分钟；不授权笔记写入、长期记忆或云端发送。`.slice(0,512),
+        signal,deadline:new Date(Date.now()+30000).toISOString(),isCurrent});
+      return accepted===true&&isCurrent();
     },
     close() {closed = true; current?.finish(undefined); ipcMain.removeHandler(channel);},
   };

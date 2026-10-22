@@ -1,0 +1,24 @@
+.authorization-question-list{display:grid;gap:12px;margin:12px 0;min-width:0}
+.authorization-question-list[hidden]{display:none}
+.authorization-question-card,.authorization-sandbox-panel{padding:18px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:14px;background:color-mix(in srgb,currentColor 4%,transparent);min-width:0;overflow-wrap:anywhere}
+.authorization-question-card p{margin:8px 0;line-height:1.55}
+.authorization-question-eyebrow{font-size:12px;font-weight:600;opacity:.65}
+.authorization-question-title{font-size:16px;margin:0 0 10px;font-weight:650}
+.authorization-question-sandbox{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin:12px 0;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,currentColor 5%,transparent)}
+.authorization-question-sandbox>span,.authorization-question-sandbox small{font-size:12px;opacity:.7}
+.authorization-question-requirements{padding:0;list-style:none;display:grid;gap:9px;margin:12px 0}
+.authorization-question-requirements li{display:grid;grid-template-columns:90px minmax(0,1fr);gap:3px 10px}
+.authorization-question-requirements small{grid-column:2;font-size:11px;opacity:.65;overflow-wrap:anywhere}
+.authorization-question-hint{font-size:12px;opacity:.7}
+.authorization-question-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.authorization-question-actions button,.authorization-sandbox-panel button{font:inherit;color:inherit;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;background:transparent;padding:8px 12px;min-height:36px;cursor:pointer}
+.authorization-question-actions .authorization-question-primary{background:#2563eb;border-color:#2563eb;color:#fff}
+.authorization-question-actions button:hover:not(:disabled),.authorization-sandbox-panel button:hover:not(:disabled){filter:brightness(.94);box-shadow:0 1px 4px #0001}
+.authorization-question-actions button:focus-visible,.authorization-sandbox-panel :is(button,select):focus-visible{outline:2px solid #3b82f6;outline-offset:3px}
+.authorization-question-actions button:disabled,.authorization-sandbox-panel button:disabled{opacity:.5;cursor:default}
+.authorization-question-status{font-size:12px;min-height:1.5em}
+.authorization-sandbox-panel{margin:0 0 18px}
+.authorization-sandbox-panel select{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;min-height:36px;padding:6px 10px;max-width:100%}
+.authorization-sandbox-rule{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent)}
+.authorization-sandbox-rule p{margin:3px 0}.authorization-sandbox-rule small{opacity:.7}
+@media(max-width:440px){.authorization-question-card{padding:14px}.authorization-question-actions{display:grid;grid-template-columns:1fr}.authorization-question-requirements li{grid-template-columns:1fr}.authorization-question-requirements small{grid-column:1}.authorization-sandbox-rule{align-items:flex-start;flex-direction:column}}

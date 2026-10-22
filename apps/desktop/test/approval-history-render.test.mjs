@@ -47,6 +47,7 @@ test('admin loads redacted history by explicit pages and rereads after approval'
     revision: 2, state, action: 'workspace.read_text', scopes: ['workspace:read'],
     argumentSummary: 'redacted', expiresAt: '2099-01-01T00:00:00.000Z'});
   const invoke = async (name, payload) => {
+    if(name==='authorization.sandbox.read')return {selected:{label:'Synthetic unavailable',mode:'unavailable',revision:0},profiles:[],rules:[]};
     calls.push({name, payload});
     if (name === 'approval.history') {
       if (calls.filter(call => call.name === name).length === 1)

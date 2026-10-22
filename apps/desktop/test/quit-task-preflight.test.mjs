@@ -103,7 +103,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
-    'harnessEventsHost','harnessEventsClosing','harnessContextHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing'];
+    'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
     submitting:new Set(),draftQuitPreflight:{allow:()=>true,commit:()=>true,cancel(){}},

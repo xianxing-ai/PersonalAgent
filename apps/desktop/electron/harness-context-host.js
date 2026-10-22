@@ -43,18 +43,26 @@ export function createDesktopHarnessContextHost({readConfiguration,modelApi,getA
   };
   const summarize=async input=>{
     assertCurrent(input.scope);
+    const source=input.authorizationSource;
+    if(!source||typeof source.configurationRef!=='string'||!source.configurationRef.trim()
+      ||!Number.isSafeInteger(source.sourceCount)||source.sourceCount<1||source.sourceCount>policy.maxSourceMessages
+      ||!['sourceDigest','tailDigest','goalFrameDigest'].every(key=>/^[a-f0-9]{64}$/u.test(source[key]??'')))denied();
+    const sourceBinding=JSON.stringify(source);
+    const policyBinding=hash(JSON.stringify({configurationDigest,destination,policy,conversationId:input.scope.conversationId,
+      cutoff:input.scope.cutoff,source}));
+    const assertSourceBinding=()=>{assertCurrent(input.scope);if(JSON.stringify(input.authorizationSource)!==sourceBinding)denied();};
     const summarizeWithModel=createModelSummarizer({model,configurationRef,maxOutputTokens,now,assertModelConfiguration:assertConfiguration,
       authorizeModelRequest:async(request,scope)=>{
-        assertCurrent(scope);
+        assertSourceBinding();
         const payload={purpose:'conversation_history_summary',destination,request:{messages:structuredClone(request.messages),
           tools:[],requiredCapabilities:['text'],maxOutputTokens:request.maxOutputTokens,deadline:request.deadline}};
         const serialized=JSON.stringify(payload);
         if(/(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+[A-Za-z0-9_.-]{16,}|\bsk-[A-Za-z0-9_-]{16,})/u.test(serialized))denied();
-        if(await confirmExport({taskId:scope.taskId,kind:'harness_context_summary',payload,deadline:scope.deadline,signal:scope.signal})!==true)denied();
-        assertCurrent(scope);
+        if(await confirmExport({taskId:scope.taskId,kind:'harness_context_summary',payload,policyBinding,deadline:scope.deadline,signal:scope.signal})!==true)denied();
+        assertSourceBinding();
       },guardedComplete:async(request,beforeSend)=>{
-        assertCurrent(input.scope);
-        const isolated=modelApi.getGuardedModelGateway(modelId,configurationRef,()=>{assertCurrent(input.scope);beforeSend();});
+        assertSourceBinding();
+        const isolated=modelApi.getGuardedModelGateway(modelId,configurationRef,()=>{assertSourceBinding();beforeSend();});
         if(!isolated)unavailable();
         return isolated.complete(request);
       }});

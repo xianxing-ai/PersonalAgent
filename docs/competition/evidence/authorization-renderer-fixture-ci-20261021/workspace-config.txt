@@ -1,0 +1,9 @@
+✔ project scripts need a trusted helper, factory receipt and separate session consent (1116.7935ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2395.9805

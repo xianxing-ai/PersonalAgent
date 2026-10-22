@@ -1,5 +1,6 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {AsyncLocalStorage} from 'node:async_hooks';
 
 const READ_CHECKPOINT = 'desktop-calendar-read-v1';
 const MEETING_CHECKPOINT = 'desktop-calendar-meeting-v1';
@@ -44,7 +45,7 @@ function itemIdentity(item, accountRef, externalId) {
  * Old items and meeting bindings live in existing Runtime checkpoints, never a
  * second calendar store. Renderer can select IDs, but cannot provide source data.
  */
-export function createDesktopCalendarMeetingHost({config, namespace, readTool,
+export function createDesktopCalendarMeetingHost({config, namespace, readTool, question,
   readArguments, now = Date.now, onUpdate = () => {}}) {
   if (!config || !text(namespace)) throw error('INVALID_ARGUMENT', '日历宿主配置无效');
   const descriptor = readTool?.descriptor;
@@ -55,6 +56,8 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool,
   }
   let application, store, closed = false, activePair, lastTaskId, tail = Promise.resolve();
   const controllers = new Set();
+  const authorization=new AsyncLocalStorage(),prepared=new Map();
+  const questionReady=()=>!question||['prepare','currentRequirement','readResourceGeneration'].every(name=>typeof question[name]==='function');
   const publish = () => {try {onUpdate();} catch {}};
   const binding = () => {
     const value = config.binding();
@@ -64,10 +67,25 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool,
     return value;
   };
   const ready = () => {
-    if (closed || !application || !readTool) {
+    if (closed || !application || !readTool || !questionReady()) {
       throw error('UNSUPPORTED_CAPABILITY', '受控日历单条读取工具尚未接入');
     }
   };
+  function assertRead(entry,scope) {
+    ready();const account=binding(),intent=application.runtime.loadCheckpoint(scope.taskId,READ_CHECKPOINT);
+    if(!entry||scope.signal.aborted||Date.parse(scope.deadline)<=now()||entry.configurationId!==configurationId(account)
+      ||intent?.namespace!==namespace||intent.configurationId!==entry.configurationId||intent.externalId!==entry.externalId
+      ||question.readResourceGeneration(entry.resource)!==entry.resourceGeneration)throw error('UNAUTHORIZED','本次日历读取授权已失效');
+    question.currentRequirement(scope,'calendar-local-read');
+  }
+  const protectedReadTool=readTool&&question?{descriptor:readTool.descriptor,async execute(input,context){
+    const entry=prepared.get(context.runId);
+    if(!entry||entry.scope.taskId!==context.taskId||!isDeepStrictEqual(input,readArguments(binding(),entry.externalId)))throw error('UNAUTHORIZED','读取参数与原问题不匹配');
+    assertRead(entry,context);
+    return authorization.run({entry,scope:context},async()=>{
+      const result=await readTool.execute(input,context);assertRead(entry,context);return result;
+    });
+  }}:readTool;
   function confirmedRead(taskId) {
     ready();
     const account = binding();
@@ -114,7 +132,36 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool,
     return structuredClone(record);
   }
   const host = {
-    tools: readTool ? [readTool] : [],
+    tools: protectedReadTool ? [protectedReadTool] : [],
+    prepareAuthorization(scope) {
+      if(!question||scope.toolName!==descriptor?.name)return;
+      ready();const account=binding(),intent=application.runtime.loadCheckpoint(scope.taskId,READ_CHECKPOINT);
+      if(!scope.runId||intent?.namespace!==namespace||intent.configurationId!==configurationId(account)
+        ||!text(intent.externalId)||scope.signal.aborted||Date.parse(scope.deadline)<=now())throw error('UNAUTHORIZED','原日历读取任务已改变');
+      const resource=config.authorizationResource?.();
+      if(!resource)throw error('UNSUPPORTED_CAPABILITY','日历原配置授权身份不可用');
+      const resourceGeneration=question.readResourceGeneration(resource),entry={scope,resource,resourceGeneration,
+        configurationId:intent.configurationId,externalId:intent.externalId};
+      for(const [key,value]of prepared)if(Date.parse(value.scope.deadline)<=now())prepared.delete(key);
+      const previous=prepared.get(scope.runId);
+      if(previous&&(previous.scope.taskId!==scope.taskId||previous.configurationId!==entry.configurationId||previous.externalId!==entry.externalId))throw error('REVISION_CONFLICT','原读取问题不能更换参数');
+      prepared.set(scope.runId,entry);
+      question.prepare(scope,{requirements:[{requirementId:'calendar-local-read',kind:'connector_session',scopes:['calendar:read'],
+        bindingDigest:configurationId({namespace,resource,resourceGeneration,taskId:scope.taskId,runId:scope.runId,
+          externalId:entry.externalId,deadline:scope.deadline}),
+        ruleBindingDigest:configurationId({namespace,resource,resourceGeneration,toolName:descriptor.name,toolVersion:descriptor.version,
+          projection:descriptor.outputSchema}),summary:'仅从已配置日历读取所选单条事件并在本机展示；不修改日历或发送到云端'}],
+        assertCurrent:()=>{try{const current=binding(),cp=application.runtime.loadCheckpoint(scope.taskId,READ_CHECKPOINT);
+          return !scope.signal.aborted&&Date.parse(scope.deadline)>now()&&configurationId(current)===entry.configurationId
+            &&cp?.configurationId===entry.configurationId&&cp.externalId===entry.externalId
+            &&question.readResourceGeneration(resource)===resourceGeneration;}catch{return false;}}});
+    },
+    // Main injects this into the original read tool's fetch wrapper, after credential await.
+    assertCurrentRead() {
+      if(!question)return;
+      const active=authorization.getStore();if(!active)throw error('UNAUTHORIZED','日历读取没有原执行上下文');
+      assertRead(active.entry,active.scope);
+    },
     bindApplication(value) {
       if (application) throw error('REVISION_CONFLICT', '日历宿主已装配');
       application = value;
@@ -144,7 +191,7 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool,
     },
     snapshot() {
       const saved = config.snapshot();
-      const available = !closed && Boolean(application && readTool && saved.configured);
+      const available = !closed && questionReady() && Boolean(application && readTool && saved.configured);
       let readTask;
       if (available && lastTaskId) {
         try {readTask = host.readTask(lastTaskId);} catch {readTask = {state: 'unavailable', calendarWriteVerified: false};}
@@ -248,6 +295,7 @@ export function createDesktopCalendarMeetingHost({config, namespace, readTool,
       return operation;
     },
     invalidate() {
+      prepared.clear();
       lastTaskId = undefined;
       for (const controller of controllers) controller.abort();
       if (application) {

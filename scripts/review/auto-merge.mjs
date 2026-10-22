@@ -11,9 +11,12 @@ const actionsAppId=15368;
 export function evaluateMerge({pr,mainSha,reviews,checks,statuses,repository,mergeQueueEnabled=false}) {
   if(pr.state!=='open'||pr.draft||pr.merged||pr.base?.ref!=='main'||
     pr.base.repo.full_name!==repository||pr.head?.repo?.full_name!==repository) return 'ineligible PR';
+  // Queue admission checks the latest concrete CI below. GitHub's aggregate
+  // "unstable" state is not itself a conflict; the protected queue still
+  // enforces repository requirements and validates the combined commit.
   if(!/^[a-f0-9]{40}$/.test(pr.head.sha)||
     (!mergeQueueEnabled&&pr.base.sha!==mainSha)||pr.mergeable!==true||
-    !(mergeQueueEnabled?['clean','behind']:['clean']).includes(pr.mergeable_state)) return 'branch protection or main update pending';
+    !(mergeQueueEnabled?['clean','behind','unstable']:['clean']).includes(pr.mergeable_state)) return 'branch protection or main update pending';
   if(!evaluateReviews({headSha:pr.head.sha,author:pr.user.login,reviews}).passed) return 'one eligible non-author approval required';
   const latest=new Map();
   for(const check of checks) {
@@ -57,7 +60,11 @@ export async function readMergeQueueState({repository,number,headSha,token,fetch
   return {enabled:pr.isMergeQueueEnabled,queued:pr.isInMergeQueue,autoMerge:pr.autoMergeRequest!==null};
 }
 
-export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN,fetchImpl=fetch,executeImpl=execute,log=console.log}={}) {
+// The CLI deliberately has no queue writer: its repository GITHUB_TOKEN may
+// suppress the merge_group workflow. A trusted caller can separately supply an
+// authorized external-identity adapter; token strings/actor names are not proof
+// of that identity, and no environment switch enables this capability.
+export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN,fetchImpl=fetch,executeImpl=execute,queueAdmissionImpl,log=console.log}={}) {
   if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!token) throw Error('Missing trusted repository context');
   async function api(route) {
     const response=await fetchImpl('https://api.github.com/repos/'+repository+'/'+route,{
@@ -103,6 +110,10 @@ export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,to
     }
     if(reason) {log('#'+pr.number+': '+reason);continue;}
     if(pr.auto_merge) {log('#'+pr.number+': another auto-merge is already queued');continue;}
+    if(queue.enabled&&typeof queueAdmissionImpl!=='function') {
+      log('#'+pr.number+': eligible, but queue admission requires an authorized external-identity adapter; no request sent');
+      continue;
+    }
     if(!queue.enabled&&await mainSha()!==baselineSha) {
       log('Main SHA changed before merge request');
       return;
@@ -118,7 +129,12 @@ export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,to
     // The short-lived Actions token has no owner bypass. GitHub rechecks all
     // protected-branch rules and atomically matches this exact reviewed head.
     try {
-      await executeImpl('gh',['pr','merge',String(pr.number),'--repo',repository,...(queue.enabled?[]:['--squash']),'--match-head-commit',pr.head.sha],{
+      if(queue.enabled) {
+        // The adapter must use its own verified identity, enforce this exact
+        // head and normal queue rules, and respect any user cancellation.
+        // Never pass the workflow token or fall back to the CLI on failure.
+        await queueAdmissionImpl({repository,number:pr.number,headSha:pr.head.sha});
+      } else await executeImpl('gh',['pr','merge',String(pr.number),'--repo',repository,'--squash','--match-head-commit',pr.head.sha],{
         env:{...process.env,GH_TOKEN:token},timeout:60000,windowsHide:true,maxBuffer:1048576
       });
     } catch(error) {

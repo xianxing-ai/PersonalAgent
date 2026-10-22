@@ -14,8 +14,9 @@ function deferred() {
 }
 
 /** One renderer-owned physical microphone, shared by all trusted Voice sinks. */
-export function createMicrophoneCaptureHost({permissionGate, getPanel, now = Date.now, onLevel} = {}) {
+export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAuthorization=async()=>false, now = Date.now, onLevel} = {}) {
   let authorization;
+  let pendingAuthorization;
   let capture;
   let releaseUnknown = false;
   let lastRelease = {stopped: true, verified: false, reason: 'never_started'};
@@ -26,19 +27,29 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, now = Dat
       ? panel : null;
   }
 
-  function authorize({deadline} = {}) {
+  async function authorize({deadline,purpose='dictation',signal=new AbortController().signal} = {}) {
     if (releaseUnknown) throw Error('上次麦克风释放未确认，不能重新开启');
-    if (capture || authorization) throw Error('麦克风会话已存在');
+    if (capture || authorization || pendingAuthorization) throw Error('麦克风会话已存在');
     const panel = validPanel();
     if (!panel) throw Error('请先显示可信面板');
     // Only the trusted host supplies a longer Live lease; Renderer cannot extend it.
     const expiresAt = deadline === undefined ? now() + 10 * 60_000 : Date.parse(deadline);
     if (!Number.isFinite(expiresAt) || expiresAt <= now() || expiresAt - now() > 120 * 60_000) throw Error('麦克风授权期限无效');
+    if(!['dictation','live','wake'].includes(purpose)||signal.aborted)throw Error('麦克风用途或原操作已失效');
+    const controller=new AbortController(),record={controller,panel,expiresAt,purpose};pendingAuthorization=record;
+    const combined=AbortSignal.any([signal,controller.signal]);
+    const isCurrent=()=>pendingAuthorization===record&&!combined.aborted&&validPanel()===panel&&now()<expiresAt&&!capture&&!authorization;
+    try {
+      const accepted=await confirmAuthorization({purpose,expiresAt:new Date(expiresAt).toISOString(),panelId:panel.webContents.id,
+        signal:combined,isCurrent});
+      if(accepted!==true||!isCurrent())throw Error('本次麦克风用途未获得有效对话卡授权');
+    } finally {if(pendingAuthorization===record)pendingAuthorization=undefined;}
     authorization = {contents: panel.webContents, expiresAt};
     return {authorized: true, expiresAt: new Date(authorization.expiresAt).toISOString()};
   }
 
   function revoke() {
+    pendingAuthorization?.controller.abort();pendingAuthorization=undefined;
     authorization = undefined;
     return capture ? stop(capture, 'revoked') : Promise.resolve();
   }
@@ -46,7 +57,7 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, now = Dat
   function snapshot() {
     return {authorized: Boolean(authorization && now() < authorization.expiresAt),
       active: Boolean(capture?.readyState === 'ready' && !capture.stopPromise),
-      busy: Boolean(capture),
+      busy: Boolean(capture||pendingAuthorization),
       subscriberCount: capture?.sinks.size ?? 0, lastRelease};
   }
 

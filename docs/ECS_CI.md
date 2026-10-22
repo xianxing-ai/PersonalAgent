@@ -70,7 +70,13 @@ main 两项原必需状态名 `check` 与 `ecs-linux-check` 及官方 Actions ap
 
 保留 strict 主线同步、管理员约束、一次有效非作者审批和会话解决规则。首轮需要四位既有协作者之一给出非作者批准；后续 CI 修复提交保留批准，不要求反复审批。显式撤销或 Changes Requested 仍然阻止合并。`Approved PR auto-merge` 从默认分支读取脚本，只处理同仓库到 main 的非 Draft PR；当前 head 的全部检查/状态必须成功。
 
-CI 完成事件触发受保护自动合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话。多条 PR 并行检查，合并请求串行且立即核对 main 是否变化；不再读取 main 的测试结果，也不补发合并后 CI。失败由原作者修复，更新后只测试该 PR 新版本。本 PR 不使用 Owner 审核例外或管理员绕过；原生 ruleset 仅关闭 `dismiss_stale_reviews_on_push`，仍要求一次批准，其他保护不变。AI 暂不启用。
+未启用 Merge Queue 时，CI 完成事件触发受保护自动合并：`gh pr merge --squash --match-head-commit`，由 GitHub 再检查保护和会话。多条 PR 并行检查，合并请求串行且立即核对 main 是否变化；不再读取 main 的测试结果，也不补发合并后 CI。更新后只测试该 PR 新版本。不使用 Owner 审核例外或管理员绕过；仍要求有效批准，其他保护不变。
+
+此防护合入默认分支后，启用 Merge Queue 时 `Approved PR auto-merge` 工作流只评估资格并记录 `no request sent`，不使用内置 `GITHUB_TOKEN` 自动入队。脚本不从 actor 名、token 字符串或缺失元数据推断外部身份，也没有环境变量开关。已有入队项保持不变；用户移出队列后，周期扫描不会将其重新放回。此防护不是全自动入队功能已恢复；尚未合入时，现有默认分支行为不受本 PR 改变。
+
+依据 [GitHub GITHUB_TOKEN 文档](https://docs.github.com/en/actions/concepts/security/github_token)（2026-10-21 核对），该 token 产生的事件通常不创建新工作流，`merge_group` 不在列出的例外中。#470 的自动入队日志、内置 token 接线和对应队列 SHA 零工作流支持事件抑制判断，但不等于已取得 GitHub 服务端投递诊断。不要用源 PR 绿灯替代队列检查，也不要手写成功状态。
+
+恢复单个 PR 时，由已获授权的非此 Actions token 身份在确认用户仍要求入队后执行正常入队，并读回队列 SHA 的真实 Foundation。库函数保留显式 `queueAdmissionImpl` 接口供未来受信调用方接入：它须自行验证执行身份与当前用户授权、遵守取消、匹配传入的精确 head 并使用正常队列保护；函数只传仓库、PR 编号和 head，不传工作流 token。当前 CLI 不提供该适配器，异常不回退到内置 token 或盲重试。新增 App/PAT 或持久凭据配置需单独授权，不在本防护内。
 
 同一 PR 的选中检查并行执行；首个失败会停止该 PR 的剩余检查，其他 PR 继续并行。`CI failure feedback` 在 Foundation 失败或超时完成事件后，从默认分支加载通知脚本，在对应的仍打开且 head 未变的 PR 中 `@原作者`，附实际失败 job 链接。评审者负责审批和验证，不代改代码。同 run/attempt 只通知一次；取消、旧 head、已关闭 PR 和手动探测不通知。通知只读取 API 元数据，不执行失败 PR 的代码或下载其工件。工作流须合入默认分支后才接收真实完成事件；消息到达时间取决于 GitHub 事件和通知投递。
 
@@ -99,6 +105,10 @@ Windows ECS 使用主机负责人安装的 `C:\ProgramData\PersonalAgentCI` 前�
 默认 `PA_IMAGE_RUNNER=auto`。ECS 故障时可将仓库 Actions 变量 `PA_IMAGE_RUNNER` 设为 `github`，取消旧 run 并确认结束，再重新运行全部 jobs，让路由重新选择 GitHub Ubuntu；仅重跑失败 job 会复用旧 route。恢复后删除变量或设回 `auto`。这是显式切换，GitHub 不会因自托管 Runner 离线而自动改派其他系统。不得跳过镜像构建来制造绿灯。
 
 Windows 故障或公共池繁忙时，先查看 GitHub runner 注册、online/busy 状态与 job 是否已领取。可以等待空闲节点；需迁出时设置该 PR 的 `PA_WINDOWS_RUNNER_OVERRIDES` 为 `github`，取消旧 run 并确认已结束，再 **Re-run all jobs**。仅重跑失败 job 会复用旧 route 输出，不能用来切换池。全池故障可设置 `PA_WINDOWS_RUNNER=github`，同时清除冲突的逐 PR override。已领取但资源不足的任务会由主机准入失败；不杀其他进程、不把排队当通过，不假定 GitHub 自动迁移已领取任务。恢复后清除临时 override；已有运行不会因此原地改派。
+
+PR 也可显式添加精确标签 `ci:windows-github`，将所选 Windows 检查迁至普通 GitHub 托管池。路由从现有 PR API 的最后一次读回获取标签，不信任事件载荷里的标签。标签仅能选择 GitHub，不能选择 ECS 或自定义 Runner；先验证原有配置，非法变量或 override 仍失败。有效标签优先于有效的 Windows 变量、逐 PR override 和尾号分流；Linux 选择、平台分类、全部技术检查和合并门禁保持原规则，fork 继续强制隔离，merge group 继续使用既有双托管平台。
+
+添加或移除标签本身不会触发 Foundation，也不会修改已有运行。需要新的既有 PR 事件（例如先添加标签再正常推送代码触发 synchronize），或完整重跑原 PR 的所有 jobs 让 route 重算；仅重跑失败平台不会重算池。标签是池选择，不是健康证明或绿灯捷径；仍须核对准确 head、真实 Runner 和最终必需检查成功。手动 workflow_dispatch 的成功证据与 PR 必需检查的实际接受状态分别核实。
 
 ## 验证与证据
 

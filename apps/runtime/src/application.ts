@@ -1,4 +1,4 @@
-export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL,compileCoordinationGoal} from './application/runtime-application.js';
+export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL,compileCoordinationGoal,withheldExportMessage} from './application/runtime-application.js';
 export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult,RuntimeHarnessScope,
   RuntimeHarnessCandidatesOptions,RuntimeHarnessExperienceHostOptions} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';
@@ -95,6 +95,9 @@ export type {KnowledgeFeedItem, KnowledgeFeedCitation, KnowledgeFeedReceipt, Kno
   KnowledgeFeedQuotedItem} from './application/knowledge-feed-receipt.js';
 export {createReadonlyMcpHost, MCP_READ_TOOL_NAME, MCP_READ_TOOL_VERSION, MCP_READ_SCOPE} from '@personal-agent/mcp';
 export type {ReadonlyMcpOptions, McpHealth} from '@personal-agent/mcp';
+export {AuthorizationQuestions} from './application/authorization-question.js';
+export type {AuthorizationDecision,AuthorizationRequirement,AuthorizationQuestionRequest,AuthorizationQuestionReceipt,
+  AuthorizationQuestionsOptions,AuthorizationSandbox,AuthorizationNativeExecution} from './application/authorization-question.js';
 export {createReferenceSummarySkill, REFERENCE_SUMMARY_SKILL_ID, REFERENCE_SUMMARY_SKILL_VERSION} from '@personal-agent/skills';
 export type {SkillManifest, SkillOutcome, ReferenceSummaryInput, ReferenceSummaryOptions,
   SkillReadReconciliationPort, SkillReadReconciliationQuery} from '@personal-agent/skills';

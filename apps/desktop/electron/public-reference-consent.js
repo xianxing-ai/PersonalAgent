@@ -8,7 +8,7 @@ const sha=value=>typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 /** Native PUBLIC permission only. The original Gateway remains the execution and Evidence source. */
 export function createNativePublicReferenceConsent({readPreflightCandidate,readConfirmedCandidate,
   isTaskCurrent,isCatalogCurrent=()=>false,confirmNative,now=Date.now}) {
-  const permissions=new Map(),catalogs=new Map();let closed=false;
+  const permissions=new Map();let closed=false;
   function candidate(query,confirmed=false) {
     if (closed || !query || !isTaskCurrent(query.taskId)) return undefined;
     const reference={taskId:query.taskId,proposalId:query.proposalId,path:query.path,configurationRef:query.configurationRef};
@@ -38,13 +38,13 @@ export function createNativePublicReferenceConsent({readPreflightCandidate,readC
     async requestCatalog(input,kind,publicParameters) {
       contextCurrent(input);
       if (closed || !['mcp','skill'].includes(kind) || !isTaskCurrent(input.taskId) || !isCatalogCurrent(input)) return false;
-      const id=JSON.stringify([input.taskId,input.configurationRef,kind]),previous=catalogs.get(id);
-      if (previous && previous.expiresAt === input.deadline) return previous.allowed;
+      // Recheck the actual static descriptor/version whitelist each time. A task/config-only
+      // cache cannot prove that a later catalog still contains no private metadata.
       const allowed=await confirmNative({phase:'catalog',query:{taskId:input.taskId,configurationRef:input.configurationRef},
         catalogKind:kind,publicParameters,expiresAt:input.deadline},input);
       contextCurrent(input);
       if (closed || !isTaskCurrent(input.taskId) || !isCatalogCurrent(input)) return false;
-      catalogs.set(id,{allowed:allowed === true,expiresAt:input.deadline});return allowed === true;
+      return allowed === true;
     },
     async requestPreflight(query,context) {
       contextCurrent(context);
@@ -57,6 +57,7 @@ export function createNativePublicReferenceConsent({readPreflightCandidate,readC
       const scope={authorizationId:randomUUID(),expiresAt:value.deadline,sensitivity:'PUBLIC',
         purpose:PURPOSES.get(value.toolName),maxExportBytes};
       const accepted=await confirmNative({phase:'preflight',query:value.query,toolName:value.toolName,
+        readTaskId:value.readTaskId,readRunId:value.runId,
         purpose:scope.purpose,maxExportBytes,expiresAt:scope.expiresAt},context);
       contextCurrent(context);
       if (accepted !== true || !isTaskCurrent(query.taskId) || !isDeepStrictEqual(value,candidate(query))) {
@@ -79,6 +80,7 @@ export function createNativePublicReferenceConsent({readPreflightCandidate,readC
         return {...saved.scope,contentDigest:saved.contentDigest};
       }
       const accepted=await confirmNative({phase:'confirmed',query:value.query,toolName:value.toolName,
+        readTaskId:value.readTaskId,readRunId:value.runId,
         purpose:saved.scope.purpose,contentDigest:value.contentDigest,byteLength:value.byteLength,
         maxExportBytes:saved.scope.maxExportBytes,expiresAt:saved.scope.expiresAt},context);
       contextCurrent(context);
@@ -101,6 +103,6 @@ export function createNativePublicReferenceConsent({readPreflightCandidate,readC
       return {...bound.saved.scope,contentDigest:bound.saved.contentDigest};
     },
     revokeTask(taskId) {for (const [id,value] of permissions) if (JSON.parse(id)[0] === taskId) permissions.delete(id);},
-    close() {closed=true;permissions.clear();catalogs.clear();},
+    close() {closed=true;permissions.clear();},
   };
 }

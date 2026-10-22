@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {mkdirSync,mkdtempSync,rmSync} from 'node:fs';
 import path from 'node:path';
 import {Client} from '@personal-agent/client';
@@ -47,6 +48,8 @@ function fixture(t,patch={}) {
   t.after(()=>{host.dispose();modelApi.dispose();rmSync(root,{recursive:true,force:true});});
   const input={scope:{taskId:'synthetic-task',conversationId:'owned-conversation',cutoff:'synthetic-task',
     deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal},
+    authorizationSource:{configurationRef:'synthetic-original-snapshot',sourceCount:messages.length,
+      sourceDigest:createHash('sha256').update(JSON.stringify(messages)).digest('hex'),tailDigest:'a'.repeat(64),goalFrameDigest:'b'.repeat(64)},
     segment:{index:0,rangeDigest:'synthetic-range',messages:messages.slice(0,2)},maxSummaryCharacters:120,assertBeforeSend(){}};
   return {root,host,options,configuration,configurationRef,modelApi,messages,requests,consents,input,
     setApplication:value=>{application=value;},setPrivate:value=>{privateBinding=value;}};
@@ -64,6 +67,18 @@ test('Synthetic Desktop host uses only the explicitly selected version and asks 
   assert.doesNotMatch(JSON.stringify(f.consents),/synthetic-test-key|apiKey/);
   assert.equal(f.requests[0].model,'synthetic-selected-model');assert.equal(f.requests[0].max_tokens,100);
   assert.equal(f.requests[0].tools,undefined);
+});
+
+test('whole original history range shares one policy binding across segments; another source range cannot inherit it',async t=>{
+  const f=fixture(t);
+  await f.host.runtimeHooks.summarize(f.input);
+  await f.host.runtimeHooks.summarize({...f.input,segment:{...f.input.segment,index:1,rangeDigest:'next-segment',messages:f.messages.slice(2,4)}});
+  assert.equal(f.consents[0].policyBinding,f.consents[1].policyBinding);
+  await f.host.runtimeHooks.summarize({...f.input,authorizationSource:{...f.input.authorizationSource,sourceDigest:'c'.repeat(64)}});
+  assert.notEqual(f.consents[0].policyBinding,f.consents[2].policyBinding);
+  const before=f.consents.length;
+  await assert.rejects(f.host.runtimeHooks.summarize({...f.input,authorizationSource:undefined}),{code:'UNAUTHORIZED'});
+  assert.equal(f.consents.length,before,'missing trusted whole-pass source must not ask or send');
 });
 
 test('Synthetic actual Provider fetch guard rejects withdrawal after awaited credentials before any HTTP',async t=>{
@@ -138,5 +153,6 @@ test('Synthetic full Desktop host to Runtime caller summarizes a long overlay an
     {goal:'Current developer request',conversationId:'owned-conversation'},{idempotencyKey:'full-host',timeoutMs:60000});
   assert.equal((await settled(app,task.taskId)).state,'succeeded');assert.equal(cloud,1);assert.ok(f.requests.length>1);
   assert.equal(f.requests.length,f.consents.length);
+  assert.equal(new Set(f.consents.map(item=>item.policyBinding)).size,1,'the real Runtime passes the same whole-range identity to each segment');
   assert.equal(app.runtime.loadCheckpoint(task.taskId,'competition-context:v1:conversation-compaction:v1').sourceCount,28);
 });
