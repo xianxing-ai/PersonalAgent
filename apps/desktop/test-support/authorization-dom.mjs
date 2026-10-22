@@ -9,6 +9,7 @@ export function authorizationDom() {
     setAttribute(name,value){value=String(value);this.attributes.set(name,value);
       if(name==='class')this.className=value;if(name==='value')this.value=value;
       if(name==='disabled')this.disabled=true;
+      if(name==='open')this.open=true;
       if(name.startsWith('data-'))this.dataset[name.slice(5).replace(/-([a-z])/gu,(_,letter)=>letter.toUpperCase())]=value;}
     hasAttribute(name){return this.attributes.has(name);}
     append(...nodes){for(let node of nodes){if(typeof node==='string'){const text=new Element('text');text.textContent=node;node=text;}
