@@ -123,3 +123,26 @@ test('取消与更新的参数名同时暴露 externalId 与 uid', () => {
     }
   } finally {unregister();}
 });
+
+/**
+ * 2026-10-22 实测：取消已落盘（回执 state:"cancelled"、Radicale 条目已删除），
+ * 但回答写成"操作被中止、未产生任何更改"——`cancelled` 的英文歧义被读成过程而非效果。
+ * 输出 schema 不随目录下发给模型，所以效果必须由回执自身的陈述句固定。
+ */
+test('写操作回执带无歧义的 summary，区分“已取消”与“操作被取消”', async () => {
+  const f = fixture();
+  try {
+    const created = await f.host.invoke('calendar.create', {summary: '回执措辞',
+      startUtc: '2026-10-21T07:00:00.000Z', endUtc: '2026-10-21T08:00:00.000Z'}, ctx());
+    assert.match(created.summary, /已创建/);
+    const updated = await f.host.invoke('calendar.update', {uid: created.item.externalId, summary: '改名'}, ctx());
+    assert.match(updated.summary, /已更新/);
+    const cancelled = await f.host.invoke('calendar.cancel', {externalId: created.item.externalId}, ctx());
+    assert.equal(cancelled.state, 'cancelled');
+    assert.match(cancelled.summary, /已取消/);
+    assert.doesNotMatch(cancelled.summary, /操作/);
+    const again = await f.host.invoke('calendar.cancel', {externalId: created.item.externalId}, ctx());
+    assert.equal(again.state, 'already_absent');
+    assert.match(again.summary, /原本就不存在/);
+  } finally {f.unregister();}
+});
