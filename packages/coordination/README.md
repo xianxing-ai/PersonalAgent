@@ -94,12 +94,18 @@ immediately before send. It never sends a query during the handshake. Default
 TLS verification remains enabled; redirects, compression and binary application
 frames are disabled. The same final guards run before an allowed HTTPS fallback.
 
-Automatic fallback requires an opt-in and a connection failure before any invoke
-was sent. HTTP 401/403, a rejected Upgrade, incompatible ready/protocol, and any
-post-send disconnection do not trigger a replay. State observations contain only
-`state`, hashed `sessionId`, and an optional `requestId`; `https_fallback` makes
-degradation visible to the trusted host. Observation failures do not change the
-invocation outcome. Cancellation sends a bound best-effort cancel and drops late
+Automatic fallback requires an opt-in and a connection failure or a valid HTTP
+4xx/5xx Upgrade rejection before any invoke was sent. HTTP 401/403, redirects,
+invalid statuses, incompatible ready/protocol, and every post-send unknown do
+not trigger a replay. HTTPS retains the exact configured gateway, runtime and
+endpoint pin; it never resolves or switches to a different Latest deployment.
+State observations contain `state`, hashed `sessionId`, an optional `requestId`,
+and fixed transport/deployment selection metadata for an attempted fallback.
+`deploymentVersion` names only an explicit pin; an unpinned `latest` selection
+does not claim a resolved version. `https_fallback` is emitted only after the
+final guards and fetch entry, making the actual attempt visible to the trusted
+host. Observation failures do not change the invocation outcome.
+Cancellation sends a bound best-effort cancel and drops late
 results; this is not proof that remote work has stopped. The original deadline
 and cancellation result still take precedence.
 

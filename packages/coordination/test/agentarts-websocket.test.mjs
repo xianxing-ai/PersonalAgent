@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {AgentArtsCloudAgentPort, AgentArtsResultUnknownError, CompetitionCoordinator} from '../dist/index.js';
+import {AgentArtsBeforeInvokeError, AgentArtsCloudAgentPort, AgentArtsResultUnknownError, CompetitionCoordinator} from '../dist/index.js';
 import {SyntheticWebSocket, identity, events} from './fixtures/websocket.mjs';
 
 const config = {gatewayUrl: 'https://agentarts.example.test', runtimeName: 'synthetic', transport: 'wss',
@@ -12,7 +12,7 @@ const answer = (frame, socket) => {
 };
 
 function harness({respond = answer, autoReady = true, config: overrides = {}, beforeSend,
-  beforeCatalog, authorization = () => 'Bearer synthetic-outer', appAuthorization} = {}) {
+  beforeCatalog, authorization = () => 'Bearer synthetic-outer', appAuthorization, onDispatch} = {}) {
   const sockets = [], connects = [], states = [], http = [];
   let authorizationReads = 0;
   const port = new AgentArtsCloudAgentPort({...config, ...overrides},
@@ -22,7 +22,7 @@ function harness({respond = answer, autoReady = true, config: overrides = {}, be
     {...(appAuthorization ? {authorizationProvider: {read: async () => appAuthorization()}} : {}),
       factory: (url, options) => { connects.push({url, options});
         const socket = new SyntheticWebSocket(respond, {autoReady}); sockets.push(socket); return socket; },
-      onState: state => states.push(state)});
+      onState: state => states.push(state), onDispatch});
   return {port, sockets, connects, states, http, get reads() { return authorizationReads; }};
 }
 
@@ -91,7 +91,98 @@ test('an invoke-never-sent connection error visibly uses the same HTTPS target w
     assert.equal(h.http[0].init.headers['X-PA-Agent-Token'], 'Bearer synthetic-outer');
     assert.deepEqual(JSON.parse(h.http[0].init.body), {query: 'Analyze synthetic data'});
     assert.equal(h.states.some(state => state.state === 'https_fallback'), true);
+    const fallback=h.states.find(state=>state.state==='https_fallback');
+    assert.equal(fallback.transport,'https');assert.equal(fallback.deploymentSelection,'latest');
+    assert.equal(fallback.deploymentVersion,undefined,'an unpinned request does not invent the actual Latest version');
   } finally { h.port.close(); }
+});
+
+test('non-auth HTTP Upgrade failures before invoke use one configured same-pin HTTPS attempt with visible identity', async t => {
+  for (const status of [400,404,405,410,426,429,500,502,503,504]) await t.test(String(status),async()=>{
+    const dispatches=[],version='configured-version-r3';
+    const h=harness({autoReady:false,config:{allowHttpsFallback:true,websocketUrl:config.websocketUrl+'?endpoint='+version},
+      onDispatch:(_request,receipt)=>{dispatches.push(receipt);}});
+    try {
+      const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(setImmediate);
+      h.sockets[0].emit('unexpected-response',{}, {statusCode:status,resume(){},
+        get body(){throw Error('PRIVATE_BODY');},get headers(){throw Error('PRIVATE_HEADERS');}});
+      assert.equal((await pending).text,'HTTPS answer');
+      assert.equal(h.sockets[0].sent.length,0);assert.equal(h.http.length,1);assert.equal(dispatches.length,1);
+      assert.equal(h.http[0].url,'https://agentarts.example.test/runtimes/synthetic/invocations?endpoint='+version);
+      const state=h.states.find(item=>item.state==='https_fallback');
+      assert.deepEqual(state,{state:'https_fallback',sessionId:dispatches[0].sessionId,requestId:dispatches[0].requestId,
+        transport:'https',deploymentSelection:'pinned',deploymentVersion:version});
+      assert.equal(state.requestId,h.http[0].init.headers['X-Request-Id']);
+      assert.equal(JSON.stringify(h.states).includes('PRIVATE_'),false);
+    }finally{h.port.close();}
+  });
+});
+
+test('Upgrade fallback stays disabled for auth, redirects, invalid HTTP statuses or absent opt-in',async()=>{
+  for(const status of [401,403,302,101,'404',404.5,600,undefined]) {
+    const h=harness({autoReady:false,config:{allowHttpsFallback:true}});
+    try {
+      const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(setImmediate);
+      h.sockets[0].emit('unexpected-response',{}, {statusCode:status,resume(){}});
+      await assert.rejects(pending,{code:status===401||status===403?'UNAUTHORIZED':'UNSUPPORTED_CAPABILITY'});
+      assert.equal(h.http.length,0);assert.equal(h.sockets[0].sent.length,0);
+      assert.equal(h.states.some(item=>item.state==='https_fallback'),false);
+    }finally{h.port.close();}
+  }
+  const h=harness({autoReady:false});
+  try {
+    const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(setImmediate);
+    h.sockets[0].emit('unexpected-response',{}, {statusCode:404,resume(){}});
+    await assert.rejects(pending,{code:'UNSUPPORTED_CAPABILITY'});assert.equal(h.http.length,0);
+  }finally{h.port.close();}
+});
+
+test('an Upgrade-shaped failure after invoke send remains unknown and cannot replay through HTTPS',async()=>{
+  for(const accepted of [false,true]){
+    const h=harness({config:{allowHttpsFallback:true},respond(frame,socket){
+      if(frame.type==='invoke'){
+        if(accepted)socket.accepted(frame);
+        socket.emit('unexpected-response',{}, {statusCode:404,resume(){}});
+      }
+    }});
+    try {
+      await assert.rejects(h.port.invoke(request()),error=>{
+        assert.ok(error instanceof AgentArtsResultUnknownError);assert.equal(error instanceof AgentArtsBeforeInvokeError,false);
+        assert.equal(error.receipt.accepted,accepted);return true;
+      });
+      assert.equal(h.sockets[0].sent.filter(frame=>frame.type==='invoke').length,1);assert.equal(h.http.length,0);
+      assert.equal(h.states.some(item=>item.state==='https_fallback'),false);
+    }finally{h.port.close();}
+  }
+});
+
+test('only locally proven pre-invoke WSS failures retain the public safe error type',async()=>{
+  for(const failure of ['connection',401,403,404,426]){
+    const h=harness({autoReady:false});
+    try {
+      const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(setImmediate);
+      if(failure==='connection')h.sockets[0].emit('error',Object.assign(Error('PRIVATE_BODY'),{code:'EXTERNAL_FAILURE'}));
+      else h.sockets[0].emit('unexpected-response',{}, {statusCode:failure,resume(){}});
+      await assert.rejects(pending,error=>{
+        assert.ok(error instanceof AgentArtsBeforeInvokeError);assert.equal(error instanceof AgentArtsResultUnknownError,false);
+        assert.equal(error.retryable,false);assert.doesNotMatch(error.message,/PRIVATE_/);return true;
+      });
+      assert.equal(h.sockets[0].sent.length,0);assert.equal(h.http.length,0);
+    }finally{h.port.close();}
+  }
+  const denied=harness({beforeSend:()=>{throw Object.assign(Error('PRIVATE_GUARD'),{name:'AgentArtsBeforeInvokeError'});}});
+  try {
+    await assert.rejects(denied.port.invoke(request()),error=>{
+      assert.equal(error instanceof AgentArtsBeforeInvokeError,false);assert.equal(error.code,'UNAUTHORIZED');return true;
+    });
+  }finally{denied.port.close();}
+  const http=new AgentArtsCloudAgentPort({gatewayUrl:config.gatewayUrl,runtimeName:config.runtimeName},
+    {read:async()=> 'Bearer fixture'},async()=>{throw Error('PRIVATE_HTTP');});
+  try {
+    await assert.rejects(http.invoke(request()),error=>{
+      assert.equal(error instanceof AgentArtsBeforeInvokeError,false);assert.doesNotMatch(error.message,/PRIVATE_/);return true;
+    });
+  }finally{http.close();}
 });
 
 test('no fallback when disabled, on authentication rejection, or on incompatible protocol', async t => {
