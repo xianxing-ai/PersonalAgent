@@ -93,15 +93,67 @@ async function closeDesktop(app) {
 }
 
 async function openSettings(session, section) {
-  const response = await session.panel.evaluate(page => window.desktop.invoke('admin.open', {page}), section);
-  assert.equal(response.ok, true, 'production settings must open');
-  const admin = await pageFor(session.app, 'admin');
-  const navigation=admin.locator(`.side [data-page="${section}"]`);
-  await navigation.waitFor();
-  if(await navigation.getAttribute('aria-current')!=='page')await navigation.click();
-  await admin.waitForFunction(page => document.querySelector(`[data-page="${page}"]`)
-    ?.getAttribute('aria-current') === 'page', section);
-  return admin;
+  assert.ok(['environment','connections','models','memory'].includes(section),'only the declared settings pages may be opened');
+  const entry={requested:section,state:'pending'};
+  if(session.report)(session.report.settingsNavigation??=[]).push(entry);
+  let admin;
+  try {
+    const response = await session.panel.evaluate(page => window.desktop.invoke('admin.open', {page}), section);
+    assert.equal(response.ok, true, 'production settings must open');
+    admin = await pageFor(session.app, 'admin');
+    const host=(await snapshot(admin)).adminNavigation;
+    assert.ok(Number.isSafeInteger(host?.revision)&&host.revision>=0,'original host navigation revision must be available');
+    entry.host={page:host.page,revision:host.revision};
+    // IPC acceptance and the old sidebar highlight are not render completion.
+    // First consume the host revision, then use the ordinary sidebar if needed.
+    await admin.waitForFunction(revision=>Number(document.querySelector('.main')?.dataset.navigationRevision)>=revision
+      &&document.querySelector('.main')?.getAttribute('aria-busy')==='false',host.revision);
+    const navigation=admin.locator(`.side [data-page="${section}"]`);
+    await navigation.waitFor({state:'visible'});
+    if(await navigation.getAttribute('aria-current')!=='page')await navigation.click();
+    await admin.waitForFunction(({page,revision})=>{
+      const main=document.querySelector('.main');
+      return main?.dataset.section===page&&main.getAttribute('aria-busy')==='false'
+        &&Number(main.dataset.navigationRevision)>=revision&&document.querySelector('#content')?.dataset.section===page
+        &&document.querySelector(`.side [data-page="${page}"]`)?.getAttribute('aria-current')==='page';
+    },{page:section,revision:host.revision});
+    const control=section==='environment'?'[data-workspace="select"]'
+      :['connections','memory'].includes(section)?'[data-laya="start"]':'#content .model-page';
+    await admin.locator(control).waitFor({state:'visible'});
+    entry.observed=await settingsNavigationState(admin);
+    assert.equal(entry.observed.section,section,'the completed settings body must match the requested page');
+    assert.equal(entry.observed.contentSection,section,'the settings content must match the requested page');
+    entry.state='ready';
+    return admin;
+  } catch(error) {
+    entry.state='failed';
+    if(admin)entry.observed=await settingsNavigationState(admin).catch(()=>({state:'unavailable'}));
+    throw error;
+  }
+}
+
+async function settingsNavigationState(admin) {
+  return admin.evaluate(()=>{
+    const pages=['settings','import','profile','appearance','voice','notifications','configuration','personalization','pets',
+      'shortcuts','usage','analytics','account','computer','capabilities','browser','hooks','connections','git','environment',
+      'worktrees','tasks','authorizations','models','memory','archive','overview'];
+    const page=value=>pages.includes(value)?value:'unknown';
+    const main=document.querySelector('.main'),content=document.querySelector('#content');
+    const control=selector=>{
+      const element=document.querySelector(selector);
+      if(!element)return{attached:false,visible:false};
+      const bounds=element.getBoundingClientRect(),style=getComputedStyle(element);
+      return{attached:element.isConnected,visible:element.checkVisibility(),enabled:!element.disabled,
+        hiddenAncestor:Boolean(element.closest('[hidden]')),display:style.display,visibility:style.visibility,
+        width:Math.round(bounds.width),height:Math.round(bounds.height)};
+    };
+    const revision=Number(main?.dataset.navigationRevision);
+    return{section:page(main?.dataset.section),contentSection:page(content?.dataset.section),
+      navigationRevision:Number.isSafeInteger(revision)&&revision>=0?revision:null,
+      selected:page(document.querySelector('.side [data-page][aria-current="page"]')?.dataset.page),
+      busy:main?.getAttribute('aria-busy')??'unknown',layaStart:control('[data-laya="start"]'),
+      workspaceSelect:control('[data-workspace="select"]')};
+  });
 }
 
 async function originalQuestionBinding(database,sourceTaskId,question) {
@@ -209,7 +261,7 @@ async function launch({executablePath,userData,workspace,node,npm,fixture}, repo
       urlEndpoint:(()=>{try{return new URL(value.agentArts?.websocketUrl).searchParams.get('endpoint')??'';}catch{return '';}})(),
       platformVersionReadback:'not_run'};
     report.launches = (report.launches ?? 0) + 1;
-    return {app,panel,orb};
+    return {app,panel,orb,report};
   } catch(error) {
     await closeDesktop(app);
     throw error;
@@ -584,7 +636,8 @@ async function main() {
       try{report.nativeActions=await session.app.evaluate(()=>globalThis.__pelicanNativeActions);}catch{}
       try{await captureMode(session.app,'panel',path.join(output,'desktop-failed.png'));}catch{}
       try{const admin=session.app.windows().find(page=>page.url().includes('mode=admin'));
-        if(admin)await captureMode(session.app,'admin',path.join(output,'settings-failed.png'));}catch{}
+        if(admin){report.settingsFailure=await settingsNavigationState(admin);
+          await captureMode(session.app,'admin',path.join(output,'settings-failed.png'));}}catch{}
       await closeDesktop(session.app);session=undefined;
     }
     if(report.sourceTaskId) {
@@ -597,7 +650,8 @@ async function main() {
   }
 }
 
-module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot,originalQuestionBinding,approveOriginalQuestion};
+module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot,originalQuestionBinding,
+  approveOriginalQuestion,openSettings,settingsNavigationState};
 if(require.main===module)main().catch(error=>{
   console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
     message:String(error?.message??'Acceptance prerequisites are unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));
