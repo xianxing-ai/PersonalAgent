@@ -3053,10 +3053,11 @@ async function action(event, name, payload) {
   }
   if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; stopOrbDrag(); panelDragOrigin = undefined; away = Date.now() + 400; return; }
   if (name === 'app.quit') { app.quit(); return; }
-  if (name === 'agentarts.configure') {
+  if (name === 'agentarts.configure'||name==='agentarts.restoreDefaultConnection') {
     if (sender!==admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
       || runtimeStartup.snapshot().state==='starting') throw Error('请在任务、通话及启动结束后从设置配置 AgentArts');
-    const result=agentArtsConfig.configure(payload);
+    if(name==='agentarts.restoreDefaultConnection'&&payload!==undefined)throw Error('恢复默认连接不接受额外参数');
+    const result=name==='agentarts.restoreDefaultConnection'?agentArtsConfig.restoreDefaultConnection():agentArtsConfig.configure(payload);
     cloudRequestFailureNotice = '';
     try {
       const startup = await runtimeStartup.start();
