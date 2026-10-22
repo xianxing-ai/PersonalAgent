@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "scope": "real_public_dedicated_radicale_only",
+  "fakeModel": false,
+  "fakeProvider": false,
+  "userPrivateCalendarTested": false,
+  "cases": [
+    {
+      "mode": "restricted",
+      "status": "passed_real_public_radicale_calendar_update",
+      "startedAt": "2026-10-22T08:15:24.655Z",
+      "finishedAt": "2026-10-22T08:15:50.257Z",
+      "source": {
+        "mainSha256": "283a916ecfe122f41d72f2eeefccfd33ef5dee5a3299dc268be580ec3e79f14b",
+        "runnerSha256": "9503ed8ab9586473433db6f57b373ff4346cd88e587791d517c27246a8a3d45f"
+      },
+      "fixture": {
+        "uid": "pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+        "before": {
+          "uid": "pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+          "summary": "Public calendar original pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+          "startUtc": "2026-10-23T08:16:00.000Z",
+          "endUtc": "2026-10-23T09:16:00.000Z"
+        },
+        "expected": {
+          "uid": "pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+          "summary": "Public calendar updated pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+          "startUtc": "2026-10-23T10:16:00.000Z",
+          "endUtc": "2026-10-23T11:16:00.000Z"
+        }
+      },
+      "cards": {
+        "count": 1,
+        "pending": 0,
+        "decidedCardsRemoved": true,
+        "allowedSnapshotHistory": true
+      },
+      "cardObservation": {
+        "ids": [
+          "4d814c76-3940-4dba-aca8-4663d3994ab0"
+        ],
+        "remaining": 0
+      },
+      "persistence": {
+        "parentTaskId": "d3feed8a-0d2c-45cf-a9fa-70b01d559718",
+        "parentState": "succeeded",
+        "children": [
+          {
+            "taskId": "e4e21ffd-cb45-4092-8833-38a0114bed68",
+            "state": "succeeded"
+          }
+        ],
+        "update": {
+          "taskId": "e4e21ffd-cb45-4092-8833-38a0114bed68",
+          "runId": "competition-tool-e4e21ffd-cb45-4092-8833-38a0114bed68-1",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        "cloudRequests": [
+          {
+            "requestId": "b4a681cb-2be2-42b7-89ea-41ba838be215",
+            "revision": 5,
+            "recordedAt": "2026-10-22T08:15:30.911Z"
+          },
+          {
+            "requestId": "d01cc7be-c81a-4c80-945b-dfca2a7914c9",
+            "revision": 11,
+            "recordedAt": "2026-10-22T08:15:36.900Z"
+          }
+        ]
+      },
+      "closedReadback": {
+        "parentTaskId": "d3feed8a-0d2c-45cf-a9fa-70b01d559718",
+        "parentState": "succeeded",
+        "children": [
+          {
+            "taskId": "e4e21ffd-cb45-4092-8833-38a0114bed68",
+            "state": "succeeded"
+          }
+        ],
+        "update": {
+          "taskId": "e4e21ffd-cb45-4092-8833-38a0114bed68",
+          "runId": "competition-tool-e4e21ffd-cb45-4092-8833-38a0114bed68-1",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        "cloudRequests": [
+          {
+            "requestId": "b4a681cb-2be2-42b7-89ea-41ba838be215",
+            "revision": 5,
+            "recordedAt": "2026-10-22T08:15:30.911Z"
+          },
+          {
+            "requestId": "d01cc7be-c81a-4c80-945b-dfca2a7914c9",
+            "revision": 11,
+            "recordedAt": "2026-10-22T08:15:36.900Z"
+          }
+        ]
+      },
+      "independentGet": {
+        "verified": true,
+        "strongEtagChanged": true,
+        "sequenceDelta": 1,
+        "stableAfterDesktopClose": true
+      },
+      "before": {
+        "sequence": 0,
+        "uid": "pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+        "summary": "Public calendar original pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+        "startUtc": "2026-10-23T08:16:00.000Z",
+        "endUtc": "2026-10-23T09:16:00.000Z",
+        "etagDigest": "c0268aaf4ccb6d3cb86babb9cfd50f706f83b7613e7c7a2b8eede2b8c7556cb0"
+      },
+      "after": {
+        "sequence": 1,
+        "uid": "pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+        "summary": "Public calendar updated pa-public-33b6a2d9-f286-4b8c-a61b-40b911095160",
+        "startUtc": "2026-10-23T10:16:00.000Z",
+        "endUtc": "2026-10-23T11:16:00.000Z",
+        "etagDigest": "05bf4126682b6b89420d89f186cb458497b014d4ca6a59a17613052449a53b82"
+      },
+      "sourceReceiptSha256": "28b66c6a1e8655c2fb4f7674ec07069a480d5d0519ee534e2cbc1bbdff20946b"
+    },
+    {
+      "mode": "full-access",
+      "status": "passed_real_public_radicale_calendar_update",
+      "startedAt": "2026-10-22T08:11:21.906Z",
+      "finishedAt": "2026-10-22T08:11:46.379Z",
+      "source": {
+        "mainSha256": "9203b6735d50cc23c70ad0018ed58cbe6378bd7a8237fc41d1444b30ebffea74",
+        "runnerSha256": "f490f5811a1aa386b144b7c980d79ce0ed004fc51341240e09a83e44477765aa"
+      },
+      "fixture": {
+        "uid": "pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+        "before": {
+          "uid": "pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+          "summary": "Public calendar original pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+          "startUtc": "2026-10-23T08:12:00.000Z",
+          "endUtc": "2026-10-23T09:12:00.000Z"
+        },
+        "expected": {
+          "uid": "pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+          "summary": "Public calendar updated pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+          "startUtc": "2026-10-23T10:12:00.000Z",
+          "endUtc": "2026-10-23T11:12:00.000Z"
+        }
+      },
+      "cards": {
+        "count": 0,
+        "pending": 0,
+        "decidedCardsRemoved": true,
+        "allowedSnapshotHistory": true
+      },
+      "cardObservation": {
+        "ids": [],
+        "remaining": 0
+      },
+      "persistence": {
+        "parentTaskId": "5ce538ed-00a3-49d7-a6fc-f6f8a9d23040",
+        "parentState": "succeeded",
+        "children": [
+          {
+            "taskId": "5426e313-9c24-4f88-9a0b-304ae0105377",
+            "state": "succeeded"
+          }
+        ],
+        "update": {
+          "taskId": "5426e313-9c24-4f88-9a0b-304ae0105377",
+          "runId": "competition-tool-5426e313-9c24-4f88-9a0b-304ae0105377-1",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        "cloudRequests": [
+          {
+            "requestId": "899e3a34-4bcd-4921-9295-66bd05601c02",
+            "revision": 5,
+            "recordedAt": "2026-10-22T08:11:31.704Z"
+          },
+          {
+            "requestId": "cfbf4c1e-6dbe-4ba4-b042-ca735c783dff",
+            "revision": 11,
+            "recordedAt": "2026-10-22T08:11:37.770Z"
+          }
+        ]
+      },
+      "closedReadback": {
+        "parentTaskId": "5ce538ed-00a3-49d7-a6fc-f6f8a9d23040",
+        "parentState": "succeeded",
+        "children": [
+          {
+            "taskId": "5426e313-9c24-4f88-9a0b-304ae0105377",
+            "state": "succeeded"
+          }
+        ],
+        "update": {
+          "taskId": "5426e313-9c24-4f88-9a0b-304ae0105377",
+          "runId": "competition-tool-5426e313-9c24-4f88-9a0b-304ae0105377-1",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        "cloudRequests": [
+          {
+            "requestId": "899e3a34-4bcd-4921-9295-66bd05601c02",
+            "revision": 5,
+            "recordedAt": "2026-10-22T08:11:31.704Z"
+          },
+          {
+            "requestId": "cfbf4c1e-6dbe-4ba4-b042-ca735c783dff",
+            "revision": 11,
+            "recordedAt": "2026-10-22T08:11:37.770Z"
+          }
+        ]
+      },
+      "independentGet": {
+        "verified": true,
+        "strongEtagChanged": true,
+        "sequenceDelta": 1,
+        "stableAfterDesktopClose": true
+      },
+      "before": {
+        "sequence": 0,
+        "uid": "pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+        "summary": "Public calendar original pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+        "startUtc": "2026-10-23T08:12:00.000Z",
+        "endUtc": "2026-10-23T09:12:00.000Z",
+        "etagDigest": "6d3b6d3fffa7ac351b7b93c8ca014d5b23fdcfc29d8d9d3ccf6b22d7b037959e"
+      },
+      "after": {
+        "sequence": 1,
+        "uid": "pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+        "summary": "Public calendar updated pa-public-e1b16c37-d512-481b-a89c-1ce92c3377ad",
+        "startUtc": "2026-10-23T10:12:00.000Z",
+        "endUtc": "2026-10-23T11:12:00.000Z",
+        "etagDigest": "4d9f2645daad8846b6c79f954a430451d143c117266d6f9370ea7787f8f99c00"
+      },
+      "sourceReceiptSha256": "998d3f7fac581b028377067b1cb83e0e3ad3c5eb55d38e722221f5c09a221cfb"
+    }
+  ]
+}
