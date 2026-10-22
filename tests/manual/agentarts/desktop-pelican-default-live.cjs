@@ -610,11 +610,11 @@ async function main() {
         const binding=await originalQuestionBinding(database,source.taskId,pending);
         if(pending.sandbox?.native?.required===true)assert.ok(pending.sandbox.native.available===true&&pending.sandbox.native.enforced===true,
           'a missing native process boundary cannot be approved as available');
+        assert.ok(!workflowMode||report.approvals.length<3,'one original F15 repair must use at most three core question cards');
         const decision=await approveOriginalQuestion(session.panel,pending);
         report.approvals.push({questionId:pending.questionId,approvalId:pending.sourceApprovalId,taskId:pending.taskId,
           revision:pending.revision,toolName:pending.toolName,...binding,decision,
           requirements:pending.requirements.map(({requirementId,kind,scopes})=>({requirementId,kind,scopes}))});persist();
-        assert.ok(!workflowMode||report.approvals.length<=3,'one original F15 repair must use at most three core question cards');
       }
       return undefined;
     },deadline+15_000,'production task terminal readback');
