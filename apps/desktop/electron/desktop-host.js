@@ -41,38 +41,39 @@ export function createDesktopHost() {
     } catch { /* Diagnostics must not take down desktop windows. */ }
   }
   function logAgentArtsFailure(receipt) {
+    // Read own data once: diagnostics must not invoke external accessors or
+    // substitute a private value between validation and serialization.
+    const data=(target,key)=>{try {return target&&typeof target==='object'
+      ?Object.getOwnPropertyDescriptor(target,key)?.value:undefined;}catch{return undefined;}};
     const stages = new Set(['authorization', 'catalog_guard', 'export_guard', 'transport',
       'http_response', 'response_body', 'response_schema', 'application_schema']);
     const codes = new Set(['INVALID_ARGUMENT', 'UNSUPPORTED_CAPABILITY', 'UNAUTHORIZED',
-      'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT']);
-    if (!receipt || !stages.has(receipt.stage) || !codes.has(receipt.code)) return;
-    const detail = {stage: receipt.stage, code: receipt.code};
-    if (typeof receipt.requestId === 'string'
-      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(receipt.requestId)) {
-      detail.requestId = receipt.requestId;
-    }
-    if (Number.isInteger(receipt.httpStatus) && receipt.httpStatus >= 100
-      && receipt.httpStatus <= 599) detail.httpStatus = receipt.httpStatus;
-    if (['json', 'sse', 'missing', 'other'].includes(receipt.contentType)) detail.contentType = receipt.contentType;
-    if (typeof receipt.terminalEvents?.taskEnd === 'boolean'
-      && typeof receipt.terminalEvents?.end === 'boolean') {
-      detail.terminalEvents = {taskEnd: receipt.terminalEvents.taskEnd, end: receipt.terminalEvents.end};
-    }
+      'EXTERNAL_FAILURE', 'CANCELLED', 'TIMEOUT', 'RATE_LIMITED']);
+    const stage=data(receipt,'stage'),code=data(receipt,'code');
+    if (!stages.has(stage) || !codes.has(code)) return;
+    const detail = {stage,code};
+    const requestId=data(receipt,'requestId'),httpStatus=data(receipt,'httpStatus'),contentType=data(receipt,'contentType');
+    const resultUnknown=data(receipt,'resultUnknown'),transportPhase=data(receipt,'transportPhase');
+    if(typeof resultUnknown==='boolean')detail.resultUnknown=resultUnknown;
+    if(transportPhase==='wss_upgrade')detail.transportPhase=transportPhase;
+    if (typeof requestId === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) detail.requestId=requestId;
+    if (Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599) detail.httpStatus=httpStatus;
+    if (['json', 'sse', 'missing', 'other'].includes(contentType)) detail.contentType=contentType;
+    const terminalEvents=data(receipt,'terminalEvents'),taskEnd=data(terminalEvents,'taskEnd'),end=data(terminalEvents,'end');
+    if (typeof taskEnd === 'boolean' && typeof end === 'boolean') detail.terminalEvents={taskEnd,end};
+    const schemaCategory=data(receipt,'schemaCategory');
     if (['body_limit', 'body_shape', 'utf8', 'content_type', 'event_order', 'event_shape',
       'provider_failure', 'no_text', 'json_shape', 'application_json',
-      'application_contract', 'other'].includes(receipt.schemaCategory)) {
-      detail.schemaCategory = receipt.schemaCategory;
-    }
+      'application_contract', 'other'].includes(schemaCategory)) detail.schemaCategory=schemaCategory;
     if (detail.schemaCategory === 'provider_failure') {
+      const providerFailureField=data(receipt,'providerFailureField'),providerFailureToken=data(receipt,'providerFailureToken');
+      const providerErrorCode=data(receipt,'providerErrorCode');
       if (['event', 'type', 'status', 'data.event', 'data.type', 'data.status']
-        .includes(receipt.providerFailureField)) detail.providerFailureField = receipt.providerFailureField;
-      if (['error', 'failed', 'failure'].includes(receipt.providerFailureToken)) {
-        detail.providerFailureToken = receipt.providerFailureToken;
-      }
-      if (typeof receipt.providerErrorCode === 'string'
-        && /^[A-Z][A-Z0-9_]{1,31}\.[0-9]{3,8}$/.test(receipt.providerErrorCode)) {
-        detail.providerErrorCode = receipt.providerErrorCode;
-      }
+        .includes(providerFailureField)) detail.providerFailureField=providerFailureField;
+      if (['error', 'failed', 'failure'].includes(providerFailureToken)) detail.providerFailureToken=providerFailureToken;
+      if (typeof providerErrorCode === 'string'
+        && /^[A-Z][A-Z0-9_]{1,31}\.[0-9]{3,8}$/.test(providerErrorCode)) detail.providerErrorCode=providerErrorCode;
     }
     log('agentarts-failure', 'runtime', JSON.stringify(detail));
   }
