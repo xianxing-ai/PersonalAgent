@@ -1,5 +1,9 @@
 # 开发计划与进度
 
+## 2026-10-21 悬浮面板玻璃主题与原生圆角（review）
+
+`DESKTOP-LIQUID-GLASS-20261021`：目标 `huawei_ict_agentarts`，MOD-11/12，PA-001/PA-002。用户确认本机深色玻璃和真实外层圆角后授权提交 PR；从 `61b05cf1` 独立交付 `codex/panel-liquid-glass-20261021`。仅修改 Desktop 面板展示、原生材质与必要验证；没有纳入并行工作区重排、Runtime/AgentArts、公共协议、依赖或迁移。实际接线、Windows SDK/.NET Framework 要求、不透明回退和验证边界见 [交付记录](../apps/desktop/docs/PANEL_LIQUID_GLASS_20261021.md)。实施 Codex / 提交 `2511375597-lab`，拟审查 `Potatos498`、拟合并 `goo122`（均待实际接手）；未授权合并，不据本机 Fake 界面或视觉批准声明真实云能力完成。
+
 ## 2026-10-21 强制截断、对话引导与排队（review）
 
 - Profile / 模块：`huawei_ict_agentarts` / MOD-11、13，复用既有 Runtime 取消与上下文；本轮实现负责人为当前 Codex 对话。

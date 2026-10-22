@@ -1,0 +1,677 @@
+{
+  "task": "DESKTOP-LIQUID-GLASS-20261021",
+  "baseline": "61b05cf10658ceee2f72640b2d707b5c1a6388f6",
+  "profile": "explicit_fake_runtime",
+  "targetProfile": "huawei_ict_agentarts",
+  "realCloudCalls": false,
+  "realMicrophoneUse": false,
+  "node": "24.15.0",
+  "npm": "11.12.1",
+  "os": "10.0.26300",
+  "build": "passed",
+  "desktopTypecheck": "passed",
+  "architecture": {
+    "passed": 3,
+    "failed": 0
+  },
+  "panelAndQuitRegression": {
+    "passed": 35,
+    "failed": 0
+  },
+  "panelMaterial": {
+    "passed": 7,
+    "failed": 0
+  },
+  "desktopFullSuite": {
+    "tests": 1553,
+    "pass": 1543,
+    "fail": 1,
+    "skipped": 9,
+    "limitation": "Only unchanged windows-host-fixture.test.mjs failed: stable .NET 8 SDK unavailable",
+    "logSha256": "cbd5e49d9fa988f9e3ab9032027a84b7a61a5a81c05fcf2c62351ed1b82e7d5a"
+  },
+  "panelLayout": [
+    {
+      "theme": "light",
+      "width": 420,
+      "height": 720,
+      "zoom": 1,
+      "viewport": {
+        "width": 420,
+        "height": 720
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 420,
+        "bottom": 62,
+        "width": 420,
+        "height": 62
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62,
+        "right": 420,
+        "bottom": 550.0625,
+        "width": 420,
+        "height": 488.0625
+      },
+      "composer": {
+        "x": 12,
+        "y": 550.0625,
+        "right": 408,
+        "bottom": 708,
+        "width": 396,
+        "height": 157.9375
+      },
+      "input": {
+        "x": 26,
+        "y": 564.0625,
+        "right": 394,
+        "bottom": 619.0625,
+        "width": 368,
+        "height": 55
+      },
+      "send": {
+        "x": 336,
+        "y": 621.0625,
+        "right": 394,
+        "bottom": 655.0625,
+        "width": 58,
+        "height": 34
+      },
+      "close": {
+        "x": 368,
+        "y": 18,
+        "right": 400,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    },
+    {
+      "theme": "light",
+      "width": 420,
+      "height": 600,
+      "zoom": 1,
+      "viewport": {
+        "width": 420,
+        "height": 600
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 420,
+        "bottom": 62,
+        "width": 420,
+        "height": 62
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62,
+        "right": 420,
+        "bottom": 347.0625,
+        "width": 420,
+        "height": 285.0625
+      },
+      "composer": {
+        "x": 12,
+        "y": 347.0625,
+        "right": 408,
+        "bottom": 588,
+        "width": 396,
+        "height": 240.9375
+      },
+      "input": {
+        "x": 26,
+        "y": 361.0625,
+        "right": 394,
+        "bottom": 499.0625,
+        "width": 368,
+        "height": 138
+      },
+      "send": {
+        "x": 362,
+        "y": 501.0625,
+        "right": 394,
+        "bottom": 535.0625,
+        "width": 32,
+        "height": 34
+      },
+      "close": {
+        "x": 368,
+        "y": 18,
+        "right": 400,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    },
+    {
+      "theme": "light",
+      "width": 360,
+      "height": 600,
+      "zoom": 1,
+      "viewport": {
+        "width": 360,
+        "height": 600
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 360,
+        "bottom": 62,
+        "width": 360,
+        "height": 62
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62,
+        "right": 360,
+        "bottom": 318,
+        "width": 360,
+        "height": 256
+      },
+      "composer": {
+        "x": 10,
+        "y": 318,
+        "right": 350,
+        "bottom": 588,
+        "width": 340,
+        "height": 270
+      },
+      "input": {
+        "x": 22,
+        "y": 332,
+        "right": 338,
+        "bottom": 470,
+        "width": 316,
+        "height": 138
+      },
+      "send": {
+        "x": 284,
+        "y": 507,
+        "right": 316,
+        "bottom": 541,
+        "width": 32,
+        "height": 34
+      },
+      "close": {
+        "x": 312,
+        "y": 18,
+        "right": 344,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    },
+    {
+      "theme": "light",
+      "width": 420,
+      "height": 720,
+      "zoom": 1.25,
+      "viewport": {
+        "width": 336,
+        "height": 576
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 336.0000305175781,
+        "bottom": 62.000003814697266,
+        "width": 336.0000305175781,
+        "height": 62.000003814697266
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62.000003814697266,
+        "right": 336.0000305175781,
+        "bottom": 304.80002212524414,
+        "width": 336.0000305175781,
+        "height": 242.80001831054688
+      },
+      "composer": {
+        "x": 10.000000953674316,
+        "y": 304.8000183105469,
+        "right": 326.00003147125244,
+        "bottom": 564.0000305175781,
+        "width": 316.0000305175781,
+        "height": 259.20001220703125
+      },
+      "input": {
+        "x": 22.000001907348633,
+        "y": 318.8000183105469,
+        "right": 314.00000190734863,
+        "bottom": 451.2750244140625,
+        "width": 292,
+        "height": 132.47500610351562
+      },
+      "send": {
+        "x": 260,
+        "y": 488.2750244140625,
+        "right": 292,
+        "bottom": 522.2750244140625,
+        "width": 32,
+        "height": 34
+      },
+      "close": {
+        "x": 288,
+        "y": 18,
+        "right": 320,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    },
+    {
+      "theme": "dark",
+      "width": 420,
+      "height": 720,
+      "zoom": 1,
+      "viewport": {
+        "width": 420,
+        "height": 720
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 420,
+        "bottom": 62,
+        "width": 420,
+        "height": 62
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62,
+        "right": 420,
+        "bottom": 550.0625,
+        "width": 420,
+        "height": 488.0625
+      },
+      "composer": {
+        "x": 12,
+        "y": 550.0625,
+        "right": 408,
+        "bottom": 708,
+        "width": 396,
+        "height": 157.9375
+      },
+      "input": {
+        "x": 26,
+        "y": 564.0625,
+        "right": 394,
+        "bottom": 619.0625,
+        "width": 368,
+        "height": 55
+      },
+      "send": {
+        "x": 336,
+        "y": 621.0625,
+        "right": 394,
+        "bottom": 655.0625,
+        "width": 58,
+        "height": 34
+      },
+      "close": {
+        "x": 368,
+        "y": 18,
+        "right": 400,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    },
+    {
+      "theme": "dark",
+      "width": 420,
+      "height": 600,
+      "zoom": 1,
+      "viewport": {
+        "width": 420,
+        "height": 600
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 420,
+        "bottom": 62,
+        "width": 420,
+        "height": 62
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62,
+        "right": 420,
+        "bottom": 347.0625,
+        "width": 420,
+        "height": 285.0625
+      },
+      "composer": {
+        "x": 12,
+        "y": 347.0625,
+        "right": 408,
+        "bottom": 588,
+        "width": 396,
+        "height": 240.9375
+      },
+      "input": {
+        "x": 26,
+        "y": 361.0625,
+        "right": 394,
+        "bottom": 499.0625,
+        "width": 368,
+        "height": 138
+      },
+      "send": {
+        "x": 362,
+        "y": 501.0625,
+        "right": 394,
+        "bottom": 535.0625,
+        "width": 32,
+        "height": 34
+      },
+      "close": {
+        "x": 368,
+        "y": 18,
+        "right": 400,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    },
+    {
+      "theme": "dark",
+      "width": 360,
+      "height": 600,
+      "zoom": 1,
+      "viewport": {
+        "width": 360,
+        "height": 600
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 360,
+        "bottom": 62,
+        "width": 360,
+        "height": 62
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62,
+        "right": 360,
+        "bottom": 318,
+        "width": 360,
+        "height": 256
+      },
+      "composer": {
+        "x": 10,
+        "y": 318,
+        "right": 350,
+        "bottom": 588,
+        "width": 340,
+        "height": 270
+      },
+      "input": {
+        "x": 22,
+        "y": 332,
+        "right": 338,
+        "bottom": 470,
+        "width": 316,
+        "height": 138
+      },
+      "send": {
+        "x": 284,
+        "y": 507,
+        "right": 316,
+        "bottom": 541,
+        "width": 32,
+        "height": 34
+      },
+      "close": {
+        "x": 312,
+        "y": 18,
+        "right": 344,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    },
+    {
+      "theme": "dark",
+      "width": 420,
+      "height": 720,
+      "zoom": 1.25,
+      "viewport": {
+        "width": 336,
+        "height": 576
+      },
+      "header": {
+        "x": 0,
+        "y": 0,
+        "right": 336.0000305175781,
+        "bottom": 62.000003814697266,
+        "width": 336.0000305175781,
+        "height": 62.000003814697266
+      },
+      "sessions": {
+        "x": 0,
+        "y": 0,
+        "right": 0,
+        "bottom": 0,
+        "width": 0,
+        "height": 0
+      },
+      "thread": {
+        "x": 0,
+        "y": 62.000003814697266,
+        "right": 336.0000305175781,
+        "bottom": 304.80002212524414,
+        "width": 336.0000305175781,
+        "height": 242.80001831054688
+      },
+      "composer": {
+        "x": 10.000000953674316,
+        "y": 304.8000183105469,
+        "right": 326.00003147125244,
+        "bottom": 564.0000305175781,
+        "width": 316.0000305175781,
+        "height": 259.20001220703125
+      },
+      "input": {
+        "x": 22.000001907348633,
+        "y": 318.8000183105469,
+        "right": 314.00000190734863,
+        "bottom": 451.2750244140625,
+        "width": 292,
+        "height": 132.47500610351562
+      },
+      "send": {
+        "x": 260,
+        "y": 488.2750244140625,
+        "right": 292,
+        "bottom": 522.2750244140625,
+        "width": 32,
+        "height": 34
+      },
+      "close": {
+        "x": 288,
+        "y": 18,
+        "right": 320,
+        "bottom": 50,
+        "width": 32,
+        "height": 32
+      },
+      "sessionsHidden": true
+    }
+  ],
+  "pageErrors": [],
+  "nativeCornerPixels": {
+    "light": {
+      "corners": [
+        [
+          204,
+          198,
+          190
+        ],
+        [
+          183,
+          197,
+          212
+        ],
+        [
+          222,
+          190,
+          164
+        ],
+        [
+          207,
+          197,
+          189
+        ]
+      ],
+      "reference": [
+        [
+          204,
+          198,
+          190
+        ],
+        [
+          183,
+          197,
+          212
+        ],
+        [
+          222,
+          190,
+          164
+        ],
+        [
+          207,
+          197,
+          189
+        ]
+      ]
+    },
+    "dark": {
+      "corners": [
+        [
+          96,
+          87,
+          88
+        ],
+        [
+          113,
+          125,
+          145
+        ],
+        [
+          144,
+          111,
+          91
+        ],
+        [
+          121,
+          109,
+          108
+        ]
+      ],
+      "reference": [
+        [
+          96,
+          87,
+          88
+        ],
+        [
+          113,
+          125,
+          145
+        ],
+        [
+          144,
+          111,
+          91
+        ],
+        [
+          121,
+          109,
+          108
+        ]
+      ]
+    }
+  },
+  "electronWindowSmoke": "passed; product quit completed",
+  "workspaceSmoke": "passed; fixture hover isolated; product quit completed",
+  "syntheticSceneImagesSha256": {
+    "panel-liquid-glass-light.png": "c7e02d677e2bfcc74cd3a30be787030d83b99a231762f574ab6011bbc6ea60af",
+    "panel-liquid-glass-dark.png": "07a7c0c4d78b36badce1b41405029fa4976163dcff7b73c388feded4c66c3ce6"
+  },
+  "notValidated": [
+    "Fresh machine without Windows SDK",
+    "Precompiled release asset packaging",
+    "Real AgentArts/model/voice end to end"
+  ]
+}

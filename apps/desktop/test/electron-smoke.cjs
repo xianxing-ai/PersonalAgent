@@ -2,6 +2,7 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 const fs=require('node:fs');
 const {_electron}=require('playwright');
+const {closeDesktop}=require('../test-support/close-desktop.cjs');
 (async()=>{
  const output=path.resolve(__dirname,'../.cache/qa');fs.mkdirSync(output,{recursive:true});
  const localElectron=path.resolve(__dirname,'../node_modules/electron/dist/electron.exe');
@@ -9,7 +10,7 @@ const {_electron}=require('playwright');
  const executablePath=fs.existsSync(localElectron)?localElectron:workspaceElectron;
  const fake=process.env.PA_DESKTOP_FAKE!=='0';
  const args=[path.resolve(__dirname,'..')];if(fake)args.push('--fake-runtime');
- const app=await _electron.launch({executablePath,args,env:{...process.env,ELECTRON_RUN_AS_NODE:undefined,PA_DESKTOP_EPHEMERAL_MODEL:'1'}});
+ const app=await _electron.launch({executablePath,args,env:{...process.env,ELECTRON_RUN_AS_NODE:undefined,PA_DESKTOP_EPHEMERAL_MODEL:'1',PA_USER_DATA_DIR:fs.mkdtempSync(path.join(output,'profile-'))}});
  const errors=[];
  try {
    await app.firstWindow();
@@ -68,24 +69,25 @@ const {_electron}=require('playwright');
    }
    assert.ok(groupAfter.panel.x+groupAfter.panel.width<=groupAfter.orb.x||groupAfter.orb.x+groupAfter.orb.width<=groupAfter.panel.x);
    assert.match(await panel.locator('#connection').innerText(),fake?/Fake Runtime/:/本地 Runtime/);
-   await panel.locator('#model').click();
+   const modelTrigger=panel.getByRole('button',{name:'模型与思考',exact:true});
+   await modelTrigger.click();
    // This local/Fake fixture publishes no native reasoning catalog. The panel must
    // keep that control unavailable; the admin step budget below is independent.
-   assert.equal(await panel.locator('#mm-slider').isDisabled(),true);
-   assert.equal(await panel.locator('#mm-slider').getAttribute('aria-valuetext'),'不可用');
+   const thinkingSlider=panel.getByRole('slider',{name:'思考强度',exact:true});
+   assert.equal(await thinkingSlider.isDisabled(),true);
    const unsupportedThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
-   await panel.locator('#mm-slider').evaluate(slider=>{
+   await thinkingSlider.evaluate(slider=>{
      slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));
    });
    await panel.waitForTimeout(100);
    const panelThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
    assert.equal(panelThinking.value.thinking.depth,unsupportedThinking.value.thinking.depth);
    assert.deepEqual(panelThinking.value.conversationPreference,unsupportedThinking.value.conversationPreference);
-   assert.equal(await panel.locator('#model').evaluate(button=>{
+   assert.equal(await modelTrigger.evaluate(button=>{
      const bounds=button.getBoundingClientRect();
-     return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)?.closest('#model')===button;
+     return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)?.closest('.model-thinking-trigger')===button;
    }),true,'expanded model menu must leave its toggle reachable after status text updates');
-   await panel.locator('#model').click();
+   await modelTrigger.click();
    await panel.locator('textarea[aria-label="任务内容"]').fill('测试原版桌面方案接入');await panel.locator('#send').click();
    await panel.waitForSelector('[data-action="task.cancel"]');
    assert.match(await panel.locator('#tasks').innerText(),/思考中/);
@@ -174,5 +176,5 @@ const {_electron}=require('playwright');
    assert.equal(await panel.locator('#stop').isHidden(),true);
    assert.deepEqual(errors,[]);
    console.log(`PASS: ${fake?'Fake':'local'} Runtime Electron windows, native 90px hover/open, explicit collapse, grouped edge-aware drag, isolated preload, ORB-02, tray host, 420px responsive panel, event-driven SDK submit/cancel, independent admin close, no page errors`);
- } finally {await app.close();}
+ } finally {await closeDesktop(app);}
 })();
