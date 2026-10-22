@@ -16,9 +16,23 @@ export function normalizeArchitecture(value) {
 // Fixed OS component, not PATH/SystemRoot/PROCESSOR_ARCHITECTURE supplied by the caller.
 // Unknown-machine fallback intentionally fails closed on nonstandard Windows locations.
 const WINDOWS_POWERSHELL='C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+// Cold Windows PowerShell/.NET initialization and Add-Type compilation are included.
+// This is a bounded read-only query, not a PSEC execution or a retry allowance.
+const NATIVE_ARCHITECTURE_TIMEOUT_MS=60000;
+const NATIVE_ARCHITECTURE_STAGE_PREFIX='PSEC_NATIVE_OS_ARCH_V1:';
+const NATIVE_ARCHITECTURE_STAGES=['powershell-started','type-compiled','query-complete'];
+function nativeArchitectureStage(stderr) {
+  let stage='no-stage-received';
+  if (typeof stderr==='string') for (const line of stderr.split(/\r?\n/u)) {
+    if (NATIVE_ARCHITECTURE_STAGES.some(value=>line===NATIVE_ARCHITECTURE_STAGE_PREFIX+value))
+      stage=line.slice(NATIVE_ARCHITECTURE_STAGE_PREFIX.length);
+  }
+  return stage;
+}
 export function probeNativeWindowsArchitecture({run=spawnSync,processId=process.pid}={}) {
   if (!Number.isSafeInteger(processId) || processId<=0 || processId>0xffffffff) throw Error('Native Windows OS architecture probe failed');
   const script=`$ErrorActionPreference = 'Stop'
+[Console]::Error.WriteLine('${NATIVE_ARCHITECTURE_STAGE_PREFIX}powershell-started')
 Add-Type -TypeDefinition @'
 using System;
 using System.Globalization;
@@ -49,14 +63,21 @@ public static class PsecNativeArchitecture {
   }
 }
 '@ | Out-Null
-[PsecNativeArchitecture]::Read(${processId})`;
+[Console]::Error.WriteLine('${NATIVE_ARCHITECTURE_STAGE_PREFIX}type-compiled')
+$receipt = [PsecNativeArchitecture]::Read(${processId})
+[Console]::Error.WriteLine('${NATIVE_ARCHITECTURE_STAGE_PREFIX}query-complete')
+$receipt`;
+  const started=performance.now();
   const result=run(WINDOWS_POWERSHELL,['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
-    {encoding:'utf8',windowsHide:true,shell:false,timeout:10000,maxBuffer:8192,
+    {encoding:'utf8',windowsHide:true,shell:false,timeout:NATIVE_ARCHITECTURE_TIMEOUT_MS,maxBuffer:8192,
       env:{SystemRoot:'C:\\Windows',windir:'C:\\Windows',TEMP:os.tmpdir(),TMP:os.tmpdir()}});
   if (result.error || result.status!==0 || result.signal) {
     const error=Error('Native Windows OS architecture probe failed');error.query='native-os-architecture';
     error.exitCode=Number.isInteger(result.status)?result.status:null;
     error.processError=['ENOENT','EACCES','EPERM','ETIMEDOUT'].includes(result.error?.code)?result.error.code:'UNKNOWN';
+    error.probeTimeoutMs=NATIVE_ARCHITECTURE_TIMEOUT_MS;
+    error.probeElapsedMs=Math.max(0,Math.round(performance.now()-started));
+    error.probeStage=nativeArchitectureStage(result.stderr);
     throw error;
   }
   let receipt;
@@ -159,6 +180,11 @@ export function toolchainFailureDiagnostic(error) {
   if(['--info','--list-sdks','--list-runtimes','native-os-architecture'].includes(error?.query))result.query=error.query;
   if(['ENOENT','EACCES','EPERM','ETIMEDOUT','UNKNOWN'].includes(error?.processError))result.processError=error.processError;
   if(error?.exitCode===null||Number.isInteger(error?.exitCode))result.exitCode=error.exitCode;
+  if (result.query==='native-os-architecture') {
+    if (error?.probeTimeoutMs===NATIVE_ARCHITECTURE_TIMEOUT_MS) result.probeTimeoutMs=error.probeTimeoutMs;
+    if (Number.isSafeInteger(error?.probeElapsedMs)&&error.probeElapsedMs>=0) result.probeElapsedMs=error.probeElapsedMs;
+    if (['no-stage-received',...NATIVE_ARCHITECTURE_STAGES].includes(error?.probeStage)) result.probeStage=error.probeStage;
+  }
   for(const field of ['sdk8Count','runtime8Count'])if(Number.isInteger(error?.[field])&&error[field]>=0)result[field]=error[field];
   return result;
 }

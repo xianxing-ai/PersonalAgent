@@ -28,12 +28,18 @@ test('unknown OS machine is resolved only by a strict native API receipt for the
   const proof=probeNativeWindowsArchitecture({processId:1234,run:(command,args,options)=>{
     assert.equal(command,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
     assert.deepEqual(args.slice(0,4),['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand']);
-    assert.equal(options.shell,false);assert.equal(options.windowsHide,true);assert.equal(options.timeout,10000);
+    assert.equal(options.shell,false);assert.equal(options.windowsHide,true);assert.equal(options.timeout,60000);
+    assert.equal(options.maxBuffer,8192);
     assert.equal(options.env.PROCESSOR_ARCHITECTURE,undefined);assert.equal(options.env.PROCESSOR_ARCHITEW6432,undefined);
     assert.equal(options.env.PA_PSEC_EXPECTED_ARCH,undefined);assert.equal(options.env.PATH,undefined);
     const script=Buffer.from(args[4],'base64').toString('utf16le');
     assert.match(script,/OpenProcess\(0x1000, false, processId\)/u);assert.match(script,/IsWow64Process2\(process,/u);
     assert.match(script,/\[PsecNativeArchitecture\]::Read\(1234\)/u);assert.match(script,/DllImportSearchPath\.System32/u);
+    for (const stage of ['powershell-started','type-compiled','query-complete'])
+      assert.ok(script.includes(`[Console]::Error.WriteLine('PSEC_NATIVE_OS_ARCH_V1:${stage}')`));
+    assert.ok(script.indexOf('PSEC_NATIVE_OS_ARCH_V1:powershell-started')<script.indexOf('Add-Type'));
+    assert.ok(script.indexOf('PSEC_NATIVE_OS_ARCH_V1:type-compiled')>script.indexOf("'@ | Out-Null"));
+    assert.ok(script.indexOf('PSEC_NATIVE_OS_ARCH_V1:query-complete')>script.indexOf('[PsecNativeArchitecture]::Read(1234)'));
     assert.doesNotMatch(script,/GetNativeSystemInfo|PROCESSOR_ARCHITECTURE|ExecutionPolicy/u);
     return {status:0,signal:null,stdout:nativeReceipt()};
   }});
@@ -46,6 +52,33 @@ test('unknown OS machine is resolved only by a strict native API receipt for the
   assert.throws(()=>requireNativeArchitecture({...arm,nodeArchitecture:'x64',expectedArchitecture:'x64',osArchitecture:'unknown',
     readNativeArchitecture:()=>proof}),/Emulated Node/u);
   assert.throws(()=>nativeProbe({processMachine:0x8664}),/Emulated Node/u);
+});
+test('cold native API probe has one bounded attempt and timeout remains a failure with safe stage diagnostics',()=>{
+  const prefix='PSEC_NATIVE_OS_ARCH_V1:';
+  for (const [stderr,stage] of [
+    ['PRIVATE_BODY','no-stage-received'],
+    [prefix+'powershell-started\r\nPRIVATE_BODY','powershell-started'],
+    [prefix+'powershell-started\r\n'+prefix+'type-compiled\r\nPRIVATE_BODY','type-compiled'],
+    [prefix+'query-complete\r\n','query-complete'],
+    ['PRIVATE_PATH '+prefix+'type-compiled\r\n'+prefix+'PRIVATE_TOKEN','no-stage-received']]) {
+    let attempts=0,diagnostic;
+    assert.throws(()=>requireNativeArchitecture({...arm,osArchitecture:'unknown',readNativeArchitecture:()=>{
+      try { return probeNativeWindowsArchitecture({processId:1234,run:(_command,_args,options)=>{
+        attempts++;assert.equal(options.timeout,60000);
+        return {status:null,error:{code:'ETIMEDOUT',message:'PRIVATE_PATH'},stdout:nativeReceipt(),stderr};
+      }}); } catch(error) { diagnostic=toolchainFailureDiagnostic(error);throw error; }
+    }}),/Native Windows OS architecture probe failed/u);
+    assert.equal(attempts,1);
+    assert.equal(diagnostic.processError,'ETIMEDOUT');assert.equal(diagnostic.exitCode,null);
+    assert.equal(diagnostic.probeTimeoutMs,60000);assert.equal(diagnostic.probeStage,stage);
+    assert.ok(Number.isSafeInteger(diagnostic.probeElapsedMs)&&diagnostic.probeElapsedMs>=0);
+    assert.doesNotMatch(JSON.stringify(diagnostic),/PRIVATE_|processId|nativeMachine/u);
+  }
+  assert.deepEqual(toolchainFailureDiagnostic({query:'native-os-architecture',probeStage:'PRIVATE_TOKEN',
+    probeTimeoutMs:'PRIVATE_TOKEN',probeElapsedMs:-1,stderr:prefix+'query-complete'}),
+    {status:'failed',reason:'Native Windows toolchain architecture preflight failed',query:'native-os-architecture'});
+  assert.deepEqual(toolchainFailureDiagnostic({query:'--info',probeStage:'query-complete',probeTimeoutMs:60000,probeElapsedMs:5}),
+    {status:'failed',reason:'Native Windows toolchain architecture preflight failed',query:'--info'});
 });
 test('native OS query failures, unbound or forged receipts cannot make unknown pass',()=>{
   for(const patch of [{processId:1235},{processId:'1234'},{api:'environment'},{version:2},{nativeMachine:'arm64'},
@@ -78,6 +111,7 @@ test('dotnet host must be native with a preinstalled .NET 8 SDK and runtime',()=
     ['--list-runtimes','Microsoft.NETCore.App 8.0.31 [private-runtime-path]\r\n']]);
   function run(_command,args,options){
     assert.equal(_command,'dotnet');assert.equal(options.shell,false);
+    assert.equal(options.timeout,10000,'only the native OS PowerShell probe has a cold-start allowance');
     assert.equal(options.env.DOTNET_CLI_UI_LANGUAGE,'en-US');
     return {status:0,signal:null,stdout:outputs.get(args[0])};
   }
