@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {AgentArtsCloudAgentPort, AgentArtsResultUnknownError, CompetitionCoordinator} from '../dist/index.js';
+import {AgentArtsBeforeInvokeError, AgentArtsCloudAgentPort, AgentArtsResultUnknownError, CompetitionCoordinator} from '../dist/index.js';
 import {SyntheticWebSocket, identity, events} from './fixtures/websocket.mjs';
 
 const config = {gatewayUrl: 'https://agentarts.example.test', runtimeName: 'synthetic', transport: 'wss',
@@ -147,12 +147,42 @@ test('an Upgrade-shaped failure after invoke send remains unknown and cannot rep
     }});
     try {
       await assert.rejects(h.port.invoke(request()),error=>{
-        assert.ok(error instanceof AgentArtsResultUnknownError);assert.equal(error.receipt.accepted,accepted);return true;
+        assert.ok(error instanceof AgentArtsResultUnknownError);assert.equal(error instanceof AgentArtsBeforeInvokeError,false);
+        assert.equal(error.receipt.accepted,accepted);return true;
       });
       assert.equal(h.sockets[0].sent.filter(frame=>frame.type==='invoke').length,1);assert.equal(h.http.length,0);
       assert.equal(h.states.some(item=>item.state==='https_fallback'),false);
     }finally{h.port.close();}
   }
+});
+
+test('only locally proven pre-invoke WSS failures retain the public safe error type',async()=>{
+  for(const failure of ['connection',401,403,404,426]){
+    const h=harness({autoReady:false});
+    try {
+      const pending=h.port.invoke(request());while(!h.sockets.length)await new Promise(setImmediate);
+      if(failure==='connection')h.sockets[0].emit('error',Object.assign(Error('PRIVATE_BODY'),{code:'EXTERNAL_FAILURE'}));
+      else h.sockets[0].emit('unexpected-response',{}, {statusCode:failure,resume(){}});
+      await assert.rejects(pending,error=>{
+        assert.ok(error instanceof AgentArtsBeforeInvokeError);assert.equal(error instanceof AgentArtsResultUnknownError,false);
+        assert.equal(error.retryable,false);assert.doesNotMatch(error.message,/PRIVATE_/);return true;
+      });
+      assert.equal(h.sockets[0].sent.length,0);assert.equal(h.http.length,0);
+    }finally{h.port.close();}
+  }
+  const denied=harness({beforeSend:()=>{throw Object.assign(Error('PRIVATE_GUARD'),{name:'AgentArtsBeforeInvokeError'});}});
+  try {
+    await assert.rejects(denied.port.invoke(request()),error=>{
+      assert.equal(error instanceof AgentArtsBeforeInvokeError,false);assert.equal(error.code,'UNAUTHORIZED');return true;
+    });
+  }finally{denied.port.close();}
+  const http=new AgentArtsCloudAgentPort({gatewayUrl:config.gatewayUrl,runtimeName:config.runtimeName},
+    {read:async()=> 'Bearer fixture'},async()=>{throw Error('PRIVATE_HTTP');});
+  try {
+    await assert.rejects(http.invoke(request()),error=>{
+      assert.equal(error instanceof AgentArtsBeforeInvokeError,false);assert.doesNotMatch(error.message,/PRIVATE_/);return true;
+    });
+  }finally{http.close();}
 });
 
 test('no fallback when disabled, on authentication rejection, or on incompatible protocol', async t => {

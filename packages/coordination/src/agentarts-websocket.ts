@@ -98,13 +98,21 @@ export class AgentArtsRemoteInvocationError extends ProtocolError {
   }
 }
 
+/** Local transport proof that this invoke was never handed to WSS. No remote error text is retained. */
+export class AgentArtsBeforeInvokeError extends ProtocolError {
+  constructor(failure: 'connection' | 'upgrade' | 'authorization' = 'connection') {
+    super(failure === 'authorization' ? 'UNAUTHORIZED' : failure === 'upgrade' ? 'UNSUPPORTED_CAPABILITY' : 'EXTERNAL_FAILURE',
+      failure === 'authorization' ? 'AgentArts WebSocket authorization denied'
+        : failure === 'upgrade' ? 'AgentArts WebSocket upgrade is unavailable' : 'AgentArts WebSocket connection is unavailable', false);
+  }
+}
+
 /** Internal marker created only from an HTTP response to the invoke socket Upgrade. */
-export class AgentArtsWebSocketUpgradeError extends ProtocolError {
+export class AgentArtsWebSocketUpgradeError extends AgentArtsBeforeInvokeError {
   readonly httpStatus?: number;
   constructor(status: unknown) {
     const denied = status === 401 || status === 403;
-    super(denied ? 'UNAUTHORIZED' : 'UNSUPPORTED_CAPABILITY', denied
-      ? 'AgentArts WebSocket authorization denied' : 'AgentArts WebSocket upgrade is unavailable', false);
+    super(denied ? 'authorization' : 'upgrade');
     if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
       this.httpStatus = status;
     }
@@ -121,9 +129,7 @@ export class AgentArtsTerminalError extends AgentArtsRemoteInvocationError {
 }
 
 /** An invoke frame has never been handed to the socket. This is the only automatic fallback condition. */
-class BeforeInvokeConnectionError extends ProtocolError {
-  constructor() { super('EXTERNAL_FAILURE', 'AgentArts WebSocket connection is unavailable', false); }
-}
+class BeforeInvokeConnectionError extends AgentArtsBeforeInvokeError {}
 
 interface Pending {
   readonly receipt: AgentArtsUnknownReceipt;
