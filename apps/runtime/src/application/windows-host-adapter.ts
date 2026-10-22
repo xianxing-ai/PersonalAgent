@@ -1,7 +1,7 @@
 import {randomBytes, randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import type {ChildProcessWithoutNullStreams} from 'node:child_process';
-import {basename, isAbsolute} from 'node:path';
+import {basename, isAbsolute, win32} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -34,6 +34,8 @@ export function createWindowsHostBridgeTransport(options: {
   bridgePath: string;
   hostPath: string;
   timeoutMs?: number;
+  /** Trusted host-only local state directory, never taken from a tool argument. */
+  journalDirectory?: string;
 }): WindowsHostTransport & {close(): Promise<void>} {
   if (process.platform !== 'win32' || !isAbsolute(options.bridgePath)
     || !isAbsolute(options.hostPath)
@@ -47,6 +49,12 @@ export function createWindowsHostBridgeTransport(options: {
   }
   const bridgePath = options.bridgePath;
   const hostPath = options.hostPath;
+  const journalDirectory = options.journalDirectory;
+  if (journalDirectory !== undefined && (typeof journalDirectory !== 'string'
+    || !/^[A-Za-z]:[\\/]/u.test(journalDirectory) || /[\x00-\x1f"|<>*?]/u.test(journalDirectory)
+    || journalDirectory.slice(2).includes(':') || !win32.isAbsolute(journalDirectory))) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'A local absolute journal directory is required');
+  }
   const timeout = options.timeoutMs ?? 5000;
   const children = new Set<ChildProcessWithoutNullStreams>();
   let closed = false;
@@ -77,7 +85,8 @@ export function createWindowsHostBridgeTransport(options: {
     async openVerifiedConnection() {
       if (closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Windows Host transport is closed');
       if (releaseFailed) throw new ProtocolError('EXTERNAL_FAILURE', 'Windows Host bridge release is unconfirmed');
-      const child = spawn(bridgePath, ['--host', hostPath],
+      const child = spawn(bridgePath, ['--host', hostPath,
+        ...(journalDirectory === undefined ? [] : ['--journal-directory', win32.normalize(journalDirectory)])],
         {windowsHide: true, stdio: ['pipe', 'pipe', 'pipe']});
       children.add(child);
       child.on('error', () => undefined);
@@ -189,8 +198,11 @@ export interface WindowsHostAdapterOptions {
   /** Trusted Desktop may open a new target and wait for a local confirmation gesture.
    * Runs after hello/bind so the Host's old-window baseline precedes target creation.
    * Cancellation/deadline closes this reserved connection without observation or execution.
+   * Full-access preparation may request metadata-only NOT_FOUND polling in this same
+   * bound session, retaining its pre-open old-window baseline. No other refusal retries.
    * This is not tool authorization and must not inspect or select private windows. */
-  prepareObservation?(input: {taskId: string; deadline: string; signal: AbortSignal}): Promise<void>;
+  prepareObservation?(input: {taskId: string; deadline: string; signal: AbortSignal}):
+    Promise<void | {waitForFreshTarget: true}>;
   /** Desktop derives live local presence for this task. Checked at observation and again before execution. */
   authorizePresence(input: {taskId: string; targetRef?: string; deadline: string;
     signal: AbortSignal}): Promise<boolean>;
@@ -294,6 +306,7 @@ export function createWindowsHostNotepadAdapter(options: WindowsHostAdapterOptio
       }
     };
     let bound: Bound | undefined;
+    let waitForFreshTarget = false;
     try {
       const allowed = await presenceAllowed({taskId, deadline, signal});
       // Presence can finish after cancellation or close; never open a late session.
@@ -311,7 +324,7 @@ export function createWindowsHostNotepadAdapter(options: WindowsHostAdapterOptio
         lifetime.signal.addEventListener('abort', abort, {once: true});
         const timer = setTimeout(abort, Math.max(1, Date.parse(deadline) - now()));
         try {
-          await new Promise<void>((resolve, reject) => {
+          const prepared = await new Promise<void | {waitForFreshTarget: true}>((resolve, reject) => {
             preparation.signal.addEventListener('abort', () => reject(new ProtocolError(
               signal.aborted || lifetime.signal.aborted ? 'CANCELLED' : 'TIMEOUT',
               'Windows Host target preparation ended')), {once: true});
@@ -319,6 +332,7 @@ export function createWindowsHostNotepadAdapter(options: WindowsHostAdapterOptio
             Promise.resolve().then(() => options.prepareObservation!({taskId, deadline,
               signal: preparation.signal})).then(resolve, reject);
           });
+          waitForFreshTarget = prepared?.waitForFreshTarget === true;
         } finally {
           clearTimeout(timer);
           signal.removeEventListener('abort', abort);
@@ -326,25 +340,51 @@ export function createWindowsHostNotepadAdapter(options: WindowsHostAdapterOptio
           preparation.abort();
         }
       }
-      ensureOpen();
-      active({deadline, signal}, now);
-      const request = {kind: 'observe' as const, ...frameBase(bound.sessionId), deadline,
-        capability: 'notepad.replace_text' as const};
-      const reply = parseWindowsHostFrame(await bound.connection.exchange(request));
-      if (reply.kind !== 'observed' && reply.kind !== 'observation_refused') {
-        throw new ProtocolError('PROTOCOL_MISMATCH', 'Windows Host observation reply mismatch');
+      for (;;) {
+        requireCurrentReservation();
+        if (waitForFreshTarget && !await presenceAllowed({taskId, deadline, signal})) {
+          throw new ProtocolError('UNAUTHORIZED', 'Local target preparation policy changed');
+        }
+        requireCurrentReservation();
+        const request = {kind: 'observe' as const, ...frameBase(bound.sessionId), deadline,
+          capability: 'notepad.replace_text' as const};
+        const reply = parseWindowsHostFrame(await bound.connection.exchange(request));
+        if (reply.kind !== 'observed' && reply.kind !== 'observation_refused') {
+          throw new ProtocolError('PROTOCOL_MISMATCH', 'Windows Host observation reply mismatch');
+        }
+        validateWindowsHostObservation(request, reply);
+        requireCurrentReservation();
+        if (waitForFreshTarget && !await presenceAllowed({taskId, deadline, signal})) {
+          throw new ProtocolError('UNAUTHORIZED', 'Local target preparation policy changed');
+        }
+        requireCurrentReservation();
+        if (reply.kind === 'observation_refused') {
+          if (!waitForFreshTarget || reply.errorCode !== 'NOT_FOUND') {
+            throw new ProtocolError(observationCode(reply.errorCode), 'Windows Host refused Notepad observation');
+          }
+          // Readiness is proved by the next native observation, never by elapsed time.
+          // Poll only metadata and never reopen/rebind (which would replace the baseline).
+          await new Promise<void>((resolve, reject) => {
+            const finish = (error?: Error): void => {
+              clearTimeout(timer);
+              signal.removeEventListener('abort', abort);
+              lifetime.signal.removeEventListener('abort', abort);
+              error ? reject(error) : resolve();
+            };
+            const abort = (): void => finish(new ProtocolError('CANCELLED', 'Windows Host target wait cancelled'));
+            const timer = setTimeout(() => finish(), Math.min(50, Math.max(1, Date.parse(deadline) - now())));
+            signal.addEventListener('abort', abort, {once: true});
+            lifetime.signal.addEventListener('abort', abort, {once: true});
+            if (signal.aborted || lifetime.signal.aborted) abort();
+          });
+          continue;
+        }
+        if (Date.parse(reply.expiresAt) <= now()) throw new ProtocolError('TIMEOUT', 'Notepad target already expired');
+        const target = {targetRef: reply.targetRef, expiresAt: reply.expiresAt};
+        observed.set(taskId, {bound, target});
+        observationReservation = undefined;
+        return {...target};
       }
-      validateWindowsHostObservation(request, reply);
-      ensureOpen();
-      active({deadline, signal}, now);
-      if (reply.kind === 'observation_refused') {
-        throw new ProtocolError(observationCode(reply.errorCode), 'Windows Host refused Notepad observation');
-      }
-      if (Date.parse(reply.expiresAt) <= now()) throw new ProtocolError('TIMEOUT', 'Notepad target already expired');
-      const target = {targetRef: reply.targetRef, expiresAt: reply.expiresAt};
-      observed.set(taskId, {bound, target});
-      observationReservation = undefined;
-      return {...target};
     } catch (error) {
       try { if (bound) await closeConnection(bound.connection); } finally {
         if (observationReservation === reservation) observationReservation = undefined;

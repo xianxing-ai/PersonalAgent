@@ -1,0 +1,18 @@
+TAP version 13
+# Subtest: one real original question gates a production PSEC command and never replenishes authority
+ok 1 - one real original question gates a production PSEC command and never replenishes authority
+  ---
+  duration_ms: 3359.0823
+  type: 'test'
+  ...
+# Native integration inherited token: {"platform":"win32","administratorToken":false}
+# Native whole-chain receipt saved under the ignored authorization-native-integration case directory
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5039.6337

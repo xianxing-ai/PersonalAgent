@@ -1,0 +1,49 @@
+{
+  "loader": {
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "data": {
+      "backend": "windows-psec",
+      "diagnosticOnly": true,
+      "enforced": false,
+      "os": {
+        "version": "10.0.26100.0",
+        "kernelVersion": "10.0.26100.33296 (WinBuild.160101.0800)",
+        "architecture": "X64",
+        "processArchitecture": "X64"
+      },
+      "token": {
+        "available": true,
+        "elevated": false,
+        "appContainer": false,
+        "administrator": false
+      },
+      "loader": {
+        "stage": "dll-missing",
+        "exists": false,
+        "version": null,
+        "loaded": false,
+        "win32": 126,
+        "exports": {
+          "IsProcessSecurityEnvironmentVersionSupported": false,
+          "QueryProcessSecurityEnvironmentSupport": false,
+          "CreateProcessSecurityEnvironment": false,
+          "CloseProcessSecurityEnvironment": false
+        }
+      }
+    }
+  },
+  "contract": {
+    "exitCode": 5,
+    "signal": null,
+    "error": null,
+    "data": {
+      "backend": "windows-psec",
+      "detected": false,
+      "error": "DllNotFoundException",
+      "hresult": -2146233052,
+      "enforced": false
+    }
+  }
+}

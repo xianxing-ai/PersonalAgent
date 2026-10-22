@@ -347,7 +347,7 @@ export function startCoordinationTask(
   taskId: string,
   goal: string,
   deadline: string,
-  options: {resume?: boolean;retainPriorToolResults?:boolean; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
+  options: {resume?: boolean;retainPriorToolResults?:boolean;allowToolContinuations?:true; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<TaskSnapshot> {
   const execution = runtime.runTask(taskId, async context => {
     try { return await runCoordinationWorker(runtime,port,tools,taskId,goal,context,options); }
@@ -384,8 +384,9 @@ export function startCoordinationTask(
 export async function runCoordinationWorker(
   runtime: TaskRuntime, port: CoordinationPort | undefined, tools: AgentToolPort | undefined,
   taskId: string, goal: string, context: WorkerContext,
-  options: {retainPriorToolResults?:boolean;toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
+  options: {retainPriorToolResults?:boolean;allowToolContinuations?:true;toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<WorkerResult> {
+    context.declareRuntimeToolTracking?.();
     if (!port) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Competition coordination is unavailable');
     // Persisted by trusted Runtime composition at submission, never by the model.
     // Legacy tasks keep their original four-round budget when resumed.
@@ -406,8 +407,15 @@ export async function runCoordinationWorker(
         completedUnits: step - 1,
         totalUnits: maxSteps,
       });
-      const availableTools = !pending && continuation === undefined && options.toolCatalog
-        ? await options.toolCatalog.prepare({taskId, deadline: context.deadline, signal: context.signal}) : undefined;
+      const catalogInput={taskId,deadline:context.deadline,signal:context.signal};
+      let availableTools:CompetitionAvailableTool[]|undefined;
+      if(!pending&&options.toolCatalog) {
+        if(continuation===undefined)availableTools=await options.toolCatalog.prepare(catalogInput);
+        else if(options.retainPriorToolResults&&options.allowToolContinuations) {
+          try {availableTools=await options.toolCatalog.prepareContinuation(catalogInput);}
+          catch(error){withholdConfirmedExport(runtime,taskId);throw error;}
+        }
+      }
       if (availableTools && availableTools.length === 0) {
         throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'No Competition tools are available for this task');
       }

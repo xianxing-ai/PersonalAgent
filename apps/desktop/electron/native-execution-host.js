@@ -21,11 +21,11 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     return {...value,identity:digest([value.bindingId,identity(value.rootPath),identity(value.nodeExecutable)])};
   }
   function current(){
-    try{return !closed&&verified?.available&&configuration().identity===verified.configuration.identity
-      &&digest(coding.readWindowsNativeHelperAttestation(verified.pins.helperPath))===digest(verified.pins);}catch{return false;}
+    try{return Boolean(!closed&&verified?.available&&configuration().identity===verified.configuration.identity
+      &&digest(coding.readWindowsNativeHelperAttestation(verified.pins.helperPath))===digest(verified.pins));}catch{return false;}
   }
-  async function prepare(scope){
-    if(!external(scope.toolName))return;
+  async function prepare(scope,{forTaskConsent=false}={}){
+    if(!external(scope.toolName)&&!forTaskConsent)return;
     const original=getApplication()?.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);if(!original)blocked();
     const config=configuration();
     if(!current()){
@@ -51,7 +51,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   function describeExecution(request,profile){
     const required=Boolean(request?.requirements.some(item=>item.requirementId==='native-execution'))||external(request?.toolName);
     return {required,available:current(),backend:profile.mode==='full-access'?'none':'windows-psec',
-      enforced:profile.mode!=='full-access'&&current(),bindingDigest:verified?.bindingDigest,
+      enforced:profile.mode!=='full-access'&&current(),...(verified?.bindingDigest?{bindingDigest:verified.bindingDigest}:{}),
       ...(!current()?{reason:'外部进程需已配置工作区、可信 Node 和通过实际检查的 Windows helper；应用内工具不需要这些配置'}:{})};
   }
   function assertBinding(binding){

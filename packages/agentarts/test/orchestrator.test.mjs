@@ -97,6 +97,9 @@ test('current tool request boundary preserves global downstream requirements wit
   assert.deepEqual(data.currentCandidateBoundary,{kind:'unexecuted_tool_request',nodeOutputStage:'after_actual_host_receipt',
     selectionBasis:'published_schema_and_task_arguments',resultEvidenceStage:'after_actual_execution'});
   assert.deepEqual(data.publishedTools,data.availableTools);
+  const prompt=models.fast.requests[0].messages[0].content;
+  assert.match(prompt,/do not first ask for conversational confirmation/);
+  assert.match(prompt,/existing host card handles any required approval/);
   assert.deepEqual(prepared[0].value,value);assert.equal(prepared[1].abstain,true);
   const diagnostic=receipts.find(value=>value.event==='workflow_candidates');
   assert.equal(diagnostic.stage,'candidate_response');assert.equal(diagnostic.nodeId,'F20_N01');assert.equal(diagnostic.candidateCount,1);

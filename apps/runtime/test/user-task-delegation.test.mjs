@@ -284,7 +284,7 @@ test('an unknown child write keeps original reconciliation and a duplicate user 
     await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
     await until(()=>app.activeTaskCount===0);
     assert.equal(calls.length,1);assert.equal(app.runtime.getTask(child.taskId).state,'waiting_reconciliation');
-    assert.equal(app.runtime.getTask(task.taskId).state,'waiting_approval','existing parent wait remains blocked while the child is unresolved');
+    assert.equal(app.runtime.getTask(task.taskId).state,'waiting_reconciliation','the original parent projects its unresolved child without requesting another approval');
     assert.equal(app.runtime.readToolExecutions(child.taskId)[0].state,'unknown');
     await client.call('task.submit',{goal:'Do the requested work',conversationId:'user-chat'},
       {idempotencyKey:'original',timeoutMs:60000});

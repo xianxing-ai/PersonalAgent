@@ -17,6 +17,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync} from 'node:fs';
 import path from 'node:path';
+import {nativePublishArguments,probeNativeToolchain,requirePeArchitecture} from './host-architecture.mjs';
 
 export function resolveRepoRoot() {
   return realpathSync.native(path.resolve(import.meta.dirname, '..', '..', '..'));
@@ -53,19 +54,8 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
     throw Error('Target directory must be a directory');
   }
 
-  // 1. Check for dotnet SDK
-  const dotnetCheck = spawnSync('dotnet', ['--version'], {
-    encoding: 'utf8',
-    windowsHide: true,
-    shell: false,
-  });
-
-  if (dotnetCheck.error || dotnetCheck.status !== 0) {
-    throw Error(
-      '.NET SDK is required to build WindowsJobProcessHost.exe but "dotnet" was not found on PATH. ' +
-      'Please install the .NET 8 SDK from https://dotnet.microsoft.com/download/dotnet/8.0'
-    );
-  }
+  // Native Node, OS and dotnet host must agree. Preinstalled .NET 8 only; no emulation/download fallback.
+  const toolchain=probeNativeToolchain();
 
   const csprojPath = path.join(import.meta.dirname, 'WindowsJobProcessHost.csproj');
   if (!existsSync(csprojPath)) {
@@ -73,14 +63,7 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
   }
 
   // 2. Publish project to target directory
-  const publishArgs = [
-    'publish',
-    csprojPath,
-    '-c', configuration,
-    '-o', canonicalTarget,
-    '--nologo',
-    '-v', 'quiet',
-  ];
+  const publishArgs = nativePublishArguments(csprojPath,canonicalTarget,configuration,toolchain.architecture);
 
   const publishResult = spawnSync('dotnet', publishArgs, {
     encoding: 'utf8',
@@ -99,6 +82,7 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
   }
 
   const canonicalExe = realpathSync.native(expectedExe);
+  requirePeArchitecture(canonicalExe,toolchain.architecture);
   const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
   const helperFilesSha256 = Object.fromEntries(['WindowsJobProcessHost.dll','WindowsJobProcessHost.deps.json','WindowsJobProcessHost.runtimeconfig.json']
     .map(name => [name,hash(path.join(canonicalTarget,name))]));
@@ -118,6 +102,7 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
     helperSha256: hash(canonicalExe), helperFilesSha256, sourceSha256,
     targetDir: canonicalTarget,
     configuration,
+    toolchain,
   };
 }
 

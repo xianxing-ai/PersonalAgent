@@ -340,14 +340,15 @@ export function mountAdmin(root, invoke, escape) {
     const consumableMemoryRefs = savedMemory.facts.filter(fact => fact.state === 'active'
       && Date.parse(fact.validFrom) <= Date.now() && Date.now() < Date.parse(fact.validUntil)).map(fact => fact.ref);
     clearApprovalExpiryTimer();
-    if (data.adminNavigation && data.adminNavigation.revision !== navigationRevision) {
+    if (Number.isSafeInteger(data.adminNavigation?.revision) && data.adminNavigation.revision >= 0
+      && data.adminNavigation.revision > navigationRevision && Object.hasOwn(sections, data.adminNavigation.page)) {
       navigationRevision = data.adminNavigation.revision;
-      if (sections[data.adminNavigation.page]) section = data.adminNavigation.page;
+      section = data.adminNavigation.page;
     }
     if (root.querySelector('#profile-dialog')?.open) return;
+    const main = root.querySelector('.main');
+    main.setAttribute('aria-busy', 'true');
     patchRecovery.sync(data.tasks, section === 'tasks' || section === 'overview', section);
-    root.querySelector('.main').dataset.section = section;
-    showPage(section);
     remoteMcpButton.hidden=!data.remoteMcp;
     if (section==='voice') {liveControls ??= mountLiveVoiceControls(root,invoke);sisControls ??= mountSisVoiceSettings(root,invoke);}
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
@@ -411,14 +412,23 @@ export function mountAdmin(root, invoke, escape) {
     if(agentArtsModelRoot)agentArtsModelRoot.hidden=section!=='models';
     if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
     if(modelApiRoot)modelApiRoot.hidden=section!=='models';
-    root.querySelector('.main').dataset.cloudConfig=String(section==='models' && data.model?.provider==='agentarts');
     const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
     const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
-    root.querySelector('.main').dataset.surface = section === 'models' ? 'models' : directSettings[section] || featureSections.includes(section) ? 'settings' : 'standard';
-    root.querySelector('#page-title').textContent = sections[section];
-    const connection = data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection;
-    root.querySelector('#connection').textContent = `${connection}。未连接的能力会保持明确的不可用状态。`;
-    root.querySelectorAll('[data-page]').forEach(button => button.setAttribute('aria-current', button.dataset.page === section ? 'page' : 'false'));
+    // Commit navigation only after its body and mounted controls are ready. A
+    // highlighted sidebar alone must never acknowledge a half-rendered page.
+    const commitPage = () => {
+      main.dataset.section = section;
+      main.dataset.navigationRevision = String(navigationRevision);
+      main.dataset.cloudConfig = String(section === 'models' && data.model?.provider === 'agentarts');
+      main.dataset.surface = section === 'models' ? 'models' : directSettings[section] || featureSections.includes(section) ? 'settings' : 'standard';
+      root.querySelector('#content').dataset.section = section;
+      root.querySelector('#page-title').textContent = sections[section];
+      const connection = data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection;
+      root.querySelector('#connection').textContent = `${connection}。未连接的能力会保持明确的不可用状态。`;
+      root.querySelectorAll('[data-page]').forEach(button => button.setAttribute('aria-current', button.dataset.page === section ? 'page' : 'false'));
+      main.setAttribute('aria-busy', 'false');
+      showPage(section);
+    };
     const agentArts = data.model?.provider === 'agentarts';
     const modelTitle = agentArts ? 'AgentArts · Competition Profile'
       : data.model?.provider === 'fake' ? 'Fake Model · 离线测试' : '盘古大模型 2.0';
@@ -462,7 +472,7 @@ export function mountAdmin(root, invoke, escape) {
     const nextMemoryKey = section === 'memory'
       ? JSON.stringify({state: data.privateMemory, search: memorySearch, saved: savedMemory}) : undefined;
     if (section === 'memory' && data.privateMemory?.available && renderedSection === section
-      && !refreshMemory && nextMemoryKey === memoryRenderKey) return;
+      && !refreshMemory && nextMemoryKey === memoryRenderKey) { commitPage(); return; }
     // Keep interactive task/model DOM when an unrelated snapshot changes.
     const preferenceKey = section === 'appearance'
       ? `${themePreference()}/${localStorage.getItem('pa-calm')}` : undefined;
@@ -504,7 +514,7 @@ export function mountAdmin(root, invoke, escape) {
       }
     }
     // Retained nodes already own their listeners. Rebinding would multiply IPC calls.
-    if (retainContent) return;
+    if (retainContent) { commitPage(); return; }
     if (section === 'profile') bindProfile(root, escape);
     root.querySelector('#memory-select-vault')?.addEventListener('click', async event => {
       const button = event.currentTarget;
@@ -705,6 +715,7 @@ export function mountAdmin(root, invoke, escape) {
     if (section === 'authorizations' && !history.loaded && !history.loading && !history.error) {
       void loadHistory();
     }
+    commitPage();
   }
 
   root.querySelector('#content').addEventListener('click', event => {

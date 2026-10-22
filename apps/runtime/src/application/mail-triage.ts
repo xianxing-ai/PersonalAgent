@@ -29,6 +29,9 @@ export interface QQMailTriageHostOptions {
   readonly classifierFingerprint?: string;
   readonly getClassifierFingerprint?: () => string | undefined;
   readonly isSessionAllowed: () => boolean;
+  /** Trusted local composition only: binds the actual Runtime read task to its
+   * current monitoring origin. No mail headers or credentials leave this port. */
+  readonly onReadTask?: (input: {taskId: string; sessionId: string}) => void;
   /** Optional trusted composition. Configuration readiness is never an execution grant. */
   readonly batchAuthorization?: {
     canRequest(): boolean;
@@ -117,7 +120,15 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
     let page:ReturnType<RuntimeApplication['nextMailReadSession']>;
     submittingPage=true;
     try{page=application.nextMailReadSession(sessionId);}finally{submittingPage=false;}
-    if (page.state === 'submitted') {taskId = page.page.task.taskId; status = 'reading';}
+    if (page.state === 'submitted') {
+      taskId = page.page.task.taskId; status = 'reading';
+      try {options.onReadTask?.({taskId,sessionId});}
+      catch {
+        application.stopMailReadSession(sessionId);sessionId=undefined;
+        analysisSessionId=undefined;controller.abort();void provider.dispose();
+        status='disabled';throw new ProtocolError('UNAUTHORIZED','Inbox source origin could not be bound');
+      }
+    }
     else if (page.state === 'done') {
       if(batch)options.batchAuthorization?.finish(batch);
       application.stopMailReadSession(sessionId); sessionId = undefined; taskId = undefined; status = 'complete';

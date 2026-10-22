@@ -15,10 +15,8 @@ export function mountNotificationSettings(root, invoke) {
     <label>摘要方式<select name="digest" required><option value="">请选择</option><option value="on_return">归来时</option><option value="on_demand">主动查看时</option><option value="scheduled">原调度触发时</option></select></label>
     <label>安静时段开始<input name="quietStart" type="time"></label><label>安静时段结束<input name="quietEnd" type="time"></label>
     <label>IANA 时区<input name="timezone" maxlength="100" placeholder="Asia/Shanghai"></label>
-    <button class="btn" type="submit">保存当前参数</button><button class="btn" type="button" data-notifications="voice">用当前 Live 最终语音确认</button></form>
+    <button class="btn" type="submit">保存当前参数</button></form>
     <p data-notifications="status" role="status"></p><p data-notifications="question" role="status"></p>
-    <button class="btn" type="button" data-notifications="cancel">取消当前询问</button>
-    <button class="btn" type="button" data-notifications="reconcile">读取原确认结果</button>
     <h3>当前待审批</h3><ul data-notifications="approvals"></ul>
     <h3>通知中心</h3><button class="btn" type="button" data-notifications="digest">查看未读摘要</button>
     <button class="btn" type="button" data-notifications="return">查看归来摘要</button>
@@ -68,8 +66,6 @@ export function mountNotificationSettings(root, invoke) {
   };
   form.onsubmit=event=>{event.preventDefault();try{void run('notifications.configure',settings());}catch(error){field('status').textContent=error.message;}};
   field('load').onclick=()=>{try{void run('notifications.get',{scope:scope()});}catch(error){field('status').textContent=error.message;}};
-  field('voice').onclick=()=>{try{void run('notifications.confirmation.prepare',settings());}catch(error){field('status').textContent=error.message;}};
-  field('cancel').onclick=()=>run('voice.confirmation.cancel');field('reconcile').onclick=()=>run('voice.confirmation.reconcile');
   field('digest').onclick=()=>run('notifications.digest',{trigger:'on_demand'});field('return').onclick=()=>run('notifications.digest',{trigger:'on_return'});
   function render(value={},currentQuestion=null,pendingApprovals=[]) {
     state=value??{};question=currentQuestion;approvals=pendingApprovals;
@@ -87,12 +83,12 @@ export function mountNotificationSettings(root, invoke) {
         element('until').value=p.silentUntilUtc?new Date(Date.parse(p.silentUntilUtc)-new Date(p.silentUntilUtc).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
       }
     }
-    field('question').textContent=question?`${question.summary} 当前版本 ${question.revision}；${question.state}。在已开启 Live 中明确回答同意或拒绝。`:'没有待语音确认的问题；页面操作不会开启麦克风。';
+    field('question').textContent='需要确认的操作会显示在原对话授权卡，点击同意或拒绝即可。';
     field('approvals').replaceChildren();
     for(const approval of approvals.filter(value=>value.state===undefined||value.state==='pending')) {
       const li=document.createElement('li'),button=document.createElement('button');button.className='btn btn-sm';button.type='button';button.disabled=busy||!state.available;
-      li.textContent=`${approval.action??approval.toolName??approval.approvalId} `;button.textContent='询问当前参数并用语音确认';
-      button.onclick=()=>run('voice.confirmation.prepareApproval',{approvalId:approval.approvalId,expectedRevision:approval.revision});li.append(button);field('approvals').append(li);
+      li.textContent=`${approval.action??approval.toolName??approval.approvalId} `;button.textContent='查看授权卡';button.disabled||=!approval.taskId;
+      button.onclick=()=>run('task.openConversation',{taskId:approval.taskId});li.append(button);field('approvals').append(li);
     }
     field('feed').replaceChildren();
     for(const item of state.feed?.items??[]) {

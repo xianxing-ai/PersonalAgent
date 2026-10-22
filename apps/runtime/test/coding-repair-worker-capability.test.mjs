@@ -5,6 +5,7 @@ import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createRuntimeApplication,createDesktopSubagentDispatchTool,CODING_REPAIR_WORKFLOW_TOOL} from '../dist/application.js';
+import {createRuntimeCodingRepairWorkerCapability} from '../dist/application/coding-repair-worker-capability.js';
 
 // Synthetic frontier and coding host. The real TaskRuntime/Policy/ToolGateway,
 // host-child identities, approval recovery and source-export checks are exercised.
@@ -13,7 +14,7 @@ const hash=value=>sha(JSON.stringify(value));
 const source='export const answer = 1;\n',updated='export const answer = 2;\n';
 const snapshot=(after=false)=>({snapshotId:after?'after':'before',packages:[{id:'pkg',path:'',dependencies:[]}],
   files:[{path:'app.js',sha256:sha(after?updated:source),packageId:'pkg',kind:'source'}]});
-function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synthetic-image',delegate=true}={}){
+function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synthetic-image',delegate=true,depth=2,proposalSubtask={},verification='unverified'}={}){
   let app;const cloud=[],images=[],calls=[],exports=[];
   const session='synthetic-session';
   const tool=(name,sideEffect,execute,properties={},required=[])=>({descriptor:{name,version:'1.0.0',sideEffect,
@@ -38,7 +39,7 @@ function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synt
   tools.unshift(createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)}));
   const proposal={kind:'tool_proposal',proposalId:'same-worker-f15',toolName:CODING_REPAIR_WORKFLOW_TOOL,toolVersion:'1.0.0',
-    arguments:{subtasks:[{subtaskId:'repair',role:'coder',goal:'Repair the synthetic app'}],codingRepair:{mode:'main'}},verification:'unverified'};
+    arguments:{subtasks:[{subtaskId:'repair',role:'coder',goal:'Repair the synthetic app',...proposalSubtask}],codingRepair:{mode:'main'}},verification};
   const image={bindingId:bindImage,receiptSecret:async()=> 'synthetic-private-receipt-key-at-least-32-chars',advance:async request=>{
     images.push(structuredClone({...request,signal:undefined}));
     const phase=request.checkpoint?Number(request.checkpoint.split('-').at(-1)):0;
@@ -56,7 +57,7 @@ function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synt
   }};
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',...(delegate?{delegateUserTasks:true}:{}),
     hostUserNamespace:'synthetic-owner',coordinationBinding:'synthetic-fixed-deployment',tools,
-    readConversationPreference:()=>({depth:2,fast:false}),
+    readConversationPreference:()=>({depth,fast:false}),
     coordination:{execute:async request=>{cloud.push(request);
       if(request.continuation)return {kind:'text',text:'Synthetic verified workflow continuation',verification:'unverified'};
       if(delegate&&app.runtime.getTask(request.taskId).conversationId==='user-chat')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
@@ -129,6 +130,76 @@ test('main conversation F15 runs in the original user-work and resumes exact sta
       'The same-worker capability is not summarized as a second child dispatch');
   }finally{f.app.close();}
 });
+test('the actual fixed depth-one worker advertises only inherited execution settings and completes F15 without replacement',async()=>{
+  const f=fixture({depth:1}),{client,task}=await submit(f);
+  try{
+    const final=await drive(f,client,task.taskId);assert.equal(final.state,'succeeded',JSON.stringify(final.error));
+    const [child]=f.app.readSubagentTasks(task.taskId);assert.equal(child.state,'succeeded');
+    const initial=f.cloud.find(request=>request.taskId===child.taskId&&!request.continuation);
+    const entry=initial.availableTools.find(tool=>tool.name===CODING_REPAIR_WORKFLOW_TOOL);
+    assert.ok(entry);const subtask=entry.inputSchema.properties.subtasks.items;
+    for(const key of ['model','reasoningEffort','thinkingDepth'])assert.equal(Object.hasOwn(subtask.properties,key),false,key);
+    assert.equal(subtask.additionalProperties,false);
+    assert.equal(f.app.runtime.loadCheckpoint(child.taskId,'subtask-thinking-binding').depth,1);
+    assert.deepEqual(f.app.runtime.loadCheckpoint(child.taskId,'competition-tool-catalog').entries,initial.availableTools,
+      'approval and workflow continuation preserve the initial directory');
+    const root=f.app.tools.list().find(tool=>tool.name===CODING_REPAIR_WORKFLOW_TOOL);
+    for(const key of ['model','reasoningEffort','thinkingDepth'])assert.ok(root.inputSchema.properties.subtasks.items.properties[key],key);
+    assert.equal(f.images.length,4);assert.deepEqual(f.app.readSubagentTasks(child.taskId),[]);
+  }finally{f.app.close();}
+});
+
+test('an explicit root without fixed worker context retains execution choices even when user delegation is enabled',async()=>{
+  const f=fixture();
+  try{
+    const task=f.app.runtime.submitTask({goal:'Synthetic explicit root directory',conversationId:'explicit-root',idempotencyKey:'explicit-root-directory'});
+    const deadline=new Date(Date.now()+60_000).toISOString();
+    const final=await f.app.runtime.runTask(task.taskId,async worker=>{
+      worker.saveCheckpoint('application-profile','huawei_ict_agentarts');worker.saveCheckpoint('application-deadline',deadline);
+      const directory=await f.app.prepareCompetitionToolCatalog({taskId:task.taskId,deadline,signal:worker.signal});
+      const entry=directory.find(tool=>tool.name===CODING_REPAIR_WORKFLOW_TOOL);assert.ok(entry);
+      for(const key of ['model','reasoningEffort','thinkingDepth'])assert.ok(entry.inputSchema.properties.subtasks.items.properties[key],key);
+      assert.equal(f.app.runtime.loadCheckpoint(task.taskId,'subtask-coordination-binding'),undefined);
+      return {resultSummary:'Synthetic root directory checked'};
+    },{deadline,sideEffect:'read'});
+    assert.equal(final.state,'succeeded',JSON.stringify(final.error));assert.equal(f.images.length,0);assert.equal(f.calls.length,0);
+  }finally{f.app.close();}
+});
+
+for(const [key,value] of [['model','substitute-model'],['reasoningEffort','high'],['thinkingDepth',3]])
+test(`the same-worker catalog rejects a forged ${key} before any F15 operation`,async()=>{
+  const f=fixture({depth:1,proposalSubtask:{[key]:value}}),{client,task}=await submit(f);
+  try{
+    await drive(f,client,task.taskId);const [child]=f.app.readSubagentTasks(task.taskId);
+    assert.equal(child.state,'failed');assert.equal(child.error.code,'INVALID_ARGUMENT');
+    assert.equal(f.app.runtime.loadCheckpoint(child.taskId,'subtask-thinking-binding').depth,1);
+    assert.equal(f.images.length,0);assert.equal(f.calls.length,0);
+  }finally{f.app.close();}
+});
+
+test('the original runtime worker guards still reject execution replacement without a model-facing catalog',async t=>{
+  for(const [key,value] of [['model','substitute-model'],['reasoningEffort','high'],['thinkingDepth',3]])await t.test(key,async()=>{
+    const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts'});
+    try{
+      const task=app.runtime.submitTask({goal:'Synthetic fixed worker guard',conversationId:'synthetic-guard',idempotencyKey:'fixed-worker-'+key});
+      const deadline=new Date(Date.now()+60_000).toISOString();
+      app.runtime.saveCheckpoint(task.taskId,'application-deadline',deadline);
+      app.runtime.saveCheckpoint(task.taskId,'subtask-thinking-binding',{depth:1});
+      app.runtime.saveCheckpoint(task.taskId,'execution-model',{modelId:'original-model',reasoningEffort:'low'});
+      const original={kind:'tool_proposal',proposalId:'synthetic-fixed-'+key,toolName:CODING_REPAIR_WORKFLOW_TOOL,toolVersion:'1.0.0',
+        arguments:{subtasks:[{subtaskId:'repair',role:'coder',goal:'Repair the synthetic app',[key]:value}],codingRepair:{mode:'main'}},verification:'unverified'};
+      const capability=createRuntimeCodingRepairWorkerCapability(app,{image:{bindingId:'synthetic-fixed',
+        receiptSecret:async()=>assert.fail('guard must precede image access'),advance:async()=>assert.fail('guard must precede image access')},
+        authorizeMetadata:()=>assert.fail('guard must precede exports'),projectSource:async()=>assert.fail('guard must precede exports')},
+      ()=>assert.fail('guard must precede tool access'));
+      await assert.rejects(capability.dispatch(original,{taskId:task.taskId,revision:task.revision,deadline,signal:new AbortController().signal,
+        loadCheckpoint:name=>app.runtime.loadCheckpoint(task.taskId,name),saveCheckpoint:(name,value)=>app.runtime.saveCheckpoint(task.taskId,name,value)}),
+      {code:'REVISION_CONFLICT'});
+      assert.equal(app.runtime.loadCheckpoint(task.taskId,'coding-repair:worker-capability'),undefined);
+    }finally{app.close();}
+  });
+});
+
 test('legacy direct-root coding dispatch keeps its original coder child and graph runner',async()=>{
   const f=fixture({delegate:false}),{client,task}=await submit(f);
   try{
@@ -136,6 +207,8 @@ test('legacy direct-root coding dispatch keeps its original coder child and grap
     assert.equal(final.state,'succeeded',JSON.stringify(final.error));
     const [child]=f.app.readSubagentTasks(task.taskId);assert.equal(child.role,'coder');assert.equal(child.state,'succeeded');
     assert.equal(f.app.runtime.loadCheckpoint(child.taskId,'coding-repair:worker-capability'),undefined);
+    const entry=f.cloud.find(request=>request.taskId===task.taskId&&!request.continuation).availableTools.find(tool=>tool.name===CODING_REPAIR_WORKFLOW_TOOL);
+    for(const key of ['model','reasoningEffort','thinkingDepth'])assert.ok(entry.inputSchema.properties.subtasks.items.properties[key],key);
     assert.equal(f.images.length,4);assert.equal(f.calls.filter(call=>call.name==='coding.repair.start').length,1);
   }finally{f.app.close();}
 });

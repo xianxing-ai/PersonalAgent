@@ -113,6 +113,8 @@ export type {WorkflowLearningOptions,LearningTaskBinding,LearningSkillManifest} 
 export {KnowledgeWriteReconciliationAdapter} from './application/knowledge-write-reconciliation.js';
 export type {KnowledgeWriteReconciliationPort} from './application/knowledge-write-reconciliation.js';
 export * from './application/proactive-connector-host.js';
+export {runRuntimeConnectorChangeDecision,completeRuntimeConnectorWatchWake} from './application/connector-change-task.js';
+export type {ConnectorChangeOrigin,ConnectorChangeDecisionTaskOptions} from './application/connector-change-task.js';
 export * from './application/notification-host.js';
 export * from './application/proactive-workflow-session.js';
 export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';

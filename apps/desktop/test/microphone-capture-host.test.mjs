@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createMicrophoneCaptureHost} from '../electron/microphone-capture-host.js';
+import {needsMicrophoneApproval} from '../electron/authorization-operation-policy.js';
 
 function fixture(confirmAuthorization=async()=>true) {
   const commands = [];
@@ -18,6 +19,18 @@ function fixture(confirmAuthorization=async()=>true) {
 }
 
 async function tick() { await new Promise(resolve => setImmediate(resolve)); }
+
+for(const mode of ['read-only','workspace-write','full-access'])test(`explicit Live start in ${mode} skips the duplicate card and retains the device gate`,async()=>{
+  let cards=0;
+  const f=fixture(async request=>{
+    if(!needsMicrophoneApproval(mode,request.purpose))return request.isCurrent();
+    cards++;return false;
+  });
+  await f.host.authorize({purpose:'live'});assert.equal(cards,0);assert.equal(f.host.snapshot().authorized,true);
+  assert.equal(f.lease(),undefined,'the OS/device gate is still separate');assert.equal(f.commands.length,0);
+  await f.host.revoke();assert.equal(f.host.snapshot().authorized,false);
+  await assert.rejects(f.host.authorize({purpose:'wake'}),/对话卡授权/);assert.equal(cards,1);
+});
 
 test('application card precedes device permission; denial, revoke and stale panel cannot authorize',async()=>{
   const denied=fixture(async()=>false);await assert.rejects(denied.host.authorize(),/对话卡授权/);

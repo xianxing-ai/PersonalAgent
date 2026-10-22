@@ -6,7 +6,7 @@ import {test} from 'node:test';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../dist/index.js';
 import {createRuntimeWindowsHostAttemptStore} from '../dist/application.js';
-import {createWindowsHostNotepadAdapter} from '../dist/application/windows-host-adapter.js';
+import {createWindowsHostBridgeTransport,createWindowsHostNotepadAdapter} from '../dist/application/windows-host-adapter.js';
 
 const targetRef = 'notepad_target_123456789';
 const deadline = () => new Date(Date.now() + 30000).toISOString();
@@ -15,10 +15,18 @@ const context = () => ({taskId: 'task-1', runId: 'run-1', authorizationRef: 'gra
   deadline: deadline(), signal: new AbortController().signal, scopes: ['computer:notepad:write']});
 const base = frame => ({protocolVersion: frame.protocolVersion, requestId: frame.requestId,
   sessionId: frame.sessionId});
+test('trusted transport rejects relative, network, device and injected journal directories before spawning',()=>{
+  for(const journalDirectory of ['relative','C:relative','\\\\server\\share','\\\\?\\C:\\journal',
+    'C:\\journal:stream','C:\\journal\n--host','C:\\journal" --pipe x']){
+    assert.throws(()=>createWindowsHostBridgeTransport({bridgePath:'C:\\trusted\\WindowsHost.PipeBridge.exe',
+      hostPath:'C:\\trusted\\WindowsHost.Host.exe',journalDirectory}),
+    {code:process.platform==='win32'?'INVALID_ARGUMENT':'UNSUPPORTED_CAPABILITY'});
+  }
+});
 
 function fixture({executeState = 'verified', statusState = 'not_found', mismatchedResult = false,
   presence = true, onPresence, onRecord, observationError, targetExpiresAt, targetReady = true,
-  prepareObservation,
+  prepareObservation, onObserve,
   now, taskId = 'task-1', attemptStore} = {}) {
   const sent = [];
   const attempts = new Map();
@@ -36,7 +44,8 @@ function fixture({executeState = 'verified', statusState = 'not_found', mismatch
             requestId: frame.requestId, clientNonce: frame.clientNonce,
             hostNonce: 'a'.repeat(32), sessionId};
           if (frame.kind === 'observe') {
-            if (observationError) return {kind: 'observation_refused', ...base(frame), errorCode: observationError};
+            const refusal = await onObserve?.(frame) ?? observationError;
+            if (refusal) return {kind: 'observation_refused', ...base(frame), errorCode: refusal};
             observedExpiresAt = targetExpiresAt?.() ?? deadline();
             return {kind: 'observed', ...base(frame), targetRef,
               expiresAt: observedExpiresAt, source: 'windows-uia'};
@@ -75,7 +84,7 @@ function fixture({executeState = 'verified', statusState = 'not_found', mismatch
     async authorizePresence(value) {
       assert.equal(value.taskId, taskId);
       await onPresence?.(value);
-      return presence;
+      return typeof presence === 'function' ? presence() : presence;
     },
   });
   return {adapter, sent, attempts, get closes() {return closes;}};
@@ -114,6 +123,47 @@ test('trusted target preparation runs after the Host baseline handshake and befo
   await f.adapter.releaseObservation('task-1');
 });
 
+test('fresh-target wait retains one original baseline session until native metadata observes the new target', async () => {
+  let observations=0;
+  const f=fixture({prepareObservation:async()=>({waitForFreshTarget:true}),
+    onObserve:()=>++observations<3?'NOT_FOUND':undefined});
+  await f.adapter.observe('task-1',deadline(),new AbortController().signal);
+  assert.deepEqual(f.sent.map(frame=>frame.kind),['hello','bind','observe','observe','observe']);
+  const frames=f.sent.filter(frame=>frame.kind==='observe');
+  assert.equal(new Set(frames.map(frame=>frame.sessionId)).size,1);
+  assert.equal(new Set(frames.map(frame=>frame.requestId)).size,3);
+  assert.ok(frames.every(frame=>!('expectedText' in frame)&&!('replacementText' in frame)));
+  await f.adapter.releaseObservation('task-1');assert.equal(f.closes,1);
+});
+test('fresh-target wait never retries ambiguous, stale or untrusted native targets',async t=>{
+  for(const [errorCode,code]of[['TARGET_AMBIGUOUS','UNAUTHORIZED'],['TARGET_STALE','NOT_FOUND'],['UNAUTHORIZED','UNAUTHORIZED']]){
+    await t.test(errorCode,async()=>{
+      const f=fixture({prepareObservation:async()=>({waitForFreshTarget:true}),observationError:errorCode});
+      await assert.rejects(f.adapter.observe('task-1',deadline(),new AbortController().signal),{code});
+      assert.equal(f.sent.filter(frame=>frame.kind==='observe').length,1);assert.equal(f.closes,1);
+      assert.equal(f.sent.some(frame=>frame.kind==='execute'),false);
+    });
+  }
+});
+test('fresh-target wait cancels or expires without reopening the baseline or writing',async t=>{
+  for(const ending of ['cancel','close','deadline'])await t.test(ending,async()=>{
+    const controller=new AbortController();let observed;
+    const waiting=new Promise(resolve=>{observed=resolve;});
+    const f=fixture({prepareObservation:async()=>({waitForFreshTarget:true}),onObserve:()=>{observed();return 'NOT_FOUND';}});
+    const pending=f.adapter.observe('task-1',new Date(Date.now()+(ending==='deadline'?30:30000)).toISOString(),controller.signal);
+    const rejected=assert.rejects(pending,{code:ending==='deadline'?'TIMEOUT':ending==='close'?'UNSUPPORTED_CAPABILITY':'CANCELLED'});
+    await waiting;if(ending==='cancel')controller.abort();else if(ending==='close')await f.adapter.close();
+    await rejected;assert.equal(f.sent.filter(frame=>frame.kind==='hello').length,1);assert.equal(f.closes,1);
+    assert.equal(f.sent.some(frame=>frame.kind==='execute'),false);
+  });
+});
+test('fresh-target wait rechecks policy after a native reply before accepting or retrying it',async()=>{
+  let allowed=true;
+  const f=fixture({presence:()=>allowed,prepareObservation:async()=>({waitForFreshTarget:true}),
+    onObserve:()=>{allowed=false;}});
+  await assert.rejects(f.adapter.observe('task-1',deadline(),new AbortController().signal),{code:'UNAUTHORIZED'});
+  assert.equal(f.sent.filter(frame=>frame.kind==='observe').length,1);assert.equal(f.closes,1);
+});
 test('cancelling target preparation closes the baseline session without observing or executing', async () => {
   const controller = new AbortController();
   const f = fixture({prepareObservation: async ({signal}) => {

@@ -3,7 +3,21 @@
 <!-- current-design-20261013 -->
 > 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../../docs/design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../../docs/design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../../docs/design/workflow-architecture-20261013/index.html) · [接口状态](../../../docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。本机Laya仅为独立Local Profile实验候选，不属于Competition产品路径，AgentArts负责Agent/Workflow构建、编排、评估与部署；本地Runtime保留Policy、ToolGateway、TaskRuntime及Evidence。具体节点、领域资格、外部比赛资格与真实验收分别核实，AgentArts失败不得静默回退Local Profile。常规PR须有合资格非作者对当前head有效批准；Owner具体PR审核例外须留记录，必需技术CI不豁免。
 
-## 2026-10-13 WSS 与独立镜像凭据配置
+## 2026-10-22 显式恢复默认任务连接
+
+“恢复默认连接（HTTPS / Latest）”只使用当前已保存的网关和运行时，保留两种本机加密
+凭据，显式改用 HTTPS、清除固定版本和 WSS 地址。它不保存表单草稿，不猜新部署版本，
+不自动重放待核实或其他原任务。设置切换沿原宿主路由与重新绑定/重启提示处理。
+
+当前通道同时显示固定版本或“默认 Latest（未钉版，实际版本未读回）”。Latest 表示
+请求不带 endpoint pin，不代表已经读回具体版本或已连接成功；真实结果以原任务回执为准。
+这仍是同一 `huawei_ict_agentarts` Competition Profile，不回退本地 Agent 或其他模型。
+
+此恢复入口面向普通任务。Live 实时音频使用 `pa.realtime.v1` 原生 JSON/PCM 连接，仍需
+实际支持该协议的固定版本 WSS 地址；文本 HTTPS 不能代替音频，恢复设置不等于 Live 已恢复。
+定位、直测和合成渲染边界见 [#497 增量记录](../../../docs/competition/evidence/ISSUE497_DEFAULT_CONNECTION_RECOVERY_20261022.md)。
+
+## 2026-10-13 WSS 与独立镜像凭据配置（历史）
 
 “设置 → 模型 → AgentArts 主智能体”新增 WSS 地址、独立镜像访问令牌和显式 HTTPS 备用开关。
 新配置表单默认 WSS，备用默认关闭；已有三字段记录继续使用原 HTTPS / 宿主环境配置，

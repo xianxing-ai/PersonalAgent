@@ -1,5 +1,15 @@
 # 开发计划与进度
 
+## 2026-10-21 连接器变化与默认自主闭环（in_progress）
+
+用户要求补齐默认桌面开发、持续来源与主动处理，并明确新邮件/明显天气变化先通知主对话，
+走当前 Laya 是否告知用户的路径。[本轮工作包](competition/CONNECTOR_CHANGE_TRIGGERS_20261021.md)
+已接原 Client 审批、Scheduler、读取授权/回执、去重/恢复、Runtime 本地判断和通知策略。
+当前两项来源为 poll-only，其余连接器不据接口存在宣布已接。默认真实鹈鹕验收发现工具目录
+与云续接缺口，原始失败保留；源码、离线检查、真实云/账号/设备与 PR 集成各自记账，未转 done。
+恢复真实验收后，真实QQ单封信头→AgentArts续接及默认天气订阅/停止已通过；默认鹈鹕原决策
+返回复核而停在unknown，未修改文件。自然新邮件/显著天气变化→Laya→真实提醒仍未验证。
+
 ## 2026-10-21 悬浮面板玻璃主题与原生圆角（review）
 
 `DESKTOP-LIQUID-GLASS-20261021`：目标 `huawei_ict_agentarts`，MOD-11/12，PA-001/PA-002。用户确认本机深色玻璃和真实外层圆角后授权提交 PR；从 `61b05cf1` 独立交付 `codex/panel-liquid-glass-20261021`。仅修改 Desktop 面板展示、原生材质与必要验证；没有纳入并行工作区重排、Runtime/AgentArts、公共协议、依赖或迁移。实际接线、Windows SDK/.NET Framework 要求、不透明回退和验证边界见 [交付记录](../apps/desktop/docs/PANEL_LIQUID_GLASS_20261021.md)。实施 Codex / 提交 `2511375597-lab`，拟审查 `Potatos498`、拟合并 `goo122`（均待实际接手）；未授权合并，不据本机 Fake 界面或视觉批准声明真实云能力完成。

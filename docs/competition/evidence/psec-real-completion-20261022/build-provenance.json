@@ -1,0 +1,32 @@
+{
+  "sourceSha": "dbc0bdea47a3f1a155a65d685dd29b58614dc7e4",
+  "node": "v24.15.0",
+  "npm": "11.12.1",
+  "dotnetSdk": "8.0.424",
+  "helperSha256": "09e1169a6ed40d2d5ff1ff7ae59c24b68e0cc8dcb6c1d0309c2e42ad0f326e00",
+  "helperFilesSha256": {
+    "WindowsJobProcessHost.dll": "77f52d5837a1747dc3baf95f395ba794457f79f79fbd48cc62423457363535f7",
+    "WindowsJobProcessHost.deps.json": "de714dd5dca4a1f2f7fcc85ac0927a812b292aa0e4b122ac788c4fc794411ab5",
+    "WindowsJobProcessHost.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306"
+  },
+  "sourceSha256": {
+    "Program.cs": "9360d72d1cb7d25313c50e02e6e14fa787b014513296ec98e234ecb6c7e3e41e",
+    "PsecEnvironment.cs": "3b1395cbd7e9ce7744a4daed1db2206199c69404f1ebd19aa1d5952053cacae1",
+    "SandboxDiagnostics.cs": "ecb33185a841c8e37688a7d41f376c94cf4ac1da32c12e6787da319918643ac1",
+    "SandboxLauncher.cs": "05639d2d0c62cf4216f145fa9fd049fda2e6d1964dde7212a5b757ac9ba7815e",
+    "WindowsJobProcessHost.csproj": "ffe2237452d6713dc775b4fcb9cf597a699a7c753e5212122ad78c4bc4d5c6c0"
+  },
+  "buildInputsLogSha256": "7faf874e662b907b7802304e7e95b21daa3366c23404febfea7d7d9ebcda004b",
+  "launcherSmokeLogSha256": "43692398ebf91f2625b884278c2128e6bde0ccfc970c0dd72348db16fd34f2f3",
+  "missingHelperRequiredLogSha256": "3f733f828e1f31b6a13b10f3a107a0ed2f950249ea5258e4d88c688e3f26e226",
+  "missingHelperRequired": {
+    "fail": 1,
+    "skipped": 0,
+    "exitCode": 1
+  },
+  "launcherSmoke": {
+    "compatibilityExitCode": 0,
+    "exitCode": 0
+  },
+  "hosted": "not_run"
+}

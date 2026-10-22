@@ -2,6 +2,7 @@
 // Browser plugin not available: reuse the repository's Electron/Playwright path.
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {pathToFileURL}=require('node:url'),{spawnSync}=require('node:child_process');
+const {DatabaseSync}=require('node:sqlite');
 const {_electron}=require('playwright');
 (async()=>{
   const repo=path.resolve(process.env.PA_TEST_REPOSITORY||path.join(__dirname,'../../..'));
@@ -20,7 +21,7 @@ await import(${JSON.stringify(pathToFileURL(path.join(repo,'apps/desktop/electro
     .filter(key=>process.env[key]).map(key=>[key,process.env[key]]));
   Object.assign(environment,{PA_RUNTIME_PROFILE:'huawei_ict_agentarts',PA_USER_DATA_DIR:userData});
   const app=await _electron.launch({executablePath:process.env.PA_TEST_ELECTRON_EXE||path.join(repo,'node_modules/electron/dist/electron.exe'),
-    args:[bootstrap],env:environment});
+    args:['-r',path.join(path.dirname(require.resolve('playwright-core/package.json')),'lib/server/electron/loader.js'),bootstrap],env:environment});
   let phase='launch',panel,admin;const errors=[];
   const receipt={kind:'Synthetic local Skill + actual product authorization',profile:'huawei_ict_agentarts',
     sourceHead:spawnSync('git',['rev-parse','HEAD'],{cwd:repo,encoding:'utf8',windowsHide:true}).stdout.trim(),
@@ -37,17 +38,24 @@ await import(${JSON.stringify(pathToFileURL(path.join(repo,'apps/desktop/electro
   const enabled=async value=>until(async()=>{const item=(await skills())[0];return item?.enabled===value&&item;});
   const pending=async()=> (await snapshot(panel)).authorizationQuestions.filter(q=>q.state==='pending');
   async function question(){panel??=await surface('panel');const value=await until(async()=>{const all=await pending();return all.length===1&&all[0];});
-    await panel.locator(`[data-question-id="${value.questionId}"] [data-authorization-decision="allow_once"]`).waitFor({state:'visible'});
+    const card=panel.locator(`[data-question-id="${value.questionId}"]`);
+    await card.locator('.authorization-question-primary').waitFor({state:'visible'});
+    assert.deepEqual(await card.locator('[data-authorization-decision]').allTextContents(),['同意','拒绝']);
+    assert.equal(await card.locator('details').getAttribute('open'),null,'details start collapsed');
+    assert.equal(await card.locator('input,textarea,select').count(),0,'no confirmation phrase or extra selection');
     assert.ok(value.sourceApprovalId,'real original Runtime approval identity');
     assert.equal(await panel.locator(`[data-approval-id="${value.sourceApprovalId}"]`).count(),0,'no second original approval action');
-    assert.equal(value.sandbox.native.required,false);assert.match(await panel.locator(`[data-question-id="${value.questionId}"]`).textContent(),/不启动外部进程/);
+    assert.equal(value.sandbox.native.required,false);assert.match(await card.textContent(),/不启动外部进程/);
     return value;
   }
   async function choose(value,decision,key='Enter'){
+    if(decision==='agree')decision=value.canReuseTask===true&&value.suggestedDecision==='allow_task'?'allow_task':'allow_once';
     const button=panel.locator(`[data-question-id="${value.questionId}"] [data-authorization-decision="${decision}"]`);
     await button.focus();await button.press(key);
     await until(async()=> !(await pending()).some(q=>q.questionId===value.questionId));
-    assert.equal(await button.isDisabled(),true,'resolved card cannot resubmit');
+    await panel.locator(`[data-question-id="${value.questionId}"]`).waitFor({state:'detached'});
+    const recorded=(await snapshot(panel)).authorizationQuestions.find(q=>q.questionId===value.questionId);
+    assert.equal(recorded?.state,decision==='deny'?'denied':'allowed','host history remains available after conversation removal');
   }
   const skillButton=action=>admin.locator(`[data-skill="${action}"][data-name="synthetic-authorization-fixture"]`);
   try {
@@ -60,37 +68,63 @@ await import(${JSON.stringify(pathToFileURL(path.join(repo,'apps/desktop/electro
       thread=document.querySelector('.thread');if(!title||!thread)return false;const a=title.getBoundingClientRect(),b=thread.getBoundingClientRect();
       return a.top>=b.top&&a.bottom<=b.bottom;},current.questionId);
     await panel.screenshot({path:path.join(fixture,'01-once-question.png')});
-    if(renderOnly){await panel.locator(`[data-question-id="${current.questionId}"] [data-authorization-decision="allow_once"]`).focus();
+    if(renderOnly){await panel.locator(`[data-question-id="${current.questionId}"] .authorization-question-primary`).focus();
       await panel.screenshot({path:path.join(fixture,'02-question-keyboard-actions.png')});}
-    await choose(current,'allow_once');
+    await choose(current,'agree');
     await enabled(false);assert.equal((await invoke(admin,'authorization.sandbox.read')).rules.filter(r=>r.active).length,0,'once never creates a permanent rule');
     receipt.phases.push({phase,state:'verified',secondModal:false});
     if(!renderOnly){
-    phase='allow-always';await skillButton('enable').click();current=await question();assert.equal(current.canAlways,true);
-    await panel.screenshot({path:path.join(fixture,'02-permanent-question.png')});await choose(current,'allow_always');await enabled(true);
-    const rules=(await invoke(admin,'authorization.sandbox.read')).rules.filter(r=>r.active);assert.ok(rules.length>0);
-    await skillButton('enable').click();await enabled(false);await skillButton('enable').click();await enabled(true);
-    assert.equal((await pending()).length,0,'same scoped rule is reused without another question');
-    receipt.phases.push({phase,state:'verified',activeRules:rules.length,sameScopeReuse:true});
-    phase='settings-revoke';await admin.locator('[data-page="authorizations"]').click();
+    phase='agree-separate-intent';await skillButton('enable').click();current=await question();
+    await panel.screenshot({path:path.join(fixture,'02-agreement-question.png')});await choose(current,'agree');await enabled(true);
+    assert.equal((await invoke(admin,'authorization.sandbox.read')).rules.filter(r=>r.active).length,0,'agreement never creates a permanent rule');
+    receipt.phases.push({phase,state:'verified',permanentRules:0});
+    phase='settings-no-permanent-rules';await admin.locator('[data-page="authorizations"]').click();
     await admin.locator('[data-authorization-profile]').waitFor({state:'visible'});
     assert.equal(await admin.locator('[data-todo="enable"],[data-feeds="enable"],[data-coding="authorize"]').count(),0);
     await admin.screenshot({path:path.join(fixture,'03-sandbox-rules.png')});
-    for(const rule of rules){await admin.locator(`[data-authorization-rule="${rule.ruleId}"]`).click();
-      await until(async()=>!(await invoke(admin,'authorization.sandbox.read')).rules.some(r=>r.ruleId===rule.ruleId&&r.active));}
     await admin.locator('[data-page="capabilities"]').click();await skillButton('enable').click();await enabled(false);
-    phase='deny-after-revoke';await skillButton('enable').click();current=await question();await choose(current,'deny','Space');
+    phase='deny-separate-intent';await skillButton('enable').click();current=await question();await choose(current,'deny','Space');
     await enabled(false);receipt.phases.push({phase,state:'verified',newQuestion:true});
     phase='profile-invalidates-pending';await skillButton('enable').click();current=await question();
     await admin.locator('[data-page="authorizations"]').click();await admin.locator('[data-authorization-profile]').selectOption('workspace-write');
     await until(async()=> (await snapshot(panel)).authorizationQuestions.find(q=>q.questionId===current.questionId)?.state==='stale');
-    assert.equal(await panel.locator(`[data-question-id="${current.questionId}"] [data-authorization-decision="allow_once"]`).isDisabled(),true);
+    await panel.locator(`[data-question-id="${current.questionId}"]`).waitFor({state:'detached'});
     await enabled(false);receipt.phases.push({phase,state:'verified'});
     phase='new-profile-asks-again';await admin.locator('[data-page="capabilities"]').click();await skillButton('enable').click();current=await question();
     const stale=await panel.evaluate(async body=>{try{return await window.desktop.invoke('authorization.question.respond',body);}catch{return {ok:false};}},
       {questionId:current.questionId,expectedRevision:current.revision-1,decision:'allow_once'});
     assert.ok(stale.ok!==true||stale.value?.accepted!==true);assert.equal((await pending()).length,1);
-    await choose(current,'allow_once');await enabled(true);receipt.phases.push({phase,state:'verified',staleRevisionRejected:true});
+    await choose(current,'agree');await enabled(true);receipt.phases.push({phase,state:'verified',staleRevisionRejected:true});
+    phase='full-access-original-install-no-card';await admin.locator('[data-page="authorizations"]').click();
+    await admin.locator('[data-authorization-profile]').selectOption('full-access');
+    assert.equal((await invoke(admin,'authorization.sandbox.read')).selected.mode,'full-access');
+    await panel.evaluate(()=>{
+      const probe={maxCards:0},observe=()=>{probe.maxCards=Math.max(probe.maxCards,document.querySelectorAll('[data-question-id],.approval-card').length);};
+      probe.observer=new MutationObserver(observe);probe.observer.observe(document.body,{childList:true,subtree:true});
+      window.__fullAccessCardProbe=probe;observe();
+    });
+    await admin.locator('[data-page="capabilities"]').click();await skillButton('uninstall').click();
+    await until(async()=> (await skills()).length===0);
+    await admin.locator('[data-skill="install"]').click();await enabled(false);
+    assert.equal((await pending()).length,0);assert.equal(await panel.locator('[data-question-id],.approval-card').count(),0);
+    const peakCards=await panel.evaluate(()=>{const probe=window.__fullAccessCardProbe;probe.observer.disconnect();return probe.maxCards;});
+    assert.equal(peakCards,0,'full access must never flash either the unified or legacy approval card');
+    const db=new DatabaseSync(path.join(userData,'runtime.sqlite'),{readOnly:true});db.exec('PRAGMA query_only=ON');
+    try{
+      const original=db.prepare(`SELECT c.task_id AS taskId,json_extract(q.value,'$.automatic') AS automatic,
+        json_extract(q.value,'$.decision') AS decision,json_extract(q.value,'$.state') AS state
+        FROM trusted_host_state s,json_each(s.value_json,'$.questions') q JOIN task_checkpoints c
+        ON c.task_id=json_extract(q.value,'$.taskId') AND c.checkpoint_key='host-tool-intent'
+        WHERE s.state_key='state' AND json_extract(c.value_json,'$.arguments.action')='skill.install'
+          AND json_extract(q.value,'$.automatic')='full-access'`).get();
+      assert.ok(original,'the actual Main install must retain its original automatic decision');
+      assert.equal(original.decision,'allow_once');assert.equal(original.state,'allowed');
+      const executed=db.prepare(`SELECT json_extract(record_json,'$.state') AS state,json_extract(record_json,'$.policyDecision') AS policy,
+        json_extract(record_json,'$.executionStarted') AS started FROM tool_execution_records WHERE task_id=?`).get(original.taskId);
+      assert.deepEqual({...executed},{state:'confirmed',policy:'allow',started:1});
+      assert.equal(db.prepare('SELECT state FROM tasks WHERE task_id=?').get(original.taskId).state,'succeeded');
+    }finally{db.close();}
+    receipt.phases.push({phase,state:'verified',visibleCards:0,peakCards,originalAutomaticReceipt:'full-access',originalDecision:'allow_once'});
     }else {await admin.locator('[data-page="authorizations"]').click();await admin.locator('[data-authorization-profile]').waitFor({state:'visible'});
       await admin.screenshot({path:path.join(fixture,'03-sandbox-rules.png')});receipt.phases.push({phase:'first-pending-visible',state:'verified',keyboardFocus:true,settingsRulesOnly:true});}
     assert.deepEqual(errors,[]);receipt.consoleErrors=errors;receipt.network=await app.evaluate(()=>globalThis.__authorizationSmoke);

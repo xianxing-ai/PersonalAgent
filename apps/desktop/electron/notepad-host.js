@@ -5,22 +5,40 @@ import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 const TOOL = 'computer.notepad.replace_text';
 const END = new Set(['succeeded', 'failed', 'cancelled', 'waiting_reconciliation']);
 
-/** Local user gesture -> existing prepared Runtime task -> Policy -> native adapter.
- * No model can supply the presence gesture, target reference or authorization decision. */
+/** Local gesture or current full-access policy -> original Runtime task -> native adapter.
+ * No model can supply the policy source, target reference or authorization decision. */
 export function createDesktopNotepadHost({createAdapter, createAttempts, transport,
   registerConfirmation, openNotepad, respond, cancelTask, reconcileTask,
+  isFullAccess = () => false, readPolicyBinding,
   onUpdate = () => {}, onTask = () => {}, now = Date.now}) {
   let application, current, closed = false, refreshing = false, recovering = false;
   let state = {available: true, busy: false, state: 'ready',
-    reason: '填写文本后，新建并确认一个空白记事本窗口。'};
+    reason: '填写文本后，向新建的独立空白记事本窗口写入。'};
   function update(value) { state = {...state, ...value}; onUpdate(); }
-  function belongs(taskId) { return current?.taskId === taskId && !current.controller.signal.aborted; }
+  function policyBinding() {
+    try {const value=readPolicyBinding?.();return typeof value === 'string' && value ? value : undefined;}
+    catch {return undefined;}
+  }
+  function policyCurrent(operation) {
+    try {return (operation.policyBinding === undefined || policyBinding() === operation.policyBinding)
+      && (!operation.fullAccess || isFullAccess() === true && operation.policyBinding !== undefined);}
+    catch {return false;}
+  }
+  function belongs(taskId) { return current?.taskId === taskId && !current.controller.signal.aborted
+    && Number.isFinite(now()) && now() < Date.parse(current.deadline) && policyCurrent(current); }
   const adapter = createAdapter({transport, attempts: createAttempts(() => application.runtime),
     authorizePresence: async ({taskId, targetRef}) => !closed && belongs(taskId)
       && (!targetRef || (current.targetRef === targetRef && current.confirmedUntil > now())),
     prepareObservation: async ({taskId, signal}) => {
       if (!belongs(taskId)) throw Error('Notepad task is no longer active');
       const operation = current;
+      if (operation.fullAccess) {
+        update({state: 'waiting_target', reason: '完全访问已允许本次操作，正在验证新建的独立记事本窗口。'});
+        if (signal.aborted || !belongs(taskId)) throw Error('Notepad preparation cancelled');
+        await openNotepad({taskId, deadline: operation.deadline, signal});
+        if (signal.aborted || !belongs(taskId)) throw Error('Notepad preparation policy changed');
+        return {waitForFreshTarget: true};
+      }
       await new Promise((resolve, reject) => {
         let done = false, unregister;
         const finish = error => {
@@ -41,7 +59,10 @@ export function createDesktopNotepadHost({createAdapter, createAttempts, transpo
         }
         update({state: 'waiting_confirmation',
           reason: '确认新打开的记事本是独立的空白单标签窗口，保持它在前台，按 F9 允许本次写入。'});
-        Promise.resolve().then(openNotepad).catch(() => finish(Error('Notepad could not be opened')));
+        Promise.resolve().then(() => {
+          if (signal.aborted || !belongs(taskId)) throw Error('Notepad preparation cancelled');
+          return openNotepad({taskId, deadline: operation.deadline, signal});
+        }).catch(() => finish(Error('Notepad could not be opened')));
       });
     },
   });
@@ -123,13 +144,26 @@ export function createDesktopNotepadHost({createAdapter, createAttempts, transpo
       const target = await adapter.observe(operation.taskId, operation.deadline, operation.controller.signal);
       if (!belongs(operation.taskId)) throw Error('Notepad task cancelled');
       operation.targetRef = target.targetRef;
-      operation.confirmedUntil = Math.min(operation.confirmedUntil, Date.parse(target.expiresAt));
+      operation.confirmedUntil = Math.min(operation.fullAccess ? Date.parse(operation.deadline)
+        : operation.confirmedUntil, Date.parse(target.expiresAt));
+      if (operation.fullAccess) {
+        // The original Runtime question host owns full-access authorization. Verify
+        // metadata before finalization starts it; never issue a competing response.
+        const ready = await adapter.checkObservationReady(operation.taskId, operation.deadline,
+          operation.controller.signal);
+        if (!belongs(operation.taskId) || ready.taskId !== operation.taskId
+          || ready.targetRef !== operation.targetRef || operation.confirmedUntil <= now()) {
+          throw Error('Notepad target preparation changed');
+        }
+      }
       application.finalizeHostToolTask({taskId: operation.taskId, commandId: operation.commandId,
         expectedTaskRevision: operation.revision, arguments: {targetRef: target.targetRef,
           expectedText: '', replacementText: operation.text}});
       operation.finalized = true;
       operation.text = '';
-      update({state: 'authorizing', reason: '已确认本次写入，正在由 Runtime 校验授权与目标。'});
+      update({state: 'authorizing', reason: operation.fullAccess
+        ? '完全访问已允许本次写入，正在由 Runtime 校验授权与目标。'
+        : '已确认本次写入，正在由 Runtime 校验授权与目标。'});
       await refresh();
     } catch (error) {
       await adapter.releaseObservation(operation.taskId).catch(() => {});
@@ -154,9 +188,14 @@ export function createDesktopNotepadHost({createAdapter, createAttempts, transpo
     }
     if (!payload || Object.keys(payload).length !== 1 || typeof payload.text !== 'string'
       || !payload.text.trim() || payload.text.length > 4096) throw Error('请输入 1～4096 个字符');
+    const fullAccess = isFullAccess() === true, originalPolicyBinding = policyBinding();
+    if ((fullAccess || readPolicyBinding !== undefined) && originalPolicyBinding === undefined) {
+      throw Error('本次操作的可信策略绑定不可用');
+    }
     const commandId = randomUUID(), deadline = new Date(now() + 300_000).toISOString();
     const task = application.prepareHostToolTask({commandId, toolName: TOOL, toolVersion: '1.0.0', deadline});
     current = {taskId: task.taskId, revision: task.revision, commandId, deadline, text: payload.text,
+      fullAccess, policyBinding: originalPolicyBinding,
       controller: new AbortController(), finalized: false, confirmedUntil: 0, approvalSent: false};
     try { onTask({taskId: task.taskId, goal: '向新空白记事本写入本次文本'}); }
     catch (error) {
@@ -170,19 +209,25 @@ export function createDesktopNotepadHost({createAdapter, createAttempts, transpo
     return snapshot();
   }
   async function refresh() {
+    if (current && !belongs(current.taskId)) {
+      const operation = current;
+      operation.controller.abort();
+      if (operation.finalized) await cancelTask(operation.taskId);
+      else await operation.job;
+    }
     if (refreshing || !current?.finalized) return;
     refreshing = true;
     const operation = current;
     try {
       const readback = application.readHostToolTask(operation.taskId);
-      if (readback.approval?.state === 'pending' && !operation.approvalSent) {
+      if (!operation.fullAccess && readback.approval?.state === 'pending' && !operation.approvalSent) {
         operation.approvalSent = true;
         let allow = belongs(operation.taskId) && operation.confirmedUntil > now();
         if (allow) {
           try {
             const ready = await adapter.checkObservationReady(operation.taskId, operation.deadline,
               operation.controller.signal);
-            allow = ready.taskId === operation.taskId && ready.targetRef === operation.targetRef
+            allow = belongs(operation.taskId) && ready.taskId === operation.taskId && ready.targetRef === operation.targetRef
               && operation.confirmedUntil > now();
           } catch { allow = false; }
         }

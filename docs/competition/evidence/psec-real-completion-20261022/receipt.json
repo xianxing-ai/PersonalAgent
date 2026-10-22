@@ -1,0 +1,123 @@
+{
+  "startedAt": "2026-10-22T04:44:51.299Z",
+  "sourceSha": "dbc0bdea47a3f1a155a65d685dd29b58614dc7e4",
+  "platform": "win32",
+  "release": "10.0.26200",
+  "osVersion": "Windows 11 Home China",
+  "node": "v24.15.0",
+  "required": true,
+  "imageOS": null,
+  "imageVersion": null,
+  "runId": null,
+  "runAttempt": null,
+  "helperSha256": "09e1169a6ed40d2d5ff1ff7ae59c24b68e0cc8dcb6c1d0309c2e42ad0f326e00",
+  "helperFilesSha256": {
+    "WindowsJobProcessHost.dll": "77f52d5837a1747dc3baf95f395ba794457f79f79fbd48cc62423457363535f7",
+    "WindowsJobProcessHost.deps.json": "de714dd5dca4a1f2f7fcc85ac0927a812b292aa0e4b122ac788c4fc794411ab5",
+    "WindowsJobProcessHost.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306"
+  },
+  "processmodel": {
+    "exists": true,
+    "sha256": "86f29c88b2b72d619d73615cfda5711705fce7ea44def35cc4cf36a35f5e2221"
+  },
+  "results": [
+    {
+      "name": "os-boundary",
+      "file": "packages/coding-tools/test/windows-native-sandbox.test.mjs",
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "wallMs": 4573,
+      "logSha256": "2810222ff623c56a79fe2e6ce30fbcf9ba9ad75a65cdbab2ebe810cfd43e3867",
+      "summary": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "reason": "all-real-scenarios-passed",
+      "status": "passed"
+    },
+    {
+      "name": "authorization-chain",
+      "file": "apps/desktop/test/authorization-native-execution.integration.test.mjs",
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "wallMs": 4051,
+      "logSha256": "0be33c901ba300f8737a8a73f34763abd48355cbc8498874b046af04e7cfc105",
+      "summary": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "reason": "all-real-scenarios-passed",
+      "status": "passed"
+    }
+  ],
+  "nativeDiagnostics": {
+    "loader": {
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "data": {
+        "backend": "windows-psec",
+        "diagnosticOnly": true,
+        "enforced": false,
+        "os": {
+          "version": "10.0.26200.0",
+          "kernelVersion": "10.0.26100.9278 (WinBuild.160101.0800)",
+          "architecture": "X64",
+          "processArchitecture": "X64"
+        },
+        "token": {
+          "available": true,
+          "elevated": false,
+          "appContainer": false,
+          "administrator": false
+        },
+        "loader": {
+          "stage": "exports-present",
+          "exists": true,
+          "version": "10.0.26100.9444 (WinBuild.160101.0800)",
+          "loaded": true,
+          "win32": null,
+          "exports": {
+            "IsProcessSecurityEnvironmentVersionSupported": true,
+            "QueryProcessSecurityEnvironmentSupport": true,
+            "CreateProcessSecurityEnvironment": true,
+            "CloseProcessSecurityEnvironment": true
+          }
+        }
+      }
+    },
+    "contract": {
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "data": {
+        "backend": "windows-psec",
+        "detected": true,
+        "major": 1,
+        "minor": 0,
+        "flags": 3,
+        "enforced": false
+      }
+    }
+  },
+  "ordinaryUser": true,
+  "finishedAt": "2026-10-22T04:45:00.126Z",
+  "businessReceipts": [
+    {
+      "artifact": "authorization-0-receipt.json",
+      "sha256": "ee8d5969ac934d1cb8147428aec1957b18acfd30e0ee83afd028c8b20ecaaecb"
+    }
+  ],
+  "wallMs": 8828,
+  "status": "passed"
+}

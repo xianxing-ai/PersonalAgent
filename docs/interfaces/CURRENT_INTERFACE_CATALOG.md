@@ -1,5 +1,19 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-21 邮件/天气变化触发器（provisional）
+
+新增 `connector.watch.start/list/stop@1.0.0` 工具及 Runtime Application 的本地判断/唤醒 driver，
+复用原 Scheduler、ToolGateway、原确认结果和 host-state CAS。start/stop 仍需精确审批；
+邮件许可不跨重启，天气绑定显式地点/查询/期限。变化经当前本机 Laya 决定是否进入原主对话和
+原通知策略，未知投递不重发。可选 `QQMailTriageHostOptions.onReadTask` 仅提供实际读取任务的
+宿主来源绑定，无 wire/Schema、数据库迁移或冻结等级提升。来源为 poll-only，真实账号/模型/
+OS 验收与离线接线分开，见[工作包](../competition/CONNECTOR_CHANGE_TRIGGERS_20261021.md)。
+
+实际子 worker 在显式 `continuationContext:'goal'` 下可携带初始不可扩容工具目录继续提案；
+普通父对话仍汇总，最终发送前重新校验原目录、Schema、readiness、权限与原期限，
+HTTPS/WSS 沿原状态绑定。owned 源码提示版本为 `owned-1.8`，旧 receipt-only 与配置 hash
+兼容，无新部署发布或默认启用声明，见 [ADR-0036](../adr/0036-goal-bound-tool-continuations.md)。
+
 ## 2026-10-21 统一对话授权与审批生命周期（provisional，集成中）
 
 Issue 474/475 复用现有 TaskRuntime/Policy/ToolGateway 与 `trusted_host_state` CAS，新增 host-only question request/decision receipt、sandbox revision/resource generation 和限定原 MailReadSessions 的分页派生；不是新的 Core wire 或独立任务/授权库。Desktop 私有 IPC 只允许 question ID/revision/decision，不能由 Renderer 提供可信 profile/任务/参数绑定。既有回调通过受信 `desktop.authorization.intent` 记录授权决定，不能冒充实际业务写入；模型猜名称与公共 `tool.invoke` 不构成可信 origin。冻结 `approval.list` enum 不变，系统过期/失效写入私有 resolution 元数据并通过原 Runtime 状态机结束或保留核实。完整集成、原生执行与实际 UI 验证尚在进行，范围与兼容边界见[工作包](../competition/UNIFIED_AUTHORIZATION_474_475_20261021.md)；不提升 frozen 或真实平台验收级别。
@@ -45,7 +59,7 @@ Desktop沿原Runtime/Policy/ToolGateway接入mail.inbox普通对话、mail.accou
 
 ## 2026-10-20 会话完整性修缮（provisional，固定1.7文字链路已验收）
 
-Competition 按事件截面保留失败/取消/未完成任务的公开用户原文，普通对话优先保留用户信息并披露助手历史省略，Skill/私人预检保持严格预算。新增同会话只读 `conversation.read_history`，按引用、内容散列及当前许可取回原文；来源撤销贯穿旧助手回答与子任务。可选 `continuationContext:'goal'`/`priorContinuations` 为 in-process/owned JSON 增量，默认关闭，不改冻结 Core wire。owned-1.7 已部署固定 `arm64-context-1-7-1020`，当前桌面显式启用；新版本真实文字上下文7项及历史取回通过。合成历史范围、自动化、默认并行检查失败及未验收项见 [评估记录](../competition/CONTEXT_INTEGRITY_20261020.md)，接口仍 provisional，不能据此冻结全部记忆或新协议。
+Competition 按事件截面保留失败/取消/未完成任务的公开用户原文，普通对话优先保留用户信息并披露助手历史省略，Skill/私人预检保持严格预算。新增同会话只读 `conversation.read_history`，按引用、内容散列及当前许可取回原文；来源撤销贯穿旧助手回答与子任务。可选 `continuationContext:'goal'`/`priorContinuations` 为 in-process/owned JSON 增量，默认关闭，不改冻结 Core wire。历史 `owned-1.7` 在固定 `arm64-context-1-7-1020` 与显式启用进程中通过7项真实文字上下文及历史取回；不能推及默认启动。本轮 2026-10-21 隔离 Desktop 读到的配置请求 pin 为 `arm64-v5-d92a17a4-r3`/WSS，未设环境变量时沿用旧续接，且没有平台镜像摘要自省回执。合成历史范围、自动化、默认并行检查失败及未验收项见 [评估记录](../competition/CONTEXT_INTEGRITY_20261020.md)，接口仍 provisional，不能据此冻结全部记忆或新协议。
 
 ## 2026-10-20 地点补充后的答复衔接（provisional）
 

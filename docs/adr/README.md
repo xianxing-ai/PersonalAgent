@@ -40,3 +40,5 @@
 - [ADR-0032：远程只读 MCP 的授权绑定与凭据引用（proposed）](0032-remote-mcp-bound-credentials.md)
 - [ADR-0033：镜像内编码最小修复与 F15 多轮工作流（实施中）](0033-coding-minimal-repair-workflow.md)
 - [ADR-0034：统一决策工作流架构与本机 Laya 串行实验（proposed）](0034-unified-decision-workflow-architecture.md)
+- [ADR-0035：连接器变化触发主对话的本地提醒判断（proposed）](0035-connector-change-triggers.md)
+- [ADR-0036：绑定原目标与初始目录的子任务工具续接（proposed）](0036-goal-bound-tool-continuations.md)

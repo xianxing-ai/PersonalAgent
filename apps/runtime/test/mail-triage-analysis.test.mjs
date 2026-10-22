@@ -29,6 +29,33 @@ const triage = new LayaTriageService({async infer(payload) {
 }});
 const context = () => ({deadline: new Date(Date.now() + 60_000).toISOString(),
   signal: new AbortController().signal});
+
+test('native mail origin callback receives only the actual Runtime page and session; refusal stops its lease',async()=>{
+  for(const refused of [false,true]) {
+    await mkdir(cacheRoot,{recursive:true});const directory=await mkdtemp(path.join(cacheRoot,'pa-mail-origin-'));
+    const values=new Map(),observations=[];
+    const app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',
+      hostUserNamespace:'fixture-mail-user',tools:[{descriptor,execute:async()=>({account:'fixture',folder:'INBOX',
+        items:[item],nextCursor:'1:1',hasMore:false})}]});
+    const host=createQQMailTriageHost({user:'fixture@qq.com',authCode:'fake-only',accountRef:'fixture',
+      storage:{get:key=>values.get(key),set:(key,value)=>values.set(key,value)},namespace:'fixture-origin',triage,
+      classifierFingerprint:'fixture-origin-policy',labels:{meeting:'Meeting',other:'Other'},isSessionAllowed:()=>true,
+      onReadTask:input=>{observations.push(input);assert.deepEqual(Object.keys(input).sort(),['sessionId','taskId']);
+        assert.equal(app.runtime.loadCheckpoint(input.taskId,'mail-read-session'),input.sessionId);
+        assert.equal(app.runtime.loadCheckpoint(input.taskId,'host-tool-intent').toolName,'mail.inbox');
+        if(refused)throw Error('explicit fixture binding refusal');}});
+    try {
+      host.bindApplication(app);
+      if(refused)assert.throws(()=>host.startBatch({expiresAt:context().deadline}),{code:'UNAUTHORIZED'});
+      else host.startBatch({expiresAt:context().deadline});
+      await idle(app);assert.equal(observations.length,1);
+      if(refused) {
+        assert.equal(host.snapshot().status,'disabled');
+        assert.throws(()=>host.pendingAnalyses(context()),{code:'UNAUTHORIZED'});
+      }else assert.equal((await host.refresh()).status,'complete');
+    }finally{await host.close();await idle(app);app.close();await rm(directory,{recursive:true,force:true});}
+  }
+});
 const cacheRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..', '.cache', 'runtime-tests');
 async function idle(app) {
   for (let index = 0; index < 200; index++) {

@@ -1,5 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {parseCodingRepairInput,parseCodingRepairCheckReadback,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
@@ -39,6 +40,18 @@ export interface RuntimeCodingRepairRequest {version:1;mode:'main'|'isolated';al
 type Request=RuntimeCodingRepairRequest;
 interface GraphState extends RuntimeOwnedWorkflowDriverState<{goal:string;codingRepair:CodingRepairInput;executionModel?:ReturnType<typeof parseExecutionModelSelection>}> {initialRunId?:string;}
 const plain=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
+const startFailureReasons:Readonly<Record<string,string>>={
+  'Invalid authorization question binding':'invalid_question_binding',
+  'Invalid authorization requirement':'invalid_requirement',
+  '当前对话授权卡不可用，操作未获允许':'question_unavailable',
+  '原任务或权限策略已变化，操作未获允许':'question_current_changed',
+  'Original question binding is unavailable':'original_question_binding_unavailable',
+  '原操作的精确授权已失效，未执行或发送新的资料':'original_scope_changed',
+  '工作区配置或授权提问通路不可用':'workspace_preparation_unavailable',
+  '原工作区操作、配置或授权范围已变化':'workspace_current_changed',
+  '不允许自动扩大为完全访问':'sandbox_escalation_denied',
+  '授权决定期限已过':'decision_deadline_expired',
+};
 export function isRuntimeDispatchTool(name:string):boolean {return name==='subagent.dispatch'||name===CODING_REPAIR_WORKFLOW_TOOL;}
 /** Original dispatcher owns child tasks, cancellation, summaries and model selection. */
 export function createRuntimeCodingRepairDispatchTool(getApplication:()=>RuntimeApplication):RegisteredTool {
@@ -55,11 +68,12 @@ export function createRuntimeCodingRepairDispatchTool(getApplication:()=>Runtime
       return original().execute({subtasks:v.subtasks},context);
     }};
 }
-/** Shared public input shape for the original root dispatcher and same-worker capability. */
-export function codingRepairWorkflowInputSchema():Record<string,unknown> {
+/** Root dispatch may select a new worker; an existing worker retains its bound execution configuration. */
+export function codingRepairWorkflowInputSchema(options:{sameWorker?:true}={}):Record<string,unknown> {
   return {type:'object',properties:{subtasks:{type:'array',minItems:1,maxItems:1,items:{type:'object',properties:{
     subtaskId:{type:'string',minLength:1},role:{type:'string',enum:['coder']},roleLabel:{type:'string'},goal:{type:'string',minLength:1},
-    model:{type:'string',minLength:1},reasoningEffort:{enum:['none','minimal','low','medium','high','xhigh','max']},thinkingDepth:{type:'integer',minimum:0,maximum:5}},
+    ...(options.sameWorker?{}:{model:{type:'string',minLength:1},reasoningEffort:{enum:['none','minimal','low','medium','high','xhigh','max']},
+      thinkingDepth:{type:'integer',minimum:0,maximum:5}})},
     required:['subtaskId','role','goal'],additionalProperties:false}},codingRepair:{type:'object',properties:{
       mode:{enum:['main','isolated']},allowedPaths:{type:'array',items:{type:'string',minLength:1}}},required:['mode'],additionalProperties:false}},
     required:['subtasks','codingRepair'],additionalProperties:false};
@@ -95,8 +109,25 @@ export async function runRuntimeCodingRepairWorkflow(application:RuntimeApplicat
     ...(request.mode==='isolated'?{assertIsolation:()=>{if(state!.input?.codingRepair.session.mode!=='isolated')throw new ProtocolError('UNAUTHORIZED','Shadow session isolation is missing');}}:{})});
   if(!state.input) {
     const runId=state.initialRunId??`coding-start-${worker.taskId}`;state.initialRunId=runId;save();
-    const result=await timed('isolation-start',()=>tools.invoke({taskId:worker.taskId,runId,authorizationRef:runId,toolName:'coding.repair.start',toolVersion:'1.0.0',
-      arguments:{mode:request.mode,...(request.allowedPaths?{allowedPaths:request.allowedPaths}:{})},deadline:worker.deadline,signal:worker.signal}));
+    const args={mode:request.mode,...(request.allowedPaths?{allowedPaths:request.allowedPaths}:{})};
+    const result=await timed('isolation-start',async()=>{
+      try {return await tools.invoke({taskId:worker.taskId,runId,authorizationRef:runId,toolName:'coding.repair.start',toolVersion:'1.0.0',
+        arguments:args,deadline:worker.deadline,signal:worker.signal});}
+      catch(error) {
+        // The approval invalidator may already have made the task terminal. Keep
+        // the original fixed failure category locally without exporting text or
+        // changing that denial into authority to execute/replay the operation.
+        const code=error instanceof ProtocolError&&['UNAUTHORIZED','INVALID_ARGUMENT','REVISION_CONFLICT','CANCELLED','TIMEOUT',
+          'UNSUPPORTED_CAPABILITY','NOT_FOUND','RESULT_UNKNOWN','EXTERNAL_FAILURE'].includes(error.code)?error.code:'EXTERNAL_FAILURE';
+        try {worker.saveCheckpoint('coding-repair:start-failure:v1:'+runId,{version:1,authority:'diagnostic_no_tool_grant',
+          taskId:worker.taskId,runId,toolName:'coding.repair.start',toolVersion:'1.0.0',argumentsDigest:toolArgumentsDigest(args),
+          deadline:worker.deadline,stage:'isolation-start',code,
+          reason:error instanceof Error&&Object.hasOwn(startFailureReasons,error.message)?startFailureReasons[error.message]
+            :code==='CANCELLED'?'cancelled':code==='TIMEOUT'?'deadline_expired':'unclassified_local_failure'});
+        }catch{/* Retain the original failure even if diagnostic storage is unavailable. */}
+        throw error;
+      }
+    });
     if(result.state!=='confirmed') {
       if(application.runtime.getTask(worker.taskId).state==='running')application.runtime.transitionTask(worker.taskId,result.state==='pending'?'waiting_approval':'waiting_reconciliation');
       return {resultSummary:'F15 隔离工作区创建等待原授权或核实',evidenceRefs:[]};

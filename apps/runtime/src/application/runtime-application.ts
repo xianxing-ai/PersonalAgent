@@ -2,10 +2,10 @@ import {ProtocolError, validateToolValue,validateContract} from '@personal-agent
 import {createHash} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
-import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
+import {createRuntimeCodingDecisionTool} from './coding-decision-tool.js';
 import type {AgentToolPort} from '@personal-agent/agents';
 import type {SubtaskDefinition} from '@personal-agent/agents';
-import {createRuntimeCodingRepairDispatchTool,readRuntimeCodingRepairRequest,runRuntimeCodingRepairWorkflow,
+import {createRuntimeCodingRepairDispatchTool,codingRepairWorkflowInputSchema,readRuntimeCodingRepairRequest,runRuntimeCodingRepairWorkflow,
   isRuntimeDispatchTool,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './coding-repair-application.js';
 import type {RuntimeCodingRepairOptions} from './coding-repair-application.js';
 import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-capability.js';
@@ -39,7 +39,7 @@ import type {WorkerContext,WorkerResult,SubmitTaskInput} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import type {QwenRealtimeModelGateway} from '@personal-agent/models';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError, parseCoordinationRepairCandidate,parseCoordinationContinuation} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError, parseCoordinationRepairCandidate,parseCoordinationContinuation} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
@@ -690,14 +690,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const harnessTool = harnessHost ? createRuntimeDeveloperHarnessTool(harnessHost) : undefined;
     const configuredTools = [...(options.tools ?? []),...(harnessTool?[harnessTool]:[]),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
       ...(options.proactiveDecision?.localChooser&&!options.tools?.some(tool=>tool.descriptor.name==='decision.choose_candidate')
-        ?[createWorkflowDecisionTool({selector:{select:async input=>{
-          const value=await options.proactiveDecision!.localChooser!.choose({context:input.context,deadline:input.deadline,signal:input.signal,
-            candidates:input.candidates.map(candidate=>({id:candidate.id,revision:1,kind:'noop',description:candidate.description,sources:[],
-              scopeRef:input.requestId,expiresAt:input.deadline,risk:'low',argumentsDigest:actionArgumentsDigest({})}))});
-          if(value.state==='selected'&&value.eligibleForRuntime&&value.selected&&input.candidates.some(candidate=>candidate.id===value.selected!.id))return value.selected.id;
-          const review=input.candidates.find(candidate=>candidate.id==='review');if(review)return review.id;
-          throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local Laya requires review for this original coding decision');
-        }}})]:[])]:[]), ...createRuntimeOwnedWorkflowTools(
+        ?[createRuntimeCodingDecisionTool({localChooser:options.proactiveDecision.localChooser,
+          save:(key,receipt)=>{
+            if(!this.runtime.saveCheckpointOnce(receipt.taskId,key,receipt)
+              &&!isDeepStrictEqual(this.runtime.loadCheckpoint(receipt.taskId,key),receipt))
+              throw new ProtocolError('REVISION_CONFLICT','Original local coding decision receipt changed');
+          }})]:[])]:[]), ...createRuntimeOwnedWorkflowTools(
       options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
       ...(options.proactiveWorkflows ? createRuntimeProactiveDecisionTools({
         ...(options.proactiveDecision?.localChooser ? {localChooser: options.proactiveDecision.localChooser} : {}),
@@ -1040,12 +1038,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
                   &&this.runtime.getTask(input.taskId).state==='running';
               }catch{return false;}
             }})),
-          ...(this.codingRepair?[{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
-            publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort','/codingRepair/mode'],
-            available:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
+          ],[...(this.codingRepair?[{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
+            publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort','/codingRepair/mode'],sideEffect:'local_write' as const,
+            requiredTool:{name:'coding.repair.workflow',version:'1.0.0'},
+            describeRegistered:()=>({name:'coding.repair.workflow',version:'1.0.0',inputSchema:codingRepairWorkflowInputSchema()}),
+            describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
               const binding=options.competitionToolAvailability?.find(item=>item.toolName==='coding.repair.start'&&item.toolVersion==='1.0.0');
-              return !!this.codingRepair?.projectSource&&!!this.codingRepair.authorizeMetadata&&!!binding&&await binding.available(input);
-            }}]:[])],[{
+              if(!this.codingRepair?.projectSource||!this.codingRepair.authorizeMetadata||!binding||!await binding.available(input))return undefined;
+              return this.codingWorker?.describe(input)??{name:'coding.repair.workflow',version:'1.0.0',inputSchema:codingRepairWorkflowInputSchema()};
+            }}]:[]),{
           toolName:CLOUD_SKILL_TOOL_NAME,toolVersion:CLOUD_SKILL_TOOL_VERSION,publicEnumPaths:CLOUD_SKILL_PUBLIC_ENUM_PATHS,
           requiredTool:{name:'mcp.workspace.read_text',version:'1.0.0'},
           describeRegistered:()=>this.cloudSkill?{name:CLOUD_SKILL_TOOL_NAME,version:CLOUD_SKILL_TOOL_VERSION,inputSchema:CLOUD_SKILL_CHOICE_SCHEMA}:undefined,
@@ -1978,6 +1979,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private holdCompetitionExport(taskId:string,error?:unknown):void {
+    // The adapter's typed never-sent proof is required in addition to local effect
+    // readback. Missing inflight alone cannot establish this (plain HTTPS may send).
+    if(error instanceof AgentArtsBeforeInvokeError&&this.runtime.canFailTrackedCoordinationWithoutEffects(taskId))return;
     // A matched terminal transport error has ended this exchange. Let the original
     // worker persist failure and consume that receipt; confirmed local tools stay intact.
     if(error instanceof AgentArtsTerminalError
@@ -2314,7 +2318,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return runRuntimeCodingRepairWorkflow(this,subtask,worker,tools,this.codingRepair);
     }
     return runCoordinationWorker(this.runtime,this.coordination,tools,worker.taskId,child.goal,worker,
-      {retainPriorToolResults:this.retainPriorToolResults,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+      {retainPriorToolResults:this.retainPriorToolResults,allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }
@@ -3433,7 +3437,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       worker.reportProgress({stepId:'subagent-conversation',label:`[${roleLabel}] 正在响应独立会话消息`});
       const catalog=this.competitionToolCatalog?.restrict(tools);
       return runCoordinationWorker(this.runtime,this.coordination,tools,taskId,subagentConversationGoal(origin,message.userText),worker,
-        {retainPriorToolResults:this.retainPriorToolResults,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {retainPriorToolResults:this.retainPriorToolResults,allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(catalog?{toolCatalog:catalog}:{}),...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
     },{deadline:message.deadline,sideEffect:origin.tools.some(tool=>tool.sideEffect==='external_write')?'external_write'
@@ -3663,7 +3667,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** The cloud adapter calls this after credential reads, immediately before its initial fetch. */
   async assertCompetitionToolCatalogAllowed(input: {taskId: string; revision: number; deadline: string; signal: AbortSignal;
-    availableTools: readonly CompetitionAvailableTool[]}): Promise<void> {
+    availableTools: readonly CompetitionAvailableTool[];continuation?:true}): Promise<void> {
     const catalog=this.taskCompetitionCatalog(input.taskId);
     if (!catalog) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Competition tool catalog is unavailable');
     await catalog.assertSelectionCurrent(input);
@@ -4070,6 +4074,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const execution = startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
         {resume: true,retainPriorToolResults:this.retainPriorToolResults, toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+          ...(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')!==undefined?{allowToolContinuations:true as const}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
@@ -4093,7 +4098,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private async refreshSubagentParent(childTaskId: string): Promise<void> {
-    const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string} | undefined;
+    const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string;subtaskId?:string} | undefined;
     if (typeof binding?.parentTaskId !== 'string') return;
     const child=this.runtime.getTask(childTaskId);
     if(child.state==='succeeded'&&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${binding.parentTaskId}-user-work`)?.taskId===childTaskId)
@@ -4117,6 +4122,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const child = this.runtime.getTask(childTaskId);
       await proactive.ingestSubtaskFeedback({childTaskId, expectedRevision: child.revision},
         {signal: new AbortController().signal, deadline: proactive.binding.taskDeadline});
+    }
+    const parent=this.runtime.getTask(binding.parentTaskId);
+    if(parent.state==='waiting_approval'&&child.state==='waiting_reconciliation'
+      &&typeof binding.subtaskId==='string'
+      &&this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-${binding.subtaskId}`)?.taskId===childTaskId
+      &&this.confirmedSubagentWait(parent.taskId,false)) {
+      // State projection only: the original dispatch is confirmed but its child is
+      // unresolved. Do not resume either loop or describe this as another approval.
+      this.runtime.transitionTask(parent.taskId,'waiting_reconciliation',{error:{code:'RESULT_UNKNOWN',
+        message:'Original child execution requires reconciliation',retryable:false}});
+      return;
     }
     if(this.confirmedSubagentWait(binding.parentTaskId)) {
       if(this.runtime.getTask(binding.parentTaskId).state==='waiting_reconciliation')this.resumeConfirmedTask(binding.parentTaskId);
@@ -4283,7 +4299,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(typeof deadline!=='string' || this.now().getTime()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','Original continuation expired');
     this.runtime.prepareConfirmedReplay(taskId,input);this.resumeTask(taskId);
   }
-  private confirmedSubagentWait(taskId: string): boolean {
+  private confirmedSubagentWait(taskId: string, terminalChildren=true): boolean {
     const wait = this.runtime.loadCheckpoint(taskId, 'subagent-parent-wait') as
       {runId?: string; argumentsDigest?: string; toolVersion?: string} | undefined;
     if (!wait || typeof wait.runId !== 'string') return false;
@@ -4302,7 +4318,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return Array.isArray(subtasks) && subtasks.length>0 && children.length===subtasks.length
       && children.every(child=> {
         const binding=this.runtime.loadCheckpoint(child.taskId,'subtask-parent') as {subtaskId?:string;parentTaskId?:string;goal?:string}|undefined;
-        return ['succeeded','failed','cancelled'].includes(child.state) && binding?.parentTaskId===taskId
+        return (!terminalChildren||['succeeded','failed','cancelled'].includes(child.state)) && binding?.parentTaskId===taskId
           && subtasks.some(subtask=>plainObject(subtask) && subtask.subtaskId===binding.subtaskId && subtask.goal===binding.goal);
       });
   }

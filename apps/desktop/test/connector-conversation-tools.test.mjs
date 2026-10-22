@@ -48,7 +48,7 @@ test('registers only existing supplemental tools; missing configuration and abse
 });
 
 test('public mail account, draft, mark-seen, reconciliation and calendar implementations execute under exact permits',async t=>{
-  const f=fixture(t);
+  const reads=[],f=fixture(t,{onReadTask:value=>{reads.push(value);}});
   for(const [name,args]of [['mail.inbox',{limit:2}],['mail.accounts',{}],['mail.mark_seen',{folder:'INBOX',uid:2}],
     ['mail.save_draft',{to:'synthetic@example.invalid',subject:'Synthetic draft',text:'Synthetic body'}],
     ['mail.reconcile_send',{messageId:'<known@example.invalid>',idempotencyKey:'known'}],
@@ -60,6 +60,43 @@ test('public mail account, draft, mark-seen, reconciliation and calendar impleme
   }
   assert.ok(f.calls.includes('draft'));assert.ok(f.calls.includes('mark'));assert.ok(f.calls.includes('calendar'));
   assert.equal(f.calls.filter(x=>x==='mail-provider').length,5);
+  assert.equal(reads.length,1,'only mail.inbox reports a read binding; account listing, writes and calendar do not');
+  assert.deepEqual(Object.keys(reads[0]).sort(),['runId','taskId']);assert.equal(reads[0].taskId,'original');
+  assert.equal(Object.isFrozen(reads[0]),true);assert.doesNotMatch(JSON.stringify(reads),/subject|authCode|synthetic-private-code|@qq/);
+});
+
+test('read binding is never called for a forged or unauthorized ordinary mail invocation',async t=>{
+  for(const mode of ['unprepared','other-task','missing-grant','missing-scope','missing-run','other-account','revoked','cancelled'])
+    await t.test(mode,async t=>{
+      const reads=[],f=fixture(t,{onReadTask:value=>{reads.push(value);}}),tool=f.host.tools.find(value=>value.descriptor.name==='mail.inbox');
+      const controller=new AbortController(),args={limit:1},s=scope(tool,args,'original-mail-read',controller);
+      if(mode!=='unprepared')await f.host.prepareExport({...s,phase:'preflight'});
+      if(mode==='other-task')s.taskId='forged-other-task';if(mode==='missing-grant')s.authorizationRef=undefined;
+      if(mode==='missing-scope')s.scopes=[];if(mode==='missing-run')s.runId=undefined;
+      if(mode==='other-account')args.account='another-account';if(mode==='revoked')f.revokeMail();if(mode==='cancelled')controller.abort();
+      await assert.rejects(tool.execute(args,s),{code:'UNAUTHORIZED'});assert.deepEqual(reads,[]);assert.deepEqual(f.calls,[]);
+    });
+});
+
+test('a failed, asynchronous or invalidated read binding refuses access before any provider is created',async t=>{
+  for(const mode of ['throw','async','configuration-change'])await t.test(mode,async t=>{
+    let attempts=0,f;
+    f=fixture(t,{onReadTask:()=>{attempts++;if(mode==='throw')throw Error('synthetic-secret-callback-error');
+      if(mode==='async')return Promise.resolve();f.revokeMail();}});
+    const {tool,s}=await prepare(f.host,'mail.inbox',{limit:1});
+    await assert.rejects(tool.execute(s.proposal.arguments,s),error=>error.code==='UNAUTHORIZED'&&!error.message.includes('synthetic-secret'));
+    assert.equal(attempts,1);assert.deepEqual(f.calls,[]);
+  });
+});
+
+test('ordinary read keeps its current-configuration fence when configuration changes after the binding callback',async t=>{
+  let release,entered,reads=0,callbacks=0;
+  const pendingPage=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+  const f=fixture(t,{onReadTask:()=>{callbacks++;}}),original=f.provider.fetchPage.bind(f.provider);
+  f.provider.fetchPage=async(...args)=>{reads++;entered();await pendingPage;return original(...args);};
+  const {tool,s}=await prepare(f.host,'mail.inbox',{limit:1}),pending=tool.execute(s.proposal.arguments,s);
+  await started;assert.equal(callbacks,1);f.revokeMail();release();
+  await assert.rejects(pending,{code:'UNAUTHORIZED'});assert.equal(reads,1);assert.equal(callbacks,1);
 });
 
 test('cross-account requests, missing Runtime grant and unknown sends never reach a provider write or Sent read',async t=>{
@@ -101,7 +138,7 @@ test('cancelled native confirmation and explicit invalidation do not create usab
 });
 
 test('original local inbox batch keeps its original session guard without gaining a cloud permit',async t=>{
-  let local=0;const f=fixture(t,{resolveConversation:()=>undefined,localInbox:{execute:async(_input,context)=>{
+  let local=0;const f=fixture(t,{onReadTask:()=>assert.fail('local session reports its own original read binding'),resolveConversation:()=>undefined,localInbox:{execute:async(_input,context)=>{
     if(context.taskId!=='local-batch')throw new ProtocolError('UNAUTHORIZED','Original session only');local++;return {local:true};}}});
   const tool=f.host.tools.find(t=>t.descriptor.name==='mail.inbox'),s=scope(tool);
   assert.deepEqual(await tool.execute({}, {...s,taskId:'local-batch'}),{local:true});
@@ -229,6 +266,42 @@ test('actual Runtime asks for approval before a supplemental write and then conf
   await wait(()=>['succeeded','failed','waiting_reconciliation'].includes(application.runtime.getTask(taskId).state));
   assert.equal(application.runtime.getTask(taskId).state,'succeeded');assert.equal(writes,1);assert.equal(sends,2);
   assert.equal(application.runtime.readToolExecutions(taskId)[0].state,'confirmed');
+});
+
+test('ordinary mail read callback runs only after original Runtime approval and can veto all provider access',async t=>{
+  for(const failBinding of [false,true])await t.test(failBinding?'binding denied':'binding recorded',async t=>{
+    let application,sends=0,created=0,providerReads=0;const bindings=[],provider=new FakeMailProvider();
+    const original=provider.fetchPage.bind(provider);provider.fetchPage=(...args)=>{providerReads++;return original(...args);};
+    const host=createConnectorConversationTools({mail:{current:()=>({user:'synthetic@qq.com',authCode:'synthetic-secret',revision:1})},
+      getApplication:()=>application,resolveConversation:id=>application.runtime.getTask(id).conversationId,
+      onReadTask:input=>{
+        const record=application.runtime.readToolExecutions(input.taskId).find(value=>value.evidenceId===input.runId);
+        assert.equal(record.toolName,'mail.inbox');assert.equal(record.state,'started');
+        assert.equal(record.policyDecision,'allow');assert.equal(record.executionStarted,true);
+        bindings.push(input);if(failBinding)throw Error('synthetic private binding failure');
+      },createMailProvider:()=>{created++;assert.equal(bindings.length,1);return provider;},confirmExport:async()=>true});
+    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'ordinary-read',
+      initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
+      tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
+      prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
+      fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
+        ?{kind:'tool_proposal',proposalId:'ordinary-read',toolName:'mail.inbox',toolVersion:'0.1.0-alpha.1',arguments:{limit:1}}
+        :{kind:'text',text:'Synthetic original inbox read completed'})}}),{headers:{'content-type':'application/json'}});}});
+    t.after(async()=>{await host.close();application.close();});
+    const client=new Client(application);await client.connect();const {taskId}=await client.call('task.submit',
+      {goal:'Read one explicitly synthetic message',conversationId:'ordinary-read-conversation'},{idempotencyKey:'ordinary-read',timeoutMs:10000});
+    const wait=async predicate=>{for(let i=0;i<1000;i++){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}
+      throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
+    await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');assert.equal(bindings.length,0);
+    assert.equal(created,0);assert.equal(providerReads,0);
+    const approval=application.runtime.listApprovals({taskId,state:'pending'}).items[0];
+    await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+    await wait(()=>['succeeded','failed'].includes(application.runtime.getTask(taskId).state)&&application.activeTaskCount===0);
+    assert.equal(bindings.length,1);assert.deepEqual(bindings[0],{taskId,runId:`competition-tool-${taskId}-1`});
+    const task=application.runtime.getTask(taskId);assert.equal(task.state,failBinding?'failed':'succeeded',JSON.stringify(task.error));
+    assert.equal(created,failBinding?0:1);assert.equal(providerReads,failBinding?0:1);assert.equal(sends,failBinding?1:2);
+    if(failBinding)assert.equal(task.error.code,'UNAUTHORIZED');
+  });
 });
 
 const calendarEvent={uid:'synthetic-calendar-event',summary:'合成会议',startUtc:'2026-10-21T07:00:00.000Z',endUtc:'2026-10-21T08:00:00.000Z'};

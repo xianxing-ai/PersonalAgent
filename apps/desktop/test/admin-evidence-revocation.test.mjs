@@ -9,7 +9,8 @@ function element() {
     addEventListener(name, listener) { this.listeners.set(name, listener); },
     removeEventListener(name,listener){if(this.listeners.get(name)===listener)this.listeners.delete(name);},
     replaceChildren(){this.innerHTML='';},
-    setAttribute() {}, insertBefore() {}};
+    attributes: new Map(), setAttribute(name,value) {this.attributes.set(name,value);},
+    getAttribute(name) {return this.attributes.get(name)??null;}, insertBefore() {}};
 }
 
 async function harness(t, invoke) {
@@ -257,4 +258,45 @@ test('visible general settings exposes the existing normal app quit action',asyn
   await ui.quitButton().listeners.get('click')();assert.deepEqual(calls,[['app.quit']]);
   ui.render({...ui.base,adminNavigation:{page:'settings',revision:2}});
   await ui.quitButton().listeners.get('click')();assert.deepEqual(calls,[['app.quit'],['app.quit']],'one click invokes the existing action once after refresh');
+});
+
+test('an older host navigation snapshot cannot undo a newer navigation or local sidebar choice',async t=>{
+  const ui=await harness(t,async()=>{});
+  ui.render({...ui.base,adminNavigation:{page:'tasks',revision:5}});
+  ui.render({...ui.base,adminNavigation:{page:'settings',revision:4}});
+  assert.match(ui.html(),/任务记录/);
+  ui.root.querySelector('nav').listeners.get('click')({target:{closest:()=>({dataset:{page:'configuration'}})}});
+  assert.match(ui.html(),/<h2>配置<\/h2>/);
+  ui.render({...ui.base,adminNavigation:{page:'tasks',revision:5}});
+  assert.match(ui.html(),/<h2>配置<\/h2>/,'an unrelated snapshot at the same host revision preserves the local page');
+  ui.render({...ui.base,adminNavigation:{page:'settings',revision:6}});
+  assert.match(ui.html(),/<h2>常规<\/h2>/,'a genuinely newer host navigation still applies');
+});
+
+test('navigation completion describes a rendered body and never acknowledges an interrupted render',async t=>{
+  const ui=await harness(t,async()=>{}),main=ui.root.querySelector('.main');
+  ui.render({...ui.base,adminNavigation:{page:'tasks',revision:1}});
+  assert.equal(main.dataset.section,'tasks');assert.equal(ui.content.dataset.section,'tasks');
+  assert.equal(main.dataset.navigationRevision,'1');assert.equal(main.getAttribute('aria-busy'),'false');
+  assert.throws(()=>ui.render({...ui.base,adminNavigation:{page:'connections',revision:2},
+    get health(){throw Error('explicit interrupted UI fixture');}}),/explicit interrupted UI fixture/);
+  assert.equal(main.getAttribute('aria-busy'),'true');
+  assert.equal(main.dataset.section,'tasks');assert.equal(ui.content.dataset.section,'tasks');
+  assert.equal(main.dataset.navigationRevision,'1','a failed body must not acknowledge its newer host revision');
+  ui.render({...ui.base,adminNavigation:{page:'connections',revision:2}});
+  assert.equal(main.getAttribute('aria-busy'),'false');
+  assert.equal(main.dataset.section,'connections');assert.equal(ui.content.dataset.section,'connections');
+  assert.equal(main.dataset.navigationRevision,'2');
+});
+
+test('invalid host navigation cannot poison the current page or its revision',async t=>{
+  const ui=await harness(t,async()=>{}),main=ui.root.querySelector('.main');
+  ui.render({...ui.base,adminNavigation:{page:'tasks',revision:1}});
+  for(const navigation of [{page:'settings',revision:'2'},{page:'settings',revision:-1},
+    {page:'settings',revision:Infinity},{page:'__proto__',revision:10},{page:'unknown',revision:10}]){
+    ui.render({...ui.base,adminNavigation:navigation});
+    assert.equal(main.dataset.section,'tasks');assert.equal(main.dataset.navigationRevision,'1');
+  }
+  ui.render({...ui.base,adminNavigation:{page:'settings',revision:2}});
+  assert.equal(main.dataset.section,'settings');assert.equal(main.dataset.navigationRevision,'2');
 });

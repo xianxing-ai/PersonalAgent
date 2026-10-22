@@ -95,7 +95,7 @@ export interface CloudAgentPort {
 }
 
 export {AgentArtsCloudAgentPort, parseAgentArtsResponseText} from './agentarts.js';
-export {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsWebSocketTransport} from './agentarts-websocket.js';
+export {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsWebSocketTransport} from './agentarts-websocket.js';
 export type {AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocket,
   AgentArtsWebSocketFactory, AgentArtsWebSocketConnectOptions} from './agentarts-websocket.js';
 export type {

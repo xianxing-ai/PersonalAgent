@@ -6,6 +6,8 @@ namespace PersonalAgent.WindowsHost.Service;
 
 internal sealed record ObservedNotepadTarget(
     string Reference, nint Window, int ProcessId, DateTime StartUtc, DateTime ExpiresUtc);
+internal enum NotepadObservationStage { BaselineUnqueryable, ProcessUnqueryable, ProcessExited,
+    UntrustedImage, NoFreshWindow, MultipleFreshWindows, IdentityChanged, MetadataRejected, Observed }
 
 internal static class NotepadTargetLease
 {
@@ -31,9 +33,11 @@ internal sealed class NotepadTargets
     private readonly HashSet<(nint Window, int Pid, DateTime StartUtc)> _existing = [];
     private readonly Dictionary<string, ObservedNotepadTarget> _current = new(StringComparer.Ordinal);
     private readonly bool _baselineComplete = true;
+    private readonly Action<NotepadObservationStage>? _diagnostic;
 
-    internal NotepadTargets(Func<Process[]>? baselineProcesses = null)
+    internal NotepadTargets(Func<Process[]>? baselineProcesses = null, Action<NotepadObservationStage>? diagnostic = null)
     {
+        _diagnostic = diagnostic;
         var currentSession = Process.GetCurrentProcess().SessionId;
         foreach (var process in (baselineProcesses ?? (() => Process.GetProcessesByName("notepad")))())
         {
@@ -65,7 +69,7 @@ internal sealed class NotepadTargets
     {
         var now = DateTime.UtcNow;
         if (deadlineUtc <= now) return (null, "TIMEOUT");
-        if (!_baselineComplete) return (null, "UNAUTHORIZED");
+        if (!_baselineComplete) { _diagnostic?.Invoke(NotepadObservationStage.BaselineUnqueryable); return (null, "UNAUTHORIZED"); }
         var currentSession = Process.GetCurrentProcess().SessionId;
         var candidates = new List<(nint Window, int Pid, DateTime StartUtc)>();
         var unverifiable = false;
@@ -82,21 +86,21 @@ internal sealed class NotepadTargets
                     foreach (var handle in WindowsForProcess(process.Id, visibleUnownedOnly: true))
                     {
                         if (_existing.Contains((handle, process.Id, start))) continue;
-                        if (!NotepadAction.IsTrustedNotepadProcess(process)) unverifiable = true;
+                        if (!NotepadAction.IsTrustedNotepadProcess(process)) { _diagnostic?.Invoke(NotepadObservationStage.UntrustedImage); unverifiable = true; }
                         else candidates.Add((handle, process.Id, start));
                     }
-                    if (process.HasExited) unverifiable = true;
+                    if (process.HasExited) { _diagnostic?.Invoke(NotepadObservationStage.ProcessExited); unverifiable = true; }
                 }
                 catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or
                                            System.ComponentModel.Win32Exception)
                 {
-                    unverifiable = true;
+                    _diagnostic?.Invoke(NotepadObservationStage.ProcessUnqueryable); unverifiable = true;
                 }
             }
         }
         if (unverifiable) return (null, "UNAUTHORIZED");
-        if (candidates.Count == 0) return (null, "NOT_FOUND");
-        if (candidates.Count != 1) return (null, "TARGET_AMBIGUOUS");
+        if (candidates.Count == 0) { _diagnostic?.Invoke(NotepadObservationStage.NoFreshWindow); return (null, "NOT_FOUND"); }
+        if (candidates.Count != 1) { _diagnostic?.Invoke(NotepadObservationStage.MultipleFreshWindows); return (null, "TARGET_AMBIGUOUS"); }
         var candidate = candidates[0];
         var expires = deadlineUtc < now.AddSeconds(30) ? deadlineUtc : now.AddSeconds(30);
         string? errorCode = null;
@@ -105,13 +109,15 @@ internal sealed class NotepadTargets
             var result = NotepadAction.CheckSingleTabTarget(
                 candidate.Window, candidate.Pid, candidate.StartUtc);
             errorCode = result.ErrorCode;
+            if (!result.Success) _diagnostic?.Invoke(NotepadObservationStage.MetadataRejected);
             return result.Success;
         }, identityCurrent: () => HasCurrentIdentity(candidate.Window, candidate.Pid, candidate.StartUtc));
-        if (!current) return (null, expires <= DateTime.UtcNow ? "TIMEOUT" : errorCode ?? "TARGET_STALE");
+        if (!current) { _diagnostic?.Invoke(NotepadObservationStage.IdentityChanged); return (null, expires <= DateTime.UtcNow ? "TIMEOUT" : errorCode ?? "TARGET_STALE"); }
         var target = new ObservedNotepadTarget(
             Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
             candidate.Window, candidate.Pid, candidate.StartUtc, expires);
         _current.Add(target.Reference, target);
+        _diagnostic?.Invoke(NotepadObservationStage.Observed);
         return (target, null);
     }
 

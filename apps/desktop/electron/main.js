@@ -50,6 +50,7 @@ import {createDesktopSisConfigHost} from './huawei-sis-config.js';
 import {acquireHuaweiSisToken} from './huawei-iam-login.js';
 import {createLiveVoiceConfig} from './live-voice-config.js';
 import {createLiveVoiceHost} from './live-voice-host.js';
+import {needsMicrophoneApproval} from './authorization-operation-policy.js';
 import {createDesktopWakeVoiceHost} from './wake-voice-host.js';
 import {createDesktopProactiveHost} from './proactive-host.js';
 import {createP5SystemObservationSource} from './p5-system-observation-source.js';
@@ -58,7 +59,6 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
-import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
@@ -66,6 +66,9 @@ import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createDesktopConnectorChangeHost} from './connector-change-host.js';
+import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
 import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
 import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './knowledge-watch-host.js';
@@ -299,8 +302,9 @@ let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
-let conversationToolAccess, voiceApprovalBridge, proactiveConversationTools;
+let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
+let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
@@ -360,6 +364,12 @@ let knowledgeStatus = {configured: false, available: false, reason: '知识库�
 let localServicesStopping = false;
 let localServicesStopped = false;
 let nextMailRefresh = 0;
+let activeConnectorMailRead;
+let manualMailReadConversationId;
+const connectorMailReadOrigin=createConnectorReadOrigin({getApplication:()=>runtimeApplication,
+  // Binding an independently approved conversation read must not require the
+  // separate local classification session. Change consumption still checks it.
+  readSourceAuthorization:source=>({...readConnectorSourceAuthorization(source),available:Boolean(mailConfig?.current())})});
 
 function mailSnapshot() {
   const config = mailConfig?.snapshot() ?? {configured:false, status:'unconfigured', sessionAllowed:false};
@@ -369,6 +379,26 @@ function mailSnapshot() {
     counts:host?.counts, analyses:mailAnalysisHost?.snapshot(), localModelReady:localLaya?.snapshot().ready === true,
     reason:host?.status === 'stop_unconfirmed' ? '已撤销新读取；现有邮箱连接退出尚未确认'
       : mailFailure || (config.sessionAllowed ? host?.reason ?? config.reason : config.reason)};
+}
+
+function readConnectorSourceAuthorization(source) {
+  if(source==='mail') {
+    const status=mailConfig?.snapshot(),config=mailConfig?.current();
+    let generation;
+    const batchAuthorization=mailConfig?.batchAuthorization;
+    const ready=Boolean(mailHost&&config&&!status?.requiresRestart
+      &&(batchAuthorization?batchAuthorization.canRequest():status?.sessionAllowed));
+    if(ready&&batchAuthorization) {
+      const resource=createHash('sha256').update(JSON.stringify({namespace:desktopHost.userNamespace,
+        kind:'mail-local-batch',user:config.user,revision:config.revision})).digest('hex');
+      try{generation=authorizationQuestionPort.readResourceGeneration(resource);}catch{return {available:false};}
+    }
+    return {available:ready,
+      configurationRef:createHash('sha256').update(JSON.stringify(['mail',config?.user,config?.revision,generation])).digest('hex')};
+  }
+  const descriptor=runtimeApplication?.tools?.list().find(tool=>tool.name==='weather.forecast');
+  return {available:source==='weather'&&descriptor?.sideEffect==='read',
+    configurationRef:createHash('sha256').update(JSON.stringify(['weather',descriptor?.version])).digest('hex')};
 }
 
 async function refreshMail() {
@@ -478,7 +508,8 @@ function proactiveSnapshot() {
     summary: p5.ready ? 'P5 设备提醒已接入当前观察会话' : `P5 设备提醒不可用：${p5.reason}`};
   const suggestions = [...(base.suggestions ?? []), ...deviceSuggestions];
   if (proactiveHost && !p5.ready && base.enabled) suggestions.push(p5DeviceStatus);
-  return {...base, p5, suggestions};
+  return {...base, p5, suggestions,...(runtimeApplication&&!runtimeClosed
+    ?{connectorChanges:connectorChangeHost?.snapshot(),connectorWatches:connectorWatchHost?.snapshot()}:{})};
 }
 
 async function startP5DeviceTelemetry() {
@@ -620,7 +651,7 @@ function snapshot(surface) {
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     authorizationQuestions,
-    approvals: [...approvals.values()].filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
+    approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
       &&!authorizationQuestions.some(question=>question.state==='pending'&&question.taskId===approval.taskId))
       .map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
@@ -841,7 +872,7 @@ function movePanelGroup(point) {
 }
 
 function openAdmin(page) {
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','connections','memory'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -1336,6 +1367,8 @@ async function pumpEvents() {
     const accepted = eventCursor.accept(events);
     for (const event of accepted) {
       applyEvent(event);
+      if(['task.completed','task.progress'].includes(event.type)&&event.taskId)
+        connectorChangeHost?.observeTask(event.taskId);
       if (event.type === 'task.completed' && p5DeviceTelemetrySubscription
         && p5Cognition?.snapshot().state === 'running' && proactiveHost?.snapshot().enabled) {
         p5SystemObservationSource?.publishCompletedTask(event.taskId);
@@ -1355,6 +1388,7 @@ async function pumpEvents() {
     const failedProgressReadback = progressReadbacks.find(result => result.status === 'rejected');
     if (failedProgressReadback) throw failedProgressReadback.reason;
     if (accepted.length) publish();
+    void connectorChangeHost?.flush();
   } catch (error) {
     runtimeError = error instanceof Error ? error.message : '事件流读取失败';
     publish();
@@ -1611,16 +1645,18 @@ function initializeAuthorizationHosts(runtimeModule){
   authorizationQuestionHost=createDesktopAuthorizationQuestionHost({createQuestions:options=>new runtimeModule.AuthorizationQuestions(options),
     getApplication:()=>runtimeApplication,namespace:desktopHost.userNamespace,
     resolveConversation:taskId=>conversationToolAccess?.resolveConversation(taskId)
+      ??connectorWatchHost?.resolveUserConversation(taskId)
+      ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
     available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
     profiles:[{ref:'default-read-only',label:'应用内只读权限',mode:'read-only',revision:1,available:true},
       {ref:'workspace-write',label:'应用内受限写入／工作区权限',mode:'workspace-write',revision:1,available:true},
-      {ref:'full-access',label:'完全访问（当前普通用户，不提供进程隔离）',mode:'full-access',revision:1,available:true}],
+      {ref:'full-access',label:'完全访问（自动同意；以当前用户权限执行）',mode:'full-access',revision:1,available:true}],
     defaultProfileRef:'default-read-only',
-    resolveProfile:(request,selected)=>selected.mode==='read-only'&&request.requirements.some(item=>
+    resolveProfile:(request,selected)=>selected.mode==='read-only'&&(request.taskConsent?.mode==='workspace-write'||request.requirements.some(item=>
       item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
         ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
-      &&request.toolName!=='workspace.node_check'?'workspace-write':selected.ref,
+      )&&request.toolName!=='workspace.node_check'?'workspace-write':selected.ref,
     describeExecution:(request,profile)=>nativeExecutionHost?.describeExecution(request,profile)
       ??{required:false,available:false,backend:'unavailable',enforced:false,reason:'本次为应用内工具；外部进程隔离未就绪'}});
   authorizationIntentHost?.close();
@@ -1772,6 +1808,23 @@ async function initializeRuntime() {
         getApplication:()=>runtimeApplication,getHost:()=>proactiveWorkflowApplication,
         isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
+      if(!syntheticMvp)connectorWatchHost=createDesktopConnectorWatchHost({getApplication:()=>runtimeApplication,
+        namespace,readSourceAuthorization:readConnectorSourceAuthorization,
+        resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        startMailRead:input=>{
+          if(!readConnectorSourceAuthorization('mail').available)return false;
+          if(!['ready','complete'].includes(mailHost.snapshot().status))return false;
+          const token={watchId:input.watchId,commandId:input.commandId,sessionId:randomUUID()};
+          activeConnectorMailRead=token;
+          try {mailHost.startBatch({expiresAt:input.expiresAt});return {sessionId:token.sessionId};}
+          catch(error){if(activeConnectorMailRead===token)activeConnectorMailRead=undefined;throw error;}
+        },readMailStatus:scope=>activeConnectorMailRead?.watchId===scope.watchId&&activeConnectorMailRead.sessionId===scope.sessionId
+          ?{sessionId:scope.sessionId,state:mailHost?.snapshot().status??'unavailable'}:{state:'unavailable'},
+        stopMailRead:scope=>{
+          if(activeConnectorMailRead?.watchId!==scope.watchId||activeConnectorMailRead.sessionId!==scope.sessionId)return;
+          activeConnectorMailRead=undefined;return mailHost?.cancel();
+        },
+        observeTask:taskId=>connectorChangeHost?.observeTask(taskId),onUpdate:publish});
       if (!syntheticMvp) {
         try {todoHost = createDesktopTodoHost({userData:app.getPath('userData'),safeStorage,namespace,question:authorizationQuestionPort,
           notificationHost:notificationApplicationHost,
@@ -1787,6 +1840,9 @@ async function initializeRuntime() {
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
         toolPresenceHost=createToolPresenceHost({
+          isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
+          readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
+            return selected?JSON.stringify([selected.mode,selected.revision]):undefined;},
           registerNativeShortcut:handler=>globalShortcut.register('F9',handler)
             ?()=>globalShortcut.unregister('F9'):undefined,
           isTaskCurrent:taskId=>{
@@ -1802,6 +1858,7 @@ async function initializeRuntime() {
           },
         });
         windowsControlHost=createDesktopWindowsControlHost({createControlHost:createWindowsDesktopControlHost,
+          isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           pythonExecutable:process.env.PA_WINDOWS_CONTROL_PYTHON,presenceHost:toolPresenceHost,
           allowObservationExport:process.env.PA_WINDOWS_CONTROL_EXPORT==='1',onUpdate:publish});
         if(process.platform==='win32'&&process.env.PA_WINDOWS_CONTROL_PYTHON){
@@ -1812,6 +1869,9 @@ async function initializeRuntime() {
       const bridgePath = path.resolve(dir, '../../windows-host/host/bridge/bin/Release/net8.0-windows/WindowsHost.PipeBridge.exe');
       if (!syntheticMvp && process.platform === 'win32' && existsSync(hostPath) && existsSync(bridgePath)) {
         notepadHost = createDesktopNotepadHost({
+          isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
+          readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
+            return selected?JSON.stringify([selected.mode,selected.revision]):undefined;},
           createAdapter:runtimeModule.createWindowsHostNotepadAdapter,
           createAttempts:runtimeModule.createRuntimeWindowsHostAttemptStore,
           transport:runtimeModule.createWindowsHostBridgeTransport({hostPath,bridgePath}),
@@ -1961,13 +2021,18 @@ async function initializeRuntime() {
           }
         }});
       mailConfig = createMailConfig({userData:app.getPath('userData'), safeStorage,namespace,question:authorizationQuestionPort,
-        onRevoke:async () => {await connectorConversationTools?.invalidate('mail');await mailHost?.cancel();},
+        onRevoke:async () => {activeConnectorMailRead=undefined;await connectorConversationTools?.invalidate('mail');await mailHost?.cancel();},
         onCloudRevoke:async () => {await mailAnalysisHost?.revoke();}});
       const configuredMail = mailConfig.current();
       if (configuredMail) {
         try {
           const {user, authCode, revision} = configuredMail;
           mailHost = runtimeModule.createQQMailTriageHost({user, authCode, accountRef:'desktop-qq-inbox',
+            onReadTask:({taskId})=>{
+              if(activeConnectorMailRead)connectorWatchHost?.bindMailRead(taskId,activeConnectorMailRead);
+              const conversationId=activeConnectorMailRead?connectorWatchHost?.resolveUserConversation(taskId):manualMailReadConversationId;
+              connectorMailReadOrigin.bind({taskId,conversationId});
+            },
             storage:createMailMetadataStorage({userData:app.getPath('userData'), safeStorage}),
             namespace:`${namespace}:qq-inbox:${user.toLowerCase()}`, triage:localLaya,
             getClassifierFingerprint:() => {
@@ -1990,6 +2055,7 @@ async function initializeRuntime() {
       if(!syntheticMvp)connectorConversationTools=createConnectorConversationTools({mail:mailConfig,calendar:calendarConfig,question:authorizationQuestionPort,
         localInbox:mailHost?.tools.find(tool=>tool.descriptor.name==='mail.inbox'),
         getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        onReadTask:({taskId})=>connectorMailReadOrigin.bind({taskId,conversationId:conversationToolAccess.resolveConversation(taskId)}),
         confirmExport:confirmDeveloperExport});
       const {
         createDesktopSubagentDispatchTool,
@@ -2038,7 +2104,6 @@ async function initializeRuntime() {
       const powerShell=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
       knowledgeSourceConfig=await createKnowledgeSourceConfig({userData:app.getPath('userData'),safeStorage,namespace,
         question:authorizationQuestionPort,
-        confirmCatalog:request=>confirmApplicationAuthorization('knowledge.catalog',request.payload,request),
         hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),
         powerShellPath:existsSync(powerShell)?powerShell:undefined,
         processIdentityHelperPath:existsSync(commandHelper)?commandHelper:undefined,
@@ -2052,7 +2117,7 @@ async function initializeRuntime() {
         },confirmPermissions:async details=>{
           const {isCurrent,...payload}=details;
           return confirmApplicationAuthorization('knowledge.configure',payload,{scope:{sourceId:details.sourceId,configRevision:details.configRevision},
-            summary:`配置知识源 ${details.displayName} 的能力偏好：整理=${details.writeAllowed}、PUBLIC查询出机=${details.cloudExportAllowed}；这不是会话读写或出机许可，实际操作仍逐次原卡核对。`.slice(0,512),isCurrent});
+            summary:`配置知识源 ${details.displayName}：${details.writeAllowed?'可整理选定笔记；':''}${details.cloudExportAllowed?'向本任务模型公布选定PUBLIC查询与笔记目录；':''}具体内容操作在任务卡片确认。`.slice(0,512),isCurrent});
         }});
       obsidianPairing=createDesktopObsidianPairing({source:knowledgeSourceConfig,
         userData:app.getPath('userData'),
@@ -2084,7 +2149,7 @@ async function initializeRuntime() {
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
-        ...(proactiveConversationTools?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
+        ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
@@ -2217,9 +2282,10 @@ async function initializeRuntime() {
           codingWorkspace?.prepareAuthorization?.(scope);
           knowledgeSourceConfig?.prepareAuthorization?.(scope);
           notificationApplicationHost?.prepareAuthorization?.(scope);
-          return nativeExecutionHost.prepare(scope).then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
+          return nativeExecutionHost.prepare(scope,{forTaskConsent:authorizationQuestionHost.requiresNativeForAuthorization(scope)})
+            .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
-        requiresToolAuthorization:scope=>authorizationQuestionHost.requiresAuthorization(scope)
+        requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='notifications.interruption_policy.set'
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
@@ -2236,7 +2302,9 @@ async function initializeRuntime() {
               &&value.configRevision===binding.configRevision&&value.dataLevel==='public'&&value.cloudExportAllowed;};
             if(!isCurrent())throw Error('知识公开结果出机范围不可用');
             if(phase==='preflight')authorizationQuestionPort.prepareExport(scope,{requirementId:'knowledge-export',
-              summary:'向本任务模型发送所选PUBLIC查询的最多5条、每条最多200字符摘要（总计16KiB内），或只含state/changed的整理回执。',assertCurrent:isCurrent});
+              ruleBindingDigest:createHash('sha256').update(JSON.stringify({sourceId:binding.sourceId,configRevision:binding.configRevision,
+                publicQueries:binding.publicQueries,allowedNotePaths:binding.allowedNotePaths,projection:'knowledge-public-summary-v1'})).digest('hex'),
+              summary:'把PUBLIC查询的有界摘要或整理结果用于本次对话。',assertCurrent:isCurrent});
             else authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
             return;
           }
@@ -2268,8 +2336,8 @@ async function initializeRuntime() {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
-          competitionToolExports: [...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
+            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
+          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -2416,10 +2484,6 @@ async function initializeRuntime() {
       readCurrentQuestion:({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
         .find(question=>question.state==='pending')??null,
       focusQuestion:question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();}});
-    voiceApprovalBridge=createVoiceRuntimeApprovalBridge({
-      readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
-      focusQuestion:question=>{if(question.conversationId===conversations.activeConversationId('panel')){pinned=true;openPanel(true);publish();}},
-      readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
   if(proactiveWorkflowApplication){
     proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
@@ -2451,6 +2515,17 @@ async function initializeRuntime() {
       rememberTaskGoal(taskId, goal);
     },
   });
+  if(competitionMode&&!syntheticMvp)connectorChangeHost=createDesktopConnectorChangeHost({application:runtimeApplication,
+    namespace:desktopHost.userNamespace,chooser:{snapshot:()=>localLaya?.snapshot()??{ready:false},choose:input=>localLaya.choose(input)},
+    notifications:notificationApplicationHost,readSourceAuthorization:readConnectorSourceAuthorization,
+    resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)??connectorWatchHost?.resolveUserConversation(taskId)
+      ??connectorMailReadOrigin.read(taskId)?.conversationId,
+    readOriginalSourceBinding:taskId=>connectorMailReadOrigin.read(taskId),
+    readWatchOrigin:taskId=>connectorWatchHost?.readOrigin(taskId),
+    onDecisionTask:({taskId,goal,conversationId})=>{
+      if(!conversations.turns.has(taskId))conversations.add(taskId,'panel',goal,conversationId);
+      rememberTaskGoal(taskId,goal);void refresh(taskId).then(publish).catch(()=>{});
+    },onUpdate:publish});
   if(competitionMode && memoryLearningHost && proactiveHost) {
     const publicErasure=proactiveHost.createPublicFactErasureApplication({confirm:async ref=>{
       return confirmApplicationAuthorization('facts.erase',ref,{scope:{id:ref.id,revision:ref.revision},
@@ -2706,6 +2781,7 @@ async function initializeRuntime() {
     }
   }
   eventPoll = setInterval(() => {void pumpEvents(); void tickProactiveP5(); void refreshMail(); void notepadHost?.refresh(); void todoHost?.tick();tickKnowledgeSchedules();
+    void connectorWatchHost?.tick().catch(()=>{});
     void proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
@@ -2834,7 +2910,8 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
-  if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond'].includes(name))
+  if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond',
+    'notifications.confirmation.prepare','voice.confirmation.prepareApproval','voice.confirmation.cancel','voice.confirmation.reconcile'].includes(name))
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
@@ -2852,6 +2929,9 @@ async function action(event, name, payload) {
     if(name==='authorization.sandbox.read'&&payload!==undefined)throw Error('授权管理读取不接受额外字段');
     const result=name==='authorization.sandbox.read'?authorizationQuestionHost.sandboxSnapshot()
       :name==='authorization.sandbox.select'?authorizationQuestionHost.selectSandbox(payload):authorizationQuestionHost.revokeRule(payload);
+    if(name==='authorization.sandbox.select'){
+      toolPresenceHost?.refresh();await notepadHost?.refresh();await microphoneCaptureHost?.revoke();
+    }
     publish();return result;
   }
   if(name==='app.startup.read'||name==='app.startup.configure'){
@@ -2982,10 +3062,11 @@ async function action(event, name, payload) {
   }
   if (name === 'panel.dragEnd' && sender === panel) { orbDragRevision++; dragging = false; stopOrbDrag(); panelDragOrigin = undefined; away = Date.now() + 400; return; }
   if (name === 'app.quit') { app.quit(); return; }
-  if (name === 'agentarts.configure') {
+  if (name === 'agentarts.configure'||name==='agentarts.restoreDefaultConnection') {
     if (sender!==admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
       || runtimeStartup.snapshot().state==='starting') throw Error('请在任务、通话及启动结束后从设置配置 AgentArts');
-    const result=agentArtsConfig.configure(payload);
+    if(name==='agentarts.restoreDefaultConnection'&&payload!==undefined)throw Error('恢复默认连接不接受额外参数');
+    const result=name==='agentarts.restoreDefaultConnection'?agentArtsConfig.restoreDefaultConnection():agentArtsConfig.configure(payload);
     cloudRequestFailureNotice = '';
     try {
       const startup = await runtimeStartup.start();
@@ -3012,7 +3093,7 @@ async function action(event, name, payload) {
     if ((sender !== admin && sender !== workspace && sender !== panel) || !competitionMode || syntheticMvp || !todoHost) throw Error('请从正式应用待办设置操作');
     const result = await todoHost[name.slice(5)](payload); publish(); return result;
   }
-  if (['notifications.get','notifications.configure','notifications.confirmation.prepare','notifications.read','notifications.digest'].includes(name)) {
+  if (['notifications.get','notifications.configure','notifications.read','notifications.digest'].includes(name)) {
     if (sender!==admin || !competitionMode || syntheticMvp || !notificationApplicationHost) throw Error('请从通知设置页操作');
     if (name==='notifications.get') return notificationApplicationHost.snapshot(payload?.scope??{kind:'global'});
     if (name==='notifications.configure') {
@@ -3020,24 +3101,8 @@ async function action(event, name, payload) {
       const result=await host.configureSettings(payload,{isCurrent:()=>admin===origin && !origin.isDestroyed() && host===notificationApplicationHost});
       publish();return {...result,notificationCenter:host.snapshot(payload.scope)};
     }
-    if (name==='notifications.confirmation.prepare') {
-      const question=voiceCommandHost.prepareSettings(payload,{
-        expiresAt:new Date(Date.now()+30_000).toISOString(),summary:`通知设置：${JSON.stringify(payload.scope)}；${JSON.stringify(payload.patch)}。是否确认当前参数？`});
-      return {...question,questionDelivery:liveVoice?.askCurrentQuestion()??{state:'unavailable',accepted:false}};
-    }
     if (name==='notifications.read') return notificationApplicationHost.acknowledgeRead(payload);
     return notificationApplicationHost.getDigest(payload);
-  }
-  if (['voice.confirmation.prepareApproval','voice.confirmation.cancel','voice.confirmation.reconcile'].includes(name)) {
-    if ((sender!==admin && sender!==panel) || !voiceCommandHost) throw Error('当前语音确认宿主不可用');
-    if(name==='voice.confirmation.prepareApproval') {
-      const approval=runtimeApplication.runtime.getApproval(payload?.approvalId),task=tasks.get(approval.taskId);
-      if(approval.state!=='pending'||approval.revision!==payload?.expectedRevision)throw Error('原审批已改变，请回当前对话提问卡');
-      if(sender===panel && (!task || taskSurface(task)!=='panel')) throw Error('无法确认其他工作区的审批');
-      const question=voiceCommandHost.prepareApproval(payload);
-      return {...question,questionDelivery:liveVoice?.askCurrentQuestion()??{state:'unavailable',accepted:false}};
-    }
-    return name.endsWith('cancel')?voiceCommandHost.cancel():voiceCommandHost.reconcile();
   }
   if (['goalCloud.authorize','goalCloud.revoke'].includes(name)) {
     if(sender!==admin || !competitionMode || syntheticMvp || !goalCloudHost) throw Error('请从正式应用目标管理设置操作');
@@ -3161,7 +3226,14 @@ async function action(event, name, payload) {
       if (!mailHost || mailConfig.snapshot().requiresRestart) throw Error('邮箱配置将在下次启动应用时接入');
       if (!localLaya.snapshot().ready) throw Error('请先启动本地 Laya');
       if (mailHost.snapshot().status === 'classification_unavailable') mailHost.retryClassification();
-      else mailHost.startBatch({expiresAt:new Date(Date.now() + 8 * 60 * 60_000).toISOString()});
+      else {
+        if(activeConnectorMailRead&&!['ready','complete','disabled'].includes(mailHost.snapshot().status))
+          throw Error('邮箱持续订阅仍在读取，请先停止该订阅或等待本批读取完成');
+        const previous=activeConnectorMailRead,previousConversation=manualMailReadConversationId;activeConnectorMailRead=undefined;
+        manualMailReadConversationId=conversations.activeConversationId('panel');
+        try {mailHost.startBatch({expiresAt:new Date(Date.now() + 8 * 60 * 60_000).toISOString()});}
+        catch(error){activeConnectorMailRead=previous;manualMailReadConversationId=previousConversation;throw error;}
+      }
       localServicesStopped = false;
     }
     publish(); return mailSnapshot();
@@ -3861,8 +3933,6 @@ async function initializeLiveVoice() {
     onLevel: noteVoiceLevel,
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
-    onFinalUserCommand:receipt=>voiceCommandHost?.consumeFinal(receipt),
-    prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope),
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
@@ -3929,6 +3999,8 @@ app.whenReady().then(async () => {
   microphoneCaptureHost = createMicrophoneCaptureHost({permissionGate: microphonePermissionGate,
     confirmAuthorization:request=>{
       const {signal,isCurrent,...payload}=request;
+      if(!isCurrent()||voiceConfigurationPending||panelHiding)return false;
+      if(!needsMicrophoneApproval(authorizationQuestionHost?.sandboxSnapshot().selected.mode,payload.purpose))return true;
       return confirmApplicationAuthorization('voice.capture',payload,{scope:{panelId:payload.panelId,purpose:payload.purpose,expiresAt:payload.expiresAt},
         summary:`允许本次${payload.purpose==='live'?'Live语音与所选AgentArts音频服务':payload.purpose==='wake'?'本机关键词唤醒及后续听写':'麦克风听写'}，期限至${payload.expiresAt}；系统麦克风权限仍单独核验，停止立即撤销。`,
         deadline:new Date(Math.min(Date.parse(payload.expiresAt),Date.now()+180000)).toISOString(),signal,
@@ -4088,6 +4160,13 @@ app.whenReady().then(async () => {
       return;
     }
     if(!draftQuitPreflight.allow()){event.preventDefault();return;}
+    if((connectorChangeHost||connectorWatchHost)&&!connectorTriggersClosed) {
+      event.preventDefault();
+      connectorTriggersClosing??=Promise.resolve().then(()=>connectorWatchHost?.close()).then(()=>connectorChangeHost?.close())
+        .then(()=>{connectorTriggersClosed=true;app.quit();})
+        .catch(()=>{connectorTriggersClosing=undefined;reportQuitFailure('连接器变化判断尚未停止，未关闭原任务数据库');});
+      return;
+    }
     if(harnessEventsHost&&!harnessEventsClosed) {
       event.preventDefault();
       harnessExperienceLifetime.abort();

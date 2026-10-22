@@ -10,6 +10,9 @@ import {PROTOCOL_VERSION,validateToolValue} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
 import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
+import {AuthorizationQuestions,createRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
+import {LayaActionChoiceService} from '@personal-agent/cognition';
+import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 
 // Explicit Synthetic decision service; these tests do not certify the native
 // sandbox or the integrated Main/Runtime question persistence.
@@ -122,6 +125,301 @@ test('Synthetic F15 helper predeclares metadata and summary on the original run 
   assert.throws(()=>callbacks.authorizeMetadata({...request,stage:'completion',value:{...summary,raw:'Synthetic private'}}));
   assert.throws(()=>callbacks.authorizeMetadata({...request,authorization:{...request.authorization,runId:'forged'}}));
   host.revoke();assert.throws(()=>callbacks.authorizeMetadata(request));
+});
+
+test('Synthetic original F15 decision exports only its bound selectedId after the same question and rejects replacement',async t=>{
+  const {open}=await workspaceBindingFixture(t),question=workspaceQuestions(),host=open({question,findExecutable:()=>undefined});
+  const application=workspaceRuntime();let callbacks,invocation;
+  application.configureCodingRepairSourceExport=(projectSource,authorizeMetadata)=>{callbacks={projectSource,authorizeMetadata};};
+  application.readAuthorizationQuestionInvocation=()=>invocation;host.bindApplication(application);
+  const taskId=randomUUID(),owner=randomUUID(),runId='host-tool-'+taskId,operationId='Synthetic-original-decision';
+  const args={context:'Synthetic original F15 context',requestId:'Synthetic-original-request',candidates:[
+    {id:'bound-coding-operation',description:'Synthetic bounded operation'},{id:'owned-review',description:'Synthetic review'}]};
+  const scope={taskId,runId,deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal};
+  invocation={toolName:'decision.choose_candidate',toolVersion:'1.0.0',arguments:args};
+  const original={commandId:operationId,...invocation,deadline:scope.deadline};
+  application.runtime.saveCheckpoint(owner,'coding-repair:graph',{version:1,sessionId:'Synthetic-session',
+    input:{codingRepair:{session:{taskId:owner,sessionId:'Synthetic-session'}}}});
+  application.runtime.saveCheckpoint(taskId,'coding-repair:parent',{taskId:owner,operationId});
+  application.runtime.saveCheckpoint(owner,'coding-repair:host:'+operationId,{localTaskId:taskId,request:original});
+  application.runtime.saveCheckpoint(owner,'application-profile','huawei_ict_agentarts');
+  application.runtime.saveCheckpoint(owner,'application-deadline',scope.deadline);
+  host.prepareAuthorization(workspaceOperation(host.tools.find(tool=>tool.descriptor.name==='workspace.list_entries'),{path:'.'},owner));
+  host.prepareAuthorization(scope);
+  const requirements=question.entries.get(JSON.stringify([taskId,runId])).requirements;
+  assert.ok(requirements.some(item=>item.requirementId==='workspace-metadata-export'&&item.kind==='export'));
+  const request={taskId:owner,authorization:{taskId,runId},deadline:scope.deadline,signal:scope.signal,
+    stage:'receipt',value:{selectedId:'owned-review'}};
+  assert.throws(()=>callbacks.authorizeMetadata(request),'preparation alone grants no export');question.allow(scope);
+  assert.deepEqual(callbacks.authorizeMetadata(request),{selectedId:'owned-review'});
+  assert.throws(()=>callbacks.authorizeMetadata({...request,value:{selectedId:'invented'}}));
+  assert.throws(()=>callbacks.authorizeMetadata({...request,value:{selectedId:'owned-review',reason:'Synthetic typed detail'}}));
+  assert.throws(()=>callbacks.authorizeMetadata({...request,stage:'initial'}));
+  invocation={...invocation,arguments:{...args,context:'Synthetic replacement'}};
+  assert.throws(()=>callbacks.authorizeMetadata(request),'changed original arguments cannot consume an old export');
+});
+
+async function defaultCodingStartQuestionFixture(t,invalidatePreparation=false) {
+  const {Client}=await import('@personal-agent/client');
+  const {root,node,configuration,open}=await workspaceBindingFixture(t);let application,failure;
+  await mkdir(path.join(path.dirname(configuration),'coding-recovery',createHash('sha256').update(root).digest('hex')),{recursive:true});
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,
+    namespace:'Synthetic-default-coding-start',resolveConversation:taskId=>application.readToolConversation(taskId),available:()=>true,
+    profiles:[{ref:'default-read-only',label:'Synthetic read-only',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'Synthetic workspace write',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'default-read-only',
+    resolveProfile:(request,selected)=>request.requirements.some(item=>item.scopes.some(scope=>scope.endsWith(':write')))?'workspace-write':selected.ref,
+    describeExecution:()=>({required:false,available:false,backend:'unavailable',enforced:false})});
+  let resource;
+  const host=open({question:{...question,readResourceGeneration(value){resource=value;return question.readResourceGeneration(value);}},
+    findExecutable:name=>name==='pwsh.exe'?node:undefined});
+  const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>application.runtime,getTools:()=>application.tools,
+    runDefaultWorker:(subtask,worker,tools)=>application.runDefaultSubagentWorker(subtask,worker,tools)});
+  const proposal={kind:'tool_proposal',proposalId:'Synthetic-original-f15',toolName:'coding.repair.workflow',toolVersion:'1.0.0',
+    arguments:{subtasks:[{subtaskId:'repair',role:'coder',goal:'Synthetic bounded repair'}],codingRepair:{mode:'main',allowedPaths:['fixture.js']}},verification:'unverified'};
+  application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'Synthetic-default-coding-start',
+    tools:[dispatch,...host.tools],coordinationBinding:'Synthetic-fixed-deployment',coordination:{execute:async request=>request.continuation
+      ?{kind:'text',text:'Synthetic parent summary of the original child outcome',verification:'unverified'}:structuredClone(proposal)},
+    automaticTools:[{toolName:'subagent.dispatch',toolVersion:'1.0.0'}],
+    readConversationPreference:()=>({depth:1,fast:false}),
+    codingRepair:{image:{bindingId:'Synthetic-image',receiptSecret:async()=> 'Synthetic-only-private-receipt-secret-32-chars',advance:async()=>assert.fail('No image advance before approval')}},
+    prepareCompetitionToolExport:scope=>host.prepareExport(scope),
+    competitionToolAvailability:[{toolName:'subagent.dispatch',toolVersion:'1.0.0',available:()=>true,publicEnumPaths:['/subtasks/*/role']},...host.competitionToolAvailability],
+    competitionToolExports:[{toolName:'subagent.dispatch',toolVersion:'1.0.0',exportPolicyVersion:'Synthetic-dispatch-v1',accepts:()=>true,project:({result})=>result},...host.competitionToolExports],
+    requiresToolAuthorization:scope=>scope.toolName==='coding.repair.start',
+    requestToolAuthorization:async scope=>{
+      host.prepareAuthorization(scope);
+      if(invalidatePreparation&&scope.toolName==='coding.repair.start')question.rotateResourceGeneration(resource,question.readResourceGeneration(resource));
+      try{return await question.requestToolAuthorization(scope);}catch(error){failure={code:error.code,message:error.message};throw error;}
+    }});
+  t.after(()=>{question.close();application.close();});host.bindApplication(application);
+  const client=new Client(application);await client.connect();
+  const parent=await client.call('task.submit',{goal:'Synthetic bounded coding repair',conversationId:'Synthetic-coding-conversation'},
+    {idempotencyKey:'Synthetic-default-coding-start',timeoutMs:60_000});
+  let card;
+  for(let attempt=0;attempt<100;attempt++){
+    card=question.snapshot().find(item=>item.toolName==='coding.repair.start'&&item.state==='pending');
+    if(card||failure)break;
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  const [child]=application.readSubagentTasks(parent.taskId);
+  if(!invalidatePreparation){
+    assert.ok(card,'original card should be available: '+JSON.stringify({failure,tasks:application.runtime.listTasks({limit:10}).items}));
+    assert.equal(card.taskId,child.taskId);assert.equal(card.conversationId,'Synthetic-coding-conversation');
+    assert.equal(card.sourceApprovalId,'coding-start-'+child.taskId);
+    assert.deepEqual(card.requirements.map(item=>item.kind),['tool','connector_session','export','export']);
+    assert.equal(application.runtime.readToolExecutions(child.taskId).length,0,'no coding execution precedes the original card');
+    question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'deny'},card.conversationId);
+  }else assert.equal(card,undefined,'the invalidated workspace must never publish an actionable card');
+  for(let attempt=0;attempt<100&&application.activeTaskCount;attempt++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert.equal(application.activeTaskCount,0);
+  const runId='coding-start-'+child.taskId;
+  assert.equal(application.runtime.getApproval(runId).state,'denied');
+  if(invalidatePreparation){
+    assert.equal(application.runtime.getTask(child.taskId).state,'failed');
+    const initial=application.runtime.loadCheckpoint(child.taskId,'coding-repair:start-failure:v1:'+runId);
+    const workspace=application.runtime.loadCheckpoint(child.taskId,'coding-repair:authorization-diagnostic:v1:'+runId);
+    assert.equal(initial.reason,'question_current_changed');assert.equal(initial.code,'UNAUTHORIZED');
+    assert.equal(workspace.reason,'resource_generation_changed');assert.equal(workspace.resourceDigest,resource);
+    for(const diagnostic of [initial,workspace]){
+      assert.equal(diagnostic.authority,'diagnostic_no_tool_grant');assert.equal(diagnostic.taskId,child.taskId);
+      assert.equal(diagnostic.runId,runId);assert.equal(diagnostic.toolName,'coding.repair.start');
+      assert.equal(diagnostic.argumentsDigest,application.runtime.getApproval(runId).argumentsDigest);
+      assert.equal(diagnostic.deadline,application.runtime.loadCheckpoint(child.taskId,'application-deadline'));
+    }
+    assert.equal(application.runtime.readToolExecutions(child.taskId).some(record=>record.executionStarted),false);
+    assert.deepEqual(question.snapshot(),[]);assert.equal(application.runtime.policy.get(runId),undefined);
+  }
+}
+
+test('default delegated F15 start publishes the original unified question before any workspace execution',async t=>defaultCodingStartQuestionFixture(t));
+test('default F15 invalidation retains fixed original and workspace reasons without granting or executing',async t=>defaultCodingStartQuestionFixture(t,true));
+
+test('one original F15 uses three workflow groups while every host run retains its exact independent grant',async t=>{
+  const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
+  const {createWorkflowDecisionTool}=await import('@personal-agent/agentarts');
+  const {root,node,configuration,open}=await workspaceBindingFixture(t);let application,nativeReady=false;
+  await mkdir(path.join(path.dirname(configuration),'coding-recovery',createHash('sha256').update(root).digest('hex')),{recursive:true});
+  // Synthetic native identity only: no command, helper, model or file mutation
+  // runs in this grouping test. The real question host, Runtime and Policy run.
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,
+    namespace:'Synthetic-F15-groups',resolveConversation:taskId=>application.readToolConversation(taskId),available:()=>true,
+    profiles:[{ref:'read',label:'Synthetic read',mode:'read-only',revision:1,available:true},
+      {ref:'write',label:'Synthetic write',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'read',
+    resolveProfile:(request,selected)=>request.taskConsent?.mode==='workspace-write'?'write':selected.ref,
+    describeExecution:request=>({required:request?.taskConsent?.requiresNative===true,available:nativeReady,
+      backend:nativeReady?'windows-psec':'unavailable',enforced:nativeReady,...(nativeReady?{bindingDigest:'a'.repeat(64)}:{})})});
+  const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined});
+  const decision=createWorkflowDecisionTool({selector:{select:async()=>assert.fail('No Synthetic inference')}});
+  application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',hostUserNamespace:'Synthetic-F15-groups',tools:[...host.tools,decision]});
+  t.after(()=>{question.close();application.close();});host.bindApplication(application);
+  const runtime=application.runtime,owner=runtime.submitTask({goal:'Synthetic bounded workflow',conversationId:'Synthetic-F15-chat',idempotencyKey:'owner'});
+  runtime.transitionTask(owner.taskId,'planning');runtime.transitionTask(owner.taskId,'running');
+  const deadline=new Date(Date.now()+60_000).toISOString(),initialRunId='coding-start-'+owner.taskId;
+  const request={version:1,mode:'main',allowedPaths:['fixture.js'],subtasks:[{subtaskId:'repair',role:'coder',goal:'Synthetic bounded repair'}]};
+  const proposal={kind:'tool_proposal',proposalId:'Synthetic-F15',toolName:'coding.repair.workflow',toolVersion:'1.0.0',
+    arguments:{subtasks:request.subtasks,codingRepair:{mode:'main',allowedPaths:request.allowedPaths}}};
+  const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  runtime.saveCheckpoint(owner.taskId,'application-deadline',deadline);
+  runtime.saveCheckpoint(owner.taskId,'competition-loop',{step:1,pendingRevision:3,pending:proposal});
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:worker-capability',{version:1,taskId:owner.taskId,deadline,revision:3,
+    bindingId:'Synthetic-image',proposalDigest:hash(proposal),request});
+  const graph={version:1,initialRunId,bindingId:'Synthetic-image',controlRevision:0,sessionId:'Synthetic-session'};
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',graph);
+  const grants=[],cards=[];let sequence=0;
+  const run=async(name,args,{corruptLink=false,rejectPrepare=false}={})=>{
+    const tool=[...host.tools,decision].find(item=>item.descriptor.name===name);assert.ok(tool,name);
+    let taskId=owner.taskId,runId=initialRunId;
+    if(name!=='coding.repair.start'){
+      const commandId='Synthetic-operation-'+(++sequence),original={commandId,toolName:name,toolVersion:tool.descriptor.version,arguments:args,deadline};
+      const prepared=application.prepareHostToolTask({commandId,toolName:name,toolVersion:tool.descriptor.version,deadline});
+      taskId=prepared.taskId;runId='host-tool-'+taskId;
+      runtime.saveCheckpoint(taskId,'host-tool-intent',{...original,namespace:'Synthetic-F15-groups',argumentsDigest:toolArgumentsDigest(args)});
+      runtime.saveCheckpoint(taskId,'coding-repair:parent',{taskId:owner.taskId,operationId:commandId});
+      runtime.saveCheckpoint(owner.taskId,'coding-repair:host:'+commandId,{localTaskId:corruptLink?'Synthetic-foreign':taskId,request:original});
+      runtime.transitionTask(taskId,'planning');runtime.transitionTask(taskId,'running');
+    }
+    const argumentsDigest=toolArgumentsDigest(args),scope={taskId,runId,deadline,toolName:name,toolVersion:tool.descriptor.version,
+      argumentsDigest,signal:new AbortController().signal};
+    runtime.saveCheckpoint(taskId,'application-tool-invocation:'+runId,{toolName:name,toolVersion:tool.descriptor.version,arguments:args,argumentsDigest,deadline});
+    runtime.requestToolApproval(runId,taskId,tool.descriptor,deadline,argumentsDigest);
+    if(corruptLink||rejectPrepare){assert.throws(()=>host.prepareAuthorization(scope),{code:'UNAUTHORIZED'});return;}
+    host.prepareAuthorization(scope);if(question.requiresNativeForAuthorization(scope))nativeReady=true;
+    const pending=question.requestToolAuthorization(scope);
+    const card=question.snapshot().find(item=>item.sourceApprovalId===runId&&item.state==='pending');
+    if(card){cards.push(card);assert.equal(card.canReuseTask,true);assert.equal(card.suggestedDecision,'allow_task');
+      question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_task'},card.conversationId);}
+    assert.equal(await pending,'allow_once','the adapter still requests one exact Policy grant per original run');
+    runtime.respondApproval(runId,'allow_once',runtime.getApproval(runId).revision);runtime.transitionTask(taskId,'running');
+    assert.throws(()=>runtime.policy.authorize({authorizationRef:runId,taskId,toolName:name,argumentsDigest:'f'.repeat(64),
+      requiredScopes:tool.descriptor.requiredScopes,now:Date.now()}),'task consent never permits swapped arguments');
+    runtime.policy.authorize({authorizationRef:runId,taskId,toolName:name,argumentsDigest,requiredScopes:tool.descriptor.requiredScopes,now:Date.now()});
+    assert.equal(runtime.policy.get(runId).usesRemaining,0);question.currentRequirement(scope,'workspace-session');grants.push(runId);
+    return scope;
+  };
+  await run('coding.repair.start',{mode:'main',allowedPaths:['fixture.js']});
+  graph.input={goal:request.subtasks[0].goal,codingRepair:{session:{taskId:owner.taskId,sessionId:graph.sessionId,mode:'main'}}};
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',graph);
+  await run('decision.choose_candidate',{context:'Synthetic local review',requestId:'Synthetic-request',
+    candidates:[{id:'read',description:'Read bounded source'},{id:'owned-review',description:'Review'}]});
+  const sourceScope=await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'});
+  await run('workflow.host.f15_n04',{sessionId:graph.sessionId,patches:[]});
+  await run('workflow.host.f15_n05',{sessionId:graph.sessionId,patches:[],recipeIds:[]});
+  question.currentRequirement(sourceScope,'workspace-session');
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'});
+  await run('workflow.host.f15_n06',{version:1,sessionId:graph.sessionId,baselineSnapshotId:'before',snapshotId:'after',
+    paths:['fixture.js'],verificationRunIds:['Synthetic-verification']});
+  assert.equal(cards.length,3,'source/init, isolated editing/checking and CAS each require one core decision');
+  assert.deepEqual(cards.map(card=>card.sandbox.native.required),[false,true,false]);
+  assert.equal(grants.length,7);assert.equal(new Set(grants).size,7);
+  assert.ok(cards.every(card=>card.description.length<=512));
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'},{corruptLink:true});
+  assert.equal(cards.length,3,'a foreign reciprocal link is refused, never covered by old consent');
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'other.js'},{rejectPrepare:true});
+  const originalBinding=runtime.loadCheckpoint(owner.taskId,'coding-repair:worker-capability');
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:worker-capability',{...originalBinding,
+    request:{...originalBinding.request,allowedPaths:['other.js']}});
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'},{rejectPrepare:true});
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:worker-capability',originalBinding);
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',{...graph,controlRevision:1});
+  assert.throws(()=>question.currentRequirement(sourceScope,'workspace-session'),{code:'UNAUTHORIZED'},
+    'a changed original graph invalidates a previously prepared and consumed workspace requirement');
+  assert.equal(cards.length,3,'source-range or graph changes never gain authority from the original three decisions');
+});
+
+test('original nested F15 start can publish its unified question while the outer proposal remains pending',async t=>{
+  const {root,node,configuration,open}=await workspaceBindingFixture(t);let application;
+  await mkdir(path.join(path.dirname(configuration),'coding-recovery',createHash('sha256').update(root).digest('hex')),{recursive:true});
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,
+    namespace:'Synthetic-coding-start',resolveConversation:()=> 'Synthetic-coding-conversation',available:()=>true,
+    profiles:[{ref:'default-read-only',label:'Synthetic read-only',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'Synthetic workspace write',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'default-read-only',
+    resolveProfile:(request,selected)=>request.requirements.some(item=>item.scopes.some(scope=>scope.endsWith(':write')))?'workspace-write':selected.ref,
+    describeExecution:()=>({required:false,available:false,backend:'unavailable',enforced:false})});
+  const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined});
+  application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:host.tools});
+  t.after(()=>{question.close();application.close();});host.bindApplication(application);
+  const task=application.runtime.submitTask({goal:'Synthetic original coding worker',conversationId:'Synthetic-coding-conversation',idempotencyKey:'start'});
+  application.runtime.transitionTask(task.taskId,'planning');application.runtime.transitionTask(task.taskId,'running');
+  const deadline=new Date(Date.now()+60_000).toISOString(),runId='coding-start-'+task.taskId;
+  application.runtime.saveCheckpoint(task.taskId,'application-profile','huawei_ict_agentarts');
+  application.runtime.saveCheckpoint(task.taskId,'application-deadline',deadline);
+  application.runtime.saveCheckpoint(task.taskId,'coding-repair:graph',{version:1,initialRunId:runId});
+  application.runtime.saveCheckpoint(task.taskId,'competition-loop',{step:1,pendingRevision:5,pending:{kind:'tool_proposal',
+    proposalId:'Synthetic-original-f15',toolName:'coding.repair.workflow',toolVersion:'1.0.0',
+    arguments:{subtasks:[{subtaskId:'repair',role:'coder',goal:'Synthetic goal'}],codingRepair:{mode:'main',allowedPaths:['fixture.js']}}}});
+  const args={mode:'main',allowedPaths:['fixture.js']},tool=host.tools.find(item=>item.descriptor.name==='coding.repair.start');
+  const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
+  const argumentsDigest=toolArgumentsDigest(args);
+  application.runtime.saveCheckpoint(task.taskId,'application-tool-invocation:'+runId,{toolName:tool.descriptor.name,
+    toolVersion:tool.descriptor.version,arguments:args,argumentsDigest,deadline});
+  application.runtime.requestToolApproval(runId,task.taskId,tool.descriptor,deadline,argumentsDigest);
+  const scope={taskId:task.taskId,runId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+    argumentsDigest,deadline,signal:new AbortController().signal};
+  host.prepareAuthorization(scope);
+  let failure;
+  const pending=question.requestToolAuthorization(scope).catch(error=>{failure=error;});
+  const card=question.snapshot().find(item=>item.sourceApprovalId===runId);
+  assert.ok(card,'original card should be available: '+failure?.message);
+  assert.deepEqual(card.requirements.map(item=>item.kind),['tool','connector_session','export','export']);
+  assert.equal(application.runtime.getApproval(runId).state,'pending');
+  question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'deny'},card.conversationId);
+  assert.equal(await pending,'deny');
+});
+
+test('original Runtime decision, unified question and consumed selectedId lease retain exact host identity with explicit Fake inference',async t=>{
+  const {open}=await workspaceBindingFixture(t);let application,callbacks;
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,
+    namespace:'Synthetic-coding-decision',resolveConversation:()=> 'Synthetic-coding-conversation',available:()=>true,
+    profiles:[{ref:'Synthetic',label:'Synthetic application policy; no native process',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'Synthetic'});
+  const host=open({question,findExecutable:()=>undefined});
+  const chooser=new LayaActionChoiceService({infer:async payload=>{
+    const ids=Object.keys(payload.questions.action.criteria);
+    return {answers:{action:{choice:ids[0],probabilities:{[ids[0]]:0.9,[ids[1]]:0.1},answer_confidence:0.9,confidence:0.53}}};
+  }});
+  application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',hostUserNamespace:'Synthetic-coding-decision',tools:host.tools,
+    codingRepair:{image:{bindingId:'Synthetic-unused-image',advance:async()=>assert.fail('no image call'),receiptSecret:async()=>assert.fail('no image call')}},
+    proactiveDecision:{localChooser:chooser},requiresToolAuthorization:()=>true,
+    requestToolAuthorization:scope=>{host.prepareAuthorization(scope);return question.requestToolAuthorization(scope);}});
+  t.after(()=>{question.close();application.close();});
+  const configure=application.configureCodingRepairSourceExport.bind(application);
+  application.configureCodingRepairSourceExport=(projectSource,authorizeMetadata)=>{callbacks={projectSource,authorizeMetadata};configure(projectSource,authorizeMetadata);};
+  host.bindApplication(application);
+  const owner=application.runtime.submitTask({goal:'Synthetic F15 owner',conversationId:'Synthetic-coding-conversation',idempotencyKey:'owner'});
+  application.runtime.transitionTask(owner.taskId,'planning');application.runtime.transitionTask(owner.taskId,'running');
+  const deadline=new Date(Date.now()+60_000).toISOString();
+  application.runtime.saveCheckpoint(owner.taskId,'application-profile','huawei_ict_agentarts');
+  application.runtime.saveCheckpoint(owner.taskId,'application-deadline',deadline);
+  application.runtime.saveCheckpoint(owner.taskId,'desktop-coding-scope',host.readWorkspaceBinding().bindingId);
+  application.runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',{version:1,sessionId:'Synthetic-session',
+    input:{codingRepair:{session:{taskId:owner.taskId,sessionId:'Synthetic-session'}}}});
+  const args={context:'Synthetic exact current F15 decision',requestId:'Synthetic-request',candidates:[
+    {id:'bound-coding-operation',description:'Synthetic bounded current operation'},{id:'owned-review',description:'Synthetic review'}]};
+  const request={commandId:'Synthetic-original-decision',toolName:'decision.choose_candidate',toolVersion:'1.0.0',arguments:args,deadline};
+  const prepared=application.prepareHostToolTask({commandId:request.commandId,toolName:request.toolName,toolVersion:request.toolVersion,deadline});
+  application.runtime.saveCheckpoint(prepared.taskId,'coding-repair:parent',{taskId:owner.taskId,operationId:request.commandId});
+  application.runtime.saveCheckpoint(owner.taskId,'coding-repair:host:'+request.commandId,{localTaskId:prepared.taskId,request});
+  application.finalizeHostToolTask({taskId:prepared.taskId,commandId:request.commandId,arguments:args,expectedTaskRevision:prepared.revision});
+  let card;
+  for(let attempt=0;attempt<200&&!card;attempt++) {
+    card=question.snapshot().find(item=>item.state==='pending');
+    if(!card)await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  assert.ok(card,JSON.stringify(application.runtime.getTask(prepared.taskId).error));
+  assert.equal(card.taskId,prepared.taskId);assert.equal(card.sourceApprovalId,'host-tool-'+prepared.taskId);
+  assert.deepEqual(card.requirements.map(item=>item.kind),['tool','connector_session','export']);
+  assert.equal(application.readHostToolTask(prepared.taskId).confirmed,undefined);
+  question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_once'},card.conversationId);
+  await application.waitForHostToolTask(prepared.taskId);
+  const read=application.readHostToolTask(prepared.taskId);assert.equal(read.task.state,'succeeded',JSON.stringify(read.task.error));
+  assert.deepEqual(read.confirmed.result,{selectedId:'bound-coding-operation'});
+  const scope={taskId:owner.taskId,stage:'receipt',value:read.confirmed.result,
+    authorization:{taskId:prepared.taskId,runId:card.sourceApprovalId},deadline,signal:new AbortController().signal};
+  assert.deepEqual(callbacks.authorizeMetadata(scope),read.confirmed.result);
+  const lease=application.runtime.loadCheckpoint(prepared.taskId,'authorization-question-export:'+card.sourceApprovalId+':workspace-metadata-export');
+  assert.equal(lease.questionId,card.questionId);assert.equal(lease.resultDigest,createHash('sha256').update(JSON.stringify(read.confirmed.result)).digest('hex'));
+  assert.ok(lease.leaseRef);assert.equal(application.runtime.policy.get(card.sourceApprovalId).usesRemaining,0);
+  assert.throws(()=>callbacks.authorizeMetadata({...scope,value:{...scope.value,scores:[0.9,0.1]}}));
+  assert.equal(application.runtime.readToolExecutions(prepared.taskId).length,1,'export never executes the decision again');
 });
 
 async function workspaceBindingFixture(t) {

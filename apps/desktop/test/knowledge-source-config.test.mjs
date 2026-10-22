@@ -55,8 +55,11 @@ test('replacing the bound native process identity helper disables only the write
     await host.configure({...binding(host), enabled: true, dataLevel: 'private', writeAllowed: true,
       cloudExportAllowed: false, publicQueries: []});
     assert.equal(host.snapshot().writeAvailable, true, host.snapshot().reason);
-    const context={taskId:'synthetic-task',runId:'synthetic-run',toolName:'knowledge.apply_note_patch',deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal};
-    assert.equal(host.acquire(binding(host),context.signal).write,undefined);
+    const signal=new AbortController().signal;
+    assert.equal(host.acquire(binding(host),signal).write,undefined);
+    // Windows recovery ACL inspection is synchronous and may outlast a short
+    // fixture lease. Start the execution lease after that independent inspection.
+    const context={taskId:'synthetic-task',runId:'synthetic-run',toolName:'knowledge.apply_note_patch',deadline:new Date(Date.now()+120000).toISOString(),signal};
     const before = host.withAuthorization(context,()=>host.acquire(binding(host), context.signal));
     assert.ok(before.write);
     await writeFile(processIdentityHelperPath, 'synthetic helper replacement with a different identity');
@@ -85,7 +88,7 @@ test('missing config is unavailable; native selection persists a host-bound root
   assert.equal(restarted.snapshot().available, true);
 });
 
-test('configured knowledge preferences do not authorize a tool or publish its private catalog',async t=>{
+test('PUBLIC directory uses the existing configuration choice while tool access still needs its card',async t=>{
   const f=await fixture(t);let requirement,allowed=false,catalogCalls=0;
   const question={prepare(_scope,options){requirement=options;},currentRequirement(){if(!allowed)throw Error('Synthetic original card not consumed');}};
   const host=await createKnowledgeSourceConfig({...f.options,question,confirmCatalog:async request=>{catalogCalls++;return request.isCurrent();}});t.after(()=>host.close());
@@ -97,7 +100,7 @@ test('configured knowledge preferences do not authorize a tool or publish its pr
   allowed=true;const lease=host.withAuthorization(scope,()=>host.acquire(binding(host),scope.signal));
   lease.assertCurrent();allowed=false;assert.throws(()=>lease.assertCurrent(),/not consumed/);lease.release();
   await host.configure({...binding(host),enabled:true,dataLevel:'public',writeAllowed:false,cloudExportAllowed:true,publicQueries:['公开合成']});
-  assert.equal(await host.authorizeCatalog(scope),true);assert.equal(catalogCalls,1);
+  assert.equal(await host.authorizeCatalog(scope),true);assert.equal(catalogCalls,0,'no separate directory approval before the actual tool card');
   controller.abort();assert.equal(await host.authorizeCatalog(scope),false);
 });
 

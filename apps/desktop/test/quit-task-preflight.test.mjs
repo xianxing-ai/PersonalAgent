@@ -48,6 +48,26 @@ test('H6 close failure unlocks preflight drafts before retaining the original Ru
   assert.equal(f.calls.includes('runtime-close'),false);assert.match(f.context.runtimeError,/开发事件消费尚未停止/);
 });
 
+test('connector watches stop before local Laya decisions and Runtime close',async()=>{
+  const f=fixture();
+  Object.assign(f.context,{connectorWatchHost:{async close(){f.calls.push('connector-watch-close');}},
+    connectorChangeHost:{async close(){f.calls.push('connector-change-close');}}});
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,true);
+  assert.ok(f.calls.indexOf('connector-watch-close')<f.calls.indexOf('connector-change-close'));
+  assert.ok(f.calls.indexOf('connector-change-close')<f.calls.indexOf('runtime-close'));
+  assert.equal(f.calls.filter(call=>call==='connector-watch-close').length,1);
+});
+
+test('connector decision shutdown failure retains Runtime and unlocks drafts',async()=>{
+  const f=fixture();let cancelled=0;
+  Object.assign(f.context,{connectorChangeHost:{async close(){throw Error('explicit synthetic failure');}},
+    draftQuitPreflight:{allow:()=>true,cancel(){cancelled++;}}});
+  f.app.quit();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(cancelled,1);
+  assert.equal(f.calls.includes('runtime-close'),false);assert.match(f.context.runtimeError,/连接器变化判断尚未停止/);
+});
+
 const main = readFileSync(process.env.QUIT_PREFLIGHT_MAIN_SOURCE || new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', main, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 let callback;
@@ -83,7 +103,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
-    'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost'];
+    'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
     submitting:new Set(),draftQuitPreflight:{allow:()=>true,commit:()=>true,cancel(){}},panelMaterial:{allowQuit:()=>true},
@@ -97,7 +117,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
     localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
-    windowsControlClosed: false, windowsControlClosing: undefined, harnessEventsClosed:false,
+    windowsControlClosed: false, windowsControlClosing: undefined, harnessEventsClosed:false,connectorTriggersClosed:false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},

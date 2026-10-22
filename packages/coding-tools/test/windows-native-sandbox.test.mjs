@@ -9,6 +9,7 @@ import {verifyWindowsNativeSandbox} from '../dist/native-sandbox-probe.js';
 import {nativeTokenDiagnostic,unsupportedPsec} from './native-sandbox-fixture.mjs';
 
 const helperPath = process.env.PA_TEST_JOB_HOST_EXE;
+const required = process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED === '1';
 const available = process.platform === 'win32' && helperPath && existsSync(helperPath);
 
 test('requested native sandbox fails closed on unsupported platforms', {skip: process.platform === 'win32'}, async () => {
@@ -17,13 +18,14 @@ test('requested native sandbox fails closed on unsupported platforms', {skip: pr
   assert.equal(result.outcome,'unavailable');assert.equal(result.executionStarted,false);assert.equal(result.enforced,false);
 });
 
-test('real Windows PSEC boundary, generation guards and lifecycle', {skip: !available && 'Explicit trusted PA_TEST_JOB_HOST_EXE unavailable'}, async t => {
+test('real Windows PSEC boundary, generation guards and lifecycle', {skip: !available && !required && 'Explicit trusted PA_TEST_JOB_HOST_EXE unavailable'}, async t => {
+  assert.ok(available, 'Required native boundary test needs Windows and the explicit trusted helper');
   t.diagnostic('Native probe inherited token: '+JSON.stringify(nativeTokenDiagnostic()));
   const base = realpathSync.native(await mkdtemp(join(tmpdir(), 'personal-agent-psec-')));
   const pins = readWindowsNativeHelperAttestation(realpathSync.native(helperPath));
   const node = realpathSync.native(process.execPath), systemRoot = realpathSync.native(process.env.SystemRoot);
   const capabilities = await verifyWindowsNativeSandbox(pins, {probeRootPath:base,nodeExecutable:node,systemRoot,signal:new AbortController().signal});
-  if (unsupportedPsec(capabilities) && process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED!=='1') {
+  if (unsupportedPsec(capabilities) && !required) {
     t.skip('Actual baseline passed; PSEC API unavailable: '+JSON.stringify(capabilities.results));return;
   }
   assert.equal(capabilities.available,true,JSON.stringify(capabilities));

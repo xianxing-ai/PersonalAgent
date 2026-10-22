@@ -1,0 +1,42 @@
+{
+  "kind": "owned_public_fixture_ui_startup_only",
+  "fixture": "LdlZx4",
+  "status": "passed",
+  "modelStarted": false,
+  "taskSubmitted": false,
+  "phases": [
+    {
+      "phase": "electron-launch",
+      "elapsedMs": 2
+    },
+    {
+      "phase": "electron-connected",
+      "elapsedMs": 1232
+    },
+    {
+      "phase": "orb-ready",
+      "elapsedMs": 5305
+    },
+    {
+      "phase": "panel-ready",
+      "elapsedMs": 10747
+    }
+  ],
+  "startupOutput": [
+    {
+      "runtime": "ready",
+      "agentArtsConfigured": true,
+      "liveReady": true,
+      "liveShortcutRegistered": false,
+      "sisConfigured": false,
+      "sisReady": false,
+      "elapsedMs": 1984
+    }
+  ],
+  "mainSha256": "283a916ecfe122f41d72f2eeefccfd33ef5dee5a3299dc268be580ec3e79f14b",
+  "ownedPid": 24756,
+  "originalRuntime": true,
+  "runtimeState": "not_projected",
+  "elapsedMs": 18650,
+  "closed": true
+}

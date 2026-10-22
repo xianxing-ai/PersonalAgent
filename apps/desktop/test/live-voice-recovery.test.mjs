@@ -168,19 +168,22 @@ test('P2 task.get late result past request deadline cannot escape as a successfu
   } finally {await f.host.dispose();}
 });
 
-test('Local/Synthetic late approval summary cannot escape the original work wait deadline or resubmit',async()=>{
-  let clock=Date.now();const preparing=deferred(),prepared=deferred(),calls=[];
+test('Local/Synthetic legacy approval callback is unreachable and cannot delay a card-only status or resubmit',async()=>{
+  let clock=Date.now(),prepares=0;const calls=[];
   const question={taskId:'original-pending',state:'pending',questionId:'original-question',revision:1,argumentsDigest:'a'.repeat(64),
     summary:'Synthetic current parameters',expiresAt:new Date(clock+600_000).toISOString()};
   const f=fixture({now:()=>clock,readCurrentQuestion:()=>question,
-    prepareTaskApproval(){preparing.resolve();return prepared.promise;},
+    prepareTaskApproval(){prepares++;return new Promise(()=>{});},
     client:{async call(operation){calls.push(operation);if(operation==='task.submit')return {taskId:'original-pending'};
       return {taskId:'original-pending',state:'waiting_approval'};}},
     createConsumer:({client})=>({consume(input){return {result:client.call('task.submit',{goal:input.text})
       .then(()=>{throw Error('Synthetic consumer ended before approval readback');})};}})});
   try{
-    await f.host.start();const rejection=assert.rejects(f.request.onTool('request_work',{goal:'Synthetic original approval'},'approval-deadline'),/工作等待已到期/);
-    await preparing.promise;clock+=120_001;prepared.resolve(question);await rejection;
+    await f.host.start();
+    const result=await f.request.onTool('request_work',{goal:'Synthetic original approval'},'approval-deadline');
+    assert.match(result,/原授权卡/);assert.doesNotMatch(result,/Synthetic current parameters/);assert.equal(prepares,0);
+    clock+=120_001;
+    assert.equal(await f.request.onTool('request_work',{goal:'Synthetic original approval'},'approval-deadline'),result);
     assert.deepEqual(calls,['task.submit','task.get']);assert.equal(f.host.snapshot().workRequests[0].taskId,'original-pending');
     assert.equal(f.host.snapshot().workRequests[0].state,'awaiting_result');assert.equal(f.host.snapshot().status,'listening');
   }finally{await f.host.dispose();}

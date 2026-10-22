@@ -85,15 +85,16 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
     return {configured:Boolean(saved)&&!transportFailure,runtimeReady:Boolean(runtimeBinding()),
       gatewayUrl:saved?.gatewayUrl??defaults.gatewayUrl,runtimeName:saved?.runtimeName??defaults.runtimeName,
       appTokenConfigured:Boolean(saved?.appToken||environment.PA_AGENTARTS_APP_TOKEN),deploymentVersion:saved?.deploymentVersion??'',
+      deploymentSelection:saved?.deploymentVersion===undefined?'latest':'pinned',canRestoreDefaultConnection:Boolean(saved),
       ...(transport??{transport:!saved&&!environment.PA_AGENTARTS_TRANSPORT&&!environment.PA_AGENTARTS_AUTHORIZATION?'wss':preferences.transport}),
       ...(!saved&&!environment.PA_AGENTARTS_TRANSPORT&&!environment.PA_AGENTARTS_AUTHORIZATION?{transport:'wss'}:{}),
-      websocketUrl:transport?.websocketUrl??saved?.websocketUrl??environment.PA_AGENTARTS_WSS_URL??'',
+      websocketUrl:transport?.transport==='https'?'':transport?.websocketUrl??saved?.websocketUrl??environment.PA_AGENTARTS_WSS_URL??'',
       allowHttpsFallback:transport?.allowHttpsFallback??preferences.allowHttpsFallback,
       effectiveTransport:saved?.transport??environment.PA_AGENTARTS_TRANSPORT??'https',
       transportSource:saved?.transport!==undefined?'saved':environment.PA_AGENTARTS_TRANSPORT!==undefined?'environment':'default',
       reason:failure||transportFailure||(saved?'已配置；真实连通以任务结果为准':'请配置 AgentArts 网关、运行时名称和 Authorization')};
   };
-  return {snapshot,runtimeBinding,isTransportCurrent,
+  const config={snapshot,runtimeBinding,isTransportCurrent,
     transportConfig(binding) {
       const initial=currentTransport();
       // Keep the HTTPS destination guard even without WSS options.
@@ -109,6 +110,13 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
     binding(){if (!saved) throw Error(snapshot().reason);return {gatewayUrl:saved.gatewayUrl,runtimeName:saved.runtimeName};},
     readAuthorization(binding,transport) {assertBinding(binding,transport);return saved.authorization;},
     readTransportOptions,
+    restoreDefaultConnection(input) {
+      if(input!==undefined)throw Error('AgentArts 默认连接恢复不接受参数');
+      if(!saved)throw Error('请先保存 AgentArts 实例与凭据，再恢复默认连接');
+      // An explicit settings action changes only the saved route. No request is sent or replayed.
+      return config.configure({gatewayUrl:saved.gatewayUrl,runtimeName:saved.runtimeName,
+        appToken:saved.appToken,deploymentVersion:'',transport:'https',websocketUrl:'',allowHttpsFallback:false});
+    },
     configure(input) {
       if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization','appToken','deploymentVersion','transport','websocketUrl','allowHttpsFallback'].includes(key))) throw Error('AgentArts 配置格式无效');
       if(input.transport!==undefined&&!['wss','https'].includes(input.transport)||input.allowHttpsFallback!==undefined&&typeof input.allowHttpsFallback!=='boolean'||input.websocketUrl!==undefined&&typeof input.websocketUrl!=='string')throw Error('AgentArts 传输配置无效');
@@ -151,4 +159,5 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       return snapshot();
     },
   };
+  return config;
 }

@@ -4,7 +4,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult,parseExecutionModelSelection} from './index.js';
 import type {ExecutionModelSelection} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
-import {AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsTerminalError, AgentArtsWebSocketTransport, AgentArtsWebSocketUpgradeError, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
+import {AgentArtsBeforeInvokeError, AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsTerminalError, AgentArtsWebSocketTransport, AgentArtsWebSocketUpgradeError, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
 import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
 import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 
@@ -55,7 +55,7 @@ export interface AgentArtsRuntimeConfig {
   transport?: 'https' | 'wss';
   /** Confirmed public Upgrade endpoint of the same HTTPS gateway/runtime. */
   websocketUrl?: string;
-  /** Only an invoke-never-sent connection failure can use the same HTTPS target. */
+  /** Only invoke-never-sent connection/Upgrade failures, excluding auth rejection, may use the same HTTPS target. */
   allowHttpsFallback?: boolean;
 }
 
@@ -214,7 +214,7 @@ function freezeJsonSnapshot(value: unknown): void {
 }
 
 function validateRequest(request: CoordinationRequest, responseMode: 'text' | 'tool-proposal-json',
-  initialRequestMode: 'goal' | 'goal-with-tools-json'): {
+  initialRequestMode: 'goal' | 'goal-with-tools-json', continuationContext?: 'goal'): {
   taskId: string; revision: number; goal: string; deadline: string;
   deadlineMs: number; signal: AbortSignal; continuation?: CoordinationContinuation;
   priorContinuations?:readonly CoordinationContinuation[];
@@ -245,7 +245,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
     // The final host guard must inspect exactly the serialized transport snapshot.
     freezeJsonSnapshot(continuation);
   }
-  if (input.availableTools !== undefined && continuation !== undefined) {
+  if (input.availableTools !== undefined && continuation !== undefined && continuationContext !== 'goal') {
     invalid('AgentArts continuation cannot include an initial tool directory');
   }
   if (input.availableTools !== undefined && initialRequestMode !== 'goal-with-tools-json') {
@@ -1220,20 +1220,25 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
     const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, priorContinuations, availableTools, textOnly,executionModel} =
-      validateRequest(request, this.responseMode, this.initialRequestMode);
+      validateRequest(request, this.responseMode, this.initialRequestMode, this.continuationContext);
     if (continuation !== undefined && this.beforeSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts continuation export guard is unavailable');
     }
     if (availableTools !== undefined && this.beforeInitialToolCatalogSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts initial tool catalog guard is unavailable');
     }
+    if(availableTools!==undefined&&this.repairCandidateVersion==='1.0'&&asPlainObject(continuation?.result)
+      &&Object.prototype.hasOwnProperty.call(continuation!.result,'repairContext')) {
+      invalid('Repair continuation cannot include a tool directory');
+    }
     const modelSelection = executionModel===undefined?{}:{executionModel};
     const query = continuation === undefined
       ? availableTools === undefined && executionModel===undefined ? goal : JSON.stringify({goal, availableTools:availableTools??[],...modelSelection})
-      : this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
+      : availableTools === undefined && this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
         && Object.prototype.hasOwnProperty.call(continuation.result, 'repairContext')
         ? executionModel===undefined?candidateContinuationQuery(continuation):JSON.stringify({continuation,...modelSelection})
         : JSON.stringify({continuation,...(this.continuationContext==='goal'?{goal,
+          ...(availableTools===undefined?{}:{availableTools}),
           ...(priorContinuations?.length?{priorContinuations}:{})}:{}),...modelSelection});
     if(new TextEncoder().encode(query).byteLength>1_100_000)invalid('AgentArts complete query exceeds the byte limit');
     if (continuation === undefined && availableTools !== undefined
@@ -1376,7 +1381,9 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         if (receipt === undefined) this.identityObserver?.(createAgentArtsUnknownReceipt(init), sendRequest);
         // The final synchronous guard and fetch share one uninterrupted stack.
         if (receipt !== undefined) { fallbackReceipt = receipt; fallbackStarted = true; }
-        return this.fetchImpl(url, init);
+        const response = this.fetchImpl(url, init);
+        if (fallback) this.websocket!.reportFallback(sessionId, requestId, this.websocketDeploymentVersion);
+        return response;
       };
 
       let response: AgentArtsResponse;
@@ -1390,7 +1397,6 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
             catch (error) {
               if (currentAbortError(combined)) throw currentAbortError(combined);
               if (!this.allowHttpsFallback || !this.websocket.canFallback(error)) throw error;
-              this.websocket.reportFallback(sessionId, requestId);
               received = await sendHttps(true);
             }
           }
@@ -1404,6 +1410,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         }
         if (error instanceof AgentArtsResultUnknownError) throw error;
         if (error instanceof AgentArtsTerminalError) throw error;
+        if (error instanceof AgentArtsBeforeInvokeError) throw error;
         if (error instanceof ProtocolError && (error.code === 'UNAUTHORIZED'
           || error.code === 'UNSUPPORTED_CAPABILITY')) throw error;
         throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts request failed', this.websocket === undefined);

@@ -38,6 +38,19 @@ export function createRuntimeCodingRepairWorkerCapability(application:RuntimeApp
       &&bound.deadline===application.runtime.loadCheckpoint(taskId,'application-deadline')
       &&!!loop?.pending&&accepts(loop.pending)&&bound.proposalDigest===hash(loop.pending)&&bound.revision===loop.pendingRevision;
   }
+  function describe(context:Pick<WorkerContext,'taskId'|'deadline'|'signal'>) {
+    active(context);
+    const fixed=application.runtime.loadCheckpoint(context.taskId,'subtask-coordination-binding')!==undefined;
+    if(fixed) {
+      const task=application.runtime.getTask(context.taskId);
+      const parent=application.runtime.loadCheckpoint(context.taskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+      if(!parent?.parentTaskId||task.conversationId!==`desktop-subtask:${parent.parentTaskId}`
+        ||application.runtime.loadCheckpoint(context.taskId,'subtask-thinking-binding')===undefined||!getTools(context.taskId))
+        fail('UNAUTHORIZED','Original coding worker execution binding is unavailable');
+    }
+    return {name:CODING_REPAIR_WORKFLOW_TOOL,version:'1.0.0',
+      inputSchema:codingRepairWorkflowInputSchema(fixed?{sameWorker:true}:{})};
+  }
   function pendingHostTask(taskId:string):TaskSnapshot|undefined {
     if(!isActive(taskId))return;
     const waiting=(application.runtime.loadCheckpoint(taskId,CODING_REPAIR_STATE) as Graph|undefined)?.waiting;
@@ -126,5 +139,5 @@ export function createRuntimeCodingRepairWorkerCapability(application:RuntimeApp
       ||saved.selection.resultDigest!==hash(result)||!isDeepStrictEqual(saved.selection,selection)||!isDeepStrictEqual(saved.result,result))
       fail('UNAUTHORIZED','Original coding worker receipt changed');
   }};
-  return {...capability,isActive,resolveApproval,assertResumeAllowed,pendingHostTask};
+  return {...capability,describe,isActive,resolveApproval,assertResumeAllowed,pendingHostTask};
 }
