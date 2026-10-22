@@ -5,11 +5,10 @@ import {createHash} from 'node:crypto';
 import {mkdirSync,writeFileSync,readFileSync,existsSync,readdirSync,lstatSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import {nativeTokenDiagnostic} from '../../../packages/coding-tools/test/native-sandbox-fixture.mjs';
+import {assessPsecTap} from './psec-acceptance-result.mjs';
 
 const start = new Date();
 assert.equal(process.platform,'win32','Real Windows required');
-assert.equal(nativeTokenDiagnostic().administratorToken,false,'Ordinary user token required');
 assert.ok(process.env.PA_TEST_JOB_HOST_EXE && existsSync(process.env.PA_TEST_JOB_HOST_EXE),'Explicit built native helper required');
 const target=path.join(process.env.RUNNER_TEMP ?? '.cache','psec-positive-acceptance');
 mkdirSync(target,{recursive:true});
@@ -25,20 +24,46 @@ const receipt={startedAt:start.toISOString(),sourceSha:execFileSync('git',['rev-
   runId:process.env.GITHUB_RUN_ID??null,runAttempt:process.env.GITHUB_RUN_ATTEMPT??null,
   helperSha256:hash(readFileSync(process.env.PA_TEST_JOB_HOST_EXE)),helperFilesSha256,
   processmodel:{exists:existsSync(dll),sha256:existsSync(dll)?hash(readFileSync(dll)):null},results:[]};
-for(const [name,file,pattern] of [
-  ['os-boundary','packages/coding-tools/test/windows-native-sandbox.test.mjs','^real Windows PSEC boundary, generation guards and lifecycle'],
-  ['authorization-chain','apps/desktop/test/authorization-native-execution.integration.test.mjs','^one real original question gates a production PSEC command and never replenishes authority'],
+// Fixed helper modes emit only safe OS/token/loader/contract metadata. They never
+// create a PSEC environment or run the proposed command; enforcement is tested below.
+receipt.nativeDiagnostics={};
+for(const [name,mode] of [['loader','--sandbox-diagnostics'],['contract','--sandbox-support']]){
+  const diagnostic=spawnSync(process.env.PA_TEST_JOB_HOST_EXE,[mode],
+    {env:{},encoding:'utf8',timeout:10000,maxBuffer:16384,windowsHide:true,shell:false});
+  let data;
+  try{data=JSON.parse(diagnostic.stdout??'');}catch{data={invalidReceipt:true};}
+  receipt.nativeDiagnostics[name]={exitCode:diagnostic.status,signal:diagnostic.signal,error:diagnostic.error?.code??null,data};
+}
+const ordinary=receipt.nativeDiagnostics.loader.exitCode===0
+  &&receipt.nativeDiagnostics.loader.data.diagnosticOnly===true
+  &&receipt.nativeDiagnostics.loader.data.token?.available===true
+  &&receipt.nativeDiagnostics.loader.data.token.elevated===false
+  &&receipt.nativeDiagnostics.loader.data.token.administrator===false
+  &&receipt.nativeDiagnostics.loader.data.token.appContainer===false;
+receipt.ordinaryUser=ordinary;
+writeFileSync(path.join(target,'native-diagnostics.json'),JSON.stringify(receipt.nativeDiagnostics,null,2)+'\n');
+// Never proceed under an outer AppContainer/elevated/unknown token or with an old
+// helper lacking the fixed diagnostic mode. Preserve the failed preflight receipt.
+if(!ordinary){
+  receipt.finishedAt=new Date().toISOString();receipt.status='failed';receipt.failure='ordinary-token-unconfirmed';
+  writeFileSync(path.join(target,'receipt.json'),JSON.stringify(receipt,null,2)+'\n');
+  throw Error('Real PSEC acceptance requires a confirmed ordinary user outside an outer AppContainer');
+}
+for(const [name,file,rootName,minimumTests] of [
+  ['os-boundary','packages/coding-tools/test/windows-native-sandbox.test.mjs','real Windows PSEC boundary, generation guards and lifecycle',7],
+  ['authorization-chain','apps/desktop/test/authorization-native-execution.integration.test.mjs','one real original question gates a production PSEC command and never replenishes authority',1],
 ]){
   const before=Date.now();
+  const pattern='^'+rootName.replace(/[.*+?^${}()|[\]\\]/gu,'\\$&')+'$';
   const run=spawnSync(process.execPath,['--test','--test-concurrency=1','--test-reporter=tap','--test-name-pattern='+pattern,file],
     {env:{...process.env,PA_TEST_NATIVE_SANDBOX_REQUIRED:'1'},encoding:'utf8',timeout:180000,maxBuffer:8*1024*1024,windowsHide:true});
   const log=(run.stdout??'')+(run.stderr??'');
   writeFileSync(path.join(target,name+'.log'),log);
   process.stdout.write(log);
   // Exactly one selected root test must execute; unsupported/error/skip is never acceptance.
-  const accepted=run.status===0&&!run.error&&/^# pass [1-9]\d*$/mu.test(log)&&/^# fail 0$/mu.test(log)&&/^# skipped 0$/mu.test(log);
+  const {accepted,summary,reason}=assessPsecTap(run,rootName,minimumTests);
   receipt.results.push({name,file,exitCode:run.status,signal:run.signal,error:run.error?.code??null,
-    wallMs:Date.now()-before,logSha256:hash(log),status:accepted?'passed':'failed'});
+    wallMs:Date.now()-before,logSha256:hash(log),summary,reason,status:accepted?'passed':'failed'});
 }
 receipt.finishedAt=new Date().toISOString();
 // Export only this run's two explicitly synthetic receipts, never the SQLite/cache tree.
