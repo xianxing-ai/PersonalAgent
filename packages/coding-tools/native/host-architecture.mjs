@@ -13,14 +13,84 @@ export function normalizeArchitecture(value) {
   throw error;
 }
 
+// Fixed OS component, not PATH/SystemRoot/PROCESSOR_ARCHITECTURE supplied by the caller.
+// Unknown-machine fallback intentionally fails closed on nonstandard Windows locations.
+const WINDOWS_POWERSHELL='C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+export function probeNativeWindowsArchitecture({run=spawnSync,processId=process.pid}={}) {
+  if (!Number.isSafeInteger(processId) || processId<=0 || processId>0xffffffff) throw Error('Native Windows OS architecture probe failed');
+  const script=`$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Globalization;
+using System.Runtime.InteropServices;
+public static class PsecNativeArchitecture {
+  [DllImport("kernel32.dll", ExactSpelling=true, SetLastError=true)]
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  private static extern IntPtr OpenProcess(uint access, bool inherit, uint processId);
+  [DllImport("kernel32.dll", ExactSpelling=true, SetLastError=true)]
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
+  [DllImport("kernel32.dll", ExactSpelling=true)]
+  [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool CloseHandle(IntPtr handle);
+  public static string Read(uint processId) {
+    IntPtr process = OpenProcess(0x1000, false, processId);
+    if (process == IntPtr.Zero) throw new InvalidOperationException("Native process query failed");
+    try {
+      ushort processMachine, nativeMachine;
+      if (!IsWow64Process2(process, out processMachine, out nativeMachine))
+        throw new InvalidOperationException("Native architecture query failed");
+      return "{\\"version\\":1,\\"api\\":\\"IsWow64Process2\\",\\"processId\\":" + processId.ToString(CultureInfo.InvariantCulture)
+        + ",\\"processMachine\\":" + processMachine.ToString(CultureInfo.InvariantCulture)
+        + ",\\"nativeMachine\\":" + nativeMachine.ToString(CultureInfo.InvariantCulture) + "}";
+    } finally { CloseHandle(process); }
+  }
+}
+'@ | Out-Null
+[PsecNativeArchitecture]::Read(${processId})`;
+  const result=run(WINDOWS_POWERSHELL,['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
+    {encoding:'utf8',windowsHide:true,shell:false,timeout:10000,maxBuffer:8192,
+      env:{SystemRoot:'C:\\Windows',windir:'C:\\Windows',TEMP:os.tmpdir(),TMP:os.tmpdir()}});
+  if (result.error || result.status!==0 || result.signal) {
+    const error=Error('Native Windows OS architecture probe failed');error.query='native-os-architecture';
+    error.exitCode=Number.isInteger(result.status)?result.status:null;
+    error.processError=['ENOENT','EACCES','EPERM','ETIMEDOUT'].includes(result.error?.code)?result.error.code:'UNKNOWN';
+    throw error;
+  }
+  let receipt;
+  try { receipt=JSON.parse(result.stdout); } catch { throw Error('Invalid native Windows OS architecture receipt'); }
+  const fields=['version','api','processId','processMachine','nativeMachine'];
+  if (!receipt || Array.isArray(receipt) || Object.keys(receipt).length!==fields.length
+    || Object.keys(receipt).some(key=>!fields.includes(key)) || receipt.version!==1 || receipt.api!=='IsWow64Process2'
+    || receipt.processId!==processId || !Number.isInteger(receipt.processMachine) || receipt.processMachine<0 || receipt.processMachine>0xffff
+    || !Number.isInteger(receipt.nativeMachine) || receipt.nativeMachine<0 || receipt.nativeMachine>0xffff)
+    throw Error('Invalid native Windows OS architecture receipt');
+  if (receipt.processMachine!==0) throw Error('Emulated Node is not native acceptance');
+  const architecture=new Map([[0x8664,'x64'],[0xaa64,'arm64']]).get(receipt.nativeMachine);
+  if (!architecture) throw Error('Unsupported native Windows OS architecture');
+  return {architecture,api:'IsWow64Process2',processMachine:receipt.processMachine,nativeMachine:receipt.nativeMachine};
+}
+
 export function requireNativeArchitecture({platform=process.platform, nodeArchitecture=process.arch,
-  osArchitecture=os.machine(), expectedArchitecture=process.env.PA_PSEC_EXPECTED_ARCH}={}) {
+  osArchitecture=os.machine(), expectedArchitecture=process.env.PA_PSEC_EXPECTED_ARCH,
+  readNativeArchitecture=probeNativeWindowsArchitecture}={}) {
   if (platform !== 'win32') throw Error('Native Windows required');
   const architecture=normalizeArchitecture(nodeArchitecture);
-  if (architecture !== normalizeArchitecture(osArchitecture)) throw Error('Emulated Node is not native acceptance');
+  const native=osArchitecture==='unknown'?readNativeArchitecture():undefined;
+  // The fixed native reader validates its receipt before returning; do not accept a bare env/architecture hint.
+  if (osArchitecture==='unknown' && (!native || typeof native!=='object' || Array.isArray(native)
+    || Object.keys(native).length!==4 || Object.keys(native).some(key=>!['architecture','api','processMachine','nativeMachine'].includes(key))
+    || native.api!=='IsWow64Process2' || native.processMachine!==0
+    || ![0x8664,0xaa64].includes(native.nativeMachine)
+    || native.architecture!==new Map([[0x8664,'x64'],[0xaa64,'arm64']]).get(native.nativeMachine)))
+    throw Error('Invalid native Windows OS architecture receipt');
+  const installed=native?.architecture??normalizeArchitecture(osArchitecture);
+  if (architecture !== installed) throw Error('Emulated Node is not native acceptance');
   if (expectedArchitecture !== undefined && (!['x64','arm64'].includes(expectedArchitecture)
     || architecture !== expectedArchitecture)) throw Error('Requested Windows architecture mismatch');
-  return {architecture,runtimeIdentifier:'win-'+architecture};
+  return {architecture,runtimeIdentifier:'win-'+architecture,...(native===undefined?{}:{osArchitectureProbe:native})};
 }
 
 export function inspectDotnetInfo(output, expectedArchitecture) {
@@ -82,10 +152,11 @@ export function nativePublishArguments(project,target,configuration,architecture
 export function toolchainFailureDiagnostic(error) {
   const reasons=new Set(['Unknown Windows architecture','Unsupported Windows architecture','Native Windows required',
     'Emulated Node is not native acceptance','Requested Windows architecture mismatch','Emulated or mismatched dotnet host',
-    'Native dotnet query failed','Native .NET 8 SDK and runtime required']);
+    'Native dotnet query failed','Native .NET 8 SDK and runtime required','Native Windows OS architecture probe failed',
+    'Invalid native Windows OS architecture receipt','Unsupported native Windows OS architecture']);
   const result={status:'failed',reason:reasons.has(error?.message)?error.message:'Native Windows toolchain architecture preflight failed'};
   if(['x86','ia32','arm','arm64ec','other'].includes(error?.unsupportedArchitecture))result.unsupportedArchitecture=error.unsupportedArchitecture;
-  if(['--info','--list-sdks','--list-runtimes'].includes(error?.query))result.query=error.query;
+  if(['--info','--list-sdks','--list-runtimes','native-os-architecture'].includes(error?.query))result.query=error.query;
   if(['ENOENT','EACCES','EPERM','ETIMEDOUT','UNKNOWN'].includes(error?.processError))result.processError=error.processError;
   if(error?.exitCode===null||Number.isInteger(error?.exitCode))result.exitCode=error.exitCode;
   for(const field of ['sdk8Count','runtime8Count'])if(Number.isInteger(error?.[field])&&error[field]>=0)result[field]=error[field];
