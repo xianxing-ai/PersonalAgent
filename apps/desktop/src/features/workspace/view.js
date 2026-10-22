@@ -6,9 +6,13 @@ import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
 import {mountConversationRail} from '../conversation/rail.js';
 import {resultText} from '../conversation/result-text.js';
 import {updateConversationTurns} from '../conversation/turn-view.js';
-import {connectorCards} from './connectors.js';
+import {connectorCards,connectorDestination} from './connectors.js';
 import {windowControlsHtml} from '../../ui/window-controls.js';
 import {mountTaskProgress} from '../conversation/task-progress.js';
+import {mountWorkspaceComposer} from '../conversation/workspace-composer.js';
+import {mountCommandCenter} from './command-center.js';
+import {mountWorkspaceApprovals} from './workspace-approvals.js';
+import {mountWorkspaceRuntimeControls} from './runtime-controls.js';
 
 const paths={settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',connectors:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zm11 3h7m-3-3v7',close:'m6 6 12 12M6 18 18 6',maximize:'M5 5h14v14H5z',minimize:'M5 12h14',copy:'M8 8h12v12H8zM16 8V4H4v12h4',view:'M3 5h18v14H3zM9 5v14'};
 const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]}"/></svg>`;
@@ -32,7 +36,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   let feedbackRevision=0;
   const updateRail=mountConversationRail(root.querySelector('.workspace-chat'),stage);
   const orbButton=root.querySelector('#workspace-orb');
-  const orb=new Orb(orbButton.querySelector('canvas'),{variant:'matrix',layout:'shell',count:170});
+  const orb=new Orb(orbButton.querySelector('canvas'),{variant:'matrix',layout:'shell',count:520,luminous:true});
   orb.setBreathing({min:.52,max:.76,rate:.7});
   const syncMotion=()=>{if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');};syncMotion();window.addEventListener('preferences-changed',syncMotion);
   const visibility=()=>{if(document.hidden)orb.stop();else syncMotion();};document.addEventListener('visibilitychange',visibility);
@@ -43,10 +47,17 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
-  // Keep existing per-conversation drafts available to session actions without mounting a task composer.
-  const draftInput=document.createElement('textarea');
+  const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
+  const draftInput=composer.input;
   const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose});
   const nativeReasoning=mountModelThinkingPicker(preferences,invoke,report,{readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
+  composer.beforeSubmit=async()=>{await nativeReasoning.flush();return sessionControls.flush();};
+  composer.onAccepted=token=>sessionControls.submitted(token);
+  const center=mountCommandCenter(root,{sessionRoot,preferences,input:draftInput,invoke,report,escape});
+  const runtimeControls=mountWorkspaceRuntimeControls(root,invoke,report);
+  const workspaceApprovals=mountWorkspaceApprovals(conversation,invoke,report,()=>feedbackRevision);
+  window.addEventListener('pagehide',()=>nativeReasoning.dispose(),{once:true});
+  syncAuxiliaryPanels();
   const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=Boolean(button.dataset.reconcile&&current.tasks.find(task=>task.taskId===button.dataset.reconcile)?.reconciliationStatus?.blockedReason)||pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body)return;
@@ -64,7 +75,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     inspector.hidden=!inspected;
     if(restoreFocus){
       const trigger=restoreTaskFocus?[...conversation.querySelectorAll('[data-view]')].find(button=>button.dataset.view===inspector.dataset.taskId):null;
-      (trigger??root.querySelector('#connectors-toggle')).focus({preventScroll:true});
+      (trigger??root.querySelector('.cc-tools')??root.querySelector('#connectors-toggle')).focus({preventScroll:true});
     }
   }
   root.querySelector('#connectors-toggle').onclick=()=>{
@@ -73,7 +84,17 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   };
   root.querySelector('#connectors-refresh').onclick=async event=>{event.currentTarget.disabled=true;const operationRevision=updateRevision;let readRevision;try{await invoke('capability.list');readRevision=updateRevision;const data=await invoke('snapshot');if(readRevision===updateRevision)update(data);}catch(error){if((readRevision??operationRevision)===updateRevision)report(error);}finally{root.querySelector('#connectors-refresh').disabled=false;}};
   root.querySelector('#inspector-close').onclick=()=>{inspected=null;syncAuxiliaryPanels();};
-  root.querySelector('#connector-cards').onclick=event=>{const card=event.target.closest('[data-connector]');if(!card)return;invoke('admin.open',{page:'connections'}).catch(report);};
+  root.querySelector('#connector-cards').onclick=event=>{
+    const card=event.target.closest('[data-connector]');if(!card)return;
+    const destination=connectorDestination(card.dataset.connector,current);
+    if(destination.action){invoke(destination.action).catch(report);return;}
+    if(destination.draft){
+      root.querySelector('.cc-team-lead')?.click();
+      if(!draftInput.value.trim()){draftInput.value=destination.draft;draftInput.dispatchEvent(new Event('input',{bubbles:true}));}
+      draftInput.focus();
+    }else invoke('admin.open',{page:destination.page}).catch(report);
+  };
+  root.querySelector('#connector-cards').onkeydown=event=>{if((event.key==='Enter'||event.key===' ')&&event.target.matches('[data-connector]')){event.preventDefault();event.target.click();}};
   conversation.onclick=async event=>{
     const button=event.target.closest('[data-cancel],[data-reconcile],[data-view],[data-copy]');if(!button)return;
     try{if(button.dataset.view){inspected=button.dataset.view;renderInspector();}else if(button.dataset.copy){await invoke('clipboard.writeText',resultText(current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultSummary,current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultMetadata));button.title='已复制';}else{const id=button.dataset.cancel??button.dataset.reconcile;if(button.disabled||pendingCancelIds.has(id))return;pendingCancelIds.add(id);syncCancelButtons();try{await invoke(button.dataset.reconcile?'task.reconcile.finish':'task.cancel',id);}finally{pendingCancelIds.delete(id);syncCancelButtons();}}}catch(error){report(error);syncCancelButtons();}
@@ -94,6 +115,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();
+    composer.update(data);
     updateProgress(data.tasks);
     root.querySelector('#workspace-greeting').hidden=current.tasks.length>0;root.querySelector('#workspace-intro').hidden=current.tasks.length>0;root.querySelector('#workspace-welcome').classList.toggle('compact',current.tasks.length>0);
     const signature=JSON.stringify(data.tasks);
@@ -104,7 +126,9 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       syncCancelButtons();restoreTaskActionFocus(focused);
       requestAnimationFrame(()=>{if(atBottom)stage.scrollTop=stage.scrollHeight;updateRail();});if(inspected)renderInspector();
     }
-    const nextCards=JSON.stringify([data.capabilities,data.health,data.notifications,data.todo?.items,data.todo?.available,data.todo?.sessionAllowed,data.feeds?.subscriptions,data.feeds?.available,data.feeds?.sessionAllowed,data.mail?.status,data.mail?.counts,data.mail?.sessionAllowed,data.knowledge?.configured]);if(cardsSignature!==nextCards){cardsSignature=nextCards;root.querySelector('#connector-cards').innerHTML=connectorCards(data,escape);}
+    for(const turn of conversation.querySelectorAll('[data-turn]')){if(!turn.querySelector('[data-workspace-approvals]')){const slot=document.createElement('div');slot.dataset.workspaceApprovals=turn.dataset.turn;turn.querySelector('.response-actions').before(slot);}}
+    workspaceApprovals.update(data);center.update(data);runtimeControls.update(data);
+    const nextCards=JSON.stringify([data.capabilities,data.health,data.notifications,data.todo,data.feeds,data.mail,data.knowledge,data.weather]);if(cardsSignature!==nextCards){cardsSignature=nextCards;root.querySelector('#connector-cards').innerHTML=connectorCards(data,escape);}
   }
   update.setAudioLevel=level=>orb.setLevel(level);
   return update;

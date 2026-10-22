@@ -1,4 +1,8 @@
 /** Workspace is the host-wide activity view; panel stays scoped to its conversation. */
+export function scopeSubagentConversations(items, readParent, visibleParent) {
+  return items.filter(child=>{try{return visibleParent(readParent(child.parentTaskId));}catch{return false;}});
+}
+
 export function projectSubagentActivity({tasks, surface, visible, readChildren, sourceSurface, readTask}) {
   return tasks.filter(task => surface === 'workspace' || visible(task, surface)).flatMap(parent =>
     (readChildren(parent.taskId) ?? []).map(child => ({...child, sourceSurface: sourceSurface(parent),

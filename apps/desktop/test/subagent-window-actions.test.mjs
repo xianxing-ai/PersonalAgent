@@ -4,13 +4,35 @@ import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
 import {EventEmitter} from 'node:events';
-import {handleSubagentWindowAction,handleSubagentListAction} from '../electron/subagent-window-actions.js';
+import {handleSubagentWindowAction,handleSubagentListAction,handleWorkspaceSubagentAction} from '../electron/subagent-window-actions.js';
 
 function fixture(){
   const calls=[],contents={mainFrame:{}};
   const record={binding:{parentTaskId:'original-parent',taskId:'original-child'},window:{webContents:contents,isDestroyed:()=>false,close:()=>calls.push('close')}};
   return {calls,record,event:{sender:contents,senderFrame:contents.mainFrame},readDetail:binding=>{calls.push(binding);return {taskId:binding.taskId};},openMain:()=>calls.push('main')};
 }
+
+test('inline workspace threads revalidate the immutable original binding for reads, messages and stops',async()=>{
+  const f=fixture(),operations=[],input={binding:{parentTaskId:'parent',taskId:'child'},request:{text:'continue',requestId:'request'}};
+  const ports={event:f.event,window:f.record.window,readDetail:async binding=>{operations.push(['read',binding]);return {...binding};},submit:async(binding,message)=>{operations.push(['submit',binding,message]);return {acceptedTaskId:'execution'};},cancel:async(binding,execution)=>{operations.push(['cancel',binding,execution]);return {cancelAccepted:true};}};
+  assert.deepEqual(await handleWorkspaceSubagentAction({...ports,name:'workspace.subagent.snapshot',payload:{binding:input.binding}}),input.binding);
+  await handleWorkspaceSubagentAction({...ports,name:'workspace.subagent.submit',payload:input});await handleWorkspaceSubagentAction({...ports,name:'workspace.subagent.cancel',payload:{binding:input.binding,request:{taskId:'execution'}}});
+  assert.equal(operations.filter(([name])=>name==='read').length,3);assert.deepEqual(operations[2][1],input.binding);assert.equal(Object.isFrozen(operations[2][1]),true);assert.deepEqual(operations.at(-1),['cancel',input.binding,'execution']);
+});
+test('inline workspace threads refuse spoofed senders, hidden actions, malformed fields and unrelated records',async()=>{
+  const f=fixture();let writes=0;
+  const ports={event:f.event,window:f.record.window,readDetail:async binding=>{if(binding.taskId!=='child')throw Error('unrelated child');return {...binding};},submit:()=>{writes++;},cancel:()=>{writes++;}};
+  const binding={parentTaskId:'parent',taskId:'child'};
+  for(const value of [{name:'workspace.subagent.submit',payload:{binding,request:{text:'x',requestId:'r',taskId:'foreign'}}},{name:'workspace.subagent.snapshot',payload:{binding,request:{}}},{name:'workspace.subagent.snapshot',payload:{binding:{...binding,extra:1}}},{name:'workspace.subagent.close',payload:{binding}},{name:'workspace.subagent.submit',payload:{binding:{...binding,taskId:'foreign'},request:{text:'x',requestId:'r'}}}])await assert.rejects(handleWorkspaceSubagentAction({...ports,...value}));
+  for(const event of [{sender:{},senderFrame:f.event.senderFrame},{sender:f.event.sender,senderFrame:{}}])await assert.rejects(handleWorkspaceSubagentAction({...ports,event,name:'workspace.subagent.snapshot',payload:{binding}}));
+  assert.equal(writes,0);
+});
+test('inline workspace cannot write after its window closes during readback or after a mismatched read',async()=>{
+  const f=fixture(),binding={parentTaskId:'parent',taskId:'child'};let writes=0,release,closed=false;f.record.window.isDestroyed=()=>closed;
+  const ports={event:f.event,window:f.record.window,submit:()=>{writes++;},readDetail:()=>new Promise(resolve=>{release=()=>resolve(binding);})};
+  const pending=handleWorkspaceSubagentAction({...ports,name:'workspace.subagent.submit',payload:{binding,request:{text:'x',requestId:'r'}}});closed=true;release();await assert.rejects(pending,/不可信/);closed=false;
+  await assert.rejects(handleWorkspaceSubagentAction({...ports,name:'workspace.subagent.submit',payload:{binding,request:{text:'x',requestId:'r'}},readDetail:async()=>({...binding,taskId:'other'})}),/绑定不一致/);assert.equal(writes,0);
+});
 test('child reader reads only its original host binding and closes without cancelling work',async()=>{
   const f=fixture();assert.deepEqual(await handleSubagentWindowAction({...f,name:'subagentConversation.snapshot'}),{taskId:'original-child'});
   await handleSubagentWindowAction({...f,name:'subagentConversation.main'});
