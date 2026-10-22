@@ -217,6 +217,31 @@ runner 本地读回将诊断重新与原 invocation 核对，不向工作流模�
 83/83、0 fail、0 skip，原日志 `.cache/pelican-start-diagnostics-focused.log`；语法及差异检查通过。
 本增量没有启动真实服务、重放旧任务或修改全局授权 guard。下一轮仍须新唯一公开 fixture 完成全部原必验项。
 
+### 原 F15 三组任务授权
+
+在统一授权宿主的内部 taskConsent 端口上，默认原 F15 分为三组：初始化隔离区、选定源码只读检查及必要公开出机；
+隔离副本编辑和固定检查；原 CAS 交付。三组均使用 workspace-write，第二组首次提问前要求原 Windows helper 验证，
+并将同一 verified native binding 带到后续固定检查。首卡说明覆盖动作，后续原 host task 派生复用，
+不再为同组每个读取、投影或节点单独弹卡。原 Policy 每个 run 仍产生并消费独立的精确一次性 grant。
+
+分组只接受可信原 worker capability、原 pending/revision、graph/image 与互反 host operation 映射；
+digest 绑定原 owner、初始 run、控制版本、原目标和源范围、期限、配置/资源版本、模型 destination 以及该组固定 descriptor/投影全集。
+旧非默认 F15 缺少该绑定时保持原逐次授权，不能靠 conversation、session 或工具名认领分组。
+源范围、配置、目标或映射变化会重新提问或拒绝；原 args、receipt、公开源码精确内容和 CAS 版本检查保持有效。
+分组不携带 live 源文件 SHA 作为权限来源；原隔离基线和原 CAS 继续核对具体字节版本。
+
+实际定向回归使用真实 Runtime、Policy 与 question host，native 身份为显式 Synthetic，未启动命令、模型或修改源码：
+七个原 run（含 native 就绪前后的重复读取）只显示三卡，native required 为 false/true/false；
+七个独立 grant 均仅消费一次。参数替换、越界 path、替换原 request、错误互反映射及原 graph 控制版本变化均拒绝。
+原默认父子 start 正例、卡前资源撤销反例和分组回归 3/3、0 fail、0 skip，日志 `.cache/pelican-task-consent-targeted.log`。
+runner 原 SQLite 绑定及原卡实际动作回归 2/2、0 fail、0 skip；仅当原 pending 同时给出
+canReuseTask=true 和 suggestedDecision=allow_task 时选择该动作，否则选择 allow_once，重新核对后记录实际决定。
+真实 workflow 模式超过三张核心卡会失败。语法和差异检查通过。
+
+该分组实现与离线回归不证明旧 b14XGw 的具体失效原因已修复，也不构成新真实鹈鹕通过。
+下一轮必须从新唯一公开 fixture 发起原默认父子任务，以新私有诊断定位任何卡前失效，并完成六节点、真实 npm-test、
+CAS SHA 读回、仅三源文件及 Chromium 两帧车轮/脚踏运动的原必验项。
+
 ## 证据边界
 
 默认 Desktop 公开文件修复通过，也只证明当前配置下该 fixture 的父子任务与本地工具闭环；不自动证明 F15 `workflow-advance` 六节点整图、平台 Trace API 逐条对账、物理语音/审批、任意项目自主编码或其余工作流通过。邮件/天气触发器的本地持久去重与 Laya 决策测试，也不自动证明所有连接器能实时推送或已完成真实账号持续接收。

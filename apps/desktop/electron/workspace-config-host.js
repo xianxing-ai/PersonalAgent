@@ -14,6 +14,17 @@ import {findWindowsExecutable} from './windows-executable-discovery.js';
 import {codingRepairExportOperation,projectCodingRepairResult} from './coding-repair-result-export.js';
 import {workspaceRepairProjectionSchema,workspaceWorkflowSummaryProjectionSchema} from './workspace-result-projection.js';
 
+const codingConsentGroups=Object.freeze([
+  {id:'source-review',tools:['coding.repair.start','coding.repair.list','coding.repair.read','coding.repair.snapshot',
+    'coding.repair.readback','workspace.coding_snapshot','decision.choose_candidate'],
+    summary:'本次文件修复：初始化隔离工作区，读取所选源码，并向当前模型发送必要的公开内容和结果。'},
+  {id:'isolated-edit-check',tools:['coding.repair.preview','coding.repair.patch','coding.repair.verify','coding.repair.check',
+    'workflow.host.f15_n04','workflow.host.f15_n05'],requiresNative:true,
+    summary:'本次文件修复：在隔离副本中准备修改，并用已选 Node/npm 运行固定检查。'},
+  {id:'cas-delivery',tools:['coding.repair.publish','coding.repair.reconcile','workflow.host.f15_n06'],
+    summary:'将本次已验证修改写回所选文件，并核对原文件版本和写入结果。'},
+]);
+
 function directory(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.startsWith('\\\\')
     || lstatSync(value).isSymbolicLink()) throw Error('请选择本机普通目录');
@@ -376,6 +387,13 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(entry.decision&&!isDeepStrictEqual(entry.decision,readCodingDecision(entry.scope,
       application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId)
         ??application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId,true))))fail('decision_binding_changed');
+    if(entry.taskConsent){
+      let current;
+      try {current=readCodingTaskConsent(entry.scope,application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId)
+        ??application.readAuthorizationQuestionInvocation?.(entry.scope.taskId,entry.scope.runId,true),entry.resource,entry.resourceGeneration);
+      }catch{fail('workflow_consent_changed');}
+      if(!isDeepStrictEqual(entry.taskConsent,current))fail('workflow_consent_changed');
+    }
     return entry;
   }
   function assertQuestionAccess(context,input,toolName) {
@@ -421,6 +439,52 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   function decisionProjectionSchema(decision) {
     return {type:'object',properties:{selectedId:{type:'string',enum:[...decision.candidateIds]}},required:['selectedId'],additionalProperties:false};
   }
+  function readCodingTaskConsent(scope,source,resource,resourceGeneration) {
+    const group=codingConsentGroups.find(item=>item.tools.includes(source?.toolName));
+    if(!group)return undefined;
+    const runtime=application.runtime,parent=runtime.loadCheckpoint(scope.taskId,'coding-repair:parent');
+    const ownerId=parent?.taskId??scope.taskId,graph=runtime.loadCheckpoint(ownerId,'coding-repair:graph');
+    // Old/non-F15 tools keep their individual exact card. They cannot claim a
+    // workflow group just by supplying a session, conversation or tool name.
+    if(graph?.version!==1||!graph.initialRunId||!graph.bindingId)return undefined;
+    const bound=runtime.loadCheckpoint(ownerId,'coding-repair:worker-capability');
+    if(!bound)return undefined;
+    const reject=()=>{throw new ProtocolError('UNAUTHORIZED','原编码工作流、源范围或授权分组已变化');};
+    const owner=runtime.getTask(ownerId),loop=runtime.loadCheckpoint(ownerId,'competition-loop');
+    const expected=loop?.pending?.arguments&&{version:1,...loop.pending.arguments.codingRepair,subtasks:loop.pending.arguments.subtasks};
+    if(owner.cancelRequested||!['running','waiting_approval'].includes(owner.state)||scope.signal?.aborted
+      ||runtime.loadCheckpoint(ownerId,'application-deadline')!==scope.deadline||Date.parse(scope.deadline)<=Date.now()
+      ||bound.version!==1||bound.taskId!==ownerId||bound.deadline!==scope.deadline||bound.bindingId!==graph.bindingId
+      ||loop?.pending?.toolName!=='coding.repair.workflow'||loop.pending.toolVersion!=='1.0.0'
+      ||bound.revision!==loop.pendingRevision||bound.proposalDigest!==hash(loop.pending)||!isDeepStrictEqual(bound.request,expected)
+      ||!['main','isolated'].includes(bound.request.mode)||bound.request.subtasks?.length!==1)reject();
+    if(parent){
+      const linked=runtime.loadCheckpoint(ownerId,'coding-repair:host:'+parent.operationId),original=linked?.request;
+      if(scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId||!original
+        ||original.commandId!==parent.operationId||original.toolName!==source.toolName||original.toolVersion!==source.toolVersion
+        ||original.deadline!==scope.deadline||!isDeepStrictEqual(original.arguments,source.arguments))reject();
+      const session=graph.input?.codingRepair?.session;
+      if(session?.taskId!==ownerId||session.sessionId!==graph.sessionId||session.mode!==bound.request.mode
+        ||graph.input.goal!==bound.request.subtasks[0].goal)reject();
+      if(source.arguments.sessionId!==undefined&&source.arguments.sessionId!==session.sessionId)reject();
+      if(source.toolName==='coding.repair.read'&&bound.request.allowedPaths
+        &&!bound.request.allowedPaths.includes(source.arguments.path))reject();
+    }else if(source.toolName!=='coding.repair.start'||scope.runId!==graph.initialRunId
+      ||!isDeepStrictEqual(source.arguments,{mode:bound.request.mode,...(bound.request.allowedPaths?{allowedPaths:bound.request.allowedPaths}:{})}))reject();
+    const capabilities=group.tools.flatMap(name=>{
+      const tool=implementations.find(item=>item.descriptor.name===name)
+        ??(name==='decision.choose_candidate'?createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Descriptor only');}}}):undefined);
+      if(!tool)return [];
+      return [{descriptor:tool.descriptor,projection:name==='coding.repair.read'?readTool.descriptor.outputSchema:projectionSchema(tool),
+        ...(name==='coding.repair.start'?{summaryProjection:workspaceWorkflowSummaryProjectionSchema()}:{})}];
+    });
+    const destination=application.readAuthorizationQuestionDestination?.(ownerId);
+    if(typeof destination!=='string')reject();
+    return {taskId:ownerId,mode:'workspace-write',...(group.requiresNative?{requiresNative:true}:{}),summary:group.summary,
+      bindingDigest:hash({version:'coding-workflow-consent-v1',ownerId,initialRunId:graph.initialRunId,
+        bindingId:graph.bindingId,controlRevision:graph.controlRevision,request:bound.request,deadline:scope.deadline,
+        resource,resourceGeneration,destination,group:group.id,capabilities})};
+  }
   function prepareQuestion(scope,exportRequested=false) {
     if(!question)return;
     const source=scope.proposal?{...scope.proposal,argumentsDigest:toolArgumentsDigest(scope.proposal.arguments)}
@@ -445,13 +509,16 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(previous&&previous.signature!==signature)throw new ProtocolError('UNAUTHORIZED','原工作区操作不能替换参数或配置');
     const entry=previous??{scope:request,argumentsDigest:request.argumentsDigest,generation,resource,resourceGeneration,signature,
       ...(decision?{decision}: {})};
+    const taskConsent=readCodingTaskConsent(request,source,resource,resourceGeneration);
+    if(previous&&!isDeepStrictEqual(previous.taskConsent,taskConsent))throw new ProtocolError('UNAUTHORIZED','原编码工作流授权分组不能替换');
+    if(taskConsent)entry.taskConsent=taskConsent;
     prepared.set(key,entry);
     const ruleBindingDigest=hash({resource,resourceGeneration,toolName:request.toolName,toolVersion:request.toolVersion,
       scopes:descriptor?.requiredScopes??source.scopes,projectionVersion:'workspace-redacted-v3'});
     question.prepare(request,{requirements:[{requirementId:'workspace-session',kind:'connector_session',
       scopes:descriptor?.requiredScopes??source.scopes??[],bindingDigest:signature,ruleBindingDigest,
       summary:'仅对已选择且仍有效的工作区执行本操作所列读写或固定命令；不开放任意路径、命令或其他任务'}],
-      assertCurrent:()=>{try{preparedEntry(request);return true;}catch{return false;}}});
+      ...(taskConsent?{taskConsent}:{}),assertCurrent:()=>{try{preparedEntry(request);return true;}catch{return false;}}});
     const workflowRun=application.runtime.loadCheckpoint(scope.taskId,'coding-repair:graph')?.initialRunId===scope.runId
       ||Boolean(application.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent'));
     if(tool&&workflowRun&&(decision||codingRepairExportOperation(tool.descriptor.name))) {
