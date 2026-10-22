@@ -6,8 +6,9 @@ const fs=require('node:fs'),path=require('node:path');
 const {createHash}=require('node:crypto');
 const {isDeepStrictEqual}=require('node:util');
 const {_electron}=require('playwright');
-const {databaseRead,checkpoint,approveQuestions}=require('./desktop-authorization-live.cjs');
-const {snapshot,pageFor,close,wait,submit}=require('./desktop-weather-watch-live.cjs');
+const {databaseRead,checkpoint}=require('./desktop-authorization-live.cjs');
+const {snapshot,pageFor,close,wait,submit,approveConversationQuestions}=require('./desktop-weather-watch-live.cjs');
+const {openSettings,settingsNavigationState}=require('../agentarts/desktop-pelican-default-live.cjs');
 const {validateManifest}=require('./mail-header-batch-fixture.cjs');
 const {authorizationMode,readCohortBindings,canFinishCohort,cohortCaseForEvent}=require('./mail-header-batch-audit.cjs');
 const root=path.resolve(__dirname,'../../..'),desktop=path.join(root,'apps/desktop');
@@ -47,8 +48,29 @@ function changeAudit(database,{manifest}={}){return databaseRead(database,db=>{
     events,watches:states('desktop-connector-watches').flatMap(state=>Object.values(state.watches??{})).map(watch=>({
       watchId:watch.id,source:watch.source,enabled:watch.enabled,state:watch.state,sequence:watch.sequence,
       conversationId:watch.conversationId,originTaskId:watch.origin.taskId,expiresAt:watch.input.expiresAt})),
-    readCount:records.filter(record=>['mail.inbox','weather.forecast'].includes(record.toolName)).length};
+    completeBaselineReads:records.filter(record=>['mail.inbox','weather.forecast'].includes(record.toolName)
+      &&record.state==='confirmed'&&record.policyDecision==='allow'&&record.executionStarted===true).flatMap(record=>{
+      const origin=checkpoint(db,record.taskId,'desktop-connector-watch-origin');
+      const result=checkpoint(db,record.taskId,'tool-result-'+record.evidenceId)?.result;
+      if(!origin?.watchId||origin.source!==record.toolName.split('.')[0]||!result)return [];
+      const complete=record.toolName==='mail.inbox'?result.account==='desktop-qq-inbox'&&result.folder==='INBOX'
+        &&Array.isArray(result.items)&&result.hasMore===false:result.record?.source==='open-meteo'
+          &&['fetched','fresh'].includes(result.cache?.state)&&!result.cache?.lastError;
+      return complete?[{watchId:origin.watchId,source:record.toolName.split('.')[0],taskId:record.taskId,
+        runId:record.evidenceId,sequence:origin.sequence,finishedAt:record.finishedAt}]:[];
+    }),readCount:records.filter(record=>['mail.inbox','weather.forecast'].includes(record.toolName)).length};
 });}
+function completeBaselineReady(audit,source,watchId){
+  const watch=audit.watches.find(item=>item.watchId===watchId&&item.source===source&&item.enabled);
+  // The original watch advances only after the complete read/classification
+  // session. A final page receipt alone can still be waiting for local Laya.
+  return Boolean(watch&&audit.baseline.some(item=>item.kind===source&&(source!=='mail'||item.initialized))
+    &&audit.completeBaselineReads.some(item=>item.watchId===watchId&&item.source===source
+      &&Number.isSafeInteger(item.sequence)&&item.sequence>=0&&watch.sequence>item.sequence
+      &&Number.isFinite(Date.parse(item.finishedAt))));
+}
+function completedNotification(manifest,cohort,delivered){return manifest
+  ?cohort&&canFinishCohort(cohort,delivered)?delivered:undefined:delivered;}
 async function readCohortAudit(app,{database,userData,manifest,watchId,baselineReadyAt}){
   const observed=databaseRead(database,db=>readCohortBindings(db,{manifest,watchId,baselineReadyAt}));
   // This callback runs in the original Electron host. Only the derived allowlist
@@ -72,9 +94,31 @@ async function readCohortAudit(app,{database,userData,manifest,watchId,baselineR
     storageModule:path.join(desktop,'electron','mail-metadata-storage.js'),auditModule:path.join(__dirname,'mail-header-batch-audit.cjs')});
 }
 async function adminPage(session,page){
-  const opened=await session.panel.evaluate(page=>window.desktop.invoke('admin.open',{page}),page==='connections'?'connections':'settings');
-  assert.equal(opened.ok,true);const admin=await pageFor(session.app,'admin');
-  await admin.locator(`.side [data-page="${page}"]`).click();return admin;
+  if(page==='connections')return openSettings(session,page);
+  assert.equal(page,'notifications','only declared acceptance settings may be opened');
+  const entry={requested:page,state:'pending'};
+  if(session.report)(session.report.settingsNavigation??=[]).push(entry);
+  let admin;
+  try{
+    // notifications is a sidebar page; the original host accepts settings first.
+    const opened=await session.panel.evaluate(()=>window.desktop.invoke('admin.open',{page:'settings'}));
+    assert.equal(opened.ok,true);admin=await pageFor(session.app,'admin');
+    const host=(await snapshot(admin)).adminNavigation;
+    assert.ok(Number.isSafeInteger(host?.revision)&&host.revision>=0,'original navigation revision is required');
+    entry.host={page:host.page,revision:host.revision};
+    await admin.waitForFunction(revision=>Number(document.querySelector('.main')?.dataset.navigationRevision)>=revision
+      &&document.querySelector('.main')?.getAttribute('aria-busy')==='false',host.revision);
+    const nav=admin.locator('.side [data-page="notifications"]');await nav.waitFor({state:'visible'});
+    if(await nav.getAttribute('aria-current')!=='page')await nav.click();
+    await admin.waitForFunction(revision=>{
+      const main=document.querySelector('.main');
+      return main?.dataset.section==='notifications'&&main.getAttribute('aria-busy')==='false'
+        &&Number(main.dataset.navigationRevision)>=revision&&document.querySelector('#content')?.dataset.section==='notifications'
+        &&document.querySelector('.side [data-page="notifications"]')?.getAttribute('aria-current')==='page';
+    },host.revision);
+    await admin.locator('[data-notifications="form"]').waitFor({state:'visible'});
+    entry.observed=await settingsNavigationState(admin);entry.state='ready';return admin;
+  }catch(error){entry.state='failed';if(admin)entry.observed=await settingsNavigationState(admin).catch(()=>({state:'unavailable'}));throw error;}
 }
 function validateMailPage(question,binding,{database,watchId,expiresAt}){
   if(question.toolName!=='mail.inbox')return false;
@@ -104,7 +148,7 @@ async function configureNotifications(session,database,policy,report,persist,exp
   for(const name of ['quietStart','quietEnd','timezone'])await form.locator(`[name="${name}"]`).fill('');
   await form.locator('button[type="submit"]').click();
   await wait(async()=>{const value=await snapshot(admin);
-    await approveQuestions({page:admin,database,value,allowed:['notifications.interruption_policy.set'],report,persist,
+    await approveConversationQuestions(session,{database,allowed:['notifications.interruption_policy.set'],report,persist,
       validate(question,binding){assert.deepEqual(binding.arguments.scope,{kind:'global'});assert.deepEqual(binding.arguments.patch,policy);}});
     return value.notificationCenter?.policy?.state==='configured'
       &&isDeepStrictEqual(value.notificationCenter.policy.effective,policy);
@@ -159,7 +203,7 @@ async function main(){
     const env=Object.fromEntries(Object.entries(process.env).filter(([name])=>!/^PA_/i.test(name)));
     Object.assign(env,{ELECTRON_RUN_AS_NODE:undefined,PA_RUNTIME_PROFILE:'huawei_ict_agentarts',PA_DESKTOP_TEST_USER_DATA:userData});
     const app=await _electron.launch({executablePath,args:[desktop,'--pa-change-notification-acceptance='+path.basename(output)],env});
-    session={app};await app.firstWindow();const orb=await pageFor(app,'orb');await orb.evaluate(()=>window.desktop.invoke('orb.open'));
+    session={app,report};await app.firstWindow();const orb=await pageFor(app,'orb');await orb.evaluate(()=>window.desktop.invoke('orb.open'));
     session.panel=await pageFor(app,'panel');const initial=await snapshot(session.panel);
     assert.equal(initial.fake,false);assert.equal(initial.fakeModel,false);assert.equal(initial.agentArts?.configured,true);
     report.stage='start-original-local-laya';persist();const admin=await adminPage(session,'connections');
@@ -179,13 +223,13 @@ async function main(){
       ['subagent.dispatch','connector.watch.start',...(source==='mail'?['mail.inbox']:[])],
       {purpose:'start_exact_real_change_watch',toolName:'connector.watch.start',arguments:input,authorizeAdditional:extra},report,persist);
     const watch=changeAudit(database).watches.find(item=>item.enabled&&item.source===source);assert.ok(watch);report.watchId=watch.watchId;
-    const approveMail=async()=>{assert.equal(interrupted,false,'manual acceptance was interrupted');if(source!=='mail')return;const authorization=await adminPage(session,'authorizations'),value=await snapshot(authorization);
+    const approveMail=async()=>{assert.equal(interrupted,false,'manual acceptance was interrupted');if(source!=='mail')return;const value=await snapshot(session.panel);
       assert.equal(value.mail.cloudAnalysisAllowed,false,'private inbox headers must remain local');
-      await approveQuestions({page:authorization,database,value,allowed:['mail.inbox'],report,persist,
+      await approveConversationQuestions(session,{database,allowed:['mail.inbox'],report,persist,
         validate:(question,binding)=>validateMailPage(question,binding,{database,watchId:watch.watchId,expiresAt})});};
     report.stage='wait-original-complete-baseline';persist();
     await wait(async()=>{await approveMail();const audit=changeAudit(database);report.persistence=audit;persist();
-      return audit.baseline.some(item=>item.kind===source&&(source!=='mail'||item.initialized));
+      return completeBaselineReady(audit,source,watch.watchId);
     },Date.parse(expiresAt),'original complete source baseline');report.checks.real_source_baseline='passed';
     report.baselineReadyAt=new Date().toISOString();report.stage='wait-real-source-change';persist();
     console.log(JSON.stringify({status:'baseline_ready',source,provenance,watchId:watch.watchId,
@@ -222,7 +266,7 @@ async function main(){
           report.checks.cohort_label_agreement=!report.cohort.summary.allClassified?'not_satisfied':
             report.cohort.summary.mismatchCount===0&&report.cohort.summary.reviewCount===0?'passed':'review_required';
         }
-        persist();return report.cohort&&canFinishCohort(report.cohort,deliveredEvent)?deliveredEvent:undefined;
+        persist();return completedNotification(manifest,report.cohort,deliveredEvent);
       }
       persist();return deliveredEvent;
     },Date.parse(expiresAt),'real source event, autonomous Laya notify and original native show');
@@ -251,5 +295,5 @@ async function main(){
     if(session)await close(session.app);if(fs.existsSync(database))try{report.persistence=changeAudit(database,{manifest});}catch{}
     report.finishedAt=new Date().toISOString();persist();console.log(JSON.stringify({status:report.status,stage:report.stage,receipt}));}
 }
-module.exports={changeAudit,validateMailPage,readCohortAudit};
+module.exports={changeAudit,validateMailPage,readCohortAudit,adminPage,completeBaselineReady,completedNotification};
 if(require.main===module)main().catch(()=>{console.error('Real source/notification acceptance prerequisites unavailable; no private data printed.');process.exitCode=1;});
