@@ -66,9 +66,20 @@ async function waitUntil(check, deadline, label) {
   throw Error(label + ' did not reach the required state before its deadline');
 }
 
-async function pageFor(app, mode) {
+async function pageFor(app, mode, timeoutMs=30_000) {
   return waitUntil(() => app.windows().find(page => page.url().includes('mode=' + mode)),
-    Date.now() + 30_000, 'Desktop ' + mode);
+    Date.now() + timeoutMs, 'Desktop ' + mode);
+}
+const waitForStartupWindow=(app,mode)=>pageFor(app,mode,120_000);
+function startupOutputMetadata(line){
+  const match=/^PersonalAgent startup (\{.*\})$/u.exec(line);if(!match)return;
+  let value;try{value=JSON.parse(match[1]);}catch{return;}
+  if(!value||Array.isArray(value))return;
+  const runtime=['idle','starting','ready','failed','configuration_required'].includes(value.runtime)?value.runtime:'unknown';
+  const safe={runtime};
+  for(const key of ['agentArtsConfigured','liveConfigured','liveReady','liveShortcutRegistered','sisConfigured','sisReady'])
+    if(typeof value[key]==='boolean')safe[key]=value[key];
+  return safe;
 }
 
 async function snapshot(page) {
@@ -258,20 +269,34 @@ function electronLaunchOptions({executablePath,userData},inheritedEnvironment=pr
 async function launch({executablePath,userData,workspace,node,npm}, report) {
   const {_electron} = require('playwright');
   const started=Date.now(),attempt={sequence:(report.launchAttempts?.length??0)+1,state:'starting',phase:'electron-launch',
-    readinessGate:'pinned-playwright-electron-loader'};
-  (report.launchAttempts??=[]).push(attempt);let app;
+    readinessGate:'pinned-playwright-electron-loader',uiStartupTimeoutMs:120_000,phases:[],startupOutput:[]};
+  const mark=phase=>{attempt.phase=phase;attempt.phases.push({phase,elapsedMs:Date.now()-started});};
+  mark('electron-launch');
+  (report.launchAttempts??=[]).push(attempt);let app,stdout,onOutput,buffer='';
   try {
     app=await _electron.launch(electronLaunchOptions({executablePath,userData}));
-    attempt.phase='electron-connected';
+    mark('electron-connected');
+    stdout=app.process()?.stdout;
+    onOutput=chunk=>{
+      buffer+=chunk.toString('utf8');
+      const lines=buffer.split(/\r?\n/u);buffer=lines.pop().slice(-8192);
+      for(const line of lines){const metadata=startupOutputMetadata(line);
+        if(metadata&&attempt.startupOutput.length<3)attempt.startupOutput.push({...metadata,elapsedMs:Date.now()-started});}
+    };
+    stdout?.on('data',onOutput);
     assert.equal(await app.evaluate(()=>typeof globalThis.__playwright_run==='function'),true,
       'the pinned Playwright ready gate must be installed before production Desktop startup');
     await installPublicDialogAutomation(app,{workspace,node,npm,check:path.join(workspace,checkName)});
-    const orb = await pageFor(app,'orb');
-    attempt.phase='orb-ready';
+    mark('orb-wait');
+    const orb = await waitForStartupWindow(app,'orb');
+    mark('orb-ready');
     const opened = await orb.evaluate(() => window.desktop.invoke('orb.open'));
     assert.equal(opened.ok,true,'production main conversation must open');
-    const panel = await pageFor(app,'panel');
-    await panel.waitForSelector('#send');
+    mark('panel-wait');
+    const panel = await waitForStartupWindow(app,'panel');
+    mark('panel-window-ready');
+    await panel.waitForSelector('#send',{timeout:120_000});
+    mark('panel-renderer-ready');
     const value = await snapshot(panel);
     assert.equal(value.fake,false,'Fake Runtime is forbidden');
     assert.equal(value.fakeModel,false,'Fake model is forbidden');
@@ -280,13 +305,13 @@ async function launch({executablePath,userData,workspace,node,npm}, report) {
       urlEndpoint:(()=>{try{return new URL(value.agentArts?.websocketUrl).searchParams.get('endpoint')??'';}catch{return '';}})(),
       platformVersionReadback:'not_run'};
     report.launches = (report.launches ?? 0) + 1;
-    attempt.state='ready';attempt.phase='panel-ready';attempt.elapsedMs=Date.now()-started;
+    attempt.state='ready';mark('panel-ready');attempt.elapsedMs=Date.now()-started;
     return {app,panel,orb,report};
   } catch(error) {
     attempt.state='failed';attempt.elapsedMs=Date.now()-started;
     if(app)await closeDesktop(app);
     throw error;
-  }
+  } finally {stdout?.off('data',onOutput);}
 }
 
 function readDeadline(database, taskId) {
@@ -687,7 +712,7 @@ async function main() {
 }
 
 module.exports={readback,neutralize,publicChecker,observePlayback,launch,captureMode,snapshot,originalQuestionBinding,
-  approveOriginalQuestion,openSettings,settingsNavigationState,electronLaunchOptions};
+  approveOriginalQuestion,openSettings,settingsNavigationState,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata};
 if(require.main===module)main().catch(error=>{
   console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
     message:String(error?.message??'Acceptance prerequisites are unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));

@@ -6,7 +6,27 @@ const {runInNewContext}=require('node:vm');
 const {tmpdir}=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {originalQuestionBinding,approveOriginalQuestion,electronLaunchOptions}=require('./desktop-pelican-default-live.cjs');
+const {originalQuestionBinding,approveOriginalQuestion,electronLaunchOptions,waitForStartupWindow,startupOutputMetadata}=require('./desktop-pelican-default-live.cjs');
+
+test('pre-submission startup waits for a real matching window beyond thirty seconds without accepting another window',async t=>{
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:0});
+  const orb={url:()=> 'file:///synthetic?mode=orb'},admin={url:()=> 'file:///synthetic?mode=admin'};
+  const app={windows:()=>Date.now()>=45_000?[admin,orb]:[admin]};let ready=false;
+  const pending=waitForStartupWindow(app,'orb').then(value=>{ready=true;return value;});
+  for(let seconds=0;seconds<45;seconds++){t.mock.timers.tick(1000);await Promise.resolve();await Promise.resolve();
+    if(seconds===30)assert.equal(ready,false);}
+  assert.equal(await pending,orb);assert.equal(ready,true);
+  const absent=assert.rejects(waitForStartupWindow(app,'panel'),/Desktop panel did not reach the required state before its deadline/u);
+  for(let seconds=0;seconds<121;seconds++){t.mock.timers.tick(1000);await Promise.resolve();await Promise.resolve();}
+  await absent;
+});
+test('startup stdout diagnostics retain only fixed readiness metadata',()=>{
+  assert.deepEqual(startupOutputMetadata('PersonalAgent startup '+JSON.stringify({runtime:'ready',agentArtsConfigured:true,
+    liveReady:false,path:'PRIVATE_PATH',credentials:'PRIVATE_TOKEN'})),{runtime:'ready',agentArtsConfigured:true,liveReady:false});
+  assert.deepEqual(startupOutputMetadata('PersonalAgent startup '+JSON.stringify({runtime:'PRIVATE_PATH',liveReady:'PRIVATE_TOKEN'})),{runtime:'unknown'});
+  for(const line of ['PRIVATE_PATH','PersonalAgent startup PRIVATE_TOKEN','PersonalAgent startup null'])
+    assert.equal(startupOutputMetadata(line),undefined);
+});
 
 test('explicit Electron startup loads the pinned ready gate and retains only the runner-owned PA settings',()=>{
   const options=electronLaunchOptions({executablePath:path.resolve('Synthetic-electron.exe'),userData:path.resolve('Synthetic-public-fixture/user-data')},
