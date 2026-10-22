@@ -6,28 +6,31 @@ function harness(t,invoke) {
   const previous=Object.getOwnPropertyDescriptor(globalThis,'document');
   t.after(()=>{if(previous) Object.defineProperty(globalThis,'document',previous);else delete globalThis.document;});
   const node=()=>({value:'',checked:false,disabled:false,textContent:'',listeners:new Map(),attributes:new Map(),
+    insertAdjacentHTML(_position,value){this.insertedHtml=(this.insertedHtml??'')+value;},
     isConnected:true,getClientRects:()=>[{}],focus(){globalThis.document.activeElement=this;},
     addEventListener(name,listener){this.listeners.set(name,listener);},
     setAttribute(name,value){this.attributes.set(name,value);}});
   const fields=Object.fromEntries(['gatewayUrl','runtimeName','deploymentVersion','authorization','transport','websocketUrl','appToken','allowHttpsFallback'].map(key=>[key,node()]));
-  const submit=node(),revoke=node(),status=node(),form=node(),tokenHint=node();
+  const submit=node(),revoke=node(),restore=node(),status=node(),form=node(),tokenHint=node(),buttonGroup=node(),transportState=node();
   Object.assign(form,{elements:fields,querySelector:()=>submit,
-    querySelectorAll:()=>[...Object.values(fields),submit,revoke],
+    querySelectorAll:()=>[...Object.values(fields),submit,revoke,restore],
     reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='wss';}});
   const wss=node();
   const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
-    querySelector:selector=>selector==='form'?form:selector==='[data-status]'?status:selector==='[data-wss]'?wss:selector==='[data-token-hint]'?tokenHint:revoke};
-  form.contains=target=>[...Object.values(fields),submit,revoke].includes(target);
+    querySelector:selector=>({'form':form,'[data-status]':status,'[data-wss]':wss,'[data-token-hint]':tokenHint,
+      '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState}[selector])};
+  form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,
     addEventListener:(name,listener)=>documentListeners.set(name,listener),
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,status,section,wss,tokenHint,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,restore,status,section,wss,tokenHint,buttonGroup,transportState,save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
+    recover:()=>restore.listeners.get('click')(),
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
 
@@ -271,4 +274,48 @@ test('the token hint states whether a credential is already stored',async t=>{
   assert.match(ui.tokenHint.textContent,/必填/);
   ui.controls.render({configured:true,appTokenConfigured:true});
   assert.match(ui.tokenHint.textContent,/已在本机加密保存/);
+});
+
+test('default connection recovery is an explicit no-payload action on the saved instance and reads back HTTPS Latest',async t=>{
+  const calls=[];let resolve;
+  const current={gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'saved-runtime',configured:true,
+    canRestoreDefaultConnection:true,transport:'wss',effectiveTransport:'wss',deploymentVersion:'configured-r3',
+    websocketUrl:'wss://example.huaweicloud-agentarts.com/runtimes/saved-runtime/ws?endpoint=configured-r3',allowHttpsFallback:true};
+  const ui=harness(t,(action,input)=>{calls.push({action,input});return new Promise(done=>{resolve=done;});});
+  ui.controls.render(current);assert.equal(calls.length,0,'render cannot change a route');
+  assert.match(ui.buttonGroup.insertedHtml,/恢复默认连接（HTTPS \/ Latest）/);
+  assert.match(ui.status.insertedHtml,/Live 实时音频仍需.*WSS，HTTPS 不能代替/);
+  assert.match(ui.transportState.textContent,/WSS.*固定部署 configured-r3/);
+  ui.edit('runtimeName','UNSAVED_RUNTIME');ui.edit('authorization','PRIVATE_DRAFT');ui.edit('appToken','PRIVATE_TOKEN');
+  const pending=ui.recover();await ui.save();await ui.clear();await ui.recover();
+  assert.deepEqual(calls,[{action:'agentarts.restoreDefaultConnection',input:undefined}]);
+  assert.equal(ui.fields.authorization.value,'');assert.equal(ui.fields.appToken.value,'');
+  assert.equal(ui.restore.disabled,true);assert.match(ui.status.textContent,/正在保存默认连接/);
+  resolve({...current,transport:'https',effectiveTransport:'https',deploymentVersion:'',websocketUrl:'',allowHttpsFallback:false,
+    reason:'请重启应用使用新配置'});await pending;
+  assert.equal(ui.fields.runtimeName.value,'saved-runtime');assert.equal(ui.fields.transport.value,'https');
+  assert.equal(ui.fields.deploymentVersion.value,'');assert.equal(ui.fields.websocketUrl.value,'');assert.equal(ui.wss.hidden,true);
+  assert.match(ui.transportState.textContent,/HTTPS.*默认 Latest（未钉版，实际版本未读回）/);
+  assert.match(ui.status.textContent,/已保存默认连接.*请重启应用/);
+  assert.doesNotMatch(ui.status.textContent,/PRIVATE_|UNSAVED_|已连接|已执行/);
+  assert.equal(ui.restore.disabled,false);
+});
+
+test('recovery refuses mismatched readback and never retries or exposes private errors',async t=>{
+  let result,throwError=false,calls=0;
+  const ui=harness(t,async()=>{calls++;if(throwError)throw Error('PRIVATE_PATH PRIVATE_TOKEN');return result;});
+  const current={gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'saved-runtime',configured:true,
+    canRestoreDefaultConnection:true,transport:'wss',deploymentVersion:'old-pin'};
+  ui.controls.render(current);
+  const expected={...current,transport:'https',effectiveTransport:'https',deploymentVersion:'',websocketUrl:'',allowHttpsFallback:false};
+  for(result of [undefined,{...expected,transport:'wss',effectiveTransport:'wss'}, {...expected,deploymentVersion:'old-pin'},
+    {...expected,runtimeName:'other'}, {...expected,websocketUrl:'wss://PRIVATE_URL'}, {...expected,configured:false}]){
+    await ui.recover();assert.match(ui.status.textContent,/恢复结果未获确认/);assert.equal(ui.status.attributes.get('role'),'alert');
+    assert.equal(ui.fields.transport.value,'wss');
+  }
+  throwError=true;await ui.recover();assert.doesNotMatch(ui.status.textContent,/PRIVATE_/);assert.equal(calls,7);
+  ui.controls.render(current);assert.match(ui.status.textContent,/恢复结果未获确认/,'a snapshot cannot confirm a rejected action');
+  throwError=false;result=expected;await ui.recover();assert.match(ui.status.textContent,/已保存默认连接/);assert.equal(calls,8);
+  ui.controls.render({configured:false,canRestoreDefaultConnection:false});assert.equal(ui.restore.disabled,true);
+  await ui.recover();assert.equal(calls,8,'unconfigured state cannot invent a default destination');
 });
