@@ -9,7 +9,7 @@ on:
         description: Confirm registration, online state and host-owner readiness before selecting ECS
         required: true
         type: choice
-        options: [windows-github, windows-pool, windows-pool-pair, windows-pool-three, ecs-17f8, psec-strict]
+        options: [windows-github, windows-pool, windows-pool-pair, windows-pool-three, ecs-17f8, psec-strict, psec-strict-arm64]
 permissions:
   contents: read
 jobs:
@@ -43,6 +43,8 @@ jobs:
       matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
+    env:
+      PA_PSEC_EXPECTED_ARCH: ${{ matrix.psecArchitecture || 'x64' }}
     steps:
       - uses: actions/checkout@v4
         if: matrix.runner[0] != 'self-hosted'
@@ -67,6 +69,7 @@ jobs:
         if: matrix.runner[0] != 'self-hosted'
         with:
           node-version-file: .node-version
+          architecture: ${{ matrix.psecArchitecture || 'x64' }}
       - name: Verify real automatic resource admission
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         if: matrix.runner[0] == 'self-hosted'
@@ -90,6 +93,16 @@ jobs:
         shell: pwsh
         run: |
           if ((& git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Acceptance checkout mismatch' }
+          node -e "const fs=require('fs');if(process.version!=='v'+fs.readFileSync('.node-version','utf8').trim())process.exit(1)"
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned native Node version mismatch' }
+          node packages/coding-tools/native/host-architecture.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Native Node/dotnet/.NET 8 architecture preflight failed' }
+          $nativeTemp = Join-Path $env:RUNNER_TEMP 'psec-native-temp'
+          New-Item -ItemType Directory -Path $nativeTemp -Force | Out-Null
+          $env:TEMP = $nativeTemp
+          $env:TMP = $nativeTemp
+          "TEMP=$nativeTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$nativeTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $sdks = & dotnet --list-sdks
           if ($LASTEXITCODE -ne 0 -or -not ($sdks -match '^8\.0\.\d+\s')) { throw '.NET 8 SDK missing' }
           if ((& npm.cmd --version).Trim() -ne '11.12.1') {

@@ -6,6 +6,7 @@ import {mkdirSync,writeFileSync,readFileSync,existsSync,readdirSync,lstatSync} f
 import path from 'node:path';
 import os from 'node:os';
 import {assessPsecTap} from './psec-acceptance-result.mjs';
+import {probeNativeToolchain,requireNativeRuntime,requirePeArchitecture} from '../../../packages/coding-tools/native/host-architecture.mjs';
 
 const start = new Date();
 assert.equal(process.platform,'win32','Real Windows required');
@@ -21,9 +22,27 @@ const helperFilesSha256=Object.fromEntries(['WindowsJobProcessHost.dll','Windows
 const receipt={startedAt:start.toISOString(),sourceSha:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),
   platform:process.platform,release:os.release(),osVersion:os.version(),node:process.version,required:true,
   imageOS:process.env.ImageOS??null,imageVersion:process.env.ImageVersion??null,
-  runId:process.env.GITHUB_RUN_ID??null,runAttempt:process.env.GITHUB_RUN_ATTEMPT??null,
+  runId:process.env.GITHUB_RUN_ID??null,runAttempt:process.env.GITHUB_RUN_ATTEMPT??null,runnerName:process.env.RUNNER_NAME??null,
   helperSha256:hash(readFileSync(process.env.PA_TEST_JOB_HOST_EXE)),helperFilesSha256,
   processmodel:{exists:existsSync(dll),sha256:existsSync(dll)?hash(readFileSync(dll)):null},results:[]};
+// Recheck inside the actual ordinary-user child, not only in the elevated preparation step.
+// Save a typed failure receipt before any PSEC scenario can execute on an emulated host.
+try {
+  assert.equal(process.version,'v'+readFileSync('.node-version','utf8').trim(),'Pinned Node required');
+  receipt.toolchain=probeNativeToolchain();
+  requirePeArchitecture(process.env.PA_TEST_JOB_HOST_EXE,receipt.toolchain.architecture);
+  assert.ok(process.env.PA_CI_CHECK_LAUNCHER,'Actual standard-token launcher required');
+  requirePeArchitecture(process.env.PA_CI_CHECK_LAUNCHER,receipt.toolchain.architecture);
+  const launcher=spawnSync(process.env.PA_CI_CHECK_LAUNCHER,['--architecture'],
+    {encoding:'utf8',timeout:10000,maxBuffer:4096,windowsHide:true,shell:false});
+  assert.equal(launcher.status,0);assert.equal(launcher.error,undefined);assert.equal(launcher.signal,null);
+  receipt.launcherArchitecture=JSON.parse(launcher.stdout);
+  requireNativeRuntime(receipt.launcherArchitecture,receipt.toolchain.architecture);
+} catch {
+  receipt.finishedAt=new Date().toISOString();receipt.status='failed';receipt.failure='native-toolchain-unconfirmed';
+  writeFileSync(path.join(target,'receipt.json'),JSON.stringify(receipt,null,2)+'\n');
+  throw Error('Native Node/dotnet/helper/launcher architecture unconfirmed');
+}
 // Fixed helper modes emit only safe OS/token/loader/contract metadata. They never
 // create a PSEC environment or run the proposed command; enforcement is tested below.
 receipt.nativeDiagnostics={};
@@ -42,6 +61,19 @@ const ordinary=receipt.nativeDiagnostics.loader.exitCode===0
   &&receipt.nativeDiagnostics.loader.data.token.appContainer===false;
 receipt.ordinaryUser=ordinary;
 writeFileSync(path.join(target,'native-diagnostics.json'),JSON.stringify(receipt.nativeDiagnostics,null,2)+'\n');
+let nativeHelper=false;
+try {
+  const helper=receipt.nativeDiagnostics.loader.data;
+  assert.equal(receipt.nativeDiagnostics.loader.exitCode,0);
+  requireNativeRuntime({processArchitecture:helper.os?.processArchitecture,osArchitecture:helper.os?.architecture,
+    framework:helper.runtime?.framework},receipt.toolchain.architecture);nativeHelper=true;
+} catch { /* Fixed failure below. */ }
+receipt.nativeHelper=nativeHelper;
+if(!nativeHelper){
+  receipt.finishedAt=new Date().toISOString();receipt.status='failed';receipt.failure='native-helper-architecture-unconfirmed';
+  writeFileSync(path.join(target,'receipt.json'),JSON.stringify(receipt,null,2)+'\n');
+  throw Error('Actual helper OS/process architecture mismatch');
+}
 // Never proceed under an outer AppContainer/elevated/unknown token or with an old
 // helper lacking the fixed diagnostic mode. Preserve the failed preflight receipt.
 if(!ordinary){
