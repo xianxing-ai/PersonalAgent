@@ -16,7 +16,8 @@ const fileHash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('
 const choiceReasons=new Set(['selected','high_risk','uncertain','insufficient_candidates','invalid_response','unavailable',
   'cancelled','deadline','candidate_expired']);
 const required=['real_source_baseline','real_source_change','original_local_laya_decision',
-  'original_main_conversation','original_native_show_receipt','stop_fences_future_reads','closed_sqlite_readback'];
+  'original_main_conversation','original_native_show_receipt','original_device_delivery_readback',
+  'stop_fences_future_reads','closed_sqlite_readback','closed_device_delivery_readback'];
 const cohortRequired=['cohort_all_received','cohort_all_classified','cohort_over_100','cohort_label_agreement'];
 function changeAudit(database,{manifest}={}){return databaseRead(database,db=>{
   const states=namespace=>db.prepare('SELECT value_json FROM trusted_host_state WHERE namespace=?').all(namespace)
@@ -71,6 +72,19 @@ function completeBaselineReady(audit,source,watchId){
 }
 function completedNotification(manifest,cohort,delivered){return manifest
   ?cohort&&canFinishCohort(cohort,delivered)?delivered:undefined:delivered;}
+function readDeviceDelivery(userData,roundId){
+  const file=path.join(userData,'desktop-notifications.json');if(!fs.existsSync(file))return;
+  const info=fs.lstatSync(file);assert.ok(info.isFile()&&!info.isSymbolicLink()&&info.size<=1024*1024);
+  const value=JSON.parse(fs.readFileSync(file,'utf8'));assert.equal(value.version,1);assert.ok(Array.isArray(value.records));
+  const id='notification-round-'+hash(roundId),record=value.records.find(item=>item.id===id);
+  if(!record||!['delivered','acknowledged'].includes(record.state)||!Number.isFinite(Date.parse(record.deliveredAt)))return;
+  return{id,deliveryState:'delivered',deliveredAt:record.deliveredAt,userRead:record.state==='acknowledged',
+    provenance:'original_electron_notification_show_persisted',physicalHumanView:'not_observed'};
+}
+function failureFrames(error){return String(error?.stack??'').split('\n').flatMap(line=>{
+  const frame=line.match(/(desktop-(?:authorization|weather-watch|change-notification)-live\.cjs):(\d+):(\d+)/);
+  return frame?[{file:frame[1],line:Number(frame[2]),column:Number(frame[3])}]:[];
+});}
 async function readCohortAudit(app,{database,userData,manifest,watchId,baselineReadyAt}){
   const observed=databaseRead(database,db=>readCohortBindings(db,{manifest,watchId,baselineReadyAt}));
   // This callback runs in the original Electron host. Only the derived allowlist
@@ -284,7 +298,11 @@ async function main(){
         const evidence='desktop-notification:notification-round-'+hash(event.round.roundId)+':show';
         if(originalConversation&&event.state==='delivered'
           &&event.round.banner?.state==='delivered'&&event.round.banner.evidenceRefs.includes(evidence)){
-          report.checks.original_native_show_receipt='passed';deliveredEvent??=event;
+          report.checks.original_native_show_receipt='passed';
+          const device=readDeviceDelivery(userData,event.round.roundId);
+          if(device&&Date.parse(device.deliveredAt)>=Date.parse(report.baselineReadyAt)){
+            report.checks.original_device_delivery_readback='passed';report.deviceDelivery=device;deliveredEvent??=event;
+          }
         }
       }
       if(manifest){
@@ -309,6 +327,10 @@ async function main(){
     report.checks.stop_fences_future_reads='passed';await close(session.app);session=undefined;
     report.persistence=changeAudit(database);assert.equal(report.persistence.events.find(item=>item.id===delivered.id).state,'delivered');
     report.checks.closed_sqlite_readback='passed';
+    const closedDevice=readDeviceDelivery(userData,delivered.round.roundId);assert.ok(closedDevice);
+    assert.equal(closedDevice.id,report.deviceDelivery.id);assert.equal(closedDevice.deliveredAt,report.deviceDelivery.deliveredAt);
+    report.closedDeviceDelivery=closedDevice;
+    report.checks.closed_device_delivery_readback='passed';
     if(manifest){
       assert.equal(report.cohort.summary.allReceived,true);assert.equal(report.cohort.summary.allClassified,true);
       if(report.checks.cohort_label_agreement!=='passed'){
@@ -317,13 +339,21 @@ async function main(){
     }
     assert.ok(Object.values(report.checks).every(value=>value==='passed'));
     report.status='passed_real_source_laya_conversation_native_show';report.stage='complete';
-  }catch(error){report.status='failed';report.failure={stage:report.stage,code:error?.code??'REQUIRED_REAL_ACCEPTANCE_NOT_SATISFIED'};
+  }catch(error){report.status='failed';report.failure={stage:report.stage,code:error?.code??'REQUIRED_REAL_ACCEPTANCE_NOT_SATISFIED',frames:failureFrames(error)};
     for(const key of Object.keys(report.checks))if(!['passed','review_required'].includes(report.checks[key]))report.checks[key]='not_satisfied';
+    // A watch may have confirmed before a later runner assertion. Recover only
+    // its original main/child binding for cancellation, never replay its start.
+    if(session&&!report.watchId&&fs.existsSync(database))try{
+      const started=report.turns.find(item=>item.purpose==='start_exact_real_change_watch');
+      const candidates=changeAudit(database).watches.filter(item=>item.enabled&&item.source===source&&started
+        &&(item.originTaskId===started.taskId||databaseRead(database,db=>checkpoint(db,item.originTaskId,'subtask-parent'))?.parentTaskId===started.taskId));
+      if(candidates.length===1)report.watchId=candidates[0].watchId;
+    }catch{}
     if(session&&report.watchId&&!report.stopAttempt)await stopOriginalWatch(session,database,source,expiresAt,report,persist).catch(()=>{});
     process.exitCode=1;
   }finally{process.removeListener('SIGINT',interrupt);process.removeListener('SIGTERM',interrupt);
     if(session)await close(session.app);if(fs.existsSync(database))try{report.persistence=changeAudit(database,{manifest});}catch{}
     report.finishedAt=new Date().toISOString();persist();console.log(JSON.stringify({status:report.status,stage:report.stage,receipt}));}
 }
-module.exports={changeAudit,validateMailPage,readCohortAudit,adminPage,completeBaselineReady,completedNotification};
+module.exports={changeAudit,validateMailPage,readCohortAudit,adminPage,completeBaselineReady,completedNotification,readDeviceDelivery,failureFrames};
 if(require.main===module)main().catch(()=>{console.error('Real source/notification acceptance prerequisites unavailable; no private data printed.');process.exitCode=1;});
