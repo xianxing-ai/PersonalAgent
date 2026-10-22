@@ -2,7 +2,8 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {adminPage,changeAudit,completeBaselineReady,completedNotification}=require('./desktop-change-notification-live.cjs');
+const {adminPage,changeAudit,completeBaselineReady,completedNotification,readDeviceDelivery,failureFrames,assertWatchCanContinue}=require('./desktop-change-notification-live.cjs');
+const {createHash}=require('node:crypto');
 const {approveConversationQuestions,validateWatchRead}=require('./desktop-weather-watch-live.cjs');
 
 function globals(t,values){
@@ -137,4 +138,24 @@ test('weather read validation rejects changed city or date instead of creating a
       watch:{watchId:watch.id,source:'weather',sequence:0,origin:watch.origin,configurationRef:watch.configurationRef},intent:{arguments:changed}};
     assert.throws(()=>validateWatchRead({},row,watch,'2026-10-22T09:00:00Z'),{code:'ERR_ASSERTION'});
   }
+});
+test('independent persisted device readback requires delivered time and exports no private notification text',()=>{
+  const cache=path.resolve(__dirname,'../../../.cache');fs.mkdirSync(cache,{recursive:true});
+  const userData=fs.mkdtempSync(path.join(cache,'notification-readback-synthetic-')),file=path.join(userData,'desktop-notifications.json');
+  const round='synthetic-round',id='notification-round-'+createHash('sha256').update(JSON.stringify(round)).digest('hex');
+  const record={id,state:'persisted',title:'SYNTHETIC_PRIVATE',body:'SYNTHETIC_PRIVATE'};
+  const save=()=>fs.writeFileSync(file,JSON.stringify({version:1,records:[record]}));save();assert.equal(readDeviceDelivery(userData,round),undefined);
+  record.state='delivered';record.deliveredAt='2026-10-22T10:00:00Z';save();
+  const receipt=readDeviceDelivery(userData,round);assert.equal(receipt.deliveryState,'delivered');assert.equal(receipt.userRead,false);
+  assert.equal(receipt.physicalHumanView,'not_observed');assert.doesNotMatch(JSON.stringify(receipt),/SYNTHETIC_PRIVATE|title|body/);
+  assert.equal(readDeviceDelivery(userData,'other-round'),undefined);
+});
+test('failed acceptance retains only runner frame coordinates, never assertion values or private contents',()=>{
+  assert.deepEqual(failureFrames({stack:'Error: SYNTHETIC_PRIVATE\n at fn (D:/safe/tests/manual/connectors/desktop-weather-watch-live.cjs:123:4)\n at secret (C:/private.js:2:3)'}),
+    [{file:'desktop-weather-watch-live.cjs',line:123,column:4}]);
+});
+test('retired or unknown source watches fail promptly rather than occupy the model slot until expiry',()=>{
+  for(const state of ['reading','classifying','waiting_approval','monitoring'])assertWatchCanContinue({watches:[{watchId:'original',enabled:true,state}]},'original');
+  for(const state of ['waiting_reconciliation','stop_unconfirmed'])assert.throws(()=>assertWatchCanContinue({watches:[{watchId:'original',enabled:true,state}]},'original'),{code:'RESULT_UNKNOWN'});
+  assert.throws(()=>assertWatchCanContinue({watches:[{watchId:'original',enabled:false,state:'classification_unavailable'}]},'original'),{code:'ORIGINAL_SOURCE_WATCH_STOPPED'});
 });
