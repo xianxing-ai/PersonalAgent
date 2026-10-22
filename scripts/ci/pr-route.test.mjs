@@ -74,14 +74,15 @@ test('invalid overrides and selectors fail rather than silently changing coverag
 
 const repository='owner/repo',head='a'.repeat(40),sha='b'.repeat(40);
 const event={pull_request:{number:421,head:{sha:head}}};
-function fakeFiles({files,count=files.length,finalHead=head,status=200}) {
+function fakeFiles({files,count=files.length,finalHead=head,status=200,labels=[],headRepository=repository}) {
   let reads=0;
   return async url=>({ok:status===200,status,json:async()=>{
     if(url.includes('/files?')) {
       const page=Number(new URL(url).searchParams.get('page'));
       return files.slice((page-1)*100,page*100);
     }
-    return {head:{sha:reads++?finalHead:head,repo:{full_name:repository}},changed_files:count};
+    const final=reads++>0;
+    return {head:{sha:final?finalHead:head,repo:{full_name:headRepository}},changed_files:count,labels:final?labels:[]};
   }});
 }
 test('the CLI router includes the second file page before deciding image-only',async()=>{
@@ -109,6 +110,34 @@ test('automatic main reruns are disabled; explicit manual validation still check
   const result=await resolveRoute({...args,eventName:'workflow_dispatch'});
   assert.equal(result.selection.mode,'both');
   assert.equal(result.matrix.include[0].name,'Windows CI (GitHub)');
+});
+
+test('fresh exact hosted label overrides valid ECS selectors without changing platform coverage',async()=>{
+  const args={event:{pull_request:{number:427,head:{sha:head}}},eventName:'pull_request',repository,token:'fixture',
+    windowsRunner:'ecs',windowsOverrides:'{"427":"ecs"}'};
+  for(const [filename,mode] of [['apps/desktop/main.js','windows'],['apps/agentarts-runtime/a.mjs','image'],['packages/contracts/a.ts','both']]) {
+    const result=await resolveRoute({...args,fetchImpl:fakeFiles({files:[{filename}],labels:[{name:'ci:windows-github'}]})});
+    assert.equal(result.selection.mode,mode);
+    assert.equal(result.windows.pool,'github');
+    assert.deepEqual(result.matrix.include,matrixFor(mode,{number:427,windowsRunner:'github'}).include);
+  }
+});
+test('event labels and near misses cannot select a runner; forks remain isolated',async()=>{
+  const args={event:{pull_request:{number:427,head:{sha:head},labels:[{name:'ci:windows-github'}]}},eventName:'pull_request',repository,token:'fixture'};
+  for(const labels of [[],[{name:'CI:windows-github'}],[{name:'ci:windows-github-extra'}],[{name:'ci:windows-ecs'}],['ci:windows-github']]) {
+    const result=await resolveRoute({...args,fetchImpl:fakeFiles({files:[{filename:'packages/contracts/a.ts'}],labels})});
+    assert.equal(result.windows.pool,'ecs');
+  }
+  const fork=await resolveRoute({...args,imageRunner:'ecs',windowsRunner:'ecs',fetchImpl:fakeFiles({files:[{filename:'packages/contracts/a.ts'}],labels:[{name:'ci:windows-github'}],headRepository:'fork/repo'})});
+  assert.deepEqual(fork.matrix.include.map(job=>job.runner),[['windows-latest'],['ubuntu-24.04']]);
+});
+test('hosted labels cannot mask invalid selectors or affect manual validation',async()=>{
+  const args={event:{pull_request:{number:427,head:{sha:head}}},eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/desktop/main.js'}],labels:[{name:'ci:windows-github'}]})};
+  for(const options of [{windowsRunner:'invalid'},{imageRunner:'invalid'},{windowsOverrides:'invalid'},{windowsOverrides:'{"427":"skip"}'}]) {
+    await assert.rejects(resolveRoute({...args,...options}),/Invalid|JSON|Unexpected/);
+  }
+  const manual=await resolveRoute({...args,eventName:'workflow_dispatch',windowsRunner:'ecs'});
+  assert.equal(manual.windows.pool,'ecs');
 });
 
 

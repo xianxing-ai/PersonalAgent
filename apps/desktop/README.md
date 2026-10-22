@@ -3,6 +3,11 @@
 2026-10-21 新邮件、明显天气变化的订阅与本机 Laya 提醒判断，见
 [接线、使用和验收边界](../../docs/competition/CONNECTOR_CHANGE_TRIGGERS_20261021.md)。
 仅在原工具审批后持续读取，poll-only 不等于远端推送；其他连接器和默认云闭环分别验收。
+每轮主对话及合法 Competition 子代理的设备时间、IANA/offset 和待办安全授权引导接线见 [#474 工作记录](docs/issue-474-time-context-20261021.md)。仅为原获准上下文出口的环境数据；统一提问卡消费仍按该记录依赖 #475，未授权能力不因此可执行。
+
+2026-10-21：PUBLIC 参考、知识源、远程 MCP、Obsidian 应用配对与语音权限回调接入原任务同一卡。口头 yes/no 仅引导原卡；系统权限与真实配对继续使用原流程。实现、兼容变化及 Fake/集成验证边界见[权限回调记录](../../docs/competition/evidence/APPLICATION_PERMISSION_CALLBACKS_20261021.md)。
+
+2026-10-21 Laya 设置「启动本地模型」修复：未配置云或邮件时也装配原本机服务管理宿主；仍仅管理员 Competition 设置可启动，保留模型发现、内存与停止门禁。真实模型健康、Synthetic 按钮验证和首次真实 UI 超时分别记录于[接线与验收说明](docs/laya-settings-startup-20261021.md)。
 
 2026-10-17 审查回归修复与验证边界见 [PR #376 修复记录](docs/PR376_REGRESSION_FIXES_20261017.md)。
 
@@ -11,15 +16,23 @@
 
 管理后台和大工作区统一原生最小化、最大化/还原及关闭操作；桌面偏好入口移至常规设置。窄窗口导航、短窗口空间和表单控件尺寸一并修正。实现边界、原生缩放矩阵和测试命令见[本次验证记录](docs/FRONTEND_LAYOUT_20261017.md)；`npm run test:frontend-layout --workspace=@personal-agent/desktop` 使用独立 Fake 配置检查实际窗口。
 
-## 2026-10-18 思考滑块与小工作区单主对话（provisional）
+## 2026-10-21 模型与思考入口（provisional）
 
-小工作区和大工作区的思考设置仅使用滑块：主思考模型显示实际名称，思考深度按当前受信目录的 `reasoningEfforts` 映射中文标签。首档是「供应商默认」，保存时省略 `reasoningEffort`；不支持调整的模型禁用强度滑块并说明原因。后台设置页保持原有控件。
+小面板与大工作区统一使用「模型名＋思考档位⌄」入口。菜单列出受信目录中的全部可用文本模型并支持搜索，不受首页精选列表限制；不提供不存在、不可用或非文本模型。后台设置页保持原有控件。
 
-原 0–5 值另列为「执行步骤预算」，Fast 继续独立保存，不映射成原生强度。模型与强度通过原 `conversation.model` / `executionModel` 串行保存；连续拖动合并尚未发送的中间选择。旧响应不能覆盖新选择，保存失败恢复已确认状态，提交任务前等待模型设置保存成功。切换会话或目录会废弃旧界面请求。
+菜单首先显示模型名称、档位及唯一的粗滑轨，点击名称旁的小箭头再展开可搜索模型列表。移除单独的模型滑块和「执行步骤预算」控件。「默认模型组合」的六个档位会实际选择已配置模型：最低／轻度使用默认子模型，平衡及以上使用默认主模型；目标原生强度依次为 minimal、low、medium、high、xhigh、max，仅取当前模型公布的最接近枚举，同距离选较低值。目录未公布的参数不发送；少数档位可能使用相同原生枚举，但仍有不同执行深度。不按名称猜测新模型或自动推断性能排名。
+
+默认模式保留设置中的主／子模型配置，每次执行从当前目录解析，改变默认配置后不会继续固定旧模型 ID。手动选择支持原生强度的模型后，滑块按该模型公布的枚举调整 `reasoningEffort`，并同步内部执行深度（none/minimal→0、low→1、medium→2、high→4、xhigh/max→5）；「默认」省略强度覆盖并保留执行深度。未公布原生强度的模型使用供应商默认，滑块仅调整执行深度，界面明确显示这一边界。
+
+Fast 使用顶部闪电按钮，保持独立开关。模型、原生强度和执行深度复用现有 `conversation.model`、`thinking.update`，由一个队列串行保存。Desktop 私有 `conversation.model` 兼容增加默认预设载荷 `{modelId:'',modelSelection:'default',depth,fast,catalogRevision}`，宿主校验来源、会话、目录和档位后原子保存；手动选择不接受这些额外字段。拖动期间预览，释放后保存；中间提交合并，旧响应不能覆盖新选择。失败展示已确认的实际状态，部分保存不伪称全部成功；提交任务前等待设置保存成功。切换会话或目录会废弃旧界面请求。不改变 Core Schema、Runtime 编排、模型网关或数据库。
+
+Conversations v4 兼容保留旧记录，增加可选 `modelSelection:'default'` 偏好；旧偏好不自动改写。首次启用前复制并核对同目录的 `.before-default-thinking-<digest>.bak`，保留原历史和草稿。旧客户端不认识此字段，回退须保留当前记录并移除该可选偏好或做迁移；启用前备份不包含之后新增的消息。
 
 小工作区保留原有当前主对话，隐藏会话管理，主进程拒绝该窗口的新建、切换、归档、恢复；已有历史和草稿保留，不删记录、不迁移数据库。大工作区仍可管理独立对话。子智能体派发、完成提示和独立页面属于另一个工作包。
 
-验证：`node --test test/native-reasoning.test.mjs` 覆盖合法映射、默认、连续操作、失败与会话隔离；`node test/native-reasoning-slider-smoke.cjs` 使用实际 Competition main/Preload/两个 Renderer、隔离 userData 与显式合成传输，捕获 `low` 和省略强度的任务请求。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。未调用真实模型、麦克风或外部账号；这些证据不提升平台或供应商验证等级。
+验证入口：`node --test test/default-thinking-selection.test.mjs` 经过实际控制器→main 偏好分支→Runtime→显式合成 AgentArts 传输，核对六档默认模型与强度、手动原生强度及供应商默认省略，共八个请求；也验证目录/会话失效、持久化、回退备份与默认配置变更。`node test/model-thinking-renderer-smoke.cjs` 使用实际面板/工作区源码、显式合成桌面桥和独立临时浏览器，验证粗滑轨、小箭头选模型、搜索、原生枚举、默认组合、保存失败/重试、Escape 焦点及 251px 深浅主题。可用 `PA_PICKER_BROWSER` 选择已有 Playwright 浏览器渠道，`PA_PICKER_TEST_OUTPUT` 指定仓库外截图/结果目录。
+
+完整产品脚本 `node test/native-reasoning-slider-smoke.cjs` 加载实际 Electron main、Preload、面板、工作区及 Runtime，使用独立 userData 和显式合成传输；核对手动模型及默认轻度档的委派执行与主对话汇总请求，全局默认配置不得被改写。它还检查目录扩展模型、工作区独立选择、单滑块、窄屏及页面/控制台错误。可用 `PA_SLIDER_TEST_ELECTRON` 指定已有 Electron。本独立分支在固定 `bff06880` 新构建后，72 项定向测试、Desktop typecheck、架构 3/3 及实际 Electron/Renderer 两脚本通过；原移交树的 74 项保留为历史结果。首次安装 DNS 和单项 TEMP rename 的外层限制及必要重试分别登记于[接手与验证记录](../../docs/competition/evidence/MODEL_THINKING_PICKER_REVIEW_20261021.md)。请求回执证明接线，不代表供应商真实推理质量或平台验收；没有真实模型、麦克风或外部账号调用。
 
 2026-10-20 交互优化工作包：统一侧栏、表单、按钮的悬停／按压／焦点反馈，设置切页采用可取消的短淡入；普通快照保留常规和外观页的交互节点。系统及应用降低动效时取消过渡。交付与证据范围见 [交互优化记录](docs/INTERACTION_POLISH_20261020.md)。已通过 PR #440 合入 main。
 
@@ -380,3 +393,10 @@ Fake Model 只验证 Runtime、Agent、持久化和桌面显示链路，不代�
 首次snapshot失败保留Orb/Panel/Workspace/admin原DOM和订阅，成功状态可继续恢复；独立读取错误只在有效render后清理，不覆盖原操作错误。有效订阅比initial完成更早时，迟回不会覆盖新状态；未知回复不会伪造成空Task成功。Orb原按钮补标准detail=0激活，鼠标/Enter/Space/HTMLElement.click及模拟touch均各一次，拖动/取消/失去捕获保持原动作与迟回身份。四页状态恢复和操作错误控制为实际Chromium/明确Fake桥，不是原生Windows/UIA或物理触控验收。
 
 根固定4225dd1e4019ba6f6d56126f860c0c43101b1f19、Node24.15.0，01:51:03Z–01:51:59Z完整Desktop799项/788通过/11跳过、type退出0；全部1116 tracked及HEAD前后相同，原完整日志SHA25603fe2ddb53e1177980c2bd5a3bc4c4334427dc59a63d8af8ccd130b2fda099c6。后续仅README记录更新。较早43e35f6完整通过与首次c12夹具失败保留，不累加计数或代验更新代码。
+## 2026-10-21 对话停止、引导与排队
+
+主面板支持随时输入与发送。输入区的「引导」会截断当前回答，并通过原 `task.cancel` 请求停止后，结合原对话上下文提交新一轮；「排队」保存待发送草稿，当前回答达到真实终态后按顺序发送。每条队列消息可「立即发送」或移回输入框编辑。队列留在当前窗口内；退出时未发送内容保存回原对话草稿，不在重启后自动重放。
+
+停止立即冻结当前输出并释放输入占位，任务取消与语音停止独立进行，不等待慢读回或语音清理。尚未受理的旧请求如迟到返回，也会被取消，不能清理新草稿或解锁另一条请求。已落账 `cancelRequested=true` 的历史任务在重开窗口后同样不阻塞发送。
+
+`waiting_reconciliation`、云端 inflight/unknown、原工具结果及 Evidence 继续保留为真实状态。到期或重启不能证明原操作已停止；已知缺少云端可信读回时显示原因并禁用「核实并结束」，既有原生核实与已验证失败回执入口仍保留。界面截断不声明外部副作用撤回，也不删除 checkpoint。公共 wire、Schema、依赖与数据库迁移均不变。

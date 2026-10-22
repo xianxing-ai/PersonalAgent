@@ -1,4 +1,5 @@
 import {execFileSync} from 'node:child_process';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash, randomUUID} from 'node:crypto';
 import {existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
@@ -103,6 +104,7 @@ Set-Acl -LiteralPath $target -AclObject $acl`;
  */
 export async function createKnowledgeSourceConfig({userData, safeStorage, namespace, hostIdentity,
   selectDirectory, selectNoteFiles, confirmPermissions = async () => false, powerShellPath, processIdentityHelperPath,
+  question, confirmCatalog=async()=>false,
   prepareRecoveryDirectory = prepareRecovery}) {
   if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(namespace ?? '') || typeof hostIdentity !== 'string' || !hostIdentity) {
     throw Error('缺少受信知识源身份');
@@ -113,6 +115,12 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   const writerCurrent = () => { try { return writerBindingCurrent(); } catch { return false; } };
   let writeAllowed = false, cloudExportAllowed = false, publicQueries = [];
   const inflight = new Set();
+  const executionContext=new AsyncLocalStorage();
+  const authorizationKey='knowledge-source';
+  const assertAuthorization=context=>{
+    if(!context||!question||context.signal?.aborted||!(Date.parse(context.deadline)>Date.now()))throw Error('原知识操作授权不可用或已失效');
+    question.currentRequirement(context,authorizationKey);
+  };
   const invalidate = () => {
     for (const controller of inflight) controller.abort();
     vault?.clearIndex();
@@ -157,8 +165,11 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
             return currentHelper === helperPath && sameExecutableIdentity(executableIdentity(currentHelper), helperId);
           } catch { return false; }
         };
-        const bindingCurrent = () => current() && saved === record && helperCurrent()
-          && (verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath), true);
+        const bindingCurrent = () => {
+          const context=executionContext.getStore();if(context)assertAuthorization(context);
+          return current() && saved === record && helperCurrent()
+            && (verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath), true);
+        };
         writerBindingCurrent = bindingCurrent;
         writer = openControlledVaultWriter({rootPath: record.rootPath, recoveryRootPath, powerShellPath,
           ...(helperPath === undefined ? {} : {processIdentityHelperPath: helperPath}),
@@ -200,6 +211,29 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   };
   return {
     snapshot,
+    prepareAuthorization(scope) {
+      if(!['knowledge.search','knowledge.apply_note_patch'].includes(scope.toolName))return;
+      if(!current()||!question)throw Error('知识源或原对话授权卡不可用');
+      const record=saved,writing=scope.toolName==='knowledge.apply_note_patch';
+      if(writing&&!writeAllowed)throw Error('知识源未配置整理能力');
+      const bindingDigest=createHash('sha256').update(JSON.stringify({sourceId:record.sourceId,configRevision:record.configRevision,
+        rootIdentity:record.rootIdentity,dataLevel:record.dataLevel,allowedNotePaths:record.allowedNotePaths})).digest('hex');
+      question.prepare(scope,{requirements:[{requirementId:authorizationKey,kind:'tool',scopes:[writing?'knowledge:write':'knowledge:read'],
+        bindingDigest,summary:writing?'按原精确参数整理所选知识笔记；仅本次写入，保留原冲突与恢复记录。':'只读查询所选知识源；仅原查询与本次结果，不自动授权正文出机。'}],
+        assertCurrent:()=>current()&&saved===record&&(!writing||writeAllowed)});
+    },
+    assertAuthorization,
+    withAuthorization(context,work) {assertAuthorization(context);return executionContext.run({...context},work);},
+    async authorizeCatalog(scope) {
+      if(!current()||!cloudExportAllowed||saved.dataLevel!=='public'||scope.signal?.aborted)return false;
+      const record=saved,payload={sourceId:record.sourceId,configRevision:record.configRevision,dataLevel:record.dataLevel,
+        publicQueries:[...publicQueries],allowedNotePaths:[...record.allowedNotePaths],writeConfigured:writeAllowed};
+      const isCurrent=()=>current()&&saved===record&&cloudExportAllowed&&!scope.signal.aborted&&Date.now()<Date.parse(scope.deadline);
+      const allowed=await confirmCatalog({payload,scope:{taskId:scope.taskId,sourceId:record.sourceId,configRevision:record.configRevision},
+        summary:`向本任务公布已标记PUBLIC的知识查询/笔记范围目录（${publicQueries.length}个查询、${record.allowedNotePaths.length}篇笔记）；实际读写与内容出机仍由原工具卡核对。`,
+        deadline:scope.deadline,signal:scope.signal,isCurrent});
+      return allowed===true&&isCurrent();
+    },
     clearIndex() {
       for (const controller of inflight) controller.abort();
       vault?.clearIndex();
@@ -232,7 +266,9 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
       if (input.writeAllowed && (!input.enabled || !saved.allowedNotePaths.length)
         || input.cloudExportAllowed && (!input.enabled || input.dataLevel !== 'public' || !input.publicQueries.length)) throw Error();
       if ((input.writeAllowed || input.cloudExportAllowed) && !await confirmPermissions({
+        sourceId:saved.sourceId,configRevision:saved.configRevision,enabled:input.enabled,dataLevel:input.dataLevel,
         displayName: path.basename(saved.rootPath), noteCount: saved.allowedNotePaths.length,
+        allowedNotePaths:[...saved.allowedNotePaths],isCurrent:()=>current()&&input.sourceId===saved.sourceId&&input.configRevision===saved.configRevision,
         writeAllowed: input.writeAllowed, cloudExportAllowed: input.cloudExportAllowed,
         publicQueries: [...input.publicQueries]})) return snapshot();
       const record = {...saved, configRevision: saved.configRevision + 1,
@@ -255,12 +291,15 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
       const controller = new AbortController(); inflight.add(controller);
       let released = false;
       const binding = snapshot(), selectedVault = vault;
-      const selectedWriter = writeAllowed && writer && writerCurrent() ? writer : undefined;
+      const context=executionContext.getStore();if(context)assertAuthorization(context);
+      const boundWriter=writer&&writerCurrent()?writer:undefined;
+      const selectedWriter = context && writeAllowed ? boundWriter : undefined;
       return {binding, read: selectedVault, write: selectedWriter,
-        reconcileWrite: selectedWriter ? (input, context) => selectedWriter.reconcile(input, context) : undefined,
-        finalizeWrite: selectedWriter ? (accepted, context) => selectedWriter.finalize(accepted, context) : undefined,
+        // Existing accepted-result recovery remains readable; this port cannot grant a new apply.
+        reconcileWrite: boundWriter ? (input, context) => boundWriter.reconcile(input, context) : undefined,
+        finalizeWrite: boundWriter ? (accepted, context) => boundWriter.finalize(accepted, context) : undefined,
         signal: AbortSignal.any([signal, controller.signal]),
-        assertCurrent() {checkBinding(expected); if (released || controller.signal.aborted) throw Error('知识源调用已撤销');},
+        assertCurrent() {checkBinding(expected);if(context)assertAuthorization(context); if (released || controller.signal.aborted) throw Error('知识源调用已撤销');},
         release() {released = true; inflight.delete(controller);}};
     },
     /** Host-only Wiki lease, using the exact same root/configuration as Knowledge tools. */

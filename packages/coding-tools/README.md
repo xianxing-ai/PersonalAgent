@@ -1,5 +1,17 @@
 # 编程工具：可信工作区能力（MOD-18）
 
+## Windows 原生进程沙箱（2026-10-21，host-only provisional）
+
+`createWindowsNativeSandboxExecutor()` 使用同一受信 .NET helper 的 PSEC 模式，真正将目标与子孙进程置于 Windows 文件/网络边界，再用 JobObject 管理停止。公开 `TrustedSandboxProfile/ExecutionRequest` 仅接受可信宿主构造；模型不能指定 root、executable、env、sandboxRef 或 revision。`assertCurrent(binding)` 在创建前和挂起目标恢复前复核原 Runtime 租约，不重复消费 Policy grant。
+
+`WorkspaceCommandOptions.trustedSandbox={executor,bind(context,executionDeadline),recordResult}` 已接入原固定命令工具；隔离修复沿原 `createCommandTool` 注入复用。工具仍返回旧四字段，可信 sandbox 事实进入 `recordResult`；请求受限执行后 unavailable/unknown/取消/超时明确失败，绝不回退裸 spawn。未注入该选项的旧工具保留原非隔离行为，Competition 的实际装配必须注入才能宣称 OS 沙箱。
+
+宿主显式选择/构建外置可信 helper 后，通过 `readWindowsNativeHelperAttestation(path)` 读取 apphost+DLL+deps/runtimeconfig pins，再执行 `verifyWindowsNativeSandbox(pins,{probeRootPath,nodeExecutable,systemRoot,signal})` 的合成 OS 验证。API/export 探测不会使 available=true；该结果只覆盖本次 helper/Node/合成 roots。宿主必须绑定配置代次，helper/roots/profile/recipe 变化重新验证，不能缓存成所有命令可用。probe 只创建自己的随机诊断目录与本机 IPv4/IPv6 listener，不使用真实用户文件、外部服务或凭据。
+
+开发宿主通过公开 `@personal-agent/coding-tools/native-helper` 的 `buildNativeHelper({targetDir})` 使用随包受信源发布到明确外置的本应用工具目录；不得跨包私有路径导入。只消费预装 .NET8，不自动下载或系统安装；packaged 环境缺少已发布 bundle 时明确 unavailable，不能假称安装器交付完成。
+
+首版受限网络仅 deny；精确 allowlist 不可用时拒绝。full-access 是宿主明确授权的普通用户执行，backend=none/enforced=false。卷根、交叠 grant、RW 工具/helper 与秘密 env 拒绝；PSEC 1.0 下可信 Node 文件 recipe 应显式带 preserve-symlinks(-main) flags，不能以卷根读授权补救。详细边界与实际验证见 `native/SANDBOX_DESIGN_20261021.md` 及 `docs/competition/evidence/WINDOWS_NATIVE_SANDBOX_20261021.md`。联合 Main/Policy/UI 接线与整合树命令检查另由集成 PR 记录，当前模块证据不代替它们。
+
 ## H3 候选隔离试跑（2026-10-20，接线中）
 
 `createHarnessCandidateTrialTool(options)` 返回普通 `coding.repair.trial@1.0.0` RegisteredTool。

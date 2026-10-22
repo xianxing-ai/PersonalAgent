@@ -13,6 +13,34 @@ OS 验收与离线接线分开，见[工作包](../competition/CONNECTOR_CHANGE_
 普通父对话仍汇总，最终发送前重新校验原目录、Schema、readiness、权限与原期限，
 HTTPS/WSS 沿原状态绑定。owned 源码提示版本为 `owned-1.8`，旧 receipt-only 与配置 hash
 兼容，无新部署发布或默认启用声明，见 [ADR-0036](../adr/0036-goal-bound-tool-continuations.md)。
+## 2026-10-21 统一对话授权与审批生命周期（provisional，集成中）
+
+Issue 474/475 复用现有 TaskRuntime/Policy/ToolGateway 与 `trusted_host_state` CAS，新增 host-only question request/decision receipt、sandbox revision/resource generation 和限定原 MailReadSessions 的分页派生；不是新的 Core wire 或独立任务/授权库。Desktop 私有 IPC 只允许 question ID/revision/decision，不能由 Renderer 提供可信 profile/任务/参数绑定。既有回调通过受信 `desktop.authorization.intent` 记录授权决定，不能冒充实际业务写入；模型猜名称与公共 `tool.invoke` 不构成可信 origin。冻结 `approval.list` enum 不变，系统过期/失效写入私有 resolution 元数据并通过原 Runtime 状态机结束或保留核实。完整集成、原生执行与实际 UI 验证尚在进行，范围与兼容边界见[工作包](../competition/UNIFIED_AUTHORIZATION_474_475_20261021.md)；不提升 frozen 或真实平台验收级别。
+
+同一受信 Developer/Harness 操作的阶段沿原 owner/proposal/config/destination/deadline 及已 confirmed intent receipt 派生精确新 run/payload 决策；不把卡变全局许可。历史摘要的 host-only `ContextSummaryRequest.authorizationSource` 来自原 Runtime 整轮 configuration/source/tail/goal-frame 摘要和数量，结合 conversation/cutoff 绑定，不能让不同历史范围继承同一决定；同范围多个 segment 不重复问卡。PUBLIC Skill 仅在原 manifest/choice 和受信 source candidate 冻结后映射实际 mcp read run。`OwnedWorkflowHostBridge.projectReceiptResult` 是 provisional host-only 固定投影口：独立核原签名/readback，保留本地原始 receipt/result/Evidence，写原摘要→projection schema/policy/stage/lease→投影摘要审计并读回精确一致后签云投影，不改公开 receipt wire 版本或伪造原工具再执行。生产 projector 缺失/void 时明确拒绝 raw 出机。
+
+`@personal-agent/coding-tools` 公开 `TrustedSandboxProfile/Binding/Executor`、实际 Windows PSEC helper attestation/probe 和 `command.trustedSandbox`；均为 host-only provisional，不改命令工具输出 Schema/version。应用内 Policy 权限与 OS 进程执行边界可用性分开；只有外部 spawn 才要求当前固定 helper/Node/root/config 真实检查及执行前重验，未就绪不降级裸 spawn。仅 full-access 明确 backend=none/enforced=false。本轮 OS 正负例与完整集成链分别记录，非全部 recipe/安装包验收。
+
+## 2026-10-21：#474 每次交换的可信环境数据（provisional）
+
+`CoordinationInputHooks.readRequestContext(scope)` 兼容增加可选同步 host-only 文本读取，通过原获准 goal 出口临时发送；每次实际 Competition 交换采样，完整实际目标受原发送 lease/预算/来源门约束，稳定历史 checkpoint 不保存正文。Desktop 仅投影当前设备 UTC/IANA/offset 及无私人内容的能力授权引导，不把 metadata 视为许可或可调用目录。无 Core wire、Schema、数据库或冻结状态变化。统一对话卡授权待 #475 正式端口消费；当前接线与验证缺项见 [#474 记录](../../apps/desktop/docs/issue-474-time-context-20261021.md)。
+
+## 2026-10-21 Desktop 默认模型档位（provisional）
+
+仅扩展 Desktop 私有 `conversation.model`：默认模式载荷为 `{modelId:'',modelSelection:'default',depth,fast,catalogRevision}`，校验窗口来源、当前会话与受信目录后原子保存；手动模式拒绝这些额外字段。`thinking.update` 在默认模式保存前重验实际目录。Conversations v4 增加可选偏好 `modelSelection:'default'`，不能同时保存显式 modelId/executionModel；首次启用前保留并核对原文件备份，旧客户端回退须迁移该字段。
+
+默认档位只从配置的主/子模型及其公布的 reasoningEfforts 解析执行选择；省略未公布的原生强度。按原 conversationId 在任务受理时保存 execution-model，原 user-work 委派继承同选择，原模型网关、任务恢复与授权目的地继续消费该绑定；不读取当前活动窗口来改写其他任务，不改全局模型偏好。无 Core wire、公共 Schema、数据库或新 Provider 变更。验证与真实调用边界见[接手记录](../competition/evidence/MODEL_THINKING_PICKER_REVIEW_20261021.md)。
+
+## 2026-10-21 research.search 混合主题与来源披露（provisional）
+
+MOD-24 / PA-010 / #473 的工具输出契约单独修订为 `research.search@0.1.0-alpha.2`；npm 包、Connector manifest、Core wire 和数据库版本不变。
+新描述器兼容接收缺少回执的旧提供商/缓存载荷，OpenAlex 新结果增加可选 `retrieval`：实际源 URL、有限双语改写及原词映射、原始/无效/过滤/返回计数、本次页面空或本机筛空的区别、逐材料词面/摘要依据。
+计数仅指这次实际请求页面（不是全库命中总量）；新回执不虚构旧缓存计数。只有中文主题和指令词均被明确覆盖时才改写源查询，未知中文条件/否定/时间范围保持原文。
+来源与相关性等级不提升：保留主题桥不代表语义验证，纯拉丁 `provider_rank` 也不作为语义真凭据。
+
+旧 `alpha.1` 描述器的严格输出 Schema 会拒绝新字段，不能声称它可直接消费新输出；新组合/目录按注册的 `alpha.2` 准备。
+ToolGateway 原版本核验继续拒绝旧任务请求被自动改绑新版。Desktop 公开 research 投影绑定相同工具版本及 `public-research-retrieval-v2`，透传白名单来源回执，保持账号/错误私有字段不外发。
+详细实现、消费验证与公开 GET 范围见 [#473 记录](../competition/evidence/RESEARCH_MIXED_QUERY_473_20261021.md)。接口保持 `provisional`，不宣称正式 AgentArts 整图或所有主题已验收。
 
 ## 2026-10-17 Desktop 审查回归修复（provisional）
 

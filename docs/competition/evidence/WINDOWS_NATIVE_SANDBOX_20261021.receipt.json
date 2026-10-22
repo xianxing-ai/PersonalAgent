@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-21T12:53:41Z",
+  "profile": "huawei_ict_agentarts",
+  "base": "e7d4e0c6f0830f7078a49438ea7d31fe39293394",
+  "branch": "codex/windows-native-sandbox",
+  "status": "module_verified_integration_pending",
+  "environment": {
+    "platform": "win32",
+    "build": "26200.9457",
+    "displayVersion": "25H2",
+    "adminToken": false,
+    "node": "24.15.0",
+    "npm": "11.12.1",
+    "typescript": "5.9.3",
+    "dotnetSdk": "8.0.424",
+    "windowsSdk": "10.0.26100.0"
+  },
+  "nativeSupport": {
+    "backend": "windows-psec",
+    "major": 1,
+    "minor": 0,
+    "flags": 3,
+    "exportDetectionAloneIsEnforcement": false
+  },
+  "helper": {
+    "pathKind": "explicit_trusted_helper_outside_fixture_write_roots",
+    "bundleSha256": {
+      "WindowsJobProcessHost.exe": "4745764914811aaec58c09a42a29e85264b4348f692ee013615a8ace0b162ed2",
+      "WindowsJobProcessHost.dll": "73e9356d6da97b36543dfc306b292d639c0d7d346a380a891603f6a2f25149c2",
+      "WindowsJobProcessHost.deps.json": "de714dd5dca4a1f2f7fcc85ac0927a812b292aa0e4b122ac788c4fc794411ab5",
+      "WindowsJobProcessHost.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306"
+    },
+    "sourceCacheUsed": false,
+    "newCompilationInputs": [
+      "Program.cs",
+      "PsecEnvironment.cs",
+      "SandboxLauncher.cs"
+    ]
+  },
+  "verification": {
+    "nativeBuild": {
+      "exit": 0,
+      "warnings": 0,
+      "errors": 0,
+      "nugetNetworkSources": []
+    },
+    "realNativeFocused": {
+      "tests": 8,
+      "pass": 7,
+      "fail": 0,
+      "skip": 1,
+      "skipReason": "Non-Windows unsupported-platform branch is inapplicable on this Windows host",
+      "surfaces": [
+        "ordinary-user read-only inside read and write deny",
+        "workspace-write inside write / outside read+write deny",
+        "child and grandchild inherit file and IPv4/IPv6 loopback deny",
+        "preexisting junction cannot escape",
+        "runtime-created junction cannot escape",
+        "root+ancestor replacement blocked before resume",
+        "revoked lease target never resumed",
+        "cancel and timeout stop entire JobObject tree",
+        "bounded output overflow remains unknown",
+        "overlap, volume-root, writable-helper, secret-env and unsupported-network configuration fail closed"
+      ],
+      "baseline": {
+        "mode": "full-access",
+        "backend": "none",
+        "enforced": false,
+        "appContainer": false,
+        "syntheticLoopbackConnections": 6
+      },
+      "networkEndpoints": "ephemeral synthetic 127.0.0.1 and ::1 only; no external account/service"
+    },
+    "ownTreeBuild": {
+      "packages": [
+        "contracts",
+        "models",
+        "agents",
+        "github",
+        "policy",
+        "tool-gateway",
+        "coding-tools"
+      ],
+      "exit": 0
+    },
+    "codingToolsTypecheck": {
+      "exit": 0
+    },
+    "commandAdapterFocused": {
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "assertions": [
+        "original task/run/auth/argumentsDigest binding",
+        "exact fixed recipe executable/argv/env/cwd",
+        "host-only result recording",
+        "unavailable and unknown do not fall back",
+        "missing digest refuses before executor"
+      ]
+    }
+  },
+  "setupAndFailures": [
+    {
+      "condition": "Default tool process itself was in Codex outer AppContainer",
+      "observation": "PSEC create HRESULT 0x800706D9; even host loopback baseline denied",
+      "resolution": "Authorized ordinary-user execution outside outer sandbox; no UAC elevation/global configuration"
+    },
+    {
+      "condition": "Sparse explicit child environment omitted LOCALAPPDATA",
+      "observation": "CreateProcessW error 203, no target resumed",
+      "resolution": "Explicit SystemRoot and synthetic LOCALAPPDATA; never inherited host env"
+    },
+    {
+      "condition": "Overlapping read-only/write roots",
+      "observation": "PSEC read-only takes precedence, workspace-write refused writes",
+      "resolution": "Reject ambiguous overlapping grants; never widen policy"
+    },
+    {
+      "condition": "Experimental volume-root read-only grant",
+      "observation": "Outside-read negative failed",
+      "resolution": "Removed experiment; production rejects all volume-root grants"
+    },
+    {
+      "condition": "Node file entrypoint canonicalizes ancestors unavailable under PSEC1.0",
+      "observation": "lstat drive root EPERM",
+      "resolution": "Fixed trusted recipe explicitly supplies preserve-symlinks flags; no executor argv rewrite or broader filesystem grant"
+    },
+    {
+      "condition": "Directory lock used only READ_ATTRIBUTES",
+      "observation": "Root rename succeeded but identity fence refused resume",
+      "resolution": "Use LIST_DIRECTORY real sharing lock; replacement negative passed"
+    },
+    {
+      "condition": "npm.cmd forwarded to unrelated globally installed npm12.2.0",
+      "resolution": "Direct pinned Node invoking bundled npm11.12.1 npm-cli.js; no global changes"
+    },
+    {
+      "condition": "Initial workspace-only install omitted root TypeScript tooling",
+      "resolution": "Same scoped ci includes root development compiler, 36 locked packages; no lock changes"
+    },
+    {
+      "condition": "Command test default outer AppContainer TEMP canonicalization denied",
+      "resolution": "Only focused case rerun in ordinary-user unique repo-external TEMP; product path checks unchanged"
+    }
+  ],
+  "sourceHashes": {
+    "semantics": "SHA256 of final checked-out working bytes, not a claim of Git LF blob identity or exact earlier emitted-JS byte identity",
+    "files": {
+      "packages/coding-tools/native/Program.cs": "1c064db1b79f4b246435f3fe0114e9d64452a00e8491cdbcc15a5dca08dfb2f1",
+      "packages/coding-tools/native/PsecEnvironment.cs": "3584708d24315ecab6af7ff887bd57a4c5385f5b410053a99d22c9bea4272924",
+      "packages/coding-tools/native/SandboxLauncher.cs": "83c132691af05e4b41a68f02ee116bfa045c94eb652a94efded6eed528ff7209",
+      "packages/coding-tools/native/WindowsJobProcessHost.csproj": "ffe2237452d6713dc775b4fcb9cf597a699a7c753e5212122ad78c4bc4d5c6c0",
+      "packages/coding-tools/native/build-helper.mjs": "a1ccd1276e62eee6509cbbd41c6ad9fe8bb9ecf3ad3519eb7a82b1f9ce573d75",
+      "packages/coding-tools/src/native-sandbox.ts": "7712a75d133a06e415c7f076b0ee6b140f6851a1b48583c0d163af45ae9136d7",
+      "packages/coding-tools/src/windows-native-sandbox.ts": "159ed5488c2a17413a8434e9b2b24a0459344a1592c1df7e2b5290746afa8c87",
+      "packages/coding-tools/src/native-sandbox-probe.ts": "f7b1d3279eea698ff275bb06d3468426381afdae42522cc36fdef64e66ad436c",
+      "packages/coding-tools/src/command.ts": "93394334e585009cc328226e8550e24fbebdbaea1827ade285bf7072c33fe3c1",
+      "packages/coding-tools/src/index.ts": "0b3c550c2609f4297bf03af5bfa5dad6c7f353b6e68f90e31d3d023f7f8d50fd",
+      "packages/coding-tools/test/windows-native-sandbox.test.mjs": "7a69dcf32f22fd0f2421c9e650be4b851090cadaac1e027fdbde5ce3ef45e435",
+      "packages/coding-tools/test/workspace-command.test.mjs": "cf2bc26419562d50912b988e3cc14537144cda11f45432eb969e24fd5729ac07"
+    }
+  },
+  "limits": {
+    "hostOnlyPublicPort": "provisional",
+    "commandWireVersion": "workspace.run_allowed_command@1.0.0 unchanged four-field output",
+    "nativePolicyOnly": "network deny; explicit ordinary-user full-access reports enforced=false",
+    "arbitraryRecipesVerified": false,
+    "exactAllRootsVerified": false,
+    "windowsHostedRunnerSupportVerified": false,
+    "integratedMainPolicyUiVerified": false,
+    "cloudModelOrAgentArtsAcceptance": "not_run_not_applicable_to_native_os_boundary",
+    "postOsRunChanges": "Only helper-option pin snapshot, safe diagnostic projection, probe setup failure capture and unused test import cleanup; final own-tree build/typecheck and command adapter case passed. Integrated real-host probe remains required.",
+    "ownershipHandoff": "Native branch is normal-merged by authorization integration owner; no separate incomplete native PR; no new-PR merge authorization."
+  }
+}

@@ -79,8 +79,18 @@ test('owned graph uses actual SQLite Runtime/Policy/ToolGateway/workspace read a
     assert.equal(receipt.proof.runId,receipt.evidenceRefs[0]);
     assert.equal(app.runtime.readToolExecutions(submitted.localTaskId)[0].policyDecision,'allow');
     assert.equal(app.runtime.readEvidence(submitted.localTaskId).length,1);
+    const projection={source:'Synthetic fixed metadata',read:true},authorization={policyVersion:'synthetic-projection-v1',
+      schemaDigest:'a'.repeat(64),leaseRef:'synthetic-original-export-lease',stage:'receipt'};
+    const projected=bridge.projectReceiptResult(original,proposal,receipt,projection,authorization);
+    assert.deepEqual(projected.result,projection);
+    assert.equal(projected.proof.originalResultDigest,receipt.proof.resultDigest);
+    assert.deepEqual(bridge.readReceipt(original,proposal),receipt,'local signed receipt and raw result are never replaced');
+    assert.deepEqual(bridge.projectReceiptResult(original,proposal,receipt,projection,authorization),projected);
+    assert.throws(()=>bridge.projectReceiptResult(original,proposal,{...receipt,result:{content:'forged'}},projection,authorization));
+    assert.throws(()=>bridge.projectReceiptResult(original,proposal,receipt,{...projection,read:false},authorization));
+    assert.throws(()=>bridge.projectReceiptResult(original,proposal,receipt,projection,{...authorization,leaseRef:'another-lease'}));
     await assert.rejects(runtime.advance({...original,checkpoint:last.checkpoint,receipts:[{...receipt,result:{content:'client forgery'}}]}),{code:'INVALID_ARGUMENT'});
-    last=await runtime.advance({...original,checkpoint:last.checkpoint,receipts:[receipt]});
+    last=await runtime.advance({...original,checkpoint:last.checkpoint,receipts:[projected]});
     assert.equal(last.nodes.F20_N01.state,'completed');assert.equal(last.nodes.F20_N02.state,'completed');
     app.runtime.saveCheckpoint(parent.taskId,'owned-workflow:cloud-checkpoint',last.checkpoint);
     assert.equal(bridge.submit(original,proposal).localTaskId,submitted.localTaskId);assert.equal(executionCount,1);

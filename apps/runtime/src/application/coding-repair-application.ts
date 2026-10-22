@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
@@ -27,11 +27,13 @@ export interface RuntimeCodingRepairImagePort {
 }
 export interface RuntimeCodingRepairOptions {
   image:RuntimeCodingRepairImagePort;
+  /** Production question composition cannot silently export raw metadata when its projector is absent. */
+  requireProjectedMetadata?:boolean;
   /** Current trusted workspace egress lease; paths, hashes and diagnostics are also user data. */
-  authorizeMetadata?:(input:{taskId:string;value:unknown;deadline:string;signal:AbortSignal})=>void|Promise<void>;
+  authorizeMetadata?:(input:{taskId:string;stage:'initial'|'receipt'|'completion';value:unknown;authorization:{taskId:string;runId:string};deadline:string;signal:AbortSignal})=>unknown|Promise<unknown>;
   /** Exact, native-confirmed source export. Missing port is unavailable, never consent. */
   projectSource?:(input:{taskId:string;localTaskId:string;proposal:Extract<WorkflowProposal,{kind:'tool_proposal'}>;
-    receipt:WorkflowReceipt;deadline:string;signal:AbortSignal})=>Promise<unknown>;
+    receipt:WorkflowReceipt;authorization:{taskId:string;runId:string};deadline:string;signal:AbortSignal})=>Promise<unknown>;
 }
 export interface RuntimeCodingRepairRequest {version:1;mode:'main'|'isolated';allowedPaths?:string[];subtasks:SubtaskDefinition[]}
 type Request=RuntimeCodingRepairRequest;
@@ -108,7 +110,20 @@ export async function runRuntimeCodingRepairWorkflow(application:RuntimeApplicat
     state.input={goal:subtask.goal,codingRepair:input,...(selected===undefined?{}:{executionModel:parseExecutionModelSelection(selected)})};save();
   }
   if(!options.authorizeMetadata)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Coding workspace metadata export authorization unavailable');
-  await options.authorizeMetadata({taskId:worker.taskId,value:state.input,deadline:worker.deadline,signal:worker.signal});active();
+  if(!state.input||state.input.goal!==subtask.goal||!isDeepStrictEqual(state.input.executionModel,worker.loadCheckpoint('execution-model')))
+    throw new ProtocolError('REVISION_CONFLICT','Original coding goal or execution destination changed');
+  if(!state.initialRunId)throw new ProtocolError('UNAUTHORIZED','Original coding start authorization mapping is unavailable');
+  const projectedInput=await options.authorizeMetadata({taskId:worker.taskId,stage:'initial',value:state.input,authorization:{taskId:worker.taskId,runId:state.initialRunId},deadline:worker.deadline,signal:worker.signal});active();
+  if(options.requireProjectedMetadata&&projectedInput===undefined)throw new ProtocolError('UNAUTHORIZED','Coding metadata projector returned no authorized projection');
+  if(projectedInput!==undefined){
+    if(!plain(projectedInput)||projectedInput.goal!==subtask.goal||!isDeepStrictEqual(projectedInput.executionModel,state.input.executionModel))
+      throw new ProtocolError('UNAUTHORIZED','Coding metadata projection changed original goal or model');
+    const codingRepair=parseCodingRepairInput(projectedInput.codingRepair);
+    if(codingRepair.session.taskId!==worker.taskId||codingRepair.session.sessionId!==state.sessionId
+      ||codingRepair.session.mode!==request.mode||codingRepair.initialSnapshot.files.some(file=>file.content!==undefined))
+      throw new ProtocolError('UNAUTHORIZED','Coding metadata projection changed original session or included source');
+    state.input={goal:subtask.goal,codingRepair,...(state.input.executionModel?{executionModel:state.input.executionModel}:{})};save();
+  }
   const catalog=parseCoordinationAvailableTools(tools.list().filter(tool=>
     tool.name!==CODING_REPAIR_WORKFLOW_TOOL&&(tool.name.startsWith('coding.repair.')||tool.name.startsWith('workflow.host.f15_')
       ||tool.name.startsWith('workflow.guard.f15_')||tool.name==='workspace.coding_snapshot'||tool.name==='decision.choose_candidate'))
@@ -120,12 +135,21 @@ export async function runRuntimeCodingRepairWorkflow(application:RuntimeApplicat
     authorizeReceipt:async({proposal,receipt,localTaskId,state})=>{
       if(proposal.toolName==='coding.repair.read') {
         if(!options.projectSource)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Exact native source export authorization is unavailable');
-        const projected=await timed('source-export-consent',()=>options.projectSource!({taskId:worker.taskId,localTaskId,proposal,receipt,deadline:worker.deadline,signal:worker.signal}),{nodeId:proposal.nodeId});
+        const projected=await timed('source-export-consent',()=>options.projectSource!({taskId:worker.taskId,localTaskId,proposal,receipt,
+          authorization:{taskId:localTaskId,runId:'host-tool-'+localTaskId},deadline:worker.deadline,signal:worker.signal}),{nodeId:proposal.nodeId});
         if(!isDeepStrictEqual(projected,receipt.result))throw new ProtocolError('UNAUTHORIZED','Source export must preserve original confirmed bytes and SHA');
         state.resolvedValues['coding-source:'+String(proposal.arguments.path)]=structuredClone(projected);
       }else {
-        await options.authorizeMetadata!({taskId:worker.taskId,value:receipt.result,deadline:worker.deadline,signal:worker.signal});
-        if(proposal.nodeId==='F15_N01'&&receipt.state==='confirmed')state.resolvedValues.F15_N01=structuredClone(receipt.result);
+        const projected=await options.authorizeMetadata!({taskId:worker.taskId,stage:'receipt',value:receipt.result,authorization:{taskId:localTaskId,runId:'host-tool-'+localTaskId},deadline:worker.deadline,signal:worker.signal});
+        if(options.requireProjectedMetadata&&projected===undefined)throw new ProtocolError('UNAUTHORIZED','Coding receipt projector returned no authorized projection');
+        const lease=application.runtime.loadCheckpoint(localTaskId,'authorization-question-export:host-tool-'+localTaskId+':workspace-metadata-export') as
+          {resultDigest:string;policyVersion:string;schemaDigest:string;leaseRef:string;stage:string}|undefined;
+        if(projected!==undefined&&(!lease||lease.resultDigest!==createHash('sha256').update(JSON.stringify(projected)).digest('hex')))
+          throw new ProtocolError('UNAUTHORIZED','Coding projection has no matching exact export lease');
+        const exported=projected===undefined?receipt:bridge.projectReceiptResult({taskId:worker.taskId,sessionId:state.sessionId,
+          workflowId:'F15',controlRevision:state.controlRevision},proposal,receipt,projected,lease!);
+        if(proposal.nodeId==='F15_N01'&&receipt.state==='confirmed')state.resolvedValues.F15_N01=structuredClone(exported.result);
+        return exported;
       }
     },
     validateSettled:state=>{

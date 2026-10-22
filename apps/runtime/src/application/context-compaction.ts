@@ -45,6 +45,9 @@ export interface ContextSummarySegment {
 export interface ContextSummaryRequest {
   readonly scope:ContextCompactionScope;
   readonly segment:ContextSummarySegment;
+  /** Trusted whole-pass source identity. Segments never widen this authorization range. */
+  readonly authorizationSource:{readonly configurationRef:string;readonly sourceDigest:string;readonly sourceCount:number;
+    readonly tailDigest:string;readonly goalFrameDigest:string};
   readonly maxSummaryCharacters:number;
   /** Must run synchronously at the actual send, after credentials/egress awaits. */
   readonly assertBeforeSend:()=>void;
@@ -247,6 +250,8 @@ export async function compactConversationContext(options:ContextCompactionOption
     assertSource();
     let checked=false;
     const text=await awaitContextCompactionScope(options.scope,()=>options.summarize({scope:options.scope,segment:structuredClone(segment),
+      authorizationSource:{configurationRef:base.configurationRef,sourceDigest:base.sourceDigest,sourceCount:base.sourceCount,
+        tailDigest:base.tailDigest,goalFrameDigest:base.goalFrameDigest},
       maxSummaryCharacters:options.policy.maxSummaryCharacters,assertBeforeSend:()=>{assertSource();checked=true;}}),options.now);
     assertSource();
     if(!checked)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Summarizer did not attest a final synchronous source guard');

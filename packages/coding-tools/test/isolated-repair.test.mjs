@@ -46,14 +46,20 @@ test('registered repair preview exposes only metadata while the local host retai
 
 test('real isolated read -> failing node test -> exact incremental patch -> passing test -> original-user CAS delivery',
   {skip:process.platform!=='win32'},async t=>{
+  let stage='start';
+  try {
   const f=await fixture(t),input=await f.host.start({mode:'main'},ctx());
   const baseline=await readFile(path.join(f.user,'math.cjs'),'utf8');
+  stage='verify-original';
   const failed=await f.host.verify(input.session.sessionId,'node-test',ctx());
   assert.equal(failed.status,'FAILED');assert.notEqual(failed.exitCode,0);assert.ok(failed.diagnostics[0].message);
+  stage='read-original';
   const source=await f.host.read(input.session.sessionId,{path:'math.cjs'},ctx());
+  stage='preview';
   const preview=await f.host.preview(input.session.sessionId,[{path:'math.cjs',expectedSha256:source.sha256,edits:[{oldText:'a-b',newText:'a+b'}]}],ctx());
   assert.equal(preview.sessionId,input.session.sessionId);assert.equal(preview.approved,true);assert.equal(preview.previewed,true);
   assert.equal(await readFile(path.join(f.user,'math.cjs'),'utf8'),baseline,'successful exact preview is not a user-root write');
+  stage='apply-and-verify';
   const checked=await f.host.check(input.session.sessionId,[{path:'math.cjs',expectedSha256:source.sha256,edits:[{oldText:'a-b',newText:'a+b'}]}],['node-test'],ctx());
   const valid=checked.verification.find(item=>item.status==='VALID');assert.ok(valid);assert.equal(valid.exitCode,0);
   assert.equal(checked.verification.find(item=>item.runId===failed.runId).status,'STALE','the old failed command describes historical source, not the repaired current input');
@@ -61,12 +67,19 @@ test('real isolated read -> failing node test -> exact incremental patch -> pass
   assert.equal(historical.verification.find(item=>item.receipt.runId===failed.runId).receipt.status,'FAILED','derived validity never rewrites the historical failed receipt');
   assert.match(valid.packageGraphDigest,/^[a-f0-9]{64}$/);
   assert.equal(await readFile(path.join(f.user,'math.cjs'),'utf8'),baseline,'AI writes remain in the isolated root until publish');
+  stage='publish';
   const published=await f.host.publish({version:1,sessionId:input.session.sessionId,baselineSnapshotId:input.initialSnapshot.snapshotId,
     snapshotId:checked.snapshot.snapshotId,paths:['math.cjs'],verificationRunIds:[valid.runId]},ctx());
   assert.equal(published.state,'published');assert.equal(published.files.length,1);
   assert.match(await readFile(path.join(f.user,'math.cjs'),'utf8'),/a\+b/);
   assert.equal(await readFile(path.join(f.user,'user-uncommitted.txt'),'utf8'),'Unrelated user changes\n');
   assert.ok(f.roots.every(root=>root!==f.user&&!root.startsWith(f.user+path.sep)));
+  } catch(error) {
+    // Fixed labels only: no workspace paths, command output, or user content.
+    t.diagnostic(JSON.stringify({repairStage:stage,errorKind:error?.code==='TIMEOUT'?'timeout':error?.code==='RESULT_UNKNOWN'?'result-unknown':'other',
+      patchReady:error?.code==='TIMEOUT'&&error?.message==='Workspace patch apply deadline expired'?'not-confirmed':'unknown'}));
+    throw error;
+  }
 });
 
 test('cancelled real command retains unknown until stopped confirmation and cannot modify the main workspace',async t=>{

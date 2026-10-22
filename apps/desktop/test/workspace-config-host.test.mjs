@@ -4,11 +4,125 @@ import {mkdir,mkdtemp,readFile,rename,rm,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {PROTOCOL_VERSION} from '@personal-agent/contracts';
+import {PROTOCOL_VERSION,validateToolValue} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
+import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
+
+// Explicit Synthetic decision service; these tests do not certify the native
+// sandbox or the integrated Main/Runtime question persistence.
+function workspaceQuestions() {
+  const entries=new Map(),resources=new Map(),allowed=new Set(),key=s=>JSON.stringify([s.taskId,s.runId]);
+  const host={entries,resources,prepare(scope,{requirements,assertCurrent}) {
+    const entry=entries.get(key(scope))??{scope,requirements:[],guards:[]};entry.requirements.push(...requirements);
+    if(assertCurrent)entry.guards.push(assertCurrent);entries.set(key(scope),entry);
+  },prepareExport(scope,{requirementId,projectionSchema,...requirement}) {
+    host.prepare(scope,{requirements:[{...requirement,requirementId,kind:'export',projectionSchema}]});
+  },currentRequirement(scope,id) {
+    const entry=entries.get(key(scope));assert.ok(entry&&allowed.has(key(scope))&&!scope.signal.aborted,'no exact Synthetic decision');
+    assert.ok(entry.requirements.some(r=>r.requirementId===id));assert.ok(entry.guards.every(guard=>guard()===true));
+  },authorizeExport(scope,value,id) {host.currentRequirement(scope,id);
+    const schema=entries.get(key(scope)).requirements.find(r=>r.requirementId===id).projectionSchema;
+    assert.ok(schema);validateToolValue(schema,value);
+  },readResourceGeneration(resource) {if(!resources.has(resource))resources.set(resource,randomUUID());return resources.get(resource);},
+  rotateResourceGeneration(resource,expected) {assert.equal(host.readResourceGeneration(resource),expected);resources.set(resource,randomUUID());},
+  allow(scope) {assert.ok(entries.has(key(scope)));allowed.add(key(scope));}};
+  host.authorizeConsumedExport=(...args)=>host.authorizeExport(...args);
+  return host;
+}
+function workspaceOperation(tool,args,taskId=randomUUID()) {
+  const proposalId=randomUUID();return {taskId,runId:randomUUID(),proposalId,deadline:new Date(Date.now()+60_000).toISOString(),
+    signal:new AbortController().signal,authorizationRef:'Synthetic original ToolGateway grant',scopes:tool.descriptor.requiredScopes,
+    proposal:{proposalId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:args}};
+}
+function workspaceRuntime() {
+  const state=new Map();return {readToolConversation:()=> 'Synthetic canonical user',runtime:{loadCheckpoint:(t,k)=>state.get(t+':'+k),
+    saveCheckpoint:(t,k,v)=>state.set(t+':'+k,v),getTask:taskId=>({taskId,state:'running',cancelRequested:false})}};
+}
+
+test('Synthetic question workspace is discoverable with old consent false but executes and exports only its exact receipt',async t=>{
+  const {root,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'Synthetic-private-name.js'),'Synthetic source');
+  const question=workspaceQuestions(),host=open({question,findExecutable:()=>undefined});host.bindApplication(workspaceRuntime());
+  assert.ok(host.tools.length,JSON.stringify(host.snapshot()));
+  const tool=host.tools.find(item=>item.descriptor.name==='workspace.list_entries'),input={path:'.'},scope=workspaceOperation(tool,input);
+  const policy=host.competitionToolExports.find(item=>item.toolName===tool.descriptor.name);
+  assert.equal(host.snapshot().cloudExportAllowed,false);assert.equal(host.readWorkspaceBinding().rootPath,root);
+  assert.equal(host.readDeveloperConfiguration().available(scope),true,'configuration readiness is not an operation grant');
+  assert.equal(host.competitionToolAvailability.find(item=>item.toolName===tool.descriptor.name).available(scope),true);
+  host.prepareExport({...scope,phase:'preflight'});assert.equal(policy.accepts({...scope,arguments:input}),true);
+  await assert.rejects(tool.execute(input,scope));question.allow(scope);
+  const result=await tool.execute(input,scope);assert.ok(result.entries.length>0);
+  const projection=policy.project({...scope,result});assert.deepEqual(projection,{listed:true,truncated:false});
+  assert.equal(JSON.stringify(projection).includes('Synthetic-private-name'),false);
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),true);
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection:{...projection,entries:result.entries}}),false);
+  await assert.rejects(tool.execute({path:'different'},scope));await assert.rejects(tool.execute(input,{...scope,runId:'other'}));
+  await assert.rejects(host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true}),/提问卡/);
+  host.revoke();await assert.rejects(tool.execute(input,scope));assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),false);
+});
+
+test('Synthetic workspace permanent resource survives normal close and changes on explicit revoke, never persisting a grant',async t=>{
+  const {open}=await workspaceBindingFixture(t),question=workspaceQuestions();
+  const rule=host=>{host.bindApplication(workspaceRuntime());const tool=host.tools.find(t=>t.descriptor.name==='workspace.list_entries');
+    const scope=workspaceOperation(tool,{path:'.'});host.prepareExport({...scope,phase:'preflight'});
+    return question.entries.get(JSON.stringify([scope.taskId,scope.runId])).requirements.find(r=>r.requirementId==='workspace-session').ruleBindingDigest;};
+  let host=open({question,findExecutable:()=>undefined});const first=rule(host);host.close();
+  host=open({question,findExecutable:()=>undefined});assert.equal(rule(host),first);assert.equal(host.snapshot().cloudExportAllowed,false);
+  host.revoke();assert.notEqual(rule(host),first);
+});
+
+test('Synthetic question commands require the injected native factory and pin Node resolution flags outside model arguments',async t=>{
+  const {root,configuration,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'fixture.js'),'1;');
+  const saved=JSON.parse(await readFile(configuration,'utf8'));saved.encryptedCheckFile=Buffer.from('fixture.js').toString('base64');
+  await writeFile(configuration,JSON.stringify(saved));const question=workspaceQuestions(),constructed=[];let executions=0;
+  const factory=options=>{constructed.push(options);const tool=createWorkspaceCommandTool(options);return {...tool,
+    execute:async input=>{executions++;return {recipeId:input.recipeId,exitCode:0,stdout:'Synthetic private path/diagnostic',stderr:''};}};};
+  const host=open({question,findExecutable:()=>undefined,createWorkspaceCommandTool:factory,createCommandRecipeTool:createWorkspaceCommandRecipeTool});
+  host.bindApplication(workspaceRuntime());const tool=host.tools.find(item=>item.descriptor.name==='workspace.node_check'),scope=workspaceOperation(tool,{});
+  assert.deepEqual(constructed[0].recipes[0].args,['--preserve-symlinks','--preserve-symlinks-main','--check','fixture.js']);
+  host.prepareExport({...scope,phase:'preflight'});await assert.rejects(tool.execute({},scope));assert.equal(executions,0);
+  question.allow(scope);const result=await tool.execute({},scope),policy=host.competitionToolExports.find(item=>item.toolName===tool.descriptor.name);
+  assert.equal(executions,1);assert.deepEqual(policy.project({...scope,result}),{recipeId:'node-check',exitCode:0,passed:true});
+  const unavailable=open({question,findExecutable:()=>undefined,createCommandRecipeTool:createWorkspaceCommandRecipeTool});
+  unavailable.bindApplication(workspaceRuntime());assert.equal(unavailable.tools.some(t=>t.descriptor.name==='workspace.node_check'),false);
+  question.rotateResourceGeneration=()=>{throw Error('Synthetic CAS unavailable');};
+  assert.throws(()=>host.revoke(),/Synthetic CAS unavailable/);
+  assert.equal(host.competitionToolAvailability.find(item=>item.toolName===tool.descriptor.name).available(scope),false);
+  await assert.rejects(tool.execute({},scope));assert.equal(executions,1,'failed persistent revoke still closes every local execution fence');
+});
+
+test('Synthetic F15 helper predeclares metadata and summary on the original run and returns only its registered projections',async t=>{
+  const {root,node,configuration,open}=await workspaceBindingFixture(t),question=workspaceQuestions();
+  // Pre-create only this fixture recovery directory. The fake executable has
+  // the wrong PowerShell basename, so apply-host assembly rejects before ACL
+  // probing; no PowerShell, command, repair session or model is executed.
+  await mkdir(path.join(path.dirname(configuration),'coding-recovery',createHash('sha256').update(root).digest('hex')),{recursive:true});
+  const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined});
+  const application=workspaceRuntime();let callbacks,invocation;
+  application.configureCodingRepairSourceExport=(projectSource,authorizeMetadata)=>{callbacks={projectSource,authorizeMetadata};};
+  application.readAuthorizationQuestionInvocation=()=>invocation;host.bindApplication(application);
+  const tool=host.tools.find(item=>item.descriptor.name==='coding.repair.start'),scope=workspaceOperation(tool,{mode:'isolated'});
+  invocation=scope.proposal;application.runtime.saveCheckpoint(scope.taskId,'coding-repair:graph',{initialRunId:scope.runId});
+  application.runtime.saveCheckpoint(scope.taskId,'application-profile','huawei_ict_agentarts');
+  application.runtime.saveCheckpoint(scope.taskId,'application-deadline',scope.deadline);host.prepareAuthorization(scope);
+  const ids=question.entries.get(JSON.stringify([scope.taskId,scope.runId])).requirements.map(item=>item.requirementId);
+  assert.ok(ids.includes('workspace-metadata-export'));assert.ok(ids.includes('workspace-workflow-summary-export'));
+  const initial={version:1,session:{version:1,sessionId:'Synthetic-session',taskId:scope.taskId,workspaceId:'Synthetic-workspace',mode:'isolated',baselineSnapshotId:'snapshot-0'},
+    initialSnapshot:{snapshotId:'snapshot-0',files:[{path:'fixture.js',sha256:'a'.repeat(64),packageId:'root',kind:'source',content:'Synthetic body stays local'}],
+      packages:[{id:'root',path:'',dependencies:[]}]},recipes:[{recipeId:'node-check',packageIds:['root'],required:true}]};
+  const request={taskId:scope.taskId,authorization:{taskId:scope.taskId,runId:scope.runId},deadline:scope.deadline,signal:scope.signal,
+    stage:'initial',value:{goal:'Synthetic fixed goal',codingRepair:initial}};
+  assert.throws(()=>callbacks.authorizeMetadata(request));question.allow(scope);
+  const projected=callbacks.authorizeMetadata(request);assert.equal(projected.codingRepair.initialSnapshot.files[0].content,undefined);
+  assert.equal(projected.goal,'Synthetic fixed goal');assert.equal(initial.initialSnapshot.files[0].content,'Synthetic body stays local');
+  const summary={workflowId:'F15',state:'settled',mode:'isolated',confirmedOperations:3};
+  assert.deepEqual(callbacks.authorizeMetadata({...request,stage:'completion',value:summary}),summary);
+  assert.throws(()=>callbacks.authorizeMetadata({...request,stage:'completion',value:{...summary,raw:'Synthetic private'}}));
+  assert.throws(()=>callbacks.authorizeMetadata({...request,authorization:{...request.authorization,runId:'forged'}}));
+  host.revoke();assert.throws(()=>callbacks.authorizeMetadata(request));
+});
 
 async function workspaceBindingFixture(t) {
   const cache=path.resolve(fileURLToPath(new URL('../../../.cache/',import.meta.url)));

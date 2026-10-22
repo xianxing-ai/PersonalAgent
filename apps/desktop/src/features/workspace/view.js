@@ -1,5 +1,5 @@
 import {mountSessionControls} from '../conversation/session-controls.js';
-import {mountNativeReasoning} from '../conversation/native-reasoning.js';
+import {mountModelThinkingPicker} from '../conversation/model-thinking-picker.js';
 import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
 import {Orb} from '../orb/orb.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
@@ -28,37 +28,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
   const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage);
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
-  preferences.innerHTML='<label>主思考模型 <output data-model-label></output><input type="range" class="conversation-model-choice" aria-label="工作区主思考模型"></label><label>执行步骤预算 <input type="range" min="0" max="5" step="1" aria-label="工作区执行步骤预算"></label><label><input type="checkbox">快速模式</label><button type="button" class="turn-action" data-more-models>更多模型与默认设置</button>';
   root.querySelector('.workspace-top').after(preferences);
-  preferences.querySelector('[data-more-models]').onclick=()=>invoke('admin.open',{page:'models'}).catch(error=>report(error));
-  const modelChoice=preferences.querySelector('.conversation-model-choice'),depth=preferences.querySelector('[aria-label="工作区执行步骤预算"]'),fast=preferences.querySelector('[type=checkbox]');
   let feedbackRevision=0;
-  const reportPreference=error=>report(error);
-  const preferenceRequests={thinking:0},preferencePending={thinking:null},preferenceErrors={thinking:null};
-  let preferenceEditing=null;
-  const syncPreferenceBusy=()=>{
-    for(const control of [depth,fast])control.setAttribute('aria-busy',String(Boolean(preferencePending.thinking)));
-  };
-  const projectPreferenceControls=()=>{
-    const observed=current.conversationPreference??current.thinking??{};
-    const thinking=preferenceEditing??preferencePending.thinking??observed;
-    depth.value=String(thinking.depth??current.thinking?.depth??1);
-    fast.checked=Boolean(thinking.fast??current.thinking?.fast);
-    syncPreferenceBusy();
-  };
-  const requestPreference=async(group,name,payload)=>{
-    if(current?.conversationState?.activeId)payload={...payload,conversationId:current.conversationState.activeId};
-    const request=++preferenceRequests[group];
-    preferencePending[group]=payload;syncPreferenceBusy();
-    try{await invoke(name,payload);if(request===preferenceRequests[group]&&preferenceErrors[group]===feedbackRevision)report('');}
-    catch(error){if(request===preferenceRequests[group]){preferencePending[group]=null;projectPreferenceControls();reportPreference(error);preferenceErrors[group]=feedbackRevision;}}
-    finally{if(request===preferenceRequests[group]){preferencePending[group]=null;syncPreferenceBusy();}}
-  };
-  const editThinking=()=>{preferenceEditing={depth:Number(depth.value),fast:fast.checked};};
-  depth.oninput=editThinking;fast.oninput=editThinking;
-  const saveThinking=()=>{const payload={depth:Number(depth.value),fast:fast.checked};preferenceEditing=null;return requestPreference('thinking','thinking.update',payload);};
-  depth.onchange=saveThinking;fast.onchange=saveThinking;
-  let preferenceSignature;
   const updateRail=mountConversationRail(root.querySelector('.workspace-chat'),stage);
   const orbButton=root.querySelector('#workspace-orb');
   const orb=new Orb(orbButton.querySelector('canvas'),{variant:'matrix',layout:'shell',count:170});
@@ -75,8 +46,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   // Keep existing per-conversation drafts available to session actions without mounting a task composer.
   const draftInput=document.createElement('textarea');
   const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose});
-  const nativeReasoning=mountNativeReasoning(preferences,invoke,report,{modelChoice,modelOutput:preferences.querySelector('[data-model-label]'),readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
-  const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
+  const nativeReasoning=mountModelThinkingPicker(preferences,invoke,report,{readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
+  const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=Boolean(button.dataset.reconcile&&current.tasks.find(task=>task.taskId===button.dataset.reconcile)?.reconciliationStatus?.blockedReason)||pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body)return;
     const action=['view','copy','cancel','reconcile'].find(key=>focused.dataset[key]);if(!action)return;
@@ -116,15 +87,9 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   }
   function update(data){
     updateRevision++;
-    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){for(const group of ['thinking']){preferenceRequests[group]++;preferencePending[group]=null;preferenceErrors[group]=null;}preferenceEditing=null;inspected=null;syncAuxiliaryPanels(false);}
+    const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){inspected=null;syncAuxiliaryPanels(false);}
     current=data;current.tasks ||= [];
     subagents.update(data.subagentTasks??[]);
-    const nextPreferenceSignature=JSON.stringify([data.modelChoices,data.conversationPreference,data.conversationState?.activeId]);
-    if(preferenceSignature!==nextPreferenceSignature) {
-      preferenceSignature=nextPreferenceSignature;
-      projectPreferenceControls();
-    }
-    preferences.querySelector('label').hidden=!data.modelChoices?.length;
     sessionControls.update(data);nativeReasoning.update(data);
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
@@ -135,7 +100,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     if(signature!==lastSignature){
       const focused=conversation.contains(document.activeElement)?document.activeElement:null;
       const atBottom=stage.scrollHeight-stage.scrollTop-stage.clientHeight<90;lastSignature=signature;
-      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">原任务结果待核实，未确认前保留当前状态。核实并结束只检查原记录，不重发操作。</p><button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">核实并结束</button>`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
+      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??'原任务结果待核实，未确认前保留当前状态。核实并结束只检查原记录，不重发操作。')}</p><button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}" ${task.reconciliationStatus?.blockedReason?'disabled':''}>核实并结束</button>`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
       syncCancelButtons();restoreTaskActionFocus(focused);
       requestAnimationFrame(()=>{if(atBottom)stage.scrollTop=stage.scrollHeight;updateRail();});if(inspected)renderInspector();
     }

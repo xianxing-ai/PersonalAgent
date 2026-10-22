@@ -1,6 +1,6 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 
 const text = (value, max) => typeof value === 'string' && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
@@ -30,7 +30,7 @@ function validSaved(value) {
 /** Trusted main only. Saving configuration grants no read permission and makes no provider call.
  * Binding/authorization are host-only; snapshots never disclose URL, account, secret or opaque refs.
  */
-export function createCalendarConfig({userData, safeStorage}) {
+export function createCalendarConfig({userData, safeStorage, question}) {
   const target = path.join(userData, 'calendar-config.json');
   let saved, failure = '';
   if (existsSync(target)) {
@@ -57,8 +57,14 @@ export function createCalendarConfig({userData, safeStorage}) {
       throw Error('日历配置已变更或撤销');
     }
   };
+  const authorizationResource=()=>saved?createHash('sha256').update(JSON.stringify({kind:'calendar-local-read',
+    accountRef:saved.accountRef,secretRef:saved.secretRef,revision:saved.revision,calendarUrl:saved.calendarUrl})).digest('hex'):undefined;
+  const rotateAuthorization=()=>{const resource=authorizationResource();if(question&&resource){
+    const previous=question.readResourceGeneration(resource);question.rotateResourceGeneration(resource,previous);
+  }};
   return Object.freeze({
     snapshot,
+    authorizationResource,
     binding: () => saved ? {providerKind: saved.providerKind, accountRef: saved.accountRef,
       secretRef: saved.secretRef, revision: saved.revision, calendarUrl: saved.calendarUrl,
       calendarName: saved.calendarName} : undefined,
@@ -83,6 +89,7 @@ export function createCalendarConfig({userData, safeStorage}) {
       const value = {providerKind: 'caldav', calendarUrl, calendarName, username, password,
         accountRef: sameAccount ? saved.accountRef : randomUUID(), secretRef: randomUUID(),
         revision: (saved?.revision ?? 0) + 1};
+      rotateAuthorization();
       let temporary;
       try {
         if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -99,6 +106,7 @@ export function createCalendarConfig({userData, safeStorage}) {
       return snapshot();
     },
     revoke() {
+      rotateAuthorization();
       try {if (existsSync(target)) unlinkSync(target);} catch {throw Error('日历配置清除失败，原文件已保留');}
       saved = undefined; failure = '';
       return snapshot();

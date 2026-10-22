@@ -14,7 +14,8 @@
  */
 
 import {spawnSync} from 'node:child_process';
-import {existsSync, lstatSync, mkdirSync, realpathSync, statSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync} from 'node:fs';
 import path from 'node:path';
 
 export function resolveRepoRoot() {
@@ -98,8 +99,23 @@ export function buildNativeHelper({targetDir, configuration = 'Release'} = {}) {
   }
 
   const canonicalExe = realpathSync.native(expectedExe);
+  const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+  const helperFilesSha256 = Object.fromEntries(['WindowsJobProcessHost.dll','WindowsJobProcessHost.deps.json','WindowsJobProcessHost.runtimeconfig.json']
+    .map(name => [name,hash(path.join(canonicalTarget,name))]));
+  // No source cache: every publish compiles the project, including all current C# inputs.
+  const sourceSha256 = {};
+  function sources(directory, prefix='') {
+    for(const entry of readdirSync(directory,{withFileTypes:true})) {
+      if(entry.name==='obj'||entry.name==='bin')continue;
+      const relative=prefix+entry.name, full=path.join(directory,entry.name);
+      if(entry.isDirectory())sources(full,relative+'/');
+      else if(entry.isFile()&&/\.(cs|csproj)$/u.test(entry.name))sourceSha256[relative]=hash(full);
+    }
+  }
+  sources(import.meta.dirname);
   return {
     helperPath: canonicalExe,
+    helperSha256: hash(canonicalExe), helperFilesSha256, sourceSha256,
     targetDir: canonicalTarget,
     configuration,
   };

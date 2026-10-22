@@ -230,7 +230,7 @@ test('competition approval resumes from the persisted proposal after Runtime res
     client = new Client(app, Date.now);
     await client.connect();
     const approval = (await client.call('approval.list', {taskId})).items[0];
-    assert.ok(Date.parse(approval.expiresAt) > Date.parse(deadline));
+    assert.equal(approval.expiresAt, deadline);
     await client.call('authorization.respond', {
       approvalId: approval.approvalId,
       expectedRevision: approval.revision,
@@ -281,13 +281,13 @@ test('competition approval after original deadline times out without executing t
     assert.equal((await waitForState(app, taskId, ['waiting_approval', 'failed'])).state, 'waiting_approval');
     const deadline = app.runtime.loadCheckpoint(taskId, 'application-deadline');
     const approval = (await client.call('approval.list', {taskId})).items[0];
-    assert.ok(Date.parse(approval.expiresAt) > Date.parse(deadline));
+    assert.equal(approval.expiresAt, deadline);
     currentTime = Date.parse(deadline) + 1;
-    await client.call('authorization.respond', {
+    await assert.rejects(client.call('authorization.respond', {
       approvalId: approval.approvalId,
       expectedRevision: approval.revision,
       decision: 'allow_once',
-    });
+    }), {code: 'TIMEOUT'});
     const task = await waitForState(app, taskId, ['failed']);
     assert.equal(task.error.code, 'TIMEOUT');
     assert.equal(executions, 0);

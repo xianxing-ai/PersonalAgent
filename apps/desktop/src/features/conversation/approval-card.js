@@ -17,7 +17,7 @@ export function approvalCards(task, approvals = [], now = Date.now()) {
   return approvals.filter(item=>item.taskId===task.taskId && item.state==='pending').map(item=>{
     const expiresAt=expiryMillis(item),validExpiry=Number.isFinite(expiresAt);
     const inactive=!validExpiry || expiresAt<=now;
-    const buttons=inactive?(validExpiry?'<p>此授权已过期，请停止任务后重新发起。</p>':'<p>授权期限无效，请查看最新任务状态。</p>'):
+    const buttons=inactive?(validExpiry?'<p>此授权已过期，本次操作未获允许；Runtime 正在结束等待，请查看最新任务状态。</p>':'<p>授权期限无效，请查看最新任务状态。</p>'):
       `<div class="turn-actions"><button type="button" class="turn-action" data-approval-decision="allow_once" data-approval-id="${escape(item.approvalId)}">批准并继续</button><button type="button" class="turn-action" data-approval-decision="deny" data-approval-id="${escape(item.approvalId)}">拒绝</button></div>`;
     const action=typeof item.action==='string' && item.action.trim()?item.action:'Runtime 未公开工具';
     return `<section class="approval-card" role="group" aria-label="操作授权"><strong>需要你确认这次操作</strong><p>${escape(action)}</p><p>权限：${escape(item.scopes.join('、'))}</p>${buttons}${inactive?'':'<p>批准后继续当前任务，无需再发一条消息。</p>'}</section>`;

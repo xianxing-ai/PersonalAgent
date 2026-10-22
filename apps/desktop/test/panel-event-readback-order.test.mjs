@@ -8,6 +8,7 @@ import ts from 'typescript';
 import {Client, EventCursor} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {requestTaskCancellation} from '../electron/runtime.js';
+import {createConversationDelivery} from '../electron/conversation-delivery.js';
 
 const source = await readFile(new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -40,7 +41,7 @@ async function fixture(t) {
   const task = app.runtime.submitTask({goal: 'Local read-only event fixture', conversationId: 'desktop-panel', idempotencyKey: 'event-readback'});
   const tasks = new Map(), approvals = new Map(), published = [], panel = {};
   const eventCursor = new EventCursor('tasks');
-  const context = vm.createContext({tasks, approvals, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
+  const context = vm.createContext({conversationDelivery:createConversationDelivery(new Set()),tasks, approvals, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
     // This cancellation/readback fixture has no Harness event consumer installed.
     harnessEventsHost: undefined,connectorChangeHost:undefined,
     conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
@@ -132,6 +133,7 @@ test('a fresh cancellation readback does not prevent the original pump from clea
   await f.pump();
   assert.equal(f.approvals.get('read-only-approval').state, 'pending');
   await f.cancel(f.task.taskId);
+  await new Promise(resolve=>setImmediate(resolve));
   assert.equal(f.tasks.get(f.task.taskId).state, 'cancelled');
   assert.equal(f.approvals.size, 1);
   await f.pump();

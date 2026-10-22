@@ -189,7 +189,7 @@ export interface CoordinationWorkerCapabilityPort {
     {state:'pending'|'unknown'|'confirmed';result:unknown;evidenceRefs:readonly string[];selection:unknown}>;
   assertReceiptAllowed(proposal:CoordinationToolProposalResult,selection:unknown,receipt:unknown,context:WorkerContext & {revision:number}):void;
 }
-export type PrepareCompetitionToolExport=(input:{phase:'preflight'|'projection';taskId:string;
+export type PrepareCompetitionToolExport=(input:{phase:'preflight'|'projection';taskId:string;runId?:string;
   proposal:CoordinationToolProposalResult;deadline:string;signal:AbortSignal})=>Promise<void>;
 
 /** Keep the original confirmed read resumable when fresh export permission is denied. */
@@ -492,7 +492,7 @@ export async function runCoordinationWorker(
       consumeCompetitionCloudReceipt(runtime, taskId);
       const worker=options.workerCapabilities?.accepts(result)?options.workerCapabilities:undefined;
       if(result.verification!=='mock') {
-        try {await options.prepareCompetitionToolExport?.({phase:'preflight',taskId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});}
+        try {await options.prepareCompetitionToolExport?.({phase:'preflight',taskId,runId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});}
         catch {
           if(context.signal.aborted)throw new ProtocolError('CANCELLED','Export preflight cancelled');
           if(Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Export preflight expired');
@@ -525,7 +525,7 @@ export async function runCoordinationWorker(
       if (result.verification !== 'mock' && !workerResult) {
         if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'Competition result export cancelled');
         try {
-          await options.prepareCompetitionToolExport?.({phase:'projection',taskId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});
+          await options.prepareCompetitionToolExport?.({phase:'projection',taskId,runId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});
           exportedResult = await projectResult(exportBinding!, {taskId, proposalId: result.proposalId,
             result: structuredClone(exportedResult), signal: context.signal});
           // Use the existing strict JSON validator: getters, cycles, unsupported
