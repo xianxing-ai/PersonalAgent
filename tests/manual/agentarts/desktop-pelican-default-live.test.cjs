@@ -4,7 +4,7 @@ const {mkdtempSync,rmSync}=require('node:fs');
 const {tmpdir}=require('node:os');
 const path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
-const {originalQuestionBinding}=require('./desktop-pelican-default-live.cjs');
+const {originalQuestionBinding,approveOriginalQuestion}=require('./desktop-pelican-default-live.cjs');
 
 test('public Pelican question automation verifies the original descendant and exact pending invocation read-only',async t=>{
   const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
@@ -31,4 +31,29 @@ test('public Pelican question automation verifies the original descendant and ex
     argumentsDigest:toolArgumentsDigest({...args,path:'other.svg'})});
   await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',question),/public SVG/);
   db.close();
+});
+
+test('public Pelican approval follows only the current suggested task decision and records that actual choice',async t=>{
+  const names=['window','document','getComputedStyle','innerHeight','innerWidth'];
+  const original=new Map(names.map(name=>[name,Object.getOwnPropertyDescriptor(globalThis,name)]));
+  t.after(()=>{for(const name of names){const value=original.get(name);if(value)Object.defineProperty(globalThis,name,value);else delete globalThis[name];}});
+  for(const [hints,decision]of [[{canReuseTask:true,suggestedDecision:'allow_task'},'allow_task'],
+    [{canReuseTask:false,suggestedDecision:'allow_task'},'allow_once'],[{},'allow_once']]){
+    const pending={questionId:'Synthetic-question',taskId:'Synthetic-task',sourceApprovalId:'Synthetic-run',conversationId:'Synthetic-conversation',
+      revision:1,state:'pending',toolName:'coding.repair.start',expiresAt:new Date(Date.now()+60_000).toISOString(),requirements:[],...hints};
+    let current=structuredClone(pending),clicks=0;
+    const element={isConnected:true,disabled:false,dataset:{authorizationDecision:decision},
+      getBoundingClientRect:()=>({width:100,height:30,top:10,bottom:40,left:10,right:110}),click:()=>clicks++};
+    const card={dataset:{questionId:pending.questionId},querySelector:selector=>{
+      assert.equal(selector,`[data-authorization-decision="${decision}"]`);return element;}};
+    globalThis.window={desktop:{invoke:async()=>({ok:true,value:{authorizationQuestions:[current]}})}};
+    globalThis.document={querySelectorAll:()=>[card]};globalThis.getComputedStyle=()=>({display:'block',visibility:'visible'});
+    globalThis.innerHeight=800;globalThis.innerWidth=1200;
+    const panel={bringToFront:async()=>{},locator:selector=>{
+      assert.ok(selector.endsWith(`[data-authorization-decision="${decision}"]`));
+      return{waitFor:async()=>{},isEnabled:async()=>true,scrollIntoViewIfNeeded:async()=>{},evaluate:(fn,args)=>fn(element,args)};}};
+    assert.equal(await approveOriginalQuestion(panel,pending),decision);assert.equal(clicks,1);
+    current={...current,canReuseTask:!current.canReuseTask};
+    await assert.rejects(approveOriginalQuestion(panel,pending),/binding changed/);assert.equal(clicks,1,'a stale task suggestion grants nothing');
+  }
 });

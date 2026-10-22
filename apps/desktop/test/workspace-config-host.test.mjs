@@ -234,6 +234,98 @@ async function defaultCodingStartQuestionFixture(t,invalidatePreparation=false) 
 test('default delegated F15 start publishes the original unified question before any workspace execution',async t=>defaultCodingStartQuestionFixture(t));
 test('default F15 invalidation retains fixed original and workspace reasons without granting or executing',async t=>defaultCodingStartQuestionFixture(t,true));
 
+test('one original F15 uses three workflow groups while every host run retains its exact independent grant',async t=>{
+  const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
+  const {createWorkflowDecisionTool}=await import('@personal-agent/agentarts');
+  const {root,node,configuration,open}=await workspaceBindingFixture(t);let application,nativeReady=false;
+  await mkdir(path.join(path.dirname(configuration),'coding-recovery',createHash('sha256').update(root).digest('hex')),{recursive:true});
+  // Synthetic native identity only: no command, helper, model or file mutation
+  // runs in this grouping test. The real question host, Runtime and Policy run.
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,
+    namespace:'Synthetic-F15-groups',resolveConversation:taskId=>application.readToolConversation(taskId),available:()=>true,
+    profiles:[{ref:'read',label:'Synthetic read',mode:'read-only',revision:1,available:true},
+      {ref:'write',label:'Synthetic write',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'read',
+    resolveProfile:(request,selected)=>request.taskConsent?.mode==='workspace-write'?'write':selected.ref,
+    describeExecution:request=>({required:request?.taskConsent?.requiresNative===true,available:nativeReady,
+      backend:nativeReady?'windows-psec':'unavailable',enforced:nativeReady,...(nativeReady?{bindingDigest:'a'.repeat(64)}:{})})});
+  const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined});
+  const decision=createWorkflowDecisionTool({selector:{select:async()=>assert.fail('No Synthetic inference')}});
+  application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',hostUserNamespace:'Synthetic-F15-groups',tools:[...host.tools,decision]});
+  t.after(()=>{question.close();application.close();});host.bindApplication(application);
+  const runtime=application.runtime,owner=runtime.submitTask({goal:'Synthetic bounded workflow',conversationId:'Synthetic-F15-chat',idempotencyKey:'owner'});
+  runtime.transitionTask(owner.taskId,'planning');runtime.transitionTask(owner.taskId,'running');
+  const deadline=new Date(Date.now()+60_000).toISOString(),initialRunId='coding-start-'+owner.taskId;
+  const request={version:1,mode:'main',allowedPaths:['fixture.js'],subtasks:[{subtaskId:'repair',role:'coder',goal:'Synthetic bounded repair'}]};
+  const proposal={kind:'tool_proposal',proposalId:'Synthetic-F15',toolName:'coding.repair.workflow',toolVersion:'1.0.0',
+    arguments:{subtasks:request.subtasks,codingRepair:{mode:'main',allowedPaths:request.allowedPaths}}};
+  const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  runtime.saveCheckpoint(owner.taskId,'application-deadline',deadline);
+  runtime.saveCheckpoint(owner.taskId,'competition-loop',{step:1,pendingRevision:3,pending:proposal});
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:worker-capability',{version:1,taskId:owner.taskId,deadline,revision:3,
+    bindingId:'Synthetic-image',proposalDigest:hash(proposal),request});
+  const graph={version:1,initialRunId,bindingId:'Synthetic-image',controlRevision:0,sessionId:'Synthetic-session'};
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',graph);
+  const grants=[],cards=[];let sequence=0;
+  const run=async(name,args,{corruptLink=false,rejectPrepare=false}={})=>{
+    const tool=[...host.tools,decision].find(item=>item.descriptor.name===name);assert.ok(tool,name);
+    let taskId=owner.taskId,runId=initialRunId;
+    if(name!=='coding.repair.start'){
+      const commandId='Synthetic-operation-'+(++sequence),original={commandId,toolName:name,toolVersion:tool.descriptor.version,arguments:args,deadline};
+      const prepared=application.prepareHostToolTask({commandId,toolName:name,toolVersion:tool.descriptor.version,deadline});
+      taskId=prepared.taskId;runId='host-tool-'+taskId;
+      runtime.saveCheckpoint(taskId,'host-tool-intent',{...original,namespace:'Synthetic-F15-groups',argumentsDigest:toolArgumentsDigest(args)});
+      runtime.saveCheckpoint(taskId,'coding-repair:parent',{taskId:owner.taskId,operationId:commandId});
+      runtime.saveCheckpoint(owner.taskId,'coding-repair:host:'+commandId,{localTaskId:corruptLink?'Synthetic-foreign':taskId,request:original});
+      runtime.transitionTask(taskId,'planning');runtime.transitionTask(taskId,'running');
+    }
+    const argumentsDigest=toolArgumentsDigest(args),scope={taskId,runId,deadline,toolName:name,toolVersion:tool.descriptor.version,
+      argumentsDigest,signal:new AbortController().signal};
+    runtime.saveCheckpoint(taskId,'application-tool-invocation:'+runId,{toolName:name,toolVersion:tool.descriptor.version,arguments:args,argumentsDigest,deadline});
+    runtime.requestToolApproval(runId,taskId,tool.descriptor,deadline,argumentsDigest);
+    if(corruptLink||rejectPrepare){assert.throws(()=>host.prepareAuthorization(scope),{code:'UNAUTHORIZED'});return;}
+    host.prepareAuthorization(scope);if(question.requiresNativeForAuthorization(scope))nativeReady=true;
+    const pending=question.requestToolAuthorization(scope);
+    const card=question.snapshot().find(item=>item.sourceApprovalId===runId&&item.state==='pending');
+    if(card){cards.push(card);assert.equal(card.canReuseTask,true);assert.equal(card.suggestedDecision,'allow_task');
+      question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_task'},card.conversationId);}
+    assert.equal(await pending,'allow_once','the adapter still requests one exact Policy grant per original run');
+    runtime.respondApproval(runId,'allow_once',runtime.getApproval(runId).revision);runtime.transitionTask(taskId,'running');
+    assert.throws(()=>runtime.policy.authorize({authorizationRef:runId,taskId,toolName:name,argumentsDigest:'f'.repeat(64),
+      requiredScopes:tool.descriptor.requiredScopes,now:Date.now()}),'task consent never permits swapped arguments');
+    runtime.policy.authorize({authorizationRef:runId,taskId,toolName:name,argumentsDigest,requiredScopes:tool.descriptor.requiredScopes,now:Date.now()});
+    assert.equal(runtime.policy.get(runId).usesRemaining,0);question.currentRequirement(scope,'workspace-session');grants.push(runId);
+    return scope;
+  };
+  await run('coding.repair.start',{mode:'main',allowedPaths:['fixture.js']});
+  graph.input={goal:request.subtasks[0].goal,codingRepair:{session:{taskId:owner.taskId,sessionId:graph.sessionId,mode:'main'}}};
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',graph);
+  await run('decision.choose_candidate',{context:'Synthetic local review',requestId:'Synthetic-request',
+    candidates:[{id:'read',description:'Read bounded source'},{id:'owned-review',description:'Review'}]});
+  const sourceScope=await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'});
+  await run('workflow.host.f15_n04',{sessionId:graph.sessionId,patches:[]});
+  await run('workflow.host.f15_n05',{sessionId:graph.sessionId,patches:[],recipeIds:[]});
+  question.currentRequirement(sourceScope,'workspace-session');
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'});
+  await run('workflow.host.f15_n06',{version:1,sessionId:graph.sessionId,baselineSnapshotId:'before',snapshotId:'after',
+    paths:['fixture.js'],verificationRunIds:['Synthetic-verification']});
+  assert.equal(cards.length,3,'source/init, isolated editing/checking and CAS each require one core decision');
+  assert.deepEqual(cards.map(card=>card.sandbox.native.required),[false,true,false]);
+  assert.equal(grants.length,7);assert.equal(new Set(grants).size,7);
+  assert.ok(cards.every(card=>card.description.length<=512));
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'},{corruptLink:true});
+  assert.equal(cards.length,3,'a foreign reciprocal link is refused, never covered by old consent');
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'other.js'},{rejectPrepare:true});
+  const originalBinding=runtime.loadCheckpoint(owner.taskId,'coding-repair:worker-capability');
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:worker-capability',{...originalBinding,
+    request:{...originalBinding.request,allowedPaths:['other.js']}});
+  await run('coding.repair.read',{sessionId:graph.sessionId,path:'fixture.js'},{rejectPrepare:true});
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:worker-capability',originalBinding);
+  runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',{...graph,controlRevision:1});
+  assert.throws(()=>question.currentRequirement(sourceScope,'workspace-session'),{code:'UNAUTHORIZED'},
+    'a changed original graph invalidates a previously prepared and consumed workspace requirement');
+  assert.equal(cards.length,3,'source-range or graph changes never gain authority from the original three decisions');
+});
+
 test('original nested F15 start can publish its unified question while the outer proposal remains pending',async t=>{
   const {root,node,configuration,open}=await workspaceBindingFixture(t);let application;
   await mkdir(path.join(path.dirname(configuration),'coding-recovery',createHash('sha256').update(root).digest('hex')),{recursive:true});

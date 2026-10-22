@@ -180,29 +180,33 @@ async function originalQuestionBinding(database,sourceTaskId,question) {
 
 async function approveOriginalQuestion(panel,pending) {
   await panel.bringToFront();
-  const selector=`[data-question-id="${pending.questionId}"] [data-authorization-decision="allow_once"]`;
+  const decision=pending.canReuseTask===true&&pending.suggestedDecision==='allow_task'?'allow_task':'allow_once';
+  const selector=`[data-question-id="${pending.questionId}"] [data-authorization-decision="${decision}"]`;
   const button=panel.locator(selector);
   await button.waitFor({state:'visible'});
   assert.equal(await button.isEnabled(),true,'the original question button must be enabled');
   await button.scrollIntoViewIfNeeded({timeout:10_000});
   // Recheck the current host question, then activate its exact live card through
   // the production UI handler. This is automation, never a physical human click.
-  await button.evaluate(async(_element,expected)=>{
+  await button.evaluate(async(_element,{expected,decision})=>{
     const response=await window.desktop.invoke('snapshot');
     const current=response.ok&&response.value.authorizationQuestions?.find(item=>item.questionId===expected.questionId);
     if(!current||current.state!=='pending'||Date.parse(current.expiresAt)<=Date.now()
       ||['questionId','taskId','sourceApprovalId','conversationId','revision','toolName','expiresAt'].some(key=>current[key]!==expected[key])
+      ||current.canReuseTask!==expected.canReuseTask||current.suggestedDecision!==expected.suggestedDecision
       ||JSON.stringify(current.requirements)!==JSON.stringify(expected.requirements))throw Error('Original question binding changed before activation');
     const card=[...document.querySelectorAll('[data-question-id]')].find(node=>node.dataset.questionId===expected.questionId);
-    const element=card?.querySelector('[data-authorization-decision="allow_once"]');
+    if(decision==='allow_task'&&(current.canReuseTask!==true||current.suggestedDecision!=='allow_task'))throw Error('Original task consent is unavailable');
+    const element=card?.querySelector(`[data-authorization-decision="${decision}"]`);
     if(!element)throw Error('Original question card is unavailable');
     const bounds=element.getBoundingClientRect(),style=getComputedStyle(element);
     if(!element.isConnected||element.disabled||bounds.width<=0||bounds.height<=0
       ||bounds.bottom<=0||bounds.top>=innerHeight||bounds.right<=0||bounds.left>=innerWidth
       ||style.display==='none'||style.visibility!=='visible'
-      ||element.dataset.authorizationDecision!=='allow_once')throw Error('Original question UI is not actionable');
+      ||element.dataset.authorizationDecision!==decision)throw Error('Original question UI is not actionable');
     element.click();
-  },pending);
+  },{expected:pending,decision});
+  return decision;
 }
 
 async function installPublicDialogAutomation(app, inputs) {
@@ -513,7 +517,7 @@ async function main() {
       :'apps/desktop production main panel → original delegated child → original workspace tools',
     automation:{nativeSelectors:'new public fixture and explicitly supplied host executables only',
       exactPublicExport:'original unified question requirement plus confirmed source digest and export lease',
-      approvalActivation:'visible enabled original unified question card and production UI handler; allow_once only',
+      approvalActivation:'visible enabled original unified question card and production UI handler; suggested task consent when available, otherwise allow_once',
       physicalHumanClick:'not_run',fakeModel:false,fakeTools:false},
     limitations:[...(!workflowMode?['not F15 workflow-advance graph acceptance']:[]),'not a platform trace/API readback',
       'not a physical user approval interaction','not general autonomous coding acceptance'],approvals:[]};
@@ -606,10 +610,11 @@ async function main() {
         const binding=await originalQuestionBinding(database,source.taskId,pending);
         if(pending.sandbox?.native?.required===true)assert.ok(pending.sandbox.native.available===true&&pending.sandbox.native.enforced===true,
           'a missing native process boundary cannot be approved as available');
-        await approveOriginalQuestion(session.panel,pending);
+        const decision=await approveOriginalQuestion(session.panel,pending);
         report.approvals.push({questionId:pending.questionId,approvalId:pending.sourceApprovalId,taskId:pending.taskId,
-          revision:pending.revision,toolName:pending.toolName,...binding,decision:'allow_once',
+          revision:pending.revision,toolName:pending.toolName,...binding,decision,
           requirements:pending.requirements.map(({requirementId,kind,scopes})=>({requirementId,kind,scopes}))});persist();
+        assert.ok(!workflowMode||report.approvals.length<=3,'one original F15 repair must use at most three core question cards');
       }
       return undefined;
     },deadline+15_000,'production task terminal readback');
