@@ -5,15 +5,62 @@ import {Client} from '@personal-agent/client';
 import {createRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 
-function fixture(){
+function fixture({fullAccess=false,policyBinding='sandbox:1:read-only'}={}){
   let time=1000,native,registrations=0,disposals=0,timerId=0;const prompts=[],timers=new Map(),bindings=new Map([['a','ui-a'],['b','ui-b']]);
+  const policy={fullAccess,binding:policyBinding};
   const host=createToolPresenceHost({now:()=>time,isTaskCurrent:task=>bindings.has(task),readTaskBinding:task=>bindings.get(task),onPrompt:value=>prompts.push(value),
+    isFullAccess:()=>policy.fullAccess,readPolicyBinding:()=>policy.binding,
     registerNativeShortcut:callback=>{assert.equal(native,undefined,'one native shortcut owner');native=callback;registrations++;return()=>{native=undefined;disposals++;};},
     setTimer:(callback,delay)=>{const id=++timerId;timers.set(id,{callback,at:time+delay});return id;},clearTimer:id=>timers.delete(id)});
-  return {host,prompts,bindings,fire:()=>native?.(),handler:()=>native,counts:()=>({registrations,disposals}),
+  return {host,prompts,bindings,policy,fire:()=>native?.(),handler:()=>native,counts:()=>({registrations,disposals}),
     scope:(task='a',milliseconds=60000)=>({taskId:task,deadline:new Date(time+milliseconds).toISOString(),signal:new AbortController().signal}),
     advance:milliseconds=>{time+=milliseconds;for(const [id,timer]of[...timers])if(timer.at<=time){timers.delete(id);timer.callback();}},setTime:value=>{time=value;}};
 }
+test('full access issues a policy-sourced task lease without registering or inventing a native gesture',async()=>{
+  const f=fixture({fullAccess:true,policyBinding:'sandbox:2:full-access'});
+  try{const scope=f.scope('a'),result=await f.host.tools[0].execute({},scope);
+    assert.deepEqual(result,{state:'policy_allowed',expiresAt:new Date(31000).toISOString(),authorizationGranted:false});
+    assert.equal(f.host.isUserPresent('a'),true);assert.equal(f.host.isUserPresent('b'),false);
+    assert.deepEqual(f.counts(),{registrations:0,disposals:0});assert.deepEqual(f.prompts,[]);
+    const receipt=await f.host.requestPresence(scope);assert.equal(receipt.source,'full-access-policy');
+    assert.deepEqual(f.host.competitionToolExports[0].project({taskId:'a',result,signal:scope.signal}),result);
+    assert.throws(()=>f.host.competitionToolExports[0].project({taskId:'a',result:{...result,state:'present'},signal:scope.signal}),{code:'UNAUTHORIZED'});
+  }finally{f.host.close();}
+});
+test('full-access lease revokes on policy revision, restricted mode, task change, cancel and deadline',async()=>{
+  const f=fixture({fullAccess:true,policyBinding:'sandbox:1:full-access'});
+  try{await f.host.requestPresence(f.scope());f.policy.binding='sandbox:2:full-access';assert.equal(f.host.isUserPresent('a'),false);
+    await f.host.requestPresence(f.scope());f.policy.fullAccess=false;assert.equal(f.host.isUserPresent('a'),false);
+    f.policy.fullAccess=true;await f.host.requestPresence(f.scope());f.bindings.set('a','other-conversation');assert.equal(f.host.isUserPresent('a'),false);
+    const controller=new AbortController();await f.host.requestPresence({...f.scope(),signal:controller.signal});controller.abort();assert.equal(f.host.isUserPresent('a'),false);
+    await f.host.requestPresence(f.scope('a',10));f.advance(10);assert.equal(f.host.isUserPresent('a'),false);
+    assert.equal(f.counts().registrations,0);
+  }finally{f.host.close();}
+});
+test('full access fails closed without a trusted policy binding and cannot revive a closed host',async()=>{
+  const f=fixture({fullAccess:true,policyBinding:''});
+  await assert.rejects(f.host.requestPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.counts().registrations,0);
+  f.policy.binding='sandbox:1:full-access';await f.host.requestPresence(f.scope());f.host.close();
+  assert.equal(f.host.isUserPresent('a'),false);await assert.rejects(f.host.requestPresence(f.scope()),{code:'UNSUPPORTED_CAPABILITY'});
+});
+test('a policy revision invalidates a pending restricted gesture instead of converting it to full access',async()=>{
+  const f=fixture();try{const request=f.host.requestPresence(f.scope()),denied=assert.rejects(request,{code:'UNAUTHORIZED'});
+    f.policy.binding='sandbox:2:full-access';f.policy.fullAccess=true;f.fire();await denied;assert.equal(f.host.isUserPresent('a'),false);
+    const receipt=await f.host.requestPresence(f.scope());assert.equal(receipt.source,'full-access-policy');assert.equal(f.counts().registrations,1);
+  }finally{f.host.close();}
+});
+test('trusted refresh and a new full-access request settle obsolete queued gestures without F9',async()=>{
+  const f=fixture();try{
+    const old=f.host.requestPresence(f.scope()),denied=assert.rejects(old,{code:'UNAUTHORIZED'});
+    f.policy.fullAccess=true;f.policy.binding='sandbox:2:full-access';
+    const receipt=await f.host.requestPresence(f.scope());await denied;
+    assert.equal(receipt.source,'full-access-policy');assert.equal(f.handler(),undefined);
+    f.policy.fullAccess=false;f.policy.binding='sandbox:3:read-only';f.host.refresh();assert.equal(f.host.isUserPresent('a'),false);
+    const a=f.host.requestPresence(f.scope()),b=f.host.requestPresence(f.scope('b'));
+    const failures=Promise.all([assert.rejects(a,{code:'UNAUTHORIZED'}),assert.rejects(b,{code:'UNAUTHORIZED'})]);
+    f.policy.binding='sandbox:4:read-only';f.host.refresh();await failures;assert.equal(f.handler(),undefined);
+  }finally{f.host.close();}
+});
 test('one F9 confirms only the unique current request; independent tasks retain distinct short receipts',async()=>{
   const f=fixture();try{let second=false;const a=f.host.requestPresence(f.scope('a')),b=f.host.requestPresence(f.scope('b')).then(value=>{second=true;return value;});
     assert.equal(f.host.isUserPresent('a'),false);assert.equal(f.host.isUserPresent('b'),false);f.fire();

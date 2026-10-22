@@ -12,10 +12,12 @@ async function until(predicate) {
   throw Error('Expected local state did not arrive');
 }
 
-async function fixture(t, {targetReady = true} = {}) {
+async function fixture(t, {targetReady = true,fullAccess=false,observationErrors=[],onObserve,onTargetReady,
+  openNotepad,now=Date.now} = {}) {
   const directory=await mkdtemp(path.join(tmpdir(),'pa-notepad-desktop-'));
   const sent=[], conversation=[];let confirm,app,client;
-  let observedExpiresAt;
+  let observedExpiresAt,opens=0,registrations=0,responses=0,authorizations=0;
+  const policy={fullAccess,binding:fullAccess?'sandbox:1:full-access':'sandbox:1:read-only'};
   const host=createDesktopNotepadHost({createAdapter:createWindowsHostNotepadAdapter,
     createAttempts:createRuntimeWindowsHostAttemptStore,
     transport:{async openVerifiedConnection(){return {
@@ -25,30 +27,90 @@ async function fixture(t, {targetReady = true} = {}) {
         if(frame.kind==='hello') return {...base,kind:'hello_ack',clientNonce:frame.clientNonce,
           hostNonce:'b'.repeat(32),sessionId:'fixture-session'};
         if(frame.kind==='observe') {
+          await onObserve?.(policy);
+          const errorCode=observationErrors.shift();
+          if(errorCode)return {...base,kind:'observation_refused',errorCode};
           observedExpiresAt=new Date(Date.now()+30_000).toISOString();
           return {...base,kind:'observed',targetRef:'notepad_fixture_target_123',
             expiresAt:observedExpiresAt,source:'windows-uia'};
         }
-        if(frame.kind==='target_ready') return targetReady
+        if(frame.kind==='target_ready') {await onTargetReady?.(policy);return targetReady
           ? {...base,kind:'target_ready_result',targetRef:frame.targetRef,ready:true,expiresAt:observedExpiresAt}
-          : {...base,kind:'target_ready_result',targetRef:frame.targetRef,ready:false,errorCode:'TARGET_STALE'};
+          : {...base,kind:'target_ready_result',targetRef:frame.targetRef,ready:false,errorCode:'TARGET_STALE'};}
         if(frame.kind==='execute') return {...base,kind:'result',taskId:frame.taskId,runId:frame.runId,
           toolName:frame.toolName,toolVersion:frame.toolVersion,argumentsDigest:frame.argumentsDigest,
           targetRef:frame.targetRef,state:'verified',evidenceRef:'fixture-host-evidence',
           startedAt:new Date().toISOString(),finishedAt:new Date().toISOString()};
         throw Error('Unexpected fixture frame');
       }};}},
-    registerConfirmation:callback=>{confirm=callback;return ()=>{confirm=undefined;};},
-    openNotepad:async()=>{},respond:payload=>client.call('authorization.respond',payload),
+    registerConfirmation:callback=>{registrations++;confirm=callback;return ()=>{confirm=undefined;};},
+    isFullAccess:()=>policy.fullAccess,readPolicyBinding:()=>policy.binding,now,
+    openNotepad:async context=>{opens++;assert.deepEqual(sent.map(frame=>frame.kind),['hello','bind']);await openNotepad?.(context,policy);},
+    respond:payload=>{responses++;return client.call('authorization.respond',payload);},
     cancelTask:taskId=>client.call('task.cancel',{taskId,reason:'fixture user cancellation'}),
     onTask:task=>conversation.push(task),
   });
   app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
-    profile:'huawei_ict_agentarts',hostUserNamespace:'fixture-user',tools:host.tools});
+    profile:'huawei_ict_agentarts',hostUserNamespace:'fixture-user',tools:host.tools,
+    ...(fullAccess?{requiresToolAuthorization:()=>true,requestToolAuthorization:async input=>{
+      authorizations++;assert.equal(input.toolName,'computer.notepad.replace_text');
+      assert.equal(app.runtime.loadCheckpoint(input.taskId,'host-tool-intent').argumentsDigest,input.argumentsDigest);
+      return policy.fullAccess?'allow_once':'deny';
+    }}:{})});
   host.bind(app);client=new Client(app,Date.now);await client.connect();
   t.after(async()=>{await host.close();await until(()=>app.activeTaskCount===0);app.close();await rm(directory,{recursive:true,force:true});});
-  return {host,app,sent,conversation,confirm:()=>confirm?.()};
+  return {host,app,sent,conversation,policy,confirm:()=>confirm?.(),counts:()=>({opens,registrations}),
+    approvalCounts:()=>({responses,authorizations})};
 }
+
+test('full access opens and observes a fresh target in one baseline session without F9, then consumes one original grant',async t=>{
+  const {host,app,sent,counts,approvalCounts}=await fixture(t,{fullAccess:true,observationErrors:['NOT_FOUND','NOT_FOUND']});
+  host.start({text:'Public full access fixture'});
+  await until(async()=>{await host.refresh();return !host.snapshot().busy;});
+  assert.equal(host.snapshot().state,'succeeded');assert.deepEqual(counts(),{opens:1,registrations:0});
+  assert.equal(sent.filter(frame=>frame.kind==='hello').length,1);assert.equal(sent.filter(frame=>frame.kind==='bind').length,1);
+  assert.equal(sent.filter(frame=>frame.kind==='observe').length,3);
+  const writes=sent.filter(frame=>frame.kind==='execute');assert.equal(writes.length,1);
+  assert.equal(writes[0].expectedText,'');assert.equal(writes[0].replacementText,'Public full access fixture');
+  assert.equal(app.runtime.policy.get(writes[0].authorizationRef).usesRemaining,0);
+  assert.deepEqual(approvalCounts(),{responses:0,authorizations:1});
+  assert.equal(sent.filter(frame=>frame.kind==='target_ready').length,1);
+});
+test('full access refuses old/missing, ambiguous or stale targets rather than selecting a foreground window',async t=>{
+  for(const code of ['TARGET_AMBIGUOUS','TARGET_STALE','UNAUTHORIZED'])await t.test(code,async t=>{
+    const {host,sent,counts}=await fixture(t,{fullAccess:true,observationErrors:[code]});
+    host.start({text:'Do not write'});await until(()=>!host.snapshot().busy);
+    assert.notEqual(host.snapshot().state,'succeeded');assert.equal(sent.filter(frame=>frame.kind==='execute').length,0);
+    assert.equal(sent.filter(frame=>frame.kind==='observe').length,1);assert.deepEqual(counts(),{opens:1,registrations:0});
+  });
+});
+test('full access revokes when policy changes during target readiness, before the original approval response',async t=>{
+  const {host,sent}=await fixture(t,{fullAccess:true,onTargetReady:policy=>{policy.binding='sandbox:2:read-only';policy.fullAccess=false;}});
+  host.start({text:'Do not write'});await until(async()=>{await host.refresh();return !host.snapshot().busy;});
+  assert.notEqual(host.snapshot().state,'succeeded');assert.equal(sent.filter(frame=>frame.kind==='execute').length,0);
+});
+test('trusted policy refresh cancels a restricted F9 waiter and full access without a binding is unavailable',async t=>{
+  const {host,sent,policy}=await fixture(t);
+  host.start({text:'Do not write'});await until(()=>host.snapshot().state==='waiting_confirmation');
+  policy.binding='sandbox:2:read-only';await host.refresh();assert.equal(host.snapshot().busy,false);
+  assert.equal(sent.some(frame=>frame.kind==='observe'||frame.kind==='execute'),false);
+  policy.fullAccess=true;policy.binding='';assert.throws(()=>host.start({text:'Do not write'}),/可信策略绑定不可用/);
+});
+test('full access cancellation or expiry while opening cannot become a late observation or write',async t=>{
+  for(const ending of ['cancel','deadline','policy'])await t.test(ending,async t=>{
+    let release,entered,offset=0;
+    const opening=new Promise(resolve=>{entered=resolve;});
+    const {host,sent,policy}=await fixture(t,{fullAccess:true,now:()=>Date.now()+offset,
+      openNotepad:async()=>{entered();await new Promise(resolve=>{release=resolve;});}});
+    host.start({text:'Do not write'});await opening;
+    if(ending==='cancel')await host.cancel();
+    else if(ending==='deadline')offset=300001;
+    else {policy.fullAccess=false;policy.binding='sandbox:2:read-only';}
+    release();await until(()=>!host.snapshot().busy);
+    assert.equal(sent.some(frame=>frame.kind==='observe'||frame.kind==='execute'),false);
+    assert.notEqual(host.snapshot().state,'succeeded');
+  });
+});
 
 test('Desktop confirmation freezes user text and obtains one Runtime grant before native write',async t=>{
   const {host,app,sent,conversation,confirm}=await fixture(t);
