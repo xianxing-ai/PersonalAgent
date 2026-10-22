@@ -25,7 +25,8 @@ async function probe(stage,file,args,options={}){
       timedOut:error.killed===true,stdoutPresent:Boolean(error.stdout?.length),stderrPresent:Boolean(error.stderr?.length)}));
   }
 }
-console.log(JSON.stringify({stage:'fixed-probe-inputs',cmdExists:existsSync(cmd),npmExists:existsSync(npm),cscExists:existsSync(csc)}));
+console.log(JSON.stringify({stage:'fixed-probe-inputs',nodeArchitecture:process.arch,
+  cmdExists:existsSync(cmd),npmExists:existsSync(npm),cscExists:existsSync(csc),frameworkLocation:'Framework64'}));
 await probe('cmd-npm-prefix',cmd,['/d','/s','/c','""'+npm+'" prefix"'],{windowsVerbatimArguments:true});
 await probe('framework-csc-help-full-env',csc,['/help']);
 // Exact voice startup environment/flags, with /help instead of output/source compilation.

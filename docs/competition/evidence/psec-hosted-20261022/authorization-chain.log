@@ -1,0 +1,29 @@
+TAP version 13
+# Subtest: one real original question gates a production PSEC command and never replenishes authority
+not ok 1 - one real original question gates a production PSEC command and never replenishes authority
+  ---
+  duration_ms: 1130.7257
+  type: 'test'
+  location: 'D:\\a\\PersonalAgent\\PersonalAgent\\apps\\desktop\\test\\authorization-native-execution.integration.test.mjs:35:1'
+  failureType: 'testCodeFailure'
+  error: 'Required or unexpected native backend failure; no command executed: {"required":true,"taskState":"failed","errorCode":"REVISION_CONFLICT","readiness":{"backend":"windows-psec","available":false,"enforced":false,"results":{"baseline":{"backend":"none","enforced":false,"outcome":"exited","exitCode":0,"stopped":true},"readOnly":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"},"workspaceWrite":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"},"cancel":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"}}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  operator: 'fail'
+  stack: |-
+    TestContext.<anonymous> (file:///D:/a/PersonalAgent/PersonalAgent/apps/desktop/test/authorization-native-execution.integration.test.mjs:115:12)
+    async Test.run (node:internal/test_runner/test:1208:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+  ...
+# Native integration inherited token: {"platform":"win32","administratorToken":false}
+# Native preparation failure: {"taskState":"failed","taskErrorCode":"REVISION_CONFLICT","preparationErrorCode":"UNSUPPORTED_CAPABILITY","approvalState":"denied","approvalRevision":2,"readiness":{"backend":"windows-psec","available":false,"enforced":false,"results":{"baseline":{"backend":"none","enforced":false,"outcome":"exited","exitCode":0,"stopped":true},"readOnly":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"},"workspaceWrite":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"},"cancel":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"}}}}
+# Actual native readiness: {"required":true,"taskState":"failed","errorCode":"REVISION_CONFLICT","readiness":{"backend":"windows-psec","available":false,"enforced":false,"results":{"baseline":{"backend":"none","enforced":false,"outcome":"exited","exitCode":0,"stopped":true},"readOnly":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"},"workspaceWrite":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"},"cancel":{"backend":"windows-psec","enforced":false,"outcome":"unavailable","exitCode":null,"stopped":true,"reason":"native-create-environment:-2146233052"}}}}
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2497.7916

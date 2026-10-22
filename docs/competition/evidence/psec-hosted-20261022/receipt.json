@@ -1,0 +1,122 @@
+{
+  "startedAt": "2026-10-22T04:58:03.519Z",
+  "sourceSha": "10cc9bbec289866642cb683b1e038e71fa78de44",
+  "platform": "win32",
+  "release": "10.0.26100",
+  "osVersion": "Windows Server 2025 Datacenter",
+  "node": "v24.15.0",
+  "required": true,
+  "imageOS": "win25-vs2026",
+  "imageVersion": "20261007.264.1",
+  "runId": "39725054857",
+  "runAttempt": "1",
+  "helperSha256": "d79abd450129d96a977b87bd915d48730e54c2b72e8e138d605fc1febfeef44d",
+  "helperFilesSha256": {
+    "WindowsJobProcessHost.dll": "286e0fd89f1ba0e9d413d058986b2e8c754a53ba2095fae0bf923afd89e4506a",
+    "WindowsJobProcessHost.deps.json": "de714dd5dca4a1f2f7fcc85ac0927a812b292aa0e4b122ac788c4fc794411ab5",
+    "WindowsJobProcessHost.runtimeconfig.json": "ca1a6b5b185174698e0f5f9ae732ad3d2d3ed5b122ed666f35cc214283e83b7f"
+  },
+  "processmodel": {
+    "exists": false,
+    "sha256": null
+  },
+  "results": [
+    {
+      "name": "os-boundary",
+      "file": "packages/coding-tools/test/windows-native-sandbox.test.mjs",
+      "exitCode": 1,
+      "signal": null,
+      "error": null,
+      "wallMs": 3128,
+      "logSha256": "abe02da117124bf7dcad866008481ea79774044fe33739ceaef508a579613cb2",
+      "summary": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "reason": "real-scenarios-incomplete",
+      "status": "failed"
+    },
+    {
+      "name": "authorization-chain",
+      "file": "apps/desktop/test/authorization-native-execution.integration.test.mjs",
+      "exitCode": 1,
+      "signal": null,
+      "error": null,
+      "wallMs": 2566,
+      "logSha256": "f684c7456f7a9da79b0819828912dab40d739f6bc8d52b4211839f51a7ee1235",
+      "summary": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "reason": "real-scenarios-incomplete",
+      "status": "failed"
+    }
+  ],
+  "nativeDiagnostics": {
+    "loader": {
+      "exitCode": 0,
+      "signal": null,
+      "error": null,
+      "data": {
+        "backend": "windows-psec",
+        "diagnosticOnly": true,
+        "enforced": false,
+        "os": {
+          "version": "10.0.26100.0",
+          "kernelVersion": "10.0.26100.33296 (WinBuild.160101.0800)",
+          "architecture": "X64",
+          "processArchitecture": "X64"
+        },
+        "token": {
+          "available": true,
+          "elevated": false,
+          "appContainer": false,
+          "administrator": false
+        },
+        "loader": {
+          "stage": "dll-missing",
+          "exists": false,
+          "version": null,
+          "loaded": false,
+          "win32": 126,
+          "exports": {
+            "IsProcessSecurityEnvironmentVersionSupported": false,
+            "QueryProcessSecurityEnvironmentSupport": false,
+            "CreateProcessSecurityEnvironment": false,
+            "CloseProcessSecurityEnvironment": false
+          }
+        }
+      }
+    },
+    "contract": {
+      "exitCode": 5,
+      "signal": null,
+      "error": null,
+      "data": {
+        "backend": "windows-psec",
+        "detected": false,
+        "error": "DllNotFoundException",
+        "hresult": -2146233052,
+        "enforced": false
+      }
+    }
+  },
+  "ordinaryUser": true,
+  "finishedAt": "2026-10-22T04:58:09.593Z",
+  "businessReceipts": [
+    {
+      "artifact": "authorization-0-unavailable-receipt.json",
+      "sha256": "bfc1c9940376a571b3837efb48ce31d0a3a732eb5c6b53292401a0a91c179bfa"
+    }
+  ],
+  "wallMs": 6075,
+  "status": "failed"
+}

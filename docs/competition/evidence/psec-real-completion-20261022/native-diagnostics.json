@@ -1,0 +1,50 @@
+{
+  "loader": {
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "data": {
+      "backend": "windows-psec",
+      "diagnosticOnly": true,
+      "enforced": false,
+      "os": {
+        "version": "10.0.26200.0",
+        "kernelVersion": "10.0.26100.9278 (WinBuild.160101.0800)",
+        "architecture": "X64",
+        "processArchitecture": "X64"
+      },
+      "token": {
+        "available": true,
+        "elevated": false,
+        "appContainer": false,
+        "administrator": false
+      },
+      "loader": {
+        "stage": "exports-present",
+        "exists": true,
+        "version": "10.0.26100.9444 (WinBuild.160101.0800)",
+        "loaded": true,
+        "win32": null,
+        "exports": {
+          "IsProcessSecurityEnvironmentVersionSupported": true,
+          "QueryProcessSecurityEnvironmentSupport": true,
+          "CreateProcessSecurityEnvironment": true,
+          "CloseProcessSecurityEnvironment": true
+        }
+      }
+    }
+  },
+  "contract": {
+    "exitCode": 0,
+    "signal": null,
+    "error": null,
+    "data": {
+      "backend": "windows-psec",
+      "detected": true,
+      "major": 1,
+      "minor": 0,
+      "flags": 3,
+      "enforced": false
+    }
+  }
+}

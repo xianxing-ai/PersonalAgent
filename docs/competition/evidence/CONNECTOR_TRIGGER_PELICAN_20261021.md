@@ -11,7 +11,7 @@
 成功必须同时满足：
 
 1. 当前公开 fixture 的原缺陷由固定 Node 测试实际复现；只允许修改 `pelican.svg` 现有动画的 `begin` 属性。
-2. 真正设置页面选择新 fixture 工作区与受信 Node/npm，重启生产工具装配后，由设置页面确认本会话的读取、写入、命令和出机许可。
+2. 真正设置页面选择新 fixture 工作区与受信 Node/npm，重启生产工具装配后，在原对话统一授权卡逐操作确认读取、写入、命令和出机范围；设置选择仅保存配置。
 3. 主面板实际输入并发送自然语言任务；默认原父子任务成功。个别工具模式要求子任务实际执行 read → preview → native apply → 固定项目测试；workflow 模式要求原 F15 六节点 completed/settled，原 `coding.repair.read`、N04 预览、N05 实际检查、N06 原生 CAS 发布均有绑定原父子的 host 任务与确认记录。
 4. 原工具记录必须为 `confirmed`、`policyDecision:allow`、`executionStarted:true`；原子任务 Evidence 被父任务保留，固定项目测试原始返回 `exitCode:0`。workflow 模式逐一重读原 host command、参数散列绑定、原检查回执中 `npm-test:VALID/0`、原 CAS before/after SHA256；所有结果与图检查点一致，未核实操作不能放行。
 5. 关闭本 runner 启动的隔离 Desktop 后，重开同一个 SQLite 核验原父子任务、工具记录、Evidence 和原 AgentArts 请求身份。不能用模型自报成功或 UI 文案替代这些条件。
@@ -19,7 +19,7 @@
 
 文件集合门槛仅检查本 runner 新建的 `workspace/` 源码目录。生产 F15 的独立会话、基线、内部工作副本、恢复与 journal 位于同一任务 `user-data/coding-isolation/`，与用户 fixture 工作区分开；这些明确的内部产物不计作用户源码新增文件。runner 不删除它们，不把任何未知目录泛化为内部例外。
 
-runner 为本次新建公开 fixture 自动处理系统文件选择器，以及原任务中对当前文件路径、实际字节数、SHA256 的精确公开出机确认；仍使用生产许可宿主与原工具。它不证明物理人工点击审批，也不授予其他原生问题、私人资料或真实账号业务写入。记录中的 `fakeModel:false`、`fakeTools:false` 与“公开测试 fixture”是不同维度。
+runner 为本次新建公开 fixture 自动处理系统文件选择器和原对话统一授权卡，只选择“仅允许本次”。它先只读核对原父子归属、pending invocation、参数散列与期限，再经真实可见卡片及生产 handler 提交；公开源码仍由原宿主按实际字节、SHA256 和 consumed export lease 核实。它不证明物理人工点击审批，也不授予私人资料或真实账号业务写入。记录中的 `fakeModel:false`、`fakeTools:false` 与“公开测试 fixture”是不同维度。
 
 ## 复现准备
 
@@ -106,6 +106,89 @@ N01 的实际确认结果以及图中 `resolvedValues.F15_N01` 均为 `{"selecte
 原任务期限为 `2026-10-21T15:16:25.517Z`；runner 按原期限等待后正确以 `production task terminal readback did not reach the required state before its deadline` 拒绝通过。没有重开旧任务、重复发送原操作或更改 unknown。原 SQLite、审批/ToolGateway/Evidence、图状态、截图与未修复 fixture 全部保留在该唯一目录。该次没有补丁、项目检查或 native CAS 发布；源码目录仍仅原三个文件，`pelican.svg` SHA256 仍为原基线 `f89f9342473941d2a26c2759670f490068234cd1df456285e17b8a33ae06f268`，因此独立最终测试、重开成功终态与动画播放验收均未达到执行前提，不标记通过。
 
 本次隔离 Desktop 和 runner 已关闭，读回应用也已释放 SQLite，收据结束时间为 `2026-10-21T15:17:05.071Z`。随后可用内存恢复 `3,302,973,440` bytes，唯一任务标记的只读进程检查没有本次 Electron；已交独立协作者只读复核原收据及数据库。当前完整真实默认 Desktop 鹈鹕闭环仍未通过，原保守判断和全部后续验收门槛保持不变。
+
+## 2026-10-22 统一授权卡与本地 typed 诊断增量
+
+本增量在 `D:\worktree\f809\PersonalAgent\.worktrees\pelican-real-completion`、
+`codex/pelican-real-completion`，基线 `cb120aca060b6448852b2d1b9b5087c3b2b9d53e` 实现。
+保留主线 metadata projection、原操作 export lease、目标与执行模型绑定；没有修改 Desktop main、
+Laya 阈值、Policy、任务预算、旧 unknown 任务或原失败回执。
+
+默认 Runtime coding chooser 将原 `LayaActionSelection` 的固定字段保存在原 host task 的
+`coding-repair:local-decision:v1:<runId>`。记录包含 typed state/reason/selected/eligibility、
+原概率/confidence、calibrated=false 和原 receipt 摘要，绑定 task/run/request、精确参数、context、
+candidate-set 及逐候选摘要；区分直接选择与保守 review fallback。上下文正文、源码和自由模型文字不进入此记录。
+诊断没有执行授权；原公开工具结果仍为原 `selectedId`，typed 诊断不进入云投影。
+
+统一主线的 F15 metadata 回调此前也会处理 `decision.choose_candidate`，但工作区宿主只识别自身实现，
+没有为 Runtime 内部 decision 准备对应 export requirement。本增量只为原 F15 graph、
+`coding-repair:parent` 与 owner `coding-repair:host` 相互绑定的同一 host operation 准备该 requirement；
+它限于原候选 selectedId 枚举，消费原统一卡后保存精确 export lease。参数、归属、候选或字段替换均拒绝。
+完成后的 host 回执经原 confirmed receipt reader 核对，不重执行 decision。
+
+runner 已移除设置页旧会话许可及旧审批按钮调用，改为原对话统一卡的“仅允许本次”。
+审批前只读核对原 descendant、pending invocation、参数散列及期限，并复查实时卡片身份与可见启用状态，
+经生产 UI handler 单次提交。需要原生进程边界时，其 unavailable/unenforced 状态不能被自动批准。
+最终读回增加 typed 诊断与原确认结果、原 selectedId export lease、编译后 helper 和源码 SHA 的核对。
+
+本工作包的实际本地检查如下，所有通过测试均为 **0 skip**：
+
+| 检查 | 结果 | 本地原日志 |
+|---|---|---|
+| Node 24.15.0 / npm 11.12.0，`npm ci --ignore-scripts --no-audit --no-fund` | 201 packages，exit 0；未运行 Electron postinstall | `.cache/pelican-npm-ci-network.log` |
+| Runtime/Desktop 必要依赖闭包，31 workspace 的原 build 脚本 | 全部完成；没有构建 obsidian-plugin | `.cache/pelican-build.log`、`pelican-build-resume.log`、`pelican-build-final.log` |
+| `npm run typecheck --workspace=@personal-agent/runtime` | exit 0 | `.cache/pelican-runtime-typecheck.log` |
+| Runtime decision、workspace-config-host 与 runner SQLite 绑定三个定向测试文件 | 75/75，exit 0；其中 decision 15 项、另两文件60项 | `.cache/pelican-focused-final.log` |
+| `npm run check:architecture` | 3/3，exit 0 | `.cache/pelican-architecture.log` |
+| 变更文件语法与 `git diff --check` | exit 0 | 命令回执 |
+
+首轮 sandbox npm 下载为 ENOTFOUND，语音宿主 EXE 构建和 native path/TEMP 测试分别被拒绝；
+均保留原失败日志，经平台 `require_escalated` 原机制继续，未调整代理、断言或保护。
+独立 npm 包的原包装器不能在其 `bin/` 下解析自身入口，本任务仅在忽略的 `.cache/pinned-bin/` 放置固定
+Node/npm 路径包装器，使嵌套脚本沿同一版本；未改仓库锁文件或系统工具链。
+
+15 项 decision 测试的 chooser/image 明确为 Fake。新增工作区集成用例使用真实 Runtime/SQLite/Policy/
+ToolGateway/统一问题宿主与 consumed export lease，推理仍是显式 Fake；它证明相同操作的结果绑定与拒绝路径，
+不证明真实 Laya 判断质量、AgentArts 或文件修复。**本增量尚未启动 Desktop/Laya，也未进行新真实鹈鹕运行。**
+完整默认父子、F15 六节点、N05 npm-test VALID/0、N06 native CAS SHA、三个原文件及两帧运动仍为 `not_run`，
+须由主控整合源码并重新 build、在模型槽与可用内存达到原 2 GiB 门槛后，用上方 `--workflow` 新建唯一公开 fixture 验收。
+沿用当前源码构建的四个 WindowsJobProcessHost 产物与受信 Node/npm；不重放 `LUCLdz` 或其他旧未决任务。
+
+## 2026-10-22 设置导航回归与验收同步
+
+主控整合上一增量后，新独立运行 `desktop-pelican-default-wn3zWB` 在
+`start-original-local-laya` 阶段失败：原启动按钮已存在，但 Playwright 等待可见性 30 秒后超时。
+该轮尚未启动 Laya、尚未提交默认主任务，原三个文件和失败回执保留；不能算作模型或 F15 验收。
+旧回执未采集当时的 DOM section、host navigation revision 和隐藏祖先，因此该轮具体触发原因仍为 unknown。
+另在空配置的隔离导航回归中观察到 `webContents.capturePage` 可在切页后立即返回上一页的合成帧；
+旧截图不能单独证明当时的 DOM 页面或侧栏 `aria-current`。
+
+本增量基于 `7e95cbccc10927d3440e67bafdeee68a8706c48f`，仅调整 admin view、对应导航测试和 runner。
+可复现的独立缺陷是 view 用 `revision !== previous` 消费倒序快照：修复前，新回归用例在
+revision 5 后接收 revision 4 会真实退回常规页，定向结果 10/11；修复后只消费有效且递增的 host revision。
+正文、挂载控件和监听器完成后才一起提交侧栏、main/content 页标记与 `aria-busy=false`；
+中途渲染失败不会声明新页已完成。相同 host revision 的日常更新仍保留本地侧栏选择，新的合法 IPC 导航仍生效。
+
+runner 的 `openSettings` 先等待原 IPC 返回后读取到的 host revision 已渲染，再确认正文页标记、
+侧栏和目标真实控件可见。成功与失败都记录固定字段的导航/可见性诊断，不记录配置值、正文或凭据。
+保留主控对启动子进程剔除全部继承 `PA_*` 的修改，不强制点击隐藏按钮、不缩短原等待、不启动替身。
+
+实际检查：
+
+| 检查 | 当前结果 |
+|---|---|
+| admin Evidence/导航与 runner 原 SQLite 绑定定向检查 | 14/14，0 fail、0 skip；日志 `.cache/admin-navigation-focused.log` |
+| Desktop 原 `typecheck`（变更 view、renderer 等原语法脚本）及 smoke/runner 语法 | exit 0 |
+| `admin-navigation-smoke.cjs` | 原 Competition Main/preload/renderer，独立空 userData，实际导航及确切送达的旧公开快照回归通过 |
+| 模型、任务、网络与异常 | Laya 始终 stopped、tasks=0、health=0、external blocked=0、renderer errors=0 |
+| 原生 Electron 画面 | Playwright 正常截图并人工回看连接页 Laya 控件和环境页工作区控件；无隐藏点击 |
+
+Browser plugin 不在当前可用能力中，回归使用仓库已有 Playwright 与受信 Electron。
+轻量回归收据和正确截图保留于本机专属临时目录 `pa-admin-navigation-lCesn6`，
+项目运行入口和回执路径在 `.cache/admin-navigation-smoke.log`；旧公开快照倒序是显式 synthetic ordering case，
+不冒充真实 AgentArts/Laya 推理。主控新增的 Main `environment` IPC allowlist 不在本工作树编辑范围；
+根集成后需运行同一脚本的 `--require-environment-ipc`，核对原 host page/revision 确实变化。
+当前仍未进行新真实鹈鹕聚合运行，完整必验项继续等待主控的新唯一 fixture，不重放任何旧未决任务。
 
 ## 证据边界
 

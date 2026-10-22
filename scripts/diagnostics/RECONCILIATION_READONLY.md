@@ -1,0 +1,23 @@
+# 普通对话待核实：只读脱敏采集
+
+工具不会自动寻找个人数据库。由该电脑的使用者明确选择原 Runtime SQLite、一个原 taskId，以及可选的原 `desktop.log`；不需要提供凭据或对话正文。应使用项目约束的 Node 24.15。
+
+```powershell
+node scripts/diagnostics/reconciliation-readonly.mjs --database <本机明确选择的SQLite绝对路径> --task-id <原taskId> --source-root <本次检查的仓库绝对路径> --desktop-log <可选的原desktop.log绝对路径>
+```
+
+不需要日志时省略整个 `--desktop-log` 参数。输出仅写 stdout，可由使用者自行保存；失败只输出固定错误标签。不要上传原数据库、WAL、日志、`.env` 或设置文件。
+
+SQLite 以 `readOnly:true`、禁用 extension、query_only、受限只读事务打开，不调用 Runtime、不运行迁移、不修改任务、审批或 checkpoint，不重试或重发云端操作。缺文件、Schema 不兼容、锁或权限失败均保留失败，不创建数据库、不清库、不忽略 WAL。对运行中的库遵循 SQLite 读锁；不会自动备份或关闭应用。首次使用应先由库所有者确认明确的路径；本次开发只使用自建数据库测试。
+
+采集只读取单任务 state/typed error code，以及固定 checkpoint 的存在布尔值、三个原云回执的布尔 accepted；不读取 goal、result_summary、事件正文、工具结果或账号表。可选日志按原回执 requestId 在本机匹配，只导出原 adapter stage/code、resultUnknown 和已允许的 transportPhase。匹配 ID 不出现在输出；没有原日志时明确 `not_supplied`，绝不从任务状态猜测 receipt stage。读取日志限 512 KiB，不自动读取 `.previous`。
+
+来源信息明确分开：`checkoutSha` 和源文件 hash 仅描述 `--source-root` 选定的磁盘；`resolvedModuleFiles` 通过该目录的 Desktop package 解析到磁盘上的 Runtime/coordination dist，并记录 hash。解析到树外时仅输出 `outside_selected_checkout_on_disk`，不暴露私人绝对路径。包版本是磁盘 package.json 声明；Node 版本属于采集器进程。全部都不证明已有 Desktop 进程当前加载的 build，`runningApplicationBuild` 始终为 `not_observed`。仓库同步、包版本相同和磁盘 dist 存在也不能证明正在运行的进程已更新。
+
+Git 只读查询禁用 optional index locks/刷新写入和已配置的 fsmonitor；不执行 fetch、build、启动脚本或 Runtime 模块导入。
+
+需要原安全 stage 时，可以在使用者下一次正常启动应用时设置 `PA_AGENTARTS_SAFE_DIAGNOSTICS=1`，随后只采集其明确选择的原日志。该开关只增加已有脱敏日志；不要为取证自动重放旧任务、切换 profile、关闭 guard 或发送真实模型请求。
+
+初步判断：inflight/unknown 有值而没有可信 received/terminal，属于未知结果保护；export-withheld 通常表示已确认本地结果的继续出机被拦；runtime-interruption 表示原进程中断。它们是取证线索，不是根因证明。需要结合当前 taskId、typed error、原 stage，以及确切运行产物判断；不得把本机通过说成另一台电脑已修复。
+
+本轮定向测试为 6/6、0 fail/skip：三项实际日志投影单元与三项自建 SQLite/日志采集测试，包含原文件字节不变、缺库不创建、畸形库安全失败、正文/URL/header/token 和 accessor/proxy 拒绝。默认沙箱的 native realpath 限制导致初轮三项采集测试拒绝，随后原命令在普通用户上下文通过；没有修改 canonical 规则，没有运行真实数据库、模型、服务或全仓构建。
