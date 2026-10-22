@@ -34,6 +34,8 @@ interface Question {
   decision?:AuthorizationDecision;receiptRef?:string;reason?:string;consumed:Record<string,string>;
   derivedFrom?:string;
   taskConsentFrom?:string;
+  /** A fresh exact receipt from the user's selected full-access policy, not a UI question. */
+  automatic?:'full-access';
   taskConsent?:AuthorizationQuestionRequest['taskConsent'];
 }
 interface Rule {ruleId:string;revision:number;active:boolean;toolName:string;toolVersion:string;
@@ -46,7 +48,7 @@ export interface AuthorizationQuestionsOptions {
   /** Reads original task/proposal/owner/config identities. waiting_approval is legitimate here. */
   readBinding(request:Omit<AuthorizationQuestionRequest,'signal'>):{conversationId:string;digest:string}|undefined;
   readReceiptBinding?:(request:Omit<AuthorizationQuestionRequest,'signal'>)=>{conversationId:string;digest:string}|undefined;
-  /** UI absence is an unavailable capability, never an implicit allow. */
+  /** Interactive modes require UI. Explicit full access supplies its own decision. */
   available():boolean;
   /** Real side effects require the original Runtime execution state in addition to the decision. */
   canExecute(request:Omit<AuthorizationQuestionRequest,'signal'>):boolean;
@@ -161,8 +163,9 @@ export class AuthorizationQuestions {
   request(request:AuthorizationQuestionRequest,assertCurrent:()=>boolean=()=>true,decisionDeadline=request.deadline):Promise<AuthorizationQuestionReceipt> {
     try {
       this.validate(request);
-      if(this.closed||!this.options.available())fail('当前对话授权卡不可用，操作未获允许');
+      if(this.closed)fail('当前对话授权卡不可用，操作未获允许');
       const signal=request.signal,input=this.normalize(request),binding=this.options.readBinding(input),selected=this.profile();
+      if(selected.mode!=='full-access'&&!this.options.available())fail('当前对话授权卡不可用，操作未获允许');
       const profileRef=this.options.resolveProfile?.(input,selected)??selected.ref;
       const resolved=this.options.profiles.find(profile=>profile.ref===profileRef);
       if(!resolved||profileRef!==selected.ref&&resolved.mode==='full-access')fail('不允许自动扩大为完全访问');
@@ -175,6 +178,9 @@ export class AuthorizationQuestions {
       const question:Question={questionId:randomUUID(),revision:1,state:'pending',...structuredClone(input),
         expiresAt:new Date(Math.min(Date.parse(request.deadline),Date.parse(decisionDeadline))).toISOString(),
         conversationId:binding.conversationId,sandbox:profile,baseSandboxRef:selected.ref,ownerBinding:binding.digest,consumed:{}};
+      if(selected.mode==='full-access'&&profile.mode==='full-access'){
+        question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='full-access';
+      }
       this.liveBindings.set(question.questionId,()=>!signal.aborted&&assertCurrent());
       this.mutate(state=>{
         state.questions=state.questions.filter(item=>item.state==='pending'||this.now()<Date.parse(item.expiresAt)+86400000);
@@ -183,7 +189,7 @@ export class AuthorizationQuestions {
           &&item.sandboxRef===profile.ref&&item.sandboxRevision===profile.revision
           &&question.requirements.every(requirement=>hash(requirement.ruleBindingDigest))
           &&digest(item.requirements.map(requirementRule))===digest(question.requirements.map(requirementRule)));
-        if(rule){question.state='allowed';question.decision='allow_always';question.receiptRef=randomUUID();}
+        if(question.state==='pending'&&rule){question.state='allowed';question.decision='allow_always';question.receiptRef=randomUUID();}
         if(question.state==='pending'&&canReuse(question)){
           const consent=state.questions.find(item=>this.taskConsents.has(item.questionId)&&!this.taskConsents.get(item.questionId)!.aborted
             &&item.state==='allowed'&&item.decision==='allow_task'&&item.conversationId===question.conversationId
@@ -323,7 +329,7 @@ export class AuthorizationQuestions {
     return this.receipt(question);
   }
   snapshot(conversationId?:string) {
-    return this.read().questions.filter(question=>!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
+    return this.read().questions.filter(question=>!question.automatic&&!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
       questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,sourceApprovalId:question.runId,
       revision:question.revision,state:question.state,
       title:'同意这项操作？',description:(question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='intent')?.summary

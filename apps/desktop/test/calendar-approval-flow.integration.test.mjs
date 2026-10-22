@@ -10,13 +10,13 @@ import {createConnectorConversationTools} from '../electron/connector-conversati
 
 const cache=new URL('../../../.cache/calendar-approval-flow/',import.meta.url);mkdirSync(cache,{recursive:true});
 const pause=()=>new Promise(resolve=>setTimeout(resolve,5));
-for(const denyWrite of [false,true])test(`calendar lookup, pagination, update and readback use only two cards (${denyWrite?'deny':'agree'})`,async()=>{
+for(const [mode,denyWrite] of [['workspace-write',false],['workspace-write',true],['full-access',false]])test(`calendar lookup, pagination, update and readback (${mode}, ${denyWrite?'deny':'agree'})`,async()=>{
   let app,step=0,providerCalls=0;const exports=[],cards=[];
   const provider=new FakeCalendarProvider([]);
   await provider.writes.createEvent({uid:'synthetic-event',summary:'Before',startUtc:'2030-10-22T07:00:00Z',endUtc:'2030-10-22T08:00:00Z'});
   const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,
     namespace:'Synthetic-calendar-flow',resolveConversation:()=> 'Synthetic conversation',available:()=>true,
-    profiles:[{ref:'bounded',mode:'workspace-write',revision:1,label:'Synthetic application policy',available:true}],defaultProfileRef:'bounded'});
+    profiles:[{ref:'bounded',mode,revision:1,label:'Synthetic application policy',available:true}],defaultProfileRef:'bounded'});
   const host=createConnectorConversationTools({question,getApplication:()=>app,resolveConversation:()=> 'Synthetic conversation',
     calendar:{binding:()=>({calendarUrl:'https://synthetic.invalid/calendar/',calendarName:'Synthetic',accountRef:'Synthetic calendar',revision:1}),
       readAuthorization:async()=> 'Synthetic authorization'},createCalendarProvider:()=>{providerCalls++;return provider;}});
@@ -48,7 +48,8 @@ for(const denyWrite of [false,true])test(`calendar lookup, pagination, update an
       await pause();
     }
     const task=app.runtime.getTask(submitted.taskId);assert.equal(task.state,denyWrite?'cancelled':'succeeded',JSON.stringify(task.error));
-    assert.equal(cards.length,2);assert.deepEqual(cards.map(item=>item.toolName),['calendar.events','calendar.update']);
+    assert.equal(cards.length,mode==='full-access'?0:2);
+    assert.deepEqual(cards.map(item=>item.toolName),mode==='full-access'?[]:['calendar.events','calendar.update']);
     const writes=app.runtime.readToolExecutions(submitted.taskId).filter(record=>record.toolName==='calendar.update'&&record.state==='confirmed');
     assert.equal(writes.length,denyWrite?0:1);
     if(!denyWrite){assert.equal(exports.length,4);assert.ok(exports.at(-1).result.items.some(item=>item.contentRef.includes('After')));

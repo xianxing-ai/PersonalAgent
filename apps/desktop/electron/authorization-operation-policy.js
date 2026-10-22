@@ -9,7 +9,7 @@ const localTaskTools=new Set([
   'workspace.apply_text_patch','workspace.git_diff_check','workspace.node_check','workspace.npm_build','workspace.npm_test',
 ]);
 export function taskOperationBinding(source) {
-  const readOnly=source.scopes.every(scope=>/:(?:read|list|search|query|status)$/u.test(scope));
+  const readOnly=source.scopes.length>0&&source.scopes.every(scope=>/:(?:read|list|search|query|status)$/u.test(scope));
   return digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort(),
     ...(!readOnly&&!localTaskTools.has(source.toolName)?{argumentsDigest:source.argumentsDigest}:{})});
 }
@@ -31,4 +31,6 @@ export function operationSummary(source) {
   return `执行 ${clean(name)}。`;
 }
 
-export const needsMicrophoneApproval=(mode,purpose)=>!(mode==='full-access'&&purpose==='live');
+// The trusted Live start already carries the user's explicit audio-purpose
+// consent. File/process sandbox modes do not add a second microphone decision.
+export const needsMicrophoneApproval=(_mode,purpose)=>purpose!=='live';

@@ -10,6 +10,7 @@ function fixture(saved={}) {
     compareAndSet(key,previous,next){if(!isDeepStrictEqual(saved[key],previous))return false;saved[key]=structuredClone(next);return true;}};
   const options={store,profiles:[{ref:'restricted',label:'Fake verified sandbox',mode:'workspace-write',revision:1,available:true},
     {ref:'read',label:'Fake read-only sandbox',mode:'read-only',revision:1,available:true},
+    {ref:'full',label:'Explicit full access',mode:'full-access',revision:1,available:true},
     {ref:'unavailable',label:'Unavailable backend',mode:'full-access',revision:1,available:false}],defaultProfileRef:'restricted',
     now:()=>state.now,available:()=>state.available,onChange:()=>state.changes++,
     readBinding:request=>['running','waiting_approval'].includes(state.task)&&/^[a-f0-9]{64}$/.test(request.argumentsDigest)
@@ -86,6 +87,37 @@ test('UI unavailable, cross-conversation responses and injected profile fields f
   assert.throws(()=>f.host.respond({questionId:question.questionId,expectedRevision:1,decision:'allow_once'},'other'),/不属于/);
   assert.throws(()=>f.host.respond({questionId:question.questionId,expectedRevision:1,decision:'allow_once',profileRef:'full'},'conversation-1'),/Invalid/);
   f.respond('deny');await pending;f.host.close();
+});
+
+test('selected full access automatically issues fresh exact receipts for all requirement kinds without a UI card',async()=>{
+  const f=fixture();f.host.selectSandbox({profileRef:'full',expectedRevision:1});f.state.available=false;
+  const first=f.request({requirements:[...f.request().requirements,{requirementId:'account',kind:'connector_session',
+    scopes:['calendar:write'],bindingDigest:H,summary:'Access the configured calendar'}]});
+  const receipt=await f.host.request(first);assert.equal(receipt.decision,'allow_once');assert.deepEqual(f.host.snapshot(),[]);
+  assert.equal(f.host.hasPending(first.runId),false);assert.equal(f.saved.state.questions.at(-1).automatic,'full-access');
+  for(const requirement of first.requirements){f.host.consume(receipt,first,requirement.requirementId,'first:'+requirement.requirementId);
+    f.host.assertRequirement(receipt,first,requirement.requirementId,'first:'+requirement.requirementId);}
+  assert.throws(()=>f.host.consume(receipt,first,'tool','replay'),/已消费/);
+  const second=f.request({taskId:'different-task',runId:'different-run',argumentsDigest:R});
+  const next=await f.host.request(second);assert.notEqual(next.receiptRef,receipt.receiptRef);
+  assert.throws(()=>f.host.consume(receipt,second,'tool','substitution'),/已失效/);
+  f.host.consume(next,second,'tool','second');f.host.assertRequirement(next,second,'tool','second');
+  f.host.selectSandbox({profileRef:'restricted',expectedRevision:2});
+  assert.throws(()=>f.host.assertRequirement(next,second,'tool','second'),/当前不能执行/);
+  await assert.rejects(f.host.request(f.request({runId:'requires-visible-card'})),/不可用/);f.host.close();
+});
+
+test('full access does not accept cancelled, stale, missing-native or restarted execution receipts',async()=>{
+  const f=fixture();f.host.selectSandbox({profileRef:'full',expectedRevision:1});
+  const request=f.request(),receipt=await f.host.request(request);f.state.owner='changed';
+  assert.throws(()=>f.host.consume(receipt,request,'tool','changed'),/已失效/);f.state.owner='owner-1';
+  const cancelled=new AbortController();cancelled.abort();await assert.rejects(f.host.request(f.request({signal:cancelled.signal})),/Invalid/);
+  await assert.rejects(f.host.request(f.request({runId:'stale'}),()=>false),/已变化/);
+  f.options.describeExecution=()=>({required:true,available:false,backend:'unavailable',enforced:false});
+  await assert.rejects(f.host.request(f.request({runId:'no-backend'})),/后端不可用/);f.options.describeExecution=undefined;
+  const reopened=new AuthorizationQuestions(f.options);assert.throws(()=>reopened.consume(receipt,request,'tool','restarted'),/已失效/);
+  const fresh=await reopened.request(f.request({runId:'fresh'}));assert.equal(fresh.decision,'allow_once');
+  assert.deepEqual(reopened.snapshot(),[]);reopened.close();f.host.close();
 });
 
 test('card decision deadline is bounded independently from the original invocation deadline',async()=>{

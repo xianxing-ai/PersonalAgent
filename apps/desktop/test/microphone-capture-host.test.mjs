@@ -20,10 +20,10 @@ function fixture(confirmAuthorization=async()=>true) {
 
 async function tick() { await new Promise(resolve => setImmediate(resolve)); }
 
-test('full access Live start uses the existing sandbox choice without granting device permission before capture',async()=>{
+for(const mode of ['read-only','workspace-write','full-access'])test(`explicit Live start in ${mode} skips the duplicate card and retains the device gate`,async()=>{
   let cards=0;
   const f=fixture(async request=>{
-    if(!needsMicrophoneApproval('full-access',request.purpose))return request.isCurrent();
+    if(!needsMicrophoneApproval(mode,request.purpose))return request.isCurrent();
     cards++;return false;
   });
   await f.host.authorize({purpose:'live'});assert.equal(cards,0);assert.equal(f.host.snapshot().authorized,true);
