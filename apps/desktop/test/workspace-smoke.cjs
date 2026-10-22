@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const {_electron} = require('playwright');
+const {closeDesktop}=require('../test-support/close-desktop.cjs');
 
 (async () => {
   const project = path.resolve(__dirname, '..');
@@ -12,7 +13,7 @@ const {_electron} = require('playwright');
   const app = await _electron.launch({
     executablePath,
     args: [project, '--fake-runtime'],
-    env: {...process.env, ELECTRON_RUN_AS_NODE: undefined, PA_DESKTOP_EPHEMERAL_MODEL: '1'},
+    env: {...process.env, ELECTRON_RUN_AS_NODE: undefined, PA_DESKTOP_EPHEMERAL_MODEL: '1',PA_USER_DATA_DIR:fs.mkdtempSync(path.join(output,'profile-'))},
   });
   const errors = [], shellCases = [];
   app.on('window', page => page.on('pageerror', error => errors.push(error.message)));
@@ -59,6 +60,14 @@ const {_electron} = require('playwright');
   try {
     await app.firstWindow();
     const orb = app.windows().find(page => page.url().includes('mode=orb'));
+    await orb.waitForSelector('.orb-button');
+    // This suite tests expansion. Native hover is covered by electron-smoke;
+    // a real desktop pointer near the orb must not reopen it during this test.
+    const openingSettings=app.waitForEvent('window');
+    await orb.evaluate(()=>window.desktop.openSettings());
+    const settings=await openingSettings;await settings.waitForSelector('#settings');
+    await settings.evaluate(()=>window.localDesktop.call('save',{hover:false}));
+    await settings.close();
     await orb.evaluate(() => window.desktop.invoke('orb.open'));
     const panel = app.windows().find(page => page.url().includes('mode=panel'));
     await panel.waitForSelector('#panel-expand');
@@ -147,7 +156,7 @@ const {_electron} = require('playwright');
     fs.writeFileSync(path.join(output,'shell-receipt.json'),JSON.stringify({profile:'explicit_fake_runtime',bounds,shellCases,pageErrors:errors},null,2));
     console.log('PASS: flat opaque window shells in both themes and maximize/restore; expanded workspace starts maximized; connectors, orb, conversations and native captures verified; screenshots: ' + output);
   } finally {
-    await app.close();
+    await closeDesktop(app);
   }
 })().catch(error => {
   console.error(error);
