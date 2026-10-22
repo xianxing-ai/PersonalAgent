@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "scope": "synthetic-user-decision-real-runtime-native-command",
+  "modelCalls": 0,
+  "accountCalls": 0,
+  "helperSha256": "b15a9f96fe1c53e383ce8743b14508c06c6bd38cc27aaad550d4a6e943796600",
+  "helperFilesSha256": {
+    "WindowsJobProcessHost.dll": "12286997dc76b9b0eab322c72505d4adfefa7b3594f47652f46a987598df6085",
+    "WindowsJobProcessHost.deps.json": "4d354b8ced12feda99c6d3c8869e0b8d0694d68a150d07687e078ca568446315",
+    "WindowsJobProcessHost.runtimeconfig.json": "ca1a6b5b185174698e0f5f9ae732ad3d2d3ed5b122ed666f35cc214283e83b7f"
+  },
+  "taskId": "de2faa3c-cd40-4ccc-a4af-3210a480cc19",
+  "runId": "host-tool-de2faa3c-cd40-4ccc-a4af-3210a480cc19",
+  "questionId": "81051a1b-8d84-4cf3-9c5b-0983898be774",
+  "originalArgumentsDigest": "db4bdcc27edb975722d7d255ce727099d6caec07638bd7bc96a915863de2ed84",
+  "native": {
+    "runId": "host-tool-de2faa3c-cd40-4ccc-a4af-3210a480cc19",
+    "argumentsDigest": "db4bdcc27edb975722d7d255ce727099d6caec07638bd7bc96a915863de2ed84",
+    "backend": "windows-psec",
+    "enforced": true,
+    "outcome": "exited",
+    "exitCode": 0,
+    "executionStarted": true,
+    "stopped": true,
+    "sideEffects": "possible"
+  },
+  "beforeApprovalRecipeExecutions": 0,
+  "confirmedRecipeExecutions": 1,
+  "repeatExecutions": 0,
+  "substitutedExecutions": 0,
+  "unavailableFallbackExecutions": 0,
+  "policyUsesRemaining": 0
+}
