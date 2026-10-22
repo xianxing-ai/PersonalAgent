@@ -25,6 +25,10 @@ internal static class Program
         try
         {
             if (args.Length != 1) throw new InvalidOperationException();
+            if (args[0] == "--architecture")
+            {
+                Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(NativeArchitecture())); return 0;
+            }
             if (args[0] is "--smoke-probe" or "--smoke-tree" or "--smoke-grandchild") return SmokeChild(args[0]);
             if (args[0] is not ("--smoke" or "--run-check" or "--run-psec-acceptance" or "--smoke-supervisor" or "--compatibility")) throw new InvalidOperationException();
             stage = "open-current-token";
@@ -47,6 +51,7 @@ internal static class Program
             // Fixed CI operations; no caller-supplied command line, script, token, user or path.
             if (args[0] == "--run-psec-acceptance")
             {
+                NativeArchitecture();
                 string node = CanonicalFile(Path.Combine(Path.GetDirectoryName(ResolveNpm())!, "node.exe"));
                 string script = CanonicalFile(Path.Combine(Cwd, "scripts", "ci", "windows-standard-token", "psec-acceptance.mjs"));
                 using var acceptance = Start(token.Value, sid, session, node, Quote(node) + " " + Quote(script),
@@ -68,6 +73,18 @@ internal static class Program
                 + (error is Win32Exception native ? native.NativeErrorCode : error.HResult) + ")");
             return 125;
         }
+    }
+
+    static object NativeArchitecture()
+    {
+        stage = "native-architecture";
+        string process = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+        string os = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
+        string? expected = Environment.GetEnvironmentVariable("PA_PSEC_EXPECTED_ARCH");
+        if (process is not ("x64" or "arm64") || process != os
+            || (expected != null && (expected is not ("x64" or "arm64") || expected != process)))
+            throw new InvalidOperationException();
+        return new { processArchitecture = process, osArchitecture = os, framework = RuntimeInformation.FrameworkDescription };
     }
 
     static Handle SelectToken(IntPtr own, string sid, int session)

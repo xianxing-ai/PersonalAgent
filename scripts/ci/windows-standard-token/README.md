@@ -3,7 +3,8 @@
 Connected to the Windows ci.yml path behind the actual short smoke gate. This is not a product execution backend and accepts no arbitrary
 command, user, token, directory or credentials. Product native helper remains unchanged.
 
-The executable accepts `--smoke`, `--run-check` or `--run-psec-acceptance`. `--run-check` executes the original fixed
+The executable accepts `--smoke`, `--compatibility`, `--run-check` or `--run-psec-acceptance`;
+`--architecture` only reports fixed native OS/process/.NET metadata. `--run-check` executes the original fixed
 `npm.cmd run check` through a canonical, non-reparse System32 cmd.exe and npm.cmd found in
 the current job PATH. It keeps the exact current environment and cwd. Paths containing shell
 metacharacters are rejected, not rewritten. Non-elevated current tokens use CreateProcessW;
@@ -33,7 +34,7 @@ and handle behavior must be verified on Windows before CI adoption.
 
 ## Short smoke (not the full check)
 
-From the original checkout/cwd on a Windows x64 Runner with preinstalled .NET 8 SDK/runtime:
+From the original checkout/cwd on a Windows x64 or ARM64 Runner with native Node and preinstalled native .NET 8 SDK/runtime:
 
 ```powershell
 pwsh -File scripts/ci/windows-standard-token/smoke.ps1
@@ -74,6 +75,19 @@ current real Windows result and Hosted boundary are recorded in
 `docs/competition/evidence/PSEC_REAL_COMPLETION_20261022.md`.
 
 ## Verification status
+
+Manual Runner probe target `psec-strict-arm64` selects the standard
+`windows-11-vs2026-arm` image and native Node 24.15.0 ARM64. It leaves the existing
+`psec-strict` Windows Server x64 target and ordinary probe targets selectable.
+The native toolchain gate requires Node/OS/dotnet Host agreement plus installed
+.NET 8 SDK/runtime; helper and launcher publish with the matching explicit RID.
+The actual ordinary-user acceptance rechecks both apphosts/process architectures,
+.NET 8 framework and original OS architecture. Emulation or an unknown architecture
+fails. The original Framework64 csc checks remain required, with no alternate path
+or skip; that legacy compatibility result alone is not native ARM64 PSEC evidence.
+Both original REQUIRED scenarios and their zero-skip TAP gates remain mandatory.
+See `docs/competition/evidence/PSEC_HOSTED_ARM64_CANDIDATE_20261022.md` for preparation
+evidence and the remaining Hosted run.
 
 On head 12083a7b the official Windows job 119340508898 compiled this tool and actually
 passed the restricted-own smoke, including both Job-close and killed-launcher descendant

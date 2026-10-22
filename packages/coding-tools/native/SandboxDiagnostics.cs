@@ -64,6 +64,7 @@ internal static partial class Program
             catch { return null; }
         }
         Console.WriteLine(JsonSerializer.Serialize(new { backend = "windows-psec", diagnosticOnly = true, enforced = false,
+            runtime = new { framework = RuntimeInformation.FrameworkDescription },
             os = new { version = Environment.OSVersion.Version.ToString(),
                 kernelVersion = Version(Path.Combine(system, "kernel32.dll")),
                 architecture = RuntimeInformation.OSArchitecture.ToString(), processArchitecture = RuntimeInformation.ProcessArchitecture.ToString() },
