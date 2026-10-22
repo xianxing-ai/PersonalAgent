@@ -10,6 +10,9 @@ import {PROTOCOL_VERSION,validateToolValue} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
 import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
+import {AuthorizationQuestions,createRuntimeApplication} from '@personal-agent/runtime/application';
+import {LayaActionChoiceService} from '@personal-agent/cognition';
+import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 
 // Explicit Synthetic decision service; these tests do not certify the native
 // sandbox or the integrated Main/Runtime question persistence.
@@ -122,6 +125,94 @@ test('Synthetic F15 helper predeclares metadata and summary on the original run 
   assert.throws(()=>callbacks.authorizeMetadata({...request,stage:'completion',value:{...summary,raw:'Synthetic private'}}));
   assert.throws(()=>callbacks.authorizeMetadata({...request,authorization:{...request.authorization,runId:'forged'}}));
   host.revoke();assert.throws(()=>callbacks.authorizeMetadata(request));
+});
+
+test('Synthetic original F15 decision exports only its bound selectedId after the same question and rejects replacement',async t=>{
+  const {open}=await workspaceBindingFixture(t),question=workspaceQuestions(),host=open({question,findExecutable:()=>undefined});
+  const application=workspaceRuntime();let callbacks,invocation;
+  application.configureCodingRepairSourceExport=(projectSource,authorizeMetadata)=>{callbacks={projectSource,authorizeMetadata};};
+  application.readAuthorizationQuestionInvocation=()=>invocation;host.bindApplication(application);
+  const taskId=randomUUID(),owner=randomUUID(),runId='host-tool-'+taskId,operationId='Synthetic-original-decision';
+  const args={context:'Synthetic original F15 context',requestId:'Synthetic-original-request',candidates:[
+    {id:'bound-coding-operation',description:'Synthetic bounded operation'},{id:'owned-review',description:'Synthetic review'}]};
+  const scope={taskId,runId,deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal};
+  invocation={toolName:'decision.choose_candidate',toolVersion:'1.0.0',arguments:args};
+  const original={commandId:operationId,...invocation,deadline:scope.deadline};
+  application.runtime.saveCheckpoint(owner,'coding-repair:graph',{version:1,sessionId:'Synthetic-session',
+    input:{codingRepair:{session:{taskId:owner,sessionId:'Synthetic-session'}}}});
+  application.runtime.saveCheckpoint(taskId,'coding-repair:parent',{taskId:owner,operationId});
+  application.runtime.saveCheckpoint(owner,'coding-repair:host:'+operationId,{localTaskId:taskId,request:original});
+  application.runtime.saveCheckpoint(owner,'application-profile','huawei_ict_agentarts');
+  application.runtime.saveCheckpoint(owner,'application-deadline',scope.deadline);
+  host.prepareAuthorization(workspaceOperation(host.tools.find(tool=>tool.descriptor.name==='workspace.list_entries'),{path:'.'},owner));
+  host.prepareAuthorization(scope);
+  const requirements=question.entries.get(JSON.stringify([taskId,runId])).requirements;
+  assert.ok(requirements.some(item=>item.requirementId==='workspace-metadata-export'&&item.kind==='export'));
+  const request={taskId:owner,authorization:{taskId,runId},deadline:scope.deadline,signal:scope.signal,
+    stage:'receipt',value:{selectedId:'owned-review'}};
+  assert.throws(()=>callbacks.authorizeMetadata(request),'preparation alone grants no export');question.allow(scope);
+  assert.deepEqual(callbacks.authorizeMetadata(request),{selectedId:'owned-review'});
+  assert.throws(()=>callbacks.authorizeMetadata({...request,value:{selectedId:'invented'}}));
+  assert.throws(()=>callbacks.authorizeMetadata({...request,value:{selectedId:'owned-review',reason:'Synthetic typed detail'}}));
+  assert.throws(()=>callbacks.authorizeMetadata({...request,stage:'initial'}));
+  invocation={...invocation,arguments:{...args,context:'Synthetic replacement'}};
+  assert.throws(()=>callbacks.authorizeMetadata(request),'changed original arguments cannot consume an old export');
+});
+
+test('original Runtime decision, unified question and consumed selectedId lease retain exact host identity with explicit Fake inference',async t=>{
+  const {open}=await workspaceBindingFixture(t);let application,callbacks;
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,
+    namespace:'Synthetic-coding-decision',resolveConversation:()=> 'Synthetic-coding-conversation',available:()=>true,
+    profiles:[{ref:'Synthetic',label:'Synthetic application policy; no native process',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'Synthetic'});
+  const host=open({question,findExecutable:()=>undefined});
+  const chooser=new LayaActionChoiceService({infer:async payload=>{
+    const ids=Object.keys(payload.questions.action.criteria);
+    return {answers:{action:{choice:ids[0],probabilities:{[ids[0]]:0.9,[ids[1]]:0.1},answer_confidence:0.9,confidence:0.53}}};
+  }});
+  application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',hostUserNamespace:'Synthetic-coding-decision',tools:host.tools,
+    codingRepair:{image:{bindingId:'Synthetic-unused-image',advance:async()=>assert.fail('no image call'),receiptSecret:async()=>assert.fail('no image call')}},
+    proactiveDecision:{localChooser:chooser},requiresToolAuthorization:()=>true,
+    requestToolAuthorization:scope=>{host.prepareAuthorization(scope);return question.requestToolAuthorization(scope);}});
+  t.after(()=>{question.close();application.close();});
+  const configure=application.configureCodingRepairSourceExport.bind(application);
+  application.configureCodingRepairSourceExport=(projectSource,authorizeMetadata)=>{callbacks={projectSource,authorizeMetadata};configure(projectSource,authorizeMetadata);};
+  host.bindApplication(application);
+  const owner=application.runtime.submitTask({goal:'Synthetic F15 owner',conversationId:'Synthetic-coding-conversation',idempotencyKey:'owner'});
+  application.runtime.transitionTask(owner.taskId,'planning');application.runtime.transitionTask(owner.taskId,'running');
+  const deadline=new Date(Date.now()+60_000).toISOString();
+  application.runtime.saveCheckpoint(owner.taskId,'application-profile','huawei_ict_agentarts');
+  application.runtime.saveCheckpoint(owner.taskId,'application-deadline',deadline);
+  application.runtime.saveCheckpoint(owner.taskId,'desktop-coding-scope',host.readWorkspaceBinding().bindingId);
+  application.runtime.saveCheckpoint(owner.taskId,'coding-repair:graph',{version:1,sessionId:'Synthetic-session',
+    input:{codingRepair:{session:{taskId:owner.taskId,sessionId:'Synthetic-session'}}}});
+  const args={context:'Synthetic exact current F15 decision',requestId:'Synthetic-request',candidates:[
+    {id:'bound-coding-operation',description:'Synthetic bounded current operation'},{id:'owned-review',description:'Synthetic review'}]};
+  const request={commandId:'Synthetic-original-decision',toolName:'decision.choose_candidate',toolVersion:'1.0.0',arguments:args,deadline};
+  const prepared=application.prepareHostToolTask({commandId:request.commandId,toolName:request.toolName,toolVersion:request.toolVersion,deadline});
+  application.runtime.saveCheckpoint(prepared.taskId,'coding-repair:parent',{taskId:owner.taskId,operationId:request.commandId});
+  application.runtime.saveCheckpoint(owner.taskId,'coding-repair:host:'+request.commandId,{localTaskId:prepared.taskId,request});
+  application.finalizeHostToolTask({taskId:prepared.taskId,commandId:request.commandId,arguments:args,expectedTaskRevision:prepared.revision});
+  let card;
+  for(let attempt=0;attempt<200&&!card;attempt++) {
+    card=question.snapshot().find(item=>item.state==='pending');
+    if(!card)await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  assert.ok(card,JSON.stringify(application.runtime.getTask(prepared.taskId).error));
+  assert.equal(card.taskId,prepared.taskId);assert.equal(card.sourceApprovalId,'host-tool-'+prepared.taskId);
+  assert.deepEqual(card.requirements.map(item=>item.kind),['tool','connector_session','export']);
+  assert.equal(application.readHostToolTask(prepared.taskId).confirmed,undefined);
+  question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_once'},card.conversationId);
+  await application.waitForHostToolTask(prepared.taskId);
+  const read=application.readHostToolTask(prepared.taskId);assert.equal(read.task.state,'succeeded',JSON.stringify(read.task.error));
+  assert.deepEqual(read.confirmed.result,{selectedId:'bound-coding-operation'});
+  const scope={taskId:owner.taskId,stage:'receipt',value:read.confirmed.result,
+    authorization:{taskId:prepared.taskId,runId:card.sourceApprovalId},deadline,signal:new AbortController().signal};
+  assert.deepEqual(callbacks.authorizeMetadata(scope),read.confirmed.result);
+  const lease=application.runtime.loadCheckpoint(prepared.taskId,'authorization-question-export:'+card.sourceApprovalId+':workspace-metadata-export');
+  assert.equal(lease.questionId,card.questionId);assert.equal(lease.resultDigest,createHash('sha256').update(JSON.stringify(read.confirmed.result)).digest('hex'));
+  assert.ok(lease.leaseRef);assert.equal(application.runtime.policy.get(card.sourceApprovalId).usesRemaining,0);
+  assert.throws(()=>callbacks.authorizeMetadata({...scope,value:{...scope.value,scores:[0.9,0.1]}}));
+  assert.equal(application.runtime.readToolExecutions(prepared.taskId).length,1,'export never executes the decision again');
 });
 
 async function workspaceBindingFixture(t) {
