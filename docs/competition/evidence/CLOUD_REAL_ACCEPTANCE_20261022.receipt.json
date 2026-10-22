@@ -1,0 +1,181 @@
+{
+  "kind": "cloud_real_acceptance",
+  "version": 1,
+  "profile": "huawei_ict_agentarts",
+  "sourceRevision": "c15855f5ccceb76d6bf794203d9ebfbe9cb83cb3",
+  "environment": {
+    "observationsCurrent": true,
+    "specRevision": "393",
+    "networkPolicy": "unrestricted/enforced",
+    "vpnConfigured": false,
+    "tcpDomains": [],
+    "tcpIpRanges": [],
+    "secrets": [],
+    "runtimeVariables": [],
+    "outboundIdentities": [],
+    "capabilities": []
+  },
+  "reads": [
+    {
+      "id": "owned_ping",
+      "method": "GET",
+      "url": "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/ping?endpoint=Latest",
+      "startedAtUtc": "2026-10-22T04:20:54.742828+00:00",
+      "curlExit": 0,
+      "httpMetadata": "404  2.492212 0",
+      "bodyBytes": 61,
+      "bodySha256": "196272b9b94d22a13e8bf9e7f4def080b66f9d1f6337cd5edf87d73ce69a5e9f",
+      "authenticated": false,
+      "redirectFollowed": false,
+      "errorCategory": null,
+      "deploymentVersionReadback": null,
+      "platformTraceReadback": null,
+      "httpStatus": 404,
+      "status": "not_verified"
+    },
+    {
+      "id": "owned_bindings_latest",
+      "method": "GET",
+      "url": "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/invocations/bindings?endpoint=Latest",
+      "startedAtUtc": "2026-10-22T04:20:57.248709+00:00",
+      "curlExit": 0,
+      "httpMetadata": "401  2.604088 0",
+      "bodyBytes": 59,
+      "bodySha256": "d1676ffd7dd0fe748df6790d5a244aa7ef379728a2cdfda6556854eef693c3b5",
+      "authenticated": false,
+      "redirectFollowed": false,
+      "errorCategory": null,
+      "deploymentVersionReadback": null,
+      "platformTraceReadback": null,
+      "httpStatus": 401,
+      "status": "blocked"
+    },
+    {
+      "id": "owned_bindings_pin",
+      "method": "GET",
+      "url": "https://defaultgw-gztdqobzmm.cn-southwest-2.huaweicloud-agentarts.com/runtimes/pa-owned-bindings-0dae0ff5-api/invocations/bindings?endpoint=arm64-v5-d92a17a4-r3",
+      "startedAtUtc": "2026-10-22T04:20:59.862508+00:00",
+      "curlExit": 0,
+      "httpMetadata": "401  2.105814 0",
+      "bodyBytes": 59,
+      "bodySha256": "d1676ffd7dd0fe748df6790d5a244aa7ef379728a2cdfda6556854eef693c3b5",
+      "authenticated": false,
+      "redirectFollowed": false,
+      "errorCategory": null,
+      "deploymentVersionReadback": null,
+      "platformTraceReadback": null,
+      "httpStatus": 401,
+      "status": "blocked"
+    },
+    {
+      "id": "swr_manifest",
+      "method": "GET",
+      "url": "https://swr.cn-southwest-2.myhuaweicloud.com/v2/zemeng5208-personal-agent/personal-agent-owned/manifests/sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "startedAtUtc": "2026-10-22T04:21:01.979546+00:00",
+      "curlExit": 0,
+      "httpMetadata": "401 application/json;charset=UTF-8 3.201266 0",
+      "bodyBytes": 61,
+      "bodySha256": "27feac86eae9f643b3f545105e26438ce7c9e4cc5f3e55a1a7908b96bc68ac36",
+      "authenticated": false,
+      "redirectFollowed": false,
+      "errorCategory": null,
+      "deploymentVersionReadback": null,
+      "platformTraceReadback": null,
+      "httpStatus": 401,
+      "status": "blocked"
+    }
+  ],
+  "matrix": [
+    {
+      "item": "current_deployment_version",
+      "status": "blocked",
+      "reason": "No current trusted AgentArts account/session, inbound authorization, independent WSS token or observation/evaluation SDK credential binding available. Historical manifests are not current readback.",
+      "executionStatus": "not_run"
+    },
+    {
+      "item": "authenticated_api_capability",
+      "status": "blocked",
+      "reason": "No current trusted AgentArts account/session, inbound authorization, independent WSS token or observation/evaluation SDK credential binding available. Historical manifests are not current readback.",
+      "executionStatus": "not_run"
+    },
+    {
+      "item": "platform_trace",
+      "status": "blocked",
+      "reason": "No current trusted AgentArts account/session, inbound authorization, independent WSS token or observation/evaluation SDK credential binding available. Historical manifests are not current readback.",
+      "executionStatus": "not_run"
+    },
+    {
+      "item": "real_tool_loop",
+      "status": "blocked",
+      "reason": "No current trusted AgentArts account/session, inbound authorization, independent WSS token or observation/evaluation SDK credential binding available. Historical manifests are not current readback.",
+      "executionStatus": "not_run"
+    },
+    {
+      "item": "platform_evaluation",
+      "status": "blocked",
+      "reason": "No current trusted AgentArts account/session, inbound authorization, independent WSS token or observation/evaluation SDK credential binding available. Historical manifests are not current readback.",
+      "executionStatus": "not_run"
+    },
+    {
+      "item": "live_no_silent_fallback",
+      "status": "blocked",
+      "reason": "No current trusted AgentArts account/session, inbound authorization, independent WSS token or observation/evaluation SDK credential binding available. Historical manifests are not current readback.",
+      "executionStatus": "not_run"
+    }
+  ],
+  "sideEffects": {
+    "deployments": 0,
+    "modelCalls": 0,
+    "toolExecutions": 0,
+    "layaStarts": 0,
+    "builds": 0,
+    "installs": 0,
+    "retries": 0
+  },
+  "notes": [
+    "HTTP status/unauthenticated gateway reachability does not prove owned runtime execution, deployment version or business success.",
+    "Socket ECONNRESET historical root cause remains unknown.",
+    "Source 1.8 is not proven deployed.",
+    "Issue459 read through connected GitHub plugin: open, updatedAt 2026-10-21T10:52:56Z."
+  ],
+  "documentReadDigests": [
+    {
+      "path": "docs/PRD.md",
+      "sha256": "eedf14f63813a28fd0c82b6ddf825666aef271051529568716555fbe8116a237"
+    },
+    {
+      "path": "docs/design/CURRENT_DESIGN_20261015.md",
+      "sha256": "bb367bd3aef1131924d0c67448b1613c1cd42019a3d3a589126c111f1ef2caf6"
+    },
+    {
+      "path": "docs/interfaces/CURRENT_INTERFACE_CATALOG.md",
+      "sha256": "1f815ee270bc8ebd7b52b96b985661e4c7fbd92bafe785e72efdb22d5a642271"
+    },
+    {
+      "path": "docs/MODULE_ASSIGNMENTS.md",
+      "sha256": "877ce12146b43f330518f323fe3d11b865ab1cda63cf7451733d8884c3276fb9"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "2ca2005ddbe06c8576a0d7df6d58c29805ffe488adfa680805eee09af15f0b90"
+    }
+  ],
+  "manualPreflight": {
+    "command": "node tests/manual/agentarts/owned-binding-live.mjs --plan --group all",
+    "exitCode": 1,
+    "errorCode": "ERR_MODULE_NOT_FOUND",
+    "missingPackage": "@personal-agent/contracts",
+    "actualNodeVersion": "24.19.0",
+    "declaredNodeVersion": "24.15.0",
+    "networkCalls": 0,
+    "buildAttempted": false
+  },
+  "issueReadback": {
+    "source": "connected_github_plugin",
+    "repository": "xianxing-ai/PersonalAgent",
+    "issueNumber": 459,
+    "state": "open",
+    "updatedAtUtc": "2026-10-21T10:52:56Z",
+    "sourceIdentityUnique": false
+  }
+}
