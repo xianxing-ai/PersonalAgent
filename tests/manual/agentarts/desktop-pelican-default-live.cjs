@@ -185,7 +185,7 @@ async function installPublicDialogAutomation(app, inputs) {
 
 async function launch({executablePath,userData,workspace,node,npm,fixture}, report) {
   const {_electron} = require('playwright');
-  const environment = {...process.env,ELECTRON_RUN_AS_NODE:undefined,
+  const environment = {...Object.fromEntries(Object.entries(process.env).filter(([key])=>!/^PA_/i.test(key))),ELECTRON_RUN_AS_NODE:undefined,
     PA_RUNTIME_PROFILE:'huawei_ict_agentarts',PA_USER_DATA_DIR:undefined,
     PA_DESKTOP_TEST_USER_DATA:userData,PA_DESKTOP_MODEL_MODE:undefined,
     PA_DESKTOP_EPHEMERAL_MODEL:undefined,PA_DESKTOP_SYNTHETIC_MVP:undefined,
