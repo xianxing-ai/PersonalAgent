@@ -23,6 +23,7 @@ const stamp=value=>new Date(value).toISOString().replace(/[-:]/g,'').replace(/\.
 function publicIcs(value){return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//PersonalAgent//Public CalDAV acceptance//EN',
   'BEGIN:VEVENT','UID:'+value.uid,'DTSTAMP:'+stamp(Date.now()),'DTSTART:'+stamp(value.startUtc),'DTEND:'+stamp(value.endUtc),
   'SUMMARY:'+value.summary,'SEQUENCE:0','END:VEVENT','END:VCALENDAR',''].join('\r\n');}
+function calendarUpdateArgs(expected){return{externalId:expected.uid,summary:expected.summary,startUtc:expected.startUtc,endUtc:expected.endUtc};}
 function strongEtag(value){assert.ok(typeof value==='string'&&/^"[\x21\x23-\x7e\x80-\xff]*"$/u.test(value),'strong ETag required');return value;}
 async function http(method,url,{body,headers={}}={}){
   const response=await fetch(url,{method,redirect:'error',signal:AbortSignal.timeout(10_000),
@@ -119,6 +120,7 @@ async function main(){
   const uid='pa-public-'+randomUUID(),start=Math.ceil((Date.now()+86400_000)/60_000)*60_000;
   const before={uid,summary:'Public calendar original '+uid,startUtc:new Date(start).toISOString(),endUtc:new Date(start+3600_000).toISOString()};
   const expected={uid,summary:'Public calendar updated '+uid,startUtc:new Date(start+7200_000).toISOString(),endUtc:new Date(start+10800_000).toISOString()};
+  const updateArgs=calendarUpdateArgs(expected);
   const resource=new URL(encodeURIComponent(uid)+'.ics',url).href,database=path.join(userData,'runtime.sqlite'),receipt=path.join(output,'receipt.json');
   const report={kind:'real_radicale_desktop_agentarts_calendar_update',profile:'huawei_ict_agentarts',status:'in_progress',stage:'prepare_real_collection',
     startedAt:new Date().toISOString(),mode,publicFixture:{uid,before,expected},turns:[],questions:[],fakeRuntime:false,fakeProvider:false,fakeModel:false,
@@ -147,10 +149,10 @@ async function main(){
       globalThis.__paCalendarCardObservation={ids,observer};
     });
     report.stage='original_conversation_calendar_update';persist();
-    const parent=await submit(session,database,'公开专用真实日历验收。请实际调用当前目录 calendar.update 修改唯一事件，精确完整参数为'+JSON.stringify(expected)
+    const parent=await submit(session,database,'公开专用真实日历验收。请实际调用当前目录 calendar.update 修改唯一事件，精确完整参数为'+JSON.stringify(updateArgs)
       +'。此UID只属于公开测试集合；不要创建、取消、修改其他事件，不要伪造工具回执。实际执行完成后简短确认。',
       mode==='full-access'?[]:['subagent.dispatch','calendar.update'],
-      {purpose:'public_real_calendar_update',toolName:'calendar.update',arguments:expected},report,persist);
+      {purpose:'public_real_calendar_update',toolName:'calendar.update',arguments:updateArgs},report,persist);
     for(const question of report.questions)await session.panel.locator(`[data-question-id="${question.questionId}"]`).waitFor({state:'detached'});
     const observed=await session.panel.evaluate(()=>{
       const tracker=globalThis.__paCalendarCardObservation;tracker.observer.disconnect();delete globalThis.__paCalendarCardObservation;
@@ -170,5 +172,5 @@ async function main(){
   }finally{if(session)await close(session.app);report.finishedAt=new Date().toISOString();persist();
     console.log(JSON.stringify({status:report.status,stage:report.stage,receipt,publicUid:uid}));}
 }
-module.exports={testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback};
+module.exports={testCollection,publicIcs,strongEtag,verifyCalendarGet,verifyCards,readback,calendarUpdateArgs};
 if(require.main===module)main().catch(()=>{console.error('Real public CalDAV acceptance prerequisites unavailable; no credentials or private contents printed.');process.exitCode=1;});

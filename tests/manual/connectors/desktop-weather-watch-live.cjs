@@ -9,6 +9,7 @@ const {createHash}=require('node:crypto');
 const {DatabaseSync}=require('node:sqlite');
 const {_electron}=require('playwright');
 const {approveQuestions}=require('./desktop-authorization-live.cjs');
+const {electronLaunchOptions}=require('../agentarts/desktop-pelican-default-live.cjs');
 const root=path.resolve(__dirname,'../../..'),desktop=path.join(root,'apps/desktop');
 const sha=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const hashValue=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -104,11 +105,15 @@ function validateWatchRead(value,row,watch,startedAt){
   assert.equal(value.tasks.find(task=>task.taskId===schedule.task_id)?.state,'succeeded');
   return schedule;
 }
+function weatherLaunchOptions(executablePath,userData,environment=process.env){
+  const options=electronLaunchOptions({executablePath,userData},environment);
+  options.args=[...options.args.slice(0,-1),'--pa-public-weather-watch-acceptance='+path.basename(path.dirname(userData))];
+  return options;
+}
 async function launch(executablePath,userData,report){
-  const env={...process.env,ELECTRON_RUN_AS_NODE:undefined};for(const key of Object.keys(env))if(key.startsWith('PA_'))delete env[key];
-  env.PA_RUNTIME_PROFILE='huawei_ict_agentarts';env.PA_DESKTOP_TEST_USER_DATA=userData;
-  const app=await _electron.launch({executablePath,args:[desktop,'--pa-public-weather-watch-acceptance='+path.basename(path.dirname(userData))],env});
-  try{await app.firstWindow();const orb=await pageFor(app,'orb');const opened=await orb.evaluate(()=>window.desktop.invoke('orb.open'));assert.equal(opened.ok,true);
+  const app=await _electron.launch(weatherLaunchOptions(executablePath,userData));
+  try{assert.equal(await app.evaluate(()=>typeof globalThis.__playwright_run==='function'),true,'original Playwright readiness loader must be installed');
+    const orb=await pageFor(app,'orb');const opened=await orb.evaluate(()=>window.desktop.invoke('orb.open'));assert.equal(opened.ok,true);
     const panel=await pageFor(app,'panel');await panel.waitForSelector('#send');const value=await snapshot(panel);
     assert.equal(value.fake,false);assert.equal(value.fakeModel,false);assert.equal(value.agentArts?.configured,true,'original encrypted config must load');
     assert.notEqual(value.laya?.ready,true,'this runner must not start another local Laya process');
@@ -235,6 +240,6 @@ async function main(){
     process.exitCode=1;
   }finally{report.finishedAt=new Date().toISOString();persist();console.log(JSON.stringify({status:report.status,stage:report.stage,watchId:report.watchId,receipt}));}
 }
-module.exports={audit,publicAudit,validatePublicRead,validateWatchRead,submit,launch,snapshot,pageFor,close,capture,wait,approveConversationQuestions};
+module.exports={audit,publicAudit,validatePublicRead,validateWatchRead,submit,launch,snapshot,pageFor,close,capture,wait,approveConversationQuestions,weatherLaunchOptions};
 if(require.main===module)main().catch(error=>{console.error(JSON.stringify({status:'preflight_failed',code:error?.code??'PRECONDITION_FAILED',
   message:String(error?.message??'Acceptance prerequisites unavailable').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]').slice(0,300)}));process.exitCode=1;});
