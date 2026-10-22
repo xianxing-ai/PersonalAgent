@@ -1,0 +1,66 @@
+{
+  "recordedAt": "2026-10-22T04:21:25.262Z",
+  "profile": "huawei_ict_agentarts",
+  "classification": "prerequisite_observation_only",
+  "platform": "linux",
+  "arch": "x64",
+  "nodeActual": "v24.19.0",
+  "nodeRequired": "24.15.0",
+  "head": {
+    "command": [
+      "git",
+      "rev-parse",
+      "HEAD"
+    ],
+    "exitCode": 0,
+    "errorCode": null,
+    "stdout": "c15855f5ccceb76d6bf794203d9ebfbe9cb83cb3",
+    "stderr": ""
+  },
+  "npm": {
+    "command": [
+      "npm",
+      "--version"
+    ],
+    "exitCode": 0,
+    "errorCode": null,
+    "stdout": "11.9.0",
+    "stderr": ""
+  },
+  "windowsShell": {
+    "command": [
+      "pwsh",
+      "-NoProfile",
+      "-Command",
+      "$PSVersionTable.PSVersion.ToString()"
+    ],
+    "exitCode": null,
+    "errorCode": "ENOENT",
+    "stdout": "",
+    "stderr": ""
+  },
+  "dependenciesPresent": false,
+  "runtimeBuilt": false,
+  "microphoneDeviceDirectoryPresent": false,
+  "desktopPelicanManualEntries": [],
+  "manualEntries": {
+    "tests/manual/desktop/laya-existing-health.mjs": true,
+    "tests/manual/windows/system-observation-acceptance.mjs": true,
+    "apps/desktop/test/conversation-pelican-wiring.test.mjs": true,
+    "apps/desktop/electron/live-voice-host.js": true
+  },
+  "actualDeviceAcceptance": false,
+  "layaStarted": false,
+  "businessInference": false,
+  "cloudRequests": 0,
+  "taskSubmissions": 0,
+  "writesToUserWorkspace": 0,
+  "outcome": "blocked",
+  "blockers": [
+    "actual_windows_user_desktop_unavailable",
+    "isolated_worktree_dependencies_not_installed",
+    "current_source_not_built",
+    "trusted_current_host_configuration_not_attached",
+    "exclusive_laya_windows_slot_not_allocated"
+  ]
+}
