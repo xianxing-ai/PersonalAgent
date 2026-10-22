@@ -6,4 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../LocalJournalDirectory.cs" Link="LocalJournalDirectory.cs" />
+  </ItemGroup>
 </Project>

@@ -72,7 +72,8 @@ internal sealed class ActiveExecution
     }
 }
 
-internal sealed class HostService(HostLaunchBinding launch, HostWire wire, RunJournal journal)
+internal sealed class HostService(HostLaunchBinding launch, HostWire wire, RunJournal journal,
+    Action<NotepadObservationStage>? observationDiagnostic = null)
 {
     private const string Version = "0.1.0";
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -120,7 +121,7 @@ internal sealed class HostService(HostLaunchBinding launch, HostWire wire, RunJo
         var sessionId = RandomId();
         // Capture pre-existing windows before acknowledging readiness. A trusted client
         // may launch a new target after hello_ack; bind has no acknowledgement frame.
-        var targets = new NotepadTargets();
+        var targets = new NotepadTargets(diagnostic: observationDiagnostic);
         await SendAsync(pipe, new
         {
             kind = "hello_ack", protocolVersion = Version, requestId = helloRequest,

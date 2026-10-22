@@ -4,6 +4,7 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Security.Cryptography;
+using PersonalAgent.WindowsHost.Service;
 
 // This process owns the actual Windows pipe client handle. Node's public
 // net.Socket API does not expose that handle for OS peer-PID verification.
@@ -13,10 +14,12 @@ Process? host = null;
 var verified = false;
 try
 {
-    if (args.Length != 2 || args[0] != "--host" || !Path.IsPathFullyQualified(args[1]) ||
+    if ((args.Length != 2 && args.Length != 4) || args[0] != "--host" ||
+        (args.Length == 4 && args[2] != "--journal-directory") || !Path.IsPathFullyQualified(args[1]) ||
         !string.Equals(Path.GetFileName(args[1]), "WindowsHost.Host.exe", StringComparison.OrdinalIgnoreCase))
         throw new ArgumentException("Invalid Host executable");
     var hostPath = Path.GetFullPath(args[1]);
+    var journalDirectory = args.Length == 4 ? LocalJournalDirectory.Validate(args[3]) : null;
     if (!File.Exists(hostPath) || !File.Exists(Path.Combine(Path.GetDirectoryName(hostPath)!, "windows-host.json")))
         throw new FileNotFoundException("Host or contract is unavailable");
     using (var identity = WindowsIdentity.GetCurrent())
@@ -35,6 +38,11 @@ try
     launch.ArgumentList.Add(pipeName);
     launch.ArgumentList.Add("--client-pid");
     launch.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+    if (journalDirectory is not null)
+    {
+        launch.ArgumentList.Add("--journal-directory");
+        launch.ArgumentList.Add(journalDirectory);
+    }
     host = Process.Start(launch) ?? throw new InvalidOperationException("Host did not start");
     _ = host.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
     _ = host.StandardError.BaseStream.CopyToAsync(Stream.Null);

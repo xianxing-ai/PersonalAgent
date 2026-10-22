@@ -6,7 +6,7 @@ import {test} from 'node:test';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {TaskRuntime} from '../dist/index.js';
 import {createRuntimeWindowsHostAttemptStore} from '../dist/application.js';
-import {createWindowsHostNotepadAdapter} from '../dist/application/windows-host-adapter.js';
+import {createWindowsHostBridgeTransport,createWindowsHostNotepadAdapter} from '../dist/application/windows-host-adapter.js';
 
 const targetRef = 'notepad_target_123456789';
 const deadline = () => new Date(Date.now() + 30000).toISOString();
@@ -15,6 +15,14 @@ const context = () => ({taskId: 'task-1', runId: 'run-1', authorizationRef: 'gra
   deadline: deadline(), signal: new AbortController().signal, scopes: ['computer:notepad:write']});
 const base = frame => ({protocolVersion: frame.protocolVersion, requestId: frame.requestId,
   sessionId: frame.sessionId});
+test('trusted transport rejects relative, network, device and injected journal directories before spawning',()=>{
+  for(const journalDirectory of ['relative','C:relative','\\\\server\\share','\\\\?\\C:\\journal',
+    'C:\\journal:stream','C:\\journal\n--host','C:\\journal" --pipe x']){
+    assert.throws(()=>createWindowsHostBridgeTransport({bridgePath:'C:\\trusted\\WindowsHost.PipeBridge.exe',
+      hostPath:'C:\\trusted\\WindowsHost.Host.exe',journalDirectory}),
+    {code:process.platform==='win32'?'INVALID_ARGUMENT':'UNSUPPORTED_CAPABILITY'});
+  }
+});
 
 function fixture({executeState = 'verified', statusState = 'not_found', mismatchedResult = false,
   presence = true, onPresence, onRecord, observationError, targetExpiresAt, targetReady = true,

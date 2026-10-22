@@ -4,6 +4,21 @@ using PersonalAgent.WindowsHost.Service;
 using PersonalAgent.WindowsHost;
 
 if (args.Length != 2) throw new ArgumentException("Pass #168 schema and fixture paths");
+var isolatedJournal = Path.Combine(Path.GetTempPath(), "pa-native-journal-fixture");
+if (LocalJournalDirectory.Validate(isolatedJournal) != Path.GetFullPath(isolatedJournal))
+    throw new Exception("Local journal directory changed");
+foreach (var invalid in new[] { "relative", "C:relative", @"\\server\share", @"\\?\C:\journal",
+    "C:\\journal:stream", "C:\\journal\n--pipe", "C:\\journal\" --client-pid 1" })
+{
+    try { LocalJournalDirectory.Validate(invalid); throw new Exception("Unsafe journal directory was accepted"); }
+    catch (ArgumentException) { }
+}
+foreach (var invalid in new[] { new[] { "--pipe", "pa_" + new string('a', 32), "--client-pid", "1", "--extra", "x" },
+    new[] { "--pipe", "pa_" + new string('a', 32), "--client-pid", "1", "--journal-directory", isolatedJournal, "--extra", "x" } })
+{
+    try { HostLaunchBinding.Parse(invalid); throw new Exception("Extra launch arguments were accepted"); }
+    catch (ArgumentException) { }
+}
 using (var self = Process.GetCurrentProcess())
 {
     if (!string.Equals(NotepadAction.ReadProcessImagePath(self), Environment.ProcessPath,
