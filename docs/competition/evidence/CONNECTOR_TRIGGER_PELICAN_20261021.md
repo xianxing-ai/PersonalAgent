@@ -236,7 +236,8 @@ digest 绑定原 owner、初始 run、控制版本、原目标和源范围、期
 原默认父子 start 正例、卡前资源撤销反例和分组回归 3/3、0 fail、0 skip，日志 `.cache/pelican-task-consent-targeted.log`。
 runner 原 SQLite 绑定及原卡实际动作回归 2/2、0 fail、0 skip；仅当原 pending 同时给出
 canReuseTask=true 和 suggestedDecision=allow_task 时选择该动作，否则选择 allow_once，重新核对后记录实际决定。
-真实 workflow 模式超过三张核心卡会失败。语法和差异检查通过。
+真实 workflow 模式遇到第四张核心卡会在点击前失败。四文件现有全集 85/85、0 fail、0 skip，
+日志 `.cache/pelican-task-consent-focused.log`；上述最终增强分组边界另以 3/3 定向回归复核。语法和差异检查通过。
 
 该分组实现与离线回归不证明旧 b14XGw 的具体失效原因已修复，也不构成新真实鹈鹕通过。
 下一轮必须从新唯一公开 fixture 发起原默认父子任务，以新私有诊断定位任何卡前失效，并完成六节点、真实 npm-test、
