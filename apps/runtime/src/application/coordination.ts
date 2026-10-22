@@ -386,6 +386,7 @@ export async function runCoordinationWorker(
   taskId: string, goal: string, context: WorkerContext,
   options: {retainPriorToolResults?:boolean;allowToolContinuations?:true;toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<WorkerResult> {
+    context.declareRuntimeToolTracking?.();
     if (!port) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Competition coordination is unavailable');
     // Persisted by trusted Runtime composition at submission, never by the model.
     // Legacy tasks keep their original four-round budget when resumed.

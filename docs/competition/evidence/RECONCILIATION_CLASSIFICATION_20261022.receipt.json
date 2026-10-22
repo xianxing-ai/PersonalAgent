@@ -1,0 +1,15 @@
+{
+  "profile": "huawei_ict_agentarts",
+  "kind": "Synthetic Runtime and transport boundary regression",
+  "integrationBase": "8699ed74a1e56c672fcdab1327c3b4b4b1365039",
+  "coordinationDependencies": ["df50f61df459fa6a6b8b83b973802e0fc40de964", "a163675a8f534e210b5a99693167f8dec47c788e"],
+  "node26Focused": {"version": "26.3.0", "passed": 190, "failed": 0, "skipped": 0},
+  "pinnedNodeFocused": {"version": "24.15.0", "classificationPassed": 20, "diagnosticPassed": 5, "failed": 0, "skipped": 0},
+  "architecture": {"passed": 3, "failed": 0, "skipped": 0},
+  "models": 0,
+  "accounts": 0,
+  "realServices": 0,
+  "privateDatabases": 0,
+  "otherDeviceAcceptance": "not_run",
+  "runningApplicationBuild": "not_observed"
+}

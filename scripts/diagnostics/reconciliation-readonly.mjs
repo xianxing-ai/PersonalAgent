@@ -13,7 +13,9 @@ const errors=new Set(['INVALID_ARGUMENT','INVALID_REQUEST','UNAUTHORIZED','UNSUP
   'CANCELLED','TIMEOUT','RESULT_UNKNOWN','REVISION_CONFLICT','NOT_FOUND','RATE_LIMITED','RESOURCE_BUSY','VERSION_MISMATCH']);
 const stages=new Set(['authorization','catalog_guard','export_guard','transport','http_response','response_body','response_schema','application_schema']);
 const checkpointNames=['competition-cloud-inflight','competition-cloud-received','competition-cloud-unknown','competition-cloud-terminal-error',
-  'competition-export-withheld','competition-loop','runtime-interruption:v1','runtime-startup-recovery:v1','private-copy-erasure'];
+  'competition-export-withheld','competition-loop','competition-tool-catalog','subagent-parent-wait','subtask-parent',
+  'subtask-execution-binding','required-subagent-delegation:v1','runtime-interruption:v1','runtime-startup-recovery:v1','private-copy-erasure'];
+const maxRelatedChildren=32;
 const identityPattern=/^[A-Za-z0-9_-]{1,128}$/u;
 const fail=code=>{throw Object.assign(Error(code),{diagnosticCode:code});};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -38,12 +40,19 @@ function provenance(sourceRoot){
   const status=spawnSync('git',[...gitArgs,'status','--porcelain','--untracked-files=no'],{encoding:'utf8',windowsHide:true,shell:false,timeout:3000,maxBuffer:262144});
   const sha=git.status===0&&/^[a-f0-9]{40,64}$/u.test(git.stdout.trim())?git.stdout.trim():null;
   const files=['package-lock.json','apps/desktop/electron/main.js','apps/desktop/electron/desktop-host.js',
-    'apps/runtime/src/application/coordination.ts','packages/coordination/src/agentarts-websocket.ts']
+    'apps/runtime/src/index.ts','apps/runtime/src/application/coordination.ts','apps/runtime/src/application/tool-catalog.ts',
+    'apps/runtime/src/application/subagent-host.ts','packages/coordination/src/agentarts-websocket.ts']
     .map(file=>({name:file,...fileMetadata(root,path.join(root,file))}));
   const require=createRequire(path.join(root,'apps/desktop/package.json'));
   const modules=['@personal-agent/runtime/application','@personal-agent/coordination'].map(name=>{
     try{return {name,...fileMetadata(root,require.resolve(name))};}catch{return {name,available:false,location:'unavailable'};}
   });
+  let compiledRuntimeFiles=[];
+  try {
+    const entry=require.resolve('@personal-agent/runtime/application'),directory=path.dirname(entry);
+    compiledRuntimeFiles=['index.js','application/runtime-application.js','application/coordination.js',
+      'application/tool-catalog.js','application/subagent-host.js'].map(file=>({name:file,...fileMetadata(root,path.join(directory,file))}));
+  }catch{}
   const declaredPackageVersions=['apps/runtime/package.json','packages/coordination/package.json','node_modules/electron/package.json'].map(file=>{
     let version=null;
     try{const value=JSON.parse(readFileSync(path.join(root,file),'utf8')).version;
@@ -51,7 +60,7 @@ function provenance(sourceRoot){
     return {name:file,version,scope:'package_file_on_selected_checkout_disk'};
   });
   return {scope:'selected_checkout_files_not_running_application',checkoutSha:sha,
-    trackedChanges:status.status===0?status.stdout.trim().length>0:null,files,resolvedModuleFiles:modules,declaredPackageVersions,
+    trackedChanges:status.status===0?status.stdout.trim().length>0:null,files,resolvedModuleFiles:modules,compiledRuntimeFiles,declaredPackageVersions,
     runningApplicationBuild:'not_observed',collectorNode:{version:process.version,scope:'this_diagnostic_process'}};
 }
 function originalReceipt(logPath,requestIds){
@@ -77,25 +86,37 @@ export function collectReconciliationDiagnostic({databasePath,taskId,sourceRoot,
   try{
     db=new DatabaseSync(database,{readOnly:true,allowExtension:false,timeout:1000});
     db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; BEGIN;');
-    // Select only the typed error code; never fetch goal, result summary, messages,
-    // event bodies, credentials or unbounded checkpoint/result JSON.
-    const task=db.prepare("SELECT state, CASE WHEN json_valid(error_json) THEN json_extract(error_json,'$.code') ELSE NULL END AS error_code FROM tasks WHERE task_id=?").get(taskId);
-    if(!task)fail('TASK_NOT_FOUND');
+    function taskFacts(id) {
+    // Select only typed metadata; never fetch goal, summary, messages, event
+    // bodies, credentials or unbounded checkpoint/result JSON, including children.
+    const task=db.prepare("SELECT state, CASE WHEN json_valid(error_json) THEN json_extract(error_json,'$.code') ELSE NULL END AS error_code FROM tasks WHERE task_id=?").get(id);
+    if(!task)return undefined;
     const checkpoints=Object.fromEntries(checkpointNames.map(name=>[name,false]));
     const rows=db.prepare(`SELECT checkpoint_key, value_json IS NOT NULL AND value_json != 'null' AS present
-      FROM task_checkpoints WHERE task_id=? AND checkpoint_key IN (${checkpointNames.map(()=>'?').join(',')})`).all(taskId,...checkpointNames);
+      FROM task_checkpoints WHERE task_id=? AND checkpoint_key IN (${checkpointNames.map(()=>'?').join(',')})`).all(id,...checkpointNames);
     for(const row of rows)checkpoints[row.checkpoint_key]=row.present===1;
     const receipts=db.prepare(`SELECT checkpoint_key,
       CASE WHEN json_valid(value_json) THEN CASE json_type(value_json,'$.accepted') WHEN 'true' THEN 1 WHEN 'false' THEN 0 ELSE NULL END ELSE NULL END AS accepted,
       CASE WHEN json_valid(value_json) THEN json_extract(value_json,'$.requestId') ELSE NULL END AS request_id
-      FROM task_checkpoints WHERE task_id=? AND checkpoint_key IN ('competition-cloud-inflight','competition-cloud-received','competition-cloud-unknown')`).all(taskId);
+      FROM task_checkpoints WHERE task_id=? AND checkpoint_key IN ('competition-cloud-inflight','competition-cloud-received','competition-cloud-unknown')`).all(id);
     const accepted={inflight:null,received:null,unknown:null},requestIds=new Set();
     for(const row of receipts){
       accepted[row.checkpoint_key.slice('competition-cloud-'.length)]=row.accepted===1?true:row.accepted===0?false:null;
       if(typeof row.request_id==='string'&&identityPattern.test(row.request_id))requestIds.add(row.request_id);
     }
-    facts={task:{taskId,state:states.has(task.state)?task.state:'OTHER',errorCode:task.error_code===null?null:errors.has(task.error_code)?task.error_code:'OTHER'},
+    return {task:{taskId:id,state:states.has(task.state)?task.state:'OTHER',errorCode:task.error_code===null?null:errors.has(task.error_code)?task.error_code:'OTHER'},
       checkpoints,accepted,adapterReceipt:originalReceipt(desktopLogPath,requestIds)};
+    }
+    facts=taskFacts(taskId);if(!facts)fail('TASK_NOT_FOUND');
+    const parent=db.prepare(`SELECT CASE WHEN json_valid(value_json) THEN json_extract(value_json,'$.parentTaskId') ELSE NULL END AS parent_id
+      FROM task_checkpoints WHERE task_id=? AND checkpoint_key='subtask-parent'`).get(taskId)?.parent_id;
+    const children=db.prepare(`SELECT task_id FROM task_checkpoints WHERE checkpoint_key='subtask-parent'
+      AND CASE WHEN json_valid(value_json) THEN json_extract(value_json,'$.parentTaskId') ELSE NULL END=?
+      ORDER BY task_id LIMIT ?`).all(taskId,maxRelatedChildren+1);
+    facts.relatedTasks={depth:1,maxChildren:maxRelatedChildren,childrenTruncated:children.length>maxRelatedChildren,
+      parents:typeof parent==='string'&&identityPattern.test(parent)&&parent!==taskId?[taskFacts(parent)].filter(Boolean):[],
+      children:children.slice(0,maxRelatedChildren).filter(row=>identityPattern.test(row.task_id)&&row.task_id!==taskId)
+        .map(row=>taskFacts(row.task_id)).filter(Boolean)};
   }catch(error){
     if(error?.diagnosticCode)throw error;
     fail('DATABASE_READ_FAILED');
