@@ -82,3 +82,44 @@ test('无 writes 能力时写工具不注册（只读 provider 保持只读目�
     assert.ok(true);
   } finally { unregister(); }
 });
+
+/**
+ * 2026-10-21 实测：云端工具目录不携带 description（`safeSchema()` 只投影结构字段），
+ * 模型只能靠字段名判断语义。`calendar.events` 给出 `externalId`，而写工具要 `uid`，
+ * 两者不同名 → 模型只能向用户索要"事件标识"。这里锁定"两个名字都可用"。
+ */
+test('取消/更新接受 externalId（与 calendar.events 同名字段）', async () => {
+  const f = fixture();
+  try {
+    const created = await f.host.invoke('calendar.create', {summary: '同名标识',
+      startUtc: '2026-10-21T07:00:00.000Z', endUtc: '2026-10-21T08:00:00.000Z'}, ctx());
+    const id = created.item.externalId;
+    const updated = await f.host.invoke('calendar.update', {externalId: id, summary: '改名后'}, ctx());
+    assert.equal(updated.state, 'updated');
+    assert.match(updated.item.contentRef, /改名后/);
+    const cancelled = await f.host.invoke('calendar.cancel', {externalId: id}, ctx());
+    assert.equal(cancelled.state, 'cancelled');
+  } finally {f.unregister();}
+});
+
+test('标识缺失或重复时拒绝，不做猜测', async () => {
+  const f = fixture();
+  try {
+    await assert.rejects(f.host.invoke('calendar.cancel', {}, ctx()), {code: 'INVALID_ARGUMENT'});
+    await assert.rejects(f.host.invoke('calendar.cancel', {uid: 'a', externalId: 'b'}, ctx()),
+      {code: 'INVALID_ARGUMENT'});
+  } finally {f.unregister();}
+});
+
+test('取消与更新的参数名同时暴露 externalId 与 uid', () => {
+  const descriptors = new Map();
+  const unregister = register({register(tool) {descriptors.set(tool.descriptor.name, tool.descriptor); return () => {};}},
+    {provider: new FakeCalendarProvider(), accountRef: 'cal', now: () => NOW});
+  try {
+    for (const name of ['calendar.cancel', 'calendar.update']) {
+      const properties = descriptors.get(name).inputSchema.properties;
+      assert.ok('externalId' in properties, `${name} 必须接受 externalId`);
+      assert.ok('uid' in properties, `${name} 保留 uid 以兼容已保存提案`);
+    }
+  } finally {unregister();}
+});

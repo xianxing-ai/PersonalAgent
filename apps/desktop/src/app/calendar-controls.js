@@ -1,7 +1,7 @@
 export function mountCalendarControls(root, invoke) {
   const settings = document.createElement('details');
   settings.className = 'sis-settings';
-  settings.innerHTML = '<summary>CalDAV 日历配置</summary><div class="sis-fields"><p class="notice">凭据仅在本机加密保存。保存配置不会自动读取或修改日历；单条读取需逐次确认。非本机地址必须 HTTPS；本机地址（localhost/127.0.0.1/[::1]）允许 HTTP（如本地 Radicale 验收服务器）。</p><label>日历名称<input data-calendar="name" autocomplete="off" maxlength="120"></label><label>日历集合地址<input data-calendar="url" type="url" autocomplete="off" maxlength="2048" placeholder="https://server/calendars/user/default/"></label><label>账号<input data-calendar="user" autocomplete="off" maxlength="256"></label><label>应用密码<input data-calendar="password" type="password" autocomplete="off" maxlength="4096" placeholder="原地址及账号未变时留空可保留已存凭据"></label><button data-calendar="save" type="button">保存配置</button><button data-calendar="revoke" type="button">撤销并清除配置</button><p data-calendar="status" class="notice" role="status"></p><div data-calendar="read-controls"><label>日历事件标识（UID）<input data-calendar="event" autocomplete="off" maxlength="512" placeholder="从日历事件获取 UID"></label><button data-calendar="read" type="button">读取此事件</button><button data-calendar="allow" type="button">允许本次读取</button><button data-calendar="deny" type="button">拒绝本次读取</button><button data-calendar="cancel" type="button">停止读取</button><p data-calendar="read-status" class="notice" role="status"></p><p data-calendar="read-result" class="notice"></p></div></div>';
+  settings.innerHTML = '<summary>CalDAV 日历配置</summary><div class="sis-fields"><p class="notice">凭据仅在本机加密保存。保存配置不会自动读取或修改日历；需要访问时在当前对话提问卡确认本次范围，不在此重复授权。非本机地址必须 HTTPS；本机地址（localhost/127.0.0.1/[::1]）允许 HTTP（如本地 Radicale 验收服务器）。</p><label>日历名称<input data-calendar="name" autocomplete="off" maxlength="120"></label><label>日历集合地址<input data-calendar="url" type="url" autocomplete="off" maxlength="2048" placeholder="https://server/calendars/user/default/"></label><label>账号<input data-calendar="user" autocomplete="off" maxlength="256"></label><label>应用密码<input data-calendar="password" type="password" autocomplete="off" maxlength="4096" placeholder="原地址及账号未变时留空可保留已存凭据"></label><button data-calendar="save" type="button">保存配置</button><button data-calendar="revoke" type="button">撤销并清除配置</button><p data-calendar="status" class="notice" role="status"></p><div data-calendar="read-controls"><label>日历事件标识（UID）<input data-calendar="event" autocomplete="off" maxlength="512" placeholder="从日历事件获取 UID"></label><button data-calendar="read" type="button">读取此事件</button><button data-calendar="cancel" type="button">停止读取</button><p data-calendar="read-status" class="notice" role="status"></p><p data-calendar="read-result" class="notice"></p></div></div>';
   const anchor = root.querySelector('#error');
   if (anchor) anchor.before(settings); else root.append(settings);
   const field = name => settings.querySelector(`[data-calendar="${name}"]`);
@@ -13,8 +13,6 @@ export function mountCalendarControls(root, invoke) {
     field('revoke').disabled = busy || (!state.configured && state.status !== 'unavailable');
     field('read-controls').hidden = !state.readAvailable;
     field('read').disabled = busy || active || !state.readAvailable;
-    field('allow').hidden = field('deny').hidden = task?.approval?.state !== 'pending';
-    field('allow').disabled = field('deny').disabled = busy;
     field('cancel').disabled = busy || !active;
   };
   const run = async (action, payload) => {
@@ -47,13 +45,6 @@ export function mountCalendarControls(root, invoke) {
     finally {busy = false; buttons();}
   };
   field('read').onclick = () => readAction('calendar.read',{externalId:field('event').value.trim()});
-  for (const [button,decision] of [['allow','allow_once'],['deny','deny']]) {
-    field(button).onclick = () => {
-      const task = state.readTask;
-      if (task?.approval?.state === 'pending') return readAction('calendar.respond',{
-        taskId:task.taskId,approvalId:task.approval.approvalId,revision:task.approval.revision,decision});
-    };
-  }
   field('cancel').onclick = () => state.readTask?.taskId && readAction('calendar.cancel',state.readTask.taskId);
   function render(value = {}) {
     state = value ?? {};

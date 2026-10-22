@@ -7,6 +7,8 @@ const escape = value => String(value).replace(/[&<>"']/g,
 function element() {
   return {dataset: {}, listeners: new Map(), textContent: '', disabled: false,
     addEventListener(name, listener) { this.listeners.set(name, listener); },
+    removeEventListener(name,listener){if(this.listeners.get(name)===listener)this.listeners.delete(name);},
+    replaceChildren(){this.innerHTML='';},
     setAttribute() {}, insertBefore() {}};
 }
 
@@ -42,7 +44,9 @@ async function harness(t, invoke) {
         .map(([, revoke, task, revision]) => ({...element(), dataset: {revoke, task, revision}}));
     },
   });
-  const render = mountAdmin(root, invoke, escape);
+  const render = mountAdmin(root, (...args)=>args[0]==='authorization.sandbox.read'
+    ?Promise.resolve({selected:{label:'Synthetic unavailable',mode:'unavailable',revision:0},profiles:[],rules:[]})
+    :invoke(...args), escape);
   const base = {tasks: [], approvals: [], capabilities: [], health: [], connection: 'fixture'};
   return {render, base, root, html: () => html, content: nodes.get('#content'), buttons: () => revokeButtons, quitButton:()=>nodes.get('#quit'),
     unload: () => {for (const listener of windowListeners.get('unload') ?? []) listener();}};
@@ -233,6 +237,16 @@ test('allowed approval history reaches revoke and shows only persisted readback'
     authorizationRef: 'history-1', expectedApprovalRevision: 2}]);
   assert.match(ui.html(), /已撤销（授权存储读回）/);
   assert.doesNotMatch(ui.html(), /data-revoke=/);
+});
+
+test('question mode safety settings cannot become a second pending approval surface',async t=>{
+  const ui=await harness(t,async name=>{if(name==='approval.history')return {items:[]};throw Error('Unexpected business action');});
+  t.after(()=>ui.unload());
+  ui.render({...ui.base,adminNavigation:{page:'authorizations',revision:1},authorizationQuestions:[],approvals:[{
+    approvalId:'original-pending',taskId:'original-task',revision:1,state:'pending',action:'todo.create',
+    scopes:['todo:write'],argumentSummary:'redacted',expiresAt:'2099-01-01T00:00:00Z'}]});
+  assert.doesNotMatch(ui.html(),/data-approval="allow_once"|data-approval="deny"/);
+  assert.match(ui.html(),/原对话提问卡处理/);
 });
 
 test('visible general settings exposes the existing normal app quit action',async t=>{

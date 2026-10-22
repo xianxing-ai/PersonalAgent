@@ -4,6 +4,7 @@ import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
 import {createServer as httpsServer} from 'node:https';
+import {request as httpRequest} from 'node:http';
 import {createServer as tcpServer} from 'node:net';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import os from 'node:os';
@@ -53,11 +54,37 @@ async function fixture(t){
   });
   const expires=Date.now()+5000;
   while(!stdout.includes('"event":"listening"')){assert.equal(child.exitCode,null);assert.ok(Date.now()<expires);await pause(10);}
-  // Only the test control plane closes connections; the production HTTPS model transport is unchanged.
-  // A killed child must not leave a reusable socket in this process's shared fetch pool.
-  const post=(headers={},signal,query=marker)=>fetch(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,
-    headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers,connection:'close'},
-    body:JSON.stringify({query})});
+  // Give each test-control request its own socket. A Connection: close header
+  // alone does not give the fixture ownership of global fetch's pooled client.
+  // The production HTTPS model transport remains unchanged; never retry here.
+  const post=(headers={},signal,query=marker)=>new Promise((resolve,reject)=>{
+    let reported=false;
+    const fail=(stage,error)=>{
+      if(!reported){
+        reported=true;
+        // Structural diagnostics only: never emit bodies, headers, child logs or paths.
+        const socket=request.socket;
+        t.diagnostic(JSON.stringify({event:'control-plane-transport-failure',stage,
+          code:['ECONNRESET','ECONNREFUSED','EPIPE','ABORT_ERR'].includes(error.code)?error.code:'OTHER',
+          callerAborted:signal?.aborted===true,childExited:child.exitCode!==null,
+          childExitCode:child.exitCode,childSignalled:child.signalCode!==null,
+          childListening:stdout.includes('"event":"listening"'),childStderrPresent:stderr.length>0,
+          modelRequests:first.length,redirectRequests:second.length,
+          socketAssigned:socket!==null&&socket!==undefined,socketDestroyed:socket?.destroyed===true,
+          bytesRead:socket?.bytesRead??0,bytesWritten:socket?.bytesWritten??0}));
+      }
+      reject(error);
+    };
+    const request=httpRequest(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,agent:false,
+      headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers,connection:'close'}},response=>{
+      const chunks=[];
+      response.on('data',chunk=>chunks.push(chunk));
+      response.once('error',error=>fail('response',error));
+      response.once('end',()=>resolve(new Response(Buffer.concat(chunks),{status:response.statusCode})));
+    });
+    request.once('error',error=>fail('request',error));
+    request.end(JSON.stringify({query}));
+  });
   return {first,second,post,setMode:value=>mode=value,
     disconnections:query=>disconnections.filter(body=>body.includes(query)).length,logs:()=>({stdout,stderr})};
 }
@@ -76,8 +103,14 @@ test('production direct HTTPS model call preserves deadline and caller cancellat
   assert.equal(JSON.parse((await direct.json())[0].data.text).text,'synthetic direct model reply');
   assert.equal(f.first[0].authorization,'Bearer synthetic-model-secret');assert.equal(f.second.length,0);
   t.diagnostic('control-plane phase: already-expired');
-  const alreadyExpired=await f.post({'x-pa-deadline':new Date(Date.now()-1).toISOString()});
+  // This phase tests an already-expired deadline, not the relative precision
+  // of wall clocks in the test process and the separately spawned runtime.
+  // Keep the deadline unambiguously in the past on both sides of the request.
+  const alreadyExpiredQuery=marker+'-already-expired';
+  const alreadyExpired=await f.post({'x-pa-deadline':'2000-01-01T00:00:00.000Z'},undefined,alreadyExpiredQuery);
   assert.equal(alreadyExpired.status,504);await alreadyExpired.arrayBuffer();
+  assert.equal(f.first.filter(request=>request.body.includes(alreadyExpiredQuery)).length,0,
+    'an already-expired invocation must never reach the model origin');
   assert.equal(f.first.length,1,'an expired invocation must not dispatch a model request');
   t.diagnostic('control-plane phase: expired');
   const expiredQuery=marker+'-deadline',expiredRequests=()=>f.first.filter(request=>request.body.includes(expiredQuery)).length;

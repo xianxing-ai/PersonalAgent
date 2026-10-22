@@ -76,12 +76,13 @@ export class Conversations {
   goal(taskId) { return this.turns.get(taskId)?.goal; }
   validatePreference(conversationId, input) {
     if (typeof conversationId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(conversationId)
-      || !input || Object.keys(input).some(key => !['modelId','depth','fast','executionModel'].includes(key))
+      || !input || Object.keys(input).some(key => !['modelId','depth','fast','executionModel','modelSelection'].includes(key))
+      || input.modelSelection!==undefined&&(input.modelSelection!=='default'||Boolean(input.modelId||input.executionModel))
       || !Number.isInteger(input.depth) || input.depth < 0 || input.depth > 5 || typeof input.fast !== 'boolean'
       || (input.modelId !== undefined && (typeof input.modelId !== 'string' || input.modelId.length > 100
         || /[\u0000-\u001f\u007f]/.test(input.modelId)))) throw Error('对话模型或思考偏好无效');
     if(input.executionModel!==undefined && (!input.executionModel||typeof input.executionModel!=='object'||Array.isArray(input.executionModel)||!/^[a-f0-9]{64}$/.test(input.executionModel.catalogRevision)||typeof input.executionModel.modelId!=='string'||!input.executionModel.modelId||input.executionModel.modelId.length>200||Object.keys(input.executionModel).some(k=>!['catalogRevision','modelId','reasoningEffort'].includes(k))||input.executionModel.reasoningEffort!==undefined&&typeof input.executionModel.reasoningEffort!=='string'))throw Error('对话模型选择无效');
-    return {...(input.executionModel?{executionModel:structuredClone(input.executionModel)}:{}),depth:input.depth,fast:input.fast,...(input.modelId ? {modelId:input.modelId} : {})};
+    return {...(input.executionModel?{executionModel:structuredClone(input.executionModel)}:{}),depth:input.depth,fast:input.fast,...(input.modelId ? {modelId:input.modelId} : {}),...(input.modelSelection?{modelSelection:input.modelSelection}:{})};
   }
   preference(conversationId, fallback = {depth:1,fast:false}) {
     return {...(this.preferences.get(conversationId) ?? fallback)};
@@ -141,6 +142,11 @@ export class Conversations {
     mkdirSync(path.dirname(this.file), {recursive:true});
     const temporary = `${this.file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const content = JSON.stringify({version:4,sessions:[...sessions.values()],activeSessions,turns:[...turns.values()],messages:[...messages.values()],preferences:[...preferences]});
+    if(existsSync(this.file)&&[...preferences.values()].some(value=>value.modelSelection==='default')&&![...this.preferences.values()].some(value=>value.modelSelection==='default')){
+      const original=readFileSync(this.file,'utf8'),digest=createHash('sha256').update(original).digest('hex').slice(0,16),backup=this.file+'.before-default-thinking-'+digest+'.bak';
+      if(!existsSync(backup))copyFileSync(this.file,backup,constants.COPYFILE_EXCL);
+      if(readFileSync(backup,'utf8')!==original)throw Error('默认思考设置备份未获确认，未覆盖对话记录');
+    }
     if(this.loadedVersion<4&&existsSync(this.file)){
       const original=readFileSync(this.file,'utf8');const digest=createHash('sha256').update(original).digest('hex').slice(0,16);const backup=this.file+'.v'+this.loadedVersion+'-'+digest+'.bak';
       if(!existsSync(backup))copyFileSync(this.file,backup,constants.COPYFILE_EXCL);

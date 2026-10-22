@@ -61,15 +61,15 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
           assert.ok(layout[key].right<=layout.viewport.width+1 && layout[key].bottom<=layout.viewport.height+1, label);
         }
         await panel.locator('.composer>textarea').fill(`玻璃面板草稿 ${theme}`);
-        await panel.locator('#model').click();
-        await panel.locator('#model-menu').waitFor({state:'visible'});
-        const menu=await panel.locator('#model-menu').evaluate(element=>{
+        await panel.getByRole('button',{name:'模型与思考',exact:true}).click();
+        await panel.getByRole('dialog',{name:'模型与思考设置',exact:true}).waitFor({state:'visible'});
+        const menu=await panel.getByRole('dialog',{name:'模型与思考设置',exact:true}).evaluate(element=>{
           const r=element.getBoundingClientRect(),style=getComputedStyle(element);
           return {top:r.top,bottom:r.bottom,colour:style.backgroundColor};
         });
         assert.ok(menu.top>=0 && menu.bottom<=layout.viewport.height+1, JSON.stringify(menu));
         assert.match(menu.colour,/^rgb\(/,'model menu has an opaque background');
-        await panel.locator('#model').click();
+        await panel.getByRole('button',{name:'模型与思考',exact:true}).click();
         await panel.locator('#bell').click();
         await panel.locator('#bell-menu').waitFor({state:'visible'});
         assert.match(await panel.locator('#bell-menu').evaluate(element=>getComputedStyle(element).backgroundColor),/^rgb\(/);

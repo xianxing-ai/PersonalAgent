@@ -1,4 +1,7 @@
 import {handleConversationAction} from './conversation-actions.js';
+import {createConversationEnvironmentContext} from './conversation-environment-context.js';
+import {createConversationDelivery} from './conversation-delivery.js';
+import {readReconciliationStatus} from './reconciliation-status.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
@@ -29,6 +32,7 @@ import {restoreSyntheticRepairSubmission} from './competition-repair-submission.
 import {readCapabilityDirectory} from './capability-directory.js';
 import {createMicrophonePermissionGate} from './microphone-permission.js';
 import {readApprovalPage} from './approval-history.js';
+import {projectDesktopApproval} from './approval-projection.js';
 import {createPrivateMemoryController} from './private-memory.js';
 import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
@@ -56,6 +60,9 @@ import {createDesktopNotificationApplicationHost} from './notification-applicati
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
 import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
+import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
+import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
+import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
@@ -80,6 +87,7 @@ import {createRemoteMcpConfig} from './remote-mcp-config.js';
 import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
+import {createPublicReferenceQuestionConsent} from './public-reference-question.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
@@ -94,6 +102,7 @@ import {createDesktopHarnessContextHost} from './harness-context-host.js';
 import {createDesktopHarnessEventsHost} from './harness-events-host.js';
 import {createHarnessExperienceAdminHost} from './harness-experience-host.js';
 import {createDeveloperSettingsHost} from './developer-settings-host.js';
+import {developerSettingsError,developerSettingsErrorResponse} from '../shared/developer-settings-diagnostics.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
 import {createDesktopMailAnalysisHost} from './mail-analysis-host.js';
@@ -226,10 +235,20 @@ function rememberTaskGoal(taskId, goal) {
 }
 let conversations;
 const submitting = new Set();
+const conversationDelivery = createConversationDelivery(submitting);
 const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
 const notifications = new Map();
 let runtimeApplication;
+let authorizationQuestionHost;
+let nativeExecutionHost,localAuthorizationOnly=false;
+let authorizationIntentHost;
+const authorizationQuestionPort=Object.freeze(Object.fromEntries([
+  'prepare','prepareExport','currentRequirement','authorizeExport','authorizeConsumedExport','assertConsumedResult','deriveMailBatch','deriveHostIntent','readResourceGeneration','rotateResourceGeneration',
+].map(name=>[name,(...args)=>{
+  if(!authorizationQuestionHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前对话授权卡尚未装配');
+  return authorizationQuestionHost[name](...args);
+}])));
 let syntheticRepairHost;
 const repairPrompts = new Set();
 let microphonePermissionGate;
@@ -372,14 +391,7 @@ function taskSurface(task) {
 }
 
 function voiceQuestionForConversation(conversationId){
-  const question=voiceCommandHost?.snapshot();if(!question?.taskId)return question;
-  if(question.kind==='approval'&&question.state==='pending'){
-    const approval=conversationToolAccess?.readApproval(question.approvalId);
-    if(!approval||approval.state!=='pending'||approval.taskState!=='waiting_approval'
-      ||approval.revision!==question.approvalRevision||approval.argumentsDigest!==question.argumentsDigest
-      ||approval.expiresAt!==question.expiresAt)return null;
-  }
-  return conversationToolAccess?.authorizeTaskRead({taskId:question.taskId,conversationId})?question:null;
+  return voiceCommandHost?.snapshot(conversationId)??null;
 }
 function p5DevicePanelSuggestions() {
   if (!p5DeviceReceiptStore) return [];
@@ -529,40 +541,31 @@ function privateMemoryController() {
     mkdirSync(path.dirname(dataPaths.privateMemory), {recursive: true});
     privateMemory = createPrivateMemoryController(dataPaths.privateMemory, async details => {
       const originAdmin=admin;if(!originAdmin || originAdmin.isDestroyed())return false;
-      const answer = await dialog.showMessageBox(originAdmin, {
-        type: 'question', title: '确认私人记忆',
-        message: details.previous ? '确认更正这条私人记忆？' : '确认保存这条私人记忆？',
-        detail: `来源：${details.source.path}:${details.source.line}\n来源版本：${details.source.revision}\n摘录：${details.citation}\n\n拟保存：${details.summary}`,
-        signal: details.signal,
-        buttons: ['确认保存', '取消'], defaultId: 1, cancelId: 1, noLink: true,
-      });
-      return answer.response === 0 && admin===originAdmin && !originAdmin.isDestroyed();
+      return confirmApplicationAuthorization('memory.save',details,{signal:details.signal,
+        scope:{source:details.source},summary:details.previous?'更正所选私人记忆版本；仅此来源与本次内容':'保存所选私人记忆；仅此来源与本次内容',
+        isCurrent:()=>admin===originAdmin&&!originAdmin.isDestroyed()});
     }, async current => {
       const originAdmin=admin;if(!originAdmin || originAdmin.isDestroyed())return false;
-      const answer = await dialog.showMessageBox(originAdmin, {
-        type: 'warning', title: '删除私人记忆', message: '删除这条私人记忆的全部版本？',
-        detail: `当前摘要：${current.summary}\n来源：${current.sourceRef}\n同时清理应用管理的记忆数据库备份。整篇笔记写回备份保留；存在可能相关副本时，删除仍显示未完成。`,
-        buttons: ['删除所有版本', '取消'], defaultId: 1, cancelId: 1, noLink: true,
-      });
-      return answer.response === 0 && admin===originAdmin && !originAdmin.isDestroyed();
+      return confirmApplicationAuthorization('memory.erase',current,{scope:{sourceRef:current.sourceRef},
+        summary:'删除所选私人记忆的全部版本及应用管理副本；不表示擦除已完成，原存储核实规则继续生效',
+        isCurrent:()=>admin===originAdmin&&!originAdmin.isDestroyed()});
     }, {knowledgeSource:()=>obsidianPairing?.memorySource, confirmWithdraw:async current=>{
       const originAdmin=admin;if(!originAdmin || originAdmin.isDestroyed())return false;
-      const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'撤回私人记忆',
-        message:'停止后续任务消费这条私人记忆？',detail:`版本 ${current.ref?.revision??current.revision}`,
-        buttons:['撤回','取消'],defaultId:1,cancelId:1,noLink:true});
-      return answer.response===0 && admin===originAdmin && !originAdmin.isDestroyed();
+      return confirmApplicationAuthorization('memory.withdraw',current,{scope:{ref:current.ref,revision:current.revision},
+        summary:'撤回所选私人记忆版本，停止后续消费',isCurrent:()=>admin===originAdmin&&!originAdmin.isDestroyed()});
     },authorizeConsumption:async scope=>{
       if(!admin || admin.isDestroyed() || !runtimeApplication || !scope.taskId) return false;
       const originAdmin=admin,originApplication=runtimeApplication;
       const task=runtimeApplication.runtime.getTask(scope.taskId);
       if(task.cancelRequested || ['succeeded','failed','cancelled'].includes(task.state)) return false;
-      const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'本次任务使用私人记忆',
-        message:scope.destination==='agentarts'?'允许本次任务把所选记忆摘要发送给 AgentArts？':'允许本次任务使用所选记忆摘要？',
-        detail:`任务：${scope.taskId}\n${scope.facts.map(f=>`版本 ${f.ref.revision}：${f.summary}`).join('\n')}`,
-        buttons:['仅本次允许','取消'],defaultId:1,cancelId:1,noLink:true});
-      if(answer.response!==0 || admin!==originAdmin || originAdmin.isDestroyed() || runtimeApplication!==originApplication)return false;
-      const current=originApplication.runtime.getTask(scope.taskId);
-      return !current.cancelRequested && !['succeeded','failed','cancelled'].includes(current.state);
+      return confirmApplicationAuthorization('memory.consume',scope,{scope:{taskId:scope.taskId,destination:scope.destination},
+        deadline:scope.deadline,signal:scope.signal,summary:scope.destination==='agentarts'
+          ?'仅原任务使用所选版本记忆摘要，并发送这些已选摘要给 AgentArts；不含其他记忆'
+          :'仅原任务在本机使用所选版本记忆摘要',isCurrent:()=>{
+          const current=originApplication.runtime.getTask(scope.taskId);
+          return admin===originAdmin&&!originAdmin.isDestroyed()&&runtimeApplication===originApplication
+            &&!current.cancelRequested&&!['succeeded','failed','cancelled'].includes(current.state);
+        }});
     }});
   }
   return privateMemory;
@@ -583,6 +586,7 @@ function agentArtsSnapshot() {
 function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
 function snapshot(surface) {
   const cloudSettings=agentArtsSnapshot();
+  const authorizationQuestions=authorizationQuestionHost?.snapshot(surface?conversations?.activeConversationId(surface):undefined)??[];
   return {
     connection: connectionLabel,
     connectionError: runtimeError || cloudRequestFailureNotice || cloudTransportNotice,
@@ -595,12 +599,13 @@ function snapshot(surface) {
     subagentTasks:fakeMode?[]:(surface==='workspace'?runtimeApplication?.listSubagentConversations({limit:6}).items??[]:projectSubagentActivity({tasks:orderedTasks(),surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
-    tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(task => ({...structuredClone(task),
+    tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(original => {const task=conversationDelivery.project(original);return ({...structuredClone(task),
+      reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
       userMessage: taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId),
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
-      ...(notepadHost?.projectTask(task) ?? {})})),
+      ...(notepadHost?.projectTask(task) ?? {})});}),
     messages: conversations?.messagesFor(surface,surface?conversations.activeConversationId(surface):undefined) ?? [],
     conversationState:surface?conversations?.snapshot(surface):undefined,
     surfaceBusy:surface?[...tasks.values()].some(task=>visibleConversationTask(task,surface)&&!terminalTaskStates.has(task.state)):false,
@@ -614,7 +619,10 @@ function snapshot(surface) {
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
-    approvals: [...approvals.values()].filter(approval=>!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface)),
+    authorizationQuestions,
+    approvals: [...approvals.values()].filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
+      &&!authorizationQuestions.some(question=>question.state==='pending'&&question.taskId===approval.taskId))
+      .map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime)),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
     voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
@@ -1425,6 +1433,13 @@ async function promptSyntheticRepairCandidate(taskId) {
   } finally { repairPrompts.delete(taskId); }
 }
 
+function readDesktopRequestContext(scope) {
+  if (!conversationToolAccess?.resolveConversation(scope.taskId)) return;
+  return createConversationEnvironmentContext({readTodoState:current=>todoHost?.readConversationGuidance?.(current),
+    readCalendarState:()=>({registered:connectorConversationTools?.tools.some(tool=>tool.descriptor.name==='calendar.create')===true,
+      configured:calendarConfig?.snapshot().configured===true})})(scope);
+}
+
 function readDesktopConversationContext(scope,maxMessages) {
   const requestingTaskId=scope.taskId;
   const parent=scope.taskId?runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId):undefined;
@@ -1484,7 +1499,7 @@ function readDesktopModelApiState() {
   return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience,
     harness:{...value.harness,executionAvailable,
     executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
-      ?'请在电脑操控中选择编程工作区，并启用本会话读取与结果出机许可':'开发任务规划未启用',
+      ?'请在「开发 → 环境 / Worktrees」选择本地工作区并重启装配，再启用原本会话读取与结果出机许可':'开发任务规划未启用',
     contextAvailable:Boolean(harnessContextHost?.runtimeHooks),contextReason:harnessContextFailure}};
 }
 
@@ -1556,11 +1571,10 @@ async function confirmHarnessExperienceActivation(version,context) {
       throw new ProtocolError('CANCELLED','开发经验确认已失效');
   };
   current();
-  const answer=await dialog.showMessageBox(owner,{type:'question',title:'启用开发经验',
-    message:`启用开发经验 ${version.workflowId} 的版本 ${version.revision}？`,
-    detail:'后续开发任务仅会读取此版本已验证的检查配方；工作区、工具与出机许可仍需分别校验。',
-    buttons:['启用此版本','取消'],defaultId:1,cancelId:1,noLink:true});
-  current();return answer.response===0;
+  const allowed=await confirmApplicationAuthorization('experience.activate',version,{scope:{workflowId:version.workflowId,revision:version.revision},
+    deadline:context.deadline,signal:context.signal,summary:`启用开发经验版本 ${version.revision}；仅采用已验证配方，具体执行仍受本次工具卡与沙箱约束`,
+    isCurrent:()=>{try{current();return true;}catch{return false;}}});
+  current();return allowed;
 }
 
 async function initializeInstalledSkills() {
@@ -1585,12 +1599,58 @@ async function initializeInstalledSkills() {
         const origin=admin,application=runtimeApplication;
         if(!origin || origin.isDestroyed()) return false;
         const actions={install:'安装 Skill',enable:'启用 Skill',uninstall:'卸载 Skill',run:'仅本任务使用 Skill'};
-        const answer=await dialog.showMessageBox(origin,{type:request.action==='uninstall'?'warning':'question',
-          title:actions[request.action],message:`${actions[request.action]}：${request.name}`,
-          detail:`SHA256：${request.digest}\n${request.detail}`,buttons:['取消','确认'],defaultId:0,cancelId:0,noLink:true});
-        return answer.response===1 && origin===admin && !origin.isDestroyed() && application===runtimeApplication;
+        return confirmApplicationAuthorization('skill.'+request.action,request,{scope:{action:request.action,digest:request.digest},
+          summary:`${actions[request.action]}；仅已核对内容摘要的此 Skill 版本，不授权其任意工具调用`,
+          isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
   }
+}
+
+function initializeAuthorizationHosts(runtimeModule){
+  authorizationQuestionHost?.close();
+  authorizationQuestionHost=createDesktopAuthorizationQuestionHost({createQuestions:options=>new runtimeModule.AuthorizationQuestions(options),
+    getApplication:()=>runtimeApplication,namespace:desktopHost.userNamespace,
+    resolveConversation:taskId=>conversationToolAccess?.resolveConversation(taskId)
+      ??conversations?.activeConversationId('panel'),
+    available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
+    profiles:[{ref:'default-read-only',label:'应用内只读权限',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'应用内受限写入／工作区权限',mode:'workspace-write',revision:1,available:true},
+      {ref:'full-access',label:'完全访问（当前普通用户，不提供进程隔离）',mode:'full-access',revision:1,available:true}],
+    defaultProfileRef:'default-read-only',
+    resolveProfile:(request,selected)=>selected.mode==='read-only'&&request.requirements.some(item=>
+      item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
+        ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
+      &&request.toolName!=='workspace.node_check'?'workspace-write':selected.ref,
+    describeExecution:(request,profile)=>nativeExecutionHost?.describeExecution(request,profile)
+      ??{required:false,available:false,backend:'unavailable',enforced:false,reason:'本次为应用内工具；外部进程隔离未就绪'}});
+  authorizationIntentHost?.close();
+  authorizationIntentHost=createDesktopAuthorizationIntentHost({getApplication:()=>runtimeApplication,question:authorizationQuestionPort,
+    openConversation:()=>openPanel(true)});
+}
+
+async function initializeLocalAuthorizationControlPlane(){
+  if(runtimeApplication)return;
+  const module=await import('@personal-agent/runtime/application');
+  initializeAuthorizationHosts(module);
+  // The same Competition TaskRuntime DB remains authoritative. No model/provider or substitute agent is created.
+  runtimeApplication=module.createRuntimeApplication({path:dataPaths.runtime,profile:'huawei_ict_agentarts',
+    hostUserNamespace:desktopHost.userNamespace,tools:[authorizationIntentHost.tool],hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
+    requestToolAuthorization:scope=>{authorizationIntentHost.prepareQuestion(scope);return authorizationQuestionHost.requestToolAuthorization(scope);},
+    requiresToolAuthorization:()=>true});
+  runtime=runtimeApplication.runtime;localAuthorizationOnly=true;
+  runtimeConnection=await register({transport:runtimeApplication,now:Date.now,readEvents:after=>runtimeApplication.readEvents(after),
+    attachClient:value=>{client=value;return()=>{client=undefined;};}});
+  client=runtimeConnection.client;eventCursor=new EventCursor('tasks');
+}
+
+async function initializeLocalLaya() {
+  if (!competitionMode || localLaya) return;
+  const {createLocalInboxClassifier} = await import('@personal-agent/runtime/application');
+  const {LayaActionChoiceService, LocalLayaHttpTransport} = await import('@personal-agent/cognition');
+  localLaya = createLocalLayaHost({projectRoot:path.resolve(dir, '../../..'),
+    createService:createLocalInboxClassifier,
+    createChooser:({port,getApiKey}) => new LayaActionChoiceService(new LocalLayaHttpTransport(port,getApiKey)),
+    onUpdate:publish});
 }
 
 async function initializeRuntime() {
@@ -1598,6 +1658,11 @@ async function initializeRuntime() {
   const runtimeRoot=await import('@personal-agent/runtime');
   runtimeBuildIdentityReader=runtimeRoot.readRuntimeBuildIdentity;
   const {createRuntimeApplication} = runtimeModule;
+  if(localAuthorizationOnly){
+    if(runtimeApplication.activeTaskCount)throw Error('请先完成或取消当前本机授权卡');
+    runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;localAuthorizationOnly=false;
+  }
+  initializeAuthorizationHosts(runtimeModule);
   conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
   let readEvents;
   if (!['local', 'huawei_ict_agentarts'].includes(runtimeProfile)) {
@@ -1636,6 +1701,7 @@ async function initializeRuntime() {
     const dbPath = dataPaths.runtime;
     mkdirSync(path.dirname(dbPath), {recursive: true});
     if (competitionMode) {
+      await initializeLocalLaya();
       const cloudBinding=agentArtsConfig.runtimeBinding();
       if (!cloudBinding) throw Error(agentArtsConfig.snapshot().reason);
       activeCloudBinding = cloudBinding;
@@ -1656,13 +1722,26 @@ async function initializeRuntime() {
           path.join(path.dirname(dbPath), 'mvp-synthetic-memory.sqlite'), {decision});
       }
       const {createGoalHost} = await import('./goal-host.js');
-      const {createWorkspaceReadTool,createWorkspaceCommandTool} = await import('@personal-agent/coding-tools');
+      const codingModule=await import('@personal-agent/coding-tools');
+      const {createWorkspaceReadTool}=codingModule;
+      nativeExecutionHost?.close();
+      nativeExecutionHost=createDesktopNativeExecutionHost({coding:codingModule,question:authorizationQuestionHost,getApplication:()=>runtimeApplication,
+        readConfiguration:()=>codingWorkspace?.readDeveloperConfiguration(),probeRootPath:path.join(app.getPath('userData'),'native-probes'),
+        systemRoot:process.env.SystemRoot,localAppData:app.getPath('userData'),onUpdate:publish,
+        ensureHelper:async()=>{
+          const helper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
+          if(existsSync(helper))return helper;
+          if(app.isPackaged)throw new ProtocolError('UNSUPPORTED_CAPABILITY','安装包缺少已发布的原生进程隔离组件');
+          const {buildNativeHelper}=await import('@personal-agent/coding-tools/native-helper');
+          return buildNativeHelper({targetDir:path.dirname(helper)}).helperPath;
+        }});
+      const createWorkspaceCommandTool=options=>nativeExecutionHost.createCommandTool(options);
       const {createDesktopCompetitionToolCatalog} = await import('./competition-tool-catalog.js');
       const namespace = desktopHost.userNamespace;
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
-        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel, onUpdate: publish});
+        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
       }
       goalHost = createGoalHost(namespace);
       if (!syntheticMvp && calendarConfig) {
@@ -1677,12 +1756,16 @@ async function initializeRuntime() {
             if (!binding || calendarConfigurationId(binding) !== request.configurationId) throw Error('日历配置已变更或撤销');
             return calendarConfig.readAuthorization(binding);
           },
+          fetchImpl:(url,init)=>{
+            if(!calendarMeetingHost)throw new ProtocolError('UNAUTHORIZED','原日历授权宿主不可用');
+            calendarMeetingHost.assertCurrentRead();return fetch(url,init);
+          },
         });
-        calendarMeetingHost = createDesktopCalendarMeetingHost({config: calendarConfig, namespace,
+        calendarMeetingHost = createDesktopCalendarMeetingHost({config: calendarConfig, namespace,question:authorizationQuestionPort,
           readTool: calendarReadTool, readArguments: (binding,externalId) => ({configurationId:calendarConfigurationId(binding),externalId}),
           onUpdate: publish});
       }
-      if (!syntheticMvp) goalCloudHost = createDesktopGoalCloudHost({goalHost, namespace,
+      if (!syntheticMvp) goalCloudHost = createDesktopGoalCloudHost({goalHost, namespace,question:authorizationQuestionPort,
         isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         readProactiveBinding: taskId => proactiveHost?.readRepairBinding?.(taskId)});
       if (!syntheticMvp) proactiveConversationTools=createDesktopProactiveConversationTools({
@@ -1690,7 +1773,7 @@ async function initializeRuntime() {
         isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
       if (!syntheticMvp) {
-        try {todoHost = createDesktopTodoHost({userData:app.getPath('userData'),safeStorage,namespace,
+        try {todoHost = createDesktopTodoHost({userData:app.getPath('userData'),safeStorage,namespace,question:authorizationQuestionPort,
           notificationHost:notificationApplicationHost,
           createDeliveryHost:runtimeModule.createReminderDeliveryHost,onUpdate:publish,
           onNotification:async item=>{
@@ -1761,6 +1844,16 @@ async function initializeRuntime() {
       }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();
+      const referenceApplication=runtimeApplication;
+      const confirmPublicReference=createPublicReferenceQuestionConsent({question:authorizationQuestionPort,confirmApplicationAuthorization,
+        readMcpDescriptor:()=>referenceHost?.tools?.[0]?.descriptor,readSkillManifest:()=>runtimeApplication?.referenceSkillSnapshot().manifest,
+        bindOriginalReference:request=>{
+          const candidate=referenceHost?.readPublicReferencePreflightCandidate(request.query);
+          if(candidate?.toolName!=='mcp.workspace.read_text')return false;
+          runtimeApplication.bindPublicReferenceQuestion(candidate);return true;
+        },
+        readOriginalScope:(taskId,runId,completed=false)=>runtimeApplication?.readAuthorizationQuestionInvocation(taskId,runId,completed),
+        isCurrent:()=>runtimeApplication===referenceApplication});
       publicReferenceConsent=createNativePublicReferenceConsent({
         readPreflightCandidate:query=>codingWorkspace?.readWorkspaceExportPreflightCandidate?.(query)
           ?? referenceHost?.readPublicReferencePreflightCandidate?.(query),
@@ -1775,32 +1868,11 @@ async function initializeRuntime() {
         isCatalogCurrent:input=>{
           try {return referenceHost?.bindTask(input.taskId) === input.configurationRef;} catch {return false;}
         },
-        confirmNative:async (request,context)=>{
-          if (context.signal.aborted || Date.now() >= Date.parse(context.deadline)) return false;
-          openAdmin('computer');const originAdmin=admin,originApplication=runtimeApplication;
-          if (!originAdmin || originAdmin.isDestroyed()) return false;
-          const purpose=request.purpose === 'coding-reference' ? '编程参考' : '参考资料摘要';
-          if (request.phase === 'catalog') {
-            const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'公开参考能力目录',
-              message:request.catalogKind === 'skill' ? '允许本任务向 AgentArts 公布参考摘要 Skill 的公开版本参数？' : '允许本任务向 AgentArts 公布只读参考工具的公开能力目录？',
-              detail:`原任务：${request.query.taskId}\n到期：${request.expiresAt}`
-                + (request.publicParameters ? `\n公开版本：${JSON.stringify(request.publicParameters)}` : '')
-                + '\n能力目录不含文件路径或正文。具体资料读取和内容出机会分别确认。',
-              buttons:['取消','仅允许本任务'],defaultId:0,cancelId:0,noLink:true});
-            return answer.response === 1 && admin === originAdmin && !originAdmin.isDestroyed()
-              && runtimeApplication === originApplication && !context.signal.aborted && Date.now() < Date.parse(context.deadline);
-          }
-          const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'本任务公开资料许可',
-            message:request.phase === 'preflight' ? `允许读取此公开资料用于${purpose}？` : `允许向 AgentArts 发送这份已读回的公开内容用于${purpose}？`,
-            detail:`原任务：${request.query.taskId}\n资料：${request.query.path}\n内容上限：${request.maxExportBytes} 字节\n到期：${request.expiresAt}`
-              + (request.phase === 'confirmed' ? `\n实际大小：${request.byteLength} 字节\nSHA256：${request.contentDigest}` : '\n仅选择公开资料；此步骤尚未发送文件内容。'),
-            buttons:['取消','确认仅本任务使用此公开资料'],defaultId:0,cancelId:0,noLink:true});
-          return answer.response === 1 && admin === originAdmin && !originAdmin.isDestroyed()
-            && runtimeApplication === originApplication && !context.signal.aborted && Date.now() < Date.parse(context.deadline);
-        },
+        confirmNative:confirmPublicReference,
       });
       const commandHelper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
       codingWorkspace = createWorkspaceConfigHost({userData:app.getPath('userData'),safeStorage,
+        question:authorizationQuestionPort,createWorkspaceCommandTool,
         readHarnessVersions:readDesktopHarnessVersions,
         patchHelperScriptPath:process.env.PA_CODING_PATCH_HELPER_SCRIPT,
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
@@ -1852,6 +1924,7 @@ async function initializeRuntime() {
         };
         developerSettings=createDeveloperSettingsHost({userData:app.getPath('userData'),safeStorage,
           readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),
+          readWorkspaceStatus:()=>codingWorkspace.snapshot(),
           readModels:()=>modelApiHost?.snapshot().models??[],onUpdate:publish});
         developerDeployment=await developerSettings.createDeployment(developerOptions);
       }
@@ -1887,12 +1960,7 @@ async function initializeRuntime() {
             learningApplication.assertDispatchBinding(saved);
           }
         }});
-      const {LayaActionChoiceService, LocalLayaHttpTransport} = await import('@personal-agent/cognition');
-      localLaya = createLocalLayaHost({projectRoot:path.resolve(dir, '../../..'),
-        createService:runtimeModule.createLocalInboxClassifier,
-        createChooser:({port,getApiKey}) => new LayaActionChoiceService(new LocalLayaHttpTransport(port,getApiKey)),
-        onUpdate:publish});
-      mailConfig = createMailConfig({userData:app.getPath('userData'), safeStorage,
+      mailConfig = createMailConfig({userData:app.getPath('userData'), safeStorage,namespace,question:authorizationQuestionPort,
         onRevoke:async () => {await connectorConversationTools?.invalidate('mail');await mailHost?.cancel();},
         onCloudRevoke:async () => {await mailAnalysisHost?.revoke();}});
       const configuredMail = mailConfig.current();
@@ -1916,10 +1984,10 @@ async function initializeRuntime() {
               transaction:'Receipts, invoices, order and delivery notices',
               personal:'Personal conversations and social notifications',
               other:'Other or unclear subject; review manually'}, meetingLabels:['meeting'],
-            isSessionAllowed:() => mailConfig.isSessionAllowed(revision)});
+            isSessionAllowed:scope => mailConfig.isSessionAllowed(revision,scope),batchAuthorization:mailConfig.batchAuthorization});
         } catch {mailFailure = '邮箱本地分类状态无法装配；其他功能可继续使用';}
       }
-      if(!syntheticMvp)connectorConversationTools=createConnectorConversationTools({mail:mailConfig,calendar:calendarConfig,
+      if(!syntheticMvp)connectorConversationTools=createConnectorConversationTools({mail:mailConfig,calendar:calendarConfig,question:authorizationQuestionPort,
         localInbox:mailHost?.tools.find(tool=>tool.descriptor.name==='mail.inbox'),
         getApplication:()=>runtimeApplication,resolveConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
         confirmExport:confirmDeveloperExport});
@@ -1969,6 +2037,8 @@ async function initializeRuntime() {
 
       const powerShell=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
       knowledgeSourceConfig=await createKnowledgeSourceConfig({userData:app.getPath('userData'),safeStorage,namespace,
+        question:authorizationQuestionPort,
+        confirmCatalog:request=>confirmApplicationAuthorization('knowledge.catalog',request.payload,request),
         hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),
         powerShellPath:existsSync(powerShell)?powerShell:undefined,
         processIdentityHelperPath:existsSync(commandHelper)?commandHelper:undefined,
@@ -1980,21 +2050,26 @@ async function initializeRuntime() {
             properties:['openFile','multiSelections'],filters:[{name:'Markdown',extensions:['md']}]});
           return choice.canceled?undefined:choice.filePaths;
         },confirmPermissions:async details=>{
-          const choice=await dialog.showMessageBox(admin,{type:'question',title:'知识源本会话许可',
-            message:'确认所选知识源的本会话范围？',
-            detail:details.displayName+'\n所选笔记：'+details.noteCount+'\n允许整理：'+details.writeAllowed+
-              '\n允许向 AgentArts 发送公开结果：'+details.cloudExportAllowed+'\n公开查询：'+details.publicQueries.join('、'),
-            buttons:['确认本会话范围','取消'],defaultId:1,cancelId:1,noLink:true});
-          return choice.response===0 && admin && !admin.isDestroyed();
+          const {isCurrent,...payload}=details;
+          return confirmApplicationAuthorization('knowledge.configure',payload,{scope:{sourceId:details.sourceId,configRevision:details.configRevision},
+            summary:`配置知识源 ${details.displayName} 的能力偏好：整理=${details.writeAllowed}、PUBLIC查询出机=${details.cloudExportAllowed}；这不是会话读写或出机许可，实际操作仍逐次原卡核对。`.slice(0,512),isCurrent});
         }});
       obsidianPairing=createDesktopObsidianPairing({source:knowledgeSourceConfig,
         userData:app.getPath('userData'),
         createPairingHost:runtimeModule.createObsidianPairingHost,
-        ui:createObsidianPairingUI({BrowserWindow,ipcMain,dialog,owner:()=>admin}),
+        ui:createObsidianPairingUI({BrowserWindow,ipcMain,owner:()=>admin,
+          confirmAuthorization:request=>confirmApplicationAuthorization('knowledge.pair',request.payload,request)}),
         changed:()=>{cancelKnowledgeTasks();publish();}});
       knowledgeTools=runtimeModule.createTrustedKnowledgeTools(obsidianPairing.source, {
         revalidate:(input,context)=>privateMemoryController().revalidateSource(input,context),
       });
+      knowledgeTools={...knowledgeTools,
+        tools:knowledgeTools.tools.map(tool=>({get descriptor(){return tool.descriptor;},execute:(input,context)=>
+          knowledgeSourceConfig.withAuthorization(context,async()=>{const result=await tool.execute(input,context);
+            knowledgeSourceConfig.assertAuthorization(context);return result;})})),
+        competitionToolAvailability:knowledgeTools.competitionToolAvailability.map(entry=>({...entry,available:async scope=>
+          await entry.available(scope)&&await knowledgeSourceConfig.authorizeCatalog(scope)})),
+      };
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       const desktopControl={
         tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[])],
@@ -2012,7 +2087,7 @@ async function initializeRuntime() {
         ...(proactiveConversationTools?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
-        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[])];
+        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2047,6 +2122,7 @@ async function initializeRuntime() {
         }}} : {}),
         coordinationInput:{
           get contextCompaction(){return harnessContextHost?.runtimeHooks;},
+          readRequestContext:readDesktopRequestContext,
           prepareCoordinationGoal:async scope=>{
             const parent=runtimeApplication.readDelegatedUserTaskParent?.(scope.taskId);
             if(parent){
@@ -2133,9 +2209,37 @@ async function initializeRuntime() {
           mailAnalysisHost?.assertCloudSend(request);
         },
         tools: conversationTools,
-        prepareCompetitionToolExport:async ({phase,taskId,proposal,deadline,signal})=>{
-          await developerDeployment?.prepareExport({phase,taskId,proposal,deadline,signal});
-          await connectorConversationTools?.prepareExport({phase,taskId,proposal,deadline,signal});
+        hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
+        requestToolAuthorization:scope=>{
+          authorizationIntentHost.prepareQuestion(scope);
+          calendarMeetingHost?.prepareAuthorization?.(scope);
+          mailHost?.prepareAuthorization?.(scope);
+          codingWorkspace?.prepareAuthorization?.(scope);
+          knowledgeSourceConfig?.prepareAuthorization?.(scope);
+          notificationApplicationHost?.prepareAuthorization?.(scope);
+          return nativeExecutionHost.prepare(scope).then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
+        },
+        requiresToolAuthorization:scope=>authorizationQuestionHost.requiresAuthorization(scope)
+          ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='notifications.interruption_policy.set'
+          ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
+        prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
+          const scope={phase,taskId,runId,proposal,deadline,signal};
+          await todoHost?.prepareExport?.(scope);
+          await feedsHost?.prepareExport?.(scope);
+          await developerDeployment?.prepareExport(scope);
+          await connectorConversationTools?.prepareExport(scope);
+          await codingWorkspace?.prepareExport?.(scope);
+          await goalCloudHost?.prepareExport?.(scope);
+          if(['knowledge.search','knowledge.apply_note_patch'].includes(proposal?.toolName)) {
+            const binding=knowledgeSourceConfig.snapshot();
+            const isCurrent=()=>{const value=knowledgeSourceConfig.snapshot();return value.available&&value.sourceId===binding.sourceId
+              &&value.configRevision===binding.configRevision&&value.dataLevel==='public'&&value.cloudExportAllowed;};
+            if(!isCurrent())throw Error('知识公开结果出机范围不可用');
+            if(phase==='preflight')authorizationQuestionPort.prepareExport(scope,{requirementId:'knowledge-export',
+              summary:'向本任务模型发送所选PUBLIC查询的最多5条、每条最多200字符摘要（总计16KiB内），或只含state/changed的整理回执。',assertCurrent:isCurrent});
+            else authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
+            return;
+          }
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
           if (!publicReferenceConsent || !['preflight','projection'].includes(phase)) throw Error('原生公开资料许可入口不可用');
           const configurationRef=proposal.toolName === 'workspace.read_text'
@@ -2144,8 +2248,8 @@ async function initializeRuntime() {
             ? readNativePublicSkillSource({taskId,sourceRef:proposal.arguments.sourceRef,configurationRef}) : undefined;
           const query={taskId,proposalId:proposal.proposalId,path:selected?.path ?? proposal.arguments.path,
             configurationRef,arguments:selected ? {path:selected.path} : proposal.arguments};
-          if (phase === 'preflight') await publicReferenceConsent.requestPreflight(query,{deadline,signal});
-          else await publicReferenceConsent.requestExact(query,{deadline,signal});
+          if (phase === 'preflight') await publicReferenceConsent.requestPreflight(query,scope);
+          else await publicReferenceConsent.requestExact(query,scope);
         },
         ...(codingWorkspace.patchReconciliation ? {workspacePatchReconciliation: codingWorkspace.patchReconciliation} : {}),
         localRepair: syntheticMvp ? syntheticRepairHost.localRepair : {
@@ -2220,16 +2324,11 @@ async function initializeRuntime() {
           idempotencyKey:binding.operationId,deadline:context.deadline,conversationId:`learning:${namespace}`,
           hostBinding:{key:runtimeModule.LEARNING_BINDING_CHECKPOINT,value:binding}}).taskId,
         confirmActivation:async binding=>{
-          const answer=await dialog.showMessageBox(admin,{type:'question',title:'启用已验证流程',
-            message:`启用流程 ${binding.workflowId} 的版本 ${binding.revision}？`,
-            detail:'此版本已有本地 Runtime 读取证据；后续读取仍受工作区许可与原工具策略限制。',
-            buttons:['启用此版本','取消'],defaultId:1,cancelId:1,noLink:true});
-          return answer.response===0 && admin && !admin.isDestroyed();
+          return confirmApplicationAuthorization('workflow.enable',binding,{scope:{workflowId:binding.workflowId,revision:binding.revision},
+            summary:`启用所选已验证流程版本 ${binding.revision}；不授权任意工具或资料出机`});
         },confirmDeletion:async version=>{
-          const answer=await dialog.showMessageBox(admin,{type:'warning',title:'删除学习流程',
-            message:`删除流程 ${version.workflowId} 的全部版本？`,detail:'同时停止此流程尚未完成的任务，保留工作区原文件。',
-            buttons:['删除全部版本','取消'],defaultId:1,cancelId:1,noLink:true});
-          return answer.response===0 && admin && !admin.isDestroyed();
+          return confirmApplicationAuthorization('workflow.delete',version,{scope:{workflowId:version.workflowId},
+            summary:'删除所选学习流程全部版本并停止其未完成任务；保留工作区原文件，原存储核实规则仍生效'});
         }});
       privateConsumption?.close();
       privateBackups=createPrivateMemoryBackupHost({userData:app.getPath('userData'),privateMemory:privateMemoryController()});
@@ -2313,14 +2412,13 @@ async function initializeRuntime() {
   client = runtimeConnection.client;
   if (notificationApplicationHost) {
     notificationApplicationHost.bindApplication(runtimeApplication, client);
-    voiceCommandHost = createDesktopVoiceCommandHost({notifications:notificationApplicationHost,onUpdate:publish,
-      readApproval:approvalId=>conversationToolAccess.readApproval(approvalId),respondApproval:async payload=>{
-        const result=await client.call('authorization.respond',payload);
-        approvals.delete(payload.approvalId);await pumpEvents();publish();return result;
-      }});
+    voiceCommandHost = createDesktopVoiceCommandHost({onUpdate:publish,
+      readCurrentQuestion:({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
+        .find(question=>question.state==='pending')??null,
+      focusQuestion:question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();}});
     voiceApprovalBridge=createVoiceRuntimeApprovalBridge({
       readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
-      prepareApproval:payload=>voiceCommandHost.prepareApproval(payload),
+      focusQuestion:question=>{if(question.conversationId===conversations.activeConversationId('panel')){pinned=true;openPanel(true);publish();}},
       readCurrentQuestion:({conversationId})=>voiceQuestionForConversation(conversationId)});
   }
   if(proactiveWorkflowApplication){
@@ -2355,10 +2453,8 @@ async function initializeRuntime() {
   });
   if(competitionMode && memoryLearningHost && proactiveHost) {
     const publicErasure=proactiveHost.createPublicFactErasureApplication({confirm:async ref=>{
-      const answer=await dialog.showMessageBox(admin,{type:'warning',title:'删除公共事实及关联记录',
-        message:`删除事实 ${ref.id} 的全部版本及绑定投影？`,detail:`当前事实版本：${ref.revision}；已有图谱依赖或未核实状态会拒绝删除。`,
-        buttons:['删除所有绑定版本','取消'],defaultId:1,cancelId:1,noLink:true});
-      return answer.response===0 && admin && !admin.isDestroyed();
+      return confirmApplicationAuthorization('facts.erase',ref,{scope:{id:ref.id,revision:ref.revision},
+        summary:'删除所选公共事实及其绑定版本/投影；已有依赖或未核实状态仍拒绝删除，原擦除审计继续核实'});
     }});
     memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
       learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
@@ -2622,26 +2718,49 @@ async function initializeRuntime() {
 
 /** Exact payload consent stays in the trusted host and never grants tool permission. */
 async function confirmDeveloperExport(request) {
-  const {taskId,deadline,signal}=request??{};
-  const current=()=>{
-    try {
-      const task=runtimeApplication.runtime.getTask(taskId);
-      return !signal?.aborted&&Date.now()<Date.parse(deadline)&&task.state==='running'
-        &&task.cancelRequested!==true&&Boolean(conversationToolAccess.resolveConversation(taskId));
-    } catch {return false;}
-  };
-  if(!current())return false;
-  let payload;try{payload=JSON.stringify(request.payload,null,2);}catch{return false;}
-  // Native confirmation must show the entire payload. Oversized requests stay unavailable.
-  if(typeof payload!=='string'||Buffer.byteLength(payload,'utf8')>48_000)return false;
-  openAdmin('computer');const origin=admin,application=runtimeApplication;
-  if(!origin||origin.isDestroyed())return false;
-  const response=await dialog.showMessageBox(origin,{type:'question',title:'本任务资料出机确认',
-    message:'允许将以下完整工具资料发送给本任务使用的模型？',
-    detail:`原任务：${taskId}\n用途：${String(request.kind??'developer')}\n到期：${deadline}\n\n${payload}`,
-    buttons:['取消','仅允许本次完整内容'],defaultId:0,cancelId:0,noLink:true});
-  return response.response===1&&admin===origin&&!origin.isDestroyed()
-    &&runtimeApplication===application&&current();
+  if(!authorizationQuestionHost)return false;
+  try {
+    if(request.kind?.endsWith('_tool_metadata')){
+      authorizationQuestionHost.prepareExport(request);return true;
+    }
+    if(request.kind?.endsWith('_tool_result')){
+      authorizationQuestionHost.authorizeExport(request,request.payload?.result);return true;
+    }
+    if(['developer_model_request','developer_workflow_result','harness_context_summary'].includes(request.kind)){
+      const application=runtimeApplication,taskId=request.taskId;
+      const hash=value=>createHash('sha256').update(JSON.stringify(value)??'undefined').digest('hex');
+      const proposal=hash(application.runtime.loadCheckpoint(taskId,'competition-loop')?.pending);
+      const destination=application.readAuthorizationQuestionDestination(taskId);
+      const current=()=>{
+        try{const task=application.runtime.getTask(taskId);
+          return runtimeApplication===application&&!request.signal.aborted&&!task.cancelRequested
+            &&['running','waiting_approval'].includes(task.state)&&Date.now()<Date.parse(request.deadline)
+            &&proposal===hash(application.runtime.loadCheckpoint(taskId,'competition-loop')?.pending)
+            &&destination===application.readAuthorizationQuestionDestination(taskId);
+        }catch{return false;}
+      };
+      if(!current()||Buffer.byteLength(JSON.stringify(request.payload),'utf8')>512*1024)return false;
+      const harness=request.kind==='harness_context_summary';
+      return confirmApplicationAuthorization(harness?'harness.export':'developer.export',request.payload,{
+        operation:{taskId,digest:hash([taskId,proposal,request.policyBinding??request.payload?.destination,request.deadline])},
+        scope:{namespace:desktopHost.userNamespace,purpose:harness?'bounded-history-summary':'bounded-developer-workflow',destination,
+          configuration:request.policyBinding??hash(request.payload?.destination)},deadline:request.deadline,signal:request.signal,
+        summary:harness?'本次历史摘要操作：仅已核对历史范围和选定模型，沿原摘要预算及截止时间；各次发送最多512KiB，保留来源和凭据过滤'
+          :'本次开发操作的模型消息、工具投影与最终总结共用本卡；仅原仓库/工作区和固定模型，沿原步骤/token预算及期限，每次最多512KiB',
+        isCurrent:current});
+    }
+    return false;
+  }catch{runtimeError='原操作的出机许可不可用或已失效，未发送新的私人资料';publish();return false;}
+}
+
+/** Existing callback compatibility: one card, a separately audited decision, no business success claim. */
+async function confirmApplicationAuthorization(action,payload,{scope={},summary,deadline,signal,operation,isCurrent=()=>true}={}) {
+  const owner=admin??panel??workspace,application=runtimeApplication;
+  if(!owner||owner.isDestroyed()||!authorizationIntentHost)return false;
+  const allowed=await authorizationIntentHost.request({action,payload,scope,summary,deadline,signal,operation,
+    isCurrent:()=>runtimeApplication===application&&!owner.isDestroyed()&&isCurrent()});
+  if(!allowed){runtimeError='本次操作未获得有效授权，业务操作未执行；请查看当前对话卡或重新发起。';publish();}
+  return allowed;
 }
 
 async function initializeProductServices() {
@@ -2685,6 +2804,26 @@ const recoverWorkspacePatch = createWorkspacePatchRecoveryAction({
   isEnabled: () => competitionMode && !syntheticMvp, refresh,
 });
 
+async function interruptConversation(conversationId,surface,except,previous) {
+  const pending=conversationDelivery.interruptPending(conversationId,except)??previous;
+  const running=[...tasks.values()].filter(task=>conversations.conversationIdForTask(task)===conversationId
+    &&taskSurface(task)===surface&&!terminalTaskStates.has(task.state));
+  // Acceptance may precede the first task.get. A stalled readback cannot hide this task from Stop.
+  if(pending?.taskId&&!running.some(task=>task.taskId===pending.taskId))running.push({taskId:pending.taskId});
+  for(const task of running)conversationDelivery.truncate(task);
+  publish();
+  const results=await Promise.allSettled(running.map(async task=>{
+    const result=await client.call('task.cancel',{taskId:task.taskId,reason:'用户截断当前回答'});
+    conversationDelivery.acceptStop(task.taskId,result);
+    // A readback must never hold up a new message after cancellation is accepted.
+    void refresh(task.taskId).catch(()=>{});
+    return result;
+  }));
+  const failed=results.find(result=>result.status==='rejected');
+  if(failed)throw failed.reason;
+  return {interrupted:true};
+}
+
 async function action(event, name, payload) {
   if(subagentListWindow&&!subagentListWindow.isDestroyed()&&subagentListWindow.webContents===event.sender)
     return handleSubagentListAction({event,name,payload,window:subagentListWindow,
@@ -2695,10 +2834,26 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
+  if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond'].includes(name))
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel');
+  if(name==='authorization.question.respond'){
+    if(sender!==panel&&sender!==workspace&&sender!==admin||!authorizationQuestionHost)throw Error('当前对话授权卡不可用');
+    const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
+    const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
+    if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
+    const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
+  }
+  if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
+    if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
+    if(name==='authorization.sandbox.read'&&payload!==undefined)throw Error('授权管理读取不接受额外字段');
+    const result=name==='authorization.sandbox.read'?authorizationQuestionHost.sandboxSnapshot()
+      :name==='authorization.sandbox.select'?authorizationQuestionHost.selectSandbox(payload):authorizationQuestionHost.revokeRule(payload);
+    publish();return result;
+  }
   if(name==='app.startup.read'||name==='app.startup.configure'){
     if(sender!==admin||(name==='app.startup.read'&&payload!==undefined))throw Error('请从可信管理后台设置登录自启');
     const result=name==='app.startup.read'?desktopHost.readLoginItem():desktopHost.configureLoginItem(payload);
@@ -2721,8 +2876,8 @@ async function action(event, name, payload) {
     publish();return {...result,...readDesktopModelApiState()};
   }
   if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(name)) {
-    if(sender!==admin||!competitionMode||!developerSettings)throw Error('请从正式管理后台配置开发宿主');
-    if(name==='developer.settings.read'&&payload!==undefined)throw Error('开发状态读取不接受参数');
+    if(sender!==admin||!competitionMode||!developerSettings)throw developerSettingsError('DEV_SETTINGS_ACCESS_DENIED');
+    if(name==='developer.settings.read'&&payload!==undefined)throw developerSettingsError('DEV_SETTINGS_INPUT_INVALID');
     const result=name==='developer.settings.read'?developerSettings.snapshot()
       :name==='developer.settings.configure'?await developerSettings.configure(payload):await developerSettings.setEnabled(payload);
     publish();return result;
@@ -2877,6 +3032,7 @@ async function action(event, name, payload) {
     if ((sender!==admin && sender!==panel) || !voiceCommandHost) throw Error('当前语音确认宿主不可用');
     if(name==='voice.confirmation.prepareApproval') {
       const approval=runtimeApplication.runtime.getApproval(payload?.approvalId),task=tasks.get(approval.taskId);
+      if(approval.state!=='pending'||approval.revision!==payload?.expectedRevision)throw Error('原审批已改变，请回当前对话提问卡');
       if(sender===panel && (!task || taskSurface(task)!=='panel')) throw Error('无法确认其他工作区的审批');
       const question=voiceCommandHost.prepareApproval(payload);
       return {...question,questionDelivery:liveVoice?.askCurrentQuestion()??{state:'unavailable',accepted:false}};
@@ -2894,17 +3050,16 @@ async function action(event, name, payload) {
         || typeof payload.taskId !== 'string') throw Error('请选择订阅和原始任务');
       const originAdmin=admin, originApplication=runtimeApplication, originFeeds=feedsHost;
       const choice=originFeeds.prepareNativeSourceChoice(payload);
-      const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'订阅来源与持续跟踪许可',
-        message:`订阅：${choice.title}\n原任务：${choice.taskId}\n用途：${choice.goal}`,
-        detail:`实际地址：${choice.url}\n许可到期：${choice.deadline}\n公开选择只适用于无需凭据的公共资料，并允许该原任务持续跟踪；来源获取仍需真实读取证据。分类改变会关闭本会话读取许可并使旧任务绑定失效，请重新允许本会话读取。`,
-        buttons:choice.containsCredentials ? ['取消','保持私人'] : ['取消','公开并允许本任务跟踪','保持私人'],
-        defaultId:0,cancelId:0,noLink:true});
+      if(choice.containsCredentials)throw new ProtocolError('UNAUTHORIZED','含凭据的来源保持私人，不能申请公开持续跟踪');
+      const allowed=await confirmApplicationAuthorization('feeds.classify',choice,{scope:{subscriptionId:choice.subscriptionId,
+        configurationRef:choice.configurationRef,generation:choice.generation,taskId:choice.taskId,purposeDigest:choice.purposeDigest},
+        summary:'将此无凭据订阅标记为公开资料，并允许所选原任务按其原期限跟踪；本卡不证明来源已实际读取',deadline:choice.deadline,
+        isCurrent:()=>admin===originAdmin&&!originAdmin.isDestroyed()&&runtimeApplication===originApplication&&feedsHost===originFeeds});
       if (admin !== originAdmin || originAdmin.isDestroyed() || runtimeApplication !== originApplication
         || feedsHost !== originFeeds) throw Error('订阅许可窗口已经改变');
-      if (answer.response === 0) return originFeeds.snapshot();
-      const result=originFeeds.applyNativeSourceChoice(choice,
-        !choice.containsCredentials && answer.response === 1 ? 'public' : 'private');
-      if (!choice.containsCredentials && answer.response === 1) {
+      if (!allowed) return originFeeds.snapshot();
+      const result=originFeeds.applyNativeSourceChoice(choice,'public');
+      if (allowed) {
         const storage=originApplication.createHostStateStore('knowledge-tracking');
         const key='feed-interest-intake:'+createHash('sha256').update(choice.taskId).digest('hex');
         const previous=storage.get(key);
@@ -2978,8 +3133,8 @@ async function action(event, name, payload) {
     const response = await client.call('authorization.respond', calendarApprovalResponse(payload));
     publish();return response;
   }
-  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.enableCloud','mail.disableCloud','laya.start','laya.stop'].includes(name)) {
-    if (sender !== admin || !competitionMode || !mailConfig || !localLaya) throw Error('此操作仅允许从本项目设置调用');
+  if (name === 'laya.start' || name === 'laya.stop') {
+    if (sender !== admin || !competitionMode || !localLaya) throw Error('此操作仅允许从本项目设置调用');
     if (name === 'laya.start') {
       localServicesStopped = false;
       const result = await localLaya.start();
@@ -2994,6 +3149,9 @@ async function action(event, name, payload) {
       publish();
       return result;
     }
+  }
+  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.enableCloud','mail.disableCloud'].includes(name)) {
+    if (sender !== admin || !competitionMode || !mailConfig || !localLaya) throw Error('此操作仅允许从本项目设置调用');
     if (name === 'mail.configure') {await mailConfig.configure(payload); mailFailure = '';}
     if (name === 'mail.enable') mailConfig.enableSession(payload);
     if (name === 'mail.disable') await mailConfig.revoke();
@@ -3018,13 +3176,20 @@ async function action(event, name, payload) {
     if(sender!==admin || !competitionMode || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识源仅在正式管理后台可用');
     const action=name.slice('knowledge.source.'.length);
     if(['select','selectNotes','configure','revoke'].includes(action)) {
-      obsidianPairing?.useFilesystem();
+      const before=knowledgeSourceConfig.snapshot();
       const result=await knowledgeSourceConfig[action](payload);
+      if(before.sourceId!==result.sourceId||before.configRevision!==result.configRevision||action==='revoke')obsidianPairing?.useFilesystem();
       cancelKnowledgeTasks();
       publish();return result;
     }
     if(['readNote','submitPatch'].includes(action) && obsidianPairing?.snapshot().mode==='plugin') throw Error('插件配对仅支持只读检索；请先显式撤销配对以整理文件源');
-    if(action==='readNote') return knowledgeSourceConfig.readSelectedNote(payload);
+    if(action==='readNote') {
+      const binding=knowledgeSourceConfig.snapshot();
+      const isCurrent=()=>{const value=knowledgeSourceConfig.snapshot();return value.available&&value.sourceId===binding.sourceId&&value.configRevision===binding.configRevision;};
+      if(!isCurrent()||!await confirmApplicationAuthorization('knowledge.read',payload,{scope:{sourceId:binding.sourceId,configRevision:binding.configRevision,path:payload?.path},
+        summary:`只读显示当前知识源中所选笔记 ${payload?.path??''}；不向模型发送正文。`.slice(0,512),isCurrent}))throw Error('本次笔记读取未获有效原卡授权');
+      return knowledgeSourceConfig.readSelectedNote(payload);
+    }
     if(action==='reconcile') {
       if(!payload || Object.keys(payload).some(key=>key!=='taskId') || typeof payload.taskId!=='string')throw Error('原知识任务标识无效');
       const task=await runtimeApplication.reconcileKnowledgeWriteTask(payload.taskId,
@@ -3270,7 +3435,7 @@ async function action(event, name, payload) {
     if (!client) throw Error('Runtime 未连接，麦克风采集尚不可用');
     if (!voicePcmSource) throw Error('Voice PCM 来源尚未接入');
     if (voiceConfigurationPending || panelHiding || wakeQuitUnknown || wakeVoice?.hasActive() || liveVoice?.hasActive()) throw Error('请先结束唤醒或 Live 会话');
-    const result = microphoneCaptureHost.authorize();
+    const result = await microphoneCaptureHost.authorize({purpose:'dictation'});
     publish();
     return result;
   }
@@ -3342,12 +3507,17 @@ async function action(event, name, payload) {
     const conversationId = conversations.activeConversationId(sender===workspace?'workspace':'panel');
     if(payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新操作');
     const previous = conversations.preference(conversationId,{depth:thinking.depth,fast:thinking.fast});
-    const value = conversations.setPreference(conversationId,{...previous,depth:payload?.depth,fast:payload?.fast});
+    const preference={...previous,depth:payload?.depth,fast:payload?.fast};
+    if(preference.modelSelection==='default')readDesktopExecutionModel(agentArtsModels,preference);
+    const value = conversations.setPreference(conversationId,preference);
     publish();return value;
   }
   if (name === 'conversation.model') {
     if (sender !== panel && sender !== workspace) throw Error('请从当前对话选择主思考模型');
-    if (!competitionMode || !payload || Object.keys(payload).some(key=>!['modelId','executionModel','conversationId'].includes(key))) throw Error('模型选择无效');
+    if (!competitionMode || !payload || Object.keys(payload).some(key=>!['modelId','executionModel','conversationId','modelSelection','depth','fast','catalogRevision'].includes(key))) throw Error('模型选择无效');
+    if(payload.modelSelection!==undefined&&(payload.modelSelection!=='default'||payload.modelId!==''||payload.executionModel!==undefined||!Number.isInteger(payload.depth)||payload.depth<0||payload.depth>5||typeof payload.fast!=='boolean'))throw Error('默认组合选择无效');
+    if(payload.modelSelection==='default'&&payload.catalogRevision!==agentArtsModels.snapshot().catalog?.revision)throw Error('模型目录已改变，请重新选择');
+    if(payload.modelSelection===undefined&&['depth','fast','catalogRevision'].some(key=>Object.hasOwn(payload,key)))throw Error('模型选择无效');
     const executionModel=payload.executionModel?agentArtsModels.resolveExecutionModel(payload.executionModel):payload.modelId?agentArtsModels.resolveExecutionModel({modelId:payload.modelId}):undefined;
     const id = executionModel?.modelId ?? payload.modelId;
     if (typeof id !== 'string' || (id && !executionModel && !agentArtsModels?.snapshot().catalog?.models.some(item=>item.id===id && item.available!==false))) {
@@ -3355,7 +3525,9 @@ async function action(event, name, payload) {
     }
     const conversationId = conversations.activeConversationId(sender===workspace?'workspace':'panel');
     if(payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新操作');
-    const value = conversations.setPreference(conversationId,{...conversations.preference(conversationId),modelId:id,executionModel});
+    const preference={...conversations.preference(conversationId),modelId:id,executionModel,modelSelection:payload.modelSelection,...(payload.modelSelection==='default'?{depth:payload.depth,fast:payload.fast}:{})};
+    if(payload.modelSelection==='default')readDesktopExecutionModel(agentArtsModels,preference);
+    const value = conversations.setPreference(conversationId,preference);
     publish();return value;
   }
   if (typeof name==='string' && name.startsWith('skill.') && name!=='skill.run') {
@@ -3408,32 +3580,54 @@ async function action(event, name, payload) {
     }
     throw Error('Unsupported Goal action');
   }
+  if(name==='conversation.interrupt') {
+    if(sender!==panel)throw Error('请从主面板停止当前回答');
+    if(!payload||typeof payload!=='object'||Object.keys(payload).some(key=>key!=='conversationId')
+      ||payload.conversationId!==conversations.activeConversationId('panel'))throw Error('当前对话已切换，请重试');
+    return interruptConversation(payload.conversationId,'panel');
+  }
   if (name === 'task.submit' || name==='skill.run') {
     const skillRun=name==='skill.run';
     if(!skillRun&&sender===workspace)throw Error('请在主面板协调，或进入具体子智能体对话发送消息');
     if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
     const text=typeof payload==='string'?payload:payload?.text;
-    if(!skillRun&&payload&&typeof payload==='object'&&Object.keys(payload).some(k=>!['text','conversationId'].includes(k)))throw Error('任务提交格式无效');
+    if(!skillRun&&payload&&typeof payload==='object'&&(Object.keys(payload).some(k=>!['text','conversationId','delivery'].includes(k))
+      ||payload.delivery!==undefined&&!['steer','send'].includes(payload.delivery)))throw Error('任务提交格式无效');
     if (!skillRun && (typeof text !== 'string' || !text.trim())) throw Error('请输入有效任务');
     if (competitionMode && !agentArtsConfig.snapshot().configured) throw Error('请先在设置 → 模型中保存 AgentArts Authorization；Live 语音配置无需重新填写');
     if (!fakeMode && model.enabled === false) throw Error('模型已停用，请先在模型设置中启用');
     const surface = skillRun || sender === workspace ? 'workspace' : 'panel';
     const conversationId=conversations.activeConversationId(surface);
     if(!skillRun&&payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新发送');
-    if (submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state))) throw Error('请等待当前回答完成，或先停止当前任务');
-    submitting.add(conversationId);
+    const steering=!skillRun&&payload?.delivery==='steer';
+    const previous=steering?conversationDelivery.interruptPending(conversationId):undefined;
+    if (!steering&&(submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task)))) throw Error('请等待当前回答完成，或先停止当前任务');
+    const deliveryRequest=conversationDelivery.begin(conversationId);
     try {
+    if(steering)await interruptConversation(conversationId,surface,deliveryRequest,previous);
+    if(deliveryRequest.interrupted)return {interrupted:true};
     const prepared=skillRun?await installedSkillsHost.prepareRun(payload):undefined;
     if(prepared?.cancelled) return {cancelled:true};
+    if(deliveryRequest.interrupted)return {interrupted:true};
     const goal = skillRun?prepared.publicGoal:text.trim();
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode});
+    deliveryRequest.taskId=result.taskId;
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
     rememberTaskGoal(result.taskId, userGoal);
+    const stopAcceptedTask=async()=>{
+      conversationDelivery.truncate({taskId:result.taskId});
+      const stopped=await client.call('task.cancel',{taskId:result.taskId,reason:'用户在任务受理前截断回答'});
+      conversationDelivery.acceptStop(result.taskId,stopped);
+      void refresh(result.taskId).catch(()=>{});
+      return {taskId:result.taskId,interrupted:true};
+    };
+    if(deliveryRequest.interrupted)return stopAcceptedTask();
     if (sender === panel) pinned = true;
     const task = await refresh(result.taskId);
+    if(deliveryRequest.interrupted)return stopAcceptedTask();
     return task;
-    } finally { submitting.delete(conversationId); }
+    } finally { conversationDelivery.finish(deliveryRequest); }
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
@@ -3443,7 +3637,11 @@ async function action(event, name, payload) {
   if (name === 'task.cancel') {
     if (typeof payload !== 'string' || !tasks.has(payload)) throw Error('Unknown task');
     if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法停止其他工作区的任务');
-    return requestTaskCancellation(client, payload, refresh);
+    conversationDelivery.truncate(tasks.get(payload));publish();
+    const result=await client.call('task.cancel',{taskId:payload,reason:'用户截断当前回答'});
+    conversationDelivery.acceptStop(payload,result);
+    void refresh(payload).catch(()=>{});
+    return result;
   }
   if (name === 'task.refresh') {
     if (!tasks.has(payload)) throw Error('Unknown task');
@@ -3453,13 +3651,15 @@ async function action(event, name, payload) {
   if (name === 'capability.list') { await syncCapabilities(); publish(); return {manifests: capabilities, health}; }
   if (name === 'approval.history') {
     if (sender !== admin) throw Error('授权历史只能从管理后台读取');
-    return readApprovalPage(client, payload);
+    const page=await readApprovalPage(client, payload);
+    return {...page,items:page.items.map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime))};
   }
   if (name === 'settings.get') return client.call('settings.get', {namespace: String(payload ?? 'desktop')});
   if (name === 'settings.update') return client.call('settings.update', payload);
   if (name === 'authorization.respond') {
     if (!payload || typeof payload.approvalId !== 'string' || !['allow_once', 'deny'].includes(payload.decision) || !Number.isSafeInteger(payload.expectedRevision)) throw Error('授权决定格式无效');
     if(sender!==admin){const approval=approvals.get(payload.approvalId),surface=sender===workspace?'workspace':'panel';if(sender!==panel&&sender!==workspace||!approval||approval.taskId!==payload.taskId||!tasks.has(approval.taskId)||!visibleConversationTask(tasks.get(approval.taskId),surface))throw Error('审批不属于当前对话');}
+    if(authorizationQuestionHost?.hasPending(payload.approvalId))throw new ProtocolError('UNAUTHORIZED','请在原对话的统一授权卡完成本次决定');
     const result = await client.call('authorization.respond', {approvalId: payload.approvalId, decision: payload.decision, expectedRevision: payload.expectedRevision});
     approvals.delete(payload.approvalId);
     if (payload.taskId && tasks.has(payload.taskId)) await refresh(payload.taskId);
@@ -3618,13 +3818,14 @@ async function chooseNativePublicSkillSource(input) {
   if (!relative || path.isAbsolute(relative) || relative === '..' || relative.startsWith('..'+path.sep)
     || !/\.(md|txt)$/i.test(relative)) throw Error('公开资料必须位于已许可的当前工作区内');
   const sourcePath=relative.split(path.sep).join('/');
-  const answer=await dialog.showMessageBox(originAdmin,{type:'question',title:'本任务公开参考来源',
-    message:`公开参考资料：${sourcePath}`,
-    detail:`原任务：${input.taskId}\n公开别名：public-reference\n到期：${input.deadline}\n仅将此文件作为公开参考来源。此步骤未读取正文；实际工具读取和对应内容出机会另行核对。`,
-    buttons:['取消','确认这是本任务的公开资料'],defaultId:0,cancelId:0,noLink:true});
+  const accepted=await confirmApplicationAuthorization('reference.source',
+    {taskId:input.taskId,configurationRef:input.configurationRef,sourceRef:'public-reference',path:sourcePath,expiresAt:input.deadline},
+    {scope:{taskId:input.taskId,configurationRef:input.configurationRef,workspace:workspaceBinding},
+      summary:`选择 ${sourcePath} 为本任务PUBLIC参考来源；此步骤不读取正文，实际读取与有界出机由原工具同一卡核对。`.slice(0,512),
+      deadline:input.deadline,signal:input.signal,isCurrent:current});
   if (!current()) return undefined;
   referenceHost.assertTask(input.taskId);
-  if (answer.response !== 1) {publicSkillSources.set(key,{denied:true});return undefined;}
+  if (!accepted) {publicSkillSources.set(key,{denied:true});return undefined;}
   publicSkillSources.set(key,{taskId:input.taskId,configurationRef:input.configurationRef,sourceRef:'public-reference',
     path:sourcePath,expiresAt:input.deadline,workspace:workspaceBinding});
   return readNativePublicSkillSource({...input,sourceRef:'public-reference'});
@@ -3726,6 +3927,13 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler(microphonePermissionGate.request);
   session.defaultSession.setPermissionCheckHandler(microphonePermissionGate.check);
   microphoneCaptureHost = createMicrophoneCaptureHost({permissionGate: microphonePermissionGate,
+    confirmAuthorization:request=>{
+      const {signal,isCurrent,...payload}=request;
+      return confirmApplicationAuthorization('voice.capture',payload,{scope:{panelId:payload.panelId,purpose:payload.purpose,expiresAt:payload.expiresAt},
+        summary:`允许本次${payload.purpose==='live'?'Live语音与所选AgentArts音频服务':payload.purpose==='wake'?'本机关键词唤醒及后续听写':'麦克风听写'}，期限至${payload.expiresAt}；系统麦克风权限仍单独核验，停止立即撤销。`,
+        deadline:new Date(Math.min(Date.parse(payload.expiresAt),Date.now()+180000)).toISOString(),signal,
+        isCurrent:()=>!voiceConfigurationPending&&!panelHiding&&isCurrent()});
+    },
     getPanel: () => panel, onLevel: noteMicLevel});
   ipcMain.on('desktop:microphone-event', (event, message) => {
     if (microphoneCaptureHost.receive(event, message) && message.type!=='frame') publish();
@@ -3743,6 +3951,7 @@ app.whenReady().then(async () => {
     remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
     remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
     remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
+      confirmAuthorization:request=>confirmApplicationAuthorization('remoteMcp.configure',request.payload,request),
       config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
       namespace:desktopHost.userNamespace,onUpdate:publish});
   }
@@ -3766,18 +3975,22 @@ app.whenReady().then(async () => {
       isDefaultExecutionAvailable:()=>runtimeApplication?.isDefaultSubagentAvailable()===true,
       createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway});
   }
-  if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage});
-  if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage});
+  if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
+  if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   ipcMain.on('desktop:live-event', (event, message) => {liveVoice?.receive(event, message);});
   ipcMain.on('desktop:voice-playback-event', (event, message) => {
     if (sisPlaybackHost?.receive(event, message)) publish();
   });
   try {
     conversations = new Conversations(dataPaths.conversations);
+    // The cloud startup gate must not defer explicit local service management.
+    // Constructing this owned host does not load weights or start a process.
+    await initializeLocalLaya();
     await initializeInstalledSkills();
     if (!competitionMode) restoreModelConfig();
     const startup = await runtimeStartup.start();
     if (startup.state === 'configuration_required') {
+      await initializeLocalAuthorizationControlPlane();
       runtimeError = agentArtsConfig.snapshot().reason;
       connectionLabel = 'Runtime 等待配置';
     }
@@ -3806,7 +4019,11 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('desktop:action', async (...args) => {
     try { return {ok: true, value: await action(...args)}; }
-    catch (error) { return {ok: false, error: error instanceof Error ? error.message : '操作失败'}; }
+    catch (error) {
+      if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(args[1]))
+        return developerSettingsErrorResponse(error);
+      return {ok: false, error: error instanceof Error ? error.message : '操作失败'};
+    }
   });
   // First-run configuration must be reachable even when cloud credentials prevent Runtime startup.
   if (competitionMode && !agentArtsConfig.snapshot().configured) openAdmin('models');
@@ -4000,6 +4217,9 @@ app.whenReady().then(async () => {
       goalCloudHost?.close();
       calendarMeetingHost?.close();
       void connectorConversationTools?.close();
+      authorizationQuestionHost?.close();
+      authorizationIntentHost?.close();
+      nativeExecutionHost?.close();
       mailAnalysisHost?.close();
       competitionFactBridge?.close();
       if (runtimeApplication) runtimeApplication.close();

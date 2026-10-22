@@ -1,6 +1,7 @@
 import {existsSync,mkdirSync,readFileSync,renameSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {developerSettingsError,preserveDeveloperSettingsError} from '../shared/developer-settings-diagnostics.js';
 
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const only=(value,keys)=>object(value)&&Object.keys(value).every(key=>keys.includes(key));
@@ -12,7 +13,7 @@ const TASK_BINDING_KEY='desktop-developer-settings-binding-v1';
 const STARTUP_SCAN_PAGE_LIMIT=10;
 
 /** One encrypted product view of the ORIGINAL deployment configuration, never a tool registry. */
-export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,readModels=()=>[],
+export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,readWorkspaceStatus=()=>undefined,readModels=()=>[],
   createDeployment,readToolDescriptors,makeProtocolError=error,onUpdate=()=>{}}) {
   const target=path.join(userData,'developer-settings.json');
   let record,restoreFailed=false,closed=false,saving=false,slot,options,application,stable;
@@ -26,6 +27,7 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     catch{return [];}
   };
   const workspace=()=>{try{return readWorkspace?.();}catch{return undefined;}};
+  const workspaceRequiresRestart=()=>{try{return readWorkspaceStatus()?.configured===true;}catch{return false;}};
   const changed=()=>makeProtocolError('REVISION_CONFLICT','开发设置或原任务绑定已变化');
   try {
     if(existsSync(target)){
@@ -85,12 +87,14 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     }catch{return false;}
   };
   const persist=value=>{
-    if(!safeStorage.isEncryptionAvailable())throw Error('本机安全存储不可用，未保存开发配置');
-    const encrypted=safeStorage.encryptString(JSON.stringify(value)).toString('base64');
-    mkdirSync(userData,{recursive:true});
-    const temporary=target+'.tmp-'+randomUUID();
-    writeFileSync(temporary,JSON.stringify({version:1,encrypted}),'utf8');renameSync(temporary,target);
-    record=value;restoreFailed=false;
+    if(!safeStorage.isEncryptionAvailable())throw developerSettingsError('DEV_SETTINGS_STORAGE_UNAVAILABLE');
+    try{
+      const encrypted=safeStorage.encryptString(JSON.stringify(value)).toString('base64');
+      mkdirSync(userData,{recursive:true});
+      const temporary=target+'.tmp-'+randomUUID();
+      writeFileSync(temporary,JSON.stringify({version:1,encrypted}),'utf8');renameSync(temporary,target);
+      record=value;restoreFailed=false;
+    }catch{throw developerSettingsError('DEV_SETTINGS_STORAGE_WRITE_FAILED');}
   };
   const clearSlot=()=>{const previous=slot;slot=undefined;try{previous?.deployment.close();}catch{}};
   async function factories(){
@@ -103,11 +107,11 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     }
   }
   async function build(value){
-    if(!options)throw Error('开发宿主尚未装配，请先完成 Runtime 初始化');
+    if(!options)throw developerSettingsError('DEV_SETTINGS_HOST_UNAVAILABLE');
     const selected=workspace();
-    if(!selected||selected.bindingId!==value.workspaceBindingId)throw Error('原工作区已变化，请重新保存配置');
+    if(!selected||selected.bindingId!==value.workspaceBindingId)throw developerSettingsError('DEV_SETTINGS_WORKSPACE_CHANGED');
     const deployment=await createDeployment({...options,configPath:undefined,configurationSource:source(value),workspace:selected});
-    if(deployment.snapshot().configured!==true){deployment.close();throw Error('开发配置未通过原宿主校验');}
+    if(deployment.snapshot().configured!==true){deployment.close();throw developerSettingsError('DEV_SETTINGS_HOST_UNAVAILABLE');}
     return {record:value,deployment};
   }
   const snapshot=()=>{
@@ -117,7 +121,7 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     return {enabled:record?.enabled===true,configured:Boolean(record),tokenConfigured:Boolean(record?.token),
       state:restoreFailed?'restore_failed':closed?'closed':current?'configured':record?.enabled?'unavailable':'disabled',
       available:Boolean(current),writing,models:models(),
-      workspace:{selected:Boolean(selected),bindingId:selected?.bindingId,rootPath:selected?.rootPath,
+      workspace:{selected:Boolean(selected),requiresRestart:!selected&&workspaceRequiresRestart(),bindingId:selected?.bindingId,rootPath:selected?.rootPath,
         recipeIds:selected?.command?.recipeIds??[]},
       configuration:configuration?{version:1,repository:configuration.repository,
         github:{executable:configuration.github?.executable,environment:structuredClone(configuration.github?.environment??{}),
@@ -127,52 +131,54 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
         workflowsConfigured:deployment.workflowsConfigured,exportConfirmationConfigured:deployment.exportConfirmationConfigured,
         unavailable:structuredClone(deployment.unavailable??[])}:undefined,
       reason:restoreFailed?'开发加密配置读取失败；未导入任何旧凭据':closed?'开发设置宿主已关闭':
-        !selected?'请在原工作区设置选择工作区':record?.enabled&&!current?'配置已保存，但原绑定不可用；请检查模型与工作区':
+        !selected?(workspaceRequiresRestart()?'工作区设置已保存，请到「开发 → 环境 / Worktrees」核对并重启装配':
+          '请到「开发 → 环境 / Worktrees」选择本地工作区并重启装配'):record?.enabled&&!current?'配置已保存，但原绑定不可用；请检查模型与工作区':
           current?'原开发宿主已装配；可执行性仍由每个任务的原授权决定':'开发宿主已停用，保存不授予工具或出机权限'};
   };
 
   async function configure(input){
-    if(closed||saving)throw Error('开发配置宿主已关闭或正在保存');
+    if(closed||saving)throw developerSettingsError('DEV_SETTINGS_BUSY');
     if(!only(input,['enabled','configuration','token'])||typeof input.enabled!=='boolean'
       ||!only(input.configuration,['version','repository','github','git','workflows'])
       ||!only(input.configuration.github,['executable','environment','repairLinks'])
-      ||input.configuration.github.repairLinks!==undefined&&typeof input.configuration.github.repairLinks!=='boolean')throw Error('开发配置字段无效');
-    if(writing&&input.enabled)throw Error('开发写入仍在进行，请先核实原任务结果');
-    const selected=workspace();if(!selected)throw Error('请先选择原工作区');
+      ||input.configuration.github.repairLinks!==undefined&&typeof input.configuration.github.repairLinks!=='boolean')throw developerSettingsError('DEV_SETTINGS_INPUT_INVALID');
+    if(writing&&input.enabled)throw developerSettingsError('DEV_SETTINGS_WRITE_PENDING');
+    const selected=workspace();if(!selected)throw developerSettingsError(workspaceRequiresRestart()
+      ?'DEV_SETTINGS_WORKSPACE_RESTART_REQUIRED':'DEV_SETTINGS_WORKSPACE_REQUIRED');
     const token=input.token===undefined||input.token===''?record?.token:input.token;
-    if(typeof token!=='string'||token.length<8||token.length>4096||/\s|\x00/u.test(token))throw Error('请填写有效 GitHub 凭据；留空仅保留已保存凭据');
+    if(typeof token!=='string'||token.length<8||token.length>4096||/\s|\x00/u.test(token))throw developerSettingsError('DEV_SETTINGS_CREDENTIAL_REQUIRED');
     const configuration=structuredClone(input.configuration);
     configuration.workspaceRoot=selected.rootPath;
     if(configuration.workflows){
       const chosen=models().find(model=>model.id===configuration.workflows.modelId&&model.configurationRef===configuration.workflows.configurationRef);
-      if(!chosen)throw Error('请选择原模型宿主中已启用的精确模型绑定');
+      if(!chosen)throw developerSettingsError('DEV_SETTINGS_MODEL_REQUIRED');
       configuration.workflows.bindingId=randomUUID();
     }
     const raw=JSON.stringify(configuration);
-    if(Buffer.byteLength(raw,'utf8')>65536||containsCredential(configuration,token))throw Error('开发配置过大或包含凭据，未保存');
+    if(Buffer.byteLength(raw,'utf8')>65536||containsCredential(configuration,token))throw developerSettingsError('DEV_SETTINGS_CONTENT_INVALID');
     const candidate={version:1,revision:randomUUID(),enabled:input.enabled,configuration,token,workspaceBindingId:selected.bindingId};
     saving=true;let next,committed=false;
     try{
       await factories();next=await build(candidate);
       if(closed||workspace()?.bindingId!==candidate.workspaceBindingId||candidate.configuration.workflows
         &&!models().some(model=>model.id===candidate.configuration.workflows.modelId
-          &&model.configurationRef===candidate.configuration.workflows.configurationRef))throw changed();
+          &&model.configurationRef===candidate.configuration.workflows.configurationRef))throw developerSettingsError('DEV_SETTINGS_WORKSPACE_CHANGED');
       // Synchronous atomic persistence and source invalidation form one host mutation boundary.
       persist(candidate);committed=true;clearSlot();
       if(candidate.enabled){slot=next;next=undefined;if(application)slot.deployment.host.bind(application);}
       publish();return snapshot();
-    }catch{
+    }catch(cause){
       if(committed){clearSlot();publish();return snapshot();}
-      throw Error('开发配置校验或保存失败；请检查原工作区、模型绑定、路径和凭据');
+      throw preserveDeveloperSettingsError(cause);
     }
     finally{try{next?.deployment.close();}catch{}saving=false;}
   }
   async function setEnabled(input){
-    if(!only(input,['enabled'])||typeof input.enabled!=='boolean')throw Error('请明确启用或停用');
-    if(closed||saving)throw Error('开发配置宿主已关闭或正在保存');
-    if(!record)throw Error('请先保存开发配置');
+    if(!only(input,['enabled'])||typeof input.enabled!=='boolean')throw developerSettingsError('DEV_SETTINGS_INPUT_INVALID');
+    if(closed||saving)throw developerSettingsError('DEV_SETTINGS_BUSY');
+    if(!record)throw developerSettingsError('DEV_SETTINGS_NOT_CONFIGURED');
     if(input.enabled){
-      if(workspace()?.bindingId!==record.workspaceBindingId)throw Error('原工作区已变化，请重新保存');
+      if(workspace()?.bindingId!==record.workspaceBindingId)throw developerSettingsError('DEV_SETTINGS_WORKSPACE_CHANGED');
       const configuration=structuredClone(record.configuration);delete configuration.workspaceRoot;
       return configure({enabled:true,configuration});
     }
@@ -185,6 +191,9 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     await factories();options={...originalOptions};delete options.configPath;delete options.configurationSource;delete options.workspace;
     const catalog=await readToolDescriptors(options);
     const descriptors=Array.isArray(catalog)?catalog:catalog.descriptors;
+    // Participation follows the stable catalog, even while its deployment is unavailable.
+    // Match names so an unsupported version of our own tool still fails closed below.
+    const toolNames=new Set(descriptors.map(descriptor=>descriptor.name));
     const select=descriptor=>{
       const lease=active();
       const tool=lease?.deployment.host.tools.find(item=>item.descriptor.name===descriptor.name&&item.descriptor.version===descriptor.version);
@@ -227,7 +236,8 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
           throw Error('开发设置无法读取原 Runtime 启动边界');
         bindingRuntime=runtime;startupSequence=snapshot.snapshotSequence;application=value;slot?.deployment.host.bind(value);
       },
-      close},async prepareExport(scope){const lease=active();if(!lease||!bound(lease,scope,true))unavailable();
+      close},async prepareExport(scope){if(!toolNames.has(scope?.proposal?.toolName))return;
+        const lease=active();if(!lease||!bound(lease,scope,true))unavailable();
         await lease.deployment.prepareExport(scope);if(!bound(lease,scope))throw changed();},
       snapshot:()=>({...active()?.deployment.snapshot(),configured:Boolean(active()),
         state:closed?'closed':active()?'configured':'unavailable',

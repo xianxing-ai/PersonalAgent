@@ -22,7 +22,7 @@ export interface RuntimeOwnedWorkflowDriverOptions<TInput> {
   image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>};
   bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'>;catalog:readonly CoordinationAvailableTool[];
   requestId:(sequence:number)=>string;
-  authorizeReceipt:(input:{proposal:Proposal;receipt:WorkflowReceipt;localTaskId:string;state:RuntimeOwnedWorkflowDriverState<TInput>})=>Promise<void>;
+  authorizeReceipt:(input:{proposal:Proposal;receipt:WorkflowReceipt;localTaskId:string;state:RuntimeOwnedWorkflowDriverState<TInput>})=>Promise<void|WorkflowReceipt>;
   /** Required local verification. Cloud state alone never completes the original task. */
   validateSettled:(state:RuntimeOwnedWorkflowDriverState<TInput>)=>WorkerResult|Promise<WorkerResult>;
   snapshot?:(state:RuntimeOwnedWorkflowDriverState<TInput>)=>OwnedWorkflowAdvanceRequest['snapshot'];
@@ -73,9 +73,9 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       const receipt=await timed('host-readback',async()=>options.bridge.readReceipt(binding,proposal),{nodeId:proposal.nodeId,operationId:proposal.operationId});
       if(!receipt||receipt.state==='stopping'||receipt.state==='unknown')return pause(local.localTaskId,proposal.operationId);
       if(receipt.state==='confirmed')state.confirmedHost[proposal.toolName]={localTaskId:local.localTaskId,operationId:proposal.operationId,result:structuredClone(receipt.result)};
-      await options.authorizeReceipt({proposal,receipt,localTaskId:local.localTaskId,state});active();
+      const authorized=await options.authorizeReceipt({proposal,receipt,localTaskId:local.localTaskId,state});active();
       state.evidenceRefs=[...new Set([...state.evidenceRefs,...receipt.evidenceRefs])];
-      state.receipts.push(receipt);delete state.waiting;save();
+      state.receipts.push(authorized??receipt);delete state.waiting;save();
     }
     if(state.result?.state==='settled')return options.validateSettled(state);
     if(state.result&&['failed','unavailable','cancelled','unknown','paused','awaiting_user','awaiting_controller'].includes(state.result.state)) {

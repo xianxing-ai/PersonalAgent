@@ -8,11 +8,15 @@ const execute=promisify(execFile);
 const requiredChecks=['check','ecs-linux-check'];
 const actionsAppId=15368;
 
-export function evaluateMerge({pr,mainSha,reviews,checks,statuses,repository}) {
+export function evaluateMerge({pr,mainSha,reviews,checks,statuses,repository,mergeQueueEnabled=false}) {
   if(pr.state!=='open'||pr.draft||pr.merged||pr.base?.ref!=='main'||
     pr.base.repo.full_name!==repository||pr.head?.repo?.full_name!==repository) return 'ineligible PR';
-  if(!/^[a-f0-9]{40}$/.test(pr.head.sha)||pr.base.sha!==mainSha||
-    pr.mergeable!==true||pr.mergeable_state!=='clean') return 'branch protection or main update pending';
+  // Queue admission checks the latest concrete CI below. GitHub's aggregate
+  // "unstable" state is not itself a conflict; the protected queue still
+  // enforces repository requirements and validates the combined commit.
+  if(!/^[a-f0-9]{40}$/.test(pr.head.sha)||
+    (!mergeQueueEnabled&&pr.base.sha!==mainSha)||pr.mergeable!==true||
+    !(mergeQueueEnabled?['clean','behind','unstable']:['clean']).includes(pr.mergeable_state)) return 'branch protection or main update pending';
   if(!evaluateReviews({headSha:pr.head.sha,author:pr.user.login,reviews}).passed) return 'one eligible non-author approval required';
   const latest=new Map();
   for(const check of checks) {
@@ -33,7 +37,34 @@ export function evaluateMerge({pr,mainSha,reviews,checks,statuses,repository}) {
   return null;
 }
 
-export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN,fetchImpl=fetch,executeImpl=execute,log=console.log}={}) {
+// These PullRequest fields reflect the effective base-branch queue, including
+// rulesets. An unavailable/partial GraphQL response is never treated as "off".
+export async function readMergeQueueState({repository,number,headSha,token,fetchImpl=fetch}) {
+  if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!Number.isSafeInteger(number)||number<1||
+    !/^[a-f0-9]{40}$/.test(headSha??'')||!token) throw Error('Missing trusted queue context');
+  const [owner,name]=repository.split('/');
+  const response=await fetchImpl('https://api.github.com/graphql',{
+    method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Accept:'application/vnd.github+json'},
+    body:JSON.stringify({query:'query QueueState($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number headRefOid baseRefName isMergeQueueEnabled isInMergeQueue autoMergeRequest{enabledAt}}}}',variables:{owner,name,number}}),
+    redirect:'error',signal:AbortSignal.timeout(30000)
+  });
+  if(!response.ok) throw Error('GitHub queue read failed ('+response.status+')');
+  const value=await response.json();
+  const pr=value?.data?.repository?.pullRequest;
+  if(value?.errors?.length||!pr||pr.number!==number||pr.headRefOid!==headSha||pr.baseRefName!=='main'||
+    typeof pr.isMergeQueueEnabled!=='boolean'||typeof pr.isInMergeQueue!=='boolean'||
+    !Object.hasOwn(pr,'autoMergeRequest')||
+    (pr.autoMergeRequest!==null&&(typeof pr.autoMergeRequest!=='object'||typeof pr.autoMergeRequest.enabledAt!=='string'))) {
+    throw Error('Incomplete or stale merge queue evidence');
+  }
+  return {enabled:pr.isMergeQueueEnabled,queued:pr.isInMergeQueue,autoMerge:pr.autoMergeRequest!==null};
+}
+
+// The CLI deliberately has no queue writer: its repository GITHUB_TOKEN may
+// suppress the merge_group workflow. A trusted caller can separately supply an
+// authorized external-identity adapter; token strings/actor names are not proof
+// of that identity, and no environment switch enables this capability.
+export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,token=process.env.GITHUB_TOKEN,fetchImpl=fetch,executeImpl=execute,queueAdmissionImpl,log=console.log}={}) {
   if(!/^[-\w]+\/[-\w.]+$/.test(repository??'')||!token) throw Error('Missing trusted repository context');
   async function api(route) {
     const response=await fetchImpl('https://api.github.com/repos/'+repository+'/'+route,{
@@ -62,29 +93,48 @@ export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,to
   const prs=await pages('pulls?state=open&base=main');
   for(const candidate of prs) {
     if(candidate.draft||candidate.auto_merge||candidate.head?.repo?.full_name!==repository) continue;
-    let pr,reason;
+    let pr,reason,queue;
     try {
       pr=await api('pulls/'+candidate.number);
+      queue=await readMergeQueueState({repository,number:pr.number,headSha:pr.head.sha,token,fetchImpl});
+      if(queue.queued||queue.autoMerge) {log('#'+pr.number+': already queued or auto-merge enabled');continue;}
       const [reviews,checks,statuses]=await Promise.all([
         pages('pulls/'+pr.number+'/reviews'),
         pages('commits/'+pr.head.sha+'/check-runs?filter=latest','check_runs'),
         pages('commits/'+pr.head.sha+'/statuses')
       ]);
-      reason=evaluateMerge({pr,mainSha:baselineSha,reviews,checks,statuses,repository});
+      reason=evaluateMerge({pr,mainSha:baselineSha,reviews,checks,statuses,repository,mergeQueueEnabled:queue.enabled});
     } catch(error) {
       log('#'+candidate.number+': not reviewed (GitHub evidence unavailable)');
       continue;
     }
     if(reason) {log('#'+pr.number+': '+reason);continue;}
     if(pr.auto_merge) {log('#'+pr.number+': another auto-merge is already queued');continue;}
-    if(await mainSha()!==baselineSha) {
+    if(queue.enabled&&typeof queueAdmissionImpl!=='function') {
+      log('#'+pr.number+': eligible, but queue admission requires an authorized external-identity adapter; no request sent');
+      continue;
+    }
+    if(!queue.enabled&&await mainSha()!==baselineSha) {
       log('Main SHA changed before merge request');
       return;
+    }
+    // Recheck queue policy and head immediately before the protected command.
+    // Never turn a stale queue decision into an ordinary direct merge.
+    let currentQueue;
+    try {currentQueue=await readMergeQueueState({repository,number:pr.number,headSha:pr.head.sha,token,fetchImpl});}
+    catch {log('#'+pr.number+': queue or head evidence changed/unavailable');return;}
+    if(currentQueue.enabled!==queue.enabled||currentQueue.queued||currentQueue.autoMerge) {
+      log('#'+pr.number+': queue policy or request state changed');return;
     }
     // The short-lived Actions token has no owner bypass. GitHub rechecks all
     // protected-branch rules and atomically matches this exact reviewed head.
     try {
-      await executeImpl('gh',['pr','merge',String(pr.number),'--repo',repository,'--squash','--match-head-commit',pr.head.sha],{
+      if(queue.enabled) {
+        // The adapter must use its own verified identity, enforce this exact
+        // head and normal queue rules, and respect any user cancellation.
+        // Never pass the workflow token or fall back to the CLI on failure.
+        await queueAdmissionImpl({repository,number:pr.number,headSha:pr.head.sha});
+      } else await executeImpl('gh',['pr','merge',String(pr.number),'--repo',repository,'--squash','--match-head-commit',pr.head.sha],{
         env:{...process.env,GH_TOKEN:token},timeout:60000,windowsHide:true,maxBuffer:1048576
       });
     } catch(error) {
@@ -92,11 +142,18 @@ export async function mergeApproved({repository=process.env.GITHUB_REPOSITORY,to
       log('#'+pr.number+': merge request outcome unconfirmed');
       return;
     }
-    const final=await api('pulls/'+pr.number);
+    let final;
+    try {final=await api('pulls/'+pr.number);}
+    catch {log('#'+pr.number+': merge request outcome unconfirmed (readback unavailable)');return;}
     if(final.merged===true&&/^[a-f0-9]{40}$/.test(final.merge_commit_sha??'')) {
       log('#'+pr.number+': merged at '+final.merge_commit_sha);
     } else {
-      log('#'+pr.number+': immediate merge command returned; final state unconfirmed');
+      try {
+        const finalQueue=await readMergeQueueState({repository,number:pr.number,headSha:pr.head.sha,token,fetchImpl});
+        if(finalQueue.queued) log('#'+pr.number+': queued for protected merge; not merged yet');
+        else if(finalQueue.autoMerge) log('#'+pr.number+': auto-merge enabled; waiting for requirements, not merged yet');
+        else log('#'+pr.number+': merge request returned; final state unconfirmed');
+      } catch {log('#'+pr.number+': merge request outcome unconfirmed (queue readback unavailable or head changed)');}
     }
     return;
   }

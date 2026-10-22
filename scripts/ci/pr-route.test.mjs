@@ -40,20 +40,28 @@ test('forks and the explicit outage switch use hosted Linux',()=>{
   assert.throws(()=>matrixFor('image',{imageRunner:'unknown'}));
 });
 
-test('different PRs share Windows work between hosted and the common ECS pool',()=>{
-  assert.deepEqual(matrixFor('windows',{number:420}).include[0].runner,['windows-latest']);
-  assert.deepEqual(matrixFor('windows',{number:421}).include[0].runner,['self-hosted','Windows','X64','personalagent-windows']);
-  for(const number of [420,421,422,423]) assert.equal(matrixFor('both',{number}).include.filter(job=>job.kind==='windows').length,1);
+test('PR last digits 0-6 select hosted and 7-9 select the matching ECS pool on both platforms',()=>{
+  for(let number=420;number<=439;number++) {
+    const hosted=number%10<=6;
+    const expected=[hosted?['windows-latest']:['self-hosted','Windows','X64','personalagent-windows'],
+      hosted?['ubuntu-24.04']:['self-hosted','Linux','X64','personalagent-ecs']];
+    assert.deepEqual(matrixFor('both',{number}).include.map(job=>job.runner),expected,`PR #${number}`);
+    assert.deepEqual(matrixFor('windows',{number}).include.map(job=>job.runner),[expected[0]]);
+    assert.deepEqual(matrixFor('image',{number}).include.map(job=>job.runner),[expected[1]]);
+  }
   assert.equal(selectWindowsRunner().pool,'github');
 });
 test('explicit switches change the selected pool without duplicating Windows checks',()=>{
   assert.equal(selectWindowsRunner({number:421,windowsRunner:'github'}).pool,'github');
   assert.equal(selectWindowsRunner({number:420,windowsRunner:'ecs'}).pool,'ecs');
   assert.equal(selectWindowsRunner({number:421,windowsRunner:'ecs',windowsOverrides:'{"421":"github"}'}).pool,'github');
-  assert.equal(selectWindowsRunner({number:423,windowsOverrides:'{"421":"github"}'}).pool,'ecs');
+  assert.equal(selectWindowsRunner({number:427,windowsOverrides:'{"421":"github"}'}).pool,'ecs');
+  assert.deepEqual(matrixFor('image',{number:427,imageRunner:'github'}).include[0].runner,['ubuntu-24.04']);
+  assert.deepEqual(matrixFor('image',{number:420,imageRunner:'ecs'}).include[0].runner,['self-hosted','Linux','X64','personalagent-ecs']);
+  assert.deepEqual(matrixFor('both',{number:427,windowsOverrides:'{"427":"github"}'}).include[1].runner,['self-hosted','Linux','X64','personalagent-ecs']);
 });
 test('forks stay hosted even when both explicit switches request ECS',()=>{
-  const matrix=matrixFor('both',{fork:true,number:421,windowsRunner:'ecs',windowsOverrides:'{"421":"ecs"}'});
+  const matrix=matrixFor('both',{fork:true,number:427,imageRunner:'ecs',windowsRunner:'ecs',windowsOverrides:'{"427":"ecs"}'});
   assert.deepEqual(matrix.include.map(job=>job.runner),[['windows-latest'],['ubuntu-24.04']]);
 });
 test('invalid overrides and selectors fail rather than silently changing coverage',()=>{
@@ -66,31 +74,33 @@ test('invalid overrides and selectors fail rather than silently changing coverag
 
 const repository='owner/repo',head='a'.repeat(40),sha='b'.repeat(40);
 const event={pull_request:{number:421,head:{sha:head}}};
-function fakeFiles({files,count=files.length,finalHead=head,status=200}) {
+function fakeFiles({files,count=files.length,finalHead=head,status=200,labels=[],headRepository=repository}) {
   let reads=0;
   return async url=>({ok:status===200,status,json:async()=>{
     if(url.includes('/files?')) {
       const page=Number(new URL(url).searchParams.get('page'));
       return files.slice((page-1)*100,page*100);
     }
-    return {head:{sha:reads++?finalHead:head,repo:{full_name:repository}},changed_files:count};
+    const final=reads++>0;
+    return {head:{sha:final?finalHead:head,repo:{full_name:headRepository}},changed_files:count,labels:final?labels:[]};
   }});
 }
 test('the CLI router includes the second file page before deciding image-only',async()=>{
   const files=Array.from({length:100},(_,i)=>({filename:`apps/agentarts-runtime/${i}.mjs`}));
   files.push({filename:'apps/desktop/main.js'});
-  const result=await resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files})});
+  const result=await resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files})});
   assert.equal(result.selection.mode,'both');
-  assert.equal(result.matrix.include[0].name,'Windows CI (ECS)');
+  assert.equal(result.matrix.include[0].name,'Windows CI (GitHub)');
+  assert.deepEqual(result.matrix.include[1].runner,['ubuntu-24.04']);
 });
 test('API failures and a moving PR head cannot produce a successful route',async()=>{
   const files=[{filename:'apps/agentarts-runtime/a.mjs'}];
-  await assert.rejects(resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files,status:403})}),/read failed/);
-  await assert.rejects(resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files,finalHead:sha})}),/head moved/);
-  await assert.rejects(resolveRoute({event:{pull_request:{...event.pull_request,head:{sha}}},repository,token:'fixture',fetchImpl:fakeFiles({files})}),/head moved/);
+  await assert.rejects(resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files,status:403})}),/read failed/);
+  await assert.rejects(resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files,finalHead:sha})}),/head moved/);
+  await assert.rejects(resolveRoute({event:{pull_request:{...event.pull_request,head:{sha}}},eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files})}),/head moved/);
 });
 test('incomplete file evidence requires both actual platforms',async()=>{
-  const result=await resolveRoute({event,repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/agentarts-runtime/a'}],count:3001})});
+  const result=await resolveRoute({event,eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/agentarts-runtime/a'}],count:3001})});
   assert.equal(result.selection.mode,'both');
 });
 test('automatic main reruns are disabled; explicit manual validation still checks both platforms',async()=>{
@@ -100,6 +110,34 @@ test('automatic main reruns are disabled; explicit manual validation still check
   const result=await resolveRoute({...args,eventName:'workflow_dispatch'});
   assert.equal(result.selection.mode,'both');
   assert.equal(result.matrix.include[0].name,'Windows CI (GitHub)');
+});
+
+test('fresh exact hosted label overrides valid ECS selectors without changing platform coverage',async()=>{
+  const args={event:{pull_request:{number:427,head:{sha:head}}},eventName:'pull_request',repository,token:'fixture',
+    windowsRunner:'ecs',windowsOverrides:'{"427":"ecs"}'};
+  for(const [filename,mode] of [['apps/desktop/main.js','windows'],['apps/agentarts-runtime/a.mjs','image'],['packages/contracts/a.ts','both']]) {
+    const result=await resolveRoute({...args,fetchImpl:fakeFiles({files:[{filename}],labels:[{name:'ci:windows-github'}]})});
+    assert.equal(result.selection.mode,mode);
+    assert.equal(result.windows.pool,'github');
+    assert.deepEqual(result.matrix.include,matrixFor(mode,{number:427,windowsRunner:'github'}).include);
+  }
+});
+test('event labels and near misses cannot select a runner; forks remain isolated',async()=>{
+  const args={event:{pull_request:{number:427,head:{sha:head},labels:[{name:'ci:windows-github'}]}},eventName:'pull_request',repository,token:'fixture'};
+  for(const labels of [[],[{name:'CI:windows-github'}],[{name:'ci:windows-github-extra'}],[{name:'ci:windows-ecs'}],['ci:windows-github']]) {
+    const result=await resolveRoute({...args,fetchImpl:fakeFiles({files:[{filename:'packages/contracts/a.ts'}],labels})});
+    assert.equal(result.windows.pool,'ecs');
+  }
+  const fork=await resolveRoute({...args,imageRunner:'ecs',windowsRunner:'ecs',fetchImpl:fakeFiles({files:[{filename:'packages/contracts/a.ts'}],labels:[{name:'ci:windows-github'}],headRepository:'fork/repo'})});
+  assert.deepEqual(fork.matrix.include.map(job=>job.runner),[['windows-latest'],['ubuntu-24.04']]);
+});
+test('hosted labels cannot mask invalid selectors or affect manual validation',async()=>{
+  const args={event:{pull_request:{number:427,head:{sha:head}}},eventName:'pull_request',repository,token:'fixture',fetchImpl:fakeFiles({files:[{filename:'apps/desktop/main.js'}],labels:[{name:'ci:windows-github'}]})};
+  for(const options of [{windowsRunner:'invalid'},{imageRunner:'invalid'},{windowsOverrides:'invalid'},{windowsOverrides:'{"427":"skip"}'}]) {
+    await assert.rejects(resolveRoute({...args,...options}),/Invalid|JSON|Unexpected/);
+  }
+  const manual=await resolveRoute({...args,eventName:'workflow_dispatch',windowsRunner:'ecs'});
+  assert.equal(manual.windows.pool,'ecs');
 });
 
 
@@ -132,14 +170,14 @@ test('the exact integration branch uses the existing hosted jobs despite valid E
   assert.equal(result.windows.pool,'github');
   assert.match(result.windows.reason,/approved one-off integration branch/);
 });
-test('near-miss source branches preserve both original runner defaults even if the event claims the exact branch',async()=>{
-  const claimedEvent={pull_request:{...event.pull_request,head:{...event.pull_request.head,ref:integrationBranch,repo:{full_name:integrationRepository}}}};
+test('near-miss source branches preserve ECS digit routing even if the event claims the exact branch',async()=>{
+  const claimedEvent={pull_request:{...event.pull_request,number:427,head:{...event.pull_request.head,ref:integrationBranch,repo:{full_name:integrationRepository}}}};
   for(const headRef of ['codex/another-batch',integrationBranch+'-extra',integrationBranch+'0',integrationBranch.toUpperCase(),'refs/heads/'+integrationBranch,undefined]) {
     const pr=integrationPR();
     pr.head.ref=headRef;
     assert.equal(isHostedIntegrationPullRequest({eventName:'pull_request',repository:integrationRepository,pr}),false);
     const result=await integrationRoute({pr,event:claimedEvent});
-    assert.deepEqual(result.matrix,matrixFor('both',{number:event.pull_request.number}));
+    assert.deepEqual(result.matrix,matrixFor('both',{number:427}));
     assert.equal(result.windows.pool,'ecs');
   }
 });

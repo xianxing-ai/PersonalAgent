@@ -7,7 +7,7 @@ const HEAD_SHA='a'.repeat(40);
 const MERGE_SHA='f'.repeat(40);
 
 function fixture(mode='both') {
-  const matrix=matrixFor(mode,{number:421});
+  const matrix=matrixFor(mode,{number:427});
   return {routeResult:'success',ciResult:'success',matrix,jobs:matrix.include.map(job=>({
     name:job.name,status:'completed',conclusion:'success',run_id:123,run_attempt:2,head_sha:HEAD_SHA,
     runner_name:job.kind==='windows'?'ecs-windows-fixture':'ecs-linux-fixture',labels:job.runner,html_url:'https://example.invalid/job'

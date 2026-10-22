@@ -10,7 +10,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
  const executablePath=fs.existsSync(localElectron)?localElectron:workspaceElectron;
  const fake=process.env.PA_DESKTOP_FAKE!=='0';
  const args=[path.resolve(__dirname,'..')];if(fake)args.push('--fake-runtime');
- const app=await _electron.launch({executablePath,args,env:{...process.env,ELECTRON_RUN_AS_NODE:undefined,PA_DESKTOP_EPHEMERAL_MODEL:'1'}});
+ const app=await _electron.launch({executablePath,args,env:{...process.env,ELECTRON_RUN_AS_NODE:undefined,PA_DESKTOP_EPHEMERAL_MODEL:'1',PA_USER_DATA_DIR:fs.mkdtempSync(path.join(output,'profile-'))}});
  const errors=[];
  try {
    await app.firstWindow();
@@ -69,21 +69,25 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    }
    assert.ok(groupAfter.panel.x+groupAfter.panel.width<=groupAfter.orb.x||groupAfter.orb.x+groupAfter.orb.width<=groupAfter.panel.x);
    assert.match(await panel.locator('#connection').innerText(),fake?/Fake Runtime/:/本地 Runtime/);
-   await panel.locator('#model').click();
-   // Native reasoning is capability gated since #407; this check is the
-   // independent Runtime step budget, not provider reasoning support.
-   const stepBudget=panel.getByRole('slider',{name:'模型执行步骤预算',exact:true});
-   assert.equal(await stepBudget.isDisabled(),false);
-   await stepBudget.fill('3');
-   await stepBudget.dispatchEvent('change');
+   const modelTrigger=panel.getByRole('button',{name:'模型与思考',exact:true});
+   await modelTrigger.click();
+   // This local/Fake fixture publishes no native reasoning catalog. The panel must
+   // keep that control unavailable; the admin step budget below is independent.
+   const thinkingSlider=panel.getByRole('slider',{name:'思考强度',exact:true});
+   assert.equal(await thinkingSlider.isDisabled(),true);
+   const unsupportedThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
+   await thinkingSlider.evaluate(slider=>{
+     slider.value='1';slider.dispatchEvent(new Event('input',{bubbles:true}));
+   });
    await panel.waitForTimeout(100);
    const panelThinking=await panel.evaluate(()=>window.desktop.invoke('snapshot'));
-   assert.equal(panelThinking.value.thinking.depth,3);
-   assert.equal(await panel.locator('#model').evaluate(button=>{
+   assert.equal(panelThinking.value.thinking.depth,unsupportedThinking.value.thinking.depth);
+   assert.deepEqual(panelThinking.value.conversationPreference,unsupportedThinking.value.conversationPreference);
+   assert.equal(await modelTrigger.evaluate(button=>{
      const bounds=button.getBoundingClientRect();
-     return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)?.closest('#model')===button;
+     return document.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)?.closest('.model-thinking-trigger')===button;
    }),true,'expanded model menu must leave its toggle reachable after status text updates');
-   await panel.locator('#model').click();
+   await modelTrigger.click();
    await panel.locator('textarea[aria-label="任务内容"]').fill('测试原版桌面方案接入');await panel.locator('#send').click();
    await panel.waitForSelector('[data-action="task.cancel"]');
    assert.match(await panel.locator('#tasks').innerText(),/思考中/);
@@ -158,14 +162,18 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    const currentTaskId=await currentCancel.getAttribute('data-id');
    const currentTaskCancel=panel.locator(`[data-action="task.cancel"][data-id="${currentTaskId}"]`);
    await currentTaskCancel.click();
-   await panel.waitForFunction(()=>document.querySelector('#state').textContent==='正在取消');
+   await panel.waitForFunction(()=>document.querySelector('.output-truncated')&&document.querySelector('#send').dataset.mode!=='stop');
+   const cancelling=await panel.evaluate(id=>window.desktop.invoke('snapshot').then(result=>result.value.tasks.find(task=>task.taskId===id)),currentTaskId);
+   assert.equal(cancelling.cancelRequested,true);
+   assert.equal(cancelling.state,'cancelling');
+   assert.equal(await panel.locator('#send').isDisabled(),false);
    if(fake){
-     await panel.locator('[data-action="test.advance"]').click();
-     await panel.waitForFunction(()=>document.querySelector('#state').textContent==='已取消');
+     await panel.evaluate(id=>window.desktop.invoke('test.advance',id),currentTaskId);
+     await panel.waitForFunction(async id=>(await window.desktop.invoke('snapshot')).value.tasks.find(task=>task.taskId===id)?.state==='cancelled',currentTaskId);
    }
    if(fake)assert.equal(await panel.locator(`[data-action="task.cancel"][data-id="${currentTaskId}"]`).count(),0);
-   else assert.equal(await currentTaskCancel.isDisabled(),true);
-   assert.equal(await panel.locator('#stop').isDisabled(),true);
+   else assert.equal(await currentTaskCancel.innerText(),'重试停止');
+   assert.equal(await panel.locator('#stop').isHidden(),true);
    assert.deepEqual(errors,[]);
    console.log(`PASS: ${fake?'Fake':'local'} Runtime Electron windows, native 90px hover/open, explicit collapse, grouped edge-aware drag, isolated preload, ORB-02, tray host, 420px responsive panel, event-driven SDK submit/cancel, independent admin close, no page errors`);
  } finally {await closeDesktop(app);}

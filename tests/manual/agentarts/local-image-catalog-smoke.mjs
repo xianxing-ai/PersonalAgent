@@ -14,7 +14,8 @@ import {existsSync} from 'node:fs';
 import {randomBytes} from 'node:crypto';
 const token=randomBytes(32).toString('hex');
 Object.assign(process.env,{PA_AGENT_HOST_MODE:'agentarts',PA_AGENT_LAYA_MODE:'local',
-  PA_AGENT_MODEL_BASE_URL:'https://synthetic.invalid/v1',PA_AGENT_MODEL:'synthetic-no-model-call',
+  PA_AGENT_MODEL_BASE_URL:'https://proxy.synthetic.invalid/inference/v1',PA_AGENT_MODEL_PROXY_KEY_HEADER:'x-test-key',
+  PA_AGENT_MODEL:'synthetic-no-model-call',
   PA_AGENT_MODEL_API_KEY:'synthetic-no-account',PA_AGENT_WSS_AUTH_TOKEN:token});
 await import('./apps/agentarts-runtime/src/main.mjs');
 let ping;

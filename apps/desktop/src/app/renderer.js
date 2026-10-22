@@ -1,8 +1,9 @@
 import {mountSessionControls} from '../features/conversation/session-controls.js';
+import {readDeveloperSettingsDiagnostic} from '../../shared/developer-settings-diagnostics.js';
 import {mountSubagentConversationPage} from '../features/conversation/subagent-conversations.js';
 import {mountSubagentCompletionNotice} from '../features/conversation/subagent-completion-notice.js';
 import {mountSubagentConversationList} from '../features/conversation/subagent-conversation-list.js';
-import {mountNativeReasoning} from '../features/conversation/native-reasoning.js';
+import {mountModelThinkingPicker} from '../features/conversation/model-thinking-picker.js';
 import {mountInputPin} from './input-pin.js';
 import {conversationTimeline} from '../features/conversation/timeline.js';
 import {updateConversationTurns} from '../features/conversation/turn-view.js';
@@ -24,6 +25,8 @@ import {mountProactiveControls} from './proactive-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
 import {mountPanelLight} from './panel-light.js';
+import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
+import {createMessageQueue} from '../features/conversation/message-queue.js';
 
 applyPreferences();
 mountDesktopShell();
@@ -40,7 +43,13 @@ let activeDesktopConversationId;
 async function invoke(action,payload) {
   if(activeDesktopConversationId&&['task.submit','conversation.model','thinking.update'].includes(action))payload=action==='task.submit'?{...(typeof payload==='string'?{text:payload}:payload),conversationId:payload?.conversationId??activeDesktopConversationId}:{...payload,conversationId:payload?.conversationId??activeDesktopConversationId};
   if(!bridge) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
-  const response=await bridge.invoke(action,payload); if(!response.ok) throw Error(response.error); return response.value;
+  const response=await bridge.invoke(action,payload);
+  if(!response.ok){
+    const error=Error(response.error),diagnostic=readDeveloperSettingsDiagnostic(response.diagnostic);
+    if(diagnostic)error.diagnostic=diagnostic;
+    throw error;
+  }
+  return response.value;
 }
 let render, orb, reportSnapshotFailure, clearSnapshotFailure;
 if(mode==='orb') {
@@ -79,7 +88,7 @@ else if(mode==='workspace') render=mountWorkspace(root,invoke,escape,{flushBefor
 else if(mode==='subagent') {const page=mountSubagentConversationPage(root,invoke);render=()=>page.refresh();}
 else if(mode==='subagent-list') {const page=mountSubagentConversationList(root,invoke);render=()=>page.refresh();}
 else {
-  root.innerHTML=`<section class="panel"><header><span class="dot"></span><strong>PersonalAgent</strong><span class="status" id="state">待机</span><span class="spacer"></span><button class="icon-btn hdr-btn" id="admin" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0-.73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="bell-box"><button class="icon-btn hdr-btn" id="bell" title="通知" aria-label="通知" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><span class="bell-menu" id="bell-menu" role="menu" hidden><div class="notice">无新通知。通知能力尚未连接。</div></span></span><button class="icon-btn hdr-btn" id="close" title="收起面板" aria-label="收起面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg></button></header><div class="thread"><div class="who" id="connection"></div><div class="bubble">有什么可以帮你？</div><div class="quick-start" id="quick-start" hidden></div><div class="notice" id="connection-notice">正在读取模型连接状态…</div><div id="tasks"></div><p class="error" role="alert" id="error"></p></div><form class="composer"><textarea aria-label="任务内容" placeholder="说要做什么…"></textarea><div class="composer-bar"><button class="icon-btn" type="button" id="stop" disabled title="停止播报" aria-label="停止播报"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6.5 9H3v6h3.5L11 19z"/><path d="m16 9.5 5 5"/><path d="m21 9.5-5 5"/></svg></button><span class="spacer"></span><span class="model-box"><button class="model-select" type="button" id="model" aria-haspopup="true" aria-expanded="false" title="模型与思考深度"><span id="model-label">正在读取模型…</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button><span class="model-menu" id="model-menu" role="menu" hidden><span class="mm-card"><span class="mm-top"><button class="icon-btn mm-fast" type="button" id="mm-fast" title="快速模式" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></button><span class="mm-depth"><span id="mm-depth-label">供应商默认</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></span><button class="icon-btn" type="button" disabled title="思考设置待 Runtime 支持"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button></span><span class="mm-model"><span id="mm-model-label">正在读取模型…</span><span class="model-tag" id="model-tag">未测试</span></span><input class="mm-slider" id="mm-slider" type="range" min="0" max="5" step="1" value="1" aria-label="模型原生思考深度"></span><span class="notice" id="model-notice">模型未完成真实连接测试；思考参数暂未传入 Runtime。</span></span></span><button class="icon-btn" type="button" id="talk" disabled title="语音转文字未连接" aria-label="语音转文字"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button><button class="send-btn" id="send" type="submit" data-mode="voice" title="语音模式（语音模型未连接）" aria-label="发送或语音模式"><svg class="icon-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 10.5v3"/><path d="M10.5 8v8"/><path d="M14 9.5v5"/><path d="M17.5 11v2"/></svg><svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><svg class="icon-stop" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><rect x="4.5" y="4.5" width="11" height="11" rx="1.25"/></svg></button></div><div class="notice mic-state"></div></form></section>`;
+  root.innerHTML=`<section class="panel"><header><span class="dot"></span><strong>PersonalAgent</strong><span class="status" id="state">待机</span><span class="spacer"></span><button class="icon-btn hdr-btn" id="admin" title="设置" aria-label="设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0-.73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button><span class="bell-box"><button class="icon-btn hdr-btn" id="bell" title="通知" aria-label="通知" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></button><span class="bell-menu" id="bell-menu" role="menu" hidden><div class="notice">无新通知。通知能力尚未连接。</div></span></span><button class="icon-btn hdr-btn" id="close" title="收起面板" aria-label="收起面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></svg></button></header><div class="thread"><div class="who" id="connection"></div><div class="bubble">有什么可以帮你？</div><div class="quick-start" id="quick-start" hidden></div><div class="notice" id="connection-notice">正在读取模型连接状态…</div><div id="tasks"></div><p class="error" role="alert" id="error"></p></div><form class="composer"><textarea aria-label="任务内容" placeholder="说要做什么…"></textarea><div class="composer-bar"><button class="icon-btn" type="button" id="stop" disabled title="停止播报" aria-label="停止播报"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6.5 9H3v6h3.5L11 19z"/><path d="m16 9.5 5 5"/><path d="m21 9.5-5 5"/></svg></button><span class="spacer"></span><span class="model-box" id="model-controls"></span><button class="icon-btn" type="button" id="talk" disabled title="语音转文字未连接" aria-label="语音转文字"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg></button><button class="send-btn" id="send" type="submit" data-mode="voice" title="语音模式（语音模型未连接）" aria-label="发送或语音模式"><svg class="icon-voice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 10.5v3"/><path d="M10.5 8v8"/><path d="M14 9.5v5"/><path d="M17.5 11v2"/></svg><svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg><svg class="icon-stop" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><rect x="4.5" y="4.5" width="11" height="11" rx="1.25"/></svg></button></div><div class="notice mic-state"></div></form></section>`;
   const expand = document.createElement('button');
   const disposePanelLight=mountPanelLight(root.querySelector('.panel'));
   window.addEventListener('unload',disposePanelLight,{once:true});
@@ -95,10 +104,12 @@ else {
   const locateFeedback=new Map();let locateClosed=false;
   const approvalDecisions=new Map();
   const pendingCancelIds=new Set();
+  const taskStopRequests=new Map();
   // Tasks the user explicitly stopped. They stop counting as "busy" the moment the stop is
   // requested, so the composer is usable again without waiting for the runtime to unwind.
   const truncatedTaskIds=new Set();
-  const activeTasks=()=>(current?.tasks??[]).filter(task=>!isTerminal(task)&&!truncatedTaskIds.has(task.taskId));
+  const truncatedOutput=new Map();
+  const activeTasks=()=>(current?.tasks??[]).filter(task=>!isTerminal(task)&&!task.outputTruncated&&!task.cancelRequested&&!truncatedTaskIds.has(task.taskId));
   let approvalExpiryTimer;
   let errorFeedbackRevision=0;
   const setFeedback=value=>{errorFeedbackRevision++;root.querySelector('#error').textContent=value;};
@@ -112,6 +123,34 @@ else {
   };
   const report=e=>setFeedback(typeof e==='string'?e:e.message);
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
+  const messageQueue=createMessageQueue();
+  const sendingQueueIds=new Set();
+  const deliveryControls=document.createElement('div');deliveryControls.className='message-delivery';
+  deliveryControls.innerHTML='<label>发送方式 <select aria-label="对话中发送方式"><option value="steer">引导</option><option value="queue">排队</option></select></label><span class="delivery-hint"></span>';
+  form.prepend(deliveryControls);
+  const deliveryMode=deliveryControls.querySelector('select'),deliveryHint=deliveryControls.querySelector('.delivery-hint');
+  try{deliveryMode.value=localStorage.getItem('pa-message-delivery')==='queue'?'queue':'steer';}catch{}
+  const queueNode=document.createElement('section');queueNode.className='message-queue';queueNode.setAttribute('aria-label','待发送消息');queueNode.hidden=true;deliveryControls.after(queueNode);
+  const renderQueue=()=>{
+    const entries=messageQueue.list(current?.conversationState?.activeId);queueNode.hidden=!entries.length;
+    queueNode.innerHTML=entries.map(item=>`<div class="queued-message" data-queued-id="${item.id}"><span class="queued-text">${escape(item.text)}</span><span class="queued-actions"><button type="button" data-send-now="${item.id}" ${sendingQueueIds.has(item.id)?'disabled':''} title="截断当前回答并发送这条消息">立即发送</button><button type="button" data-remove-queued="${item.id}" ${sendingQueueIds.has(item.id)?'disabled':''} aria-label="移回输入框">编辑</button></span></div>`).join('');
+  };
+  deliveryMode.onchange=()=>{try{localStorage.setItem('pa-message-delivery',deliveryMode.value);}catch{}setSendMode(Boolean(input.value.trim()));};
+  const enqueueDraft=()=>{
+    const token=sessionControls.capture();messageQueue.add(input.value,current?.conversationState?.activeId);messageQueue.resume();
+    void sessionControls.submitted(token).catch(report);renderQueue();setSendMode(Boolean(input.value.trim()));
+  };
+  const drainQueue=()=>{
+    if(wakeClosed||pending||activeTasks().length||messageQueue.paused)return;
+    const next=messageQueue.list(current?.conversationState?.activeId)[0];
+    if(next)void submitMessage(next.text,{queued:next});
+  };
+  queueNode.onclick=event=>{
+    const button=event.target.closest('[data-send-now],[data-remove-queued]');if(!button||button.disabled)return;
+    const item=messageQueue.list(current?.conversationState?.activeId).find(entry=>entry.id===(button.dataset.sendNow??button.dataset.removeQueued));if(!item)return;
+    if(button.dataset.sendNow){void submitMessage(item.text,{queued:item,steer:true});return;}
+    messageQueue.remove(item.id);input.value=(input.value?input.value+'\n':'')+item.text;input.dispatchEvent(new Event('input',{bubbles:true}));renderQueue();input.focus();
+  };
   const subagents=mountSubagentCompletionNotice(thread,invoke);
   window.addEventListener('unload',()=>subagents.dispose(),{once:true});
   const updateProgress=mountTaskProgress(thread,tasksNode);
@@ -120,7 +159,14 @@ else {
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
   quickStart.onclick=e=>{const chip=e.target.closest('button[data-fill]');if(!chip)return;input.value=chip.dataset.fill;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};
   const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.panel header').after(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,input,invoke,report,{singleMain:true,flushBeforeClose:bridge?.flushDrafts});
-  const syncCancelButtons=()=>tasksNode.querySelectorAll('[data-action="task.cancel"],[data-action="task.reconcile.finish"]').forEach(button=>{button.disabled=pendingCancelIds.has(button.dataset.id)||current?.tasks.some(task=>task.taskId===button.dataset.id&&task.state==='cancelling');});
+  const preserveQueuedDrafts=event=>{
+    const entries=messageQueue.list(current?.conversationState?.activeId);if(!entries.length||!bridge?.flushDrafts||event.defaultPrevented)return;
+    try{bridge.flushDrafts([{conversationId:current.conversationState.activeId,text:[...entries.map(item=>item.text),input.value].filter(Boolean).join('\n\n')}]);}
+    catch(error){event.preventDefault();event.returnValue='';report(error);}
+  };
+  window.addEventListener('beforeunload',preserveQueuedDrafts);
+  window.addEventListener('pa:prepare-quit',preserveQueuedDrafts);
+  const syncCancelButtons=()=>tasksNode.querySelectorAll('[data-action="task.cancel"],[data-action="task.reconcile.finish"]').forEach(button=>{button.disabled=Boolean(button.dataset.action==='task.reconcile.finish'&&current?.tasks.find(task=>task.taskId===button.dataset.id)?.reconciliationStatus?.blockedReason)||pendingCancelIds.has(button.dataset.id)||current?.tasks.some(task=>task.taskId===button.dataset.id&&task.state==='cancelling'&&!task.outputTruncated);});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body||focused.dataset.approvalDecision)return;
     const action=focused.dataset.action??focused.dataset.uiAction;if(!action)return;
@@ -222,10 +268,10 @@ else {
   root.querySelector('.composer-bar .spacer').before(goalControl.button);
   root.querySelector('.panel').append(goalControl.dialog);
   const updateRail=mountConversationRail(root.querySelector('.panel'),thread);
-  const sendBtn=root.querySelector('#send'),modelBtn=root.querySelector('#model'),modelMenu=root.querySelector('#model-menu');
+  const nativeReasoning=mountModelThinkingPicker(root.querySelector('#model-controls'),invoke,report,{readFeedbackRevision:()=>errorFeedbackRevision,clearFeedback:()=>{setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}});
+  const sendBtn=root.querySelector('#send'),modelBtn=nativeReasoning.button,modelMenu=nativeReasoning.menu;
   const bellBtn=root.querySelector('#bell'),bellMenu=root.querySelector('#bell-menu');
-  const slider=root.querySelector('#mm-slider'),depthLabel=root.querySelector('#mm-depth-label'),fastBtn=root.querySelector('#mm-fast');
-  const closeModel=()=>{modelMenu.hidden=true;modelBtn.setAttribute('aria-expanded','false');};
+  const closeModel=()=>nativeReasoning.close();
   const closeBell=()=>{bellMenu.hidden=true;bellBtn.setAttribute('aria-expanded','false');};
   const header=root.querySelector('header');let panelDragStart,panelDragging=false,panelDragReady,panelDragGeneration=0,panelDragOwner=0,panelDragClosed=false;
   const panelDragCurrent=generation=>!panelDragClosed&&generation===panelDragGeneration;
@@ -248,97 +294,125 @@ else {
     panelDragStart=undefined;panelDragging=false;panelDragReady=undefined;
   };
   header.addEventListener('pointerup',finishPanelDrag);header.addEventListener('pointercancel',finishPanelDrag);header.addEventListener('lostpointercapture',finishPanelDrag);
-  const budgetLabel=document.createElement('label');budgetLabel.textContent='执行步骤预算';
-  const budget=document.createElement('input');budget.type='range';budget.min='0';budget.max='5';budget.step='1';budget.setAttribute('aria-label','模型执行步骤预算');budgetLabel.append(budget);modelMenu.querySelector('.mm-card').append(budgetLabel);
-  const panelPreferenceRequests={thinking:0},panelPreferencePending={thinking:null},panelPreferenceErrors={thinking:null};
-  let panelPreferenceEditing=null,panelPreferenceConversationId;
-  const syncPanelPreferenceBusy=()=>{for(const control of [budget,fastBtn])control.setAttribute('aria-busy',String(Boolean(panelPreferencePending.thinking)));};
-  const projectPanelPreferences=()=>{
-    if(panelPreferenceConversationId!==current?.conversationState?.activeId){
-      panelPreferenceConversationId=current?.conversationState?.activeId;panelPreferenceEditing=null;
-    }
-    const thinking=panelPreferenceEditing??panelPreferencePending.thinking??current?.thinking??current?.conversationPreference;
-    if(thinking){budget.value=String(thinking.depth??1);fastBtn.setAttribute('aria-pressed',String(Boolean(thinking.fast)));modelMenu.classList.toggle('fast',Boolean(thinking.fast));}
-    syncPanelPreferenceBusy();
-  };
-  const requestPanelPreference=async(group,name,payload)=>{
-    if(current?.conversationState?.activeId)payload={...payload,conversationId:current.conversationState.activeId};
-    const request=++panelPreferenceRequests[group];panelPreferencePending[group]=payload;syncPanelPreferenceBusy();
-    try{await invoke(name,payload);if(request===panelPreferenceRequests[group]&&panelPreferenceErrors[group]===errorFeedbackRevision){setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}}
-    catch(error){if(request===panelPreferenceRequests[group]){panelPreferencePending[group]=null;projectPanelPreferences();report(error);panelPreferenceErrors[group]=errorFeedbackRevision;}}
-    finally{if(request===panelPreferenceRequests[group]){panelPreferencePending[group]=null;syncPanelPreferenceBusy();}}
-  };
   const setSendMode=hasText=>{
-    const stopping=pendingCancelIds.size>0,stop=stopping||activeTasks().length>0;
-    sendBtn.dataset.mode=stop?'stop':hasText?'send':'live';
-    sendBtn.title=stop?'停止当前任务并打断回答':hasText?'发送':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';
+    const busy=pending||activeTasks().length>0,stop=!hasText&&busy;
+    sendBtn.dataset.mode=hasText?'send':stop?'stop':'live';
+    sendBtn.title=hasText?(busy?(deliveryMode.value==='queue'?'加入队列':'立即引导'):'发送'):stop?'强制截断当前回答':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';
     sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!stop&&!hasText&&Boolean(current?.live?.active)));
-    sendBtn.setAttribute('aria-busy',String(stopping||pending));sendBtn.disabled=stop?stopping:hasText&&pending;
+    sendBtn.setAttribute('aria-busy','false');sendBtn.disabled=false;
+    deliveryHint.textContent=deliveryMode.value==='queue'?'当前回答结束后依次发送，可随时立即发送':'截断当前回答，结合上下文立即续答';
+    const playback=current?.voice?.status==='speaking'||current?.live?.active;
+    stopButton.hidden=!(busy&&hasText||!busy&&playback);stopButton.disabled=false;
+    stopButton.innerHTML=busy?'<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><rect x="4.5" y="4.5" width="11" height="11" rx="1.25"/></svg>':stopPlaybackIcon;
+    stopButton.title=busy?'强制截断当前回答':'停止播报';stopButton.setAttribute('aria-label',stopButton.title);
   };
   root.querySelector('#admin').onclick=()=>invoke('admin.open').catch(report);
   root.querySelector('#close').onclick=()=>invoke('panel.hide').catch(report);
-  modelBtn.onclick=e=>{e.stopPropagation();const open=modelMenu.hidden;closeModel();closeBell();if(open){modelMenu.hidden=false;modelBtn.setAttribute('aria-expanded','true');}};
-  const modelChoice = document.createElement('input');modelChoice.type='range';
-  modelChoice.className='conversation-model-choice';modelChoice.setAttribute('aria-label','当前对话的主思考模型');
-  const modelChoiceLabel=document.createElement('label');modelChoiceLabel.textContent='主思考模型';
-  const modelOutput=document.createElement('output');modelChoiceLabel.append(modelOutput,modelChoice);modelMenu.querySelector('.mm-card').append(modelChoiceLabel);
-  const moreModels=document.createElement('button');moreModels.type='button';moreModels.className='turn-action';moreModels.textContent='更多模型与默认设置';moreModels.onclick=()=>invoke('admin.open',{page:'models'}).catch(report);modelMenu.querySelector('.mm-card').append(moreModels);
-  const nativeReasoning=mountNativeReasoning(modelMenu.querySelector('.mm-card'),invoke,report,{slider,output:depthLabel,modelChoice,modelOutput,readFeedbackRevision:()=>errorFeedbackRevision,clearFeedback:()=>{setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}});
+  modelBtn.addEventListener('click',()=>closeBell());
   // Sticky bottom-follow (审点 #62): only real user scrolls change the belief;
   // content growth / pre-judgment reflow never unlock, conversation switch resets.
   const followLock=createFollowLock();
   thread.addEventListener('scroll',()=>followLock.onScroll(thread.scrollHeight-thread.scrollTop-thread.clientHeight),{passive:true});
-  let modelChoiceSignature;
   bellBtn.onclick=e=>{e.stopPropagation();const open=bellMenu.hidden;closeBell();closeModel();if(open){bellMenu.hidden=false;bellBtn.setAttribute('aria-expanded','true');}};
   document.addEventListener('click',e=>{if(!modelMenu.hidden&&!e.target.closest('.model-box'))closeModel();if(!bellMenu.hidden&&!e.target.closest('.bell-box'))closeBell();});
-  budget.addEventListener('input',()=>{panelPreferenceEditing={depth:Number(budget.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};});
-  budget.addEventListener('change',()=>{const thinking={depth:Number(budget.value),fast:fastBtn.getAttribute('aria-pressed')==='true'};panelPreferenceEditing=null;return requestPanelPreference('thinking','thinking.update',thinking);});
-  fastBtn.onclick=()=>{const on=fastBtn.getAttribute('aria-pressed')!=='true';panelPreferenceEditing=null;fastBtn.setAttribute('aria-pressed',String(on));modelMenu.classList.toggle('fast',on);return requestPanelPreference('thinking','thinking.update',{depth:Number(budget.value),fast:on});};
   mountInputPin(input,invoke,()=>current?.pinned===true,report);
   input.addEventListener('input',e=>{draftRevision++;setSendMode(Boolean(e.target.value.trim()));});
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(input.value.trim()&&!pending)form.requestSubmit();}});
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(input.value.trim())form.requestSubmit();}});
   sendBtn.addEventListener('click',e=>{e.preventDefault();if(sendBtn.disabled)return;if(sendBtn.dataset.mode==='stop'){
     void stopButton.onclick();
   }else if(sendBtn.dataset.mode==='live'){
     void liveControls.toggle();
-  }else if(!pending)form.requestSubmit();});
+  }else form.requestSubmit();});
   document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!modelMenu.hidden){const restore=modelMenu.contains(document.activeElement);closeModel();if(restore)modelBtn.focus({preventScroll:true});return;}if(!bellMenu.hidden){closeBell();return;}invoke('panel.hide').catch(report);});
   const stopActiveTasks=async running=>{
-    for(const task of running){truncatedTaskIds.add(task.taskId);pendingCancelIds.add(task.taskId);}
+    messageQueue.pause();submitGeneration++;pending=false;
+    for(const task of running){truncatedTaskIds.add(task.taskId);truncatedOutput.set(task.taskId,structuredClone(task));}
+    lastTaskSignature='';if(current)render(current,{preserveFeedback:true});
     setSendMode(Boolean(input.value.trim()));syncCancelButtons();
-    try{
-      // Both channels must run: cancelling Runtime does not interrupt host Live/SIS playback.
-      const results=await Promise.allSettled([invoke('voice.stop'),...running.map(task=>invoke('task.cancel',task.taskId))]);
-      for(let index=0;index<running.length;index++)if(results[index+1].status==='rejected')truncatedTaskIds.delete(running[index].taskId);
-      const errors=results.flatMap(result=>result.status==='rejected'?[result.reason?.message??String(result.reason)]:[]);
-      if(results[0].status==='fulfilled'&&!results[0].value?.stopped)errors.push(results[0].value?.reason??'语音供应商尚未连接');
-      if(errors.length)report(errors.join('；'));
-      else setFeedback(`已请求停止 ${running.length} 个正在执行的任务；是否停止以任务状态为准。`);
-    }finally{for(const task of running)pendingCancelIds.delete(task.taskId);syncCancelButtons();setSendMode(Boolean(input.value.trim()));}
+    const generation=submitGeneration,conversationId=current?.conversationState?.activeId;
+    setFeedback('已截断回答；后台停止状态以任务记录为准。');
+    // Neither voice cleanup nor a stalled readback can lock the composer. Report each channel independently.
+    const feedbackRevision=errorFeedbackRevision;
+    const request=(name,payload)=>{
+      const ownsFeedback=()=>!wakeClosed&&generation===submitGeneration&&current?.conversationState?.activeId===conversationId&&feedbackRevision===errorFeedbackRevision;
+      const timer=setTimeout(()=>{if(ownsFeedback())report('后台停止尚未确认；可以继续输入，原任务状态保留。');},5000);
+      void invoke(name,payload).catch(error=>{if(ownsFeedback())report(error);})
+        .finally(()=>clearTimeout(timer));
+    };
+    request('conversation.interrupt',{conversationId});request('voice.stop');
+  };
+  const stopTask=task=>{
+    if(pendingCancelIds.has(task.taskId))return;
+    const isOnlyCurrent=!pending&&activeTasks().length===1&&activeTasks()[0].taskId===task.taskId;
+    if(isOnlyCurrent){messageQueue.pause();window.speechSynthesis?.cancel();void invoke('voice.stop').catch(()=>{});}
+    truncatedTaskIds.add(task.taskId);if(!truncatedOutput.has(task.taskId))truncatedOutput.set(task.taskId,structuredClone(task));
+    const request={},conversationId=current?.conversationState?.activeId,feedbackRevision=errorFeedbackRevision;
+    taskStopRequests.set(task.taskId,request);pendingCancelIds.add(task.taskId);
+    lastTaskSignature='';render(current,{preserveFeedback:true});syncCancelButtons();
+    const ownsRequest=()=>taskStopRequests.get(task.taskId)===request;
+    const ownsFeedback=()=>!wakeClosed&&current?.conversationState?.activeId===conversationId&&feedbackRevision===errorFeedbackRevision;
+    const release=()=>{if(ownsRequest()){taskStopRequests.delete(task.taskId);pendingCancelIds.delete(task.taskId);syncCancelButtons();}};
+    const timer=setTimeout(()=>{if(ownsRequest()){release();if(ownsFeedback())report('原任务停止尚未确认，可以重试；当前对话仍可继续。');}},5000);
+    void invoke('task.cancel',task.taskId).catch(error=>{if(ownsRequest()&&ownsFeedback())report(error);})
+      .finally(()=>{clearTimeout(timer);release();});
   };
   form.onsubmit=async e=>{
-    e.preventDefault();if(pending||sendBtn.disabled||!input.value.trim())return;
+    e.preventDefault();if(!input.value.trim())return;
     // A bare stop instruction targets the running task, not the model.
     if(isStopRequest(input.value)){
       const running=activeTasks();
-      if(!running.length){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));setFeedback('当前没有正在执行的任务。');return;}
-      const stopText=input.value;pending=true;
-      try{
-        window.speechSynthesis?.cancel();
-        await stopActiveTasks(running);
-        if(input.value===stopText){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));}
-      }finally{pending=false;setSendMode(Boolean(input.value.trim()));}
+      if(!running.length&&!pending){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));setFeedback('当前没有正在执行的任务。');return;}
+      window.speechSynthesis?.cancel();await stopActiveTasks(running);
+      input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));
       return;
     }
-    if(activeTasks().length>0)return;
-    const draftToken=sessionControls.capture(),submittedText=input.value,submittedGeneration=++submitGeneration,submittedConversation=current?.conversationState?.activeId,submittedRevision=draftRevision,feedbackRevision=errorFeedbackRevision;pending=true;setSendMode(true);try{await nativeReasoning.flush();await sessionControls.flush(draftToken);await invoke('task.submit',{text:submittedText,conversationId:submittedConversation});await sessionControls.submitted(draftToken);if(draftRevision===submittedRevision&&current?.conversationState?.activeId===submittedConversation&&input.value===submittedText){input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));}requestAnimationFrame(()=>{thread.scrollTop=thread.scrollHeight;});if(submittedGeneration===submitGeneration&&feedbackRevision===errorFeedbackRevision){setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}}catch(err){if(submittedGeneration===submitGeneration)report(err);}finally{if(submittedGeneration===submitGeneration){pending=false;setSendMode(Boolean(input.value.trim()));}}};
+    if((pending||activeTasks().length||messageQueue.list(current?.conversationState?.activeId).length)&&deliveryMode.value==='queue'){enqueueDraft();drainQueue();return;}
+    await submitMessage(input.value,{steer:pending||activeTasks().length>0});
+  };
+  async function submitMessage(submittedText,{queued,steer=false}={}) {
+    if(queued&&sendingQueueIds.has(queued.id))return;
+    if(queued){sendingQueueIds.add(queued.id);renderQueue();}
+    const draftToken=queued?undefined:sessionControls.capture();
+    if(steer){window.speechSynthesis?.cancel();void stopActiveTasks(activeTasks());}
+    const submittedGeneration=++submitGeneration,submittedConversation=current?.conversationState?.activeId,feedbackRevision=errorFeedbackRevision;
+    pending=true;setSendMode(Boolean(input.value.trim()));
+    const isCurrent=()=>!wakeClosed&&submittedGeneration===submitGeneration&&current?.conversationState?.activeId===submittedConversation;
+    let sent=false,receipt;
+    try {
+      await nativeReasoning.flush();if(!isCurrent())return;
+      if(draftToken)await sessionControls.flush(draftToken);if(!isCurrent())return;
+      if(draftToken){void sessionControls.submitted(draftToken).catch(report);}
+      const delivery=steer?'steer':'send';
+      if(queued){messageQueue.remove(queued.id);renderQueue();}
+      const request=invoke('task.submit',{text:submittedText,conversationId:submittedConversation,delivery});sent=true;
+      const result=await request;receipt=result;if(!isCurrent())return;
+      if(result?.interrupted)return;
+      messageQueue.resume();renderQueue();
+      requestAnimationFrame(()=>{thread.scrollTop=thread.scrollHeight;});
+      if(feedbackRevision===errorFeedbackRevision){setFeedback(hostFeedback);if(hostFeedback)hostFeedbackRevision=errorFeedbackRevision;}
+    } catch(error) {
+      if(!isCurrent())return;
+      messageQueue.pause();
+      if(queued&&sent)messageQueue.remove(queued.id); // Unknown acceptance must never auto-retry.
+      if(!queued&&!input.value){input.value=submittedText;input.dispatchEvent(new Event('input',{bubbles:true}));}
+      if(queued&&sent){input.value=(input.value?input.value+'\n':'')+submittedText;input.dispatchEvent(new Event('input',{bubbles:true}));}
+      renderQueue();report(error);
+    } finally {
+      if(queued){sendingQueueIds.delete(queued.id);renderQueue();}
+      if(isCurrent()){
+        pending=false;setSendMode(Boolean(input.value.trim()));
+        if(receipt?.taskId&&(isTerminal(receipt)||current?.tasks.some(task=>task.taskId===receipt.taskId&&isTerminal(task))))queueMicrotask(drainQueue);
+      }
+    }
+  }
   const stopButton=root.querySelector('#stop');
+  const stopPlaybackIcon=stopButton.innerHTML;
   // With a running task this control truncates it locally first, then asks Runtime to stop;
   // with nothing running it only stops playback.
   stopButton.onclick=async()=>{
     window.speechSynthesis?.cancel();
     const running=activeTasks();
-    if(running.length){
+    if(running.length||pending){
       await stopActiveTasks(running);
       return;
     }
@@ -356,7 +430,7 @@ else {
     catch(err){if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)report(err);}
     finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
   };
-  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on){likedTasks.add(b.dataset.id);capCollection(likedTasks,200);}else likedTasks.delete(b.dataset.id);for(const button of tasksNode.querySelectorAll('[data-ui-action="like"]')){const active=likedTasks.has(button.dataset.id);button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
+  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on){likedTasks.add(b.dataset.id);capCollection(likedTasks,200);}else likedTasks.delete(b.dataset.id);for(const button of tasksNode.querySelectorAll('[data-ui-action="like"]')){const active=likedTasks.has(button.dataset.id);button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}if(b.dataset.action==='task.cancel'){if(b.disabled)return;const task=current?.tasks.find(item=>item.taskId===b.dataset.id);if(task)stopTask(task);return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
   const syncApprovalButtons=()=>{
     for(const [id,phase] of approvalDecisions)if(phase==='submitted' && !(current?.approvals??[]).some(item=>
       item.approvalId===id && item.state==='pending' && current?.tasks.some(task=>task.taskId===item.taskId && task.state==='waiting_approval')))approvalDecisions.delete(id);
@@ -368,7 +442,9 @@ else {
     for(const task of current.tasks) {
       const article=tasksNode.querySelector(`[data-turn="${CSS.escape(task.taskId)}"]`);
       if(!article)continue;
-      const markup=approvalCards(task,current.approvals,now);
+      const visibleApprovals=approvalsWithoutQuestionCards(current.approvals,current.authorizationQuestions,
+        current.conversationState?.activeId);
+      const markup=task.outputTruncated?'':approvalCards(task,visibleApprovals,now);
       if(article.approvalMarkup===markup)continue;
       for(const card of article.querySelectorAll('.approval-card'))card.remove();
       if(markup)article.insertAdjacentHTML('beforeend',markup);
@@ -396,11 +472,12 @@ else {
       approvalDecisions.set(id,'submitted');syncApprovalButtons();}
     catch(error){approvalDecisions.delete(id);report(error);syncApprovalButtons();}
   });
-  render=(data,{preserveFeedback}={})=>{updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;for(const group of ['thinking']){panelPreferenceRequests[group]++;panelPreferencePending[group]=null;panelPreferenceErrors[group]=null;}draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks);const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
+  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
     subagents.update(data.subagentTasks??[]);
+    if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
-    updateProgress(data.tasks);
+    updateProgress(data.tasks.filter(task=>!task.outputTruncated));
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
     const notifs=Array.isArray(data.notifications)?data.notifications:[];
@@ -420,19 +497,8 @@ else {
     syncHostFeedback(data.connectionError||voiceError,{preserveFeedback:preserveFeedback!==undefined});
     if(preserveFeedback===false&&hostFeedback)hostFeedbackRevision=errorFeedbackRevision;
     const modelReady=data.model?.status==='ready';
-    // Thinking controls are a local test surface.  They must remain draggable
-    // even while the provider is unconfigured or its connection test failed;
-    // Runtime support is reported separately instead of disabling the control.
-    fastBtn.disabled=false;
     const modelIdentity=data.fakeModel?(data.model?.label??'Fake Model · 离线测试'):(data.model?.configured&&data.model?.model?data.model.model:(data.model?.label||'模型未配置'));
-    root.querySelector('#model-label').textContent=modelIdentity;root.querySelector('#mm-model-label').textContent=modelIdentity;
     const modelConnected=modelReady||(data.model?.configured===true&&data.model?.status!=='error');const connectionNotice=root.querySelector('#connection-notice');connectionNode.hidden=modelConnected;if(connectionNotice){connectionNotice.hidden=modelConnected;connectionNotice.textContent=data.fakeModel?'当前使用 Fake Model，仅用于离线测试。':modelReady?`当前使用 ${modelIdentity}；语音尚未连接。`:`${data.model?.reason??'模型尚未连接'}；语音尚未连接。`;}
-    modelBtn.title=modelReady?`${modelIdentity} · 模型与思考深度`:'思考设置可调整；模型尚未完成真实连接测试';
-    modelChoiceLabel.hidden=!data.modelChoices?.length;
-    projectPanelPreferences();
-    nativeReasoning.update(data);
-    const tag=root.querySelector('#model-tag');if(tag)tag.textContent=modelReady?'已测试':data.model?.status==='configured'?'待测试':'未配置';
-    const modelNotice=root.querySelector('#model-notice');if(modelNotice)modelNotice.textContent='思考深度控制当前模型的原生推理强度；供应商默认不发送强度覆盖。步骤预算与快速模式单独控制执行预算，实际能力以模型目录和任务回执为准。';
     const voiceState=data.voice?.status;
     const voiceReady=Boolean(data.voice?.experimental);
     talkButton.disabled=Boolean(data.live?.active)||wakeBlocksCapture(data)||!voiceReady||!['unavailable','error','listening','awaiting_speech'].includes(voiceState);
@@ -440,19 +506,48 @@ else {
     talkButton.setAttribute('aria-label',talkButton.title);
     const micStatus=voiceError || (voiceState==='listening'?'麦克风：正在采集，点击结束':voiceState==='acquiring'?'麦克风：等待设备就绪':voiceState==='recognizing'?'语音：正在转成文字':'');
     root.querySelector('.mic-state').textContent=micStatus;
-    for(const id of [...truncatedTaskIds])if(data.tasks.some(item=>item.taskId===id&&isTerminal(item)))truncatedTaskIds.delete(id);
+    for(const id of [...truncatedTaskIds])if(!data.tasks.some(item=>item.taskId===id)){truncatedTaskIds.delete(id);truncatedOutput.delete(id);}
     const hasActiveTask=activeTasks().length>0;
-    stopButton.hidden=hasActiveTask||pendingCancelIds.size>0;
+    stopButton.hidden=!hasActiveTask&&!pending&&voiceState!=='speaking'&&!data.live?.active;
     stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持 Live）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
     root.querySelector('.bubble').hidden=!emptyThread;quickStart.hidden=!emptyThread;
-    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);
+    const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);
     const thinkingGrid='<span class="thinking-grid" aria-hidden="true">'+[0,1,2,3,4,5,6,7,8].map(index=>`<i data-cell="${index}"></i>`).join('')+'</span>';
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
-    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t);const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button><button type="button" data-ui-action="share" data-id="${escape(t.taskId)}" title="分享" aria-label="分享回答">${responseIcons.share}</button><button type="button" data-ui-action="like" data-id="${escape(t.taskId)}" title="点赞" aria-label="点赞回答" aria-pressed="${likedTasks.has(t.taskId)}" class="${likedTasks.has(t.taskId)?'active':''}">${responseIcons.like}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${!terminal?`<div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div>`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div><div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${t.state==='waiting_reconciliation'?`<p class="notice">原任务结果尚未核实，当前对话需等待实际终态。核实并结束只检查已记录的执行结果；无法确认时会保留待核实状态，不重发操作。</p><button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">核实并结束</button>`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
+    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button><button type="button" data-ui-action="share" data-id="${escape(t.taskId)}" title="分享" aria-label="分享回答">${responseIcons.share}</button><button type="button" data-ui-action="like" data-id="${escape(t.taskId)}" title="点赞" aria-label="点赞回答" aria-pressed="${likedTasks.has(t.taskId)}" class="${likedTasks.has(t.taskId)?'active':''}">${responseIcons.like}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${!terminal?`<div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div>`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div><div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??'原任务结果尚未核实，请先核实该操作，避免重复执行。核实并结束只检查已记录的执行结果；无法确认时会保留待核实状态，不重发操作。')}</p><button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}" ${t.reconciliationStatus?.blockedReason?'disabled':''}>核实并结束</button>`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
-    refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));
+    refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}};
+}
+// These cards belong to the canonical user conversation, including requests from its workers.
+// Keep their DOM outside the task projection so unrelated progress snapshots preserve focus.
+const authorizationThread=root.querySelector(mode==='workspace'?'#workspace-stage':'.thread');
+if(bridge&&authorizationThread) {
+  const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
+  const previousRender=render;
+  let questionClosed=false,questionSnapshotRevision=0;
+  const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onPending:({questionId})=>{
+    // Run after the ordinary task projection's follow-to-bottom callback. A new
+    // question must be discoverable at its heading, without repeatedly moving
+    // history or taking keyboard focus on unrelated progress snapshots.
+    requestAnimationFrame(()=>{if(questionClosed)return;
+      const element=[...questionRoot.querySelectorAll('[data-question-id]')].find(node=>node.dataset.questionId===questionId);
+      if(element?.isConnected&&element.querySelector('[data-authorization-decision]:not(:disabled)'))
+        element.querySelector('.authorization-question-title')?.scrollIntoView({block:'start',behavior:'instant'});});
+  },onChanged:async()=>{
+    const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
+    if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
+  }});
+  render=(data,...options)=>{
+    questionSnapshotRevision++;
+    previousRender(data,...options);
+    // Missing conversation identity must not widen the view to another conversation's questions.
+    const conversationId=data.conversationState?.activeId;
+    questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
+  };
+  render.setAudioLevel=previousRender.setAudioLevel;
+  window.addEventListener('unload',()=>{questionClosed=true;questions.dispose();},{once:true});
 }
 if(bridge&&['admin','workspace'].includes(mode)) {
   mountWindowControls(root,invoke,mode,error=>{

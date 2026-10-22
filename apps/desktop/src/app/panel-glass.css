@@ -71,11 +71,11 @@
 .panel .wake-control-row button {background:var(--panel-lens);border:0;border-radius:999px}
 .panel .task-progress,.panel .sis-settings {border-color:var(--panel-line);background:var(--panel-lens);box-shadow:none}
 /* Popovers have a stable backing for dense controls and text. */
-.panel :is(.bell-menu,.model-menu) {border:0;border-radius:20px;background:var(--panel-menu);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:inset 0 1px 0 var(--panel-glint),0 14px 38px rgba(0,0,0,.25)}
+.panel :is(.bell-menu,.model-menu,.model-thinking-menu) {border:0;border-radius:20px;background:var(--panel-menu);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:inset 0 1px 0 var(--panel-glint),0 14px 38px rgba(0,0,0,.25)}
 .panel :is(button,input,select,summary):focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
 @media(max-width:360px) {.panel>header {padding-inline:16px;gap:4px}.panel>.thread {padding-inline:19px}.panel .thread>.bubble {font-size:24px}.panel>.composer {margin-inline:10px;padding-inline:12px}.panel .quick-start {gap:7px}.panel .quick-start button {padding:10px}}
 @media(max-height:540px) {.panel>header {padding-block:12px 8px}.panel>.thread {padding-block:6px 12px}.panel .thread>.bubble {padding-top:4px}.panel .composer textarea {min-height:40px;max-height:18vh}.panel>.composer {padding-top:10px}.panel .wake-controls[open] {max-height:90px;overflow:auto}}
 @media(prefers-reduced-transparency:reduce) {.panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}.panel::before {display:none}}
 @media(prefers-reduced-motion:reduce) {.panel::before {display:none}}
 :root[data-calm="true"] .panel::before {display:none}
-@media(forced-colors:active) {.panel,.panel>.composer,.panel .quick-start button,.panel .voice-runtime-controls,.panel :is(.bell-menu,.model-menu) {background:Canvas;color:CanvasText;box-shadow:none;border:1px solid CanvasText}.panel::before {display:none}.panel :is(button,input,select,textarea) {forced-color-adjust:auto}}
+@media(forced-colors:active) {.panel,.panel>.composer,.panel .quick-start button,.panel .voice-runtime-controls,.panel :is(.bell-menu,.model-menu,.model-thinking-menu) {background:Canvas;color:CanvasText;box-shadow:none;border:1px solid CanvasText}.panel::before {display:none}.panel :is(button,input,select,textarea) {forced-color-adjust:auto}}

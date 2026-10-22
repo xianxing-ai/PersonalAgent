@@ -115,7 +115,7 @@ test('encrypted product settings switch original deployments behind fixed tools 
 async function persistentFixture(t){
   const base=path.resolve('.cache');mkdirSync(base,{recursive:true});
   const userData=mkdtempSync(path.join(base,'developer-settings-restart-')),runtime=runtimeFixture();
-  const hosts=[];let executions=0;
+  const hosts=[],preflight={};let executions=0,preparations=0;
   t.after(()=>{hosts.forEach(host=>host.close());rmSync(userData,{recursive:true,force:true});});
   const descriptor={name:'fixture.read',version:'1.0.0',sideEffect:'read'};
   const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),
@@ -126,14 +126,63 @@ async function persistentFixture(t){
         host:{tools:[{descriptor,async execute(){executions++;return {observed:true};}}],
           competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:async()=>source.current()}],
           competitionToolExports:[],runtimeOptions:{developerWorkflows:{bindingId:JSON.parse(source.readConfiguration()).repository}},bind(){}},
-        prepareExport:async()=>{},snapshot:()=>({configured:true}),close(){}})});
+        prepareExport:async scope=>{preparations++;await preflight.prepare?.(scope);},snapshot:()=>({configured:true}),close(){}})});
     hosts.push(host);const proxy=await host.createDeployment({cacheRootPath:userData});proxy.host.bind({runtime});return {host,proxy};
   }
   const configure=(host,repository='fixture/one')=>host.configure({enabled:true,
     configuration:{version:1,repository,github:{executable:'synthetic-gh'},git:{}},token:'synthetic-token-only'});
   const scope=id=>({taskId:id,signal:new AbortController().signal,deadline:new Date(Date.now()+60000).toISOString()});
-  return {runtime,open,configure,scope,executions:()=>executions};
+  return {runtime,open,configure,scope,userData,preflight,executions:()=>executions,preparations:()=>preparations};
 }
+
+test('export preflight ignores tools outside the stable developer catalog without binding their tasks',async t=>{
+  const f=await persistentFixture(t),{host,proxy}=await f.open();
+  const scope={...f.scope(f.runtime.add('ordinary-chat')),proposal:{toolName:'subagent.dispatch',toolVersion:'1.0.0'}};
+  for(const phase of ['preflight','projection'])await proxy.prepareExport({...scope,phase});
+  assert.equal(f.runtime.checkpoints.size,0);
+  await f.configure(host);
+  for(const phase of ['preflight','projection'])await proxy.prepareExport({...scope,phase});
+  assert.equal(f.runtime.checkpoints.size,0);
+  await host.setEnabled({enabled:false});
+  for(const phase of ['preflight','projection'])await proxy.prepareExport({...scope,phase});
+  host.close();for(const phase of ['preflight','projection'])await proxy.prepareExport({...scope,phase});
+  assert.equal(f.runtime.checkpoints.size,0);assert.equal(f.preparations(),0);
+});
+
+test('developer export preflight retains configuration and original revision gates by tool name',async t=>{
+  const f=await persistentFixture(t),{host,proxy}=await f.open();
+  const scope={...f.scope(f.runtime.add('developer-export')),proposal:{toolName:'fixture.read',toolVersion:'1.0.0'}};
+  await assert.rejects(proxy.prepareExport(scope),{code:'UNSUPPORTED_CAPABILITY'});
+  await assert.rejects(proxy.prepareExport({...scope,proposal:{...scope.proposal,toolVersion:'unsupported'}}),{code:'UNSUPPORTED_CAPABILITY'});
+  await f.configure(host);await proxy.prepareExport(scope);
+  assert.equal(f.preparations(),1);assert.equal(f.runtime.checkpoints.size,1);
+  await f.configure(host,'fixture/replacement');
+  await assert.rejects(proxy.prepareExport(scope),{code:'UNSUPPORTED_CAPABILITY'});
+  await host.setEnabled({enabled:false});
+  await assert.rejects(proxy.prepareExport(scope),{code:'UNSUPPORTED_CAPABILITY'});
+  host.close();await assert.rejects(proxy.prepareExport(scope),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(f.preparations(),1);
+});
+
+test('developer export preflight propagates original denial and rechecks revocation after consent',async t=>{
+  const f=await persistentFixture(t),{host,proxy}=await f.open();await f.configure(host);
+  const scope={...f.scope(f.runtime.add('export-consent')),proposal:{toolName:'fixture.read',toolVersion:'1.0.0'}};
+  const denial=Object.assign(Error('synthetic export denied'),{code:'UNAUTHORIZED'});
+  f.preflight.prepare=async()=>{throw denial;};
+  await assert.rejects(proxy.prepareExport(scope),error=>error===denial);
+  f.preflight.prepare=async()=>{await host.setEnabled({enabled:false});};
+  await assert.rejects(proxy.prepareExport(scope),{code:'REVISION_CONFLICT'});
+  assert.equal(f.preparations(),2);
+});
+
+test('failed encrypted restore still ignores unrelated exports and denies developer exports',async t=>{
+  const f=await persistentFixture(t);writeFileSync(path.join(f.userData,'developer-settings.json'),'invalid encrypted settings');
+  const {host,proxy}=await f.open();assert.equal(host.snapshot().state,'restore_failed');
+  const scope=f.scope(f.runtime.add('restore-failure'));
+  await proxy.prepareExport({...scope,proposal:{toolName:'subagent.dispatch',toolVersion:'1.0.0'}});
+  await assert.rejects(proxy.prepareExport({...scope,proposal:{toolName:'fixture.read',toolVersion:'unsupported'}}),{code:'UNSUPPORTED_CAPABILITY'});
+  assert.equal(f.runtime.checkpoints.size,0);assert.equal(f.preparations(),0);
+});
 
 test('original Runtime revision binding survives same-settings restart and rejects replacement settings after restart',async t=>{
   const f=await persistentFixture(t);let current=await f.open();await f.configure(current.host);

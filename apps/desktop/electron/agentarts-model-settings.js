@@ -1,5 +1,8 @@
+import {defaultThinkingSelection} from '../shared/thinking-selection.js';
+
 /** An unavailable implicit default never replaces an explicit user selection. */
 export function readDesktopExecutionModel(models,preference,role='primary') {
+  if(role==='primary'&&preference?.modelSelection==='default')return models.resolveExecutionModel(defaultThinkingSelection(models.snapshot(),preference.depth));
   if(preference?.executionModel)return models.resolveExecutionModel(preference.executionModel);
   if(preference?.modelId)return models.resolveExecutionModel({modelId:preference.modelId});
   if(!models.snapshot().catalog)return undefined;

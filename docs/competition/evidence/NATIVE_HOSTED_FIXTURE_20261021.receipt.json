@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "profile": "huawei_ict_agentarts",
+  "recordedAt": "2026-10-21T15:10:55Z",
+  "sourceCommits": [
+    "e15486ad01cfc58db21b989f947e850cd65b1355",
+    "400b56713bd7c6620a1fbc218abe679b6183cc19"
+  ],
+  "validatedCompositionHead": "6781f30f1b70e504d95e9bafea9de3553d6ca10e",
+  "sourceChanges": "tests and test-only helper; no production or Main changes",
+  "hostedOriginal": {
+    "platform": "GitHub hosted WindowsServer2025 10.0.26100",
+    "status": "configuration_unavailable_before_spawn",
+    "reason": "invalid-or-unavailable-trusted-configuration",
+    "affected": [
+      "baseline",
+      "readOnly",
+      "workspaceWrite",
+      "cancel"
+    ],
+    "psecSupport": "unknown"
+  },
+  "fixtureFix": {
+    "trustedTemporaryRootsCanonicalized": true,
+    "systemRootCanonicalized": true,
+    "nodeAndHelperAlreadyCanonical": true,
+    "productionRejectsAliasesUnchanged": true,
+    "skipRequiresSuccessfulBaseline": true,
+    "skipRequiresExplicitCreateEnvironmentApiUnavailable": true,
+    "unknownOrConfigurationFailuresStillFail": true,
+    "requiredOneNeverSkips": true
+  },
+  "localValidation": {
+    "context": "ordinary Windows user with own TEMP junction alias and actual trusted helper",
+    "required": "1",
+    "wholeChainAndClassifier": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "focusedFixture": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "parentNameFilterAlsoRanChildren": true
+    },
+    "realBaselineAndPsecEnforced": true,
+    "realModels": 0,
+    "realAccounts": 0,
+    "productionExecutorsAndPolicy": true
+  },
+  "sourceHashes": {
+    "wholeChain": "0ce38f0bb95f329d0ab66e77aeecec20c0a95fff5c8d061a17cdb5c522025d2c",
+    "focusedFixture": "ad87e8fd21cc8731d316da342a03ec643d155c50160e4e1fced2256f06115a88",
+    "testOnlyClassifier": "c87b25cd784641a115e814602c9e7927235d9a09ee8a0772023958d48547bf77"
+  },
+  "logs": [
+    {
+      "name": "native-skip-classification.log",
+      "sha256": "983ea8ca2461badf41008ed76b903270e797a831c04a7ae935bd4c72ab43dc65"
+    },
+    {
+      "name": "native-required-canonical.log",
+      "sha256": "6f39df73a431caa30c1424414da40dafebb675aa22fca09baddeb51186ce5593"
+    },
+    {
+      "name": "native-focused-preflight-canonical.log",
+      "sha256": "b9a70f654d774e6c28817333cd99828b595f8d58856f1db9f84ed762395f5f6d"
+    }
+  ],
+  "limits": {
+    "hostedRetest": "not_run_in_this_receipt",
+    "localSuccessDoesNotProveHostedSupport": true,
+    "unsupportedClassifierSyntheticAssertionsAreNotOsEvidence": true
+  }
+}

@@ -4,6 +4,15 @@
 
 `DESKTOP-LIQUID-GLASS-20261021`：目标 `huawei_ict_agentarts`，MOD-11/12，PA-001/PA-002。用户确认本机深色玻璃和真实外层圆角后授权提交 PR；从 `61b05cf1` 独立交付 `codex/panel-liquid-glass-20261021`。仅修改 Desktop 面板展示、原生材质与必要验证；没有纳入并行工作区重排、Runtime/AgentArts、公共协议、依赖或迁移。实际接线、Windows SDK/.NET Framework 要求、不透明回退和验证边界见 [交付记录](../apps/desktop/docs/PANEL_LIQUID_GLASS_20261021.md)。实施 Codex / 提交 `2511375597-lab`，拟审查 `Potatos498`、拟合并 `goo122`（均待实际接手）；未授权合并，不据本机 Fake 界面或视觉批准声明真实云能力完成。
 
+## 2026-10-21 强制截断、对话引导与排队（review）
+
+- Profile / 模块：`huawei_ict_agentarts` / MOD-11、13，复用既有 Runtime 取消与上下文；本轮实现负责人为当前 Codex 对话。
+- 工作树：`D:/worktree/3def/PersonalAgent`，基线 `e7d4e0c6`；拥有 Desktop 主进程交付占位、主面板发送/队列/输出投影及相关回归；未修改公共 wire、Runtime 状态机、依赖或数据库迁移。
+- 行为：停止先冻结输出并释放 composer，取消和语音独立请求；引导截断并提交带原上下文的新一轮，排队保存待发送草稿并可逐条立即发送/编辑。迟到受理请求取消，迟到输出不能复活。历史已取消的待核实任务不再阻塞新消息。
+- UNKNOWN：保留 cloud checkpoint、原工具结果及真实 `waiting_reconciliation`，在已知缺少读回时展示阻塞原因。`cancelRequested + deadline 过期` 不是无证据改账为 cancelled 的充分条件，不直接 SQL 更新 tasks。
+- 验收：见 [本轮证据](../apps/desktop/docs/CONVERSATION_DELIVERY_20261021.md)。已只读核验用户提供的术前单文件备份；用户另已确认离线收账后解锁，本轮未写真实数据库。
+- 提交 / PR / 集成：用户已授权提交、创建 PR、独立审查及按仓库规则合并后运行最新版；当前尚未集成。拟正式审查 goo122、拟合并 zemeng5208；子智能体另做技术审查，不冒充非作者正式批准。保留其他协作者文件与工作树。
+
 ## 2026-10-20 开发者 harness 优先交付（in_progress）
 
 Owner 本轮要求先交付开发者可直接使用的完整 harness，再承接常驻智能体；最新路线为参考 Harness² / DeepSeek Harness 的能力和方法自主实现。[当前工作包](design/DEVELOPER_HARNESS_20261020.md)登记受控多执行者、持续会话/恢复、候选试跑/经验、主对话 CI、启动语音和主动事件的唯一责任与验收。现有 Runtime、权限、工具、隔离与持久记录继续复用，开发用子智能体不计入产品功能。

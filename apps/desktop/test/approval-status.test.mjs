@@ -56,6 +56,7 @@ test('expired or invalid approvals are visibly inactive and fail closed', () => 
     [approval({expiresAt: 'not-a-date'}), '期限无效'],
     [approval({state: 'allowed'}), '已允许'],
     [approval({state: 'denied'}), '已拒绝'],
+    [approval({state: 'denied', systemExpired: true}), '已失效'],
   ]) {
     const presentation = approvalPresentation(item, now);
     assert.equal(presentation.actionable, false);

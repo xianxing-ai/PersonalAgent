@@ -1,0 +1,726 @@
+{
+  "receiptType": "sanitized_projection_of_actual_issue459_readbacks",
+  "issue": "https://github.com/xianxing-ai/PersonalAgent/issues/459",
+  "observedAtUtc": "2026-10-21T08:39:12.2054363Z",
+  "image": {
+    "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+    "index": {
+      "schemaVersion": 2,
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "manifests": [
+        {
+          "mediaType": "application/vnd.oci.image.manifest.v1+json",
+          "digest": "sha256:119e0cb2cbaa940e91c578d0e8030cf0c10ffff76bef3ffff07aaee917c15f8f",
+          "size": 2384,
+          "platform": {
+            "architecture": "arm64",
+            "os": "linux"
+          }
+        },
+        {
+          "mediaType": "application/vnd.oci.image.manifest.v1+json",
+          "digest": "sha256:88ac5587c276f128eee364ec3639c5761741a72153ad0aee4e977668428f6028",
+          "size": 837,
+          "annotations": {
+            "vnd.docker.reference.digest": "sha256:119e0cb2cbaa940e91c578d0e8030cf0c10ffff76bef3ffff07aaee917c15f8f",
+            "vnd.docker.reference.type": "attestation-manifest"
+          },
+          "platform": {
+            "architecture": "unknown",
+            "os": "unknown"
+          }
+        }
+      ]
+    },
+    "indexDigest": "sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+    "arm64Manifest": {
+      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+      "digest": "sha256:119e0cb2cbaa940e91c578d0e8030cf0c10ffff76bef3ffff07aaee917c15f8f",
+      "size": 2384,
+      "platform": {
+        "architecture": "arm64",
+        "os": "linux"
+      }
+    },
+    "config": {
+      "mediaType": "application/vnd.oci.image.config.v1+json",
+      "digest": "sha256:6095b00793ecc08a46d4973e260b929d37a4cf6d8d63d65d8d03e1ddd01d6a49",
+      "size": 9901
+    },
+    "registryConfig": {
+      "platformKey": "image",
+      "architecture": "arm64",
+      "os": "linux",
+      "created": "2026-10-20T09:54:25.136922351Z",
+      "user": "node",
+      "workingDir": "/opt/personal-agent",
+      "entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "command": [
+        "node",
+        "apps/agentarts-runtime/src/main.mjs"
+      ],
+      "labelsPresent": false,
+      "labels": {},
+      "rootfsLayerCount": 11
+    },
+    "localInspect": {
+      "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "checkedAt": "2026-10-21T08:32:28.3068274Z",
+      "imageId": "sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "repoDigests": [
+        "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004"
+      ],
+      "os": "linux",
+      "architecture": "arm64",
+      "user": "node",
+      "labelsPresent": false,
+      "entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "command": [
+        "node",
+        "apps/agentarts-runtime/src/main.mjs"
+      ]
+    }
+  },
+  "environment": {
+    "context": "desktop-linux",
+    "dockerCli": {
+      "version": "29.8.2",
+      "os": "windows",
+      "architecture": "amd64"
+    },
+    "daemon": {
+      "desktop": "Docker Desktop 4.94.0 (241994)",
+      "engineVersion": "29.8.2",
+      "os": "linux",
+      "architecture": "amd64",
+      "kernelVersion": "6.18.40.1-microsoft-standard-WSL2"
+    },
+    "buildxVersion": "v0.37.2"
+  },
+  "minimumArmProcess": {
+    "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+    "checkedAt": "2026-10-21T08:40:37.9878647Z",
+    "processOutput": "{\"node\":\"v24.15.0\",\"arch\":\"arm64\",\"platform\":\"linux\",\"uid\":1000,\"gid\":1000}",
+    "dockerStartExitCode": 0,
+    "containerExitCode": 0,
+    "config": {
+      "image": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "user": "node",
+      "entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "networkMode": "none",
+      "readOnlyRootfs": true,
+      "privileged": false,
+      "binds": null,
+      "mountCount": 0,
+      "capDrop": [
+        "ALL"
+      ],
+      "securityOpt": [
+        "no-new-privileges"
+      ],
+      "pidsLimit": 32,
+      "memoryBytes": 268435456
+    }
+  },
+  "catalog": {
+    "run": {
+      "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "scriptRevision": "4d31497c9b59664f477e80672c1212d89f8f718a",
+      "scriptSha256": "2aaf79989d2ed87bcfb105cb28bde41581fe23cbb9bae4a5e5bd22843621e31b",
+      "startedAt": "2026-10-21T08:39:01.3731276Z",
+      "finishedAt": "2026-10-21T08:39:12.2054363Z",
+      "elapsedMs": 10826,
+      "exitCode": 0,
+      "receiptExists": true,
+      "receiptSha256": "694651af661c2e0e6c2bca9923a1ac68b6bad9880ff688dd5060581c8b649758"
+    },
+    "receipt": {
+      "kind": "local_arm64_image_discovery_smoke",
+      "pingStatus": 200,
+      "os": "linux",
+      "architecture": "arm64",
+      "user": 1000,
+      "workflowCount": 28,
+      "nodeCount": 185,
+      "adapterCount": 152,
+      "modelAssignments": 44,
+      "selectedJoins": 12,
+      "observed": [
+        {
+          "workflowId": "F01",
+          "templateDigest": "bbeec83a0161b95a8dbef9e48ab0fa31563b5aed35db46320e784bd5a7c03679",
+          "nodeCount": 9
+        },
+        {
+          "workflowId": "F02",
+          "templateDigest": "54450a6f35bd158611bebea107f3c8ae5389ac63936c97880128608769b3ecc3",
+          "nodeCount": 11
+        },
+        {
+          "workflowId": "F03",
+          "templateDigest": "5cb26bf5c9b556b78774fde30d0c0708ff4bdaa1244d932d6916f46a001491b7",
+          "nodeCount": 10
+        },
+        {
+          "workflowId": "F04",
+          "templateDigest": "8f751aff1112532d59ff9d533bf3ae62c8c75b9bdadd82895ba0647ac3e5cb58",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F05",
+          "templateDigest": "c72e8637c6bc6410917da06283e99f205b934847a9890b01334c08f2165855ac",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F06",
+          "templateDigest": "de78d7359ddd35a94211361278412370cd499c93af5a91c464bf2a6624da2f9a",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F07",
+          "templateDigest": "6dd3145f4962c39bd9ab1c322b29704e3d45b74085c4aa1212d7ad58f2ca02ed",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F08",
+          "templateDigest": "e1df1ca4b10591e7fc9e14d97eb504e6b4b5209337f35be14903b94d7d576739",
+          "nodeCount": 13
+        },
+        {
+          "workflowId": "F09",
+          "templateDigest": "7af1f2a4920add14c4f5aa3a68302330949187738f5894bb6dfc28d1b581e854",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F10",
+          "templateDigest": "6d98c8b8fc41a15dd41c89c75de8a8b4db38c79aab87b84aeaf9d5c458030cf3",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F11",
+          "templateDigest": "7324b55415e4d68181cb7cdac1f2ebeefe85177fcb5bfe415ab674f4c4c41394",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F12",
+          "templateDigest": "7c8bbed2f796a5db066f8aa7cffbba6e78005e77c69b796dc4be7853d2f9abca",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F13",
+          "templateDigest": "de9fd0ae48bae17d59e63e05e5bfe9753f069e21162e880362b493269ebea312",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F14",
+          "templateDigest": "cb961924a31778db8eb5a99c5408ec69245262d44c71f5e0779723fdbacf309b",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F15",
+          "templateDigest": "7b878391d6744dfd794f6205b2b24ea5dffe21ce43891a3a4b3cf4961de7e97c",
+          "nodeCount": 6
+        },
+        {
+          "workflowId": "F16",
+          "templateDigest": "87e958947324860f7884318035b03b81ffd840ca48587087d570ffea02fc173d",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F17",
+          "templateDigest": "15c315300162962d1138d177f621670f43cb1c3ba610f04188367ea225cf05d5",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F18",
+          "templateDigest": "6dd78b6d9ae86fe9e6072d8efc7b23786f84596d75dcbf900f96ce1752beef0b",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F19",
+          "templateDigest": "bc5ceb41e80b6d1e94c28b0f9cfe936f4b480794dae206190b8e3daa17cc1c9c",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F20",
+          "templateDigest": "531c53f8ac38a405231533698bd4fa2e25f514b84bec6b3f9531e78a3e4fd768",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F21",
+          "templateDigest": "4981eb86848b92be1009df3779a3b7235b4de44e565b5ac32616c1b61959b674",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F22",
+          "templateDigest": "e02e670d73b6e475dbdbdfcfee8206357d398b5f2825cd02179a31674a5d1254",
+          "nodeCount": 9
+        },
+        {
+          "workflowId": "F23",
+          "templateDigest": "0fb7978a6847d314f8ad5f1a779262cb2fef894a6930a206226765b8841dc6ad",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F24",
+          "templateDigest": "718dee19c2b5ec0f87ffb9511764612d1d9613d8c29addcfb5ee6fa0c9af9992",
+          "nodeCount": 12
+        },
+        {
+          "workflowId": "F25",
+          "templateDigest": "5e16c5a14eb3f4d473742169ac870785cdc4ca19d3ea3bbb658a026f79521afd",
+          "nodeCount": 4
+        },
+        {
+          "workflowId": "F26",
+          "templateDigest": "9bb06a8e83e6f71310676c42bc3b3f2b8d4d04031bdf6e9c56e7eeacf75ffc94",
+          "nodeCount": 5
+        },
+        {
+          "workflowId": "F27",
+          "templateDigest": "da0b4e0921df65286ea7e0e3b54e040d110d3f215bcd65458f649294113790b6",
+          "nodeCount": 7
+        },
+        {
+          "workflowId": "F28",
+          "templateDigest": "db1461266577801597feea68dd45057e5a4bb73ac53bc6e2ee70cb736de97813",
+          "nodeCount": 12
+        }
+      ],
+      "designCoverage": {
+        "source": "docs/design/workflow-architecture-20261013/source/src/data/architecture.json",
+        "projectionSha256": "b9603488d7d8db8dba98619de15c3627bc5dc6f49355d332de4cfea7a7f8cc65",
+        "templateVersion": "2026.10.15.2",
+        "workflowCount": 28,
+        "nodeCount": 185,
+        "meaning": "Design coverage only; actual provider wiring and business verification are separate"
+      },
+      "embeddedLayaPathPresent": false,
+      "maasCalls": 0,
+      "realInferenceTested": false,
+      "published": false,
+      "imageId": "sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "sizeBytes": 428409983,
+      "sizeScope": "Docker image inspect Size; not a transfer or RSS measurement"
+    },
+    "expectedHostArtifacts": {
+      "method": "docker_cp_from_stopped_fixed_image_no_mounts_no_build",
+      "matchingCloudArtifacts": 85,
+      "extractedFileCount": 4012,
+      "extractedTreeSha256": "f715c9fb9755f761f7c9b778020fbd9b66b6a523488e1706bdffc7c08ddff5f2",
+      "script": {
+        "revision": "4d31497c9b59664f477e80672c1212d89f8f718a",
+        "path": "tests/manual/agentarts/local-image-catalog-smoke.mjs",
+        "sha256": "2aaf79989d2ed87bcfb105cb28bde41581fe23cbb9bae4a5e5bd22843621e31b",
+        "gitBlob": "b990e953f336bc4af487d9cf9d79aba21d5142ab"
+      },
+      "expectedCoverageSource": "compiled host packages extracted byte-for-byte from the same fixed image; not a fresh build of current main"
+    }
+  },
+  "source": {
+    "ociRevisionLabelPresent": false,
+    "wholeImageSourceRevision": null,
+    "workingTreeDirtyStatus": "unknown",
+    "slsa": {
+      "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "checkedAt": "2026-10-21T08:33:57.5440142Z",
+      "buildType": "https://github.com/moby/buildkit/blob/master/docs/attestations/slsa-definitions.md",
+      "configSourceKeys": [
+        "path"
+      ],
+      "configSourceEntryPoint": null,
+      "configSourceUri": "",
+      "configSourceDigest": null,
+      "requestKeys": [
+        "compatibilityVersion",
+        "frontend",
+        "locals",
+        "root"
+      ],
+      "requestArgumentKeys": [
+        null
+      ],
+      "resolvedDependencies": [
+        {
+          "uri": "pkg:docker/node@24.15.0-bookworm-slim",
+          "digest": {
+            "sha256": "4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d"
+          }
+        }
+      ],
+      "revisionCandidates": [
+        {
+          "field": "SLSA.buildDefinition.externalParameters.request.root.request.args.vcs:revision",
+          "revision": "db936167e1f6d5cf546d3558a2b3a98cb135a529"
+        },
+        {
+          "field": "SLSA.runDetails.metadata.buildkit_metadata.vcs.revision",
+          "revision": "db936167e1f6d5cf546d3558a2b3a98cb135a529"
+        }
+      ],
+      "sourceRevisionIndependentlyEstablished": false
+    },
+    "vcs": {
+      "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "checkedAt": "2026-10-21T08:34:36.6311294Z",
+      "vcsArgumentKeys": [
+        "vcs:localdir:context",
+        "vcs:localdir:dockerfile",
+        "vcs:revision",
+        "vcs:source"
+      ],
+      "vcsArguments": {
+        "vcs:source": "https://github.com/zemeng5208/PersonalAgent.git",
+        "vcs:revision": "db936167e1f6d5cf546d3558a2b3a98cb135a529"
+      },
+      "metadataVcsKeys": [
+        "localdir:context",
+        "localdir:dockerfile",
+        "revision",
+        "source"
+      ],
+      "metadataVcs": {
+        "source": "https://github.com/zemeng5208/PersonalAgent.git",
+        "revision": "db936167e1f6d5cf546d3558a2b3a98cb135a529"
+      },
+      "provenanceSubject": "sha256:119e0cb2cbaa940e91c578d0e8030cf0c10ffff76bef3ffff07aaee917c15f8f"
+    },
+    "comparison": {
+      "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "checkedAt": "2026-10-21T08:39:16.361Z",
+      "scope": [
+        "apps/agentarts-runtime/src/",
+        "packages/contracts/schema/"
+      ],
+      "evidence": "actual_fixed_image_bytes_compared_to_committed_files",
+      "wholeSourceRevisionEstablished": false,
+      "results": [
+        {
+          "revision": "db936167e1f6d5cf546d3558a2b3a98cb135a529",
+          "sourceFileCount": 25,
+          "imageComparedFileCount": 25,
+          "exactBytes": 0,
+          "lineEndingsOnly": 22,
+          "differences": [
+            {
+              "path": "apps/agentarts-runtime/src/main.mjs",
+              "status": "different",
+              "commitSha256": "a7ebda7dd11911776a8ade80b7ad0ba54b2f09014ea7d4158ab777c4b5d3508d",
+              "imageSha256": "335cc4ea2906630251eeca7bf868e558487093bb7452168a659f2e5e0a4a6f31"
+            },
+            {
+              "path": "apps/agentarts-runtime/src/model-proxy.mjs",
+              "status": "different",
+              "commitSha256": "b17af7bfad0f9094df70d1eacc302f7d21df7c430c03b8b637f1f264cdcc5041",
+              "imageSha256": "8bb86c5d1ec69a4999cb5152aeb50c8d8b875242a4f74a528fe0239c90100c14"
+            },
+            {
+              "path": "apps/agentarts-runtime/src/role-receipts.mjs",
+              "status": "different",
+              "commitSha256": "67fb4b624f4adf6636dc10588464f3bc403207ee3d7e7351df9704c3a77714c0",
+              "imageSha256": "7a55951b55772b397ba9fa2bbc2149bda4ecf1602fa0e792802466d5705b2816"
+            }
+          ],
+          "absentInImage": []
+        },
+        {
+          "revision": "a93734c195ceaff56d3e7a5654e320f3007b35f3",
+          "sourceFileCount": 25,
+          "imageComparedFileCount": 25,
+          "exactBytes": 0,
+          "lineEndingsOnly": 25,
+          "differences": [],
+          "absentInImage": []
+        },
+        {
+          "revision": "071864ed45e68b776a7e40008fc16340a756338a",
+          "sourceFileCount": 26,
+          "imageComparedFileCount": 25,
+          "exactBytes": 0,
+          "lineEndingsOnly": 25,
+          "differences": [],
+          "absentInImage": [
+            "packages/contracts/schema/harness-candidates.json"
+          ]
+        }
+      ]
+    },
+    "imageSourceFiles": [
+      {
+        "path": "apps/agentarts-runtime/src/adaptive-decision.mjs",
+        "bytes": 9836,
+        "sha256": "edbe1491ebe8de88377cd513cf53d2e2449faff1b81f06c548f0b0b7be7f08cd",
+        "lfSha256": "9af204291c2c9cdb84445630ec3ee729ca8a21b985bda22706d160d744f747b1"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/binding-dispatch.mjs",
+        "bytes": 11184,
+        "sha256": "aaa64877252210c9b927da973f190156889fd5779070f91496712aeb0a631261",
+        "lfSha256": "7e1fea330f870d55360b5eb5925c26dcdf4b6e177cf0548fedb0d7440db1eaed"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/default-model-catalog.json",
+        "bytes": 46282,
+        "sha256": "94cc82d15151833063b4ea8f2b43f3787a967a47f4a7866e2993f96ff04cc999",
+        "lfSha256": "6542adef6bd41e58a3f3e0228ebcf53d23d1bfec9d5894d57fac4cf2a619fb14"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/image-services.mjs",
+        "bytes": 3354,
+        "sha256": "3fa6c3d8a7c531b6dce4c24f53f5dc8064a648d1589cc482fcac8818883954f1",
+        "lfSha256": "ac718d8bdc6e0eca48b7b8d9aeaf8b2f0704111ce322685b6ce8c5ca533db4ab"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/laya-selector.mjs",
+        "bytes": 24805,
+        "sha256": "27e144f6b1c7d65db0e91665fcbcf5258ed20938423e40d6d25c7d872be014a3",
+        "lfSha256": "31fb0ba2048a29a8c41ecd59910eb4c2baee484807574b3545d6c4d120af61f2"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/laya-service.mjs",
+        "bytes": 5383,
+        "sha256": "03f8cf42f0d0d0123e835bb011832490702b6070f0b0e166d63b262409de8323",
+        "lfSha256": "c76df8ab786f97af690792e8c238d5113422c6663c0e6dd76387343bd0e14684"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/local-laya.mjs",
+        "bytes": 2339,
+        "sha256": "e278341767d7321fb21c75eef776218238c77b8dd4ff8f0da3d54d03a09d6696",
+        "lfSha256": "66acafa7e01edc6916c9cdf00e6340e0a960856648b487ae0ea39be1d0766ac1"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/main.mjs",
+        "bytes": 7927,
+        "sha256": "335cc4ea2906630251eeca7bf868e558487093bb7452168a659f2e5e0a4a6f31",
+        "lfSha256": "c54344ba0cf6be45318b15924187646cef4c5ef9f86991d60a82a2f6d6794941"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/model-catalog.mjs",
+        "bytes": 4618,
+        "sha256": "72afd2ac45813d136e050e85ccd65a94a3bb98ee35993c931adad2da5b881747",
+        "lfSha256": "434872df30f69b9c25ba485f4c53f061d3ea1d6410109e1525154cc5fdb34562"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/model-fetch.mjs",
+        "bytes": 692,
+        "sha256": "964f49b80a9efd1302ccb9fbb36fd68959603a999afc51bda2666c723bf38bad",
+        "lfSha256": "41ebdf53e15efc162811e8dc0b1210a3b530b57e560efdd8d3300b25cd77feaa"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/model-proxy.mjs",
+        "bytes": 5716,
+        "sha256": "8bb86c5d1ec69a4999cb5152aeb50c8d8b875242a4f74a528fe0239c90100c14",
+        "lfSha256": "be35c67e4b271852f05d73ddf1acc32ead53144e26267b30239e96395667912d"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/platform-services.mjs",
+        "bytes": 21930,
+        "sha256": "337dde377649a5b8829a7a57d42c24adc51465caf607e2f22bc2832fea617002",
+        "lfSha256": "940ddd605d73e0881599e0ff2bff1d032d894b5b66109a906591b9bc40f176ce"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/proactive-controller.mjs",
+        "bytes": 2917,
+        "sha256": "b4816f7d58d326809557d5c81d99d019656784ac066f2af1a72ac10397409ee9",
+        "lfSha256": "1315dc70ea22e8a256afc7d8ed6cc23f6f4d5ece86bd338e80c21f85b113acb1"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/realtime-proxy.mjs",
+        "bytes": 8701,
+        "sha256": "99b56fb1f2308c69b01a9272357235c07f057db2fb7243abe5e9b8034f42e171",
+        "lfSha256": "47f2f0f100cba2eedf01be941fe496b1c1c552a6d06de44e2b5340f49c7519dd"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/request-path.mjs",
+        "bytes": 896,
+        "sha256": "adccb22c401db594904be5673cd32e988dc58c2c48ab0ef6bc5489298cb3b076",
+        "lfSha256": "d77e9da870a742541b0789c459a2d776acdb76bee3b889f334743905e57b5b1a"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/role-receipts.mjs",
+        "bytes": 4314,
+        "sha256": "7a55951b55772b397ba9fa2bbc2149bda4ecf1602fa0e792802466d5705b2816",
+        "lfSha256": "da56427d6da3a93f7961feeed823a3694526ddf52e969302e373fa75e61c738f"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/server.mjs",
+        "bytes": 14759,
+        "sha256": "de4759079721de89185c9f215b666730fd16e5c8757ffe00aa0f43364ef17bb9",
+        "lfSha256": "8aa939188d8bcdbb839804c04934b2597fb589b95af8e2238600ff58cece26b1"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/shadow-controller.mjs",
+        "bytes": 14487,
+        "sha256": "126ce185ef09cee906d8c93bcf2db64135654073b841e517cd1d7bb29e6150ae",
+        "lfSha256": "14e05c3c7e6cdc9442428aac39d8ac0f438167bcf184e52f9d8bfebb510175d8"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/stage-timeline.mjs",
+        "bytes": 1988,
+        "sha256": "4f3154f3064cdc241eff082933c268c8def4dec654cba94c403c4e1653069c5c",
+        "lfSha256": "42329bafbda918a030c3d01cf928959b5742869e67540d3d7a67c9e5e66892e9"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/test-version-controller.mjs",
+        "bytes": 2535,
+        "sha256": "7d6040d32ef93db23485a62c995e46ef488c9f66d2d92dd0026c5be7780665e2",
+        "lfSha256": "22a31efb1e413e30d08f411fc545953c3506e88be939213cddbcaa632aee7b47"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/trace-replay.mjs",
+        "bytes": 7550,
+        "sha256": "b53526cbb2ea4dcd5dfd18e141cc00ca14b010713228c71f336f57c66b1ce08a",
+        "lfSha256": "f9cabbf5ac8fc44783890861d4ce2ec25d358419d153f4185be639c16d25b89a"
+      },
+      {
+        "path": "apps/agentarts-runtime/src/websocket-transport.mjs",
+        "bytes": 14438,
+        "sha256": "299558827259e095052d7d2508d714ebfb81a7a9169d7404887f28bb8c7123f2",
+        "lfSha256": "56af271015550af7aa60aef73d36f90ea1d461d988ceecc3c4416d2b78f77dde"
+      },
+      {
+        "path": "packages/contracts/schema/agentarts-transport.json",
+        "bytes": 18158,
+        "sha256": "1c6a4a80fa93ac63f29695d4a6bfc16e06437a4b376f6ed1ece706bf9e17821f",
+        "lfSha256": "5988cef35d654f1c1f6a85f19f56fc2c500e30ea743cebfa8ca470e1550adf04"
+      },
+      {
+        "path": "packages/contracts/schema/protocol.json",
+        "bytes": 69759,
+        "sha256": "85c0d60f6d5e14b18c1560b279dbfecad0c380efdbc76be063996d25cc183ae7",
+        "lfSha256": "f19421cdb88222584ebe552b8a67e22b6cb672763ea334b0311ce696878a65a4"
+      },
+      {
+        "path": "packages/contracts/schema/windows-host.json",
+        "bytes": 9229,
+        "sha256": "b6e9ee0e488b64f4f18f8fd349a1a3d751da9ec55dea1ca0b0ace533471d8dbf",
+        "lfSha256": "3f3dfe658df077ba3d2a26036980e7467e43b860da0184860b83ec97fcbea3cc"
+      }
+    ],
+    "committedCloudInputDelta": {
+      "checkedAt": "2026-10-21T08:38:09.900Z",
+      "reference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+      "baseline": "a93734c195ceaff56d3e7a5654e320f3007b35f3",
+      "target": "071864ed45e68b776a7e40008fc16340a756338a",
+      "baselineScopeBasis": "25 app source/schema files matched after explicit CRLF-to-LF normalization; not a whole-image source claim",
+      "committedProductionInputDelta": [
+        {
+          "change": "M",
+          "path": "packages/agentarts/src/coding-repair.ts"
+        },
+        {
+          "change": "A",
+          "path": "packages/agentarts/src/harness-candidates.ts"
+        },
+        {
+          "change": "M",
+          "path": "packages/agentarts/src/index.ts"
+        },
+        {
+          "change": "M",
+          "path": "packages/contracts/package.json"
+        },
+        {
+          "change": "A",
+          "path": "packages/contracts/schema/harness-candidates.json"
+        },
+        {
+          "change": "A",
+          "path": "packages/contracts/src/harness-candidates.generated.ts"
+        },
+        {
+          "change": "A",
+          "path": "packages/contracts/src/harness-candidates.schema.ts"
+        },
+        {
+          "change": "A",
+          "path": "packages/contracts/src/harness-candidates.ts"
+        },
+        {
+          "change": "M",
+          "path": "packages/contracts/src/index.ts"
+        }
+      ],
+      "actuallyAbsentImagePaths": [
+        "packages/agentarts/dist/harness-candidates.js",
+        "packages/contracts/dist/harness-candidates.generated.js",
+        "packages/contracts/dist/harness-candidates.schema.js",
+        "packages/contracts/dist/harness-candidates.js",
+        "packages/contracts/schema/harness-candidates.json"
+      ],
+      "modifiedCompiledArtifactEquivalence": "unknown_without_corresponding_build_or_exact_source_binding",
+      "applicationSourceDelta": [],
+      "wholeImageSourceRevision": "unknown",
+      "complete451InExistingImage": false
+    }
+  },
+  "originalSanitizedReadbackHashes": [
+    {
+      "file": "registry-index.safe.json",
+      "sha256": "6113d5a5135585008325f0c5afa9f62828241db5ddbdc1e07d76d9b52f7f0238"
+    },
+    {
+      "file": "registry-manifests.safe.json",
+      "sha256": "3d43e99664e7f4b840255d2ce7a0b4d4e60dce86a529ad1c2810967b770aa09f"
+    },
+    {
+      "file": "registry-config.safe.json",
+      "sha256": "43234b65340b6aa9b7e573d90ad811bd745eaa1ba990861f482163253ca72074"
+    },
+    {
+      "file": "local-image.safe.json",
+      "sha256": "a3761732692593ec17ff606aa0c953adb3bd67819053d408ddf025f097f037e9"
+    },
+    {
+      "file": "environment.safe.json",
+      "sha256": "71328f8e622dfd52e14902dd2bc71b0b2b9be659cee4e130d67682d189a54587"
+    },
+    {
+      "file": "min-container-config.safe.json",
+      "sha256": "701c40ff76d4e243d9def9f01c0878c8cb2d6a69fc8e4ede2bef7e7da2e94507"
+    },
+    {
+      "file": "catalog-run.safe.json",
+      "sha256": "5687d74ac1fb38c35d012173b82fb3bc7bd597ab9199afb275e7c8025356353f"
+    },
+    {
+      "file": "catalog-receipt.safe.json",
+      "sha256": "694651af661c2e0e6c2bca9923a1ac68b6bad9880ff688dd5060581c8b649758"
+    },
+    {
+      "file": "source-comparison.safe.json",
+      "sha256": "f94fcaa8be9cb493d818ec5a7cc4d397e3a1a67e66202140e6938e8876cf59f1"
+    },
+    {
+      "file": "image-cloud-files.safe.json",
+      "sha256": "c569b08aa679fec559d08a375e83577a69109de473dc0054887ff429e67254ee"
+    },
+    {
+      "file": "provenance.safe.json",
+      "sha256": "64b3b3db35c2e8121c3bc62e626cc5f635317233ec3d9bb6b6e131eba87bcc0c"
+    },
+    {
+      "file": "provenance-vcs.safe.json",
+      "sha256": "9e3f31065ab3254552581d71644bef27b60497137973bce1c6fa4b80dfe40fe1"
+    },
+    {
+      "file": "cloud-input-delta.safe.json",
+      "sha256": "89ece32437f8c1ce7e2f5156b99344d639c3ddb7691ce5f2224899be862124af"
+    },
+    {
+      "file": "matching-host-extraction.safe.json",
+      "sha256": "e386564e0fb3ed2120b890875fb88c18a52af46b55456adf275115a7dd63fc1b"
+    }
+  ],
+  "projectionNotes": [
+    "Private host paths, credential configuration, auth values and repetitive compiled dependency file inventories are excluded.",
+    "catalog.receipt.designCoverage.workflows duplicates catalog.receipt.observed exactly and is omitted; all 28 observed template digests are retained.",
+    "Original local safe output hashes identify the retained readbacks; this projection is not a complete registry response or a whole-image source attestation."
+  ]
+}
