@@ -55,7 +55,7 @@ export interface AgentArtsRuntimeConfig {
   transport?: 'https' | 'wss';
   /** Confirmed public Upgrade endpoint of the same HTTPS gateway/runtime. */
   websocketUrl?: string;
-  /** Only an invoke-never-sent connection failure can use the same HTTPS target. */
+  /** Only invoke-never-sent connection/Upgrade failures, excluding auth rejection, may use the same HTTPS target. */
   allowHttpsFallback?: boolean;
 }
 
@@ -1381,7 +1381,9 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         if (receipt === undefined) this.identityObserver?.(createAgentArtsUnknownReceipt(init), sendRequest);
         // The final synchronous guard and fetch share one uninterrupted stack.
         if (receipt !== undefined) { fallbackReceipt = receipt; fallbackStarted = true; }
-        return this.fetchImpl(url, init);
+        const response = this.fetchImpl(url, init);
+        if (fallback) this.websocket!.reportFallback(sessionId, requestId, this.websocketDeploymentVersion);
+        return response;
       };
 
       let response: AgentArtsResponse;
@@ -1395,7 +1397,6 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
             catch (error) {
               if (currentAbortError(combined)) throw currentAbortError(combined);
               if (!this.allowHttpsFallback || !this.websocket.canFallback(error)) throw error;
-              this.websocket.reportFallback(sessionId, requestId);
               received = await sendHttps(true);
             }
           }

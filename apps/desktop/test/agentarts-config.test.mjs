@@ -86,6 +86,27 @@ test('invalid WSS updates fail before persistence; destination and transport cha
   await assert.rejects(transport.websocketAuthorizationProvider.read(),/已改变/);
 });
 
+test('an explicit recovery toggle preserves the configured pin, destination and credentials across restart',async t=>{
+  const f=wssFixture(t),version='configured-version-r3',calls=[];
+  f.options.fetchImpl=async(url,init)=>{calls.push({url,init});return {status:200};};
+  f.config.configure({...f.input,deploymentVersion:version,websocketUrl:f.input.websocketUrl+'?endpoint='+version});
+  const old=f.config.transportConfig(f.config.binding());
+  // The user may opt in using the existing settings path, without copying private values through UI.
+  f.config.configure({gatewayUrl:f.input.gatewayUrl,runtimeName:f.input.runtimeName,allowHttpsFallback:true});
+  const config=createAgentArtsConfig(f.options),binding=config.binding(),options=config.transportConfig(binding);
+  assert.equal(config.snapshot().allowHttpsFallback,true);assert.equal(options.allowHttpsFallback,true);
+  assert.equal(options.websocketUrl,f.input.websocketUrl+'?endpoint='+version);
+  assert.equal(config.snapshot().deploymentVersion,version);assert.equal(config.readAuthorization(binding,options),f.input.authorization);
+  assert.equal(await options.websocketAuthorizationProvider.read(),'Bearer '+f.input.appToken);
+  await assert.rejects(old.websocketAuthorizationProvider.read(),/已改变/);
+  await options.fetchImpl(binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations?endpoint='+version,
+    {method:'POST',redirect:'error',headers:{Authorization:f.input.authorization,'X-PA-Agent-Token':'Bearer '+f.input.appToken},
+      signal:new AbortController().signal,body:'{"query":"public fixture"}'});
+  assert.equal(calls.length,1);assert.equal(calls[0].url,binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations?endpoint='+version);
+  assert.equal(new Headers(calls[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+f.input.appToken);
+  assert.doesNotMatch(JSON.stringify(config.snapshot()),/synthetic-inner|synthetic-outer|Bearer/);
+});
+
 test('failed WSS disk revoke disables both in-memory credentials and retries remove the encrypted record',async t=>{
   const f=wssFixture(t);f.config.configure(f.input);
   const binding=f.config.binding(),transport=f.config.transportConfig(binding);

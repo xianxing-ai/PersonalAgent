@@ -117,7 +117,13 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
 
 export function agentArtsTransportNotice(state) {
   switch (state?.state) {
-    case 'https_fallback': return '云端实时连接暂不可用，本次调用已切换 HTTPS 备用连接';
+    case 'https_fallback': {
+      const version=state.deploymentSelection==='pinned' && typeof state.deploymentVersion==='string'
+        && /^[A-Za-z0-9_.-]{1,128}$/.test(state.deploymentVersion) ? state.deploymentVersion : undefined;
+      const deployment=version?`（固定部署 ${version}）`:state.deploymentSelection==='latest'
+        ?'（默认 Latest，实际版本尚未读回）':'';
+      return `WSS 调用尚未发送，正在尝试 HTTPS 备用连接${deployment}；执行结果以原任务回执为准`;
+    }
     case 'result_unknown': return '云端调用结果待核实，已停止自动重发';
     case 'auth_required': return '云端实时连接认证失败，请核对受信主机凭据';
     case 'unsupported': return '当前云端部署尚未提供兼容的实时连接';
