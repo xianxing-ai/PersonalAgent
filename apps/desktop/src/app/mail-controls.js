@@ -14,7 +14,9 @@ export function mountMailControls(root, invoke) {
     field('save').disabled = busy;
     field('read').disabled = busy || !state.configured || state.requiresRestart || !state.localModelReady
       || ['unavailable', 'reading', 'waiting_approval', 'classifying', 'stopping', 'stop_unconfirmed'].includes(state.status);
-    field('disable').disabled = busy || !state.sessionAllowed;
+    // 撤销必须在任何时刻可用：sessionAllowed 只代表本会话读取许可，且不跨重启保留。
+    // 以它作为撤销前置会让重启后永久无法撤销邮箱配置（2026-10-22 实测）。
+    field('disable').disabled = busy || !state.configured;
     field('cloudDisable').disabled = busy || !state.cloudAnalysisAllowed;
   };
   const run = async (name, payload) => {
