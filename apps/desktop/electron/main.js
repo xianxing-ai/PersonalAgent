@@ -1840,6 +1840,9 @@ async function initializeRuntime() {
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
         toolPresenceHost=createToolPresenceHost({
+          isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
+          readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
+            return selected?JSON.stringify([selected.mode,selected.revision]):undefined;},
           registerNativeShortcut:handler=>globalShortcut.register('F9',handler)
             ?()=>globalShortcut.unregister('F9'):undefined,
           isTaskCurrent:taskId=>{
@@ -1855,6 +1858,7 @@ async function initializeRuntime() {
           },
         });
         windowsControlHost=createDesktopWindowsControlHost({createControlHost:createWindowsDesktopControlHost,
+          isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           pythonExecutable:process.env.PA_WINDOWS_CONTROL_PYTHON,presenceHost:toolPresenceHost,
           allowObservationExport:process.env.PA_WINDOWS_CONTROL_EXPORT==='1',onUpdate:publish});
         if(process.platform==='win32'&&process.env.PA_WINDOWS_CONTROL_PYTHON){
@@ -1865,6 +1869,9 @@ async function initializeRuntime() {
       const bridgePath = path.resolve(dir, '../../windows-host/host/bridge/bin/Release/net8.0-windows/WindowsHost.PipeBridge.exe');
       if (!syntheticMvp && process.platform === 'win32' && existsSync(hostPath) && existsSync(bridgePath)) {
         notepadHost = createDesktopNotepadHost({
+          isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
+          readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
+            return selected?JSON.stringify([selected.mode,selected.revision]):undefined;},
           createAdapter:runtimeModule.createWindowsHostNotepadAdapter,
           createAttempts:runtimeModule.createRuntimeWindowsHostAttemptStore,
           transport:runtimeModule.createWindowsHostBridgeTransport({hostPath,bridgePath}),
@@ -2922,7 +2929,9 @@ async function action(event, name, payload) {
     if(name==='authorization.sandbox.read'&&payload!==undefined)throw Error('授权管理读取不接受额外字段');
     const result=name==='authorization.sandbox.read'?authorizationQuestionHost.sandboxSnapshot()
       :name==='authorization.sandbox.select'?authorizationQuestionHost.selectSandbox(payload):authorizationQuestionHost.revokeRule(payload);
-    if(name==='authorization.sandbox.select')await microphoneCaptureHost?.revoke();
+    if(name==='authorization.sandbox.select'){
+      toolPresenceHost?.refresh();await notepadHost?.refresh();await microphoneCaptureHost?.revoke();
+    }
     publish();return result;
   }
   if(name==='app.startup.read'||name==='app.startup.configure'){
