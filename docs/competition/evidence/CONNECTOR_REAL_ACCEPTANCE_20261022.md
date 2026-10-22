@@ -1,6 +1,6 @@
 # 连接器及知识/开发消费入口真实验收前置核验
 
-UTC：2026-10-22T04:21:26Z；源码：`c15855f5ccceb76d6bf794203d9ebfbe9cb83cb3`；分支：`codex/connector-real-acceptance-20261022`。目标 profile：`huawei_ict_agentarts`。本记录是当前 Linux 工作树的真实前置检查，不是业务全链通过。
+UTC：2026-10-22T04:21:26Z 初始核验，04:25:39.657Z 完成下述真实天气查询；产品源码：`c15855f5ccceb76d6bf794203d9ebfbe9cb83cb3`；分支：`codex/connector-real-acceptance-20261022`。目标 profile：`huawei_ict_agentarts`。下文前置表保留原始阻塞；天气查询与构建前置现由末节实测更新，其余真实业务仍 blocked。
 
 已读取根 AGENTS、CONTRIBUTING、MODULE_ASSIGNMENTS、CURRENT_MOD_WIRING_HANDOFF、PRD/当前设计/接口目录及相关模块 README；`rg --files -g AGENTS.md packages apps docs` 没有额外子规则。初始 `git status --short` 输出为空，exit 0。Node v24.19.0 / npm 11.9.0。工作树没有 node_modules 或 apps/runtime/dist；未装依赖、构建、启用 Fake、新建 Runtime 或调度器。
 
@@ -41,3 +41,22 @@ GitHub 当前普通注册操作逐项为：repo.get、actions.run.list、actions
 所有命令仅在上述隔离树执行，未调用真实账号 API。`git rev-parse HEAD`、`git status --short`、`git branch --show-current`、`node --version`、`npm --version` 均 exit 0。源码定位命令有两次负向路径探测（runtime-application.mjs、dev-workflows.ts 不存在），随后定位到真实 main.js/runtime.js/application 源码；不把缺路径误判成模块缺失。
 
 检查命令 `test -d node_modules` 与 `test -d apps/runtime/dist` 均 exit 1，说明本树尚不具备启动产品 Runtime 的产物前置。没有运行测试，0 项真实产品业务通过；原因是当前无可用受信产品现场，不是跳过已可执行的真实账号调用。最终文档一致性使用 `git diff --check`，结果在提交回执记录。
+
+## 04:25 补充：原 Runtime 真实公开天气查询通过
+
+主控分配唯一 Linux 构建槽并明确固定北京只读验收后，使用项目 ignored `.cache/acceptance-toolchain` 中 Node **24.15.0** / npm **11.12.0** 安装锁定依赖，未改 package-lock。工具链安装 exit 0；首次 npm ci exit 1：Desktop 显式 postinstall 下载 Electron 失败；`ELECTRON_SKIP_BINARY_DOWNLOAD=1` 仍被显式安装脚本调用，第二次 exit 1。第三次 `npm ci --include=dev --ignore-scripts --no-audit --no-fund` exit **0**，仅供 headless 原 Runtime，不宣称 Electron 可启动。初次 build 因前次安装没有 tsc exit 127；完成依赖后根 `npm run build` 所有 workspace exit **0**。保留原失败，不修改安装脚本或绕过 TLS。
+
+已使用 cloud-environment-runtime 技能检查网络：unrestricted/enforced，observations_current=true，secret/runtime_variables/outbound_identities 均空；网络配置 VPN=false、TCP grant 空。真实 Node fetch 使用 `NODE_USE_ENV_PROXY=1` 保留原 HTTP(S) sidecar 与 CA，未改代理/证书/路由，没有注入 fetch 替身。
+
+专属可复现入口：`tests/manual/connectors/real-public-weather-20261022.mjs`。它装配现有 Desktop `createPublicConnectorHost` 的实际天气工具和 `createRuntimeApplication`（独立 `.cache/real-weather-svOrQ4/runtime.sqlite`），调用原 `submitHostToolTask`，等待原 `waiting_approval`，再通过原 Client `authorization.respond` 对这次精确参数 **allow_once**。这是 **programmatic 原批准答复**，不是物理人工操作；没有模型、云 AgentArts 或设备参与。
+
+参数：北京 / Beijing、2026-10-22、metric。批准前实际 provider 执行次数为 **0**；批准后为 **1**；原 Policy grant `usesRemaining=0`。原 `readHostToolTask` 终态 **succeeded**，ToolExecution `policyDecision=allow`、`executionStarted=true`、`state=confirmed`；原 Evidence **conditional**（不升为 verified）。关闭并重开相同 SQLite 后，confirmed result 完全一致，无第二次 provider 调用。
+
+- UTC：`2026-10-22T04:25:38.235Z` → `2026-10-22T04:25:39.657Z`，wall 1.422s，runner exit **0**。
+- taskId：`8d2c8dc2-466a-4b91-afb5-ac336c4d9ff6`；runId / Evidence：`host-tool-8d2c8dc2-466a-4b91-afb5-ac336c4d9ff6`。
+- 外部 provider 结果读回：source=open-meteo、cache=fetched、fetchedAt=`2026-10-22T04:25:39.638Z`、北京阴、4–15.3°C、降水概率0%；当前温度13.7°C，provider 实况时间 `2026-10-22T12:15`。结果 JSON SHA256：`081ae235699bb1bd2c9e4a894f3a9b519d542e645fdf4b3462a27bae0636496a`。
+- 完整公开数据/原 Runtime 回执：`CONNECTOR_REAL_ACCEPTANCE_20261022.weather.json`，文件 SHA256 `0f490ed6bc730a619a4ac9646f486b925d04bbac56d7b7728fd16442fbd740be`。
+
+日志 SHA256：成功锁定安装 `.cache/acceptance-npm-ci-runtime.log`=`c46d69f5b414de3e821424f38454e76355a42b36a5f2090e4ae45584705a3817`；成功 build `.cache/acceptance-build-runtime.log`=`d9c3f71c93e0c64d85ee7d780117ff4c05ac5df57098aa76340114c4100d0b9d`；真实 runner `.cache/acceptance-real-weather.log`=`87c4e1c1cef3729e65e6e9c9c8f8e66db7c2089727322fdee92ce4a1de0a6541`。失败日志依次为 `.cache/acceptance-npm-ci.log`=`fa3fa0e4072e929572dded3edd71ccab284a7195131831963fb1a5e6669ba628`、`.cache/acceptance-npm-ci-headless.log`=`e586e69677eef3087da601671e18864752242bc08a932999b3b428bbe64d3cfb`、`.cache/acceptance-build.log`=`3253e275eaff2bbe3d989aa6a512bb4871264e5eb0dc0cfc23b9a93543e0b9cd`。
+
+当前结论仅提升 **MOD-25 原 host-tool 公开天气查询/审批/持久读回**。自然显著变化 watch、持久事件、Laya、主对话/AgentArts 最终回答、通知设备读回仍 blocked；没有拿 query 代替提醒全链。其它账号/私有数据业务仍缺原受信现场，当前构建成功不改变这些状态。没有 push、PR、CI、merge 或产品代码变更。
