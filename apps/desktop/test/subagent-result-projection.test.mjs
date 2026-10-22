@@ -10,7 +10,12 @@ test('host user request and child reply remain distinct from execution diagnosti
  assert.equal(Object.hasOwn(await projectSubagentResult({result:{userRequest:'forged'}}),'userRequest'),false);
 });
 test('user request is bounded and ordinary technical text is preserved',async()=>{
- await assert.rejects(projectSubagentResult({result:{},userRequest:'x'.repeat(16001)}),/用户请求/);
+ await assert.rejects(projectSubagentResult({result:{},userRequest:'x'.repeat(128001)}),/用户请求/);
+ const longRequest='中'.repeat(127996)+'末尾条件';
+ const longValue=await projectSubagentResult({result:{subtasks:[{state:'succeeded',result:'已记住'}]},userRequest:longRequest});
+ assert.equal(longValue.userRequest,longRequest);assert.equal(longValue.userRequest.length,128000);
+ assert.equal(longValue.subtasks[0].result,'已记住');
+ await assert.rejects(projectSubagentResult({userRequest:longRequest,result:{subtasks:Array.from({length:20},()=>({result:'x'.repeat(5000)}))}}),/64KB/);
  const text='解释 succeeded 和 unverified 的含义';
  const value=await projectSubagentResult({userRequest:text,result:{subtasks:[{state:'failed',result:text,error:'provider unavailable'},{state:'waiting_reconciliation',error:'result unknown'}]}});
  assert.equal(value.subtasks[0].result,text);

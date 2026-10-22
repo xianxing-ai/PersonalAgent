@@ -587,3 +587,8 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 截至 2026-09-27，**冻结范围仍只有 Core Runtime Profile 1 的消息、任务、会话与审批只读查询子集；不冻结整套协议、外部模型工具调用或 AgentArts 编排。** main 中已有 Competition 的离线 Coordination/审批工具循环、版本图、原子存储、显式修复预览/提交、受限工作区读取、公开演示知识检索，以及 provisional 的 SQLite 事实查询/变化流、可恢复投影和受信 Fact host 工厂；编码工具的补丁候选与独占 apply 也已合入 package，但尚未生产注册。生产事实自动消费、Runtime Memory capability、真实工作区写入与语音消费仍未完成验收。
 
 在上述 2026-09-27 历史快照中，真实 AgentArts deployment/API/trace、目标系统工具读回、完整 Evidence、真实语音设备和外部事实提供者仍 `unavailable`。Fake、合成评估、HTTP 200、配置成功或平台截图都不能提升这些状态；正式比赛路径不得静默回退 Local。该历史状态不覆盖本页后续登记的固定版本有限真实云调用、工具闭环与语音端口证据；未验的完整 Trace、实体设备和全业务范围仍按各自缺口登记。
+## 2026-10-22 对话输入预算扩容（provisional）
+
+按用户选择将 Competition 任务与历史合并输入扩大为 128,000 UTF-16 单元；contracts 公布统一字符预算及 1,100,000 字节初始查询预算，Runtime、Coordination、自有 AgentArts 输入和 Desktop 预检同步消费。不新增 wire 字段或数据库迁移；输出/工具结果/业务投影/帧预算、权限及已配置的模型 token 计量不变。旧检查点预算漂移继续拒绝恢复。远端旧镜像、原生模型窗口和真实长上下文验收不因本机修改自动通过。见 [ADR-0037](../adr/0037-conversation-context-128k.md)。
+
+同日另经用户授权，将当前绑定运行时发布为 `arm64-context-128k-1022` 并更新本机固定 WSS。真实公开合成历史验收 3/3 主任务完成，实际最大编译输入 125739/128000 字符，首中尾取回、更正及重启恢复通过；20～24 条历史全部纳入。桌面汇总的宿主 `userRequest` 同步扩大，子任务输出投影仍单独限 64 KiB。精确 128000 字符边界为本地/禁网容器证据，不将此次有限真实验收扩大为原生模型 128k token 窗口或全接口冻结；详见[完整记录](../competition/CONTEXT_LIMIT_128K_20261022.md)。

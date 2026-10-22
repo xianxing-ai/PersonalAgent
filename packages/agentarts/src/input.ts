@@ -1,4 +1,4 @@
-import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_COORDINATION_GOAL_CHARACTERS,MAX_COORDINATION_INITIAL_QUERY_BYTES,ProtocolError} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import type {CoordinationAvailableTool, CoordinationContinuation} from '@personal-agent/coordination';
@@ -15,6 +15,7 @@ const UNCERTAIN_PREFIX = 'PersonalAgent 主动决策：本地 Laya 尚未确定�
 
 function hostInput(goal: string): AgentInput | undefined {
   if (!goal.startsWith('PersonalAgent 主动决策：')) return undefined;
+  boundedText(goal, MAX_COORDINATION_GOAL_CHARACTERS);
   const uncertain = goal.startsWith(UNCERTAIN_PREFIX);
   if (!uncertain && !goal.startsWith(GOAL_PREFIX)) invalid();
   let payload: Record<string, unknown>;
@@ -59,7 +60,7 @@ export function parseAgentInput(query: unknown): AgentInput {
   try { value = JSON.parse(query); }
   catch {
     if (/^[\s]*[\[{]/.test(query)) invalid();
-    boundedText(query);
+    boundedText(query, MAX_COORDINATION_GOAL_CHARACTERS);
     return {kind: 'initial', goal: query, availableTools: []};
   }
   const object = record(value);
@@ -67,7 +68,7 @@ export function parseAgentInput(query: unknown): AgentInput {
   if (Object.hasOwn(object, 'continuation')) {
     exact(object, ['continuation',...('goal' in object?['goal']:[]),...('availableTools' in object?['availableTools']:[]),
       ...('priorContinuations' in object?['priorContinuations']:[]),...('executionModel' in object?['executionModel']:[])]);
-    if('goal' in object)boundedText(object.goal);
+    if('goal' in object)boundedText(object.goal, MAX_COORDINATION_GOAL_CHARACTERS);
     // Only the original explicit goal plus the host's bounded catalog enables a
     // further proposal. Legacy receipt-only envelopes remain result-only.
     if('availableTools' in object&&!('goal' in object))invalid();
@@ -82,8 +83,8 @@ export function parseAgentInput(query: unknown): AgentInput {
       ...('goal' in object?{goal:object.goal as string}:{}),...executionModel};
   }
   exact(object, ['goal', 'availableTools',...('executionModel' in object?['executionModel']:[])]);
-  boundedText(object.goal);
-  if (Buffer.byteLength(query, 'utf8') > 32_768) invalid();
+  boundedText(object.goal, MAX_COORDINATION_GOAL_CHARACTERS);
+  if (Buffer.byteLength(query, 'utf8') > MAX_COORDINATION_INITIAL_QUERY_BYTES) invalid();
   const availableTools = parseCoordinationAvailableTools(object.availableTools);
   return {...(hostInput(object.goal) ?? {kind: 'initial' as const, goal: object.goal, availableTools}),...executionModel};
 }

@@ -318,10 +318,12 @@ test('a new smaller public source scope recovers after the lower-bound block',as
  assert.equal((await settled(f.app,f.announced.at(-1).taskId)).state,'succeeded');assert.ok(f.sent.length);
  assert.equal(f.host.snapshot().reviews.find(r=>r.taskId===f.announced.at(-1).taskId).cloudExport,undefined);
 });
-test('a catalog that alone exceeds remaining capacity still fails at the public adapter before credentials',async t=>{
+test('a bounded catalog beyond the former 32 KiB query budget reaches the public adapter intact',async t=>{
  const f=await hostFixture(t,{...byteCases('D')[0],catalog:true,catalogPadding:22000,initialRequestMode:'goal-with-tools-json'});
- assert.equal(f.task?.state,'failed');assert.deepEqual([f.submits(),f.credentials(),f.sent.length],[1,0,0]);
- assert.equal(Object.values(f.models).reduce((n,m)=>n+m.requests.length,0),0);
+ assert.equal(f.task?.state,'succeeded');assert.deepEqual([f.submits(),f.credentials(),f.sent.length],[1,1,1]);
+ assert.equal(Object.values(f.models).reduce((n,m)=>n+m.requests.length,0),3);
+ assert.ok(Buffer.byteLength(f.sent[0],'utf8')>32768&&Buffer.byteLength(f.sent[0],'utf8')<=1100000);
+ assert.equal(JSON.parse(f.sent[0]).availableTools[0].inputSchema.properties.padding.enum[0],'x'.repeat(22000));
  const card=f.host.snapshot().reviews.find(r=>r.taskId===f.task.taskId);assert.notEqual(card.cloudExport?.reason,'initial_query_byte_limit');
 });
 test('real Desktop main and proactive wrapper preserve explicit catalog mode and Synthetic goal mode',async()=>{
