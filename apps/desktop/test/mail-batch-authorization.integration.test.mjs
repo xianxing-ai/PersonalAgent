@@ -20,7 +20,7 @@ const wait=async check=>{for(let index=0;index<200;index++){
 }assert.fail('Synthetic mailbox integration did not settle');};
 
 /** Only the mailbox and classifier are Synthetic; authorization, storage and execution are production code. */
-async function composition(t){
+async function composition(t,{highImpact=false}={}){
   const directory=mkdtempSync(new URL('run-',cache)),prepared=[],resources=new Set(),fetches=[];
   let application,clock=Date.now();
   const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),
@@ -41,7 +41,7 @@ async function composition(t){
   });
   const classifier=new LayaTriageService({async infer(payload){return {answers:Object.fromEntries(payload.state.events.flatMap((_,index)=>[
     ['category_'+index,{choice:'meeting',probabilities:{meeting:.9,other:.1},answer_confidence:.9,confidence:.9}],
-    ['impact_'+index,{choice:'routine',probabilities:{routine:.9,high_impact:.1},answer_confidence:.9,confidence:.9}],
+    ['impact_'+index,{choice:highImpact?'high_impact':'routine',probabilities:highImpact?{routine:.1,high_impact:.9}:{routine:.9,high_impact:.1},answer_confidence:.9,confidence:.9}],
   ]))};}});
   const port=config.batchAuthorization;
   const host=createQQMailTriageHost({user:'synthetic@qq.com',authCode:'SyntheticOnlyAuthCode',accountRef:'desktop-qq-inbox',
@@ -119,10 +119,41 @@ test('actual MailReadSessions/Question/Policy/Gateway read two pages after one c
   assert.equal(f.fetches.length,2);assert.ok(f.fetches.every(item=>item.limit===100&&item.folder==='INBOX'));
   assert.equal(f.config.snapshot().sessionAllowed,false);assert.equal(f.config.snapshot().cloudAnalysisAllowed,false);
   assert.equal(f.config.cloudLease(),undefined);assert.equal(f.application.isDefaultSubagentAvailable(),false);
-  assert.throws(()=>f.port.assertConsumed(first.scope,first.batch));
+  f.port.assertConsumed(first.scope,first.batch);
+  assert.throws(()=>f.port.assertPage(first.scope,first.batch),/分页已结束/);
   assert.throws(()=>f.question.assertConsumedResult({...first.scope,runId:'replaced-run'},'mail-local-batch'));
   await f.host.refresh();assert.equal(f.fetches.length,2,'completed batches do not continue polling');
 });
+
+for(const invalidation of ['cancel','revoke','expiry']){
+  test('completed question-mode batch retains consumed analysis receipts until '+invalidation,async t=>{
+    const f=await composition(t,{highImpact:true});await f.start();
+    await f.host.refresh();
+    await wait(()=>f.prepared.length===2&&f.application.runtime.getTask(f.prepared[1].scope.taskId).state==='succeeded');
+    assert.equal((await f.host.refresh()).status,'complete');
+    const {scope,batch}=f.prepared[0],context=()=>({deadline:f.deadline,signal:new AbortController().signal});
+    const [pending]=f.host.pendingAnalyses(context());assert.ok(pending);
+    assert.equal(f.host.readAnalysis(pending.workKey,context()).sessionId,pending.sessionId);
+    const acceptance={sessionId:pending.sessionId,workKey:pending.workKey,sourceRevision:pending.sourceRevision,
+      receiptId:pending.receipt.id,projectionDigest:pending.projectionDigest,taskId:'Synthetic accepted analysis'};
+    assert.equal(f.host.confirmAnalysisAccepted(acceptance,context()).state,'accepted');
+    assert.equal(f.host.readAnalysis(pending.workKey,context()).taskId,acceptance.taskId);
+    assert.ok(!f.host.pendingAnalyses(context()).some(item=>item.workKey===pending.workKey));
+    f.port.assertConsumed(scope,batch);
+    assert.throws(()=>f.port.assertPage(scope,batch),/分页已结束/);
+    assert.throws(()=>f.port.preparePage({...scope,taskId:'new-page',runId:'new-run'},batch,scope),/分页已结束/);
+    assert.throws(()=>f.port.assertConsumed({...scope,runId:'foreign-run'},batch));
+    assert.equal(f.fetches.length,2,'reading consumed analysis never re-executes an inbox page');
+    if(invalidation==='cancel')await f.host.cancel();
+    else if(invalidation==='revoke')await f.config.revoke();
+    else f.advanceTo(new Date(Date.parse(f.deadline)+1).toISOString());
+    assert.throws(()=>f.host.pendingAnalyses(context()),{code:'UNAUTHORIZED'});
+    assert.throws(()=>f.host.readAnalysis(pending.workKey,context()),{code:'UNAUTHORIZED'});
+    assert.throws(()=>f.host.confirmAnalysisAccepted(acceptance,context()),{code:'UNAUTHORIZED'});
+    assert.throws(()=>f.port.assertConsumed(scope,batch));
+    assert.equal(f.fetches.length,2);
+  });
+}
 
 for(const invalidation of ['revoke','configuration','resource generation','cancel','expiry']){
   test('actual mailbox '+invalidation+' invalidates the original batch before another page',async t=>{

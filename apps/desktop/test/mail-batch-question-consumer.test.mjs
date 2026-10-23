@@ -44,7 +44,8 @@ test('Synthetic configured mailbox can request one fixed batch while old consent
   assert.throws(()=>port.assertPage({...first,runId:'foreign'},batch));
   assert.throws(()=>port.preparePage(scope(3),{...batch,queryDigest:hash('changed')},first));
   port.finishPages(batch);port.assertCurrent(batch);
-  assert.throws(()=>port.assertPage(next,batch),/分页已结束/);assert.throws(()=>port.assertConsumed(first,batch),/分页已结束/);
+  assert.throws(()=>port.assertPage(next,batch),/分页已结束/);port.assertConsumed(first,batch);
+  assert.throws(()=>port.assertConsumed({...first,runId:'foreign'},batch));
   assert.throws(()=>port.preparePage(scope(3),batch,first),/分页已结束/);
   assert.throws(()=>port.preparePage(first,batch),/分页已结束/);
   port.assertCurrent(batch);

@@ -52,7 +52,8 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
       requireBatch(batch);
     },
     assertPage(scope,batch){requirePages(batch);question.currentRequirement(scope,'mail-local-batch');},
-    assertConsumed(scope,batch){requirePages(batch);question.assertConsumedResult(scope,'mail-local-batch');},
+    // Existing execution receipts remain readable after pagination ends; this grants no new page execution.
+    assertConsumed(scope,batch){requireBatch(batch);question.assertConsumedResult(scope,'mail-local-batch');},
     finishPages(batch){const entry=batches.get(batchKey(batch));if(entry)entry.pagesActive=false;},
     finish(batch){const entry=batches.get(batchKey(batch));if(entry){entry.active=false;entry.pagesActive=false;}},
   };
