@@ -50,3 +50,28 @@ Desktop voice/mail 与 Runtime subagent 原声明由对应owner负责，本包�
 测试中的模型、宿主回执明确为Fake或本地夹具；不能证明真实模型行为已改变，
 也不代表AgentArts服务、真实账号、审批卡UI或ARM64镜像验收。
 无重模型/云凭据调用，无镜像构建、推送或部署。
+
+## 与并行 PR 的普通合并兼容核对
+
+只读核对组合源码 `d0f328a1800d5c4b19c636d6c8961f1dc1655088`，通过
+`git merge-tree --write-tree <组合SHA> <PR-head>` 检查；仅生成临时Git对象，
+没有把下列PR合入实际交付分支。2026-10-23 GitHub读取的三个PR均仍OPEN：
+
+| PR | 核对的完整 head | 结果 |
+| --- | --- | --- |
+| #503 | `06a0848ffa7d4ce84bb1f4454f3179eb0efd3eb4` | exit 1；`apps/runtime/src/application/coordination.ts` 三处文本冲突 |
+| #507 | `cc340ffc7e0e868f44d7a817043546e45d636dd4` | exit 0；无文本冲突 |
+| #509 | `6853c87ce92da3ce3e46d92f4c74e32142972628` | exit 0；无文本冲突 |
+
+#503 的未来最小 resolution 需要保留双方语义，而不是选整侧覆盖：
+
+1. 顶部 coordination 导入同时保留 #503 的 `AgentArtsBeforeInvokeError` 与本包的
+   `formatAgentArtsFailureDetail`，保留其他既有导入。
+2. `markCompetitionCloudUnknown` 同时保留 #503 要求的 `export` 与本包
+   `safeSuffix = ''` 可选参数；unknown 状态仍保留安全诊断后缀、不引入重试。
+3. `exchange` 的 catch 同时保留 #503 的 `competition-coordination-failure`
+   checkpoint（调用 `coordinationFailureDiagnostic`）与本包的 `detail`/`suffix`
+   计算及后续透传。诊断写入不能替代原请求身份/terminal/unknown回执判断。
+
+上述只是未执行的后续合并配方；不宣称 #503 兼容通过，也不将文本无冲突
+冒充组合运行验证。后续源码/head变化须重新核对，并在真正合并时验证其调用方。
