@@ -71,6 +71,7 @@ import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-ho
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
 import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
@@ -373,6 +374,7 @@ let localServicesStopping = false;
 let localServicesStopped = false;
 let nextMailRefresh = 0;
 let activeConnectorMailRead;
+let mailMonitorRequest,mailMonitorStarting;
 let manualMailReadConversationId;
 const connectorMailReadOrigin=createConnectorReadOrigin({getApplication:()=>runtimeApplication,
   // Binding an independently approved conversation read must not require the
@@ -383,9 +385,18 @@ function mailSnapshot() {
   const config = mailConfig?.snapshot() ?? {configured:false, status:'unconfigured', sessionAllowed:false};
   const host = mailHost?.snapshot();
   const analyses=mailAnalysisHost?.snapshot();
+  const watches=connectorWatchHost?.snapshot().watches?.filter(watch=>watch.source==='mail')??[];
+  const watch=watches.find(item=>item.enabled)??watches.at(-1);
+  let monitoring=watch?{...watch}:{state:'stopped',enabled:false};
+  if(mailMonitorRequest)try{
+    const task=runtimeApplication.runtime.getTask(mailMonitorRequest.taskId);
+    if(!watch?.enabled||task.state!=='succeeded')monitoring={...monitoring,taskId:task.taskId,
+      state:task.state==='succeeded'?monitoring.state:task.state,errorCode:task.error?.code};
+  }catch{}
+  if(mailMonitorStarting)monitoring={...monitoring,state:'starting'};
   return {...host, ...config, ...projectMailStatus(config,host,mailFailure),
     cloudAnalysisAllowed:analyses?.enabled===true,
-    counts:host?.counts, analyses, localModelReady:localLaya?.snapshot().ready === true,
+    counts:host?.counts, analyses, monitoring, localModelReady:localLaya?.snapshot().ready === true,
   };
 }
 
@@ -1825,11 +1836,13 @@ async function initializeRuntime() {
         isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
       if(!syntheticMvp)connectorWatchHost=createDesktopConnectorWatchHost({getApplication:()=>runtimeApplication,
-        namespace,readSourceAuthorization:readConnectorSourceAuthorization,
+        namespace,question:authorizationQuestionPort,readSourceAuthorization:readConnectorSourceAuthorization,
         resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        isUserConversation:id=>conversations?.containsConversation(id)===true,
         startMailRead:input=>{
           if(!readConnectorSourceAuthorization('mail').available)return false;
-          if(!['ready','complete'].includes(mailHost.snapshot().status))return false;
+          if(!localLaya?.snapshot().ready)return false;
+          if(!['ready','complete','disabled','failed','resync_required'].includes(mailHost.snapshot().status))return false;
           const token={watchId:input.watchId,commandId:input.commandId,sessionId:randomUUID()};
           activeConnectorMailRead=token;
           try {mailHost.startBatch({expiresAt:input.expiresAt});return {sessionId:token.sessionId};}
@@ -2308,6 +2321,7 @@ async function initializeRuntime() {
           codingWorkspace?.prepareAuthorization?.(scope);
           knowledgeSourceConfig?.prepareAuthorization?.(scope);
           notificationApplicationHost?.prepareAuthorization?.(scope);
+          connectorWatchHost?.prepareAuthorization?.(scope);
           return nativeExecutionHost.prepare(scope,{forTaskConsent:authorizationQuestionHost.requiresNativeForAuthorization(scope)})
             .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
@@ -3262,8 +3276,37 @@ async function action(event, name, payload) {
       return result;
     }
   }
-  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.review.configure','mail.disableCloud'].includes(name)) {
+  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.review.configure','mail.disableCloud','mail.monitor.start','mail.monitor.stop'].includes(name)) {
     if (sender !== admin || !competitionMode || !mailConfig || !localLaya) throw Error('此操作仅允许从本项目设置调用');
+    if(name==='mail.monitor.start'||name==='mail.monitor.stop') {
+      if(payload!==undefined||!mailHost||!connectorWatchHost||!runtimeApplication)throw Error('邮件监测尚未就绪，请先保存邮箱配置');
+      if(mailConfig.snapshot().requiresRestart)throw Error('邮箱配置已保存，请重启应用使新配置生效');
+      const origin=admin,application=runtimeApplication,host=connectorWatchHost;
+      const conversationId=conversations.activeConversationId('panel');
+      const isCurrent=()=>admin===origin&&!origin.isDestroyed()&&runtimeApplication===application&&connectorWatchHost===host;
+      if(name==='mail.monitor.stop') {
+        mailMonitorRequest=host.requestFromSettings('stop',{conversationId,isCurrent});publish();return mailSnapshot();
+      }
+      if(mailMonitorStarting){await mailMonitorStarting;return mailSnapshot();}
+      mailMonitorStarting=(async()=>{
+        mailFailure='';localServicesStopped=false;
+        const model=localLaya.snapshot().ready?localLaya.snapshot():await localLaya.start();
+        if(!isCurrent())throw Error('设置窗口已关闭，请重新启动监测');
+        if(!model.ready&&model.state!=='ready')throw Error(model.reason||'本地分类模型未启动，邮件监测尚未开始');
+        const notificationScope={kind:'connector',connectorId:'mail'},policy=notificationApplicationHost?.getInterruptionPolicy(notificationScope);
+        if(!policy)throw Error('通知服务尚未就绪，邮件监测尚未开始');
+        if(!policy.effective){
+          const configured=await notificationApplicationHost.configureSettings({operationId:randomUUID(),scope:notificationScope,
+            expectedRevision:policy.revision,patch:{...defaultNotificationSettings}},{isCurrent});
+          if(configured.state!=='confirmed')throw Error('提醒设置尚未确认，请查看主对话授权卡后再启动监测');
+        }
+        if(mailHost.snapshot().status==='classification_unavailable')mailHost.retryClassification();
+        await host.tick();
+        mailMonitorRequest=host.requestFromSettings('start',{conversationId,isCurrent});
+        return mailSnapshot();
+      })().catch(error=>{mailFailure=error.message;throw error;}).finally(()=>{mailMonitorStarting=undefined;publish();});
+      publish();await mailMonitorStarting;return mailSnapshot();
+    }
     if (name === 'mail.configure') {await mailConfig.configure(payload); mailFailure = '';}
     if (name === 'mail.enable') mailConfig.enableSession(payload);
     if (name === 'mail.disable') await mailConfig.revoke();

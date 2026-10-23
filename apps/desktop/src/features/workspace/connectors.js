@@ -78,11 +78,13 @@ const definitions = [
         };
       }
       const hasUnread = typeof data.mail.counts?.unread === 'number';
-      const unreadText = hasUnread ? `${data.mail.counts.unread} 封未读` : (data.mail.status === 'ready' ? '未同步未读数' : '尚未拉取邮件');
+      const total=data.mail.counts?.total??0,monitor=data.mail.monitoring;
+      const unreadText = hasUnread ? `${data.mail.counts.unread} 封未读` : total>0?`已分类 ${total} 封 · 未读数未提供`:'未读数未同步';
+      const active=monitor?.enabled===true;
       return {
-        status: data.mail.sessionAllowed ? '已允许' : '已配置',
-        preview: `<div class="mail-preview"><span class="mail-avatar">M</span><div><strong>${escape(data.mail.user || '电子邮箱')}</strong><small>${escape(unreadText)}</small></div></div><p class="preview-excerpt">${escape(data.mail.reason || (data.mail.sessionAllowed ? '已允许本会话读取与分析' : '已保存配置，会话读取未允许'))}</p>`,
-        footer: `${data.mail.sessionAllowed ? '已授权本会话' : '已保存配置'} · ${escape(unreadText)}`,
+        status: active?'监测中':data.mail.sessionAllowed ? '已允许' : '已配置',
+        preview: `<div class="mail-preview"><span class="mail-avatar">M</span><div><strong>${escape(data.mail.account || data.mail.user || '电子邮箱')}</strong><small>${escape(unreadText)}</small></div></div><p class="preview-excerpt">${escape(active?'新邮件监测已启动；分类与云复核状态见邮件设置':data.mail.configured?'配置已保留；在连接设置点击「启动邮件监测」即可恢复':data.mail.reason||'')}</p>`,
+        footer: `${active?'新邮件监测中':'监测未启动'} · ${escape(unreadText)}`,
       };
     },
   },

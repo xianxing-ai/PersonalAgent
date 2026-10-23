@@ -105,9 +105,15 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
     return {entry,reason:'mail-review-remote-invalid-argument'};
   };
   const api={
-    snapshot(){const s=state(),rows=Object.values(s.entries);return {enabled:s.enabled&&!closed,watermark:s.watermark,
+    snapshot(){const s=state(),rows=Object.values(s.entries),unknown=rows.filter(item=>{
+      if(item.state!=='pending'||!item.taskId)return false;
+      try{return runtime().getTask(item.taskId).state==='waiting_reconciliation';}catch{return false;}
+    }).length;
+      const failed=rows.filter(item=>['failed','unknown'].includes(item.state)).length;
+      return {enabled:s.enabled&&!closed,watermark:s.watermark,
       pending:rows.filter(item=>!['applied','failed','unknown','revoked'].includes(item.state)).length,
-      reviewed:rows.filter(item=>item.state==='applied').length,failed:rows.filter(item=>['failed','unknown'].includes(item.state)).length};},
+      reviewed:rows.filter(item=>item.state==='applied').length,failed,
+      ...(unknown||failed?{reason:`云端复核${unknown?'有 '+unknown+' 封结果待核实':''}${unknown&&failed?'，':''}${failed?'有 '+failed+' 封未完成':''}；本地拉取和分类可继续，原任务不会自动重复发送。`}: {})};},
     async configure(input){
       if(!input||Object.keys(input).some(key=>!['enabled','selectedBindings'].includes(key))||typeof input.enabled!=='boolean')denied();
       if(!input.enabled){await api.revoke();return api.snapshot();}
