@@ -1,17 +1,17 @@
 import {resultMetadata,resultText} from '../src/features/conversation/result-text.js';
+import {MAX_COORDINATION_GOAL_CHARACTERS} from '@personal-agent/contracts';
 
 /** Host-owned bounded JSON projection; authorization remains in Runtime. */
 export const projectSubagentResult = async ({result, signal, userRequest}) => {
   if (signal?.aborted) throw Error('次级智能体结果导出已取消');
   if (!result || typeof result !== 'object') throw Error('次级智能体结果无效');
-  if (userRequest!==undefined && (typeof userRequest!=='string' || !userRequest.trim() || userRequest.length>16000)) throw Error('用户请求无效');
+  if (userRequest!==undefined && (typeof userRequest!=='string' || !userRequest.trim() || userRequest.length>MAX_COORDINATION_GOAL_CHARACTERS)) throw Error('用户请求无效');
   const r = result;
   const structured=Array.isArray(r.subtasks)&&r.subtasks.length>0;
   if (!structured&&String(r.summary ?? r.aggregatedSummary ?? '').length>16384
     || (Array.isArray(r.subtasks)&&r.subtasks.some(s=>typeof s.result==='string'&&resultText(s.result,{profile:'huawei_ict_agentarts'}).length>16384
       ||typeof s.error==='string'&&s.error.length>1024))) throw Error('次级智能体结果过长，拒绝静默截断；原始结果保留在本地');
   const projected = {
-    ...(userRequest===undefined?{}:{userRequest}),
     total: Number(r.total ?? 0),
     succeeded: Number(r.succeeded ?? 0),
     failed: Number(r.failed ?? 0),
@@ -31,5 +31,6 @@ export const projectSubagentResult = async ({result, signal, userRequest}) => {
   if (Buffer.byteLength(JSON.stringify(projected), 'utf8') > 64 * 1024) {
     throw Error('次级智能体汇总结果超出 64KB 上限');
   }
-  return projected;
+  // The host's conversation input has its own budget; child output stays within 64 KiB.
+  return {...(userRequest===undefined?{}:{userRequest}),...projected};
 };

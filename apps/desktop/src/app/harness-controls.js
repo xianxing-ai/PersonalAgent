@@ -1,3 +1,4 @@
+const contextCharacterLimit=128_000;
 const budgetFields=[['maxOutputTokens','摘要输出 Token 预算',1],['triggerCharacters','触发摘要的字符数',1],
   ['targetCharacters','摘要后的目标字符数',1],['retainMessages','完整保留的近期消息数',0],
   ['maxSourceMessages','历史来源消息范围',1],['segmentCharacters','每段历史的字符预算',1],['maxSummaryCharacters','每段摘要的字符预算',1]];
@@ -14,7 +15,7 @@ export function mountHarnessControls(root,invoke) {
       <label>摘要模型<select data-harness="modelId"><option value="">请选择已保存的辅助模型</option></select></label>
       <p class="notice">只使用这里明确选定的模型版本。每段历史发送前显示实际目的地和完整内容，取消确认就停止；不会自动继承私人记忆许可。</p>
       ${budgetFields.map(([name,label,min])=>`<label>${label}<input data-harness="${name}" type="number" min="${min}" step="1" inputmode="numeric" placeholder="明确填写预算"></label>`).join('')}
-      <p class="notice">原最终输入上限保留为 16000 字符。目标字符数 ≤ 触发字符数 ≤ 16000，完整尾部数量须小于来源范围。保存不会调用模型；真实连接以实际任务回执为准。</p>
+      <p class="notice">任务与历史上下文合并后上限为 ${contextCharacterLimit} 字符。目标字符数 ≤ 触发字符数 ≤ ${contextCharacterLimit}，完整尾部数量须小于来源范围。字符预算不代表模型 Token 窗口。保存不会调用模型；真实连接以实际任务回执为准。</p>
     </fieldset>
     <fieldset><legend>持续责任的事件接入</legend>
       <label><input data-harness="eventsEnabled" type="checkbox">将原持续工作流的来源变化与唤醒交给执行子智能体</label>
@@ -72,9 +73,9 @@ export function mountHarnessControls(root,invoke) {
         if(!selected)throw Error('model');
         payload.context={enabled:true,modelId:selected.id,configurationRef:selected.configurationRef,maxOutputTokens:integer('maxOutputTokens'),
           policy:Object.fromEntries(budgetFields.filter(([name])=>name!=='maxOutputTokens').map(([name])=>[name,integer(name)]))};
-        payload.context.policy.maxCharacters=16000;
+        payload.context.policy.maxCharacters=contextCharacterLimit;
         const policy=payload.context.policy;
-        if(policy.targetCharacters>policy.triggerCharacters||policy.triggerCharacters>16000||policy.retainMessages>=policy.maxSourceMessages)throw Error('policy');
+        if(policy.targetCharacters>policy.triggerCharacters||policy.triggerCharacters>contextCharacterLimit||policy.retainMessages>=policy.maxSourceMessages)throw Error('policy');
       }
     }catch{field('status').textContent='请明确选择可用摘要模型并填写有效预算；原设置尚未更改。';return;}
     busy=true;controls();

@@ -3,7 +3,7 @@ const systemMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 export function themePreference() {
   const saved = localStorage.getItem('pa-theme');
-  return saved === 'light' ? 'light' : saved === 'dark' || saved === 'teal' ? 'dark' : 'system';
+  return saved === 'system' ? 'system' : saved === 'light' ? 'light' : 'dark';
 }
 
 export function applyPreferences() {

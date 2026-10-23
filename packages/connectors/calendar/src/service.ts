@@ -40,7 +40,10 @@ function contentRefOf(event: CalendarEventRecord): string {
   const when = `${event.startLocal}（${event.timeZone}）→ ${event.endLocal}`;
   const organizer = event.organizer === undefined ? '组织者未知' : `组织者 ${event.organizer}`;
   const attendees = event.attendees === undefined ? '' : `；参与 ${event.attendees.length} 人`;
-  return `[${event.status}] ${event.title}｜${when}｜${organizer}${attendees}`;
+  // 条目文本是模型唯一能照抄的字段（输出 schema 不随目录下发）。模型被要求
+  // “不罗列内部字段名”，实测会把 externalId 省掉，导致用户拿不到取消/更新所需的编号。
+  // 把编号写进同一句陈述，模型转述时就会带出来（2026-10-22 对话取消失败现场）。
+  return `[${event.status}] ${event.title}｜${when}｜${organizer}${attendees}｜编号 ${event.externalId}（取消或更新时用）`;
 }
 
 export class CalendarService {

@@ -119,6 +119,10 @@ const writeOutputSchema: ToolDescriptor['outputSchema'] = {
     item: {$ref: `${PROTOCOL_ID}#/definitions/ConnectorItem`, description: 'create/update 与 cancel 命中资源时返回的读回记录。'},
     uid: {type: 'string', description: '仅 cancel 且资源不存在时返回。'},
     state: {type: 'string', enum: ['created', 'updated', 'cancelled', 'already_absent']},
+    // 模型只看到回执本身（输出 schema 不随目录下发）。`cancelled` 在英文里既可指
+    // “事件已取消”也可指“操作被取消”，实测会被读成后者（2026-10-22：取消已落盘，
+    // 回答却说“操作被中止、未产生任何更改”）。用一句无歧义的陈述句固定效果含义。
+    summary: {type: 'string', description: '本次写操作对日历的实际效果，供回答直接转述。'},
   },
 };
 
@@ -188,7 +192,7 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
           ...(raw.notes === undefined ? {} : {notes: raw.notes}),
           ...(raw.uid === undefined ? {} : {uid: raw.uid})},
           {signal: context.signal, deadline: context.deadline});
-        return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'created'};
+        return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'created', summary: '日程已创建，日历中已存在该条目。'};
       },
     };
     const updateTool: RegisteredTool = {
@@ -205,7 +209,7 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
           ...(raw.location === undefined ? {} : {location: raw.location}),
           ...(raw.notes === undefined ? {} : {notes: raw.notes})},
           {signal: context.signal, deadline: context.deadline});
-        return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'updated'};
+        return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'updated', summary: '日程已更新，日历中已保存新内容。'};
       },
     };
     const cancelTool: RegisteredTool = {
@@ -220,9 +224,12 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         const item = result.state === 'cancelled'
           ? await service.getEventItem(accountRef, eventId, {signal: context.signal, deadline: context.deadline}).catch(() => undefined)
           : undefined;
+        const summary = result.state === 'cancelled'
+          ? '日程已取消，日历中已不存在该条目。'
+          : '该日程原本就不存在，无需取消。';
         return item === undefined
-          ? {uid: eventId, state: result.state}
-          : {item, state: result.state};
+          ? {uid: eventId, state: result.state, summary}
+          : {item, state: result.state, summary};
       },
     };
     writeUnregisters.push(host.register(createTool), host.register(updateTool), host.register(cancelTool));

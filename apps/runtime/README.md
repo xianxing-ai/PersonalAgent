@@ -160,8 +160,10 @@ Trusted Competition composition can inject scoped conversation context as untrus
 task-bound overlays must belong to that eligible history, so other conversations, unfinished,
 failed, cancelled, current/later and withheld tasks cannot be restored through an overlay.
 Host-scoped Live messages without a task binding remain the trusted host's responsibility.
-The merged context is limited to twenty messages (not twenty turns), and cancelled or expired
-reads are rejected. Context does not grant tool permissions or restore a private egress lease
+The current reader preserves the complete eligible history; an explicitly configured source-message
+range rejects overflow instead of silently keeping twenty messages. The compiled goal, prepared input
+and history share a 128,000 UTF-16 character limit; this is not a model token-window claim.
+Cancelled or expired reads are rejected. Context does not grant tool permissions or restore a private egress lease
 after restart. See [context regression record](../../docs/modules/MOD-09-COMPETITION-CONTEXT-20261008.md).
 
 Trusted composition can explicitly configure `competitionToolExports` for selected tools with

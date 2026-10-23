@@ -45,7 +45,7 @@ test('actual Runtime consumer retrieves an omitted assistant source through Poli
     reply={kind:'text',text:'取回的原文结尾是：结尾条件必须保留。'};}
    return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify(reply),index:0}}),{headers:{'content-type':'application/json'}});
   }});
- const earlier=app.runtime.submitTask({goal:'旧问题'.repeat(700),conversationId:'history',idempotencyKey:'earlier'});
+ const earlier=app.runtime.submitTask({goal:'旧问题'.repeat(40000),conversationId:'history',idempotencyKey:'earlier'});
  app.runtime.transitionTask(earlier.taskId,'planning');app.runtime.transitionTask(earlier.taskId,'running');app.runtime.transitionTask(earlier.taskId,'verifying');
  app.runtime.transitionTask(earlier.taskId,'succeeded',{resultSummary:original});
  try{

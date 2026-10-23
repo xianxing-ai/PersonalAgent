@@ -68,10 +68,13 @@ const {_electron} = require('playwright');
     const output = path.resolve(__dirname, '../.cache/qa');
     fs.mkdirSync(output, {recursive: true});
     await panel.screenshot({path: path.join(output, 'chat-clean.png')});
-    assert.match(await panel.locator('#model-label').innerText(), /Fake Model/);
+    // The explicit legacy Fake Model is not an advertised AgentArts catalog model.
+    assert.equal(await panel.locator('.model-thinking-trigger [data-picker-model]').innerText(), '模型未配置');
+    assert.equal(await panel.locator('.picker-thinking input[type="range"]').isDisabled(), true);
     await panel.waitForFunction(() => { const thread=document.querySelector('.thread');return thread.scrollTop+thread.clientHeight>=thread.scrollHeight-2; });
     const snapshot = await panel.evaluate(() => window.desktop.invoke('snapshot'));
     assert.equal(snapshot.value.fakeModel, true);
+    assert.equal(snapshot.value.agentArtsModels?.catalog == null, true);
     assert.equal(snapshot.value.tasks.at(-1).state, 'succeeded');
     assert.match(snapshot.value.model.label, /Fake Model/);
     assert.deepEqual(errors, []);

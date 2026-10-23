@@ -29,7 +29,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     assert.ok(Math.abs(shell.width-shell.viewportWidth)<1 && Math.abs(shell.height-shell.viewportHeight)<1,JSON.stringify(shell));
     assert.equal(shell.border,'0px');assert.equal(shell.radius,'0px');
     assert.equal(shell.shadow,'none');assert.equal(shell.clip,'none');assert.equal(shell.blur,'none');
-    assert.match(shell.background,/^rgb\(/,'large windows use one opaque theme');
+    assert.match(shell.background,/^rgba?\(/,'the workspace has a readable acrylic coat; settings retain their opaque theme');
     shellCases.push({selector,...shell});
   }
 
@@ -86,6 +86,8 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     assert.equal(await workspace.locator('#workspace-model-name').count(), 0);
     assert.equal(await panel.locator('textarea[aria-label="任务内容"]').inputValue(), '从小面板继续');
     assert.equal(await workspace.locator('.workspace-sidebar').count(), 0);
+    assert.equal(await workspace.locator('.workspace-composer').count(), 1);
+    assert.equal(await workspace.locator('.cc-context .connector-board').isVisible(), true);
     assert.equal(await workspace.locator('[data-connector]').count(), 5);
     assert.match(await workspace.locator('.connector-card').first().innerText(),/暂无天气数据/);
     assert.doesNotMatch(await workspace.locator('.connector-board').innerText(),/林晓|陈悦|整理今日计划/);
@@ -109,7 +111,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     assert.equal(await workspace.locator('#workspace-orb').getAttribute('aria-pressed'), 'true');
     await workspace.waitForFunction(() => document.querySelector('#workspace-orb').getAttribute('aria-pressed') === 'false');
     const adminOpened = app.waitForEvent('window');
-    await workspace.locator('[data-open-settings="settings"]').click();
+    await workspace.locator('.cc-settings').click();
     const admin = await adminOpened;
     await admin.waitForSelector('[data-page="appearance"]');
     for (const removed of ['import', 'browser', 'account', 'usage']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
@@ -118,7 +120,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     for (const theme of ['dark', 'light']) {
       await admin.locator('#pref-theme').selectOption(theme);
       await workspace.waitForFunction(value => document.documentElement.dataset.theme === value, theme);
-      assert.equal(await workspace.locator('.workspace').evaluate(element => getComputedStyle(element).backgroundColor), theme === 'light' ? 'rgb(250, 250, 250)' : 'rgb(16, 16, 16)');
+      assert.equal(await workspace.locator('.workspace').evaluate(element => getComputedStyle(element).backgroundColor), theme==='light'?'rgba(244, 244, 244, 0.9)':'rgba(25, 25, 25, 0.88)', 'workspace acrylic coat follows black and white themes');
       assert.equal(await admin.locator('.admin').evaluate(element => getComputedStyle(element).backgroundColor), theme === 'light' ? 'rgb(250, 250, 250)' : 'rgb(16, 16, 16)');
       await assertFlatShell(workspace,'.workspace');
       await assertFlatShell(admin,'.admin');
@@ -154,7 +156,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     await captureNative('panel', 'native-panel.png');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output,'shell-receipt.json'),JSON.stringify({profile:'explicit_fake_runtime',bounds,shellCases,pageErrors:errors},null,2));
-    console.log('PASS: flat opaque window shells in both themes and maximize/restore; expanded workspace starts maximized; connectors, orb, conversations and native captures verified; screenshots: ' + output);
+    console.log('PASS: black/white acrylic workspace and original settings themes; maximize/restore; connectors, orb, conversations and native captures verified; screenshots: ' + output);
   } finally {
     await closeDesktop(app);
   }

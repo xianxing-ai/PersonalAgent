@@ -529,7 +529,7 @@ test('Synthetic read_context keeps the complete reviewed schema and configuratio
 });
 
 test('Live refuses to send oversized critical user history instead of trimming it for a connection',async()=>{
- const fixture=harness({readContext:()=>({messages:[{id:'critical',role:'user',text:'必须保留的用户条件'.repeat(3000)}]})});
+ const fixture=harness({readContext:()=>({messages:[{id:'critical',role:'user',text:'必须保留的用户条件'.repeat(15000)}]})});
  await assert.rejects(fixture.host.start(),/上下文.*无法完整发送/);
  assert.equal(fixture.request,undefined);
  await fixture.host.stop();

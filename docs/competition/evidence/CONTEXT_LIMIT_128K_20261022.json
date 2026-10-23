@@ -1,0 +1,97 @@
+{
+  "profile": "huawei_ict_agentarts",
+  "deploymentVersion": "arm64-context-128k-1022",
+  "imageIndexDigest": "sha256:9d675fd714cacf3f48cb01255933afacbc8186afd02b12bd30088e6e444aaba4",
+  "status": "passed",
+  "finishedAt": "2026-10-22T13:29:26.183Z",
+  "publicHistoryCharacters": 120000,
+  "fixture": "20 public synthetic messages through Conversations.addLiveMessage; no real prior model conversations claimed",
+  "cases": [
+    {
+      "taskId": "56b3526f-9af9-4e5c-a735-ef8e1a78fe06",
+      "state": "succeeded",
+      "answer": "PA128-START-417|PA128-MIDDLE-862|PA128-END-593|紫色",
+      "passed": true
+    },
+    {
+      "taskId": "51dfbd70-c9e6-473c-9b49-88066109a48e",
+      "state": "succeeded",
+      "answer": "已更正",
+      "passed": true
+    },
+    {
+      "taskId": "ae9f2590-2e7c-4e67-ae0a-9ff644171e66",
+      "state": "succeeded",
+      "answer": "PA128-START-417|PA128-MIDDLE-862|PA128-END-593|橙色",
+      "passed": true
+    }
+  ],
+  "contexts": [
+    {
+      "taskId": "6fd1b81a-0858-45b7-af74-f443be52f0b5",
+      "characters": 124947,
+      "characterLimit": 128000,
+      "tokens": {
+        "state": "unmeasured"
+      },
+      "sourceMessages": 20,
+      "includedMessages": 20,
+      "omittedAssistantMessages": 0
+    },
+    {
+      "taskId": "56b3526f-9af9-4e5c-a735-ef8e1a78fe06",
+      "characters": 124940,
+      "characterLimit": 128000,
+      "tokens": {
+        "state": "unmeasured"
+      },
+      "sourceMessages": 20,
+      "includedMessages": 20,
+      "omittedAssistantMessages": 0
+    },
+    {
+      "taskId": "3fa37a6e-f21d-4ac5-a43b-f1a95bfa1653",
+      "characters": 125358,
+      "characterLimit": 128000,
+      "tokens": {
+        "state": "unmeasured"
+      },
+      "sourceMessages": 22,
+      "includedMessages": 22,
+      "omittedAssistantMessages": 0
+    },
+    {
+      "taskId": "51dfbd70-c9e6-473c-9b49-88066109a48e",
+      "characters": 125351,
+      "characterLimit": 128000,
+      "tokens": {
+        "state": "unmeasured"
+      },
+      "sourceMessages": 22,
+      "includedMessages": 22,
+      "omittedAssistantMessages": 0
+    },
+    {
+      "taskId": "3ece9170-0408-472a-b5f0-917f28742766",
+      "characters": 125739,
+      "characterLimit": 128000,
+      "tokens": {
+        "state": "unmeasured"
+      },
+      "sourceMessages": 24,
+      "includedMessages": 24,
+      "omittedAssistantMessages": 0
+    },
+    {
+      "taskId": "ae9f2590-2e7c-4e67-ae0a-9ff644171e66",
+      "characters": 125732,
+      "characterLimit": 128000,
+      "tokens": {
+        "state": "unmeasured"
+      },
+      "sourceMessages": 24,
+      "includedMessages": 24,
+      "omittedAssistantMessages": 0
+    }
+  ]
+}

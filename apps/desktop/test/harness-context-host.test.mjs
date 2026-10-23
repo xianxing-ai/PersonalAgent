@@ -17,7 +17,7 @@ const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.fr
 const policy=()=>({version:'synthetic-context:v1',triggerCharacters:12000,targetCharacters:9000,maxCharacters:16000,
   retainMessages:2,maxSourceMessages:40,segmentCharacters:7500,maxSummaryCharacters:120});
 const source=()=>Array.from({length:28},(_,i)=>({id:'synthetic-source-'+i,role:i%2?'assistant':'user',
-  content:'Original public history '+i+' '+('bounded material '.repeat(55))}));
+  content:'Original public history '+i+' '+('bounded material '.repeat(i<26?350:55))}));
 const response=()=>new Response(JSON.stringify({choices:[{message:{content:'Synthetic historical decisions'}}]}));
 async function settled(app,taskId) {
   const until=Date.now()+5000;
@@ -121,7 +121,7 @@ test('Synthetic disabled configuration preserves old preflight; enabled prefligh
   const admitted=JSON.parse(f.host.preflight(goal,goal,f.messages,compileCoordinationGoal));
   assert.equal(admitted.publicGoal,goal);assert.deepEqual(admitted.conversationContext.messages,f.messages.slice(-2));
   assert.equal(f.requests.length,0,'Preflight never runs a model');
-  assert.throws(()=>f.host.preflight('x'.repeat(16001),'x'.repeat(16001),f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>f.host.preflight('x'.repeat(128001),'x'.repeat(128001),f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
   const off=createDesktopHarnessContextHost({readConfiguration:()=>({enabled:false})});t.after(()=>off.dispose());
   assert.equal(off.runtimeHooks,undefined);assert.equal(off.snapshot().state,'disabled');
   assert.throws(()=>off.preflight(goal,goal,f.messages,compileCoordinationGoal),{code:'INVALID_ARGUMENT'});
@@ -129,8 +129,13 @@ test('Synthetic disabled configuration preserves old preflight; enabled prefligh
 
 test('Synthetic explicit context config rejects missing budgets, unselected versions and an unguarded model factory',t=>{
   const f=fixture(t);
+  const expanded={...f.configuration,policy:{...f.configuration.policy,maxCharacters:128000}};
+  const expandedHost=createDesktopHarnessContextHost({...f.options,readConfiguration:()=>expanded});
+  t.after(()=>expandedHost.dispose());assert.equal(expandedHost.snapshot().enabled,true);
+  const boundary='x'.repeat(128000);
+  assert.equal(expandedHost.preflight(boundary,boundary,[],compileCoordinationGoal),boundary);
   for(const change of [{maxOutputTokens:undefined},{policy:{...f.configuration.policy,retainMessages:undefined}},
-    {configurationRef:'different-version'},{modelId:''},{policy:{...f.configuration.policy,maxCharacters:16001}}]){
+    {configurationRef:'different-version'},{modelId:''},{policy:{...f.configuration.policy,maxCharacters:128001}}]){
     assert.throws(()=>createDesktopHarnessContextHost({...f.options,readConfiguration:()=>({...f.configuration,...change})}));
   }
   const noGuard=createModelApiConfig({userData:path.join(f.root,'profile'),safeStorage,createGateway:createConfiguredSubagentModelGateway});

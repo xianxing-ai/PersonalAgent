@@ -122,6 +122,13 @@ export class Orb {
     this.variant = options.variant ?? "matrix";
     this.layout = options.layout ?? "shell"; // particle 子选项：shell | bands | lattice
     this.count = options.count ?? 170;
+    // Workspace-only presentation; other orb surfaces keep their original appearance.
+    this.luminous = options.luminous === true;
+    this.dust = this.luminous ? Array.from({length: 320}, (_, i) => {
+      const fraction = n => {const value = Math.sin(n * 127.1 + 311.7) * 43758.5453;return value - Math.floor(value);};
+      return {angle:fraction(i + 1) * Math.PI * 2, radius:1.14 + fraction(i + 201) * 1.3,
+        size:.22 + fraction(i + 401) * .45, alpha:.12 + fraction(i + 601) * .48, phase:fraction(i + 801) * Math.PI * 2};
+    }) : [];
     this.breathRate = options.breathRate ?? 0.78;
     this.breathMin = 0.35;
     this.breathMax = 0.92;
@@ -141,6 +148,8 @@ export class Orb {
     this.time = 0;
     this.calm = false;
     this.running = false;
+    // Ambient Canvas animation does not need to repaint at a 120/144/240Hz display rate.
+    this._frameInterval = 1000 / 30;
     this._tokenCache = null;
     this._rebuild();
     this._resize();
@@ -181,8 +190,9 @@ export class Orb {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.w = Math.max(rect.width, 24);
     this.h = Math.max(rect.height, 24);
-    this.canvas.width = Math.round(this.w * dpr);
-    this.canvas.height = Math.round(this.h * dpr);
+    const width = Math.round(this.w * dpr), height = Math.round(this.h * dpr);
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
@@ -269,8 +279,16 @@ export class Orb {
   start() {
     if (this.running || this.calm) return;
     this.running = true;
+    this._last = null;
+    this._lastPaint = null;
     const loop = (t) => {
       if (!this.running) return;
+      const elapsed = t - (this._lastPaint ?? t - this._frameInterval);
+      if (elapsed + 0.1 < this._frameInterval) {
+        this._raf = requestAnimationFrame(loop);
+        return;
+      }
+      this._lastPaint = t;
       const dt = Math.min((t - (this._last ?? t)) / 1000, 0.05);
       this._last = t;
       this.time += dt;
@@ -418,14 +436,96 @@ export class Orb {
     const t = this._tokens();
     const g = this._geom(p);
     ctx.clearRect(0, 0, w, h);
+    if (this.luminous) {this._drawDust(ctx, g);this._drawLuminousOrbits(ctx, g, false);}
     const fn = {
       particle: this._drawParticle, matrix: this._drawMatrix, orbit: this._drawOrbit,
       wire: this._drawWire, glass: this._drawGlass, aura: this._drawAura,
       ink: this._drawInk, pulse: this._drawPulse,
     }[this.variant] ?? this._drawParticle;
     fn.call(this, ctx, g, p, t);
+    if (this.luminous) this._drawLuminousOrbits(ctx, g, true);
     this._drawStateRing(ctx, g, p, t);
     ctx.globalAlpha = 1;
+  }
+
+  _drawDust(ctx, {cx, cy}) {
+    const R = this._shellRadius();
+    const fade = this.state === 'error' ? this._errorFade() : 1;
+    const turn = this.calm ? 0 : this.time * .018;
+    // Transparent local light filaments; the workspace acrylic remains the backdrop.
+    ctx.save();
+    const mist=ctx.createLinearGradient(cx-R*2.9,cy,cx+R*2.9,cy);
+    mist.addColorStop(0,'rgba(255,255,255,0)');mist.addColorStop(.3,'rgba(255,255,255,.08)');mist.addColorStop(.58,'rgba(255,255,255,.2)');mist.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.strokeStyle=mist;ctx.lineWidth=.6;ctx.shadowColor='rgba(255,255,255,.12)';ctx.shadowBlur=4;ctx.globalAlpha=fade;
+    for(let line=0;line<7;line++){
+      const offset=line*2.2;
+      ctx.beginPath();ctx.moveTo(cx-R*2.9,cy+R*.96+offset);
+      ctx.bezierCurveTo(cx-R*.6,cy+R*1.18-offset,cx+R*.4,cy+R*.22+offset,cx+R*2.9,cy+R*.5+offset);ctx.stroke();
+    }
+    ctx.restore();
+    for (const dust of this.dust) {
+      const angle = dust.angle + turn;
+      const edge = Math.max(0, 1 - (dust.radius - 1.14) / 1.8);
+      const shimmer = this.calm ? 1 : .84 + .16 * Math.sin(this.time * .55 + dust.phase);
+      this._dot(ctx, cx + Math.cos(angle) * R * dust.radius,
+        cy + Math.sin(angle) * R * dust.radius * .72, dust.size, '#ffffff', Math.min(.7,dust.alpha * 1.45) * edge * shimmer * fade);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Two depth passes let the sphere occlude the far side of each orbital path.
+  _drawLuminousOrbits(ctx, {cx, cy}, front) {
+    const R=this._shellRadius(),fade=this.state==='error'?this._errorFade():1;
+    const time=this.calm?0:this.time;
+    const planes=[[2.65,.48,-.28,.13],[2.2,.52,.85,-.1],[1.94,.5,-1.02,.08],
+      [2.78,.73,.09,-.065],[2.36,.7,-.58,.09],[1.83,.64,1.22,-.075]];
+    ctx.save();ctx.lineCap='round';
+    for(const [index,[major,minor,rotation,speed]] of planes.entries()){
+      const point=angle=>{const x=Math.cos(angle)*R*major,y=Math.sin(angle)*R*minor,c=Math.cos(rotation),s=Math.sin(rotation);return {x:cx+x*c-y*s,y:cy+x*s+y*c};};
+      const start=front?0:Math.PI;
+      ctx.beginPath();
+      for(let step=0;step<=80;step++){const pointAt=point(start+step*Math.PI/80);if(step===0)ctx.moveTo(pointAt.x,pointAt.y);else ctx.lineTo(pointAt.x,pointAt.y);}
+      const strength=index<3?1:.55;
+      ctx.strokeStyle=`rgba(255,255,255,${(front?.36:.11)*fade*strength})`;ctx.lineWidth=front?.65:.5;ctx.shadowBlur=0;ctx.stroke();
+      const phase=(time*speed+index*2.1+.6)%(Math.PI*2),isFront=Math.sin(phase)>=0;
+      if(isFront===front){
+      // A short bright wake gives the moving node direction without a hard UI ring.
+      const direction=Math.sign(speed);
+      for(let segment=0;segment<12;segment++){
+        const a=phase-direction*(12-segment)*.024,b=a+direction*.026,from=point(a),to=point(b);
+        ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.strokeStyle=`rgba(255,255,255,${(.045+segment*.035)*fade})`;ctx.lineWidth=.7;ctx.stroke();
+      }
+      const node=point(phase);this._drawLuminousStar(ctx,node.x,node.y,(index===0?2:1.5)*(front?1:.78),fade*(front?1:.5));
+      }
+      const opposite=phase+Math.PI;
+      if((Math.sin(opposite)>=0)===front){const p=point(opposite);this._drawLuminousStar(ctx,p.x,p.y,1.1,fade*.6);}
+    }
+    ctx.restore();
+  }
+
+  _drawLuminousStar(ctx,x,y,size,alpha){
+    ctx.save();ctx.globalAlpha=alpha;
+    const glow=ctx.createRadialGradient(x,y,0,x,y,size*6);
+    glow.addColorStop(0,'rgba(255,255,255,.65)');glow.addColorStop(.2,'rgba(255,255,255,.15)');glow.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=glow;ctx.beginPath();ctx.arc(x,y,size*6,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,.32)';ctx.lineWidth=.5;ctx.beginPath();ctx.moveTo(x-size*3.5,y);ctx.lineTo(x+size*3.5,y);ctx.moveTo(x,y-size*2.8);ctx.lineTo(x,y+size*2.8);ctx.stroke();
+    this._dot(ctx,x,y,size,'#ffffff',alpha);ctx.restore();
+  }
+
+  _drawLuminousCore(ctx,cx,cy,R){
+    ctx.save();
+    const bloom=ctx.createRadialGradient(cx,cy,R*.4,cx,cy,R*1.3);
+    bloom.addColorStop(0,'rgba(255,255,255,0)');bloom.addColorStop(.69,'rgba(255,255,255,0)');bloom.addColorStop(.8,'rgba(255,255,255,.11)');bloom.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=bloom;ctx.beginPath();ctx.arc(cx,cy,R*1.3,0,Math.PI*2);ctx.fill();
+    const surface=ctx.createRadialGradient(cx-R*.52,cy-R*.58,R*.06,cx,cy,R*1.04);
+    surface.addColorStop(0,'#33363a');surface.addColorStop(.24,'#181b1f');surface.addColorStop(.6,'#08090b');surface.addColorStop(1,'#010203');
+    ctx.fillStyle=surface;ctx.beginPath();ctx.arc(cx,cy,R*1.025,0,Math.PI*2);ctx.fill();
+    const rim=ctx.createLinearGradient(cx-R,cy-R,cx+R,cy+R);
+    rim.addColorStop(0,'rgba(255,255,255,1)');rim.addColorStop(.3,'rgba(255,255,255,.95)');rim.addColorStop(.54,'rgba(255,255,255,.18)');rim.addColorStop(.8,'rgba(255,255,255,.72)');rim.addColorStop(1,'rgba(255,255,255,.4)');
+    ctx.strokeStyle=rim;ctx.lineWidth=1.35;ctx.shadowColor='rgba(255,255,255,.65)';ctx.shadowBlur=5;ctx.beginPath();ctx.arc(cx,cy,R*1.025,0,Math.PI*2);ctx.stroke();
+    ctx.shadowBlur=0;ctx.strokeStyle='rgba(255,255,255,.15)';ctx.lineWidth=.5;ctx.beginPath();ctx.arc(cx,cy,R*.985,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.9)';ctx.shadowColor='#fff';ctx.shadowBlur=9;ctx.lineWidth=1.9;ctx.beginPath();ctx.arc(cx,cy,R*1.025,Math.PI*1.02,Math.PI*1.57);ctx.stroke();
+    ctx.restore();
   }
 
   /* 形态 1：粒子球壳 */
@@ -474,7 +574,7 @@ export class Orb {
       this._drawCollapse(ctx, { cx, cy, R, big }, coreR);
       return;
     }
-    this._core(ctx, cx, cy, coreR, t);
+    if(this.luminous)this._drawLuminousCore(ctx,cx,cy,R);else this._core(ctx, cx, cy, coreR, t);
     const tilt = kind === "earth" ? EARTH_TILT : kind === "breath" ? 0.5 : 0.28;
     const gestured = this.breathUntil != null && this.time < this.breathUntil;
     const breathPhase = gestured ? (this.time - this.breathOrigin) / 3.2 : this.time / 3.2;
@@ -483,6 +583,10 @@ export class Orb {
       let x = pt.x;
       let y = pt.y;
       let z = pt.z;
+      if(this.luminous){
+        x+=Math.sin(pt.seed*71)*.055;y+=Math.sin(pt.seed*113)*.055;z+=Math.cos(pt.seed*97)*.055;
+        const length=Math.hypot(x,y,z)||1;x/=length;y/=length;z/=length;
+      }
       let radial = 1.04;
       let gain = 1;
       if (kind === "voice") {
@@ -513,8 +617,11 @@ export class Orb {
     dots.sort((a, b) => a.z - b.z);
     for (const dot of dots) {
       const depth = Math.max(0, Math.min(1, (dot.z + 1.15) / 2.15));
-      const size = (big ? 1.6 : 1.2) * (0.82 + 0.38 * depth);
-      this._dot(ctx, dot.sx, dot.sy, size, "#ffffff", dot.alpha);
+      const size = this.luminous ? .35 + depth * .85 + dot.seed * .38 : (big ? 1.6 : 1.2) * (0.82 + 0.38 * depth);
+      const silhouette=Math.hypot(dot.sx-cx,dot.sy-cy)/R;
+      const alpha=this.luminous?dot.alpha*(dot.z<0?.09+.22*Math.pow(silhouette,5):.52+.48*depth):dot.alpha;
+      this._dot(ctx, dot.sx, dot.sy, size, "#ffffff",alpha);
+      if(this.luminous&&dot.z>0&&dot.seed>.96)this._drawLuminousStar(ctx,dot.sx,dot.sy,size*.72,alpha*.7);
     }
     ctx.globalAlpha = 1;
   }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {CALENDAR_CONNECTOR_VERSION, CalendarConnector, FakeCalendarProvider, CalendarService, register} from '../dist/index.js';
+import {CALENDAR_CONNECTOR_VERSION, CalendarConnector, FakeCalendarProvider, CalendarService, eventToItem, register} from '../dist/index.js';
 import {FakeClock, FakeToolHost} from '@personal-agent/testkit';
 import {ProtocolError, validateContract} from '@personal-agent/contracts';
 
@@ -142,4 +142,18 @@ test('窗口校验错误消息以大写开头，与其余消息约定一致（#3
   await assert.rejects(() => service.listEvents(ACCOUNT,
     {fromUtc: '2026-09-08T00:00:00.000Z', toUtc: '2026-09-07T00:00:00.000Z'}, {}),
     error => error.code === 'INVALID_ARGUMENT' && /^Calendar window/.test(error.message));
+});
+
+/**
+ * 2026-10-22：模型在回答里省略了 externalId（“切忌罗列字段名”），用户拿不到编号就无法在对话里
+ * 取消日程。编号写进 contentRef 这句陈述后，模型转述条目时会一并带出。
+ */
+test('条目文本包含取消/更新所需的编号', async () => {
+  const item = eventToItem({externalId: 'evt-8e233803', calendarId: 'cal-1', uid: 'uid-1',
+    title: '编号可读性', status: 'confirmed', sequence: 0,
+    startUtc: '2026-10-23T02:00:00.000Z', endUtc: '2026-10-23T03:00:00.000Z',
+    startLocal: '2026-10-23T10:00:00', endLocal: '2026-10-23T11:00:00', timeZone: 'Asia/Shanghai'},
+  'desktop-calendar', '2026-10-22T12:00:00.000Z');
+  assert.match(item.contentRef, /编号 evt-8e233803（取消或更新时用）/);
+  assert.equal(item.externalId, 'evt-8e233803');
 });

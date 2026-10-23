@@ -435,10 +435,10 @@ export function compileCoordinationGoal(publicGoal:string,preparedGoal:string,me
       ...(omitted.length?{selection:{policy:'preserve-user-requests-v1',omittedAssistantIds:omitted}}:{})}}) : preparedGoal;
   let goal=encode();
   if(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT && selection!=='preserve-user-requests')
-    throw new ProtocolError('INVALID_ARGUMENT','任务、Skill 与对话上下文合并后超过 16000 字符限制；不能完整发送，请缩小范围');
+    throw new ProtocolError('INVALID_ARGUMENT',`任务、Skill 与对话上下文合并后超过 ${COORDINATION_GOAL_CHARACTER_LIMIT} 字符限制；不能完整发送，请缩小范围`);
   while(goal.length>COORDINATION_GOAL_CHARACTER_LIMIT) {
     const index=selected.findIndex(message=>message.role==='assistant'&&!message.id.startsWith('knowledge-watch-'));
-    if(index<0)throw new ProtocolError('INVALID_ARGUMENT','关键用户上下文超过 16000 字符预算，无法完整发送；请拆分问题或明确缩小范围');
+    if(index<0)throw new ProtocolError('INVALID_ARGUMENT',`关键用户上下文超过 ${COORDINATION_GOAL_CHARACTER_LIMIT} 字符预算，无法完整发送；请拆分问题或明确缩小范围`);
     omitted.push(selected[index]!.id);selected.splice(index,1);goal=encode();
   }
   return goal;
