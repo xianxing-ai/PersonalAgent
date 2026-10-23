@@ -123,6 +123,7 @@ else {
   };
   const report=e=>setFeedback(typeof e==='string'?e:e.message);
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
+  input.title='发送 /压缩 或 /compact 可压缩当前会话历史；须先在模型设置中启用自动压缩。';
   const messageQueue=createMessageQueue();
   const sendingQueueIds=new Set();
   const deliveryControls=document.createElement('div');deliveryControls.className='message-delivery';
@@ -370,6 +371,10 @@ else {
     await submitMessage(input.value,{steer:pending||activeTasks().length>0});
   };
   async function submitMessage(submittedText,{queued,steer=false}={}) {
+    if(/^(?:\/压缩|\/compact)$/iu.test(submittedText.trim())){
+      if(pending||activeTasks().length){report('请等待当前任务完成，或先停止任务，再发送 /压缩。');return;}
+      steer=false;
+    }
     if(queued&&sendingQueueIds.has(queued.id))return;
     if(queued){sendingQueueIds.add(queued.id);renderQueue();}
     const draftToken=queued?undefined:sessionControls.capture();

@@ -3698,12 +3698,15 @@ async function action(event, name, payload) {
     if(!skillRun&&payload&&typeof payload==='object'&&(Object.keys(payload).some(k=>!['text','conversationId','delivery'].includes(k))
       ||payload.delivery!==undefined&&!['steer','send'].includes(payload.delivery)))throw Error('任务提交格式无效');
     if (!skillRun && (typeof text !== 'string' || !text.trim())) throw Error('请输入有效任务');
+    const compactCommand=!skillRun&&/^(?:\/压缩|\/compact)$/iu.test(text.trim());
+    if(compactCommand&&!harnessContextHost?.runtimeHooks)
+      throw Error('请先在设置 → 模型 → 开发者 Harness 中选择摘要模型并启用自动压缩，再发送 /压缩');
     if (competitionMode && !agentArtsConfig.snapshot().configured) throw Error('请先在设置 → 模型中保存 AgentArts Authorization；Live 语音配置无需重新填写');
     if (!fakeMode && model.enabled === false) throw Error('模型已停用，请先在模型设置中启用');
     const surface = skillRun || sender === workspace ? 'workspace' : 'panel';
     const conversationId=conversations.activeConversationId(surface);
     if(!skillRun&&payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新发送');
-    const steering=!skillRun&&payload?.delivery==='steer';
+    const steering=!skillRun&&!compactCommand&&payload?.delivery==='steer';
     const previous=steering?conversationDelivery.interruptPending(conversationId):undefined;
     if (!steering&&(submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task)))) throw Error('请等待当前回答完成，或先停止当前任务');
     const deliveryRequest=conversationDelivery.begin(conversationId);

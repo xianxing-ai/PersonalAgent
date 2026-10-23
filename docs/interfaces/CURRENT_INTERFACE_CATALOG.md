@@ -1,5 +1,12 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-23 会话自动压缩与命令（provisional）
+
+原 `task.submit` 的用户完整输入 `/压缩` / `/compact` 在 Runtime 内执行历史压缩，不走主模型问答或子任务委派。
+`ContextCompactionOptions` 增加 host-only `force`、`previous`、`remember` 和 Runtime 原委派关系解析的 `cacheConversationId`，原自动阈值链复用经同会话/来源/策略/模型绑定的进程内摘要。
+Desktop 提供明确保存的推荐预算；出机确认、原数据与工具 continuation 保留。无 Core wire、Schema 或数据库迁移。
+实现、失效规则与未验证边界见 [会话压缩说明](../modules/HARNESS_CONTEXT_COMPACTION_20261020.md)。
+
 ## 2026-10-21 邮件/天气变化触发器（provisional）
 
 新增 `connector.watch.start/list/stop@1.0.0` 工具及 Runtime Application 的本地判断/唤醒 driver，
