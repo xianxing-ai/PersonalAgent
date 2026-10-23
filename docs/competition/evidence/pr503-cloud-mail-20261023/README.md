@@ -82,7 +82,20 @@
 - 缓存端口为 `pendingReviewAnalyses`、`readReviewAnalysis`、`confirmCachedAnalysisAccepted`、`applyCachedAnalysisReview`，仅供受信宿主使用。它们读取原持久回执并核对邮箱、来源修订、分类器指纹、receipt、投影 digest 与任务绑定，不要求本地 Laya 或分页批次正在运行。Desktop 沿用设置 IPC 接入 `mail.review.configure` 配置动作，缓存端口不暴露给 Renderer；不新增 Core wire API 或数据库迁移。新增工具描述与可选缓存字段不表示公共接口已冻结。
 - 默认处理启用后新观察的模糊信头，历史积压仅可按明确选择的绑定进入复核。`firstObservedAt` 保留首次可信观察时间，重读、重新分类和分类器变更不刷新时间；历史来源缺少该依据时保持未知，不自动进入新邮件集合。
 - 原 Laya 结论与诊断保留，固定枚举云结果独立记录为 `cloudReview`，仅在原任务成功且结果 checkpoint 绑定一致时应用有效分类。额外字段、工具提案与无效 JSON 均不能应用；发送前保存 attempt，未知结果不自动重发。真实发送、结果和通知状态以随后实机回执为准。
-- 新增 `retryCachedAnalysis({...binding, previousTaskId}, context)`，只在用户重新选择且宿主证明旧版本在 WSS 发送前失败、无 dispatch context/request identity/received/unknown/result 后释放对应缓存绑定。原失败任务与重试历史保留，新任务重新授权；已发送或结果未知不能释放或自动重发。
+- 新增 `retryCachedAnalysis({...binding, previousTaskId}, context)`，只在用户重新选择且宿主证明旧版本在 WSS 发送前失败、无 dispatch context/request identity/received/unknown/result 后释放对应缓存绑定。后续增加严格匹配的远端 `INVALID_ARGUMENT` 拒绝路径，须核对 accepted/received/dispatch/request identity 和原任务、来源一致，且无 unknown 或结果。原失败任务与带原因的重试历史保留，新任务重新授权；通用已发送失败或结果未知不能释放，不自动重发。
+
+## 同步主线后的真实云端分类（3/3 通过）
+
+用户恢复云端调用授权后，已同步 canonical main `ad1a045e` 与 PR503 远端头 `471c408b`，本地合并 `c7fb7903`，随后文档提交 `c6635451`。同步后根 `npm run build` 通过，再启动保留原配置、数据库和工作区的正式实例。
+
+真实请求继续暴露远端 `INVALID_ARGUMENT`：信头复核的 JSON goal 被部署端当成协议外层解析，未包含 `goal` 字段。修复为受信 `textOnly` 首轮统一发送 `{goal, availableTools: []}`，仍不向模型提供业务工具。Runtime 补存精确匹配的远端终止回执；用户明确选择的三项参数拒绝可重新授权，其余失败和未知结果不自动重发。更新后的 Runtime 生产 WSS 组合回归使用实际 `parseAgentInput` 解析发送帧，11/11 通过；Coordination 与 Host 对应测试合计 12/12，通过后分别完成 Coordination、Runtime 构建。
+
+- 正式实例三项真实云端任务均 `succeeded`，受信宿主均 `applied`：订阅 `6c34969a-f4db-4a6b-bd23-1db66e496045`、订单 `b1141468-9fdf-47f2-b7ad-79899d97722b`、促销订阅 `292d76ac-b76c-4ef9-ad87-8f63a374164e`，与预期一致。
+- 分别从正式 Runtime SQLite 与加密分类存储读回成功任务和独立 `cloudReview`，证明真实模型结果已落入本地缓存。原 Laya 的 `label=null/route=review` 保留，不能把有效云结果误记为本机分类准确率提高。
+- 三项均为 `routine / notificationRecommendation=none`，没有创建提醒符合返回结果；这不是正向提醒送达验收。另已发送一封公开会议改期测试信，用于继续验证接收、分类与提醒；截至该回执读取，Laya 停止、可用内存低于原 2 GiB 启动门槛，正向原生提醒尚未验收。
+- 云端复核已启用，历史约 6000 条待复核没有自动批量出机。本次仅发送用户明确选择的三封公开测试信头，不读正文；证据不含私人信头、凭据或云端连接地址。
+
+安全回执见 [mail-cloud-success-20261023.json](mail-cloud-success-20261023.json)。前述两轮失败任务保留，真实分类通过不覆盖历史失败，也不代表主动提醒、完整鹈鹕、Hosted PSEC 或其余设备通过。
 
 ## 检查
 

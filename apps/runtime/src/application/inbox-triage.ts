@@ -267,15 +267,19 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
       const keys=new Set(filter.workKeys??[]),excluded=new Set(filter.excludeWorkKeys??[]),watermark=filter.observedAtOrAfter===undefined?undefined:Date.parse(filter.observedAtOrAfter);
       const result:InboxPendingAnalysis[]=[];
       for(const key in state.analyses){
+        // Eligibility uses only cached metadata. Historical/excluded/accepted
+        // entries cannot trigger repeated projection hashing on each host tick.
+        const candidate=state.analyses[key]!;
+        if(excluded.has(key)||candidate.state!=='pending'||!(keys.has(key)||watermark!==undefined&&candidate.observedAt!==undefined
+          &&Number.isFinite(Date.parse(candidate.observedAt))&&Date.parse(candidate.observedAt)>=watermark))continue;
         const item=select(key);
-        if(!item||excluded.has(key)||item.state!=='pending'||!(keys.has(key)||watermark!==undefined&&item.observedAt!==undefined
-          &&Number.isFinite(Date.parse(item.observedAt))&&Date.parse(item.observedAt)>=watermark)
-          ||!options.authorizeRead({accountRef:item.accountRef,folder:item.folder,...context}))continue;
+        if(!item||!options.authorizeRead({accountRef:item.accountRef,folder:item.folder,...context}))continue;
         result.push(publicAnalysis(item));if(result.length>=(filter.limit??Number.MAX_SAFE_INTEGER))break;
       }
       return result;
     }
     return Object.keys(state.analyses).sort().flatMap(key=>{
+      if(state.analyses[key]!.state==='accepted')return [];
       const item=select(key);
       if(!item||item.state==='accepted'||!options.authorizeRead({accountRef:item.accountRef,folder:item.folder,...context}))return [];
       return [publicAnalysis(item)];

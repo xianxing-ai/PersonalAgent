@@ -1245,7 +1245,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     }
     const modelSelection = executionModel===undefined?{}:{executionModel};
     const query = continuation === undefined
-      ? availableTools === undefined && executionModel===undefined ? goal : JSON.stringify({goal, availableTools:availableTools??[],...modelSelection})
+      ? !textOnly && availableTools === undefined && executionModel===undefined ? goal : JSON.stringify({goal, availableTools:availableTools??[],...modelSelection})
       : availableTools === undefined && this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
         && Object.prototype.hasOwnProperty.call(continuation.result, 'repairContext')
         ? executionModel===undefined?candidateContinuationQuery(continuation):JSON.stringify({continuation,...modelSelection})

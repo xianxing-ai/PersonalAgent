@@ -7,6 +7,7 @@ import {Client} from '@personal-agent/client';
 import {AgentArtsCloudAgentPort,CompetitionCoordinator} from '@personal-agent/coordination';
 import {createRuntimeApplication,createAgentArtsRuntimeApplication,MAIL_REVIEW_RESULT,parseMailReviewResult} from '../dist/application.js';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
+import {parseAgentInput} from '@personal-agent/agentarts';
 const binding={workKey:'public-work',sourceRevision:'revision-1',projectionDigest:'a'.repeat(64),receiptId:'public-receipt'};
 const answer={version:1,label:'work',impact:'routine',notificationRecommendation:'review',reasonCode:'work'};
 async function wait(app,id,predicate){for(let i=0;i<200;i++){const task=app.runtime.getTask(id);if(predicate(task))return task;await new Promise(r=>setTimeout(r,5));}throw Error('Task did not settle');}
@@ -110,6 +111,9 @@ test('production WSS mail composition binds dispatch and preserves unknown sends
       websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'},
       websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
         if(frame.type!=='invoke')return;sends++;
+        const input=parseAgentInput(frame.payload.query);
+        assert.equal(input.kind,'initial');assert.deepEqual(input.availableTools,[]);
+        assert.equal(JSON.parse(input.goal).headers.subject,'PUBLIC_HEADER_ONLY');
         const task=app.runtime.listTasks({}).items[0];
         const dispatch=app.runtime.loadCheckpoint(task.taskId,'competition-cloud-dispatch-context');
         assert.equal(dispatch.loop.maxSteps,1);assert.equal(dispatch.catalog,null);

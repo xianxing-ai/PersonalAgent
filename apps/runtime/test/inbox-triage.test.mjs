@@ -101,6 +101,39 @@ test('filtered analysis admission clones at most one envelope from 6006 historic
   assert.equal(pipeline.pendingAnalyses(context()).length,6006,'unfiltered legacy behavior is preserved');
 });
 
+test('cached review filters historical metadata before hashing and still validates eligible sources',async t=>{
+  let saved,authorizationChecks=0;
+  const storage={get:()=>structuredClone(saved),set:(_key,value)=>{saved=structuredClone(value);}};
+  const triage=new LayaTriageService({async infer(){return {answers:{category_0:answer('meeting',{meeting:.9,other:.1}),
+    impact_0:answer('high_impact',{routine:.1,high_impact:.9})}};}});
+  const options={storage,namespace:'cached-eligibility',triage,labels:{meeting:'Meeting',other:'Other'},classifierFingerprint:'fixed',
+    authorizeRead:()=>{authorizationChecks++;return true;}};
+  const seed=createInboxTriagePipeline(options);
+  await seed.processPage({...context(),accountRef:'fixture',folder:'INBOX',items:[items[0]],nextCursor:'1:1',hasMore:false});
+  const original=Object.values(saved.analyses)[0],originalRow=Object.values(saved.records)[0],watermark='2026-10-23T00:00:00.000Z';
+  saved.analyses={};saved.heads={};saved.records={};saved.latest={};
+  for(let i=0;i<6006;i++){
+    const workKey='work-'+i,messageId='message-'+i,recordKey='record-'+i;
+    saved.analyses[workKey]={...structuredClone(original),workKey,messageId,observedAt:i<6000?'2026-01-01T00:00:00.000Z':watermark,
+      ...(i===6001?{state:'accepted',taskId:'already-accepted'}:i===6002?{state:'deferred'}:{})};
+    if(i===6003)delete saved.analyses[workKey].observedAt;
+    saved.heads[messageId]={sourceRevision:original.sourceRevision,fetchedAt:items[0].fetchedAt};
+    saved.latest[messageId]=recordKey;saved.records[recordKey]={...structuredClone(originalRow),messageId,
+      ...(i===6004?{receiptId:'different-source-receipt'}:{})};
+  }
+  const pipeline=createInboxTriagePipeline(options);
+  assert.deepEqual(pipeline.pendingReviewAnalyses(context(),{}),[],'load validates the durable cache once');
+  let projectionHashes=0;const stringify=JSON.stringify;authorizationChecks=0;
+  t.mock.method(JSON,'stringify',(value,...args)=>{
+    if(value?.headersOnly===true&&value?.sensitivity==='private'&&typeof value?.text==='string')projectionHashes++;
+    return stringify(value,...args);
+  });
+  const result=pipeline.pendingReviewAnalyses(context(),{observedAtOrAfter:watermark,excludeWorkKeys:['work-6000'],limit:1});
+  assert.deepEqual(result.map(row=>row.workKey),['work-6005'],'eligible receipt mismatch is rejected before returning the valid candidate');
+  assert.equal(projectionHashes,1,'6004 ineligible historical entries never rehash projections; the valid candidate still does');
+  assert.equal(authorizationChecks,1,'the eligible valid candidate still passes its current read authorization');
+});
+
 test('cloud review stays independently bound, strict and durable without rewriting local judgments',async()=>{
   const values=new Map();let failSave=false,fingerprint='policy-v1';
   const storage={get:key=>structuredClone(values.get(key)),set:(key,value)=>{if(failSave)throw Error('Synthetic save failure');values.set(key,structuredClone(value));}};

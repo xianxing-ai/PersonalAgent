@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fields=['workKey','sourceRevision','projectionDigest','receiptId'];
@@ -56,16 +57,46 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
     const task=runtime().getTask(taskId),intent=runtime().loadCheckpoint(taskId,'host-tool-intent'),
       attempt=runtime().loadCheckpoint(taskId,'mail-review-attempt:v1'),inflight=runtime().loadCheckpoint(taskId,'competition-cloud-inflight');
     const record=runtime().readToolExecutions(taskId).find(value=>value.evidenceId==='host-tool-'+taskId);
-    const absent=['competition-cloud-dispatch-binding','competition-cloud-dispatch-context','competition-cloud-request-identity',
-      'competition-cloud-received','competition-cloud-unknown','competition-cloud-terminal-error','mail-review-result:v1',
-      'tool-result-host-tool-'+taskId,'application-profile','application-deadline','competition-max-steps'];
-    if(task.state!=='failed'||task.error?.code!=='EXTERNAL_FAILURE'||task.error?.message!=='Cloud coordination failed'
+    const noResult=['competition-cloud-unknown','mail-review-result:v1','tool-result-host-tool-'+taskId];
+    if(task.state!=='failed'||task.error?.code!=='EXTERNAL_FAILURE'||item.cloudReview!==undefined
       ||intent?.toolName!=='mail.review'||intent.toolVersion!=='1.0.0'||intent.commandId!==entry.commandId
-      ||!equal(intent.arguments,ref)||attempt?.version!==1||!equal(attempt.binding,ref)||inflight?.accepted!==false
-      ||absent.some(key=>runtime().loadCheckpoint(taskId,key)!==undefined)
+      ||!equal(intent.arguments,ref)||attempt?.version!==1||!equal(attempt.binding,ref)
+      ||noResult.some(key=>runtime().loadCheckpoint(taskId,key)!==undefined)
       ||record?.taskId!==taskId||record.toolName!=='mail.review'||record.toolVersion!=='1.0.0'
       ||record.state!=='failed'||record.executionStarted!==true||record.policyDecision!=='allow')denied();
-    return entry;
+    const legacyAbsent=['competition-cloud-dispatch-binding','competition-cloud-dispatch-context','competition-cloud-request-identity',
+      'competition-cloud-received','competition-cloud-terminal-error','application-profile','application-deadline','competition-max-steps'];
+    if(task.error.message==='Cloud coordination failed'&&inflight?.accepted===false
+      &&legacyAbsent.every(key=>runtime().loadCheckpoint(taskId,key)===undefined))
+      return {entry,reason:'legacy-mail-review-before-dispatch'};
+    const diagnostic=runtime().loadCheckpoint(taskId,'competition-coordination-failure'),
+      received=runtime().loadCheckpoint(taskId,'competition-cloud-received'),
+      terminalError=runtime().loadCheckpoint(taskId,'competition-cloud-terminal-error'),
+      dispatch=runtime().loadCheckpoint(taskId,'competition-cloud-dispatch-binding'),
+      dispatchContext=runtime().loadCheckpoint(taskId,'competition-cloud-dispatch-context'),
+      identities=runtime().loadCheckpoint(taskId,'competition-cloud-request-identity');
+    const identity=inflight&&{sessionId:inflight.sessionId,requestId:inflight.requestId,idempotencyKey:inflight.idempotencyKey,
+      payloadDigest:inflight.payloadDigest,...(inflight.serverInstanceId===undefined?{}:{serverInstanceId:inflight.serverInstanceId})};
+    const requestIdentity=identities?.requests?.[0];
+    if(!isDeepStrictEqual(diagnostic,{version:'1.0',phase:'initial',kind:'agentarts_terminal',code:'EXTERNAL_FAILURE',remoteCode:'INVALID_ARGUMENT'})
+      ||inflight?.accepted!==true||!isDeepStrictEqual(received,inflight)
+      ||terminalError!==undefined&&!isDeepStrictEqual(terminalError,{version:'1.0',kind:'wss_terminal_error',receipt:inflight})
+      ||!identity||Object.values(identity).some(value=>typeof value!=='string'||!value)
+      ||typeof attempt.configurationRef!=='string'||!attempt.configurationRef
+      ||attempt.deadline!==entry.deadline||intent.deadline!==entry.deadline
+      ||!isDeepStrictEqual(dispatch,{bindingVersion:'1.0',configurationRef:attempt.configurationRef,invocation:identity})
+      ||dispatchContext?.snapshotVersion!=='1.0'||dispatchContext.taskId!==taskId||dispatchContext.configurationRef!==attempt.configurationRef
+      ||!isDeepStrictEqual(dispatchContext.invocation,identity)||dispatchContext.request?.phase!=='initial'
+      ||dispatchContext.request.deadline!==entry.deadline
+      ||runtime().loadCheckpoint(taskId,'application-profile')!=='huawei_ict_agentarts'
+      ||runtime().loadCheckpoint(taskId,'application-deadline')!==entry.deadline||runtime().loadCheckpoint(taskId,'competition-max-steps')!==1
+      ||identities?.formatVersion!=='1.0.0'||!Array.isArray(identities.requests)||identities.requests.length!==1
+      ||!Array.isArray(identities.conflicts)||identities.conflicts.length!==0
+      ||requestIdentity?.sessionId!==inflight.sessionId||requestIdentity.requestId!==inflight.requestId
+      ||requestIdentity.payloadDigest!==inflight.payloadDigest||requestIdentity.attempts!==1
+      ||!Number.isSafeInteger(requestIdentity.revision)||requestIdentity.revision<0||requestIdentity.revision!==dispatchContext.request.revision
+      ||!Number.isFinite(Date.parse(requestIdentity.recordedAt)))denied();
+    return {entry,reason:'mail-review-remote-invalid-argument'};
   };
   const api={
     snapshot(){const s=state(),rows=Object.values(s.entries);return {enabled:s.enabled&&!closed,watermark:s.watermark,
@@ -83,22 +114,24 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
       const selectedRetries=()=>selected.flatMap(ref=>{const item=mail.readReviewAnalysis(ref.workKey,context(deadline));
         if(!item||!equal(binding(item),ref))denied();
         if(item.state==='pending'){if(state().entries[ref.workKey])denied();return [];}
-        return [{...ref,previousTaskId:retryEntry(ref,item).taskId}];});
+        const retry=retryEntry(ref,item);return [{...ref,previousTaskId:retry.entry.taskId,reason:retry.reason}];});
       const retries=selectedRetries(),retryDigest=digest(retries);
       const consent=await confirmConsent({payload:{enabled:true,selectedBindings:structuredClone(selected),configurationRef:config,
         ...(retries.length?{selectedRetries:structuredClone(retries)}:{})},
         scope:{configurationRef:config,selectedBindingsDigest:digest(selected),headersOnly:true,newOnly:true,
           ...(retries.length?{selectedRetriesDigest:retryDigest}:{})},
         summary:'允许明确选择的邮件及启用后新模糊邮件的信头在所选云模型复核；不读取正文，不批量发送历史邮件'
-          +(retries.length?'；包括重新复核已证实在发送前失败的所选旧任务':''),
+          +(retries.some(retry=>retry.reason==='legacy-mail-review-before-dispatch')?'；包括重新复核已证实在发送前失败的所选旧任务':'')
+          +(retries.some(retry=>retry.reason==='mail-review-remote-invalid-argument')?'；包括重新复核远端已明确以参数错误拒绝的所选旧任务':''),
         deadline,signal:controller.signal,isCurrent:()=>{try{return !closed&&configuration()===config&&digest(selectedRetries())===retryDigest;}catch{return false;}}});
       if(consent!==true||closed||configuration()!==config||digest(selectedRetries())!==retryDigest)denied();
       await api.revoke();closed=false;controller=new AbortController();
       const s=state();
-      for(const retry of retries){const item=mail.readReviewAnalysis(retry.workKey,context(deadline)),entry=retryEntry(retry,item);
-        s.retryHistory??={};s.retryHistory[retry.previousTaskId]={entry:structuredClone(entry),
-          reason:'legacy-mail-review-before-dispatch',state:'prepared',requestedAt:new Date(now()).toISOString()};persist();
-        const released=mail.retryCachedAnalysis(retry,context(deadline));
+      for(const retry of retries){const item=mail.readReviewAnalysis(retry.workKey,context(deadline)),permit=retryEntry(retry,item);
+        if(permit.reason!==retry.reason)denied();
+        s.retryHistory??={};s.retryHistory[retry.previousTaskId]={entry:structuredClone(permit.entry),
+          reason:permit.reason,state:'prepared',requestedAt:new Date(now()).toISOString()};persist();
+        const released=mail.retryCachedAnalysis({...binding(retry),previousTaskId:retry.previousTaskId},context(deadline));
         if(!released||released.state!=='pending'||released.taskId!==undefined||!equal(binding(released),retry))denied();
         s.retryHistory[retry.previousTaskId].state='released';delete s.entries[retry.workKey];persist();
       }

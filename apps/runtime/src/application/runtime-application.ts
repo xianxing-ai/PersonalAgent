@@ -1854,6 +1854,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.assertMailReviewSend(request);return result;
     } catch(error) {
       this.runtime.saveCheckpoint(request.taskId,'competition-coordination-failure',coordinationFailureDiagnostic(error,false));
+      if(error instanceof AgentArtsTerminalError
+        &&isDeepStrictEqual(this.runtime.loadCheckpoint(request.taskId,'competition-cloud-inflight'),error.receipt)
+        &&isDeepStrictEqual(this.runtime.loadCheckpoint(request.taskId,'competition-cloud-received'),error.receipt))
+        this.runtime.saveCheckpoint(request.taskId,'competition-cloud-terminal-error',
+          {version:'1.0',kind:'wss_terminal_error',receipt:{...error.receipt}});
       if(error instanceof AgentArtsResultUnknownError) {
         markCompetitionCloudUnknown(this.runtime,request.taskId,error.receipt);
         throw new ProtocolError('RESULT_UNKNOWN','Original mail review requires cloud readback');

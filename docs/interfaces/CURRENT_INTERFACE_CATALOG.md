@@ -10,7 +10,7 @@ Competition Profile 新增受信宿主专用 `mail.review@1.0.0`（`mail:review`
 
 本登记说明接口与边界，不提升冻结或整模块完成等级；离线组合及真实云端结果分别见[本轮记录](../competition/evidence/pr503-cloud-mail-20261023/README.md)，实机回执由对应验收条目确认。
 
-另增受信缓存端口 `retryCachedAnalysis({...binding, previousTaskId}, context)`，仅由宿主在用户明确重新选择后释放旧绑定。宿主须读回原任务、工具执行与 WSS checkpoint，证明旧版本在发送前失败、尚无 dispatch context/request identity/received/unknown/result；不适用于已发送、结果未知或已有云结果的任务。释放保留原终态与 retryHistory，重新创建独立任务并重新授权；不自动重发原请求。
+另增受信缓存端口 `retryCachedAnalysis({...binding, previousTaskId}, context)`，仅由宿主在用户明确重新选择后释放旧绑定。宿主须读回原任务、工具执行与 WSS checkpoint，证明旧版本在发送前失败、尚无 dispatch context/request identity/received/unknown/result；或证明唯一一次请求已有精确匹配的 accepted/received/dispatch/request identity，远端明确以 `INVALID_ARGUMENT` 终止。两条路径均要求原失败任务与四字段来源绑定一致、没有 unknown 或结果；通用已发送失败及未知结果不适用。释放保留原终态与带原因的 retryHistory，重新创建独立任务并重新授权；不自动重发原请求。
 
 ## 2026-10-21 邮件/天气变化触发器（provisional）
 

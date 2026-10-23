@@ -128,3 +128,35 @@ test('explicit selection alone may retry the exact legacy before-dispatch failur
   assert.equal(f.items[0].taskId,'task-2');assert.equal(f.tasks.get('task-1').state,'failed');
   await f.host.close();
 });
+
+test('explicit retry of a bound terminal INVALID_ARGUMENT keeps sent history and rejects unknown or mismatched receipts',async()=>{
+  const f=fixture(),selected=ref(f.items[0]);
+  await f.host.configure({enabled:true,selectedBindings:[selected]});await f.host.tick();
+  Object.assign(f.tasks.get('task-1'),{state:'failed',error:{code:'EXTERNAL_FAILURE',message:'AgentArts terminal failure'}});
+  f.records.set('task-1',[{taskId:'task-1',evidenceId:'host-tool-task-1',toolName:'mail.review',toolVersion:'1.0.0',
+    state:'failed',executionStarted:true,policyDecision:'allow'}]);
+  const deadline=f.checkpoints.get('task-1host-tool-intent').deadline,
+    identity={sessionId:'session',requestId:'request',idempotencyKey:'request',payloadDigest:'a'.repeat(64),serverInstanceId:'server'},
+    receipt={...identity,accepted:true},configurationRef='cloud-config',diagnostic={version:'1.0',phase:'initial',kind:'agentarts_terminal',code:'EXTERNAL_FAILURE',remoteCode:'INVALID_ARGUMENT'};
+  for(const [key,value] of Object.entries({'mail-review-attempt:v1':{version:1,binding:selected,deadline,configurationRef},
+    'competition-cloud-inflight':receipt,'competition-cloud-received':receipt,'competition-coordination-failure':diagnostic,
+    'competition-cloud-dispatch-binding':{bindingVersion:'1.0',configurationRef,invocation:identity},
+    'competition-cloud-dispatch-context':{snapshotVersion:'1.0',taskId:'task-1',configurationRef,invocation:identity,request:{phase:'initial',deadline,revision:1}},
+    'competition-cloud-request-identity':{formatVersion:'1.0.0',conflicts:[],requests:[{sessionId:identity.sessionId,requestId:identity.requestId,
+      payloadDigest:identity.payloadDigest,revision:1,attempts:1,recordedAt:new Date().toISOString()}]},
+    'application-profile':'huawei_ict_agentarts','application-deadline':deadline,'competition-max-steps':1}))f.checkpoints.set('task-1'+key,value);
+  await f.host.tick();await f.host.tick();assert.equal(f.counts().submits,1);
+  for(const [key,value] of [['competition-cloud-received',{...receipt,requestId:'different'}],['competition-cloud-unknown',null],
+    ['competition-coordination-failure',{...diagnostic,remoteCode:'EXTERNAL_FAILURE'}],['competition-cloud-dispatch-binding',{}],['mail-review-result:v1',{}]]){
+    const original=f.checkpoints.get('task-1'+key);f.checkpoints.set('task-1'+key,value);
+    await assert.rejects(f.host.configure({enabled:true,selectedBindings:[selected]}),{code:'UNAUTHORIZED'});
+    if(original===undefined)f.checkpoints.delete('task-1'+key);else f.checkpoints.set('task-1'+key,original);
+  }
+  f.setConsent(false);await assert.rejects(f.host.configure({enabled:true,selectedBindings:[selected]}),{code:'UNAUTHORIZED'});
+  assert.equal(f.counts().retries,0);f.setConsent(true);
+  await f.host.configure({enabled:true,selectedBindings:[selected]});await f.host.tick();
+  assert.equal(f.counts().retries,1);assert.equal(f.items[0].taskId,'task-2');
+  assert.equal([...f.states.values()][0].retryHistory['task-1'].reason,'mail-review-remote-invalid-argument');
+  assert.deepEqual(f.checkpoints.get('task-1competition-cloud-inflight'),receipt);assert.equal(f.tasks.get('task-1').state,'failed');
+  await f.host.close();
+});
