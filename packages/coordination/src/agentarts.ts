@@ -112,6 +112,7 @@ export class AgentArtsHttpResponseError extends ProtocolError {
 
 /** Fixed facts for the existing Runtime error outlet. Never formats arbitrary error messages. */
 export function formatAgentArtsFailureDetail(error: unknown): string | undefined {
+  try {
   if (error instanceof AgentArtsHttpResponseError || error instanceof AgentArtsWebSocketUpgradeError) {
     const status = error.httpStatus;
     if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
@@ -140,6 +141,11 @@ export function formatAgentArtsFailureDetail(error: unknown): string | undefined
     return detail;
   }
   return undefined;
+  } catch {
+    // Even local typed markers may be wrapped in a Proxy or carry hostile accessors.
+    // Optional detail must never replace the original failure or expose a thrown message.
+    return undefined;
+  }
 }
 
 export interface AgentArtsFetchInit {
