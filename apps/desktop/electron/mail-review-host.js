@@ -51,6 +51,12 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
     for(const entry of Object.values(s.entries))if(entry.taskId&&!terminal.has(runtime().getTask(entry.taskId).state)){
       runtime().requestCancel(entry.taskId,'Mail review consent revoked');entry.state='revoked';}
     persist();};
+  const recordNotification=(entry,outcome)=>{
+    const value=outcome?.attempts?.banner?.state;if(!['delivered','failed','unknown'].includes(value))return;
+    const settled=value!=='unknown';
+    if(entry.notificationState!==value||entry.notificationSettled!==settled){
+      entry.notificationState=value;entry.notificationSettled=settled;persist();}
+  };
   const retryEntry=(ref,item)=>{
     const entry=state().entries[ref.workKey],taskId=entry?.taskId;
     if(!entry||!equal(entry.binding,ref)||!item||item.state!=='accepted'||item.taskId!==taskId||!taskId)denied();
@@ -165,11 +171,20 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
       question.authorizeConsumedExport(scope,envelope,'mail-review-export');
     },
     async tick(){
-      if(closed||busy||!state().enabled)return;busy=true;
+      if(closed||busy)return;busy=true;
       try{
+        const s=state();
+        // Reading the original OS receipt grants no send and survives configuration generations/deadlines.
+        for(const entry of Object.values(s.entries))if(entry.batchId&&entry.notificationState==='unknown'){
+          const notifications=getNotifications?.();
+          if(typeof notifications?.reconcileDelivery==='function'){
+            try{recordNotification(entry,notifications.reconcileDelivery('desktop-batch-'+digest(entry.batchId)));}
+            catch{/* Preserve unknown for a later original-round readback; never send again. */}
+          }
+        }
+        if(!s.enabled)return;
         const config=configuration();if(!config)return;
         if(state().configurationRef!==config){await api.revoke();return;}
-        const s=state();
         const active=Object.values(s.entries).some(entry=>entry.generation===s.generation&&['submitting','pending'].includes(entry.state));
         const pending=active?[]:mail.pendingReviewAnalyses(context(new Date(now()+30*60_000).toISOString()),
           {observedAtOrAfter:s.watermark,workKeys:s.selected.filter(ref=>!s.entries[ref.workKey]).map(ref=>ref.workKey),
@@ -187,6 +202,7 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
         }
         for(const entry of Object.values(s.entries)){
           if(entry.generation!==s.generation||!entry.taskId||['failed','unknown','revoked'].includes(entry.state))continue;
+          if(entry.batchId&&entry.notificationState==='unknown')continue;
           try{
           const read=application().readHostToolTask(entry.taskId);
           if(!terminal.has(read.task.state))continue;
@@ -206,7 +222,7 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
               const batch=notifications.drain().batches.find(batch=>batch.itemRefs.includes(id));if(!batch)continue;entry.batchId=batch.id;persist();}
             const outcome=await notifications.deliverBatch({batchId:entry.batchId,scope,expiresAt:entry.deadline,
               title:'PersonalAgent · 邮件复核提醒',body:'云端信头复核提示有邮件需要关注；请查看原邮件后确认。',source:'mail-cloud-review'});
-            if(outcome?.attempts?.banner&&outcome.attempts.banner.state!=='sending'){entry.notificationSettled=true;entry.notificationState=outcome.attempts.banner.state;persist();}
+            recordNotification(entry,outcome);
           }
           }catch{entry.state='failed';persist();}
         }

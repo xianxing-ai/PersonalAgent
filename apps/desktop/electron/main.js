@@ -2525,7 +2525,7 @@ async function initializeRuntime() {
   eventCursor = new EventCursor('tasks');
   if (competitionMode && mailHost) mailAnalysisHost = createDesktopMailReviewHost({
     getApplication:()=>runtimeApplication,mail:mailHost,question:authorizationQuestionPort,
-    readConfigurationRef:()=>{const source=readConnectorSourceAuthorization('mail');return source.available?source.configurationRef:undefined;},
+    readConfigurationRef:()=>mailHost?mailConfig?.reviewConfigurationRef(runtimeApplication?.coordinationConfigurationRef):undefined,
     labelKeys:['meeting','work','subscription','transaction','personal','other'],
     getNotifications:()=>notificationApplicationHost,namespace:desktopHost.userNamespace,
     confirmConsent:request=>confirmApplicationAuthorization('mail.review.configure',request.payload??request,{
@@ -4274,7 +4274,8 @@ app.whenReady().then(async () => {
       if (!localServicesStopping) {
         localServicesStopping = true;
         void (async () => {
-          await mailConfig?.revoke();
+          await mailAnalysisHost?.close();
+          await mailConfig?.releaseSession();
           const result = await localLaya?.stop();
           if (result?.state === 'stop_unconfirmed') throw Error('本地模型退出尚未确认');
           localServicesStopped = true; app.quit();

@@ -60,3 +60,33 @@ test('Synthetic configured mailbox can request one fixed batch while old consent
   assert.throws(()=>port.assertPage(third,another),'revoked bindings cannot be recreated');
   assert.equal(createMailConfig(options).snapshot().sessionAllowed,false);
 });
+
+test('shutdown releases local leases and rotates their generation while preserving stable cloud review policy and binding',async()=>{
+  let reviewEnabled=true,localStops=0;
+  const question=questions(),options={userData:mkdtempSync(new URL('shutdown-',cache)),safeStorage,namespace:'Synthetic shutdown',question,
+    onCloudRevoke:async()=>{reviewEnabled=false;},onRevoke:async()=>{localStops++;}};
+  const config=createMailConfig(options);
+  await config.configure({user:'synthetic@qq.com',authCode:'SyntheticOnlyAuthCode'});config.markBound(config.current().revision);
+  reviewEnabled=true;
+  const deadline=new Date(Date.now()+60_000).toISOString(),batch={batchId:randomUUID(),generation:randomUUID(),accountRef:'desktop-qq-inbox',
+    folder:'INBOX',limit:100,queryDigest:hash({folder:'INBOX'}),deadline},
+    scope={taskId:'shutdown-page',runId:'shutdown-run',toolName:'mail.inbox',toolVersion:'0.1.0-alpha.1',deadline,signal:new AbortController().signal};
+  config.batchAuthorization.preparePage(scope,batch);question.allow(scope);config.batchAuthorization.assertPage(scope,batch);
+  const resource=hash({namespace:options.namespace,kind:'mail-local-batch',user:config.current().user,revision:config.current().revision}),
+    generation=question.readResourceGeneration(resource),stable=config.reviewConfigurationRef('deployment-a'),stopsBefore=localStops;
+  await config.releaseSession();
+  assert.equal(reviewEnabled,true);assert.equal(localStops,stopsBefore+1);
+  assert.equal(config.snapshot().sessionAllowed,false);assert.equal(config.cloudLease(),undefined);
+  assert.notEqual(question.readResourceGeneration(resource),generation);
+  assert.throws(()=>config.batchAuthorization.assertPage(scope,batch));
+  assert.throws(()=>config.batchAuthorization.preparePage(scope,batch));
+  assert.equal(config.reviewConfigurationRef('deployment-a'),stable,'local generation never changes the cloud review binding');
+  const reopened=createMailConfig(options);reopened.markBound(reopened.current().revision);
+  assert.equal(reopened.reviewConfigurationRef('deployment-a'),stable);
+  assert.notEqual(reopened.reviewConfigurationRef('deployment-b'),stable,'real cloud target changes invalidate the review binding');
+  await reopened.revoke();assert.equal(reviewEnabled,false,'explicit disable still revokes the cloud review preference');
+  reviewEnabled=true;await reopened.configure({user:'synthetic@qq.com',authCode:'SyntheticOnlyAuthCode'});
+  assert.equal(reviewEnabled,false,'saving a real mailbox configuration still fully revokes');
+  assert.equal(reopened.reviewConfigurationRef('deployment-a'),undefined,'unbound replacement config grants nothing');
+  reopened.markBound(reopened.current().revision);assert.notEqual(reopened.reviewConfigurationRef('deployment-a'),stable);
+});

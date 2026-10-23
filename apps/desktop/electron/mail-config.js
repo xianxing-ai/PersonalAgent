@@ -72,21 +72,29 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
     status: failure ? 'unavailable' : sessionAllowed ? 'enabled' : saved ? 'disabled' : 'unconfigured',
     reason: failure || (sessionAllowed ? '允许本会话整批收件箱信头本地分类；不会发送或修改邮件'
       : '读取许可不会跨应用重启恢复')});
-  const revoke = async () => {
+  const release = async (revokeCloud) => {
     sessionAllowed = false;
     cloudGeneration = undefined;
     for(const entry of batches.values())entry.active=false;
     const resources=new Set([...batches.values()].map(entry=>entry.resource));
     if(question&&boundRevision!==undefined&&resource())resources.add(resource());
-    await onCloudRevoke();
+    if(revokeCloud)await onCloudRevoke();
     await onRevoke();
     if(question)for(const id of resources){const previous=question.readResourceGeneration(id);question.rotateResourceGeneration(id,previous);}
     return snapshot();
   };
+  const revoke=()=>release(true);
   return Object.freeze({
     snapshot,
     ...(question?{batchAuthorization}:{}),
     current: () => saved ? {...saved} : undefined,
+    reviewConfigurationRef(destination) {
+      if(!saved||boundRevision!==saved.revision||!namespace||typeof destination!=='string'||!destination
+        ||!(question?canRequest():sessionAllowed))return undefined;
+      return hash({namespace,kind:'mail-cloud-review',user:saved.user,revision:saved.revision,destination});
+    },
+    /** Main shutdown only: revoke local read leases without changing the durable review preference. */
+    releaseSession:()=>release(false),
     cloudLease: () => sessionAllowed && boundRevision === saved?.revision ? cloudGeneration : undefined,
     enableCloudAnalysis(input) {
       if(question)throw Error('请在当前对话提问卡确认本次邮件分析与出机范围');

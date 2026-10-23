@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {createDesktopMailReviewHost} from '../electron/mail-review-host.js';
 const ref=item=>({workKey:item.workKey,sourceRevision:item.sourceRevision,projectionDigest:item.projectionDigest,receiptId:item.receipt.id});
 function fixture(){
-  let clock=Date.now(),configuration='configuration-a',host,submits=0,cancels=0,deliveries=0,applied=0,retries=0,consent=true;
+  let clock=Date.now(),configuration='configuration-a',host,submits=0,cancels=0,deliveries=0,applied=0,retries=0,consent=true,
+    notificationState='delivered',readbacks=0;
   const states=new Map(),tasks=new Map(),checkpoints=new Map(),scopes=new Map(),records=new Map(),prepared=[];
   const items=['old','legacy','new','selected'].map(workKey=>({workKey,sourceRevision:'revision-1',projectionDigest:'digest-'+workKey,
     receipt:{id:'receipt-'+workKey},state:'pending',observedAt:workKey==='legacy'?undefined:new Date(clock-1000).toISOString(),
@@ -25,12 +26,15 @@ function fixture(){
   const notifications={ingest(rows){notificationId=rows[0].externalId;assert.equal(JSON.stringify(rows).includes('PRIVATE HEADER'),false);},
     drain:()=>({batches:[{id:'batch',itemRefs:[notificationId]}]}),deliverBatch:async input=>{
       assert.equal(input.source,'mail-cloud-review');assert.equal(JSON.stringify(input).includes('PRIVATE HEADER'),false);
-      deliveries++;return {attempts:{banner:{state:'delivered'}}};}};
+      deliveries++;return {attempts:{banner:{state:notificationState}}};},
+    reconcileDelivery(roundId){assert.match(roundId,/^desktop-batch-[a-f0-9]{64}$/u);readbacks++;
+      return {attempts:{banner:{state:notificationState}}};}};
   const createHost=()=>createDesktopMailReviewHost({getApplication:()=>app,mail,question,readConfigurationRef:()=>configuration,
     confirmConsent:async()=>consent,getNotifications:()=>notifications,namespace:'fixture',now:()=>clock});
   host=createHost();
-  return {host,items,states,tasks,checkpoints,scopes,records,prepared,runtime,counts:()=>({submits,cancels,deliveries,applied,retries}),
-    setConfiguration:value=>configuration=value,setConsent:value=>consent=value,advance:()=>clock+=1000,reopen:()=>host=createHost(),
+  return {host,items,states,tasks,checkpoints,scopes,records,prepared,runtime,counts:()=>({submits,cancels,deliveries,applied,retries,readbacks}),
+    setConfiguration:value=>configuration=value,setConsent:value=>consent=value,setNotificationState:value=>notificationState=value,
+    advance:(duration=1000)=>clock+=duration,reopen:()=>host=createHost(),
     finish(id,result={version:1,label:'work',impact:'routine',notificationRecommendation:'none',reasonCode:'work'}){
       tasks.get(id).state='succeeded';const request=checkpoints.get(id+'host-tool-intent');checkpoints.set(id+'mail-review-result:v1',{binding:request.arguments,result});}};
 }
@@ -159,4 +163,22 @@ test('explicit retry of a bound terminal INVALID_ARGUMENT keeps sent history and
   assert.equal([...f.states.values()][0].retryHistory['task-1'].reason,'mail-review-remote-invalid-argument');
   assert.deepEqual(f.checkpoints.get('task-1competition-cloud-inflight'),receipt);assert.equal(f.tasks.get('task-1').state,'failed');
   await f.host.close();
+});
+
+test('unknown notification reads its original late receipt across generations and deadlines without another send',async()=>{
+  const f=fixture();await f.host.configure({enabled:true,selectedBindings:[ref(f.items[0])]});await f.host.tick();
+  f.setNotificationState('unknown');
+  f.finish('task-1',{version:1,label:'meeting',impact:'high_impact',notificationRecommendation:'notify',reasonCode:'meeting_change'});
+  await f.host.tick();assert.equal(f.counts().deliveries,1);
+  assert.equal([...f.states.values()][0].entries.old.notificationSettled,false);
+  await f.host.close();
+  const [key,saved]=[...f.states.entries()][0];saved.entries.old.notificationSettled=true;f.states.set(key,saved);
+  const reopened=f.reopen();await reopened.configure({enabled:true});f.advance(31*60_000);
+  await reopened.tick();assert.equal(f.counts().readbacks,1);assert.equal(f.counts().deliveries,1);
+  assert.equal([...f.states.values()][0].entries.old.notificationState,'unknown');
+  f.setNotificationState('delivered');await reopened.tick();
+  const settled=[...f.states.values()][0].entries.old;
+  assert.equal(settled.notificationState,'delivered');assert.equal(settled.notificationSettled,true);
+  await reopened.tick();assert.equal(f.counts().readbacks,2);assert.equal(f.counts().deliveries,1);
+  assert.equal(f.counts().submits,1);assert.equal(f.counts().applied,1);await reopened.close();
 });

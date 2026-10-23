@@ -97,6 +97,22 @@
 
 安全回执见 [mail-cloud-success-20261023.json](mail-cloud-success-20261023.json)。前述两轮失败任务保留，真实分类通过不覆盖历史失败，也不代表主动提醒、完整鹈鹕、Hosted PSEC 或其余设备通过。
 
+## 会议改期信头复核与原生提醒送达
+
+随后可用内存恢复到 3.3 GiB，正式实例启动 Laya 后，原 `mail.read` 批次处理完 7391 条信头。公开会议改期测试信已由 `mail.inbox` 任务 `3ad18a90-af0a-4c37-ad0c-fd827588f3b0` 确认收到，本机仍判为待复核。
+
+实测发现正常退出误走显式邮件停用路径，使云复核开关被持久关闭。该次明确选择公开测试信重新开启复核后，真实任务 `1ae4bbea-871c-4e12-ab48-2ef0420fbd58` 成功返回 `meeting / high_impact / notify / meeting_change` 并应用结果。原生通知在 `2026-10-23T10:31:14.869Z` 收到 `show` 回执，通知服务独立读回 `banner=delivered`。这证明该真实邮件的接收、云端分类及 Windows 原生通知送达，不声称用户已阅读。
+
+宿主早于原生回执把首次 `unknown` 结果视作已收尾，故其显示状态仍为 unknown；该投影需继续读回原通知结果，不能重发通知。正常退出误关闭开关和该延迟回执问题已定位，重启持久开关与全新邮件自动进入复核仍需下一轮验证。安全回执见 [mail-cloud-notification-20261023.json](mail-cloud-notification-20261023.json)。
+
+后续两项修复已加载到正式实例并读回：
+
+- 正常退出经宿主专用 `mailConfig.releaseSession()` 停止本地读取、撤销旧 lease 并旋转读取 generation，同时保留云复核偏好。云复核指纹独立绑定稳定邮箱配置修订与 Runtime 云目标，不复用本次读取 generation；显式停用、配置保存或真实云目标变化仍撤销。对应生命周期组合及相关测试 12/12，通过语法与差异检查。
+- 已有通知 `unknown` 只通过原 `reconcileDelivery(roundId)` 读取真实回执，跨 generation、发送期限和启用状态也可收敛；不调用发送、不创建新任务，未知且未变化时不重复落盘。Host 8/8，包括旧 `notificationSettled=true`、过期和换 generation 后晚到结果，断言真实发送调用保持一次。
+- 重启后原会议任务的宿主状态已实际更新为 `delivered`。新稳定开关开启、历史选择列表为空后再正常重启，enabled 仍 true，watermark/configurationRef/generation 均一致，原 4 个复核任务没有增加，证明开关保留且旧邮件没有重发。
+
+读回见 [mail-review-restart-20261023.json](mail-review-restart-20261023.json)。最后一封全新且未手工选择的订阅自动触发验收仍未完成：该次重启后可用内存 1.19 GiB，未绕过 Laya 原启动门槛。上述正向原生提醒已送达与此自动接入未验收分别记录。
+
 ## 检查
 
 2026-10-23 后续正式实例云复核尝试见 `mail-cloud-repair-20261023.json`：三封都通过原授权，但 WSS 发送前的任务上下文校验失败，尚无云端分类或提醒回执。已补齐该单次交换的 profile、deadline、预算记录，并修复可信 textOnly 请求的原始分类 JSON 接收；生产 WSS 组合离线回归包含成功解析及断线保留未知结果，11/11 通过，Coordination 对应文件 5/5 通过。用户要求先修复再同步主线，已暂停云复核，待发送数 0；这些本地检查不算真实云端验收。
