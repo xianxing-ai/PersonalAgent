@@ -1,0 +1,28 @@
+{
+  "observedAt": "2026-10-23T10:32:10.585Z",
+  "profile": "huawei_ict_agentarts",
+  "formalDesktop": true,
+  "realCloud": true,
+  "publicTest": "PA-REAL-CLOUD-20261023-1800",
+  "bodiesRead": false,
+  "sourceTaskId": "3ad18a90-af0a-4c37-ad0c-fd827588f3b0",
+  "sourceTool": {"name": "mail.inbox", "state": "confirmed", "policyDecision": "allow", "executionStarted": true},
+  "reviewTaskId": "1ae4bbea-871c-4e12-ab48-2ef0420fbd58",
+  "runtimeState": "succeeded",
+  "hostState": "applied",
+  "review": {"version": 1, "label": "meeting", "impact": "high_impact", "notificationRecommendation": "notify", "reasonCode": "meeting_change"},
+  "batchId": "df3ba45d-963a-453e-915e-be0f9e6c46fa",
+  "nativeNotification": {
+    "id": "notification-round-d9aa337b4305efb649149121ad2e6688ee9d0ad155132e1492f0b4a8181be989",
+    "state": "delivered",
+    "deliveredAt": "2026-10-23T10:31:14.869Z"
+  },
+  "notificationService": {"bannerState": "delivered", "observedAt": "2026-10-23T10:31:14.871Z"},
+  "mailHostStateAtReadback": "unknown",
+  "limits": [
+    "Explicitly selected the public test after detecting that app shutdown had disabled the cloud review preference",
+    "Native show event and service readback prove delivery; no user-read acknowledgement claimed",
+    "Mail host had settled the initial unknown result before the delayed native show receipt; repairing its readback projection",
+    "Restart-persistent preference and fully automatic new-mail admission require the next fresh-message run"
+  ]
+}

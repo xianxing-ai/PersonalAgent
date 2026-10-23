@@ -49,17 +49,18 @@ interface ApplyOptions extends WorkspacePatchApplyHostOptions {
   now: () => number;
 }
 
-interface HelperRequest {
+export interface LockedApplyRequest {
+  operation?: 'replace' | 'create';
   rootPath: string;
   sourcePath: string;
-  backupPath: string;
-  beforeSha256: string;
+  backupPath?: string;
+  beforeSha256?: string;
   afterSha256: string;
   afterBase64: string;
 }
 
-interface HelperResponse {
-  state: 'applied' | 'conflict' | 'unknown';
+export interface LockedApplyResponse {
+  state: 'applied' | 'created' | 'conflict' | 'exists' | 'unknown';
   backupRetained?: boolean;
 }
 
@@ -72,10 +73,10 @@ function atOrWithin(root: string, candidate: string): boolean {
   return part === '' || (part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part));
 }
 
-function check(context: ToolContext, now: () => number): number {
-  if (!context.scopes.includes('workspace:read') || !context.scopes.includes('workspace:write')
-    || !context.scopes.includes(WORKSPACE_PATCH_APPLY_SCOPE)) {
-    throw new ProtocolError('SCOPE_DENIED', 'Workspace patch apply requires read, write and apply scopes');
+function check(context: ToolContext, now: () => number,
+  requiredScopes: readonly string[] = ['workspace:read', 'workspace:write', WORKSPACE_PATCH_APPLY_SCOPE]): number {
+  if (requiredScopes.some(scope => !context.scopes.includes(scope))) {
+    throw new ProtocolError('SCOPE_DENIED', 'Workspace write requires read, write and operation scopes');
   }
   if (typeof context.runId !== 'string' || !context.runId.trim()
     || !INPUT_DIGEST.test(context.argumentsDigest ?? '')) {
@@ -95,13 +96,14 @@ async function invokeHelper(
   executable: string,
   script: string,
   processIdentityHelperPath: string | undefined,
-  request: HelperRequest,
+  request: LockedApplyRequest,
   inflightPath: string,
   context: ToolContext,
   now: () => number,
-): Promise<HelperResponse> {
+  options: {requiredScopes?: readonly string[]} = {},
+): Promise<LockedApplyResponse> {
   void processIdentityHelperPath;
-  let remaining = check(context, now);
+  let remaining = check(context, now, options.requiredScopes);
   let child: ReturnType<typeof spawn>;
   try {
     child = spawn(executable, ['-NoProfile', '-NonInteractive', '-File', script], {
@@ -255,7 +257,7 @@ async function invokeHelper(
   }
 
   try {
-    remaining = check(context, now);
+    remaining = check(context, now, options.requiredScopes);
   } catch (error) {
     try { child.kill('SIGKILL'); } catch { /* no candidate bytes were sent */ }
     await waitAfterKill();
@@ -265,14 +267,13 @@ async function invokeHelper(
   let markerFd: number | undefined;
   try {
     markerFd = openSync(inflightPath, 'wx', 0o600);
-    writeSync(markerFd, JSON.stringify({
-      runId: context.runId,
-      argumentsDigest: context.argumentsDigest,
-      pid: readyIdentity.pid,
-      startTimeTicks: readyIdentity.startTimeTicks,
-      beforeSha256: request.beforeSha256,
-      afterSha256: request.afterSha256,
-    }));
+    // Replace keeps the historical six-key marker; create has no "before" bytes.
+    writeSync(markerFd, JSON.stringify(request.operation === 'create'
+      ? {operation: 'create', runId: context.runId, argumentsDigest: context.argumentsDigest,
+        pid: readyIdentity.pid, startTimeTicks: readyIdentity.startTimeTicks, afterSha256: request.afterSha256}
+      : {runId: context.runId, argumentsDigest: context.argumentsDigest,
+        pid: readyIdentity.pid, startTimeTicks: readyIdentity.startTimeTicks,
+        beforeSha256: request.beforeSha256, afterSha256: request.afterSha256}));
     fsyncSync(markerFd);
     closeSync(markerFd);
     markerFd = undefined;
@@ -302,7 +303,7 @@ async function invokeHelper(
   child.stdin?.on('error', stopInput);
   context.signal.addEventListener('abort', onAbort, {once: true});
   try {
-    remaining = check(context, now);
+    remaining = check(context, now, options.requiredScopes);
   } catch (error) {
     stop(error instanceof ProtocolError ? error : new ProtocolError('RESULT_UNKNOWN', 'Workspace patch apply preflight failed'));
   }
@@ -345,7 +346,7 @@ async function invokeHelper(
     throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an invalid receipt');
   }
   const parsed = response as Record<string, unknown>;
-  if (!['applied', 'conflict', 'unknown'].includes(String(parsed.state))
+  if (!['applied', 'created', 'conflict', 'exists', 'unknown'].includes(String(parsed.state))
     || (parsed.backupRetained !== undefined && typeof parsed.backupRetained !== 'boolean')) {
     throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper returned an invalid receipt');
   }
@@ -357,7 +358,7 @@ async function invokeHelper(
   } catch {
     throw new ProtocolError('RESULT_UNKNOWN', 'Workspace patch helper exited but in-flight record remains');
   }
-  return parsed as unknown as HelperResponse;
+  return parsed as unknown as LockedApplyResponse;
 }
 
 
@@ -473,3 +474,5 @@ export function createWorkspacePatchApplyToolFromPreview(options: ApplyOptions):
     },
   };
 }
+
+export {invokeHelper as invokeLockedApplyHelper};

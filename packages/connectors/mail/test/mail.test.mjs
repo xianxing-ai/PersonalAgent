@@ -5,6 +5,7 @@ import {
   FakeMailProvider,
   MailConnector,
   MailService,
+  QQMailProvider,
   decodeMailCursor,
   encodeMailCursor,
   messageFromImap,
@@ -16,6 +17,46 @@ import {ProtocolError, validateContract} from '@personal-agent/contracts';
 
 const NOW = Date.parse('2026-09-07T02:00:00.000Z');
 const ACCOUNT = 'qq-me';
+
+function syntheticQQ({searchResult,fetchUids=[],abortSearch}={}){
+  let released=0,fetches=0,searches=0;
+  const provider=new QQMailProvider({user:'synthetic@qq.com',authCode:'SyntheticOnly'});
+  provider.connect=async()=>({mailbox:{uidValidity:123,exists:5000},
+    async getMailboxLock(){return{release(){released++;}};},
+    async search(query,options){searches++;assert.deepEqual(query,{uid:'11:*'});assert.deepEqual(options,{uid:true});abortSearch?.();return searchResult;},
+    async *fetch(uids,query,options){fetches++;assert.deepEqual(uids,[11,12]);assert.equal(options.uid,true);
+      for(const uid of fetchUids)yield{uid,envelope:{subject:'Synthetic public header'},flags:new Set()};}});
+  return {provider,input:{folder:'INBOX',cursor:{uidValidity:123,lastUid:10},limit:2},
+    stats:()=>({released,fetches,searches})};
+}
+
+test('QQ failed UID search never becomes a completed empty page',async()=>{
+  const f=syntheticQQ({searchResult:false});
+  await assert.rejects(f.provider.fetchPage(ACCOUNT,f.input),{code:'EXTERNAL_FAILURE',message:'Mail UID search did not return a confirmed result'});
+  assert.equal(f.input.cursor.lastUid,10);assert.deepEqual(f.stats(),{released:1,fetches:0,searches:1});
+});
+test('QQ missing or incomplete UID fetch fails without committing a cursor',async()=>{
+  for(const fetchUids of [[],[11],[11,11],[11,13]]){
+    const f=syntheticQQ({searchResult:[11,12,13],fetchUids});
+    await assert.rejects(f.provider.fetchPage(ACCOUNT,f.input),{code:'EXTERNAL_FAILURE',message:'Mail UID fetch did not return the complete requested page'});
+    assert.equal(f.input.cursor.lastUid,10);assert.deepEqual(f.stats(),{released:1,fetches:1,searches:1});
+  }
+});
+test('QQ confirmed empty UID search preserves the cursor and completes normally',async()=>{
+  const f=syntheticQQ({searchResult:[]}),page=await f.provider.fetchPage(ACCOUNT,f.input);
+  assert.deepEqual(page,{messages:[],uidValidity:123,nextCursor:{uidValidity:123,lastUid:10},hasMore:false});
+  assert.deepEqual(f.stats(),{released:1,fetches:0,searches:1});
+});
+test('QQ complete UID page keeps UID ordering and the remaining-page flag',async()=>{
+  const f=syntheticQQ({searchResult:[13,12,11],fetchUids:[12,11]}),page=await f.provider.fetchPage(ACCOUNT,f.input);
+  assert.deepEqual(page.messages.map(m=>m.uid),[11,12]);assert.deepEqual(page.nextCursor,{uidValidity:123,lastUid:12});assert.equal(page.hasMore,true);
+  assert.deepEqual(f.stats(),{released:1,fetches:1,searches:1});
+});
+test('QQ cancellation still takes precedence over an unconfirmed search result',async()=>{
+  const controller=new AbortController(),f=syntheticQQ({searchResult:false,abortSearch:()=>controller.abort()});
+  await assert.rejects(f.provider.fetchPage(ACCOUNT,{...f.input,signal:controller.signal}),{code:'CANCELLED'});
+  assert.deepEqual(f.stats(),{released:1,fetches:0,searches:1});
+});
 
 function makeService(fixtures, options = {}) {
   const provider = new FakeMailProvider(fixtures, options);

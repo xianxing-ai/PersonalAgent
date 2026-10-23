@@ -22,6 +22,7 @@ test('Synthetic original mail triage separates readiness from per-page receipt, 
     assertCurrent(current){assert.equal(current,batch??current);if(batch&&!live.has(current.batchId))throw Error('Synthetic batch ended');},
     assertPage(scope,current){assert.equal(current,batch);assert.ok(active.has(current.batchId));assert.equal(scope.taskId,selectedTask);},
     assertConsumed(scope,current){assert.equal(current,batch);assert.ok(active.has(current.batchId));assert.ok(records.has(scope.taskId));consumed.push(scope.taskId);},
+    finishPages(current){active.delete(current.batchId);},
     finish(current){active.delete(current.batchId);live.delete(current.batchId);}};
   const host=createQQMailTriageHost({user:'synthetic@qq.com',authCode:'SyntheticOnly',accountRef:'desktop-qq-inbox',namespace:'Synthetic',triage,
     storage:createEncryptedModuleStorage({userData:directory,safeStorage:{isEncryptionAvailable:()=>true,
@@ -32,7 +33,12 @@ test('Synthetic original mail triage separates readiness from per-page receipt, 
     nextMailReadSession(){if(sequence===2)return {state:'done'};selectedTask='page-'+(++sequence);return {state:'submitted',page:{task:{taskId:selectedTask}}};},
     stopMailReadSession(){},readHostToolTask:taskId=>({task:{state:records.has(taskId)?'succeeded':'waiting_approval'},
       ...(records.has(taskId)?{confirmed:{result:records.get(taskId)}}:{})})});
+  const conversationScope={taskId:'conversation-task',runId:'conversation-run',toolName:'mail.inbox',
+    toolVersion:host.tools[0].descriptor.version,deadline:new Date(Date.parse(deadline)-1000).toISOString(),signal:new AbortController().signal};
+  assert.throws(()=>host.prepareAuthorization(conversationScope),/outside the active manual batch/);
   host.startBatch({expiresAt:deadline});assert.equal(fetches,0);
+  host.prepareAuthorization(conversationScope);
+  assert.equal(prepared.length,0,'conversation read uses its own authorization route, without creating a batch page');
   const tool=host.tools[0],scope=index=>({taskId:'page-'+index,runId:'original-run-'+index,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
     deadline,signal:new AbortController().signal,authorizationRef:'Synthetic original Policy grant',scopes:['mail:read']});
   const firstScope=scope(1);host.prepareAuthorization(firstScope);assert.equal(prepared[0].parent,undefined);
@@ -44,6 +50,10 @@ test('Synthetic original mail triage separates readiness from per-page receipt, 
   assert.equal(prepared[1].parent.runId,firstScope.runId);assert.equal(batch.batchId,first);assert.equal(batch.limit,100);
   const page2=await tool.execute({account:'desktop-qq-inbox',folder:'INBOX',limit:100,cursor:page1.nextCursor},secondScope);records.set('page-2',page2);
   assert.equal((await host.refresh()).status,'complete');assert.equal(fetches,2);assert.ok(consumed.includes('page-1')&&consumed.includes('page-2'));
+  host.prepareAuthorization(conversationScope);
+  assert.equal(live.has(first),true,'completed pages retain the original manual-session binding');
+  assert.equal(active.has(first),false,'completed pages cannot reuse their page receipts');
   await assert.rejects(tool.execute({account:'desktop-qq-inbox',folder:'INBOX',limit:100},firstScope));assert.equal(fetches,2);
   assert.throws(()=>host.prepareAuthorization(secondScope));await host.cancel();assert.equal(active.size,0);
+  assert.throws(()=>host.prepareAuthorization(conversationScope),/outside the active manual batch/);
 });

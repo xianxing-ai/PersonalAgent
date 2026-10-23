@@ -3,6 +3,7 @@ import {WebSocketServer, WebSocket} from 'ws';
 import {ProtocolError} from '@personal-agent/contracts';
 import {ownedRequestPath} from './request-path.mjs';
 import {AGENTARTS_REALTIME_PROTOCOL} from './realtime-proxy.mjs';
+import {invocationExpiry,scheduleExpiry} from './invocation-timeout.mjs';
 import {
   AGENTARTS_TRANSPORT_VERSION,
   parseAgentArtsTransportFrame,
@@ -94,19 +95,19 @@ export function attachAgentWebSocketTransport(server, {
     }
   };
   const run = async record => {
-    const expiresAt = Math.min(Date.parse(record.deadline),Date.now()+timeoutMs);
     let timer, abortListener;
     try {
+      const expiresAt = invocationExpiry(record.deadline,timeoutMs);
       const cancelled = new Promise((_,reject) => {
         abortListener = () => reject(record.controller.signal.reason);
         record.controller.signal.addEventListener('abort',abortListener,{once:true});
         if (record.controller.signal.aborted) abortListener();
       });
       const expired = new Promise((_,reject) => {
-        timer = setTimeout(() => {
+        timer = scheduleExpiry(expiresAt,() => {
           const error = new ProtocolError('TIMEOUT','Invocation deadline expired');
           record.controller.abort(error); reject(error);
-        },Math.max(1,expiresAt-Date.now()));
+        });
       });
       const events = await Promise.race([
         Promise.resolve().then(() => invoke({payload:record.payload,
@@ -123,7 +124,7 @@ export function attachAgentWebSocketTransport(server, {
       record.code = failureCode(error);
       record.state = record.code === 'CANCELLED' ? 'cancelled' : 'failed';
     } finally {
-      clearTimeout(timer);
+      timer?.();
       record.controller.signal.removeEventListener('abort',abortListener);
       record.finishedAt = Date.now();
       record.owner.ownedInvocations.delete(record);

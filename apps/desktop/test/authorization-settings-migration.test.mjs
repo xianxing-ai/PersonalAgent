@@ -28,7 +28,7 @@ test('Synthetic Todo and Feeds settings retain configuration and revoke, with no
 
 test('Synthetic mail config saves credentials without a consent field and configured reads can reach their own question path',async t=>{
   const f=fixture(t,mountMailControls,{configured:true,sessionAllowed:false,localModelReady:true,status:'disabled'});
-  for(const name of ['enable','consent','cloudEnable','cloudConsent'])assert.equal(f.root.querySelector(`[data-mail="${name}"]`),null);
+  for(const name of ['enable','consent','cloudConsent'])assert.equal(f.root.querySelector(`[data-mail="${name}"]`),null);
   const field=name=>f.root.querySelector(`[data-mail="${name}"]`);
   field('user').value='synthetic@example.invalid';field('key').value='synthetic-secret';
   let payload;const original=field('save').onclick;
@@ -37,6 +37,18 @@ test('Synthetic mail config saves credentials without a consent field and config
   assert.equal(field('key').value,'');assert.equal(field('read').disabled,false,'all old consent false does not block starting the exact card challenge');
   await field('read').onclick();assert.equal(f.calls[1].name,'mail.read');
   f.controls.render({configured:false,localModelReady:true,status:'unconfigured'});assert.equal(field('read').disabled,true,'a card cannot replace missing credentials');
+});
+
+test('mail monitoring starts with one click without a separately started model or typed parameters',async t=>{
+  const f=fixture(t,mountMailControls,{configured:true,localModelReady:false,status:'disabled'});
+  const field=name=>f.root.querySelector(`[data-mail="${name}"]`);
+  assert.equal(field('monitorStart').disabled,false);
+  await field('monitorStart').onclick();assert.deepEqual(f.calls,[{name:'mail.monitor.start',input:undefined}]);
+  f.controls.render({configured:true,monitoring:{enabled:true,state:'reading'}});
+  assert.equal(field('monitorStart').disabled,true);assert.equal(field('monitorStop').disabled,false);
+  await field('monitorStop').onclick();assert.equal(f.calls[1].name,'mail.monitor.stop');
+  f.controls.render({configured:true,monitoring:{enabled:false,state:'failed',errorCode:'EXTERNAL_FAILURE'}});
+  assert.match(field('monitorStatus').textContent,/读取失败/);assert.equal(field('monitorStart').disabled,false);
 });
 
 test('Synthetic calendar retains credentials and read/cancel entry, with no settings approval duplicate',async t=>{

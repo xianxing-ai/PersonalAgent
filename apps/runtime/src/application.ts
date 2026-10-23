@@ -26,6 +26,8 @@ export type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope,Deve
 export {DEVELOPER_HARNESS_TOOL_NAME,DEVELOPER_HARNESS_TOOL_VERSION} from './application/developer-harness.js';
 export type {RuntimeDeveloperHarnessOptions,DeveloperHarnessResult} from './application/developer-harness.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
+export {MAIL_REVIEW_TOOL,MAIL_REVIEW_RESULT,parseMailReviewResult} from './application/mail-review-task.js';
+export type {MailReviewBinding,MailReviewEnvelope,MailReviewResult,RuntimeMailReviewOptions} from './application/mail-review-task.js';
 export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
 export type {CalendarReadBinding, CalendarEventReadOptions} from './application/calendar-read.js';

@@ -76,7 +76,8 @@ async function fixture(t){
       reject(error);
     };
     const request=httpRequest(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,agent:false,
-      headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers,connection:'close'}},response=>{
+      headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,
+        'x-pa-deadline':new Date(Date.now()+3000).toISOString(),...headers,connection:'close'}},response=>{
       const chunks=[];
       response.on('data',chunk=>chunks.push(chunk));
       response.once('error',error=>fail('response',error));

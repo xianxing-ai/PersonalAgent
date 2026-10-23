@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {connectorCards,connectorDestination} from '../src/features/workspace/connectors.js';
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+test('mail keeps classified counts when unread totals are unavailable and directs users to monitoring',()=>{
+ const mail={configured:true,status:'disabled',sessionAllowed:false,account:'<masked>',counts:{total:7363}};
+ const card=connectorCards({mail},escape).split('data-connector="mail"')[1].split('</article>')[0];
+ assert.match(card,/已分类 7363 封/);assert.match(card,/启动邮件监测/);assert.match(card,/&lt;masked&gt;/);
+ assert.doesNotMatch(card,/尚未拉取邮件|7363 封未读/);
+ const running=connectorCards({mail:{...mail,monitoring:{enabled:true,state:'monitoring'}}},escape);
+ assert.match(running,/新邮件监测中/);
+});
 test('unconfigured connectors and empty services show empty states instead of invented personal data',()=>{
  for(const data of [{},{todo:{available:true,items:[]},feeds:{available:true,subscriptions:[]}}]){
   const html=connectorCards(data,escape);assert.match(html,/暂无通知/);assert.match(html,/暂无天气数据/);

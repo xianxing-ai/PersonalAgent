@@ -17,7 +17,7 @@ test('competition conversation gives Runtime a cloud execution deadline without 
   const {taskId} = await submitConversationTask(client,
     {goal: '输出九九乘法表', conversationId: 'desktop-panel'}, {competition: true});
   const submitted = requests.at(-1);
-  assert.equal(Date.parse(submitted.deadline) - runtime.clock.now(), 180_000);
+  assert.equal(Date.parse(submitted.deadline) - runtime.clock.now(), 30 * 60_000);
   assert.ok(submitted.idempotencyKey);
   await client.call('task.get', {taskId});
   assert.equal(Date.parse(requests.at(-1).deadline) - runtime.clock.now(), 10_000);

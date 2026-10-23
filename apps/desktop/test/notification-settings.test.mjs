@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mountNotificationSettings} from '../src/features/admin/notification-settings.js';
+import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createServer} from 'node:http';
 import {readFile,mkdir} from 'node:fs/promises';
 import {resolve,extname,join} from 'node:path';
@@ -43,15 +44,19 @@ test('notification page submits current scope/revision, preserves draft and sepa
   const url='http://127.0.0.1:'+server.address().port+'/?mode=admin';await page.goto(url);
   const controls=page.locator('.notification-settings');await controls.waitFor();assert.equal(await page.title(),'PersonalAgent 通知设置夹具');assert.equal(page.url(),url);
   assert.match(await controls.textContent(),/静默仍接收变化/);assert.equal(await controls.locator('input[type=password]').count(),0);
-  assert.equal(await controls.locator('[name=window]').inputValue(),'');assert.equal(await controls.locator('[name=maximum]').inputValue(),'');
+  assert.equal(await controls.locator('[name=window]').inputValue(),'1');assert.equal(await controls.locator('[name=maximum]').inputValue(),'');
+  assert.equal(await controls.locator('[name=unlimited]').isChecked(),true);
+  assert.equal(await controls.locator('[name=connector]').isVisible(),false);
+  await controls.getByText('高级设置：频率、摘要与安静时段',{exact:true}).click();
   await controls.locator('[name=mode]').selectOption('normal');await controls.locator('[name=window]').fill('17');await controls.locator('[name=maximum]').fill('3');
   await controls.locator('[name=channel]').selectOption('banner');await controls.locator('[name=digest]').selectOption('on_return');
-  await controls.getByRole('button',{name:'保存当前参数',exact:true}).click();
+  await controls.getByRole('button',{name:'保存设置',exact:true}).click();
   await page.waitForFunction(()=>window.calls.some(c=>c.name==='notifications.configure'));
   const saved=await page.evaluate(()=>window.calls.find(c=>c.name==='notifications.configure').payload);
   assert.equal(saved.expectedRevision,0);assert.equal(saved.patch.maxInterruptions,3);assert.deepEqual(saved.scope,{kind:'global'});
-  await controls.locator('[name=scope]').selectOption('connector');await controls.locator('[name=connector]').fill('mail');
-  await controls.getByRole('button',{name:'读取当前范围',exact:true}).click();await page.waitForFunction(()=>window.calls.some(c=>c.name==='notifications.get'));
+  await controls.locator('[name=scope]').selectOption('connector');
+  await page.waitForFunction(()=>window.calls.some(c=>c.name==='notifications.get'&&c.payload.scope.connectorId==='mail'));
+  assert.equal(await controls.locator('[name=connector]').inputValue(),'mail');
   await controls.locator('[name=mode]').selectOption('silent');
   await page.evaluate(()=>window.update(structuredClone(window.fixture)));assert.equal(await controls.locator('[name=mode]').inputValue(),'silent');
   assert.equal(await controls.locator('[data-notifications=voice]').count(),0,'approval only happens in the original card');
@@ -67,6 +72,24 @@ test('notification page submits current scope/revision, preserves draft and sepa
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.setViewportSize({width:600,height:850});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   if(output)await page.screenshot({path:join(output,'notification-settings-narrow.png')});
+  assert.deepEqual(errors,[]);
+  await page.setViewportSize({width:1100,height:900});
+  await page.setContent('<link rel="icon" href="data:,"><link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/app/style.css"><link rel="stylesheet" href="/app/surfaces.css"><main id="mail-preview" style="max-width:800px;margin:20px auto"></main>');
+  await page.evaluate(async()=>{
+    const {mountMailControls}=await import('/app/mail-controls.js');
+    window.mailCalls=[];
+    const initial={configured:true,account:'测试邮箱（脱敏）',localModelReady:false,status:'disabled',counts:{total:7363}};
+    const view=mountMailControls(document.querySelector('#mail-preview'),async(name,payload)=>{
+      window.mailCalls.push({name,payload});return {...initial,monitoring:{enabled:true,state:'monitoring'}};
+    });
+    view.render(initial);document.querySelector('#mail-preview details').open=true;
+  });
+  const mail=page.locator('#mail-preview');
+  await mail.getByRole('button',{name:'启动邮件监测',exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>window.mailCalls),[{name:'mail.monitor.start',payload:undefined}]);
+  assert.equal(await mail.getByRole('button',{name:'启动邮件监测',exact:true}).isDisabled(),true);
+  assert.equal(await mail.getByRole('button',{name:'停止监测',exact:true}).isEnabled(),true);
+  if(output)await page.screenshot({path:join(output,'mail-monitor-settings.png'),fullPage:true});
   assert.deepEqual(errors,[]);
 });
 
@@ -114,6 +137,12 @@ async function loadMail(h) {
 }
 
 test('notification settings preserve selected scope and revision',{concurrency:false},async t=>{
+  await t.test('new settings save without filling technical fields',async t=>{
+    const h=scopeFixture(t);h.render(center(globalScope,0,null));
+    h.reply({state:'confirmed',taskId:'fixture',notificationCenter:center(globalScope,1,defaultNotificationSettings)});
+    await h.act('submit');assert.equal(h.calls[0].action,'notifications.configure');
+    assert.deepEqual(h.calls[0].payload.patch,defaultNotificationSettings);
+  });
   await t.test('unconfigured global revision zero can save',async t=>{
     const h=scopeFixture(t);h.render(center(globalScope,0,null));
     for(const [name,value] of Object.entries({mode:'normal',window:'17',maximum:'3',

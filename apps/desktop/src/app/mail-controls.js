@@ -5,26 +5,34 @@ export function mountMailControls(root, invoke) {
   const anchor = root.querySelector('#error');
   if (anchor) anchor.before(settings); else root.append(settings);
   const field = name => settings.querySelector(`[data-mail="${name}"]`);
+  const monitorControls=document.createElement('div');monitorControls.className='sis-fields';
+  monitorControls.innerHTML='<h3>新邮件监测</h3><p class="notice">一键启动本地模型并监测新邮件：默认每2分钟检查，本次持续8小时。重要邮件按通知设置提醒；关闭应用后停止，可再次点击恢复。</p><button data-mail="monitorStart" type="button">启动邮件监测</button><button data-mail="monitorStop" type="button">停止监测</button><p data-mail="monitorStatus" class="notice" role="status"></p>';
+  field('read').before(monitorControls);
   const cloudControls=document.createElement('div');
   cloudControls.className='sis-fields';
-  cloudControls.innerHTML='<p class="notice">需要主智能体分析时，在主对话发起请求；该次卡片会列出所需邮件访问与 AgentArts 出机范围。</p><button data-mail="cloudDisable" type="button">停止已有云端分析</button><p data-mail="cloudStatus" class="notice" role="status"></p>';
+  cloudControls.innerHTML='<p class="notice">可让云端模型复核新收到的模糊邮件，仅发送信头，不含正文；历史积压不自动上传，随时可以停止。</p><button data-mail="cloudEnable" type="button">允许新模糊信头云端复核</button><button data-mail="cloudDisable" type="button">停止云端复核</button><p data-mail="cloudStatus" class="notice" role="status"></p>';
   field('status').before(cloudControls);
   let busy = false, state = {};
   const buttons = () => {
     field('save').disabled = busy;
+    const monitoring=state.monitoring??{};
+    field('monitorStart').disabled=busy||!state.configured||state.requiresRestart||monitoring.enabled===true
+      ||['starting','created','planning','running','waiting_approval'].includes(monitoring.state);
+    field('monitorStop').disabled=busy||!monitoring.enabled&&!['created','planning','running','waiting_approval','waiting_reconciliation'].includes(monitoring.state);
     field('read').disabled = busy || !state.configured || state.requiresRestart || !state.localModelReady
       || ['unavailable', 'reading', 'waiting_approval', 'classifying', 'stopping', 'stop_unconfirmed'].includes(state.status);
     // 撤销必须在任何时刻可用：sessionAllowed 只代表本会话读取许可，且不跨重启保留。
     // 以它作为撤销前置会让重启后永久无法撤销邮箱配置（2026-10-22 实测）。
     field('disable').disabled = busy || !state.configured;
     field('cloudDisable').disabled = busy || !state.cloudAnalysisAllowed;
+    field('cloudEnable').disabled = busy || !state.configured || state.requiresRestart || state.cloudAnalysisAllowed;
   };
   const run = async (name, payload) => {
     busy = true; buttons();
     try {
       const result = await invoke(name, payload);
       if (result) render(result);
-    } catch {field('status').textContent = '邮箱操作未完成，请查看本地状态或重新配置';}
+    } catch(error) {field('status').textContent = error?.message || '邮箱操作未完成，请查看当前状态';}
     finally {busy = false; buttons();}
   };
   field('save').onclick = async () => {
@@ -33,20 +41,32 @@ export function mountMailControls(root, invoke) {
     try {await run('mail.configure', payload);} finally {payload.authCode = '';}
   };
   field('read').onclick = () => run('mail.read');
+  field('monitorStart').onclick=()=>run('mail.monitor.start');
+  field('monitorStop').onclick=()=>run('mail.monitor.stop');
   field('disable').onclick = () => run('mail.disable');
   field('cloudDisable').onclick=()=>run('mail.disableCloud');
+  field('cloudEnable').onclick=()=>run('mail.review.configure',{enabled:true});
   function render(value = {}) {
     state = value;
     const counts = value.counts ?? {};
     const labels = {meeting:'会议', work:'工作', subscription:'订阅', transaction:'订单与账单', personal:'个人', other:'其他'};
     const states = {unconfigured:'未配置', enabled:'已允许', disabled:'已停止', ready:'就绪', unavailable:'不可用',
       reading:'正在读取', running:'正在读取', pending:'等待处理', classifying:'正在分类', classification_unavailable:'分类中断，可重试',
-      complete:'本批分类完成', failed:'读取失败', cancelled:'已取消', stop_unconfirmed:'正在确认停止',
+      complete:'本批处理完成', failed:'读取失败', cancelled:'已取消', stop_unconfirmed:'正在确认停止',
       resync_required:'分页已失效，点击开始批量分类重新同步'};
     const groups = Object.entries(counts.groups ?? {}).map(([key,count]) => `${labels[key] || key} ${count}`).join('，');
-    field('status').textContent = `${value.account || '未配置邮箱'} · ${states[value.status] || value.status || '未配置'}${value.requiresRestart ? ' · 配置已保存，下次启动生效' : ''} · 已分类 ${counts.total ?? 0}，待核对 ${counts.needsReview ?? 0}，会议候选 ${counts.meetingCandidates ?? 0}${groups ? ` · ${groups}` : ''}${!value.localModelReady ? ' · 请先启动本地 Laya' : ''}${value.reason ? ` · ${value.reason}` : ''}`;
+    const monitor=value.monitoring??{},monitorStates={stopped:'未启动',starting:'正在启动本地模型',created:'正在准备监测',planning:'正在准备监测',
+      running:'正在启动监测',waiting_origin:'监测已创建，等待首次检查',monitoring:'监测中',reading:'正在检查邮件',waiting_source:'等待本地分类任务结束',
+      waiting_approval:'等待授权，请查看主对话授权卡',waiting_reconciliation:'原操作结果待核实',failed:'监测启动或读取失败',cancelled:'已取消',
+      classification_unavailable:'本地分类中断，请点击启动恢复',expired:'本次监测已到期',revoked:'重启或配置变更后已停止，请点击启动恢复',
+      needs_reauthorization:'需要重新启动监测',disabled:'已停止',resync_required:'邮箱需要重新同步'};
+    const displayTime=value=>Number.isFinite(Date.parse(value))?new Date(value).toLocaleString():'';
+    field('monitorStatus').textContent=`${monitorStates[monitor.state]??monitor.state??'未启动'}${monitor.lastCheckedAt?' · 最近检查 '+displayTime(monitor.lastCheckedAt):''}${monitor.enabled&&monitor.nextCheckAt?' · 下次检查 '+displayTime(monitor.nextCheckAt):''}${monitor.enabled&&monitor.expiresAt?' · 到期 '+displayTime(monitor.expiresAt):''}${monitor.errorCode?' · '+monitor.errorCode:''}`;
+    field('status').textContent = `${value.account || '未配置邮箱'} · ${states[value.status] || value.status || '未配置'}${value.requiresRestart ? ' · 配置已保存，下次启动生效' : ''} · 已处理 ${counts.total ?? 0}，待核对 ${counts.needsReview ?? 0}，云复核 ${counts.cloudReviewed ?? 0}，会议候选 ${counts.meetingCandidates ?? 0}${groups ? ` · ${groups}` : ''}${!value.localModelReady ? ' · 启动监测时自动准备本地 Laya' : ''}${value.reason ? ` · ${value.reason}` : ''}`;
     const analyses=value.analyses?.tasks ?? [];
-    field('cloudStatus').textContent=`${value.cloudAnalysisAllowed?'主智能体分析已开启，结果保留在主对话':'云端分析未开启；本地分类可独立运行'}${analyses.length?` · 已交接 ${analyses.length}，完成 ${analyses.filter(item=>item.state==='succeeded').length}`:''}${value.analyses?.reason?` · ${value.analyses.reason}`:''}`;
+    const reviewCounts=typeof value.analyses?.reviewed==='number'?` · 复核完成 ${value.analyses.reviewed}，处理中 ${value.analyses.pending??0}，未完成 ${value.analyses.failed??0}`
+      :analyses.length?` · 已交接 ${analyses.length}，完成 ${analyses.filter(item=>item.state==='succeeded').length}`:'';
+    field('cloudStatus').textContent=`${value.cloudAnalysisAllowed?'新模糊信头云复核已开启；分类结果保留在本机，重要邮件按通知策略提醒':'云复核未开启；本地分类可独立运行'}${reviewCounts}${value.analyses?.failed?' · 云复核未完成的邮件保留本地结果，不代表邮箱读取失败':''}${value.analyses?.reason?` · ${value.analyses.reason}`:''}`;
     buttons();
   }
   return {render, showSettings(show) {settings.hidden = !show;}, close() {field('key').value = ''; settings.remove();}};

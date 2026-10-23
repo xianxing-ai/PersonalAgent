@@ -1078,6 +1078,18 @@ function parseApplicationResult(text: string, repairCandidateVersion: '1.0' | un
   return parseCoordinationResult({...value, verification: 'unverified'});
 }
 
+function parseTextOnlyApplicationResult(text:string,repairCandidateVersion:'1.0'|undefined):CoordinationResult {
+  let value:unknown;
+  try {value=JSON.parse(text);}catch {/* Plain model text needs no application envelope. */}
+  if(asPlainObject(value)&&Object.prototype.hasOwnProperty.call(value,'kind')) {
+    const result=parseApplicationResult(text,repairCandidateVersion);
+    if(result.kind!=='text')invalid('Text-only coordination cannot propose tools or repairs');
+    return result;
+  }
+  // Host-only structured consumers validate this opaque text with their own schema.
+  return parseCoordinationTextResult({kind:'text',text,verification:'unverified'});
+}
+
 /** Bounded Competition transport; JSON proposals and WSS require explicit trusted-host opt-in. */
 export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly gatewayOrigin: string;
@@ -1233,7 +1245,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     }
     const modelSelection = executionModel===undefined?{}:{executionModel};
     const query = continuation === undefined
-      ? availableTools === undefined && executionModel===undefined ? goal : JSON.stringify({goal, availableTools:availableTools??[],...modelSelection})
+      ? !textOnly && availableTools === undefined && executionModel===undefined ? goal : JSON.stringify({goal, availableTools:availableTools??[],...modelSelection})
       : availableTools === undefined && this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
         && Object.prototype.hasOwnProperty.call(continuation.result, 'repairContext')
         ? executionModel===undefined?candidateContinuationQuery(continuation):JSON.stringify({continuation,...modelSelection})
@@ -1474,7 +1486,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       if (bodyAbort) throw bodyAbort;
       stage = 'application_schema';
       try {
-        const result = this.responseMode === 'tool-proposal-json' ? parseApplicationResult(text, this.repairCandidateVersion)
+        const result = this.responseMode === 'tool-proposal-json'
+          ? textOnly ? parseTextOnlyApplicationResult(text,this.repairCandidateVersion) : parseApplicationResult(text, this.repairCandidateVersion)
           : parseCoordinationTextResult({kind: 'text', text, verification: 'unverified'});
         if (textOnly && result.kind !== 'text') invalid('Text-only coordination cannot propose tools or repairs');
         if (fallbackReceipt !== undefined) { guards.afterTerminal?.(fallbackReceipt); fallbackStarted = false; }

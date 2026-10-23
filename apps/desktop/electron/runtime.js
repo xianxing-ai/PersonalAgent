@@ -26,6 +26,6 @@ export function submitConversationTask(client, payload, {competition = false} = 
   // Client's 10s RPC default is too short for a deployed cloud workflow.
   return client.call('task.submit', payload, {
     idempotencyKey: crypto.randomUUID(),
-    ...(competition ? {timeoutMs: 180_000} : {}),
+    ...(competition ? {timeoutMs: 30 * 60_000} : {}),
   });
 }

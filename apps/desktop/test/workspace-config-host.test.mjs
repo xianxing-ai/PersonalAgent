@@ -560,6 +560,58 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   await assert.rejects(host.harnessRepairHost.snapshot('unused',context),{code:'UNAUTHORIZED'});
 });
 
+test('a workspace without package.json never advertises a required npm-test recipe and keeps F15 honestly unavailable',async t=>{
+  for (const withCheckFile of [true,false]) await t.test(withCheckFile
+    ?'a selected check file exposes only the node-check recipe'
+    :'no exposed recipe leaves F15 unavailable instead of ready',async t=>{
+    const {root,node,configuration,open}=await workspaceBindingFixture(t);
+    // Metadata fixtures only: the npm CLI and the job helper are never launched.
+    const npm=path.join(path.dirname(root),'npm-cli.js'),helper=path.join(path.dirname(root),'WindowsJobProcessHost.exe');
+    await Promise.all([writeFile(npm,'// synthetic npm metadata only'),writeFile(helper,'synthetic helper metadata only')]);
+    const record=JSON.parse(await readFile(configuration,'utf8'));
+    record.encryptedNpmCli=Buffer.from(npm).toString('base64');
+    if (withCheckFile) {
+      await writeFile(path.join(root,'check.js'),'const synthetic = true;\n');
+      record.encryptedCheckFile=Buffer.from('check.js').toString('base64');
+    }
+    await writeFile(configuration,JSON.stringify(record));
+    const question=workspaceQuestions();
+    const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined,jobHelperExecutable:helper,
+      createCommandRecipeTool:createWorkspaceCommandRecipeTool,createWorkspaceCommandTool:options=>createWorkspaceCommandTool(options),
+      readHarnessVersions:()=>({workflowVersion:'F15-fixture-v1',runtimeVersion:'runtime-fixture-v1',executionKind:'real_host'})});
+    const checkpoints=new Map();
+    host.bindApplication({readToolConversation:()=> 'fixture-conversation',runtime:{
+      loadCheckpoint:(task,key)=>checkpoints.get(task+':'+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+':'+key,value)}});
+    const context={taskId:'owner-task',runId:'fixture-run',authorizationRef:'fixture-run',
+      scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],
+      deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+    const tool=host.tools.find(item=>item.descriptor.name==='workspace.read_text');
+    const proposalId='synthetic-proposal';
+    host.prepareExport({taskId:context.taskId,runId:context.runId,proposalId,deadline:context.deadline,signal:context.signal,
+      authorizationRef:context.authorizationRef,scopes:context.scopes,phase:'preflight',
+      proposal:{proposalId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{path:'check.js'}}});
+    question.allow({taskId:context.taskId,runId:context.runId});
+    const binding=host.readDeveloperConfiguration();
+    assert.ok(binding,'the developer configuration must stay bound to the selected workspace');
+    const scope={ownerTaskId:context.taskId,actualTaskId:context.taskId,parentTaskId:'parent-task',scopeRef:context.runId,
+      configurationRef:'a'.repeat(64),inputDigest:'b'.repeat(64),deadline:context.deadline,workspaceRef:binding.bindingId};
+    const result=await host.readHarnessCandidateContext(context,scope);
+    if (withCheckFile) {
+      assert.ok(result,'the selected node check keeps F15 available');
+      assert.deepEqual(result.recipes.map(recipe=>recipe.recipeId),['node-check']);
+      assert.equal(result.recipes.every(recipe=>recipe.required===true),true);
+    } else {
+      assert.equal(result,undefined,'a workspace without any exposed recipe must not report a runnable F15');
+    }
+    assert.equal(Boolean(result?.recipes?.some(recipe=>recipe.recipeId==='npm-test'||recipe.recipeId==='npm-build')),false,
+      'a workspace without package.json must never advertise a required npm recipe');
+    assert.equal(host.tools.some(item=>['workspace.npm_test','workspace.npm_build'].includes(item.descriptor.name)),false);
+    const current=host.readHarnessExperienceCurrentSync();
+    if (withCheckFile)assert.ok(current,'the current F15 experience stays readable for the selected node check');
+    else assert.equal(current,undefined,'the current F15 experience must be honestly unavailable');
+  });
+});
+
 test('local read consent permits MCP binding without granting AgentArts availability or export',async t=>{
   const {root,open}=await workspaceBindingFixture(t);
   const host=open();
@@ -808,6 +860,10 @@ test('native workspace selections expose standalone Node tests and retain normal
       const checkpoints=new Map();host.bindApplication({runtime:{loadCheckpoint:(id,key)=>checkpoints.get(`${id}:${key}`),
         saveCheckpoint:(id,key,value)=>checkpoints.set(`${id}:${key}`,value)}});
       assert.equal(host.snapshot().projectScriptsAvailable,true);
+      const createTool=host.tools.find(tool=>tool.descriptor.name==='workspace.create_text');
+      assert.ok(createTool,'create-only workspace tool is registered with the locked helper');
+      assert.deepEqual(createTool.descriptor.requiredScopes,['workspace:read','workspace:write','workspace:create']);
+      assert.equal(createTool.descriptor.sideEffect,'local_write');
       const snapshot=await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true});
       assert.equal(snapshot.nodeCheckAvailable,true);
       assert.deepEqual(snapshot.projectCommands,standalone?['test']:['build','test']);

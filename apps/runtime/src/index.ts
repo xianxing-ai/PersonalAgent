@@ -752,7 +752,10 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   /** Host-question invalidation resolves the same pending approval without issuing a grant. */
-  invalidatePendingApproval(approvalId:string,reason:'cancelled'|'stale'):void {
+  invalidatePendingApproval(approvalId:string,reason:'cancelled'|'stale',cause?:unknown):void {
+    // Only fixed local scope errors may become public task errors; arbitrary provider errors can contain private data.
+    const safeCauses=new Set(['Mail conversation read is outside the active manual batch','Mail page is outside the original manual batch']);
+    const causeMessage=cause instanceof Error&&safeCauses.has(cause.message)?cause.message:undefined;
     const resolved=this.transaction(()=>{
       const approval=this.getApproval(approvalId);
       if(approval.state!=='pending')return [];
@@ -772,7 +775,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           ||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-inflight'))||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-unknown'));
         this.updateTask(task.taskId,unknown?'waiting_reconciliation':reason==='cancelled'?'cancelled':'failed',
           {evidenceRefs:[...new Set([...task.evidenceRefs,evidenceId])],error:{code:unknown?'RESULT_UNKNOWN':reason==='cancelled'?'CANCELLED':'REVISION_CONFLICT',retryable:false,
-            message:unknown?'原授权请求已失效；已有操作结果仍待核实，不会重新执行。':'原授权请求已失效，本次操作未执行；请在当前对话重新提出。'}},true);
+            message:unknown?'原授权请求已失效；已有操作结果仍待核实，不会重新执行。':causeMessage??'原授权请求已失效，本次操作未执行；请在当前对话重新提出。'}},true);
       }
       return [approval];
     });

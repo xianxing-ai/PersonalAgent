@@ -1,0 +1,142 @@
+# PR503 邮件与云端任务期限实机记录
+
+目标 profile：`huawei_ict_agentarts`，分支 `codex/autonomous-change-loop`。本轮已合入 main `f0e73515`，本地合并提交 `c4f88e9d`。本记录不代表完整产品或平台验收通过。
+
+## 实现
+
+- 桌面主对话默认任务期限为 30 分钟；子任务及续轮继承同一绝对期限。
+- 云端源码支持原请求期限，并保留显式服务端上限、取消、并发及结果回执语义。
+- Issue500：对话邮件读取使用独立授权；手工批次分页完成后保留原批次绑定，分页权限不能重开，取消或撤销仍使绑定失效。
+- 批次完成后，已消费的原读取回执仍可供本地分析读取、确认；它不授予新的分页执行。生产提问卡组合测试覆盖完成后分析有效，以及取消、撤销、过期后拒绝。
+- 邮件界面展示实际读取、分类、完成或失败状态，不再被提问卡模式中的配置布尔值错误覆盖；配置状态不变成执行授权。
+- 新增可审查的同镜像启动补丁及命令生成器，仅延长受信模型请求的 HTTP headers/body 超时，保留原取消信号、TLS、凭据、模型和推理档位。
+
+公共工具 Schema 和数据库迁移未改变。`batchAuthorization.finishPages` 为宿主接线新增接口，消费方及测试已更新。
+
+## 云端变更与真实边界
+
+沿用已有 `personal-agent-owned:context-128k-20261022` 镜像，未构建或发布新镜像。
+
+1. 保存配置版本 `arm64-timeout30m-1023`，`PA_AGENT_TIMEOUT_MS=1800000`，Latest 指向该配置。
+2. 首次重测确认主子任务 `deepseek-v4.1-flash / max`，父期限恰为 1800000 ms，子任务继承相同期限；子任务约 301 秒后 `EXTERNAL_FAILURE`，无文件工具执行。
+3. 保存配置版本 `arm64-fetch30m-1023`，仅增加启动命令，镜像及已有环境值保持不变。平台读回启动回执：Node 24.15.0、fetch timeout 1800000 ms、模型 origin 数为 1，随后服务监听成功。
+4. 独立桌面实例再次实测，越过原 300 秒失败点，但子任务约 1077 秒后仍收到 `EXTERNAL_FAILURE`。请求 ID：`5ffde70c-1bf4-4b5b-b850-f0f8947457e7`。平台模型代理阶段完成，HTTP 200，上游请求 ID `c38ff0fd94732ebbbeaaed143cb80b61`；错误发生在后续响应处理，现有日志不足以区分空内容、截断或业务 JSON 无效。没有 HTML 或文件工具回执，鹈鹕验收仍失败。
+5. 按用户后续要求，保存同镜像配置版 `arm64-output32k-1023`，将 `PA_AGENT_MAX_OUTPUT_TOKENS` 从 2048 提高至 32768；平台 Latest 已映射新版，重新打开配置表单读回 32768/1800000 ms，启动命令及镜像未变。源码默认值同步为 32768。随后正式用户实例已安全重启并使用新版，复测见下文。
+6. 本地启动补丁另补充固定字段的响应 shape 日志（状态、停止原因、内容类型/长度、token 计数），不记录正文或任意对象字段；本次云配置未启用此诊断。命令仍满足 10 参数、每项不超过 256 字节；离线 4/4 通过。
+
+父任务成功收尾或回复承认失败，不计为文件创建成功。完整云端 request-deadline 源码尚未通过新镜像部署；当前生效的是同镜像环境值和启动补丁。
+
+## 新预算下的简化代码文件真实验收
+
+用户随后要求降低鹈鹕任务复杂度，先确认能输出完整代码文件。独立桌面实例绑定 `arm64-output32k-1023`，经正常主对话及子任务执行，保留默认深度 5、fast=false、原生思考 max 和 30 分钟期限。
+
+- 父任务 `db684a97-c994-4aeb-a78e-15409ed00ed8`、子任务 `43338ae9-ff2f-44ea-991a-6f5673995a48` 均 succeeded；子任务 `workspace.create_text` 有 Policy allow、executionStarted=true、confirmed 回执。
+- 实际文件 `pr503-output32k-1792729567315.html`，2395 字节，SHA256 `cfcbbcb1a4f68570fbd0f97eed9a46df47809c0c929deda01ec96abf83f9166b`；不是测试驱动代写。
+- Edge 加载无 pageerror；画面有鹈鹕长嘴、喉囊及自行车双轮、踏板，Canvas requestAnimationFrame 驱动，两帧截图哈希不同。
+- 本项证明新预算配置下的简化完整 HTML 文件生成、落盘和渲染；不追溯覆盖前述复杂任务失败，也不代表其余设备或完整产品验收通过。
+
+## 正式用户实例与正式工作区复测
+
+用户要求在当前正式工作区再次确认。先保存现有邮件分类进度，安全退出原实例；首次重启遗漏 `PA_USER_DATA_DIR`，开发入口把 Runtime/聊天记录指向开发缓存。该次生成文件虽落盘，但不计入正式实例验收。随后安全退出并显式指定原正式用户目录，保留原配置、聊天及分类元数据，再提交全新任务。
+
+- 正式 Runtime 数据库读回父任务 `86a948cc-7899-4595-8729-839ae9306a3d`、子任务 `83428747-445c-4cc1-8dde-6ab3c83f2347` 均 succeeded，模型 `deepseek-v4.1-flash / max`，深度 5、fast=false，云连接为 `arm64-output32k-1023`。
+- 正式配置工作区中实际新建 `formal-code-smoke-1792730520349.html`，826 字节，SHA256 `7f718c1d7b5d2e099a9e01aa9d6ff0e7794cbb8a7cf8078566276921e5fda012`。`subagent.dispatch` 与 `workspace.create_text` 均 confirmed、Policy allow、executionStarted=true；验收驱动没有代写产物。
+- Edge 实际加载完整 HTML 后点击“加一”两次，数字 `0 → 2`，无 pageerror、无外部请求；未手工点审批，最终 pending 卡为 0。
+- 正式实例保持打开，原配置和聊天保留；本机 Laya 恢复 ready，并从保留的分类记录及游标继续邮件批次。安全汇总见 `formal-workspace-acceptance.json`。
+
+本项证明当前正式实例能够通过真实模型/子任务/工具链创建并运行这个完整小文件，不代表任意长度文件或所有功能完成。
+
+## 邮件真实检验
+
+- 真实 QQ `mail.inbox` 已取得 Policy allow、executionStarted 和 confirmed 回执，信头仅在本机处理。
+- 正式用户配置目录中，本机 Laya 已真实 ready，邮件状态读回 `running → classifying`，已保存超过 2400 条分类元数据；重启后保留已有结果并继续增长，完整批次仍在进行。
+- 分类过程中出现不可用状态，已通过原恢复入口继续，保留先前分类与原分页回执；这不证明产品会自动恢复。
+- 已通过 Gmail 发出 3 封唯一公开测试信件，并读回 SENT 记录。用户允许只查这三封测试信的其他文件夹后，以只读 IMAP 按测试前缀搜索 7 个文件夹：三封均在 INBOX，UID 为 7475、7476、7477，均未读。仅匹配信件读取 envelope，未取正文或写 flags；这证明接收，不证明产品分类或提醒。
+- 产品在 3000 条时记录过一张空页并显示完成，但独立只读服务端查询在同一 UIDVALIDITY、同一已保存游标之后仍有 4344 封。尚不能确定该次空页根因。已修正 QQ 适配器将 ImapFlow SEARCH 的 `false` 当空数组的路径，及 FETCH 缺项误推进游标的路径；异常现在明确失败并保留游标。
+- 实际回执审计见 3100 次邮件条目观察、3000 个唯一投递标识，重复的 100 次来自一页重读，没有发现来源内容变化；不能据此声称真实模型重复推理。相同来源修订及分类器指纹的完整回执在回归中复用，0 次新增模型调用。
+- 分类性能修改：单写者缓存已校验元数据、索引待分析条目、界面读取轻量增量计数；每 16 条有效结果持久化一次，取消时刷入已完成结果，只有完整页面推进游标。硬崩溃可能重算最近最多 16 条未落盘计算，不能据此承诺零重算。模型权重及分类门槛未改变。
+- Issue506：每张确认的新邮件页只有一个内部判断任务，普通暂缓／忽略不投影到聊天；超窗长页在同一任务内逐组检查完整信头，任一组无法确认则整页暂缓，保留原 60 秒总期限。使用实际已安装 tokenizer、真实 SDK 序列化的 55 组合成输入验证，实际 tokens 均不超过保守上界及 8192 模型窗口；这不是模型判断准确率验收。
+- Desktop 本机 Laya 的分类与提醒共用同一代模型的串行准入，等待受原期限、取消及 stop 约束；旧等待者不能进入重启后的模型。HTTP 取消已返回但 Python 原 CPU forward 尚未结束时，下一次请求仍可能遇到 429；本轮不增加盲目重试，也不宣称该窗口已消除。
+- 独立审查发现并修复来源变更校验失败后的缓存边界：授权拒绝、期限超时或分类器指纹变化时，未发布的来源变更会丢弃状态／索引／汇总缓存；恢复后重试必须先持久化原分析失效，再进入异步推理。三条精确回归验证拒绝时不写盘，重试首次推理挂起并重新打开存储时不会暴露旧分析；7 文件 focused 27/27、Runtime 构建通过。当前运行批次完成后再统一重启该异常路径修复，不能把尚在运行的旧进程当成已加载此提交。
+- 正式实例保留配置及 3000 条记录安全重启。相同记录数、Laya 停止、各 20 次状态查询：平均 84.545 ms → 14.045 ms，P95 96.8 ms → 15.2 ms。重启也会影响内存，且实测常驻内存尚未下降，不把提速冒充内存下降；模型权重未缩减。恢复真实分类后已越过原 3000 条“完成”位置并持续增长，最终三封分类及通知需另行读回。
+- 未授权或执行私人信头云端导出，未读取邮件正文或修改邮箱。
+
+本地逐步回执位于被忽略的 `.cache/mail-full-acceptance-20261023/`。该目录及用户配置、邮件内容、凭据均不提交。
+
+## 7364 封基线与真实新邮件结果（未通过分类／提醒）
+
+- 正式实例完整基线已处理 7364 封信头，其中 5998 封进入复核；继续接收公开测试信后为 7372 封、6006 封待复核。原三封测试信均在产品原始 `mail.inbox` 回执和本地分类元数据中找到，但三封 `label=null`、`route=review`，不能声称分类正确。
+- 通过正式主对话实际创建 `connector.watch.start`，120 秒轮询进入 monitoring。基线后分别收到 1、4、3 封公开测试邮件，三个原始 `mail.inbox` 均 confirmed／Policy allow／executionStarted，分别触发真实本机 Laya 判断任务并 succeeded；三次实际动作均为 defer、reason=uncertain，没有创建或送达原生提醒。通知策略已通过原 Runtime／Policy 链配置为 normal／banner；私人信头云端分析保持关闭。
+- 新增安全本地诊断后，中文订阅候选概率 0.6559、普通影响概率 0.5327；中文订单候选为 other。英文订单也误判 subscription（0.9542），故没有证据把问题仅归因中文。保留模型权重及 0.7／0.15 门槛，不强制选择或伪造通知。具体固定数值见 `mail-real-result-20261023.json`；无私人信头或正文。
+- 真实读取在 6900 条时出现 EXTERNAL_FAILURE，原刷新路径把 failed 覆盖成 disabled。已修复为清理完成后保留 failed 及安全恢复说明，计数和游标不丢；显式取消仍 disabled、停止未确认仍 stop_unconfirmed、游标失效仍 resync_required。对应 6 项 focused 通过。
+- 本地分类元数据新增可选固定诊断字段，兼容旧记录，不触发七千余封重判；短页和分组页都保留判断原因及有限分数，receipt 按 hash／已知候选白名单投影，额外字段被剥离。对应 Inbox 9/9、Connector Host 38/38、Runtime 构建及差异检查通过。
+- 重启保留正式配置及分类进度。本轮未清空聊天或修改现有任务终态；首次订阅任务在正常停止时进入待核实，不拿它冒充完成。随后独立工作区订阅父子任务均 succeeded，当前新订阅实际 monitoring。最后一处 receipt 白名单加固在该次重启后完成离线验证，尚未声称当前进程已载入它。
+
+本轮结论是：真实收取、分页和本机决策调用已确认；分类准确率及原生提醒交付未通过，完整邮件闭环仍未完成。旧头 `034d72c4` 的技术 CI 全通过只证明该头，不代替本轮新增补丁的检查及真实模型效果。
+
+## 本轮新增缓存信头复核接口与范围
+
+此节为后续增量的接口说明，不改写前文历史实测结论，也不单独声明真实云端验收通过。
+
+- Competition Runtime 新增受信宿主专用 `mail.review@1.0.0`／`mail:review`，使用原 HostTask、Policy、ToolGateway 与协调端口；来源许可、精确信头出机、目的地和撤销由原提问卡校验，不向云端提供业务工具、正文或聊天续轮。
+- 缓存端口为 `pendingReviewAnalyses`、`readReviewAnalysis`、`confirmCachedAnalysisAccepted`、`applyCachedAnalysisReview`，仅供受信宿主使用。它们读取原持久回执并核对邮箱、来源修订、分类器指纹、receipt、投影 digest 与任务绑定，不要求本地 Laya 或分页批次正在运行。Desktop 沿用设置 IPC 接入 `mail.review.configure` 配置动作，缓存端口不暴露给 Renderer；不新增 Core wire API 或数据库迁移。新增工具描述与可选缓存字段不表示公共接口已冻结。
+- 默认处理启用后新观察的模糊信头，历史积压仅可按明确选择的绑定进入复核。`firstObservedAt` 保留首次可信观察时间，重读、重新分类和分类器变更不刷新时间；历史来源缺少该依据时保持未知，不自动进入新邮件集合。
+- 原 Laya 结论与诊断保留，固定枚举云结果独立记录为 `cloudReview`，仅在原任务成功且结果 checkpoint 绑定一致时应用有效分类。额外字段、工具提案与无效 JSON 均不能应用；发送前保存 attempt，未知结果不自动重发。真实发送、结果和通知状态以随后实机回执为准。
+- 新增 `retryCachedAnalysis({...binding, previousTaskId}, context)`，只在用户重新选择且宿主证明旧版本在 WSS 发送前失败、无 dispatch context/request identity/received/unknown/result 后释放对应缓存绑定。后续增加严格匹配的远端 `INVALID_ARGUMENT` 拒绝路径，须核对 accepted/received/dispatch/request identity 和原任务、来源一致，且无 unknown 或结果。原失败任务与带原因的重试历史保留，新任务重新授权；通用已发送失败或结果未知不能释放，不自动重发。
+
+## 同步主线后的真实云端分类（3/3 通过）
+
+用户恢复云端调用授权后，已同步 canonical main `ad1a045e` 与 PR503 远端头 `471c408b`，本地合并 `c7fb7903`，随后文档提交 `c6635451`。同步后根 `npm run build` 通过，再启动保留原配置、数据库和工作区的正式实例。
+
+真实请求继续暴露远端 `INVALID_ARGUMENT`：信头复核的 JSON goal 被部署端当成协议外层解析，未包含 `goal` 字段。修复为受信 `textOnly` 首轮统一发送 `{goal, availableTools: []}`，仍不向模型提供业务工具。Runtime 补存精确匹配的远端终止回执；用户明确选择的三项参数拒绝可重新授权，其余失败和未知结果不自动重发。更新后的 Runtime 生产 WSS 组合回归使用实际 `parseAgentInput` 解析发送帧，11/11 通过；Coordination 与 Host 对应测试合计 12/12，通过后分别完成 Coordination、Runtime 构建。
+
+- 正式实例三项真实云端任务均 `succeeded`，受信宿主均 `applied`：订阅 `6c34969a-f4db-4a6b-bd23-1db66e496045`、订单 `b1141468-9fdf-47f2-b7ad-79899d97722b`、促销订阅 `292d76ac-b76c-4ef9-ad87-8f63a374164e`，与预期一致。
+- 分别从正式 Runtime SQLite 与加密分类存储读回成功任务和独立 `cloudReview`，证明真实模型结果已落入本地缓存。原 Laya 的 `label=null/route=review` 保留，不能把有效云结果误记为本机分类准确率提高。
+- 三项均为 `routine / notificationRecommendation=none`，没有创建提醒符合返回结果；这不是正向提醒送达验收。另已发送一封公开会议改期测试信，用于继续验证接收、分类与提醒；截至该回执读取，Laya 停止、可用内存低于原 2 GiB 启动门槛，正向原生提醒尚未验收。
+- 云端复核已启用，历史约 6000 条待复核没有自动批量出机。本次仅发送用户明确选择的三封公开测试信头，不读正文；证据不含私人信头、凭据或云端连接地址。
+
+安全回执见 [mail-cloud-success-20261023.json](mail-cloud-success-20261023.json)。前述两轮失败任务保留，真实分类通过不覆盖历史失败，也不代表主动提醒、完整鹈鹕、Hosted PSEC 或其余设备通过。
+
+## 会议改期信头复核与原生提醒送达
+
+随后可用内存恢复到 3.3 GiB，正式实例启动 Laya 后，原 `mail.read` 批次处理完 7391 条信头。公开会议改期测试信已由 `mail.inbox` 任务 `3ad18a90-af0a-4c37-ad0c-fd827588f3b0` 确认收到，本机仍判为待复核。
+
+实测发现正常退出误走显式邮件停用路径，使云复核开关被持久关闭。该次明确选择公开测试信重新开启复核后，真实任务 `1ae4bbea-871c-4e12-ab48-2ef0420fbd58` 成功返回 `meeting / high_impact / notify / meeting_change` 并应用结果。原生通知在 `2026-10-23T10:31:14.869Z` 收到 `show` 回执，通知服务独立读回 `banner=delivered`。这证明该真实邮件的接收、云端分类及 Windows 原生通知送达，不声称用户已阅读。
+
+宿主早于原生回执把首次 `unknown` 结果视作已收尾，故其显示状态仍为 unknown；该投影需继续读回原通知结果，不能重发通知。正常退出误关闭开关和该延迟回执问题已定位，重启持久开关与全新邮件自动进入复核仍需下一轮验证。安全回执见 [mail-cloud-notification-20261023.json](mail-cloud-notification-20261023.json)。
+
+后续两项修复已加载到正式实例并读回：
+
+- 正常退出经宿主专用 `mailConfig.releaseSession()` 停止本地读取、撤销旧 lease 并旋转读取 generation，同时保留云复核偏好。云复核指纹独立绑定稳定邮箱配置修订与 Runtime 云目标，不复用本次读取 generation；显式停用、配置保存或真实云目标变化仍撤销。对应生命周期组合及相关测试 12/12，通过语法与差异检查。
+- 已有通知 `unknown` 只通过原 `reconcileDelivery(roundId)` 读取真实回执，跨 generation、发送期限和启用状态也可收敛；不调用发送、不创建新任务，未知且未变化时不重复落盘。Host 8/8，包括旧 `notificationSettled=true`、过期和换 generation 后晚到结果，断言真实发送调用保持一次。
+- 重启后原会议任务的宿主状态已实际更新为 `delivered`。新稳定开关开启、历史选择列表为空后再正常重启，enabled 仍 true，watermark/configurationRef/generation 均一致，原 4 个复核任务没有增加，证明开关保留且旧邮件没有重发。
+
+读回见 [mail-review-restart-20261023.json](mail-review-restart-20261023.json)。最后一封全新且未手工选择的订阅自动触发验收仍未完成：该次重启后可用内存 1.19 GiB，未绕过 Laya 原启动门槛。上述正向原生提醒已送达与此自动接入未验收分别记录。
+
+## 重启后全新邮件的自动闭环（通过）
+
+用户允许正常退出 VS Code 后，可用内存恢复至约 2.9 GiB，Laya 实际 ready。第一条自然语言请求只执行 `connector.watch.list` 并报告旧订阅失效，没有新建，不计为成功；随后明确的新建请求通过正式主对话与子任务实际执行 `connector.watch.start`，父任务 `8d734974-f417-4b8b-822e-9d0fc9cc0117` 和子任务 `7818d79b-0509-493d-bb7e-64dd28ad58c5` 均 succeeded，start confirmed/allow。
+
+新订阅 `watch-166ec51a14df679e1da7bce782c682fd33325e69648ec2a6a7ea6b68e72adbcc` 以 120 秒间隔真实轮询，创建后发送一封新的公开会议改期测试信。全过程未手动调用 `mail.read/mail.inbox`、未选择该信进入复核、未代写分类或通知状态。
+
+- 后台原 `mail.inbox` 任务 `a84c6222-2232-421d-a40f-5e7a9b908da7` confirmed/allow/executionStarted，原来源 checkpoint 精确绑定该 watch 的 sequence=1。
+- 本机 Laya 判断任务 `18d67b72-4bc1-4a1e-91c1-c03f5b18bf36` succeeded，实际结论仍是 defer/uncertain。首次观察晚于开启水位，历史选择列表为空，故通过正常新模糊邮件入口自动复核。
+- 真实云任务 `1f9e751e-c083-4ad8-84e3-1bd9aa76e027` succeeded/applied，`meeting / high_impact / notify / meeting_change`，加密分类存储读回独立 cloudReview；原请求身份数和 attempts 均为 1。
+- Windows 原生 show 在 `2026-10-23T10:59:30.996Z` 返回，原通知服务和邮件宿主均读回 delivered。没有用户已读回执，不声称已读。
+
+安全结果见 [mail-auto-notification-20261023.json](mail-auto-notification-20261023.json)。本项通过真实后台收取、本机判断、已授权模糊信头云复核和原生提醒链路。轮询不代表即时推送，单次成功不代表长期可用；本机 Laya 独立分类准确率未改善。同期另一个非测试信头复核收到 AgentArts 终止错误 EXTERNAL_FAILURE，失败记录保留且未自动重发；不把该失败混入测试信成功结论。当前正式实例保留配置与开启的云复核偏好，邮件订阅在其原期限内继续运行。
+
+## 检查
+
+2026-10-23 后续正式实例云复核尝试见 `mail-cloud-repair-20261023.json`：三封都通过原授权，但 WSS 发送前的任务上下文校验失败，尚无云端分类或提醒回执。已补齐该单次交换的 profile、deadline、预算记录，并修复可信 textOnly 请求的原始分类 JSON 接收；生产 WSS 组合离线回归包含成功解析及断线保留未知结果，11/11 通过，Coordination 对应文件 5/5 通过。用户要求先修复再同步主线，已暂停云复核，待发送数 0；这些本地检查不算真实云端验收。
+
+本轮增量另完成 Runtime 与 Coordination 构建、Host/真实 Runtime 本地组合 8/8、缓存发送前失败释放 1/1 与差异检查。此处真实 Runtime 指本机生产 Runtime/授权/宿主组合，模型及生产 WSS 回归使用 Synthetic 端点；没有新增真实云调用通过声明，也不复用旧头 CI 作为当前头证据。
+
+- 同步后根构建通过；架构、契约夹具、生成类型和 workspace 类型检查已运行。
+- Runtime 1159/1159、跨模块 integration 57/57 通过。
+- 邮件相关 focused 18/18、分页权限 1/1、状态投影 3/3、HTTPS 跳转/期限/取消回归 3/3 通过。
+- 完成批次后读取已消费分析回执修复：4 个 focused 文件共 17/17 通过，包含生产提问卡授权与 Runtime/Policy/ToolGateway 组合，邮箱和分类器明确为 Synthetic；未冒充真实邮箱分析出机验收。
+- 同镜像 fetch 补丁离线测试 4/4，通过 exact Node 24.15.0 验证。
+- 2026-10-23 本轮 `npm run check` 单次 exit 0：5502 通过、0 失败、27 条条件跳过；包含构建、架构、契约夹具、生成类型、workspace 类型及测试、跨模块 integration。此检查后补入的 QQ 查询完整性修复另行构建并运行邮件 focused：53 通过、2 项真实服务测试未运行。平台或原生测试中受条件限制的 skip 不计为实机通过。
+- 上述整仓检查后补入的长页分组及空闲快照／flush 缓存：5 文件 focused 75/75；同代 Laya 互斥：7/7；最终架构 3/3、语法及保留原换行格式的差异检查通过。整仓结果和后续定向结果分别记录。
+- Hosted PSEC、完整鹈鹕产物、邮件主动提醒及其余设备验收不在上述通过声明内。

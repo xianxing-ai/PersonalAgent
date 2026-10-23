@@ -1,4 +1,4 @@
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual as same} from 'node:util';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {createRuntimeAtomicStatePort} from '@personal-agent/runtime';
@@ -7,23 +7,26 @@ import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const VERSION='1.0.0',PREFIX='connector.watch.',READ_ORIGIN='desktop-connector-watch-origin';
+const SETTINGS_ORIGIN='desktop-connector-watch-settings';
+export const MAIL_WATCH_INTERVAL_MS=120_000,MAIL_WATCH_DURATION_MS=8*60*60_000;
 const fail=code=>{throw new ProtocolError(code,'连接器持续订阅不可用');};
 const object=properties=>({type:'object',additionalProperties:false,properties});
 const query={...object({location:{type:'string',minLength:1,maxLength:200},locationQuery:{type:'string',minLength:1,maxLength:200},
   units:{type:'string',enum:['metric','imperial']}}),required:['location']};
 const schemas={start:{...object({source:{type:'string',enum:['mail','weather']},query,
   intervalMs:{type:'integer',minimum:1000,maximum:2147483647},expiresAt:{type:'string',minLength:1}}),
-  description:'按用户明确指定并批准的间隔和截止时间持续订阅连接器变化。邮件只读信头，新邮件或显著天气变化交由本地主对话 Laya 判断是否提醒用户；不会自动执行邮件或日历写入。天气必须提供用户指定地点 query.location。',
-  required:['source','intervalMs','expiresAt']},list:{...object({}),description:'列出当前主对话已批准的连接器订阅及状态。'},
+  description:'启动连接器变化监测。intervalMs 可省略，默认每2分钟；expiresAt 可省略，默认本次8小时，由宿主计算，无需让用户手填毫秒或日期。邮件只读信头，新邮件或显著天气变化交由本地主对话 Laya 判断是否提醒用户；不会自动执行邮件或日历写入。天气必须提供用户指定地点 query.location。',
+  required:['source']},list:{...object({}),description:'列出当前主对话已批准的连接器订阅及状态。'},
   stop:{...object({watchId:{type:'string',minLength:1,maxLength:100}}),description:'停止当前主对话指定的持续订阅并撤销未执行读取许可。',required:['watchId']}};
 
 /** Original Scheduler wakes and exact confirmed approval bind each single-use
  * ToolGateway read. This adapter owns neither timer nor provider client. */
 export function createDesktopConnectorWatchHost({getApplication,namespace,readSourceAuthorization,resolveUserConversation,
-  startMailRead,readMailStatus,stopMailRead,observeTask,onUpdate=()=>{},now=Date.now}) {
+  isUserConversation=()=>false,question,startMailRead,readMailStatus,stopMailRead,observeTask,onUpdate=()=>{},now=Date.now}) {
   if(typeof getApplication!=='function'||typeof namespace!=='string'||!namespace
     ||typeof readSourceAuthorization!=='function'||typeof resolveUserConversation!=='function')fail('INVALID_ARGUMENT');
   let active,closed=false,lastError;
+  const settingsRequests=new Map();
   const application=()=>{const value=getApplication();if(!value?.runtime)fail('UNSUPPORTED_CAPABILITY');return value;};
   const storage=()=>createRuntimeAtomicStatePort(application().runtime,'desktop-connector-watches');
   function read(){const saved=storage().read(namespace)??{revision:undefined,value:{version:1,watches:{}}};
@@ -33,12 +36,24 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
   function source(kind,configurationRef){const current=readSourceAuthorization(kind);
     if(current?.available!==true||typeof current.configurationRef!=='string'||!current.configurationRef
       ||configurationRef!==undefined&&current.configurationRef!==configurationRef)fail('UNAUTHORIZED');return current;}
-  function scope(context){const app=application(),task=app.runtime.getTask(context.taskId),conversationId=resolveUserConversation(task.taskId);
-    if(closed||!conversationId||task.state!=='running'||task.cancelRequested||context.signal?.aborted||!context.authorizationRef
+  function conversation(taskId){
+    const ordinary=resolveUserConversation(taskId);if(ordinary)return ordinary;
+    const runtime=application().runtime,binding=runtime.loadCheckpoint(taskId,SETTINGS_ORIGIN),
+      intent=runtime.loadCheckpoint(taskId,'host-tool-intent');
+    if(!binding||!isUserConversation(binding.conversationId)||!intent||intent.namespace!==namespace
+      ||intent.commandId!==binding.commandId||intent.toolName!==PREFIX+binding.operation
+      ||intent.argumentsDigest!==binding.argumentsDigest||toolArgumentsDigest(intent.arguments)!==binding.argumentsDigest
+      ||runtime.getTask(taskId).conversationId!=='host-tool:'+namespace)return undefined;
+    return binding.conversationId;
+  }
+  function scope(context){const app=application(),task=app.runtime.getTask(context.taskId);
+    const owner=conversation(task.taskId),settings=settingsRequests.get(task.taskId);
+    if(closed||!owner||settings&&!settings.isCurrent()||task.state!=='running'||task.cancelRequested||context.signal?.aborted||!context.authorizationRef
       ||!context.scopes?.includes('connectors:watch')||!(Date.parse(context.deadline)>now()))fail('UNAUTHORIZED');
-    return {app,task,conversationId};}
+    return {app,task,conversationId:owner};}
   const summary=watch=>({watchId:watch.id,source:watch.source,enabled:watch.enabled,mode:'poll-only',
     intervalMs:watch.input.intervalMs,expiresAt:watch.input.expiresAt,state:watch.state,
+    nextCheckAt:watch.dueAt,...(watch.lastCheckedAt?{lastCheckedAt:watch.lastCheckedAt}:{}),
     ...(watch.errorCode?{errorCode:watch.errorCode}:{}),...(watch.pending?.taskId?{readTaskId:watch.pending.taskId}:{})});
   const scheduleConversation=watch=>'connector-watch:'+namespace+':'+watch.id;
   const commandId=watch=>'connector-watch-'+hash([watch.id,watch.sequence,'read']);
@@ -48,14 +63,16 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
     source(watch.source,watch.configurationRef);
     if(!saved?.enabled||!same(saved.input,watch.input)||!same(saved.origin,watch.origin)
       ||hash(task.goal)!==watch.origin.goalDigest||task.cancelRequested||['failed','cancelled','cancelling'].includes(task.state)
-      ||resolveUserConversation(task.taskId)!==watch.conversationId||!(Date.parse(watch.input.expiresAt)>now())
+      ||conversation(task.taskId)!==watch.conversationId||!(Date.parse(watch.input.expiresAt)>now())
       ||['private-copy-erasure','private-copy-erasure-binding'].some(key=>app.runtime.loadCheckpoint(task.taskId,key)!==undefined))fail('UNAUTHORIZED');
     const record=app.runtime.readToolExecutions(task.taskId).find(item=>item.evidenceId===watch.origin.runId);
     const result=app.runtime.loadCheckpoint(task.taskId,'tool-result-'+watch.origin.runId)?.result;
     if(record?.toolName!==PREFIX+'start'||record.toolVersion!==VERSION||record.state!=='confirmed'
+      ||!Object.entries(watch.approvedInput??watch.input).every(([key,value])=>same(watch.input[key],value))
       ||record.policyDecision!=='allow'||record.executionStarted!==true||result?.watchId!==watch.id
+      ||result.intervalMs!==watch.input.intervalMs||result.expiresAt!==watch.input.expiresAt
       ||!app.runtime.readEvidence(task.taskId).some(item=>item.evidenceId===watch.origin.runId&&item.kind==='execution'&&item.sourceRef===PREFIX+'start')
-      ||!app.runtime.matchesToolExecutionInput(record,{arguments:watch.input,scopeRef:watch.origin.authorizationRef}))fail('RESULT_UNKNOWN');
+      ||!app.runtime.matchesToolExecutionInput(record,{arguments:watch.approvedInput??watch.input,scopeRef:watch.origin.authorizationRef}))fail('RESULT_UNKNOWN');
     return app;
   }
   async function retire(watch,state,code){
@@ -73,7 +90,7 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
       runAt:watch.dueAt,timeZone:'UTC',missedRunPolicy:'run_once',taskIdempotencyKey:id});return app.runtime.getSchedule(id);
   }
   function advance(watch){current(watch);update(value=>{const item=value.watches[watch.id];delete item.pending;delete item.errorCode;item.sequence++;
-    item.dueAt=new Date(now()+item.input.intervalMs).toISOString();item.state='monitoring';});}
+    item.lastCheckedAt=new Date(now()).toISOString();item.dueAt=new Date(now()+item.input.intervalMs).toISOString();item.state='monitoring';});}
   const binding=watch=>({version:1,source:'weather',watchId:watch.id,namespace,sequence:watch.sequence,origin:watch.origin,
     configurationRef:watch.configurationRef,queryDigest:toolArgumentsDigest(watch.input.query),readTool:watch.readTool});
   function bindRead(watch,task){const runtime=application().runtime,saved=runtime.loadCheckpoint(task.taskId,READ_ORIGIN),value=binding(watch);
@@ -110,8 +127,8 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
       const status=readMailStatus?.({watchId:watch.id,sessionId:watch.pending.sessionId});
       if(status?.sessionId!==watch.pending.sessionId){await retire(watch,'needs_reauthorization','UNAUTHORIZED');return;}
       if(status.state==='complete')advance(watch);
-      else if(['disabled','resync_required','unavailable','classification_unavailable'].includes(status.state))
-        await retire(watch,status.state,'UNAUTHORIZED');
+      else if(['failed','cancelled','disabled','resync_required','unavailable','classification_unavailable'].includes(status.state))
+        await retire(watch,status.state,status.errorCode??(status.state==='failed'?'EXTERNAL_FAILURE':'UNAVAILABLE'));
       else if(['waiting_reconciliation','waiting_approval','stop_unconfirmed'].includes(status.state))
         update(value=>{value.watches[watch.id].state=status.state;});
       return;
@@ -171,22 +188,64 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
         const watch=read().value.watches[input.watchId];if(!watch||watch.conversationId!==conversationId)fail('SCOPE_DENIED');
         await retire(watch,'stopped');return {watchId:watch.id,enabled:false};
       }
-      if(!context.runId||!(Date.parse(input.expiresAt)>now())||(input.source==='weather')!==Boolean(input.query))fail('INVALID_ARGUMENT');
+      if(!context.runId||(input.source==='weather')!==Boolean(input.query))fail('INVALID_ARGUMENT');
       const selected=source(input.source),id='watch-'+hash([context.taskId,context.runId]);let readTool;
+      const previous=read().value.watches[id];
+      const effective=previous?.input??{...input,intervalMs:input.intervalMs??MAIL_WATCH_INTERVAL_MS,
+        expiresAt:input.expiresAt??new Date(now()+MAIL_WATCH_DURATION_MS).toISOString()};
+      if(!(Date.parse(effective.expiresAt)>now()))fail('INVALID_ARGUMENT');
       if(input.source==='weather'){
         const descriptor=app.tools.list().find(tool=>tool.name==='weather.forecast');
         if(!descriptor||descriptor.sideEffect!=='read'||descriptor.requiresPresence)fail('UNSUPPORTED_CAPABILITY');validateToolValue(descriptor.inputSchema,input.query);
         readTool={name:descriptor.name,version:descriptor.version};
       }
       update(value=>{const previous=value.watches[id];
-        if(previous&&!same(previous.input,input))fail('REVISION_CONFLICT');
+        if(previous&&!same(previous.approvedInput??previous.input,input))fail('REVISION_CONFLICT');
         if(input.source==='mail'&&Object.values(value.watches).some(item=>item.id!==id&&item.source==='mail'&&item.enabled))fail('REVISION_CONFLICT');
-        value.watches[id]??={id,source:input.source,input:structuredClone(input),conversationId,configurationRef:selected.configurationRef,
+        value.watches[id]??={id,source:input.source,input:structuredClone(effective),approvedInput:structuredClone(input),conversationId,configurationRef:selected.configurationRef,
           origin:{taskId:context.taskId,runId:context.runId,goalDigest:hash(task.goal),authorizationRef:context.authorizationRef},
           ...(readTool?{readTool}:{}),enabled:true,state:'waiting_origin',sequence:0,dueAt:new Date(now()).toISOString()};});
       return summary(read().value.watches[id]);
     }}));
   return {tools,
+    prepareAuthorization(context){
+      const request=settingsRequests.get(context.taskId);
+      if(!question||!request||context.toolName!==PREFIX+request.operation)return;
+      question.prepare(context,{assertCurrent:()=>!closed&&request.isCurrent()});
+    },
+    /** Trusted settings click -> original Runtime task/Policy, never a direct tool execute. */
+    requestFromSettings(operation,{conversationId,isCurrent=()=>true}={}) {
+      if(closed||!['start','stop'].includes(operation)||!isUserConversation(conversationId)||!isCurrent())fail('UNAUTHORIZED');
+      const app=application();
+      for(const [taskId,request]of settingsRequests){
+        if(request.conversationId!==conversationId||request.operation!==operation)continue;
+        const result=app.readHostToolTask(taskId);
+        if(!['succeeded','failed','cancelled'].includes(result.task.state))return {taskId,state:result.task.state};
+      }
+      const existing=Object.values(read().value.watches).find(watch=>watch.source==='mail'&&watch.enabled);
+      if(existing){
+        if(operation==='start')try{current(existing);return summary(existing);}catch(error){
+          // tick must retire stale authorization before a replacement is admitted.
+          throw error;
+        }
+      }else if(operation==='stop'){
+        for(const [taskId,request]of settingsRequests)if(request.operation==='start'){
+          const task=app.runtime.getTask(taskId);
+          if(!['succeeded','failed','cancelled'].includes(task.state))app.runtime.requestCancel(taskId,'用户停止邮件监测');
+        }
+        return {state:'stopped',enabled:false};
+      }
+      if(operation==='stop')conversationId=existing.conversationId;
+      const input=operation==='start'?{source:'mail',intervalMs:MAIL_WATCH_INTERVAL_MS,
+        expiresAt:new Date(now()+MAIL_WATCH_DURATION_MS).toISOString()}:{watchId:existing.id};
+      const commandId='mail-monitor-'+randomUUID(),task=app.prepareHostToolTask({commandId,
+        toolName:PREFIX+operation,toolVersion:VERSION,deadline:new Date(now()+5*60_000).toISOString()});
+      app.runtime.saveCheckpointOnceForCreatedTask(task.taskId,SETTINGS_ORIGIN,
+        {conversationId,commandId,operation,argumentsDigest:toolArgumentsDigest(input)},task.revision);
+      settingsRequests.set(task.taskId,{conversationId,operation,isCurrent});
+      const result=app.finalizeHostToolTask({taskId:task.taskId,commandId,expectedTaskRevision:task.revision,arguments:input});
+      return {taskId:task.taskId,state:result.task.state};
+    },
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,
       publicEnumPaths:['/source','/query/units'],available:({taskId})=>{try{return Boolean(!closed&&resolveUserConversation(taskId));}catch{return false;}}})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,exportPolicyVersion:'connector-watch-summary-v1',
@@ -229,7 +288,7 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
       return {taskId:watch.origin.taskId,runId:watch.origin.runId,watchId:watch.id,conversationId:watch.conversationId,
         configurationRef:watch.configurationRef,expiresAt:watch.input.expiresAt,source:watch.source};
     }catch{return undefined;}},
-    resolveUserConversation(taskId){return this.readOrigin(taskId)?.conversationId;},
+    resolveUserConversation(taskId){try{return conversation(taskId)??this.readOrigin(taskId)?.conversationId;}catch{return undefined;}},
     tick(){if(active)return active;if(closed)return Promise.resolve();active=(async()=>{for(const watch of Object.values(read().value.watches)){
       if(closed)break;if(!watch.enabled)continue;
       try{await tickOne(watch);}catch(error){const code=error instanceof ProtocolError?error.code:'UNAVAILABLE';lastError=code;

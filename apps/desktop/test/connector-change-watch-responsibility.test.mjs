@@ -71,7 +71,9 @@ test('two main conversations watching the same place retain independent baseline
   await invoke('stop',{watchId:a.watchId},'desktop:conversation-a');
   assert.equal(watches.snapshot().watches.find(item=>item.watchId===b.watchId).enabled,true);
   await changes.flush();assert.equal(choices.length,1);assert.equal(shown.length,1);assert.equal(displayed.length,1);
-  assert.equal(displayed[0].conversationId,'desktop:conversation-b');
+  assert.match(displayed[0].conversationId,/^connector-change:/);
+  const sourceB=changed.find(id=>watches.readOrigin(id)?.watchId===b.watchId);
+  assert.equal(application.runtime.loadCheckpoint(displayed[0].taskId,'connector-change-origin').origin.taskId,sourceB);
   assert.equal(changes.snapshot().withheld,1);assert.equal(changes.snapshot().notified,1);assert.equal(changes.snapshot().pending,0);
   changed.forEach(id=>changes.observeTask(id));await changes.flush();assert.equal(choices.length,1);assert.equal(shown.length,1);
 });
