@@ -611,7 +611,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       ? consent.commandAllowed===true && consent.projectCodeAllowed===true && projectIdentityCurrent()
       : ['workspace.git_diff_check','workspace.node_check'].includes(tool.descriptor.name)
         ? consent.commandAllowed===true : consent.writeAllowed===true)))
-    && (tool.descriptor.name!=='workspace.apply_text_patch' || applyHost?.available());
+    // Readiness is a UI/catalog hint; the patch host rechecks ACL asynchronously before executing.
+    && (tool.descriptor.name!=='workspace.apply_text_patch' || applyHost?.ready());
   const bound=(taskId, claim=false) => {
     if (!application || !taskId) return false;
     const key='desktop-coding-scope';
