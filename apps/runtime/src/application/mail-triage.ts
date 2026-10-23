@@ -109,7 +109,7 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
     return () => {tools.length = 0;};
   }}, {provider, accountRef: options.accountRef});
   const snapshot = () => {
-    const summary = pipeline?.snapshot();
+    const summary = pipeline?.summary();
     return {configured: true, status: controller.signal.aborted && reading > 0 ? 'stop_unconfirmed' : status,
       headersOnly: true, counts: {total: summary?.total ?? 0, needsReview: summary?.needsReview ?? 0,
         highImpactCandidates: summary?.highImpactCandidates ?? 0, meetingCandidates: summary?.meetingCandidates ?? 0,

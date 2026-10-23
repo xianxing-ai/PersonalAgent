@@ -141,7 +141,9 @@ export class QQMailProvider implements MailProvider {
       }
       const lastUid = input.cursor?.lastUid ?? 0;
       const uids = await client.search({uid: `${lastUid + 1}:*`}, {uid: true});
-      const available = (Array.isArray(uids) ? uids : [])
+      if(input.signal?.aborted)throw new ProtocolError('CANCELLED','Mail fetch cancelled');
+      if(!Array.isArray(uids))throw new ProtocolError('EXTERNAL_FAILURE','Mail UID search did not return a confirmed result');
+      const available = uids
         .map(uid => Number(uid))
         .filter(uid => uid > lastUid)
         .sort((left, right) => left - right);
@@ -154,8 +156,11 @@ export class QQMailProvider implements MailProvider {
           messages.push(stamped);
         }
       }
-      const consumed = messages.map(entry => entry.uid).reduce((max, uid) => Math.max(max, uid), lastUid);
       if (input.signal?.aborted) throw new ProtocolError('CANCELLED', 'Mail fetch cancelled');
+      const received=new Set(messages.map(message=>message.uid));
+      if(messages.length!==fresh.length||received.size!==fresh.length||fresh.some(uid=>!received.has(uid)))
+        throw new ProtocolError('EXTERNAL_FAILURE','Mail UID fetch did not return the complete requested page');
+      const consumed = messages.map(entry => entry.uid).reduce((max, uid) => Math.max(max, uid), lastUid);
       return {
         messages: messages.sort((a, b) => a.uid - b.uid),
         uidValidity,

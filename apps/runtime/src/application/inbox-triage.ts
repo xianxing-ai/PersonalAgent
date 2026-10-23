@@ -103,9 +103,12 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
     if (readFingerprint() !== expected) throw new ProtocolError('REVISION_CONFLICT', 'Inbox classifier identity changed');
   };
   let busy = false;
+  let cachedState: State | undefined;
+  const analysisKeys = new Map<string, Set<string>>();
   const load = (): State => {
+    if(cachedState)return cachedState;
     const saved = options.storage.get(storageKey);
-    if (saved === undefined || saved === null) return {version: 2, records: {}, latest: {}, cursors: {}, heads: {}, observed: {}, analyses: {}};
+    if (saved === undefined || saved === null) return cachedState={version: 2, records: {}, latest: {}, cursors: {}, heads: {}, observed: {}, analyses: {}};
     const state = structuredClone(saved) as State;
     // Keep old classifications/cursors. A newly read page reclassifies legacy rows
     // without receipt IDs; old metadata alone cannot create an analysis envelope.
@@ -130,9 +133,40 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
         || (item.state === 'accepted' && !text(item.taskId)))) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Inbox triage state needs recovery');
     }
-    return state;
+    for(const [key,item]of Object.entries(state.analyses)){
+      const keys=analysisKeys.get(item.messageId)??new Set<string>();keys.add(key);analysisKeys.set(item.messageId,keys);
+    }
+    return cachedState=state;
   };
-  const save = (state: State): void => options.storage.set(storageKey, structuredClone(state));
+  const save = (state: State): void => {
+    try{options.storage.set(storageKey,structuredClone(state));}
+    catch(error){cachedState=undefined;analysisKeys.clear();summaryReady=false;throw error;}
+  };
+  const removeAnalysis=(state:State,key:string)=>{const item=state.analyses[key];if(!item)return;
+    analysisKeys.get(item.messageId)?.delete(key);delete state.analyses[key];};
+  const visible = new Map<string, InboxTriageMetadata>();
+  let summaryFingerprint: string | undefined, summaryReady=false;
+  const counts={total:0,needsReview:0,highImpactCandidates:0,meetingCandidates:0,groups:Object.create(null) as Record<string,number>};
+  const countRow=(row:InboxTriageMetadata,direction:number)=>{
+    counts.total+=direction;counts.needsReview+=Number(row.needsReview)*direction;
+    counts.highImpactCandidates+=Number(row.highImpactCandidate)*direction;counts.meetingCandidates+=Number(row.meetingCandidate)*direction;
+    if(row.label!==null){counts.groups[row.label]=(counts.groups[row.label]??0)+direction;if(!counts.groups[row.label])delete counts.groups[row.label];}
+  };
+  const updateSummary=(ids:Iterable<string>)=>{
+    const state=load(),fingerprint=readFingerprint();
+    if(!summaryReady||summaryFingerprint!==fingerprint){
+      visible.clear();counts.total=counts.needsReview=counts.highImpactCandidates=counts.meetingCandidates=0;
+      for(const key of Object.keys(counts.groups))delete counts.groups[key];
+      summaryReady=true;summaryFingerprint=fingerprint;ids=Object.keys(state.latest);
+    }
+    for(const id of ids){const previous=visible.get(id);if(previous){countRow(previous,-1);visible.delete(id);}
+      const row=state.records[state.latest[id]!];
+      if(!row||(state.heads[id]&&state.heads[id]!.sourceRevision!==row.sourceRevision))continue;
+      const projected=fingerprint&&row.classifierFingerprint===fingerprint?row:{...row,classifierStale:true,highImpactCandidate:false,meetingCandidate:false};
+      visible.set(id,projected);countRow(projected,1);
+    }
+  };
+  const summary=()=>{updateSummary([]);return structuredClone(counts);};
   const checkContext = (page: InboxTriageContext): void => {
     if (!page || !(page.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(page.deadline))) reject('Invalid inbox context');
     if (page.signal.aborted) throw new ProtocolError('CANCELLED', 'Inbox triage cancelled');
@@ -158,30 +192,21 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
     checkContext(context);
     const item = currentAnalysis(load(), workKey, readFingerprint());
     if (!item) return undefined;
+    if(busy&&item.state!=='accepted')return undefined;
     check({...context, accountRef: item.accountRef, folder: item.folder});
     return publicAnalysis(item);
   };
   const snapshot = () => {
-    const state = load();
-    const classifierFingerprint = readFingerprint();
-    const records = Object.values(state.latest).map(key => state.records[key]!)
-      .filter(row => !state.heads[row.messageId] || state.heads[row.messageId]!.sourceRevision === row.sourceRevision)
-      // 分类器指纹变化（换模型、重装 Laya）只把历史结论标成 stale，不抹掉 label/route：
-      // 旧行为会把全部历史行重置为待复核，等于每次换模型都“分类白做”（2026-10-22 实测 2101/2316）。
-      .map(row => classifierFingerprint && row.classifierFingerprint === classifierFingerprint ? row
-        : {...row, classifierStale: true, highImpactCandidate: false, meetingCandidate: false});
-    const groups: Record<string, number> = Object.create(null) as Record<string, number>;
-    for (const row of records) if (row.label !== null) groups[row.label] = (groups[row.label] ?? 0) + 1;
-    return structuredClone({records, groups, total: records.length,
-      needsReview: records.filter(row => row.needsReview).length,
-      highImpactCandidates: records.filter(row => row.highImpactCandidate).length,
-      meetingCandidates: records.filter(row => row.meetingCandidate).length});
+    const totals=summary();return {...totals,records:structuredClone([...visible.values()])};
   };
   return Object.freeze({
-    snapshot,
+    snapshot,summary,
     /** Trusted local host only. Contents have no implicit cloud export permission. */
     pendingAnalyses(context: InboxTriageContext): readonly InboxPendingAnalysis[] {
       checkContext(context);
+      // New analysis work is exposed only after the page's durable checkpoint;
+      // a previously accepted task may still read its own current receipt.
+      if(busy)return [];
       const state = load();
       const classifierFingerprint = readFingerprint();
       return Object.keys(state.analyses).sort().flatMap(key => {
@@ -253,6 +278,7 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
         revisions.set(message.messageId, message.sourceRevision);
       }
       busy = true;
+      let dirtyState: State | undefined;
       try {
         const state = load();
         const storedCursor = state.cursors[mailboxId];
@@ -267,6 +293,7 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
         }
         const unique = [...new Map(messages.map(message => [message.messageId, message])).values()];
         const fetchedAt = new Map(messages.map((message, index) => [message.messageId, page.items[index]!.fetchedAt]));
+        let sourceChanged=false;
         const current = unique.filter(message => {
           const key = hash([message.messageId, message.sourceRevision]);
           const head = state.heads[message.messageId];
@@ -275,18 +302,18 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
           // A replay of a known historical revision never reactivates an old analysis.
           if (priorRevision && priorRevision !== message.sourceRevision
             && (state.observed[key] || (head && Date.parse(observedAt) < Date.parse(head.fetchedAt)))) return false;
-          state.heads[message.messageId] = {sourceRevision: message.sourceRevision,
-            fetchedAt: head && Date.parse(head.fetchedAt) > Date.parse(observedAt) ? head.fetchedAt : observedAt};
+          const latestFetchedAt=head&&Date.parse(head.fetchedAt)>Date.parse(observedAt)?head.fetchedAt:observedAt;
+          if(!head||head.sourceRevision!==message.sourceRevision||head.fetchedAt!==latestFetchedAt||!state.observed[key])sourceChanged=true;
+          state.heads[message.messageId] = {sourceRevision: message.sourceRevision,fetchedAt:latestFetchedAt};
           state.observed[key] = true;
           if (priorRevision !== message.sourceRevision) {
-            for (const [workKey, item] of Object.entries(state.analyses)) {
-              if (item.messageId === message.messageId) delete state.analyses[workKey];
-            }
+            for (const workKey of analysisKeys.get(message.messageId)??[])removeAnalysis(state,workKey);
           }
           return true;
         });
         // Invalidate superseded work before inference can yield to a cloud sender.
-        check(page); checkFingerprint(classifierFingerprint); save(state);
+        updateSummary(current.map(message=>message.messageId));
+        check(page); checkFingerprint(classifierFingerprint);if(sourceChanged)save(state);
         const pending = current.filter(message => {
           const row = state.records[hash([message.messageId, message.sourceRevision])];
           return !row?.receiptId || row.classifierFingerprint !== classifierFingerprint;
@@ -303,21 +330,26 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
           if (!Array.isArray(results) || results.length !== batch.length) {
             throw new ProtocolError('EXTERNAL_FAILURE', 'Inbox classifier returned an invalid batch');
           }
+          for(let offset=0;offset<batch.length;offset++){
+            const message=batch[offset]!,result=results[offset]!;
+            if(!result||result.source!==message.source||result.messageId!==message.messageId||result.sourceRevision!==message.sourceRevision
+              ||!['group','review','main_agent'].includes(result.route)||(result.label!==null&&!Object.hasOwn(labels,result.label)))
+              throw new ProtocolError('EXTERNAL_FAILURE','Inbox classifier correlation failed');
+          }
           let dispatch;
           try { dispatch = prepareTriageDispatch({namespace: options.namespace, messages: batch, labels, results}); }
           catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Inbox classifier receipt validation failed'); }
           const queue = (ref: TriageDispatchRef, route: 'main_agent' | 'review', deferredReason?: string) => {
             const message = batch.find(item => item.messageId === ref.messageId)!;
             // Changed classifier policy cannot reopen work already handed to Runtime.
-            if (Object.values(state.analyses).some(item => item.messageId === message.messageId
-              && item.sourceRevision === message.sourceRevision && item.state === 'accepted')) return;
+            if ([...(analysisKeys.get(message.messageId)??[])].some(key => state.analyses[key]?.sourceRevision === message.sourceRevision
+              && state.analyses[key]?.state === 'accepted')) return;
             const projection = {headersOnly: true as const, sensitivity: 'private' as const, text: message.text};
-            for (const [key, item] of Object.entries(state.analyses)) {
-              if (item.messageId === message.messageId && key !== ref.workKey) delete state.analyses[key];
-            }
+            for (const key of analysisKeys.get(message.messageId)??[])if(key!==ref.workKey)removeAnalysis(state,key);
             state.analyses[ref.workKey] = {...ref, accountRef: page.accountRef, folder: page.folder, mailboxId, classifierFingerprint,
               route, state: deferredReason ? 'deferred' : 'pending',
               ...(deferredReason ? {reason: deferredReason} : {}), projection, projectionDigest: hash(projection)};
+            const keys=analysisKeys.get(message.messageId)??new Set<string>();keys.add(ref.workKey);analysisKeys.set(message.messageId,keys);
           };
           dispatch.mainAgent.forEach(ref => queue(ref, 'main_agent'));
           dispatch.review.forEach(ref => queue(ref, 'review'));
@@ -341,28 +373,34 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
               meetingCandidate: result.label !== null && meetingLabels.has(result.label), receiptId: result.receipt.id, classifierFingerprint};
             // A successful ordinary group has no pending machine analysis.
             if (result.route === 'group') {
-              for (const [workKey, item] of Object.entries(state.analyses)) {
-                if (item.messageId === message.messageId && item.state !== 'accepted') delete state.analyses[workKey];
-              }
+              for (const workKey of analysisKeys.get(message.messageId)??[])if(state.analyses[workKey]?.state!=='accepted')removeAnalysis(state,workKey);
             }
             state.latest[message.messageId] = key;
             classified++;
           }
-          check(page); checkFingerprint(classifierFingerprint); save(state);
+          updateSummary(batch.map(message=>message.messageId));dirtyState=state;
+          check(page); checkFingerprint(classifierFingerprint);
+          // Four inference chunks per durable checkpoint. A cancelled page flushes
+          // completed receipts below, but never advances its unfinished page cursor.
+          if((index+batch.length)%16===0){dirtyState=undefined;save(state);}
         }
         // Cached revisions must also become the latest visible observation after replay.
+        let latestChanged=false;
         for (const message of current) {
           const key = hash([message.messageId, message.sourceRevision]);
-          if (state.records[key]) state.latest[message.messageId] = key;
+          if (state.records[key]) {if(state.latest[message.messageId]!==key)latestChanged=true;state.latest[message.messageId] = key;}
           else incomplete = true;
         }
+        updateSummary(current.map(message=>message.messageId));
         check(page); checkFingerprint(classifierFingerprint);
-        if (!incomplete && !historical) state.cursors[mailboxId] = page.nextCursor;
-        save(state);
+        const cursorChanged=!incomplete&&!historical&&state.cursors[mailboxId]!==page.nextCursor;
+        if(cursorChanged)state.cursors[mailboxId]=page.nextCursor;
+        const persist=Boolean(dirtyState)||latestChanged||cursorChanged;
+        dirtyState=undefined;if(persist)save(state);
         return {classified, reused: current.length - pending.length, ignoredStale: unique.length - current.length, complete: !incomplete,
           cursorAdvanced: !incomplete && !historical, nextCursor: state.cursors[mailboxId], hasMore: page.hasMore,
-          summary: snapshot()};
-      } finally {busy = false;}
+          summary: summary()};
+      } finally {try{if(dirtyState)save(dirtyState);}finally{busy = false;}}
     },
   });
 }

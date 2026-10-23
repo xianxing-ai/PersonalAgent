@@ -620,7 +620,7 @@ function agentArtsSnapshot() {
   return value && {...value,reason:cloudRequestFailureNotice || cloudTransportNotice || value.reason};
 }
 
-function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
+function visibleConversationTask(task,surface){return !(task.goal?.startsWith('判断是否告知用户：')&&connectorChangeHost?.ownsDecisionTask(task.taskId))&&(!surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface));}
 function snapshot(surface) {
   const cloudSettings=agentArtsSnapshot();
   const authorizationQuestions=authorizationQuestionHost?.snapshot(surface?conversations?.activeConversationId(surface):undefined)??[];
@@ -2536,10 +2536,7 @@ async function initializeRuntime() {
       ??connectorMailReadOrigin.read(taskId)?.conversationId,
     readOriginalSourceBinding:taskId=>connectorMailReadOrigin.read(taskId),
     readWatchOrigin:taskId=>connectorWatchHost?.readOrigin(taskId),
-    onDecisionTask:({taskId,goal,conversationId})=>{
-      if(!conversations.turns.has(taskId))conversations.add(taskId,'panel',goal,conversationId);
-      rememberTaskGoal(taskId,goal);void refresh(taskId).then(publish).catch(()=>{});
-    },onUpdate:publish});
+    onUpdate:publish});
   if(competitionMode && memoryLearningHost && proactiveHost) {
     const publicErasure=proactiveHost.createPublicFactErasureApplication({confirm:async ref=>{
       return confirmApplicationAuthorization('facts.erase',ref,{scope:{id:ref.id,revision:ref.revision},

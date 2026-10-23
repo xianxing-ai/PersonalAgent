@@ -98,7 +98,7 @@ test('encrypted inbox persistence: partial retry, revision replacement and no fa
     assert.equal(changed.classified, 1);
     assert.equal(changed.summary.total, 5);
     assert.equal(changed.summary.meetingCandidates, 5);
-    assert.ok(changed.summary.records.every(item => item.headersOnly && item.sensitivity === 'private' && item.needsReview));
+    assert.ok(pipeline.snapshot().records.every(item => item.headersOnly && item.sensitivity === 'private' && item.needsReview));
     assert.doesNotMatch(JSON.stringify(changed.summary), /revised meeting subject|validFrom/);
     assert.equal(pipeline.readAnalysis(toAccept.workKey, context()), undefined);
     const current = pipeline.pendingAnalyses(context()).find(item => item.messageId === toAccept.messageId);
@@ -159,4 +159,54 @@ test('分类器指纹变化保留历史结论，只标记 stale', async () => {
   assert.deepEqual(after.groups, before.groups);
   assert.equal(after.needsReview, before.needsReview);
   assert.ok(after.records.every(row => row.classifierStale === true));
+});
+
+function performanceFixture({cancelAt,failWriteAt}={}){
+  let gets=0,sets=0,calls=0,fingerprint='performance-v1',cancel;
+  const values=new Map(),storage={get(key){gets++;return structuredClone(values.get(key));},set(key,value){
+    sets++;if(sets===failWriteAt)throw Error('Synthetic durable write failure');values.set(key,structuredClone(value));}};
+  const triage=new LayaTriageService({async infer(payload){calls++;if(calls===cancelAt)cancel?.abort();
+    return {answers:Object.fromEntries(payload.state.events.flatMap((_,index)=>[
+      [`category_${index}`,answer('other',{meeting:.01,other:.99})],
+      [`impact_${index}`,answer('routine',{routine:.99,high_impact:.01})]]))};}});
+  const messages=Array.from({length:20},(_,index)=>({...items[0],externalId:`INBOX:${index+1}`,dedupeKey:`performance:${index+1}`,contentRef:`Synthetic header ${index+1}`}));
+  const open=()=>createInboxTriagePipeline({storage,namespace:'performance-fixture',triage,labels:{meeting:'Meeting',other:'Other'},
+    getClassifierFingerprint:()=>fingerprint,authorizeRead:()=>true});
+  return {open,page:(signal=new AbortController().signal)=>({...context(),signal,accountRef:'fixture',folder:'INBOX',items:messages,nextCursor:'1:20',hasMore:false}),
+    get calls(){return calls;},get gets(){return gets;},get sets(){return sets;},changeFingerprint:()=>{fingerprint='performance-v2';},setCancel:value=>{cancel=value;}};
+}
+
+test('cached state and lightweight summaries avoid storage reloads; exact replays do not infer again',async()=>{
+  const f=performanceFixture(),pipeline=f.open();
+  const result=await pipeline.processPage(f.page());assert.equal(result.classified,20);assert.equal(f.calls,5);
+  assert.equal(f.sets,3,'one source invalidation, one 16-message checkpoint and one page completion');
+  assert.equal(Object.hasOwn(result.summary,'records'),false,'page summary does not clone every historical row');
+  for(let index=0;index<100;index++)assert.equal(pipeline.summary().total,20);
+  assert.equal(f.gets,1,'the single owner validates and loads its state once');
+  const writes=f.sets;
+  const replay=await pipeline.processPage(f.page());assert.equal(replay.reused,20);assert.equal(replay.classified,0);assert.equal(f.calls,5);
+  assert.equal(f.sets,writes,'an unchanged page replay does not rewrite the encrypted metadata map');
+  const restarted=f.open();await restarted.processPage(f.page());assert.equal(f.calls,5,'durable replay also reuses all receipts');
+  const changed=f.page();changed.items=changed.items.map((item,index)=>index===0?{...item,contentRef:'Synthetic changed header',fetchedAt:'2026-09-28T00:00:00Z'}:item);
+  assert.equal((await restarted.processPage(changed)).classified,1);assert.equal(f.calls,6);
+  f.changeFingerprint();assert.equal(restarted.summary().highImpactCandidates,0);
+  assert.equal((await restarted.processPage(changed)).classified,20);assert.equal(f.calls,11);
+});
+
+test('cancellation flushes completed chunks without advancing an incomplete page cursor',async()=>{
+  const f=performanceFixture({cancelAt:2}),controller=new AbortController();f.setCancel(controller);
+  const pipeline=f.open();await assert.rejects(pipeline.processPage(f.page(controller.signal)),{code:'CANCELLED'});
+  assert.equal(pipeline.summary().total,4);assert.equal(pipeline.cursor('fixture','INBOX'),undefined);
+  assert.equal(f.sets,2,'completed receipts are flushed once when the page is interrupted');
+  const resumed=f.open(),result=await resumed.processPage(f.page());
+  assert.equal(result.reused,4);assert.equal(result.classified,16);assert.equal(resumed.summary().total,20);assert.equal(f.calls,6);
+});
+
+test('failed completion write cannot manufacture a durable cursor or completed classifications',async()=>{
+  const f=performanceFixture({failWriteAt:3}),pipeline=f.open();
+  await assert.rejects(pipeline.processPage(f.page()),/Synthetic durable write failure/);
+  assert.equal(pipeline.cursor('fixture','INBOX'),undefined,'failed cache is discarded and reloaded from its durable checkpoint');
+  assert.equal(pipeline.summary().total,16);
+  const resumed=f.open(),result=await resumed.processPage(f.page());assert.equal(result.reused,16);assert.equal(result.classified,4);
+  assert.equal(resumed.cursor('fixture','INBOX'),'1:20');
 });
