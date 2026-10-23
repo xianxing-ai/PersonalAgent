@@ -7,15 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       windows_runner:
-        description: Explicit Windows pool for a full two-platform validation
+        description: Standard GitHub-hosted Windows for a full two-platform validation
         type: choice
-        default: auto
-        options: [auto, github, ecs]
+        default: github
+        options: [github]
       image_runner:
-        description: Explicit Linux pool for a full two-platform validation
+        description: Standard GitHub-hosted Linux for a full two-platform validation
         type: choice
-        default: ecs
-        options: [ecs, github]
+        default: github
+        options: [github]
 permissions:
   contents: read
   pull-requests: read
@@ -52,9 +52,8 @@ jobs:
         id: route
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PA_IMAGE_RUNNER: ${{ inputs.image_runner || vars.PA_IMAGE_RUNNER }}
-          PA_WINDOWS_RUNNER: ${{ inputs.windows_runner || vars.PA_WINDOWS_RUNNER }}
-          PA_WINDOWS_RUNNER_OVERRIDES: ${{ vars.PA_WINDOWS_RUNNER_OVERRIDES }}
+          PA_IMAGE_RUNNER: github
+          PA_WINDOWS_RUNNER: github
         run: node scripts/ci/pr-route.mjs
       - name: Bind the producer artifact attempt for reruns
         id: artifact-binding

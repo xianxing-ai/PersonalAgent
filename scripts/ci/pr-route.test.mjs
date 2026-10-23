@@ -36,29 +36,27 @@ test('exclusive routes contain exactly one actual CI job; mixed contains both',(
 test('forks and the explicit outage switch use hosted Linux',()=>{
   assert.deepEqual(matrixFor('image',{fork:true}).include[0].runner,['ubuntu-24.04']);
   assert.deepEqual(matrixFor('image',{imageRunner:'github'}).include[0].runner,['ubuntu-24.04']);
-  assert.ok(matrixFor('image').include[0].runner.includes('personalagent-ecs'));
+  assert.deepEqual(matrixFor('image').include[0].runner,['ubuntu-24.04']);
   assert.throws(()=>matrixFor('image',{imageRunner:'unknown'}));
 });
 
-test('PR last digits 0-6 select hosted and 7-9 select the matching ECS pool on both platforms',()=>{
+test('every PR last digit selects standard hosted runners on both platforms',()=>{
   for(let number=420;number<=439;number++) {
-    const hosted=number%10<=6;
-    const expected=[hosted?['windows-latest']:['self-hosted','Windows','X64','personalagent-windows'],
-      hosted?['ubuntu-24.04']:['self-hosted','Linux','X64','personalagent-ecs']];
+    const expected=[['windows-latest'],['ubuntu-24.04']];
     assert.deepEqual(matrixFor('both',{number}).include.map(job=>job.runner),expected,`PR #${number}`);
     assert.deepEqual(matrixFor('windows',{number}).include.map(job=>job.runner),[expected[0]]);
     assert.deepEqual(matrixFor('image',{number}).include.map(job=>job.runner),[expected[1]]);
   }
   assert.equal(selectWindowsRunner().pool,'github');
 });
-test('explicit switches change the selected pool without duplicating Windows checks',()=>{
+test('legacy switches cannot restore ECS or duplicate Windows checks',()=>{
   assert.equal(selectWindowsRunner({number:421,windowsRunner:'github'}).pool,'github');
-  assert.equal(selectWindowsRunner({number:420,windowsRunner:'ecs'}).pool,'ecs');
+  assert.equal(selectWindowsRunner({number:420,windowsRunner:'ecs'}).pool,'github');
   assert.equal(selectWindowsRunner({number:421,windowsRunner:'ecs',windowsOverrides:'{"421":"github"}'}).pool,'github');
-  assert.equal(selectWindowsRunner({number:427,windowsOverrides:'{"421":"github"}'}).pool,'ecs');
+  assert.equal(selectWindowsRunner({number:427,windowsOverrides:'{"421":"github"}'}).pool,'github');
   assert.deepEqual(matrixFor('image',{number:427,imageRunner:'github'}).include[0].runner,['ubuntu-24.04']);
-  assert.deepEqual(matrixFor('image',{number:420,imageRunner:'ecs'}).include[0].runner,['self-hosted','Linux','X64','personalagent-ecs']);
-  assert.deepEqual(matrixFor('both',{number:427,windowsOverrides:'{"427":"github"}'}).include[1].runner,['self-hosted','Linux','X64','personalagent-ecs']);
+  assert.deepEqual(matrixFor('image',{number:420,imageRunner:'ecs'}).include[0].runner,['ubuntu-24.04']);
+  assert.deepEqual(matrixFor('both',{number:427,windowsOverrides:'{"427":"github"}'}).include[1].runner,['ubuntu-24.04']);
 });
 test('forks stay hosted even when both explicit switches request ECS',()=>{
   const matrix=matrixFor('both',{fork:true,number:427,imageRunner:'ecs',windowsRunner:'ecs',windowsOverrides:'{"427":"ecs"}'});
@@ -126,7 +124,7 @@ test('event labels and near misses cannot select a runner; forks remain isolated
   const args={event:{pull_request:{number:427,head:{sha:head},labels:[{name:'ci:windows-github'}]}},eventName:'pull_request',repository,token:'fixture'};
   for(const labels of [[],[{name:'CI:windows-github'}],[{name:'ci:windows-github-extra'}],[{name:'ci:windows-ecs'}],['ci:windows-github']]) {
     const result=await resolveRoute({...args,fetchImpl:fakeFiles({files:[{filename:'packages/contracts/a.ts'}],labels})});
-    assert.equal(result.windows.pool,'ecs');
+    assert.equal(result.windows.pool,'github');
   }
   const fork=await resolveRoute({...args,imageRunner:'ecs',windowsRunner:'ecs',fetchImpl:fakeFiles({files:[{filename:'packages/contracts/a.ts'}],labels:[{name:'ci:windows-github'}],headRepository:'fork/repo'})});
   assert.deepEqual(fork.matrix.include.map(job=>job.runner),[['windows-latest'],['ubuntu-24.04']]);
@@ -137,7 +135,7 @@ test('hosted labels cannot mask invalid selectors or affect manual validation',a
     await assert.rejects(resolveRoute({...args,...options}),/Invalid|JSON|Unexpected/);
   }
   const manual=await resolveRoute({...args,eventName:'workflow_dispatch',windowsRunner:'ecs'});
-  assert.equal(manual.windows.pool,'ecs');
+  assert.equal(manual.windows.pool,'github');
 });
 
 
@@ -170,7 +168,7 @@ test('the exact integration branch uses the existing hosted jobs despite valid E
   assert.equal(result.windows.pool,'github');
   assert.match(result.windows.reason,/approved one-off integration branch/);
 });
-test('near-miss source branches preserve ECS digit routing even if the event claims the exact branch',async()=>{
+test('near-miss source branches also use the global hosted policy',async()=>{
   const claimedEvent={pull_request:{...event.pull_request,number:427,head:{...event.pull_request.head,ref:integrationBranch,repo:{full_name:integrationRepository}}}};
   for(const headRef of ['codex/another-batch',integrationBranch+'-extra',integrationBranch+'0',integrationBranch.toUpperCase(),'refs/heads/'+integrationBranch,undefined]) {
     const pr=integrationPR();
@@ -178,7 +176,7 @@ test('near-miss source branches preserve ECS digit routing even if the event cla
     assert.equal(isHostedIntegrationPullRequest({eventName:'pull_request',repository:integrationRepository,pr}),false);
     const result=await integrationRoute({pr,event:claimedEvent});
     assert.deepEqual(result.matrix,matrixFor('both',{number:427}));
-    assert.equal(result.windows.pool,'ecs');
+    assert.equal(result.windows.pool,'github');
   }
 });
 test('the same branch in another repository is ordinary routing and forks remain isolated',async()=>{
