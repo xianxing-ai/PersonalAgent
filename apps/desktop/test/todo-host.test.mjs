@@ -31,10 +31,10 @@ const cache=new URL('../../../.cache/todo-host-tests/',import.meta.url);mkdirSyn
 const encryption={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),
   decryptString:value=>Buffer.from(value).reverse().toString()};
 async function until(predicate){for(let n=0;n<100;n++){if(await predicate())return;await new Promise(r=>setTimeout(r,5));}throw Error('State did not arrive');}
-async function fixture(t){
+async function fixture(t,options={}){
   const userData=mkdtempSync(new URL('run-',cache));let now=Date.parse('2026-09-27T10:00:00.000Z'),host,app,client;
   function open(){
-    host=createDesktopTodoHost({userData,safeStorage:encryption,namespace:'test-user',now:()=>now,createDeliveryHost:createReminderDeliveryHost});
+    host=createDesktopTodoHost({userData,safeStorage:encryption,namespace:'test-user',now:()=>now,createDeliveryHost:createReminderDeliveryHost,...options});
     app=createRuntimeApplication({path:path.join(userData,'runtime.sqlite'),now:()=>new Date(now),
       profile:'huawei_ict_agentarts',hostUserNamespace:'test-user',tools:host.tools});
     host.bindApplication(app);client=new Client(app,()=>now);
@@ -59,6 +59,18 @@ async function fixture(t){
       return {taskId:task.taskId,page};
     }};
 }
+
+test('unchanged reminder polls do not broadcast; item changes and due delivery still do',async t=>{
+  let broadcasts=0;const f=await fixture(t,{onUpdate:()=>{broadcasts++;}});
+  await f.host.tick(true);const baseline=broadcasts;
+  for(let n=0;n<5;n++){f.advance(1000);await f.host.tick(true);}
+  assert.equal(broadcasts,baseline);
+  await f.host.create({title:'Synthetic reminder',remindUtc:'2026-09-27T10:01:00.000Z'});
+  assert.equal(broadcasts,baseline+1);
+  await f.host.tick(true);assert.equal(broadcasts,baseline+1);
+  f.advance(60_000);await f.host.tick(true);
+  assert.equal(f.host.snapshot().notifications.length,1);assert.equal(broadcasts,baseline+2);
+});
 
 test('real Runtime/Policy todo changes cancel old schedules, deliver locally and survive restart without duplicates',async t=>{
   const f=await fixture(t);

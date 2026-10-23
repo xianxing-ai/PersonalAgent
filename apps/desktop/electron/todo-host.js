@@ -106,6 +106,7 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
     items:service.list(),notifications:Object.values(records()).filter(item=>item.state==='visible'),
     notificationStatus:notificationService.status(notificationScope),policy:notificationHost?.legacySettingsSnapshot()?.policy??structuredClone(policy),
     reason:failure || (questionReady()?'在主对话发起待办操作；需要的访问与出机范围在该次提问卡确认，提醒继续在本机保存':current()?'已有受限会话许可；提醒在本机持久保存':'对话操作尚未取得许可；已保存的提醒继续在本机运行')});
+  let publishedState;
   async function tick(force=false) {
     if(!active || !delivery || busy || (!force && now()-lastTick<1000)) return;
     busy=true;lastTick=now();
@@ -121,7 +122,12 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
         && ['failed','waiting_reconciliation'].includes(application.runtime.getTask(schedule.taskId).state));
       failure=unconfirmed?'有提醒未确认进入通知队列，请在任务记录中核查；系统不会盲目重试':'';
     } catch {failure='待办提醒暂未同步成功，已保存的数据保留；请检查本机存储和 Runtime';}
-    finally {busy=false;onUpdate();}
+    finally {
+      busy=false;
+      // Polling the scheduler is necessary; rebroadcasting an unchanged UI snapshot is not.
+      const state=JSON.stringify(snapshot());
+      if(state!==publishedState){publishedState=state;onUpdate();}
+    }
   }
   const tools=implementations.map(tool=>({descriptor:tool.descriptor,async execute(input,context){
     assertAccess(context,input,tool);
