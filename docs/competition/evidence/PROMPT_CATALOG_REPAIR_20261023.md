@@ -104,3 +104,20 @@ prefix后的JSON解析，以及原goal作为Todo title的消费。修复
 独立最小复现env=false/true均2项通过：发送仍1次、原目录不变、唯一真实执行记录仍为
 confirmed/allow/started，子任务保持waiting_reconciliation。未放宽原断言或授权。
 最终组合完整pin check仍须以整合工作树后续实际完成结果为准。
+
+## 最后只读收尾
+
+源码冻结 `c276adf38de15e8c84c1941fd5defd68cb2a3b03` 与本包已交付 `65023f27`
+的 `packages/agentarts/src/prompts.ts` 逐文件diff为空：后续集成没有再修改JARVIS、
+FAST、continuation字面；这不改变前文对#485之后已授权历史差异的说明。
+本轮未操作main；远端跟踪 `origin/main` 仍为基线 `ad1a045e1ec65f9ef280125d9df78b9cb63b4e51`。
+
+最后异常对象映射互审覆盖 `c90f2357` 与 `a2b40a1f`：云端安全诊断formatter在
+访问异常对象失败时返回无附加detail；Gateway/UI仅读取自有data descriptor，
+不执行accessor或复制其抛出的私密文本，Gateway另拒绝Proxy诊断分类。
+可选诊断失败不能替代原写入unknown语义；合法typed read的验证后重试元数据继续保留。
+本次收尾只读源码，不重复执行检查；统一pincheck与ARM验证由唯一镜像工作包执行。
+
+在该最终冻结SHA上再次对上表三个完整PR head执行普通merge-tree：#503仍为同一
+coordination.ts三处文本冲突，#507/#509仍exit 0。前述最小resolution配方仍适用；
+没有实际合入三个PR，也不将文本检查解释成CI通过、真实云调用或部署成功。
