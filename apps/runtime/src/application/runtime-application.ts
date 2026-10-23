@@ -1842,11 +1842,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       // Only hosts already opting into transient environment text accept this
       // envelope. Other consumers may parse goal as typed JSON or exact arguments.
       if(teacherScope||!this.coordinationInput?.readRequestContext)return undefined;
-      const catalog=this.taskCompetitionCatalog(request.taskId);
-      if(!catalog)return undefined;
-      let registered:ReturnType<typeof catalog.describe>;
-      try {registered=catalog.describe();}
-      catch {return capabilityContext({profile:this.profile,registered:[],errorCodes:[],catalogReadFailed:true});}
+      let registered:ReturnType<RuntimeCompetitionToolCatalog['describe']>;
+      try {
+        const catalog=this.taskCompetitionCatalog(request.taskId);
+        if(!catalog)return undefined;
+        registered=catalog.describe();
+      }
+      catch {
+        // Optional observation cannot preempt the original send guard's refusal
+        // and confirmed-effect hold/reconciliation path.
+        return capabilityContext({profile:this.profile,registered:[],errorCodes:[],catalogReadFailed:true});
+      }
       let errorCodes:(string|undefined)[]=[];
       try {errorCodes=this.runtime.readToolExecutions(request.taskId).slice(-8).map(record=>record.errorCode);}
       catch { /* Missing diagnostics cannot invent a problem or change tool readiness. */ }
