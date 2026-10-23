@@ -52,3 +52,9 @@ docker run --rm --platform linux/arm64 \
 | POST `/invocations`，合法测试鉴权、空 JSON | 400 `INVALID_ARGUMENT` |
 
 测试容器仅绑定 127.0.0.1:18123，之后正常停止并删除。模型 endpoint 使用 `https://example.invalid/v1`，模型名/凭据均为明确占位符；这些协议检查没有调用模型，也没有 model stub 回答。没有真实 AA/model 凭据，真实云模型/评估验收为 **blocked**。既有镜像为 10-13 构建，不包含本轮源码修复或 PR #485 新文案。
+
+## 当前镜像交付工作流失败与最小修复
+
+2026-10-23，当前源码`4d3226d4251bc683af1fc70b0318c0b0f55e8995`的[交付运行39977196214](https://github.com/xianxing-ai/PersonalAgent/actions/runs/39977196214)，`publish-preview` job `120494795765`在`Verify owned transport and orchestration before publishing`失败。15:19:49–15:19:51 UTC实际434项、431通过、3失败、0跳过：`owned-workflow-shadow.test.mjs`、`proactive-workflows.test.mjs`、`workflow-shadow-policy.test.mjs`均因导入`@personal-agent/runtime/dist/index.js`报`ERR_MODULE_NOT_FOUND`，没有进入业务断言。原失败日志保存在集成树`.cache/image-delivery-39977196214/failed.log`。
+
+原因是现有preview前置`build:owned-agent`仅构建五个镜像workspace，而三个完整原测试已依赖Runtime宿主夹具。最小修复只将该步改为既有`npm run build`，与Foundation Linux已成功执行的完整构建一致；不删测试、不加skip、不改ARM64/凭据权限/发布行为，不启用legacy退休。该失败发生在镜像构建与发布之前，运行无归档artifact；不能当作模型或ARM构建失败。修复的重新发布尚未执行，不能提前记录成功。

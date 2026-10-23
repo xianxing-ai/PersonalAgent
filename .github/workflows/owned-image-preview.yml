@@ -34,7 +34,7 @@ jobs:
           node-version-file: .node-version
       - run: npm install --global npm@11.12.1
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run build:owned-agent
+      - run: npm run build
       - name: Verify owned transport and orchestration before publishing
         run: |
           node apps/agentarts-runtime/scripts/export-bindings.mjs --check
