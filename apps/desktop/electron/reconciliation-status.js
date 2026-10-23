@@ -25,9 +25,7 @@ export function readReconciliationStatus(application,task,now=Date.now) {
       if(nativeRecovery)status.actionLabel='核对原编码操作';
       else if(receivedFailure)status.actionLabel='按已有回执尝试结束';
       else if(inflight||unknown) {
-        const prefix=unknown?'未取得云端执行的有效回执。':'云端请求尚未确认结束。';
-        status.blockedReason=prefix+(status.deadlineExpired?'原执行期限已过；':'')
-          +'停止请求、到期或重启均不能证明原操作已结束。当前没有该操作的自动核查入口；请先查看目标结果，避免重复提交。你可以继续对话。';
+        status.blockedReason='当前没有该操作的自动核查入口。';
       }else{
         if(typeof runtime.readToolExecutions!=='function')throw Error('Execution records unavailable');
         const records=runtime.readToolExecutions(task.taskId);
@@ -36,7 +34,7 @@ export function readReconciliationStatus(application,task,now=Date.now) {
         // that its remaining deadline/children/cache/export guards will pass.
         if(records.some(record=>record.executionStarted===true&&record.policyDecision==='allow'&&record.state==='confirmed'
           &&['subagent.dispatch','coding.repair.workflow'].includes(record.toolName)))status.actionLabel='按已有回执尝试结束';
-        else status.blockedReason='当前没有该操作的自动核查入口；请先查看目标结果，避免重复提交。';
+        else status.blockedReason='当前没有该操作的自动核查入口。';
       }
     }
     return status;

@@ -17,10 +17,7 @@ test('cancelled request and expired deadline leave cloud UNKNOWN blocked without
   const {application,calls}=fixture(checkpoints);
   const status=readReconciliationStatus(application,task,now);
   assert.deepEqual({...status,blockedReason:undefined},{deadline,deadlineExpired:true,blockedReason:undefined});
-  assert.match(status.blockedReason,/未取得云端执行的有效回执/);
-  assert.match(status.blockedReason,/期限已过/);
-  assert.match(status.blockedReason,/重启均不能证明/);
-  assert.match(status.blockedReason,/可以继续对话/);
+  assert.equal(status.blockedReason,'当前没有该操作的自动核查入口。');
   assert.equal(JSON.stringify(status).includes('secret'),false);
   assert.deepEqual({task,checkpoints},before);
   assert.deepEqual(calls.map(item=>item.name),['application-deadline','competition-cloud-inflight','competition-cloud-unknown']);
@@ -30,7 +27,7 @@ test('inflight alone has a distinct explanation and an unexpired deadline',()=>{
   const {application}=fixture({'application-deadline':deadline,'competition-cloud-inflight':{accepted:true}});
   const status=readReconciliationStatus(application,task,()=>Date.parse(deadline)-1);
   assert.equal(status.deadlineExpired,false);
-  assert.match(status.blockedReason,/请求尚未确认结束/);
+  assert.equal(status.blockedReason,'当前没有该操作的自动核查入口。');
   assert.doesNotMatch(status.blockedReason,/期限已过/);
 });
 

@@ -41,6 +41,9 @@ test('actual panel and workspace show safe execution errors and only honest orig
     const turn=page.locator('[data-turn="synthetic-original-task"]');await turn.waitFor();
     const failure=turn.locator(mode==='panel'?'.assistant-error':'.assistant-message');await failure.waitFor({state:'visible'});
     assert.match(await failure.innerText(),/cause=EACCES/);assert.match(await failure.innerText(),/资源访问被拒绝/);
+    assert.match(await failure.innerText(),/^资源访问被拒绝（EACCES）；请检查目标权限/);
+    assert.match(await failure.innerText(),/执行结果未确认，本次不会自动重试。$/);
+    assert.doesNotMatch(await failure.innerText(),/请先查看|请勿重复提交|原因：/);
     assert.equal(await turn.locator('.thinking-line').count(),0);
     assert.equal(await turn.getByRole('button',{name:/已有回执|原编码操作|核实并结束/}).count(),0);
     assert.match(await turn.innerText(),/没有该操作的自动核查入口/);assert.doesNotMatch(await turn.innerText(),/结果待核实|结果未知/);

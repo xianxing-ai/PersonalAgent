@@ -42,7 +42,7 @@ export function errorDisplay(error, stage='renderer') {
   // Gateway messages consist solely of fixed vocabulary and enum values. Preserve
   // their more precise execution stage/cause; all other messages are classified.
   const gateway = /^工具失败 \[stage=(execute|output_validation); cause=([A-Z_]+)(?:; status=([45]\d\d))?(?:; validation=(required|type|enum|const|minimum|maximum|minLength|maxLength|pattern|format|additionalProperties|minItems|maxItems|oneOf|anyOf|schema)(?:; field=([A-Za-z][A-Za-z0-9_]{0,47}))?)?\]：/.exec(raw);
-  const previous = /^\[stage=(task|ipc|renderer|runtime|configuration|execute|output_validation); code=([A-Z_]+)(?:; cause=([A-Z_]+))?(?:; status=([45]\d\d))?(?:; validation=(required|type|enum|const|minimum|maximum|minLength|maxLength|pattern|format|additionalProperties|minItems|maxItems|oneOf|anyOf|schema)(?:; field=([A-Za-z][A-Za-z0-9_]{0,47}))?)?\] /.exec(raw);
+  const previous = /\[stage=(task|ipc|renderer|runtime|configuration|execute|output_validation); code=([A-Z_]+)(?:; cause=([A-Z_]+))?(?:; status=([45]\d\d))?(?:; validation=(required|type|enum|const|minimum|maximum|minLength|maxLength|pattern|format|additionalProperties|minItems|maxItems|oneOf|anyOf|schema)(?:; field=([A-Za-z][A-Za-z0-9_]{0,47}))?)?\](?: |$)/.exec(raw);
   const inputValidation=/^Tool value violates schema \[keyword=(required|type|enum|const|minimum|maximum|minLength|maxLength|pattern|format|additionalProperties|minItems|maxItems|oneOf|anyOf|schema)(?:; field=([A-Za-z][A-Za-z0-9_]{0,47}))?\]$/.exec(raw);
   const cloud=/\[cloud: transport=(https|wss)(?: http=([45]\d\d)| phase=(wss_connect|wss_ready|wss_invoke)(?: close=([1-4]\d{3}) reason=(normal|going_away|protocol_error|abnormal|server_error|other)| socket=(ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EPIPE|CERT_HAS_EXPIRED|UNABLE_TO_VERIFY_LEAF_SIGNATURE))?| code=(RATE_LIMITED|UNAUTHORIZED|INVALID_ARGUMENT|UNSUPPORTED_CAPABILITY|TIMEOUT|CANCELLED|EXTERNAL_FAILURE))\]$/.exec(raw);
   let code = Object.hasOwn(reasons, codeValue)?codeValue:
@@ -69,7 +69,7 @@ export function errorDisplay(error, stage='renderer') {
   const status=gateway?.[3]??previous?.[4]??cloud?.[2]??providerStatus??(Number.isInteger(suppliedStatus)&&suppliedStatus>=400&&suppliedStatus<=599?String(suppliedStatus):undefined);
   const statusReason=status==='401'?'服务认证失败；请在设置中检查凭据':status==='403'?'服务拒绝访问；请检查账号权限'
     :status==='429'?'服务请求频率或配额受限；请检查配额与限流设置':status&&Number(status)>=500?'上游服务内部异常；请检查服务状态':undefined;
-  const previousText=previous?raw.slice(previous[0].length):'';
+  const previousText=previous?(previous.index===0?raw.slice(previous[0].length):raw.slice(0,previous.index).trim()):'';
   const publicMessage=publicErrorMessages.has(raw)?raw:publicErrorMessages.has(previousText)?previousText:undefined;
   const keyword=gateway?.[4]??previous?.[5]??inputValidation?.[1];
   const field=gateway?.[5]??previous?.[6]??inputValidation?.[2];
@@ -87,10 +87,15 @@ export function errorDisplay(error, stage='renderer') {
     :cloud?.[3]==='wss_ready'?'云端未完成就绪握手；请检查服务协议与部署'
     :cloud?.[3]==='wss_invoke'?'云端请求已发出但未取得确定回执；请勿重复发送原请求'
     :cloud?.[3]==='wss_connect'?'云端连接未能建立；请检查网络和服务地址':undefined;
-  const text=`[stage=${projectedStage}; code=${code}${cause}${status?`; status=${status}`:''}${validation}] ${publicMessage??reasons[code]}`
-    +(cause&&causeCode!==code?`。原因：${reasons[causeCode]}`:'')+(statusReason?`。${statusReason}`:'')
-    +(validationReason?`。${validationReason}${field?`：${field}`:''}`:'')
-    +(cloudReason?`。${cloudReason}`:'')+(identity?` [errorId=${identity}]`:'')+(cloud?` ${cloud[0]}`:'');
-  return {code,message:text};
+  const specificCause=cause&& !['RESULT_UNKNOWN','EXTERNAL_FAILURE'].includes(causeCode);
+  const causeText=specificCause?(code==='RESULT_UNKNOWN'&&causeCode==='CANCELLED'?'执行收到取消请求':reasons[causeCode]):undefined;
+  const [causeSummary,...causeAction]=causeText?.split('；')??[];
+  const human=publicMessage??statusReason??(validationReason?`${validationReason}${field?`：${field}`:''}`:undefined)
+    ??cloudReason??(causeText?`${causeSummary}（${causeCode}）${causeAction.length?`；${causeAction.join('；')}`:''}`:undefined)??reasons[code];
+  const specific=Boolean(publicMessage||statusReason||validationReason||cloudReason||specificCause);
+  const text=`${human} [stage=${projectedStage}; code=${code}${cause}${status?`; status=${status}`:''}${validation}] `
+    +(code==='RESULT_UNKNOWN'&&specific?'执行结果未确认，本次不会自动重试。':'')
+    +(identity?` [errorId=${identity}]`:'')+(cloud?` ${cloud[0]}`:'');
+  return {code,message:text.trim()};
 }
 export const errorDisplayText=(error,stage)=>error===''?'':errorDisplay(error,stage).message;
