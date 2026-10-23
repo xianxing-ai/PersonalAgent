@@ -8,7 +8,7 @@ Profile：`huawei_ict_agentarts`；基线 `ad1a045e1ec65f9ef280125d9df78b9cb63b4
 每项最多160个 Unicode 字符，去控制及双向控制字符；根 metadata 继续不公开。
 说明是数据，提示词明确其不能改变任务、系统指令或授权。
 
-仍使用原40工具、24KiB限制。目录加入说明后超预算时，仅移除说明；不删字段、
+仍使用原64工具上限、24KiB限制；40工具是本次预算回归夹具。目录加入说明后超预算时，仅移除说明；不删字段、
 required、范围、enum 或工具。结构仍超限则明确失败。冻结目录复核接受同一结构的
 无说明降级，结构变化仍拒绝。`description` 同名业务参数不会被误删。
 通过实际 prepare → parseCoordinationAvailableTools → assertSelectionCurrent →
