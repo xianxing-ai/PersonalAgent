@@ -1,3 +1,4 @@
+import {errorDisplayText} from '../shared/error-display.js';
 import {mountSessionControls} from '../features/conversation/session-controls.js';
 import {readDeveloperSettingsDiagnostic} from '../../shared/developer-settings-diagnostics.js';
 import {mountSubagentConversationPage} from '../features/conversation/subagent-conversations.js';
@@ -45,7 +46,8 @@ async function invoke(action,payload) {
   if(!bridge) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
   const response=await bridge.invoke(action,payload);
   if(!response.ok){
-    const error=Error(response.error),diagnostic=readDeveloperSettingsDiagnostic(response.diagnostic);
+    const diagnostic=readDeveloperSettingsDiagnostic(response.diagnostic);
+    const error=Object.assign(Error(diagnostic?diagnostic.message:errorDisplayText({message:response.error,code:response.errorCode},'ipc')),{code:response.errorCode});
     if(diagnostic)error.diagnostic=diagnostic;
     throw error;
   }
@@ -121,7 +123,7 @@ else {
     }else if(!value&&hostFeedback&&errorFeedbackRevision===hostFeedbackRevision)setFeedback('');
     hostFeedback=value;
   };
-  const report=e=>setFeedback(typeof e==='string'?e:e.message);
+  const report=e=>setFeedback(typeof e==='string'?e:errorDisplayText(e));
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
   const messageQueue=createMessageQueue();
   const sendingQueueIds=new Set();

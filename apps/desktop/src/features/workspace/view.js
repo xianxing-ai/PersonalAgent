@@ -1,3 +1,4 @@
+import {errorDisplayText} from '../../shared/error-display.js';
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {mountModelThinkingPicker} from '../conversation/model-thinking-picker.js';
 import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
@@ -46,7 +47,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     clearTimeout(activationTimer);orbButton.setAttribute('aria-pressed','true');orb.playBreath(3.2);
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
-  const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
+  const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=errorDisplayText(error);};
   const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
   const draftInput=composer.input;
   const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose});
