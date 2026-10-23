@@ -32,5 +32,8 @@ export function toolFailure(error: unknown, stage: 'execute' | 'output_validatio
     : status&&status>=500?'上游服务内部异常；请检查服务状态':reasons[code];
   const message = `工具失败 [stage=${stage}; cause=${code}${status?`; status=${status}`:''}${validation?`; validation=${validation[1]}${validation[2]?`; field=${validation[2]}`:''}`:''}]：${reason}。`
     + (write ? '写入结果待核实；请检查原操作记录和目标状态，确认前不要重试。' : '本次读取未取得有效结果。');
-  return new ProtocolError(write ? 'RESULT_UNKNOWN' : error instanceof ProtocolError ? code : 'EXTERNAL_FAILURE', message);
+  const readError=!write&&error instanceof ProtocolError?error:undefined;
+  const retryAfterMs=readError&&typeof readError.retryAfterMs==='number'&&Number.isSafeInteger(readError.retryAfterMs)&&readError.retryAfterMs>=0?readError.retryAfterMs:undefined;
+  return new ProtocolError(write ? 'RESULT_UNKNOWN' : readError ? code : 'EXTERNAL_FAILURE', message,
+    readError?.retryable===true,retryAfterMs);
 }

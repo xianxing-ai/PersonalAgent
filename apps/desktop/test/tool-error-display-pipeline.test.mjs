@@ -20,10 +20,11 @@ test('every public Error code crosses the actual Gateway and Desktop consumer wi
     policy.grant({authorizationRef:'grant',taskId:'task',toolName:'synthetic.code',scopes:['synthetic:read'],expiresAt:future()});
     const gateway=new ToolGateway({policy});let calls=0;
     gateway.register({descriptor:{name:'synthetic.code',version:'1',inputSchema:{type:'object'},outputSchema:{type:'object'},sideEffect,requiredScopes:['synthetic:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false},execute:async()=>{
-      calls++;throw new ProtocolError(code,'Bearer synthetic-secret /private/mail/body.eml private mail body');
+      calls++;throw new ProtocolError(code,'Bearer synthetic-secret /private/mail/body.eml private mail body',true,2000);
     }});
     await assert.rejects(gateway.invoke({toolName:'synthetic.code',toolVersion:'1',arguments:{},taskId:'task',runId:'run',authorizationRef:'grant',deadline:future(),signal:new AbortController().signal}),error=>{
       assert.equal(error.code,sideEffect==='read'?code:'RESULT_UNKNOWN',`${sideEffect}/${code}`);
+      assert.equal(error.retryable,sideEffect==='read');assert.equal(error.retryAfterMs,sideEffect==='read'?2000:undefined);
       assert.match(error.message,new RegExp(`cause=${code}\\]`));
       const displayed=errorDisplay(error,'task');
       assert.equal(displayed.code,error.code);assert.match(displayed.message,new RegExp(`cause=${code}\\]`));

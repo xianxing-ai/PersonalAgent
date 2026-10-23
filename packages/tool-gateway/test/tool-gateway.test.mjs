@@ -89,6 +89,16 @@ test('HTTP authentication and rate limits remain distinct inside unknown write f
   assert.match(messages[0],/认证失败/);assert.match(messages[1],/频率或配额/);
 });
 
+test('read retry metadata is accepted only from a typed protocol error with valid values',async()=>{
+  for(const cause of [Object.assign(Error('private response body'),{code:'RATE_LIMITED',retryable:true,retryAfterMs:2000}),new ProtocolError('RATE_LIMITED','private response body',true,-1)]){
+    const {gateway}=setup();gateway.register({descriptor,execute:async()=>{throw cause;}});
+    await assert.rejects(gateway.invoke(invocation()),error=>{
+      assert.equal(error.retryable,cause instanceof ProtocolError);assert.equal(error.retryAfterMs,undefined);
+      assert.doesNotMatch(error.message,/private response body/);return true;
+    });
+  }
+});
+
 test('forged, mismatched and insufficient authorizations are rejected', async () => {
   const {gateway} = setup({scopes: ['other:read']});
   gateway.register({descriptor, execute: async input => input});
