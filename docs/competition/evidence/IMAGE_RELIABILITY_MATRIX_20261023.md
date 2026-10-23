@@ -1,6 +1,6 @@
 # 镜像问题清单逐项核验（2026-10-23）
 
-Profile：`huawei_ict_agentarts`。附件是待验证线索，不能把用户现场描述、源码事实、模拟测试和真实云验收混为一项。`confirmed`表示本轮确认，`fixed`表示已修且实际回归通过，`existing`表示已有行为或明确产品边界，`blocked`表示缺少必要环境/账号。下表固定绑定已检查源码`c276adf38de15e8c84c1941fd5defd68cb2a3b03`，后续Desktop文案增量不冒称已包含在此检查中。
+Profile：`huawei_ict_agentarts`。当前最终源码为`998172ae6d3b4a7ff4011b7a73993a091b3ced6c`。附件是待验证线索，不能把用户现场描述、源码事实、模拟测试和真实云验收混为一项。`confirmed`表示本轮确认，`fixed`表示已修且实际回归通过，`existing`表示已有行为或明确产品边界，`blocked`表示缺少必要环境/账号。完整检查固定绑定`c276adf38de15e8c84c1941fd5defd68cb2a3b03`；最后Desktop增量另有精确版本目标测试，不能冒称包含在此前完整检查中。
 
 | 附件项 | 当前结论 | 证据与验证边界 |
 | --- | --- | --- |
@@ -37,7 +37,7 @@ PR #485原文及历史变更对照见 [提示词证据](PROMPT_CATALOG_REPAIR_20
 
 本树 `.cache/toolchain/` 使用官方Node24.15.0-linux-x64（归档SHA256 `472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6`，与官方SHASUMS256一致），npm11.12.1，独立`npm ci --ignore-scripts --no-audit --no-fund`成功。
 
-第一次组合 `d0f328a1` 的完整检查因独立复核发现RATE_LIMITED/REVISION_CONFLICT固定词表缺口，经主控要求安全中止，exit130，不算通过。后续 `5413eac3` 与 `1457c9c6`补全13枚举并保留read合法重试元数据；write仍unknown且不可自动重试。
+第一次组合 `d0f328a1` 的完整检查因独立复核发现RATE_LIMITED/CURSOR_EXPIRED固定词表缺口，经主控要求安全中止，exit130，不算通过。后续 `5413eac3` 与 `1457c9c6`补全13枚举并保留read合法重试元数据；write仍unknown且不可自动重试。
 
 冻结源码 `85431361bc40033635a4632e79cf8974e0c81e48` 的原`npm run check`于2026-10-23T14:25:16Z至14:34:16Z真实执行，exit1。显式启用`PA_ERROR_DISPLAY_UI_TEST=1`及`/usr/bin/chromium`，没有放宽原命令或跳过失败。日志位于`.cache/final-validation/85431361/`。
 
@@ -88,3 +88,16 @@ PR #485原文及历史变更对照见 [提示词证据](PROMPT_CATALOG_REPAIR_20
 真实ARM进程启动`agentarts`/`local`后：`/ping`200、无鉴权`/bindings`401、合法本地测试Bearer目录200（11 bindings，unverified）、空JSON invocation400 INVALID_ARGUMENT；WS收到ready及服务端ping，客户端默认pong，1000正常关闭。模型调用为0；endpoint为`example.invalid/inference/v1`且仅占位测试token，没有model stub回答。测试容器仅127.0.0.1:18123，已停止删除，未动他人容器。
 
 这是**既有ARM镜像+只读补丁与依赖的本机协议验证**，没有产生可发布新镜像、没有部署、没有ARM原生硬件/Windows/真实AA/邮箱/模型或平台评测成功声明。
+
+## 最终Desktop增量及当前源码边界
+
+当前组合`998172ae`包含`dde835c3`及最终文案`ad607a50`。面向用户统一显示“执行异常”，先显示已知具体原因（例如EACCES/目标权限），结果未确认只保留短后缀；内部RESULT_UNKNOWN与写操作不自动重试语义保持。无该操作自动核查入口时直接说明当前没有入口，不显示泛化“核查并结束”按钮，也不重复要求用户手动核实。只有现有Harness候选核查或已确认子任务原回执具备真实入口时显示原操作，不能把它冒充云邮箱结果查询。
+
+作者精确`ad607a50`的原日志`.cache-reconciliation-order-final.log`为80项/80通过/0失败/0跳过，含实际Chromium panel+workspace用例3722ms及原Gateway→SQLite→生产workspace用例1972ms；作者同时报告类型检查通过。该80项是最后目标回归报告，不与c276完整检查累计成unique测试。本轮验证负责人只读核对日志与两张PNG，未重复执行全检查或Docker。图片已实际查看，无真实账号/私人路径/凭据：
+
+- [最终Panel：具体错误优先](assets/image-reliability-20261023/reconciliation-panel-ad607a50.png)
+- [最终Workspace：明确无自动核查入口](assets/image-reliability-20261023/reconciliation-workspace-ad607a50.png)
+
+998与c276的原image-context再生成后，**128条路径、bytes、SHA256逐项完全相同**；云端相关源码/根依赖路径diff为空。故c276既有ARM只读协议证据仍对应这套相同上下文，不重复不相关构建，不将Desktop新增展示冒称已经跑过ARM。逐路径读回、UI日志hash/截图hash见[最终增量回执](IMAGE_RELIABILITY_FINAL_DELTA_20261023.json)。
+
+当前最终源码的正式完整CI **尚未提交、尚未通过**；本机完整pass只属于c276，最终增量属于上述精确UI提交的目标验证。最新SWR取得、可发布ARM镜像构建、真实AA/模型/邮箱/Windows与平台评测阻塞保持不变。
