@@ -17,24 +17,28 @@ test('saved classification counts after restart remain visible without suggestin
   const html=mailCard(mail);
   assert.match(html,/历史分类 42 封 · 非实时/);
   assert.match(html,/需重新授权/);
-  assert.match(html,/读取许可已过期/);
+  assert.match(html,/当前会话尚未允许读取/);
+  assert.doesNotMatch(html,/过期/);
   assert.match(html,/此卡片不会读取新邮件/);
   assert.match(html,/&lt;fixture&gt;/);
   assert.doesNotMatch(html,/9 封未读|尚未拉取邮件|已允许/);
   assert.deepEqual(connectorDestination('mail',{mail}),{page:'connections'});
   assert.equal(mail.sessionAllowed,false);
+  const missingPermission=mailCard({...mail,sessionAllowed:undefined});
+  assert.match(missingPermission,/当前会话尚未允许读取/);
+  assert.doesNotMatch(missingPermission,/过期/);
 });
 
 test('current mail grants and active monitors keep the current card instead of an expired-cache claim',()=>{
   for(const state of [{sessionAllowed:true},{sessionAllowed:false,monitoring:{enabled:true}},
     ...['waiting_approval','reading','classifying','stop_unconfirmed','failed'].map(status=>({sessionAllowed:false,status}))]) {
-    assert.doesNotMatch(mailCard({configured:true,status:'disabled',counts:{total:42},...state}),/读取许可已过期|历史分类/);
+    assert.doesNotMatch(mailCard({configured:true,status:'disabled',counts:{total:42},...state}),/当前会话尚未允许读取|历史分类/);
   }
 });
 
 test('empty, invalid and unconfigured mail summaries cannot invent historical classifications',()=>{
   for(const total of [0,-1,NaN,Infinity,'42',1.5,undefined]) {
-    assert.doesNotMatch(mailCard({configured:true,sessionAllowed:false,counts:{total}}),/历史分类|读取许可已过期/);
+    assert.doesNotMatch(mailCard({configured:true,sessionAllowed:false,counts:{total}}),/历史分类|当前会话尚未允许读取/);
   }
   assert.doesNotMatch(mailCard({configured:false,counts:{total:42}}),/历史分类/);
 });
