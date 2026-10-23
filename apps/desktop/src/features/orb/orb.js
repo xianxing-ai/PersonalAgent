@@ -148,6 +148,8 @@ export class Orb {
     this.time = 0;
     this.calm = false;
     this.running = false;
+    // Ambient Canvas animation does not need to repaint at a 120/144/240Hz display rate.
+    this._frameInterval = 1000 / 30;
     this._tokenCache = null;
     this._rebuild();
     this._resize();
@@ -188,8 +190,9 @@ export class Orb {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.w = Math.max(rect.width, 24);
     this.h = Math.max(rect.height, 24);
-    this.canvas.width = Math.round(this.w * dpr);
-    this.canvas.height = Math.round(this.h * dpr);
+    const width = Math.round(this.w * dpr), height = Math.round(this.h * dpr);
+    if (this.canvas.width !== width) this.canvas.width = width;
+    if (this.canvas.height !== height) this.canvas.height = height;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
@@ -276,8 +279,16 @@ export class Orb {
   start() {
     if (this.running || this.calm) return;
     this.running = true;
+    this._last = null;
+    this._lastPaint = null;
     const loop = (t) => {
       if (!this.running) return;
+      const elapsed = t - (this._lastPaint ?? t - this._frameInterval);
+      if (elapsed + 0.1 < this._frameInterval) {
+        this._raf = requestAnimationFrame(loop);
+        return;
+      }
+      this._lastPaint = t;
       const dt = Math.min((t - (this._last ?? t)) / 1000, 0.05);
       this._last = t;
       this.time += dt;

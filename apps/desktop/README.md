@@ -1,5 +1,7 @@
 # PersonalAgent Desktop
 
+2026-10-23：界面快照中的同步权限检查、空闲待办广播和高刷新率 Canvas 绘制修复，见[范围、权限边界与验证](docs/DESKTOP_PERFORMANCE_20261023.md)。已完成本地体验，进入 PR 审查。
+
 2026-10-21 新邮件、明显天气变化的订阅与本机 Laya 提醒判断，见
 [接线、使用和验收边界](../../docs/competition/CONNECTOR_CHANGE_TRIGGERS_20261021.md)。
 仅在原工具审批后持续读取，poll-only 不等于远端推送；其他连接器和默认云闭环分别验收。

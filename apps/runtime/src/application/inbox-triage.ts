@@ -27,6 +27,8 @@ export interface InboxTriageMetadata {
   readonly meetingCandidate: boolean;
   readonly receiptId?: string;
   readonly classifierFingerprint?: string;
+  /** 该行由旧分类器产出：保留结论，但回答/复核时应视为需要重新确认。 */
+  readonly classifierStale?: boolean;
 }
 export interface InboxPendingAnalysis {
   readonly workKey: string;
@@ -164,8 +166,10 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
     const classifierFingerprint = readFingerprint();
     const records = Object.values(state.latest).map(key => state.records[key]!)
       .filter(row => !state.heads[row.messageId] || state.heads[row.messageId]!.sourceRevision === row.sourceRevision)
-      .map(row => classifierFingerprint && row.classifierFingerprint === classifierFingerprint ? row : {...row,
-        label: null, route: 'review' as const, needsReview: true, highImpactCandidate: false, meetingCandidate: false});
+      // 分类器指纹变化（换模型、重装 Laya）只把历史结论标成 stale，不抹掉 label/route：
+      // 旧行为会把全部历史行重置为待复核，等于每次换模型都“分类白做”（2026-10-22 实测 2101/2316）。
+      .map(row => classifierFingerprint && row.classifierFingerprint === classifierFingerprint ? row
+        : {...row, classifierStale: true, highImpactCandidate: false, meetingCandidate: false});
     const groups: Record<string, number> = Object.create(null) as Record<string, number>;
     for (const row of records) if (row.label !== null) groups[row.label] = (groups[row.label] ?? 0) + 1;
     return structuredClone({records, groups, total: records.length,

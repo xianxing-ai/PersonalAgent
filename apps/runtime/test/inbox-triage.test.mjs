@@ -120,3 +120,43 @@ test('encrypted inbox persistence: partial retry, revision replacement and no fa
     assert.equal(pipeline.snapshot().total, 5);
   } finally {await rm(userData, {recursive: true, force: true});}
 });
+
+/**
+ * 2026-10-22 实测：换模型/重装 Laya 后分类器指纹变化，snapshot 把所有历史行
+ * 重置为 label=null / needsReview=true，2296 条里 2101 条被打回待核对，等于“分类白做”。
+ * 新语义：保留历史 label/route 与复核状态，只加 classifierStale 标记。
+ */
+test('分类器指纹变化保留历史结论，只标记 stale', async () => {
+  await mkdir(cacheRoot, {recursive: true});
+  const userData = await mkdtemp(path.join(cacheRoot, 'pa-triage-stale-'));
+  const strong = (choice, probabilities) => ({choice, probabilities,
+    answer_confidence: Math.max(...Object.values(probabilities)), confidence: 0.95});
+  const triage = new LayaTriageService({async infer(payload) {
+    const observations = payload.state.events.map(event => event.observation);
+    return {answers: Object.fromEntries(observations.flatMap((_text, index) => [
+      [`category_${index}`, strong('meeting', {meeting: 0.98, other: 0.02})],
+      [`impact_${index}`, strong('high_impact', {routine: 0.02, high_impact: 0.98})],
+    ]))};
+  }});
+  const open = fingerprint => createInboxTriagePipeline({storage: createEncryptedModuleStorage({userData,
+    safeStorage, filename: 'mail-classification.json'}), namespace: 'synthetic-user', triage,
+  labels: {meeting: 'Meeting-related', other: 'Other'}, meetingLabels: ['meeting'],
+  classifierFingerprint: fingerprint, authorizeRead: () => true});
+  const page = () => ({...context(), accountRef: 'fixture', folder: 'INBOX', nextCursor: '1:5',
+    hasMore: false, items});
+  const shape = rows => rows.map(row => ({label: row.label, route: row.route, needsReview: row.needsReview}));
+  let pipeline = open('fixture-policy-v1');
+  const processed = await pipeline.processPage(page());
+  assert.equal(processed.complete, true);
+  const before = pipeline.snapshot();
+  assert.equal(before.total, 5);
+  assert.ok(before.records.every(row => row.label === 'meeting'), '前置：分类结论已落 label');
+  const beforeShape = shape(before.records);
+  pipeline = open('fixture-policy-v2');
+  const after = pipeline.snapshot();
+  assert.equal(after.total, before.total);
+  assert.deepEqual(shape(after.records), beforeShape);
+  assert.deepEqual(after.groups, before.groups);
+  assert.equal(after.needsReview, before.needsReview);
+  assert.ok(after.records.every(row => row.classifierStale === true));
+});

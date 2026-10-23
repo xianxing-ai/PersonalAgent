@@ -112,6 +112,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   const file = path.join(userData, 'knowledge-source-config.json');
   let saved, vault, writer, busy = false, closed = false, failure = '';
   let writerBindingCurrent = () => false;
+  let writerReady = () => false;
   const writerCurrent = () => { try { return writerBindingCurrent(); } catch { return false; } };
   let writeAllowed = false, cloudExportAllowed = false, publicQueries = [];
   const inflight = new Set();
@@ -124,7 +125,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
   const invalidate = () => {
     for (const controller of inflight) controller.abort();
     vault?.clearIndex();
-    vault = undefined; writer = undefined; writerBindingCurrent = () => false; writeAllowed = false; cloudExportAllowed = false; publicQueries = [];
+    vault = undefined; writer = undefined; writerBindingCurrent = () => false; writerReady = () => false; writeAllowed = false; cloudExportAllowed = false; publicQueries = [];
   };
   const current = () => {
     try {return !closed && Boolean(saved?.enabled && vault)
@@ -135,7 +136,8 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
     available: current(), sourceId: saved?.sourceId ?? '', namespace,
     configRevision: saved?.configRevision ?? 0, dataLevel: saved?.dataLevel ?? 'private',
     displayName: saved ? path.basename(saved.rootPath) : '',
-    allowedNotePaths: [...(saved?.allowedNotePaths ?? [])], writeAvailable: current() && writeAllowed && Boolean(writer) && writerCurrent(),
+    // Presentation only: the controlled writer still checks the full binding/ACL at execution.
+    allowedNotePaths: [...(saved?.allowedNotePaths ?? [])], writeAvailable: current() && writeAllowed && Boolean(writer) && writerReady(),
     cloudExportAllowed: current() && cloudExportAllowed && saved.dataLevel === 'public',
     publicQueries: cloudExportAllowed ? [...publicQueries] : [],
     reason: failure || (!saved ? '请选择知识库；尚未配置' : !saved.enabled ? '知识源已停用'
@@ -165,9 +167,11 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
             return currentHelper === helperPath && sameExecutableIdentity(executableIdentity(currentHelper), helperId);
           } catch { return false; }
         };
+        const ready = () => current() && saved === record && helperCurrent();
+        writerReady = ready;
         const bindingCurrent = () => {
           const context=executionContext.getStore();if(context)assertAuthorization(context);
-          return current() && saved === record && helperCurrent()
+          return ready()
             && (verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath), true);
         };
         writerBindingCurrent = bindingCurrent;
@@ -178,6 +182,7 @@ export async function createKnowledgeSourceConfig({userData, safeStorage, namesp
         writeAllowed = permissions.writeAllowed === true;
       } catch {
         writerBindingCurrent = () => false;
+        writerReady = () => false;
         writer = undefined;
         if (permissions.writeAllowed) failure = '只读已连接；安全整理宿主不可用，写入未启用';
       }

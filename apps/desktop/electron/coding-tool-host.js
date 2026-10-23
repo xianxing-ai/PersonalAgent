@@ -1,7 +1,10 @@
-import {execFileSync} from 'node:child_process';
+import {execFile, execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {lstatSync, readdirSync, realpathSync, statSync} from 'node:fs';
 import path from 'node:path';
+import {promisify} from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const ACL_CHECK = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -53,16 +56,26 @@ function sameIdentity(left, right) {
   return Object.keys(left).every(key => left[key] === right[key]);
 }
 
-/** The recovery directory must be pre-created with a protected, current-user ACL. */
-export function verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath) {
+function aclArguments(recoveryRootPath) {
   if (process.platform !== 'win32') throw Error('Windows recovery ACL inspection is unavailable');
   // Redirected Console.In may use the Windows code page, even with Node's UTF-8 input.
   // Carry the path as data inside the UTF-16 EncodedCommand instead.
   const script = `$root=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(recoveryRootPath, 'utf8').toString('base64')}'))\n${ACL_CHECK}`;
-  const output = execFileSync(powerShellPath,
-    ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+  return ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+}
+
+/** Synchronous compatibility check. Never use this from a UI snapshot. */
+export function verifyWindowsRecoveryAcl(recoveryRootPath, powerShellPath) {
+  const output = execFileSync(powerShellPath, aclArguments(recoveryRootPath),
     {encoding: 'utf8', timeout: 10_000, maxBuffer: 4096, windowsHide: true});
   if (output !== 'secure') throw Error('Recovery directory ACL is not restricted to the current user');
+}
+
+/** Execution-time ACL inspection yields the main loop and retains the same fail-closed policy. */
+export async function verifyWindowsRecoveryAclAsync(recoveryRootPath, powerShellPath, {signal} = {}) {
+  const {stdout} = await execFileAsync(powerShellPath, aclArguments(recoveryRootPath),
+    {encoding: 'utf8', timeout: 10_000, maxBuffer: 4096, windowsHide: true, signal});
+  if (stdout !== 'secure') throw Error('Recovery directory ACL is not restricted to the current user');
 }
 
 /** Read-only startup inventory. An unresolved marker requires a separate trusted reconciliation. */
@@ -75,7 +88,8 @@ export function listPendingCodingHelpers(recoveryRootPath) {
 export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceRoot,
   recoveryRootPath, powerShellPath, processIdentityHelperPath, helperScriptPath, createWorkspacePatchApplyTool,
   reconcileWorkspacePatchApply,
-  inspectAcl = verifyWindowsRecoveryAcl}) {
+  inspectAcl = verifyWindowsRecoveryAcl,
+  inspectAclAsync = inspectAcl === verifyWindowsRecoveryAcl ? verifyWindowsRecoveryAclAsync : inspectAcl}) {
   if (process.platform !== 'win32') throw Error('Coding patch host requires Windows');
   const root = canonicalDirectory(workspaceRoot, 'Workspace root');
   const authorized = canonicalDirectory(authorizedWorkspaceRoot, 'Authorized workspace root');
@@ -119,7 +133,7 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
     throw Error('Unexpected coding patch tool descriptor');
   }
   let active = true;
-  const available = () => {
+  const bindingCurrent = () => {
     if (!active) return false;
     try {
       for (const entry of pinned) {
@@ -130,31 +144,40 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
         if (current !== entry.canonical
           || !sameIdentity(entry.id, identity(current, !entry.directory))) return false;
       }
-      inspectAcl(recovery, powerShell);
-      return listPendingCodingHelpers(recovery).length === 0;
+      return true;
     } catch { return false; }
   };
-  const tool = {descriptor: implementation.descriptor, execute: (input, context) => {
-    if (!available()) throw Error('Coding patch host is closed or requires helper reconciliation');
+  // A readiness hint is not authorization. Rendering this hint must never launch PowerShell.
+  const ready = () => {
+    try {return bindingCurrent() && listPendingCodingHelpers(recovery).length === 0;}
+    catch {return false;}
+  };
+  const available = () => {
+    try {if (!ready()) return false;inspectAcl(recovery, powerShell);return ready();}
+    catch {return false;}
+  };
+  const assertRecoveryBinding = async (context) => {
+    if (!bindingCurrent()) throw Error('Coding patch host is closed or binding changed');
+    context?.signal?.throwIfAborted();
+    try {await inspectAclAsync(recovery, powerShell, {signal: context?.signal});}
+    catch {
+      context?.signal?.throwIfAborted();
+      throw Error('Coding patch host is closed or requires helper reconciliation');
+    }
+    // Revoke, cancellation and file replacement can happen while the child process is running.
+    context?.signal?.throwIfAborted();
+    if (!bindingCurrent()) throw Error('Coding patch host is closed or binding changed');
+  };
+  const tool = {descriptor: implementation.descriptor, execute: async (input, context) => {
+    if (!ready()) throw Error('Coding patch host is closed or requires helper reconciliation');
+    await assertRecoveryBinding(context);
+    if (!ready()) throw Error('Coding patch host is closed or requires helper reconciliation');
     return implementation.execute(input, context);
   }};
-  const assertRecoveryBinding = () => {
-    if (!active) throw Error('Coding patch host is closed');
-    for (const entry of pinned) {
-      const current = entry.directory
-        ? canonicalDirectory(entry.source, 'Pinned coding directory')
-        : canonicalFile(entry.source, entry.source === processIdentityHelperPath
-          ? 'Pinned Windows process identity helper' : 'Pinned PowerShell executable');
-      if (current !== entry.canonical || !sameIdentity(entry.id, identity(current, !entry.directory))) {
-        throw Error('Coding patch host binding changed');
-      }
-    }
-    inspectAcl(recovery, powerShell);
-  };
   const patchReconciliation = typeof reconcileWorkspacePatchApply === 'function'
     ? {bindingId, reconcile: async ({relativePath, expectedRunId, expectedArgumentsDigest,
-      expectedBeforeSha256, retainMarker}) => {
-      assertRecoveryBinding();
+      expectedBeforeSha256, retainMarker, signal}) => {
+      await assertRecoveryBinding({signal});
       return reconcileWorkspacePatchApply({rootPath: root, recoveryRootPath: recovery,
         relativePath, expectedRunId, expectedArgumentsDigest, expectedBeforeSha256,
         retainMarker, powerShellPath: powerShell,
@@ -165,6 +188,7 @@ export function createDesktopCodingToolHost({workspaceRoot, authorizedWorkspaceR
     tools: [tool],
     pendingHelpers,
     available,
+    ready,
     ...(patchReconciliation ? {patchReconciliation} : {}),
     close: () => { active = false; },
   };

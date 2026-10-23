@@ -4,6 +4,8 @@ import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import test from 'node:test';
+import childProcess from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
 import {createKnowledgeSourceConfig} from '../electron/knowledge-source-config.js';
 import {findWindowsExecutable} from '../electron/windows-executable-discovery.js';
 
@@ -38,6 +40,12 @@ test('real Windows knowledge recovery ACL accepts Unicode paths and keeps write 
     await host.configure({...binding(host), enabled: true, dataLevel: 'private', writeAllowed: true,
       cloudExportAllowed: false, publicQueries: []});
     assert.equal(host.snapshot().writeAvailable, true, host.snapshot().reason);
+    const original=childProcess.execFileSync;let launches=0;
+    try {
+      childProcess.execFileSync=()=>{launches++;throw Error('UI snapshots must not spawn');};syncBuiltinESMExports();
+      for(let n=0;n<20;n++)assert.equal(host.snapshot().writeAvailable,true);
+      assert.equal(launches,0,'write-enabled knowledge snapshots do not recheck ACL synchronously');
+    } finally {childProcess.execFileSync=original;syncBuiltinESMExports();}
     assert.match(host.pairingIdentity(), /^[a-f0-9]{64}$/);
     await host.revoke(); assert.equal(host.pairingIdentity(), undefined);
   });
