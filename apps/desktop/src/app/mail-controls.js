@@ -7,7 +7,7 @@ export function mountMailControls(root, invoke) {
   const field = name => settings.querySelector(`[data-mail="${name}"]`);
   const cloudControls=document.createElement('div');
   cloudControls.className='sis-fields';
-  cloudControls.innerHTML='<p class="notice">需要主智能体分析时，在主对话发起请求；该次卡片会列出所需邮件访问与 AgentArts 出机范围。</p><button data-mail="cloudDisable" type="button">停止已有云端分析</button><p data-mail="cloudStatus" class="notice" role="status"></p>';
+  cloudControls.innerHTML='<p class="notice">可让云端模型复核新收到的模糊邮件，仅发送信头，不含正文；历史积压不自动上传，随时可以停止。</p><button data-mail="cloudEnable" type="button">允许新模糊信头云端复核</button><button data-mail="cloudDisable" type="button">停止云端复核</button><p data-mail="cloudStatus" class="notice" role="status"></p>';
   field('status').before(cloudControls);
   let busy = false, state = {};
   const buttons = () => {
@@ -18,6 +18,7 @@ export function mountMailControls(root, invoke) {
     // 以它作为撤销前置会让重启后永久无法撤销邮箱配置（2026-10-22 实测）。
     field('disable').disabled = busy || !state.configured;
     field('cloudDisable').disabled = busy || !state.cloudAnalysisAllowed;
+    field('cloudEnable').disabled = busy || !state.configured || state.requiresRestart || state.cloudAnalysisAllowed;
   };
   const run = async (name, payload) => {
     busy = true; buttons();
@@ -35,18 +36,21 @@ export function mountMailControls(root, invoke) {
   field('read').onclick = () => run('mail.read');
   field('disable').onclick = () => run('mail.disable');
   field('cloudDisable').onclick=()=>run('mail.disableCloud');
+  field('cloudEnable').onclick=()=>run('mail.review.configure',{enabled:true});
   function render(value = {}) {
     state = value;
     const counts = value.counts ?? {};
     const labels = {meeting:'会议', work:'工作', subscription:'订阅', transaction:'订单与账单', personal:'个人', other:'其他'};
     const states = {unconfigured:'未配置', enabled:'已允许', disabled:'已停止', ready:'就绪', unavailable:'不可用',
       reading:'正在读取', running:'正在读取', pending:'等待处理', classifying:'正在分类', classification_unavailable:'分类中断，可重试',
-      complete:'本批分类完成', failed:'读取失败', cancelled:'已取消', stop_unconfirmed:'正在确认停止',
+      complete:'本批处理完成', failed:'读取失败', cancelled:'已取消', stop_unconfirmed:'正在确认停止',
       resync_required:'分页已失效，点击开始批量分类重新同步'};
     const groups = Object.entries(counts.groups ?? {}).map(([key,count]) => `${labels[key] || key} ${count}`).join('，');
-    field('status').textContent = `${value.account || '未配置邮箱'} · ${states[value.status] || value.status || '未配置'}${value.requiresRestart ? ' · 配置已保存，下次启动生效' : ''} · 已分类 ${counts.total ?? 0}，待核对 ${counts.needsReview ?? 0}，会议候选 ${counts.meetingCandidates ?? 0}${groups ? ` · ${groups}` : ''}${!value.localModelReady ? ' · 请先启动本地 Laya' : ''}${value.reason ? ` · ${value.reason}` : ''}`;
+    field('status').textContent = `${value.account || '未配置邮箱'} · ${states[value.status] || value.status || '未配置'}${value.requiresRestart ? ' · 配置已保存，下次启动生效' : ''} · 已处理 ${counts.total ?? 0}，待核对 ${counts.needsReview ?? 0}，云复核 ${counts.cloudReviewed ?? 0}，会议候选 ${counts.meetingCandidates ?? 0}${groups ? ` · ${groups}` : ''}${!value.localModelReady ? ' · 请先启动本地 Laya' : ''}${value.reason ? ` · ${value.reason}` : ''}`;
     const analyses=value.analyses?.tasks ?? [];
-    field('cloudStatus').textContent=`${value.cloudAnalysisAllowed?'主智能体分析已开启，结果保留在主对话':'云端分析未开启；本地分类可独立运行'}${analyses.length?` · 已交接 ${analyses.length}，完成 ${analyses.filter(item=>item.state==='succeeded').length}`:''}${value.analyses?.reason?` · ${value.analyses.reason}`:''}`;
+    const reviewCounts=typeof value.analyses?.reviewed==='number'?` · 复核完成 ${value.analyses.reviewed}，处理中 ${value.analyses.pending??0}，未完成 ${value.analyses.failed??0}`
+      :analyses.length?` · 已交接 ${analyses.length}，完成 ${analyses.filter(item=>item.state==='succeeded').length}`:'';
+    field('cloudStatus').textContent=`${value.cloudAnalysisAllowed?'新模糊信头云复核已开启；分类结果保留在本机，重要邮件按通知策略提醒':'云复核未开启；本地分类可独立运行'}${reviewCounts}${value.analyses?.reason?` · ${value.analyses.reason}`:''}`;
     buttons();
   }
   return {render, showSettings(show) {settings.hidden = !show;}, close() {field('key').value = ''; settings.remove();}};

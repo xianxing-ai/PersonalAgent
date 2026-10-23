@@ -112,7 +112,7 @@ import {createDeveloperSettingsHost} from './developer-settings-host.js';
 import {developerSettingsError,developerSettingsErrorResponse} from '../shared/developer-settings-diagnostics.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
-import {createDesktopMailAnalysisHost} from './mail-analysis-host.js';
+import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
@@ -382,8 +382,10 @@ const connectorMailReadOrigin=createConnectorReadOrigin({getApplication:()=>runt
 function mailSnapshot() {
   const config = mailConfig?.snapshot() ?? {configured:false, status:'unconfigured', sessionAllowed:false};
   const host = mailHost?.snapshot();
+  const analyses=mailAnalysisHost?.snapshot();
   return {...host, ...config, ...projectMailStatus(config,host,mailFailure),
-    counts:host?.counts, analyses:mailAnalysisHost?.snapshot(), localModelReady:localLaya?.snapshot().ready === true,
+    cloudAnalysisAllowed:analyses?.enabled===true,
+    counts:host?.counts, analyses, localModelReady:localLaya?.snapshot().ready === true,
   };
 }
 
@@ -2284,7 +2286,17 @@ async function initializeRuntime() {
           if (!mailAnalysisHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-mail-analysis:')) {
             throw Error('邮件分析宿主尚未就绪');
           }
-          mailAnalysisHost?.assertCloudSend(request);
+          mailAnalysisHost?.assertCloudSend?.(request);
+        },
+        mailReview:{
+          readEnvelope:(binding,context)=>{
+            if(!mailAnalysisHost)throw Error('邮件云复核宿主尚未就绪');
+            return mailAnalysisHost.readEnvelope(binding,context);
+          },
+          assertExport:(binding,envelope,context)=>{
+            if(!mailAnalysisHost)throw Error('邮件云复核宿主尚未就绪');
+            mailAnalysisHost.assertExport(binding,envelope,context);
+          },
         },
         tools: conversationTools,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
@@ -2292,6 +2304,7 @@ async function initializeRuntime() {
           authorizationIntentHost.prepareQuestion(scope);
           calendarMeetingHost?.prepareAuthorization?.(scope);
           mailHost?.prepareAuthorization?.(scope);
+          mailAnalysisHost?.prepareAuthorization?.(scope);
           codingWorkspace?.prepareAuthorization?.(scope);
           knowledgeSourceConfig?.prepareAuthorization?.(scope);
           notificationApplicationHost?.prepareAuthorization?.(scope);
@@ -2299,7 +2312,7 @@ async function initializeRuntime() {
             .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
-          ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='notifications.interruption_policy.set'
+          ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
@@ -2510,12 +2523,16 @@ async function initializeRuntime() {
     ? 'Fake Runtime · 联调模式'
     : competitionMode ? '本地 Runtime · AgentArts Competition' : '本地 Runtime · 已连接';
   eventCursor = new EventCursor('tasks');
-  if (competitionMode && mailHost) mailAnalysisHost = createDesktopMailAnalysisHost({
-    application:runtimeApplication,client,mail:mailHost,config:mailConfig,namespace:desktopHost.userNamespace,
-    onUpdate:publish,onTask:({taskId,goal})=>{
-      if (!conversations.turns.has(taskId)) conversations.add(taskId,'panel',goal);
-      rememberTaskGoal(taskId,goal);
-    },
+  if (competitionMode && mailHost) mailAnalysisHost = createDesktopMailReviewHost({
+    getApplication:()=>runtimeApplication,mail:mailHost,question:authorizationQuestionPort,
+    readConfigurationRef:()=>{const source=readConnectorSourceAuthorization('mail');return source.available?source.configurationRef:undefined;},
+    labelKeys:['meeting','work','subscription','transaction','personal','other'],
+    getNotifications:()=>notificationApplicationHost,namespace:desktopHost.userNamespace,
+    confirmConsent:request=>confirmApplicationAuthorization('mail.review.configure',request.payload??request,{
+      scope:request.scope??{kind:'mail-headers',policy:'new-ambiguous-only'},
+      summary:request.summary??'允许选定测试信及之后新增的模糊邮件信头交给当前云端模型复核；不含正文，不上传历史积压，不发送或修改邮件。',
+      deadline:request.deadline,signal:request.signal,isCurrent:request.isCurrent,
+    }),onUpdate:publish,
   });
   await syncCapabilities();
   await syncRuntimeSnapshots();
@@ -3245,13 +3262,16 @@ async function action(event, name, payload) {
       return result;
     }
   }
-  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.enableCloud','mail.disableCloud'].includes(name)) {
+  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.review.configure','mail.disableCloud'].includes(name)) {
     if (sender !== admin || !competitionMode || !mailConfig || !localLaya) throw Error('此操作仅允许从本项目设置调用');
     if (name === 'mail.configure') {await mailConfig.configure(payload); mailFailure = '';}
     if (name === 'mail.enable') mailConfig.enableSession(payload);
     if (name === 'mail.disable') await mailConfig.revoke();
-    if (name === 'mail.enableCloud') mailConfig.enableCloudAnalysis(payload);
-    if (name === 'mail.disableCloud') await mailConfig.revokeCloudAnalysis();
+    if (name === 'mail.review.configure') {
+      if(!mailAnalysisHost)throw Error('邮件云复核宿主尚未就绪');
+      await mailAnalysisHost.configure(payload??{enabled:true});
+    }
+    if (name === 'mail.disableCloud') {await mailAnalysisHost?.revoke();await mailConfig.revokeCloudAnalysis();}
     if (name === 'mail.read') {
       if (!mailHost || mailConfig.snapshot().requiresRestart) throw Error('邮箱配置将在下次启动应用时接入');
       if (!localLaya.snapshot().ready) throw Error('请先启动本地 Laya');

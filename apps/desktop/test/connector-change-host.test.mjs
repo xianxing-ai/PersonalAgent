@@ -32,7 +32,32 @@ const pageChoice=(count=100,header='项目会议调整及交付安排'.repeat(40
   candidates:['notify','defer','ignore'].map(id=>({id,revision:1,kind:id==='notify'?'escalate':id==='defer'?'defer':'noop',description:id,
     risk:'low',sources:[{id:'original-page',revision:1}],scopeRef:'local',expiresAt:new Date(Date.now()+60_000).toISOString(),argumentsDigest:actionArgumentsDigest({})}))});
 const selection=(action='ignore')=>({state:'selected',eligibleForRuntime:true,selected:{id:action,revision:1},calibrated:false,
-  receipt:{id:'synthetic-'+action,promptVersion:'action-choice-v1',contextDigest:'synthetic',candidates:[]}});
+  receipt:{id:createHash('sha256').update('synthetic-'+action).digest('hex'),promptVersion:'action-choice-v1',contextDigest:'a'.repeat(64),candidates:[]}});
+
+test('mail choice diagnostics cover short and grouped pages with safe bounded candidate scores only',async()=>{
+  for(const input of [pageChoice(1,'公开测试'),pageChoice()]) {
+    let metadata;
+    const result={...selection('defer'),state:'abstain',eligibleForRuntime:false,reason:'uncertain',
+      receipt:{...selection('defer').receipt,privateText:'PRIVATE_EXTRA',candidates:[
+        {candidate:{id:'notify',revision:1,privateText:'PRIVATE_EXTRA'},digest:'b'.repeat(64),privateText:'PRIVATE_EXTRA'}]},
+      answerConfidence:0.6,entropyConcentration:0.2,privateText:'PRIVATE EXTRA',scores:[
+        {candidate:{id:'notify',revision:1,privateText:'PRIVATE EXTRA'},probability:0.6},
+        {candidate:{id:'defer',revision:1},probability:NaN},
+        {candidate:{id:'unknown-private-id',revision:1},probability:0.4}]};
+    const returned=await chooseConnectorMailPage(input,{choose:async()=>result},{onGroups:value=>metadata=value});
+    assert.equal(returned.reason,'uncertain');assert.equal(metadata.status,'deferred');
+    assert.equal(metadata.covered,JSON.parse(input.context).data.count);
+    for(const group of metadata.groups){
+      assert.equal(group.state,'abstain');assert.equal(group.reason,'uncertain');
+      assert.equal(group.answerConfidence,0.6);assert.equal(group.entropyConcentration,0.2);
+      assert.deepEqual(group.scores,[{candidate:{id:'notify',revision:1},probability:0.6}]);
+    }
+    assert.equal(JSON.stringify(metadata).includes('PRIVATE EXTRA'),false);
+    assert.equal(JSON.stringify(metadata).includes('PRIVATE_EXTRA'),false);
+    assert.deepEqual(metadata.groups[0].receipt.candidates,[{candidate:{id:'notify',revision:1},digest:'b'.repeat(64)}]);
+    assert.equal(JSON.stringify(metadata).includes('unknown-private-id'),false);
+  }
+});
 
 test('long mail page uses bounded serial groups covering every complete header under one original scope',async()=>{
   const input=pageChoice(),seen=[],receipts=[];let active=0;
@@ -47,7 +72,7 @@ test('long mail page uses bounded serial groups covering every complete header u
   assert.equal(result.receipt.contextDigest,createHash('sha256').update(input.context).digest('hex'));
   assert.equal(result.receipt.aggregation,'connector-page-groups-v1');
   assert.deepEqual(result.receipt.groupReceipts,receipts[0].groups.map(item=>item.receipt));
-  assert.ok(receipts[0].groups.every(item=>item.receipt.contextDigest==='synthetic'),'original group receipts remain unchanged');
+  assert.ok(receipts[0].groups.every(item=>item.receipt.contextDigest==='a'.repeat(64)),'original group receipts remain unchanged');
 });
 
 test('one unclassifiable group defers the whole page even when a different group chooses notify',async()=>{
@@ -110,7 +135,7 @@ async function fixture(t,{decision='notify',autoShow=true,trackStateReads=false}
   const weatherProvider=new FakeWeatherProvider([forecast]);
   const chooser={snapshot:()=>({ready:chooserReady}),async choose(input){choices.push(structuredClone({context:input.context,candidates:input.candidates}));
     if(typeof selected==='function')return selected(input);
-    return {state:'selected',eligibleForRuntime:true,selected:{id:selected,revision:1},reason:'Explicit Fake decision',receipt:{id:'fake-choice-'+choices.length}};}};
+    return {state:'selected',eligibleForRuntime:true,selected:{id:selected,revision:1},reason:'Explicit Fake decision',receipt:{id:createHash('sha256').update('fake-choice-'+choices.length).digest('hex')}};}};
   async function open(){
     channel=createDesktopNotificationPort({storageDir:folder,now:()=>time,onOutcome:outcome=>notifications.receipt(outcome),notifier:{
       async isSupported(){return true;},async show(input,events){native.push(input);callbacks.set(input.id,events);if(autoShow)events.onShow();return {close(){}};}}});

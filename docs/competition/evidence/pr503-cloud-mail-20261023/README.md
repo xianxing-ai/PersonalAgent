@@ -63,7 +63,32 @@
 
 本地逐步回执位于被忽略的 `.cache/mail-full-acceptance-20261023/`。该目录及用户配置、邮件内容、凭据均不提交。
 
+## 7364 封基线与真实新邮件结果（未通过分类／提醒）
+
+- 正式实例完整基线已处理 7364 封信头，其中 5998 封进入复核；继续接收公开测试信后为 7372 封、6006 封待复核。原三封测试信均在产品原始 `mail.inbox` 回执和本地分类元数据中找到，但三封 `label=null`、`route=review`，不能声称分类正确。
+- 通过正式主对话实际创建 `connector.watch.start`，120 秒轮询进入 monitoring。基线后分别收到 1、4、3 封公开测试邮件，三个原始 `mail.inbox` 均 confirmed／Policy allow／executionStarted，分别触发真实本机 Laya 判断任务并 succeeded；三次实际动作均为 defer、reason=uncertain，没有创建或送达原生提醒。通知策略已通过原 Runtime／Policy 链配置为 normal／banner；私人信头云端分析保持关闭。
+- 新增安全本地诊断后，中文订阅候选概率 0.6559、普通影响概率 0.5327；中文订单候选为 other。英文订单也误判 subscription（0.9542），故没有证据把问题仅归因中文。保留模型权重及 0.7／0.15 门槛，不强制选择或伪造通知。具体固定数值见 `mail-real-result-20261023.json`；无私人信头或正文。
+- 真实读取在 6900 条时出现 EXTERNAL_FAILURE，原刷新路径把 failed 覆盖成 disabled。已修复为清理完成后保留 failed 及安全恢复说明，计数和游标不丢；显式取消仍 disabled、停止未确认仍 stop_unconfirmed、游标失效仍 resync_required。对应 6 项 focused 通过。
+- 本地分类元数据新增可选固定诊断字段，兼容旧记录，不触发七千余封重判；短页和分组页都保留判断原因及有限分数，receipt 按 hash／已知候选白名单投影，额外字段被剥离。对应 Inbox 9/9、Connector Host 38/38、Runtime 构建及差异检查通过。
+- 重启保留正式配置及分类进度。本轮未清空聊天或修改现有任务终态；首次订阅任务在正常停止时进入待核实，不拿它冒充完成。随后独立工作区订阅父子任务均 succeeded，当前新订阅实际 monitoring。最后一处 receipt 白名单加固在该次重启后完成离线验证，尚未声称当前进程已载入它。
+
+本轮结论是：真实收取、分页和本机决策调用已确认；分类准确率及原生提醒交付未通过，完整邮件闭环仍未完成。旧头 `034d72c4` 的技术 CI 全通过只证明该头，不代替本轮新增补丁的检查及真实模型效果。
+
+## 本轮新增缓存信头复核接口与范围
+
+此节为后续增量的接口说明，不改写前文历史实测结论，也不单独声明真实云端验收通过。
+
+- Competition Runtime 新增受信宿主专用 `mail.review@1.0.0`／`mail:review`，使用原 HostTask、Policy、ToolGateway 与协调端口；来源许可、精确信头出机、目的地和撤销由原提问卡校验，不向云端提供业务工具、正文或聊天续轮。
+- 缓存端口为 `pendingReviewAnalyses`、`readReviewAnalysis`、`confirmCachedAnalysisAccepted`、`applyCachedAnalysisReview`，仅供受信宿主使用。它们读取原持久回执并核对邮箱、来源修订、分类器指纹、receipt、投影 digest 与任务绑定，不要求本地 Laya 或分页批次正在运行；不新增 Renderer/wire API 或数据库迁移。新增工具描述与可选缓存字段不表示公共接口已冻结。
+- 默认处理启用后新观察的模糊信头，历史积压仅可按明确选择的绑定进入复核。`firstObservedAt` 保留首次可信观察时间，重读、重新分类和分类器变更不刷新时间；历史来源缺少该依据时保持未知，不自动进入新邮件集合。
+- 原 Laya 结论与诊断保留，固定枚举云结果独立记录为 `cloudReview`，仅在原任务成功且结果 checkpoint 绑定一致时应用有效分类。额外字段、工具提案与无效 JSON 均不能应用；发送前保存 attempt，未知结果不自动重发。真实发送、结果和通知状态以随后实机回执为准。
+- 新增 `retryCachedAnalysis({...binding, previousTaskId}, context)`，只在用户重新选择且宿主证明旧版本在 WSS 发送前失败、无 dispatch context/request identity/received/unknown/result 后释放对应缓存绑定。原失败任务与重试历史保留，新任务重新授权；已发送或结果未知不能释放或自动重发。
+
 ## 检查
+
+2026-10-23 后续正式实例云复核尝试见 `mail-cloud-repair-20261023.json`：三封都通过原授权，但 WSS 发送前的任务上下文校验失败，尚无云端分类或提醒回执。已补齐该单次交换的 profile、deadline、预算记录，并修复可信 textOnly 请求的原始分类 JSON 接收；生产 WSS 组合离线回归包含成功解析及断线保留未知结果，11/11 通过，Coordination 对应文件 5/5 通过。用户要求先修复再同步主线，已暂停云复核，待发送数 0；这些本地检查不算真实云端验收。
+
+本轮增量另完成 Runtime 与 Coordination 构建、Host/真实 Runtime 本地组合 8/8、缓存发送前失败释放 1/1 与差异检查。此处真实 Runtime 指本机生产 Runtime/授权/宿主组合，模型及生产 WSS 回归使用 Synthetic 端点；没有新增真实云调用通过声明，也不复用旧头 CI 作为当前头证据。
 
 - 同步后根构建通过；架构、契约夹具、生成类型和 workspace 类型检查已运行。
 - Runtime 1159/1159、跨模块 integration 57/57 通过。

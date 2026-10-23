@@ -15,7 +15,7 @@ const COORDINATION_FAILURE_CODES = new Set([
 ]);
 
 /** Diagnostic data only: never copy provider messages, causes, stacks or arbitrary codes. */
-function coordinationFailureDiagnostic(error: unknown, continuation: boolean) {
+export function coordinationFailureDiagnostic(error: unknown, continuation: boolean) {
   let kind = 'unknown_error', code = 'EXTERNAL_FAILURE', remoteCode: string | undefined;
   try {
     if (error instanceof ProtocolError) {
@@ -46,7 +46,7 @@ function sameCloudInvocation(left: AgentArtsUnknownReceipt | undefined | null,
       || (left.serverInstanceId === undefined && left.accepted === false && right.accepted === true));
 }
 
-function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string,
+export function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string,
   receipt?: AgentArtsUnknownReceipt): boolean {
   const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined;
   if (!inflight) return false;
@@ -177,7 +177,7 @@ export function readCompetitionCloudRequestIdentity(runtime: TaskRuntime, taskId
 
 
 /** Call only after the corresponding parsed loop state or task success is durable. */
-function consumeCompetitionCloudReceipt(runtime: TaskRuntime, taskId: string): void {
+export function consumeCompetitionCloudReceipt(runtime: TaskRuntime, taskId: string): void {
   const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined | null;
   const received = runtime.loadCheckpoint(taskId, 'competition-cloud-received') as AgentArtsUnknownReceipt | undefined | null;
   if (runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || !sameCloudInvocation(inflight, received)) return;

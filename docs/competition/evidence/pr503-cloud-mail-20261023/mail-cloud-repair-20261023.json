@@ -1,0 +1,41 @@
+{
+  "profile": "huawei_ict_agentarts",
+  "observedAt": "2026-10-23T09:39:31.674Z",
+  "verification": "formal_app_attempt_failed_before_dispatch_repairs_checked_locally",
+  "formalUserDataUsed": true,
+  "bodiesRead": false,
+  "privateHeadersPublished": false,
+  "originalPublicMailCount": 3,
+  "tasks": [
+    {"taskId": "cb545df3-f91b-442b-a2c7-535d20e83855", "state": "failed", "errorCode": "EXTERNAL_FAILURE"},
+    {"taskId": "51d712cd-c100-42e3-9041-0b210609ad2b", "state": "failed", "errorCode": "EXTERNAL_FAILURE"},
+    {"taskId": "6ceeccfb-627b-490b-96c5-0da8781f7608", "state": "failed", "errorCode": "EXTERNAL_FAILURE"}
+  ],
+  "readback": {
+    "policyDecision": "allow",
+    "executionStarted": true,
+    "mailReviewAttemptPresent": true,
+    "inflightPresent": true,
+    "dispatchContextPresent": false,
+    "requestIdentityPresent": false,
+    "cloudResultPresent": false,
+    "cloudReviewEnabledAfterUserPause": false,
+    "pendingAfterUserPause": 0,
+    "correctCloudClassifications": 0,
+    "nativeReminderConfirmed": false
+  },
+  "diagnosis": "The real WSS onDispatch callback persisted inflight, then rejected the host task because its application profile, deadline and single-exchange budget were absent. The invocation was not sent. Separately, the production proposal-mode adapter did not accept raw text-only classification JSON.",
+  "repairs": [
+    "Persist original Competition dispatch facts for the single mail-review exchange.",
+    "Accept raw classification JSON and legacy text wrappers only for trusted text-only requests; reject business proposals.",
+    "Preserve unknown transport results without automatic resend; consume matched receipts only after the parsed review result is durable."
+  ],
+  "localChecks": {
+    "runtimeBuild": "passed",
+    "coordinationBuild": "passed",
+    "mailReviewTaskChecksPassed": 11,
+    "coordinationTextOnlyFileChecksPassed": 5,
+    "realCloudCallsInLocalChecks": 0
+  },
+  "remaining": ["Synchronize the repaired work with current main and rebuild.", "Rerun formal mail classification and native reminder acceptance after synchronization."]
+}

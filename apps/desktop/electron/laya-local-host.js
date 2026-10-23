@@ -130,7 +130,8 @@ export function createLocalLayaHost({projectRoot, createService, createChooser, 
     }
     return artifact.digest;
   };
-  const snapshot = () => {readClassifierIdentity();return {state, ready:state === 'ready', reason, localOnly:true, calibrated:false};};
+  // Display polling reads known state only; trusted identity reads and inference boundaries revoke stale artifacts.
+  const snapshot = () => ({state, ready:state === 'ready', reason, localOnly:true, calibrated:false});
   const publish = () => {try {onUpdate();} catch {}};
   const stop = async () => {
     if (stopping) return stopping;

@@ -31,7 +31,34 @@ export async function chooseConnectorMailPage(input,chooser,{assertCurrent=()=>{
   const empty=reason=>({state:'abstain',eligibleForRuntime:false,calibrated:false,reason,scores:[],
     receipt:{id:digest(['connector-page-defer',input.context,reason]),promptVersion:'action-choice-v1',contextDigest:hashText(input.context),
       aggregation:'connector-page-groups-v1',groupReceipts:[],candidates:[]}});
-  if(connectorChoiceTokenBound(input.context,input.candidates)<=LAYA_WINDOW)return chooser.choose(input);
+  const probability=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=1;
+  const hash=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+  const receiptProjection=receipt=>receipt&&typeof receipt==='object'?{
+    ...(hash(receipt.id)?{id:receipt.id}:{}),
+    ...(receipt.promptVersion==='action-choice-v1'?{promptVersion:receipt.promptVersion}:{}),
+    ...(hash(receipt.contextDigest)?{contextDigest:receipt.contextDigest}:{}),
+    candidates:input.candidates.flatMap(candidate=>{
+      const ref=Array.isArray(receipt.candidates)?receipt.candidates.find(item=>item?.candidate?.id===candidate.id&&item.candidate.revision===candidate.revision):undefined;
+      return ref&&hash(ref.digest)?[{candidate:{id:candidate.id,revision:candidate.revision},digest:ref.digest,
+        ...(['expired','unauthorized'].includes(ref.exclusion)?{exclusion:ref.exclusion}:{})}]:[];
+    })}:null;
+  const diagnostic=(result,count,action)=>({count,action,receipt:receiptProjection(result?.receipt),
+    state:['selected','review','abstain'].includes(result?.state)?result.state:null,
+    reason:['selected','high_risk','uncertain','insufficient_candidates','invalid_response','unavailable','cancelled','deadline','candidate_expired'].includes(result?.reason)?result.reason:null,
+    ...(probability(result?.answerConfidence)?{answerConfidence:result.answerConfidence}:{}),
+    ...(probability(result?.entropyConcentration)?{entropyConcentration:result.entropyConcentration}:{}),
+    scores:input.candidates.flatMap(candidate=>{
+      const score=result?.scores?.find(score=>score.candidate?.id===candidate.id&&score.candidate?.revision===candidate.revision);
+      return probability(score?.probability)?[{candidate:{id:candidate.id,revision:candidate.revision},probability:score.probability}]:[];
+    })});
+  if(connectorChoiceTokenBound(input.context,input.candidates)<=LAYA_WINDOW){
+    const result=await chooser.choose(input);
+    const selected=input.candidates.find(candidate=>candidate.id===result?.selected?.id&&candidate.revision===result.selected.revision);
+    const action=result?.state==='selected'&&result.eligibleForRuntime===true&&selected&&['notify','ignore','defer'].includes(selected.id)?selected.id:'defer';
+    onGroups({version:1,status:action==='defer'?'deferred':'complete',mailCount:headers.length,covered:headers.length,
+      groups:[diagnostic(result,headers.length,action)]});
+    return result;
+  }
   const render=(items,index,total)=>JSON.stringify({...page,data:{count:items.length,pageCount:headers.length,groupIndex:index,groupCount:total,headers:items}});
   const groups=[];let current=[];
   for(const header of headers) {
@@ -56,7 +83,7 @@ export async function chooseConnectorMailPage(input,chooser,{assertCurrent=()=>{
     results.push({result,action:valid?selected.id:'defer',count:items.length});
   }
   onGroups({version:1,status:incomplete?'deferred':'complete',mailCount:headers.length,covered:results.reduce((n,item)=>n+item.count,0),
-    groups:results.map(item=>({count:item.count,action:item.action,receipt:item.result?.receipt??null}))});
+    groups:results.map(item=>diagnostic(item.result,item.count,item.action))});
   if(incomplete){const result=empty('uncertain');result.receipt.groupReceipts=results.map(item=>item.result?.receipt??null);return result;}
   const selected=results.find(item=>item.action==='notify')??results[0];
   return {...selected.result,receipt:{...selected.result.receipt,aggregation:'connector-page-groups-v1',

@@ -70,8 +70,31 @@ test('loaded identity is content-stable across restart and changes with weights,
   // Metadata-only changes revoke readiness conservatively, but a new explicit load keeps content identity stable.
   const unchanged=host.readClassifierIdentity();
   await utimes(config.script,new Date(1000),new Date(1000));
+  assert.equal(host.readClassifierIdentity(),undefined);
   assert.equal(host.snapshot().ready,false);await host.stop();await host.start();
   assert.equal(host.readClassifierIdentity(),unchanged);
+});
+
+test('frequent display snapshots retain known state while trusted reads revoke missing artifacts',async t=>{
+  const config=await artifacts(t);let calls=0;
+  const host=createLocalLayaHost({projectRoot:'project',discover:()=>config,freeMemory:()=>8*1024**3,
+    launch:fakeChild,request:async()=>healthy(),createService:()=>({classify:async()=>{calls++;return [];}})});
+  t.after(()=>host.stop());await host.start();
+  await rm(config.model,{recursive:true});
+  for(let index=0;index<1000;index++)assert.equal(host.snapshot().ready,true);
+  await assert.rejects(host.classify({signal:new AbortController().signal}),/尚未就绪/);
+  assert.equal(calls,0);assert.equal(host.snapshot().state,'identity_changed');
+  assert.equal(host.readClassifierIdentity(),undefined);
+});
+
+test('artifact mutation during inference prevents result publication',async t=>{
+  const config=await artifacts(t);
+  const host=createLocalLayaHost({projectRoot:'project',discover:()=>config,freeMemory:()=>8*1024**3,
+    launch:fakeChild,request:async()=>healthy(),createService:()=>({classify:async()=>{
+      await writeFile(config.script,'# mutated during inference');return ['stale'];}})});
+  t.after(()=>host.stop());await host.start();
+  await assert.rejects(host.classify({signal:new AbortController().signal}),{code:'CANCELLED'});
+  assert.equal(host.snapshot().state,'identity_changed');
 });
 
 test('cancellation and unknown or changed startup artifacts cannot publish an identity',async t=>{
