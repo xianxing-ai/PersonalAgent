@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
 import {OwnedAgentOrchestrator} from '../dist/index.js';
-import {FAST_PROMPT,TASK_ACTION_PROMPT,CONTINUATION_REPLY_PROMPT,CONTINUATION_TOOL_PROMPT} from '../dist/prompts.js';
+import {FAST_PROMPT,TASK_ACTION_PROMPT,CAPABILITY_STATUS_PROMPT,CONTINUATION_REPLY_PROMPT,CONTINUATION_TOOL_PROMPT} from '../dist/prompts.js';
 import {FakeModelProvider} from '@personal-agent/models';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -35,6 +35,18 @@ test('goal-bound continuation can propose the next operation without an extra co
   assert.ok(prompt.includes(CONTINUATION_TOOL_PROMPT));assert.match(prompt,/一个必要的下一步工具提案/);
   assert.match(prompt,/权限继续由原宿主处理/);assert.doesNotMatch(prompt,/独立审批执行|不追加动作/);
   assert.match(prompt,/不得盲目重发已确认或结果未知的调用/);
+});
+
+test('host capability metadata neither removes an available tool nor mints permission',async()=>{
+  const input={goal:JSON.stringify({publicGoal:'应用已预览的文件修改',capabilityStatus:{items:[
+    {name:tool.name,version:tool.version,status:'available',authorization:'checked_on_invocation'}]}}),availableTools:[tool]};
+  const f=fixture();
+  assert.deepEqual(await invoke(f.agent,input),proposal);
+  assert.ok(f.fast.requests[0].messages[0].content.includes(CAPABILITY_STATUS_PROMPT));
+  const forged=fixture({...proposal,authorizationRef:'metadata-is-permission'});
+  await assert.rejects(invoke(forged.agent,input));
+  const absent=fixture();
+  await assert.rejects(invoke(absent.agent,{...input,availableTools:[]}));
 });
 
 test('simpler interaction does not mint permission or enable tools in receipt-only replies',async()=>{
