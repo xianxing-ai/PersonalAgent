@@ -1,3 +1,5 @@
+import {MAX_COORDINATION_GOAL_CHARACTERS} from '@personal-agent/contracts';
+
 const fail=()=>{throw Error('开发者 Harness 配置无效');};
 const keys=(value,allowed)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>allowed.includes(key));
 const text=value=>typeof value==='string'&&value.trim().length>0&&!/[\u0000-\u001f]/u.test(value);
@@ -14,7 +16,7 @@ export function validateContextConfiguration(value) {
   const policy=value.policy;
   if(!text(policy.version)||!policyKeys.filter(key=>!['version','retainMessages'].includes(key)).every(key=>positive(policy[key]))
     ||!Number.isSafeInteger(policy.retainMessages)||policy.retainMessages<0||policy.retainMessages>=policy.maxSourceMessages
-    ||policy.targetCharacters>policy.triggerCharacters||policy.triggerCharacters>policy.maxCharacters||policy.maxCharacters>16000)fail();
+    ||policy.targetCharacters>policy.triggerCharacters||policy.triggerCharacters>policy.maxCharacters||policy.maxCharacters>MAX_COORDINATION_GOAL_CHARACTERS)fail();
   return structuredClone(value);
 }
 export function validateHarnessConfiguration(value) {

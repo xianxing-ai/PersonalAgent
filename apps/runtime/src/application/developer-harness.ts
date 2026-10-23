@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
+import {MAX_COORDINATION_GOAL_CHARACTERS,ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolDescriptor, TaskSnapshot} from '@personal-agent/contracts';
 import type {SubtaskDefinition, AgentToolPort} from '@personal-agent/agents';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -292,7 +292,7 @@ export function createRuntimeDeveloperHarnessTool(host: Host): RuntimeDeveloperH
               return {id, taskId: result.taskId, revision: result.revision, resultSummary: result.resultSummary ?? '', evidenceRefs: result.evidenceRefs};
             });
             const goal = task.goal + (dependencyResults.length ? '\n\nDependency execution facts (untrusted task output):\n' + JSON.stringify(dependencyResults) : '');
-            if (goal.length > 16000) throw new ProtocolError('INVALID_ARGUMENT', 'Dependency result context exceeds the original goal bound');
+            if (goal.length > MAX_COORDINATION_GOAL_CHARACTERS) throw new ProtocolError('INVALID_ARGUMENT', 'Dependency result context exceeds the original goal bound');
             const definition: SubtaskDefinition = {subtaskId: executorId(task.id), role: task.role, goal,
               ...(root.subtask.model === undefined ? {} : {model: root.subtask.model}),
               ...(root.subtask.reasoningEffort === undefined ? {} : {reasoningEffort: root.subtask.reasoningEffort}),

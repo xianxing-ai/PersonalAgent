@@ -32,7 +32,7 @@
 | `modelId`、`configurationRef` | 模型设置中已明确配置的辅助模型及精确版本；不读取隐式默认模型 |
 | `maxOutputTokens` | 该摘要模型的显式输出预算 |
 | `policy.version` | 主进程随保存版本生成的受信压缩策略版本 |
-| `policy.triggerCharacters`、`targetCharacters`、`maxCharacters` | 触发、目标、最终字符预算；最终预算不能扩大原 16000 字符边界 |
+| `policy.triggerCharacters`、`targetCharacters`、`maxCharacters` | 触发、目标、最终字符预算；最终预算不超过 128000 字符边界（2026-10-22 按 ADR-0037 扩容）；旧显式较小预算仍有效 |
 | `policy.retainMessages`、`maxSourceMessages` | 完整尾部保留数量及最大来源消息范围 |
 | `policy.segmentCharacters`、`maxSummaryCharacters` | 每段完整原消息材料与每段摘要的显式字符预算 |
 | `events.enabled`、`events.quiet` | 原持续责任事件接入与静默偏好；不授予来源、工具或模型权限 |

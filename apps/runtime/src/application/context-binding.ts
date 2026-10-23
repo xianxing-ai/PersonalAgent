@@ -1,9 +1,9 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_COORDINATION_GOAL_CHARACTERS,ProtocolError} from '@personal-agent/contracts';
 
 export const COMPETITION_CONTEXT_CHECKPOINT = 'competition-context:v1';
-export const COORDINATION_GOAL_CHARACTER_LIMIT = 16_000;
+export const COORDINATION_GOAL_CHARACTER_LIMIT = MAX_COORDINATION_GOAL_CHARACTERS;
 
 /** Trusted synchronous meter for the compiled goal only, not the provider's entire request. */
 export interface CoordinationGoalTokenBudget {

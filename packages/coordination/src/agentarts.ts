@@ -1,4 +1,4 @@
-import {ProtocolError} from '@personal-agent/contracts';
+import {MAX_COORDINATION_GOAL_CHARACTERS,MAX_COORDINATION_INITIAL_QUERY_BYTES,ProtocolError} from '@personal-agent/contracts';
 import {AGENTARTS_TRANSPORT_VERSION, digestAgentArtsPayload, parseAgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 import {createHash, randomUUID} from 'node:crypto';
 import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoordinationResult, parseCoordinationTextResult,parseExecutionModelSelection} from './index.js';
@@ -23,7 +23,7 @@ export type AgentArtsRequestIdentityObserver = (
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MAX_HTTP_DIAGNOSTIC_MS = 1_000;
 const MAX_TEXT_CHARS = 16_000;
-const MAX_INITIAL_QUERY_BYTES = 32_768;
+const MAX_INITIAL_QUERY_BYTES = MAX_COORDINATION_INITIAL_QUERY_BYTES;
 const MAX_AUTHORIZATION_CHARS = 4_096;
 const MAX_REQUEST_ID_CHARS = 64;
 const MAX_TIMER_DELAY = 2_147_483_647;
@@ -268,7 +268,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
 
   const goal = input.goal;
   if (typeof goal !== 'string' || goal.trim().length === 0) invalid('Coordination goal must not be empty');
-  if (goal.length > MAX_TEXT_CHARS) invalid('Coordination goal exceeds the text limit');
+  if (goal.length > MAX_COORDINATION_GOAL_CHARACTERS) invalid('Coordination goal exceeds the text limit');
 
   const deadline = input.deadline;
   if (typeof deadline !== 'string' || !ISO_DEADLINE.test(deadline)) {

@@ -4,10 +4,10 @@ import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool,compileCoordinationGoal} from '@personal-agent/runtime/application';
 import {projectSubagentResult} from '../electron/subagent-result-projection.js';
 
-for(const clarification of [false,true])for(const childFailure of [false,true])test(`Synthetic delegated chat exports ${clarification?'clarification context':'original request'} and ${childFailure?'failure':'clean reply'} through guarded continuation`,async()=>{
+for(const clarification of [false,true,'long'])for(const childFailure of [false,true])test(`Synthetic delegated chat exports ${clarification==='long'?'long clarification context':clarification?'clarification context':'original request'} and ${childFailure?'failure':'clean reply'} through guarded continuation`,async()=>{
  let app,childCalls=0,parentCalls=0;
  const goal=clarification?'在青岛':'哈喽';
- const context=clarification?[{id:'previous-user',role:'user',content:'今天穿什么出门'},
+ const context=clarification?[{id:'previous-user',role:'user',content:'今天穿什么出门'+(clarification==='long'?'中'.repeat(119000)+'末尾约束':'')},
   {id:'previous-assistant',role:'assistant',content:'请告诉我你在哪个城市。'}]:[];
  const selected={catalogRevision:'a'.repeat(64),modelId:'synthetic-chat-model'};
  const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
@@ -36,7 +36,8 @@ for(const clarification of [false,true])for(const childFailure of [false,true])t
     assert.equal(result.userRequest,compileCoordinationGoal(goal,goal,context));
     if(clarification){const request=JSON.parse(result.userRequest);assert.equal(request.publicGoal,'在青岛');
      assert.equal(request.conversationContext.treatment,'untrusted_data');
-     assert.equal(request.conversationContext.messages[0].content,'今天穿什么出门');}
+     assert.equal(request.conversationContext.messages[0].content,context[0].content);}
+    if(clarification==='long')assert.ok(result.userRequest.length>119000);
     assert.equal(result.subtasks[0].state,childFailure?'failed':'succeeded');
     if(childFailure){assert.equal(result.failed,1);assert.equal(Object.hasOwn(result.subtasks[0],'result'),false);}
     else {assert.equal(result.subtasks[0].result,'哈喽！有什么我可以帮你的吗？');assert.deepEqual(result.subtasks[0].resultMetadata,{profile:'huawei_ict_agentarts',verification:'unverified'});}
@@ -44,6 +45,7 @@ for(const clarification of [false,true])for(const childFailure of [false,true])t
    }else{
     childCalls++;
     assert.match(query.goal,clarification?/在青岛/:/哈喽/);
+    if(clarification==='long')assert.ok(query.goal.length>119000);
     if(childFailure)throw Error('Synthetic cloud child unavailable');
     text='哈喽！有什么我可以帮你的吗？';
    }

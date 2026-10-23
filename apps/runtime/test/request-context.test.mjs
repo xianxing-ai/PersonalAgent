@@ -13,7 +13,7 @@ async function settle(app,id) {
 }
 
 test('Synthetic request context is transient, bounded and rejects asynchronous or oversized host data before send',async t=>{
-  for(const [name,read] of [['async',async()=> 'Synthetic'],['overflow',()=> 'x'.repeat(16000)]]) await t.test(name,async t=>{
+  for(const [name,read] of [['async',async()=> 'Synthetic'],['overflow',()=> 'x'.repeat(128000)]]) await t.test(name,async t=>{
     let sends=0;
     const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
       coordinationInput:{beforeCoordinationSend(){},readRequestContext:read},

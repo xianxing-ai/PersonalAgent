@@ -256,7 +256,9 @@ The initial `query` then contains exactly `{"goal": string, "availableTools":
 and minimizes the directory for that task; it is capped at 64 entries and 24,576
 UTF-8 JSON bytes by `MAX_AVAILABLE_TOOLS` and `MAX_AVAILABLE_TOOLS_JSON_BYTES`
 in [the public parser](src/index.ts). These limits are already present in main
-`4b5ec61`; they are separate from the 32 KiB initial query limit.
+`4b5ec61`; they are separate from the 1,100,000-byte initial query limit and the
+128,000 UTF-16 character goal limit. These input limits do not enlarge response,
+tool-result, frame or model token budgets; see [ADR-0037](../../docs/adr/0037-conversation-context-128k.md).
 Missing or empty directories fail locally with `UNSUPPORTED_CAPABILITY`, before
 credentials or network. The host must provide `beforeInitialToolCatalogSend` as the
 fifth constructor argument to recheck its current task binding after credential read;

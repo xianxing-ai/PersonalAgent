@@ -14,6 +14,8 @@ export type Payload<K extends Operation> = Extract<Request, {operation: K}>['pay
 export type Result<K extends Operation> = ProtocolContracts['results'][K];
 export const PROTOCOL_VERSION = '1.0.0';
 export const MAX_FRAME_BYTES = 1024 * 1024;
+export const MAX_COORDINATION_GOAL_CHARACTERS = 128_000;
+export const MAX_COORDINATION_INITIAL_QUERY_BYTES = 1_100_000;
 const ajv = new Ajv({allErrors: true, strict: false});
 ajv.addSchema(schema);
 const referenceValidators = new Map<string, ReturnType<typeof ajv.compile>>();
