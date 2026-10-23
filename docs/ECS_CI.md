@@ -1,4 +1,19 @@
-# ECS 与 GitHub 托管 Runner 的 PR 分流
+# CI Runner 策略与历史 ECS 运维记录
+
+## 当前策略：全部使用 GitHub 官方标准托管机器（2026-10-23）
+
+本节取代下文历史 ECS 分流说明。所有工作流的实际任务只选择 GitHub 官方标准托管 runner，不使用付费 larger runner，不注销或修改任何 ECS 主机。
+
+- Foundation 的所有 PR（含 fork、所有编号尾数）、merge_group 和手动验证均使用 `windows-latest` / `ubuntu-24.04`。PR 的文件分类不变，队列及手动验证仍执行两平台；不新增 main push 或 post-merge dispatch 全量检查。
+- 工作流不再读取 `PA_WINDOWS_RUNNER`、`PA_WINDOWS_RUNNER_OVERRIDES`、`PA_IMAGE_RUNNER` 仓库变量。路由函数兼容合法旧参数，但旧 `ecs` 设置、标签和编号不能把任务送回 ECS；非法配置仍报错。手动输入仅提供 `github`。
+- Runner probe 的 push 入口与手动入口只接受官方 Windows 探针；旧 `windows-pool*` / `ecs-17f8` 目标失败关闭，不冒充已测试旧主机。保留显式手动 `psec-strict`（`windows-2025`）与 `psec-strict-arm64`（`windows-11-vs2026-arm`）的原生架构、普通用户和零跳过验收门槛。
+- Linux 镜像仍通过 QEMU 构建并验证 `linux/arm64`，不发布。其他工作流原已使用官方 Ubuntu，保持不变。
+- 必需状态 `ecs-linux-check`（保留兼容名称）和 `check`、非作者批准、精确 SHA / run / attempt / runner 回执校验、完整 Windows 测试、超时及安全断言均不变。保留的 ECS 源码传输/缓存/准入步骤受旧矩阵条件保护，当前矩阵无法选中；相关历史工具和测试不作本次清理。
+- 旧 run 仍使用原事件提交，不能原地改派；需等待本变更按原保护规则合并，后续使用新工作流的 run 才服从新策略。CI 通过不代表已合并、真实 PSEC 验收或产品验收完成。
+
+上述 Windows x64、Windows ARM64 与 Ubuntu 标签均属于[官方标准托管 runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。当前公开仓库使用标准 runner 免费；不选择 larger runner。
+
+## 历史策略与主机运维记录（不再作为调度规则）
 
 同仓库普通 PR 按编号个位数分流：0–6 的所选 Windows/Linux 检查使用 GitHub 托管机器，7–9 使用对应系统的 ECS 公共池。同类自建节点共享用途标签，GitHub 将任务派给匹配且空闲的 Runner，忙时排队，不为每个 PR 在每台机器重复完整检查。仓库工作流不注册、安装或配置主机；工具链、长期服务、自启动与资源保护由各主机负责人管理。
 
