@@ -83,3 +83,24 @@ Desktop voice/mail 与 Runtime subagent 原声明由对应owner负责，本包�
 toolFailure与Desktop两次投影保留code/cause、排除原始私密文本；read保留合法
 retryable/retryAfterMs，write始终RESULT_UNKNOWN、retryable=false且无retryAfterMs。
 最终组合的上述关键源码与该增量逐文件diff为空；完整pin check由唯一组合树另行执行。
+
+## 统一检查暴露的消费回归与后续修复
+
+上述854组合随后实际统一pin check失败，不能将前面的定向通过解释为完整检查通过。
+安全Schema错误的新格式使Agents原精确匹配漏掉合法提案修复，修复
+`f6191ec37e1133e6daf75cf2eb3f427742d5a9ac`仅接受锚定全文的安全keyword/field格式，
+保留原预算；工具执行侧错误不触发模型重写。独立提案修复定向25项通过。
+
+能力诊断曾为未选择环境封装的输入追加/前置文本，实际破坏历史JSON、主动Goal固定
+prefix后的JSON解析，以及原goal作为Todo title的消费。修复
+`87925a02f8b66967d7922170f51ee692adad4f1d`仅在已有readRequestContext实际返回
+非空环境字符串时加入原envelope；无hooks、历史hooks、返回undefined与teacher路径
+保持原格式。实际Main普通会话callback的能力提示到模型正向测试继续保留。
+
+继续审查enabled环境路径又实证：描述Schema漂移后，诊断采样在原发送guard之前抛错，
+使已确认本地写入的子任务从waiting_reconciliation变成failed，并多出父汇总发送。
+修复 `b47011095325b39b4af9e8f35712f6eda04e993a` 将catalog解析与describe一同纳入
+可选诊断try，失败只产read_failed，实际权限/结构拒绝仍交原final guard与hold处理。
+独立最小复现env=false/true均2项通过：发送仍1次、原目录不变、唯一真实执行记录仍为
+confirmed/allow/started，子任务保持waiting_reconciliation。未放宽原断言或授权。
+最终组合完整pin check仍须以整合工作树后续实际完成结果为准。
