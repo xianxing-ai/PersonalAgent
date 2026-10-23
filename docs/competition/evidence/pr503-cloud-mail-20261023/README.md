@@ -113,6 +113,19 @@
 
 读回见 [mail-review-restart-20261023.json](mail-review-restart-20261023.json)。最后一封全新且未手工选择的订阅自动触发验收仍未完成：该次重启后可用内存 1.19 GiB，未绕过 Laya 原启动门槛。上述正向原生提醒已送达与此自动接入未验收分别记录。
 
+## 重启后全新邮件的自动闭环（通过）
+
+用户允许正常退出 VS Code 后，可用内存恢复至约 2.9 GiB，Laya 实际 ready。第一条自然语言请求只执行 `connector.watch.list` 并报告旧订阅失效，没有新建，不计为成功；随后明确的新建请求通过正式主对话与子任务实际执行 `connector.watch.start`，父任务 `8d734974-f417-4b8b-822e-9d0fc9cc0117` 和子任务 `7818d79b-0509-493d-bb7e-64dd28ad58c5` 均 succeeded，start confirmed/allow。
+
+新订阅 `watch-166ec51a14df679e1da7bce782c682fd33325e69648ec2a6a7ea6b68e72adbcc` 以 120 秒间隔真实轮询，创建后发送一封新的公开会议改期测试信。全过程未手动调用 `mail.read/mail.inbox`、未选择该信进入复核、未代写分类或通知状态。
+
+- 后台原 `mail.inbox` 任务 `a84c6222-2232-421d-a40f-5e7a9b908da7` confirmed/allow/executionStarted，原来源 checkpoint 精确绑定该 watch 的 sequence=1。
+- 本机 Laya 判断任务 `18d67b72-4bc1-4a1e-91c1-c03f5b18bf36` succeeded，实际结论仍是 defer/uncertain。首次观察晚于开启水位，历史选择列表为空，故通过正常新模糊邮件入口自动复核。
+- 真实云任务 `1f9e751e-c083-4ad8-84e3-1bd9aa76e027` succeeded/applied，`meeting / high_impact / notify / meeting_change`，加密分类存储读回独立 cloudReview；原请求身份数和 attempts 均为 1。
+- Windows 原生 show 在 `2026-10-23T10:59:30.996Z` 返回，原通知服务和邮件宿主均读回 delivered。没有用户已读回执，不声称已读。
+
+安全结果见 [mail-auto-notification-20261023.json](mail-auto-notification-20261023.json)。本项通过真实后台收取、本机判断、已授权模糊信头云复核和原生提醒链路。轮询不代表即时推送，单次成功不代表长期可用；本机 Laya 独立分类准确率未改善。同期另一个非测试信头复核收到 AgentArts 终止错误 EXTERNAL_FAILURE，失败记录保留且未自动重发；不把该失败混入测试信成功结论。当前正式实例保留配置与开启的云复核偏好，邮件订阅在其原期限内继续运行。
+
 ## 检查
 
 2026-10-23 后续正式实例云复核尝试见 `mail-cloud-repair-20261023.json`：三封都通过原授权，但 WSS 发送前的任务上下文校验失败，尚无云端分类或提醒回执。已补齐该单次交换的 profile、deadline、预算记录，并修复可信 textOnly 请求的原始分类 JSON 接收；生产 WSS 组合离线回归包含成功解析及断线保留未知结果，11/11 通过，Coordination 对应文件 5/5 通过。用户要求先修复再同步主线，已暂停云复核，待发送数 0；这些本地检查不算真实云端验收。
