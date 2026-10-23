@@ -32,7 +32,7 @@ test('every public Error code crosses the actual Gateway and Desktop consumer wi
       assert.equal(errorDisplayText(displayed),displayed.message);
       if(code==='RATE_LIMITED')assert.match(displayed.message,/频率或配额受限/);
       if(code==='CURSOR_EXPIRED')assert.match(displayed.message,/分页游标已过期/);
-      if(sideEffect==='external_write')assert.match(displayed.message,/确认前不要重试/);
+      if(sideEffect==='external_write')assert.match(displayed.message,/不会自动重试/);
       return true;
     });assert.equal(calls,1);
   }
@@ -81,7 +81,7 @@ test('controlled write exception crosses actual Gateway, SQLite Runtime and prod
   const page=await browser.newPage({viewport:{width:1280,height:900}}),errors=[];page.setDefaultTimeout(5000);page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
   const url=`http://127.0.0.1:${server.address().port}/`;await page.goto(url);await page.waitForFunction(()=>window.ready).catch(error=>{throw Error(`${error.message}; page errors=${JSON.stringify(errors)}`);});
   assert.equal(await page.title(),'Tool failure pipeline');assert.equal(page.url(),url);
-  assert.match(await page.locator('#root').innerText(),/cause=EACCES/);assert.match(await page.locator('#root').innerText(),/确认前不要重试/);
+  assert.match(await page.locator('#root').innerText(),/cause=EACCES/);assert.match(await page.locator('#root').innerText(),/本次不会自动重试/);
   await page.locator('.assistant-message').waitFor({state:'visible'});
   await page.locator('#connectors-refresh').click();await page.waitForFunction(()=>document.querySelector('#workspace-error').textContent.includes('ECONNREFUSED'));
   assert.match(await page.locator('#workspace-error').innerText(),/服务拒绝连接/);
