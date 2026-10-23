@@ -210,3 +210,46 @@ test('failed completion write cannot manufacture a durable cursor or completed c
   const resumed=f.open(),result=await resumed.processPage(f.page());assert.equal(result.reused,16);assert.equal(result.classified,4);
   assert.equal(resumed.cursor('fixture','INBOX'),'1:20');
 });
+
+for(const failure of ['authorization','fingerprint','deadline']){
+  test('rejected unpublished source mutation is reloaded before retry inference: '+failure,async t=>{
+    let clock=Date.now(),rejectSource=false,checks=0,fingerprintReads=0,writes=0,hold=false,release,entered;
+    const initialClock=clock;t.mock.method(Date,'now',()=>clock);
+    const values=new Map(),storage={get:key=>structuredClone(values.get(key)),set(key,value){writes++;values.set(key,structuredClone(value));}};
+    const triage=new LayaTriageService({async infer(payload){
+      if(hold){entered();await new Promise(resolve=>{release=resolve;});}
+      return {answers:Object.fromEntries(payload.state.events.flatMap((_,index)=>[
+        [`category_${index}`,answer('meeting',{meeting:.99,other:.01})],
+        [`impact_${index}`,answer('high_impact',{routine:.01,high_impact:.99})]]))};}});
+    const open=()=>createInboxTriagePipeline({storage,namespace:'source-rejection-'+failure,triage,labels:{meeting:'Meeting',other:'Other'},
+      authorizeRead:()=>!(rejectSource&&failure==='authorization'&&++checks===2),
+      getClassifierFingerprint:()=>{
+        if(rejectSource){fingerprintReads++;
+          if(failure==='deadline'&&fingerprintReads===2)clock=initialClock+60_001;
+          if(failure==='fingerprint'&&fingerprintReads===3)return 'changed-policy';
+        }
+        return 'stable-policy';
+      }});
+    const page=text=>({...context(),accountRef:'fixture',folder:'INBOX',nextCursor:'1:1',hasMore:false,
+      items:[{...items[0],contentRef:text}]});
+    const pipeline=open();await pipeline.processPage(page('Synthetic revision A'));
+    const [original]=pipeline.pendingAnalyses(context());assert.ok(original);
+    const savedWrites=writes;rejectSource=true;
+    await assert.rejects(pipeline.processPage(page('Synthetic revision B')),
+      {code:failure==='authorization'?'UNAUTHORIZED':failure==='deadline'?'TIMEOUT':'REVISION_CONFLICT'});
+    assert.equal(writes,savedWrites,'a rejected scope never persists its source mutations');
+    rejectSource=false;clock=initialClock;
+    assert.ok(open().readAnalysis(original.workKey,context()),'disk still contains the previously authorized source before retry');
+    hold=true;const started=new Promise(resolve=>{entered=resolve;});
+    const retry=pipeline.processPage(page('Synthetic revision B'));
+    await started;
+    try {
+      const reopened=open();
+      assert.equal(reopened.readAnalysis(original.workKey,context()),undefined,
+        'the retry durably invalidates A before its first asynchronous inference can yield or crash');
+      assert.deepEqual(reopened.pendingAnalyses(context()),[]);
+      assert.equal(writes,savedWrites+1);
+    } finally {release();}
+    await retry;
+  });
+}

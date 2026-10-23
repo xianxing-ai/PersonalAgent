@@ -312,8 +312,14 @@ export function createInboxTriagePipeline(options: InboxTriageOptions) {
           return true;
         });
         // Invalidate superseded work before inference can yield to a cloud sender.
-        updateSummary(current.map(message=>message.messageId));
-        check(page); checkFingerprint(classifierFingerprint);if(sourceChanged)save(state);
+        try {
+          updateSummary(current.map(message=>message.messageId));
+          check(page); checkFingerprint(classifierFingerprint);if(sourceChanged)save(state);
+        } catch(error) {
+          // Unpublished source changes must not survive a denied/expired lease
+          // in memory: the next attempt must reload and invalidate disk first.
+          cachedState=undefined;analysisKeys.clear();summaryReady=false;throw error;
+        }
         const pending = current.filter(message => {
           const row = state.records[hash([message.messageId, message.sourceRevision])];
           return !row?.receiptId || row.classifierFingerprint !== classifierFingerprint;
