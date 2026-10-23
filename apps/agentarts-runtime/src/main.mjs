@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import {OwnedAgentOrchestrator, OwnedWorkflowEngine, createOwnedWorkflowReceiptVerifier, deriveOwnedWorkflowKeys, getOwnedBindings,
   WORKFLOW_DECISION_TOOL_NAME,WORKFLOW_DECISION_TOOL_VERSION} from '@personal-agent/agentarts';
-import {OpenAICompatibleModelProvider,ModelGateway} from '@personal-agent/models';
+import {ModelGateway} from '@personal-agent/models';
 import {createAgentServer} from './server.mjs';
 import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
 import {createRoleReceiptWriter} from './role-receipts.mjs';
@@ -10,6 +10,7 @@ import {createTestVersionController} from './test-version-controller.mjs';
 import {createImageServices,loadImageServiceConfiguration} from './image-services.mjs';
 import {agentRealtimeProxyFromEnvironment} from './realtime-proxy.mjs';
 import {createExecutionModelRegistry,loadExecutionModelConfiguration} from './model-catalog.mjs';
+import {createRequestDeadlineModel} from './request-deadline-model.mjs';
 
 function integer(name, fallback) {
   const value = Number(process.env[name] ?? fallback);
@@ -36,10 +37,10 @@ function model(role,entry) {
     authentication:{kind:'api_key',headerName:bailian?'Authorization':process.env.PA_AGENT_MODEL_PROXY_KEY_HEADER,keyPrefix:bailian?'Bearer':process.env.PA_AGENT_MODEL_PROXY_KEY_PREFIX??'',readSecret},
     requestProfile:entry?.requestProfile??process.env.PA_AGENT_MODEL_REQUEST_PROFILE??'standard',onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')})
     :createOwnedModelFetch({endpoint,model:name});
-  return new OpenAICompatibleModelProvider({baseUrl:endpoint,model:name,
+  return createRequestDeadlineModel({baseUrl:endpoint,model:name,
     responseFormat:'json_object',
-    requestFormat:ownedModelRequestFormat({endpoint,model:name}),fetch,apiKey:readSecret,
-    timeoutMs:integer('PA_AGENT_TIMEOUT_MS',60_000)});
+    requestFormat:ownedModelRequestFormat({endpoint,model:name}),fetch,apiKey:readSecret},
+    {timeoutMs:process.env.PA_AGENT_TIMEOUT_MS === undefined ? undefined : integer('PA_AGENT_TIMEOUT_MS')});
 }
 let server;
 let imageServices;
@@ -90,7 +91,9 @@ try {
     ...(wssAuthToken ? {wssAuthToken}:{}),
     getBindings:getOwnedBindings,defaultControllerId:process.env.PA_AGENT_DEFAULT_CONTROLLER_ID,
     workflowGoalInput:process.env.PA_AGENT_WORKFLOW_GOAL_INPUT,
-    timeoutMs:integer('PA_AGENT_TIMEOUT_MS',60_000),maxConcurrency:integer('PA_AGENT_MAX_CONCURRENCY',8)});
+    timeoutMode:'request-deadline',
+    ...(process.env.PA_AGENT_TIMEOUT_MS === undefined ? {} : {timeoutMs:integer('PA_AGENT_TIMEOUT_MS')}),
+    maxConcurrency:integer('PA_AGENT_MAX_CONCURRENCY',8)});
   const port = integer('PORT',8080);
   if (port > 65535) throw new Error('Invalid port');
   const address = mode==='agentarts' ? '0.0.0.0' : '127.0.0.1';

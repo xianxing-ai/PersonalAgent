@@ -39,6 +39,8 @@ export interface QQMailTriageHostOptions {
     assertCurrent(batch: MailLocalBatchBinding): void;
     assertPage(scope: MailBatchPageScope,batch: MailLocalBatchBinding): void;
     assertConsumed(scope: MailBatchPageScope,batch: MailLocalBatchBinding): void;
+    /** End page access while retaining the session binding until deadline/cancel/revoke. */
+    finishPages(batch: MailLocalBatchBinding): void;
     finish(batch: MailLocalBatchBinding): void;
   };
 }
@@ -130,7 +132,7 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
       }
     }
     else if (page.state === 'done') {
-      if(batch)options.batchAuthorization?.finish(batch);
+      if(batch)options.batchAuthorization?.finishPages(batch);
       application.stopMailReadSession(sessionId); sessionId = undefined; taskId = undefined; status = 'complete';
     } else status = page.state;
   };
@@ -159,8 +161,10 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
     tools: Object.freeze([...tools]), snapshot,
     prepareAuthorization(scope:MailBatchPageScope) {
       if(!options.batchAuthorization||scope.toolName!=='mail.inbox')return;
-      if(!batch||!sessionId||batch.batchId!==sessionId||scope.deadline!==batch.deadline||!batchCurrent())
-        throw new ProtocolError('UNAUTHORIZED','Mail page is outside the original manual batch');
+      if(!batch||!batchCurrent())throw new ProtocolError('UNAUTHORIZED',scope.deadline!==(batch?.deadline??deadline)
+        ?'Mail conversation read is outside the active manual batch':'Mail page is outside the original manual batch');
+      if(scope.deadline!==batch.deadline)return;
+      if(!sessionId||batch.batchId!==sessionId)throw new ProtocolError('UNAUTHORIZED','Mail page is outside the original manual batch');
       if(scope.taskId!==taskId){
         if(!submittingPage||application?.runtime.loadCheckpoint(scope.taskId,MAIL_READ_SESSION_CHECKPOINT)!==sessionId)
           throw new ProtocolError('UNAUTHORIZED','Mail page has no original session membership');
@@ -199,6 +203,7 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
       const savedCursor = pipeline.readCursor(scope);
       const session = application.startMailReadSession({accountRef: options.accountRef, folder: 'INBOX', expiresAt,
         ...(savedCursor ? {cursor: savedCursor} : {})});
+      if(batch)options.batchAuthorization?.finish(batch);
       sessionId = session.sessionId; analysisSessionId = session.sessionId;
       deadline = expiresAt; cursor = savedCursor; expiredCursor = undefined; controller = new AbortController();
       firstPageScope=undefined;pageScope=undefined;

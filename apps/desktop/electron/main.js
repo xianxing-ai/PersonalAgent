@@ -11,6 +11,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
+import {projectMailStatus} from './mail-status-projection.js';
 import {projectSubagentActivity,scopeSubagentConversations, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction,handleWorkspaceSubagentAction} from './subagent-window-actions.js';
 import {createMemoryWatchdog} from './memory-watchdog.js';
@@ -381,11 +382,9 @@ const connectorMailReadOrigin=createConnectorReadOrigin({getApplication:()=>runt
 function mailSnapshot() {
   const config = mailConfig?.snapshot() ?? {configured:false, status:'unconfigured', sessionAllowed:false};
   const host = mailHost?.snapshot();
-  return {...host, ...config, status:host?.status === 'stop_unconfirmed' ? 'stop_unconfirmed'
-    : mailFailure ? 'unavailable' : config.sessionAllowed ? host?.status ?? config.status : config.status,
+  return {...host, ...config, ...projectMailStatus(config,host,mailFailure),
     counts:host?.counts, analyses:mailAnalysisHost?.snapshot(), localModelReady:localLaya?.snapshot().ready === true,
-    reason:host?.status === 'stop_unconfirmed' ? '已撤销新读取；现有邮箱连接退出尚未确认'
-      : mailFailure || (config.sessionAllowed ? host?.reason ?? config.reason : config.reason)};
+  };
 }
 
 function readConnectorSourceAuthorization(source) {

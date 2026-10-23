@@ -129,7 +129,11 @@ ModelGateway 是唯一模型入口，真实提供者由宿主配置，不会缺�
 - `PA_AGENT_MODEL`：实际模型名；每角色可用 `PA_AGENT_FAST/WORLD/PLAN/REVIEW_MODEL` 覆盖。
 - `PA_AGENT_MODEL_KEY_FILE` 或 `PA_AGENT_MODEL_API_KEY`：宿主秘密文件或运行时环境；每角色可独立覆盖。
 - `PA_AGENT_MAX_OUTPUT_TOKENS`：单角色输出预算，默认 2048；修复最多顺序调用三个角色，无自动重试。
-- `PA_AGENT_TIMEOUT_MS`：服务期限上限，默认 60000；取与原 `X-PA-Deadline` 的较早值。
+- `PA_AGENT_TIMEOUT_MS`：可选的显式服务/单次模型调用期限上限；配置时取与原请求 deadline 的较早值。生产 `main.mjs` 未配置时跟随经过校验的原任务 deadline，不再默认截断为 60 秒；HTTP `/invocations` 必须提供规范的 `X-PA-Deadline`，WSS 使用协议帧 deadline。模型调用按每次调用剩余期限创建原 OpenAI Compatible Provider，保留 deployment、模型路由和原生思考配置；取消、断开、并发释放与防重放保持原语义。Node 单次模型计时最大安全范围约 24.8 天，超长模型调用未在本工作包验收范围。HTTP 状态读回控制面保留 60 秒上传期限，旧 `createAgentServer` 未选 `request-deadline` 模式时仍兼容默认 60 秒。部署环境若已显式设置 `PA_AGENT_TIMEOUT_MS=60000`，须移除该配置后才会采用原任务期限。上述生产入口源码尚未发布新镜像；同镜像启动补丁的独立验收见下文。
+
+同镜像出站 fetch 超时补丁保存在 `scripts/cloud-fetch-timeout-bootstrap.mjs`。它仅支持 **Node 24.15.0**，通过无网络的 `fetch(data:)` 初始化内置 Undici，并校验 `Symbol.for('undici.globalDispatcher.1')` 的 `dispatch` 兼容形态；版本、形态、显式超时或受信模型 origin 缺失时启动失败。只为受信模型 BASE_URL 同 origin 的 HTTPS `POST */chat/completions` 设置 headers/body timeout，保留原 AbortSignal、路由、凭据、TLS、redirect、模型及最高思考参数，不重试请求。安全错误日志仅含 name/code/cause.code 短码，不含错误消息、URL、正文或凭据。该补丁不改变平台上游的超时限制。
+
+使用 `node scripts/cloud-fetch-timeout-command.mjs` 生成可审查 JSON，包含原源码与实际执行源码 SHA-256、Brotli/base64 启动命令数组；加 `--command-only` 只输出平台可粘贴的数组。生成器拒绝超过 10 参数或任一参数超过 256 字节的结果，不读取宿主环境或 secret。启动命令只解压已审查源码、输出 `fetch_timeout_bootstrap` 安全回执，再导入镜像原 `main.mjs`。离线验证：`node --test test/cloud-fetch-timeout-bootstrap.test.mjs`（使用 exact Node 24.15.0）。2026-10-23 已在原 `context-128k-20261022` 镜像配置版 `arm64-fetch30m-1023` 读回 Node 24.15.0 / timeoutMs 1800000 启动回执；真实最高思考请求已超过原 300 秒失败点，完整任务结果仍待该次验收，不等于新生产镜像已发布。
 - `PA_AGENT_WORKFLOW_GOAL_INPUT`：可选的单一旧 Workflow 输入名。
 - `PA_AGENT_DEPLOYMENT_VERSION`：可选的宿主显式固定版本标签，例如 `arm64-194799c6`。仅允许 1～128 个 ASCII 字母、数字、点、下划线、连字符且以字母/数字开头，拒绝 Latest/default/stable/current/unknown 别名或组成段；非法配置启动失败，不回显原值。缺省时回执记 `unknown`，不从模型、URL 或可变 Latest 推定。
 - `PA_AGENT_INBOUND_TOKEN`：可选额外入站保护；至少32字符，调用方走已有Authorization宿主注入。

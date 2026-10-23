@@ -234,9 +234,11 @@ Local 与 Fake 继续使用 Client 的默认 deadline。
 管理后台原有盘古配置、测试和启停动作在 Competition 模式下会明确拒绝，避免把
 Local 配置误写成 AgentArts 状态。
 
-Competition 对话提交显式提供 120 秒任务期限，覆盖云端工作流与本地后续处理；
+Competition 对话提交显式提供 30 分钟任务期限，覆盖云端工作流与本地后续处理；
 回答提前完成时立即返回，用户仍可取消。状态查询继续使用 Client 的 10 秒 RPC 默认值。
 此期限经公开请求传给 Runtime，不能把默认 RPC 期限误当成整个云端任务的执行预算。
+子任务沿用原父任务的绝对 deadline，派发与恢复均不重新获得 30 分钟；云端未显式配置
+`PA_AGENT_TIMEOUT_MS` 时同样跟随该 deadline。部署仍设置较短上限时会提前超时。
 
 Competition 语音试用显式接华为 SIS 短音频 ASR 和同步 TTS，保持现有按键采集、
 Runtime 文字消费和本机 WAV 播放。可信面板中的“华为 SIS 语音配置”只接受

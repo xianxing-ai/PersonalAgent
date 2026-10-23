@@ -22,6 +22,7 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
       ||Date.parse(batch.deadline)<=now()||question.readResourceGeneration(entry.resource)!==entry.resourceGeneration)throw Error('本次邮箱批次授权已失效');
     return entry;
   };
+  const requirePages=batch=>{const entry=requireBatch(batch);if(!entry.pagesActive)throw Error('本次邮箱批次分页已结束');return entry;};
   const batchAuthorization={
     canRequest,
     preparePage(scope,batch,parentScope) {
@@ -30,10 +31,12 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
         ||typeof batch.batchId!=='string'||!batch.batchId||typeof batch.generation!=='string'||!batch.generation
         ||typeof batch.queryDigest!=='string'||!/^[a-f0-9]{64}$/u.test(batch.queryDigest))throw Error('邮箱批次原范围无效');
       const id=batchKey(batch),selected=resource();
-      for(const [key,entry]of batches)if(!entry.active||Date.parse(entry.deadline)<=now())batches.delete(key);
-      const entry=batches.get(id)??{active:true,batchDigest:hash(batch),resource:selected,
+      // Retain closed-batch tombstones until expiry so the same binding cannot be recreated.
+      for(const [key,entry]of batches)if(Date.parse(entry.deadline)<=now())batches.delete(key);
+      const entry=batches.get(id)??{active:true,pagesActive:true,batchDigest:hash(batch),resource:selected,
         resourceGeneration:question.readResourceGeneration(selected),deadline:batch.deadline};
       if(entry.batchDigest!==hash(batch)||entry.resource!==selected)throw Error('邮箱批次不能更换配置或查询');
+      if(!entry.pagesActive)throw Error('本次邮箱批次分页已结束');
       batches.set(id,entry);requireBatch(batch);
       const ruleBindingDigest=hash({resource:selected,resourceGeneration:entry.resourceGeneration,
         folder:batch.folder,limit:batch.limit,queryDigest:batch.queryDigest,toolName:scope.toolName,toolVersion:scope.toolVersion});
@@ -48,9 +51,10 @@ export function createMailConfig({userData, safeStorage, namespace, question, no
       if(!batches.has(batchKey(batch))){if(!canRequest()||Date.parse(batch.deadline)<=now())throw Error('本次邮箱配置不可请求授权');return;}
       requireBatch(batch);
     },
-    assertPage(scope,batch){requireBatch(batch);question.currentRequirement(scope,'mail-local-batch');},
-    assertConsumed(scope,batch){requireBatch(batch);question.assertConsumedResult(scope,'mail-local-batch');},
-    finish(batch){const entry=batches.get(batchKey(batch));if(entry)entry.active=false;},
+    assertPage(scope,batch){requirePages(batch);question.currentRequirement(scope,'mail-local-batch');},
+    assertConsumed(scope,batch){requirePages(batch);question.assertConsumedResult(scope,'mail-local-batch');},
+    finishPages(batch){const entry=batches.get(batchKey(batch));if(entry)entry.pagesActive=false;},
+    finish(batch){const entry=batches.get(batchKey(batch));if(entry){entry.active=false;entry.pagesActive=false;}},
   };
   if (existsSync(target)) {
     try {

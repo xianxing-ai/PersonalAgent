@@ -925,7 +925,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
               deadline:invocation.deadline,signal:invocation.signal});
           }catch(error){
             this.runtime.expirePendingApprovals();
-            this.runtime.invalidatePendingApproval(ref,invocation.signal.aborted?'cancelled':'stale');
+            this.runtime.invalidatePendingApproval(ref,invocation.signal.aborted?'cancelled':'stale',error);
             throw error;
           }
           const pending=this.readPendingToolInvocation(invocation.taskId,ref);
