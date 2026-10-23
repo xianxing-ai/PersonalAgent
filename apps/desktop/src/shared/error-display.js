@@ -22,9 +22,23 @@ const reasons = Object.freeze({
   VALIDATION:'输入不符合要求；请检查必填字段和格式',
 });
 const stages = new Set(['task','ipc','renderer','runtime','configuration']);
+function errorData(error){
+  try{
+    if(!error||typeof error!=='object')return {};
+    const data={};
+    for(const key of ['message','code','status','errorId']){
+      const descriptor=Object.getOwnPropertyDescriptor(error,key);
+      if(!descriptor)continue;
+      if(!Object.hasOwn(descriptor,'value'))return {};
+      data[key]=descriptor.value;
+    }
+    return data;
+  }catch{return {};}
+}
 export function errorDisplay(error, stage='renderer') {
-  const raw = typeof error==='string'?error:typeof error?.message==='string'?error.message:'';
-  const codeValue = typeof error?.code==='string'?error.code:'';
+  const data=errorData(error);
+  const raw = typeof error==='string'?error:typeof data.message==='string'?data.message:'';
+  const codeValue = typeof data.code==='string'?data.code:'';
   // Gateway messages consist solely of fixed vocabulary and enum values. Preserve
   // their more precise execution stage/cause; all other messages are classified.
   const gateway = /^工具失败 \[stage=(execute|output_validation); cause=([A-Z_]+)(?:; status=([45]\d\d))?(?:; validation=(required|type|enum|const|minimum|maximum|minLength|maxLength|pattern|format|additionalProperties|minItems|maxItems|oneOf|anyOf|schema)(?:; field=([A-Za-z][A-Za-z0-9_]{0,47}))?)?\]：/.exec(raw);
@@ -50,7 +64,7 @@ export function errorDisplay(error, stage='renderer') {
   const projectedStage = gateway?gateway[1]:previous?previous[1]:stages.has(stage)?stage:'renderer';
   const causeCode=gateway?.[2]??previous?.[3];
   const cause=causeCode&&Object.hasOwn(reasons,causeCode)?`; cause=${causeCode}`:'';
-  const suppliedStatus=error?.status;
+  const suppliedStatus=data.status;
   const providerStatus=/^(?:Model endpoint returned HTTP |Pangu request failed with HTTP )([45]\d\d)$/.exec(raw)?.[1];
   const status=gateway?.[3]??previous?.[4]??cloud?.[2]??providerStatus??(Number.isInteger(suppliedStatus)&&suppliedStatus>=400&&suppliedStatus<=599?String(suppliedStatus):undefined);
   const statusReason=status==='401'?'服务认证失败；请在设置中检查凭据':status==='403'?'服务拒绝访问；请检查账号权限'
@@ -62,7 +76,7 @@ export function errorDisplay(error, stage='renderer') {
   const validation=keyword?`; validation=${keyword}${field?`; field=${field}`:''}`:'';
   const validationReason=keyword==='required'?'缺少必填字段':keyword==='type'?'字段类型不符合要求'
     :keyword==='additionalProperties'?'包含工具不支持的额外字段':keyword?'字段未满足工具的数据约束':undefined;
-  const identity=typeof error?.errorId==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(error.errorId)?error.errorId:
+  const identity=typeof data.errorId==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.errorId)?data.errorId:
     /\[errorId=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\](?: \[cloud:.*\])?$/i.exec(raw)?.[1];
   const cloudReason=cloud?.[5]==='server_error'?'云端服务异常关闭；请检查服务状态':cloud?.[5]==='protocol_error'?'云端连接协议错误；请检查部署与客户端版本'
     :cloud?.[4]?'云端连接已关闭；请检查原请求回执'
