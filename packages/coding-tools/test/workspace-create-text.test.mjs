@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {existsSync} from 'node:fs';
+import {existsSync, realpathSync} from 'node:fs';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {delimiter, join} from 'node:path';
@@ -103,6 +103,6 @@ test('reconcile clears a matching marker and distinguishes created, not_created 
 
 function createMarkerName(root, relativePath) {
   // Mirrors workspacePatchInflightPathFromCanonical without importing a private helper.
-  const key = createHash('sha256').update(`${root}\n${relativePath}`, 'utf8').digest('hex').slice(0, 32);
+  const key = createHash('sha256').update(`${realpathSync.native(root)}\n${relativePath}`, 'utf8').digest('hex').slice(0, 32);
   return `${key}.inflight`;
 }
