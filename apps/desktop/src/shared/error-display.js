@@ -3,7 +3,7 @@ import {publicErrorMessages} from './public-error-messages.js';
 // it may contain email bodies, access tokens, URLs or private filesystem paths.
 const reasons = Object.freeze({
   CANCELLED:'操作已取消；请确认当前任务状态', TIMEOUT:'操作超过截止时间；请检查服务状态',
-  RESULT_UNKNOWN:'原操作结果尚未确认；请核实原记录和目标状态，确认前不要重试',
+  RESULT_UNKNOWN:'未取得有效执行回执，暂不能确认是否已执行；当前不会自动重试，请勿重复提交同一操作。',
   INVALID_ARGUMENT:'输入或返回数据不符合约定；请检查输入与工具版本',
   UNAUTHORIZED:'授权无效或已失效；请检查当前授权', SCOPE_DENIED:'授权范围不足；请检查所需权限',
   EACCES:'资源访问被拒绝；请检查目标权限', EPERM:'操作权限不足；请检查目标权限',
@@ -79,13 +79,13 @@ export function errorDisplay(error, stage='renderer') {
   const identity=typeof data.errorId==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.errorId)?data.errorId:
     /\[errorId=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\](?: \[cloud:.*\])?$/i.exec(raw)?.[1];
   const cloudReason=cloud?.[5]==='server_error'?'云端服务异常关闭；请检查服务状态':cloud?.[5]==='protocol_error'?'云端连接协议错误；请检查部署与客户端版本'
-    :cloud?.[4]?'云端连接已关闭；请检查原请求回执'
+    :cloud?.[4]?'云端连接已关闭；请先查看目标结果，避免重复提交'
     :cloud?.[6]==='ECONNREFUSED'?'云端连接被拒绝；请检查服务地址与运行状态'
     :cloud?.[6]?'云端网络或证书连接失败；请检查网络、证书与服务配置'
     :cloud?.[7]==='RATE_LIMITED'?'云端请求被限流；请检查配额和请求频率'
     :cloud?.[7]&&Object.hasOwn(reasons,cloud[7])?`云端已返回明确失败：${reasons[cloud[7]]}`
     :cloud?.[3]==='wss_ready'?'云端未完成就绪握手；请检查服务协议与部署'
-    :cloud?.[3]==='wss_invoke'?'云端请求已发出但未取得确定回执；请核实原操作'
+    :cloud?.[3]==='wss_invoke'?'云端请求已发出但未取得确定回执；请勿重复发送原请求'
     :cloud?.[3]==='wss_connect'?'云端连接未能建立；请检查网络和服务地址':undefined;
   const text=`[stage=${projectedStage}; code=${code}${cause}${status?`; status=${status}`:''}${validation}] ${publicMessage??reasons[code]}`
     +(cause&&causeCode!==code?`。原因：${reasons[causeCode]}`:'')+(statusReason?`。${statusReason}`:'')

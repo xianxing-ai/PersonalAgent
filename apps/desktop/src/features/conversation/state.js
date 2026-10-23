@@ -5,7 +5,7 @@ export function orbState(task) {
   if (task.state.startsWith('waiting_') || task.state === 'cancelling') return 'waiting';
   return task.state === 'failed' ? 'error' : 'idle';
 }
-export const stateNames = {created:'已创建',planning:'思考中',running:'执行中',verifying:'验证中',waiting_approval:'等待授权',waiting_external:'等待外部结果',waiting_reconciliation:'结果待核实',cancelling:'正在取消',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
+export const stateNames = {created:'已创建',planning:'思考中',running:'执行中',verifying:'验证中',waiting_approval:'等待授权',waiting_external:'等待外部结果',waiting_reconciliation:'执行异常',cancelling:'正在取消',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
 export const isTerminal = task => ['succeeded','failed','cancelled'].includes(task.state);
 const liveStatusNames={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};
 export function orbStatusLabel(data) {
