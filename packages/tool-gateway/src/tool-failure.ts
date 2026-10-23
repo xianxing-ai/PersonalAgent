@@ -12,6 +12,8 @@ const reasons: Record<string, string> = {
   INVALID_ARGUMENT: '参数或返回数据不符合约定；请检查输入和工具版本',
   UNSUPPORTED_CAPABILITY: '所需能力不可用；请检查工具配置', PROTOCOL_MISMATCH: '协议版本不匹配；请检查工具版本',
   REVISION_CONFLICT: '资源版本已变化；请重新读取当前状态', NOT_FOUND: '目标资源不存在；请检查目标是否仍存在',
+  RATE_LIMITED: '工具请求频率或配额受限；请检查配额与限流设置',
+  CURSOR_EXPIRED: '分页游标已过期；请从第一页重新读取',
   CANCELLED: '执行收到取消请求', TIMEOUT: '执行超过截止时间', RESULT_UNKNOWN: '工具未能确认原操作结果',
   EXTERNAL_FAILURE: '工具执行异常；请检查工具服务状态',
 };
