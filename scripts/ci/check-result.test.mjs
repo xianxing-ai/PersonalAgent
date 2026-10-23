@@ -10,7 +10,7 @@ function fixture(mode='both') {
   const matrix=matrixFor(mode,{number:427});
   return {routeResult:'success',ciResult:'success',matrix,jobs:matrix.include.map(job=>({
     name:job.name,status:'completed',conclusion:'success',run_id:123,run_attempt:2,head_sha:HEAD_SHA,
-    runner_name:job.kind==='windows'?'ecs-windows-fixture':'ecs-linux-fixture',labels:job.runner,html_url:'https://example.invalid/job'
+    runner_name:job.kind==='windows'?'hosted-windows-fixture':'hosted-linux-fixture',labels:job.runner,html_url:'https://example.invalid/job'
   }))};
 }
 
@@ -33,7 +33,7 @@ test('missing, duplicate and pending actual jobs fail closed',()=>{
   }
 });
 test('success without the selected runner identity and labels does not count',()=>{
-  for(const mutate of [s=>s.jobs[0].runner_name='',s=>s.jobs[0].labels=['windows-latest']]) {
+  for(const mutate of [s=>s.jobs[0].runner_name='',s=>s.jobs[0].labels=['self-hosted','Windows','X64','personalagent-windows'],s=>s.jobs[0].labels=['ubuntu-24.04']]) {
     const state=fixture();mutate(state);assert.throws(()=>verifySelectedJobs(state));
   }
 });

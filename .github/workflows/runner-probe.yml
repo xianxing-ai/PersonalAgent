@@ -6,10 +6,10 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Confirm registration, online state and host-owner readiness before selecting ECS
+        description: Select a standard GitHub-hosted Windows probe or explicit native acceptance
         required: true
         type: choice
-        options: [windows-github, windows-pool, windows-pool-pair, windows-pool-three, ecs-17f8, psec-strict, psec-strict-arm64]
+        options: [windows-github, psec-strict, psec-strict-arm64]
 permissions:
   contents: read
 jobs:
