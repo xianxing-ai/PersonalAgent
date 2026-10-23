@@ -84,10 +84,45 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   };
   root.querySelector('#connectors-refresh').onclick=async event=>{event.currentTarget.disabled=true;const operationRevision=updateRevision;let readRevision;try{await invoke('capability.list');readRevision=updateRevision;const data=await invoke('snapshot');if(readRevision===updateRevision)update(data);}catch(error){if((readRevision??operationRevision)===updateRevision)report(error);}finally{root.querySelector('#connectors-refresh').disabled=false;}};
   root.querySelector('#inspector-close').onclick=()=>{inspected=null;syncAuxiliaryPanels();};
+  // 天气卡片此前没有任何配置入口：weather.configure 只存在于主进程 IPC，渲染层从未调用。
+  // 这里补一个内联输入框，配置后由宿主自己查询并每 10 分钟刷新。
+  const askWeatherCity = () => {
+    const existing = root.querySelector('.cc-city-dialog');
+    if (existing) { existing.querySelector('input')?.focus(); return; }
+    const overlay = document.createElement('div');
+    overlay.className = 'cc-city-dialog';
+    overlay.innerHTML = '<form role="dialog" aria-label="设置天气城市">'
+      + '<label>天气城市<input name="city" maxlength="60" autocomplete="off" placeholder="例如 青岛"></label>'
+      + '<div class="cc-city-actions"><button type="submit">确定</button><button type="button" data-cancel>取消</button></div>'
+      + '<p class="cc-city-status" role="status"></p></form>';
+    const form = overlay.querySelector('form');
+    const status = overlay.querySelector('.cc-city-status');
+    const close = () => overlay.remove();
+    overlay.querySelector('[data-cancel]').onclick = close;
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const city = String(new FormData(form).get('city') ?? '').trim();
+      if (!city) { status.textContent = '请输入城市名'; return; }
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      status.textContent = '正在查询…';
+      try {
+        await invoke('weather.configure', {location: city});
+        close();
+        update(await invoke('snapshot'));
+      } catch (error) {
+        submit.disabled = false;
+        status.textContent = String(error?.message ?? '城市无效或天气服务不可用');
+      }
+    };
+    root.appendChild(overlay);
+    overlay.querySelector('input').focus();
+  };
   root.querySelector('#connector-cards').onclick=event=>{
     const card=event.target.closest('[data-connector]');if(!card)return;
     const destination=connectorDestination(card.dataset.connector,current);
     if(destination.action){invoke(destination.action).catch(report);return;}
+    if(destination.configure==='weather'){askWeatherCity();return;}
     if(destination.draft){
       root.querySelector('.cc-team-lead')?.click();
       if(!draftInput.value.trim()){draftInput.value=destination.draft;draftInput.dispatchEvent(new Event('input',{bubbles:true}));}

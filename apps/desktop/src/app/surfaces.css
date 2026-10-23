@@ -587,3 +587,13 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .thread>.bubble {font-size:17px;font-weight:640;padding:16px 18px;text-align:center;background:none;border:0}
 /* proactive (电脑操控) checkbox rows: keep label text beside its checkbox (label variant only; admin rows use div) */
 .settings-list label.setting-row {justify-content:flex-start;gap:12px}
+
+/* 天气卡片城市配置：卡片此前没有任何配置入口，点开后在面板上覆盖一个轻量表单。 */
+.cc-city-dialog {position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(0,0,0,.35)}
+.cc-city-dialog form {width:min(320px,80vw);background:var(--bg);border:1px solid var(--glass-hairline);border-radius:16px;padding:18px;display:grid;gap:12px;color:var(--fg)}
+.cc-city-dialog label {display:grid;gap:6px;font-size:12px}
+.cc-city-dialog input {height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--glass-hairline);background:transparent;color:inherit;font:inherit}
+.cc-city-actions {display:flex;gap:8px;justify-content:flex-end}
+.cc-city-actions button {height:30px;padding:0 14px;border-radius:10px;border:1px solid var(--glass-hairline);background:transparent;color:inherit;cursor:pointer}
+.cc-city-actions button[type="submit"] {background:var(--fg);color:var(--bg);border-color:transparent}
+.cc-city-status {margin:0;font-size:12px;opacity:.75;min-height:16px}

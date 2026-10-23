@@ -141,7 +141,7 @@ const definitions = [
 ];
 const labels = {ready: '已连接', connecting: '连接中', reauth_required: '需要授权', degraded: '连接异常', disconnected: '未连接', unavailable: '未接入'};
 export function connectorDestination(id,data={}){
-  return id==='weather'?(data.weather?.configured?{action:'weather.refresh'}:{draft:'查询天气：'}):{page:id==='obsidian'?'memory':'connections'};
+  return id==='weather'?(data.weather?.configured?{action:'weather.refresh'}:{configure:'weather'}):{page:id==='obsidian'?'memory':'connections'};
 }
 export function connectorCards(data, escape) {
   const cards = definitions.map(item => {
