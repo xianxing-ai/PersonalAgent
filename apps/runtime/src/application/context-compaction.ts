@@ -4,6 +4,8 @@ import {ProtocolError} from '@personal-agent/contracts';
 import type {CoordinationGoalTokenBudget} from './context-binding.js';
 
 export const CONTEXT_COMPACTION_CHECKPOINT = 'conversation-compaction:v1';
+export const CONTEXT_COMPACTION_COMMAND = 'conversation-compaction-command:v1';
+export const isContextCompactionCommand=(text:string):boolean=>/^(?:\/压缩|\/compact)$/iu.test(text.trim());
 
 export interface CompactableContextMessage {
   readonly id:string;
@@ -86,6 +88,13 @@ export interface ContextCompactionReceipt {
   readonly budget:{before:CompactionMeasurement;after:CompactionMeasurement};
 }
 export interface ContextCompactionOptions {
+  /** Explicit user command, never inferred from historical or model text. */
+  readonly force?:boolean;
+  /** Process-local projection, revalidated against original history on every use. */
+  readonly previous?:ContextCompactionCache;
+  /** Original history owner resolved by trusted Runtime delegation, not the renderer. */
+  readonly cacheConversationId?:string;
+  readonly remember?:(cache:ContextCompactionCache)=>void;
   readonly scope:ContextCompactionScope;
   readonly policy:ContextCompactionPolicy;
   readonly modelConfigurationRef:string;
@@ -100,6 +109,13 @@ export interface ContextCompactionOptions {
   readonly saveCheckpoint:(receipt:ContextCompactionReceipt)=>void;
   readonly loadCheckpoint?:()=>unknown;
   readonly now?:()=>number;
+}
+export interface ContextCompactionCache {
+  readonly binding:string;
+  readonly prefixDigest:string;
+  readonly prefixCount:number;
+  readonly summaries:readonly string[];
+  readonly segments:ContextCompactionReceipt['segments'];
 }
 export type ContextCompactionResult =
   | {state:'unchanged';messages:readonly CompactableContextMessage[]}
@@ -225,19 +241,38 @@ export async function compactConversationContext(options:ContextCompactionOption
   };
   active();
   const original=snapshot(options),before=measure(options.compile(original.messages),options.goalTokenBudget);
-  if(before.characters<options.policy.triggerCharacters&&fits(before,options.policy.maxCharacters))return {state:'unchanged',messages:original.messages};
+  const cacheBinding=hash([options.cacheConversationId??options.scope.conversationId,
+    original.configurationRef,options.modelConfigurationRef,options.policy]);
+  const previous=options.previous;
+  const validCache=previous?.binding===cacheBinding&&previous.prefixCount>0
+    &&previous.prefixDigest===hash(original.messages.slice(0,previous.prefixCount));
+  if(!options.force&&!validCache&&before.characters<options.policy.triggerCharacters&&fits(before,options.policy.maxCharacters))
+    return {state:'unchanged',messages:original.messages};
   let boundary=Math.max(0,original.messages.length-options.policy.retainMessages);
   // Keep a contiguous Runtime task's exact question/answer together at the tail boundary.
   while(boundary>0&&boundary<original.messages.length&&original.messages[boundary]?.taskId
     &&original.messages[boundary]?.taskId===original.messages[boundary-1]?.taskId)boundary--;
+  const derive=(summaries:readonly string[],digest:string):CompactableContextMessage[]=>summaries.map((text,index)=>({
+    id:'context-summary:'+digest+':'+index,role:'assistant',
+    content:JSON.stringify({kind:'derived_conversation_summary',treatment:'untrusted_data',text})}));
+  const reuse=validCache&&previous.prefixCount<=boundary
+    &&(!options.force||previous.prefixCount===boundary)
+    &&fits(measure(options.compile([...derive(previous.summaries,previous.prefixDigest),...original.messages.slice(previous.prefixCount)]),
+      options.goalTokenBudget),options.policy.triggerCharacters-1);
+  if(reuse)boundary=previous.prefixCount;
   const prefix=original.messages.slice(0,boundary),tail=original.messages.slice(boundary);
-  if(!prefix.length)throw new ProtocolError('INVALID_ARGUMENT','Conversation budget cannot be met while retaining the required tail');
+  if(!prefix.length){
+    if(options.force&&fits(before,options.policy.maxCharacters))return {state:'unchanged',messages:original.messages};
+    throw new ProtocolError('INVALID_ARGUMENT','Conversation budget cannot be met while retaining the required tail');
+  }
+  if(!reuse&&options.compile(tail).length>=options.policy.targetCharacters)
+    throw new ProtocolError('INVALID_ARGUMENT','Current goal and retained history exceed the compaction target; original history is unchanged');
   const base=baseReceipt(options,original,tail),saved=options.loadCheckpoint?.();
   if(saved!==undefined) {
     if(!saved||typeof saved!=='object'||!isDeepStrictEqual(base,Object.fromEntries(Object.keys(base)
       .map(key=>[key,(saved as unknown as Record<string,unknown>)[key]]))))conflict();
   }
-  const segments=segmentConversationContext(prefix,options.policy.segmentCharacters);
+  const segments=reuse?[]:segmentConversationContext(prefix,options.policy.segmentCharacters);
   const assertSource=()=>{
     active();validatePolicy(options.policy);
     const current=snapshot(options);
@@ -245,7 +280,8 @@ export async function compactConversationContext(options:ContextCompactionOption
       ||!isDeepStrictEqual(before,measure(options.compile(current.messages),options.goalTokenBudget)))conflict();
     if(saved!==undefined&&!isDeepStrictEqual(saved,options.loadCheckpoint?.()))conflict();
   };
-  const summaries:string[]=[],ranges:ContextCompactionReceipt['segments'][number][]=[];
+  const summaries:string[]=reuse?[...previous.summaries]:[],ranges:ContextCompactionReceipt['segments'][number][]=
+    reuse?structuredClone([...previous.segments]):[];
   for(const segment of segments) {
     assertSource();
     let checked=false;
@@ -262,13 +298,13 @@ export async function compactConversationContext(options:ContextCompactionOption
       lastIdentityDigest:identity(segment.messages.at(-1)!),sourceCharacters:JSON.stringify(segment.messages).length,
       summaryDigest:hash(text),summaryCharacters:text.length});
   }
-  const derived:CompactableContextMessage[]=summaries.map((text,index)=>({id:'context-summary:'+base.sourceDigest+':'+index,
-    role:'assistant',content:JSON.stringify({kind:'derived_conversation_summary',treatment:'untrusted_data',text})}));
+  const derived=derive(summaries,hash(prefix));
   const messages=[...derived,...tail],after=measure(options.compile(messages),options.goalTokenBudget);
   if(after.characters>=before.characters||(after.tokens.state==='measured'&&before.tokens.state==='measured'
     &&after.tokens.inputTokens>=before.tokens.inputTokens))
     throw new ProtocolError('INVALID_ARGUMENT','Conversation summary made no measurable progress');
-  if(!fits(after,options.policy.targetCharacters))throw new ProtocolError('INVALID_ARGUMENT','Conversation summary still exceeds the target budget');
+  if(!fits(after,reuse?options.policy.triggerCharacters-1:options.policy.targetCharacters))
+    throw new ProtocolError('INVALID_ARGUMENT','Conversation summary still exceeds the target budget');
   const receipt:ContextCompactionReceipt={...base,segments:ranges,summaryDigest:hash(summaries),budget:{before,after}};
   assertSource();
   if(saved!==undefined&&!isDeepStrictEqual(saved,receipt))conflict();
@@ -284,5 +320,7 @@ export async function compactConversationContext(options:ContextCompactionOption
       ||(options.loadCheckpoint!==undefined&&!isDeepStrictEqual(receipt,options.loadCheckpoint())))conflict();
   };
   assertCommitted();
+  options.remember?.({binding:cacheBinding,prefixDigest:hash(prefix),prefixCount:prefix.length,
+    summaries:structuredClone(summaries),segments:structuredClone(ranges)});
   return {state:'compacted',messages:structuredClone(messages),receipt:structuredClone(receipt),assertCurrent:assertCommitted};
 }

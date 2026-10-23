@@ -74,6 +74,7 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')openAdmin(key);else{history.hidden=true;inline.main();input.focus();}};
   const form=root.querySelector('.workspace-composer'),actions=form.querySelector('.workspace-composer-actions');
   input.placeholder='给 PersonalAgent 发送消息…';actions.prepend(preferences);
+  input.title='发送 /压缩 或 /compact 可压缩当前会话历史；须先在模型设置中启用自动压缩。';
   const tools=document.createElement('button');tools.type='button';tools.className='cc-tools';tools.setAttribute('aria-label','连接器与工具');tools.title='连接器与工具';tools.innerHTML=centerIcon('plus');tools.onclick=()=>{showCards();board.querySelector('#connectors-refresh').focus({preventScroll:true});};actions.prepend(tools);
   const voice=document.createElement('button');voice.type='button';voice.className='cc-voice';voice.setAttribute('aria-label','打开语音设置');voice.title='语音设置';voice.innerHTML=centerIcon('voice');voice.onclick=()=>openAdmin('voice');actions.insertBefore(voice,actions.querySelector('[data-send]'));
   const send=actions.querySelector('[data-send]');send.textContent='↑';send.setAttribute('aria-label','发送任务');
