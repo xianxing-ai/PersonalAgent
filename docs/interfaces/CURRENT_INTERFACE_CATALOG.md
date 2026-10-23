@@ -592,3 +592,13 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 按用户选择将 Competition 任务与历史合并输入扩大为 128,000 UTF-16 单元；contracts 公布统一字符预算及 1,100,000 字节初始查询预算，Runtime、Coordination、自有 AgentArts 输入和 Desktop 预检同步消费。不新增 wire 字段或数据库迁移；输出/工具结果/业务投影/帧预算、权限及已配置的模型 token 计量不变。旧检查点预算漂移继续拒绝恢复。远端旧镜像、原生模型窗口和真实长上下文验收不因本机修改自动通过。见 [ADR-0037](../adr/0037-conversation-context-128k.md)。
 
 同日另经用户授权，将当前绑定运行时发布为 `arm64-context-128k-1022` 并更新本机固定 WSS。真实公开合成历史验收 3/3 主任务完成，实际最大编译输入 125739/128000 字符，首中尾取回、更正及重启恢复通过；20～24 条历史全部纳入。桌面汇总的宿主 `userRequest` 同步扩大，子任务输出投影仍单独限 64 KiB。精确 128000 字符边界为本地/禁网容器证据，不将此次有限真实验收扩大为原生模型 128k token 窗口或全接口冻结；详见[完整记录](../competition/CONTEXT_LIMIT_128K_20261022.md)。
+
+## 2026-10-23 工具说明、能力状态与安全诊断（provisional）
+
+Competition 既有工具目录兼容保留有界参数级 `description`（每项最多160个 Unicode 字符，过滤控制字符）；根元数据与隐藏工具仍不公开。目录继续遵守 `MAX_AVAILABLE_TOOLS=64` 与24KiB限制，说明使目录超限时仅去除说明，字段、required、enum及范围不删减，结构仍超限则拒绝。保存的目录选择在发送与提案时继续对照当前结构及完整本地 Schema 复核，说明不成为授权。
+
+Runtime 在原 `goal` / `readRequestContext` 文本内临时附加有界 `capabilityStatus`，不是新增 wire 顶层字段。数据来自当前任务作用域的既有公开目录、当轮 readiness 与当前任务白名单错误码；明确区分注册、就绪、未确认就绪、尚未检查和目录读取失败，不从缺项猜配置或权限原因。注册、配置或就绪都不代替原 Policy 批准与实际执行，隐藏工具不披露；typed teacher 输入保持原格式。状态正文不进入稳定上下文 checkpoint，可选诊断预算不足时让位原任务与历史；原字符、结构、工具数与模型 token 预算及权限检查不变。Desktop 邮件卡仅恢复历史分类数量的非实时展示，不恢复读取 grant，不以历史未读数冒充当前状态。
+
+`@personal-agent/coordination` 兼容导出 `formatAgentArtsFailureDetail`，可选输出从可信错误类型及白名单字段生成的安全原因；HTTP/WSS 诊断不透传任意外部 reason、响应正文或凭据。原 `ProtocolError.code`、未发送/终态/结果未知分类及 unknown 不盲重放语义不变，不新增公开错误码或恢复执行入口。
+
+本轮无 Core wire/Schema 版本或数据库迁移，不提升冻结等级。ARM64 本地容器协议验证与本机夹具/consumer验证分别记录，不等于真实 AgentArts 云部署或 Windows 实体验收；本轮未执行后两项，历史云验收仍只覆盖其原版本范围。逐项命令、结果与未验证边界见[本轮总矩阵](../competition/evidence/IMAGE_RELIABILITY_MATRIX_20261023.md)，不据源码或本地通过宣称镜像已发布、部署已完成或全功能可用。
