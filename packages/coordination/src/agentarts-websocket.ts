@@ -83,7 +83,7 @@ export function createAgentArtsUnknownReceipt(init: AgentArtsFetchInit): AgentAr
 /** Created only by the local adapter. A remote JSON error cannot create this classification. */
 export class AgentArtsResultUnknownError extends ProtocolError {
   readonly receipt: AgentArtsUnknownReceipt;
-  constructor(receipt: AgentArtsUnknownReceipt) {
+  constructor(receipt: AgentArtsUnknownReceipt, readonly connectionDiagnostic?: AgentArtsConnectionDiagnostic) {
     super('EXTERNAL_FAILURE', 'AgentArts result requires reconciliation', false);
     this.receipt = Object.freeze({...receipt});
   }
@@ -100,7 +100,8 @@ export class AgentArtsRemoteInvocationError extends ProtocolError {
 
 /** Local transport proof that this invoke was never handed to WSS. No remote error text is retained. */
 export class AgentArtsBeforeInvokeError extends ProtocolError {
-  constructor(failure: 'connection' | 'upgrade' | 'authorization' = 'connection') {
+  constructor(failure: 'connection' | 'upgrade' | 'authorization' = 'connection',
+    readonly connectionDiagnostic?: AgentArtsConnectionDiagnostic) {
     super(failure === 'authorization' ? 'UNAUTHORIZED' : failure === 'upgrade' ? 'UNSUPPORTED_CAPABILITY' : 'EXTERNAL_FAILURE',
       failure === 'authorization' ? 'AgentArts WebSocket authorization denied'
         : failure === 'upgrade' ? 'AgentArts WebSocket upgrade is unavailable' : 'AgentArts WebSocket connection is unavailable', false);
@@ -130,6 +131,31 @@ export class AgentArtsTerminalError extends AgentArtsRemoteInvocationError {
 
 /** An invoke frame has never been handed to the socket. This is the only automatic fallback condition. */
 class BeforeInvokeConnectionError extends AgentArtsBeforeInvokeError {}
+
+/** Content-free socket facts. Remote close text and arbitrary Error properties are never copied. */
+export interface AgentArtsConnectionDiagnostic {
+  readonly transportPhase: 'wss_connect' | 'wss_ready' | 'wss_invoke';
+  readonly closeCode?: number;
+  readonly closeReason?: 'normal' | 'going_away' | 'protocol_error' | 'abnormal' | 'server_error' | 'other';
+  readonly socketErrorCode?: 'ECONNRESET' | 'ECONNREFUSED' | 'ETIMEDOUT' | 'ENOTFOUND'
+    | 'EAI_AGAIN' | 'EPIPE' | 'CERT_HAS_EXPIRED' | 'UNABLE_TO_VERIFY_LEAF_SIGNATURE';
+}
+function connectionDiagnostic(connection: Connection, code?: unknown, error?: unknown): AgentArtsConnectionDiagnostic {
+  const transportPhase = !connection.opened ? 'wss_connect' : !connection.negotiated ? 'wss_ready' : 'wss_invoke';
+  const closeCode = typeof code === 'number' && Number.isInteger(code) && code >= 1000 && code <= 4999 ? code : undefined;
+  const reasons = new Map<number, AgentArtsConnectionDiagnostic['closeReason']>([
+    [1000, 'normal'], [1001, 'going_away'], [1002, 'protocol_error'], [1006, 'abnormal'], [1011, 'server_error'],
+  ]);
+  const allowed = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE',
+    'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'];
+  let socketErrorCode: AgentArtsConnectionDiagnostic['socketErrorCode'];
+  try {
+    const candidate = (error as {code?: unknown} | undefined)?.code;
+    if (typeof candidate === 'string' && allowed.includes(candidate)) socketErrorCode = candidate as typeof socketErrorCode;
+  } catch { /* Untrusted error accessors cannot change the failure path. */ }
+  return Object.freeze({transportPhase, ...(closeCode === undefined ? {} : {closeCode,
+    closeReason: reasons.get(closeCode) ?? 'other'}), ...(socketErrorCode === undefined ? {} : {socketErrorCode})});
+}
 
 interface Pending {
   readonly receipt: AgentArtsUnknownReceipt;
@@ -292,7 +318,7 @@ export class AgentArtsWebSocketTransport {
     if (pending) { connection.pending.delete(requestId); pending.cleanup(); this.remember(connection, requestId); }
     return pending;
   }
-  private breakConnection(connection: Connection, error: unknown): void {
+  private breakConnection(connection: Connection, error: unknown, diagnostic?: AgentArtsConnectionDiagnostic): void {
     if (connection.closed) return;
     connection.closed = true;
     if (this.connections.get(connection.sessionId) === connection) this.connections.delete(connection.sessionId);
@@ -301,7 +327,7 @@ export class AgentArtsWebSocketTransport {
       this.dropPending(connection, requestId);
       if (pending.sent) {
         this.report({state: 'result_unknown', sessionId: connection.sessionId, requestId});
-        pending.reject(new AgentArtsResultUnknownError({...pending.receipt, accepted: pending.accepted}));
+        pending.reject(new AgentArtsResultUnknownError({...pending.receipt, accepted: pending.accepted}, diagnostic));
       } else pending.reject(error);
     }
     try { connection.socket.terminate(); } catch { /* Best-effort socket cleanup. */ }
@@ -331,10 +357,16 @@ export class AgentArtsWebSocketTransport {
       }
       this.breakConnection(connection, new AgentArtsWebSocketUpgradeError(status));
     });
-    socket.on('error', () => this.breakConnection(connection,
-      connection.opened ? failProtocol() : new BeforeInvokeConnectionError()));
-    socket.on('close', () => this.breakConnection(connection,
-      connection.opened ? failProtocol() : new BeforeInvokeConnectionError()));
+    socket.on('error', (error: unknown) => {
+      const diagnostic = connectionDiagnostic(connection, undefined, error);
+      this.breakConnection(connection, connection.opened ? new AgentArtsBeforeInvokeError('connection', diagnostic)
+        : new BeforeInvokeConnectionError('connection', diagnostic), diagnostic);
+    });
+    socket.on('close', (code: unknown) => {
+      const diagnostic = connectionDiagnostic(connection, code);
+      this.breakConnection(connection, connection.opened ? new AgentArtsBeforeInvokeError('connection', diagnostic)
+        : new BeforeInvokeConnectionError('connection', diagnostic), diagnostic);
+    });
     socket.on('message', (data: unknown, binary: unknown) => {
       if (connection.closed) return;
       try {

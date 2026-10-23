@@ -41,3 +41,18 @@ test('diagnostic projection never invokes accessors or leaks thrown proxy messag
   assert.doesNotThrow(()=>log(new Proxy({},{getOwnPropertyDescriptor(){throw Error('PRIVATE_MESSAGE');}})));
   assert.equal(lines.length,1);
 });
+test('safe socket facts survive the production log projection while arbitrary reasons and getters are dropped',()=>{
+  const {log,lines}=fixture();
+  log({stage:'transport',code:'EXTERNAL_FAILURE',requestId,resultUnknown:true,transportPhase:'wss_invoke',
+    closeCode:1011,closeReason:'server_error',socketErrorCode:'ECONNRESET'});
+  assert.deepEqual(lines[0].detail,{stage:'transport',code:'EXTERNAL_FAILURE',requestId,resultUnknown:true,
+    transportPhase:'wss_invoke',closeCode:1011,closeReason:'server_error',socketErrorCode:'ECONNRESET'});
+  for(const closeCode of ['1011',1000.1,999,5000]) {
+    log({stage:'transport',code:'EXTERNAL_FAILURE',closeCode,closeReason:'PRIVATE_REASON',socketErrorCode:'PRIVATE_CODE'});
+    assert.deepEqual(lines.at(-1).detail,{stage:'transport',code:'EXTERNAL_FAILURE'});
+  }
+  let reads=0;
+  log({stage:'transport',code:'EXTERNAL_FAILURE',get closeCode(){reads++;return 1011;},
+    get closeReason(){reads++;return 'PRIVATE_REASON';},get socketErrorCode(){reads++;return 'PRIVATE_CODE';}});
+  assert.equal(reads,0);assert.equal(JSON.stringify(lines).includes('PRIVATE_'),false);
+});
