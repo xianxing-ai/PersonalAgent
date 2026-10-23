@@ -128,7 +128,7 @@ ModelGateway 是唯一模型入口，真实提供者由宿主配置，不会缺�
 - `PA_AGENT_MODEL_BASE_URL`：HTTPS OpenAI Chat Completions 兼容入口，包含版本路径。
 - `PA_AGENT_MODEL`：实际模型名；每角色可用 `PA_AGENT_FAST/WORLD/PLAN/REVIEW_MODEL` 覆盖。
 - `PA_AGENT_MODEL_KEY_FILE` 或 `PA_AGENT_MODEL_API_KEY`：宿主秘密文件或运行时环境；每角色可独立覆盖。
-- `PA_AGENT_MAX_OUTPUT_TOKENS`：单角色输出预算，默认 2048；修复最多顺序调用三个角色，无自动重试。
+- `PA_AGENT_MAX_OUTPUT_TOKENS`：单角色输出预算，默认 32768，为最高思考与代码文件生成提供更大预算；显式受信环境配置仍优先，修复最多顺序调用三个角色，无自动重试。2026-10-23 同镜像配置版 `arm64-output32k-1023` 已将该环境值设为 32768、Latest 映射新版；新增安全响应 shape 诊断仅保留在本地源码，此次云配置未启用，尚无该预算下的新云任务验收。
 - `PA_AGENT_TIMEOUT_MS`：可选的显式服务/单次模型调用期限上限；配置时取与原请求 deadline 的较早值。生产 `main.mjs` 未配置时跟随经过校验的原任务 deadline，不再默认截断为 60 秒；HTTP `/invocations` 必须提供规范的 `X-PA-Deadline`，WSS 使用协议帧 deadline。模型调用按每次调用剩余期限创建原 OpenAI Compatible Provider，保留 deployment、模型路由和原生思考配置；取消、断开、并发释放与防重放保持原语义。Node 单次模型计时最大安全范围约 24.8 天，超长模型调用未在本工作包验收范围。HTTP 状态读回控制面保留 60 秒上传期限，旧 `createAgentServer` 未选 `request-deadline` 模式时仍兼容默认 60 秒。部署环境若已显式设置 `PA_AGENT_TIMEOUT_MS=60000`，须移除该配置后才会采用原任务期限。上述生产入口源码尚未发布新镜像；同镜像启动补丁的独立验收见下文。
 
 同镜像出站 fetch 超时补丁保存在 `scripts/cloud-fetch-timeout-bootstrap.mjs`。它仅支持 **Node 24.15.0**，通过无网络的 `fetch(data:)` 初始化内置 Undici，并校验 `Symbol.for('undici.globalDispatcher.1')` 的 `dispatch` 兼容形态；版本、形态、显式超时或受信模型 origin 缺失时启动失败。只为受信模型 BASE_URL 同 origin 的 HTTPS `POST */chat/completions` 设置 headers/body timeout，保留原 AbortSignal、路由、凭据、TLS、redirect、模型及最高思考参数，不重试请求。安全错误日志仅含 name/code/cause.code 短码，不含错误消息、URL、正文或凭据。该补丁不改变平台上游的超时限制。

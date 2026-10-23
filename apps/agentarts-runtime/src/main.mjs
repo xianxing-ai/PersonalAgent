@@ -76,7 +76,7 @@ try {
     decisionTool:{name:WORKFLOW_DECISION_TOOL_NAME,version:WORKFLOW_DECISION_TOOL_VERSION},checkpointSecret:workflowKeys.checkpointKey,
     prepareCandidates:context => orchestrator.prepareOwnedWorkflowCandidates(context),
     ...(receiptSecret === undefined ? {} : {receiptVerifier:createOwnedWorkflowReceiptVerifier({secret:receiptSecret})})}) : undefined;
-  orchestrator = new OwnedAgentOrchestrator(models,integer('PA_AGENT_MAX_OUTPUT_TOKENS',2048),
+  orchestrator = new OwnedAgentOrchestrator(models,integer('PA_AGENT_MAX_OUTPUT_TOKENS',32768),
     createRoleReceiptWriter({deploymentVersion:process.env.PA_AGENT_DEPLOYMENT_VERSION}),
     undefined, workflowEngine,executionModels?{executionModels}:undefined);
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
