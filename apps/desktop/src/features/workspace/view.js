@@ -119,6 +119,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     overlay.querySelector('input').focus();
   };
   root.querySelector('#connector-cards').onclick=event=>{
+    if(event.target.closest('[data-weather-city]')){event.preventDefault();askWeatherCity();return;}
     const card=event.target.closest('[data-connector]');if(!card)return;
     const destination=connectorDestination(card.dataset.connector,current);
     if(destination.action){invoke(destination.action).catch(report);return;}
