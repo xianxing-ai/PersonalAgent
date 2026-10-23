@@ -72,8 +72,16 @@ test('Synthetic actual Main callback feeds fresh time and consent guidance throu
   assert.equal(captured[2].request.taskId,task.taskId);
   assert.equal(captured[0].request.taskId,child.taskId);
   for(const {request,data} of captured) {
+    const capabilityLine=request.goal.split('\n').find(line=>line.startsWith('{"capabilityStatus":'));
+    assert.ok(capabilityLine,'actual Main environment callback carries Runtime capability diagnostics');
+    const capabilities=JSON.parse(capabilityLine).capabilityStatus;
+    assert.equal(capabilities.catalogState,request.availableTools===undefined?'not_checked':'checked');
+    assert.equal(capabilities.authorization,'checked_on_invocation');
+    assert.ok(capabilities.items.length>0);
+    for(const item of capabilities.items)assert.equal(item.status,request.availableTools===undefined?'registered':
+      request.availableTools.some(tool=>tool.name===item.name&&tool.version===item.version)?'available':'unavailable');
     const checkpoint = app.runtime.loadCheckpoint(request.taskId,'competition-context:v1');
-    assert.doesNotMatch(JSON.stringify(checkpoint), /trusted_desktop_environment|sampledAtUtc|authorization_required/);
+    assert.doesNotMatch(JSON.stringify(checkpoint), /trusted_desktop_environment|sampledAtUtc|authorization_required|capabilityStatus/);
     assert.match(data.capabilityGuidance[0].relativeReminder,/remindInMinutes/);
   }
   const calendar = await client.call('task.submit',{goal:'明天上午10点建 Synthetic 验收会议',conversationId:'synthetic-main'},
