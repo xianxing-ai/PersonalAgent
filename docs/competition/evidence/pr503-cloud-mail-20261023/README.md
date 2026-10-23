@@ -79,7 +79,7 @@
 此节为后续增量的接口说明，不改写前文历史实测结论，也不单独声明真实云端验收通过。
 
 - Competition Runtime 新增受信宿主专用 `mail.review@1.0.0`／`mail:review`，使用原 HostTask、Policy、ToolGateway 与协调端口；来源许可、精确信头出机、目的地和撤销由原提问卡校验，不向云端提供业务工具、正文或聊天续轮。
-- 缓存端口为 `pendingReviewAnalyses`、`readReviewAnalysis`、`confirmCachedAnalysisAccepted`、`applyCachedAnalysisReview`，仅供受信宿主使用。它们读取原持久回执并核对邮箱、来源修订、分类器指纹、receipt、投影 digest 与任务绑定，不要求本地 Laya 或分页批次正在运行；不新增 Renderer/wire API 或数据库迁移。新增工具描述与可选缓存字段不表示公共接口已冻结。
+- 缓存端口为 `pendingReviewAnalyses`、`readReviewAnalysis`、`confirmCachedAnalysisAccepted`、`applyCachedAnalysisReview`，仅供受信宿主使用。它们读取原持久回执并核对邮箱、来源修订、分类器指纹、receipt、投影 digest 与任务绑定，不要求本地 Laya 或分页批次正在运行。Desktop 沿用设置 IPC 接入 `mail.review.configure` 配置动作，缓存端口不暴露给 Renderer；不新增 Core wire API 或数据库迁移。新增工具描述与可选缓存字段不表示公共接口已冻结。
 - 默认处理启用后新观察的模糊信头，历史积压仅可按明确选择的绑定进入复核。`firstObservedAt` 保留首次可信观察时间，重读、重新分类和分类器变更不刷新时间；历史来源缺少该依据时保持未知，不自动进入新邮件集合。
 - 原 Laya 结论与诊断保留，固定枚举云结果独立记录为 `cloudReview`，仅在原任务成功且结果 checkpoint 绑定一致时应用有效分类。额外字段、工具提案与无效 JSON 均不能应用；发送前保存 attempt，未知结果不自动重发。真实发送、结果和通知状态以随后实机回执为准。
 - 新增 `retryCachedAnalysis({...binding, previousTaskId}, context)`，只在用户重新选择且宿主证明旧版本在 WSS 发送前失败、无 dispatch context/request identity/received/unknown/result 后释放对应缓存绑定。原失败任务与重试历史保留，新任务重新授权；已发送或结果未知不能释放或自动重发。
