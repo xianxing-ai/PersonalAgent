@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InMemoryAuthorizationPolicy } from '@personal-agent/policy';
 import { ToolGateway } from '../dist/index.js';
+import {ProtocolError} from '@personal-agent/contracts';
 
 const now = Date.parse('2026-09-05T12:00:00.000Z');
 const descriptor = {
@@ -51,6 +52,41 @@ test('registered tools receive only policy-derived scopes', async () => {
   assert.deepEqual(await gateway.invoke(invocation()), {value: 'ok'});
   assert.deepEqual(received.scopes, ['fixture:read']);
   assert.equal(received.authorizationRef, 'auth-1');
+});
+
+test('write failures preserve classified cause and stage without exposing external text or retrying', async () => {
+  for (const cause of ['EACCES','ENOENT','ECONNREFUSED','UNAUTHORIZED']) {
+    const {gateway}=setup();let calls=0;
+    gateway.register({descriptor:{...descriptor,sideEffect:'external_write'},execute:async()=>{
+      calls++;throw Object.assign(new Error('token=synthetic-secret /private/mail/body.eml confidential body'),{code:cause});
+    }});
+    await assert.rejects(gateway.invoke(invocation()),error=>{
+      assert.equal(error.code,'RESULT_UNKNOWN');assert.match(error.message,new RegExp(`stage=execute; cause=${cause}`));
+      assert.doesNotMatch(error.message,/synthetic-secret|private|confidential/);return true;
+    });
+    assert.equal(calls,1);
+  }
+});
+
+test('read protocol errors are classified safely and output validation has its own stage', async () => {
+  const {gateway}=setup();
+  const dispose=gateway.register({descriptor,execute:async()=>{throw new ProtocolError('UNAUTHORIZED','Bearer synthetic-secret');}});
+  await assert.rejects(gateway.invoke(invocation()),error=>error.code==='UNAUTHORIZED'&&error.message.includes('cause=UNAUTHORIZED')&&!error.message.includes('synthetic-secret'));
+  dispose();gateway.register({descriptor:{...descriptor,sideEffect:'external_write'},execute:async()=>({wrong:true})});
+  await assert.rejects(gateway.invoke(invocation()),error=>error.code==='RESULT_UNKNOWN'&&error.message.includes('stage=output_validation; cause=INVALID_ARGUMENT'));
+});
+
+test('HTTP authentication and rate limits remain distinct inside unknown write failures', async()=>{
+  const messages=[];
+  for(const status of [401,429]){
+    const {gateway}=setup();gateway.register({descriptor:{...descriptor,sideEffect:'external_write'},execute:async()=>{
+      throw Object.assign(Error('private response body'),{status});
+    }});
+    await assert.rejects(gateway.invoke(invocation()),error=>{
+      assert.equal(error.code,'RESULT_UNKNOWN');assert.match(error.message,new RegExp(`status=${status}`));messages.push(error.message);return true;
+    });
+  }
+  assert.match(messages[0],/认证失败/);assert.match(messages[1],/频率或配额/);
 });
 
 test('forged, mismatched and insufficient authorizations are rejected', async () => {
