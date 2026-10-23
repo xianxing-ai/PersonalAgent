@@ -59,15 +59,17 @@ async function fixture(t){
   });
   const expires=Date.now()+5000;
   while(!stdout.includes('"event":"listening"')){assert.equal(child.exitCode,null);assert.ok(Date.now()<expires);await pause(10);}
+  // Production requires the caller's deadline even when PA_AGENT_TIMEOUT_MS sets a cap.
   const post=(headers={},signal)=>fetch(`http://127.0.0.1:${port}/invocations`,{method:'POST',signal,
-    headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,...headers},
+    headers:{'content-type':'application/json',authorization:`Bearer ${env.PA_AGENT_INBOUND_TOKEN}`,
+      'x-pa-deadline':new Date(Date.now()+3000).toISOString(),...headers},
     body:JSON.stringify({query:marker})});
   return {child,closed,port,inbound:env.PA_AGENT_INBOUND_TOKEN,first,second,post,setMode:value=>mode=value,disconnections:()=>disconnections,logs:()=>({stdout,stderr})};
 }
 
 test('actual SIGTERM cancels accepted partial HTTP upload before any model dispatch',posixSigterm,async t=>{
  const f=await fixture(t);let resolveResponse,rejectResponse;const received=new Promise((r,j)=>{resolveResponse=r;rejectResponse=j});
- const request=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body}));});request.on('error',rejectResponse);request.write('{"query":');
+ const request=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound,'x-pa-deadline':new Date(Date.now()+3000).toISOString()}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body}));});request.on('error',rejectResponse);request.write('{"query":');
  const limit=Date.now()+3000;while((await(await fetch('http://127.0.0.1:'+f.port+'/ping')).json()).status!=='HealthyBusy'){assert.ok(Date.now()<limit);await pause(5);}
  assert.equal(f.first.length,0);f.child.kill('SIGTERM');await pause(50);
  let newConnectionsRefused=false;try{await fetch('http://127.0.0.1:'+f.port+'/ping')}catch{newConnectionsRefused=true}
@@ -114,7 +116,7 @@ test('ordinary successful HTTP invocation still releases its original shared slo
 });
 test('actual SIGTERM closes an upload that never supplies its remaining body after readable cancellation',posixSigterm,async t=>{
  const f=await fixture(t);let resolveResponse,rejectResponse;const received=new Promise((r,j)=>{resolveResponse=r;rejectResponse=j});
- const request=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body}));});
+ const request=httpRequest({hostname:'127.0.0.1',port:f.port,path:'/invocations',method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+f.inbound,'x-pa-deadline':new Date(Date.now()+3000).toISOString()}},response=>{let body='';response.on('data',c=>body+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body}));});
  request.on('error',rejectResponse);request.write('{"query":');
  try {
   const limit=Date.now()+2000;while((await(await fetch('http://127.0.0.1:'+f.port+'/ping')).json()).status!=='HealthyBusy'){assert.ok(Date.now()<limit);await pause(5);}
