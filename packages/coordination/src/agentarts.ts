@@ -5,7 +5,7 @@ import {parseCoordinationAvailableTools, parseCoordinationContinuation, parseCoo
 import type {ExecutionModelSelection} from './index.js';
 import type {CloudAgentPort, CoordinationAvailableTool, CoordinationContinuation, CoordinationRequest, CoordinationResult} from './index.js';
 import {AgentArtsBeforeInvokeError, AgentArtsRemoteInvocationError, AgentArtsResultUnknownError, AgentArtsTerminalError, AgentArtsWebSocketTransport, AgentArtsWebSocketUpgradeError, createAgentArtsUnknownReceipt, snapshotAgentArtsUnknownReceipt} from './agentarts-websocket.js';
-import type {AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
+import type {AgentArtsConnectionDiagnostic, AgentArtsSendGuards, AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocketFactory} from './agentarts-websocket.js';
 import type {AgentArtsTransportFrame} from '@personal-agent/contracts/agentarts-transport';
 
 /** Trusted host observer of the actual request identity about to be sent.
@@ -87,7 +87,11 @@ export interface AgentArtsFailureDiagnostic {
     | 'EXTERNAL_FAILURE' | 'CANCELLED' | 'TIMEOUT' | 'RATE_LIMITED';
   readonly requestId?: string;
   readonly httpStatus?: number;
-  readonly transportPhase?: 'wss_upgrade';
+  readonly transportPhase?: 'wss_upgrade' | AgentArtsConnectionDiagnostic['transportPhase'];
+  readonly closeCode?: number;
+  /** Fixed classification from the close code; never the remote close reason text. */
+  readonly closeReason?: AgentArtsConnectionDiagnostic['closeReason'];
+  readonly socketErrorCode?: AgentArtsConnectionDiagnostic['socketErrorCode'];
   readonly contentType?: 'json' | 'sse' | 'missing' | 'other';
   readonly terminalEvents?: Readonly<{taskEnd: boolean; end: boolean}>;
   readonly schemaCategory?: AgentArtsSchemaCategory;
@@ -97,6 +101,45 @@ export interface AgentArtsFailureDiagnostic {
   /** Only a canonical service prefix plus numeric code, never a provider message. */
   readonly providerErrorCode?: string;
   readonly resultUnknown?: boolean;
+}
+
+/** A status we actually read from the configured HTTP invocation, not provider text. */
+export class AgentArtsHttpResponseError extends ProtocolError {
+  constructor(readonly httpStatus: number) {
+    super('EXTERNAL_FAILURE', 'AgentArts request returned a non-success HTTP status', httpStatus >= 500);
+  }
+}
+
+/** Fixed facts for the existing Runtime error outlet. Never formats arbitrary error messages. */
+export function formatAgentArtsFailureDetail(error: unknown): string | undefined {
+  if (error instanceof AgentArtsHttpResponseError || error instanceof AgentArtsWebSocketUpgradeError) {
+    const status = error.httpStatus;
+    if (typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599) {
+      return `cloud: transport=${error instanceof AgentArtsHttpResponseError ? 'https' : 'wss'} http=${status}`;
+    }
+  }
+  if (error instanceof AgentArtsRemoteInvocationError) {
+    const code = error.remoteCode;
+    if (['INVALID_ARGUMENT', 'UNAUTHORIZED', 'UNSUPPORTED_CAPABILITY', 'TIMEOUT', 'CANCELLED',
+      'RATE_LIMITED', 'EXTERNAL_FAILURE'].includes(code)) return `cloud: transport=wss code=${code}`;
+  }
+  if (error instanceof AgentArtsResultUnknownError || error instanceof AgentArtsBeforeInvokeError) {
+    const diagnostic = error.connectionDiagnostic;
+    if (diagnostic === undefined || !['wss_connect', 'wss_ready', 'wss_invoke'].includes(diagnostic.transportPhase)) return;
+    let detail = `cloud: transport=wss phase=${diagnostic.transportPhase}`;
+    if (typeof diagnostic.closeCode === 'number' && Number.isInteger(diagnostic.closeCode)
+      && diagnostic.closeCode >= 1000 && diagnostic.closeCode <= 4999) {
+      detail += ` close=${diagnostic.closeCode}`;
+      if (diagnostic.closeReason !== undefined && ['normal', 'going_away', 'protocol_error', 'abnormal', 'server_error', 'other']
+        .includes(diagnostic.closeReason)) detail += ` reason=${diagnostic.closeReason}`;
+    }
+    if (diagnostic.socketErrorCode !== undefined && ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND',
+      'EAI_AGAIN', 'EPIPE', 'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'].includes(diagnostic.socketErrorCode)) {
+      detail += ` socket=${diagnostic.socketErrorCode}`;
+    }
+    return detail;
+  }
+  return undefined;
 }
 
 export interface AgentArtsFetchInit {
@@ -1447,7 +1490,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           } catch { /* Optional diagnostics cannot replace the established HTTP failure. */ }
           finally { diagnosticSignal.dispose(); }
         }
-        throw new ProtocolError('EXTERNAL_FAILURE', 'AgentArts request returned a non-success HTTP status', status >= 500);
+        throw new AgentArtsHttpResponseError(status);
       }
 
       let payload: string;
@@ -1489,8 +1532,11 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       if (this.onDiagnostic !== undefined) {
         const upgradeFailure = error instanceof AgentArtsWebSocketUpgradeError ? error : undefined;
         const diagnosticHttpStatus = upgradeFailure === undefined ? httpStatus : upgradeFailure.httpStatus;
+        const connectionFailure = error instanceof AgentArtsResultUnknownError || error instanceof AgentArtsBeforeInvokeError
+          ? error.connectionDiagnostic : undefined;
         const receipt: AgentArtsFailureDiagnostic = Object.freeze({
           stage, code: diagnosticCode(error),
+          ...connectionFailure,
           ...(upgradeFailure ? {transportPhase: 'wss_upgrade' as const} : {}),
           ...(error instanceof AgentArtsResultUnknownError ? {resultUnknown: true} : {}),
           ...(diagnosticRequestId === undefined ? {} : {requestId: diagnosticRequestId}),
