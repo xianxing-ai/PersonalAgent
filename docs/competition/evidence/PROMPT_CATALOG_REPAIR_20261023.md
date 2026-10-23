@@ -75,3 +75,11 @@ Desktop voice/mail 与 Runtime subagent 原声明由对应owner负责，本包�
 
 上述只是未执行的后续合并配方；不宣称 #503 兼容通过，也不将文本无冲突
 冒充组合运行验证。后续源码/head变化须重新核对，并在真正合并时验证其调用方。
+
+最终源码冻结为 `85431361bc40033635a4632e79cf8974e0c81e48` 后，再对上述三个完整head
+运行同一普通merge-tree检查：#503仍为同一文件三处冲突，#507/#509仍exit 0。
+本次仍未实际合入这些PR。对最终error增量 `1457c9c690e16050809bd449cf2e8384c218809a`
+的独立定向复核，读取实际protocol Schema的13种Error.code，逐项验证read/write经
+toolFailure与Desktop两次投影保留code/cause、排除原始私密文本；read保留合法
+retryable/retryAfterMs，write始终RESULT_UNKNOWN、retryable=false且无retryAfterMs。
+最终组合的上述关键源码与该增量逐文件diff为空；完整pin check由唯一组合树另行执行。
