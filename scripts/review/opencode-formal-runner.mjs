@@ -29,7 +29,7 @@ export function extractOutput(stdout) {
   return raw.trim();
 }
 
-export async function runModel(bundle, cli, {execute = spawnSync, now = Date.now} = {}) {
+export async function runModel(bundle, cli, {execute = spawnSync, now = Date.now, diagnostic} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'opencode-formal-'));
   await mkdir(path.join(root, 'work'));
   const attempts = []; const deadline = now() + 240_000;
@@ -39,13 +39,20 @@ export async function runModel(bundle, cli, {execute = spawnSync, now = Date.now
       const result = execute(cli, ['run', '--pure', '--format', 'json', '--title', 'PR code review', '--agent', 'reviewer', '--model', model],
         {cwd: path.join(root, 'work'), env: isolatedEnv(root, model), input: promptFor(bundle), encoding: 'utf8',
           timeout: Math.min(80_000, remaining), maxBuffer: 2_000_000, killSignal: 'SIGKILL'});
-      if (result.error || result.status !== 0) { attempts.push({model, status: 'unavailable'}); continue; }
+      if (result.error || result.status !== 0) {
+        diagnostic?.({model, exitCode: result.status, errorCode: result.error?.code, signal: result.signal,
+          stdout: result.stdout?.slice(0, 4000), stderr: result.stderr?.slice(0, 4000)});
+        attempts.push({model, status: 'unavailable'}); continue;
+      }
       try {
         const raw = extractOutput(result.stdout); const decision = validateDecision(bundle, raw);
         attempts.push({model, status: decision.verdict === 'INSUFFICIENT' ? 'insufficient' : 'reviewed'});
         // A completed insufficient judgment must not be retried until a model approves.
         return {status: decision.verdict === 'INSUFFICIENT' ? 'insufficient' : 'reviewed', model, raw, bundleDigest: bundle.digest, attempts};
-      } catch { attempts.push({model, status: 'invalid-output'}); }
+      } catch (error) {
+        diagnostic?.({model, validationError: error.message, stdout: result.stdout?.slice(0, 4000), stderr: result.stderr?.slice(0, 4000)});
+        attempts.push({model, status: 'invalid-output'});
+      }
     }
     return {status: 'unavailable', attempts};
   } finally { await rm(root, {recursive: true, force: true}); }

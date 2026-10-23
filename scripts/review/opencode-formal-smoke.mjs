@@ -13,7 +13,9 @@ for (const [name, after, expected] of [
 ]) {
   const bundle = bundleFor(pr, [{path: 'addition.mjs', status: 'modified',
     before: '// Contract: add two finite numbers.\nexport const add = (a, b) => a + b;\n', after}], pr.base.sha);
-  const result = await runModel(bundle, process.argv[2]);
+  // Only the public synthetic smoke opts into bounded process diagnostics.
+  // Production PR source/model output is never sent to this logging callback.
+  const result = await runModel(bundle, process.argv[2], {diagnostic: info => console.log(JSON.stringify({syntheticDiagnostic: info}))});
   const actual = result.raw ? JSON.parse(result.raw).verdict : null;
   console.log(JSON.stringify({fixture: name, expected, actual, status: result.status, model: result.model,
     attempts: result.attempts, decision: result.raw ? JSON.parse(result.raw) : null, synthetic: true, githubWrites: 0}));
