@@ -19,7 +19,7 @@ const first=descriptor('fixture.first','local_write'),second=descriptor('fixture
 const text=value=>({kind:'text',text:value});
 const proposal=(id,tool,args={value:1})=>({kind:'tool_proposal',proposalId:id,toolName:tool.name,toolVersion:tool.version,arguments:args});
 
-async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2}}={}) {
+async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2},environment=false}={}) {
   let app,client,rootId,dispatchingTaskId;
   const requests=[],sends=[],executions=[],sockets=[],state={firstAllowed:true,extraReady:false,blockAvailability:false};
   let enteredAvailability;
@@ -41,6 +41,7 @@ async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,a
     return rootTool?proposal('forbidden-root-tool',second):text('Synthetic main conversation summarized the original child');
   }
   app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-child',
+    ...(environment?{coordinationInput:{beforeCoordinationSend(){},readRequestContext:()=>'{"environment":true}'}}:{}),
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',...(optIn?{continuationContext:'goal'}:{}),
     delegateUserTasks:true,competitionMaxSteps:budget,tools,
     automaticTools:[dispatch.descriptor,second,extra].map(tool=>({toolName:tool.name,toolVersion:tool.version})),
@@ -81,8 +82,8 @@ async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,a
     settle:()=>until(()=>app.activeTaskCount===0)};
 }
 
-for(const transport of ['https','wss'])test(`opt-in actual child carries its immutable initial catalog through approval and multiple tools (${transport})`,async t=>{
-  const f=await fixture(t,{transport});await f.approve();await f.settle();
+for(const transport of ['https','wss'])for(const environment of [false,true])test(`opt-in actual child carries its immutable initial catalog through approval and multiple tools (${transport}, environment=${environment})`,async t=>{
+  const f=await fixture(t,{transport,environment});await f.approve();await f.settle();
   assert.equal(f.app.runtime.getTask(f.rootId).state,'succeeded',JSON.stringify(f.app.runtime.getTask(f.rootId).error));
   assert.equal(f.app.runtime.getTask(f.childId).state,'succeeded',JSON.stringify(f.app.runtime.getTask(f.childId).error));
   assert.deepEqual(f.executions.map(item=>item.toolName),[first.name,second.name]);
@@ -137,15 +138,19 @@ test('source revocation during credential reading is rechecked at the actual con
   assert.deepEqual(f.executions.map(item=>item.toolName),[first.name]);assert.equal(f.app.runtime.getTask(f.childId).state,'waiting_reconciliation');
 });
 
-test('descriptor schema drift after a confirmed effect cannot export a continuation catalog',async t=>{
-  const f=await fixture(t,{afterFirst:(_state,app)=>{
+for(const environment of [false,true])test(`descriptor schema drift after a confirmed effect cannot export a continuation catalog (environment=${environment})`,async t=>{
+  const f=await fixture(t,{environment,afterFirst:(_state,app)=>{
     const original=app.tools.list.bind(app.tools);
     app.tools.list=()=>original().map(tool=>tool.name===second.name?{...tool,inputSchema:{...tool.inputSchema,
       properties:{value:{type:'integer',minimum:1,maximum:900}}}}:tool);
   }});await f.approve();await f.settle();
-  assert.equal(f.sends.length,1);assert.deepEqual(f.executions.map(item=>item.toolName),[first.name]);
+  assert.equal(f.sends.length,1,JSON.stringify({child:f.app.runtime.getTask(f.childId),
+    executions:f.app.runtime.readToolExecutions(f.childId),sends:f.sends.map(item=>item.taskId)}));assert.deepEqual(f.executions.map(item=>item.toolName),[first.name]);
   assert.equal(f.app.runtime.getTask(f.childId).state,'waiting_reconciliation');
   assert.deepEqual(f.app.runtime.loadCheckpoint(f.childId,'competition-tool-catalog'),f.originalCatalog);
+  const records=f.app.runtime.readToolExecutions(f.childId);
+  assert.equal(records.length,1);
+  assert.equal(records[0].state,'confirmed');assert.equal(records[0].executionStarted,true);assert.equal(records[0].policyDecision,'allow');
 });
 
 test('a forged wider continuation directory is rejected against the original snapshot',async t=>{
