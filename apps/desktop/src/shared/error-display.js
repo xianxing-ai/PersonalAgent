@@ -12,6 +12,8 @@ const reasons = Object.freeze({
   EBUSY:'目标正被占用；请关闭占用程序', ECONNREFUSED:'服务拒绝连接；请检查服务是否启动',
   ECONNRESET:'服务连接已中断；请检查网络', ENOTFOUND:'服务地址解析失败；请检查网络和地址',
   ETIMEDOUT:'服务响应超时；请检查网络和服务状态', REVISION_CONFLICT:'资源版本已变化；请刷新当前状态',
+  RATE_LIMITED:'请求频率或配额受限；请检查配额与限流设置',
+  CURSOR_EXPIRED:'分页游标已过期；请从第一页重新读取',
   PROTOCOL_MISMATCH:'协议版本不匹配；请检查应用和工具版本', UNSUPPORTED_CAPABILITY:'所需能力不可用；请检查配置',
   EXTERNAL_FAILURE:'外部服务执行失败；请检查服务状态',
   CONFIGURATION:'配置尚未就绪或无效；请打开对应设置检查配置',

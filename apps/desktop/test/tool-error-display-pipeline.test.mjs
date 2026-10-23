@@ -7,9 +7,36 @@ import {fileURLToPath} from 'node:url';
 import {createServer} from 'node:http';
 import {TaskRuntime} from '@personal-agent/runtime';
 import {ToolGateway} from '@personal-agent/tool-gateway';
+import {ProtocolError} from '@personal-agent/contracts';
+import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
 import {errorDisplay,errorDisplayText} from '../src/shared/error-display.js';
 
 const future=()=>new Date(Date.now()+60000).toISOString();
+test('every public Error code crosses the actual Gateway and Desktop consumer without cause loss',async()=>{
+  const schema=JSON.parse(await readFile(new URL('../../../packages/contracts/schema/protocol.json',import.meta.url),'utf8'));
+  const codes=schema.definitions.Error.properties.code.enum;
+  for(const sideEffect of ['read','external_write'])for(const code of codes){
+    const policy=new InMemoryAuthorizationPolicy();
+    policy.grant({authorizationRef:'grant',taskId:'task',toolName:'synthetic.code',scopes:['synthetic:read'],expiresAt:future()});
+    const gateway=new ToolGateway({policy});let calls=0;
+    gateway.register({descriptor:{name:'synthetic.code',version:'1',inputSchema:{type:'object'},outputSchema:{type:'object'},sideEffect,requiredScopes:['synthetic:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false},execute:async()=>{
+      calls++;throw new ProtocolError(code,'Bearer synthetic-secret /private/mail/body.eml private mail body',true,2000);
+    }});
+    await assert.rejects(gateway.invoke({toolName:'synthetic.code',toolVersion:'1',arguments:{},taskId:'task',runId:'run',authorizationRef:'grant',deadline:future(),signal:new AbortController().signal}),error=>{
+      assert.equal(error.code,sideEffect==='read'?code:'RESULT_UNKNOWN',`${sideEffect}/${code}`);
+      assert.equal(error.retryable,sideEffect==='read');assert.equal(error.retryAfterMs,sideEffect==='read'?2000:undefined);
+      assert.match(error.message,new RegExp(`cause=${code}\\]`));
+      const displayed=errorDisplay(error,'task');
+      assert.equal(displayed.code,error.code);assert.match(displayed.message,new RegExp(`cause=${code}\\]`));
+      assert.doesNotMatch(displayed.message,/synthetic-secret|private mail body|\/private/);
+      assert.equal(errorDisplayText(displayed),displayed.message);
+      if(code==='RATE_LIMITED')assert.match(displayed.message,/频率或配额受限/);
+      if(code==='CURSOR_EXPIRED')assert.match(displayed.message,/分页游标已过期/);
+      if(sideEffect==='external_write')assert.match(displayed.message,/确认前不要重试/);
+      return true;
+    });assert.equal(calls,1);
+  }
+});
 test('controlled write exception crosses actual Gateway, SQLite Runtime and production workspace UI without replay or private data',
   {skip:process.env.PA_ERROR_DISPLAY_UI_TEST!=='1',timeout:30000},async t=>{
   const cache=fileURLToPath(new URL('../../../.cache/error-display/',import.meta.url));mkdirSync(cache,{recursive:true});
