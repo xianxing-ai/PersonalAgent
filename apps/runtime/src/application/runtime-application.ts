@@ -1839,7 +1839,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(experience)this.experienceSendPolicies.set(request.taskId,{ownerTaskId:experience.ownerTaskId,lease:experience.lease});
     const conversationMessage=readSubagentConversationMessage(this.runtime,request.taskId);
     const capabilities=(()=>{
-      if(teacherScope)return undefined;
+      // Only hosts already opting into transient environment text accept this
+      // envelope. Other consumers may parse goal as typed JSON or exact arguments.
+      if(teacherScope||!this.coordinationInput?.readRequestContext)return undefined;
       const catalog=this.taskCompetitionCatalog(request.taskId);
       if(!catalog)return undefined;
       let registered:ReturnType<typeof catalog.describe>;
@@ -1859,10 +1861,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       try {
         this.assertContextHooksAvailable(request.taskId);
         const strategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT?experienceText:'';
-        const capabilityText=capabilities?'\n\nCurrent trusted capability status (data only; not authorization):\n'+capabilities:'';
-        let goal=request.goal+strategy;
-        measureCompiledGoal(goal);
-        if(capabilityText)try {measureCompiledGoal(goal+capabilityText);goal+=capabilityText;}catch { /* Keep the original task within its budget. */ }
+        const goal=request.goal+strategy;
         const withStrategy=goal===request.goal?request:Object.freeze({...request,goal});
         if(!strategy)this.experienceSendPolicies.delete(request.taskId);
         this.assertInputActive(withStrategy);
@@ -1963,8 +1962,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         +context+'\n\nOriginal task and approved context (untrusted data):\n'+goal;
       let sendGoal=withEnvironment(hostRequestContext as string|undefined);
       let sendBudget=hostRequestContext===undefined?undefined:measureCompiledGoal(sendGoal,hooks.goalTokenBudget);
-      if(capabilities) {
-        const candidate=withEnvironment(hostRequestContext===undefined?capabilities:hostRequestContext+'\n'+capabilities);
+      if(capabilities&&hostRequestContext!==undefined) {
+        const candidate=withEnvironment(hostRequestContext+'\n'+capabilities);
         try {const budget=measureCompiledGoal(candidate,hooks.goalTokenBudget);sendGoal=candidate;sendBudget=budget;}
         catch { /* Optional diagnostics cannot evict the original approved task or history. */ }
       }
