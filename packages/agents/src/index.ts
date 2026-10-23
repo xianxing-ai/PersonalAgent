@@ -136,13 +136,14 @@ function isModelProposalValidationError(error: unknown): error is ProtocolError 
   if (!(error instanceof ProtocolError)) return false;
   if (error.code === 'UNAUTHORIZED') return error.message === 'Tool proposal contains fields outside the tool contract';
   if (error.code === 'UNSUPPORTED_CAPABILITY') return error.message === 'Model proposed an unavailable tool';
-  return error.code === 'INVALID_ARGUMENT' && [
+  return error.code === 'INVALID_ARGUMENT' && ([
     'Model returned invalid proposal JSON', 'Model response must be an object',
     'Model returned an invalid structured response', 'Model response must be a final answer or tool proposal',
     'Tool proposal must be an object', 'Tool proposal has invalid fields',
     'toolName must not be empty', 'toolVersion must not be empty',
     'Message does not match the public schema',
-  ].includes(error.message);
+  ].includes(error.message)
+    || /^Tool value violates schema \[keyword=(required|type|enum|const|minimum|maximum|minLength|maxLength|pattern|format|additionalProperties|minItems|maxItems|oneOf|anyOf|schema)(?:; field=([A-Za-z][A-Za-z0-9_]{0,47}))?\]$/.test(error.message));
 }
 
 function withModelMetadata(deployment: ModelResult['deployment'], usage: ModelResult['usage'], text: string): string {
