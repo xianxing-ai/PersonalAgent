@@ -47,7 +47,7 @@ test('Goal history and active status distinguish create/revise tasks with full a
     assert.equal(button.title, `任务 ID：${tasks[index].taskId}`);
     assert.ok(button.attrs['aria-label'].includes(tasks[index].taskId));
     button.onclick(); await settle();
-    assert.match(f.status().textContent, /结果待核实 · 任务版本 4/);
+    assert.match(f.status().textContent, /执行异常 · 任务版本 4/);
     assert.ok(f.status().textContent.includes(kind));
     assert.ok(f.status().attrs['aria-label'].includes(tasks[index].taskId));
   }
