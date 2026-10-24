@@ -57,20 +57,20 @@ jobs:
           context: ${{ steps.context.outputs.directory }}
           platforms: linux/arm64
           push: true
-          tags: ghcr.io/zemeng5208/personal-agent-owned:sha-${{ github.sha }}
+          tags: ghcr.io/${{ github.repository_owner }}/personal-agent-owned:sha-${{ github.sha }}
           labels: |
-            org.opencontainers.image.source=https://github.com/zemeng5208/PersonalAgent
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.description=AgentArts preview; unmerged; real cloud acceptance pending
       - name: Record published digest
         env:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
-          printf 'GHCR preview: `ghcr.io/zemeng5208/personal-agent-owned@%s`\n' "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          printf 'GHCR preview: `ghcr.io/${{ github.repository_owner }}/personal-agent-owned@%s`\n' "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
           printf 'This preview does not merge the PR or confirm Huawei cloud acceptance.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Export ARM64 image for repository collaborators
         env:
-          IMAGE_REF: ghcr.io/zemeng5208/personal-agent-owned:sha-${{ github.sha }}
+          IMAGE_REF: ghcr.io/${{ github.repository_owner }}/personal-agent-owned:sha-${{ github.sha }}
         run: |
           docker pull --platform linux/arm64 "$IMAGE_REF"
           docker save --output "$RUNNER_TEMP/personal-agent-owned-arm64.tar" "$IMAGE_REF"
