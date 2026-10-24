@@ -58,3 +58,13 @@ docker run --rm --platform linux/arm64 \
 2026-10-23，当前源码`4d3226d4251bc683af1fc70b0318c0b0f55e8995`的[交付运行39977196214](https://github.com/xianxing-ai/PersonalAgent/actions/runs/39977196214)，`publish-preview` job `120494795765`在`Verify owned transport and orchestration before publishing`失败。15:19:49–15:19:51 UTC实际434项、431通过、3失败、0跳过：`owned-workflow-shadow.test.mjs`、`proactive-workflows.test.mjs`、`workflow-shadow-policy.test.mjs`均因导入`@personal-agent/runtime/dist/index.js`报`ERR_MODULE_NOT_FOUND`，没有进入业务断言。原失败日志保存在集成树`.cache/image-delivery-39977196214/failed.log`。
 
 原因是现有preview前置`build:owned-agent`仅构建五个镜像workspace，而三个完整原测试已依赖Runtime宿主夹具。最小修复只将该步改为既有`npm run build`，与Foundation Linux已成功执行的完整构建一致；不删测试、不加skip、不改ARM64/凭据权限/发布行为，不启用legacy退休。该失败发生在镜像构建与发布之前，运行无归档artifact；不能当作模型或ARM构建失败。修复的重新发布尚未执行，不能提前记录成功。
+
+## 迁移后命名空间拒推与正常交付修复（2026-10-24）
+
+上述构建修复随后在源码 `ac5428a0d1abb8bad626d6aed2ee44748bcc3473` 的[运行39979166562](https://github.com/xianxing-ai/PersonalAgent/actions/runs/39979166562)、job `120501597951` 实际执行。2026-10-23 15:33:02–15:34:42 UTC 全包 `npm run build` 成功；15:35:07 UTC 测试汇总为 **458 tests、458 pass、0 fail**。allowlist context 与 ARM64 镜像构建均成功。
+
+15:35:47 UTC，`docker/build-push-action@v6` 在推送 `ghcr.io/zemeng5208/personal-agent-owned:sha-ac5428a0d1abb8bad626d6aed2ee44748bcc3473` 时实际失败：`denied: permission_denied: The requested installation does not exist.` checkout 日志及 GitHub 仓库 API 均确认当前仓库为 `xianxing-ai/PersonalAgent`，工作流仍引用旧用户 GHCR 命名空间。登录成功不代表该命名空间的推送授权成功。
+
+这是发布授权失败，不能归为 ARM64 构建或归档导出失败。digest 记录、`docker save` 和镜像 tar 上传均 skipped；唯一 artifact `12511939558` 为 41,126 bytes 的 `.dockerbuild` 构建记录，不是镜像 archive。日志中的本地 ARM64 manifest `sha256:09acdb7bcc0173f85d96ad2e8b5685b26d6baa40028806bdfd1bf53c8149b228` 和 index `sha256:0d01ec62aff1765a3478f56de24c2477bf1da286197307cab23510d97039a657` 不能作为成功远端发布证据。
+
+正常迁移修复仅将 `publish-preview` 的 tags、digest summary、export `IMAGE_REF` 使用当前 `github.repository_owner`，OCI source label 使用当前 `github.repository`。保持原 `GITHUB_TOKEN` 权限、actor 保护、`linux/arm64`、唯一 SHA 标签及历史五标签 retirement 作业不变；没有借用其他身份重试被拒绝的旧命名空间。新发布及镜像 archive 仍须后续运行成功读回，本文不提前记录交付成功。
