@@ -1,3 +1,4 @@
+import {errorDisplayText} from '../../shared/error-display.js';
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {mountModelThinkingPicker} from '../conversation/model-thinking-picker.js';
 import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
@@ -46,7 +47,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     clearTimeout(activationTimer);orbButton.setAttribute('aria-pressed','true');orb.playBreath(3.2);
     activationTimer=setTimeout(()=>{activationTimer=0;orbButton.setAttribute('aria-pressed','false');},3200);
   };
-  const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=error.message||String(error);};
+  const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=errorDisplayText(error);};
   const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
   const draftInput=composer.input;
   const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose});
@@ -122,7 +123,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     if(signature!==lastSignature){
       const focused=conversation.contains(document.activeElement)?document.activeElement:null;
       const atBottom=stage.scrollHeight-stage.scrollTop-stage.clientHeight<90;lastSignature=signature;
-      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??'原任务结果待核实，未确认前保留当前状态。核实并结束只检查原记录，不重发操作。')}</p><button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}" ${task.reconciliationStatus?.blockedReason?'disabled':''}>核实并结束</button>`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
+      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??task.reconciliationStatus?.notice??(task.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${task.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">${escape(task.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
       syncCancelButtons();restoreTaskActionFocus(focused);
       requestAnimationFrame(()=>{if(atBottom)stage.scrollTop=stage.scrollHeight;updateRail();});if(inspected)renderInspector();
     }

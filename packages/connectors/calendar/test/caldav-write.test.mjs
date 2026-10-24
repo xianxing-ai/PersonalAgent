@@ -198,6 +198,22 @@ test('显式 uid 创建重放幂等；update 递增 SEQUENCE 并合并字段', a
   assert.equal(updated.endUtc > updated.startUtc, true);
 });
 
+test('separate creates with identical content retain distinct UIDs; a stable UID rejects changed input without overwriting', async () => {
+  const server = fakeServer();
+  const provider = new CalDavProvider({calendarUrl: URL_BASE, fetchImpl: server.fetchImpl});
+  const input = {summary: '合法同名同时间日程', startUtc: '2026-10-21T07:00:00.000Z',
+    endUtc: '2026-10-21T08:00:00.000Z'};
+  const first = await provider.createEvent(input, ctx());
+  const second = await provider.createEvent(input, ctx());
+  assert.notEqual(first.externalId, second.externalId);
+  assert.equal(server.resources.size, 2, 'content equality is not an operation identity');
+  const original = server.resources.get(`${first.externalId}.ics`);
+  await assert.rejects(provider.createEvent({...input, uid: first.externalId, summary: 'different authorized input'}, ctx()),
+    {code: 'REVISION_CONFLICT'});
+  assert.equal(server.resources.get(`${first.externalId}.ics`), original);
+  assert.equal(server.resources.size, 2);
+});
+
 test('cancel 删除资源；再次 cancel 如实报 already_absent', async () => {
   const server = fakeServer();
   const provider = new CalDavProvider({calendarUrl: URL_BASE, authorization: 'Basic dGVzdA==', fetchImpl: server.fetchImpl});

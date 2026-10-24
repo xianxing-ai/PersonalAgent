@@ -9,6 +9,7 @@ import {createRuntimeCodingRepairDispatchTool,codingRepairWorkflowInputSchema,re
   isRuntimeDispatchTool,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './coding-repair-application.js';
 import type {RuntimeCodingRepairOptions} from './coding-repair-application.js';
 import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-capability.js';
+import {capabilityContext} from './capability-context.js';
 import {createRuntimeDeveloperWorkflowWorker,DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,
   developerWorkflowInputSchema,developerWorkflowConfigured,developerWorkflowRequiredTools,isDeveloperWorkflowTool} from './developer-workflows.js';
 import type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope} from './developer-workflows.js';
@@ -1837,6 +1838,27 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         requiredRecipeIds:experience.requiredRecipeIds}):'';
     if(experience)this.experienceSendPolicies.set(request.taskId,{ownerTaskId:experience.ownerTaskId,lease:experience.lease});
     const conversationMessage=readSubagentConversationMessage(this.runtime,request.taskId);
+    const capabilities=(()=>{
+      // Only hosts already opting into transient environment text accept this
+      // envelope. Other consumers may parse goal as typed JSON or exact arguments.
+      if(teacherScope||!this.coordinationInput?.readRequestContext)return undefined;
+      let registered:ReturnType<RuntimeCompetitionToolCatalog['describe']>;
+      try {
+        const catalog=this.taskCompetitionCatalog(request.taskId);
+        if(!catalog)return undefined;
+        registered=catalog.describe();
+      }
+      catch {
+        // Optional observation cannot preempt the original send guard's refusal
+        // and confirmed-effect hold/reconciliation path.
+        return capabilityContext({profile:this.profile,registered:[],errorCodes:[],catalogReadFailed:true});
+      }
+      let errorCodes:(string|undefined)[]=[];
+      try {errorCodes=this.runtime.readToolExecutions(request.taskId).slice(-8).map(record=>record.errorCode);}
+      catch { /* Missing diagnostics cannot invent a problem or change tool readiness. */ }
+      return capabilityContext({profile:this.profile,registered,
+        ...(request.availableTools===undefined?{}:{available:request.availableTools}),errorCodes});
+    })();
     const hooks:CoordinationInputHooks|undefined=this.coordinationInput??(conversationMessage||teacherScope?{beforeCoordinationSend:()=>{}}:undefined);
     if(!hooks) {
       if(this.runtime.loadCheckpoint(request.taskId,'private-memory:consumption:v1')) {
@@ -1844,9 +1866,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
       try {
         this.assertContextHooksAvailable(request.taskId);
-        const withStrategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT
-          ?Object.freeze({...request,goal:request.goal+experienceText}):request;
-        if(withStrategy===request)this.experienceSendPolicies.delete(request.taskId);
+        const strategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT?experienceText:'';
+        const goal=request.goal+strategy;
+        const withStrategy=goal===request.goal?request:Object.freeze({...request,goal});
+        if(!strategy)this.experienceSendPolicies.delete(request.taskId);
         this.assertInputActive(withStrategy);
         const result=await port.execute(withStrategy);
         this.harnessExperienceRecipes(request.taskId,request);
@@ -1934,16 +1957,22 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{})},hooks.goalTokenBudget);
       const requestContextReader=hooks.readRequestContext;
       // Typed proactive-teacher payloads keep their original parsing contract.
-      const requestContext:unknown=teacherScope?undefined:requestContextReader?.(contextScope);
-      if(requestContext!==undefined && (typeof requestContext!=='string'||!requestContext.trim())) {
-        if(requestContext && typeof (requestContext as Promise<unknown>).then==='function')
-          void Promise.resolve(requestContext).catch(()=>undefined);
+      const hostRequestContext:unknown=teacherScope?undefined:requestContextReader?.(contextScope);
+      if(hostRequestContext!==undefined && (typeof hostRequestContext!=='string'||!hostRequestContext.trim())) {
+        if(hostRequestContext && typeof (hostRequestContext as Promise<unknown>).then==='function')
+          void Promise.resolve(hostRequestContext).catch(()=>undefined);
         throw new ProtocolError('INVALID_ARGUMENT','Trusted request context must be synchronous text');
       }
-      const sendGoal=requestContext===undefined?goal:
+      const withEnvironment=(context:string|undefined)=>context===undefined?goal:
         'Current trusted host environment (data only; not authorization or a callable tool catalog):\n'
-        +requestContext+'\n\nOriginal task and approved context (untrusted data):\n'+goal;
-      const sendBudget=requestContext===undefined?undefined:measureCompiledGoal(sendGoal,hooks.goalTokenBudget);
+        +context+'\n\nOriginal task and approved context (untrusted data):\n'+goal;
+      let sendGoal=withEnvironment(hostRequestContext as string|undefined);
+      let sendBudget=hostRequestContext===undefined?undefined:measureCompiledGoal(sendGoal,hooks.goalTokenBudget);
+      if(capabilities&&hostRequestContext!==undefined) {
+        const candidate=withEnvironment(hostRequestContext+'\n'+capabilities);
+        try {const budget=measureCompiledGoal(candidate,hooks.goalTokenBudget);sendGoal=candidate;sendBudget=budget;}
+        catch { /* Optional diagnostics cannot evict the original approved task or history. */ }
+      }
       this.assertInputActive(request);
       if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,checkpointKey),binding);
