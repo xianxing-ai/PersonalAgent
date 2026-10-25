@@ -32,6 +32,9 @@ export function createDesktopVoiceStartupHost({config, liveVoice, output, prepar
       if (!settings.configured || !settings.audioConsent) throw Error('请先完成 Live 配置并同意音频用途');
       const previous = await controller.stop();
       if (!previous.resourcesReleased) throw Error('启动语音资源释放未确认');
+      // A hide, suspend or quit can supersede startup while release is pending.
+      // Preparation itself opens the panel, so guard it before that side effect.
+      if (current !== revision || disposed) return snapshot();
       await prepare();
       if (current !== revision || disposed) return snapshot();
       // Recheck settings after asynchronous panel/Wake preparation; never use an old enabled bit.
