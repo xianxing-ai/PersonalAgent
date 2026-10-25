@@ -466,8 +466,17 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return messages;
   }
   return {snapshot, historyMessages, hasActive, start, stop, receive,
-    trackTextTask:task=>textOutput.track(task),observeTextTask:task=>textOutput.observe(task),
+    trackTextTask:task=>task.conversationId===readConversationId()?textOutput.track(task)
+      :{state:'unavailable',reason:'当前对话已切换',playbackVerified:false},
+    observeTextTask:task=>textOutput.observe(task),
     cancelTextTask:taskId=>textOutput.cancel(taskId),
+    invalidateTextOutput(conversationId) {
+      if(active?.conversationId!==conversationId)return;
+      const playing=textOutput.snapshot().state==='accepted';
+      textOutput.clear();
+      if(playing)active.session?.interrupt();
+      publish();
+    },
     askCurrentQuestion() {
       const record=active,question=readCurrentQuestion({conversationId:active?.conversationId??readConversationId()});
       if (!record || record.controller.signal.aborted || now()>=Date.parse(record.deadline)

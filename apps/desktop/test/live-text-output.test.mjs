@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLiveTextOutput} from '../electron/live-text-output.js';
 import {liveTextOutputFeedback} from '../src/app/live-voice-controls.js';
+import {createLiveVoiceHost} from '../electron/live-voice-host.js';
 
 function fixture() {
   const spoken=[];
@@ -55,4 +56,30 @@ test('provider errors stay fixed and never claim playback',()=>{
   f.output.observe(f.task);assert.equal(f.output.snapshot().state,'failed');
   assert.doesNotMatch(JSON.stringify(f.output.snapshot()),/private provider/);
   assert.equal(f.output.snapshot().playbackVerified,false);
+});
+
+test('Live host conversation switch drops queued results and rejects late submission binding',async()=>{
+  let host,request,selected='conversation-1',token;
+  const spoken=[];
+  const contents={mainFrame:{},isDestroyed:()=>false,send(_channel,message){
+    token=message.token;
+    if(['start','stop'].includes(message.type))queueMicrotask(()=>host.receive({sender:contents,senderFrame:contents.mainFrame},
+      {token:message.token,type:message.type==='start'?'ready':'stopped'}));
+  }};
+  host=createLiveVoiceHost({getPanel:()=>({webContents:contents,isDestroyed:()=>false,isVisible:()=>true}),
+    config:{snapshot:()=>({configured:true}),current:()=>({})},readConversationId:()=>selected,
+    microphoneHost:{authorize(){},async revoke(){}},
+    createSource:()=>({subscribe:()=>({ready:Promise.resolve(),closed:Promise.resolve(),unsubscribe(){}}),async dispose(){}}),
+    createGateway:()=>({async connect(value){request=value;return {sendAudio(){},interrupt(){request.onEvent({type:'interrupted'});},
+      async close(){},speakText(text){spoken.push(text);return {accepted:true};}};}}),
+  });
+  await host.start();
+  const task={taskId:'text-task',conversationId:selected,revision:1,state:'succeeded',resultSummary:'不要在切换后播报'};
+  host.trackTextTask(task);request.onEvent({type:'audio',data:Uint8Array.of(0,0),responseId:'existing'});
+  host.observeTextTask(task);assert.equal(host.snapshot().textOutput.state,'queued');
+  selected='conversation-2';host.invalidateTextOutput('conversation-1');
+  assert.equal(host.trackTextTask({...task,taskId:'late-submit'}).state,'unavailable');
+  host.receive({sender:contents,senderFrame:contents.mainFrame},{token,type:'drained'});
+  host.observeTextTask({...task,revision:2});assert.deepEqual(spoken,[]);
+  await host.stop();
 });
