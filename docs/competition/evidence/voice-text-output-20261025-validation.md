@@ -15,3 +15,18 @@
 独立审查普通 merge 固定生产提交 `7ed6b969` 与切会话修复 `cbcb47c4`。Desktop 仅在可信文字 task.submit 后绑定 taskId，Live request_work 不进入该集合；会话与 session id 双重绑定、成功终态单次消费、取消/中断/停止清理、8 条 pending 与 256 个 tracked 上限均有实现依据。初查发现会话切换后旧任务可能晚播，作者在 `cbcb47c4` 通过会话动作前后 active id 对比失效旧绑定、清理队列/打断已受理音频及拒绝切换后的晚受理绑定修复；固定提交静态复核未发现残留阻断问题。
 
 独立树在 `7ed6b969` 的 text-output 单测 5/5、播放器单测 7/7 通过；host suite 因未安装独立 workspace 依赖 `@personal-agent/client` 无法加载。切会话提交新增 host 组合测试后，text-output suite 也因缺 `@personal-agent/runtime` 无法加载；此时播放器 7 项与 probe 4 项仍通过。按当前约束未并行安装/构建，也未借用其他工作树依赖，故新增 host 组合测试的独立运行保持未验，不将依赖加载失败标为通过。
+
+## 作者树最终本地检查
+
+作者工作树 `.worktrees/voice-text-output-20261025` 使用 Node `24.15.0`、npm `11.12.1`，独立 `npm ci --ignore-scripts --no-audit --no-fund`；没有借用其他树的 node_modules/dist。生产源码固定于 `b030da73`，之后仅合并本验收文档和修复测试组合依赖。
+
+- `npm run build`：exit 0。
+- 模型 realtime、Desktop text-output/Live host/playback/controls 加 manual probe 的最终定向：94/94 通过，exit 0；含切会话真实 host 组合场景（text-output 6/6）。
+- `npm run check`：exit 1。架构门禁、contract fixtures、生成检查、全工作区 build/typecheck 已通过；工作区测试暴露本次新增宿主端口后旧 AST/VM fixture 缺依赖的 16 个失败，其他工作区继续执行，没有把此命令记为通过。失败分别来自 conversation-main-actions 9、panel-event-readback-order 3、panel-task-progress 2、panel-task-refresh-order 2。
+- `8de308be` / `e4ebc0bf` 为这四个 fixture 注入显式 Live/原 delivery 端口，并加载生产 observeTextTaskOutput；新增实际 main 受理后绑定回归。首次 Desktop 复跑残留 progress fixture 两项失败亦保留日志。最终 `npm run test --workspace=@personal-agent/desktop`：1814 项，1789 pass、25 skip、0 fail，exit 0。
+- 原 check 未进入的 `npm run test:integration`：57 项，54 pass、3 skip、0 fail，exit 0。修复仅改 fixture，因此未重复已通过的 build/typecheck 和 integration。没有声称最终重新运行整个 check 并通过。
+- `git diff --check`：通过。
+
+所有原始日志保留在作者树忽略目录 `.cache/voice-text-output-20261025/`：`check-final.log`（SHA256 `c504cbb43768cd83361f6687b945a659f697ade37a6524ea5288d37653c4799c`）、`desktop-verified.log`（`175afd5d0c90a848ae1f5e00b76f1db5066fbf1399ce3d4945e1d762977b8a8c`）、`integration-final.log`（`a4942719c70ff01f71cc76dfc025a15d501f88bb5e38183d9b855063b638d3fd`）、`targeted-final.log`（`da8f3231f83b9c8c9e5ff41c05c0d051a8ca2fa5f62d3e12b5c631c5eb1f7510`）。`check.log` 为生命周期修订前主动停止的旧检查（exit 143），`desktop-final.log` 为修最后一个 progress fixture 前的失败复跑，未覆盖或冒充最终结果。
+
+以上是本地源码、合成模型事件和生产播放消费验证；真实供应商对本轮 response 参数及 item 删除的兼容性、真实文字模型驱动真实语音音频、逐字准确性、物理扬声器和人耳确认均未验收。当前条件下不自动调用其他 provider，不部署、不发布，不将模型自报或 accepted 视为音频证据。
