@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import {Client, EventCursor} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
+import {createConversationDelivery} from '../electron/conversation-delivery.js';
 
 const source = await readFile(new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -32,12 +33,12 @@ async function fixture(t) {
   const eventCursor = new EventCursor('tasks');
   const context = vm.createContext({tasks, approvals, client, runtimeError: '',
     // This event-batch fixture has no Harness event consumer installed.
-    harnessEventsHost: undefined,connectorChangeHost:undefined,
+    harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,conversationDelivery:createConversationDelivery(new Set()),
     terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']), notifications: new Map(), structuredClone,
     eventBusy: false, eventCursor, runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
-  for (const name of ['clearInactiveTaskExitWarning', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
+  for (const name of ['clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
     vm.runInContext(declaration(name), context);
   }
   let taskNumber = 0;
