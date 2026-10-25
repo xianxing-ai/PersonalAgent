@@ -77,7 +77,7 @@ function number(value) {
 
 function summarize(body, traceId) {
   if (!body || typeof body !== 'object' || Array.isArray(body) || !Array.isArray(body.span_list)
-    || number(body.total) === null) throw failure('EXTERNAL_FAILURE');
+    || number(body.total) === null || body.total < body.span_list.length) throw failure('EXTERNAL_FAILURE');
   const spans = body.span_list.map((span, index) => {
     if (!span || typeof span !== 'object' || Array.isArray(span) || span.trace_id !== traceId
       || (span.is_error !== undefined && span.is_error !== null && typeof span.is_error !== 'boolean')) throw failure('EXTERNAL_FAILURE');
