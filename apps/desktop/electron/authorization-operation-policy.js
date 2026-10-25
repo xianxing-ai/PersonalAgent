@@ -27,7 +27,19 @@ export function operationSummary(source) {
   if(name==='calendar.cancel')return `取消日程 ${clean(args.externalId??args.uid)}。`;
   if(name==='mail.inbox')return '读取本任务需要的邮件信头。';
   if(name.startsWith('workspace.'))return '在选定工作区完成本任务所需的文件操作或检查。';
-  if(name.startsWith('todo.'))return '处理本任务中的待办事项。';
+  if(name==='todo.list')return '查看本任务需要的待办及提醒编号。';
+  if(name==='todo.create')return `创建待办${clean(args.title)?`“${clean(args.title)}”`:''}。`;
+  if(name==='todo.update'){
+    const target=clean(args.id)?`编号 ${clean(args.id)} 的待办`:'本任务中的待办';
+    const changes=[];
+    if(args.status==='cancelled')changes.push('取消待办及其尚未触发的提醒');
+    else if(args.status==='done')changes.push('标为完成并停止后续提醒');
+    if(args.clearReminder===true)changes.push('清除提醒，保留待办记录');
+    else if(Number.isSafeInteger(args.remindInMinutes))changes.push(`提醒改为 ${args.remindInMinutes} 分钟后`);
+    else if(clean(args.remindUtc??args.remindLocal))changes.push(`提醒改为 ${clean(args.remindUtc??args.remindLocal)}`);
+    if(clean(args.title))changes.push(`名称改为“${clean(args.title)}”`);
+    return `更新${target}${changes.length?'：'+changes.join('，'):''}。`;
+  }
   return `执行 ${clean(name)}。`;
 }
 

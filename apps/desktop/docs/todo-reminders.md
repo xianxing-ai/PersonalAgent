@@ -7,6 +7,20 @@
 
 Profile：`huawei_ict_agentarts`。zemeng 负责 Desktop / Runtime 必要组合；不改 Potatos498 的 productivity / notifications 实现。
 
+## 2026-10-25 多轮取消提醒修缮
+
+本工作包由 Codex 在 `codex/fix-reminder-conversation-continuity` 完成 Desktop 调用方接线、工程检查和证据记录；模块业务实现保持原入口。状态 `review`，提交、PR 和集成状态以对应 Git / PR 记录为准。
+
+每次 Competition 交换的既有 `readRequestContext` 携带对象承接规则：从当前会话可读原文延续唯一编号及原动作，用户更正覆盖被更正的部分；缺项或多个合理候选才澄清。被省略的助手原文沿原 `conversation.read_history` 取回。文字“确认”不是授权回执，原任务仍等待审批时使用原卡，不新建重复删除；已完成、取消或 unknown 的操作不盲重放。
+
+提醒动作的语义通过原宿主环境引导发送。目录的 `safeSchema` 会删除说明文字，因此不依赖修改 Schema 描述，也不放宽该裁剪。整个待办取消使用真实条目 `id` 与 `status=cancelled`；只取消提醒使用 `clearReminder=true` 并保留待办。列表序号、标题和 `scheduleId` 不能代替条目 ID。取消保留历史记录，不宣称已经永久删除。
+
+授权卡显示本次条目编号及具体动作，区分取消待办、清除提醒和完成待办。复用原 TaskRuntime / Policy / ToolGateway / 提醒调度及出机许可；无新 wire、Schema、数据库迁移、依赖或独立会话状态库。引导只包含静态规则，不枚举私人待办，也不继承旧任务授权。
+
+`test/reminder-conversation-continuity.test.mjs` 使用显式 Fake 模型端口和真实本机 Runtime / Policy / ToolGateway / SQLite / 待办与调度实现，覆盖同名两个提醒、原编号跨轮确认、更正编号、仅清除提醒、审批前零执行和非目标提醒保留。它证明上下文与动作数据经过真实消费路径，**不证明真实模型已经正确理解这些指代**。工程检查日志位于 `.cache/reminder-check/`；当前运行桌面未重启，AgentArts 模型效果和真实用户对话仍为 `not_run`，需在加载本分支的桌面上复测。本次不涉及镜像或工作流变更，不发起云部署或付费模型调用。
+
+本次工程结果（Node 24.15.0 / npm 11.12.0）：根 `npm run build`、Desktop `typecheck`、29 项上下文/待办/调度定向测试、17 项原授权宿主/卡片测试、3 项架构门禁及 `git diff --check` 全部通过。对应日志为 `build.log`、`desktop-typecheck.log`、`focused-tests.log`、`authorization-tests.log`、`architecture.log`。未跑全仓 `npm run check`；本次生产改动限 Desktop 的静态每轮引导和授权摘要，按受影响路径验证，未改 Runtime、业务模块、桥接或窗口实现。
+
 ## 产品入口
 
 设置 → 连接 → 待办与提醒，明确允许本次会话的待办云端管理后，正式目录公布 `todo.list/create/update` 与 `notifications.status`。主对话的每次工具调用仍经过 Runtime / Policy / ToolGateway；云端结果在发送前检查任务绑定与撤销。云许可关闭不删除用户此前建立的本机提醒。
