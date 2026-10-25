@@ -3609,7 +3609,10 @@ async function action(event, name, payload) {
   }
   if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft'].includes(name)){
     if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
-    return handleConversationAction({name,payload,surface:sender===workspace?'workspace':'panel',conversations,tasks,taskSurface,submitting,publish});
+    const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
+    const result=await handleConversationAction({name,payload,surface,conversations,tasks,taskSurface,submitting,publish});
+    if(conversations.activeConversationId(surface)!==previousConversationId)liveVoice?.invalidateTextOutput(previousConversationId);
+    return result;
   }
   if (name === 'thinking.update') {
     if (sender !== panel && sender !== admin && sender !== workspace) throw Error('思考设置来源不受信任');
