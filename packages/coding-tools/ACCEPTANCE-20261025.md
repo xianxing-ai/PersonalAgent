@@ -38,3 +38,19 @@ Desktop 的 `assertBinding` 仍每次检查 closed/current、配置身份、取�
 - synthetic：本次 unavailable sandbox 与 live 撤销；patch helper READY/dispatch/取消；reconcile 使用注入进程身份检查及合成 marker 核实 after/before/unknown，unknown 不重写源、存活/身份不明保留 marker。不能称真实 Windows helper 写入或跨重启证明。
 - 未验：Windows 独占 apply/CAS、PSEC OS 文件与网络边界、JobObject 子孙停止、真实用户工作区、Desktop 整链和 Huawei 云整图；Windows 专项如实 skip。此次不放宽 guard，不增加 Linux apply 替代路径，不宣称 MOD-18 全部完成。
 - 没有对外发布或 push/PR；所有测试子进程已随运行结束，fixture 清理只移除各自随机临时目录。
+
+## 收尾独立核验（2026-10-25 UTC）
+
+核验源码提交 `1cf6abe241ad5f214722557c0a872eefb797b296`，开始时工作树 clean。
+使用 `/workspace/PersonalAgent/.cache/wiring-20261018/toolchain/node-v24.15.0-linux-x64/bin/node`（24.15.0），依赖及 dist 均为本工作树原有独立产物；没有重复大构建。
+原红/绿、定向、类型、架构和全模块六份日志的 SHA-256 均重新核对一致。
+以下命令均在本工作树执行，`node` 指上述固定二进制；完整参数、UTC、exit 和 hash 另存 `.cache/mod18/handoff-checks.jsonl`。
+
+| 命令 | UTC 开始–结束 | wall | exit | 结果 | 日志 SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `node --test packages/coding-tools/test/workspace-command.test.mjs` | 06:26:45.196785–06:26:46.285691Z | 1.089s | 0 | 21 pass / 5 Windows skip | 0b0375a979cc1308331809fa8ebef98fb2174bdb38d24525dbf428feb68ead51 |
+| `node --test packages/coding-tools/test/windows-native-sandbox.test.mjs` | 06:26:46.286032–06:26:46.426032Z | 0.140s | 0 | 1 unsupported-platform guard pass / 1 Windows skip | f51a62ce481276fd26c04aa555b5f91060141286e908f110428964e9489efa22 |
+| `node .cache/mod18/live-port.mjs` | 06:26:57.434855–06:26:57.704247Z | 0.269s | 0 | 独立 synthetic 端口核验通过 | df38542532513c9f5d2c2e068ff22557be4b24f9e8aafc53bc41378eac19eec4 |
+
+独立脚本只使用随机系统临时目录：注册后把 options 的 sandbox 替换成会抛错的新对象，原 sandbox 的 bind 改为撤销拒绝，确认 executor 零调用；随后恢复原 bind、替换原 recordResult，确认仍经原 executor 返回 unavailable，并调用新的 receipt 方法一次。finally 删除自有临时目录。它补充检查实时方法访问，不能证明真实 Windows PSEC enforcement。
+只读复核 Desktop `assertBinding`、executor 的创建前与 READY 后 `assertCurrent` 保持原样；本修补没有改变这些动态撤销或原生 guard。
