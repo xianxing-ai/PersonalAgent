@@ -223,11 +223,13 @@ export function createWindowsDesktopControlHost(options: WindowsDesktopControlOp
         if (options.verifyTarget && await options.verifyTarget({taskId: context.taskId, targetRef: reference, focusedWindowHandle: target.handle,
           toolName: PREFIX + spec.name, arguments: structuredClone(input), signal: context.signal, deadline: context.deadline}) !== true) fail('UNAUTHORIZED', 'Desktop target identity is no longer valid');
         await present(context, reference);
+        if (target.expiresAt <= now()) fail('UNAUTHORIZED', 'Desktop target expired; a fresh observation is required');
         await options.attempts!.record({taskId: context.taskId, runId: context.runId, toolName: PREFIX + spec.name,
           toolVersion: WINDOWS_DESKTOP_TOOL_VERSION, authorizationRef: context.authorizationRef,
           argumentsDigest: context.argumentsDigest, targetRef: reference, observationDigest: target.fence},
           {arguments: structuredClone(input), signal: context.signal, deadline: context.deadline});
         ready(context);
+        if (target.expiresAt <= now()) fail('UNAUTHORIZED', 'Desktop target expired; a fresh observation is required');
         // An observation is single-use even when dispatch/result becomes unknown.
         targets.delete(reference); dispatched = true;
         textResult(await backend!.call(spec.remote, args, context));

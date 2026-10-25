@@ -1,5 +1,21 @@
 # Windows Client：系统观测与 Windows-MCP 受控适配
 
+## 2026-10-25 观察有效期回归（Local/Synthetic）
+
+修复动作路径在异步目标校验、在场确认或 attempt 持久化期间越过原 targetRef 的
+30 秒有效期后仍派发输入的问题。在写入 attempt 前及其返回后重验原观察有效期，
+过期返回 `UNAUTHORIZED`，不调用上游动作；已持久化的 attempt 不删除或重放。
+原任务取消和 deadline 仍分别返回 `CANCELLED`、`TIMEOUT`。
+Desktop 宿主原有 attempt 校验覆盖任务期限、在场和执行身份，不保存观察有效期，
+因此这一约束继续由客户端负责。此修复不提供 OS 强身份保证。
+
+固定基线 `ad1a045e1ec65f9ef280125d9df78b9cb63b4e51`，Linux、Node 24.15.0、npm 11.12.1。
+合成回归在修改前出现 `Missing expected rejection: verifyTarget`：推进到有效期边界仍派发 Click；
+修改后覆盖目标校验、在场确认和持久化三个异步边界，断言零 Click、明确拒绝及 provider 未进入未知结果封闭。
+模块 build/typecheck、模块测试 23/23、Desktop 宿主消费测试 11/11、架构测试 3/3 通过；
+无 Schema、guard、权限或接口冻结变化。
+没有启动 Windows、上游 Python、云或真实账号；本轮不证明真实 OS 写入、F9 或 MOD-16 整体验收。
+
 ## 2026-10-18 Windows-MCP 接入（conditional）
 
 `createWindowsDesktopControlHost()` 复用开源 [CursorTouch/Windows-MCP](https://github.com/CursorTouch/Windows-MCP)

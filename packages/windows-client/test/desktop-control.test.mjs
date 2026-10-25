@@ -84,6 +84,39 @@ test('changed focused identity, stale UI tree and host target guard reject befor
   const f=fixture({verifyTarget:async()=>false});await f.host.start(context());const seen=await f.tool('observe').execute({},context());
   const args={targetRef:seen.targetRef,loc:[1,2]};await assert.rejects(f.tool('click').execute(args,context(args)),{code:'UNAUTHORIZED'});assert.equal(f.attempts.length,0);
 });
+test('target expiry during trusted asynchronous checks prevents dispatch',async()=>{
+  for(const phase of ['verifyTarget','presence','record']){
+    let time=clock,presenceChecks=0,records=0;
+    const f=fixture({now:()=>time,
+      verifyTarget:async()=>{if(phase==='verifyTarget')time=clock+30000;return true;},
+      authorizePresence:async()=>{if(phase==='presence'&&++presenceChecks===3)time=clock+30000;return true;},
+      attempts:{async record(){records++;if(phase==='record')time=clock+30000;}}});
+    await f.host.start(context());
+    const seen=await f.tool('observe').execute({},context());
+    const args={targetRef:seen.targetRef,loc:[1,2]};
+    await assert.rejects(f.tool('click').execute(args,context(args)),{code:'UNAUTHORIZED'},phase);
+    assert.equal(f.calls.some(call=>call.name==='Click'),false,phase);
+    assert.equal(records,phase==='record'?1:0,phase);
+    assert.equal(f.host.health().state,'ready');
+    await f.host.dispose();
+  }
+});
+test('cancellation and deadline expiry during attempt persistence retain typed errors without dispatch',async()=>{
+  for(const code of ['CANCELLED','TIMEOUT']){
+    let time=clock;
+    const controller=new AbortController();
+    const f=fixture({now:()=>time,attempts:{async record(){
+      time=clock+60000;if(code==='CANCELLED')controller.abort();
+    }}});
+    await f.host.start(context());
+    const seen=await f.tool('observe').execute({},context());
+    const args={targetRef:seen.targetRef,loc:[1,2]};
+    await assert.rejects(f.tool('click').execute(args,context(args,{signal:controller.signal})),{code});
+    assert.equal(f.calls.some(call=>call.name==='Click'),false);
+    assert.equal(f.host.health().state,'ready');
+    await f.host.dispose();
+  }
+});
 test('unknown dispatched results quarantine the provider and prohibit even a new target/run',async()=>{
   const f=fixture({backend:{async call(name){if(name==='Click')throw Error('private backend detail');return snapshot();}}});await f.host.start(context());
   const observe=f.tool('observe'),click=f.tool('click');const seen=await observe.execute({},context());const args={targetRef:seen.targetRef,loc:[1,2]};
