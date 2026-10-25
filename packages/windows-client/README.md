@@ -1,5 +1,8 @@
 # Windows Client：系统观测与 Windows-MCP 受控适配
 
+2026-10-25 系统观测完成时间修复及 Linux/Fake 分账验证见
+[MOD-17 验收记录](STATUS-ACCEPTANCE-20261025.md)。
+
 ## 2026-10-18 Windows-MCP 接入（conditional）
 
 `createWindowsDesktopControlHost()` 复用开源 [CursorTouch/Windows-MCP](https://github.com/CursorTouch/Windows-MCP)
