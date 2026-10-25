@@ -1,6 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {pcmLevel} from './audio-level.js';
 import {createLiveVoiceHistory} from './live-voice-history.js';
+import {createLiveTextOutput} from './live-text-output.js';
 
 const SESSION_MS = 120 * 60_000;
 const CARD_ONLY_GUIDANCE = '请在当前对话的原授权卡中决定；语音回答不会批准。';
@@ -39,6 +40,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   readCurrentQuestion = () => null, authorizeTaskRead = () => false,
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
+  const textOutput=createLiveTextOutput({readSession:()=>active,now,onUpdate:()=>publish()});
   let lastDiagnostic={stage:'idle',status:'idle'},audioSendFailure;
   const diagnose=(stage,status,code,metadata={})=>{
     lastDiagnostic={stage,status,...(code?{code}:{}),...metadata,elapsedMs:active?Math.max(0,now()-active.startedAt):0};
@@ -61,7 +63,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     workingCount:active?.workingCount??0,
     workRequests:[...(active?.workRequests?.values()??[])].slice(-10).map(item=>({...item})),
     diagnostic:{...lastDiagnostic},...(audioSendFailure?{audioSendFailure:{...audioSendFailure}}:{}),conversationId:active?.conversationId,
-    questionDelivery:active?.questionDelivery??{state:'unavailable'},
+    questionDelivery:active?.questionDelivery??{state:'unavailable'},textOutput:textOutput.snapshot(),
     reason: lastError || (history.snapshot().degraded ? (history.snapshot().durable
       ? '对话记录保存异常，已缓存待回补记录'
       : '对话记录保存异常，恢复缓存未确认；内存记录退出可能丢失')
@@ -78,6 +80,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return record.closingSession;
   };
   async function releaseActive() {
+    textOutput.clear();
     const record = active;
     if (!record) return snapshot();
     if (record.stopping) return record.stopping;
@@ -161,8 +164,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
             command(record, {type: 'audio', data: event.data});
             try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
           }
-          if (event.type === 'interrupted') {record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
-          if (event.type === 'turn_complete') command(record, {type: 'drain'});
+          if (event.type === 'interrupted') {textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
+          if (event.type === 'turn_complete') {command(record, {type: 'drain'});textOutput.flush();}
           if (event.type === 'transcript') {
             const trimmed = typeof event.text === 'string' ? event.text.trim() : '';
             if (!trimmed) return;
@@ -439,7 +442,9 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
     if (message.type === 'drained') {
+      textOutput.drained();
       if (record.phase === 'speaking') {record.phase = record.workingCount ? 'working' : 'listening'; publish();}
+      textOutput.flush();
     }
     if (message.type === 'error') {record.playReady.reject(Error('Live 播放设备不可用')); fail('Live 播放设备不可用');}
     return true;
@@ -461,6 +466,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return messages;
   }
   return {snapshot, historyMessages, hasActive, start, stop, receive,
+    trackTextTask:task=>textOutput.track(task),observeTextTask:task=>textOutput.observe(task),
+    cancelTextTask:taskId=>textOutput.cancel(taskId),
     askCurrentQuestion() {
       const record=active,question=readCurrentQuestion({conversationId:active?.conversationId??readConversationId()});
       if (!record || record.controller.signal.aborted || now()>=Date.parse(record.deadline)
@@ -474,6 +481,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     },
     flushHistory() {const result = flushHistory(); publish(); return result;},
     interrupt() {
+      textOutput.clear();
       if (releaseUnknown) throw Error(lastError);
       if (active?.session && !active.controller.signal.aborted && now() < Date.parse(active.deadline)) active.session.interrupt();
     },
