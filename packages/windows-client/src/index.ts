@@ -269,6 +269,7 @@ export function createSystemObservationTool(options: SystemObservationToolOption
       let uptimeSeconds: number;
       try { uptimeSeconds = safeNumber(probe.uptimeSeconds()); }
       catch { throw observationError(); }
+      const memory = readMemory(probe);
       const observation: SystemObservation = {
         source,
         capturedAt: safeNow(now).toISOString(),
@@ -280,7 +281,7 @@ export function createSystemObservationTool(options: SystemObservationToolOption
           logicalProcessorCount: after.count,
           utilizationPercent: roundPercent((totalDelta - idleDelta) / totalDelta * 100),
         },
-        memory: readMemory(probe),
+        memory,
         uptimeSeconds,
         unavailable: SYSTEM_OBSERVATION_UNAVAILABLE,
       };

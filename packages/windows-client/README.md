@@ -121,6 +121,8 @@ node --test packages/windows-client/test/desktop-control.test.mjs apps/desktop/t
 空闲量、系统 uptime 和采集时间。`sampledFrom` / `sampledUntil` 为两次读取的墙钟边界，
 `actualSampleWindowMs` 为单调时钟测得的读取区间（含 probe 开销）；
 `requestedSampleWindowMs` 仅是请求的等待间隔。时钟被注入时这些字段只属于合成证据。
+`capturedAt` 在 CPU、uptime 与内存读取全部完成后生成；CPU 的采样结束边界仍由
+`sampledUntil` 单独表示，不能将它当作后续内存读取的完成时间。
 它不会读取或返回 hostname、用户名、进程、命令行、路径、
 文件、网络地址或凭据，也不会提权、启动 PowerShell、接入或发布 TraceGuard。
 
