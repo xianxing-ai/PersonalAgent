@@ -11,3 +11,7 @@
 本机 Chromium `154.0.8037.57` 通过 Playwright 实际运行生产 `mountLiveVoicePlayback`，输入为明确标注的合成静音 PCM16 little endian、24 kHz、单声道、100 ms、4800 bytes；原字节 SHA256 为 `24ddaa4710480313757f965c38d60208a334556cb244f830d5006a893edd8da7`。Web Audio 事件依次为 `ready → drained → stopped`，没有 error。这证明浏览器生产播放器对该格式的消费与释放，不能作为语音模型输出或真人听到声音的证据。Browser skill 已读取、工具检索无 Browser 工具；按明确本地 Chromium 验证范围使用现有 Playwright 与 `/usr/bin/chromium`，未安装依赖。首次 ESM 裸包解析失败，改用 Node `createRequire` 的现有环境依赖后通过。
 
 真实云返回、真实语音内容、用户听到声音及平台 trace 目前均未验证。探针可在未来既有受信 gateway 可用时发送公开固定文字，记录音频原字节哈希、转写、完成及关闭回执；当前没有执行该真实调用，不把合成探针/播放器测试升级为 cloudmodel 通过。
+
+独立审查普通 merge 固定生产提交 `7ed6b969` 与切会话修复 `cbcb47c4`。Desktop 仅在可信文字 task.submit 后绑定 taskId，Live request_work 不进入该集合；会话与 session id 双重绑定、成功终态单次消费、取消/中断/停止清理、8 条 pending 与 256 个 tracked 上限均有实现依据。初查发现会话切换后旧任务可能晚播，作者在 `cbcb47c4` 通过会话动作前后 active id 对比失效旧绑定、清理队列/打断已受理音频及拒绝切换后的晚受理绑定修复；固定提交静态复核未发现残留阻断问题。
+
+独立树在 `7ed6b969` 的 text-output 单测 5/5、播放器单测 7/7 通过；host suite 因未安装独立 workspace 依赖 `@personal-agent/client` 无法加载。切会话提交新增 host 组合测试后，text-output suite 也因缺 `@personal-agent/runtime` 无法加载；此时播放器 7 项与 probe 4 项仍通过。按当前约束未并行安装/构建，也未借用其他工作树依赖，故新增 host 组合测试的独立运行保持未验，不将依赖加载失败标为通过。
