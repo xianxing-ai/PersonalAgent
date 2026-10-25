@@ -129,6 +129,9 @@ export function createWorkspaceCommandTool(options: WorkspaceCommandOptions): Re
   const maxOutputBytes = bounded(options.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES, 'maxOutputBytes');
   const maxDurationMs = bounded(options.maxDurationMs, DEFAULT_MAX_DURATION_MS, MAX_DURATION_MS, 'maxDurationMs');
   const now = options.now ?? Date.now;
+  // Registration fixes whether execution requires the trusted sandbox. Reusing
+  // the host options must never turn an existing isolated tool into bare spawn.
+  const sandbox = options.trustedSandbox;
   const readClock = (): number => {
     try {
       const value = now();
@@ -188,8 +191,7 @@ export function createWorkspaceCommandTool(options: WorkspaceCommandOptions): Re
       }
       const recipeId = (input as {recipeId: string}).recipeId;
       const recipe = recipes.get(recipeId)!;
-      if (options.trustedSandbox) {
-        const sandbox = options.trustedSandbox;
+      if (sandbox) {
         const currentIdentity = statSync(root, {bigint: true});
         if (realpathSync.native(root) !== root || currentIdentity.dev !== rootIdentity.dev || currentIdentity.ino !== rootIdentity.ino) {
           throw new ProtocolError('SCOPE_DENIED', 'Workspace command root binding changed');
