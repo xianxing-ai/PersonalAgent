@@ -3,12 +3,23 @@ import assert from 'node:assert/strict';
 import {connectorCards,connectorDestination} from '../src/features/workspace/connectors.js';
 const escape=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 test('mail keeps classified counts when unread totals are unavailable and directs users to monitoring',()=>{
- const mail={configured:true,status:'disabled',sessionAllowed:false,account:'<masked>',counts:{total:7363}};
+ // Synthetic trusted-host snapshot; this boolean does not create a real reading grant.
+ const mail={configured:true,status:'disabled',sessionAllowed:true,account:'<masked>',counts:{total:7363}};
  const card=connectorCards({mail},escape).split('data-connector="mail"')[1].split('</article>')[0];
  assert.match(card,/已分类 7363 封/);assert.match(card,/启动邮件监测/);assert.match(card,/&lt;masked&gt;/);
  assert.doesNotMatch(card,/尚未拉取邮件|7363 封未读/);
  const running=connectorCards({mail:{...mail,monitoring:{enabled:true,state:'monitoring'}}},escape);
  assert.match(running,/新邮件监测中/);
+});
+test('mail without current session permission displays historical counts without claiming current reading or monitoring',()=>{
+ const mail={configured:true,status:'disabled',sessionAllowed:false,account:'<masked>',counts:{total:7363,unread:9}};
+ const card=connectorCards({mail},escape).split('data-connector="mail"')[1].split('</article>')[0];
+ assert.match(card,/历史分类 7363 封 · 非实时/);assert.match(card,/需重新授权/);
+ assert.match(card,/当前会话尚未允许读取/);assert.match(card,/此卡片不会读取新邮件/);
+ assert.match(card,/&lt;masked&gt;/);assert.doesNotMatch(card,/<masked>/);
+ assert.doesNotMatch(card,/已分类 7363 封|9 封未读|启动邮件监测|新邮件监测中|新邮件监测已启动|监测未启动|已允许/);
+ assert.deepEqual(connectorDestination('mail',{mail}),{page:'connections'});
+ assert.equal(mail.sessionAllowed,false);
 });
 test('unconfigured connectors and empty services show empty states instead of invented personal data',()=>{
  for(const data of [{},{todo:{available:true,items:[]},feeds:{available:true,subscriptions:[]}}]){
