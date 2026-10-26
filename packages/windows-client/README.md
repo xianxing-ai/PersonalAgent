@@ -3,6 +3,11 @@
 2026-10-25 系统观测完成时间修复及 Linux/Fake 分账验证见
 [MOD-17 验收记录](STATUS-ACCEPTANCE-20261025.md)。
 
+## 2026-10-25 观察有效期回归（Local/Synthetic）
+
+修复异步校验或 attempt 持久化期间原 targetRef 过期仍派发输入的问题；持久 attempt 保留且不重放。
+先红后绿、当前检查与独立复核见 [验收证据](ACCEPTANCE-20261025.md)。本次不表示真实 Windows 或 PA-016 整体验收。
+
 ## 2026-10-18 Windows-MCP 接入（conditional）
 
 `createWindowsDesktopControlHost()` 复用开源 [CursorTouch/Windows-MCP](https://github.com/CursorTouch/Windows-MCP)
