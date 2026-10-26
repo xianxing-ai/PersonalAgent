@@ -109,7 +109,9 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       try {
         await invoke('weather.configure', {location: city});
         close();
-        update(await invoke('snapshot'));
+        const readRevision = updateRevision;
+        const data = await invoke('snapshot');
+        if (readRevision === updateRevision) update(data);
       } catch (error) {
         submit.disabled = false;
         status.textContent = String(error?.message ?? '城市无效或天气服务不可用');
