@@ -61,6 +61,19 @@ test('disabled-by-default host never opens even a configured Live host',async()=
   await f.host.start();await f.host.resume();assert.deepEqual(f.calls,[]);await f.host.dispose();
 });
 
+for (const operation of ['stop', 'suspend', 'dispose']) {
+  test(`${operation} supersedes pending startup before panel preparation`, async () => {
+    const f = fixture();
+    const starting = f.host.start();
+    await f.host[operation]();
+    await starting;
+    assert.equal(f.calls.includes('prepare'), false);
+    assert.equal(f.calls.includes('greet'), false);
+    assert.equal(f.calls.includes('live-start'), false);
+    await f.host.dispose();
+  });
+}
+
 test('main live.configure persists explicit opt-in, starts after save, and disables an owned active listener',async t=>{
   const source=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8');
   const ast=ts.createSourceFile('main.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
