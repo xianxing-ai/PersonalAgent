@@ -27,6 +27,23 @@ Profile：`huawei_ict_agentarts`。这是送审前已保存回执的公开摘要
 
 独立 SQLite 持久化探针 8 组通过；来源与候选复跑是同组，不计成 16 组。实际 Main 回调配 FakeScope/EventEmitter 的退出探针通过，不能替代真实 Main/Electron 生命周期。Renderer 静态闭包为 100 文件/86 JS/133 边，缺导入、解析及未定义名/导入导出诊断为 0；这不是一般 checkJs 全绿（另有 582 条诊断），也不是 Windows GUI 实跑。
 
+## #522 官方 Windows 首失败与最小断言修复
+
+[Draft PR #522](https://github.com/xianxing-ai/PersonalAgent/pull/522) 的首轮来源为 `23dfce1db73cede45b0740c9e368ebdee031f5d1`。[官方 Foundation run 40360700498 / attempt 1](https://github.com/xianxing-ai/PersonalAgent/actions/runs/40360700498) 的 [Windows job 121705218579](https://github.com/xianxing-ai/PersonalAgent/actions/runs/40360700498/job/121705218579) exit 1；完整原日志已保留并核验为 878,684 bytes、SHA256 `43ff80c4f5269b869ef4a032ae282568a16ec106c627c98d6b547463f46a6858`。原 0-byte capture 不是日志证据。Desktop 为 2194 pass / 1 fail / 9 skip；其后 Runtime 1316/1316 实际完成。根 `npm run check` 因 workspace test 失败终止，位于 `&&` 后的根 `test:integration` 未启动。
+
+唯一 Desktop 失败为 `authorization-native-execution.integration.test.mjs` 原第 98 行：旧断言期望 `REVISION_CONFLICT`，实际 task 与 preparation error 均为 `UNSUPPORTED_CAPABILITY`；原 approval 已 denied / revision 2。该 runner 的继承 token 为非管理员，no-sandbox baseline exited 0；readOnly、workspaceWrite、cancel 均返回 `native-create-environment:-2146233052`。这只定位到 native create-environment 阶段的 DLL 加载类 HRESULT（`0x80131524` / `COR_E_DLLNOTFOUND`）；具体宿主原因、哪个 DLL 或 API 环节未建立，不据此改变普通账号或 Job 限制。
+
+因果是候选 Runtime 已将固定、安全的原生准备拒绝同时保存在 task.error 与拒绝执行 record 中，Desktop 的两处错误码断言和说明仍沿用旧 main 的通用 stale 错误。此次仅同步测试与本证据，未改生产代码。共享断言保留 failed、原审批 denied/rev2/system stale、同一 question-invalidation record、deny、executionStarted=false、无 command audit/marker/替换文件/Policy grant/提问卡，并追加旧 revision 1 与当前 revision 2 的迟到 allow 均被拒绝。未知结果仍不能通过该 failed 断言进入 skip。
+
+新增跨平台回归用**显式 Fake 不可用探针**驱动实际 Runtime/Policy/ToolGateway、Question 与 native host，证明拒绝发生在业务工具执行之前；同命令重放保留同一终态，授权和探针各一次，工具执行与 executor 创建均为零。Fake 回执不证明 Windows 隔离，业务零分派也不说明 PSEC 内部探针调用到了哪个 API。
+
+| 本轮 Linux 运行（Node 24.15.0 / npm 11.12.1） | 实际结果 | 输入 SHA256 | 边界 |
+| --- | --- | --- | --- |
+| pr522-native-consumer-red-a1 | 1 fail，exit 1，1.460 s | `e4dce71833646672feec172f665b45d05ea41e60cf0e525805fabeb74a85ecf1` | 实际消费链复现同一旧错误码断言；原输入与日志保留 |
+| pr522-native-consumer-fixed-a2，6 文件 | 31 total / 30 pass / 0 fail / 1 skip，exit 0，4.134 s | `0fac5fd205fb7d3f9ae789b1b3ac0f92309eabc06f0e039a066a4eeea9b014e9` | 含真实消费链的 Fake 拒绝、readiness、授权、mail、固定安全错误与 getter=0 回归；唯一 skip 是 Linux 缺显式 Windows helper 的原真实测试 |
+
+两次运行均 `changedInputs=[]`，使用现有候选构建，无生产改动或新增根 build；最终测试字节 SHA256 `264c42e80453ec92c1d91f92aa57266abb7e1c1d5df928edeea0c143b1fcf8e2`。精确 UTC、命令、日志与复用 dist 指纹见 JSON；此后只补公开证据文档，不追溯覆盖新的文档字节。真实 Windows 正向分支、`unsupportedPsec` allowlist、guard、deadline 与 CI 配置未变，未新增 skip 分支。相同不可用宿主通过这些拒绝断言后可能抵达既有 optional skip，不能据此宣布 strict PSEC 正例通过；required 模式或不匹配的失败仍阻断。修复后的官方 Windows/Linux CI 结果仍待新回执。
+
 ## 来源历史缺口与当前待验项
 
 六份旧回执/输入/exit code 自洽，但旧完整 `.log` 未交付；未独立核实其全部 log SHA 或把作者 Windows 结果称为云端复跑。A12 的 6194 total / 6165 pass / 29 skip 仅是作者历史记录。

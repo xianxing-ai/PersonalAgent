@@ -2,7 +2,7 @@
   "format": "personal-agent-cloud-handoff-public-summary-v1",
   "recordDate": "2026-10-26",
   "profile": "huawei_ict_agentarts",
-  "scope": "Sanitized summary of retained local receipts; raw logs, private source locations and account data are excluded. This file adds no new execution evidence.",
+  "scope": "Sanitized summary of retained local receipts and the PR522 official Windows first failure plus scoped Linux test repair; raw logs, private source locations and account data are excluded.",
   "origin": {
     "archiveBytes": 5130842,
     "archiveSha256": "b794f0a9fcdf411394ae386030b36d7ab82840e9241b12378817aa9e96eac922",
@@ -332,6 +332,102 @@
     "Real mail, model, cloud/AgentArts deployment or physical devices"
   ],
   "deliveryBoundary": "Commit/push/Draft PR and official Windows/Linux CI are authorized for this candidate. Merge/deploy and the independently denied #510 service path are not authorized by that publication instruction.",
+  "pr522WindowsRefusalRepair": {
+    "productionChanged": false,
+    "officialFirstFailure": {
+      "sourceCommit": "23dfce1db73cede45b0740c9e368ebdee031f5d1",
+      "run": 40360700498,
+      "attempt": 1,
+      "job": 121705218579,
+      "url": "https://github.com/xianxing-ai/PersonalAgent/actions/runs/40360700498/job/121705218579",
+      "exitCode": 1,
+      "fullLogBytes": 878684,
+      "fullLogSha256": "43ff80c4f5269b869ef4a032ae282568a16ec106c627c98d6b547463f46a6858",
+      "zeroByteCaptureIsLogEvidence": false,
+      "desktop": {"pass": 2194, "fail": 1, "skip": 9},
+      "runtime": {"pass": 1316, "fail": 0, "skip": 0},
+      "rootTestIntegrationStarted": false,
+      "rootTestIntegrationReason": "Workspace tests returned nonzero; root check joins the later integration command with &&.",
+      "test": "apps/desktop/test/authorization-native-execution.integration.test.mjs",
+      "originalAssertionLine": 98,
+      "expected": "REVISION_CONFLICT",
+      "actualTaskErrorCode": "UNSUPPORTED_CAPABILITY",
+      "actualPreparationErrorCode": "UNSUPPORTED_CAPABILITY",
+      "approvalState": "denied",
+      "approvalRevision": 2,
+      "administratorToken": false,
+      "baseline": {"backend": "none", "outcome": "exited", "exitCode": 0, "stopped": true},
+      "restrictedProbePaths": ["readOnly", "workspaceWrite", "cancel"],
+      "restrictedProbeReason": "native-create-environment:-2146233052",
+      "hresult": "0x80131524 / COR_E_DLLNOTFOUND",
+      "nativeRootCause": "Create-environment stage DLL-loading-class HRESULT only; the particular host cause, DLL and API stage are not established by the retained summary."
+    },
+    "cause": "The existing candidate Runtime preserves its fixed safe native refusal in both task.error and ToolExecutionRecord.errorCode; the Desktop unavailable-path comment and two error-code assertions still assumed main's generic stale REVISION_CONFLICT.",
+    "repair": "Share the fixed-safe UNSUPPORTED_CAPABILITY refusal assertions between the real Windows path and an explicit Fake unavailable-probe fixture driving the actual Runtime/Policy/ToolGateway, Question and native hosts. Keep failed, denied/revision2/system-stale, question-invalidation, deny/non-dispatch, no marker/audit/grant/card assertions. Reject late allow at revisions1/2; replay keeps the same terminal task with one authorization/probe and zero tool executions/executor creations.",
+    "unchanged": ["Production code", "Real Windows positive branch", "unsupportedPsec allowlist", "Existing skip branches", "Platform guards", "Deadlines", "CI configuration", "Standard-token and Job restrictions"],
+    "localValidation": {
+      "platform": "Linux",
+      "node": "24.15.0",
+      "npm": "11.12.1",
+      "newRootBuild": false,
+      "executionScope": "Existing candidate compiled outputs; explicit Fake native probe, no actual Windows isolation, GUI, model or account call.",
+      "red": {
+        "name": "pr522-native-consumer-red-a1",
+        "command": "node --test --test-concurrency=1 --test-timeout=30000 --test-reporter=spec --test-name-pattern='an unavailable native probe' apps/desktop/test/authorization-native-execution.integration.test.mjs",
+        "startedAt": "2026-10-26T18:05:08.865450+00:00",
+        "completedAt": "2026-10-26T18:05:10.325905+00:00",
+        "wallMs": 1460,
+        "exitCode": 1,
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "skip": 0,
+        "inputFiles": 2698,
+        "snapshotSha256": "e4dce71833646672feec172f665b45d05ea41e60cf0e525805fabeb74a85ecf1",
+        "testSourceSha256": "75278c05659fa5ad2b8d2754341623af7442b3c7da0683df0ea5d0ebeb6cfc45",
+        "changedInputs": [],
+        "logSha256": "14a1eded30343af0ff9a1d289f4bd28861f6a58a46b25f0ad2fb8f8353c7ec84"
+      },
+      "fixed": {
+        "name": "pr522-native-consumer-fixed-a2",
+        "command": "node --test --test-concurrency=1 --test-timeout=30000 --test-reporter=spec <testFiles below>",
+        "testFiles": [
+          "apps/desktop/test/authorization-native-execution.integration.test.mjs",
+          "apps/desktop/test/native-execution-readiness.test.mjs",
+          "apps/desktop/test/authorization-question-host.test.mjs",
+          "apps/runtime/test/native-desktop-preflight.test.mjs",
+          "apps/runtime/test/authorization-question.test.mjs",
+          "apps/runtime/test/mail-batch-authorization.test.mjs"
+        ],
+        "startedAt": "2026-10-26T18:05:31.585410+00:00",
+        "completedAt": "2026-10-26T18:05:35.719140+00:00",
+        "wallMs": 4134,
+        "exitCode": 0,
+        "tests": 31,
+        "pass": 30,
+        "fail": 0,
+        "skip": 1,
+        "skipReason": "Existing real Windows test requires an explicit Windows helper; unavailable on Linux.",
+        "inputFiles": 2698,
+        "snapshotSha256": "0fac5fd205fb7d3f9ae789b1b3ac0f92309eabc06f0e039a066a4eeea9b014e9",
+        "testSourceSha256": "264c42e80453ec92c1d91f92aa57266abb7e1c1d5df928edeea0c143b1fcf8e2",
+        "changedInputs": [],
+        "logSha256": "0351ea9ecebb9845a41679d1b95bc9604f7c6377bc523c18973db59911e207c7"
+      },
+      "reusedDistFingerprintsObservedAfterTests": {
+        "apps/runtime/dist/index.js": "451c4da5b14a9cc78a9e80fddd3451b2e602cd0dd442f53aad1d931ac217f986",
+        "apps/runtime/dist/application/runtime-application.js": "f3ae890235e90492bc356d1e72a4aaaf9faeb3817ff92bc2885b551256cae910",
+        "packages/coding-tools/dist/command.js": "28621887096bddd4edf39ba26238bb528f245f085a347bcb4d5ea83c7f972b7b"
+      },
+      "laterChanges": "Only the two public evidence documents were edited after this fixed test input snapshot."
+    },
+    "remaining": [
+      "Fresh official Windows/Linux CI on the repaired source is pending.",
+      "A matching unavailable Windows host may reach the pre-existing optional skip after the corrected assertions. This is not strict PSEC positive acceptance; required or unexpected native failure still blocks.",
+      "The two exact Windows GUI smokes and strict PSEC positive acceptance remain pending; no new GUI or native-positive claim is made.",
+      "No merge, deployment, or independently denied #510 service path action is covered by this repair."
+    ]
+  },
   "publicationDocumentation": {
     "newEvidenceFiles": 2,
     "redactionOnlyPaths": [
