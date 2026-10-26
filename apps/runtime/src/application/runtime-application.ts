@@ -50,8 +50,8 @@ import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
 import type {CoordinationGoalTokenBudget} from './context-binding.js';
-import {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT} from './context-compaction.js';
-import type {RuntimeContextCompactionOptions,ContextCompactionResult,ContextCompactionScope} from './context-compaction.js';
+import {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT,CONTEXT_COMPACTION_COMMAND,isContextCompactionCommand} from './context-compaction.js';
+import type {RuntimeContextCompactionOptions,ContextCompactionResult,ContextCompactionScope,ContextCompactionCache} from './context-compaction.js';
 import {RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import type {CompetitionAvailableTool, CompetitionToolAvailability} from './tool-catalog.js';
 import {ScopedEvidenceReader} from './evidence-reader.js';
@@ -481,6 +481,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   readonly profile: 'local' | 'huawei_ict_agentarts';
   private readonly coordination: CoordinationPort | undefined;
   private readonly delegateUserTasks: boolean;
+  private contextSummaryCaches=new WeakMap<RuntimeContextCompactionOptions,Map<string,ContextCompactionCache>>();
   private readonly coordinationBinding: string;
   private readonly assertCoordinationBinding?: () => void;
   private readonly codingRepair?:RuntimeCodingRepairOptions;
@@ -1465,6 +1466,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   listBindings(input:Parameters<TaskRuntime['listBindings']>[0]={}) {return this.runtime.listBindings(input);}
   readCopyErasureReceipt(taskId:string) {return this.runtime.readCopyErasureReceipt(taskId);}
   async eraseTaskCopies(input:Omit<Parameters<TaskRuntime['eraseTaskCopies']>[0],'externalCopiesPurged'>) {
+    this.contextSummaryCaches=new WeakMap();
     this.releaseEphemeralTask(input.taskId);
     this.coordinationInput?.releaseTask?.(input.taskId);
     this.runtime.eraseTaskCopies({...input,externalCopiesPurged:false});
@@ -1838,6 +1840,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(experience)this.experienceSendPolicies.set(request.taskId,{ownerTaskId:experience.ownerTaskId,lease:experience.lease});
     const conversationMessage=readSubagentConversationMessage(this.runtime,request.taskId);
     const hooks:CoordinationInputHooks|undefined=this.coordinationInput??(conversationMessage||teacherScope?{beforeCoordinationSend:()=>{}}:undefined);
+    const manualCompaction=this.runtime.loadCheckpoint(request.taskId,CONTEXT_COMPACTION_COMMAND)===true;
+    if(manualCompaction&&!hooks?.contextCompaction)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先在设置 → 模型 → 开发者 Harness 中选择摘要模型并启用自动压缩');
     if(!hooks) {
       if(this.runtime.loadCheckpoint(request.taskId,'private-memory:consumption:v1')) {
         throw new ProtocolError('UNAUTHORIZED','Private input lease cannot be recovered automatically');
@@ -1860,7 +1865,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const task=this.runtime.getTask(request.taskId);
     const scope={taskId:task.taskId,conversationId:task.conversationId ?? '',publicGoal:request.goal,
       deadline:request.deadline,signal:request.signal};
-    const preparedSource=await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
+    const preparedSource=manualCompaction?request.goal:await hooks.prepareCoordinationGoal?.(scope) ?? request.goal;
     const privateDerived=preparedSource!==request.goal || this.runtime.loadCheckpoint(task.taskId,'private-memory:consumption:v1')!==undefined;
     let prepared=preparedSource;
     this.assertInputActive(request);
@@ -1903,7 +1908,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           throw new ProtocolError('INVALID_ARGUMENT','Compaction cannot enlarge the original Coordination character budget');
         const modelConfigurationRef=compaction.modelConfigurationRef,summarize=compaction.summarize,
           readSnapshot=compaction.readSnapshot,compactionKey=checkpointKey+':'+CONTEXT_COMPACTION_CHECKPOINT;
+        let cache=this.contextSummaryCaches.get(compaction);
+        if(!cache){cache=new Map();this.contextSummaryCaches.set(compaction,cache);}
+        const cacheConversationId=(!conversationMessage?this.readDelegatedUserTaskParent(task.taskId)?.conversationId:undefined)
+          ??compactionScope.conversationId;
+        const previous=cache.get(cacheConversationId);
         compacted=await compactConversationContext({scope:compactionScope,policy:compaction.policy,modelConfigurationRef,
+          force:manualCompaction,cacheConversationId,...(previous?{previous}:{}),remember:value=>{
+            cache!.delete(cacheConversationId);cache!.set(cacheConversationId,value);
+            // Bound process-only projections. Eviction regenerates from original history.
+            while(cache!.size>20)cache!.delete(cache!.keys().next().value!);
+          },
           ...(hooks.goalTokenBudget===undefined?{}:{goalTokenBudget:hooks.goalTokenBudget}),
           readSnapshot:()=>{
             const current=eligible(readCompaction());
@@ -1924,6 +1939,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             if(!this.runtime.saveCheckpointOnce(task.taskId,compactionKey,receipt))
               assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,compactionKey),receipt);
           },now:()=>this.now().getTime()});
+      }
+      if(manualCompaction){
+        if(compacted?.state==='compacted')compacted.assertCurrent();
+        return {kind:'text' as const,verification:'unverified' as const,text:compacted?.state==='compacted'
+          ?`上下文已压缩：${compacted.receipt.budget.before.characters} → ${compacted.receipt.budget.after.characters} 字符。原始记录与近期原文已保留；后续消息会复用经来源校验的摘要。`
+          :'当前历史较短，保留近期原文后没有需要压缩的内容。'};
       }
       const context=compacted?.messages??sourceContext;
       const goal=this.compileTaskConversationGoal(task.taskId,request.goal,prepared,context);
@@ -3683,6 +3704,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   testTextConnection(options?: Parameters<TextApplication['testConnection']>[0]) { this.requireLocalText(); return this.textApplication.testConnection(options); }
   close(): void {
     if(this.activeTextTasks.size || this.activeWindowsRecovery.size || this.workspacePatchReconciliation?.activeCount)throw new ProtocolError('REVISION_CONFLICT','Cannot close while workers or recovery are active');
+    this.contextSummaryCaches=new WeakMap();
     this.referenceSkill?.dispose(); this.observationSessions.stopAll(); this.mailReadSessions.stopAll();
     const taskIds=new Set([...this.ephemeralSends.keys()].filter(key=>!this.teacherLeases.has(key)));
     for(const scope of this.teacherLeases.values())taskIds.add(scope.taskId);
@@ -4649,6 +4671,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const goal = request.operation === 'task.submit' ? request.payload.goal : undefined;
     const conversationId = request.operation === 'task.submit' ? request.payload.conversationId : undefined;
     if (typeof taskId !== 'string' || typeof goal !== 'string' || typeof conversationId !== 'string' || this.activeTextTasks.has(taskId)) return;
+    if(this.profile==='huawei_ict_agentarts'&&isContextCompactionCommand(goal)&&this.runtime.getTask(taskId).state==='created')
+      this.runtime.saveCheckpoint(taskId,CONTEXT_COMPACTION_COMMAND,true);
     this.dispatchAcceptedTextTask(taskId,goal,conversationId,request.deadline);
   }
 
@@ -4660,10 +4684,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId, 'competition-configuration-binding', this.coordinationBinding);
       this.runtime.saveCheckpoint(taskId, 'application-goal', goal);
       this.runtime.saveCheckpoint(taskId, 'application-deadline', deadline);
+      const manualCompaction=this.runtime.loadCheckpoint(taskId,CONTEXT_COMPACTION_COMMAND)===true;
       let preference:ReturnType<NonNullable<RuntimeApplicationOptions['readConversationPreference']>>;
       try {
-        preference=this.readConversationPreference?.(conversationId);
-        const selected=preference?.executionModel??this.readDefaultExecutionModel?.('primary');
+        preference=manualCompaction?undefined:this.readConversationPreference?.(conversationId);
+        const selected=manualCompaction?undefined:preference?.executionModel??this.readDefaultExecutionModel?.('primary');
         if(selected)this.runtime.saveCheckpoint(taskId,'execution-model',parseExecutionModelSelection(selected));
       } catch {
         this.runtime.transitionTask(taskId,'failed',{error:{code:'UNSUPPORTED_CAPABILITY',message:'当前部署模型目录或执行模型不可用，请刷新目录后重新提交',retryable:false}});
@@ -4680,14 +4705,31 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId, 'task-thinking', {depth:config.depth,fast:config.fast,maxSteps});
       if (preference?.modelId) this.runtime.saveCheckpoint(taskId,'task-model-preference',{
         modelId:preference.modelId,...(preference.configurationRef?{configurationRef:preference.configurationRef}:{})});
-      if(this.delegateUserTasks) {
+      if(this.delegateUserTasks&&!manualCompaction) {
         const selected=this.runtime.loadCheckpoint(taskId,'execution-model') as ExecutionModelSelection|undefined;
         this.runtime.saveCheckpoint(taskId,USER_TASK_DELEGATION,{version:'1.0',parentTaskId:taskId,goal,deadline,maxSteps,
           subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal,thinkingDepth:config.depth,
             ...(selected?{model:selected.modelId,...(selected.reasoningEffort?{reasoningEffort:selected.reasoningEffort}:{})}:{})}});
       }
-      const catalog=this.taskCompetitionCatalog(taskId);
-      const execution = Promise.resolve().then(() => startCoordinationTask(
+      const catalog=manualCompaction?undefined:this.taskCompetitionCatalog(taskId);
+      const execution = Promise.resolve().then(() => manualCompaction?this.runtime.runTask(taskId,async context=>{
+        context.reportProgress({stepId:'context-compaction',label:'压缩上下文',completedUnits:0,totalUnits:1});
+        try {
+          if(!this.coordination)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Context host unavailable');
+          const result=await this.coordination.execute({taskId,goal,revision:this.runtime.getTask(taskId).revision,
+            deadline:context.deadline,signal:context.signal});
+          if(result.kind!=='text')throw new ProtocolError('INVALID_ARGUMENT','Unexpected compaction result');
+          return {resultSummary:result.text};
+        }catch(error){
+          const code=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
+          const message=code==='UNSUPPORTED_CAPABILITY'?'请在设置 → 模型 → 开发者 Harness 中配置可用摘要模型并启用自动压缩'
+            :code==='CANCELLED'?'上下文压缩已取消，原始记录保留'
+            :code==='TIMEOUT'?'上下文压缩超时，原始记录保留'
+            :code==='UNAUTHORIZED'||code==='REVISION_CONFLICT'?'来源、配置或出机许可已变化，压缩未生效；原始记录保留'
+            :'上下文压缩未完成，请检查摘要模型及预算；原始记录保留';
+          throw new ProtocolError(code,message);
+        }
+      },{deadline,sideEffect:'read'}):startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
         {retainPriorToolResults:this.retainPriorToolResults,toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
