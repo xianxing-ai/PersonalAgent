@@ -47,6 +47,23 @@ test('one card receives tool, connector and bounded export requirements without 
   f.host.close();
 });
 
+test('repeated preparation cannot extend a decision deadline or change the original invocation deadline',async()=>{
+  const f=fixture(),originalDeadline=f.scope.deadline;
+  const earlier=new Date(Date.parse(originalDeadline)-30000).toISOString();
+  const later=new Date(Date.parse(originalDeadline)-10000).toISOString();
+  f.prepare();
+  f.host.prepare(f.scope,{decisionDeadline:earlier});
+  f.host.prepare(f.scope,{decisionDeadline:later});
+  f.prepare();
+  assert.throws(()=>f.host.prepare(f.scope,{decisionDeadline:new Date(Date.parse(originalDeadline)+1).toISOString()}),{code:'UNAUTHORIZED'});
+  f.task.state='waiting_approval';
+  const decision=f.host.requestToolAuthorization(f.scope);
+  assert.equal(f.host.snapshot()[0].expiresAt,earlier);
+  assert.equal(f.scope.deadline,originalDeadline);
+  f.respond('allow_once');assert.equal(await decision,'allow_once');
+  f.host.close();
+});
+
 test('running original export checks reuse the exact consumed requirement without a completed receipt',async()=>{
   const f=fixture();f.prepare();f.task.state='waiting_approval';const decision=f.host.requestToolAuthorization(f.scope);
   f.respond('allow_once');await decision;f.task.state='running';

@@ -21,11 +21,14 @@ export async function requestTaskCancellation(client, taskId, refreshTask) {
   return {...result, state: task.state};
 }
 
-export function submitConversationTask(client, payload, {competition = false} = {}) {
+export function submitConversationTask(client, payload, {competition = false, contextCompaction = false} = {}) {
   // Runtime persists the submit request's deadline for the complete task.
   // Client's 10s RPC default is too short for a deployed cloud workflow.
+  const competitionTimeoutMs = 30 * 60_000;
   return client.call('task.submit', payload, {
     idempotencyKey: crypto.randomUUID(),
-    ...(competition ? {timeoutMs: 30 * 60_000} : {}),
+    // Summary consent and segmented model calls share the immutable task deadline.
+    // Reserve at least 600s at submission without shortening the longer cloud budget.
+    ...(competition ? {timeoutMs: contextCompaction ? Math.max(competitionTimeoutMs, 600_000) : competitionTimeoutMs} : {}),
   });
 }

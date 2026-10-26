@@ -45,7 +45,7 @@ async function fixture(t) {
     // This cancellation/readback fixture has no Harness event consumer installed.
     harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,
     conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
-    notifications: new Map(), structuredClone, eventBusy: false, eventCursor,
+    notifications: new Map(), structuredClone, eventBusy: false, eventCursor, taskReadbackAt:0,
     runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
@@ -56,6 +56,64 @@ async function fixture(t) {
   return {app, task, tasks, approvals, eventCursor, published, calls, context, jobs,
     refresh: context.refresh, pump: context.pumpEvents, cancel: taskId => cancel(panel, 'task.cancel', taskId)};
 }
+
+test('a missing completion event is recovered from Runtime without reloading the renderer',async t=>{
+  const f=await fixture(t);
+  await f.app.runtime.runTask(f.task.taskId,async()=>({resultSummary:'Synthetic completion'}),
+    {deadline:new Date(Date.now()+60000).toISOString(),sideEffect:'read'});
+  const completed=f.app.runtime.getTask(f.task.taskId);
+  f.tasks.set(f.task.taskId,{...completed,state:'running',revision:completed.revision-1});
+  f.context.runtimeConnection={readEvents:async()=>[]};
+  await f.pump();
+  assert.equal(f.tasks.get(f.task.taskId).state,'succeeded');
+  assert.equal(f.published.at(-1).find(task=>task.taskId===f.task.taskId).state,'succeeded');
+});
+
+test('an event stream error still allows authoritative task state recovery',async t=>{
+  const f=await fixture(t);
+  await f.app.runtime.runTask(f.task.taskId,async()=>({resultSummary:'Synthetic completion'}),
+    {deadline:new Date(Date.now()+60000).toISOString(),sideEffect:'read'});
+  const completed=f.app.runtime.getTask(f.task.taskId);
+  f.tasks.set(f.task.taskId,{...completed,state:'running',revision:completed.revision-1});
+  f.context.runtimeConnection={readEvents:async()=>{throw Error('Synthetic event gap');}};
+  await f.pump();
+  assert.equal(f.tasks.get(f.task.taskId).state,'succeeded');
+});
+
+test('recovery is throttled, retries read failures and never resubmits work',async t=>{
+  const f=await fixture(t);
+  f.tasks.set(f.task.taskId,f.task);
+  f.context.runtimeConnection={readEvents:async()=>[]};
+  const original=f.context.client.call;let reads=0;
+  f.context.client.call=(name,payload)=>{
+    if(name==='task.get'&&++reads===1)return Promise.reject(Error('Synthetic transient read failure'));
+    assert.notEqual(name,'task.submit');return original(name,payload);
+  };
+  await f.pump();await f.pump();assert.equal(reads,1);
+  f.context.taskReadbackAt=0;await f.pump();assert.equal(reads,2);
+});
+
+test('a delayed readback from a replaced Runtime cannot overwrite the current projection',async t=>{
+  const f=await fixture(t);f.tasks.set(f.task.taskId,{...f.task,state:'running'});
+  let release;const original=f.context.client.call;
+  f.context.client.call=(name,payload)=>name==='task.get'
+    ?new Promise(resolve=>{release=()=>original(name,payload).then(resolve);}):original(name,payload);
+  const pumping=f.pump();
+  f.context.runtimeConnection={readEvents:async()=>[]};
+  release();await pumping;
+  assert.equal(f.tasks.get(f.task.taskId).state,'running');assert.equal(f.published.length,0);
+});
+
+test('an already completed projection is republished after a missed final renderer update',async t=>{
+  const f=await fixture(t);
+  f.tasks.set(f.task.taskId,{...f.task,state:'succeeded',resultSummary:'Synthetic finished result'});
+  f.context.runtimeConnection={readEvents:async()=>[]};
+  await f.pump();
+  assert.equal(f.published.at(-1)[0].state,'succeeded');
+  const count=f.published.length;await f.pump();assert.equal(f.published.length,count);
+  f.context.taskReadbackAt=0;await f.pump();assert.equal(f.published.length,count+1);
+  assert.equal(f.calls.some(call=>call.name==='task.get'),false,'terminal tasks are not queried repeatedly');
+});
 
 test('a delayed public event batch cannot replace a cancellation readback, and the cursor keeps advancing', async t => {
   const f = await fixture(t);
@@ -98,6 +156,7 @@ test('a delayed public event batch cannot replace a cancellation readback, and t
 
 test('the actual pump accepts ordinary forward and equal task snapshots and ignores repeated public events', async t => {
   const f = await fixture(t);
+  f.context.taskReadbackAt=Date.now()+2000; // Ordinary events between recovery ticks.
   await f.pump();
   const initial = f.tasks.get(f.task.taskId);
   assert.equal(initial.state, 'created');

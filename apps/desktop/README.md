@@ -227,7 +227,7 @@ Competition 文字接线由可信 Desktop 主进程显式选择，不由 Rendere
 `PA_AGENTARTS_AUTHORIZATION` 请求头值。Authorization 只在每次云调用时由主进程
 读取，不进入任务正文、Renderer 快照、日志或仓库。缺少或非法配置会让 Runtime
 初始化或调用明确失败；Competition 模式不会回退到盘古、Local Agent 或 Fake。
-Competition 的 `task.submit` 使用 180 秒请求 deadline，以覆盖多工作流编排；该 deadline
+Competition 的 `task.submit` 使用 30 分钟请求 deadline，以覆盖多工作流编排；该 deadline
 仍由 Client 写入请求并贯穿 TaskRuntime 与 AgentArts 调用。本地取消或超时沿现有契约
 传递：任务 deadline 到期时 Runtime 向协调与 AgentArts 调用传播终止信号，用户取消则
 通过 `task.cancel`；提交调用本身超时不等于任务已经停止。上述路径均不自动重试，
@@ -239,6 +239,7 @@ Local 配置误写成 AgentArts 状态。
 Competition 对话提交显式提供 30 分钟任务期限，覆盖云端工作流与本地后续处理；
 回答提前完成时立即返回，用户仍可取消。状态查询继续使用 Client 的 10 秒 RPC 默认值。
 此期限经公开请求传给 Runtime，不能把默认 RPC 期限误当成整个云端任务的执行预算。
+#521 原先在 180 秒基线上采用 600 秒总预算；本次兼容整合将其作为最低预留，不缩短 #503 已有的 30 分钟，两种 Competition 模式均为 30 分钟；摘要确认及单次摘要请求仍各受 180 秒和原任务剩余期限约束。
 子任务沿用原父任务的绝对 deadline，派发与恢复均不重新获得 30 分钟；云端未显式配置
 `PA_AGENT_TIMEOUT_MS` 时同样跟随该 deadline。部署仍设置较短上限时会提前超时。
 

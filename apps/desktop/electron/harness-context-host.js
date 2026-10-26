@@ -64,7 +64,9 @@ export function createDesktopHarnessContextHost({readConfiguration,modelApi,getA
         assertSourceBinding();
         const isolated=modelApi.getGuardedModelGateway(modelId,configurationRef,()=>{assertSourceBinding();beforeSend();});
         if(!isolated)unavailable();
-        return isolated.complete(request);
+        // Human confirmation may consume minutes; each actual model send still
+        // has its own bounded execution time inside the original task deadline.
+        return isolated.complete({...request,deadline:new Date(Math.min(Date.parse(request.deadline),now()+180000)).toISOString()});
       }});
     return summarizeWithModel(input);
   };

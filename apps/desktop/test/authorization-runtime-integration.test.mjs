@@ -95,6 +95,37 @@ test('no-cloud original Competition Runtime serves local intent cards and reject
   assert.equal(writes,1);intent.close();question.close();await wait(()=>app.activeTaskCount===0);app.close();
 });
 
+test('summary wait expiry ends the real authorization task and a late decision cannot revive it',async t=>{
+  let app,expire;
+  const schedule=globalThis.setTimeout;
+  t.mock.method(globalThis,'setTimeout',(callback,delay,...args)=>{
+    if(delay>179000&&delay<=180000)expire=callback;
+    return schedule(callback,delay,...args);
+  });
+  const directory=mkdtempSync(new URL('summary-wait-',cache));
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,
+    namespace:'Synthetic',resolveConversation:()=> 'Synthetic summary',available:()=>true,
+    profiles:[{ref:'app',label:'Synthetic app policy',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'app'});
+  const intent=createDesktopAuthorizationIntentHost({getApplication:()=>app,question,openConversation(){}});
+  app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'Synthetic',
+    tools:[intent.tool],hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],requiresToolAuthorization:()=>true,
+    requestToolAuthorization:scope=>{intent.prepareQuestion(scope);return question.requestToolAuthorization(scope);}});
+  t.after(async()=>{intent.close();question.close();await wait(()=>app.activeTaskCount===0);app.close();});
+  const operation=intent.request({action:'harness.export',payload:{synthetic:true},scope:{},summary:'Synthetic summary',
+    deadline:new Date(Date.now()+600000).toISOString(),isCurrent:()=>true});
+  const card=await wait(()=>question.snapshot().find(item=>item.state==='pending'));
+  assert.ok(Date.parse(card.expiresAt)<=Date.now()+180000);
+  const invocation=app.readAuthorizationQuestionInvocation(card.taskId,'host-tool-'+card.taskId);
+  assert.ok(Date.parse(invocation.deadline)>Date.parse(card.expiresAt),'original task deadline is preserved');
+  assert.equal(typeof expire,'function');expire();
+  assert.equal(await operation,false);
+  assert.equal(app.runtime.getTask(card.taskId).state,'failed');
+  await assert.rejects(async()=>question.respond({questionId:card.questionId,expectedRevision:card.revision,
+    decision:'allow_once'},card.conversationId));
+  assert.equal(app.runtime.getTask(card.taskId).state,'failed');
+  assert.ok(app.runtime.readToolExecutions(card.taskId).every(item=>item.executionStarted===false));
+});
+
 test('original microphone intent publishes its SQLite question before an unverified native executor is needed',async t=>{
   let app,native,preparationError;const directory=mkdtempSync(new URL('microphone-intent-',cache));
   const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,

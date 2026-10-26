@@ -29,8 +29,10 @@ test('ready empty todo and unconfigured subscriptions explain the missing data w
  const html=connectorCards({todo:{available:true,items:[]},feeds:{configured:false,available:false,subscriptions:[]}},escape);
  assert.match(html,/待添加订阅/);assert.match(html,/本地待办已就绪/);assert.doesNotMatch(html,/连接服务后|订阅服务未连接/);
 });
-test('connector entry points use the existing main composer and the actual source settings page',()=>{
- assert.deepEqual(connectorDestination('weather'),{draft:'查询天气：'});
+test('connector entry points configure or refresh weather and use the actual source settings page',()=>{
+ assert.deepEqual(connectorDestination('weather'),{configure:'weather'});
+ assert.deepEqual(connectorDestination('weather',{weather:{configured:false}}),{configure:'weather'});
+ assert.deepEqual(connectorDestination('weather',{weather:{configured:true}}),{action:'weather.refresh'});
  assert.deepEqual(connectorDestination('obsidian'),{page:'memory'});
  for(const id of ['mail','feeds','calendar'])assert.deepEqual(connectorDestination(id),{page:'connections'});
 });
