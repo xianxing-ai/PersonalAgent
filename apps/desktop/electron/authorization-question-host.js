@@ -106,16 +106,19 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       ||value.deadline!==scope.deadline)denied();
     return {...value,signal:scope.signal};
   }
-  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent}={}) {
+  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline}={}) {
     const source=original(scope),identity=key(source),prior=preparations.get(identity);
     if(operations.has(identity))denied();
     const requested=structuredClone(requirements);
     if(prior&&prior.argumentsDigest!==source.argumentsDigest)denied();
     if(prior?.taskConsent&&taskConsent&&!same(prior.taskConsent,taskConsent))denied();
+    if(decisionDeadline!==undefined&&(!Number.isFinite(Date.parse(decisionDeadline))||Date.parse(decisionDeadline)>Date.parse(source.deadline)))denied();
     const merged=new Map((prior?.requirements??[]).map(item=>[item.requirementId,item]));
     for(const requirement of requested){const old=merged.get(requirement.requirementId);if(old&&!same(old,requirement))denied();merged.set(requirement.requirementId,requirement);}
     preparations.set(identity,{...requestFields(source),requirements:[...merged.values()],
       ...((taskConsent??prior?.taskConsent)?{taskConsent:structuredClone(taskConsent??prior.taskConsent)}:{}),
+      decisionDeadline:new Date(Math.min(Date.parse(source.deadline),Date.parse(decisionDeadline??source.deadline),
+        Date.parse(prior?.decisionDeadline??source.deadline))).toISOString(),
       assertCurrent:()=>assertCurrent()&&(prior?.assertCurrent?.()??true)});
   }
   function buildRequest(source,prepared){
@@ -150,7 +153,8 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
           {questionId:receipt.questionId,parentQuestionId:derived.parent.receipt.questionId,requirementId:derived.requirementId,
             ...(derived.kind==='intent'?{operationDigest:derived.operationDigest}:{batchId:derived.batchId}),argumentsDigest:source.argumentsDigest,deadline:source.deadline});
         batchDerivations.delete(identity);
-      }else receipt=await api.request(request,current,expiry);
+      }else receipt=await api.request(request,current,new Date(Math.min(Date.parse(expiry),
+        Date.parse(prepared?.decisionDeadline??expiry))).toISOString());
       if(receipt.decision==='deny')return 'deny';
       stage='tool-requirement';
       api.consume(receipt,request,'tool',source.runId+':tool');
