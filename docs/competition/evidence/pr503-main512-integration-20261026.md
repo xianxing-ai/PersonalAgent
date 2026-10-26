@@ -45,6 +45,10 @@ exit 0：65/65 pass，0 fail / 0 skip。包含原 mail/Laya 32 项、Runtime 接
 消费 Synthetic 邮件固定结果与额外字段拒绝。`node --check apps/desktop/electron/main.js`
 及 `git diff --check` 均通过。
 
+这两项 SQLite 邮件集成不注入孤立 submitting 的崩溃窗口，不能升级本次 P2 恢复的
+验收等级；P2 持久恢复仍仅由原 structuredClone trusted-host-state fixture 验证，属于
+Synthetic，尚未做生产 SQLite 崩溃恢复验收。
+
 忽略目录 `.cache/pr503-main512-integration/` 日志 SHA256：
 
 - build.log：`f66327646b252c7904f30076b105f4ad9bb3334504daaa39dec0fc887f9754aa`
