@@ -1,0 +1,80 @@
+{
+  "logs": [
+    {
+      "path": ".cache/image-audit/workflow-runs.json",
+      "bytes": 2816,
+      "sha256": "cd4ca394324c2944bc0da8f0506e53d7e76f3b722f24ab724256e6abaa5fb07d"
+    },
+    {
+      "path": ".cache/image-audit/latest-release.json",
+      "bytes": 5240,
+      "sha256": "b27d5e30319da6679dfb392c283aa12d645eb9cf2bd56756a712df1a5f14aa00"
+    },
+    {
+      "path": ".cache/image-audit/ghcr-tags.json",
+      "bytes": 725,
+      "sha256": "49c868552056101fec4af0a8ca6a28e82cbd1bbb6a6d3b8586fcf40000432184"
+    },
+    {
+      "path": ".cache/image-audit/ghcr-tag-configs.json",
+      "bytes": 5117,
+      "sha256": "a937e2713279adc0e4fbee4d7a16323b453af005ffff2ac28461d1d548e41c99"
+    },
+    {
+      "path": ".cache/image-audit/registry-versions.json",
+      "bytes": 216,
+      "sha256": "aed76efe88365b1e2872556c07d877bfe78349bf4131023cbda30eda85afc7b0"
+    },
+    {
+      "path": ".cache/image-audit/latest-workflow-manifest.txt",
+      "bytes": 963,
+      "sha256": "f7c9d2d8dbb45b1829a391299f4021415b3dc9cde02aa91a97e249ef08546c53"
+    },
+    {
+      "path": ".cache/image-audit/swr-release-manifest.txt",
+      "bytes": 352,
+      "sha256": "b27c3557b4ae848ed5cf3c4ccb3a4435a052793ccf7268a24917564748819393"
+    },
+    {
+      "path": ".cache/image-audit/ghcr-pull.log",
+      "bytes": 497,
+      "sha256": "847dee48a5a2ad755706465715d877b335e76182b52deb47f216e61820808c96"
+    },
+    {
+      "path": ".cache/image-audit/arm64-exec.log",
+      "bytes": 44,
+      "sha256": "2a819257885e04f4f519118639b107414bebbae0a88265055efdd7aa5e1f534d"
+    },
+    {
+      "path": ".cache/image-audit/arm64-qemu-identity.log",
+      "bytes": 54,
+      "sha256": "eaade44c050c6264ace4d82b3a07fcc1fb241d3b595b1bbb6203b1011b118679"
+    },
+    {
+      "path": ".cache/image-audit/existing-server.log",
+      "bytes": 53,
+      "sha256": "b806ec3fdf56817f31495143e914d255446236b74da9374f43564f3567f81816"
+    },
+    {
+      "path": ".cache/image-audit/ping.http",
+      "bytes": 256,
+      "sha256": "2371c769f5b530905ae1ac29cd09111452a411d761b1a6f884e9dbe836b6bbe6"
+    },
+    {
+      "path": ".cache/image-audit/bindings-unauthorized.http",
+      "bytes": 246,
+      "sha256": "ce9a1744cd523b0b93d699b2c248b56d7c1d4df998f76244a5805c22d6ef442c"
+    },
+    {
+      "path": ".cache/image-audit/bindings-bearer.http",
+      "bytes": 2543,
+      "sha256": "d39012cfac83a54b6f76325c1fc3031ecc32fce7afeb0325609c6846d04d9fde"
+    },
+    {
+      "path": ".cache/image-audit/invocation-invalid.http",
+      "bytes": 288,
+      "sha256": "1fce9fbe87fa0ef3fb71684ec884b68bd02c5dfccf3dca5fd574f609b5a16232"
+    }
+  ],
+  "note": "Original local logs in ignored cache; no registry tokens, real model credentials, payloads or environment dumps."
+}

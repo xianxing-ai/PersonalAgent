@@ -1,3 +1,4 @@
+import {errorDisplayText} from '../shared/error-display.js';
 const $=id=>document.getElementById(id);
 let state,task,busy=false;
 const labels={unconfigured:'未配置',unavailable:'安全存储不可用',saved_disconnected:'已保存，默认断开',connected:'本次会话已连接',expired:'凭据已到期',reassembly_required:'配置已变化，请正常退出并重启',revoke_pending:'配置文件清除失败，撤销未完成'};
@@ -16,7 +17,7 @@ function paint(){
   $('tasks').replaceChildren(...state.tasks.map(item=>{const button=document.createElement('button');button.textContent=`${item.taskId} · ${item.state}`;
     button.addEventListener('click',()=>{ $('task-id').value=item.taskId;void act('task',{taskId:item.taskId}); });return button;}));
 }
-async function invoke(name,payload){const value=await window.remoteMcp.invoke(name,payload);if(!value.ok)throw Error(value.error);return value.value;}
+async function invoke(name,payload){const value=await window.remoteMcp.invoke(name,payload);if(!value.ok)throw Error(errorDisplayText(value.error,'ipc'));return value.value;}
 async function update(){state=await invoke('state');if(task)task=await invoke('task',{taskId:task.taskId});paint();}
 async function act(name,payload){
   if(busy && !['disconnect','revoke'].includes(name))return;

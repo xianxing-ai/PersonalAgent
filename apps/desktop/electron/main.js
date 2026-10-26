@@ -1,3 +1,4 @@
+import {errorDisplay,errorDisplayText} from '../src/shared/error-display.js';
 import {handleConversationAction} from './conversation-actions.js';
 import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {createConversationDelivery} from './conversation-delivery.js';
@@ -616,7 +617,8 @@ function taskResultMetadata(task) {
 
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
-  return value && {...value,reason:cloudRequestFailureNotice || cloudTransportNotice || value.reason};
+  const failure=cloudRequestFailureNotice || cloudTransportNotice;
+  return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason};
 }
 
 function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
@@ -627,7 +629,7 @@ function snapshot(surface) {
     taskId=>runtimeApplication.runtime.getTask(taskId),parent=>visibleConversationTask(parent,'workspace')):[];
   return {
     connection: connectionLabel,
-    connectionError: runtimeError || cloudRequestFailureNotice || cloudTransportNotice,
+    connectionError: (runtimeError || cloudRequestFailureNotice || cloudTransportNotice) ? errorDisplayText(runtimeError || cloudRequestFailureNotice || cloudTransportNotice,'runtime') : undefined,
     fakeModel: fakeModelMode,
     fake: fakeMode,
     pinned,
@@ -638,6 +640,7 @@ function snapshot(surface) {
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
     tasks: orderedTasks().filter(task=>visibleConversationTask(task,surface)).map(original => {const task=conversationDelivery.project(original);return ({...structuredClone(task),
+      ...(task.error?{error:{...task.error,...errorDisplay(task.error,'task')}}:{}),
       reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
       resultMetadata:taskResultMetadata(task),
       createdAt: conversations?.turns.get(task.taskId)?.createdAt ?? task.createdAt ?? task.updatedAt,
@@ -666,7 +669,7 @@ function snapshot(surface) {
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
     voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
-    model: structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model),
+    model: (()=>{const value=structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model);return value.status==='error'?{...value,reason:errorDisplayText(value.reason,'configuration')}:value;})(),
     agentArtsModels:agentArtsModels?.snapshot(),
     modelApi: surface ? undefined : readDesktopModelApiState(),
     harnessContext:surface?undefined:harnessContextHost?.snapshot()??{state:harnessContextFailure?'unavailable':'disabled',
@@ -4163,7 +4166,8 @@ app.whenReady().then(async () => {
     catch (error) {
       if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(args[1]))
         return developerSettingsErrorResponse(error);
-      return {ok: false, error: error instanceof Error ? error.message : '操作失败'};
+      const failure=errorDisplay(error,'ipc');
+      return {ok: false, error: failure.message, errorCode:failure.code};
     }
   });
   // First-run configuration must be reachable even when cloud credentials prevent Runtime startup.

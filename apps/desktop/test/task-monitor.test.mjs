@@ -32,6 +32,6 @@ test('admin task monitor reads steps and Evidence counts without exposing refs o
   assert.match(recovered, /data-state="cancelled">已取消<\/span><\/td><td>4<\/td>/);
   assert.match(recovered, /此前修改已写入/);
   const newer = taskTable({tasks:[{taskId:'task-1',state:'waiting_reconciliation',revision:5}]},escape,new Map(),patches);
-  assert.match(newer, /data-state="waiting_reconciliation">结果待核实<\/span><\/td><td>5<\/td>/);
+  assert.match(newer, /data-state="waiting_reconciliation">执行异常<\/span><\/td><td>5<\/td>/);
   assert.doesNotMatch(newer, /此前修改已写入/);
 });

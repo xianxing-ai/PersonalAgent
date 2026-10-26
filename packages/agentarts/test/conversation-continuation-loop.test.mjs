@@ -31,7 +31,7 @@ test('goal-bound continuation preserves its bounded frozen catalog, prior receip
   assert.equal(parsed.kind,'continuation');assert.equal(parsed.goal,goal);assert.deepEqual(parsed.availableTools,tools);
   assert.deepEqual(parsed.priorContinuations,priorContinuations);assert.deepEqual(parsed.executionModel,executionModel);
   assert.equal(Object.isFrozen(parsed.availableTools),true);assert.equal(Object.isFrozen(parsed.availableTools[1].inputSchema),true);
-  assert.equal(PROMPT_VERSION,'owned-1.9');
+  assert.equal(PROMPT_VERSION,'owned-1.10');
 });
 
 test('ordinary conversation can propose read, preview, apply and check before answering from explicit Fake receipts',async()=>{

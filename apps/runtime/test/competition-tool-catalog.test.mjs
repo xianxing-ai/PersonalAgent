@@ -14,7 +14,7 @@ const descriptor = {
   inputSchema: {type: 'object', required: ['path'], additionalProperties: false,
     description: 'private C:\\Users\\example',
     properties: {path: {type: 'string', minLength: 1, maxLength: 32,
-      description: 'private file name', enum: ['secret-path']},
+      description: 'Workspace relative path', enum: ['secret-path']},
       units: {enum: ['metric', 'imperial']}}},
   outputSchema: {type: 'object', required: ['value'], additionalProperties: false,
     properties: {value: {type: 'string'}}},
@@ -407,7 +407,7 @@ test('task catalog projects only public Schema fields and rechecks before export
     assert.ok(availabilityCalls >= 2);
     assert.deepEqual(observed, [{name: 'fixture.read', version: '1.0.0', inputSchema: {
       type: 'object', required: ['path'], additionalProperties: false,
-      properties: {path: {type: 'string', minLength: 1, maxLength: 32}, units:{type:'string'}},
+      properties: {path: {type: 'string', minLength: 1, maxLength: 32, description:'Workspace relative path'}, units:{type:'string'}},
     }}]);
     assert.doesNotMatch(JSON.stringify(observed), /private|secret-path|Users/);
   } finally {

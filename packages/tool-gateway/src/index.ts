@@ -2,6 +2,7 @@ import { ProtocolError, validateContract, validateToolValue } from '@personal-ag
 import type { RegisteredTool, ToolContext, ToolDescriptor, ToolHost } from '@personal-agent/contracts';
 import type { PolicyPort } from '@personal-agent/policy';
 import {createHash} from 'node:crypto';
+import {toolFailure} from './tool-failure.js';
 
 export function toolArgumentsDigest(value: unknown): string {
   const canonical = (item: unknown): string => {
@@ -95,10 +96,6 @@ export class ToolGateway implements ToolHost {
     const interruption = new Promise<never>((_, reject) => {
       const rejectFor = (code: 'CANCELLED' | 'TIMEOUT', message: string): void => {
         controller.abort();
-        if (tool.descriptor.sideEffect !== 'read') {
-          reject(new ProtocolError('RESULT_UNKNOWN', `${message}; reconcile the external result before retrying`));
-          return;
-        }
         reject(new ProtocolError(code, message));
       };
       onAbort = () => rejectFor('CANCELLED', 'Tool invocation was cancelled');
@@ -116,17 +113,17 @@ export class ToolGateway implements ToolHost {
       argumentsDigest,
       scopes: decision.scopes,
     };
+    let stage: 'execute' | 'output_validation' = 'execute';
     try {
       const result = await Promise.race([
         tool.execute(structuredClone(invocation.arguments), context),
         interruption,
       ]);
+      stage = 'output_validation';
       validateToolValue(tool.descriptor.outputSchema, result);
       return structuredClone(result);
     } catch (error) {
-      if (tool.descriptor.sideEffect !== 'read') throw new ProtocolError('RESULT_UNKNOWN', 'Write tool did not return a verified result; reconcile before retrying');
-      if (error instanceof ProtocolError) throw error;
-      throw new ProtocolError('EXTERNAL_FAILURE', 'Tool execution failed');
+      throw toolFailure(error, stage, tool.descriptor.sideEffect !== 'read');
     } finally {
       if (timer) clearTimeout(timer);
       invocation.signal.removeEventListener('abort', onAbort);

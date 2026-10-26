@@ -1,3 +1,5 @@
+import {historicalMailCard} from './mail-history-card.js';
+
 const previews = {
   weather: '<p class="connector-empty">暂无天气数据，点击后在主对话填写要查询的城市。</p>',
   calendar: '<p class="connector-empty">暂无待办记录，可在主对话创建或查询。</p>',
@@ -77,6 +79,8 @@ const definitions = [
           footer: '邮箱未配置',
         };
       }
+      const historical = historicalMailCard(data.mail, escape);
+      if (historical) return historical;
       const hasUnread = typeof data.mail.counts?.unread === 'number';
       const unreadText = hasUnread ? `${data.mail.counts.unread} 封未读` : (data.mail.status === 'ready' ? '未同步未读数' : '尚未拉取邮件');
       return {

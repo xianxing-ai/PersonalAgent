@@ -63,7 +63,20 @@ export function parseEvent(value: unknown): Event {
 export function validateContract(name: 'snapshot' | 'tool' | 'connector' | 'evidence' | 'connectorItem' | 'connectorAction', value: unknown): void {
   check(validator(name), value);
 }
-export function validateToolValue(schema: object, value: unknown): void { check(ajv.compile(schema), value); }
+export function validateToolValue(schema: object, value: unknown): void {
+  const valid=ajv.compile(schema);
+  if(valid(value))return;
+  const issue=valid.errors?.[0];
+  const allowedKeywords=new Set(['required','type','enum','const','minimum','maximum','minLength','maxLength','pattern','format','additionalProperties','minItems','maxItems','oneOf','anyOf']);
+  const keyword=issue&&allowedKeywords.has(issue.keyword)?issue.keyword:'schema';
+  const properties=(schema as {properties?:Record<string,unknown>}).properties;
+  const candidate=issue?.keyword==='required'?issue.params.missingProperty:issue?.instancePath.split('/')[1];
+  // Only a property declared by the registered schema may be named. Never copy
+  // additionalProperties, values, paths, regex patterns or AJV's raw message.
+  const field=typeof candidate==='string'&&/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(candidate)
+    &&properties&&Object.hasOwn(properties,candidate)?candidate:undefined;
+  throw new ProtocolError('INVALID_ARGUMENT',`Tool value violates schema [keyword=${keyword}${field?`; field=${field}`:''}]`);
+}
 export function encodeFrame(message: Request | Response | Event): Uint8Array {
   const bytes = new TextEncoder().encode(JSON.stringify(message) + '\n');
   if (bytes.length > MAX_FRAME_BYTES) throw new ProtocolError('INVALID_ARGUMENT', 'Frame exceeds 1 MiB');
