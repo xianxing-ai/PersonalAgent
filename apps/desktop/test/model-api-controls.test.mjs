@@ -34,6 +34,7 @@ class Element {
   querySelectorAll(selector){return this.children.flatMap(child=>[...(child.matches(selector)?[child]:[]),...child.querySelectorAll(selector)]);}
   querySelector(selector){return this.querySelectorAll(selector)[0]??null;}
   get elements(){return {namedItem:name=>this.querySelectorAll('input,select,textarea,button').find(node=>node.attributes.get('name')===name)??null};}
+  get valueAsNumber(){return Number(this.value);}
   addEventListener(type,listener,options={}){this.listeners.set(type,listener);
     options.signal?.addEventListener('abort',()=>{if(this.listeners.get(type)===listener)this.listeners.delete(type);},{once:true});}
   contains(node){return node===this||this.children.some(child=>child.contains(node));}
@@ -56,11 +57,39 @@ function fixture(t,invoke){
   const settings=root.children[0],fields=Object.fromEntries(settings.querySelectorAll('[data-model-api]')
     .map(node=>[node.dataset.modelApi,node]));
   const efforts=settings.querySelectorAll('[data-model-effort]'),controls=settings.querySelectorAll('input,select,button');
-  return {fields,efforts,controls,settings,ui,save:()=>fields.save.onclick(),remove:()=>fields.remove.onclick()};
+  return {root,fields,efforts,controls,settings,ui,save:()=>fields.save.onclick(),remove:()=>fields.remove.onclick()};
 }
 
 function model(){return {id:'synthetic',provider:'openai-compatible',displayName:'Synthetic',baseUrl:'https://synthetic.invalid/v1',
   model:'synthetic-model',configurationRef:'synthetic-ref',enabled:true,available:true,reasoningEfforts:['low']};}
+
+test('automatic context defaults are editable and require explicit model selection and save',async t=>{
+  const calls=[],f=fixture(t,(operation,payload)=>{calls.push({operation,payload});return {models:[model()]};});
+  f.ui.render({models:[model()]});
+  const field=name=>f.root.querySelector(`[data-harness="${name}"]`);
+  assert.equal(field('contextEnabled').checked,false);assert.equal(calls.length,0);
+  assert.equal(Number(field('triggerCharacters').value),96000);assert.equal(Number(field('targetCharacters').value),64000);
+  field('contextEnabled').checked=true;await field('save').onclick();assert.equal(calls.length,0);
+  field('recommend').onclick();assert.equal(calls.length,0);
+  field('modelId').value='synthetic';
+  for(const node of f.root.querySelectorAll('input'))if(node.attributes.get('type')==='number')node.value=String(node.value);
+  await field('save').onclick();
+  assert.equal(calls.length,1);assert.equal(calls[0].operation,'modelApi.harness.configure');
+  assert.equal(calls[0].payload.context.configurationRef,'synthetic-ref');
+  assert.equal(calls[0].payload.context.policy.maxCharacters,128000);
+  assert.equal(calls[0].payload.context.policy.retainMessages,8);
+});
+
+test('existing context policy is preserved until the recommendation is explicitly selected',t=>{
+  const f=fixture(t,()=>assert.fail('Rendering must not save'));
+  f.ui.render({models:[model()],harness:{revision:'existing',enabled:false,context:{enabled:true,modelId:'synthetic',
+    configurationRef:'synthetic-ref',maxOutputTokens:500,policy:{triggerCharacters:12000,targetCharacters:9000,
+      maxCharacters:16000,retainMessages:2,maxSourceMessages:40,segmentCharacters:7500,maxSummaryCharacters:120}}}});
+  const field=name=>f.root.querySelector(`[data-harness="${name}"]`);
+  assert.equal(Number(field('triggerCharacters').value),12000);assert.equal(Number(field('maxOutputTokens').value),500);
+  field('recommend').onclick();assert.equal(Number(field('triggerCharacters').value),96000);
+  assert.equal(field('modelId').value,'synthetic');
+});
 
 test('budget-only refresh preserves configuration drafts and hides results after destination edits', t=>{
   const f=fixture(t,()=>{});

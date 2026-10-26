@@ -1,5 +1,29 @@
 # 原生 Harness 会话上下文压缩（2026-10-20）
 
+## 2026-10-23 自动压缩与手动命令
+
+本轮目标：在 `huawei_ict_agentarts` 原 Runtime / Desktop 链上提供可配置自动压缩和用户命令，不更换主模型或新增工具授权。独立工作树 `.worktrees/context-auto-compact`，基线为 128,000 字符扩容提交 `d87637b4`。
+
+- 设置入口仍为「模型 → 开发者 Harness → 会话上下文自动压缩」。首次显示推荐预算：96,000 字符触发、64,000 字符目标、128,000 字符硬上限，保留最近 8 条消息（边界上的同一任务问答一并保留），最多读取 2,000 条合资格来源，每段 32,000 字符，摘要每段最多 4,000 字符，输出预算 2,048 tokens。须用户选择已保存模型、勾选并保存；旧配置与旧自定义预算不被自动覆盖。
+- 启用后每轮在最终发送之前按真实序列化字符数判断，存在受信 tokenizer 时同时检查 token 预算。达到阈值则压缩旧历史；当前目标、近期原文与实际工具 continuation 保持原值。目标和尾部已超预算时在模型调用前拒绝，不偷偷删历史。
+- 主对话单独发送 `/压缩` 或 `/compact`，沿原 `task.submit` 生成 Runtime 管理任务并立即执行同一压缩算法，即使尚未达到触发阈值。不派发执行子任务、不调用工具、不把命令发给主模型。只有当前用户提交的完整命令生效；历史或模型中出现命令字符串不会触发。任务进行中须先等待或停止，不以压缩命令截断在途操作。
+- 结果展示压缩前后字符数；没有可压缩的旧消息则明确返回无需压缩。取消、超时、来源/配置变化或预算失败保留原始历史，失败不谎报压缩成功。摘要可能丢失细节，原历史仍为事实来源，不能保证语义无损。
+- 成功后复用进程内摘要前缀，加上后续新增原文；新输入低于触发阈值时不重复请求摘要模型。再次接近阈值时从原历史重新生成，避免反复压缩摘要导致误差累积。缓存绑定原会话、源配置、模型版本、完整策略及前缀内容/身份/状态摘要，使用和最终发送前重验原来源。不同会话、撤回、更正和模型/策略变化不能沿用旧摘要。缓存限 20 个会话，关闭和副本清除会释放；不持久化摘要正文，重启后重新生成。
+- 主对话委派的执行子任务通过 Runtime 原 `readDelegatedUserTaskParent` 验证来源主会话身份后复用其摘要；发送与出机许可仍绑定实际执行任务。独立子智能体追加会话继续使用自己的原生历史与自动阈值，不借用其他会话缓存。手动命令入口为主对话；独立子对话仍沿原消息语义。
+- 模型凭据、精确出机确认、取消及截止时间沿原宿主。自动触发不代表取消出机确认；新材料仍走既有授权卡。没有辅助模型时明确提示配置，不能把 AgentArts 主模型或本地模型自动当成摘要模型。
+
+兼容性：无 Core wire、Schema 或数据库迁移；仅增加 host-only 压缩选项和过程内缓存。保留原 TaskRuntime 检查点摘要、来源重验和重启漂移拒绝语义。自动预算和命令测试、真实服务边界见本轮验收记录；本实现不等于已配置用户摘要模型或完成真实云验收。
+
+### 本轮验收记录
+
+- 独立工作树完整 `npm run build` 通过；最终定向 Runtime / Desktop 六文件回归 132/132 通过（`.cache/context-tests-complete.log`）。初轮发现的 DOM 测试节点范围及不成立的 Token 单调假设已修正。
+- 定向命令：`node --test --test-concurrency=1 apps/runtime/test/context-compaction.test.mjs apps/runtime/test/context-compaction-model.test.mjs apps/desktop/test/harness-context-host.test.mjs apps/desktop/test/harness-context-integrity-compat.test.mjs apps/desktop/test/model-api-controls.test.mjs apps/desktop/test/harness-main-composition.test.mjs`。合成来源、模型响应和注入 HTTP；未调用真实账号或摘要模型。
+- 覆盖字符阈值边界、手动命令、原主会话到实际委派子任务的缓存复用、跨会话/配置/来源隔离、命令取消、普通引用文本不会误触发及在途任务不会被压缩命令打断。
+- 首次整仓检查发现测试 PATH 缺 PowerShell 7 / OpenSSL，另有目录探测超时断言失败。补齐测试进程路径后，`npm run check` 的架构、契约夹具、生成类型、构建/类型检查通过；Runtime 1173/1173 通过，Desktop 1796 通过、1 项邮件等待超时、10 项跳过，其他 workspace 无失败。整仓命令返回 1，不能宣称全绿（`.cache/full-check-r2.log`）。真实服务与专用宿主缺失的跳过项不计为真实验收。
+- 用户要求不处理邮件；未修改邮件实现。该指示到达前已启动的单文件复跑返回 0，之后不继续排查。根 `npm run test:integration` 单独补跑 57/57 通过（`.cache/integration-check.log`）；该结果不改写整仓命令的失败记录。最终 `git diff --check` 通过。
+- 本次未修改本机正式用户配置、未启动新生产版本、未上传镜像或发布云端；未提交、推送或创建新的 PR。正式使用须运行本分支并配置明确的辅助模型与出机许可。
+- 推荐每段 32,000 字符按完整消息划分，单条历史消息超过此限制时明确失败，须按摘要模型实际能力调整预算；超过 2,000 条来源同样不会静默截断。字符预算与模型 Token 容量分别校验，缺计量器时仍标记 `unmeasured`。
+
 目标 Profile 为 `huawei_ict_agentarts`。本包增强原 Coordination 与持久子智能体会话的历史输入，不新增任务库、模型调度器、执行循环或授权入口。主对话保留交互、澄清与汇总，实际执行继续由原产品子智能体负责。
 
 ## 实际消费路径
@@ -43,4 +67,4 @@ Harness 配置不重复存 API Key。Key 继续由原加密模型设置托管。
 
 `apps/runtime/test/context-compaction.test.mjs` 与 `context-compaction-model.test.mjs` 包含纯端口与实际 Runtime/Coordination 消费的 Synthetic 验证：完整尾部、来源变更/撤回、取消/到期、凭据等待后的最终发送拦截、预算与无进展、重启哈希/摘要漂移、超过二十条的原持久子会话，以及当前真实工具 continuation 原值保留。测试不调用真实模型/云，不构成真实平台验收。
 
-`apps/desktop/test/harness-context-host.test.mjs` 包含真实公开 ModelGateway/OpenAI Provider 和注入 Synthetic HTTP 的 Desktop 宿主链验证场景：精确目的地/材料确认、凭据等待后撤回零发送、并行独立门禁、配置撤销、原私人绑定拒绝、提交前预检和整个 Runtime 消费。当前整段实现优先，最终联合回归和新增设置页渲染 QA 待全部接线完成后统一执行。它不调用用户真实模型、不读取用户 Key，也不等于真人确认、真实云平台或实体设备验收。Desktop 默认关闭；启用需上述明确配置与逐段出机确认。真实摘要模型、AgentArts 平台整图及实际开发任务验收另行记录，接口维持 provisional。
+`apps/desktop/test/harness-context-host.test.mjs` 包含真实公开 ModelGateway/OpenAI Provider 和注入 Synthetic HTTP 的 Desktop 宿主链验证场景：精确目的地/材料确认、凭据等待后撤回零发送、并行独立门禁、配置撤销、原私人绑定拒绝、提交前预检和整个 Runtime 消费。2026-10-23 已纳入上述六文件联合回归；设置控件使用测试 DOM 验证，尚未完成实体桌面渲染验收。它不调用用户真实模型、不读取用户 Key，也不等于真人确认、真实云平台或实体设备验收。Desktop 默认关闭；启用需上述明确配置与逐段出机确认。真实摘要模型、AgentArts 平台整图及实际开发任务验收另行记录，接口维持 provisional。

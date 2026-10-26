@@ -4,6 +4,13 @@
 
 ModelGateway 的可选 host-only `RealtimeSession.speakText(text)` 由用户已开启 Live 的同对话新文字任务消费；原 Runtime 成功终态触发，有界排队、task/revision 去重、切换对话/停止/打断丢弃晚到结果。未开启 Live 或 provider 缺端口明确 unavailable；无新公开 voice wire、授权、provider 或任务循环。accepted 不代表音频/播放已验证；实际 response 参数及 item 删除的云兼容性和实体设备仍未验收，不提升冻结状态。见 [接线及本地验证](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
 
+## 2026-10-23 会话自动压缩与命令（provisional）
+
+原 `task.submit` 的用户完整输入 `/压缩` / `/compact` 在 Runtime 内执行历史压缩，不走主模型问答或子任务委派。
+`ContextCompactionOptions` 增加 host-only `force`、`previous`、`remember` 和 Runtime 原委派关系解析的 `cacheConversationId`，原自动阈值链复用经同会话/来源/策略/模型绑定的进程内摘要。
+Desktop 提供明确保存的推荐预算；出机确认、原数据与工具 continuation 保留。无 Core wire、Schema 或数据库迁移。
+实现、失效规则与未验证边界见 [会话压缩说明](../modules/HARNESS_CONTEXT_COMPACTION_20261020.md)。
+
 ## 2026-10-23 缓存邮件信头云端复核（provisional）
 
 Competition Profile 新增受信宿主专用 `mail.review@1.0.0`（`mail:review`），经原 `submitHostToolTask`、Policy 和 ToolGateway 执行；不加入云端业务工具目录。`RuntimeApplicationOptions.mailReview.readEnvelope/assertExport` 仅提供精确绑定的信头投影与同步出机校验。原提问卡分别绑定来源许可、所选模型目的地与固定投影，并在实际发送及返回时校验取消、期限、来源与撤销。

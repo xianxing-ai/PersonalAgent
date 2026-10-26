@@ -46,6 +46,54 @@ test('Synthetic pass leaves a small history unchanged without summarization or a
   assert.equal(result.state,'unchanged');assert.equal(f.calls(),0);assert.equal(f.saved.value,undefined);
 });
 
+test('manual compaction below trigger preserves the tail and caches a projection for later turns',async()=>{
+  let cache;
+  const f=fixture({force:true,remember:value=>{cache=value;}});
+  f.policy.maxCharacters=8000;f.policy.triggerCharacters=8000;
+  const first=await compactConversationContext(f.options),calls=f.calls();
+  assert.equal(first.state,'compacted');assert.ok(cache);
+  f.saved.value=undefined;
+  f.source.messages.push({id:'latest-correction',role:'user',content:'更正：青岛是山东青岛，明天出门，不是今天。'});
+  const next=await compactConversationContext({...f.options,force:false,previous:cache});
+  assert.equal(next.state,'compacted');assert.equal(f.calls(),calls);
+  assert.deepEqual(next.messages.at(-1),f.source.messages.at(-1));
+  assert.deepEqual(next.messages.slice(-3),f.source.messages.slice(-3));
+  assert.equal(next.receipt.sourceCount,9);next.assertCurrent();
+  f.source.messages[0].content='撤回旧条件';
+  assert.throws(()=>next.assertCurrent(),{code:'REVISION_CONFLICT'});
+});
+
+test('cached summaries cannot cross conversation/model/policy/source changes or a restart',async t=>{
+  for(const change of ['conversation','model','policy','source','delete','restart'])await t.test(change,async()=>{
+    let cache;const f=fixture({remember:value=>{cache=value;}});
+    await compactConversationContext(f.options);const calls=f.calls();f.saved.value=undefined;
+    const options={...f.options,previous:cache,force:true};
+    if(change==='conversation')options.scope={...options.scope,conversationId:'other'};
+    if(change==='model')options.modelConfigurationRef='summary:v2';
+    if(change==='policy')f.policy.version='policy:v2';
+    if(change==='source')f.source.messages[0].content='Revised source '+'.'.repeat(300);
+    if(change==='delete')f.source.messages.splice(0,2);
+    if(change==='restart')delete options.previous;
+    const result=await compactConversationContext(options);
+    assert.equal(result.state,'compacted');assert.ok(f.calls()>calls);
+  });
+});
+
+test('manual compaction with only retained messages is a no-op; failure preserves the source',async()=>{
+  const f=fixture({force:true});f.source.messages=f.source.messages.slice(-2);
+  assert.equal((await compactConversationContext(f.options)).state,'unchanged');assert.equal(f.calls(),0);
+  const g=fixture({force:true,summarize:async()=>{throw Error('synthetic unavailable');}}),original=structuredClone(g.source);
+  await assert.rejects(compactConversationContext(g.options),/synthetic unavailable/);
+  assert.deepEqual(g.source,original);assert.equal(g.saved.value,undefined);
+});
+
+test('automatic compaction triggers exactly at the configured serialized character threshold',async()=>{
+  const f=fixture();f.policy.triggerCharacters=f.options.compile(f.source.messages).length+1;
+  assert.equal((await compactConversationContext(f.options)).state,'unchanged');assert.equal(f.calls(),0);
+  f.policy.triggerCharacters--;
+  assert.equal((await compactConversationContext(f.options)).state,'compacted');assert.ok(f.calls()>0);
+});
+
 test('Synthetic segmentation preserves original order, rejects an oversized message, and retains a full tail task',async()=>{
   const f=fixture();f.policy.retainMessages=1;
   const result=await compactConversationContext(f.options);
@@ -185,6 +233,104 @@ async function settled(app,taskId) {
     await new Promise(resolve=>setTimeout(resolve,5));}
   throw Error('Synthetic Runtime context task did not settle');
 }
+
+test('slash commands compact immediately without delegation, tools or the main model; next question reuses summary',async t=>{
+  for(const command of ['/压缩','/compact'])await t.test(command,async t=>{
+    let summaries=0,sends=0;const source=runtimeSource(),policy=runtimePolicy();policy.triggerCharacters=32000;policy.maxCharacters=128000;
+    const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,
+      coordinationInput:{beforeCoordinationSend(){},contextCompaction:{policy,modelConfigurationRef:'summary:v1',
+        assertCurrent(){},readSnapshot:()=>source,summarize:async input=>{input.assertBeforeSend();summaries++;return 'Prior constraints and unresolved request';}}},
+      coordination:{execute:async()=>{sends++;throw Error('manual command must not reach main model');}}});
+    t.after(()=>app.close());const client=new Client(app);await client.connect();
+    const task=await client.call('task.submit',{goal:command,conversationId:'manual-context'},{idempotencyKey:command,timeoutMs:60000});
+    const result=await settled(app,task.taskId);
+    assert.equal(result.state,'succeeded',JSON.stringify(result));assert.match(result.resultSummary,/上下文已压缩/);
+    assert.ok(summaries>0);assert.equal(sends,0);assert.equal(app.readSubagentTasks(task.taskId).length,0);
+    assert.equal(app.runtime.readToolExecutions(task.taskId).length,0);
+    const calls=summaries;
+    const again=await client.call('task.submit',{goal:command,conversationId:'manual-context'},{idempotencyKey:command+'-again',timeoutMs:60000});
+    assert.equal((await settled(app,again.taskId)).state,'succeeded');assert.equal(summaries,calls);
+  });
+});
+
+test('a normal subsequent question consumes the source-validated manual summary without another summary call',async t=>{
+  let summaries=0;const requests=[],source=runtimeSource(),policy=runtimePolicy();policy.triggerCharacters=32000;policy.maxCharacters=128000;
+  const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    coordinationInput:{beforeCoordinationSend(){},contextCompaction:{policy,modelConfigurationRef:'summary:v1',assertCurrent(){},
+      readSnapshot:()=>source,summarize:async input=>{input.assertBeforeSend();summaries++;return 'Location: Shandong Qingdao; unanswered request: clothing for tomorrow';}}},
+    coordination:{execute:async request=>{requests.push(request);return {kind:'text',text:'Synthetic answer',verification:'mock'};}}});
+  t.after(()=>app.close());const client=new Client(app);await client.connect();
+  const first=await client.call('task.submit',{goal:'/压缩',conversationId:'reuse'},{idempotencyKey:'manual',timeoutMs:60000});
+  assert.equal((await settled(app,first.taskId)).state,'succeeded');const calls=summaries;
+  source.push({id:'correction',role:'user',content:'Tomorrow is rainy; remember the raincoat.'});
+  const second=await client.call('task.submit',{goal:'What should I wear?',conversationId:'reuse'},{idempotencyKey:'question',timeoutMs:60000});
+  assert.equal((await settled(app,second.taskId)).state,'succeeded');assert.equal(summaries,calls);assert.equal(requests.length,1);
+  assert.match(requests[0].goal,/Shandong Qingdao/);assert.match(requests[0].goal,/raincoat/);assert.match(requests[0].goal,/What should I wear/);
+});
+
+test('unconfigured slash compaction fails explicitly and never becomes a main model question',async t=>{
+  let sends=0;const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    coordination:{execute:async()=>{sends++;throw Error('must not send');}}});
+  t.after(()=>app.close());const client=new Client(app);await client.connect();
+  const task=await client.call('task.submit',{goal:'/compact',conversationId:'missing'},{idempotencyKey:'missing',timeoutMs:60000});
+  const result=await settled(app,task.taskId);assert.equal(result.state,'failed');assert.match(result.error.message,/摘要模型/);assert.equal(sends,0);
+});
+
+test('actual delegated child consumes the original main conversation summary, without granting another conversation access',async t=>{
+  let app,summaries=0;const sent=[],source=runtimeSource(),policy=runtimePolicy();policy.triggerCharacters=32000;policy.maxCharacters=128000;
+  const read={name:'fixture.context.read',version:'1.0.0',sideEffect:'read',requiredScopes:['fixture:read'],
+    requiresPresence:false,idempotencySupport:true,recoverySupport:true,
+    inputSchema:{type:'object',properties:{},additionalProperties:false},outputSchema:{type:'object'}};
+  const dispatch=createRuntimeSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
+    runDefaultWorker:(definition,worker,tools)=>app.runDefaultSubagentWorker(definition,worker,tools)});
+  app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,
+    tools:[dispatch,{descriptor:read,execute:async()=>assert.fail('Compaction does not execute business tools')}],
+    automaticTools:[{toolName:'subagent.dispatch',toolVersion:'1.0.0'}],
+    competitionToolAvailability:[{toolName:'subagent.dispatch',toolVersion:'1.0.0',available:()=>true},
+      {toolName:read.name,toolVersion:read.version,available:()=>true}],
+    competitionToolExports:[{toolName:'subagent.dispatch',toolVersion:'1.0.0',exportPolicyVersion:'fixture:v1',accepts:()=>true,project:({result})=>result},
+      {toolName:read.name,toolVersion:read.version,exportPolicyVersion:'fixture-read:v1',accepts:()=>true,project:({result})=>result}],
+    coordinationInput:{beforeCoordinationSend(){},contextCompaction:{policy,modelConfigurationRef:'summary:v1',assertCurrent(){},
+      readSnapshot:()=>source,summarize:async input=>{input.assertBeforeSend();summaries++;return 'Synthetic original main history';}}},
+    coordination:{execute:async request=>{sent.push(request);app.assertCompetitionExportAllowed(request);
+      return {kind:'text',text:'Synthetic delegated answer',verification:'mock'};}}});
+  t.after(()=>app.close());const client=new Client(app);await client.connect();
+  const first=await client.call('task.submit',{goal:'/压缩',conversationId:'original-main'},{idempotencyKey:'main-compact',timeoutMs:60000});
+  assert.equal((await settled(app,first.taskId)).state,'succeeded');const calls=summaries;
+  const next=await client.call('task.submit',{goal:'Continue my original request',conversationId:'original-main'},{idempotencyKey:'main-continue',timeoutMs:60000});
+  assert.equal((await settled(app,next.taskId)).state,'succeeded');
+  assert.equal(summaries,calls);assert.equal(sent.length,2);
+  const [child]=app.readSubagentTasks(next.taskId);assert.equal(child.state,'succeeded');
+  assert.match(sent.find(request=>request.taskId===child.taskId).goal,/Synthetic original main history/);
+  const other=await client.call('task.submit',{goal:'A separate conversation',conversationId:'other-main'},{idempotencyKey:'other',timeoutMs:60000});
+  assert.equal((await settled(app,other.taskId)).state,'succeeded');
+  assert.doesNotMatch(sent.filter(request=>request.taskId!==child.taskId&&request.taskId!==next.taskId).map(request=>request.goal).join('\n'),/context-summary:/);
+});
+
+test('cancelling an in-progress manual summary cannot publish a projection or checkpoint',async t=>{
+  let entered;const started=new Promise(resolve=>{entered=resolve;});
+  const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    coordinationInput:{beforeCoordinationSend(){},contextCompaction:{policy:runtimePolicy(),modelConfigurationRef:'summary:v1',
+      assertCurrent(){},readSnapshot:runtimeSource,summarize:async input=>{input.assertBeforeSend();entered();return new Promise(()=>{});}}},
+    coordination:{execute:async()=>assert.fail('No main model call')}});
+  t.after(()=>app.close());const client=new Client(app);await client.connect();
+  const task=await client.call('task.submit',{goal:'/压缩',conversationId:'cancel-summary'},{idempotencyKey:'cancel-summary',timeoutMs:60000});
+  await started;await client.call('task.cancel',{taskId:task.taskId,reason:'Synthetic cancellation'});
+  assert.equal((await settled(app,task.taskId)).state,'cancelled');
+  assert.equal(app.runtime.loadCheckpoint(task.taskId,COMPACTED),undefined);
+});
+
+test('quoted or extended slash text stays ordinary conversation and never becomes a command',async t=>{
+  let sends=0;const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    coordination:{execute:async()=>{sends++;return {kind:'text',text:'Synthetic ordinary explanation',verification:'mock'};}}});
+  t.after(()=>app.close());const client=new Client(app);await client.connect();
+  for(const [index,goal] of ['请解释 /压缩','/compact this text'].entries()){
+    const task=await client.call('task.submit',{goal,conversationId:'ordinary-command-text'},{idempotencyKey:'ordinary-'+index,timeoutMs:60000});
+    assert.equal((await settled(app,task.taskId)).state,'succeeded');
+    assert.equal(app.runtime.loadCheckpoint(task.taskId,'conversation-compaction-command:v1'),undefined);
+  }
+  assert.equal(sends,2);
+});
 
 test('Synthetic actual Coordination caller compacts over-16k history and preserves the confirmed current continuation byte for byte',async t=>{
   let app;const source=runtimeSource(),queries=[],summarized=[];

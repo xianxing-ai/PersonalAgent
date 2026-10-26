@@ -1,4 +1,6 @@
 const contextCharacterLimit=128_000;
+const recommendedContext={maxOutputTokens:2048,triggerCharacters:96000,targetCharacters:64000,
+  retainMessages:8,maxSourceMessages:2000,segmentCharacters:32000,maxSummaryCharacters:4000};
 const budgetFields=[['maxOutputTokens','摘要输出 Token 预算',1],['triggerCharacters','触发摘要的字符数',1],
   ['targetCharacters','摘要后的目标字符数',1],['retainMessages','完整保留的近期消息数',0],
   ['maxSourceMessages','历史来源消息范围',1],['segmentCharacters','每段历史的字符预算',1],['maxSummaryCharacters','每段摘要的字符预算',1]];
@@ -10,10 +12,12 @@ export function mountHarnessControls(root,invoke) {
     <p class="notice">主对话负责交互、澄清与汇总，子智能体执行实际工作。请在「开发 → 环境 / Worktrees」选择本地工作区并重启装配；执行仍沿用原工具权限。</p>
     <label><input data-harness="enabled" type="checkbox">启用子智能体开发任务规划</label>
     <label>执行子智能体的总步骤预算<input data-harness="maxExecutorSteps" type="number" min="1" step="1" inputmode="numeric" placeholder="明确填写本次配置的总预算"></label>
-    <fieldset><legend>执行会话的历史摘要</legend>
-      <label><input data-harness="contextEnabled" type="checkbox">启用有界上下文摘要</label>
+    <fieldset><legend>会话上下文自动压缩</legend>
+      <label><input data-harness="contextEnabled" type="checkbox">启用自动压缩及 /压缩 命令</label>
       <label>摘要模型<select data-harness="modelId"><option value="">请选择已保存的辅助模型</option></select></label>
-      <p class="notice">只使用这里明确选定的模型版本。每段历史发送前显示实际目的地和完整内容，取消确认就停止；不会自动继承私人记忆许可。</p>
+      <p class="notice">达到阈值时自动压缩旧历史；在对话中发送 /压缩 或 /compact 可提前执行。原聊天记录不删除，近期消息保持原文，摘要经来源校验后用于后续消息。</p>
+      <p class="notice">只使用这里明确选定的模型版本。新材料发送前仍需原出机确认，取消就停止。摘要仅在本次运行中复用；重启后从原文重新生成。摘要可能遗漏细节，可通过原历史核实。</p>
+      <button class="btn" data-harness="recommend" type="button">填入推荐预算（96,000 → 64,000 字符）</button>
       ${budgetFields.map(([name,label,min])=>`<label>${label}<input data-harness="${name}" type="number" min="${min}" step="1" inputmode="numeric" placeholder="明确填写预算"></label>`).join('')}
       <p class="notice">任务与历史上下文合并后上限为 ${contextCharacterLimit} 字符。目标字符数 ≤ 触发字符数 ≤ ${contextCharacterLimit}，完整尾部数量须小于来源范围。字符预算不代表模型 Token 窗口。保存不会调用模型；真实连接以实际任务回执为准。</p>
     </fieldset>
@@ -46,7 +50,7 @@ export function mountHarnessControls(root,invoke) {
       option.disabled=Boolean(model.id&&!model.available);field('modelId').append(option);
     }
     field('modelId').value=context.modelId??'';
-    for(const [name]of budgetFields)field(name).value=(name==='maxOutputTokens'?context.maxOutputTokens:context.policy?.[name])??'';
+    for(const [name]of budgetFields)field(name).value=(name==='maxOutputTokens'?context.maxOutputTokens:context.policy?.[name])??recommendedContext[name];
     field('status').textContent=config.enabled||context.enabled
       ?`设置已保存；${config.executionReason??(config.enabled?'子智能体规划按当前工作区许可启用':'开发任务规划未启用')}；${context.enabled?(config.contextAvailable===false?(config.contextReason||'摘要宿主或模型版本不可用，请检查设置')
         :config.contextModelAvailable?'摘要模型版本已绑定，真实模型尚未验证':'摘要模型版本不可用，请重新选择并保存'):'历史摘要未启用'}。`
@@ -84,6 +88,10 @@ export function mountHarnessControls(root,invoke) {
     finally{busy=false;if(!closed)controls();}
   }
   field('save').onclick=()=>save();field('disable').onclick=()=>save(true);
+  field('recommend').onclick=()=>{
+    for(const [name]of budgetFields)field(name).value=recommendedContext[name];
+    field('status').textContent='已填入推荐预算；请选择摘要模型、勾选启用并保存后生效。';
+  };
   render();
   return {render,showSettings(show){settings.hidden=!show;},close(){closed=true;settings.remove();}};
 }

@@ -141,3 +141,17 @@ test('actual Main admin gate and original admin helper reject foreign frames and
   assert.equal(admin.listenerCount('closed'),0,'the original window listener is released');
   lifetime.abort();await assert.rejects(context.action(event,'harness.experience.list'));assert.equal(validations,1);
 });
+
+test('actual Main rejects unconfigured compaction and a steer request cannot interrupt work to compact',async()=>{
+  const panel={webContents:{mainFrame:{}},isDestroyed:()=>false};let interrupted=0;
+  const context=vm.createContext({subagentListWindow:undefined,subagentWindows:new Map(),orb:undefined,panel,admin:undefined,workspace:undefined,
+    competitionMode:true,fakeMode:false,model:{enabled:true},harnessContextHost:undefined,client:{},
+    agentArtsConfig:{snapshot:()=>({configured:true})},conversations:{activeConversationId:()=> 'original'},
+    submitting:new Set(['original']),conversationDelivery:{interruptPending(){interrupted++;}},ProtocolError});
+  vm.runInContext(declaration('action'),context);
+  const event={sender:panel.webContents,senderFrame:panel.webContents.mainFrame};
+  await assert.rejects(context.action(event,'task.submit',{text:'/压缩',conversationId:'original'}),/摘要模型/);
+  context.harnessContextHost={runtimeHooks:{}};
+  await assert.rejects(context.action(event,'task.submit',{text:'/compact',conversationId:'original',delivery:'steer'}),/请等待/);
+  assert.equal(interrupted,0);
+});
