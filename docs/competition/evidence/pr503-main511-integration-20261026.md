@@ -29,6 +29,14 @@ HTTP 401/429、普通伪造异常的同一任务，同时保留 #503 固定诊�
 其余路径自动合并自实际 main，含 #519 observability reader、#511 能力/错误投影、
 只读邮件历史卡片及原 CI workflow；本轮没有手改这些逻辑或 workflow。
 
+发布前另核对 `packages/agentarts/src/prompts.ts`：最终文件与实际 main `a3e9d51d`
+逐字完全相同，Git blob 均为 `dc00a3b3cc60c3571eb10c0649551735964203b4`，SHA256
+`c0f8e78ccd130d5ad2da8acb0ce2fb6d42446b5c5dda6dd5a3fe52bf55a7b1c3`。
+相对 e570 的变化仅是主线已有的 owned-1.10、能力状态说明和 TASK_ACTION 扩充；
+不是本轮重新组合提示原文，未修改原 goal 续接或 FAST/Gemini 风格措辞。因此没有重复运行
+`conversation-continuation-loop` / `task-action-prompt`；本轮 agentarts 构建已包含该主线版本。
+这段属于后续纯 Evidence 补记，以普通文档提交保留，不改写前一双父 merge。
+
 逐文件核对 e570 的 18 个预算、摘要/授权、邮件/Laya、panel/weather 测试与样式文件，
 字节均相同。Main 和 workspace 文件正常合入 #511，故整文件哈希会变化；另精确核对
 `pumpEvents`、`refresh`、`applyEvent`、`action`、`confirmDeveloperExport`、
