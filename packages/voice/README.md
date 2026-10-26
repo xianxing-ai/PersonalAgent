@@ -31,6 +31,8 @@ or advertise the public `voice.start` / `voice.stop` wire operations.
 
 ## Public flow
 
+文字模型最终结果在已开启 Live 的同对话内消费现有实时音频输出，接线及限制见 [2026-10-25 说明](../../apps/desktop/docs/text-model-voice-output-20261025.md)。该能力不依赖本包另起 TTS/provider，不提升真实设备或公开 wire 的验收状态。
+
 应用启动问候、有限许可内的持续监听及恢复入口见 [2026-10-20 接入说明](STARTUP-20261020.md)。
 新增 `createVoiceStartupController` / `createVoiceHostListeningPort` 消费原输出和 Live 宿主；
 Desktop 已通过可信 Live 设置接入应用启动、休眠恢复和关闭/退出；默认关闭。
