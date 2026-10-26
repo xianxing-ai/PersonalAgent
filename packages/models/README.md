@@ -1,5 +1,7 @@
 # Models
 
+`RealtimeSession.speakText?(text)` 为受信宿主的可选同会话文字播报入口，返回 `{accepted:true}` 仅表示交给模型，不是音频或播放证明。Desktop 已开启 Live 的同对话新文字任务消费此口；单条上限 8000 字符，繁忙返回 `REALTIME_BUSY`。播报禁工具，完成/中断删除临时输入 item；provider 的 response-scoped 参数和删除事件兼容性、真实模型/设备尚未验收，详见 [接线说明](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
+
 OpenAI 兼容 Provider 的受信构造选项 `responseFormat:'json_object'` 可显式请求 JSON 对象输出，默认不设置。当前 AgentArts 镜像的严格 JSON 角色启用此选项；不代表原生工具调用或 JSON Schema 能力已验证。实际平台兼容性及真实复验见 [聊天修复记录](../../docs/competition/CHAT_CONTINUATION_REPLY_20261019.md)。
 
 <!-- current-design-20261009 -->

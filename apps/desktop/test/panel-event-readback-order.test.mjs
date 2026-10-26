@@ -43,13 +43,13 @@ async function fixture(t) {
   const eventCursor = new EventCursor('tasks');
   const context = vm.createContext({conversationDelivery:createConversationDelivery(new Set()),tasks, approvals, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
     // This cancellation/readback fixture has no Harness event consumer installed.
-    harnessEventsHost: undefined,connectorChangeHost:undefined,
+    harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,
     conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
     notifications: new Map(), structuredClone, eventBusy: false, eventCursor,
     runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
-  for (const name of ['taskSurface', 'clearInactiveTaskExitWarning', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
+  for (const name of ['taskSurface', 'clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
     vm.runInContext(declaration(name), context);
   }
   const cancel = vm.runInContext(`(async function(sender,name,payload){${cancelRoute}})`, context);

@@ -1295,6 +1295,7 @@ async function refresh(taskId, isCurrent = () => true) {
   const current = tasks.get(taskId);
   if (current?.taskId === task.taskId && current.revision > task.revision) return current;
   tasks.set(taskId, task);
+  observeTextTaskOutput(task);
   clearInactiveTaskExitWarning();
   publish();
   return task;
@@ -1305,6 +1306,11 @@ function clearInactiveTaskExitWarning() {
     && [...tasks.values()].every(task => terminalTaskStates.has(task.state))) {
     runtimeError = '';
   }
+}
+
+function observeTextTaskOutput(task) {
+  if (conversationDelivery.stopped(task)) return;
+  liveVoice?.observeTextTask({...task,resultSummary:resultText(task.resultSummary,taskResultMetadata(task))});
 }
 
 const inFlightRechecks = new Set();
@@ -1368,6 +1374,7 @@ function applyEvent(event) {
     const current = tasks.get(event.taskId);
     if (!(current?.taskId === event.payload.taskId && current.revision > event.payload.revision)) {
       tasks.set(event.taskId, structuredClone(event.payload));
+      observeTextTaskOutput(event.payload);
       clearInactiveTaskExitWarning();
     }
     if (event.type === 'task.created' && event.payload.conversationId?.startsWith('knowledge-watch:')
@@ -2928,7 +2935,7 @@ async function interruptConversation(conversationId,surface,except,previous) {
     &&taskSurface(task)===surface&&!terminalTaskStates.has(task.state));
   // Acceptance may precede the first task.get. A stalled readback cannot hide this task from Stop.
   if(pending?.taskId&&!running.some(task=>task.taskId===pending.taskId))running.push({taskId:pending.taskId});
-  for(const task of running)conversationDelivery.truncate(task);
+  for(const task of running){conversationDelivery.truncate(task);liveVoice?.cancelTextTask(task.taskId);}
   publish();
   const results=await Promise.allSettled(running.map(async task=>{
     const result=await client.call('task.cancel',{taskId:task.taskId,reason:'用户截断当前回答'});
@@ -3664,7 +3671,10 @@ async function action(event, name, payload) {
   }
   if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft'].includes(name)){
     if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
-    return handleConversationAction({name,payload,surface:sender===workspace?'workspace':'panel',conversations,tasks,taskSurface,submitting,publish});
+    const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
+    const result=await handleConversationAction({name,payload,surface,conversations,tasks,taskSurface,submitting,publish});
+    if(conversations.activeConversationId(surface)!==previousConversationId)liveVoice?.invalidateTextOutput(previousConversationId);
+    return result;
   }
   if (name === 'thinking.update') {
     if (sender !== panel && sender !== admin && sender !== workspace) throw Error('思考设置来源不受信任');
@@ -3780,6 +3790,7 @@ async function action(event, name, payload) {
     deliveryRequest.taskId=result.taskId;
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
+    if (!skillRun && !deliveryRequest.interrupted) liveVoice?.trackTextTask({taskId:result.taskId,conversationId});
     rememberTaskGoal(result.taskId, userGoal);
     const stopAcceptedTask=async()=>{
       conversationDelivery.truncate({taskId:result.taskId});
@@ -3803,7 +3814,7 @@ async function action(event, name, payload) {
   if (name === 'task.cancel') {
     if (typeof payload !== 'string' || !tasks.has(payload)) throw Error('Unknown task');
     if (sender !== admin && taskSurface(tasks.get(payload)) !== (sender === workspace ? 'workspace' : 'panel')) throw Error('无法停止其他工作区的任务');
-    conversationDelivery.truncate(tasks.get(payload));publish();
+    conversationDelivery.truncate(tasks.get(payload));liveVoice?.cancelTextTask(payload);publish();
     const result=await client.call('task.cancel',{taskId:payload,reason:'用户截断当前回答'});
     conversationDelivery.acceptStop(payload,result);
     void refresh(payload).catch(()=>{});

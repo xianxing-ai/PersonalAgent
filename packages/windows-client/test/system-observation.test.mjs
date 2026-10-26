@@ -97,6 +97,18 @@ test('synthetic CPU, memory and uptime become a bounded aggregate observation', 
   assert.doesNotMatch(JSON.stringify(result), /hostname|username|processName|commandLine|path|address|credential/i);
 });
 
+test('capture time includes the final memory read while CPU sampling keeps its own boundary', async () => {
+  let current = observedAt.getTime();
+  const tool = createSystemObservationTool({
+    sampleWindowMs: 1,
+    now: () => new Date(current),
+    probe: probe({freeMemoryBytes: () => { current += 100; return 250; }}),
+  });
+  const result = await tool.execute({}, context());
+  assert.equal(result.sampledUntil, observedAt.toISOString());
+  assert.equal(result.capturedAt, new Date(observedAt.getTime() + 100).toISOString());
+});
+
 test('cancellation interrupts sampling without a second probe or lingering timer', async () => {
   let reads = 0;
   const source = probe({cpuTimes: () => {
