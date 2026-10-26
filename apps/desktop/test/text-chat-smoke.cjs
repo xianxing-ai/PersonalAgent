@@ -36,11 +36,17 @@ const {_electron} = require('playwright');
     const longGoal = '长'.repeat(10_001);
     await textarea.fill(longGoal);
     await textarea.press('Enter');
-    await panel.waitForFunction(async goal => {
-      const task = (await window.desktop.invoke('snapshot')).value.tasks.at(-1);
-      return task?.state === 'succeeded' && task.userMessage === goal
-        && document.querySelector('#tasks .turn:last-child .assistant-message')?.textContent === task.resultSummary;
+    // waitForFunction polls a synchronous predicate. An async predicate is a truthy
+    // Promise and can finish with false before the coalesced display update arrives.
+    await panel.waitForFunction(goal => {
+      const turn = document.querySelector('#tasks .turn:last-child');
+      return turn?.querySelector('.user-message')?.textContent === goal
+        && turn?.querySelector('.assistant-message')?.textContent.includes(`Fake Model 回答：${goal}`);
     }, longGoal, {timeout: 10_000});
+    const longTask = (await panel.evaluate(() => window.desktop.invoke('snapshot'))).value.tasks.at(-1);
+    assert.equal(longTask.state, 'succeeded');
+    assert.equal(longTask.userMessage, longGoal);
+    assert.equal(await panel.locator('#tasks .turn:last-child .assistant-message').textContent(), longTask.resultSummary);
     assert.equal((await panel.locator('#tasks .user-message').last().innerText()).length, longGoal.length);
     await panel.locator('.thread').evaluate(element => { element.style.maxHeight = '120px'; });
     const buttonGoal = '按钮重复发送 Smoke 测试';
@@ -68,11 +74,11 @@ const {_electron} = require('playwright');
     const output = path.resolve(__dirname, '../.cache/qa');
     fs.mkdirSync(output, {recursive: true});
     await panel.screenshot({path: path.join(output, 'chat-clean.png')});
-    // The explicit legacy Fake Model is not an advertised AgentArts catalog model.
-    assert.equal(await panel.locator('.model-thinking-trigger [data-picker-model]').innerText(), '模型未配置');
+    // The explicit offline model keeps the same identity as the trusted host snapshot.
+    const snapshot = await panel.evaluate(() => window.desktop.invoke('snapshot'));
+    assert.equal(await panel.locator('.model-thinking-trigger [data-picker-model]').innerText(), snapshot.value.model.label);
     assert.equal(await panel.locator('.picker-thinking input[type="range"]').isDisabled(), true);
     await panel.waitForFunction(() => { const thread=document.querySelector('.thread');return thread.scrollTop+thread.clientHeight>=thread.scrollHeight-2; });
-    const snapshot = await panel.evaluate(() => window.desktop.invoke('snapshot'));
     assert.equal(snapshot.value.fakeModel, true);
     assert.equal(snapshot.value.agentArtsModels?.catalog == null, true);
     assert.equal(snapshot.value.tasks.at(-1).state, 'succeeded');

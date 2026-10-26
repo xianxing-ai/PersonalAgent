@@ -10,6 +10,7 @@ import {remoteMcpDirectoryDigest} from '@personal-agent/mcp';
 import {createRemoteMcpConfig} from '../electron/remote-mcp-config.js';
 import {createDesktopRemoteMcpHost} from '../electron/remote-mcp-host.js';
 import {createRemoteMcpManagement} from '../electron/remote-mcp-management.js';
+import {errorDisplayText} from '../src/shared/error-display.js';
 import {fixture,endpoint,descriptor,directory} from '../../../packages/mcp/test/remote-http-fixture.mjs';
 
 const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()}; // Explicit Fake encryption.
@@ -32,6 +33,7 @@ function setup(extra={}){
   const host=createDesktopRemoteMcpHost({config,fetch:extra.fetch,confirmConnection:request=>management.confirmConnection(request)});
   management=createRemoteMcpManagement({BrowserWindow:Window,ipcMain,dialog:{showOpenDialog:async()=>({canceled:false,filePaths:[selected]}),showMessageBox:(...args)=>answer(...args)},
     owner:()=>({isDestroyed:()=>false}),config,host,application:()=>extra.app?.(),client:()=>extra.client?.(),namespace:'synthetic-management',
+    focusAuthorizationQuestion:extra.focusAuthorizationQuestion,
     confirmAuthorization:async request=>{const result=await answer(request);return result.response===1&&request.isCurrent();}}); // Explicit Fake card decision.
   management.open();const window=Window.all.at(-1);
   const call=(name,payload,event={sender:window.webContents,senderFrame:window.webContents.mainFrame})=>handlers.get('desktop:remote-mcp')(event,name,payload);
@@ -56,6 +58,20 @@ test('management IPC is limited to its own main frame and keeps credentials out 
     assert.equal(invalid.ok,false);assert.match(invalid.error,/INVALID_ARGUMENT/);assert.doesNotMatch(invalid.error,/private invalid token|tomorrow/);
     assert.throws(()=>s.config.configure({...definition(),tool:{...definition().tool,descriptor:{...descriptor,name:'weather.forecast'}}}),{code:'INVALID_ARGUMENT'});
     assert.equal((await s.call('respond',{taskId:'unowned',expectedRevision:1,decision:'allow_once'})).ok,false);
+  }finally{await s.close();}
+});
+
+test('management error codes survive the production Renderer projection without disclosing adapter text',async()=>{
+  const s=setup({saved:true,fetch:async()=>{throw Error('SYNTHETIC_PRIVATE_MCP_FAILURE /private/path token=synthetic');}});
+  try{
+    const connection=await s.call('connect');assert.equal(connection.ok,false);
+    const shown=errorDisplayText(connection.error,'ipc');
+    assert.match(shown,/code=EXTERNAL_FAILURE/);assert.doesNotMatch(shown,/SYNTHETIC_PRIVATE|\/private|token=/);
+    assert.equal(errorDisplayText(shown,'renderer'),shown,'a displayed code must remain stable at the next UI boundary');
+    await s.call('import');
+    const invalid=await s.call('save',{token:'SYNTHETIC_PRIVATE_BAD_TOKEN',expiresAt:'invalid-expiry'});
+    assert.equal(invalid.ok,false);assert.match(errorDisplayText(invalid.error,'ipc'),/code=INVALID_ARGUMENT/);
+    assert.doesNotMatch(invalid.error,/SYNTHETIC_PRIVATE|invalid-expiry/);
   }finally{await s.close();}
 });
 
@@ -103,6 +119,27 @@ test('legacy management approval IPC cannot grant; original Runtime readback and
     assert.equal((await s.call('task',{taskId:unowned.task.taskId})).ok,false);
     app.runtime.requestCancel(unowned.task.taskId,'synthetic cleanup');await idle(app);
     await s.call('revoke');assert.equal((await s.call('submit',{key:'public'})).ok,false);assert.equal(f.calls().length,0);
+  }finally{await idle(app);app.close();await s.close();await f.close();}
+});
+
+test('management navigates only the original owned pending question and never grants a tool call',async()=>{
+  const f=await fixture({requiredAuthorization:'Bearer synthetic-token-only'});let app,client;const focused=[];
+  const s=setup({saved:true,fetch:f.fetch,app:()=>app,client:()=>client,
+    focusAuthorizationQuestion:binding=>{focused.push(binding);return true;}});
+  app=createRuntimeApplication({path:path.join(s.userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-management',tools:s.host.tools});
+  client=new Client(app,Date.now);await client.connect();
+  try{
+    assert.equal((await s.call('connect')).ok,true);
+    const submitted=await s.call('submit',{key:'public'});assert.equal(submitted.ok,true);const taskId=submitted.value.taskId;
+    await until(app,taskId,'waiting_approval');const original=(await s.call('task',{taskId})).value;
+    assert.equal((await s.call('focusQuestion',{taskId,decision:'allow_once'})).ok,false);
+    assert.equal((await s.call('focusQuestion',{taskId:'unowned'})).ok,false);assert.deepEqual(focused,[]);
+    assert.equal((await s.call('focusQuestion',{taskId})).ok,true);
+    assert.deepEqual(focused,[{taskId,approvalId:original.approval.approvalId}]);
+    assert.equal(app.runtime.getTask(taskId).state,'waiting_approval');assert.equal(f.calls().length,0);
+    assert.equal((await s.call('respond',{taskId,expectedRevision:original.approval.revision,decision:'allow_once'})).ok,false);
+    await s.call('cancel',{taskId});await idle(app);
+    assert.equal((await s.call('focusQuestion',{taskId})).ok,false);assert.equal(focused.length,1);assert.equal(f.calls().length,0);
   }finally{await idle(app);app.close();await s.close();await f.close();}
 });
 

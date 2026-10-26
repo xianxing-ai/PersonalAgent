@@ -28,6 +28,23 @@ test('an implicit default retains its catalog name while invalid manual selectio
   assert.equal(f.calls.length,0);
 });
 
+test('an explicit offline model keeps its identity without claiming an AgentArts connection',()=>{
+  const f=fixture({...snapshot(),fakeModel:true,agentArts:{configured:false},
+    model:{configured:true,label:'Fake Model · 离线测试'},agentArtsModels:{catalog:null,preferences:null}});
+  assert.equal(f.state.modelLabel,'Fake Model · 离线测试');assert.match(f.state.detail,/离线测试模型/);
+  assert.equal(f.state.native.available,false);assert.equal(f.state.disabled,true);assert.equal(f.calls.length,0);
+});
+
+test('the existing custom-provider entry displays the trusted host identity and disabled state',()=>{
+  const data={...snapshot(),agentArts:{configured:false},agentArtsModels:{catalog:null,preferences:null},
+    model:{provider:'pangu',configured:true,enabled:true,label:'盘古大模型 2.0'}};
+  const f=fixture(data);assert.equal(f.state.modelLabel,'盘古大模型 2.0');assert.match(f.state.detail,/模型设置/);
+  assert.equal(f.state.native.available,false);assert.equal(f.state.disabled,true);
+  f.update({...data,model:{...data.model,enabled:false}});assert.equal(f.state.modelLabel,'盘古大模型 2.0（已停用）');
+  f.update({...data,model:{...data.model,configured:false}});assert.equal(f.state.modelLabel,'模型未配置');
+  assert.match(f.state.detail,/连接未配置/);assert.equal(f.calls.length,0);
+});
+
 test('workspace picker offers every published text model and excludes unavailable or nontext models',async()=>{
   const f=fixture();assert.deepEqual(availableThinkingModels(snapshot()).map(model=>model.id),['a','b','custom-model']);
   await f.controller.chooseModel('blocked');assert.equal(f.calls.length,0);

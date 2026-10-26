@@ -1,8 +1,10 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import type {RegisteredTool, StoragePort, ProtocolContracts, ToolContext} from '@personal-agent/contracts';
 import {QQMailProvider, register as registerMail} from '@personal-agent/mail';
 import {LayaTriageService, LocalLayaBatchHttpTransport} from '@personal-agent/cognition';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {RuntimeApplication} from './runtime-application.js';
 import {createInboxTriagePipeline} from './inbox-triage.js';
 import type {InboxAnalysisAcceptance, InboxTriageContext, InboxCloudReviewResult, InboxAnalysisFilter} from './inbox-triage.js';
@@ -57,7 +59,7 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
   let sessionId: string | undefined;
   let controller = new AbortController();
   let closed = false, refreshing = false, reading = 0, status = options.triage ? 'ready' : 'unavailable';
-  let taskId: string | undefined, cursor: string | undefined, deadline = '';
+  let taskId: string | undefined, cursor: string | undefined, initialSavedCursor: string | undefined, deadline = '';
   let analysisSessionId: string | undefined;
   let expiredCursor: string | undefined;
   let stoppedStatus = 'disabled';
@@ -143,7 +145,7 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
     stoppedStatus = finalStatus;
     controller.abort();
     if(batch)options.batchAuthorization?.finish(batch);
-    batch=undefined;firstPageScope=undefined;pageScope=undefined;
+    batch=undefined;firstPageScope=undefined;pageScope=undefined;initialSavedCursor=undefined;
     analysisSessionId = undefined;
     if (application && sessionId) application.stopMailReadSession(sessionId);
     sessionId = undefined;
@@ -185,6 +187,34 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
         taskId=scope.taskId;
       }
       options.batchAuthorization.preparePage(scope,batch,firstPageScope);
+      if(initialSavedCursor!==undefined&&firstPageScope===undefined) {
+        const original=application?.readHostToolTask(scope.taskId);
+        const intent=application?.runtime.loadCheckpoint(scope.taskId,'host-tool-intent') as
+          {namespace?:unknown;commandId?:unknown;toolName?:unknown;toolVersion?:unknown;
+            arguments?:{account?:unknown;folder?:unknown;limit?:unknown;cursor?:unknown};
+            argumentsDigest?:unknown;deadline?:unknown}|undefined;
+        if(application?.runtime.loadCheckpoint(scope.taskId,MAIL_READ_SESSION_CHECKPOINT)!==sessionId
+          ||original?.task.taskId!==scope.taskId||original.commandId!==`mail:${sessionId}:1`
+          ||original.toolName!=='mail.inbox'||original.toolVersion!==scope.toolVersion
+          ||intent?.commandId!==original.commandId
+          ||intent.toolName!=='mail.inbox'||intent.toolVersion!==scope.toolVersion
+          ||intent.deadline!==batch.deadline||intent.arguments?.account!==batch.accountRef
+          ||intent.arguments.folder!==batch.folder||intent.arguments.limit!==batch.limit
+          ||intent.arguments.cursor!==initialSavedCursor
+          ||intent.argumentsDigest!==toolArgumentsDigest(intent.arguments))
+          throw new ProtocolError('UNAUTHORIZED','Original persisted inbox cursor is not bound to this page');
+        const anchor={version:1,sessionId,batchId:batch.batchId,generation:batch.generation,
+          accountRef:batch.accountRef,folder:batch.folder,limit:batch.limit,queryDigest:batch.queryDigest,
+          savedCursor:initialSavedCursor,firstPageTaskId:scope.taskId,runId:scope.runId,
+          commandId:intent.commandId,argumentsDigest:intent.argumentsDigest};
+        const key='mail-triage-persisted-cursor-v1';
+        if(!application.runtime.saveCheckpointOnce(scope.taskId,key,anchor)
+          &&!isDeepStrictEqual(application.runtime.loadCheckpoint(scope.taskId,key),anchor))
+          throw new ProtocolError('REVISION_CONFLICT','Original persisted inbox cursor binding changed');
+        if(!batchCurrent()||sessionId!==anchor.sessionId||batch?.generation!==anchor.generation
+          ||taskId!==scope.taskId||application.runtime.loadCheckpoint(scope.taskId,MAIL_READ_SESSION_CHECKPOINT)!==sessionId)
+          throw new ProtocolError('UNAUTHORIZED','Original persisted inbox cursor session changed');
+      }
     },
     /** Local-only projections. Root must separately authorize every cloud send. */
     pendingAnalyses(context: InboxTriageContext, filter?: InboxAnalysisFilter) {
@@ -243,7 +273,8 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
         ...(savedCursor ? {cursor: savedCursor} : {})});
       if(batch)options.batchAuthorization?.finish(batch);
       sessionId = session.sessionId; analysisSessionId = session.sessionId;
-      deadline = expiresAt; cursor = savedCursor; expiredCursor = undefined; controller = new AbortController();
+      deadline = expiresAt; cursor = savedCursor; initialSavedCursor = savedCursor;
+      expiredCursor = undefined; controller = new AbortController();
       firstPageScope=undefined;pageScope=undefined;
       batch={batchId:session.sessionId,generation:randomUUID(),accountRef:options.accountRef,folder:'INBOX',limit:session.limit,
         queryDigest:createHash('sha256').update(JSON.stringify({folder:'INBOX',startCursor:savedCursor??null})).digest('hex'),deadline:session.expiresAt};

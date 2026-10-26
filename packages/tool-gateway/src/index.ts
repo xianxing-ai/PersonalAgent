@@ -1,4 +1,4 @@
-import { ProtocolError, validateContract, validateToolValue } from '@personal-agent/contracts';
+import { ProtocolError, isToolNotStartedError, validateContract, validateToolValue } from '@personal-agent/contracts';
 import type { RegisteredTool, ToolContext, ToolDescriptor, ToolHost } from '@personal-agent/contracts';
 import type { PolicyPort } from '@personal-agent/policy';
 import {createHash} from 'node:crypto';
@@ -123,6 +123,7 @@ export class ToolGateway implements ToolHost {
       validateToolValue(tool.descriptor.outputSchema, result);
       return structuredClone(result);
     } catch (error) {
+      if (isToolNotStartedError(error) && !controller.signal.aborted) throw error;
       throw toolFailure(error, stage, tool.descriptor.sideEffect !== 'read');
     } finally {
       if (timer) clearTimeout(timer);

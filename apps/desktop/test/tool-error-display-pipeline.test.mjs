@@ -101,6 +101,16 @@ test('error display distinguishes cancellation, deadline, denial, validation and
   const validation=errorDisplayText({code:'INVALID_ARGUMENT',message:'Tool value violates schema [keyword=required; field=title]'},'ipc');
   assert.match(validation,/validation=required; field=title/);assert.equal(errorDisplayText(validation),validation);
   assert.match(errorDisplayText(Error('盘古配置无效 token=synthetic-secret')),/code=CONFIGURATION/);
+  const disabled=errorDisplayText(Error('模型已停用，请先启用'),'ipc');
+  assert.match(disabled,/^模型已停用，请先启用 \[stage=ipc; code=CONFIGURATION\]$/);
+  assert.equal(errorDisplayText(disabled,'renderer'),disabled);
+  const taintedDisabled=errorDisplayText(Error('模型已停用 token=SYNTHETIC_PRIVATE_DISABLED'));
+  assert.match(taintedDisabled,/code=CONFIGURATION/);assert.doesNotMatch(taintedDisabled,/SYNTHETIC_PRIVATE_DISABLED|token=/);
+  const quitBlocked=errorDisplayText('Runtime 仍有活动任务；请先等待完成或停止任务后再退出','runtime');
+  assert.match(quitBlocked,/^Runtime 仍有活动任务；请先等待完成或停止任务后再退出 \[stage=runtime; code=EBUSY\]$/);
+  assert.equal(errorDisplayText(quitBlocked,'renderer'),quitBlocked);
+  const taintedBusy=errorDisplayText('Runtime 仍有活动任务 token=SYNTHETIC_PRIVATE_BUSY');
+  assert.match(taintedBusy,/code=EBUSY/);assert.doesNotMatch(taintedBusy,/SYNTHETIC_PRIVATE_BUSY|token=/);
   assert.equal(errorDisplayText(''),'');
   const expired=errorDisplayText({code:'UNAUTHORIZED',message:'Authorization has expired'},'ipc');
   const bound=errorDisplayText({code:'UNAUTHORIZED',message:'Authorization is not bound to this task and tool'},'ipc');

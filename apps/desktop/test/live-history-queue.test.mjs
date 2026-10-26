@@ -34,6 +34,7 @@ test('recovery retains more than the UI window, persists revisions and deduplica
     assert.equal(conversations.messages.get('0').text, '修订后的合成话语');
     assert.deepEqual(store.read(), []);
     assert.equal(restarted.snapshot().degraded, false);
+    conversations.close();
   } finally {rmSync(directory, {recursive: true, force: true});}
 });
 

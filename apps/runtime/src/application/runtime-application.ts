@@ -1,5 +1,5 @@
 import {ProtocolError, validateToolValue,validateContract} from '@personal-agent/contracts';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
 import {createRuntimeCodingDecisionTool} from './coding-decision-tool.js';
@@ -10,6 +10,9 @@ import {createRuntimeCodingRepairDispatchTool,codingRepairWorkflowInputSchema,re
 import type {RuntimeCodingRepairOptions} from './coding-repair-application.js';
 import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-capability.js';
 import {capabilityContext} from './capability-context.js';
+import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
+import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
+import type {ExecutionCapacityState} from './execution-capacity.js';
 import {createRuntimeDeveloperWorkflowWorker,DEVELOPER_WORKFLOW_KINDS,developerWorkflowToolName,
   developerWorkflowInputSchema,developerWorkflowConfigured,developerWorkflowRequiredTools,isDeveloperWorkflowTool} from './developer-workflows.js';
 import type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope} from './developer-workflows.js';
@@ -68,7 +71,7 @@ import {MailReadSessions, MAIL_READ_SESSION_CHECKPOINT, MAIL_READ_TOOL, MAIL_REA
 import type {StartMailReadSessionRequest, MailReadSession} from './mail-read-session.js';
 import {createRuntimeSubagentDispatchTool, resumeRuntimeSubagentTask, readRuntimeSubagentSummary,
   SUBAGENT_DISPATCH_TOOL_NAME, readRuntimeSubagentSibling} from './subagent-host.js';
-import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,
+import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,assertUserTaskDelegationComplete,
   userTaskDelegationPort} from './user-task-delegation.js';
 import {SUBAGENT_CONVERSATION_MESSAGE,assertConversationScope,readSubagentConversationOrigin,
   readSubagentConversationMessage,listSubagentConversationMessages,subagentConversationMessageKey,
@@ -362,6 +365,11 @@ export interface ThinkingState extends ThinkingConfig {
 }
 
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
+  /** Host-managed discovery keeps each cloud directory bounded without hiding registered capabilities. */
+  competitionToolDiscovery?:true;
+  /** Explicit host policy for new tasks; existing persisted tasks keep their original capacity. */
+  competitionExecution?:{mode:'progressive';windowSteps?:number;maxSteps?:number};
+  competitionMessageTimeoutMs?:number;
   mailReview?:RuntimeMailReviewOptions;
   retainPriorToolResults?:boolean;
   /** Competition user submissions must execute in a durable child; the root only dispatches and summarizes. */
@@ -519,6 +527,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly competitionToolExports: readonly CompetitionToolExport[];
   private readonly retainPriorToolResults:boolean;
   private competitionMaxSteps: number;
+  private readonly competitionInitialSteps:number;
+  private readonly competitionExecution:RuntimeApplicationOptions['competitionExecution'];
+  private readonly competitionMessageTimeoutMs:number;
   private thinkingConfig: ThinkingConfig = {depth: 1, fast: false};
   private readonly repairCandidateVersion: '1.0' | undefined;
   private readonly localRepair: LocalRepairHostOptions | undefined;
@@ -582,6 +593,18 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Competition step budget must be a positive integer');
     }
     this.competitionMaxSteps = options.competitionMaxSteps ?? 4;
+    this.competitionInitialSteps=this.competitionMaxSteps;
+    if(options.competitionExecution!==undefined) {
+      if(this.profile!=='huawei_ict_agentarts'||options.competitionExecution.mode!=='progressive'
+        ||Object.keys(options.competitionExecution).some(key=>!['mode','windowSteps','maxSteps'].includes(key)))
+        throw new ProtocolError('INVALID_ARGUMENT','Invalid progressive Competition execution policy');
+      createExecutionCapacity({enabled:true,initialWindowSteps:this.competitionInitialSteps,
+        deadline:(options.now??(()=>new Date()))().toISOString(),...options.competitionExecution});
+      this.competitionExecution=structuredClone(options.competitionExecution);
+    }
+    if(options.competitionMessageTimeoutMs!==undefined&&(!Number.isSafeInteger(options.competitionMessageTimeoutMs)||options.competitionMessageTimeoutMs<1))
+      throw new ProtocolError('INVALID_ARGUMENT','Competition message timeout must be a positive safe integer');
+    this.competitionMessageTimeoutMs=options.competitionMessageTimeoutMs??60_000;
     if (options.thinking) this.configureThinking(options.thinking);
     else if (options.competitionMaxSteps !== undefined) this.thinkingConfig = {depth: Math.min(5, Math.max(0, Math.floor(options.competitionMaxSteps / 2) - 1)), fast: false};
     if(this.delegateUserTasks && this.competitionMaxSteps<2) {
@@ -660,7 +683,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         throw new ProtocolError('INVALID_ARGUMENT', 'Invalid local repair host configuration');
       }
     }
-    this.competitionToolExports = (options.competitionToolExports ?? []).map(binding => Object.freeze({...binding}));
+    if(options.competitionToolDiscovery!==undefined&&(options.competitionToolDiscovery!==true||this.profile!=='huawei_ict_agentarts'))
+      throw new ProtocolError('INVALID_ARGUMENT','Tool discovery requires Competition Profile');
+    const discoveryTool=options.competitionToolDiscovery?createRuntimeToolDiscoveryTool(taskId=>this.taskCompetitionCatalog(taskId)):undefined;
+    this.competitionToolExports = [...(options.competitionToolExports ?? []),...(discoveryTool?[{
+      toolName:TOOL_DISCOVERY_NAME,toolVersion:TOOL_DISCOVERY_VERSION,exportPolicyVersion:'original-task-public-tool-discovery-v1',
+      accepts:()=>true,project:({result}:{result:unknown})=>structuredClone(result),
+    }]:[])].map(binding => Object.freeze({...binding}));
     this.retainPriorToolResults=options.retainPriorToolResults===true;
     if (this.readDeveloperHarnessConfiguration) this.competitionToolExports = [...this.competitionToolExports, {
       toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
@@ -697,7 +726,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       configurationRef:this.coordinationBinding,readConfiguration:()=>this.readDeveloperHarnessConfiguration!(),
       now:()=>this.now().getTime()} : undefined;
     const harnessTool = harnessHost ? createRuntimeDeveloperHarnessTool(harnessHost) : undefined;
-    const configuredTools = [...(options.tools ?? []),...(options.mailReview?[createRuntimeMailReviewTool(options.mailReview,{
+    const configuredTools = [...(options.tools ?? []),...(discoveryTool?[discoveryTool]:[]),...(options.mailReview?[createRuntimeMailReviewTool(options.mailReview,{
       revision:taskId=>this.runtime.getTask(taskId).revision,
       exchange:(request,context,envelope)=>this.executeMailReview(options,request,context,envelope),
       save:(taskId,binding,result)=>{if(!this.runtime.saveCheckpointOnce(taskId,MAIL_REVIEW_RESULT,{binding,result}))
@@ -732,7 +761,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             .then(()=>this.refreshSubagentParent(taskId)).catch(()=>{});
         }
       },
-      ...(options.tools || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
+      ...(options.tools || discoveryTool || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           this.harnessExperienceRecipes(request.taskId,{
             deadline:this.runtime.loadCheckpoint(request.taskId,'application-deadline') as string,
@@ -823,6 +852,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         automaticTools.add(JSON.stringify([binding.toolName, binding.toolVersion]));
       }
+      if(discoveryTool)automaticTools.add(JSON.stringify([TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION]));
       const currentDescriptors=()=>{
         const current=gateway!.list();
         if(current.length!==descriptors.length) throw new ProtocolError('UNAUTHORIZED','Registered tool set changed');
@@ -1035,10 +1065,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return tools.invoke(request);
       }};
     });
-    if (options.competitionToolAvailability !== undefined) {
+    if (options.competitionToolAvailability !== undefined||discoveryTool) {
       if (!this.tools) throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog needs registered tools');
       this.competitionToolCatalog = new RuntimeCompetitionToolCatalog(
-        this.runtime, this.tools, this.competitionToolExports,[...options.competitionToolAvailability,
+        this.runtime, this.tools, this.competitionToolExports,[...(options.competitionToolAvailability??[]),...(discoveryTool?[{
+          toolName:TOOL_DISCOVERY_NAME,toolVersion:TOOL_DISCOVERY_VERSION,publicDescription:TOOL_DISCOVERY_DESCRIPTION,
+          available:()=>true,
+        }]:[]),
           ...(harnessHost?[{toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
             publicEnumPaths:['/tasks/*/role'],available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>
               developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal)}]:[]),
@@ -1078,7 +1111,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             if(developerWorkflowRequiredTools(configuration,kind).some(name=>!descriptors.some(tool=>tool.name===name)))return undefined;
             configuration.assertCurrent(input);
             return await configuration.available(kind,input)?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined;
-          }}))],options.isUserPresent===undefined?undefined:taskId=>{try{return options.isUserPresent?.(taskId)===true;}catch{return false;}});
+          }}))],options.isUserPresent===undefined?undefined:taskId=>{try{return options.isUserPresent?.(taskId)===true;}catch{return false;}},options.competitionToolDiscovery===true);
     }
     this.textApplication = createTextApplication({...options.text, ...(this.tools ? {tools: this.tools} : {})});
     if(options.knowledgeWriteReconciliation && this.hostUserNamespace) {
@@ -1933,8 +1966,19 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       let errorCodes:(string|undefined)[]=[];
       try {errorCodes=this.runtime.readToolExecutions(request.taskId).slice(-8).map(record=>record.errorCode);}
       catch { /* Missing diagnostics cannot invent a problem or change tool readiness. */ }
+      const discoveryPool=this.runtime.loadCheckpoint(request.taskId,'competition-tool-discovery-pool:v1') as
+        {entries?:readonly {name:string;version:string}[]}|undefined;
       return capabilityContext({profile:this.profile,registered,
-        ...(request.availableTools===undefined?{}:{available:request.availableTools}),errorCodes});
+        ...(Array.isArray(discoveryPool?.entries)?{discoveryCandidates:discoveryPool.entries}:{}),
+        ...(request.availableTools===undefined?{}:{available:request.availableTools}),errorCodes,
+        ...(()=>{
+          const capacity=this.runtime.loadCheckpoint(request.taskId,EXECUTION_CAPACITY_CHECKPOINT) as ExecutionCapacityState|undefined;
+          const window=this.runtime.loadCheckpoint(request.taskId,'competition-continuation-window:v1') as
+            {originalReceiptCount:number;priorCount:number;omitted:{count:number}}|undefined;
+          return capacity?{executionProgress:{windowEndStep:capacity.windowEndStep,extensions:capacity.extensions,
+            originalReceiptCount:window?.originalReceiptCount??0,recentPriorCount:window?.priorCount??0,omittedCount:window?.omitted.count??0,
+            nextProposalId:'proposal-'+randomUUID()}}:{};
+        })()});
     })();
     const hooks:CoordinationInputHooks|undefined=this.coordinationInput??(conversationMessage||teacherScope?{beforeCoordinationSend:()=>{}}:undefined);
     const manualCompaction=this.runtime.loadCheckpoint(request.taskId,CONTEXT_COMPACTION_COMMAND)===true;
@@ -1948,7 +1992,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         this.assertContextHooksAvailable(request.taskId);
         const strategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT?experienceText:'';
         const goal=request.goal+strategy;
-        const withStrategy=goal===request.goal?request:Object.freeze({...request,goal});
+        const withStrategy=this.fitContinuationRequest(goal===request.goal?request:Object.freeze({...request,goal}));
         if(!strategy)this.experienceSendPolicies.delete(request.taskId);
         this.assertInputActive(withStrategy);
         const result=await port.execute(withStrategy);
@@ -2073,7 +2117,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,checkpointKey),binding);
       }
-      const effective=Object.freeze({...request,goal:sendGoal});
+      const effective=this.fitContinuationRequest(Object.freeze({...request,goal:sendGoal}));
       if(teacherScope)this.teacherRequestScopes.set(effective,teacherScope);
       this.ephemeralSends.set(leaseKey,effective);
       this.ephemeralGoals.set(leaseKey,{publicGoal:request.goal,preparedGoal:preparedSource});
@@ -2101,6 +2145,27 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.experienceSendPolicies.delete(request.taskId);
       if(privateDerived){this.releaseEphemeralTask(task.taskId);hooks.releaseTask?.(task.taskId);}
     }
+  }
+
+  private fitContinuationRequest(request:CoordinationRequest):CoordinationRequest {
+    if(!request.continuation||this.runtime.loadCheckpoint(request.taskId,EXECUTION_CAPACITY_CHECKPOINT)===undefined)return request;
+    const loop=this.runtime.loadCheckpoint(request.taskId,'competition-loop') as {
+      receipts?:{proposal:import('@personal-agent/coordination').CoordinationToolProposalResult;
+        continuation:import('@personal-agent/coordination').CoordinationContinuation}[]}|undefined;
+    const requested=[...(request.priorContinuations??[]),request.continuation];
+    const receipts=requested.map(continuation=>{
+      const original=loop?.receipts?.find(value=>value.proposal.proposalId===continuation.proposalId);
+      if(!original||!isDeepStrictEqual(original.continuation,continuation))
+        throw new ProtocolError('UNAUTHORIZED','Cloud continuation is not an original projected Runtime receipt');
+      return original;
+    });
+    const window=selectContinuationContext({receipts,current:request.continuation,queryBase:{goal:request.goal,
+      ...(request.availableTools===undefined?{}:{availableTools:request.availableTools}),
+      ...(request.executionModel===undefined?{}:{executionModel:request.executionModel})}});
+    this.runtime.saveCheckpoint(request.taskId,'competition-sent-continuation-window:v1',{version:'1.0',
+      currentProposalId:request.continuation.proposalId,priorCount:window.priorContinuations.length,queryBytes:window.queryBytes,
+      additionallyOmitted:window.omitted});
+    return Object.freeze({...request,priorContinuations:window.priorContinuations});
   }
 
   private holdCompetitionExport(taskId:string,error?:unknown):void {
@@ -2230,18 +2295,19 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const isReasoningSupported = false;
     const reasoningReason = isReasoningSupported
       ? `模型推理思考已配置（effort: ${effort}）`
-      : `主模型当前未开放原生 reasoning 参数，思考深度作为任务步骤预算（maxSteps: ${this.competitionMaxSteps}）独立生效；若使用支持 reasoning 的子模型将透传推理参数`;
+      : this.competitionExecution?'执行容量按确认进展逐段扩展；原生推理档位仍只使用当前模型明确公布的参数。'
+        : `主模型当前未开放原生 reasoning 参数，思考深度作为任务步骤预算（maxSteps: ${this.competitionMaxSteps}）独立生效；若使用支持 reasoning 的子模型将透传推理参数`;
 
     return {
       depth,
       fast,
       maxSteps: this.competitionMaxSteps,
       applied: true,
-      reason: `思考深度已传入 Runtime：深度 ${labels[depth]}（${fast ? '快速模式' : '标准模式'}，最大步数 ${this.competitionMaxSteps}）。${reasoningReason}`,
+      reason: `思考深度已传入 Runtime：深度 ${labels[depth]}（${fast ? '快速模式' : '标准模式'}，${this.competitionExecution?'起始执行窗口':'最大步数'} ${this.competitionMaxSteps}）。${reasoningReason}`,
       stepBudget: {
         maxSteps: this.competitionMaxSteps,
         fast,
-        description: `最大编排执行步数：${this.competitionMaxSteps} 步`,
+        description: `${this.competitionExecution?'当前执行窗口':'最大编排执行步数'}：${this.competitionMaxSteps} 步`,
       },
       modelReasoning: {
         supported: isReasoningSupported,
@@ -2260,18 +2326,19 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const isReasoningSupported = false;
     const reasoningReason = isReasoningSupported
       ? `模型推理思考已配置（effort: ${effort}）`
-      : `主模型当前未开放原生 reasoning 参数，思考深度作为任务步骤预算（maxSteps: ${maxSteps}）独立生效；若使用支持 reasoning 的子模型将透传推理参数`;
+      : this.competitionExecution?'执行容量按确认进展逐段扩展；原生推理档位仍只使用当前模型明确公布的参数。'
+        : `主模型当前未开放原生 reasoning 参数，思考深度作为任务步骤预算（maxSteps: ${maxSteps}）独立生效；若使用支持 reasoning 的子模型将透传推理参数`;
 
     return {
       depth,
       fast,
       maxSteps,
       applied: true,
-      reason: `思考深度已传入 Runtime：深度 ${labels[depth]}（${fast ? '快速模式' : '标准模式'}，最大步数 ${maxSteps}）。${reasoningReason}`,
+      reason: `思考深度已传入 Runtime：深度 ${labels[depth]}（${fast ? '快速模式' : '标准模式'}，${this.competitionExecution?'起始执行窗口':'最大步数'} ${maxSteps}）。${reasoningReason}`,
       stepBudget: {
         maxSteps,
         fast,
-        description: `最大编排执行步数：${maxSteps} 步`,
+        description: `${this.competitionExecution?'当前执行窗口':'最大编排执行步数'}：${maxSteps} 步`,
       },
       modelReasoning: {
         supported: isReasoningSupported,
@@ -2283,7 +2350,21 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   private calculateThinkingMaxSteps(depth: number, fast: boolean): number {
     const baseSteps = Math.max(2, (depth + 1) * 2);
-    return fast ? Math.max(2, baseSteps - 2) : baseSteps;
+    const steps=fast ? Math.max(2, baseSteps - 2) : baseSteps;
+    if(!this.competitionExecution)return steps;
+    return Math.min(Math.max(this.competitionInitialSteps,steps),this.competitionExecution.maxSteps??Number.MAX_SAFE_INTEGER);
+  }
+
+  private seedExecutionCapacity(taskId:string,initialWindowSteps:number,deadline:string,sourceTaskId?:string):void {
+    if(this.runtime.loadCheckpoint(taskId,EXECUTION_CAPACITY_CHECKPOINT)!==undefined)return;
+    const source=sourceTaskId===undefined?this.competitionExecution:
+      this.runtime.loadCheckpoint(sourceTaskId,EXECUTION_CAPACITY_CHECKPOINT) as ExecutionCapacityState|undefined;
+    if(!source||source.mode!=='progressive')return;
+    const state=createExecutionCapacity({enabled:true,initialWindowSteps,deadline,
+      ...(source.windowSteps===undefined?{}:{windowSteps:source.windowSteps}),
+      ...(source.maxSteps===undefined?{}:{maxSteps:source.maxSteps})});
+    if(!this.runtime.saveCheckpointOnce(taskId,EXECUTION_CAPACITY_CHECKPOINT,state))
+      throw new ProtocolError('REVISION_CONFLICT','Original execution capacity already exists');
   }
 
   /** Trusted Runtime-managed subagent dispatch tool. Creates and tracks real child tasks. */
@@ -2425,6 +2506,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       worker.saveCheckpoint('application-goal',child.goal);
       worker.saveCheckpoint('application-deadline',worker.deadline);
       worker.saveCheckpoint('competition-max-steps',maxSteps);
+      this.seedExecutionCapacity(worker.taskId,maxSteps,worker.deadline,binding.parentTaskId);
     } else if(worker.loadCheckpoint('application-goal')!==child.goal
       || worker.loadCheckpoint('application-deadline')!==worker.deadline
       || worker.loadCheckpoint('competition-max-steps')!==maxSteps) {
@@ -3148,6 +3230,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   readEvents(afterSequence = 0): Event[] { return this.runtime.readEvents(afterSequence); }
+  readEventBatch(input: {afterSequence?: number; throughSequence?: number; limit?: number} = {}) {
+    return this.runtime.readEventBatch(input);
+  }
   private subagentTaskSnapshots(parentTaskId:string):TaskSnapshot[] {
     const result:TaskSnapshot[]=[];let beforeSequence:number|undefined;let snapshotSequence:number|undefined;
     for(;;){
@@ -3181,18 +3266,36 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Persistent original children only; followup execution tasks never become additional agent entries. */
-  listSubagentConversations(input:{cursor?:string;limit?:number}={}):SubagentConversationList {
-    if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['cursor','limit'].includes(key))) {
+  listSubagentConversations(input:{cursor?:string;limit?:number;parentTaskIds?:readonly string[]}={}):SubagentConversationList {
+    if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['cursor','limit','parentTaskIds'].includes(key))) {
       throw new ProtocolError('INVALID_ARGUMENT','Invalid subagent conversation page');
     }
     const limit=input.limit??50;
     if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new ProtocolError('INVALID_ARGUMENT','Subagent conversation page size must be between 1 and 100');
-    let {beforeSequence,snapshotSequence,seenTaskIds}=decodeSubagentConversationCursor(input.cursor);
+    if(input.parentTaskIds!==undefined&&(!Array.isArray(input.parentTaskIds)||input.parentTaskIds.length>100
+      ||input.parentTaskIds.some(id=>typeof id!=='string'||!id.trim()||id.trim()!==id||id.length>512)
+      ||new Set(input.parentTaskIds).size!==input.parentTaskIds.length))
+      throw new ProtocolError('INVALID_ARGUMENT','Invalid subagent parent scope');
+    const parentTaskIds=input.parentTaskIds===undefined?undefined:[...input.parentTaskIds].sort();
+    const scopeDigest=parentTaskIds===undefined?undefined:hashJson(parentTaskIds);
+    let cursor=input.cursor;
+    if(scopeDigest!==undefined&&cursor!==undefined){
+      try{
+        if(typeof cursor!=='string'||!cursor||!/^[A-Za-z0-9_-]+$/u.test(cursor))throw Error();
+        const scoped=JSON.parse(Buffer.from(cursor,'base64url').toString('utf8')) as {version:string;scopeDigest:string;cursor:string};
+        if(!scoped||Object.keys(scoped).sort().join(',')!=='cursor,scopeDigest,version'||scoped.version!=='1.0'
+          ||scoped.scopeDigest!==scopeDigest||typeof scoped.cursor!=='string')throw Error();
+        cursor=scoped.cursor;
+      }catch{throw new ProtocolError('INVALID_ARGUMENT','Subagent conversation cursor belongs to a different parent scope');}
+    }
+    const encodeCursor=(value:string)=>scopeDigest===undefined?value:Buffer.from(JSON.stringify({version:'1.0',scopeDigest,cursor:value})).toString('base64url');
+    let {beforeSequence,snapshotSequence,seenTaskIds}=decodeSubagentConversationCursor(cursor);
     const seen=new Set(seenTaskIds);
     const items:SubagentConversationList['items']=[];
     for(;;) {
-      const page=this.runtime.listTasks({limit:limit-items.length,
-        ...(beforeSequence===undefined?{}:{beforeSequence}),...(snapshotSequence===undefined?{}:{snapshotSequence})});
+      const page=this.runtime.listTaskCheckpointPage({limit:limit-items.length,
+        ...(beforeSequence===undefined?{}:{beforeSequence}),...(snapshotSequence===undefined?{}:{snapshotSequence})},
+        ['subtask-parent',SUBAGENT_CONVERSATION_MESSAGE],parentTaskIds);
       for(const recordTask of page.items) {
         let task=recordTask;
         if(this.runtime.loadCheckpoint(recordTask.taskId,SUBAGENT_CONVERSATION_MESSAGE)!==undefined) {
@@ -3221,7 +3324,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
       if(page.nextBeforeSequence===undefined)return {items};
       beforeSequence=page.nextBeforeSequence;snapshotSequence=page.snapshotSequence;
-      if(items.length===limit)return {items,nextCursor:Buffer.from(JSON.stringify({beforeSequence,snapshotSequence,seenTaskIds:[...seen]})).toString('base64url')};
+      if(items.length===limit)return {items,nextCursor:encodeCursor(Buffer.from(JSON.stringify({beforeSequence,snapshotSequence,seenTaskIds:[...seen]})).toString('base64url'))};
     }
   }
 
@@ -3516,7 +3619,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!isTerminalTask(origin.task)||turns.some(task=>!isTerminalTask(task))) {
       throw new ProtocolError('REVISION_CONFLICT','This subagent already has an active or unresolved task');
     }
-    const deadline=input.deadline??new Date(this.now().getTime()+60_000).toISOString();
+    const deadline=input.deadline??new Date(this.now().getTime()+this.competitionMessageTimeoutMs).toISOString();
     if(typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||Date.parse(deadline)<=this.now().getTime()) {
       throw new ProtocolError('INVALID_ARGUMENT','Subagent message deadline must be in the future');
     }
@@ -3540,6 +3643,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         throw new ProtocolError('REVISION_CONFLICT','Original subagent message execution binding changed');
       }
     }
+    this.seedExecutionCapacity(taskId,origin.maxSteps,binding.deadline,origin.task.taskId);
   }
 
   private dispatchSubagentConversationMessage(taskId:string,resume=false):void {
@@ -3693,6 +3797,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Host-only real-adapter guard; never exposed as a wire or Renderer operation. */
   assertCompetitionExportAllowed(request: CoordinationRequest): void {
+    this.runtime.withCompetitionLoopRead(request.taskId,scope=>this.assertCompetitionExportRequest(request,scope));
+  }
+
+  private assertCompetitionExportRequest(request:CoordinationRequest,scope:object):void {
     if(this.mailReviewSends.has(request.taskId)) {this.assertMailReviewSend(request);return;}
     const hostIntent=this.runtime.loadCheckpoint(request.taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
     if(hostIntent?.toolName===MAIL_REVIEW_TOOL)throw new ProtocolError('UNAUTHORIZED','Original mail review send lease is unavailable');
@@ -3736,9 +3844,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(request.continuation) {
       for(const prior of request.priorContinuations??[]) {
         const {priorContinuations:_,...single}=request;
-        this.assertCompetitionExportAllowed({...single,continuation:prior});
+        this.assertCompetitionExportRequest({...single,continuation:prior},scope);
       }
-      const loop=this.runtime.loadCheckpoint(request.taskId,'competition-loop') as {receipts?:{proposal:import('@personal-agent/coordination').CoordinationToolProposalResult;
+      const loop=this.runtime.readCompetitionLoopForExport(request.taskId,scope) as {receipts?:{proposal:import('@personal-agent/coordination').CoordinationToolProposalResult;
         continuation:unknown;workerSelection?:unknown;workerRevision?:number}[]}|undefined;
       const receipt=loop?.receipts?.find(item=>item.proposal.proposalId===request.continuation?.proposalId);
       if(receipt && this.coordinationWorkers.accepts(receipt.proposal)) {
@@ -3751,7 +3859,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
     }
     assertCompetitionExportAllowed(this.runtime, this.tools, this.competitionToolExports, request,
-      this.competitionToolCatalog !== undefined);
+      this.competitionToolCatalog !== undefined,scope);
+    this.assertInputActive(request);
   }
 
   /** Trusted host obtains only the task-selected public tool shape for cloud input construction. */
@@ -4101,6 +4210,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const catalog=this.taskCompetitionCatalog(request.taskId);
       execution=startCoordinationTask(this.runtime,this.taskCoordination(request.taskId),this.taskTools(request.taskId),
         request.taskId,goal,request.deadline,{...(prepared.state==='waiting_approval'?{resume:true}:{}),
+          assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,request.taskId),
           toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog?{toolCatalog:catalog}:{}),...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
@@ -4203,7 +4313,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const execution = startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
         {resume: true,retainPriorToolResults:this.retainPriorToolResults, toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
-          ...(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')!==undefined?{allowToolContinuations:true as const}:{}),
+          assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId),
+          ...(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')!==undefined
+            ||this.retainPriorToolResults&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
@@ -4809,6 +4921,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
       const maxSteps = preference ? this.calculateThinkingMaxSteps(config.depth, config.fast) : this.competitionMaxSteps;
       this.runtime.saveCheckpoint(taskId, 'competition-max-steps', maxSteps);
+      this.seedExecutionCapacity(taskId,maxSteps,deadline);
       this.runtime.saveCheckpoint(taskId, 'task-thinking', {depth:config.depth,fast:config.fast,maxSteps});
       if (preference?.modelId) this.runtime.saveCheckpoint(taskId,'task-model-preference',{
         modelId:preference.modelId,...(preference.configurationRef?{configurationRef:preference.configurationRef}:{})});
@@ -4839,6 +4952,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       },{deadline,sideEffect:'read'}):startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
         {retainPriorToolResults:this.retainPriorToolResults,toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+          assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId),
+          ...(this.retainPriorToolResults&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},

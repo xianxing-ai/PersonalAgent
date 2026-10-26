@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "kind": "actual_electron_existing_local_provider_compatibility",
+  "profile": "local_existing_entry_only",
+  "status": "passed",
+  "exitCode": 0,
+  "sourceHashes": {
+    "apps/desktop/electron/snapshot-publisher.js": "2ac4ab38dbfc01d271d42a642c20fe72ca16e0f3ac142c7b667bdd2a9774adb8",
+    "apps/desktop/electron/main.js": "e87676008eedc02480492efda1f7bf7da69228814f7fe7e4695d79c9864adb56",
+    "apps/desktop/src/shared/error-display.js": "ffa4188f93f59bc864d9c869a9795ee129d249ec932978b02324e000babb5db7",
+    "apps/desktop/src/shared/public-error-messages.js": "d644df627def25b456e44baf3ef61e2bb51fcdc1f0c2c45736c141e2855e21ab",
+    "apps/desktop/src/features/conversation/model-thinking-picker.js": "4328b117ae22eaebbd109c4e5a0c4efdbf3d86b0566a61cce3500608355f752f",
+    "apps/desktop/test/runtime-application-smoke.cjs": "280f9bca9eb04494166221b0fb7a6e45d22c307322759da072814eff1ddd6569",
+    "apps/desktop/test/snapshot-publisher.test.mjs": "26716c88a3ff2173ddee6a637ba90a7db1c7a474e434240611f96eece75452f2",
+    "apps/desktop/test/tool-error-display-pipeline.test.mjs": "868b3d1f6ed0704021ec47a26111d93c38acc018d26465cd301d1ea103732f69",
+    "apps/desktop/test/workspace-preference-feedback.test.mjs": "aa832b65aec57093cd1ce66bf1217c65ecb06ef8d62a2343e73e8662b8ab447a"
+  },
+  "logSha256": "4dbb8519f1fb172da96483f2057936a391a96f5273e33d4696d8af3538bf9192",
+  "runtime": "actual_Runtime_Application_and_SQLite",
+  "model": "synthetic_loopback_HTTP_fixture_through_existing_pangu_adapter",
+  "realProvider": false,
+  "externalModelCalls": 0,
+  "fixtureRequests": 7,
+  "abortedRequests": 2,
+  "stages": [
+    "model-settings",
+    "original-panel-task",
+    "workspace-open",
+    "workspace-close",
+    "workspace-reopen",
+    "panel-restored",
+    "workspace-restored",
+    "model-disable",
+    "normal-quit-and-restart",
+    "cancel-original-task",
+    "active-task-quit-guard",
+    "final-normal-quit"
+  ],
+  "verified": [
+    "workspace closes and reopens without uncaught main exceptions",
+    "reopening does not repeat the original model request",
+    "disabled model refuses new submissions before and after a normal restart",
+    "reenabling preserves the saved adapter configuration",
+    "cancellation binds the original fixture task and aborts its actual HTTP request",
+    "active-task quit keeps the app running and shows its fixed safe reason",
+    "terminal cancellation clears the stale quit warning",
+    "both conversation surfaces show the trusted pangu provider label",
+    "normal final quit needs no forced cleanup",
+    "synthetic credential absent from public snapshots, HTML, diagnostics and plaintext profile contents"
+  ],
+  "focusedChecks": [
+    {
+      "kind": "publisher-destruction",
+      "tests": 15,
+      "pass": 15,
+      "skipped": 0,
+      "fail": 0,
+      "exitCode": 0,
+      "logSha256": "4cc5d5a618833a7c4cf06ce4a5bd9ae4bb98772ba706f2d9872b39ab3311b110"
+    },
+    {
+      "kind": "disabled-model",
+      "tests": 18,
+      "pass": 17,
+      "skipped": 1,
+      "fail": 0,
+      "exitCode": 0,
+      "logSha256": "67b4253c2ba11f932fe737a84b1030dd9e0af2d04b586a75f82549d926b27a71"
+    },
+    {
+      "kind": "quit-warning",
+      "tests": 34,
+      "pass": 33,
+      "skipped": 1,
+      "fail": 0,
+      "exitCode": 0,
+      "logSha256": "5be55a7ea8009ec782520b8215a5dd9cb0e8ed54749e2d5bb11c6b8f29927646"
+    },
+    {
+      "kind": "custom-provider-label",
+      "tests": 12,
+      "pass": 12,
+      "skipped": 0,
+      "fail": 0,
+      "exitCode": 0,
+      "logSha256": "29dc9703335665e2dce272896cebe5532b489fe7b1fc6e3e68a8bb721015b11d"
+    }
+  ],
+  "failedAttempts": [
+    {
+      "attempt": "20261024-a1",
+      "exitCode": 1,
+      "observation": "cleanup error masked the first failure; the owned hung app was separately verified and closed",
+      "logSha256": "7b3d3d20d1ff8283ebcbaa355715ca394c0747a47a78ae84637798d470f2d48a"
+    },
+    {
+      "attempt": "20261025-a3",
+      "exitCode": 1,
+      "observation": "new session PATH exceeded the Windows cmd environment limit; no app UI acceptance ran",
+      "logSha256": "047667f7d61a2efbc1f92ec2197bbbebce4faecb0c040e18818cd56652f4dce9"
+    },
+    {
+      "attempt": "20261025-a4",
+      "exitCode": 1,
+      "observation": "destroyed BrowserWindow.webContents getter threw during publisher cleanup; native error dialog blocked further IPC",
+      "logSha256": "e00a3e237a1123671b17abcfaf7917a6c234e942c661dd7ac90d12047840c153"
+    },
+    {
+      "attempt": "20261025-a5",
+      "exitCode": 1,
+      "observation": "disabled model was correctly refused but the fixed reason was replaced by a generic external failure",
+      "logSha256": "23d3ea6c3edafdaf1208869609731603d5b30b9c07dd589fdd9cc40eea16106b"
+    },
+    {
+      "attempt": "20261025-a6",
+      "exitCode": 1,
+      "observation": "active-task quit was refused but the fixed warning was hidden by generic formatting",
+      "logSha256": "e0f0a1aced1ea5d249b81e61b7b7c64966c03b532ac76a41d2048fc0e3e93431"
+    },
+    {
+      "attempt": "20261024-a2",
+      "status": "interrupted_without_exit_receipt",
+      "observation": "stopped at workspace reopen; no completion or pass is claimed",
+      "logSha256": "4524b2b1bb57417a43b4eb861b027d3c7937f34ba3b70a63bd75614ff1b954c5"
+    }
+  ],
+  "screenshot": {
+    "path": "runtime-application-workspace.png",
+    "bytes": 441394,
+    "sha256": "90efef7e44b11cd0acaa974703ce0fe30c63067651d9f3201e4412830a0c1161",
+    "reviewed": true
+  },
+  "limitations": [
+    "This is an existing Local profile compatibility regression, not new Local features or a real Pangu quality acceptance.",
+    "The fixture sends only generated public test prompts to localhost and does not prove cloud, tool or connector completion.",
+    "Unit and smoke counts overlap and must not be added as unique checks. Original failures remain unchanged."
+  ]
+}

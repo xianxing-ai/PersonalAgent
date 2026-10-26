@@ -170,5 +170,6 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     const nextCards=JSON.stringify([data.capabilities,data.health,data.notifications,data.todo,data.feeds,data.mail,data.knowledge,data.weather]);if(cardsSignature!==nextCards){cardsSignature=nextCards;root.querySelector('#connector-cards').innerHTML=connectorCards(data,escape);}
   }
   update.setAudioLevel=level=>orb.setLevel(level);
+  update.setResourceBudget=budget=>orb.setResourceBudget(budget);
   return update;
 }

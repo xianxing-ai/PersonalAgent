@@ -6,6 +6,8 @@ import type {AgentArtsCloudAgentPort, AgentArtsUnknownReceipt, CoordinationReque
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {TaskRuntime} from '../index.js';
+import {assertExecutionCapacityReceiptPrefix,EXECUTION_CAPACITY_CHECKPOINT,resolveExecutionStepLimit} from './execution-capacity.js';
+import type {ExecutionCapacityReceipt} from './execution-capacity.js';
 
 const BINDING = 'competition-cloud-dispatch-binding';
 const OBSERVATION = 'competition-cloud-status-observation';
@@ -53,9 +55,11 @@ function dispatchFacts(runtime:TaskRuntime,taskId:string,phase:'initial'|'contin
   const loopValue=runtime.loadCheckpoint(taskId,'competition-loop');
   const loop=loopValue===undefined?undefined:object(loopValue);
   const maxSteps=runtime.loadCheckpoint(taskId,'competition-max-steps');
-  if(!Number.isSafeInteger(maxSteps) || (maxSteps as number)<1)throw Error();
+  const capacity=runtime.loadCheckpoint(taskId,EXECUTION_CAPACITY_CHECKPOINT);
+  const stepLimit=resolveExecutionStepLimit(maxSteps,capacity,deadline);
+  if(capacity!==undefined)assertExecutionCapacityReceiptPrefix(capacity,(loop?.receipts??[]) as ExecutionCapacityReceipt[]);
   const step=loop?.step??1;
-  if(!Number.isSafeInteger(step) || (step as number)<1 || (step as number)>(maxSteps as number)
+  if(!Number.isSafeInteger(step) || (step as number)<1 || (step as number)>stepLimit
     || (phase==='initial'?loop!==undefined:!loop || (step as number)<2 || loop.pending!==undefined))throw Error();
   const catalogValue=runtime.loadCheckpoint(taskId,'competition-tool-catalog');
   let catalog=null;
@@ -78,6 +82,8 @@ function dispatchFacts(runtime:TaskRuntime,taskId:string,phase:'initial'|'contin
     continuation={checkpointRef:'competition-loop',proposalId:value.proposalId,state:value.state,
       continuationDigest:digest(value),receiptIndex:matches[0]!.index,receiptDigest:digest(matches[0]!.receipt)};
   }
+  // maxSteps retains the original snapshot shape/meaning for historical status
+  // readback. The effective bound above comes from the validated capacity window.
   return {loop:{checkpointRef:'competition-loop',checkpointDigest:loopValue===undefined?null:digest(loopValue),
     step:step as number,maxSteps:maxSteps as number},catalog,continuation};
 }

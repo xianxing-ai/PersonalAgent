@@ -7,6 +7,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="host/**/*.cs;manual/**/*.cs;test/**/*.cs" />
+    <Compile Remove="host/**/*.cs;manual/**/*.cs;test/**/*.cs;desktop/**/*.cs" />
   </ItemGroup>
 </Project>

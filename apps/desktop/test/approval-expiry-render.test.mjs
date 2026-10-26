@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {adminAuxiliaryDocument,recordFollowingNodes} from '../test-support/admin-history-dom.mjs';
 
 // Tiny deterministic DOM surface: exercises the real mountAdmin/render code,
 // not an Electron/device test. No external dependencies or real timers.
 function element() {
   return {dataset: {}, listeners: new Map(), textContent: '', disabled: false,
     addEventListener(name, listener) { this.listeners.set(name, listener); },
-    setAttribute() {}, insertBefore() {}};
+    setAttribute() {}, insertBefore() {},after:recordFollowingNodes};
 }
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -21,7 +22,7 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
     }
   });
   globalThis.window = {addEventListener() {}};
-  globalThis.document = {createElement: element};
+  globalThis.document = adminAuxiliaryDocument();
   globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
   const {mountAdmin} = await import('../src/features/admin/view.js');
   const expires = Date.parse('2026-09-17T12:00:00.000Z');

@@ -18,7 +18,7 @@ test('notification page submits current scope/revision, preserves draft and sepa
     model:{provider:'agentarts',configured:true,status:'configured'},modelChoices:[],thinking:{depth:1,fast:false},
     adminNavigation:{revision:1,page:'notifications'},notificationCenter:{available:true,policy:{state:'unconfigured',revision:0,scope:{kind:'global'},effective:null},
       status:{interruptionQuotaSafety:'atomic'},feed:{items:[{id:'fixture-notice',source:'fixture',contentRef:'仅本机测试',validity:'active',unread:true}]}}};
-  const html=`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PersonalAgent 通知设置夹具</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/app/style.css"><link rel="stylesheet" href="/app/surfaces.css"></head><body><main id="root"></main><script>
+  const html=`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PersonalAgent 通知设置夹具</title><link rel="icon" href="data:,"><link rel="stylesheet" href="/src/ui/tokens.css"><link rel="stylesheet" href="/src/app/style.css"><link rel="stylesheet" href="/src/app/surfaces.css"></head><body><main id="root"></main><script>
   window.fixture=${JSON.stringify(fixture)};window.calls=[];window.desktop={subscribe(fn){window.update=fn;return()=>{}},openSettings:async()=>{},invoke:async(name,payload)=>{
     window.calls.push({name,payload});const f=window.fixture;
     if(name==='snapshot')return{ok:true,value:structuredClone(f)};
@@ -28,21 +28,30 @@ test('notification page submits current scope/revision, preserves draft and sepa
     if(name==='notifications.digest')return{ok:true,value:{items:structuredClone(f.notificationCenter.feed.items),interruptionCount:0}};
     if(name==='notifications.read'){f.notificationCenter.feed.items[0].unread=false;window.update(structuredClone(f));return{ok:true,value:{state:'read'}};}
     return{ok:true,value:{}};
-  }};</script><script type="module" src="/app/renderer.js"></script></body></html>`;
+  }};</script><script type="module" src="/src/app/renderer.js"></script></body></html>`;
   const server=createServer(async(req,res)=>{try{
     const pathname=new URL(req.url,'http://127.0.0.1').pathname;
     if(pathname==='/'){res.setHeader('content-type','text/html; charset=utf-8');res.end(html);return;}
-    const base=pathname.startsWith('/shared/')?shared:source;
-    const file=resolve(base,'.'+decodeURIComponent(base===shared?pathname.slice('/shared'.length):pathname));
+    const base=pathname.startsWith('/shared/')?shared:pathname.startsWith('/src/')?source:undefined;
+    if(!base){res.writeHead(404).end();return;}
+    const file=resolve(base,'.'+decodeURIComponent(pathname.slice(base===shared?'/shared'.length:'/src'.length)));
     if(!file.startsWith(base+'/')&&!file.startsWith(base+'\\')){res.writeHead(403).end();return;}
-    res.setHeader('content-type',extname(file)==='.css'?'text/css':'text/javascript');res.end(await readFile(file));
+    const mime={'.css':'text/css','.js':'text/javascript','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
+    res.setHeader('content-type',mime[extname(file)]??'application/octet-stream');res.end(await readFile(file));
   }catch{res.writeHead(404).end();}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
   const browser=await chromium.launch({headless:true,executablePath:process.env.PA_NOTIFICATION_UI_BROWSER??'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
   t.after(()=>browser.close());const page=await browser.newPage({viewport:{width:1280,height:900},reducedMotion:'reduce'}),errors=[];
   page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(['warning','error'].includes(message.type()))errors.push(message.text());});
+  page.on('response',response=>{if(response.status()>=400)errors.push(`HTTP ${response.status()} ${new URL(response.url()).pathname}`);});
   const url='http://127.0.0.1:'+server.address().port+'/?mode=admin';await page.goto(url);
-  const controls=page.locator('.notification-settings');await controls.waitFor();assert.equal(await page.title(),'PersonalAgent 通知设置夹具');assert.equal(page.url(),url);
+  const controls=page.locator('.notification-settings');
+  try{await controls.waitFor({timeout:10_000});}catch(error){
+    if(process.env.PA_NOTIFICATION_UI_OUTPUT){await mkdir(process.env.PA_NOTIFICATION_UI_OUTPUT,{recursive:true});
+      await page.screenshot({path:join(process.env.PA_NOTIFICATION_UI_OUTPUT,'initial-render-failure.png')});}
+    throw new Error('Notification fixture did not render: '+JSON.stringify(errors),{cause:error});
+  }
+  assert.equal(await page.title(),'PersonalAgent 通知设置夹具');assert.equal(page.url(),url);
   assert.match(await controls.textContent(),/静默仍接收变化/);assert.equal(await controls.locator('input[type=password]').count(),0);
   assert.equal(await controls.locator('[name=window]').inputValue(),'1');assert.equal(await controls.locator('[name=maximum]').inputValue(),'');
   assert.equal(await controls.locator('[name=unlimited]').isChecked(),true);
@@ -74,14 +83,20 @@ test('notification page submits current scope/revision, preserves draft and sepa
   if(output)await page.screenshot({path:join(output,'notification-settings-narrow.png')});
   assert.deepEqual(errors,[]);
   await page.setViewportSize({width:1100,height:900});
-  await page.setContent('<link rel="icon" href="data:,"><link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/app/style.css"><link rel="stylesheet" href="/app/surfaces.css"><main id="mail-preview" style="max-width:800px;margin:20px auto"></main>');
+  await page.setContent('<link rel="icon" href="data:,"><link rel="stylesheet" href="/src/ui/tokens.css"><link rel="stylesheet" href="/src/app/style.css"><link rel="stylesheet" href="/src/app/surfaces.css"><main id="mail-preview" style="max-width:800px;margin:20px auto"></main>');
   await page.evaluate(async()=>{
-    const {mountMailControls}=await import('/app/mail-controls.js');
-    window.mailCalls=[];
+    const {mountMailControls}=await import('/src/app/mail-controls.js');
+    window.mailCalls=[];window.mailStarts=[];
     const initial={configured:true,account:'测试邮箱（脱敏）',localModelReady:false,status:'disabled',counts:{total:7363}};
     const view=mountMailControls(document.querySelector('#mail-preview'),async(name,payload)=>{
-      window.mailCalls.push({name,payload});return {...initial,monitoring:{enabled:true,state:'monitoring'}};
+      window.mailCalls.push({name,payload});
+      if(name==='mail.monitor.start'){
+        view.render({...initial,monitoring:{enabled:false,state:'starting'}});
+        return new Promise(resolve=>window.mailStarts.push(()=>resolve({...initial,localModelReady:true,monitoring:{enabled:true,state:'monitoring'}})));
+      }
+      return {...initial,monitoring:{enabled:false,state:'stopped'}};
     });
+    window.renderMail=value=>view.render(value);window.mailFixture=initial;
     view.render(initial);document.querySelector('#mail-preview details').open=true;
   });
   const mail=page.locator('#mail-preview');
@@ -89,7 +104,27 @@ test('notification page submits current scope/revision, preserves draft and sepa
   assert.deepEqual(await page.evaluate(()=>window.mailCalls),[{name:'mail.monitor.start',payload:undefined}]);
   assert.equal(await mail.getByRole('button',{name:'启动邮件监测',exact:true}).isDisabled(),true);
   assert.equal(await mail.getByRole('button',{name:'停止监测',exact:true}).isEnabled(),true);
+  assert.equal(await mail.getByRole('button',{name:'关闭并撤销',exact:true}).isEnabled(),true);
+  if(output)await page.screenshot({path:join(output,'mail-monitor-starting.png'),fullPage:true});
+  await mail.getByRole('button',{name:'停止监测',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('[data-mail="monitorStart"]').disabled);
+  assert.match(await mail.locator('[data-mail="monitorStatus"]').textContent(),/未启动/);
+  await mail.getByRole('button',{name:'启动邮件监测',exact:true}).click();
+  await page.evaluate(()=>window.mailStarts[0]());
+  assert.equal(await mail.getByRole('button',{name:'启动邮件监测',exact:true}).isDisabled(),true);
+  assert.match(await mail.locator('[data-mail="monitorStatus"]').textContent(),/正在启动本地模型/);
+  await page.evaluate(()=>window.mailStarts[1]());
+  await page.waitForFunction(()=>document.querySelector('[data-mail="monitorStatus"]').textContent.includes('监测中'));
+  assert.deepEqual((await page.evaluate(()=>window.mailCalls)).map(item=>item.name),['mail.monitor.start','mail.monitor.stop','mail.monitor.start']);
   if(output)await page.screenshot({path:join(output,'mail-monitor-settings.png'),fullPage:true});
+  await page.evaluate(()=>window.renderMail({...window.mailFixture,configurationPending:true,localModelReady:true,
+    monitoring:{enabled:true,state:'monitoring'}}));
+  assert.equal(await mail.getByRole('button',{name:'保存配置',exact:true}).isDisabled(),true);
+  assert.equal(await mail.getByRole('button',{name:'开始批量分类',exact:true}).isDisabled(),true);
+  assert.equal(await mail.getByRole('button',{name:'停止监测',exact:true}).isEnabled(),true);
+  assert.equal(await mail.getByRole('button',{name:'关闭并撤销',exact:true}).isEnabled(),true);
+  assert.match(await mail.locator('[data-mail="status"]').textContent(),/配置正在更新/);
+  if(output)await page.screenshot({path:join(output,'mail-monitor-configuring.png'),fullPage:true});
   assert.deepEqual(errors,[]);
 });
 

@@ -1,0 +1,1678 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "scope": "eleven scoped local repair packages and Root MCP product chain with four current source-bound receipts",
+  "generatedAt": "2026-10-26T12:09:26.274Z",
+  "sourceReview": {
+    "firstPassSha256": "f08134f8e163b91604957564429598368b6a377700e6bce93dd750d58bd845ec",
+    "secondPassSha256": "e783c5aa08c8a97de9638e22362da899d88fec89008b0587ddf3cb865d8cbe38",
+    "snapshotReviewSha256": "d0dcaaf8bc2ce6c161a24f3e3257707f5b934d1d4d3472476554b5867fb6f4b1",
+    "epochManifestSha256": "eecc0a10c8848b5cef687c6358e9e4cd4d90648ea307214bd79f298434887e15",
+    "visionReviewSha256": "428fa6cb2fdb950ccff10384e5daf74a9270cd01923baf6a712fc52b7b66ad75",
+    "notificationManifestSha256": "6b86ce25c45a6ac9a3f06cc22b1216046959781ee7b8933c8fadf77e2dd87be6",
+    "notificationClickManifestSha256": "e2031fff244fecf04ccab89e50ef029ce4036942aec2e32490ddac53c6108d99",
+    "notificationClickFollowupManifestSha256": "411c8c07012863b4117009fe5173433406a4cc3b7c3e368f48b15acce0c3082c",
+    "persistedCursorManifestSha256": "e75a23e48cdef7951a642e1d3c42e236545852eb0d809917f5ff777049bdf157",
+    "packageManifestSha256": {
+      "control": "84d97c94392fb8c5b88c051f4962c6fe54290e9d68fc111117796ff6b37e009c",
+      "controlReview": "1eaac8249b52a5ea0145b291cb4b85e27b7aa2af37161268e44ad927c25c7814",
+      "runtime": "f7c1b624e9cf3cf877ada93a74fb7163bef2c1b4f51d33ccb0afcb232cb16975",
+      "history": "3736cd0009f16b2f27a1153d9fb5c44e31f691331298191baf5a5c2ba01b9184",
+      "voice": "937d653b5db33b24f07f54accb03f6e9f0eafa09f959831e9a9ec9840623998e",
+      "connectors": "5404034c2142a93ceb554423c943a4c88d220edeb110793e27311351d811e1a0"
+    },
+    "requiredSourceInputs": [
+      "apps/desktop/electron/browser-control-host.js",
+      "apps/desktop/electron/computer-control-lease.js",
+      "apps/desktop/electron/computer-vision-config.js",
+      "apps/desktop/electron/computer-vision-host.js",
+      "apps/desktop/electron/connector-change-host.js",
+      "apps/desktop/electron/conversations.js",
+      "apps/desktop/electron/desktop-notification-port.js",
+      "apps/desktop/electron/history-pages.js",
+      "apps/desktop/electron/mail-review-host.js",
+      "apps/desktop/electron/main.js",
+      "apps/desktop/electron/notification-application-host.js",
+      "apps/desktop/electron/remote-mcp-management.js",
+      "apps/desktop/electron/remote-mcp-preload.cjs",
+      "apps/desktop/electron/snapshot-publisher.js",
+      "apps/desktop/electron/task-projection-cache.js",
+      "apps/desktop/electron/voice-startup-host.js",
+      "apps/desktop/src/app/index.html",
+      "apps/desktop/src/app/style.css",
+      "apps/desktop/src/remote-mcp/index.html",
+      "apps/desktop/src/remote-mcp/style.css",
+      "apps/desktop/src/remote-mcp/view.js",
+      "apps/desktop/src/shared/snapshot-receiver.js",
+      "apps/desktop/test/browser-control-host.test.mjs",
+      "apps/desktop/test/computer-vision-config.test.mjs",
+      "apps/desktop/test/computer-vision-host.test.mjs",
+      "apps/desktop/test/large-control-terminal-unknown.test.mjs",
+      "apps/desktop/test/large-history-cache-retention.test.mjs",
+      "apps/desktop/test/large-history-message-page.test.mjs",
+      "apps/desktop/test/remote-mcp-management.test.mjs",
+      "apps/desktop/test/remote-mcp-product-smoke.cjs",
+      "apps/desktop/test/remote-mcp-question-navigation.test.mjs",
+      "apps/desktop/test/snapshot-publisher.test.mjs",
+      "apps/desktop/test/sol-notification-click-evidence.test.mjs",
+      "apps/desktop/test/xhigh-change-watch-epoch.test.mjs",
+      "apps/desktop/test/xhigh-change-watch-saved-cursor.test.mjs",
+      "apps/desktop/test/xhigh-connectors-mail-review.test.mjs",
+      "apps/desktop/test/xhigh-notification-boundary.test.mjs",
+      "apps/desktop/test/xhigh-snapshot-render-recovery.test.mjs",
+      "apps/desktop/test/xhigh-voice-startup-cancellation.test.mjs",
+      "apps/desktop/test/xhigh-voice-startup-preparation.test.mjs",
+      "apps/runtime/src/application/execution-capacity.ts",
+      "apps/runtime/src/application/mail-triage.ts",
+      "apps/runtime/src/application/startup-recovery.ts",
+      "apps/runtime/test/execution-capacity.test.mjs",
+      "apps/runtime/test/large-runtime-startup-population.test.mjs"
+    ],
+    "newPackageSources": [
+      {
+        "path": "apps/desktop/test/computer-vision-host.test.mjs",
+        "reviewExpectedSha256": "6803978e846d470a600f02401709448d6628ee477d77e737e6a28e459bd491c7",
+        "currentRootSha256": "6803978e846d470a600f02401709448d6628ee477d77e737e6a28e459bd491c7",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/test/computer-vision-config.test.mjs",
+        "reviewExpectedSha256": "1a3eb99075a95617eb616649e0de8b8f71144582f8e0b17c2aa66e3f5cc0eec4",
+        "currentRootSha256": "1a3eb99075a95617eb616649e0de8b8f71144582f8e0b17c2aa66e3f5cc0eec4",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/electron/computer-vision-host.js",
+        "reviewExpectedSha256": "d29fc65b4ee6c6c8d4be404331220a2437fe5b50e109a2e6e4f3e5ff92da4145",
+        "currentRootSha256": "d29fc65b4ee6c6c8d4be404331220a2437fe5b50e109a2e6e4f3e5ff92da4145",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/electron/computer-vision-config.js",
+        "reviewExpectedSha256": "148b894cf5de4c51f8eaa2bb165fae59b73f8bf9ee3e2326ab43fa84b4a7e458",
+        "currentRootSha256": "148b894cf5de4c51f8eaa2bb165fae59b73f8bf9ee3e2326ab43fa84b4a7e458",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/test/xhigh-notification-boundary.test.mjs",
+        "reviewExpectedSha256": "d1a775cf674e04e23821b4f2b399c62f56c269987ec526d0eba3f310a716094e",
+        "currentRootSha256": "d1a775cf674e04e23821b4f2b399c62f56c269987ec526d0eba3f310a716094e",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/electron/desktop-notification-port.js",
+        "reviewExpectedSha256": "6b1a2569f213befa625ada5cce4e8af1d4e9dc10750710127c0a3f5a56770435",
+        "currentRootSha256": "6b1a2569f213befa625ada5cce4e8af1d4e9dc10750710127c0a3f5a56770435",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/electron/notification-application-host.js",
+        "reviewExpectedSha256": "317ca34e04a839ead3ca146480a4561f6de83ee819e006a10907abdc5f68593f",
+        "currentRootSha256": "317ca34e04a839ead3ca146480a4561f6de83ee819e006a10907abdc5f68593f",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/test/sol-notification-click-evidence.test.mjs",
+        "reviewExpectedSha256": "2f9dc1216041af2cfdf01b70dc59fffb7e44966006131623e892a64e75801161",
+        "currentRootSha256": "2f9dc1216041af2cfdf01b70dc59fffb7e44966006131623e892a64e75801161",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/runtime/src/application/mail-triage.ts",
+        "reviewExpectedSha256": "fea9c0c35500bdee943e4d7dd02c66e5bb7f1b9c481ae4be803ed3d506c8334f",
+        "currentRootSha256": "fea9c0c35500bdee943e4d7dd02c66e5bb7f1b9c481ae4be803ed3d506c8334f",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/electron/connector-change-host.js",
+        "reviewExpectedSha256": "1442903bdb7906c4e610d2d41e9e8170c848457b4936af82dcb1756d047655ec",
+        "currentRootSha256": "1442903bdb7906c4e610d2d41e9e8170c848457b4936af82dcb1756d047655ec",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/test/xhigh-change-watch-saved-cursor.test.mjs",
+        "reviewExpectedSha256": "7cb4f22830b2b5065a1b60fdc127b1739f8a26ddc914e6314a70ae34d9915fa7",
+        "currentRootSha256": "7cb4f22830b2b5065a1b60fdc127b1739f8a26ddc914e6314a70ae34d9915fa7",
+        "matchesReview": true
+      }
+    ],
+    "documents": [
+      {
+        "path": "apps/desktop/docs/CONTROL_BOUNDARY_REPAIR_20261026.md",
+        "reviewExpectedSha256": "eb220604b2c5806298a041f07e636e2ec2dc2cfae194303ce4e1a10cae902d96",
+        "currentRootSha256": "eb220604b2c5806298a041f07e636e2ec2dc2cfae194303ce4e1a10cae902d96",
+        "matchesReview": true
+      },
+      {
+        "path": "docs/modules/LARGE_RUNTIME_REPAIR_20261026.md",
+        "reviewExpectedSha256": "2f683c77435dadad45d5f921e0afff55313a2e8be4aa77b7a774c38047ca5ce7",
+        "currentRootSha256": "2f683c77435dadad45d5f921e0afff55313a2e8be4aa77b7a774c38047ca5ce7",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/HISTORY_RESOURCE_REPAIR_20261026.md",
+        "reviewExpectedSha256": "633f3aa65ebc88a52f3eb420c1c7751e2d13b3a57d63afb1968386266d2be0b1",
+        "currentRootSha256": "633f3aa65ebc88a52f3eb420c1c7751e2d13b3a57d63afb1968386266d2be0b1",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/VOICE_UI_REPAIR_20261026.md",
+        "reviewExpectedSha256": "d26fe288a53acb80fb21672b5b4050c06163f739d172273c8c4614c1d58ae470",
+        "currentRootSha256": "d26fe288a53acb80fb21672b5b4050c06163f739d172273c8c4614c1d58ae470",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/CONNECTOR_LIFECYCLE_REPAIR_20261026.md",
+        "reviewExpectedSha256": "5ec171ef029b94f14dc548ea1df8441502d3f18a376572ab8226090d74b7b481",
+        "currentRootSha256": "5ec171ef029b94f14dc548ea1df8441502d3f18a376572ab8226090d74b7b481",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/SNAPSHOT_RESOURCE_REPAIR_20261026.md",
+        "reviewExpectedSha256": "907069511d0adb1c019e72b76c4bdb717f2b0d7bafa21b9b777aa4a7df0ad93b",
+        "currentRootSha256": "907069511d0adb1c019e72b76c4bdb717f2b0d7bafa21b9b777aa4a7df0ad93b",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/CHANGE_WATCH_REPAIR_20261026.md",
+        "reviewExpectedSha256": "fc6626a3e9d21fe6fd95661151f63fa4132a087373d24632d6d6dbea87ea32a2",
+        "currentRootSha256": "fc6626a3e9d21fe6fd95661151f63fa4132a087373d24632d6d6dbea87ea32a2",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/COMPUTER_VISION_LIFECYCLE_20261026.md",
+        "reviewExpectedSha256": "9e7c4aae65b2160a4b8715a0ccae4281f87320125fa13c76d591343b79133b85",
+        "currentRootSha256": "9e7c4aae65b2160a4b8715a0ccae4281f87320125fa13c76d591343b79133b85",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/NOTIFICATION_BOUNDARY_AUDIT_20261026.md",
+        "reviewExpectedSha256": "02b547bd6d7fa24ed7e9c0bb881bf6c8035580ef53dd0a578c3c9249a4f0ad56",
+        "currentRootSha256": "02b547bd6d7fa24ed7e9c0bb881bf6c8035580ef53dd0a578c3c9249a4f0ad56",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/NOTIFICATION_CLICK_EVIDENCE_20261026.md",
+        "reviewExpectedSha256": "91084cdb34f7bd62562e7083bdefde01511dcbf34da15204fd500959fbabab2c",
+        "currentRootSha256": "91084cdb34f7bd62562e7083bdefde01511dcbf34da15204fd500959fbabab2c",
+        "matchesReview": true
+      },
+      {
+        "path": "apps/desktop/docs/CHANGE_WATCH_PERSISTED_CURSOR_20261026.md",
+        "reviewExpectedSha256": "cf3f4bba9769c2fe80504153e448c833202075d0a3e6e0396462480066d3f8a9",
+        "currentRootSha256": "cf3f4bba9769c2fe80504153e448c833202075d0a3e6e0396462480066d3f8a9",
+        "matchesReview": true
+      }
+    ]
+  },
+  "environment": {
+    "node": "v24.15.0",
+    "platform": "win32",
+    "architecture": "x64",
+    "osRelease": "10.0.26200",
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13650HX",
+    "totalMemoryBytes": 16780455936,
+    "measurementKinds": {
+      "control": "actual Runtime, Policy, ToolGateway, SQLite; synthetic driver and stop guard",
+      "runtime": "Node with real SQLite in-memory and synthetic task population",
+      "historyCache": "independent Node processes with synthetic projection cache",
+      "historyPage": "independent Node processes with actual Conversations/history pages and empty Task port",
+      "voice": "production controller and Main callback with synthetic audio/window",
+      "connectors": "actual Runtime/SQLite/Questions with synthetic mailbox/model",
+      "snapshot": "production Publisher/Receiver and renderer subscriber in a synthetic window/transport harness",
+      "epoch": "actual Runtime/SQLite/Policy/ToolGateway/MailService with Fake mailbox, local chooser and notifications",
+      "vision": "production host and configuration with Fake Runtime, screenshot reader, gateway and fetch",
+      "notification": "production notification port with injected Fake notifier and local application host",
+      "notificationClick": "production notification port and application host with Fake notifier",
+      "persistedCursor": "actual Runtime/SQLite/Policy/ToolGateway/MailTriage and watch/change hosts with Fake mailbox and classifier"
+    }
+  },
+  "packageChecks": {
+    "control": {
+      "originalFailure": {
+        "counts": {
+          "tests": 13,
+          "pass": 6,
+          "fail": 7,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "0569e4132e2cf030e3f95eed178e37d30bab71e889f224ae3e24cd09275de020"
+      },
+      "focused": {
+        "counts": {
+          "tests": 76,
+          "pass": 76,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "e2bb0d9ae65cb6f4e845c6538778927f70877ad8165eca1549eef24858b5c109"
+      },
+      "independent": {
+        "counts": {
+          "tests": 14,
+          "pass": 14,
+          "fail": 0
+        },
+        "logSha256": "0f33f15054de0ee5a0e367f69a41625c543ab650177895fbcbe688f53c2d6173"
+      }
+    },
+    "runtime": {
+      "originalFailure": {
+        "logSha256": "f7900b12e5cee99839bf736a850bea5703435d3db69d383f1cd8ef4cdea97c12",
+        "counts": {
+          "tests": 33,
+          "pass": 31,
+          "fail": 2,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "focused": {
+        "logSha256": "be836dff0c612cfa50a04955a56f884e560fd16f4b6ee3a6f3d9ae06887808f3",
+        "counts": {
+          "tests": 68,
+          "pass": 68,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "history": {
+      "originalCacheFailure": {
+        "logSha256": "c0c1182b6399970a0caad1a3250bc96e5d7899c7a93da94838e609316b4539bd",
+        "counts": {
+          "tests": 3,
+          "pass": 0,
+          "fail": 3,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "originalPageFailure": {
+        "logSha256": "9472a3e3611a8372c47f03c6a81159a427ac36c9bf62ee41697e02157b4ddfea",
+        "counts": {
+          "tests": 4,
+          "pass": 0,
+          "fail": 4,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "focused": {
+        "logSha256": "cf7fa2d88c4dd0f8742b4424296bf8501a1f12b8977f2525bc20ec8170ef87f4",
+        "counts": {
+          "tests": 17,
+          "pass": 17,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "voice": {
+      "originalFailure": {
+        "exitCode": 1,
+        "tests": 3,
+        "pass": 0,
+        "fail": 3
+      },
+      "focused": {
+        "exitCode": 0,
+        "tests": 37,
+        "pass": 37,
+        "fail": 0
+      }
+    },
+    "connectors": {
+      "focused": {
+        "logSha256": "a0f182df00d268f30dfc05269636c7df211b685e7a525f911850a1048d40fdb0",
+        "counts": {
+          "tests": 12,
+          "pass": 12,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "integration": {
+        "logSha256": "1b0f1b123c170408ddc91f4e7ee30c1209b0e5f079f5a54260864d2ccb5484f2",
+        "counts": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "snapshot": {
+      "status": "scoped_author_evidence_not_final_integration",
+      "sourcePatchSha256": "b6381024adc09ad755b2e4ce3181b45713ca4bc96a35bce8bb11aa3ff7c82c6b",
+      "originalFailure": {
+        "logSha256": "f211fba61078cd35a0a312b1c24e7d20f41c5ee08e11284f4e5fd318a62910d7",
+        "counts": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "focused": {
+        "logSha256": "1ec77ca7f5075dbd60faf867bf5e41808e9a255ca938c7762ba4f85733987007",
+        "counts": {
+          "tests": 19,
+          "pass": 19,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "epoch": {
+      "status": "scoped_author_evidence_not_final_integration",
+      "manifestSha256": "eecc0a10c8848b5cef687c6358e9e4cd4d90648ea307214bd79f298434887e15",
+      "sourcePatchSha256": "6add442a1b4ae426d589b72b9f5620c9123f295925429788e2fff0076d7c6641",
+      "originalFailure": {
+        "logSha256": "ae84ece0c6a34d029a12c65a82559f16d25b6ae9cd0af3856ca11f784b4ad8d1",
+        "counts": {
+          "tests": 3,
+          "pass": 0,
+          "fail": 3,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "v2PaginationFailure": {
+        "logSha256": "00299544c7eaa61cc079c3d6eb8553ec6a508c5e5bebd9caeaad5b97a4017fea",
+        "counts": {
+          "tests": 9,
+          "pass": 6,
+          "fail": 3,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "emptyCursorFailure": {
+        "logSha256": "1985463ef33624cb5ee4aa0f07b60de7396c77ea5b398a7ca1354c68cd09a534",
+        "counts": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "emptyBaselineFailure": {
+        "logSha256": "20ee371b2a6220b6ce8b92c6ccfc51cb68e88b236eca8658eddef529cd0c59ef",
+        "counts": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "focused": {
+        "logSha256": "a3aa8e28e6d977fb40417e7df9198de32f350454886e6fb148a9828032ebd067",
+        "counts": {
+          "tests": 53,
+          "pass": 53,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "vision": {
+      "status": "scoped_fake_evidence_not_final_integration",
+      "sourcePatchSha256": "57b1e2f10e650666080924d2e74df7e0b59c02cd1c0f75c8ffcd0017faacb08e",
+      "productionChanged": false,
+      "baseline": {
+        "logSha256": "a68d8e03a23c2d435df63cc2dbbf9719947c24a009ee8a263291775d27afa922",
+        "counts": {
+          "tests": 27,
+          "pass": 27,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "hostFocused": {
+        "logSha256": "84363d43d9be1e0ac5dd576f29c9d6ce7ec2c772b7285734d322b25608767af9",
+        "counts": {
+          "tests": 15,
+          "pass": 15,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "configSingleCase": {
+        "logSha256": "acdb2e219fc77ed21aeb5ef8f726eb03f988e51b6fc8d317d23b769dcca010e5",
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "notification": {
+      "status": "scoped_fake_evidence_not_final_integration",
+      "manifestSha256": "6b86ce25c45a6ac9a3f06cc22b1216046959781ee7b8933c8fadf77e2dd87be6",
+      "authorCrlfSourcePatchSha256": "21cf50dddc5d2a64cebd039bc2604e355fb490f7dfc55758d0eafa68bfb04610",
+      "baseline": {
+        "logSha256": "41d4c9d345e42d552d5a658413dc5d0b3d228b418170150774d25bb49e7c7117",
+        "counts": {
+          "tests": 5,
+          "pass": 0,
+          "fail": 5,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "focused": {
+        "logSha256": "7b2d1f8dec8c5171f8d0e21c8991d13943cc3a6db9c0ff34631c0dadc83d0386",
+        "counts": {
+          "tests": 22,
+          "pass": 22,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "terminalPortSourceSha256": "d229b56a859c09426930cc2de54fbbfedd53bfd599e392b4300350d99b251c59",
+      "portSupersededByClickEvidence": true
+    },
+    "notificationClick": {
+      "status": "scoped_fake_evidence_not_final_integration",
+      "manifestSha256": "e2031fff244fecf04ccab89e50ef029ce4036942aec2e32490ddac53c6108d99",
+      "sourcePatchSha256": "0fc4c3d995a2ba20fe7879989c4998caea7406359b89a6c37cb0499d5339ce49",
+      "originalFailure": {
+        "logSha256": "44872011fa266becde0f659731b3db9eaa6c0f218bc1c87daf8e5ac1963f8d41",
+        "counts": {
+          "tests": 3,
+          "pass": 0,
+          "fail": 3,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "focused": {
+        "logSha256": "abd26bb4620d7278589e1629229847dc577e520d84f4dec70da5903c95dfe174",
+        "counts": {
+          "tests": 27,
+          "pass": 27,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "followup": {
+        "manifestSha256": "411c8c07012863b4117009fe5173433406a4cc3b7c3e368f48b15acce0c3082c",
+        "sourcePatchSha256": "977f764c1c47dcaecc5bb3bc53ea57d4240d27ea4fc9f70cfae0e0d61ce4ca31",
+        "originalFailure": {
+          "logSha256": "22cee37eaec24279570aa07cef669c11c0805ef633b527e1ca259cf0ae0260ba",
+          "counts": {
+            "tests": 7,
+            "pass": 5,
+            "fail": 2,
+            "cancelled": 0,
+            "skipped": 0
+          }
+        },
+        "compatibilityFailure": {
+          "logSha256": "26163c803a3afc406a86aa37c6aab69079d88e07a547041f3aa9648df24ad586",
+          "counts": {
+            "tests": 1,
+            "pass": 0,
+            "fail": 1,
+            "cancelled": 0,
+            "skipped": 0
+          }
+        },
+        "focused": {
+          "logSha256": "5430c533ff66d5af631e7dcb738c3a570f2d1ab53cc1822ea56522170058b816",
+          "counts": {
+            "tests": 30,
+            "pass": 30,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0
+          }
+        }
+      }
+    },
+    "persistedCursor": {
+      "status": "scoped_fake_evidence_not_final_integration",
+      "manifestSha256": "e75a23e48cdef7951a642e1d3c42e236545852eb0d809917f5ff777049bdf157",
+      "sourcePatchSha256": "472c3d91bd232ca638756af0d1cfbe71ee06929a23a8665fe0863750a4500070",
+      "originalFailure": {
+        "logSha256": "9b41781da9d3a76c7554c37f660e2fe63d236cd64a4dc587eec98303dc0fa94d",
+        "counts": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "dualNamespaceFailure": {
+        "logSha256": "0ff2b901fc5c840e6e5d6b48f2ca9ba36166be7d88a6c59ac246edfffde00e23",
+        "counts": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "focused": {
+        "logSha256": "2de1857265825e6921e4523ac15b5aea854f61f65e6bc3cfea9dbc4b4c17774d",
+        "counts": {
+          "tests": 54,
+          "pass": 54,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        }
+      },
+      "runtimeTscStatusSha256": "661fad79c4e255bc96abae937fdb3339fdb00a8a352e80f1fc305a6c3a5ffdca"
+    }
+  },
+  "runtimeDist": {
+    "resolutionReceiptSha256": "0faa84e9943458d0bd7ba972a062076e4f84666d2315603d2b7a74b913d3c1eb",
+    "packageEntrySha256": "e347f1f5d179cfd6a1f24bd2bd2576b3917dc604115c35d2371d3c62c5ab31c0",
+    "compiledMailTriageSha256": "1c5ab0c849d6b5e93190691fe888c05f93f85ecf1da43ba1701457d4afb8c1c2",
+    "sourceMailTriageSha256": "fea9c0c35500bdee943e4d7dd02c66e5bb7f1b9c481ae4be803ed3d506c8334f",
+    "buildReceiptSha256": "cea1cab4c30952beaa65f3727cdaa09d764b602dfe8ccdd894db680a547fb6c5",
+    "resolvedWithinRoot": true,
+    "privateSavedCursorCompiled": true,
+    "scope": "public Runtime application import and compiled private cursor binding; build evidence only"
+  },
+  "finalMcpProduct": {
+    "receiptSha256": "11e3653cfa7e588d52db6a1105a56801e3b76874084c231ea38c46ed038bc40b",
+    "logSha256": "e746091b71bfdc48689cac7035b0a31c3c441f9b107e504b45f0db98d10f3156",
+    "status": "passed",
+    "main": "actual product",
+    "renderer": "actual isolated management and conversation cards",
+    "safeStorage": "actual Electron",
+    "remoteTransport": "actual loopback HTTPS/TLS, default fetch",
+    "nativeDialogs": "explicit synthetic directory and message dialogs; actual conversation decisions",
+    "reopens": 2,
+    "mcpToolCalls": 1,
+    "negativeCases": [
+      {
+        "mode": "untrusted-ca",
+        "errorCode": "EXTERNAL_FAILURE",
+        "toolCalls": 0,
+        "httpRequests": 0
+      },
+      {
+        "mode": "hostname-mismatch",
+        "errorCode": "EXTERNAL_FAILURE",
+        "toolCalls": 0,
+        "httpRequests": 0
+      },
+      {
+        "mode": "directory-mismatch",
+        "errorCode": "REVISION_CONFLICT",
+        "toolCalls": 0,
+        "httpRequests": 4
+      },
+      {
+        "mode": "redirect",
+        "errorCode": "EXTERNAL_FAILURE",
+        "toolCalls": 0,
+        "httpRequests": 1
+      }
+    ],
+    "approvalBeforeCall": true,
+    "connectionDeniedBeforeNetwork": true,
+    "taskDenied": true,
+    "disconnect": true,
+    "oldApprovalRejected": true,
+    "oldApprovalRejectedBeforeExpiry": true,
+    "pendingRestart": {
+      "beforeState": "waiting_approval",
+      "afterState": "failed",
+      "errorCode": "REVISION_CONFLICT",
+      "executionStarted": false,
+      "cleanupMethod": "verified-owned-tree"
+    },
+    "ciphertextRemoved": true,
+    "pageErrors": 0,
+    "unexpectedRequests": 0,
+    "systemTrustChanged": false,
+    "tlsVerificationDisabled": false,
+    "modelCalls": 0,
+    "agentArtsCalls": 0
+  },
+  "historicalIntegration": {
+    "a10": {
+      "receiptSha256": "7e4acb32ccad742610453e99df8da937296accdb0138fdd5d692e468c0d16650",
+      "logSha256": "a4187ff72f2f3243613ca588f0fab3444ee1c8d9f018bd36b22161a18309d021",
+      "exitCode": 0,
+      "sourceCount": 1686,
+      "counts": {
+        "tests": 6097,
+        "pass": 6068,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 29
+      },
+      "scope": "before these eleven integrated packages"
+    },
+    "mcpProductAttempts": [
+      {
+        "attempt": "a1",
+        "exitCode": 1,
+        "logSha256": "1cd97bee9d4a63832d393681fc79ac3c75437544d6c72188691769a4cd0b27ca",
+        "failureSummary": "status visibility timeout"
+      },
+      {
+        "attempt": "a2",
+        "exitCode": 1,
+        "logSha256": "b0c71fb1b281de20db80d6072da5a13ecc4544dbf59904d960bf26792bfe8267",
+        "failureSummary": "renderer import module failure"
+      },
+      {
+        "attempt": "a3",
+        "exitCode": 1,
+        "logSha256": "05b9e103eb649973a926dd8575d7a9507f76077e49c4e41d553d06a1d0191dcb",
+        "failureSummary": "authorization decision locator timeout"
+      },
+      {
+        "attempt": "a4",
+        "exitCode": 1,
+        "logSha256": "fc4551ef36b28b7eff91596b1a1a935345dc9e8d308ca09abc12eede482c92d1",
+        "failureSummary": "product wait timeout"
+      },
+      {
+        "attempt": "a5",
+        "exitCode": 1,
+        "logSha256": "33692554016b925d041ed8bd3b7e6dd98a0f1f8b63d8a02089df8a9f31bc9b06",
+        "failureSummary": "product wait timeout",
+        "receiptSha256": "2abd6898e23db55ff634c3cd75ab29d4f0770a296390a95967b4d4ed33766485"
+      },
+      {
+        "attempt": "a6",
+        "exitCode": 1,
+        "logSha256": "a9a71b62a58fedd8a0b0bb0b1f1678820960528b0f692897276bdb3f26e81cc7",
+        "failureSummary": "untrusted CA diagnostic boundary assertion failed",
+        "receiptSha256": "ba38d553b8f1af838b19ddd5d28756e019da16035a88b68d225b0ab73e70a22e"
+      }
+    ],
+    "mcpProductA7": {
+      "receiptSha256": "58f6da62aaf7d577d818be0894c8907b093b447641def0a9cc08db162666c00c",
+      "logSha256": "2776e2d69dd790e117e9659efcf5eeb9e1c0afad0a4bdfe785dfdd93915f3aeb",
+      "productReceiptSha256": "b5b3fd6316f232514b829dc97dc6ecd2c5c3b4fdfef190cf1ccad47056ae0ea7",
+      "exitCode": 0,
+      "sourceCount": 1696,
+      "changedInputs": 0,
+      "product": {
+        "mcpToolCalls": 1,
+        "negativeCases": 4,
+        "pageErrors": 0,
+        "modelCalls": 0,
+        "gracefulCloses": 10,
+        "verifiedOwnedTreeCloses": 1
+      },
+      "scope": "historical source snapshot lacked html/css/svg and predates final eleven-package freeze"
+    }
+  },
+  "rawMeasurements": {
+    "runtimeStartup": {
+      "before": {
+        "phase": "before",
+        "sourceReceiptSha256": "248134d484ceac082ed15056ad80a6e3edc0e00087627e4b85e232a5ffd16e85",
+        "node": "24.15.0",
+        "samplesPerPopulation": 25,
+        "compiledRuntimeSha256": "702e932cd8819bea295dd961f503f90641ea932497bd55c2e58e6c27fad3bd08",
+        "compiledRecoverySha256": "d6be4859104be608cbb70f0478dd2d1af900d2722a70989f7b7cf615a7f762a4",
+        "recoverySourceSha256": "c8cd1c6bba51bd34440df8080a858b7b09c767c2a0d8a2eaa86d9912c97b66a5",
+        "results": [
+          {
+            "population": 250,
+            "samples": 25,
+            "rawInspectMs": [
+              2.981,
+              3.96,
+              4.536,
+              3.082,
+              3.35,
+              2.792,
+              3.979,
+              3.177,
+              2.953,
+              3.196,
+              3.825,
+              3.88,
+              2.882,
+              3.575,
+              3.464,
+              4.116,
+              4.432,
+              3.716,
+              3.567,
+              4.63,
+              3.88,
+              2.801,
+              3.262,
+              2.806,
+              3.28
+            ],
+            "inspectMs": {
+              "p50": 3.464,
+              "p95": 4.536,
+              "max": 4.63
+            },
+            "listTasks": {
+              "count": 75,
+              "global": 75,
+              "scoped": 0,
+              "rows": 6250
+            },
+            "memoryBytes": {
+              "rssBefore": 104935424,
+              "heapUsedBefore": 13270624,
+              "sampledMaxRss": 118009856,
+              "sampledMaxHeapUsed": 26997664
+            },
+            "fullRecovery": {
+              "wallMs": 874.098,
+              "items": 250,
+              "queries": {
+                "count": 756,
+                "global": 756,
+                "scoped": 0,
+                "rows": 63000
+              },
+              "workerStarts": 0
+            }
+          },
+          {
+            "population": 1000,
+            "samples": 25,
+            "rawInspectMs": [
+              11.416,
+              11.223,
+              11.86,
+              12.718,
+              11.593,
+              11.003,
+              12.322,
+              11.723,
+              12.349,
+              12.586,
+              13.321,
+              13.055,
+              11.264,
+              12.029,
+              11.514,
+              11.448,
+              11.897,
+              12.082,
+              11.091,
+              11.691,
+              11.363,
+              12.333,
+              11.842,
+              12.93,
+              13.534
+            ],
+            "inspectMs": {
+              "p50": 11.86,
+              "p95": 13.321,
+              "max": 13.534
+            },
+            "listTasks": {
+              "count": 250,
+              "global": 250,
+              "scoped": 0,
+              "rows": 25000
+            },
+            "memoryBytes": {
+              "rssBefore": 108773376,
+              "heapUsedBefore": 15392904,
+              "sampledMaxRss": 119136256,
+              "sampledMaxHeapUsed": 27901736
+            },
+            "fullRecovery": null
+          },
+          {
+            "population": 5000,
+            "samples": 25,
+            "rawInspectMs": [
+              66.977,
+              71.737,
+              69.351,
+              69.275,
+              74.091,
+              93.387,
+              126.465,
+              130.973,
+              143.137,
+              130.609,
+              156.308,
+              123.724,
+              131.221,
+              123.86,
+              136.496,
+              175.327,
+              138.538,
+              145.583,
+              138.928,
+              130.219,
+              135.547,
+              132.976,
+              157.156,
+              137.766,
+              148.15
+            ],
+            "inspectMs": {
+              "p50": 131.221,
+              "p95": 157.156,
+              "max": 175.327
+            },
+            "listTasks": {
+              "count": 1250,
+              "global": 1250,
+              "scoped": 0,
+              "rows": 125000
+            },
+            "memoryBytes": {
+              "rssBefore": 124588032,
+              "heapUsedBefore": 26586008,
+              "sampledMaxRss": 169336832,
+              "sampledMaxHeapUsed": 49807856
+            },
+            "fullRecovery": null
+          }
+        ]
+      },
+      "after": {
+        "phase": "after",
+        "sourceReceiptSha256": "d5de8292e5c59d58705e6df57b0df6eb11096e9d6d350f1d683201b7e986ae9c",
+        "node": "24.15.0",
+        "samplesPerPopulation": 25,
+        "compiledRuntimeSha256": "702e932cd8819bea295dd961f503f90641ea932497bd55c2e58e6c27fad3bd08",
+        "compiledRecoverySha256": "bf72e43291900834c3af55636c23baf35babd5b5ddb5526ea07e4a90a6721d03",
+        "recoverySourceSha256": "b01d7fc3dfdef44be4a618b4999ab2bbc52fffcae686c9258c397dfaaa50b99f",
+        "results": [
+          {
+            "population": 250,
+            "samples": 25,
+            "rawInspectMs": [
+              0.317,
+              0.61,
+              0.677,
+              0.728,
+              0.376,
+              0.224,
+              0.214,
+              0.216,
+              0.281,
+              0.227,
+              0.356,
+              0.185,
+              0.192,
+              0.16,
+              0.201,
+              0.168,
+              0.154,
+              0.168,
+              0.523,
+              0.323,
+              0.232,
+              0.198,
+              0.172,
+              0.223,
+              0.224
+            ],
+            "inspectMs": {
+              "p50": 0.224,
+              "p95": 0.677,
+              "max": 0.728
+            },
+            "listTasks": {
+              "count": 25,
+              "global": 0,
+              "scoped": 25,
+              "rows": 0
+            },
+            "memoryBytes": {
+              "rssBefore": 104771584,
+              "heapUsedBefore": 12546864,
+              "sampledMaxRss": 106053632,
+              "sampledMaxHeapUsed": 13239688
+            },
+            "fullRecovery": {
+              "wallMs": 65.637,
+              "items": 250,
+              "queries": {
+                "count": 254,
+                "global": 3,
+                "scoped": 251,
+                "rows": 250
+              },
+              "workerStarts": 0
+            }
+          },
+          {
+            "population": 1000,
+            "samples": 25,
+            "rawInspectMs": [
+              0.211,
+              0.232,
+              0.18,
+              0.178,
+              0.166,
+              0.161,
+              0.15,
+              0.17,
+              0.18,
+              0.243,
+              0.269,
+              0.245,
+              0.212,
+              0.17,
+              0.156,
+              0.209,
+              0.159,
+              0.174,
+              0.441,
+              0.191,
+              0.221,
+              0.169,
+              0.174,
+              0.144,
+              0.167
+            ],
+            "inspectMs": {
+              "p50": 0.178,
+              "p95": 0.269,
+              "max": 0.441
+            },
+            "listTasks": {
+              "count": 25,
+              "global": 0,
+              "scoped": 25,
+              "rows": 0
+            },
+            "memoryBytes": {
+              "rssBefore": 107274240,
+              "heapUsedBefore": 12578400,
+              "sampledMaxRss": 108335104,
+              "sampledMaxHeapUsed": 13162440
+            },
+            "fullRecovery": null
+          },
+          {
+            "population": 5000,
+            "samples": 25,
+            "rawInspectMs": [
+              0.231,
+              0.238,
+              0.195,
+              0.191,
+              0.186,
+              0.174,
+              0.169,
+              0.438,
+              0.531,
+              0.207,
+              0.175,
+              0.168,
+              0.186,
+              0.179,
+              0.197,
+              0.188,
+              0.176,
+              0.15,
+              0.153,
+              0.163,
+              0.202,
+              0.163,
+              0.151,
+              0.156,
+              0.204
+            ],
+            "inspectMs": {
+              "p50": 0.186,
+              "p95": 0.438,
+              "max": 0.531
+            },
+            "listTasks": {
+              "count": 25,
+              "global": 0,
+              "scoped": 25,
+              "rows": 0
+            },
+            "memoryBytes": {
+              "rssBefore": 114118656,
+              "heapUsedBefore": 12590280,
+              "sampledMaxRss": 115150848,
+              "sampledMaxHeapUsed": 13170096
+            },
+            "fullRecovery": null
+          }
+        ]
+      }
+    },
+    "historyCache": {
+      "sourceReceiptSha256": "ed11ae00752f1d63c7b72a0ffdcf33208e3a1272134ffb0e418024d8e8291abd",
+      "startedAt": "2026-10-26T05:09:41.425Z",
+      "finishedAt": "2026-10-26T05:09:45.008Z",
+      "cases": [
+        {
+          "phase": "before",
+          "count": 1000,
+          "sourceSha256": "2cacf1c597ae315673a00a767d644e655ff150d0f0f7ea35c58a0eab2cfbb8a8",
+          "timing": {
+            "operation": "terminalize an already ordered hidden cache",
+            "warmups": 5,
+            "rawSamplesMs": [
+              0.8429000000000002,
+              0.6794000000000011,
+              0.7194000000000074,
+              0.5885999999999996,
+              0.6887000000000114,
+              0.7436000000000149,
+              0.6677999999999997,
+              0.6782999999999788,
+              1.148699999999991,
+              0.6611000000000047,
+              0.8015000000000043,
+              0.6623000000000161,
+              0.675200000000018,
+              0.6616999999999962,
+              0.6240999999999985,
+              0.6588000000000136,
+              1.515800000000013,
+              0.6882999999999981,
+              0.7164000000000215,
+              0.6619999999999777,
+              0.6684000000000196,
+              0.639699999999948,
+              0.6304999999999836,
+              0.8923000000000343,
+              0.6561000000000377,
+              0.9230999999999767,
+              0.6465000000000032,
+              0.683400000000006,
+              0.6994000000000256,
+              0.6614000000000146
+            ],
+            "p50Ms": 0.675200000000018,
+            "p95Ms": 1.148699999999991,
+            "maxMs": 1.515800000000013
+          },
+          "memoryBytes": {
+            "payloadBytes": 8192,
+            "settledHeapDelta": 8400368,
+            "settledRssDelta": 19783680,
+            "evictedBodyRetained": true,
+            "retainedMapEntries": 202,
+            "obsoleteSortedEntries": 1002,
+            "unknownPreserved": true,
+            "approvalPreserved": true
+          }
+        },
+        {
+          "phase": "after",
+          "count": 1000,
+          "sourceSha256": "43cdf392aaa6106e46c5814025accd98cb6ed296460b7b0b0fc780edb1875c12",
+          "timing": {
+            "operation": "terminalize an already ordered hidden cache",
+            "warmups": 5,
+            "rawSamplesMs": [
+              1.115000000000009,
+              0.8757999999999981,
+              0.7287999999999926,
+              0.6753000000000071,
+              0.7425000000000068,
+              0.8137000000000114,
+              0.681900000000013,
+              0.6864000000000203,
+              0.8023000000000025,
+              0.7109999999999843,
+              0.7651000000000181,
+              0.684599999999989,
+              0.7319999999999993,
+              0.6692999999999927,
+              1.0940999999999974,
+              0.7206999999999937,
+              0.7006999999999834,
+              0.7117000000000075,
+              0.6420999999999992,
+              0.8272000000000048,
+              0.6990000000000123,
+              0.652499999999975,
+              0.8188999999999851,
+              0.7119000000000142,
+              0.7872999999999593,
+              0.684599999999989,
+              0.6344000000000278,
+              0.9723000000000184,
+              0.7194999999999823,
+              0.6816000000000031
+            ],
+            "p50Ms": 0.7119000000000142,
+            "p95Ms": 1.0940999999999974,
+            "maxMs": 1.115000000000009
+          },
+          "memoryBytes": {
+            "payloadBytes": 8192,
+            "settledHeapDelta": 1708928,
+            "settledRssDelta": 20250624,
+            "evictedBodyRetained": false,
+            "retainedMapEntries": 202,
+            "obsoleteSortedEntries": 0,
+            "unknownPreserved": true,
+            "approvalPreserved": true
+          }
+        },
+        {
+          "phase": "before",
+          "count": 10000,
+          "sourceSha256": "2cacf1c597ae315673a00a767d644e655ff150d0f0f7ea35c58a0eab2cfbb8a8",
+          "timing": {
+            "operation": "terminalize an already ordered hidden cache",
+            "warmups": 5,
+            "rawSamplesMs": [
+              6.550700000000006,
+              5.652600000000007,
+              4.375699999999995,
+              6.865400000000022,
+              5.7660000000000196,
+              3.9593000000000416,
+              6.620199999999954,
+              5.735599999999977,
+              3.7631000000000085,
+              7.059199999999976,
+              6.624699999999962,
+              4.163000000000011,
+              7.825400000000059,
+              5.926099999999906,
+              4.167300000000068,
+              6.978399999999965,
+              6.8320999999999685,
+              3.829399999999964,
+              7.917599999999993,
+              5.835899999999924,
+              4.965900000000033,
+              8.249900000000025,
+              7.193899999999985,
+              5.077099999999973,
+              4.29810000000009,
+              6.305100000000039,
+              6.060699999999997,
+              7.674600000000055,
+              6.164300000000139,
+              5.0797000000000025
+            ],
+            "p50Ms": 5.926099999999906,
+            "p95Ms": 7.917599999999993,
+            "maxMs": 8.249900000000025
+          },
+          "memoryBytes": {
+            "payloadBytes": 8192,
+            "settledHeapDelta": 83637040,
+            "settledRssDelta": 170405888,
+            "evictedBodyRetained": true,
+            "retainedMapEntries": 202,
+            "obsoleteSortedEntries": 10002,
+            "unknownPreserved": true,
+            "approvalPreserved": true
+          }
+        },
+        {
+          "phase": "after",
+          "count": 10000,
+          "sourceSha256": "43cdf392aaa6106e46c5814025accd98cb6ed296460b7b0b0fc780edb1875c12",
+          "timing": {
+            "operation": "terminalize an already ordered hidden cache",
+            "warmups": 5,
+            "rawSamplesMs": [
+              7.135899999999992,
+              6.491000000000042,
+              5.004200000000026,
+              7.375,
+              7.2543999999999755,
+              4.740299999999991,
+              10.038599999999974,
+              6.438199999999995,
+              3.8718000000000075,
+              6.504600000000096,
+              7.000499999999988,
+              4.510700000000043,
+              7.242399999999975,
+              5.967499999999973,
+              5.675500000000056,
+              8.28290000000004,
+              6.538000000000011,
+              4.409999999999968,
+              9.255899999999997,
+              7.80460000000005,
+              7.155299999999897,
+              8.536599999999908,
+              5.8577000000000226,
+              4.271799999999985,
+              3.82669999999996,
+              7.307099999999991,
+              5.795599999999922,
+              5.2327999999999975,
+              7.518900000000031,
+              6.998599999999897
+            ],
+            "p50Ms": 6.504600000000096,
+            "p95Ms": 9.255899999999997,
+            "maxMs": 10.038599999999974
+          },
+          "memoryBytes": {
+            "payloadBytes": 8192,
+            "settledHeapDelta": 1696528,
+            "settledRssDelta": 134131712,
+            "evictedBodyRetained": false,
+            "retainedMapEntries": 202,
+            "obsoleteSortedEntries": 0,
+            "unknownPreserved": true,
+            "approvalPreserved": true
+          }
+        }
+      ]
+    },
+    "historyMessagePage": {
+      "sourceReceiptSha256": "efdcc35196bbc186dda9421903f9030a500b1ab9607653a879e69a81a6da4d4c",
+      "startedAt": "2026-10-26T05:23:39.673Z",
+      "finishedAt": "2026-10-26T05:23:40.837Z",
+      "cases": [
+        {
+          "phase": "before",
+          "count": 1000,
+          "sourceHashes": {
+            "conversations": "5ed5fcd8403abc47f7eeffd207dad9868428f7ed2477f202e02a30e4c7418a2b",
+            "historyPages": "0d2514f187bcc395576f037c325093957e4d8c38df7cc6c8a7afc9315599a9e6"
+          },
+          "timing": {
+            "operation": "invalidated latest metadata page; excludes message persistence and rendering",
+            "warmups": 5,
+            "rawSamplesMs": [
+              0.814700000000002,
+              0.9373999999999967,
+              0.8323999999999927,
+              0.9427000000000021,
+              0.6405999999999921,
+              0.6536000000000115,
+              0.6090000000000089,
+              0.7190000000000083,
+              0.8282999999999987,
+              0.682699999999997,
+              0.6557999999999993,
+              0.6715000000000089,
+              0.7559000000000111,
+              0.5864000000000118,
+              0.6163999999999987,
+              0.6366000000000014,
+              0.8763999999999896,
+              1.0987999999999971,
+              1.0821000000000112,
+              0.7542000000000115,
+              0.620599999999996,
+              0.8458000000000254,
+              0.6038999999999817,
+              0.6167999999999836,
+              0.7093000000000131,
+              0.8940000000000055,
+              0.6895999999999844,
+              0.6981000000000108,
+              0.6324999999999932,
+              0.8070000000000164
+            ],
+            "p50Ms": 0.6981000000000108,
+            "p95Ms": 1.0821000000000112,
+            "maxMs": 1.0987999999999971,
+            "loadMs": 6.205300000000008,
+            "coldPageMs": 2.047299999999993
+          },
+          "memoryBytes": {
+            "bodyBytes": 1024,
+            "indexHeapDelta": 26624,
+            "indexRssDelta": 2646016,
+            "messageEnumerations": 36,
+            "indexedMetadataEntries": 0,
+            "conversationIndexReferences": 0
+          },
+          "invariants": {
+            "originalMessages": 1000,
+            "visiblePage": 40,
+            "noWritesDuringPaging": true
+          }
+        },
+        {
+          "phase": "after",
+          "count": 1000,
+          "sourceHashes": {
+            "conversations": "d93ee7378af1a314cfd6055c23897cdc11406c9ae7134874660342197938e45b",
+            "historyPages": "d1ebedb1aad99a6ebf867837e4d3e43c3b6f03478ae39513cac36e068e424999"
+          },
+          "timing": {
+            "operation": "invalidated latest metadata page; excludes message persistence and rendering",
+            "warmups": 5,
+            "rawSamplesMs": [
+              0.017000000000010118,
+              0.012100000000003774,
+              0.01269999999999527,
+              0.013900000000006685,
+              0.013499999999993406,
+              0.011300000000005639,
+              0.047100000000000364,
+              0.011499999999998067,
+              0.01120000000000232,
+              0.011800000000008026,
+              0.01100000000000989,
+              0.010800000000003251,
+              0.010800000000003251,
+              0.020699999999990837,
+              0.014099999999999113,
+              0.00910000000000366,
+              0.00920000000000698,
+              0.00910000000000366,
+              0.008899999999997021,
+              0.014099999999999113,
+              0.008200000000002206,
+              0.007899999999992247,
+              0.007800000000003138,
+              0.007800000000003138,
+              0.008200000000002206,
+              0.007699999999999818,
+              0.007800000000003138,
+              0.007800000000003138,
+              0.007800000000003138,
+              0.007899999999992247
+            ],
+            "p50Ms": 0.010800000000003251,
+            "p95Ms": 0.020699999999990837,
+            "maxMs": 0.047100000000000364,
+            "loadMs": 6.275499999999994,
+            "coldPageMs": 0.8037999999999954
+          },
+          "memoryBytes": {
+            "bodyBytes": 1024,
+            "indexHeapDelta": 169096,
+            "indexRssDelta": 245760,
+            "messageEnumerations": 1,
+            "indexedMetadataEntries": 1000,
+            "conversationIndexReferences": 1000
+          },
+          "invariants": {
+            "originalMessages": 1000,
+            "visiblePage": 40,
+            "noWritesDuringPaging": true
+          }
+        },
+        {
+          "phase": "before",
+          "count": 10000,
+          "sourceHashes": {
+            "conversations": "5ed5fcd8403abc47f7eeffd207dad9868428f7ed2477f202e02a30e4c7418a2b",
+            "historyPages": "0d2514f187bcc395576f037c325093957e4d8c38df7cc6c8a7afc9315599a9e6"
+          },
+          "timing": {
+            "operation": "invalidated latest metadata page; excludes message persistence and rendering",
+            "warmups": 5,
+            "rawSamplesMs": [
+              7.5353999999999814,
+              7.9319999999999595,
+              7.538499999999999,
+              8.016999999999996,
+              7.6118999999999915,
+              7.531599999999969,
+              7.7649000000000115,
+              8.516700000000014,
+              10.429299999999955,
+              11.923599999999965,
+              10.185099999999977,
+              7.262299999999982,
+              7.320700000000045,
+              7.208600000000047,
+              8.657100000000014,
+              8.096799999999973,
+              7.301500000000033,
+              8.182900000000018,
+              7.586999999999989,
+              7.525699999999972,
+              7.7683999999999855,
+              7.6270000000000095,
+              7.936699999999973,
+              7.816599999999994,
+              7.7374999999999545,
+              7.216399999999965,
+              7.772199999999998,
+              7.443499999999972,
+              8.079799999999977,
+              7.762400000000014
+            ],
+            "p50Ms": 7.762400000000014,
+            "p95Ms": 10.429299999999955,
+            "maxMs": 11.923599999999965,
+            "loadMs": 56.2294,
+            "coldPageMs": 8.584700000000026
+          },
+          "memoryBytes": {
+            "bodyBytes": 1024,
+            "indexHeapDelta": 35264,
+            "indexRssDelta": 212992,
+            "messageEnumerations": 36,
+            "indexedMetadataEntries": 0,
+            "conversationIndexReferences": 0
+          },
+          "invariants": {
+            "originalMessages": 10000,
+            "visiblePage": 40,
+            "noWritesDuringPaging": true
+          }
+        },
+        {
+          "phase": "after",
+          "count": 10000,
+          "sourceHashes": {
+            "conversations": "d93ee7378af1a314cfd6055c23897cdc11406c9ae7134874660342197938e45b",
+            "historyPages": "d1ebedb1aad99a6ebf867837e4d3e43c3b6f03478ae39513cac36e068e424999"
+          },
+          "timing": {
+            "operation": "invalidated latest metadata page; excludes message persistence and rendering",
+            "warmups": 5,
+            "rawSamplesMs": [
+              0.012999999999976808,
+              0.01279999999999859,
+              0.014200000000016644,
+              0.015500000000002956,
+              0.01490000000001146,
+              0.012600000000020373,
+              0.07070000000001642,
+              0.014399999999994861,
+              0.011699999999990496,
+              0.012000000000000455,
+              0.01089999999999236,
+              0.015200000000021419,
+              0.01820000000000732,
+              0.013199999999983447,
+              0.01279999999999859,
+              0.01859999999999218,
+              0.01279999999999859,
+              0.011600000000015598,
+              0.011600000000015598,
+              0.011599999999987176,
+              0.011599999999987176,
+              0.011499999999983856,
+              0.011600000000015598,
+              0.011400000000008959,
+              0.012099999999975353,
+              0.011600000000015598,
+              0.011300000000005639,
+              0.011499999999983856,
+              0.011600000000015598,
+              0.011600000000015598
+            ],
+            "p50Ms": 0.012000000000000455,
+            "p95Ms": 0.01859999999999218,
+            "maxMs": 0.07070000000001642,
+            "loadMs": 55.478200000000015,
+            "coldPageMs": 3.134299999999996
+          },
+          "memoryBytes": {
+            "bodyBytes": 1024,
+            "indexHeapDelta": 1406824,
+            "indexRssDelta": 778240,
+            "messageEnumerations": 1,
+            "indexedMetadataEntries": 10000,
+            "conversationIndexReferences": 10000
+          },
+          "invariants": {
+            "originalMessages": 10000,
+            "visiblePage": 40,
+            "noWritesDuringPaging": true
+          }
+        }
+      ]
+    }
+  },
+  "finalChecks": {
+    "a11_check": {
+      "kind": "a11_check",
+      "command": "npm run check",
+      "status": "passed",
+      "reason": "exit_and_source_hash_verified",
+      "receiptName": "autonomous-combined-check-20261026-a11.receipt.json",
+      "receiptSha256": "a7a7d3cd3992dc2f496d2d611b20189a74ba86f84cef34821e026cd492c07af3",
+      "exitCode": 0,
+      "startedAt": "2026-10-26T11:25:25.813Z",
+      "finishedAt": "2026-10-26T11:36:03.203Z",
+      "log": {
+        "name": "autonomous-combined-check-20261026-a11.log",
+        "sha256": "9e06967ba6c8984a2b63324501cc982dad39d583796e832c3b3a5f09a42dfdc0"
+      },
+      "sourceSnapshot": {
+        "name": "autonomous-combined-check-20261026-a11.sources.json",
+        "sha256": "7a25e23633e72792bdd5d40b12044c0d60b419e32257dd3f9557592044d0a4a9",
+        "fileCount": 1720,
+        "requiredScopedFiles": 45,
+        "changedCurrentSources": []
+      },
+      "counts": {
+        "tests": 6174,
+        "pass": 6145,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 29
+      }
+    },
+    "runtime_application_smoke": {
+      "kind": "runtime_application_smoke",
+      "command": "npm run test:runtime-application-smoke --workspace=@personal-agent/desktop",
+      "status": "passed",
+      "reason": "exit_and_source_hash_verified",
+      "receiptName": "autonomous-runtime-application-smoke-20261026-final-a1.receipt.json",
+      "receiptSha256": "1ba23d8a014f0c11b6f0c1487c6ac4585a0d9e6638559c8b46ef0c51973b0f05",
+      "exitCode": 0,
+      "startedAt": "2026-10-26T11:37:02.837Z",
+      "finishedAt": "2026-10-26T11:37:15.615Z",
+      "log": {
+        "name": "autonomous-runtime-application-smoke-20261026-final-a1.log",
+        "sha256": "361f8eeffdd3bfb1c0075ced757e20ad6636ef49e8ef784a836fd3d70cc0e637"
+      },
+      "sourceSnapshot": {
+        "name": "autonomous-runtime-application-smoke-20261026-final-a1.sources.json",
+        "sha256": "7a25e23633e72792bdd5d40b12044c0d60b419e32257dd3f9557592044d0a4a9",
+        "fileCount": 1720,
+        "requiredScopedFiles": 45,
+        "changedCurrentSources": []
+      },
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "fake_native_window_smoke": {
+      "kind": "fake_native_window_smoke",
+      "command": "npm run test:smoke --workspace=@personal-agent/desktop (Fake Runtime)",
+      "status": "passed",
+      "reason": "exit_and_source_hash_verified",
+      "receiptName": "autonomous-native-window-smoke-20261026-final-a1.receipt.json",
+      "receiptSha256": "a3d4d309552b8cbe739faea4fce5fc4f4929ee1a3a9dc3dde08842045ce1961c",
+      "exitCode": 0,
+      "startedAt": "2026-10-26T11:39:30.907Z",
+      "finishedAt": "2026-10-26T11:39:36.728Z",
+      "log": {
+        "name": "autonomous-native-window-smoke-20261026-final-a1.log",
+        "sha256": "bdac9102928b6f7ddb688f78412b90751e050316713ba6e7e907e32ab878c508"
+      },
+      "sourceSnapshot": {
+        "name": "autonomous-native-window-smoke-20261026-final-a1.sources.json",
+        "sha256": "7a25e23633e72792bdd5d40b12044c0d60b419e32257dd3f9557592044d0a4a9",
+        "fileCount": 1720,
+        "requiredScopedFiles": 45,
+        "changedCurrentSources": []
+      },
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "mcp_product_chain": {
+      "kind": "mcp_product_chain",
+      "command": "npm run test:remote-mcp-product-smoke --workspace=@personal-agent/desktop",
+      "status": "passed",
+      "reason": "exit_and_source_hash_verified",
+      "receiptName": "autonomous-mcp-product-20261026-a8.receipt.json",
+      "receiptSha256": "11e3653cfa7e588d52db6a1105a56801e3b76874084c231ea38c46ed038bc40b",
+      "exitCode": 0,
+      "startedAt": "2026-10-26T11:40:31.736Z",
+      "finishedAt": "2026-10-26T11:41:28.018Z",
+      "log": {
+        "name": "autonomous-mcp-product-20261026-a8.log",
+        "sha256": "e746091b71bfdc48689cac7035b0a31c3c441f9b107e504b45f0db98d10f3156"
+      },
+      "sourceSnapshot": {
+        "name": "autonomous-mcp-product-20261026-a8.sources.json",
+        "sha256": "7a25e23633e72792bdd5d40b12044c0d60b419e32257dd3f9557592044d0a4a9",
+        "fileCount": 1720,
+        "requiredScopedFiles": 45,
+        "changedCurrentSources": []
+      },
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    }
+  },
+  "limitations": [
+    "A10 full check predates these eleven integrated packages and is historical only.",
+    "Earlier focused checks overlap and are not added together; all four final receipts bind the same current snapshot and 45 required source inputs.",
+    "Epoch v1/v2 candidate failures are retained; v3 focused local results do not replace final source-bound integration checks.",
+    "Vision is Fake lifecycle regression only; no production vision source changed and no new real screenshot or remote visual-model result was measured.",
+    "Notification uses a Fake notifier; delivery to the Windows OS and user-visible notification outcome remain unverified.",
+    "Notification click and delivered recovery receipts use a Fake notifier and do not verify a real OS click or cold activation.",
+    "Persisted cursor tests use a Fake mailbox and classifier; real QQ mailbox cursor continuity remains unverified.",
+    "No real device, microphone, mailbox, external account, cloud model, AgentArts deployment, or platform acceptance is established.",
+    "History still keeps the authoritative message Map and synchronous whole-file save. The 10k cache terminalization P95 regressed in synthetic measurement.",
+    "Measurements exclude final Electron compositor, IPC, DOM, all environments, and full-product SLO. No GitHub review or approval is claimed.",
+    "MCP product chain attempts a1-a6 failed. A7 passed a scoped older source set; current a8 is independently bound to final source and product log. Real third-party platform/OAuth remains unverified."
+  ]
+}

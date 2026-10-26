@@ -61,8 +61,11 @@ const {_electron}=require('playwright');
   assert.equal(await panel.locator('.conversation-sessions').isVisible(),false,'panel keeps a single main conversation while draft hooks remain mounted');
   receipts.singleMainDraftHooks=true;
   await app.evaluate(()=>globalThis.setFixture({agentArtsModels:{catalog:null,preferences:null}}));
-  await panel.waitForFunction(()=>document.querySelector('#mm-slider')?.disabled===true);
+  await panel.waitForFunction(()=>document.querySelector('.model-thinking-menu input[type=range][aria-label="思考强度"]')?.disabled===true);
+  assert.equal(await panel.getByRole('button',{name:'模型与思考',exact:true}).getAttribute('aria-expanded'),'false');
+  assert.equal(await panel.locator('.model-thinking-menu input[type=range][aria-label="思考强度"]').isDisabled(),true,'thinking slider stays disabled without a catalog');
   await app.evaluate(()=>globalThis.setFixture({}));
+  await panel.waitForFunction(()=>document.querySelector('.model-thinking-menu input[type=range][aria-label="思考强度"]')?.disabled===false);
   for(const size of [[420,720],[600,720],[420,600]])for(const zoom of [1,1.25,1.5]){
    await app.evaluate(({BrowserWindow},{size,zoom})=>{const win=BrowserWindow.getAllWindows()[0];win.setContentSize(...size);win.webContents.setZoomFactor(zoom);win.show();},{size,zoom});
    await panel.evaluate(zoom=>document.documentElement.dataset.theme=zoom===1.25?'dark':'light',zoom);
@@ -71,9 +74,14 @@ const {_electron}=require('playwright');
    receipts.layouts.push({size,zoom,...result});
    const png=await app.evaluate(async({BrowserWindow})=>(await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
    fs.writeFileSync(path.join(directory,'panel-'+size.join('x')+'-'+zoom+'.png'),Buffer.from(png,'base64'));
-   await panel.locator('#model').click();await panel.locator('#mm-slider').scrollIntoViewIfNeeded();
-   const menu=await panel.evaluate(()=>{const slider=document.querySelector('#mm-slider'),r=slider.getBoundingClientRect(),menu=document.querySelector('#model-menu').getBoundingClientRect();return {top:menu.top,bottom:menu.bottom,reachable:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===slider};});
-   assert.ok(menu.top>=0&&menu.bottom<=result.height+2&&menu.reachable,JSON.stringify({size,zoom,menu}));await panel.locator('#model').click();
+   const trigger=panel.getByRole('button',{name:'模型与思考',exact:true});
+   await trigger.click();assert.equal(await trigger.getAttribute('aria-expanded'),'true');
+   const slider=panel.getByRole('slider',{name:'思考强度',exact:true});
+   await slider.scrollIntoViewIfNeeded();assert.equal(await slider.isEnabled(),true,'catalog restores the thinking slider');
+   const menu=await panel.evaluate(()=>{const slider=document.querySelector('.model-thinking-menu input[type=range][aria-label="思考强度"]'),r=slider.getBoundingClientRect(),menu=document.querySelector('.model-thinking-menu').getBoundingClientRect();return {left:menu.left,right:menu.right,top:menu.top,bottom:menu.bottom,reachable:document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)===slider};});
+   assert.ok(menu.left>=0&&menu.right<=result.width+2&&menu.top>=0&&menu.bottom<=result.height+2&&menu.reachable,JSON.stringify({size,zoom,menu}));
+   await panel.keyboard.press('Escape');assert.equal(await trigger.getAttribute('aria-expanded'),'false');
+   assert.equal(await panel.locator('.model-thinking-menu').isVisible(),false);
   }
   // Later close checks use the authoritative fixture journal, with no synthetic session overlay.
   await app.evaluate(()=>globalThis.setFixture({}));
@@ -116,7 +124,11 @@ const {_electron}=require('playwright');
   assert.deepEqual(await app.evaluate(()=>globalThis.rendererErrors),[]);
   const exited=app.waitForEvent('close');
   await app.evaluate(({app})=>{app.quit();}).catch(()=>{});await exited;
-  const stored=JSON.parse(fs.readFileSync(path.join(directory,'conversations.json'),'utf8')).sessions.find(session=>session.id==='desktop-panel').draft;
+  const {Conversations}=await import(moduleUrl('conversations.js'));
+  const storedConversations=new Conversations(path.join(directory,'conversations.json'));
+  let stored;
+  try{stored=storedConversations.session('desktop-panel').draft;}
+  finally{storedConversations.close();}
   assert.equal(stored,'retry draft after failed app quit');receipts.finalDraft=stored;
   fs.writeFileSync(path.join(directory,'receipts.json'),JSON.stringify(receipts,null,2));console.log(JSON.stringify({state:'passed',cases:receipts.layouts.length+5,receipt:path.join(directory,'receipts.json')}));
  }finally{await app.evaluate(()=>{globalThis.denyDraftClose=false;}).catch(()=>{});await app.close().catch(()=>{});}

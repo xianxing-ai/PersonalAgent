@@ -9,6 +9,7 @@ import {Client, EventCursor} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {requestTaskCancellation} from '../electron/runtime.js';
 import {createConversationDelivery} from '../electron/conversation-delivery.js';
+import {eventBatchFixture} from '../test-support/event-batch-fixture.mjs';
 
 const source = await readFile(new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -41,12 +42,13 @@ async function fixture(t) {
   const task = app.runtime.submitTask({goal: 'Local read-only event fixture', conversationId: 'desktop-panel', idempotencyKey: 'event-readback'});
   const tasks = new Map(), approvals = new Map(), published = [], panel = {};
   const eventCursor = new EventCursor('tasks');
-  const context = vm.createContext({conversationDelivery:createConversationDelivery(new Set()),tasks, approvals, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
+  const context = vm.createContext({runtimeClosed:false,eventSubscriptionConnection:undefined,eventThroughSequence:undefined,eventContinuation:undefined,setImmediate,fakeMode:false,
+    conversationDelivery:createConversationDelivery(new Set()),tasks, approvals, panel, workspace: {}, admin: {}, client, requestTaskCancellation,
     // This cancellation/readback fixture has no Harness event consumer installed.
     harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,
     conversations: undefined, runtimeError: '', terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']),
     notifications: new Map(), structuredClone, eventBusy: false, eventCursor, taskReadbackAt:0,
-    runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
+    runtimeConnection: {readEvents: after => app.readEvents(after),readEventBatch: input=>app.readEventBatch(input)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
   for (const name of ['taskSurface', 'clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
@@ -63,10 +65,11 @@ test('a missing completion event is recovered from Runtime without reloading the
     {deadline:new Date(Date.now()+60000).toISOString(),sideEffect:'read'});
   const completed=f.app.runtime.getTask(f.task.taskId);
   f.tasks.set(f.task.taskId,{...completed,state:'running',revision:completed.revision-1});
-  f.context.runtimeConnection={readEvents:async()=>[]};
+  f.context.runtimeConnection=eventBatchFixture(async()=>[]);
   await f.pump();
   assert.equal(f.tasks.get(f.task.taskId).state,'succeeded');
   assert.equal(f.published.at(-1).find(task=>task.taskId===f.task.taskId).state,'succeeded');
+  assert.equal(f.context.runtimeError,'');
 });
 
 test('an event stream error still allows authoritative task state recovery',async t=>{
@@ -75,15 +78,16 @@ test('an event stream error still allows authoritative task state recovery',asyn
     {deadline:new Date(Date.now()+60000).toISOString(),sideEffect:'read'});
   const completed=f.app.runtime.getTask(f.task.taskId);
   f.tasks.set(f.task.taskId,{...completed,state:'running',revision:completed.revision-1});
-  f.context.runtimeConnection={readEvents:async()=>{throw Error('Synthetic event gap');}};
+  f.context.runtimeConnection=eventBatchFixture(async()=>{throw Error('Synthetic event gap');});
   await f.pump();
   assert.equal(f.tasks.get(f.task.taskId).state,'succeeded');
+  assert.match(f.context.runtimeError,/Synthetic event gap/);
 });
 
 test('recovery is throttled, retries read failures and never resubmits work',async t=>{
   const f=await fixture(t);
   f.tasks.set(f.task.taskId,f.task);
-  f.context.runtimeConnection={readEvents:async()=>[]};
+  f.context.runtimeConnection=eventBatchFixture(async()=>[]);
   const original=f.context.client.call;let reads=0;
   f.context.client.call=(name,payload)=>{
     if(name==='task.get'&&++reads===1)return Promise.reject(Error('Synthetic transient read failure'));
@@ -91,6 +95,7 @@ test('recovery is throttled, retries read failures and never resubmits work',asy
   };
   await f.pump();await f.pump();assert.equal(reads,1);
   f.context.taskReadbackAt=0;await f.pump();assert.equal(reads,2);
+  assert.equal(f.context.runtimeError,'');
 });
 
 test('a delayed readback from a replaced Runtime cannot overwrite the current projection',async t=>{
@@ -107,7 +112,7 @@ test('a delayed readback from a replaced Runtime cannot overwrite the current pr
 test('an already completed projection is republished after a missed final renderer update',async t=>{
   const f=await fixture(t);
   f.tasks.set(f.task.taskId,{...f.task,state:'succeeded',resultSummary:'Synthetic finished result'});
-  f.context.runtimeConnection={readEvents:async()=>[]};
+  f.context.runtimeConnection=eventBatchFixture(async()=>[]);
   await f.pump();
   assert.equal(f.published.at(-1)[0].state,'succeeded');
   const count=f.published.length;await f.pump();assert.equal(f.published.length,count);
@@ -124,11 +129,11 @@ test('a delayed public event batch cannot replace a cancellation readback, and t
   await f.refresh(f.task.taskId);
   let release, captured;
   const entered = new Promise(done => {
-    f.context.runtimeConnection = {readEvents(after) {
+    f.context.runtimeConnection = eventBatchFixture(after=>{
       captured = f.app.readEvents(after);
       done();
       return new Promise(resolve => { release = () => resolve(captured); });
-    }};
+    });
   });
   const earlierPump = f.pump();
   await entered;
@@ -142,13 +147,13 @@ test('a delayed public event batch cannot replace a cancellation readback, and t
   assert.equal(f.tasks.get(f.task.taskId), current);
   assert.equal(f.eventCursor.afterSequence, captured.at(-1).sequence);
   assert.ok(f.published.slice(count).every(tasks => tasks[0].revision === current.revision));
-  f.context.runtimeConnection = {readEvents: after => f.app.readEvents(after)};
+  f.context.runtimeConnection = eventBatchFixture(after => f.app.readEvents(after));
   await f.pump();
   assert.equal(f.tasks.get(f.task.taskId).state, 'cancelled');
   assert.equal(f.tasks.get(f.task.taskId).revision, current.revision);
   assert.equal(f.eventCursor.afterSequence, f.app.readEvents().at(-1).sequence);
   const settledCount = f.published.length;
-  f.context.runtimeConnection = {readEvents: () => f.app.readEvents()};
+  f.context.runtimeConnection = eventBatchFixture(() => f.app.readEvents());
   await f.pump();
   assert.equal(f.published.length, settledCount);
   assert.equal(f.app.runtime.getTask(f.task.taskId).state, 'cancelled');
@@ -176,7 +181,7 @@ test('the actual pump accepts ordinary forward and equal task snapshots and igno
   f.context.applyEvent(completed);
   assert.notEqual(f.tasks.get(f.task.taskId), newer);
   assert.equal(f.tasks.get(f.task.taskId).revision, newer.revision);
-  f.context.runtimeConnection = {readEvents: () => f.app.readEvents()};
+  f.context.runtimeConnection = eventBatchFixture(() => f.app.readEvents());
   await f.pump();
   assert.equal(f.published.length, 2);
 });

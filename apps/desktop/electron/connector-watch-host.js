@@ -217,23 +217,30 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
     requestFromSettings(operation,{conversationId,isCurrent=()=>true}={}) {
       if(closed||!['start','stop'].includes(operation)||!isUserConversation(conversationId)||!isCurrent())fail('UNAUTHORIZED');
       const app=application();
+      // A newer settings intent supersedes only this host's opposite pending
+      // settings requests. Preserve unknown writes and all ordinary user tasks.
+      for(const [taskId,request]of settingsRequests)if(request.operation!==operation){
+        const task=app.runtime.getTask(taskId);
+        if(!['succeeded','failed','cancelled','waiting_reconciliation'].includes(task.state))
+          app.runtime.requestCancel(taskId,'用户更改邮件监测设置');
+      }
+      const watches=Object.values(read().value.watches);
+      // Settings control the one mail watch across main-conversation switches.
+      // A locally retired watch can still have an unknown original Stop.
+      const existing=watches.find(watch=>watch.source==='mail'&&watch.enabled)
+        ??(operation==='stop'?watches.findLast(watch=>watch.source==='mail'):undefined);
       for(const [taskId,request]of settingsRequests){
-        if(request.conversationId!==conversationId||request.operation!==operation)continue;
+        if(request.operation!==operation||(operation==='stop'
+          ?request.watchId!==existing?.id:request.conversationId!==conversationId))continue;
         const result=app.readHostToolTask(taskId);
         if(!['succeeded','failed','cancelled'].includes(result.task.state))return {taskId,state:result.task.state};
       }
-      const existing=Object.values(read().value.watches).find(watch=>watch.source==='mail'&&watch.enabled);
+      if(operation==='stop'&&!existing?.enabled)return {state:'stopped',enabled:false};
       if(existing){
         if(operation==='start')try{current(existing);return summary(existing);}catch(error){
           // tick must retire stale authorization before a replacement is admitted.
           throw error;
         }
-      }else if(operation==='stop'){
-        for(const [taskId,request]of settingsRequests)if(request.operation==='start'){
-          const task=app.runtime.getTask(taskId);
-          if(!['succeeded','failed','cancelled'].includes(task.state))app.runtime.requestCancel(taskId,'用户停止邮件监测');
-        }
-        return {state:'stopped',enabled:false};
       }
       if(operation==='stop')conversationId=existing.conversationId;
       const input=operation==='start'?{source:'mail',intervalMs:MAIL_WATCH_INTERVAL_MS,
@@ -242,7 +249,7 @@ export function createDesktopConnectorWatchHost({getApplication,namespace,readSo
         toolName:PREFIX+operation,toolVersion:VERSION,deadline:new Date(now()+5*60_000).toISOString()});
       app.runtime.saveCheckpointOnceForCreatedTask(task.taskId,SETTINGS_ORIGIN,
         {conversationId,commandId,operation,argumentsDigest:toolArgumentsDigest(input)},task.revision);
-      settingsRequests.set(task.taskId,{conversationId,operation,isCurrent});
+      settingsRequests.set(task.taskId,{conversationId,operation,isCurrent,...(operation==='stop'?{watchId:existing.id}:{})});
       const result=app.finalizeHostToolTask({taskId:task.taskId,commandId,expectedTaskRevision:task.revision,arguments:input});
       return {taskId:task.taskId,state:result.task.state};
     },

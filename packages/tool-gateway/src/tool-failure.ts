@@ -1,4 +1,4 @@
-import {ProtocolError} from '@personal-agent/contracts';
+import {ProtocolError,isProtocolError} from '@personal-agent/contracts';
 import {types} from 'node:util';
 
 // External exception messages may contain credentials, private paths or mail text.
@@ -31,7 +31,7 @@ function errorData(error: unknown): {typed?: boolean; code?: unknown; status?: u
       if(!Object.hasOwn(descriptor,'value'))return {};
       data[key]=descriptor.value;
     }
-    return {...data,typed:error instanceof ProtocolError};
+    return {...data,typed:isProtocolError(error)};
   } catch {
     // Hostile prototypes/descriptors must not replace an unknown write outcome
     // with the diagnostic extractor's own exception or its private message.

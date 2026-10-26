@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "status": "passed_scoped_first_start_fix",
+  "profile": "huawei_ict_agentarts",
+  "fakeRuntime": false,
+  "fakeModel": false,
+  "credentialsInjected": false,
+  "precedingFullCheck": "combined-verification-mail.json",
+  "fullCheckCoversThisDelta": false,
+  "sourceDelta": [
+    {
+      "path": "apps/desktop/electron/main.js",
+      "before": "2b28072f4fd237d31cc9360127dcdee53bdbc432ebdce006a441695ee6f874fc",
+      "after": "8d805155ed60c29c9723cc0a2447bac2ab04dcab7f6adc173a8cda7b8f472ac7"
+    },
+    {
+      "path": "apps/desktop/src/features/admin/view.js",
+      "before": "b0bff0e764b1b6531c9beccceda383e86d20fbf39ee420e042c1cfd3ac7df0b6",
+      "after": "f0055555236d6c762090963ae636947be2eb97cbdab4fc3131ebf5c6da1d0ccf"
+    },
+    {
+      "path": "apps/desktop/src/shared/public-error-messages.js",
+      "before": "e802be7e0814957ed9bd58775ec4ab9da4f95f2007c2d6c6191569a58cddaefa",
+      "after": "d6404627a1bd71c1542681ebc259d2b56ee0d5a206db594c3fd5aa00bc4fbcc2"
+    },
+    {
+      "path": "apps/desktop/test/private-memory-render.test.mjs",
+      "before": "75398b10b2c4ef1100b0d5a85c40c773d5a1aad07bec93babde8ba04a92546f4",
+      "after": "4f261a20ad8b23051371b94aea150b35777e8bb7bc2f8138c46c554da4bf2a05"
+    }
+  ],
+  "sourceHashes": {
+    "apps/desktop/electron/main.js": "8d805155ed60c29c9723cc0a2447bac2ab04dcab7f6adc173a8cda7b8f472ac7",
+    "apps/desktop/src/features/admin/view.js": "f0055555236d6c762090963ae636947be2eb97cbdab4fc3131ebf5c6da1d0ccf",
+    "apps/desktop/src/shared/public-error-messages.js": "d6404627a1bd71c1542681ebc259d2b56ee0d5a206db594c3fd5aa00bc4fbcc2",
+    "apps/desktop/test/private-memory-render.test.mjs": "4f261a20ad8b23051371b94aea150b35777e8bb7bc2f8138c46c554da4bf2a05"
+  },
+  "originalObservation": {
+    "kind": "actual_CUA_native_production_first_start_observation",
+    "startup": "configuration_required",
+    "vaultFailure": "外部服务执行失败；请检查服务状态 [stage=ipc; code=EXTERNAL_FAILURE]",
+    "modelTasksSubmitted": 0,
+    "realMailboxOperations": 0,
+    "audioCaptureStarted": false
+  },
+  "failingRegression": {
+    "exitCode": 1,
+    "counts": {
+      "tests": 5,
+      "pass": 3,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "logSha256": "578d2f8ab0dacfd18fe3868bc5d4afe8a4696af37df9ddf2c9a0ad19556e0093"
+  },
+  "earlierFixtureFailure": {
+    "exitCode": 1,
+    "reason": "The previous minimal DOM fixture did not implement append for the now-declared source-control host.",
+    "logSha256": "44f043d9f7777661924d7f896f4dd08216680d3274b5d335111104572efb439c"
+  },
+  "focused": {
+    "exitCode": 0,
+    "counts": {
+      "tests": 9,
+      "pass": 7,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 2
+    },
+    "logSha256": "5688d3f0b4d9a0bf393dbf787e419dcc5601bf3e245153cf58384724e3e6f551",
+    "scopes": [
+      "actual production renderer function with explicit DOM fixture",
+      "actual Main memory branch extracted by AST with an absent source host",
+      "fixed error classification and private-suffix redaction"
+    ]
+  },
+  "desktopSyntax": {
+    "command": "npm run typecheck --workspace=@personal-agent/desktop",
+    "exitCode": 0,
+    "logSha256": "09a0286f32d3e7b48abf19108d9f7b9376b05901f7e28a34faba92736bc38c79"
+  },
+  "nativeUI": {
+    "kind": "actual_CUA_native_Electron_production_first_start_and_normal_reopen",
+    "firstNormalQuitExitCode": 0,
+    "verified": [
+      "Vault selection is disabled when its actual source host is absent.",
+      "The visible reason directs the user to model and knowledge-source configuration.",
+      "Saved-memory readback remains available and reports the actual empty list.",
+      "Font scale 120 percent, calm mode and disabled hover expansion persist in the isolated profile.",
+      "A synthetic public profile name and biography survive a normal quit and reopen."
+    ],
+    "syntheticProfileName": "公开验收用户",
+    "syntheticProfileBiography": "独立配置的合成资料，用于验证本地保存与重开。",
+    "settings": {
+      "fontScale": 1.2,
+      "calm": true,
+      "hover": false
+    },
+    "screenshotsPublished": false
+  },
+  "limitations": [
+    "The original full check remains tied to its previous 171-source snapshot; it is not re-labelled as covering these four later files.",
+    "Two optional browser checks stayed skipped. The actual native first-start path was observed separately.",
+    "Source-host recovery is a renderer regression fixture; the configured real Vault path was not exercised in this first-start run.",
+    "No real mailbox, audio capture, new provider task or cloud upload was performed by this journey.",
+    "Native CUA screenshots were not exported, keeping unrelated desktop overlays out of public evidence."
+  ]
+}

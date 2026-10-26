@@ -14,8 +14,8 @@
 <button type="submit" id="save">确认并加密保存</button></form>
 <p>保存或轮换后需重启应用重新装配；不会自动连接。请通过应用正常退出以保存系统加密状态。</p></section>
 <section><h2>2. 本次会话连接</h2><button id="connect">确认连接</button><button id="disconnect">断开</button><button id="revoke">撤销并清除本机配置</button><button id="refresh">刷新状态</button></section>
-<section><h2>3. 逐任务只读调用</h2><p>创建本地 Runtime 任务后，再审核参数并批准一次。调用参数会发给已确认的 MCP 服务。</p>
+<section><h2>3. 逐任务只读调用</h2><p>创建任务后，在主对话授权卡检查工具、参数与权限，再选择同意或拒绝。调用参数会发给已确认的 MCP 服务。</p>
 <form id="run-form"><label for="arguments">业务参数 JSON</label><textarea id="arguments" rows="4">{}</textarea><button id="submit" type="submit">创建审批任务</button></form>
 <label for="task-id">原任务 ID（重启后可读回）</label><input id="task-id" type="text" autocomplete="off"><button id="read-task">读回原任务</button>
-<div id="tasks"></div><pre id="task-result"></pre><button id="approve" disabled>原生确认并批准一次</button><button id="deny" disabled>拒绝</button><button id="cancel" disabled>停止任务</button></section>
-</main><script src="view.js"></script></body></html>
+<div id="tasks"></div><pre id="task-result"></pre><p id="question-notice" hidden>请在原对话授权卡处理这次请求；若原卡已失效，可停止原任务后重新提出。</p><button id="review-question" disabled>在主对话中处理授权</button><button id="cancel" disabled>停止任务</button></section>
+</main><script type="module" src="view.js"></script></body></html>

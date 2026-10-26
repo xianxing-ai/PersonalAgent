@@ -1,0 +1,352 @@
+{
+  "format": "personal-agent-cloud-handoff-public-summary-v1",
+  "recordDate": "2026-10-26",
+  "profile": "huawei_ict_agentarts",
+  "scope": "Sanitized summary of retained local receipts; raw logs, private source locations and account data are excluded. This file adds no new execution evidence.",
+  "origin": {
+    "archiveBytes": 5130842,
+    "archiveSha256": "b794f0a9fcdf411394ae386030b36d7ab82840e9241b12378817aa9e96eac922",
+    "sourceFilesVerified": 288,
+    "baseTextsVerified": 119,
+    "artifactsVerified": 32,
+    "reportedSourceCommit": "b2fb20dd094743c411656b7e7703c8aae7571a8e",
+    "reportedSourceCommitStatus": "unverified: not resolved in local Git objects or the normal remote commit read; the handoff does not reconstruct the entire b2 baseline"
+  },
+  "integration": {
+    "baseMainCommit": "934b7c4403a3e2ceeea564ff342a193ff22ab506",
+    "branch": "codex/local-handoff-integration-20261026",
+    "changedPathsBeforePublicationDocs": 282,
+    "modifiedPaths": 115,
+    "newPaths": 167,
+    "testedCandidateInputFiles": 2696,
+    "testedCandidateSnapshotSha256": "f57f412dd2482bd9725fc40791449f47de5fb7bedcdef3b17cb12232f6a4efeb",
+    "snapshotScope": "Uncommitted input snapshot before these publication documents; not a Git commit or a rerun of the complete suite at the final snapshot.",
+    "a2ArchiveBytes": 4340194,
+    "a2ArchiveSha256": "b21e5d1165b3ff0424ebf58bd5bf2934cf055d5854a2ea3c84750e9449be4053",
+    "a2ManifestScopeVerifiedBeforeWriting": true
+  },
+  "environment": {
+    "os": "Linux",
+    "node": "24.15.0",
+    "npm": "11.12.1",
+    "windowsGuiExecuted": false
+  },
+  "build": {
+    "observations": [
+      {
+        "attempt": "build-a1",
+        "exitCodeObservedFromExecTool": 0,
+        "logSha256": "34bf3a49e1df78c4c9663164375e9275839e17d909902a53d9a1ec6814e78d36",
+        "logBytes": 5522,
+        "preciseCommandTimingNotRecorded": true,
+        "command": "npm run build"
+      },
+      {
+        "attempt": "runtime-build-a2",
+        "exitCodeObservedFromExecTool": 0,
+        "logSha256": "f12efe3b91f5fb80470dcf208852b80690176834cb51f584201062daf5149855",
+        "logBytes": 71,
+        "preciseCommandTimingNotRecorded": true,
+        "command": "npm run build --workspace=@personal-agent/runtime"
+      },
+      {
+        "attempt": "runtime-build-a3",
+        "exitCodeObservedFromExecTool": 0,
+        "logSha256": "f12efe3b91f5fb80470dcf208852b80690176834cb51f584201062daf5149855",
+        "logBytes": 71,
+        "preciseCommandTimingNotRecorded": true,
+        "command": "npm run build --workspace=@personal-agent/runtime"
+      }
+    ],
+    "rootInputSnapshotFiles": 2696,
+    "rootInputInventoryFileSha256": "5c11df01eedd48a06fee75871c2b1a08a01aabff6e02ad27a0d6a2d9941aa0db",
+    "postRootBuildChangedPaths": [
+      "apps/desktop/README.md",
+      "apps/desktop/src/features/admin/view.js",
+      "apps/desktop/test/approval-history-render.test.mjs",
+      "apps/desktop/test/capability-status.test.mjs",
+      "apps/desktop/test/panel-event-readback-order.test.mjs",
+      "apps/runtime/src/index.ts",
+      "apps/runtime/test/native-desktop-preflight.test.mjs",
+      "docs/ROADMAP.md",
+      "docs/adr/0041-desktop-conversation-incremental-persistence.md",
+      "docs/competition/evidence/desktop-integration-20261025/repair-batch-20261026.md",
+      "docs/interfaces/CURRENT_INTERFACE_CATALOG.md"
+    ],
+    "limitation": "Root build was not rerun after only-Runtime error edits (which had local builds) and final Admin import/test fix (covered by native Node test/syntax).",
+    "windowsSystemSpeechCompile": "not performed on Linux"
+  },
+  "runs": [
+    {
+      "attempt": "focused-a1",
+      "platform": "Linux; no Windows or Electron GUI execution",
+      "nodeVersion": "24.15.0",
+      "runnerArguments": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-timeout=30000",
+        "--test-reporter=spec"
+      ],
+      "testFileCount": 94,
+      "testFiles": "94 repository test paths recorded in the retained original receipt",
+      "startedAt": "2026-10-26T15:46:57.089970+00:00",
+      "completedAt": "2026-10-26T15:48:20.031334+00:00",
+      "wallMs": 82941,
+      "exitCode": 1,
+      "counts": {
+        "tests": 1008,
+        "pass": 1000,
+        "fail": 6,
+        "skipped": 2
+      },
+      "inputFiles": 2696,
+      "sourceSnapshotSha256": "51bdd5af92f22860bd29f3b1a5a1d0aefbbdd8ff4289cce9cf9da5fb93d72bfb",
+      "changedInputs": [],
+      "logSha256": "ba83b78a4b2fd3d8e8c4c98541bdb23bca7e8affca46c3c7e87bb146f160650b"
+    },
+    {
+      "attempt": "focused-repairs-a4",
+      "platform": "Linux; no Windows or Electron GUI execution",
+      "nodeVersion": "24.15.0",
+      "runnerArguments": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-timeout=30000",
+        "--test-reporter=spec"
+      ],
+      "testFileCount": 7,
+      "testFiles": [
+        "apps/desktop/test/capability-status.test.mjs",
+        "apps/desktop/test/panel-event-readback-order.test.mjs",
+        "apps/desktop/test/panel-task-progress.test.mjs",
+        "apps/desktop/test/authorization-question-host.test.mjs",
+        "apps/runtime/test/native-desktop-preflight.test.mjs",
+        "apps/runtime/test/authorization-question.test.mjs",
+        "apps/runtime/test/mail-batch-authorization.test.mjs"
+      ],
+      "startedAt": "2026-10-26T15:54:46.778358+00:00",
+      "completedAt": "2026-10-26T15:54:52.892697+00:00",
+      "wallMs": 6114,
+      "exitCode": 0,
+      "counts": {
+        "tests": 40,
+        "pass": 40,
+        "fail": 0,
+        "skipped": 0
+      },
+      "inputFiles": 2696,
+      "sourceSnapshotSha256": "ea3b334601af2d6fbe43e8832990e20e5b4ffc07fe183a1a4cf532117e913253",
+      "changedInputs": [],
+      "logSha256": "f40af9c99acd162d3c47f72392ece2e98277f44eaf1cc51cfbecb21f767d2819"
+    },
+    {
+      "attempt": "admin-history-red-a1",
+      "platform": "Linux; no Windows or Electron GUI execution",
+      "nodeVersion": "24.15.0",
+      "runnerArguments": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-timeout=30000",
+        "--test-reporter=spec"
+      ],
+      "testFileCount": 1,
+      "testFiles": [
+        "apps/desktop/test/approval-history-render.test.mjs"
+      ],
+      "startedAt": "2026-10-26T15:59:59.794381+00:00",
+      "completedAt": "2026-10-26T16:00:00.015888+00:00",
+      "wallMs": 222,
+      "exitCode": 1,
+      "counts": {
+        "tests": 2,
+        "pass": 1,
+        "fail": 1,
+        "skipped": 0
+      },
+      "inputFiles": 2696,
+      "sourceSnapshotSha256": "2d01ecca7f4d0e1fdde5a3c2b702627ed0e1c30957fa2d11439e150689cafa91",
+      "changedInputs": [],
+      "logSha256": "1caaf1a37ade7a603e81a989141ba2667c5fafef0a5a4c140819dc1f112bf9bb"
+    },
+    {
+      "attempt": "admin-history-fixed-a2",
+      "platform": "Linux; no Windows or Electron GUI execution",
+      "nodeVersion": "24.15.0",
+      "runnerArguments": [
+        "--test",
+        "--test-concurrency=1",
+        "--test-timeout=30000",
+        "--test-reporter=spec"
+      ],
+      "testFileCount": 1,
+      "testFiles": [
+        "apps/desktop/test/approval-history-render.test.mjs"
+      ],
+      "startedAt": "2026-10-26T16:00:06.839587+00:00",
+      "completedAt": "2026-10-26T16:00:07.079820+00:00",
+      "wallMs": 240,
+      "exitCode": 0,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "skipped": 0
+      },
+      "inputFiles": 2696,
+      "sourceSnapshotSha256": "f57f412dd2482bd9725fc40791449f47de5fb7bedcdef3b17cb12232f6a4efeb",
+      "changedInputs": [],
+      "logSha256": "fe03caadeeb51199e4977a50068474c44b4b29d8abf2a118e060328ff3a118b5"
+    }
+  ],
+  "postA4ChangedPaths": [
+    "apps/desktop/src/features/admin/view.js",
+    "apps/desktop/test/approval-history-render.test.mjs"
+  ],
+  "countingRule": "Overlapping runs are not added. The 40/40 a4 run does not cover the later two-path Admin change. No complete 94-file or historical 6194-test green run is claimed at the final snapshot.",
+  "remainingInitialFailures": {
+    "status": "unresolved on Windows; original Linux failures retained",
+    "leafCases": 2,
+    "parentFailures": 1,
+    "reason": "Production create-only workspace tool registration requires win32; Linux does not register it. No fake platform, weakened assertions or added skips were used."
+  },
+  "sqliteIndependentProbes": {
+    "scope": "independent synthetic Linux Node probes; no GUI, build, cloud, real data, power-loss or package validation",
+    "node": "v24.15.0",
+    "sourceSha256": {
+      "conversations.js": "afee6816def49455b25bcba00716951fe49e76848ef83ffb540753a36f71460d",
+      "conversation-sqlite-store.js": "0e649a1357b1dae04eebd2461794bb2c233cb00fdd8bbf82d9e552af5f5525f2"
+    },
+    "results": [
+      {
+        "name": "v1-v4 lazy migration, byte backup, stable order and reopen",
+        "status": "pass"
+      },
+      {
+        "name": "escaped duplicate key and silent trim refuse migration before backup or DB",
+        "status": "pass"
+      },
+      {
+        "name": "fresh interrupted initialization promotes only after exact initial DB receipt",
+        "status": "pass"
+      },
+      {
+        "name": "ready DB disappearance refuses empty reconstruction and preserves marker bytes",
+        "status": "pass"
+      },
+      {
+        "name": "COMMIT acknowledgement lost before or after actual COMMIT cannot use original transaction as witness",
+        "status": "pass"
+      },
+      {
+        "name": "unknown post-COMMIT readback preserves old memory and blocks subsequent writes",
+        "status": "pass"
+      },
+      {
+        "name": "stale global revision and external target-row mutation reject without publishing memory",
+        "status": "pass"
+      },
+      {
+        "name": "concurrent WAL commit between collection reads yields one coherent load snapshot",
+        "status": "pass"
+      }
+    ],
+    "uniqueGroups": 8,
+    "countingRule": "Source and candidate reruns use the same eight groups; not sixteen distinct groups.",
+    "mainCallbackProbe": {
+      "sourceSha256": "de8927d7e7431824883772998482c19ced2e99d8824ecc718d1eb6d75c747b86",
+      "scope": "actual Main callback text evaluated with Fake scope/EventEmitter; not Electron/native lifecycle",
+      "status": "pass",
+      "checks": [
+        "unknown draft preflight prevents quit before connector/runtime/conversation cleanup",
+        "will-quit closes once and fixed diagnostic preserves other disposal"
+      ]
+    }
+  },
+  "rendererStaticClosure": {
+    "scope": "Desktop actual HTML roots and recursive relative static/literal-dynamic imports; adjacent smoke/Main/Runtime anchors",
+    "layer": "static only; not Windows/Electron GUI execution",
+    "createdAt": "2026-10-26T16:01:20.067Z",
+    "counts": {
+      "closureFiles": 100,
+      "javascriptFiles": 86,
+      "edges": 133,
+      "staticImports": 114,
+      "literalDynamicImports": 2,
+      "missing": 0,
+      "nonliteralDynamic": 0,
+      "unresolvedNameOrImportDiagnostics": 0,
+      "allCheckJsDiagnostics": 582
+    },
+    "parseErrors": 0,
+    "inputFingerprint": {
+      "algorithm": "sha256(sorted relative path + NUL + raw file sha256 + LF)",
+      "sha256": "44bd1d3e375e757bea52b240120ce609077dcd519b15ef124d3428df783f5bb0"
+    },
+    "limitation": "Zero unresolved-name/import diagnostics is not a clean general checkJs/typecheck result; 582 other checkJs diagnostics were recorded."
+  },
+  "historicalEvidenceLimits": {
+    "missingOriginalLogs": 6,
+    "oldReceipts": "Receipt/source-map/exit-code consistency checked; missing raw logs prevent independent verification of all claimed log hashes or replay of author Windows results.",
+    "a12": {
+      "authorReportedOnly": true,
+      "tests": 6194,
+      "pass": 6165,
+      "skip": 29,
+      "exitCode": 0,
+      "inputFiles": 1724,
+      "sourceSnapshotSha256": "ba730229db7ec4e098b94c6dac956e0bfeb0a28e90c1b2cf4530a87544a641e3"
+    },
+    "a12InputTraceability": {
+      "differentOrAbsentAgainstCurrentMain": 65,
+      "mainHistoryMatches": 25,
+      "missingTexts": 6,
+      "unmatchedHistoricalBytes": 34,
+      "exactOldTreeRecoveryNeeds": "40 source texts (6+34), or the complete readable b2 baseline; 25 main historical matches are provenance only, not replacements for current main.",
+      "currentCandidateBuildMissingSource": false
+    }
+  },
+  "pendingWindowsGui": {
+    "status": "pending; no actual Windows run in this record",
+    "tests": [
+      "apps/desktop/test/native-reasoning-slider-smoke.cjs",
+      "apps/desktop/test/pr376-regressions-smoke.cjs"
+    ],
+    "acceptance": "Run sequentially on actual Windows with new a2 receipts, each exitCode 0 and changedInputs []; retain original a1 failures.",
+    "ciCoverage": "Current official CI desktop test glob covers test/*.test.mjs; neither of these exact .cjs scripts is run there, and test:native-reasoning-smoke points to a different product smoke. Official Windows/Linux CI therefore does not satisfy these two pending GUI checks.",
+    "pr376Scope": "Uses a generated Main stub; passing would not prove the real Root Main lifecycle.",
+    "staticReviewConcern": "Confirmed static stale assertion inherited from baseline HEAD, not a newly introduced production regression: PR376 setFixture({}) loads mode=workspace and asserts .workspace-composer textarea count 0, while current view unconditionally mounts the composer creating a textarea. If Windows reaches the assertion it is expected to fail; no Windows runtime red result has been observed in this work."
+  },
+  "sqliteDecision": {
+    "adr0041Status": "proposed",
+    "interfaceStatus": "provisional; no freeze-level promotion",
+    "publicFinalSQLiteEvidence": "pending",
+    "authorReportedPerformanceOnly": "Synthetic Windows/Node steady logical write latency improved, while first migration, reopen, peak RSS and disk footprint regressed. Logical serialized payload is not physical I/O.",
+    "canonicalMessageMapResident": true,
+    "fullLatestHistoryV5ToV4ExportAvailable": false,
+    "recoveryLimit": "Deleting DB/marker or restoring the pre-migration backup does not preserve post-migration history."
+  },
+  "notValidated": [
+    "Actual Windows Electron GUI and real Main lifecycle",
+    "Windows packaged install/cold activation",
+    "Real profile migration/recovery or machine power loss",
+    "Real mail, model, cloud/AgentArts deployment or physical devices"
+  ],
+  "deliveryBoundary": "Commit/push/Draft PR and official Windows/Linux CI are authorized for this candidate. Merge/deploy and the independently denied #510 service path are not authorized by that publication instruction.",
+  "publicationDocumentation": {
+    "newEvidenceFiles": 2,
+    "redactionOnlyPaths": [
+      "apps/desktop/docs/COMPUTER_VISION_LIFECYCLE_20261026.md",
+      "apps/desktop/docs/CONNECTOR_LIFECYCLE_REPAIR_20261026.md",
+      "apps/desktop/docs/CONTROL_BOUNDARY_REPAIR_20261026.md",
+      "apps/desktop/docs/MEMORY_RENDERING_20261024.md",
+      "apps/desktop/docs/SNAPSHOT_RESOURCE_REPAIR_20261026.md",
+      "apps/desktop/docs/VOICE_UI_REPAIR_20261026.md",
+      "docs/COMPUTER_CONTROL_COMPLETION_20261024.md",
+      "docs/ROADMAP.md",
+      "docs/competition/PROGRESSIVE_EXECUTION_20261024.md",
+      "docs/modules/LARGE_RUNTIME_REPAIR_20261026.md"
+    ],
+    "redactedRootOccurrences": 21,
+    "note": "Only personal source-worktree prefixes in these existing documents were replaced by <source-worktree>; relative suffixes, historical results and log hashes are retained. Original source archive/a2 snapshot remain unchanged. Historical execution input hashes predate these documentation edits."
+  }
+}

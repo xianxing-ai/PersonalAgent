@@ -1,0 +1,10 @@
+.history-navigation {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 14px;color:var(--fg-2);font-size:12px}
+.history-navigation[hidden] {display:none}
+.history-navigation button {border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2,transparent);color:var(--fg);padding:5px 9px;font:inherit}
+.history-navigation button:disabled {opacity:.45;cursor:default}
+.history-navigation span {flex:1;min-width:80px}
+:root[data-resource-mode="critical"] {--glass-filter:none}
+:root[data-resource-mode="critical"] .thinking-grid i {animation:none;opacity:.6}
+:root[data-resource-mode="critical"] .cc-hero-field {animation:none}
+:root[data-render-activity="hidden"] *, :root[data-render-activity="background"] .cc-hero-field {animation-play-state:paused!important}
+:root[data-resource-mode="critical"] :is(.panel,.workspace,.admin) button {transition:none}

@@ -150,6 +150,7 @@ export class Orb {
     this.running = false;
     // Ambient Canvas animation does not need to repaint at a 120/144/240Hz display rate.
     this._frameInterval = 1000 / 30;
+    this._maxDpr = 2;
     this._tokenCache = null;
     this._rebuild();
     this._resize();
@@ -187,7 +188,7 @@ export class Orb {
 
   _resize() {
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, this._maxDpr ?? 2);
     this.w = Math.max(rect.width, 24);
     this.h = Math.max(rect.height, 24);
     const width = Math.round(this.w * dpr), height = Math.round(this.h * dpr);
@@ -209,6 +210,12 @@ export class Orb {
   }
 
   setLevel(v) { this.level = Math.max(0, Math.min(1, v)); }
+  setResourceBudget({fps=30,maxDpr=2}={}) {
+    const nextFps=Number.isFinite(fps)?Math.max(8,Math.min(30,fps)):30;
+    const nextDpr=Number.isFinite(maxDpr)?Math.max(1,Math.min(2,maxDpr)):2;
+    this._frameInterval=1000/nextFps;
+    if(this._maxDpr!==nextDpr){this._maxDpr=nextDpr;this._resize();if(!this.running)this._draw();}
+  }
   /* 大工作区点击与思考、执行共用同一段呼吸。 */
   playBreath(seconds = 3.2) {
     if (this.calm) { this.breathUntil = null; return; }

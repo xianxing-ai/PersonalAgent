@@ -48,7 +48,8 @@ test('packaged Fake uses isolated userData and never persists conversations', ()
 
 test('packaged path selection preserves synthetic database and conversation on reopen', t => {
   const root = mkdtempSync(path.join(tmpdir(), 'personal-agent-packaged-paths-'));
-  t.after(() => rmSync(root, {recursive: true, force: true}));
+  let writer,reader;
+  t.after(() => {reader?.close();writer?.close();rmSync(root, {recursive: true, force: true});});
   const installDir = path.join(root, 'resources', 'app.asar', 'electron');
   const dataDir = path.join(root, 'user-data');
   mkdirSync(installDir, {recursive: true});
@@ -61,11 +62,13 @@ test('packaged path selection preserves synthetic database and conversation on r
     db.exec('CREATE TABLE fixture (value TEXT NOT NULL)');
     db.prepare('INSERT INTO fixture VALUES (?)').run('synthetic');
   } finally { db.close(); }
-  new Conversations(selected.conversations).add('synthetic-task', 'workspace', 'synthetic goal');
+  writer=new Conversations(selected.conversations);
+  writer.add('synthetic-task', 'workspace', 'synthetic goal');
   db = new DatabaseSync(selected.runtime);
   try { assert.equal(db.prepare('SELECT value FROM fixture').get().value, 'synthetic'); }
   finally { db.close(); }
-  assert.equal(new Conversations(selected.conversations).goal('synthetic-task'), 'synthetic goal');
+  reader=new Conversations(selected.conversations);
+  assert.equal(reader.goal('synthetic-task'), 'synthetic goal');
   assert.equal(existsSync(path.resolve(installDir, '../.cache')), false);
   assert.equal(existsSync(path.join(installDir, 'runtime.sqlite')), false);
 });

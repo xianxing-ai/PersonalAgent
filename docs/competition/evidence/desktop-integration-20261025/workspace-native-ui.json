@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "profile": "explicit_fake_runtime",
+  "realCloud": false,
+  "realConnectorReads": 0,
+  "actualElectron": true,
+  "actualNativeWindows": true,
+  "normalQuit": true,
+  "exitCode": 0,
+  "harness": {
+    "schemaVersion": 1,
+    "originalPath": "apps/desktop/test/workspace-smoke.cjs",
+    "originalSha256": "adff42e4955646789fc519ce3da40304cce1f65ba735463a909eec631ae7d0ee",
+    "effectiveSha256": "597b5d54b90fbb98471ecd14ea039586af0017ab290b87ce7e3dc0ff80c70bea",
+    "adaptations": [
+      "redirect only artifact/profile output into an isolated task directory",
+      "print the original assertion error before existing cleanup so cleanup cannot hide it"
+    ],
+    "assertionsChanged": false,
+    "runtime": "explicit_Fake_Runtime",
+    "modelCalls": 0
+  },
+  "logSha256": "382dde1beabea1c30cc2b1922c57ceddf8065aa8555ca1f15d6890bb4a0267bd",
+  "shell": {
+    "profile": "explicit_fake_runtime",
+    "bounds": {
+      "bounds": {
+        "x": -8,
+        "y": -8,
+        "width": 1936,
+        "height": 1048
+      },
+      "contentBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032
+      },
+      "maximized": true,
+      "area": {
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032
+      },
+      "panelVisible": false
+    },
+    "shellCases": [
+      {
+        "selector": ".workspace",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032,
+        "viewportWidth": 1920,
+        "viewportHeight": 1032,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgba(25, 25, 25, 0.88)"
+      },
+      {
+        "selector": ".admin",
+        "x": 0,
+        "y": 0,
+        "width": 1120,
+        "height": 760,
+        "viewportWidth": 1120,
+        "viewportHeight": 760,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgb(16, 16, 16)"
+      },
+      {
+        "selector": ".workspace",
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 820,
+        "viewportWidth": 1280,
+        "viewportHeight": 820,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgba(25, 25, 25, 0.88)"
+      },
+      {
+        "selector": ".workspace",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032,
+        "viewportWidth": 1920,
+        "viewportHeight": 1032,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgba(25, 25, 25, 0.88)"
+      },
+      {
+        "selector": ".admin",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032,
+        "viewportWidth": 1920,
+        "viewportHeight": 1032,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgb(16, 16, 16)"
+      },
+      {
+        "selector": ".admin",
+        "x": 0,
+        "y": 0,
+        "width": 1120,
+        "height": 760,
+        "viewportWidth": 1120,
+        "viewportHeight": 760,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgb(16, 16, 16)"
+      },
+      {
+        "selector": ".workspace",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032,
+        "viewportWidth": 1920,
+        "viewportHeight": 1032,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgba(244, 244, 244, 0.9)"
+      },
+      {
+        "selector": ".admin",
+        "x": 0,
+        "y": 0,
+        "width": 1120,
+        "height": 760,
+        "viewportWidth": 1120,
+        "viewportHeight": 760,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgb(250, 250, 250)"
+      },
+      {
+        "selector": ".workspace",
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 820,
+        "viewportWidth": 1280,
+        "viewportHeight": 820,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgba(244, 244, 244, 0.9)"
+      },
+      {
+        "selector": ".workspace",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032,
+        "viewportWidth": 1920,
+        "viewportHeight": 1032,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgba(244, 244, 244, 0.9)"
+      },
+      {
+        "selector": ".admin",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1032,
+        "viewportWidth": 1920,
+        "viewportHeight": 1032,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgb(250, 250, 250)"
+      },
+      {
+        "selector": ".admin",
+        "x": 0,
+        "y": 0,
+        "width": 1120,
+        "height": 760,
+        "viewportWidth": 1120,
+        "viewportHeight": 760,
+        "border": "0px",
+        "radius": "0px",
+        "shadow": "none",
+        "clip": "none",
+        "blur": "none",
+        "background": "rgb(250, 250, 250)"
+      }
+    ],
+    "pageErrors": []
+  },
+  "screenshots": [
+    {
+      "path": "native-workspace-dark.png",
+      "sha256": "f78b8ab89ee04e33775f3f810ac702200e45a84a62545aa97bb48f7fb0261145",
+      "bytes": 494559,
+      "capture": "actual_desktop_compositor_cropped_to_owned_window_content",
+      "reviewed": true,
+      "edited": false
+    },
+    {
+      "path": "native-workspace-light.png",
+      "sha256": "a96015d2a032409d78c879a8e6151f8fd1f46ead3e5bc5293d269647f505b03d",
+      "bytes": 457612,
+      "capture": "actual_desktop_compositor_cropped_to_owned_window_content",
+      "reviewed": true,
+      "edited": false
+    }
+  ],
+  "verified": [
+    "Workspace expands to the actual work area, hides the small panel and retains native maximize/restore behavior.",
+    "Workspace and settings preserve the expected dark and light theme surfaces during maximize and restore.",
+    "Workspace orb, connector navigation, conversation controls and shared draft/second-turn UI remain usable.",
+    "Renderer reported no page errors; actual owned-window desktop compositor images were inspected."
+  ],
+  "limitations": [
+    "Existing workspace-smoke assertions were retained; only output redirection and original-failure logging were added in the isolated harness.",
+    "The explicit Fake Runtime does not prove real cloud, connector operations, active monitor approvals or account data.",
+    "No user profile was opened and the original QA directory was not overwritten."
+  ]
+}

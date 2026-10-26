@@ -1,6 +1,8 @@
 import {errorDisplayText} from '../shared/error-display.js';
 import {mountSessionControls} from '../features/conversation/session-controls.js';
 import {readDeveloperSettingsDiagnostic} from '../../shared/developer-settings-diagnostics.js';
+import {readComputerControlDiagnostic} from './computer-controls.js';
+import {readComputerVisionDiagnostic} from './computer-vision-controls.js';
 import {mountSubagentConversationPage} from '../features/conversation/subagent-conversations.js';
 import {mountSubagentCompletionNotice} from '../features/conversation/subagent-completion-notice.js';
 import {mountSubagentConversationList} from '../features/conversation/subagent-conversation-list.js';
@@ -28,6 +30,9 @@ import {isStopRequest} from '../features/conversation/stop-request.js';
 import {mountPanelLight} from './panel-light.js';
 import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
 import {createMessageQueue} from '../features/conversation/message-queue.js';
+import {createSnapshotReceiver} from '../shared/snapshot-receiver.js';
+import {mountRenderBudget} from '../shared/render-budget.js';
+import {mountHistoryControls} from '../features/conversation/history-controls.js';
 
 applyPreferences();
 mountDesktopShell();
@@ -41,17 +46,21 @@ const voiceFailureStages = Object.freeze({pcm_acquire:'麦克风就绪',session_
   initialization:'适配器启动'});
 const responseIcons={copy:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',share:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>',like:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10h3Zm3 10h7.2a2 2 0 0 0 1.9-1.4l1.5-5A2 2 0 0 0 18.7 11H15l.6-3.1A3.2 3.2 0 0 0 12.5 4L10 10v10Z"/></svg>'};
 let activeDesktopConversationId;
+let adoptSnapshotRead;
 async function invoke(action,payload) {
   if(activeDesktopConversationId&&['task.submit','conversation.model','thinking.update'].includes(action))payload=action==='task.submit'?{...(typeof payload==='string'?{text:payload}:payload),conversationId:payload?.conversationId??activeDesktopConversationId}:{...payload,conversationId:payload?.conversationId??activeDesktopConversationId};
   if(!bridge) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
   const response=await bridge.invoke(action,payload);
   if(!response.ok){
-    const diagnostic=readDeveloperSettingsDiagnostic(response.diagnostic);
-    const error=Object.assign(Error(diagnostic?diagnostic.message:errorDisplayText({message:response.error,code:response.errorCode},'ipc')),{code:response.errorCode});
+    const diagnostic=readDeveloperSettingsDiagnostic(response.diagnostic)
+      ??readComputerControlDiagnostic(response.diagnostic,action)
+      ??readComputerVisionDiagnostic(response.diagnostic,action);
+    const error=Object.assign(Error(diagnostic?diagnostic.message:errorDisplayText({message:response.error,code:response.errorCode},'ipc')),
+      {code:diagnostic?.code??response.errorCode,...(diagnostic?.stage?{stage:diagnostic.stage}:{})});
     if(diagnostic)error.diagnostic=diagnostic;
     throw error;
   }
-  return response.value;
+  return action==='snapshot'&&adoptSnapshotRead?adoptSnapshotRead(response.value):response.value;
 }
 let render, orb, reportSnapshotFailure, clearSnapshotFailure;
 if(mode==='orb') {
@@ -479,7 +488,7 @@ else {
       approvalDecisions.set(id,'submitted');syncApprovalButtons();}
     catch(error){approvalDecisions.delete(id);report(error);syncApprovalButtons();}
   });
-  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
+  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
     subagents.update(data.subagentTasks??[]);
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
@@ -554,7 +563,16 @@ if(bridge&&authorizationThread) {
     questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
   };
   render.setAudioLevel=previousRender.setAudioLevel;
+  render.setResourceBudget=previousRender.setResourceBudget;
   window.addEventListener('unload',()=>{questionClosed=true;questions.dispose();},{once:true});
+}
+if(bridge&&(!mode||['panel','workspace'].includes(mode))) {
+  const scrollContainer=root.querySelector(mode==='workspace'?'#workspace-stage':'.thread');
+  const history=mountHistoryControls(scrollContainer,invoke,error=>reportSnapshotFailure?.(error),scrollContainer);
+  const previousRender=render;
+  render=(data,...options)=>{previousRender(data,...options);history.update(data);};
+  render.setAudioLevel=previousRender.setAudioLevel;render.setResourceBudget=previousRender.setResourceBudget;
+  window.addEventListener('unload',()=>history.dispose(),{once:true});
 }
 if(bridge&&['admin','workspace'].includes(mode)) {
   mountWindowControls(root,invoke,mode,error=>{
@@ -566,7 +584,12 @@ if(bridge&&['subagent','subagent-list'].includes(mode)){
   window.addEventListener('unload',unsubscribe,{once:true});
 }
 else if(bridge){
-  let receivedUpdate=false,closed=false;
+  let receivedUpdate=false,closed=false,recoveringSnapshot=false;
+  const renderBudget=mountRenderBudget(budget=>{orb?.setResourceBudget(budget);render?.setResourceBudget?.(budget);});
+  const receiver=createSnapshotReceiver({render:data=>{
+    activeDesktopConversationId=data.conversationState?.activeId;renderBudget.update(data.resourceBudget);render(data);clearSnapshotFailure();
+  },ack:token=>bridge.ackSnapshot?.(token),resync:()=>{void invoke('snapshot.resync').catch(reportSnapshotFailure);}});
+  adoptSnapshotRead=value=>receiver.adopt(value);
   if(mode!=='orb') {
     const snapshotFeedback=document.createElement('p');snapshotFeedback.className='error';
     snapshotFeedback.setAttribute('role','alert');snapshotFeedback.setAttribute('data-snapshot-error','');snapshotFeedback.hidden=true;
@@ -575,11 +598,12 @@ else if(bridge){
     clearSnapshotFailure=()=>{snapshotFeedback.textContent='';snapshotFeedback.hidden=true;};
   }
   const unsubscribeLevel=bridge.onAudioLevel?.(value=>{if(closed)return;orb?.setLevel(value);render?.setAudioLevel?.(value);})??(()=>{});
-  const unsubscribe=bridge.subscribe(data=>{if(closed)return;activeDesktopConversationId=data.conversationState?.activeId;render(data);receivedUpdate=true;clearSnapshotFailure();});
-  invoke('snapshot').then(data=>{if(!closed&&!receivedUpdate){activeDesktopConversationId=data.conversationState?.activeId;render(data);clearSnapshotFailure();}}).catch(e=>{
+  const unsubscribe=bridge.subscribe(data=>{if(closed)return;try{receiver.receive(data);receivedUpdate=true;recoveringSnapshot=false;}catch(error){
+    reportSnapshotFailure(error);if(!recoveringSnapshot){recoveringSnapshot=true;void invoke('snapshot.resync').catch(reportSnapshotFailure);}}});
+  invoke('snapshot').then(data=>{if(!closed&&!receivedUpdate)receiver.receive(data);}).catch(e=>{
     if(closed||receivedUpdate)return;
     reportSnapshotFailure(e);
   });
-  window.addEventListener('unload',()=>{closed=true;unsubscribe();unsubscribeLevel();orb?.dispose();});
+  window.addEventListener('unload',()=>{closed=true;unsubscribe();unsubscribeLevel();receiver.clear();renderBudget.dispose();orb?.dispose();});
 }
 else root.textContent='桌面桥未连接，请从 PersonalAgent 桌面应用启动。';

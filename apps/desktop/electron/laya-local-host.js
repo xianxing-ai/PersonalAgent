@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {ProtocolError} from '@personal-agent/contracts';
+import {createInferenceAdmission} from './inference-admission.js';
 
 /** Discover only this checkout and its Git common root; never download weights. */
 export function discoverLocalLaya(projectRoot) {
@@ -87,10 +88,10 @@ async function identifyArtifact(config,signal) {
 /** One explicitly started, owned child. No microphone, cloud call or background restart. */
 export function createLocalLayaHost({projectRoot, createService, createChooser, onUpdate = () => {}, port = 8766,
   discover = discoverLocalLaya, launch = spawn, request = fetch, freeMemory = os.freemem,
-  startupTimeoutMs = 90_000, now = Date.now, sleep = delay}) {
+  startupTimeoutMs = 90_000, now = Date.now, sleep = delay, getPendingLimit=()=>16}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw Error('Invalid Laya loopback port');
   let child, service, chooser, controller, starting, stopping, artifact;
-  let admission={tail:Promise.resolve()};
+  let admission=createInferenceAdmission({getLimit:getPendingLimit});
   async function infer(kind,input) {
     if(!readClassifierIdentity()||!(kind==='classify'?service:chooser))throw Error(kind==='classify'?'本地 Laya 尚未就绪':'本地 Laya 决策尚未就绪');
     if(!(input?.signal instanceof AbortSignal))throw new ProtocolError('INVALID_ARGUMENT','Invalid local inference cancellation signal');
@@ -103,21 +104,16 @@ export function createLocalLayaHost({projectRoot, createService, createChooser, 
       timer=setTimeout(arm,Math.min(remaining,2_147_483_647));};
     arm();
     const signal=AbortSignal.any([input.signal,generation.signal,deadline.signal]);
-    const previous=queue.tail;let release;
-    const turn=new Promise(resolve=>{release=resolve;});queue.tail=previous.then(()=>turn);
-    let abort;
+    let release;
     try {
-      await new Promise((resolve,reject)=>{
-        abort=()=>reject(signal.reason);signal.addEventListener('abort',abort,{once:true});
-        if(signal.aborted)abort();else previous.then(resolve);
-      });
+      release=await queue.acquire(signal);
       signal.throwIfAborted();
       if(controller!==generation||admission!==queue||!readClassifierIdentity())throw new ProtocolError('CANCELLED','Local Laya generation changed');
       const result=await provider[kind]({...input,signal});
       signal.throwIfAborted();
       if(controller!==generation||!readClassifierIdentity())throw new ProtocolError('CANCELLED','Local Laya generation changed');
       return result;
-    } finally {clearTimeout(timer);if(abort)signal.removeEventListener('abort',abort);release();}
+    } finally {clearTimeout(timer);release?.();}
   }
   let state = 'stopped', reason = '本地分类尚未启动；启动时才加载现有模型';
   /** Trusted host getter: opaque content digest only while this owned process has unchanged loaded artifacts. */
@@ -131,7 +127,7 @@ export function createLocalLayaHost({projectRoot, createService, createChooser, 
     return artifact.digest;
   };
   // Display polling reads known state only; trusted identity reads and inference boundaries revoke stale artifacts.
-  const snapshot = () => ({state, ready:state === 'ready', reason, localOnly:true, calibrated:false});
+  const snapshot = () => ({state, ready:state === 'ready', reason, localOnly:true, calibrated:false,queue:admission.snapshot()});
   const publish = () => {try {onUpdate();} catch {}};
   const stop = async () => {
     if (stopping) return stopping;
@@ -158,7 +154,7 @@ export function createLocalLayaHost({projectRoot, createService, createChooser, 
     if (freeMemory() < (Number(process.env.PA_LAYA_MIN_FREE_MEM_BYTES) || (2 * 1024 ** 3))) {
       state = 'memory_insufficient'; reason = '当前可用内存不足 2 GB，暂不加载本地模型；其他功能可继续使用'; publish(); return snapshot();
     }
-    controller = new AbortController();admission={tail:Promise.resolve()};
+    controller = new AbortController();admission=createInferenceAdmission({getLimit:getPendingLimit});
     const signal = controller.signal, key = randomBytes(32).toString('hex');
     artifact=undefined;state = 'starting'; reason = '正在核对并加载本地模型'; publish();
     starting = (async () => {

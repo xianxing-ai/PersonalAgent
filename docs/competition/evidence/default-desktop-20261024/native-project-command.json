@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "kind": "real_native_project_command_profile",
+  "startedAt": "2026-10-24T13:54:58.282Z",
+  "publicFixture": true,
+  "fakeNativeExecutor": false,
+  "questionHost": "explicit_synthetic_original_scope",
+  "runtimePolicyAcceptance": "not_run",
+  "cloudCalls": 0,
+  "physicalHumanClick": "not_run",
+  "helperSourceBuildProvenance": "not_reestablished",
+  "status": "passed",
+  "nodeVersion": "v24.15.0",
+  "onlyProjectRecipe": true,
+  "sourceFilesUnchanged": true,
+  "helperSha256": "c7d5316f9e901542f553d56e6e4893b29fe4623fd667612bceed65c6e8789f1c",
+  "execution": {
+    "runId": "a8ca2e72-4a71-4600-991a-398362931891",
+    "argumentsDigest": "f3a2b52346d8256a1c788862406cb713100dbe5c5f76bf98d959a8d16e6c9427",
+    "backend": "windows-psec",
+    "enforced": true,
+    "outcome": "exited",
+    "exitCode": 0,
+    "executionStarted": true,
+    "stopped": true,
+    "sideEffects": "possible"
+  },
+  "nativeHostSourceSha256": "265cd4c9b73617bcac419c9d0812bc681f9fc72cdea80811a30fe11555aeab79",
+  "finishedAt": "2026-10-24T13:55:00.142Z",
+  "originalReceiptSha256": "57b803d8d6f39261aa898d4ac9e9d285063ab01de6239163c84e084bf7e4c6f9"
+}

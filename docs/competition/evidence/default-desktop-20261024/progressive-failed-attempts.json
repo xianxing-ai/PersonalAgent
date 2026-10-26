@@ -1,0 +1,1347 @@
+{
+  "schemaVersion": 1,
+  "kind": "sanitized_failed_real_progressive_desktop_attempts",
+  "profile": "huawei_ict_agentarts",
+  "attempts": [
+    {
+      "attempt": "a1",
+      "startedAt": "2026-10-24T12:08:28.204Z",
+      "finishedAt": "2026-10-24T12:23:56.418Z",
+      "status": "failed",
+      "stage": "independent-readback",
+      "sourceTaskId": "88651a0c-dc87-4fb5-ba1a-5a25a5d8af1c",
+      "acceptanceFailureCode": "ERR_ASSERTION",
+      "originalReceiptSha256": "f902c2cbf90c5362b1730d257aedf1c28d9029add0d0cc04f38ce172c6d716b2",
+      "observation": "All fourteen module bytes corrected; native test exit 1 because the configured Node was unreadable inside that project-only profile; a subsequent stale patch was refused.",
+      "source": {
+        "apps/desktop/electron/main.js": "fb23aa04dfeaedf67b163de1c91532358be5b4a9a6e0ca9276441c6c8edfb678",
+        "apps/runtime/src/application/execution-capacity.ts": "59fc8c5f43260be90eb7610b5986c360bcffa7afc2c719734d461fb9ac401808",
+        "apps/runtime/src/application/competition-cloud-status.ts": "2bf97af45516b7f157291cb80f45d53a2f3f712eee3d166d293df2b4b90d0a86",
+        "apps/runtime/dist/application/runtime-application.js": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "apps/runtime/dist/application/competition-cloud-status.js": "c979d93accbd584e22a7593ca0f6f015bbec95410b2900dc709af21880079343",
+        "tests/manual/agentarts/desktop-progressive-development-live.cjs": "a787502e3c2ae81d9baedc97b678c156084bcaf2b5d0b25fbf6288244f907a54"
+      },
+      "correctedModules": 14,
+      "automation": {
+        "fakeModel": false,
+        "fakeTools": false,
+        "physicalHumanClick": "not_run"
+      },
+      "configuredTarget": {
+        "configured": true,
+        "deploymentVersion": "arm64-output32k-1023",
+        "transport": "wss",
+        "platformVersionReadback": "not_run"
+      },
+      "persistence": {
+        "capacity": {},
+        "continuationWindow": {},
+        "lastCloudContext": {},
+        "records": []
+      }
+    },
+    {
+      "attempt": "a2",
+      "startedAt": "2026-10-24T12:38:00.258Z",
+      "finishedAt": "2026-10-24T12:47:13.481Z",
+      "status": "failed",
+      "stage": "independent-readback",
+      "sourceTaskId": "80f2bfd7-933d-4a46-95c9-cbf59ebd6807",
+      "acceptanceFailureCode": "ERR_ASSERTION",
+      "originalReceiptSha256": "7906ba40fe15d84444c7db543b2f014d119b6debe2897bf439de78368a291919",
+      "observation": "Thirteen module bytes corrected; proposal identity conflict refused. The raw conflicting candidate was not retained, so the exact reused candidate ID is unknown.",
+      "source": {
+        "apps/desktop/electron/main.js": "fb23aa04dfeaedf67b163de1c91532358be5b4a9a6e0ca9276441c6c8edfb678",
+        "apps/desktop/electron/native-execution-host.js": "265cd4c9b73617bcac419c9d0812bc681f9fc72cdea80811a30fe11555aeab79",
+        "apps/desktop/electron/workspace-command-recipes.js": "f66f6d7bf431d08954f4835e658e81899e70c16cf0e503a9e7532630d41a8ede",
+        "apps/runtime/src/application/execution-capacity.ts": "59fc8c5f43260be90eb7610b5986c360bcffa7afc2c719734d461fb9ac401808",
+        "apps/runtime/src/application/competition-cloud-status.ts": "2bf97af45516b7f157291cb80f45d53a2f3f712eee3d166d293df2b4b90d0a86",
+        "apps/runtime/dist/application/runtime-application.js": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "apps/runtime/dist/application/competition-cloud-status.js": "c979d93accbd584e22a7593ca0f6f015bbec95410b2900dc709af21880079343",
+        "tests/manual/agentarts/desktop-progressive-development-live.cjs": "1b018b803df58bfcc9ef9e402aa6631067f95559a41fd6bd2c7424ab88cf1b93"
+      },
+      "correctedModules": 13,
+      "automation": {
+        "fakeModel": false,
+        "fakeTools": false,
+        "physicalHumanClick": "not_run"
+      },
+      "configuredTarget": {
+        "configured": true,
+        "deploymentVersion": "arm64-output32k-1023",
+        "transport": "wss",
+        "platformVersionReadback": "not_run"
+      },
+      "persistence": {
+        "parentState": "succeeded",
+        "executionTaskId": "f27e8d38-d51d-44be-942e-efb8838569f7",
+        "executionState": "failed",
+        "executionErrorCode": "REVISION_CONFLICT",
+        "step": 44,
+        "confirmedCalls": 42,
+        "originalReceiptCount": 42,
+        "evidenceCount": 42,
+        "cloudRequestCount": 32,
+        "capacity": {
+          "version": "1.0",
+          "mode": "progressive",
+          "deadline": "2026-10-24T13:08:08.473Z",
+          "initialWindowSteps": 32,
+          "windowSteps": 32,
+          "windowEndStep": 64,
+          "extensions": 1
+        },
+        "continuationWindow": {
+          "priorCount": 32,
+          "queryBytes": 36756
+        },
+        "lastCloudContext": {
+          "requestId": "c1614669-d79b-4fd8-a421-0643e8cca3cd",
+          "payloadDigest": "f6bf52830c313e53f685816efe61daff1c3a69fe0e60aa7d04acc494d072b651",
+          "step": 44,
+          "initialMaxSteps": 32,
+          "catalogDigest": "545606d746b6315bb024d780ce1a6e7f30932d06efe6e3db2ebb906cfc196d58",
+          "catalogCount": 46
+        },
+        "records": [
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-1"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-2"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-3"
+          },
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-4"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-5"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-6"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-7"
+          },
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-8"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-9"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-10"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-11"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-12"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-13"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-14"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-15"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-16"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-17"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-18"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-19"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-20"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-21"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-22"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-23"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-24"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-25"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-26"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-27"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-28"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-29"
+          },
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-30"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-31"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-32"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-33"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-34"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-35"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-36"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-37"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-38"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-39"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-40"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-41"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-f27e8d38-d51d-44be-942e-efb8838569f7-42"
+          }
+        ]
+      }
+    },
+    {
+      "attempt": "a3",
+      "startedAt": "2026-10-24T13:09:38.466Z",
+      "finishedAt": "2026-10-24T13:10:12.036Z",
+      "status": "failed",
+      "stage": "real-cloud-development",
+      "sourceTaskId": "48d8eb2f-9cb9-425f-b7e2-d6debdf0bde9",
+      "acceptanceFailureCode": "ERR_ASSERTION",
+      "originalReceiptSha256": "8f51dfd3554c20921cc7fa9c2d6a7fd0ae6acb05c40960a15c173d8bdf0b60a1",
+      "observation": "The cloud received directory booleans without entry names and stopped without edits; the later parent summary returned a terminal EXTERNAL_FAILURE.",
+      "source": {
+        "apps/desktop/electron/main.js": "fb23aa04dfeaedf67b163de1c91532358be5b4a9a6e0ca9276441c6c8edfb678",
+        "apps/desktop/electron/native-execution-host.js": "265cd4c9b73617bcac419c9d0812bc681f9fc72cdea80811a30fe11555aeab79",
+        "apps/desktop/electron/workspace-command-recipes.js": "f66f6d7bf431d08954f4835e658e81899e70c16cf0e503a9e7532630d41a8ede",
+        "apps/runtime/src/application/execution-capacity.ts": "59fc8c5f43260be90eb7610b5986c360bcffa7afc2c719734d461fb9ac401808",
+        "apps/runtime/src/index.ts": "33629b64d1931b373a680ef95cdb40e4911640a6c5d2d6e54ba0139c0faeb322",
+        "apps/runtime/src/application/runtime-application.ts": "7e3741ad2648050f6888ba13023c0ed6bb8b2ea5ddf2cb49e3db3ac46f46dc7b",
+        "apps/runtime/src/application/capability-context.ts": "cd03199b1c62920ecafda1367e04faa5f767b69087468d3742d91053292c24da",
+        "apps/runtime/src/application/coordination.ts": "5a1b36e2916356012b8d1090c695657e7e1b7b1f07c9900276af48369f8c13fe",
+        "apps/runtime/src/application/competition-cloud-status.ts": "2bf97af45516b7f157291cb80f45d53a2f3f712eee3d166d293df2b4b90d0a86",
+        "apps/runtime/dist/application/runtime-application.js": "0a3a151e5992d52669c05969ceacdffdce9ed8c86fed655d24281e1a441a99e5",
+        "apps/runtime/dist/application/competition-cloud-status.js": "c979d93accbd584e22a7593ca0f6f015bbec95410b2900dc709af21880079343",
+        "tests/manual/agentarts/desktop-progressive-development-live.cjs": "66e4a9f365579c5f4c3a9b61d6f6ab37dd7c120f325b24dad5cdec24f3c1fd3a"
+      },
+      "correctedModules": 0,
+      "automation": {
+        "fakeModel": false,
+        "fakeTools": false,
+        "physicalHumanClick": "not_run"
+      },
+      "configuredTarget": {
+        "configured": true,
+        "deploymentVersion": "arm64-output32k-1023",
+        "transport": "wss",
+        "platformVersionReadback": "not_run"
+      },
+      "persistence": {
+        "parentState": "failed",
+        "executionTaskId": "4a9d7810-a14e-4fd3-ad04-1ae2dcbdeabb",
+        "executionState": "succeeded",
+        "step": 3,
+        "confirmedCalls": 2,
+        "originalReceiptCount": 2,
+        "evidenceCount": 2,
+        "cloudRequestCount": 3,
+        "capacity": {
+          "version": "1.0",
+          "mode": "progressive",
+          "deadline": "2026-10-24T13:39:46.018Z",
+          "initialWindowSteps": 32,
+          "windowSteps": 32,
+          "windowEndStep": 32,
+          "extensions": 0
+        },
+        "continuationWindow": {
+          "priorCount": 1,
+          "queryBytes": 31634
+        },
+        "lastCloudContext": {
+          "requestId": "dcabb62c-5aef-4f52-9b81-38453d8e8259",
+          "payloadDigest": "1e43aaf1ea9b3b63c72e4a9e5ff8ba7de4d1fe26b58477c81b263ce0e63346a0",
+          "step": 3,
+          "initialMaxSteps": 32,
+          "catalogDigest": "545606d746b6315bb024d780ce1a6e7f30932d06efe6e3db2ebb906cfc196d58",
+          "catalogCount": 46
+        },
+        "records": [
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-4a9d7810-a14e-4fd3-ad04-1ae2dcbdeabb-1"
+          },
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-4a9d7810-a14e-4fd3-ad04-1ae2dcbdeabb-2"
+          }
+        ]
+      }
+    },
+    {
+      "attempt": "a4",
+      "startedAt": "2026-10-24T13:32:56.757Z",
+      "finishedAt": "2026-10-24T13:49:15.089Z",
+      "status": "failed",
+      "stage": "real-cloud-development",
+      "sourceTaskId": "d462038a-b23f-4755-b0b0-49ac502998e7",
+      "acceptanceFailureCode": "ERR_ASSERTION",
+      "originalReceiptSha256": "3ea1f6a2bf6c050c925be2bde37b93aec92615be2e5f6b248e82a8f7354a3376",
+      "observation": "One module corrected; an accepted cloud request did not deliver its terminal frame. A matching-instance read-only status lookup returned unknown. The owned UI task was then cancelled, preserving the original cloud unknown hold.",
+      "source": {
+        "apps/desktop/electron/main.js": "fb23aa04dfeaedf67b163de1c91532358be5b4a9a6e0ca9276441c6c8edfb678",
+        "apps/desktop/electron/native-execution-host.js": "265cd4c9b73617bcac419c9d0812bc681f9fc72cdea80811a30fe11555aeab79",
+        "apps/desktop/electron/workspace-command-recipes.js": "f66f6d7bf431d08954f4835e658e81899e70c16cf0e503a9e7532630d41a8ede",
+        "apps/runtime/src/application/execution-capacity.ts": "59fc8c5f43260be90eb7610b5986c360bcffa7afc2c719734d461fb9ac401808",
+        "apps/desktop/electron/workspace-config-host.js": "2165a7c56d36e78a19787521388542af4d646aff2ef29f047b3afd0973470b78",
+        "apps/runtime/src/index.ts": "33629b64d1931b373a680ef95cdb40e4911640a6c5d2d6e54ba0139c0faeb322",
+        "apps/runtime/src/application/runtime-application.ts": "0faf9f5458281418440aedd6b9081c281470521b0ffab425db6687be961e58aa",
+        "apps/runtime/src/application/capability-context.ts": "cd03199b1c62920ecafda1367e04faa5f767b69087468d3742d91053292c24da",
+        "apps/runtime/src/application/coordination.ts": "8f90f0a7b2d81edc6b7c46f645b08e1045a50fd741c0e66c3c175ab55739938c",
+        "apps/runtime/src/application/user-task-delegation.ts": "ef28e4542f4700922b384f863adc0ca411f14f9baa252f26d5e59d0b22379e75",
+        "apps/runtime/src/application/competition-cloud-status.ts": "2bf97af45516b7f157291cb80f45d53a2f3f712eee3d166d293df2b4b90d0a86",
+        "apps/runtime/dist/application/runtime-application.js": "31efe44e3493757e999c65900f3502e820edf94a1ff54ce92ef87ce2ff619865",
+        "apps/runtime/dist/application/competition-cloud-status.js": "c979d93accbd584e22a7593ca0f6f015bbec95410b2900dc709af21880079343",
+        "tests/manual/agentarts/desktop-progressive-development-live.cjs": "4c2325559448385449115309a14235349a7e8203599f9c8382c7ca1dadb0bddb"
+      },
+      "correctedModules": 1,
+      "automation": {
+        "fakeModel": false,
+        "fakeTools": false,
+        "physicalHumanClick": "not_run"
+      },
+      "configuredTarget": {
+        "configured": true,
+        "deploymentVersion": "arm64-output32k-1023",
+        "transport": "wss",
+        "platformVersionReadback": "not_run"
+      },
+      "persistence": {
+        "parentState": "cancelled",
+        "executionTaskId": "1457e7fb-92fb-48f0-9ed3-9c2e7da0bd37",
+        "executionState": "waiting_reconciliation",
+        "executionErrorCode": "RESULT_UNKNOWN",
+        "step": 6,
+        "confirmedCalls": 5,
+        "originalReceiptCount": 5,
+        "evidenceCount": 5,
+        "cloudRequestCount": 6,
+        "capacity": {
+          "version": "1.0",
+          "mode": "progressive",
+          "deadline": "2026-10-24T14:03:03.937Z",
+          "initialWindowSteps": 32,
+          "windowSteps": 32,
+          "windowEndStep": 32,
+          "extensions": 0
+        },
+        "continuationWindow": {
+          "priorCount": 4,
+          "queryBytes": 33219
+        },
+        "lastCloudContext": {
+          "requestId": "77595a57-6be4-4b63-92fc-4652561b26bd",
+          "payloadDigest": "9d65e68e5112e164419a57e60961d9d705b184a641fb7f1a8c08b81c73faa7e4",
+          "step": 6,
+          "initialMaxSteps": 32,
+          "catalogDigest": "545606d746b6315bb024d780ce1a6e7f30932d06efe6e3db2ebb906cfc196d58",
+          "catalogCount": 46
+        },
+        "records": [
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-1457e7fb-92fb-48f0-9ed3-9c2e7da0bd37-1"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-1457e7fb-92fb-48f0-9ed3-9c2e7da0bd37-2"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-1457e7fb-92fb-48f0-9ed3-9c2e7da0bd37-3"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-1457e7fb-92fb-48f0-9ed3-9c2e7da0bd37-4"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-1457e7fb-92fb-48f0-9ed3-9c2e7da0bd37-5"
+          }
+        ]
+      }
+    },
+    {
+      "attempt": "a5",
+      "startedAt": "2026-10-24T14:41:20.032Z",
+      "finishedAt": "2026-10-24T14:56:42.672Z",
+      "status": "failed",
+      "stage": "real-cloud-development",
+      "sourceTaskId": "74ede2c4-263e-453e-84ce-c1e81cddbc6c",
+      "acceptanceFailureCode": "EBUSY",
+      "originalReceiptSha256": "b59880ec9a5c133c9e587e9d7fc1b3bab0074af56682312150b5743fd8d97ca8",
+      "observation": "Twelve modules observed corrected; the acceptance observer hit EBUSY while reading a file during the native exclusive write. Original product parent and child were still running, not failed. The owned Desktop was closed; the original invocation was not resent.",
+      "source": {
+        "apps/desktop/electron/main.js": "58b1928c4f39bb809b66acca528046c185fb6b58a27759f22bfde554e698aeb2",
+        "apps/desktop/electron/native-execution-host.js": "265cd4c9b73617bcac419c9d0812bc681f9fc72cdea80811a30fe11555aeab79",
+        "apps/desktop/electron/workspace-command-recipes.js": "f66f6d7bf431d08954f4835e658e81899e70c16cf0e503a9e7532630d41a8ede",
+        "apps/runtime/src/application/execution-capacity.ts": "59fc8c5f43260be90eb7610b5986c360bcffa7afc2c719734d461fb9ac401808",
+        "apps/desktop/electron/workspace-config-host.js": "2165a7c56d36e78a19787521388542af4d646aff2ef29f047b3afd0973470b78",
+        "apps/runtime/src/index.ts": "d61b52aa15468f1cb36a703aa7c9708dd9f68a12beb5b6e80613ae067dfa85e6",
+        "apps/runtime/src/application/runtime-application.ts": "0faf9f5458281418440aedd6b9081c281470521b0ffab425db6687be961e58aa",
+        "apps/runtime/src/application/capability-context.ts": "cd03199b1c62920ecafda1367e04faa5f767b69087468d3742d91053292c24da",
+        "apps/runtime/src/application/coordination.ts": "8f90f0a7b2d81edc6b7c46f645b08e1045a50fd741c0e66c3c175ab55739938c",
+        "apps/runtime/src/application/user-task-delegation.ts": "afe50431f468668c83a669e511693c783c497e65a710b72a5bcc4cbf852e934d",
+        "apps/runtime/src/application/agentarts.ts": "36145e10307e49d16742a9abd8aff2730153e97ae2f38ffea018e176af3af239",
+        "packages/coordination/src/agentarts.ts": "950af76716306a1268378dce2a4561aae39a777a82e8c053c4d6c075d30a17d7",
+        "packages/coordination/src/agentarts-websocket.ts": "57f050241abcef6de594db1ce8fe026c48ee6ab7844cea90f115ac4e5d26834a",
+        "apps/runtime/src/application/competition-cloud-status.ts": "2bf97af45516b7f157291cb80f45d53a2f3f712eee3d166d293df2b4b90d0a86",
+        "apps/runtime/dist/application/runtime-application.js": "31efe44e3493757e999c65900f3502e820edf94a1ff54ce92ef87ce2ff619865",
+        "apps/runtime/dist/application/competition-cloud-status.js": "c979d93accbd584e22a7593ca0f6f015bbec95410b2900dc709af21880079343",
+        "tests/manual/agentarts/desktop-progressive-development-live.cjs": "d9d28a26dffd4c108b105131061cb6e1de9a94455d5a5649c50ba1f75e476bb0"
+      },
+      "correctedModules": 12,
+      "automation": {
+        "fakeModel": false,
+        "fakeTools": false,
+        "physicalHumanClick": "not_run"
+      },
+      "configuredTarget": {
+        "configured": true,
+        "deploymentVersion": "arm64-output32k-1023",
+        "transport": "wss",
+        "platformVersionReadback": "not_run"
+      },
+      "persistence": {
+        "parentState": "running",
+        "executionTaskId": "3fc88d49-6e18-42b8-a3a4-351542687187",
+        "executionState": "running",
+        "step": 42,
+        "confirmedCalls": 41,
+        "originalReceiptCount": 41,
+        "evidenceCount": 41,
+        "cloudRequestCount": 32,
+        "capacity": {
+          "version": "1.0",
+          "mode": "progressive",
+          "deadline": "2026-10-24T15:11:30.314Z",
+          "initialWindowSteps": 32,
+          "windowSteps": 32,
+          "windowEndStep": 64,
+          "extensions": 1
+        },
+        "continuationWindow": {
+          "priorCount": 32,
+          "queryBytes": 37992
+        },
+        "lastCloudContext": {
+          "requestId": "c558f192-9daf-4726-9bdc-116f5913bc9b",
+          "payloadDigest": "8085161b6c984fc1dff3e4fc986f186b35bb9c75a64ade18aa759a9886026b2a",
+          "step": 42,
+          "initialMaxSteps": 32,
+          "catalogDigest": "545606d746b6315bb024d780ce1a6e7f30932d06efe6e3db2ebb906cfc196d58",
+          "catalogCount": 46
+        },
+        "records": [
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-1"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-2"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-3"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-4"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-5"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-6"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-7"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-8"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-9"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-10"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-11"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-12"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-13"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-14"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-15"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-16"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-17"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-18"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-19"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-20"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-21"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-22"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-23"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-24"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-25"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-26"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-27"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-28"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-29"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-30"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-31"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-32"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-33"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-34"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-35"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-36"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-37"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-38"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-39"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-40"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-3fc88d49-6e18-42b8-a3a4-351542687187-41"
+          }
+        ]
+      }
+    },
+    {
+      "attempt": "a6",
+      "startedAt": "2026-10-24T14:59:51.311Z",
+      "finishedAt": "2026-10-24T15:09:46.016Z",
+      "status": "failed",
+      "stage": "independent-readback",
+      "sourceTaskId": "1e01593e-3ce4-4859-82ae-9938a5637b0b",
+      "acceptanceFailureCode": "ERR_ASSERTION",
+      "originalReceiptSha256": "e12ccefe7fa1d54214e52616407c4b0ce455b8df1ee69a34be53b8a27a390f4f",
+      "observation": "Original parent and user-work succeeded after all fourteen edits and the native project test. Acceptance readback rejected two differently sized edit spans with identical before/after documents. The original failed receipt remains unchanged; a separate strict readback and isolated cold restart passed without another invoke or tool write.",
+      "source": {
+        "apps/desktop/electron/main.js": "58b1928c4f39bb809b66acca528046c185fb6b58a27759f22bfde554e698aeb2",
+        "apps/desktop/electron/native-execution-host.js": "265cd4c9b73617bcac419c9d0812bc681f9fc72cdea80811a30fe11555aeab79",
+        "apps/desktop/electron/workspace-command-recipes.js": "f66f6d7bf431d08954f4835e658e81899e70c16cf0e503a9e7532630d41a8ede",
+        "apps/runtime/src/application/execution-capacity.ts": "59fc8c5f43260be90eb7610b5986c360bcffa7afc2c719734d461fb9ac401808",
+        "apps/desktop/electron/workspace-config-host.js": "2165a7c56d36e78a19787521388542af4d646aff2ef29f047b3afd0973470b78",
+        "apps/runtime/src/index.ts": "d61b52aa15468f1cb36a703aa7c9708dd9f68a12beb5b6e80613ae067dfa85e6",
+        "apps/runtime/src/application/runtime-application.ts": "0faf9f5458281418440aedd6b9081c281470521b0ffab425db6687be961e58aa",
+        "apps/runtime/src/application/capability-context.ts": "cd03199b1c62920ecafda1367e04faa5f767b69087468d3742d91053292c24da",
+        "apps/runtime/src/application/coordination.ts": "8f90f0a7b2d81edc6b7c46f645b08e1045a50fd741c0e66c3c175ab55739938c",
+        "apps/runtime/src/application/user-task-delegation.ts": "afe50431f468668c83a669e511693c783c497e65a710b72a5bcc4cbf852e934d",
+        "apps/runtime/src/application/agentarts.ts": "36145e10307e49d16742a9abd8aff2730153e97ae2f38ffea018e176af3af239",
+        "packages/coordination/src/agentarts.ts": "950af76716306a1268378dce2a4561aae39a777a82e8c053c4d6c075d30a17d7",
+        "packages/coordination/src/agentarts-websocket.ts": "57f050241abcef6de594db1ce8fe026c48ee6ab7844cea90f115ac4e5d26834a",
+        "apps/runtime/src/application/competition-cloud-status.ts": "2bf97af45516b7f157291cb80f45d53a2f3f712eee3d166d293df2b4b90d0a86",
+        "apps/runtime/dist/application/runtime-application.js": "31efe44e3493757e999c65900f3502e820edf94a1ff54ce92ef87ce2ff619865",
+        "apps/runtime/dist/application/competition-cloud-status.js": "c979d93accbd584e22a7593ca0f6f015bbec95410b2900dc709af21880079343",
+        "tests/manual/agentarts/desktop-progressive-development-live.cjs": "7fbd632e437f40ccb6353e5ee899408fde74e9918f8ecd3bb0522ffb25ed99fb"
+      },
+      "correctedModules": 14,
+      "automation": {
+        "fakeModel": false,
+        "fakeTools": false,
+        "physicalHumanClick": "not_run"
+      },
+      "configuredTarget": {
+        "configured": true,
+        "deploymentVersion": "arm64-output32k-1023",
+        "transport": "wss",
+        "platformVersionReadback": "not_run"
+      },
+      "persistence": {
+        "parentState": "succeeded",
+        "executionTaskId": "46f05e7a-5f0d-4927-ab02-56c52cf52832",
+        "executionState": "succeeded",
+        "step": 45,
+        "confirmedCalls": 44,
+        "originalReceiptCount": 44,
+        "evidenceCount": 44,
+        "cloudRequestCount": 32,
+        "capacity": {
+          "version": "1.0",
+          "mode": "progressive",
+          "deadline": "2026-10-24T15:29:58.837Z",
+          "initialWindowSteps": 32,
+          "windowSteps": 32,
+          "windowEndStep": 64,
+          "extensions": 1
+        },
+        "continuationWindow": {
+          "priorCount": 32,
+          "queryBytes": 37799
+        },
+        "lastCloudContext": {
+          "requestId": "a398aa96-7aa7-4a9c-b874-c23b8fab0603",
+          "payloadDigest": "cafbf3a2d6bf8632fd4c6a58b7dc2c10d72877ca70808535e96bad8d906b9f8d",
+          "step": 45,
+          "initialMaxSteps": 32,
+          "catalogDigest": "545606d746b6315bb024d780ce1a6e7f30932d06efe6e3db2ebb906cfc196d58",
+          "catalogCount": 46
+        },
+        "records": [
+          {
+            "toolName": "workspace.list_entries",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-1"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-2"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-3"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-4"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-5"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-6"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-7"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-8"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-9"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-10"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-11"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-12"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-13"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-14"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-15"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-16"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-17"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-18"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-19"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-20"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-21"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-22"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-23"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-24"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-25"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-26"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-27"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-28"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-29"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-30"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-31"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-32"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-33"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-34"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-35"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-36"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-37"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-38"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-39"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-40"
+          },
+          {
+            "toolName": "workspace.read_text",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-41"
+          },
+          {
+            "toolName": "workspace.preview_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-42"
+          },
+          {
+            "toolName": "workspace.apply_text_patch",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-43"
+          },
+          {
+            "toolName": "workspace.npm_test",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-44"
+          }
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "Every attempt remains failed; neither a successful parent summary nor corrected bytes alone prove completion.",
+    "Cloud status unknown is not evidence that the original invocation did not execute or can safely be resent.",
+    "No account configuration, credential, database, original cloud payload, source body or command output is exported."
+  ]
+}

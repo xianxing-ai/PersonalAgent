@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const {_electron}=require('playwright');
 const {closeDesktop}=require('../test-support/close-desktop.cjs');
 (async()=>{
- const output=path.resolve(__dirname,'../.cache/qa');fs.mkdirSync(output,{recursive:true});
+ const output=path.resolve(process.env.PA_DESKTOP_QA_OUTPUT??path.resolve(__dirname,'../.cache/qa'));fs.mkdirSync(output,{recursive:true});
  const localElectron=path.resolve(__dirname,'../node_modules/electron/dist/electron.exe');
  const workspaceElectron=path.resolve(__dirname,'../../../node_modules/electron/dist/electron.exe');
  const executablePath=fs.existsSync(localElectron)?localElectron:workspaceElectron;
@@ -130,10 +130,13 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    assert.equal(thinkingSnapshot.value.thinking.depth,4);
    assert.equal(await admin.locator('#model-enabled').isChecked(),true);
    await admin.locator('#model-enabled').uncheck();
-   await admin.waitForFunction(async()=>!(await window.desktop.invoke('snapshot')).value.model.enabled);
+    await admin.waitForFunction(()=>/已停用/.test(document.querySelector('.model-state')?.textContent??''));
+    assert.equal((await admin.evaluate(()=>window.desktop.invoke('snapshot'))).value.model.enabled,false);
    assert.match(await admin.locator('.model-state').innerText(),/已停用/);
    await admin.locator('#model-enabled').check();
-   await admin.waitForFunction(async()=>(await window.desktop.invoke('snapshot')).value.model.enabled);
+    await admin.waitForFunction(()=>document.querySelector('#model-enabled')?.checked
+      &&!/已停用/.test(document.querySelector('.model-state')?.textContent??''));
+    assert.equal((await admin.evaluate(()=>window.desktop.invoke('snapshot'))).value.model.enabled,true);
    await admin.locator('[data-page="settings"]').click();
    assert.equal(await admin.locator('#model-config-form').count(),0);
    assert.equal(await admin.locator('.settings-single').count(),1);
@@ -169,7 +172,8 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    assert.equal(await panel.locator('#send').isDisabled(),false);
    if(fake){
      await panel.evaluate(id=>window.desktop.invoke('test.advance',id),currentTaskId);
-     await panel.waitForFunction(async id=>(await window.desktop.invoke('snapshot')).value.tasks.find(task=>task.taskId===id)?.state==='cancelled',currentTaskId);
+     await panel.waitForFunction(id=>![...document.querySelectorAll('[data-action="task.cancel"]')].some(button=>button.dataset.id===id),currentTaskId);
+     assert.equal(await panel.evaluate(id=>window.desktop.invoke('snapshot').then(result=>result.value.tasks.find(task=>task.taskId===id)?.state),currentTaskId),'cancelled');
    }
    if(fake)assert.equal(await panel.locator(`[data-action="task.cancel"][data-id="${currentTaskId}"]`).count(),0);
    else assert.equal(await currentTaskCancel.innerText(),'重试停止');

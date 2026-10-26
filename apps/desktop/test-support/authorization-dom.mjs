@@ -14,6 +14,7 @@ export function authorizationDom() {
     hasAttribute(name){return this.attributes.has(name);}
     append(...nodes){for(let node of nodes){if(typeof node==='string'){const text=new Element('text');text.textContent=node;node=text;}
       node.parentElement=this;this.children.push(node);}}
+    prepend(...nodes){const previous=this.children;this.children=[];this.append(...nodes,...previous);}
     before(...nodes){const parent=this.parentElement;if(!parent)return;const index=parent.children.indexOf(this);
       for(const node of nodes)node.parentElement=parent;parent.children.splice(index,0,...nodes);}
     remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(node=>node!==this);this.parentElement=undefined;}

@@ -8,6 +8,7 @@ import ts from 'typescript';
 import {Client, EventCursor} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createConversationDelivery} from '../electron/conversation-delivery.js';
+import {eventBatchFixture} from '../test-support/event-batch-fixture.mjs';
 
 const source = await readFile(new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -31,13 +32,11 @@ async function fixture(t) {
   const calls = [], tasks = new Map(), approvals = new Map(), published = [];
   const client = {call(name, payload) { calls.push({name, payload}); return publicClient.call(name, payload); }};
   const eventCursor = new EventCursor('tasks');
-  const context = vm.createContext({tasks, approvals, client, runtimeError: '',
+  const context = vm.createContext({runtimeClosed:false,eventSubscriptionConnection:undefined,eventThroughSequence:undefined,eventContinuation:undefined,setImmediate,fakeMode:false,tasks, approvals, client, runtimeError: '',
     // This event-batch fixture has no Harness event consumer installed.
     harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,conversationDelivery:createConversationDelivery(new Set()),
     terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']), notifications: new Map(), structuredClone,
-    // Exercise event-driven progress between the periodic recovery ticks.
-    eventBusy: false, eventCursor, taskReadbackAt:Date.now()+2000,
-    runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
+    eventBusy: false, eventCursor, taskReadbackAt:Date.now()+2000, runtimeConnection: {readEvents: after => app.readEvents(after),readEventBatch:input=>app.readEventBatch(input)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
   for (const name of ['clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {
@@ -77,7 +76,7 @@ test('the original pump reads persisted progress once per task and replay never 
   assert.equal('completedUnits' in current.steps[0], false);
   assert.equal(f.calls.filter(call => call.name === 'task.get').length, 1);
   const count = f.published.length;
-  f.context.runtimeConnection = {readEvents: () => f.app.readEvents()};
+  f.context.runtimeConnection = eventBatchFixture(() => f.app.readEvents());
   await f.pump();
   assert.equal(f.calls.filter(call => call.name === 'task.get').length, 1);
   assert.equal(f.published.length, count);
@@ -114,7 +113,7 @@ test('a failed progress get preserves same-batch terminal events and cancellatio
   assert.equal(f.context.eventBusy, false);
   assert.equal(f.eventCursor.afterSequence, f.app.readEvents().at(-1).sequence);
   const readCount = f.calls.filter(call => call.name === 'task.get').length;
-  f.context.runtimeConnection = {readEvents: () => f.app.readEvents()};
+  f.context.runtimeConnection = eventBatchFixture(() => f.app.readEvents());
   await f.pump();
   assert.equal(f.calls.filter(call => call.name === 'task.get').length, readCount);
   assert.equal(f.approvals.size, 0);

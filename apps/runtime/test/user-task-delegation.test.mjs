@@ -179,6 +179,33 @@ for(const summaryFailure of ['adapter','tool-proposal'])test(`failed root summar
   } finally {app.close();}
 });
 
+for(const childOutcome of ['failed','cancelled'])test(`a fluent success summary cannot complete a required ${childOutcome} child`,async()=>{
+  let summaryCalls=0;
+  const {app,calls}=fixture({autoRead:true,execute:async()=>{throw Error('SYNTHETIC_PRIVATE_CHILD_FAILURE_BODY');},
+    reply:(request,task,application)=>{
+      if(task.conversationId.startsWith('desktop-subtask:')) {
+        if(childOutcome==='cancelled') {
+          application.runtime.requestCancel(task.taskId);
+          return {kind:'text',text:'SYNTHETIC_FALSE_CHILD_SUCCESS',verification:'mock'};
+        }
+        return {kind:'tool_proposal',proposalId:'original-child-failure',toolName:read.name,toolVersion:read.version,
+          arguments:{},verification:'unverified'};
+      }
+      summaryCalls++;
+      return {kind:'text',text:'SYNTHETIC_FALSE_PARENT_GOAL_COMPLETED',verification:'mock'};
+    }});
+  try {
+    const {task}=await submit(app);await until(()=>app.activeTaskCount===0);
+    const parent=app.runtime.getTask(task.taskId),[child]=app.readSubagentTasks(task.taskId);
+    assert.equal(child.state,childOutcome);assert.notEqual(parent.state,'succeeded');assert.equal(summaryCalls,1);
+    assert.match(parent.error.message,/任务执行未完成.*已确认的操作记录/);
+    assert.doesNotMatch(JSON.stringify(parent),/SYNTHETIC_PRIVATE_CHILD_FAILURE_BODY|SYNTHETIC_FALSE_PARENT_GOAL_COMPLETED/);
+    assert.equal(calls.length,childOutcome==='failed'?1:0);
+    assert.equal(app.runtime.readToolExecutions(task.taskId).length,1,'No new child or dispatch is attempted');
+    assert.equal(app.runtime.readToolExecutions(task.taskId)[0].state,'confirmed','Original dispatch effects remain recorded');
+  }finally{app.close();}
+});
+
 test('missing dispatch or cloud configuration fails explicitly without local fallback',async t=>{
   for(const options of [{registered:false},{coordination:false}])await t.test(JSON.stringify(options),async()=>{
     const {app,port,calls}=fixture(options);

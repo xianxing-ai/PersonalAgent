@@ -1,9 +1,14 @@
 import {stateNames} from '../conversation/state.js';
+import {knowledgeSourceNotReadyMessage} from '../../shared/public-error-messages.js';
+import {errorDisplayText} from '../../shared/error-display.js';
+import {mountHistoryControls} from '../conversation/history-controls.js';
 import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
+import {mountComputerControls} from '../../app/computer-controls.js';
+import {mountComputerVisionControls} from '../../app/computer-vision-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
 import {mountCalendarControls} from '../../app/calendar-controls.js';
 import {mountLayaControls} from '../../app/laya-controls.js';
@@ -142,6 +147,9 @@ export function mountAdmin(root, invoke, escape) {
   };
   window.addEventListener('unload', clearApprovalExpiryTimer, {once: true});
   root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span>${windowControlsHtml('admin')}</header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航">${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(id => `<button data-page="${id}" title="${sections[id]}">${icon(id)}<span>${sections[id]}</span></button>`).join('')}</section>`).join('')}</nav><footer>私人助理 · Windows<br>冷光青 / 标准毛玻璃</footer></aside><section class="main"><div class="eyebrow">PERSONAL WORKSPACE</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
+  const historySlot=document.createElement('div');root.querySelector('#connection').after(historySlot);
+  const historyControls=mountHistoryControls(historySlot,invoke,error=>{root.querySelector('#error').textContent=errorDisplayText(error);},root.querySelector('.main'));
+  window.addEventListener('unload',()=>historyControls.dispose(),{once:true});
   root.querySelector('#content').addEventListener('click', async event => {
     const button = event.target.closest('#desktop-local-settings');
     if (!button || button.disabled) return;
@@ -159,10 +167,11 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls,sisControls,notificationControls;
+  let installedSkillsControls,sisControls,notificationControls,computerControls,computerVisionControls;
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
   window.addEventListener('unload',()=>authorizationSettingsControls?.dispose(),{once:true});
+  window.addEventListener('unload',()=>{computerControls?.dispose();computerVisionControls?.dispose();},{once:true});
   const showPage = mountPageMotion(root.querySelector('.main'));
 
   function capabilityTable(data) {
@@ -273,7 +282,7 @@ export function mountAdmin(root, invoke, escape) {
       configuration: ['配置', '集中查看模型、Runtime 与能力配置。', [['模型网关', data.model?.reason ?? '状态未知', 'models'], ['Runtime', data.connection, 'connections'], ['已公布能力', capabilitySummary(data), 'capabilities']]],
       personalization: ['个性化', '管理回答偏好、工作方式和长期习惯。', [['回答风格', '个性化模块尚未接入 Runtime', '待接入'], ['主动建议', '只在有依据且无需额外授权时提出', '受控'], ['长期偏好', '由记忆模块确认后保存', 'memory']]],
       pets: ['桌面宠物', '管理 ORB-02 与未来可选桌面伙伴。', [['当前伙伴', 'ORB-02 · 黑核与白色规则点阵', '已启用'], ['靠近响应', '进入 90px 范围展开对话', '90px'], ['宠物库', '额外角色资源尚未接入', '待接入']]],
-      usage: ['使用情况和计费', '查看本地任务使用情况与模型供应商计费边界。', [['本次会话任务', `${data.tasks?.length ?? 0} 个`, 'tasks'], ['模型费用', '由模型供应商账户结算，本应用尚未读取账单', '不可用'], ['额度限制', 'Runtime 尚未公开统一用量接口', '待接入']]],
+      usage: ['使用情况和计费', '查看本地任务使用情况与模型供应商计费边界。', [['当前显示任务', `${data.tasks?.length ?? 0} 个`, 'tasks'], ['模型费用', '由模型供应商账户结算，本应用尚未读取账单', '不可用'], ['额度限制', 'Runtime 尚未公开统一用量接口', '待接入']]],
       analytics: ['分析', '查看任务成功率、耗时和能力调用趋势。', [['任务分析', '分析模块尚未接入真实聚合数据', '待接入'], ['模型延迟', data.model?.latencyMs == null ? '尚无真实连接测试结果' : `${data.model.latencyMs} ms`, 'models'], ['连接健康', capabilitySummary(data, 'health'), 'connections']]],
       account: ['账户', '管理本地身份与外部服务连接。', [['PersonalAgent 账户', '当前版本使用本地桌面身份', '本地'], ['外部账户', '通过连接器单独授权，不共享密钥', 'connections'], ['订阅', 'PersonalAgent 尚未提供订阅系统', '不可用']]],
       computer: ['电脑操控', '管理 Windows 桌面操作能力与安全边界。', [['电脑操作', 'Windows Host 模块尚未完成真实接入', '待接入'], ['执行策略', '串行操作，同一资源写入加锁', '受控'], ['授权', '副作用操作必须经过 Runtime 校验', 'authorizations']]],
@@ -293,6 +302,7 @@ export function mountAdmin(root, invoke, escape) {
   function memoryPage(data) {
     if (!data.privateMemory?.available) return featurePage(data, 'memory');
     const selected = data.privateMemory.vaultSelected;
+    const sourceReady=Boolean(data.knowledgeSource);
     const citationLabel = value => {
       if (typeof value === 'string' && value.startsWith('wiki-v1:')) {
         try {
@@ -314,8 +324,8 @@ export function mountAdmin(root, invoke, escape) {
       <button class="btn btn-sm btn-danger" data-memory-delete="${index}">删除所有版本</button></article>`).join('');
     return `<section class="feature-page"><div class="settings-heading"><h2>私人记忆</h2>
       <p>只读检索本机 Vault；每条摘录或更正都需在原生对话框中确认。不会自动发送至云端。</p></div>
-      <div class="sheet memory-card"><div class="memory-actions"><button class="btn btn-sm" id="memory-select-vault">选择本机 Vault 文件夹</button></div>
-      <p class="muted">${data.knowledgeSource?.pairing?.mode==='plugin'
+      <div class="sheet memory-card"><div class="memory-actions"><button class="btn btn-sm" id="memory-select-vault" ${sourceReady?'':'disabled'}>选择本机 Vault 文件夹</button></div>
+      <p class="muted">${!sourceReady?knowledgeSourceNotReadyMessage:data.knowledgeSource?.pairing?.mode==='plugin'
         ? selected ? '使用已配对 Obsidian 的只读摘录；每条记忆仍需确认。' : 'Obsidian 配对已失效，请重新配对；已保存记忆仍可管理。'
         : selected ? '使用已选择的本机知识源；可在知识源设置中停用或撤销。' : '尚未选择可用知识源。'}</p>
       <form id="memory-search-form" class="memory-search"><input id="memory-query" type="search" maxlength="200"
@@ -345,6 +355,7 @@ export function mountAdmin(root, invoke, escape) {
       navigationRevision = data.adminNavigation.revision;
       section = data.adminNavigation.page;
     }
+    historyControls.update(data,section==='tasks'||section==='overview');
     if (root.querySelector('#profile-dialog')?.open) return;
     const main = root.querySelector('.main');
     main.setAttribute('aria-busy', 'true');
@@ -355,6 +366,10 @@ export function mountAdmin(root, invoke, escape) {
     sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
     if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
     notificationControls?.render(data.notificationCenter,data.voiceQuestion,data.approvals??[]);notificationControls?.show(section==='notifications');
+    if (section==='computer') computerControls ??= mountComputerControls(root.querySelector('.main'),invoke);
+    computerControls?.render(data.computerControl);computerControls?.show(section==='computer');
+    if(section==='computer')computerVisionControls??=mountComputerVisionControls(root.querySelector('.main'),invoke);
+    computerVisionControls?.render(data.computerControl?.vision);computerVisionControls?.show(section==='computer');
     if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
     proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
@@ -441,7 +456,7 @@ export function mountAdmin(root, invoke, escape) {
     const approvalNow = Date.now();
     let content = '';
     if (section === 'overview') {
-      content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>本次会话任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates, patchRecovery.entries)}`;
+      content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>当前显示任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates, patchRecovery.entries)}`;
     } else if (section === 'capabilities') {
       content = capabilityTable(data);
     } else if (section === 'models') {
@@ -470,7 +485,7 @@ export function mountAdmin(root, invoke, escape) {
       content = `<div class="sheet"><h2>${sections[section]}</h2><div class="empty">尚未连接${sections[section]}服务<br>连接后将在这里显示真实数据。</div></div>`;
     }
     const nextMemoryKey = section === 'memory'
-      ? JSON.stringify({state: data.privateMemory, search: memorySearch, saved: savedMemory}) : undefined;
+      ? JSON.stringify({state: data.privateMemory, sourceReady:Boolean(data.knowledgeSource), search: memorySearch, saved: savedMemory}) : undefined;
     if (section === 'memory' && data.privateMemory?.available && renderedSection === section
       && !refreshMemory && nextMemoryKey === memoryRenderKey) { commitPage(); return; }
     // Keep interactive task/model DOM when an unrelated snapshot changes.

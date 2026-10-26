@@ -107,7 +107,7 @@ test('main production lifecycle hooks call the actual startup host; hidden-panel
   const ast=ts.createSourceFile('main.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
   const hooks=[];
   function visit(node){
-    if(ts.isCallExpression(node)&&node.expression.getText(ast)==='powerMonitor.on')hooks.push(node.getText(ast));
+    if(ts.isCallExpression(node)&&node.expression.getText(ast)==='powerMonitor.on'&&['suspend','resume'].includes(node.arguments[0]?.text))hooks.push(node.getText(ast));
     if(ts.isCallExpression(node)&&node.expression.getText(ast)==='panel.webContents.once'&&node.arguments[0]?.text==='did-finish-load')hooks.push(node.getText(ast));
     ts.forEachChild(node,visit);
   }

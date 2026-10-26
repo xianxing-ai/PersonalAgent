@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "kind": "manual_progress_observer_fix",
+  "productionSourcesChangedSinceFullCheck": false,
+  "changedSinceFull": [
+    "tests/manual/agentarts/desktop-progressive-development-live.cjs"
+  ],
+  "sourceHashes": {
+    "tests/manual/agentarts/desktop-progressive-development-live.cjs": "8a4cd80c124c5ef8bef57333b29b66be13426a45e0c8ce58da802838855a05d7",
+    "tests/manual/agentarts/desktop-progressive-development-live.test.cjs": "480d1351039cc4f4493e22c6d99e276963893417d2ad5bde6e80fe7dd4814780",
+    "tests/manual/agentarts/desktop-progressive-development-readback.cjs": "3a29a2034ba4b6d7012e3b88b88d9d7b330b1193bbe150fe2928bda26cd6fe64"
+  },
+  "focusedTests": {
+    "tests": 17,
+    "pass": 17,
+    "fail": 0,
+    "exitCode": 0,
+    "logSha256": "515c0a277f1890b27db78af3a1b4debc8c3bda58cbb044736cd24e7be68d8152"
+  },
+  "behavior": "An EBUSY progress sample is unobservable. Preview/apply inputs remain individually bound to original Runtime records; different edit spans are accepted only for the same exact original and final document. Missing files, denied reads, unexpected bytes and final verification remain strict.",
+  "limitations": [
+    "This is acceptance-observer behavior, not a product tool retry or evidence that an original task completed."
+  ]
+}
