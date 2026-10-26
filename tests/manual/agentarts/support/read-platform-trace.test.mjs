@@ -50,6 +50,31 @@ test('missing optional metrics stay unknown, not zero or inferred from another m
   assert.deepEqual(receipt.spans[0], {index: 0, durationMs: null, tokens: 8, inputTokens: null, outputTokens: null, isError: null});
 });
 
+test('trace summary rejects a total smaller than the actual returned span count without retrying', async () => {
+  let calls = 0;
+  for (const value of [{...document(), total: 0},
+    {total: 1, span_list: [...document().span_list, ...document().span_list]}]) {
+    const before = calls;
+    await assert.rejects(readAgentArtsTrace(options({fetchImpl: async () => {
+      calls++;
+      return json(value);
+    }})), safeError('EXTERNAL_FAILURE'));
+    assert.equal(calls, before + 1);
+  }
+});
+
+test('trace summary preserves complete, partial and empty pages without inventing spans', async () => {
+  for (const value of [{...document(), total: 1}, document(),
+    {total: 0, span_list: []}, {total: 5, span_list: []}]) {
+    const receipt = await readAgentArtsTrace(options({fetchImpl: async () => json(value)}));
+    assert.equal(receipt.total, value.total);
+    assert.equal(receipt.returnedSpanCount, value.span_list.length);
+    assert.equal(receipt.spans.length, value.span_list.length);
+    assert.equal(receipt.deploymentVersion, 'not_checked');
+    assert.equal(receipt.requestCorrelation, 'not_checked');
+  }
+});
+
 test('invalid request, expired deadline and pre-abort invoke neither signing nor transport', async () => {
   let calls = 0;
   const base = options({authorize: () => { calls++; }, fetchImpl: () => { calls++; }});
