@@ -55,6 +55,23 @@ function fixture(t,patch={}) {
     setApplication:value=>{application=value;},setPrivate:value=>{privateBinding=value;}};
 }
 
+test('summary model execution is bounded after consent and never exceeds the task deadline',async t=>{
+  let clock=Date.now();const deadlines=[];
+  const f=fixture(t,{now:()=>clock,createGuardedGateway:(...args)=>{
+    const gateway=createConfiguredSubagentModelGateway(...args);
+    return new Proxy(gateway,{get(target,key){
+      if(key==='complete')return request=>{deadlines.push(request.deadline);return target.complete(request);};
+      return Reflect.get(target,key);
+    }});
+  },confirmExport:async()=>{clock+=120000;return true;}});
+  f.input.scope.deadline=new Date(clock+600000).toISOString();
+  await f.host.runtimeHooks.summarize(f.input);
+  assert.equal(Date.parse(deadlines.at(-1)),clock+180000);
+  f.input.scope.deadline=new Date(clock+150000).toISOString();
+  await f.host.runtimeHooks.summarize(f.input);
+  assert.equal(deadlines.at(-1),f.input.scope.deadline);
+});
+
 test('Synthetic Desktop host uses only the explicitly selected version and asks exact destination/payload consent',async t=>{
   const f=fixture(t);assert.equal(f.modelApi.snapshot().defaultId,'');
   assert.equal(f.requests.length,0);assert.equal(f.host.snapshot().state,'configured');

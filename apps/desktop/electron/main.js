@@ -168,6 +168,7 @@ let voiceConfigurationPending = false;
 let eventCursor;
 let eventPoll;
 let eventBusy = false;
+let taskReadbackAt = 0;
 let orb;
 let panel;
 let draftQuitPreflight;
@@ -1379,12 +1380,27 @@ function applyEvent(event) {
 async function pumpEvents() {
   if (eventBusy || !client || !runtimeConnection?.readEvents || !eventCursor) return;
   eventBusy = true;
+  const connection=runtimeConnection,currentClient=client,cursor=eventCursor;
+  const isCurrent=()=>runtimeConnection===connection&&client===currentClient&&eventCursor===cursor;
   try {
+    // Events are the fast path. Recover active projections even after a lost event
+    // or cursor/read failure, without resubmitting work or changing Runtime state.
+    if(Date.now()>=taskReadbackAt){
+      taskReadbackAt=Date.now()+2000;
+      await Promise.allSettled([...tasks.values()].filter(task=>!terminalTaskStates.has(task.state))
+        .map(task=>refresh(task.taskId,isCurrent)));
+      if(!isCurrent())return;
+      // Re-send even when all tasks are terminal: the final IPC update may have
+      // arrived while a renderer was loading or failed to apply its projection.
+      publish();
+    }
     const afterSequence = eventCursor.afterSequence;
     await client.call('event.subscribe', {streamId: 'tasks', afterSequence});
     const events = await runtimeConnection.readEvents(afterSequence);
+    if(!isCurrent())return;
     const accepted = eventCursor.accept(events);
     for (const event of accepted) {
+      if(!isCurrent())return;
       applyEvent(event);
       if(['task.completed','task.progress'].includes(event.type)&&event.taskId)
         connectorChangeHost?.observeTask(event.taskId);
@@ -1399,16 +1415,19 @@ async function pumpEvents() {
       }
       if (event.type === 'approval.requested') {
         const result = await client.call('approval.list', {approvalId: event.payload.approvalId, limit: 1});
+        if(!isCurrent())return;
         if (result.items[0]) approvals.set(event.payload.approvalId, structuredClone(result.items[0]));
       }
     }
     const progressTaskIds = new Set(accepted.filter(event => event.type === 'task.progress' && event.taskId).map(event => event.taskId));
-    const progressReadbacks = await Promise.allSettled([...progressTaskIds].map(taskId => refresh(taskId)));
+    const progressReadbacks = await Promise.allSettled([...progressTaskIds].map(taskId => refresh(taskId,isCurrent)));
+    if(!isCurrent())return;
     const failedProgressReadback = progressReadbacks.find(result => result.status === 'rejected');
     if (failedProgressReadback) throw failedProgressReadback.reason;
     if (accepted.length) publish();
     void connectorChangeHost?.flush();
   } catch (error) {
+    if(!isCurrent())return;
     runtimeError = error instanceof Error ? error.message : '事件流读取失败';
     publish();
   } finally {
@@ -2840,7 +2859,7 @@ async function confirmDeveloperExport(request) {
         operation:{taskId,digest:hash([taskId,proposal,request.policyBinding??request.payload?.destination,request.deadline])},
         scope:{namespace:desktopHost.userNamespace,purpose:harness?'bounded-history-summary':'bounded-developer-workflow',destination,
           configuration:request.policyBinding??hash(request.payload?.destination)},deadline:request.deadline,signal:request.signal,
-        summary:harness?'本次历史摘要操作：仅已核对历史范围和选定模型，沿原摘要预算及截止时间；各次发送最多512KiB，保留来源和凭据过滤'
+      summary:harness?'本次历史摘要操作：请在3分钟内确认；仅已核对历史范围和选定模型，沿原摘要预算及截止时间；各次发送最多512KiB，保留来源和凭据过滤'
           :'本次开发操作的模型消息、工具投影与最终总结共用本卡；仅原仓库/工作区和固定模型，沿原步骤/token预算及期限，每次最多512KiB',
         isCurrent:current});
     }
@@ -3727,7 +3746,8 @@ async function action(event, name, payload) {
     if(prepared?.cancelled) return {cancelled:true};
     if(deliveryRequest.interrupted)return {interrupted:true};
     const goal = skillRun?prepared.publicGoal:text.trim();
-    const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode});
+    const result = await submitConversationTask(client, {goal, conversationId}, {
+      competition: competitionMode,contextCompaction:Boolean(harnessContextHost?.runtimeHooks)});
     deliveryRequest.taskId=result.taskId;
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);

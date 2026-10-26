@@ -45,7 +45,8 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
       const entry=original(scope);
       question.prepare(scope,{requirements:[{requirementId:'intent',kind:'tool',scopes:[entry.action],
         bindingDigest:digest({taskId:scope.taskId,runId:scope.runId,argumentsDigest:scope.argumentsDigest,scopeDigest:entry.arguments.scopeDigest}),
-        ruleBindingDigest:digest({action:entry.action,scopeDigest:entry.arguments.scopeDigest}),summary:entry.summary}],assertCurrent:()=>entry.current()});
+        ruleBindingDigest:digest({action:entry.action,scopeDigest:entry.arguments.scopeDigest}),summary:entry.summary}],
+        ...(entry.decisionDeadline?{decisionDeadline:entry.decisionDeadline}:{}),assertCurrent:()=>entry.current()});
       if(entry.parent)question.deriveHostIntent(entry.parent,scope,{operationDigest:entry.operation.digest,assertCurrent:()=>entry.current()});
     },
     async request({action,payload,scope,summary,deadline=new Date(now()+180000).toISOString(),signal=new AbortController().signal,isCurrent,operation}){
@@ -61,6 +62,7 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
       const current=()=>getApplication()===application&&!signal.aborted&&now()<Date.parse(deadline)
         &&isCurrent()&&digest(payload)===payloadDigest&&digest(scope)===scopeDigest;
       const entry={application,action,arguments:args,summary,deadline,signal,current,executed:false,taskId:undefined,operation,parent};
+      if(action==='harness.export')entry.decisionDeadline=new Date(Math.min(Date.parse(deadline),now()+180000)).toISOString();
       pending.set(commandId,entry);
       try{
         openConversation();

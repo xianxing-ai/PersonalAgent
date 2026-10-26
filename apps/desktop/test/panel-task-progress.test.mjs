@@ -35,7 +35,9 @@ async function fixture(t) {
     // This event-batch fixture has no Harness event consumer installed.
     harnessEventsHost: undefined,connectorChangeHost:undefined,liveVoice:undefined,conversationDelivery:createConversationDelivery(new Set()),
     terminalTaskStates: new Set(['succeeded', 'failed', 'cancelled']), notifications: new Map(), structuredClone,
-    eventBusy: false, eventCursor, runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
+    // Exercise event-driven progress between the periodic recovery ticks.
+    eventBusy: false, eventCursor, taskReadbackAt:Date.now()+2000,
+    runtimeConnection: {readEvents: after => app.readEvents(after)}, runtimeApplication: app,
     knowledgeWatchHost: undefined, p5DeviceTelemetrySubscription: undefined, syntheticRepairHost: undefined,
     publish: () => published.push([...tasks.values()].map(task => ({...task}))), Error});
   for (const name of ['clearInactiveTaskExitWarning', 'observeTextTaskOutput', 'refresh', 'applyEvent', 'pumpEvents', 'dispatchKnowledgeFeedCheckTask']) {

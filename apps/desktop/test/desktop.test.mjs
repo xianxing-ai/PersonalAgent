@@ -22,6 +22,15 @@ test('competition conversation gives Runtime a cloud execution deadline without 
   await client.call('task.get', {taskId});
   assert.equal(Date.parse(requests.at(-1).deadline) - runtime.clock.now(), 10_000);
 });
+test('configured context compaction reserves bounded task time without extending ordinary tasks', async () => {
+  const calls=[];
+  const client={call:async(...args)=>{calls.push(args);return {taskId:'synthetic'};}};
+  await submitConversationTask(client,{goal:'ordinary continuation',conversationId:'synthetic'},
+    {competition:true,contextCompaction:true});
+  assert.equal(calls.at(-1)[2].timeoutMs,600_000);
+  await submitConversationTask(client,{goal:'/压缩',conversationId:'synthetic'},{contextCompaction:true});
+  assert.equal(calls.at(-1)[2].timeoutMs,undefined);
+});
 test('panel stays within negative-origin and small display work areas',()=>{
   for(const area of [{x:-1920,y:0,width:1920,height:1080},{x:0,y:-800,width:1280,height:800},{x:0,y:0,width:320,height:480}]) {
     const orb=clampOrb({x:area.x+area.width-112,y:area.y+area.height-112,width:112,height:112},area);
