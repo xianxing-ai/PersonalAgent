@@ -10,9 +10,10 @@ function fixture(){
     receipt:{id:'receipt-'+workKey},state:'pending',observedAt:workKey==='legacy'?undefined:new Date(clock-1000).toISOString(),
     projection:{headersOnly:true,sensitivity:'private',text:'PRIVATE HEADER '+workKey}}));
   const runtime={bindTrustedHostState:()=>({get:key=>structuredClone(states.get(key)),set:(key,value)=>states.set(key,structuredClone(value))}),
+    findTaskByIdempotencyKey:key=>[...tasks.values()].find(task=>key===`host-tool:${JSON.stringify(['fixture',checkpoints.get(task.taskId+'host-tool-intent')?.commandId])}`),
     loadCheckpoint:(id,key)=>checkpoints.get(id+key),readToolExecutions:id=>records.get(id)??[],getTask:id=>tasks.get(id),requestCancel:id=>{cancels++;tasks.get(id).state='cancelled';}};
   const app={runtime,submitHostToolTask(request){submits++;const task={taskId:'task-'+submits,state:'running'};tasks.set(task.taskId,task);
-    checkpoints.set(task.taskId+'host-tool-intent',request);
+    checkpoints.set(task.taskId+'host-tool-intent',{...request,namespace:'fixture'});
     const scope={taskId:task.taskId,runId:'run-'+submits,toolName:request.toolName,toolVersion:request.toolVersion,
       argumentsDigest:'args',deadline:request.deadline,signal:new AbortController().signal};scopes.set(task.taskId,scope);host.prepareAuthorization(scope);return {task};},
     readHostToolTask:id=>({task:tasks.get(id)})};
@@ -58,6 +59,60 @@ test('explicit public selection plus finite new watermark admit only scoped orig
   assert.equal(f.items[0].state,'pending');assert.equal(f.items[1].state,'pending');
   await f.host.revoke();assert.equal(f.counts().cancels,1);
   assert.throws(()=>f.host.assertExport(binding,envelope,scope),{code:'UNAUTHORIZED'});
+});
+
+test('orphan submitting entries settle unknown across restart and expiry without replay, allowing new mail',async()=>{
+  const f=fixture();await f.host.configure({enabled:true,selectedBindings:[ref(f.items[0])]});await f.host.tick();
+  const [key,saved]=[...f.states.entries()][0];
+  delete saved.entries.old.taskId;saved.entries.old.state='submitting';f.states.set(key,saved);
+  f.tasks.clear(); // Crash before Runtime committed the original command.
+  const reopened=f.reopen();await reopened.tick();
+  assert.equal([...f.states.values()][0].entries.old.state,'unknown');
+  assert.equal(f.counts().submits,1,'unknown original command is never resubmitted');
+  f.advance(24*60*60_000);f.items[2].observedAt=new Date(Date.now()+25*60*60_000).toISOString();
+  const afterExpiry=f.reopen();await afterExpiry.tick();await afterExpiry.tick();
+  assert.equal(f.counts().submits,2,'a later new message proceeds after restart and expiry');
+  assert.equal(f.items[2].state,'accepted');
+  assert.equal([...f.states.values()][0].entries.old.state,'unknown');await afterExpiry.close();
+});
+
+test('orphan submitting restores only the original matching committed task and applies its result once',async()=>{
+  const f=fixture();await f.host.configure({enabled:true,selectedBindings:[ref(f.items[0])]});await f.host.tick();
+  const [key,saved]=[...f.states.entries()][0];
+  delete saved.entries.old.taskId;saved.entries.old.state='submitting';f.states.set(key,saved);
+  f.items[0].state='pending';delete f.items[0].taskId; // Crash before cache acceptance.
+  const reopened=f.reopen();await reopened.tick();
+  assert.equal([...f.states.values()][0].entries.old.taskId,'task-1');
+  assert.equal(f.items[0].taskId,'task-1');assert.equal(f.counts().submits,1);
+  f.finish('task-1');await reopened.tick();await reopened.tick();
+  assert.equal(f.counts().submits,1);assert.equal(f.counts().applied,1);
+  assert.equal(reopened.snapshot().reviewed,1);await reopened.close();
+});
+
+test('orphan recovery rejects a mismatched original intent and never replays the command',async()=>{
+  for(const change of [{namespace:'other'},{toolName:'mail.send'},{toolVersion:'2.0.0'},
+    {arguments:{}},{deadline:'2000-01-01T00:00:00.000Z'}]){
+    const f=fixture();await f.host.configure({enabled:true,selectedBindings:[ref(f.items[0])]});await f.host.tick();
+    const [key,saved]=[...f.states.entries()][0];delete saved.entries.old.taskId;saved.entries.old.state='submitting';f.states.set(key,saved);
+    Object.assign(f.checkpoints.get('task-1host-tool-intent'),change);
+    const reopened=f.reopen();await reopened.tick();await reopened.tick();
+    assert.equal([...f.states.values()][0].entries.old.state,'unknown');assert.equal(f.counts().submits,1);
+    await reopened.close();
+  }
+});
+
+test('orphan recovery only reads expired or cancelled original tasks and survives lookup failures',async()=>{
+  for(const mode of ['expired','cancelled','unreadable']){
+    const f=fixture();await f.host.configure({enabled:true,selectedBindings:[ref(f.items[0])]});await f.host.tick();
+    const [key,saved]=[...f.states.entries()][0];delete saved.entries.old.taskId;saved.entries.old.state='submitting';f.states.set(key,saved);
+    if(mode==='expired')f.advance(24*60*60_000);
+    if(mode==='cancelled')f.tasks.get('task-1').state='cancelled';
+    if(mode==='unreadable')f.runtime.findTaskByIdempotencyKey=()=>{throw new Error('Unavailable');};
+    const reopened=f.reopen();await reopened.tick();await reopened.tick();
+    assert.equal(f.counts().submits,1);assert.equal(f.counts().applied,0);assert.equal(f.counts().deliveries,0);
+    if(mode==='unreadable')assert.equal([...f.states.values()][0].entries.old.state,'unknown');
+    await reopened.close();
+  }
 });
 
 test('default enabled policy initializes on the first available source and exports only subsequent observations',async()=>{

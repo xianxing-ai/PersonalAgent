@@ -191,6 +191,21 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
         if(!s.enabled)return;
         const config=configuration();if(!config)return;
         if(state().configurationRef!==config){await api.revoke();return;}
+        // A crash may persist the command before its task ID. Read the original Runtime
+        // binding only: an absent/unverifiable task must never cause a second dispatch.
+        for(const entry of Object.values(s.entries))if(entry.generation===s.generation&&entry.state==='submitting'&&!entry.taskId){
+          try{
+            const task=runtime().findTaskByIdempotencyKey(`host-tool:${JSON.stringify([namespace,entry.commandId])}`);
+            const intent=task&&runtime().loadCheckpoint(task.taskId,'host-tool-intent');
+            if(!task||intent?.namespace!==namespace||intent.commandId!==entry.commandId
+              ||intent.toolName!=='mail.review'||intent.toolVersion!=='1.0.0'
+              ||!isDeepStrictEqual(intent.arguments,entry.binding)||intent.deadline!==entry.deadline)throw new Error('Unbound mail review');
+            const read=application().readHostToolTask(task.taskId);
+            if(read.task.taskId!==task.taskId)throw new Error('Unbound mail review');
+            entry.taskId=task.taskId;entry.state='pending';persist();
+            mail.confirmCachedAnalysisAccepted({...entry.binding,taskId:entry.taskId},context(entry.deadline));
+          }catch{entry.state='unknown';persist();}
+        }
         const active=Object.values(s.entries).some(entry=>entry.generation===s.generation&&['submitting','pending'].includes(entry.state));
         const pending=active?[]:mail.pendingReviewAnalyses(context(new Date(now()+30*60_000).toISOString()),
           {observedAtOrAfter:s.watermark,workKeys:s.selected.filter(ref=>!s.entries[ref.workKey]).map(ref=>ref.workKey),
