@@ -23,3 +23,12 @@ Node `24.15.0` / npm `11.12.1`，本树独立 `npm ci --ignore-scripts --no-audi
 | npm-ci.log | `dec8fb58c3aab2b307ecbd465a840f10879c10995bd46c5a40a508734997f78d` |
 | targeted.log（首次加载失败） | `45cf3d54a76133478301e2f1e673f2b18b049bb52d2146981f65913608c85ba4` |
 | targeted-green.log | `311950cbaa3dd49f5a0f1931d8f0419ef10d1992eef79362c8ac72a6640e7eda` |
+
+## 原 CI 目的地断言修正
+
+在 `e424f81a` 确认 `connector-empty-state.test.mjs` 仍要求旧 `{draft:'查询天气：'}`，与原 PR 已引入的城市配置入口不符。Node 24.15 单跑原测试确证 5 pass、1 fail；仅更新该目的地测试为未配置时 `{configure:'weather'}`、已配置时 `{action:'weather.refresh'}`，保留其他目的地断言及所有空状态/转义/连接可用性守卫。没有回滚或修改生产行为。
+
+修正后单次运行该文件与上述 19 项关联测试：25/25 pass，exit 0；`git diff --check` 通过。未手工重跑远端 CI，完整 CI 结果仍由后续正常推送决定。
+
+- `connector-red.log` SHA256：`777d8f236465c694572f461fa58319e87ab5af2d27314665ad18ff8b3849becd`。
+- `connector-green.log` SHA256：`0ff1aefc07b988a49478bec5077fe763d1fceb23ca0613ac6eebdc83400ba2f7`。
