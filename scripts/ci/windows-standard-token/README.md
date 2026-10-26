@@ -37,13 +37,22 @@ and handle behavior must be verified on Windows before CI adoption.
 After the original `--run-check` child exits, the still-loaded launcher preserves its
 uint exit and reads fixed Application Error Event1000 metadata itself. It never
 executes a checkout script or starts another command from the original Runner token.
-The Node pin is captured before the ordinary-token child starts. All new `wevtapi.dll`
+The Node pin is captured before the ordinary-token child starts. In each `--run-check`
+process, preparation also exercises the literal XML success/failure parser paths,
+Regex, projection and the actual report serializer with its reused options/cache.
+The pure thread-pool warm-up is fully joined before `Start`; it cannot continue loading
+dependencies in the background during the original check. Preparation failure leaves
+the original check running normally, then Program emits only constant `unavailable`
+JSON without entering the collector again. No repository script, dynamic assembly
+path, external command or ACL change is involved. All new `wevtapi.dll`
 imports resolve only from System32; no PATH or writable application-directory DLL
 lookup is used.
 
-The existing short `--smoke` executes the bounded XML parser selftest, checks its result
-and emits a separate read-only Event Log probe status. Every complete check, including
-a healthy check, repeats those checks after closing the original child/Job. The selftest covers hostile paths, versions,
+The existing short `--smoke` asserts the same preparation and bounded XML parser selftest,
+and emits a separate read-only Event Log probe status. A separate smoke process does
+not substitute for preparation in the actual `--run-check` process. Every prepared
+complete check, including a healthy check, probes after closing the original child/Job.
+The selftest covers hostile paths, versions,
 timestamps, duplicate fields, DTD/external entities, oversized input and unchanged exits,
 including 0xC0000409. It does not generate a native crash. A healthy check emits only
 probe status. A failed check may emit at most sixteen `node.exe` candidates matching

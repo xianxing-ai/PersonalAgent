@@ -61,8 +61,15 @@ internal static class Program
             string cmd = CanonicalFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"));
             string npm = ResolveNpm();
             string command = Quote(cmd) + " /d /s /c \"\"" + npm + "\" run check\"";
-            // Capture the fixed pin before ordinary-token code can change the checkout.
-            string? diagnosticNodeVersion = NativeFailureMetadata.ReadPinnedNodeVersion(Path.Combine(Cwd, ".node-version"));
+            // Prepare in this process before ordinary-token code can change the checkout.
+            string? diagnosticNodeVersion = null;
+            bool diagnosticPrepared = false;
+            try
+            {
+                diagnosticNodeVersion = NativeFailureMetadata.ReadPinnedNodeVersion(Path.Combine(Cwd, ".node-version"));
+                diagnosticPrepared = NativeFailureMetadata.Prepare();
+            }
+            catch { /* Preparation failure must not prevent the original check. */ }
             DateTimeOffset checkStartedUtc = DateTimeOffset.UtcNow;
             uint exit;
             DateTimeOffset checkFinishedUtc;
@@ -74,7 +81,13 @@ internal static class Program
             } // Close the original Job before spending any time collecting metadata.
             // The already loaded launcher reads fixed event metadata itself. Never run
             // a mutable checkout script/executable from the original runner token here.
-            try { exit = NativeFailureMetadata.PreserveExit(exit, () => NativeFailureMetadata.AfterCheck(exit, checkStartedUtc, checkFinishedUtc, diagnosticNodeVersion)); }
+            try
+            {
+                if (diagnosticPrepared)
+                    exit = NativeFailureMetadata.PreserveExit(exit, () => NativeFailureMetadata.AfterCheck(exit, checkStartedUtc, checkFinishedUtc, diagnosticNodeVersion));
+                else
+                    Console.WriteLine("{\"schema\":\"windows-native-candidates/v1\",\"status\":\"unavailable\",\"reason\":\"preparation_failed\",\"candidates\":[]}");
+            }
             catch { /* Diagnostics, including type initialization, cannot replace the original exit. */ }
             return unchecked((int)exit);
         }

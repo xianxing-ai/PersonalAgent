@@ -69,7 +69,7 @@ test('event queries and XML are bounded and handles use their matching release f
 });
 
 test('healthy checks exercise actual XML filtering and read access without claiming native crash validation',()=>{
-  assert.match(source,/bool verified = SelfTest\(\);/u);
+  assert.match(source,/if \(!SelfTest\(\)\) return false;/u);
   assert.match(source,/ReadWithBudget\(start, end, pin, originalExit != 0\)/u);
   assert.match(source,/originalExit == 0 \? "read_only_probe" : "failure_candidates"/u);
   assert.match(source,/check_time_window_candidates_without_test_process_correlation/u);
@@ -83,6 +83,41 @@ test('healthy checks exercise actual XML filtering and read access without claim
     'ucrtbase.dll\\n','C0000409\\n','00001234ABCD\\n','badOptionalVersion.ModuleVersion != null'])assert.ok(selftest.includes(behavior),behavior);
   assert.match(source,/catch \{ return null; \} \/\/ Never return parser errors/u);
   assert.doesNotMatch(source,/\.Message\b|\.StackTrace\b|\.ToXml\(|candidate.*(?:AppPath|ModulePath|User|Computer|Environment)/u);
+});
+
+test('the actual run-check process prepares managed dependencies before Start and never retries failed preparation after the child',()=>{
+  const check=program.slice(program.indexOf('string cmd = CanonicalFile'),program.indexOf('\n        catch (Exception error)'));
+  const prepareAt=check.indexOf('diagnosticPrepared = NativeFailureMetadata.Prepare();');
+  const childAt=check.indexOf('using (var child = Start(');
+  assert.ok(prepareAt>=0&&prepareAt<childAt);
+  assert.match(check,/bool diagnosticPrepared = false;/u);
+  assert.match(check,/catch \{ \/\* Preparation failure must not prevent the original check\. \*\/ \}/u);
+  const after=check.slice(check.indexOf('if (diagnosticPrepared)'));
+  assert.match(after,/if \(diagnosticPrepared\)\s+exit = NativeFailureMetadata.PreserveExit/u);
+  const fallback=after.split('                else\n')[1].split('\n            }')[0];
+  assert.match(fallback,/Console.WriteLine\(/u);
+  assert.ok(fallback.includes('preparation_failed'));
+  assert.doesNotMatch(fallback,/NativeFailureMetadata|JsonSerializer|Task|Prepare\(/u);
+  const prepare=source.slice(source.indexOf('internal static bool Prepare()'),source.indexOf('// The existing --smoke entrypoint'));
+  assert.match(prepare,/if \(!SelfTest\(\)\) return false;/u);
+  assert.ok(prepare.includes('Project("<Event>"'));
+  assert.match(prepare,/new JsonSerializerOptions \{ PropertyNamingPolicy = JsonNamingPolicy.CamelCase \}/u);
+  assert.match(prepare,/SerializeObservation\(1,[^\n]+\[sample\][^\n]+options\)/u);
+  assert.match(prepare,/SerializeObservation\(0,[^\n]+options\)/u);
+  assert.match(prepare,/SerializeSmokeProof\([^\n]+options\)/u);
+  assert.ok(prepare.indexOf('SerializeSmokeProof(')<prepare.indexOf('Task.Run('));
+  assert.match(prepare,/Task.Run\(\(\) => Unavailable\("preparation_probe"\)\)/u);
+  assert.ok(prepare.indexOf('warmTask.GetAwaiter().GetResult();')<prepare.indexOf('preparedOptions = options;'));
+  assert.doesNotMatch(prepare,/ReadEvents\(|ReadWithBudget\(|Process\.Start|Assembly\.Load|File\./u);
+  const collection=source.slice(source.indexOf('internal static void AfterCheck('),source.indexOf('static string SerializeObservation('));
+  assert.match(collection,/SerializeObservation\(originalExit, start, end, pin, result, preparedOptions\)/u);
+  assert.doesNotMatch(collection,/SelfTest\(|new JsonSerializerOptions|Prepare\(/u);
+  assert.match(source,/MethodImpl\(MethodImplOptions.NoInlining\)\]\s+internal static bool Prepare\(\)/u);
+  assert.match(source,/MethodImpl\(MethodImplOptions.NoInlining\)\]\s+internal static void AfterCheck/u);
+  const smoke=source.slice(source.indexOf('internal static bool VerifyForSmoke('),source.indexOf('internal static string? ReadPinnedNodeVersion('));
+  assert.match(smoke,/bool verified = Prepare\(\);/u);
+  assert.match(smoke,/if \(!verified\)[\s\S]+return false;/u);
+  assert.match(smoke,/SerializeSmokeProof\(probe, preparedOptions!\)/u);
 });
 
 test('the existing fresh SDK publish includes every launcher C# input and checks the real smoke exit',()=>{

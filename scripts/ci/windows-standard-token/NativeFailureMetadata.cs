@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -17,6 +18,7 @@ internal static class NativeFailureMetadata
     internal sealed record Candidate(long EventRecordId, string OccurredUtc, string Application,
         string ApplicationVersion, string Module, string ExceptionCode, string FaultOffset, string? ModuleVersion);
     sealed record Observation(string Status, string Reason, Candidate[] Candidates, bool LimitReached = false);
+    static JsonSerializerOptions? preparedOptions;
 
     internal static uint PreserveExit(uint originalExit, Action diagnostics)
     {
@@ -24,16 +26,47 @@ internal static class NativeFailureMetadata
         return originalExit;
     }
 
+    // NoInlining keeps dependency/JIT initialization inside the caller's preparation catch.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static bool Prepare()
+    {
+        try
+        {
+            preparedOptions = null;
+            if (!SelfTest()) return false; // Actual XML success/failure paths, Regex and projection.
+            var start = new DateTimeOffset(2026, 10, 26, 8, 0, 0, TimeSpan.Zero);
+            if (Project("<Event>", start, start.AddMinutes(10), "24.15.0") != null) return false;
+            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            var sample = new Candidate(123, Utc(start.AddMinutes(5)), "node.exe", "24.15.0.0", "ucrtbase.dll", "0xc0000409", "0x1234", "10.0.26100.1");
+            _ = SerializeObservation(1, start, start.AddMinutes(10), "24.15.0", new("candidate_events", "none", [sample]), options);
+            _ = SerializeObservation(0, start, start.AddMinutes(10), null, Unavailable("preparation_probe"), options);
+            _ = SerializeSmokeProof(Unavailable("preparation_probe"), options);
+            // All XML/JSON work above is synchronous. Fully join this pure worker before
+            // returning, so no timed-out initialization can continue after child Start.
+            var warmTask = Task.Run(() => Unavailable("preparation_probe"));
+            _ = warmTask.Wait(TimeSpan.FromSeconds(6));
+            _ = warmTask.GetAwaiter().GetResult();
+            preparedOptions = options; // Reuse the actual serializer/cache after preparation.
+            return true;
+        }
+        catch { return false; }
+    }
+
     // The existing --smoke entrypoint checks this return. No new command interface.
     internal static bool VerifyForSmoke(string? pin)
     {
-        bool verified = SelfTest();
+        bool verified = Prepare();
+        if (!verified)
+        {
+            try { Console.WriteLine("{\"schema\":\"windows-native-candidates/v1\",\"mode\":\"smoke_validation\",\"preparation\":\"failed\",\"selfTest\":\"failed\",\"probeStatus\":\"unavailable\",\"probeReason\":\"preparation_failed\"}"); }
+            catch { }
+            return false;
+        }
         try
         {
             var end = DateTimeOffset.UtcNow;
             Observation probe = pin == null ? Unavailable("node_version_unavailable") : ReadWithBudget(end.AddMinutes(-1), end, pin, false);
-            Console.WriteLine(JsonSerializer.Serialize(new { schema = "windows-native-candidates/v1", mode = "smoke_validation",
-                selfTest = verified ? "passed" : "failed", probeStatus = probe.Status, probeReason = probe.Reason }));
+            Console.WriteLine(SerializeSmokeProof(probe, preparedOptions!));
         }
         catch
         {
@@ -55,26 +88,18 @@ internal static class NativeFailureMetadata
         catch { return null; }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void AfterCheck(uint originalExit, DateTimeOffset start, DateTimeOffset end, string? pin)
     {
         // Even output errors are contained. The caller independently preserves its saved uint exit.
         try
         {
-            bool verified = SelfTest();
+            if (preparedOptions == null) return;
             Observation result;
-            if (!verified) result = Unavailable("self_test_failed");
-            else if (pin == null) result = Unavailable("node_version_unavailable");
+            if (pin == null) result = Unavailable("node_version_unavailable");
             else if (start > end || end - start > TimeSpan.FromHours(6)) result = Unavailable("invalid_check_window");
             else result = ReadWithBudget(start, end, pin, originalExit != 0);
-            var output = new
-            {
-                schema = "windows-native-candidates/v1", scope = Scope,
-                mode = originalExit == 0 ? "read_only_probe" : "failure_candidates", originalCheckExit = originalExit,
-                selfTest = verified ? "passed" : "failed", startedUtc = Utc(start), finishedUtc = Utc(end),
-                nodeVersion = pin ?? "unknown", status = result.Status, reason = result.Reason,
-                limitReached = result.LimitReached, candidates = result.Candidates
-            };
-            string json = JsonSerializer.Serialize(output, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            string json = SerializeObservation(originalExit, start, end, pin, result, preparedOptions);
             Console.WriteLine(json.Length <= 16384 ? json : "{\"schema\":\"windows-native-candidates/v1\",\"status\":\"unavailable\",\"reason\":\"output_limit\",\"candidates\":[]}");
         }
         catch
@@ -83,6 +108,22 @@ internal static class NativeFailureMetadata
             catch { /* Closed output channels cannot change the original check result. */ }
         }
     }
+
+    static string SerializeObservation(uint originalExit, DateTimeOffset start, DateTimeOffset end, string? pin,
+        Observation result, JsonSerializerOptions options) => JsonSerializer.Serialize(new
+        {
+            schema = "windows-native-candidates/v1", scope = Scope,
+            mode = originalExit == 0 ? "read_only_probe" : "failure_candidates", originalCheckExit = originalExit,
+            preparation = "passed", selfTest = "passed", startedUtc = Utc(start), finishedUtc = Utc(end),
+            nodeVersion = pin ?? "unknown", status = result.Status, reason = result.Reason,
+            limitReached = result.LimitReached, candidates = result.Candidates
+        }, options);
+
+    static string SerializeSmokeProof(Observation probe, JsonSerializerOptions options) => JsonSerializer.Serialize(new
+        {
+            schema = "windows-native-candidates/v1", mode = "smoke_validation", preparation = "passed", selfTest = "passed",
+            probeStatus = probe.Status, probeReason = probe.Reason
+        }, options);
 
     static Observation Unavailable(string reason) => new("unavailable", reason, []);
     static string Utc(DateTimeOffset time) => time.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
