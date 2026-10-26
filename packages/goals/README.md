@@ -131,3 +131,58 @@ Desktop user writes need its review, composition, and one target-chain readback.
 The current RuntimeApplication constructor registers descriptors without executing
 host tools; Desktop must bind the store before exposing host commands or resuming
 an approved task.
+
+## 2026-10-25 scoped verification (Competition Profile)
+
+Baseline: `ad1a045e1ec65f9ef280125d9df78b9cb63b4e51`; worktree
+`.worktrees/goals-mod27-20261025`, branch `codex/goals-mod27-20261025`.
+This review found no confirmed production defect and changes no production code,
+public interface, schema or migration. Node `24.15.0`, npm `11.12.1`; dependencies
+and Contracts/Goals build outputs were installed/built independently in this tree.
+
+The historical integration limitations above describe their original increments.
+At this baseline, Runtime supplies `coordination-store.ts` (SQLite transaction/CAS)
+and `fact-erasure.ts` (all versions of the target ID and transitive dependent IDs).
+Desktop's `goal-host-core` rejects renderer-supplied `sourceRef` and constructs the
+host source; its cloud host also constructs a task/run-bound source. These are
+code inspection findings, not an assertion of a successful desktop/cloud journey.
+The graph's exact-version dependencies retain their old source/version after a
+correction; withdrawal and `graphAt` preserve audit history rather than undoing
+external effects. Trusted erasure retains content-free graph positions, so a later
+append does not reuse an erased graph revision.
+
+All commands below exited 0. UTC start, elapsed wall seconds and SHA-256 of the
+combined command output are recorded separately to avoid treating Fake tests as
+production storage evidence.
+
+| Command | UTC start | Wall seconds | Output SHA-256 |
+| --- | --- | --- | --- |
+| `npm run build --workspace=@personal-agent/contracts` | 06:09:45.559420 | 2.172 | `0df9d844f23a024cfef097907bc4b29c558ad6e331cc99cebef156739dd1531e` |
+| `npm run test --workspace=@personal-agent/goals` (19/19) | 06:09:47.731184 | 2.394 | `367bf3ed8e598a823fa32954154e9b887b074e986d2d5189dbaedc52b87e88c2` |
+| `npm run typecheck --workspace=@personal-agent/goals` | 06:09:50.125148 | 2.222 | `a5aafe5c0fe61f5cf0fc5858f7e51ddd412178945bd384e76cd36748ed9b7b5f` |
+| `npm run check:architecture` (3/3) | 06:09:52.347142 | 0.324 | `bc916c1f122403c8dd4154eaaf492952d1c6808702d56d8ea4b952a596c9c5dd` |
+| `node tests/manual/goals/sqlite-graph-verification-20261025.mjs` | 06:26:51.735674 | 0.088 | `81c568195f62face734482f270a7fa4102b0747a664dcbf80148938821858b57` |
+
+The reproducible [manual probe](../../tests/manual/goals/sqlite-graph-verification-20261025.mjs)
+(SHA-256 `f90dc5d519e74fe54fc0bec58f36d11a3ea1dec19990c67b65e4a859efd00126`)
+was executed with Node against a new synthetic SQLite file. To rerun from the
+repository root using Node 24.15.0, install dependencies with `npm ci`, build
+Contracts and Goals using their workspace `build` scripts, then run the command
+in the table. It loads the two
+production Runtime source adapters directly and used the built public
+`createGoalTools` exports. It verified create/revise readback, pinned Decision/Plan
+dependencies, stale-write conflict, all-or-nothing invalid batch rollback,
+withdrawal with historical reads, trusted transitive erasure, append above the
+erased high-water mark, missing-dependency rejection, and exact SQL snapshot
+readback. The fixture created only the adapter's `coordination_graphs` table;
+the erasure result was persisted explicitly by the fixture. This validates those
+production adapters and public Goal tools, not full RuntimeApplication assembly,
+the production erasure authorization/receipt transaction, migrations, or task
+execution/recovery. The committed probe removes its own temporary directory in
+`finally`; original logs and exploratory synthetic databases remain ignored local
+artifacts under `.cache/mod27-evidence/`.
+
+No private database, real account, cloud service or device was accessed. No new
+unit tests were added where existing tests already cover the behavior. Full Runtime,
+Desktop, real fact sources, AgentArts/Evidence and user acceptance remain untested
+by this increment; interfaces remain provisional and MOD-27 is not marked done.
