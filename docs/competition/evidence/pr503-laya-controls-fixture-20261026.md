@@ -33,3 +33,19 @@ Node 24.15.0 / npm 11.12.1，本地明确 Synthetic 工件、进程和 DOM：
 普通 merge-tree 与 P2 补丁 `ac6ce695` 无文本冲突，但合成树保留 #503 的纯读 snapshot，
 因此单纯同步该 main 不会修复这个旧失败。不得选 main 整侧覆盖而丢掉 #503 的
 推理串行、期限及取消边界。新 head 的正式 CI 仍需单独读回。
+
+## 普通主线整合
+
+P2 补丁 `ac6ce695` 经独立只读互审后，在本隔离分支普通合并 canonical main
+`d702fe434741758055421d348a22ac7a2c6a22b1`，merge commit
+`636affece31689e0d35780ae04378a6c5302d56f`，无文本冲突、无整侧覆盖。
+保留两份独立修复提交，未修改锁文件、CI 或生产 Laya。
+
+同一固定工具链执行组合：
+
+`node --test apps/desktop/test/mail-review-host.test.mjs apps/desktop/test/laya-controls.test.mjs apps/desktop/test/laya-local-host.test.mjs`
+
+exit 0，32/32 pass，0 skip；host 语法与 `git diff --check` 通过。
+原红日志保留；组合日志 `.cache/pr503-orphan-recovery/combined-main-green.log` SHA256：
+`b37b14233b0805a56615adfd1194c4c9700548cf72946032a58b65b0cad44ae2`。
+仅证明本局部 Synthetic 组合；原 PR 大包的其余功能与本提交正式 CI 不据此宣称已通过。
