@@ -71,8 +71,9 @@ getter/Proxy 测试中的 canary 均为合成材料。
 每条命令都保存前后 HEAD、完整 tracked 文件 SHA 清单（仅排本 Evidence 自引），
 源码/测试/原文档 fingerprint 均为
 `1a4c910db48a86a9dc05daf6bd2d78473f87105dc9aed48dada5200aba0a5f71`。
-最终实际 head、双父、tree、干净状态与该已测文件集的一致性在本树忽略目录
-`.cache/pr503-main511-integration/final-head.json` 绑定；不将提交前验证声称为提交后重跑。
+实际双父 merge、tree、干净状态与已测文件集的初始绑定保留在本树忽略目录
+`.cache/pr503-main511-integration/final-head.json`；后续纯文档 head 和真实逐项清单的最终
+绑定见 `final-evidence-binding.json`。不将提交前验证声称为提交后重跑。
 
 原日志及完整 argv/UTC/wall/exit 回执在 `.cache/pr503-main511-integration/`：
 
@@ -86,8 +87,14 @@ getter/Proxy 测试中的 canary 均为合成材料。
 | `safe-display.log` | 06:58:30–06:58:31 | 1.610s / 0 | `b3a9b626db5cef6d9fab8d4c3f27f7293d715e0ffc32a97dc4417424cbf06e9c` |
 | `syntax-diff.log` | 06:59:23–06:59:24 | 1.132s / 0 | `319ca8408c48287c2ea08fb02994f96185601f2c29dfaa14e3240cf54f85e6ef` |
 
-18 个整文件和七个 AST 文本的逐项 hash 清单为 `preserved-boundaries.json`，SHA256
-`d7ef39e33e31b90fb83bab1800edbfb2e96fc7ed8a06ade616997ddff36a9b57`。
+18 个整文件和七个 AST 文本的真实逐项 hash 清单为 `preserved-boundary-manifest.json`，
+SHA256 `9521ca4c15acd9d72fee7329654245d4f9ec0ec900e1026e598255768e644bbb`。
+原 `preserved-boundaries.json` 实际是命令 metadata，SHA256 仍为
+`d7ef39e33e31b90fb83bab1800edbfb2e96fc7ed8a06ade616997ddff36a9b57`；原同名输出曾将
+清单覆盖为命令回执，早期 `final-head.json` 的对应字段也只绑定该 metadata，不能作为
+逐项清单依据。原 metadata、日志及初始回执原样保留。07:06:09–07:06:10Z 只读重核
+18+7 原文相等，exit 0，独立命令回执 `boundary-manifest-reaudit.json` 的 SHA256 为
+`c766c4d668c12d2f01e43bfec9d9ac722f3c1ca8fcc09f58f278faf02cfce63e`；没有重跑测试或构建。
 本轮没有新增失败或据此声称先红后绿；e570 的原兼容 red 与前置缺失日志仍独立保留。
 变更 JavaScript 语法、冲突标记及 staged/unstaged diff 检查通过。
 
