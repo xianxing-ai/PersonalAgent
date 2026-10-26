@@ -26,6 +26,40 @@ const setup = (options = {}) => {
 
 const enable = (controller, deadlineAtMs = 100) => controller.enable({deadlineAtMs});
 
+test('lifecycle subscription after resume expires the source before publishing its initial state', async () => {
+  let currentMs = 0;
+  const clock = {now: () => currentMs, setTimeout: () => ({cancel() {}})};
+  const {controller, source, errors, wakes} = setup({clock});
+  let releases = 0;
+  const subscribe = source.subscribe.bind(source);
+  source.subscribe = (...args) => {
+    const subscription = subscribe(...args);
+    return {unsubscribe() { releases++; subscription.unsubscribe(); }};
+  };
+  const existing = [];
+  controller.subscribeLifecycle(value => existing.push(value.state));
+  await enable(controller);
+  currentMs = 100;
+  const resumed = [];
+  controller.subscribeLifecycle(value => resumed.push(value));
+  assert.deepEqual(resumed, [{state: 'disabled', sessionId: null, expiresAtMs: null}]);
+  assert.deepEqual(existing, ['disabled', 'listening', 'disabled']);
+  assert.equal(source.activeSubscriptions, 0);
+  assert.equal(releases, 1);
+  assert.deepEqual(errors, [{code: 'EXPIRED'}]);
+  source.emitLate({kind: 'wake'});
+  assert.deepEqual(wakes, []);
+  assert.equal(controller.snapshot().state, 'disabled');
+  controller.subscribeLifecycle(value => resumed.push(value));
+  controller.stop();
+  assert.equal(releases, 1);
+  assert.deepEqual(resumed, [
+    {state: 'disabled', sessionId: null, expiresAtMs: null},
+    {state: 'disabled', sessionId: null, expiresAtMs: null},
+  ]);
+  assert.deepEqual(errors, [{code: 'EXPIRED'}]);
+});
+
 test('starts disabled and subscribes exactly once only after explicit enable', async () => {
   const {controller, source, authorization} = setup();
   assert.deepEqual(controller.snapshot(), {

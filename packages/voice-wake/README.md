@@ -41,6 +41,10 @@ MOD-14 等本地宿主可通过 `subscribeLifecycle(listener)` 只读观察固�
 `{state, sessionId, expiresAtMs}`。注册时同步收到冻结的初始快照；之后只发送稳定且变化的
 `listening`、`disabled` 或 `disposed` 快照。返回值是幂等退订函数。监听器异常彼此隔离，
 该通道不携带文本、音频、外部错误、授权对象或 Runtime 能力，也不能修改控制器状态。
+宿主休眠越过期限但到期回调尚未运行时，注册观察者同样先终止过期会话、释放源订阅，
+通知已有观察者，再向新观察者发送当前状态，与 `snapshot()` 的期限检查一致。
+此行为由 Fake 时钟和 Fake 源验证；当前 Desktop 在创建控制器后立即注册观察者，
+该回归不代表实机麦克风或晚注册 UI 路径已经验收。
 
 `@personal-agent/voice-wake/testing` 公开导出 Fake 时钟、授权端口和事件源，仅用于离线
 生命周期测试，不能冒充真实麦克风、识别成功或实机误触/回声指标。基线 `5b581139`

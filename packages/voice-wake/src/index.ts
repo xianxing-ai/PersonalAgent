@@ -369,6 +369,7 @@ export class WakeLifecycleController {
    */
   subscribeLifecycle(listener: (snapshot: WakeLifecycleStateSnapshot) => void): () => void {
     if (typeof listener !== 'function') throw new WakeLifecycleError('INVALID_ARGUMENT');
+    if (this.active && this.clock.now() >= this.active.expiresAtMs) this.expire(this.active.epoch);
     const initial = this.createLifecycleSnapshot();
     const entry: LifecycleListenerEntry = {listener, active: true, lastSnapshot: initial};
     this.lifecycleListeners.add(entry);

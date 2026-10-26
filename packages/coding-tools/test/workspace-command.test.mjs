@@ -83,6 +83,38 @@ test('trusted native adapter binds original run, records host outcome and never 
   await assert.rejects(tool.execute({recipeId:'fixed'},context()),{code:'SCOPE_DENIED'});assert.equal(executions,3);
 });
 
+test('registered sandbox configuration survives host options reuse without starting an unisolated command', async t => {
+  const root = await fixture(t);
+  const marker = join(root, 'unisolated.txt');
+  let executions = 0;
+  let records = 0;
+  const sandbox = {
+    bind: ctx => ({...ctx, profile: {}, sandboxRef: 'original', revision: 1}),
+    executor: {execute: async () => {
+      executions++;
+      return {outcome: 'unavailable', executionStarted: false, stopped: true, exitCode: null};
+    }},
+    recordResult: () => {records++;},
+  };
+  const options = {rootPath: root, recipes: [{id: 'fixed', executable: process.execPath,
+    args: ['-e', 'require("node:fs").writeFileSync("unisolated.txt", "unexpected")']}], trustedSandbox: sandbox};
+  const tool = createWorkspaceCommandTool(options);
+  options.trustedSandbox = undefined;
+  await assert.rejects(tool.execute({recipeId: 'fixed'}, context({argumentsDigest: 'a'.repeat(64)})),
+    {code: 'UNSUPPORTED_CAPABILITY'});
+  assert.equal(executions, 1);
+  assert.equal(records, 1);
+  assert.equal(existsSync(marker), false);
+  // Capturing the selected port must retain its live revocation checks.
+  sandbox.executor.execute = async () => {
+    throw Object.assign(new Error('Original sandbox was revoked'), {code: 'SCOPE_DENIED'});
+  };
+  await assert.rejects(tool.execute({recipeId: 'fixed'}, context({argumentsDigest: 'a'.repeat(64)})),
+    {code: 'SCOPE_DENIED'});
+  assert.equal(records, 1);
+  assert.equal(existsSync(marker), false);
+});
+
 test('completed fixed commands reject elapsed execution leases and invalid clocks', async t => {
   for (const scenario of ['deadline', 'duration', 'invalid clock', 'throwing clock']) await t.test(scenario, async t => {
     const root = await fixture(t);
