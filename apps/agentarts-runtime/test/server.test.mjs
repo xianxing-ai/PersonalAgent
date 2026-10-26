@@ -11,6 +11,41 @@ async function host(t, options={}) {
   return {server,calls,url:`http://127.0.0.1:${server.address().port}`};
 }
 const post=(url,body,headers={})=>fetch(url+'/invocations',{method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(body)});
+test('request deadline mode preserves deadlines beyond 60s and requires a deadline',async t=>{
+  const {url,calls}=await host(t,{timeoutMode:'request-deadline'});
+  assert.equal((await post(url,{query:'x'})).status,400);
+  const deadline=new Date(Date.now()+180_000).toISOString();
+  assert.equal((await post(url,{query:'x'},{'x-pa-deadline':deadline})).status,200);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].deadline,deadline);
+});
+test('request deadline mode still honors an explicit shorter timeout',async t=>{
+  const {url,calls}=await host(t,{timeoutMode:'request-deadline',timeoutMs:5000});
+  assert.equal((await post(url,{query:'x'})).status,400);
+  const before=Date.now();
+  assert.equal((await post(url,{query:'x'},{'x-pa-deadline':new Date(before+180_000).toISOString()})).status,200);
+  assert.ok(Date.parse(calls[0].deadline)>=before+5000);
+  assert.ok(Date.parse(calls[0].deadline)<before+6000);
+});
+test('request deadline mode cancels noncooperative providers and releases slots at caller deadline',async t=>{
+  let signal;
+  const {url}=await host(t,{timeoutMode:'request-deadline',maxConcurrency:1,orchestrator:{invoke:async value=>{signal=value.signal;return new Promise(()=>{});}}});
+  const response=await post(url,{query:'x'},{'x-pa-deadline':new Date(Date.now()+50).toISOString()});
+  assert.equal(response.status,504);
+  assert.equal(signal.aborted,true);
+  assert.equal((await (await fetch(url+'/ping')).json()).status,'Healthy');
+});
+test('request deadline mode bounds slow uploads by the caller deadline',async t=>{
+  const {url,calls}=await host(t,{timeoutMode:'request-deadline'});
+  const request=httpRequest(url+'/invocations',{method:'POST',headers:{'content-type':'application/json','x-pa-deadline':new Date(Date.now()+40).toISOString()}});
+  request.on('error',()=>{});
+  const response=new Promise(resolve=>request.on('response',value=>{value.resume();value.on('end',()=>resolve(value.statusCode));}));
+  request.write('{"query":');
+  assert.equal(await response,504);
+  request.destroy();
+  assert.equal(calls.length,0);
+  assert.equal((await (await fetch(url+'/ping')).json()).status,'Healthy');
+});
 test('ping and strict invocation preserve deadline/session and contract events',async t=>{
   const {url,calls}=await host(t);
   assert.equal((await (await fetch(url+'/ping')).json()).status,'Healthy');

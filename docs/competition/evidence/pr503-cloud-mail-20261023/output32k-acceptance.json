@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "1.0",
+  "profile": "huawei_ict_agentarts",
+  "verification": "verified",
+  "scope": "Minimal complete single-file HTML creation through default Desktop conversation, real AgentArts child task and workspace.create_text",
+  "deploymentVersion": "arm64-output32k-1023",
+  "maxOutputTokens": 32768,
+  "configuredTimeoutMs": 1800000,
+  "tasks": [
+    {
+      "taskId": "db684a97-c994-4aeb-a78e-15409ed00ed8",
+      "role": "parent",
+      "createdAt": "2026-10-23T04:26:07.333Z",
+      "completedAt": "2026-10-23T04:28:24.750Z",
+      "durationMs": 137417,
+      "state": "succeeded",
+      "modelId": "deepseek-v4.1-flash",
+      "reasoningEffort": "max",
+      "deadline": "2026-10-23T04:56:07.333Z"
+    },
+    {
+      "taskId": "43338ae9-ff2f-44ea-991a-6f5673995a48",
+      "role": "child",
+      "createdAt": "2026-10-23T04:26:07.487Z",
+      "completedAt": "2026-10-23T04:28:01.070Z",
+      "durationMs": 113583,
+      "state": "succeeded",
+      "modelId": "deepseek-v4.1-flash",
+      "reasoningEffort": "max",
+      "deadline": "2026-10-23T04:56:07.333Z"
+    }
+  ],
+  "tools": [
+    {
+      "taskId": "db684a97-c994-4aeb-a78e-15409ed00ed8",
+      "toolName": "subagent.dispatch",
+      "startedAt": "2026-10-23T04:26:07.482Z",
+      "finishedAt": "2026-10-23T04:28:01.075Z",
+      "durationMs": 113593,
+      "state": "confirmed",
+      "policyDecision": "allow",
+      "executionStarted": true
+    },
+    {
+      "taskId": "43338ae9-ff2f-44ea-991a-6f5673995a48",
+      "toolName": "workspace.create_text",
+      "startedAt": "2026-10-23T04:27:48.832Z",
+      "finishedAt": "2026-10-23T04:27:50.215Z",
+      "durationMs": 1383,
+      "state": "confirmed",
+      "policyDecision": "allow",
+      "executionStarted": true
+    }
+  ],
+  "approvals": {
+    "sandboxMode": "full-access",
+    "approvalRequestedEvents": 2,
+    "persistedApprovals": [
+      {
+        "taskId": "db684a97-c994-4aeb-a78e-15409ed00ed8",
+        "state": "allowed",
+        "revision": 2
+      },
+      {
+        "taskId": "43338ae9-ff2f-44ea-991a-6f5673995a48",
+        "state": "allowed",
+        "revision": 2
+      }
+    ],
+    "observedPendingUiCards": 0,
+    "finalUiCardCount": 0,
+    "manualApprovalClicks": 0
+  },
+  "artifact": {
+    "fileName": "pr503-output32k-1792729567315.html",
+    "byteLength": 2395,
+    "sha256": "cfcbbcb1a4f68570fbd0f97eed9a46df47809c0c929deda01ec96abf83f9166b",
+    "completeHtml": true,
+    "externalResources": false
+  },
+  "render": {
+    "browser": "Microsoft Edge",
+    "title": "Pelican on a Bicycle",
+    "pageErrors": [],
+    "beforeScreenshotSha256": "2b71c280dda3493542bd6411df81219fd190508de413d5aa7194f6ae5a227125",
+    "afterScreenshotSha256": "8963a822e67ae2c06b8f9c72f56b7b3c3745d2679f925c66fba1c7e6df35b17d",
+    "framesDiffer": true,
+    "visualObservation": "Canvas visibly renders pelican beak, pouch, wings, two bicycle wheels and pedals; captured frames differ.",
+    "limitations": "Minimal code-file acceptance; not the earlier complex animation acceptance."
+  }
+}

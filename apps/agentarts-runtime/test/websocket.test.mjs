@@ -59,6 +59,17 @@ async function rejectedUpgrade(address,headers) {
 const statusRequest=(url,frame,headers=auth(frame.sessionId))=>fetch(url+'/invocation-status',{
   method:'POST',headers:{'content-type':'application/json',...headers},body:JSON.stringify(control(frame,'status')),
 });
+test('request deadline mode preserves caller WSS deadline beyond 60s and replay receipt',async t=>{
+  const {wsUrl,calls}=await host(t,{timeoutMode:'request-deadline'});
+  const client=await connect(t,wsUrl);
+  const frame=invokeFrame({deadline:new Date(Date.now()+180_000).toISOString()});
+  client.send(frame);
+  await client.next('result');
+  assert.equal(calls[0].deadline,frame.deadline);
+  client.send(frame);
+  await client.next('result');
+  assert.equal(calls.length,1);
+});
 
 test('WS requires explicit inner credential/session and refuses URL credentials',async t=>{
   const {wsUrl,calls}=await host(t);

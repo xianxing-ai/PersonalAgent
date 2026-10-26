@@ -109,7 +109,7 @@ async function fixture(t) {
     advance:()=>{time+=1001;},async restart(){await close();await open();}};
 }
 
-test('approved watch Scheduler read reaches original main conversation through Laya and one durable notification receipt',async t=>{
+test('approved watch Scheduler read reaches local Laya and one durable notification receipt',async t=>{
   const f=await fixture(t),input=f.input(),started=await f.invoke('start',input),watchId=started.result.watchId;
   assert.equal(f.app.runtime.getApproval(started.approval.approvalId).state,'allowed');
   const baseline=await f.poll();await f.changes.flush();assert.equal(f.inferences.length,0);assert.equal(f.native.length,0);
@@ -122,7 +122,7 @@ test('approved watch Scheduler read reaches original main conversation through L
   assert.equal(f.weather.fetchCalls,2);assert.equal(f.observations.length,2);assert.equal(f.changes.snapshot().pending,1);
   await f.changes.flush();assert.equal(f.inferences.length,1);assert.equal(f.native.length,1);assert.equal(f.decisions.length,1);
   const decisionTask=f.app.runtime.getTask(f.decisions[0].taskId),decision=f.app.runtime.loadCheckpoint(decisionTask.taskId,'connector-change-decision');
-  assert.equal(decisionTask.state,'succeeded');assert.equal(decisionTask.conversationId,conversationId);
+  assert.equal(decisionTask.state,'succeeded');assert.match(decisionTask.conversationId,/^connector-change:/);
   assert.equal(f.app.runtime.loadCheckpoint(decisionTask.taskId,'connector-change-origin').origin.taskId,changed.task.taskId);
   assert.equal(decision.action,'notify');assert.equal(decision.calibrated,false);assert.match(decision.receiptId,/^[a-f0-9]{64}$/u);
   assert.equal(f.changes.snapshot().notified,1);assert.equal(f.notifications.snapshot().feed.items.length,1);

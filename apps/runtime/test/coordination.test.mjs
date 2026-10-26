@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, rm} from 'node:fs/promises';
 import {test} from 'node:test';
 import {Client} from '@personal-agent/client';
+import {ProtocolError} from '@personal-agent/contracts';
+import {AgentArtsBeforeInvokeError, AgentArtsTerminalError} from '@personal-agent/coordination';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {createRuntimeApplication} from '../dist/application.js';
 
@@ -104,8 +106,46 @@ test('adapter errors are sanitized instead of persisted verbatim', async () => {
     const task = await terminal(app, (await submit(client)).taskId);
     assert.equal(task.state, 'failed');
     assert.equal(task.error.code, 'EXTERNAL_FAILURE');
-    assert.doesNotMatch(JSON.stringify(app.readEvents()), /secret-credential/);
+    const diagnostic = app.runtime.loadCheckpoint(task.taskId, 'competition-coordination-failure');
+    assert.deepEqual(diagnostic, {version: '1.0', phase: 'initial', kind: 'unknown_error', code: 'EXTERNAL_FAILURE'});
+    assert.doesNotMatch(JSON.stringify({events: app.readEvents(), diagnostic}), /secret-credential/);
   });
+});
+
+test('adapter diagnostics retain only allowlisted protocol codes without changing public failure semantics', async () => {
+  for (const code of ['INVALID_ARGUMENT', 'UNAUTHORIZED', 'UNSUPPORTED_CAPABILITY', 'REVISION_CONFLICT', 'TIMEOUT', 'CANCELLED', 'private-code-canary']) {
+    await fixture({execute: async () => {throw new ProtocolError(code, 'private-message-canary');}}, async (app, client) => {
+      const task = await terminal(app, (await submit(client)).taskId);
+      assert.equal(task.state, 'failed');
+      assert.deepEqual(task.error, {code: 'EXTERNAL_FAILURE', message: 'Coordination adapter failed', retryable: false});
+      const diagnostic = app.runtime.loadCheckpoint(task.taskId, 'competition-coordination-failure');
+      assert.deepEqual(diagnostic, {version: '1.0', phase: 'initial', kind: 'protocol_error',
+        code: code === 'private-code-canary' ? 'EXTERNAL_FAILURE' : code});
+      assert.doesNotMatch(JSON.stringify({task, events: app.readEvents(), diagnostic}), /private-.*canary/);
+    });
+  }
+});
+
+test('adapter diagnostics identify transport error classes without retaining arbitrary error properties', async () => {
+  const cases = [
+    [new AgentArtsBeforeInvokeError('authorization'), 'agentarts_before_invoke', 'UNAUTHORIZED'],
+    [new AgentArtsTerminalError({sessionId: 'synthetic-session', requestId: 'synthetic-request',
+      idempotencyKey: 'synthetic-key', payloadDigest: 'a'.repeat(64), accepted: true}, 'RATE_LIMITED'), 'agentarts_terminal', 'EXTERNAL_FAILURE', 'RATE_LIMITED'],
+    [{code: 'UNAUTHORIZED', message: 'private-message-canary'}, 'unknown_error', 'EXTERNAL_FAILURE'],
+    [Object.defineProperty(new ProtocolError('UNAUTHORIZED', 'private-message-canary'), 'code',
+      {get() {throw Error('private-getter-canary');}}), 'unknown_error', 'EXTERNAL_FAILURE'],
+  ];
+  for (const [error, kind, code, remoteCode] of cases) {
+    await fixture({execute: async () => {throw error;}}, async (app, client) => {
+      const task = await terminal(app, (await submit(client)).taskId);
+      assert.equal(task.state, 'failed');
+      assert.equal(task.error.code, 'EXTERNAL_FAILURE');
+      const diagnostic = app.runtime.loadCheckpoint(task.taskId, 'competition-coordination-failure');
+      assert.deepEqual(diagnostic, {version: '1.0', phase: 'initial', kind, code,
+        ...(remoteCode === undefined ? {} : {remoteCode})});
+      assert.doesNotMatch(JSON.stringify({task, events: app.readEvents(), diagnostic}), /private-.*canary|synthetic-(session|request|key)/);
+    });
+  }
 });
 
 test('tool and evidence claims cannot mark a task succeeded', async () => {

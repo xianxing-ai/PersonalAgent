@@ -1,0 +1,29 @@
+{
+  "profile": "huawei_ict_agentarts",
+  "formalDesktop": true,
+  "beforeRestartAt": "2026-10-23T10:38:37.452Z",
+  "afterRestartAt": "2026-10-23T10:39:48.297Z",
+  "enabledBefore": true,
+  "enabledAfter": true,
+  "sameConfigurationBinding": true,
+  "sameGeneration": true,
+  "sameWatermark": true,
+  "watermark": "2026-10-23T10:37:22.465Z",
+  "selectedBindingsCountBefore": 0,
+  "selectedBindingsCountAfter": 0,
+  "reviewTaskCountBefore": 4,
+  "reviewTaskCountAfter": 4,
+  "passed": true,
+  "lateNotificationReadback": {
+    "taskId": "1ae4bbea-871c-4e12-ab48-2ef0420fbd58",
+    "hostStateBefore": "unknown",
+    "hostStateAfter": "delivered",
+    "observedAt": "2026-10-23T10:37:27.616Z",
+    "sameOriginalNotification": true
+  },
+  "limits": [
+    "Local mailbox read leases are intentionally revoked at shutdown; cloud preference is not an execution grant",
+    "Fresh unselected mail through the continuous subscription has not yet been tested after this restart",
+    "Laya start was withheld because available memory was 1.19 GiB, below its existing 2 GiB threshold"
+  ]
+}

@@ -82,14 +82,22 @@ test('legacy initial request remains raw goal and rejects supplied directory', a
 
 test('trusted text-only selection preserves the same export guard and denies mixed request modes',async()=>{
   let sends=0,guards=0;
+  const review={version:1,label:'work',impact:'routine',notificationRecommendation:'none',reasonCode:'work'};
+  const goal=JSON.stringify({instruction:'Review headers only',labelKeys:['work','other'],headers:{headersOnly:true,text:'PUBLIC test'}});
+  let answer=JSON.stringify(review);
   const cloud=new AgentArtsCloudAgentPort(config,{read:async()=> 'Bearer synthetic'},async(_url,init)=>{
-    sends++;assert.deepEqual(JSON.parse(init.body),{query:'Read synthetic item'});return response();
-  },selected=>{guards++;assert.equal(selected.textOnly,true);});
+    sends++;assert.deepEqual(JSON.parse(init.body),{query:JSON.stringify({goal,availableTools:[]})});
+    return new Response(JSON.stringify({event:'message',data:{text:answer}}),{headers:{'content-type':'application/json'}});
+  },selected=>{guards++;assert.equal(selected.textOnly,true);assert.equal(selected.availableTools,undefined);});
   const coordinator=new CompetitionCoordinator(cloud);
-  assert.equal((await coordinator.execute(request({textOnly:true}))).kind,'text');
+  assert.deepEqual(await coordinator.execute(request({textOnly:true,goal})),{kind:'text',text:JSON.stringify(review),verification:'unverified'});
+  answer=JSON.stringify({kind:'text',text:'Ready'});
+  assert.equal((await coordinator.execute(request({textOnly:true,goal}))).text,'Ready');
+  answer=JSON.stringify({kind:'tool_proposal',proposalId:'p',toolName:'fixture.read',toolVersion:'1.0.0',arguments:{id:'x'}});
+  await assert.rejects(coordinator.execute(request({textOnly:true,goal})),{code:'EXTERNAL_FAILURE'});
   for(const extra of [{textOnly:false},{textOnly:true,availableTools:[]},{textOnly:true,continuation:{proposalId:'p',state:'confirmed',result:{}}}]) {
     await assert.rejects(coordinator.execute(request(extra)),{code:'INVALID_ARGUMENT'});
     await assert.rejects(cloud.invoke(request(extra)),{code:'INVALID_ARGUMENT'});
   }
-  assert.equal(sends,1);assert.equal(guards,1);cloud.close();
+  assert.equal(sends,3);assert.equal(guards,3);cloud.close();
 });

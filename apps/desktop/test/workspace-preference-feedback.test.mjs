@@ -3,6 +3,31 @@ import assert from 'node:assert/strict';
 import {availableThinkingModels} from '../src/features/conversation/model-thinking-picker.js';
 import {fixture,snapshot,selection,tick,revision} from '../test-support/model-thinking-fixture.mjs';
 
+test('configured AgentArts without a loaded catalog shows its default without claiming model readiness',()=>{
+  for(const configuration of [{agentArts:{configured:true}},{model:{configured:true}}]){
+    const f=fixture({...snapshot(),...configuration,agentArtsModels:{catalog:null,preferences:null}});
+    assert.equal(f.state.modelLabel,'AgentArts 默认模型');
+    assert.match(f.state.detail,/模型目录未加载/);
+    assert.equal(f.state.native.available,false);assert.equal(f.state.disabled,true);
+    assert.equal(f.calls.length,0);
+  }
+  const f=fixture({...snapshot(),agentArts:{configured:false},model:{configured:false},agentArtsModels:{catalog:null}});
+  assert.equal(f.state.modelLabel,'模型未配置');assert.match(f.state.detail,/连接未配置/);
+  assert.equal(f.state.native.available,false);assert.equal(f.state.disabled,true);
+});
+
+test('an implicit default retains its catalog name while invalid manual selections remain unavailable',()=>{
+  const data=snapshot();delete data.conversationPreference.modelSelection;
+  const f=fixture(data);assert.equal(f.state.modelLabel,'A');assert.equal(f.state.manual,false);
+  for(const preference of [{modelId:'missing'},{modelId:'blocked'},
+    {modelId:'a',executionModel:{...selection('a'),catalogRevision:'b'.repeat(64)}}]){
+    f.update(snapshot(1,false,preference));
+    assert.equal(f.state.native.available,false);assert.match(f.state.modelLabel,/不可用/);
+    assert.doesNotMatch(f.state.modelLabel,/默认模型|未配置/);
+  }
+  assert.equal(f.calls.length,0);
+});
+
 test('workspace picker offers every published text model and excludes unavailable or nontext models',async()=>{
   const f=fixture();assert.deepEqual(availableThinkingModels(snapshot()).map(model=>model.id),['a','b','custom-model']);
   await f.controller.chooseModel('blocked');assert.equal(f.calls.length,0);

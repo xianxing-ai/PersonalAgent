@@ -61,9 +61,34 @@ internal static class Program
             string cmd = CanonicalFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"));
             string npm = ResolveNpm();
             string command = Quote(cmd) + " /d /s /c \"\"" + npm + "\" run check\"";
-            using var child = Start(token.Value, sid, session, cmd, command,
-                GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError));
-            uint exit = child.Wait();
+            // Prepare in this process before ordinary-token code can change the checkout.
+            string? diagnosticNodeVersion = null;
+            bool diagnosticPrepared = false;
+            try
+            {
+                diagnosticNodeVersion = NativeFailureMetadata.ReadPinnedNodeVersion(Path.Combine(Cwd, ".node-version"));
+                diagnosticPrepared = NativeFailureMetadata.Prepare();
+            }
+            catch { /* Preparation failure must not prevent the original check. */ }
+            DateTimeOffset checkStartedUtc = DateTimeOffset.UtcNow;
+            uint exit;
+            DateTimeOffset checkFinishedUtc;
+            using (var child = Start(token.Value, sid, session, cmd, command,
+                GetStdHandle(StdInput), GetStdHandle(StdOutput), GetStdHandle(StdError)))
+            {
+                exit = child.Wait();
+                checkFinishedUtc = DateTimeOffset.UtcNow;
+            } // Close the original Job before spending any time collecting metadata.
+            // The already loaded launcher reads fixed event metadata itself. Never run
+            // a mutable checkout script/executable from the original runner token here.
+            try
+            {
+                if (diagnosticPrepared)
+                    exit = NativeFailureMetadata.PreserveExit(exit, () => NativeFailureMetadata.AfterCheck(exit, checkStartedUtc, checkFinishedUtc, diagnosticNodeVersion));
+                else
+                    Console.WriteLine("{\"schema\":\"windows-native-candidates/v1\",\"status\":\"unavailable\",\"reason\":\"preparation_failed\",\"candidates\":[]}");
+            }
+            catch { /* Diagnostics, including type initialization, cannot replace the original exit. */ }
             return unchecked((int)exit);
         }
         catch (Exception error)
@@ -290,7 +315,9 @@ internal static class Program
                 parent?.Dispose(); descendant?.Dispose();
             }
         }
-        Console.WriteLine("standard-token smoke: stdio, exit23, env/cwd, job-close and killed-launcher descendant termination verified"); return 0;
+        Console.WriteLine("standard-token smoke: stdio, exit23, env/cwd, job-close and killed-launcher descendant termination verified");
+        if (!NativeFailureMetadata.VerifyForSmoke(NativeFailureMetadata.ReadPinnedNodeVersion(Path.Combine(Cwd, ".node-version")))) return 125;
+        return 0;
     }
 
     static int SmokeChild(string mode)

@@ -1,0 +1,57 @@
+{
+  "profile": "huawei_ict_agentarts",
+  "observedAt": "2026-10-23T06:56:00Z",
+  "verification": "real_mail_reception_passed_classification_and_reminder_not_passed",
+  "formalUserDataUsed": true,
+  "privateHeadersExported": false,
+  "bodiesRead": false,
+  "mailboxModified": false,
+  "baseline": {"status": "complete", "processedHeaders": 7364, "needsReview": 5998},
+  "latest": {"status": "complete", "processedHeaders": 7372, "needsReview": 6006, "layaReady": true, "pendingApprovalCards": 0},
+  "originalThreePublicTests": {"receivedInInbox": 3, "productMetadataFound": 3, "correctAutomaticClassifications": 0, "route": "review", "label": null},
+  "newMailWatches": {
+    "verification": "real_confirmed_mail_inbox_then_local_decision",
+    "firstDecisionTaskId": "166c153d-1e10-4a7a-917c-eddc6c83c2b8",
+    "chineseControlDecisionTaskId": "0eb78753-a385-4f3a-993d-4cbe33564e6f",
+    "englishControlDecisionTaskId": "d98ad54f-ce78-4e90-8cc2-a7643da075c2",
+    "pagesWithPublicNewMail": [1, 4, 3],
+    "decisions": ["defer", "defer", "defer"],
+    "decisionReasons": ["uncertain", "uncertain", "uncertain"],
+    "nativeReminderDelivered": false,
+    "activeWatchIntervalMs": 120000,
+    "activeWatchExpiresAt": "2026-10-23T14:48:54.797Z",
+    "notificationPolicy": {"mode": "normal", "preferredChannel": "banner"},
+    "privateMailCloudAnalysisEnabled": false
+  },
+  "classificationControls": {
+    "chinese": [
+      {"expected": "subscription", "candidate": "subscription", "categoryProbability": 0.6559, "impactChoice": "routine", "impactProbability": 0.5327},
+      {"expected": "transaction", "candidate": "other", "categoryProbability": 0.426, "impactChoice": "routine", "impactProbability": 0.6382},
+      {"expected": "subscription", "candidate": "subscription", "categoryProbability": 0.689, "impactChoice": "routine", "impactProbability": 0.6661},
+      {"expected": "high_impact", "candidate": "other", "categoryProbability": 0.7064, "impactChoice": "routine", "impactProbability": 0.6234}
+    ],
+    "english": [
+      {"expected": "subscription", "candidate": "other", "categoryProbability": 0.4848, "impactChoice": "routine", "impactProbability": 0.6963},
+      {"expected": "transaction", "candidate": "subscription", "categoryProbability": 0.9542, "impactChoice": "routine", "impactProbability": 0.5561},
+      {"expected": "high_impact", "candidate": "subscription", "categoryProbability": 0.9597, "impactChoice": "high_impact", "impactProbability": 0.509}
+    ],
+    "thresholdsChanged": false,
+    "modelWeightsChanged": false,
+    "conclusion": "Low confidence and incorrect candidates are present in both languages. Automatic classification accuracy and reminder delivery did not pass; reception and completed local decision tasks do not prove those outcomes."
+  },
+  "fixes": {
+    "mailReadFailureKeepsFailedStatusAndDurableProgress": true,
+    "optionalBoundedLocalClassificationDiagnostics": true,
+    "shortAndGroupedPageDecisionDiagnostics": true,
+    "newDiagnosticReceiptsWhitelistOnly": true,
+    "existingRecordsReclassified": false,
+    "publicSchemaOrDatabaseMigration": false
+  },
+  "focusedChecks": {"mailFailureAndAuthorization": 6, "inboxTriage": 9, "connectorChangeHost": 38, "failed": 0, "runtimeBuild": "passed"},
+  "limits": [
+    "This receipt does not establish lower resident memory or zero real duplicate inference.",
+    "The final diagnostic receipt whitelist change was checked offline after the latest application restart; the running chooser constructs only fixed safe receipt fields.",
+    "Existing conservative thresholds were not lowered to turn failed model decisions into acceptance passes.",
+    "Hosted PSEC, weather changes and other-device acceptance are not claimed by this receipt."
+  ]
+}

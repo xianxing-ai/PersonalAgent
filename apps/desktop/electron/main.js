@@ -12,6 +12,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
+import {projectMailStatus} from './mail-status-projection.js';
 import {projectSubagentActivity,scopeSubagentConversations, openTaskConversation, readSubagentConversation} from './subagent-activity.js';
 import {handleSubagentWindowAction,handleSubagentListAction,handleWorkspaceSubagentAction} from './subagent-window-actions.js';
 import {createMemoryWatchdog} from './memory-watchdog.js';
@@ -71,6 +72,7 @@ import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-ho
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
 import {createDesktopProactiveContextPorts} from './proactive-context-ports.js';
@@ -112,7 +114,7 @@ import {createDeveloperSettingsHost} from './developer-settings-host.js';
 import {developerSettingsError,developerSettingsErrorResponse} from '../shared/developer-settings-diagnostics.js';
 import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
-import {createDesktopMailAnalysisHost} from './mail-analysis-host.js';
+import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
@@ -248,6 +250,9 @@ const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
 const notifications = new Map();
 let runtimeApplication;
+// The public-reference consent belongs to one Runtime instance. It is bound after the
+// Runtime is created; capturing it earlier left every native export preflight denied.
+let referenceApplication;
 let authorizationQuestionHost;
 let nativeExecutionHost,localAuthorizationOnly=false;
 let authorizationIntentHost;
@@ -371,6 +376,7 @@ let localServicesStopping = false;
 let localServicesStopped = false;
 let nextMailRefresh = 0;
 let activeConnectorMailRead;
+let mailMonitorRequest,mailMonitorStarting;
 let manualMailReadConversationId;
 const connectorMailReadOrigin=createConnectorReadOrigin({getApplication:()=>runtimeApplication,
   // Binding an independently approved conversation read must not require the
@@ -380,11 +386,20 @@ const connectorMailReadOrigin=createConnectorReadOrigin({getApplication:()=>runt
 function mailSnapshot() {
   const config = mailConfig?.snapshot() ?? {configured:false, status:'unconfigured', sessionAllowed:false};
   const host = mailHost?.snapshot();
-  return {...host, ...config, status:host?.status === 'stop_unconfirmed' ? 'stop_unconfirmed'
-    : mailFailure ? 'unavailable' : config.sessionAllowed ? host?.status ?? config.status : config.status,
-    counts:host?.counts, analyses:mailAnalysisHost?.snapshot(), localModelReady:localLaya?.snapshot().ready === true,
-    reason:host?.status === 'stop_unconfirmed' ? '已撤销新读取；现有邮箱连接退出尚未确认'
-      : mailFailure || (config.sessionAllowed ? host?.reason ?? config.reason : config.reason)};
+  const analyses=mailAnalysisHost?.snapshot();
+  const watches=connectorWatchHost?.snapshot().watches?.filter(watch=>watch.source==='mail')??[];
+  const watch=watches.find(item=>item.enabled)??watches.at(-1);
+  let monitoring=watch?{...watch}:{state:'stopped',enabled:false};
+  if(mailMonitorRequest)try{
+    const task=runtimeApplication.runtime.getTask(mailMonitorRequest.taskId);
+    if(!watch?.enabled||task.state!=='succeeded')monitoring={...monitoring,taskId:task.taskId,
+      state:task.state==='succeeded'?monitoring.state:task.state,errorCode:task.error?.code};
+  }catch{}
+  if(mailMonitorStarting)monitoring={...monitoring,state:'starting'};
+  return {...host, ...config, ...projectMailStatus(config,host,mailFailure),
+    cloudAnalysisAllowed:analyses?.enabled===true,
+    counts:host?.counts, analyses, monitoring, localModelReady:localLaya?.snapshot().ready === true,
+  };
 }
 
 function readConnectorSourceAuthorization(source) {
@@ -621,7 +636,7 @@ function agentArtsSnapshot() {
   return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason};
 }
 
-function visibleConversationTask(task,surface){return !surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface);}
+function visibleConversationTask(task,surface){return !(task.goal?.startsWith('判断是否告知用户：')&&connectorChangeHost?.ownsDecisionTask(task.taskId))&&(!surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface));}
 function snapshot(surface) {
   const cloudSettings=agentArtsSnapshot();
   const authorizationQuestions=authorizationQuestionHost?.snapshot(surface?conversations?.activeConversationId(surface):undefined)??[];
@@ -1850,11 +1865,13 @@ async function initializeRuntime() {
         isConversationAllowed:(id,taskId)=>conversationToolAccess.isConversationAllowed(id,taskId),
         resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
       if(!syntheticMvp)connectorWatchHost=createDesktopConnectorWatchHost({getApplication:()=>runtimeApplication,
-        namespace,readSourceAuthorization:readConnectorSourceAuthorization,
+        namespace,question:authorizationQuestionPort,readSourceAuthorization:readConnectorSourceAuthorization,
         resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId),
+        isUserConversation:id=>conversations?.containsConversation(id)===true,
         startMailRead:input=>{
           if(!readConnectorSourceAuthorization('mail').available)return false;
-          if(!['ready','complete'].includes(mailHost.snapshot().status))return false;
+          if(!localLaya?.snapshot().ready)return false;
+          if(!['ready','complete','disabled','failed','resync_required'].includes(mailHost.snapshot().status))return false;
           const token={watchId:input.watchId,commandId:input.commandId,sessionId:randomUUID()};
           activeConnectorMailRead=token;
           try {mailHost.startBatch({expiresAt:input.expiresAt});return {sessionId:token.sessionId};}
@@ -1945,7 +1962,6 @@ async function initializeRuntime() {
       }
       const publicReferenceModule=await import('@personal-agent/mcp');
       publicReferenceConsent?.close();
-      const referenceApplication=runtimeApplication;
       const confirmPublicReference=createPublicReferenceQuestionConsent({question:authorizationQuestionPort,confirmApplicationAuthorization,
         readMcpDescriptor:()=>referenceHost?.tools?.[0]?.descriptor,readSkillManifest:()=>runtimeApplication?.referenceSkillSnapshot().manifest,
         bindOriginalReference:request=>{
@@ -2312,7 +2328,17 @@ async function initializeRuntime() {
           if (!mailAnalysisHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-mail-analysis:')) {
             throw Error('邮件分析宿主尚未就绪');
           }
-          mailAnalysisHost?.assertCloudSend(request);
+          mailAnalysisHost?.assertCloudSend?.(request);
+        },
+        mailReview:{
+          readEnvelope:(binding,context)=>{
+            if(!mailAnalysisHost)throw Error('邮件云复核宿主尚未就绪');
+            return mailAnalysisHost.readEnvelope(binding,context);
+          },
+          assertExport:(binding,envelope,context)=>{
+            if(!mailAnalysisHost)throw Error('邮件云复核宿主尚未就绪');
+            mailAnalysisHost.assertExport(binding,envelope,context);
+          },
         },
         tools: conversationTools,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
@@ -2320,14 +2346,16 @@ async function initializeRuntime() {
           authorizationIntentHost.prepareQuestion(scope);
           calendarMeetingHost?.prepareAuthorization?.(scope);
           mailHost?.prepareAuthorization?.(scope);
+          mailAnalysisHost?.prepareAuthorization?.(scope);
           codingWorkspace?.prepareAuthorization?.(scope);
           knowledgeSourceConfig?.prepareAuthorization?.(scope);
           notificationApplicationHost?.prepareAuthorization?.(scope);
+          connectorWatchHost?.prepareAuthorization?.(scope);
           return nativeExecutionHost.prepare(scope,{forTaskConsent:authorizationQuestionHost.requiresNativeForAuthorization(scope)})
             .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
-          ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='notifications.interruption_policy.set'
+          ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
@@ -2410,6 +2438,7 @@ async function initializeRuntime() {
       windowsControlHost?.bind(runtimeApplication);
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
+      referenceApplication=runtimeApplication;
       const cloudSkillSelector=referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
       runtimeApplication.configureCloudSkillSelection({
         cloudSkillCatalog:input=>referenceHost.cloudSkillCatalog(input),
@@ -2537,12 +2566,16 @@ async function initializeRuntime() {
     ? 'Fake Runtime · 联调模式'
     : competitionMode ? '本地 Runtime · AgentArts Competition' : '本地 Runtime · 已连接';
   eventCursor = new EventCursor('tasks');
-  if (competitionMode && mailHost) mailAnalysisHost = createDesktopMailAnalysisHost({
-    application:runtimeApplication,client,mail:mailHost,config:mailConfig,namespace:desktopHost.userNamespace,
-    onUpdate:publish,onTask:({taskId,goal})=>{
-      if (!conversations.turns.has(taskId)) conversations.add(taskId,'panel',goal);
-      rememberTaskGoal(taskId,goal);
-    },
+  if (competitionMode && mailHost) mailAnalysisHost = createDesktopMailReviewHost({
+    getApplication:()=>runtimeApplication,mail:mailHost,question:authorizationQuestionPort,
+    readConfigurationRef:()=>mailHost?mailConfig?.reviewConfigurationRef(runtimeApplication?.coordinationConfigurationRef):undefined,
+    labelKeys:['meeting','work','subscription','transaction','personal','other'],
+    getNotifications:()=>notificationApplicationHost,namespace:desktopHost.userNamespace,
+    confirmConsent:request=>confirmApplicationAuthorization('mail.review.configure',request.payload??request,{
+      scope:request.scope??{kind:'mail-headers',policy:'new-ambiguous-only'},
+      summary:request.summary??'允许选定测试信及之后新增的模糊邮件信头交给当前云端模型复核；不含正文，不上传历史积压，不发送或修改邮件。',
+      deadline:request.deadline,signal:request.signal,isCurrent:request.isCurrent,
+    }),onUpdate:publish,
   });
   await syncCapabilities();
   await syncRuntimeSnapshots();
@@ -2563,10 +2596,7 @@ async function initializeRuntime() {
       ??connectorMailReadOrigin.read(taskId)?.conversationId,
     readOriginalSourceBinding:taskId=>connectorMailReadOrigin.read(taskId),
     readWatchOrigin:taskId=>connectorWatchHost?.readOrigin(taskId),
-    onDecisionTask:({taskId,goal,conversationId})=>{
-      if(!conversations.turns.has(taskId))conversations.add(taskId,'panel',goal,conversationId);
-      rememberTaskGoal(taskId,goal);void refresh(taskId).then(publish).catch(()=>{});
-    },onUpdate:publish});
+    onUpdate:publish});
   if(competitionMode && memoryLearningHost && proactiveHost) {
     const publicErasure=proactiveHost.createPublicFactErasureApplication({confirm:async ref=>{
       return confirmApplicationAuthorization('facts.erase',ref,{scope:{id:ref.id,revision:ref.revision},
@@ -3275,13 +3305,45 @@ async function action(event, name, payload) {
       return result;
     }
   }
-  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.enableCloud','mail.disableCloud'].includes(name)) {
+  if (['mail.configure','mail.enable','mail.read','mail.disable','mail.review.configure','mail.disableCloud','mail.monitor.start','mail.monitor.stop'].includes(name)) {
     if (sender !== admin || !competitionMode || !mailConfig || !localLaya) throw Error('此操作仅允许从本项目设置调用');
+    if(name==='mail.monitor.start'||name==='mail.monitor.stop') {
+      if(payload!==undefined||!mailHost||!connectorWatchHost||!runtimeApplication)throw Error('邮件监测尚未就绪，请先保存邮箱配置');
+      if(mailConfig.snapshot().requiresRestart)throw Error('邮箱配置已保存，请重启应用使新配置生效');
+      const origin=admin,application=runtimeApplication,host=connectorWatchHost;
+      const conversationId=conversations.activeConversationId('panel');
+      const isCurrent=()=>admin===origin&&!origin.isDestroyed()&&runtimeApplication===application&&connectorWatchHost===host;
+      if(name==='mail.monitor.stop') {
+        mailMonitorRequest=host.requestFromSettings('stop',{conversationId,isCurrent});publish();return mailSnapshot();
+      }
+      if(mailMonitorStarting){await mailMonitorStarting;return mailSnapshot();}
+      mailMonitorStarting=(async()=>{
+        mailFailure='';localServicesStopped=false;
+        const model=localLaya.snapshot().ready?localLaya.snapshot():await localLaya.start();
+        if(!isCurrent())throw Error('设置窗口已关闭，请重新启动监测');
+        if(!model.ready&&model.state!=='ready')throw Error(model.reason||'本地分类模型未启动，邮件监测尚未开始');
+        const notificationScope={kind:'connector',connectorId:'mail'},policy=notificationApplicationHost?.getInterruptionPolicy(notificationScope);
+        if(!policy)throw Error('通知服务尚未就绪，邮件监测尚未开始');
+        if(!policy.effective){
+          const configured=await notificationApplicationHost.configureSettings({operationId:randomUUID(),scope:notificationScope,
+            expectedRevision:policy.revision,patch:{...defaultNotificationSettings}},{isCurrent});
+          if(configured.state!=='confirmed')throw Error('提醒设置尚未确认，请查看主对话授权卡后再启动监测');
+        }
+        if(mailHost.snapshot().status==='classification_unavailable')mailHost.retryClassification();
+        await host.tick();
+        mailMonitorRequest=host.requestFromSettings('start',{conversationId,isCurrent});
+        return mailSnapshot();
+      })().catch(error=>{mailFailure=error.message;throw error;}).finally(()=>{mailMonitorStarting=undefined;publish();});
+      publish();await mailMonitorStarting;return mailSnapshot();
+    }
     if (name === 'mail.configure') {await mailConfig.configure(payload); mailFailure = '';}
     if (name === 'mail.enable') mailConfig.enableSession(payload);
     if (name === 'mail.disable') await mailConfig.revoke();
-    if (name === 'mail.enableCloud') mailConfig.enableCloudAnalysis(payload);
-    if (name === 'mail.disableCloud') await mailConfig.revokeCloudAnalysis();
+    if (name === 'mail.review.configure') {
+      if(!mailAnalysisHost)throw Error('邮件云复核宿主尚未就绪');
+      await mailAnalysisHost.configure(payload??{enabled:true});
+    }
+    if (name === 'mail.disableCloud') {await mailAnalysisHost?.revoke();await mailConfig.revokeCloudAnalysis();}
     if (name === 'mail.read') {
       if (!mailHost || mailConfig.snapshot().requiresRestart) throw Error('邮箱配置将在下次启动应用时接入');
       if (!localLaya.snapshot().ready) throw Error('请先启动本地 Laya');
@@ -4293,7 +4355,8 @@ app.whenReady().then(async () => {
       if (!localServicesStopping) {
         localServicesStopping = true;
         void (async () => {
-          await mailConfig?.revoke();
+          await mailAnalysisHost?.close();
+          await mailConfig?.releaseSession();
           const result = await localLaya?.stop();
           if (result?.state === 'stop_unconfirmed') throw Error('本地模型退出尚未确认');
           localServicesStopped = true; app.quit();

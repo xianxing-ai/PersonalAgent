@@ -183,6 +183,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     // A saved continuation has already consumed this exact export. Its final send
     // guard reads the original confirmed result; it must not reopen tool execution.
     if(existing?.consumers.has(requirementId)&&existing.request.requirements.some(item=>item.requirementId===requirementId&&item.kind==='export')
+      &&getApplication().runtime.getTask(scope.taskId).state!=='running'
       &&scope.deadline===existing.request.deadline&&!scope.signal?.aborted){
       service().assertConsumedResult(existing.receipt,existing.request,requirementId,consumerId);return true;
     }

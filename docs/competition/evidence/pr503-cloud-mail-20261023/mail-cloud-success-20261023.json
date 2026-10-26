@@ -1,0 +1,56 @@
+{
+  "observedAt": "2026-10-23T10:10:47.660Z",
+  "profile": "huawei_ict_agentarts",
+  "formalDesktop": true,
+  "realCloud": true,
+  "source": "Three explicitly selected public test messages already received by the formal mailbox pipeline",
+  "bodiesRead": false,
+  "privateHeadersIncludedInEvidence": false,
+  "historicalBacklogAutomaticallyExported": false,
+  "tests": [
+    {
+      "testNumber": 1,
+      "taskId": "6c34969a-f4db-4a6b-bd23-1db66e496045",
+      "runtimeState": "succeeded",
+      "hostState": "applied",
+      "expectedLabel": "subscription",
+      "actualLabel": "subscription",
+      "impact": "routine",
+      "notificationRecommendation": "none",
+      "reasonCode": "newsletter",
+      "persistedAt": "2026-10-23T10:05:29.427Z"
+    },
+    {
+      "testNumber": 2,
+      "taskId": "b1141468-9fdf-47f2-b7ad-79899d97722b",
+      "runtimeState": "succeeded",
+      "hostState": "applied",
+      "expectedLabel": "transaction",
+      "actualLabel": "transaction",
+      "impact": "routine",
+      "notificationRecommendation": "none",
+      "reasonCode": "transaction",
+      "persistedAt": "2026-10-23T10:05:45.517Z"
+    },
+    {
+      "testNumber": 3,
+      "taskId": "292d76ac-b76c-4ef9-ad87-8f63a374164e",
+      "runtimeState": "succeeded",
+      "hostState": "applied",
+      "expectedLabel": "subscription",
+      "actualLabel": "subscription",
+      "impact": "routine",
+      "notificationRecommendation": "none",
+      "reasonCode": "newsletter",
+      "persistedAt": "2026-10-23T10:06:07.216Z"
+    }
+  ],
+  "verification": {
+    "runtimeDatabaseReadback": "passed",
+    "encryptedClassificationStoreReadback": "passed",
+    "originalLocalClassification": "Preserved label=null and route=review; separate cloudReview contains the effective result",
+    "positiveNativeNotification": "not_run",
+    "positiveNotificationBlocker": "New public meeting-change test sent; Laya stopped and available memory below its existing 2 GiB start threshold",
+    "historicalFailures": "Preserved in original task records and mail-cloud-repair-20261023.json; not relabeled as successes"
+  }
+}

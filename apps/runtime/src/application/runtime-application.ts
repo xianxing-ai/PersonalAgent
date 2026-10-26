@@ -45,6 +45,7 @@ import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateR
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
+import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt} from './coordination.js';
 import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
 import type {LocalRepairHostOptions, SubmitLocalRepairRequest} from './local-repair.js';
 import {isDeepStrictEqual} from 'node:util';
@@ -98,6 +99,8 @@ import type {RuntimeOwnedWorkflowHostOptions, RuntimeWorkflowShadowReleaseOption
 import {createRuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import type {RuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import {createRuntimeProactiveDecisionTools} from './proactive-decision-tools.js';
+import {createRuntimeMailReviewTool,MAIL_REVIEW_TOOL,MAIL_REVIEW_RESULT} from './mail-review-task.js';
+import type {RuntimeMailReviewOptions,MailReviewEnvelope} from './mail-review-task.js';
 type SuccessfulResponse = Extract<Response, {outcome: 'ok'}>;
 interface ProactiveTeacherScope {
   taskId:string;runId:string;authorizationRef:string;checkpointKey:string;leaseKey:string;
@@ -359,6 +362,7 @@ export interface ThinkingState extends ThinkingConfig {
 }
 
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
+  mailReview?:RuntimeMailReviewOptions;
   retainPriorToolResults?:boolean;
   /** Competition user submissions must execute in a durable child; the root only dispatches and summarizes. */
   delegateUserTasks?: true;
@@ -510,6 +514,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     requestContextReader?:CoordinationInputHooks['readRequestContext']}>();
   private readonly teacherRequestScopes=new WeakMap<CoordinationRequest,ProactiveTeacherScope>();
   private readonly teacherLeases=new Map<string,ProactiveTeacherScope>();
+  private readonly mailReviewSends=new Map<string,{request:CoordinationRequest;context:ToolContext;envelope:MailReviewEnvelope;options:RuntimeMailReviewOptions}>();
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
   private readonly competitionToolExports: readonly CompetitionToolExport[];
   private readonly retainPriorToolResults:boolean;
@@ -536,7 +541,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly knowledgeWriteReconciliation?: KnowledgeWriteReconciliationAdapter;
 
   constructor(options: RuntimeApplicationOptions) {
-    this.hostOnlyToolNames=new Set(options.hostOnlyTools??[]);
+    if(options.mailReview&&(options.profile!=='huawei_ict_agentarts'||!options.coordination))
+      throw new ProtocolError('INVALID_ARGUMENT','Mail review requires Competition coordination');
+    this.hostOnlyToolNames=new Set([...(options.hostOnlyTools??[]),...(options.mailReview?[MAIL_REVIEW_TOOL]:[])]);
     this.hasToolAuthorizationHost=typeof options.requestToolAuthorization==='function';
     if (options.delegateUserTasks !== undefined && (options.delegateUserTasks !== true || options.profile !== 'huawei_ict_agentarts')) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Required user delegation needs Competition Profile');
@@ -690,7 +697,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       configurationRef:this.coordinationBinding,readConfiguration:()=>this.readDeveloperHarnessConfiguration!(),
       now:()=>this.now().getTime()} : undefined;
     const harnessTool = harnessHost ? createRuntimeDeveloperHarnessTool(harnessHost) : undefined;
-    const configuredTools = [...(options.tools ?? []),...(harnessTool?[harnessTool]:[]),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
+    const configuredTools = [...(options.tools ?? []),...(options.mailReview?[createRuntimeMailReviewTool(options.mailReview,{
+      revision:taskId=>this.runtime.getTask(taskId).revision,
+      exchange:(request,context,envelope)=>this.executeMailReview(options,request,context,envelope),
+      save:(taskId,binding,result)=>{if(!this.runtime.saveCheckpointOnce(taskId,MAIL_REVIEW_RESULT,{binding,result}))
+        throw new ProtocolError('RESULT_UNKNOWN','Original mail review already has a result');
+        consumeCompetitionCloudReceipt(this.runtime,taskId);}
+    })]:[]),...(harnessTool?[harnessTool]:[]),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
       ...(options.proactiveDecision?.localChooser&&!options.tools?.some(tool=>tool.descriptor.name==='decision.choose_candidate')
         ?[createRuntimeCodingDecisionTool({localChooser:options.proactiveDecision.localChooser,
           save:(key,receipt)=>{
@@ -719,7 +732,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             .then(()=>this.refreshSubagentParent(taskId)).catch(()=>{});
         }
       },
-      ...(options.tools || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
+      ...(options.tools || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           this.harnessExperienceRecipes(request.taskId,{
             deadline:this.runtime.loadCheckpoint(request.taskId,'application-deadline') as string,
@@ -833,7 +846,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const current=currentDescriptors();
         const tool = current.find(item => item.name === invocation.toolName && item.version === invocation.toolVersion);
         if (!tool) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Tool is not registered');
-        if(options.hostOnlyTools?.includes(tool.name)){
+        if(this.hostOnlyToolNames.has(tool.name)){
           const intent=this.runtime.loadCheckpoint(invocation.taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
           if(!this.hostUserNamespace||!intent||intent.namespace!==this.hostUserNamespace||intent.toolName!==tool.name
             ||intent.toolVersion!==tool.version||intent.argumentsDigest!==toolArgumentsDigest(invocation.arguments)
@@ -927,7 +940,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
               deadline:invocation.deadline,signal:invocation.signal});
           }catch(error){
             this.runtime.expirePendingApprovals();
-            this.runtime.invalidatePendingApproval(ref,invocation.signal.aborted?'cancelled':'stale');
+            this.runtime.invalidatePendingApproval(ref,invocation.signal.aborted?'cancelled':'stale',error);
             throw error;
           }
           const pending=this.readPendingToolInvocation(invocation.taskId,ref);
@@ -1310,13 +1323,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   readAuthorizationQuestionBinding(input:Omit<AuthorizationQuestionRequest,'signal'>):{conversationId:string;digest:string}|undefined {
-    const original=this.readAuthorizationQuestionInvocation(input.taskId,input.runId);
+    const original=this.readAuthorizationQuestionInvocation(input.taskId,input.runId)||this.readAuthorizationQuestionInvocation(input.taskId,input.runId,true);
     if(!original||['proposalId','runId','toolName','toolVersion','argumentsDigest','deadline'].some(key=>
       original[key as keyof typeof original]!==input[key as keyof typeof input]))return undefined;
     const conversationId=this.readToolConversation(input.taskId)??this.runtime.getTask(input.taskId).conversationId;
     if(!conversationId)return undefined;
     const toolRequirement=input.requirements.find(item=>item.kind==='tool');
     if(toolRequirement&&!isDeepStrictEqual([...toolRequirement.scopes].sort(),[...original.scopes].sort()))return undefined;
+    const anchor=this.runtime.loadCheckpoint(input.taskId,'authorization-question-binding:'+input.runId) as
+      {binding:{conversationId:string;digest:string};proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;deadline:string}|undefined;
+    if(anchor&&!['proposalId','runId','toolName','toolVersion','argumentsDigest','deadline'].some(key=>
+      anchor[key as keyof typeof anchor]!==input[key as keyof typeof input]))return structuredClone(anchor.binding);
     const loop=this.runtime.loadCheckpoint(input.taskId,'competition-loop') as {pendingRevision?:number};
     return {conversationId,digest:hashJson({conversationId,taskId:input.taskId,proposalId:original.proposalId,
       runId:original.runId,toolName:original.toolName,toolVersion:original.toolVersion,argumentsDigest:original.argumentsDigest,
@@ -1793,6 +1810,64 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     });
     if(matches.length>1)throw new ProtocolError('UNAUTHORIZED','Proactive teacher request copy is ambiguous');
     const scope=matches[0];if(scope)this.teacherRequestScopes.set(request,scope);return scope;
+  }
+
+  private assertMailReviewSend(request:CoordinationRequest):void {
+    const scope=this.mailReviewSends.get(request.taskId);
+    if(!scope||request.textOnly!==true||request.availableTools!==undefined||request.continuation!==undefined
+      ||request.priorContinuations!==undefined||request.goal!==scope.request.goal||request.deadline!==scope.context.deadline
+      ||request.revision!==scope.request.revision||scope.context.signal.aborted)
+      throw new ProtocolError('UNAUTHORIZED','Original mail review send lease is unavailable');
+    this.assertCompetitionTaskConfiguration(request.taskId);this.assertInputActive(request);
+    const {context,envelope,options}=scope;
+    const record=this.runtime.readToolExecutions(request.taskId).find(item=>item.evidenceId===context.runId);
+    const grant=this.runtime.policy.get(context.authorizationRef);
+    if(!record||record.toolName!==MAIL_REVIEW_TOOL||record.state!=='started'||!record.executionStarted||record.policyDecision!=='allow'
+      ||!grant||grant.taskId!==request.taskId||grant.toolName!==MAIL_REVIEW_TOOL||!grant.scopes.includes('mail:review')
+      ||Date.parse(grant.expiresAt)<=this.now().getTime()
+      ||grant.argumentsDigest!==toolArgumentsDigest(envelope.binding)
+      ||!this.runtime.matchesToolExecutionInput(record,{arguments:{...envelope.binding},scopeRef:context.authorizationRef}))
+      throw new ProtocolError('UNAUTHORIZED','Original mail review Gateway authorization changed');
+    const guarded:unknown=options.assertExport(envelope.binding,envelope,context);
+    if(guarded!==undefined){void Promise.resolve(guarded).catch(()=>undefined);
+      throw new ProtocolError('UNAUTHORIZED','Mail review export guard must be synchronous');}
+  }
+
+  private async executeMailReview(options:RuntimeApplicationOptions,request:CoordinationRequest,context:ToolContext,envelope:MailReviewEnvelope) {
+    if(this.profile!=='huawei_ict_agentarts'||!options.coordination||!options.mailReview)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Mail review requires the original Competition coordinator');
+    if(this.mailReviewSends.has(request.taskId))throw new ProtocolError('RESULT_UNKNOWN','Mail review is already active');
+    this.assertCompetitionTaskConfiguration(request.taskId,true);
+    const scope={request,context,envelope,options:options.mailReview};this.mailReviewSends.set(request.taskId,scope);
+    try {
+      this.assertMailReviewSend(request);
+      // This host task has one text-only cloud exchange. Persist the same dispatch
+      // facts as ordinary Competition tasks before the real WSS send callback.
+      for(const [key,value] of [['application-profile',this.profile],['application-deadline',context.deadline],
+        ['competition-max-steps',1]] as const) {
+        if(!this.runtime.saveCheckpointOnce(request.taskId,key,value)
+          &&!isDeepStrictEqual(this.runtime.loadCheckpoint(request.taskId,key),value))
+          throw new ProtocolError('REVISION_CONFLICT','Original mail review dispatch context changed');
+      }
+      const attempt={version:1,binding:envelope.binding,goalDigest:createHash('sha256').update(request.goal).digest('hex'),
+        deadline:context.deadline,configurationRef:this.coordinationBinding};
+      if(!this.runtime.saveCheckpointOnce(request.taskId,'mail-review-attempt:v1',attempt))
+        throw new ProtocolError('RESULT_UNKNOWN','Original mail review attempt requires readback; it cannot be resent');
+      const result=await options.coordination.execute(request);
+      this.assertMailReviewSend(request);return result;
+    } catch(error) {
+      this.runtime.saveCheckpoint(request.taskId,'competition-coordination-failure',coordinationFailureDiagnostic(error,false));
+      if(error instanceof AgentArtsTerminalError
+        &&isDeepStrictEqual(this.runtime.loadCheckpoint(request.taskId,'competition-cloud-inflight'),error.receipt)
+        &&isDeepStrictEqual(this.runtime.loadCheckpoint(request.taskId,'competition-cloud-received'),error.receipt))
+        this.runtime.saveCheckpoint(request.taskId,'competition-cloud-terminal-error',
+          {version:'1.0',kind:'wss_terminal_error',receipt:{...error.receipt}});
+      if(error instanceof AgentArtsResultUnknownError) {
+        markCompetitionCloudUnknown(this.runtime,request.taskId,error.receipt);
+        throw new ProtocolError('RESULT_UNKNOWN','Original mail review requires cloud readback');
+      }
+      throw error;
+    } finally {if(this.mailReviewSends.get(request.taskId)===scope)this.mailReviewSends.delete(request.taskId);}
   }
 
   private async executeProactiveTeacher(port:CoordinationPort,request:CoordinationRequest,context:ToolContext) {
@@ -3618,6 +3693,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Host-only real-adapter guard; never exposed as a wire or Renderer operation. */
   assertCompetitionExportAllowed(request: CoordinationRequest): void {
+    if(this.mailReviewSends.has(request.taskId)) {this.assertMailReviewSend(request);return;}
+    const hostIntent=this.runtime.loadCheckpoint(request.taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+    if(hostIntent?.toolName===MAIL_REVIEW_TOOL)throw new ProtocolError('UNAUTHORIZED','Original mail review send lease is unavailable');
     const teacherScope=this.teacherScopeFor(request),leaseKey=teacherScope?.leaseKey??request.taskId,
       checkpointKey=teacherScope?.checkpointKey??COMPETITION_CONTEXT_CHECKPOINT;
     if(teacherScope)this.assertTeacherScope(request,teacherScope);

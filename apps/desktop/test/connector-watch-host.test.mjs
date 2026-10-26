@@ -13,7 +13,7 @@ import {createDesktopConnectorWatchHost} from '../electron/connector-watch-host.
 const namespace='fixture-watch-user';
 async function idle(app){for(let i=0;app.activeTaskCount&&i<1000;i++)await new Promise(resolve=>setTimeout(resolve,5));
   assert.equal(app.activeTaskCount,0);}
-async function fixture(t,{unknown=false,mailCallbacks={},nativeMail=false}={}){
+async function fixture(t,{unknown=false,mailCallbacks={},nativeMail=false,question,authorize}={}){
   const base=new URL('../../../.cache/connector-watch-tests/',import.meta.url);mkdirSync(base,{recursive:true});
   const directory=mkdtempSync(new URL('run-',base)),file=path.join(directory,'runtime.sqlite');
   let app,host,time=Date.now(),configurationRef='synthetic-private-config',available=true;
@@ -26,9 +26,11 @@ async function fixture(t,{unknown=false,mailCallbacks={},nativeMail=false}={}){
   const resolve=id=>{try{const task=app.runtime.getTask(id);return task.conversationId.startsWith('desktop:')?task.conversationId:undefined;}catch{return undefined;}};
   function open(){
     host=createDesktopConnectorWatchHost({getApplication:()=>app,namespace,now:()=>time,resolveUserConversation:resolve,
+      isUserConversation:id=>id.startsWith('desktop:'),question,
       readSourceAuthorization:()=>({available,configurationRef}),observeTask:id=>observations.push(id),...mailCallbacks});
     app=createRuntimeApplication({path:file,profile:'huawei_ict_agentarts',hostUserNamespace:namespace,
-      now:()=>new Date(time),tools:[weather,...(nativeMail?[mail]:[]),...host.tools]});
+      now:()=>new Date(time),tools:[weather,...(nativeMail?[mail]:[]),...host.tools],
+      ...(authorize?{requestToolAuthorization:scope=>{host.prepareAuthorization(scope);return authorize(scope);}}:{})});
   }
   async function close(){await host.close();await idle(app);app.close();}
   open();t.after(close);
@@ -79,6 +81,58 @@ test('approved exact watch uses original Scheduler and ToolGateway; catalogue/li
     .project({result:listed.result.result});
   assert.doesNotMatch(JSON.stringify([projected,f.host.snapshot(),f.host.tools.map(tool=>tool.descriptor)]),/synthetic-private|authorizationRef|configurationRef/);
   assert.match(f.host.tools[0].descriptor.inputSchema.description,/Laya/);
+});
+
+test('omitted monitoring parameters use stable host defaults and retain original approved arguments',async t=>{
+  const f=await fixture(t,{mailCallbacks:{startMailRead:()=>({sessionId:'defaults'}),
+    readMailStatus:()=>({sessionId:'defaults',state:'complete'}),stopMailRead:()=>{}}});
+  const started=await f.invoke('start',{source:'mail'});assert.equal(started.result.state,'confirmed');
+  const watch=f.saved().value.watches[started.result.result.watchId];
+  assert.deepEqual(watch.approvedInput,{source:'mail'});assert.equal(watch.input.intervalMs,120000);
+  await f.host.tick();await f.host.tick();assert.equal(f.host.snapshot().watches[0].state,'monitoring');
+  f.mutate(value=>{value.watches[watch.id].input.expiresAt=new Date(Date.parse(watch.input.expiresAt)+1000).toISOString();});
+  await f.host.tick();assert.equal(f.host.snapshot().errorCode,'RESULT_UNKNOWN','receipt binds the effective default deadline');
+});
+
+test('mail read failure terminates monitoring instead of leaving a permanent reading status',async t=>{
+  let stops=0;const f=await fixture(t,{mailCallbacks:{startMailRead:()=>({sessionId:'failed-read'}),
+    readMailStatus:()=>({sessionId:'failed-read',state:'failed'}),stopMailRead:()=>{stops++;}}});
+  await f.invoke('start',{source:'mail'});await f.host.tick();await f.host.tick();
+  const watch=f.host.snapshot().watches[0];assert.equal(watch.state,'failed');assert.equal(watch.enabled,false);
+  assert.equal(watch.errorCode,'EXTERNAL_FAILURE');assert.equal(stops,1);
+});
+
+test('settings start binds a native Runtime approval once and stop uses the original watch',async t=>{
+  let reads=0;const f=await fixture(t,{mailCallbacks:{startMailRead:()=>{reads++;return {sessionId:'settings'};},
+    readMailStatus:()=>({sessionId:'settings',state:'complete'}),stopMailRead:()=>{}}});
+  const input={conversationId:'desktop:main'},first=f.host.requestFromSettings('start',input);
+  const repeated=f.host.requestFromSettings('start',input);assert.equal(first.taskId,repeated.taskId);
+  assert.equal(f.host.resolveUserConversation(first.taskId),'desktop:main','the original settings task exposes its bound conversation for the approval card');
+  await idle(f.app);assert.equal(f.app.runtime.getTask(first.taskId).state,'waiting_approval');assert.equal(reads,0);
+  const client=new Client(f.app);await client.connect();
+  const approval=f.app.readHostToolTask(first.taskId).approval;
+  await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+  await idle(f.app);const started=f.app.readHostToolTask(first.taskId);assert.equal(started.task.state,'succeeded');
+  assert.ok(started.confirmed);await f.host.tick();assert.equal(reads,1);
+  assert.equal(f.host.requestFromSettings('start',{conversationId:'desktop:another'}).watchId,started.confirmed.result.watchId);
+  const stopped=f.host.requestFromSettings('stop',{conversationId:'desktop:another'});await idle(f.app);
+  const stopApproval=f.app.readHostToolTask(stopped.taskId).approval;
+  await client.call('authorization.respond',{approvalId:stopApproval.approvalId,expectedRevision:stopApproval.revision,decision:'allow_once'});
+  await idle(f.app);assert.equal(f.app.readHostToolTask(stopped.taskId).task.state,'succeeded');
+  assert.equal(f.host.snapshot().watches[0].enabled,false);
+});
+
+test('closing the originating settings window before approval cannot start monitoring',async t=>{
+  let current=true,reads=0,prepared,decide;
+  const f=await fixture(t,{question:{prepare:(_scope,value)=>{prepared=value;}},
+    authorize:()=>new Promise(resolve=>{decide=()=>resolve(prepared.assertCurrent()?'allow_once':'deny');}),
+    mailCallbacks:{startMailRead:()=>{reads++;return {sessionId:'closed'};}}});
+  const first=f.host.requestFromSettings('start',{conversationId:'desktop:main',isCurrent:()=>current});
+  for(let i=0;!decide&&i<100;i++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert.ok(decide);assert.equal(prepared.assertCurrent(),true);current=false;decide();
+  await idle(f.app);await f.host.tick();
+  assert.equal(f.host.snapshot().watches.length,0);assert.equal(reads,0);
+  assert.equal(f.app.readHostToolTask(first.taskId).task.state,'cancelled','denied authorization settles before any tool execution');
 });
 
 for(const crashAt of ['pending','intent'])test('restart resumes the same prepared read after '+crashAt+' save without duplicate grant or I/O',async t=>{

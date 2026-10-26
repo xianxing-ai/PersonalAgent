@@ -11,6 +11,20 @@ ModelGateway 的可选 host-only `RealtimeSession.speakText(text)` 由用户已�
 Desktop 提供明确保存的推荐预算；出机确认、原数据与工具 continuation 保留。无 Core wire、Schema 或数据库迁移。
 实现、失效规则与未验证边界见 [会话压缩说明](../modules/HARNESS_CONTEXT_COMPACTION_20261020.md)。
 
+## 2026-10-23 缓存邮件信头云端复核（provisional）
+
+Competition Profile 新增受信宿主专用 `mail.review@1.0.0`（`mail:review`），经原 `submitHostToolTask`、Policy 和 ToolGateway 执行；不加入云端业务工具目录。`RuntimeApplicationOptions.mailReview.readEnvelope/assertExport` 仅提供精确绑定的信头投影与同步出机校验。原提问卡分别绑定来源许可、所选模型目的地与固定投影，并在实际发送及返回时校验取消、期限、来源与撤销。
+
+`QQMailTriageHost` 与 Inbox pipeline 新增四个仅供受信宿主调用的缓存端口：`pendingReviewAnalyses(context, filter?)`、`readReviewAnalysis(workKey, context)`、`confirmCachedAnalysisAccepted(binding, context)`、`applyCachedAnalysisReview({...binding, review}, context)`。它们复用原持久分类回执，不要求正在运行的本地 Laya 或分页批次，仍校验邮箱读取许可、原来源修订、分类器指纹、receipt、projection digest 和任务绑定；缓存可读不等于获准出机。Desktop 沿用设置 IPC 接入 `mail.review.configure` 配置动作，缓存端口不暴露给 Renderer；没有新增 Core wire API 或数据库迁移。
+
+默认仅处理启用后首次可信观察的新模糊邮件，历史邮件须明确选择四字段绑定；`firstObservedAt` 不因重读、换分类器或重新分类刷新，旧记录缺少首次观察依据时保持未知，不自动补为当前时间。云端只接收信头及固定标签，禁止正文、业务工具和对话续轮；仅精确固定 JSON 可进入原成功任务的结果 checkpoint，再应用为独立 `cloudReview/effectiveClassification`，保留原 Laya 结论。发送前持久化 attempt，失败、未知或重启不自动重发。
+
+正常退出通过仅供 Main 调用的 `mailConfig.releaseSession()` 释放本地读取许可、批次和 generation，保留云复核配置偏好。`reviewConfigurationRef(destination)` 绑定邮箱配置修订及 Runtime 云目标，独立于临时读取 generation；显式停用、保存配置和真实目标变化仍撤销。已发通知的 unknown 状态只通过原通知宿主 `reconcileDelivery(roundId)` 读取晚到回执，跨重启、generation 或发送期限也不重新发送。
+
+本登记说明接口与边界，不提升冻结或整模块完成等级；离线组合及真实云端结果分别见[本轮记录](../competition/evidence/pr503-cloud-mail-20261023/README.md)，实机回执由对应验收条目确认。
+
+另增受信缓存端口 `retryCachedAnalysis({...binding, previousTaskId}, context)`，仅由宿主在用户明确重新选择后释放旧绑定。宿主须读回原任务、工具执行与 WSS checkpoint，证明旧版本在发送前失败、尚无 dispatch context/request identity/received/unknown/result；或证明唯一一次请求已有精确匹配的 accepted/received/dispatch/request identity，远端明确以 `INVALID_ARGUMENT` 终止。两条路径均要求原失败任务与四字段来源绑定一致、没有 unknown 或结果；通用已发送失败及未知结果不适用。释放保留原终态与带原因的 retryHistory，重新创建独立任务并重新授权；不自动重发原请求。
+
 ## 2026-10-21 邮件/天气变化触发器（provisional）
 
 新增 `connector.watch.start/list/stop@1.0.0` 工具及 Runtime Application 的本地判断/唤醒 driver，

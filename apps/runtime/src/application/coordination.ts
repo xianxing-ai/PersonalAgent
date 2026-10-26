@@ -1,6 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError, formatAgentArtsFailureDetail, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
+import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminalError, formatAgentArtsFailureDetail, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
   type CoordinationResult, type CoordinationToolProposalResult, type AgentArtsUnknownReceipt} from '@personal-agent/coordination';
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
@@ -8,6 +8,33 @@ import {isDeepStrictEqual} from 'node:util';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 
 const DEFAULT_COMPETITION_STEPS = 4;
+const COORDINATION_FAILURE_CODES = new Set([
+  'INVALID_ARGUMENT', 'PROTOCOL_MISMATCH', 'UNAUTHORIZED', 'SCOPE_DENIED', 'NOT_FOUND',
+  'UNSUPPORTED_CAPABILITY', 'REVISION_CONFLICT', 'RATE_LIMITED', 'TIMEOUT',
+  'EXTERNAL_FAILURE', 'RESULT_UNKNOWN', 'CURSOR_EXPIRED', 'CANCELLED',
+]);
+
+/** Diagnostic data only: never copy provider messages, causes, stacks or arbitrary codes. */
+export function coordinationFailureDiagnostic(error: unknown, continuation: boolean) {
+  let kind = 'unknown_error', code = 'EXTERNAL_FAILURE', remoteCode: string | undefined;
+  try {
+    if (error instanceof ProtocolError) {
+      kind = 'protocol_error';
+      if (typeof error.code === 'string' && COORDINATION_FAILURE_CODES.has(error.code)) code = error.code;
+    }
+    if (error instanceof AgentArtsBeforeInvokeError) kind = 'agentarts_before_invoke';
+    if (error instanceof AgentArtsResultUnknownError) kind = 'agentarts_result_unknown';
+    if (error instanceof AgentArtsTerminalError) {
+      kind = 'agentarts_terminal';
+      if (typeof error.remoteCode === 'string' && COORDINATION_FAILURE_CODES.has(error.remoteCode)) remoteCode = error.remoteCode;
+    }
+  } catch {
+    // A hostile error object must not replace the original sanitized failure.
+    kind = 'unknown_error'; code = 'EXTERNAL_FAILURE'; remoteCode = undefined;
+  }
+  return {version: '1.0', phase: continuation ? 'continuation' : 'initial', kind, code,
+    ...(remoteCode === undefined ? {} : {remoteCode})};
+}
 
 function sameCloudInvocation(left: AgentArtsUnknownReceipt | undefined | null,
   right: AgentArtsUnknownReceipt | undefined | null): boolean {
@@ -19,7 +46,7 @@ function sameCloudInvocation(left: AgentArtsUnknownReceipt | undefined | null,
       || (left.serverInstanceId === undefined && left.accepted === false && right.accepted === true));
 }
 
-function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string,
+export function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string,
   receipt?: AgentArtsUnknownReceipt, safeSuffix = ''): boolean {
   const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined;
   if (!inflight) return false;
@@ -150,7 +177,7 @@ export function readCompetitionCloudRequestIdentity(runtime: TaskRuntime, taskId
 
 
 /** Call only after the corresponding parsed loop state or task success is durable. */
-function consumeCompetitionCloudReceipt(runtime: TaskRuntime, taskId: string): void {
+export function consumeCompetitionCloudReceipt(runtime: TaskRuntime, taskId: string): void {
   const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined | null;
   const received = runtime.loadCheckpoint(taskId, 'competition-cloud-received') as AgentArtsUnknownReceipt | undefined | null;
   if (runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || !sameCloudInvocation(inflight, received)) return;
@@ -315,6 +342,8 @@ async function exchange(
           ...(availableTools === undefined ? {} : {availableTools: structuredClone(availableTools)}),
           }));
         } catch (error) {
+          runtime.saveCheckpoint(taskId, 'competition-coordination-failure',
+            coordinationFailureDiagnostic(error, continuation !== undefined));
           const detail = formatAgentArtsFailureDetail(error);
           const suffix = detail === undefined ? '' : ` [${detail}]`;
           if(error instanceof AgentArtsTerminalError) {
@@ -358,7 +387,7 @@ export function startCoordinationTask(
       const replay = context.loadCheckpoint('competition-confirmed-replay') as {runId?: string; inputDigest?: string} | undefined;
       // A confirmed write whose continuation permission changed must remain recoverable.
       // This does not turn an unknown execution into a confirmed result or replay the tool.
-      if (loop?.pending?.toolName === 'workspace.apply_text_patch'
+      if ((loop?.pending?.toolName === 'workspace.apply_text_patch' || loop?.pending?.toolName === 'workspace.create_text')
         && replay?.runId === `competition-tool-${taskId}-${loop.step}`
         && runtime.readToolExecutions(taskId).some(record => record.evidenceId === replay.runId
           && record.inputDigest === replay.inputDigest && record.state === 'confirmed'

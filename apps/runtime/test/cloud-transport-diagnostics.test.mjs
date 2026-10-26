@@ -51,7 +51,9 @@ test('real WS close details reach the original task error, retain identity, and 
   assert.equal(app.runtime.loadCheckpoint(task.taskId, 'competition-cloud-unknown').accepted, true);
   assert.equal(app.runtime.readToolExecutions(task.taskId).length, 0);
   assert.equal(invokes, 1); assert.equal(https, 0);
-  assert.equal(JSON.stringify(task).includes('PRIVATE_'), false);
+  const diagnostic = app.runtime.loadCheckpoint(task.taskId, 'competition-coordination-failure');
+  assert.deepEqual(diagnostic, {version: '1.0', phase: 'initial', kind: 'agentarts_result_unknown', code: 'EXTERNAL_FAILURE'});
+  assert.equal(JSON.stringify({task, diagnostic}).includes('PRIVATE_'), false);
 });
 
 for (const status of [401, 429]) test(`real HTTP ${status} survives Runtime sanitization without response text`, async t => {
@@ -68,7 +70,9 @@ for (const status of [401, 429]) test(`real HTTP ${status} survives Runtime sani
   assert.equal(task.error.message, `Coordination adapter failed [cloud: transport=https http=${status}]`);
   assert.equal(task.error.retryable, false); assert.equal(requests, 1);
   assert.ok(readCompetitionCloudRequestIdentity(app.runtime, task.taskId).bound.requestId);
-  assert.equal(JSON.stringify(task).includes('PRIVATE_'), false);
+  const diagnostic = app.runtime.loadCheckpoint(task.taskId, 'competition-coordination-failure');
+  assert.deepEqual(diagnostic, {version: '1.0', phase: 'initial', kind: 'protocol_error', code: 'EXTERNAL_FAILURE'});
+  assert.equal(JSON.stringify({task, diagnostic}).includes('PRIVATE_'), false);
 });
 
 test('ordinary adapter errors cannot forge safe cloud facts from their message or properties', async t => {
@@ -79,5 +83,7 @@ test('ordinary adapter errors cannot forge safe cloud facts from their message o
   t.after(() => app.close());
   const task = await submit(app);
   assert.equal(task.error.message, 'Coordination adapter failed');
-  assert.equal(JSON.stringify(task).includes('PRIVATE_'), false);
+  const diagnostic = app.runtime.loadCheckpoint(task.taskId, 'competition-coordination-failure');
+  assert.deepEqual(diagnostic, {version: '1.0', phase: 'initial', kind: 'unknown_error', code: 'EXTERNAL_FAILURE'});
+  assert.equal(JSON.stringify({task, diagnostic}).includes('PRIVATE_'), false);
 });
