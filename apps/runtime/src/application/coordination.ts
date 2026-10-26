@@ -1,6 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
-import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminalError, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
+import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminalError, formatAgentArtsFailureDetail, parseCoordinationResult, parseCoordinationContinuation, type CoordinationContinuation, type CoordinationPort,
   type CoordinationResult, type CoordinationToolProposalResult, type AgentArtsUnknownReceipt} from '@personal-agent/coordination';
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
@@ -47,7 +47,7 @@ function sameCloudInvocation(left: AgentArtsUnknownReceipt | undefined | null,
 }
 
 export function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string,
-  receipt?: AgentArtsUnknownReceipt): boolean {
+  receipt?: AgentArtsUnknownReceipt, safeSuffix = ''): boolean {
   const inflight = runtime.loadCheckpoint(taskId, 'competition-cloud-inflight') as AgentArtsUnknownReceipt | undefined;
   if (!inflight) return false;
   const received = runtime.loadCheckpoint(taskId, 'competition-cloud-received') as AgentArtsUnknownReceipt | undefined;
@@ -57,7 +57,7 @@ export function markCompetitionCloudUnknown(runtime: TaskRuntime, taskId: string
   const state = runtime.getTask(taskId).state;
   if (state === 'running' || state === 'cancelling') {
     runtime.transitionTask(taskId, 'waiting_reconciliation', {error: {code: 'RESULT_UNKNOWN',
-      message: 'Cloud invocation delivery or result is unknown; reconcile before sending again', retryable: false}});
+      message: `Cloud invocation delivery or result is unknown; reconcile before sending again${safeSuffix}`, retryable: false}});
   }
   return true;
 }
@@ -344,6 +344,8 @@ async function exchange(
         } catch (error) {
           runtime.saveCheckpoint(taskId, 'competition-coordination-failure',
             coordinationFailureDiagnostic(error, continuation !== undefined));
+          const detail = formatAgentArtsFailureDetail(error);
+          const suffix = detail === undefined ? '' : ` [${detail}]`;
           if(error instanceof AgentArtsTerminalError) {
             const inflight=runtime.loadCheckpoint(taskId,'competition-cloud-inflight') as AgentArtsUnknownReceipt|undefined;
             const received=runtime.loadCheckpoint(taskId,'competition-cloud-received') as AgentArtsUnknownReceipt|undefined;
@@ -354,11 +356,11 @@ async function exchange(
           if (error instanceof AgentArtsResultUnknownError) {
             // Identity/digest only: never persist a cloud payload, credential or
             // model response. The same loop cannot automatically resend it.
-            markCompetitionCloudUnknown(runtime, taskId, error.receipt);
-            throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation');
+            markCompetitionCloudUnknown(runtime, taskId, error.receipt, suffix);
+            throw new ProtocolError('RESULT_UNKNOWN', `Original cloud invocation requires reconciliation${suffix}`);
           }
           // Adapter errors may contain credentials or private response bodies.
-          throw new ProtocolError('EXTERNAL_FAILURE', 'Coordination adapter failed');
+          throw new ProtocolError('EXTERNAL_FAILURE', `Coordination adapter failed${suffix}`);
         }
       }),
       cancelled,

@@ -7,6 +7,7 @@ import {mountSessionControls} from '../src/features/conversation/session-control
 import {isStopRequest} from '../src/features/conversation/stop-request.js';
 import {isTerminal} from '../src/features/conversation/state.js';
 import {createMessageQueue} from '../src/features/conversation/message-queue.js';
+import {errorDisplayText} from '../src/shared/error-display.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
 const source=await readFile(new URL('../src/app/renderer.js',import.meta.url),'utf8');
@@ -34,7 +35,7 @@ function fixture({nativeFlush=async()=>{}}={}){
   const current={conversationState:{activeId:'desktop-panel',draft:'synthetic draft',sessions:[{id:'desktop-panel',title:'original',archived:false}]}};
   const sessionControls=mountSessionControls(node(),input,async(name)=>{assert.equal(name,'conversation.draft');return {saved:true};},()=>{});sessionControls.update(current);
   globalThis.document=documentBefore;globalThis.window=windowBefore;globalThis.Option=optionBefore;
-  const context=vm.createContext({root:{querySelector:()=>error},input,sendBtn,sessionControls,nativeReasoning:{flush:nativeFlush},isStopRequest,activeTasks:()=>[],current,Event,submitGeneration:0,pending:false,draftRevision:0,wakeClosed:false,messageQueue:createMessageQueue(),sendingQueueIds:new Set(),renderQueue(){},deliveryMode:{value:'steer'},thread:{scrollTop:0,scrollHeight:100},requestAnimationFrame:callback=>callback(),setSendMode:()=>{},invoke:()=>new Promise((resolve,reject)=>calls.push({resolve,reject}))});
+  const context=vm.createContext({errorDisplayText,root:{querySelector:()=>error},input,sendBtn,sessionControls,nativeReasoning:{flush:nativeFlush},isStopRequest,activeTasks:()=>[],current,Event,submitGeneration:0,pending:false,draftRevision:0,wakeClosed:false,messageQueue:createMessageQueue(),sendingQueueIds:new Set(),renderQueue(){},deliveryMode:{value:'steer'},thread:{scrollTop:0,scrollHeight:100},requestAnimationFrame:callback=>callback(),setSendMode:()=>{},invoke:()=>new Promise((resolve,reject)=>calls.push({resolve,reject}))});
   for(const declaration of dependencies.values())vm.runInContext(`let ${declaration};`,context);
   vm.runInContext(submitDeclaration,context);
   return {error,input,calls,context,submit:vm.runInContext(`(${handler})`,context),host:(value,preserveFeedback)=>vm.runInContext(`{const data={connectionError:${JSON.stringify(value)}},voiceError='',preserveFeedback=${preserveFeedback};${renderFeedback}}`,context),report:value=>vm.runInContext(`report(${JSON.stringify(value)})`,context)};
@@ -43,11 +44,11 @@ const event={preventDefault(){}};
 test('actual submit waits for native preference acknowledgement and a failed flush never submits',async()=>{
   let release;const f=fixture({nativeFlush:()=>new Promise(resolve=>release=resolve)}),run=f.submit(event);await tick();assert.equal(f.calls.length,0);assert.equal(f.context.pending,true);
   release();await tick();assert.equal(f.calls.length,1);f.calls[0].resolve();await run;
-  const failed=fixture({nativeFlush:async()=>{throw Error('native settings unsaved');}});await failed.submit(event);assert.equal(failed.calls.length,0);assert.equal(failed.input.value,'synthetic draft');assert.equal(failed.error.textContent,'native settings unsaved');
+  const failed=fixture({nativeFlush:async()=>{throw Error('native settings unsaved');}});await failed.submit(event);assert.equal(failed.calls.length,0);assert.equal(failed.input.value,'synthetic draft');assert.equal(failed.error.textContent,errorDisplayText(Error('native settings unsaved')));
 });
 test('failed submit retains draft and operation feedback through ordinary snapshots',async()=>{
   const f=fixture(),run=f.submit(event);await tick();f.calls[0].reject(Error('submit failed'));await run;
-  f.host('');f.host('');assert.equal(f.error.textContent,'submit failed');assert.equal(f.input.value,'synthetic draft');assert.equal(f.context.pending,false);
+  f.host('');f.host('');assert.equal(f.error.textContent,errorDisplayText(Error('submit failed')));assert.equal(f.input.value,'synthetic draft');assert.equal(f.context.pending,false);
 });
 test('older submit success cannot clear newer workspace or Host feedback',async()=>{
   for(const host of [false,true]){const f=fixture(),run=f.submit(event);await tick();if(host)f.host('Host failed');else f.report('workspace failed');f.calls[0].resolve();await run;assert.equal(f.error.textContent,host?'Host failed':'workspace failed');}
