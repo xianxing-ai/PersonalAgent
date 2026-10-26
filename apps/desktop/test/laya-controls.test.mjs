@@ -158,6 +158,9 @@ test('artifact identity changes require explicit stop before another start', asy
   const f = await fixture(t);
   await f.start();
   await f.changeArtifact();
+  assert.equal(f.host.snapshot().state, 'ready', 'display polling does not inspect artifacts');
+  assert.equal(f.host.readClassifierIdentity(), undefined, 'trusted identity read revokes the changed artifact');
+  await assert.rejects(f.host.classify({signal: new AbortController().signal}), /尚未就绪/);
   f.controls.render(f.host.snapshot());
   assert.equal(f.host.snapshot().state, 'identity_changed');
   assert.equal(f.nodes.start.disabled, true);
