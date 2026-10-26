@@ -141,7 +141,7 @@ const definitions = [
 ];
 const labels = {ready: '已连接', connecting: '连接中', reauth_required: '需要授权', degraded: '连接异常', disconnected: '未连接', unavailable: '未接入'};
 export function connectorDestination(id,data={}){
-  return id==='weather'?(data.weather?.configured?{action:'weather.refresh'}:{draft:'查询天气：'}):{page:id==='obsidian'?'memory':'connections'};
+  return id==='weather'?(data.weather?.configured?{action:'weather.refresh'}:{configure:'weather'}):{page:id==='obsidian'?'memory':'connections'};
 }
 export function connectorCards(data, escape) {
   const cards = definitions.map(item => {
@@ -150,7 +150,10 @@ export function connectorCards(data, escape) {
     const status = rendered?.status ?? '未连接';
     const preview = rendered?.preview ?? item.defaultPreview;
     const footer = rendered?.footer ?? escape(health ? labels[health.state] || health.state : '未连接');
-    return `<article class="connector-card" data-connector="${item.id}" role="button" tabindex="0" aria-label="${item.id==='weather'?'查询天气':'配置'+item.name}"><header><span class="connector-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${item.path}"/></svg></span><h3>${item.name}</h3><span class="connector-status">${escape(status)}</span></header>${preview}<footer>${footer}</footer></article>`;
+    // 已配置城市后卡片点击只会刷新，需要单独入口才能换城市。
+    const cityAction = item.id === 'weather' && data.weather?.configured
+      ? '<button type="button" class="connector-inline-action" data-weather-city aria-label="更换天气城市">换城市</button>' : '';
+    return `<article class="connector-card" data-connector="${item.id}" role="button" tabindex="0" aria-label="${item.id==='weather'?'查询天气':'配置'+item.name}"><header><span class="connector-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${item.path}"/></svg></span><h3>${item.name}</h3><span class="connector-status">${escape(status)}</span></header>${preview}<footer>${footer}${cityAction}</footer></article>`;
   }).join('');
 
   const notifList = Array.isArray(data.notifications) ? data.notifications : [];
