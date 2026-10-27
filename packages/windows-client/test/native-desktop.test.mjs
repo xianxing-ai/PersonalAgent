@@ -31,7 +31,7 @@ function fixture(t, options = {}) {
   const snapshot = () => ({targetRef:randomUUID(), windowRef, observedAt:new Date(time).toISOString(),
     expiresAt:new Date(time + 30000).toISOString(), window:{title:'Synthetic fixture window', processName:'SyntheticFixture',
       bounds:{x:0, y:0, width:800, height:600}, dpi:96},
-    controls:[{ref:randomUUID(), role:'Edit', name:'Synthetic editor', patterns:['value'], bounds:{left:10, top:10, width:200, height:30}}], truncated:false});
+    controls:[{ref:randomUUID(), role:'Edit', name:'Synthetic editor', enabled:true, patterns:['value'], bounds:{left:10, top:10, width:200, height:30}, value:'private fixture value'}], truncated:false});
   const transport = {
     async start(ctx) {lifecycle.push('start'); await options.start?.(ctx); ready = true;},
     async request(method, params, ctx) {
@@ -53,6 +53,7 @@ function fixture(t, options = {}) {
     }},
     authorizePresence:async input => options.authorizePresence ? options.authorizePresence(input) : presence,
     ...(options.artifactDirectory ? {artifactDirectory:options.artifactDirectory} : {}),
+    ...(options.selectControl ? {selectControl:options.selectControl} : {}),
   });
   const f = {host, calls, records, lifecycle, deviceWrites, snapshot, windowRef, evidence,
     setTime(value) {time = value;}, revoke() {presence = false;},
@@ -88,6 +89,42 @@ test('syntheticfixture: stable catalog validates contracts and never claims fixt
     await assert.rejects(f.execute(name, args), {code:'INVALID_ARGUMENT'});
   }
   assert.equal(f.calls.length, 1);
+});
+
+test('syntheticfixture: local control suggestion uses only original observation and never sends input', async t => {
+  const seen=[];
+  const f=fixture(t,{selectControl:async input=>{seen.push(input);return {state:'selected',controlRef:input.controls[0].ref};}});
+  await f.host.start(context());const observation=await f.observe();
+  const input={targetRef:observation.snapshot.targetRef,operation:'set_value'};
+  const result=await f.execute('suggest_control',input);
+  assert.equal(result.state,'control_suggested');assert.equal(result.controlRef,observation.snapshot.controls[0].ref);
+  assert.equal(result.goalVerified,false);validateToolValue(f.tool('suggest_control').descriptor.outputSchema,result);
+  assert.deepEqual(seen[0].controls,[{ref:result.controlRef,role:'Edit',name:'Synthetic editor',patterns:['value']}]);
+  assert.doesNotMatch(JSON.stringify(seen[0].controls),/private fixture value|bounds/);
+  assert.equal(f.calls.length,1);assert.deepEqual(f.deviceWrites,[]);assert.deepEqual(f.records,[]);
+});
+
+test('syntheticfixture: suggestion rejects invented targets, changed presence and expired observations', async t => {
+  const gate=deferred();let mode='invented';
+  const f=fixture(t,{selectControl:async input=>mode==='invented'?{state:'selected',controlRef:randomUUID()}:
+    (await gate.promise,{state:'selected',controlRef:input.controls[0].ref})});
+  await f.host.start(context());const observed=await f.observe(),args={targetRef:observed.snapshot.targetRef,operation:'set_value'};
+  await assert.rejects(f.execute('suggest_control',args),{code:'EXTERNAL_FAILURE'});
+  await assert.rejects(f.execute('suggest_control',{...args,targetRef:randomUUID()}),{code:'UNAUTHORIZED'});
+  mode='pending';const pending=f.execute('suggest_control',args);await tick();f.revoke();gate.resolve();
+  await assert.rejects(pending,{code:'UNAUTHORIZED'});
+  f.setTime(clock+30001);
+  await assert.rejects(f.execute('suggest_control',args),{code:'UNAUTHORIZED'});
+  assert.deepEqual(f.deviceWrites,[]);assert.deepEqual(f.records,[]);
+});
+
+test('syntheticfixture: unavailable or unsupported control choices remain explicit', async t => {
+  const f=fixture(t,{selectControl:async()=>({state:'unavailable'})});
+  await f.host.start(context());const observed=await f.observe();
+  const targetRef=observed.snapshot.targetRef;
+  assert.equal((await f.execute('suggest_control',{targetRef,operation:'set_value'})).state,'control_assist_unavailable');
+  assert.equal((await f.execute('suggest_control',{targetRef,operation:'invoke'})).state,'control_needs_review');
+  assert.equal(f.calls.length,1);assert.deepEqual(f.deviceWrites,[]);
 });
 
 test('syntheticfixture: unavailable and stopped providers reject writes as not started', async t => {

@@ -13,6 +13,7 @@ import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {computerControlFailure} from './computer-control-errors.js';
+import {createComputerControlLaya} from './computer-control-laya.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
@@ -383,7 +384,7 @@ let codingWorkspace;
 let developerDeployment;
 let developerSettings;
 let developerDeploymentFailure='';
-let toolPresenceHost,windowsControlHost,windowsControlClosing;
+let toolPresenceHost,windowsControlHost,windowsControlClosing,computerControlLaya;
 let computerControlLease;
 let computerControlConfig,browserControlHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
 let browserControlClosed=false;
@@ -2082,6 +2083,9 @@ async function initializeRuntime() {
         computerControlConfig=createComputerControlConfig({userData:app.getPath('userData')});
         const computerPreference=computerControlConfig.snapshot();
         const compatibilityPython=process.env.PA_WINDOWS_CONTROL_PYTHON;
+        computerControlLaya=createComputerControlLaya({getHost:()=>localLaya,readTask:taskId=>{
+          try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}
+        }});
         windowsControlHost=createDesktopWindowsControlHost({createControlHost:compatibilityPython?createWindowsDesktopControlHost:createWindowsNativeDesktopControlHost,
           isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
@@ -2092,7 +2096,7 @@ async function initializeRuntime() {
           readObservationExportPreference:()=>{const preference=computerControlConfig.snapshot();
             return preference.observationExportConfigured?preference.allowObservationExport:process.env.PA_WINDOWS_CONTROL_EXPORT==='1'?true:undefined;},
           providerOptions:compatibilityPython?{}:{executable:nativeDesktopExecutable({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath}),
-            artifactDirectory:path.join(app.getPath('userData'),'computer-artifacts')}});
+            artifactDirectory:path.join(app.getPath('userData'),'computer-artifacts'),selectControl:input=>computerControlLaya.select(input)}});
         windowsControlHost.configure({enabled:computerPreference.enabled,allowObservationExport:computerPreference.allowObservationExport||process.env.PA_WINDOWS_CONTROL_EXPORT==='1'});
         if(process.platform==='win32'&&computerPreference.enabled){
           await windowsControlHost.start({deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
@@ -2556,6 +2560,7 @@ async function initializeRuntime() {
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
+          if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
           if(phase==='preflight'&&(/^computer\.desktop\./u.test(proposal?.toolName??'')||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
           await computerVisionHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
@@ -2600,6 +2605,8 @@ async function initializeRuntime() {
         ...(process.env.PA_AGENTARTS_WORKFLOW_GOAL_INPUT === undefined ? {} : {workflowGoalInput: process.env.PA_AGENTARTS_WORKFLOW_GOAL_INPUT}),
         responseMode: agentArtsResponseMode ?? 'tool-proposal-json',
         ...(process.env.PA_AGENTARTS_CONTINUATION_CONTEXT?{continuationContext:process.env.PA_AGENTARTS_CONTINUATION_CONTEXT}:{}),
+        ...(!syntheticMvp && (agentArtsResponseMode ?? 'tool-proposal-json')==='tool-proposal-json'
+          ? {enableNewTaskToolContinuations:true} : {}),
         ...(syntheticMvp ? {competitionToolExports: syntheticTools.competitionToolExports} : {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
