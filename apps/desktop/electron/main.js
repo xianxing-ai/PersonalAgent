@@ -79,6 +79,7 @@ import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
 import {defaultNotificationSettings} from '../shared/notification-defaults.js';
@@ -191,7 +192,12 @@ let eventThroughSequence;
 let eventContinuation;
 const resourcePolicy = createResourcePolicy();
 let resourcePoll;
-let thermalState='unknown',speedLimit=100,nextMaintenanceAt=0;
+let thermalState='unknown',speedLimit=100;
+const maintenancePoll=createMaintenancePoll({interval:()=>resourcePolicy.snapshot().maintenanceIntervalMs,
+  onError:()=>{
+    const message='后台维护暂未完成，原任务与记录保留；请检查对应功能状态';
+    if(!runtimeClosed&&runtimeError!==message){runtimeError=message;publish();}
+  }});
 const snapshotPublisher = createSnapshotPublisher({project:projectWindowSnapshot,
   interval:()=>resourcePolicy.snapshot().publishIntervalMs,
   onError:()=>{runtimeError='桌面状态投影失败；任务记录仍由 Runtime 保留';}});
@@ -3048,17 +3054,20 @@ async function initializeRuntime() {
     }
   }
   eventPoll = setInterval(() => {void pumpEvents(); void todoHost?.tick();
-    const now=Date.now();if(now<nextMaintenanceAt)return;nextMaintenanceAt=now+resourcePolicy.snapshot().maintenanceIntervalMs;
-    void tickProactiveP5(); void refreshMail(); void notepadHost?.refresh();tickKnowledgeSchedules();
-    void connectorWatchHost?.tick().catch(()=>{});
-    void proactiveRuntimePump?.tick().then(result=>{
+    if(runtimeClosed)return;
+    void maintenancePoll.run('proactive',()=>tickProactiveP5());
+    void maintenancePoll.run('mail',()=>refreshMail());
+    void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
+    void maintenancePoll.run('knowledge-schedules',()=>tickKnowledgeSchedules());
+    void maintenancePoll.run('connector-watch',()=>connectorWatchHost?.tick());
+    void maintenancePoll.run('proactive-runtime',()=>proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
       if(proactiveMaintenanceFailure!==issue){proactiveMaintenanceFailure=issue;publish();}
     }).catch(()=>{
       if(!proactiveMaintenanceFailure){proactiveMaintenanceFailure='原持续任务的唤醒维护暂不可用；未新建任务或重放操作';publish();}
-    });
-    void wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();});}, 120);
+    }));
+    void maintenancePoll.run('wiki',()=>wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();}));}, 120);
 }
 
 /** Exact payload consent stays in the trusted host and never grants tool permission. */

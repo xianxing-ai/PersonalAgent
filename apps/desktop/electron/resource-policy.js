@@ -1,7 +1,7 @@
 const budgets = Object.freeze({
-  normal: Object.freeze({mode:'normal',fps:30,maxDpr:2,publishIntervalMs:16,maintenanceIntervalMs:120,inferencePendingLimit:16}),
-  constrained: Object.freeze({mode:'constrained',fps:20,maxDpr:1.5,publishIntervalMs:32,maintenanceIntervalMs:250,inferencePendingLimit:8}),
-  critical: Object.freeze({mode:'critical',fps:12,maxDpr:1,publishIntervalMs:50,maintenanceIntervalMs:500,inferencePendingLimit:4}),
+  normal: Object.freeze({mode:'normal',fps:30,maxDpr:2,publishIntervalMs:16,maintenanceIntervalMs:1000,inferencePendingLimit:16}),
+  constrained: Object.freeze({mode:'constrained',fps:20,maxDpr:1.5,publishIntervalMs:32,maintenanceIntervalMs:2000,inferencePendingLimit:8}),
+  critical: Object.freeze({mode:'critical',fps:12,maxDpr:1,publishIntervalMs:50,maintenanceIntervalMs:5000,inferencePendingLimit:4}),
 });
 const rank = {normal:0,constrained:1,critical:2};
 

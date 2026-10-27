@@ -1,5 +1,7 @@
 # 2026-10-26 云端本地交接整合证据
 
+> 2026-10-27 本地后续：基于本 PR 的 `b213144a` 修复 Issue #523，已完成下文原待验的两项 Windows GUI smoke，并通过完整 `npm run check`（Desktop 2200 pass／10 skip、Runtime 1316/1316、根集成 57/57）。[本次修复与回执](../../../apps/desktop/docs/DESKTOP_IDLE_POLLING_ISSUE523_20261027.md)绑定本地验证时的修复字节，不反向替换以下原提交证据。公共 SQLite Evidence、真实平台／资料验收及原迁移限制不因此完成；PR 当前状态以 GitHub 为准。
+
 Profile：`huawei_ict_agentarts`。这是送审前已保存回执的公开摘要；提交、Draft PR 与官方 Windows/Linux CI 的实际状态以对应 Git/PR 回执为准。本次交付不代表合并、部署或全部模块验收。[脱敏运行数据](CLOUD_HANDOFF_INTEGRATION_20261026.json)保存完整源快照 SHA、UTC、wall、exit code 和已核验的本轮日志 SHA；原始日志与私有缓存原样保留，不在此发布。
 
 ## 来源与实际基线
@@ -54,6 +56,6 @@ A12 相对当前 main 的 65 项追溯差异中，25 项可匹配 main 历史，
 
 [ADR-0041](../../adr/0041-desktop-conversation-incremental-persistence.md)仍 **proposed**，会话接口仍 provisional，最终公共 SQLite Evidence 仍 pending。来源合成 Windows/Node 数据仅支持稳态逻辑写入延迟改善；首次迁移、重开、峰值 RSS 和磁盘占用均有回退，canonical Map 仍常驻，逻辑序列化量不等于物理 I/O。完整最新历史 v5→v4 导出未实现；删除 DB/marker 或恢复迁移前备份不能保留迁移后的历史。
 
-真实 Windows GUI、打包/冷启动、真实资料迁移恢复、机器断电、实体设备、真实邮箱/模型/AgentArts 服务均未由本记录验收。原 #510 服务/预算拒绝路径未重试；本次提交、推送和 Draft PR 授权不扩展到合并或部署。
+真实 Windows GUI、打包/冷启动、真实资料迁移恢复、机器断电、实体设备、真实邮箱/模型/AgentArts 服务均未由原整合记录验收。原 #510 服务/预算拒绝路径未重试；2026-10-26 整合时的授权不扩展到合并或部署，后续授权与验收以对应记录为准。
 
 公开前仅将 10 份既有 Markdown 中的个人源工作树根前缀替换为 `<source-worktree>`，共 21 次；相对入口、历史结果和日志 SHA 保留。原 ZIP/a2 封存不变，历史测试快照不被这些文档改动追溯覆盖。
