@@ -5,6 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication} from '../dist/application.js';
+import {EXECUTION_CAPACITY_CHECKPOINT} from '../dist/application/execution-capacity.js';
 import {SyntheticWebSocket,identity,events} from '../../../packages/coordination/test/fixtures/websocket.mjs';
 
 const target={gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',transport:'wss',
@@ -61,6 +62,115 @@ async function temporary(t) {
   t.after(async()=>{assert.equal(path.dirname(directory),path.resolve(base));await rm(directory,{recursive:true,force:true});});
   return path.join(directory,'runtime.sqlite');
 }
+
+function progressiveFixture(database, {actions=7,maxSteps,unknownFinal=false}={}) {
+  const snapshots=[],effects=[];
+  let h;
+  const name='fixture.progressive_read';
+  const tool={descriptor:{name,version:'1.0.0',
+    inputSchema:{type:'object',properties:{sequence:{type:'integer',minimum:0}},required:['sequence'],additionalProperties:false},
+    outputSchema:{type:'object',properties:{sequence:{type:'integer'},localOnly:{type:'string'}},
+      required:['sequence','localOnly'],additionalProperties:false},
+    sideEffect:'read',requiredScopes:['fixture:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false},
+    execute:async input=>{effects.push(input.sequence);return {sequence:input.sequence,localOnly:'PRIVATE_PROGRESSIVE_READ_BODY'};}};
+  const overrides={responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',
+    competitionMaxSteps:2,competitionExecution:{mode:'progressive',windowSteps:2,...(maxSteps===undefined?{}:{maxSteps})},
+    retainPriorToolResults:true,tools:[tool],automaticTools:[{toolName:name,toolVersion:'1.0.0'}],
+    competitionToolAvailability:[{toolName:name,toolVersion:'1.0.0',available:()=>true}],
+    competitionToolExports:[{toolName:name,toolVersion:'1.0.0',exportPolicyVersion:'progressive-read-v1',
+      accepts:()=>true,project:({result})=>({sequence:result.sequence})}]};
+  h=fixture(database,{overrides,
+    invokeRespond:(frame,socket)=>{
+      const taskId=h.app.runtime.listTasks({}).items[0].taskId;
+      const ordinal=snapshots.length;
+      snapshots.push(h.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'));
+      socket.accepted(frame);
+      if(ordinal<actions)socket.result(frame,JSON.stringify({kind:'tool_proposal',proposalId:`progressive-read-${ordinal}`,
+        toolName:name,toolVersion:'1.0.0',arguments:{sequence:ordinal}}));
+      else if(unknownFinal)socket.disconnect();
+      else socket.result(frame,JSON.stringify({kind:'text',text:'Synthetic progressive WSS read sequence complete'}));
+    }});
+  return {...h,get app(){return h.app;},get invokes(){return h.invokes;},get fetches(){return h.fetches;},snapshots,effects,overrides};
+}
+
+async function submitProgressive(h,key) {
+  const client=new Client(h.app);await client.connect();
+  const {taskId}=await client.call('task.submit',{goal:'Synthetic progressive WSS adapter regression',conversationId:key},
+    {idempotencyKey:key,timeoutMs:60_000});
+  return taskId;
+}
+
+async function settledProgressive(h,taskId) {
+  const end=Date.now()+10_000;
+  while(Date.now()<end) {
+    const task=h.app.runtime.getTask(taskId);
+    if(['succeeded','failed','waiting_reconciliation'].includes(task.state)&&h.app.activeTaskCount===0)return task;
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
+  assert.fail(`Progressive WSS task did not settle: ${JSON.stringify(h.app.runtime.getTask(taskId))}`);
+}
+
+test('actual WSS dispatch callback crosses the original window while preserving confirmed Runtime records',async()=>{
+  const h=progressiveFixture(':memory:');
+  try {
+    const taskId=await submitProgressive(h,'progressive-wss-complete');
+    const task=await settledProgressive(h,taskId);
+    assert.equal(task.state,'succeeded',JSON.stringify(task.error));
+    assert.deepEqual(h.effects,[0,1,2,3,4,5,6]);
+    assert.equal(h.invokes,8);assert.equal(h.fetches,0);
+    assert.deepEqual(h.snapshots.map(item=>item.loop.step),[1,2,3,4,5,6,7,8]);
+    assert.ok(h.snapshots.every(item=>item.loop.maxSteps===2),'Persisted dispatch shape retains the original budget');
+    assert.equal(h.app.runtime.loadCheckpoint(taskId,'competition-max-steps'),2);
+    const capacity=h.app.runtime.loadCheckpoint(taskId,EXECUTION_CAPACITY_CHECKPOINT);
+    assert.equal(capacity.initialWindowSteps,2);assert.ok(capacity.windowEndStep>=8);
+    assert.equal(capacity.deadline,h.app.runtime.loadCheckpoint(taskId,'application-deadline'));
+    const records=h.app.runtime.readToolExecutions(taskId);
+    assert.equal(records.length,7);assert.equal(h.app.runtime.readEvidence(taskId).length,7);
+    assert.ok(records.every(record=>record.state==='confirmed'&&record.policyDecision==='allow'&&record.executionStarted));
+    assert.doesNotMatch(JSON.stringify(h.snapshots),/PRIVATE_PROGRESSIVE_READ_BODY|Synthetic progressive WSS adapter regression/);
+  } finally {h.app.close();}
+});
+
+test('progressive WSS callback never dispatches beyond an explicit total limit',async()=>{
+  const h=progressiveFixture(':memory:',{actions:20,maxSteps:5});
+  try {
+    const taskId=await submitProgressive(h,'progressive-wss-limit');
+    const task=await settledProgressive(h,taskId);
+    assert.equal(task.state,'failed');assert.equal(task.error.code,'TIMEOUT');
+    assert.equal(h.invokes,5);assert.deepEqual(h.effects,[0,1,2,3]);
+    assert.ok(h.snapshots.every(item=>item.loop.step<=5));
+    assert.equal(h.app.runtime.loadCheckpoint(taskId,EXECUTION_CAPACITY_CHECKPOINT).windowEndStep,5);
+    assert.equal(h.app.runtime.readToolExecutions(taskId).length,4);assert.equal(h.fetches,0);
+  } finally {h.app.close();}
+});
+
+test('unknown invocation beyond the original window survives reopen as status-only with no replay',async t=>{
+  const database=await temporary(t),first=progressiveFixture(database,{unknownFinal:true});
+  let taskId,context,original,task,records;
+  try {
+    taskId=await submitProgressive(first,'progressive-wss-unknown');
+    task=await settledProgressive(first,taskId);
+    assert.equal(task.state,'waiting_reconciliation');assert.equal(first.invokes,8);
+    context=first.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context');
+    original=first.app.runtime.loadCheckpoint(taskId,'competition-cloud-unknown');
+    records=first.app.runtime.readToolExecutions(taskId);
+    assert.equal(context.loop.step,8);assert.equal(context.loop.maxSteps,2);assert.equal(records.length,7);
+  } finally {first.app.close();}
+  const reopened=fixture(database,{overrides:first.overrides,respond:(frame,socket)=>socket.receive(status(frame,'completed'))});
+  try {
+    const observed=await reopened.app.queryCompetitionCloudStatus(taskId,scope(reopened.app,taskId));
+    assert.equal(observed.state,'completed');assert.equal(observed.verification,'unverified');
+    assert.deepEqual(reopened.app.runtime.getTask(taskId),task);
+    assert.deepEqual(reopened.app.runtime.readToolExecutions(taskId),records);
+    assert.deepEqual(reopened.app.runtime.loadCheckpoint(taskId,'competition-cloud-dispatch-context'),context);
+    assert.deepEqual(reopened.app.runtime.loadCheckpoint(taskId,'competition-cloud-unknown'),original);
+    assert.equal(reopened.invokes,0);assert.equal(reopened.statuses,1);assert.equal(reopened.executions,0);
+    assert.equal(first.effects.length,7);
+    assert.equal(Object.hasOwn(observed,'events'),false);
+    assert.throws(()=>reopened.app.resumeTask(taskId),{code:'RESULT_UNKNOWN'});
+    assert.throws(()=>reopened.app.resumeConfirmedTask(taskId),{code:'RESULT_UNKNOWN'});
+  } finally {reopened.app.close();}
+});
 
 test('persisted instance/configuration survives actual reopen; completed status stores metadata while task stays unknown',async t=>{
   const database=await temporary(t),first=fixture(database);const taskId=await seed(first);
@@ -236,4 +346,62 @@ test('unknown status and cancelled/expired lookups retain the original hold with
       assert.equal(h.sockets.at(-1).terminations,1);
     } finally {h.app.close();}
   }
+});
+
+test('an original accepted status result completes the same Runtime handoff with one tool run and no invoke replay',async t=>{
+  t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
+  let invokes=0,statuses=0,executions=0,egressChecks=0,outerReads=0,innerReads=0;
+  const queries=[],received=[];
+  const descriptor={name:'fixture.recovered-read',version:'1.0.0',sideEffect:'read',requiredScopes:['fixture:read'],
+    idempotencySupport:true,recoverySupport:true,requiresPresence:false,
+    inputSchema:{type:'object',properties:{},additionalProperties:false},
+    outputSchema:{type:'object',properties:{value:{type:'integer'},localOnly:{type:'string'}},required:['value','localOnly'],additionalProperties:false}};
+  const app=createAgentArtsRuntimeApplication({...target,path:':memory:',recoverAcceptedStatus:true,
+    responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',continuationContext:'goal',retainPriorToolResults:true,
+    beforeCompetitionSend:()=>{egressChecks++;},
+    authorizationProvider:{read:async()=>{outerReads++;return 'Bearer synthetic-outer';}},
+    websocketAuthorizationProvider:{read:async()=>{innerReads++;return 'Bearer synthetic-inner';}},
+    websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
+      if(frame.type==='status') {
+        statuses++;
+        socket.receive({...identity(frame),type:'status',state:'completed',events:events(JSON.stringify({kind:'tool_proposal',
+          proposalId:'original-recovered-proposal',toolName:descriptor.name,toolVersion:descriptor.version,arguments:{}}))});
+      }else if(frame.type==='invoke') {
+        invokes++;queries.push(frame.payload.query);socket.accepted(frame);
+        // Only the first terminal frame is omitted; the status read recovers it.
+        if(invokes===2)socket.result(frame,JSON.stringify({kind:'text',text:'Synthetic original task completed'}));
+      }else assert.fail('No other invocation, cancellation or write is expected');
+    }),fetchImpl:async()=>assert.fail('No HTTPS fallback or model retry'),
+    tools:[{descriptor,execute:async()=>{executions++;return {value:7,localOnly:'PRIVATE_ORIGINAL_RECOVERY_RESULT'};}}],
+    automaticTools:[{toolName:descriptor.name,toolVersion:descriptor.version}],
+    competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
+    competitionToolExports:[{toolName:descriptor.name,toolVersion:descriptor.version,exportPolicyVersion:'explicit-recovery-public-v1',
+      accepts:()=>true,project:({result})=>({value:result.value})}]});
+  const save=app.runtime.saveCheckpoint.bind(app.runtime);
+  app.runtime.saveCheckpoint=(taskId,key,value)=>{
+    if(key==='competition-cloud-received'&&value!==null)received.push(structuredClone(value));
+    return save(taskId,key,value);
+  };
+  try {
+    const client=new Client(app);await client.connect();
+    const {taskId}=await client.call('task.submit',{goal:'Explicit synthetic accepted-status recovery',conversationId:'recovery-fixture'},
+      {idempotencyKey:'original-status-recovery',timeoutMs:60_000});
+    for(let count=0;count<100&&!app.runtime.loadCheckpoint(taskId,'competition-cloud-inflight')?.accepted;count++)
+      await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(invokes,1);assert.equal(statuses,0);assert.equal(executions,0);
+    t.mock.timers.tick(30_000);
+    for(let count=0;count<200&&app.activeTaskCount;count++)await new Promise(resolve=>setImmediate(resolve));
+    const task=app.runtime.getTask(taskId);assert.equal(task.state,'succeeded',JSON.stringify(task.error));
+    assert.equal(invokes,2,'Each original exchange is sent once; status is never a third invoke');
+    assert.equal(statuses,1);assert.equal(executions,1);assert.equal(egressChecks,2);
+    assert.equal(outerReads,3);assert.equal(innerReads,3,'The status read obtains current host credentials');
+    assert.equal(received.length,2);assert.equal(new Set(received.map(value=>value.requestId)).size,2);
+    const [record]=app.runtime.readToolExecutions(taskId);assert.equal(record.state,'confirmed');
+    assert.equal(record.policyDecision,'allow');assert.equal(record.executionStarted,true);
+    assert.equal(app.runtime.readEvidence(taskId).length,1);
+    assert.equal(app.runtime.loadCheckpoint(taskId,'tool-result-'+record.evidenceId).result.localOnly,'PRIVATE_ORIGINAL_RECOVERY_RESULT');
+    assert.doesNotMatch(queries.join('\n'),/PRIVATE_ORIGINAL_RECOVERY_RESULT/);
+    assert.equal(app.runtime.loadCheckpoint(taskId,'competition-cloud-inflight'),null);
+    assert.equal(app.runtime.loadCheckpoint(taskId,'competition-cloud-received'),null);
+  }finally{app.close();}
 });

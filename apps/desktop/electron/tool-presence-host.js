@@ -88,6 +88,11 @@ export function createToolPresenceHost({registerNativeShortcut,isTaskCurrent,rea
       try{const time=clock();if(closed||receipt.signal.aborted||binding(taskId)!==receipt.binding||!policyCurrent(receipt)||time<receipt.issuedAt||time>=receipt.expiresAtMs){revoke(receipt);return false;}}
       catch{revoke(receipt);return false;}return true;
     },
+    /** Only Main's trusted, task-bound click handler may consume this pending gesture. */
+    confirmPending(taskId){
+      const entry=queue[0];if(closed||entry?.kind!=='presence'||entry.taskId!==taskId||!valid(entry))return false;
+      gesture();return host.isUserPresent(taskId);
+    },
     /** Trusted configuration/task updates can promptly settle stale waiters without a gesture. */
     refresh(){for(const entry of [...queue])if(entry.kind==='presence'&&!valid(entry))
       reject(entry,entry.signal.aborted?'CANCELLED':'UNAUTHORIZED','Pending presence scope expired or changed');

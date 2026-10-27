@@ -6,6 +6,8 @@ import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
 import {isDeepStrictEqual} from 'node:util';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
+import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
+import type {ExecutionCapacityState} from './execution-capacity.js';
 
 const DEFAULT_COMPETITION_STEPS = 4;
 const COORDINATION_FAILURE_CODES = new Set([
@@ -262,9 +264,11 @@ export function assertCompetitionExportAllowed(
   bindings: readonly CompetitionToolExport[],
   request: {taskId: string; deadline: string; signal: AbortSignal; continuation?: CoordinationContinuation},
   permitWrite = false,
+  readScope?:object,
 ): void {
   if (!request.continuation) return;
-  const checkpoint = runtime.loadCheckpoint(request.taskId, 'competition-loop') as CompetitionCheckpoint | undefined;
+  const checkpoint = (readScope===undefined?runtime.loadCheckpoint(request.taskId,'competition-loop'):
+    runtime.readCompetitionLoopForExport(request.taskId,readScope)) as CompetitionCheckpoint | undefined;
   const receipt = checkpoint?.receipts?.find(item => item.proposal.proposalId === request.continuation?.proposalId);
   if (runtime.getTask(request.taskId).state !== 'running'
     || runtime.loadCheckpoint(request.taskId, 'application-profile') !== 'huawei_ict_agentarts'
@@ -378,7 +382,7 @@ export function startCoordinationTask(
   taskId: string,
   goal: string,
   deadline: string,
-  options: {resume?: boolean;retainPriorToolResults?:boolean;allowToolContinuations?:true; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
+  options: {resume?: boolean;retainPriorToolResults?:boolean;allowToolContinuations?:true;assertCompletion?:()=>void; toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<TaskSnapshot> {
   const execution = runtime.runTask(taskId, async context => {
     try { return await runCoordinationWorker(runtime,port,tools,taskId,goal,context,options); }
@@ -415,16 +419,21 @@ export function startCoordinationTask(
 export async function runCoordinationWorker(
   runtime: TaskRuntime, port: CoordinationPort | undefined, tools: AgentToolPort | undefined,
   taskId: string, goal: string, context: WorkerContext,
-  options: {retainPriorToolResults?:boolean;allowToolContinuations?:true;toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
+  options: {retainPriorToolResults?:boolean;allowToolContinuations?:true;assertCompletion?:()=>void;toolExports?: readonly CompetitionToolExport[]; toolCatalog?: RuntimeCompetitionToolCatalog; repairCandidateVersion?: '1.0';workerCapabilities?:CoordinationWorkerCapabilityPort;prepareCompetitionToolExport?:PrepareCompetitionToolExport} = {},
 ): Promise<WorkerResult> {
     context.declareRuntimeToolTracking?.();
     if (!port) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Competition coordination is unavailable');
     // Persisted by trusted Runtime composition at submission, never by the model.
     // Legacy tasks keep their original four-round budget when resumed.
-    const maxSteps = context.loadCheckpoint('competition-max-steps') ?? DEFAULT_COMPETITION_STEPS;
-    if (typeof maxSteps !== 'number' || !Number.isSafeInteger(maxSteps) || maxSteps < 1) {
+    const originalMaxSteps = context.loadCheckpoint('competition-max-steps') ?? DEFAULT_COMPETITION_STEPS;
+    if (typeof originalMaxSteps !== 'number' || !Number.isSafeInteger(originalMaxSteps) || originalMaxSteps < 1) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Invalid persisted Competition step budget');
     }
+    let capacity=context.loadCheckpoint(EXECUTION_CAPACITY_CHECKPOINT) as ExecutionCapacityState|undefined;
+    if(capacity!==undefined)capacity=parseExecutionCapacity(capacity);
+    if(capacity!==undefined&&(capacity.initialWindowSteps!==originalMaxSteps||capacity.deadline!==context.deadline))
+      throw new ProtocolError('UNAUTHORIZED','Original Competition execution capacity binding changed');
+    let maxSteps=capacity?.windowEndStep??originalMaxSteps;
     const saved = context.loadCheckpoint('competition-loop') as CompetitionCheckpoint | undefined;
     let evidenceRefs = saved?.evidenceRefs ?? [];
     let continuation = saved?.continuation;
@@ -432,6 +441,29 @@ export async function runCoordinationWorker(
     const receipts = saved?.receipts ?? [];
 
     for (let step = saved?.step ?? 1; step <= maxSteps; step++) {
+      if(capacity&&step===maxSteps) {
+        const records=runtime.readToolExecutions(taskId);
+        const recordsByEvidence=new Map(records.map(record=>[record.evidenceId,record]));
+        const confirmed=receipts.every(receipt=>{
+          if(receipt.proposal.verification==='mock')return true;
+          if(options.workerCapabilities?.accepts(receipt.proposal)) {
+            try {options.workerCapabilities.assertReceiptAllowed(receipt.proposal,receipt.workerSelection,receipt.continuation.result,
+              {...context,revision:receipt.workerRevision!});return true;}catch{return false;}
+          }
+          const record=receipt.runId===undefined?undefined:recordsByEvidence.get(receipt.runId);
+          return record!==undefined&&record.state==='confirmed'&&record.policyDecision==='allow'&&record.executionStarted
+            &&record.toolName===receipt.proposal.toolName&&record.toolVersion===receipt.proposal.toolVersion
+            &&runtime.matchesToolExecutionInput(record,{arguments:receipt.proposal.arguments,scopeRef:receipt.runId!})
+            &&runtime.loadCheckpoint(taskId,'tool-result-'+receipt.runId)!==undefined;
+        });
+        if(confirmed&&!records.some(record=>record.state==='started'||record.state==='unknown')) {
+          const decision=advanceExecutionCapacity(capacity,{step,deadline:context.deadline,signal:context.signal,
+            cancelRequested:runtime.getTask(taskId).cancelRequested===true,nowMs:Date.now(),receipts});
+          capacity=decision.state;maxSteps=capacity!.windowEndStep;
+          if(decision.extended)context.saveCheckpoint(EXECUTION_CAPACITY_CHECKPOINT,capacity);
+          context.saveCheckpoint('competition-capacity-decision:v1',{reason:decision.reason,step,windowEndStep:maxSteps});
+        }
+      }
       context.reportProgress({
         stepId: `competition-${step}`,
         label: pending ? `awaiting approval for ${pending.toolName}` : 'cloud coordination',
@@ -453,13 +485,24 @@ export async function runCoordinationWorker(
       let proposalRevision = runtime.getTask(taskId).revision;
       // A fresh read with the same input may supersede a receipt exported under an older policy.
       // Never carry the older, wider projection into the new continuation or supersede a write.
-      const priorReceipts=continuation&&options.retainPriorToolResults?receipts.filter((item,index)=>item.proposal.proposalId!==continuation?.proposalId
+      let priorReceipts=continuation&&options.retainPriorToolResults?receipts.filter((item,index)=>item.proposal.proposalId!==continuation?.proposalId
         && !(item.exportPolicyVersion!==undefined
           && options.toolExports?.some(binding=>binding.toolName===item.proposal.toolName&&binding.toolVersion===item.proposal.toolVersion
             && binding.exportPolicyVersion!==item.exportPolicyVersion)
           && tools?.list().some(tool=>tool.name===item.proposal.toolName&&tool.version===item.proposal.toolVersion&&tool.sideEffect==='read')
           && receipts.slice(index+1).some(next=>next.proposal.toolName===item.proposal.toolName&&next.proposal.toolVersion===item.proposal.toolVersion
             && isDeepStrictEqual(next.proposal.arguments,item.proposal.arguments)))):[];
+      if(capacity&&continuation&&options.retainPriorToolResults) {
+        const currentContinuation=continuation;
+        const current=receipts.find(receipt=>receipt.proposal.proposalId===currentContinuation.proposalId);
+        if(!current)throw new ProtocolError('UNAUTHORIZED','Current execution continuation has no original receipt');
+        const candidates=[...priorReceipts,current];
+        const window=selectContinuationContext({receipts:candidates,current:currentContinuation,
+          queryBase:{goal,...(availableTools===undefined?{}:{availableTools})}});
+        priorReceipts=window.priorReceiptIndices.map(index=>candidates[index]!);
+        context.saveCheckpoint('competition-continuation-window:v1',{version:'1.0',currentProposalId:continuation.proposalId,
+          originalReceiptCount:receipts.length,priorCount:priorReceipts.length,omitted:window.omitted});
+      }
       const result = pending ?? await exchange(runtime, port, taskId, goal, context, continuation, () => {
         const prior = receipts.find(item => item.proposal.proposalId === continuation?.proposalId);
         for(const priorReceipt of [...priorReceipts,...(prior?[prior]:[])]) {
@@ -481,6 +524,9 @@ export async function runCoordinationWorker(
       }, availableTools, revision => { proposalRevision = revision; },
         continuation?priorReceipts.map(item=>item.continuation):undefined);
       if (result.kind === 'text') {
+        const completion:unknown=options.assertCompletion?.();
+        if(completion!==undefined){void Promise.resolve(completion).catch(()=>undefined);
+          throw new ProtocolError('INVALID_ARGUMENT','Competition completion check must be synchronous');}
         return {resultSummary: summary(result.text, result.verification), evidenceRefs};
       }
       if (result.kind === 'repair_candidate') {
@@ -575,6 +621,9 @@ export async function runCoordinationWorker(
         try {worker!.assertReceiptAllowed(result,workerResult.selection,workerResult.result,{...context,revision:inputRevision});}
         catch(error) {withholdConfirmedExport(runtime,taskId);throw error;}
       }
+      if(result.verification!=='mock'&&!workerResult)await options.toolCatalog?.confirmDiscovery({taskId,runId,
+        toolName:result.toolName,toolVersion:result.toolVersion,arguments:result.arguments,result:toolResult.result??null,
+        deadline:context.deadline,signal:context.signal});
       continuation = {
         proposalId: result.proposalId,
         state: 'confirmed',

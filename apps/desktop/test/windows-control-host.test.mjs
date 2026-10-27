@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {mkdir,mkdtemp,rm} from 'node:fs/promises';
+import path from 'node:path';
+import {ProtocolError} from '@personal-agent/contracts';
+import {createRuntimeApplication} from '@personal-agent/runtime/application';
 import {createWindowsDesktopControlHost} from '@personal-agent/windows-client';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createDesktopWindowsControlHost} from '../electron/windows-control-host.js';
+import {createToolPresenceHost} from '../electron/tool-presence-host.js';
 
 const clock=Date.parse('2026-10-18T20:00:00.000Z');
 const context=(overrides={})=>({taskId:'task-1',runId:'run-1',deadline:new Date(clock+60000).toISOString(),signal:new AbortController().signal,authorizationRef:'grant-1',scopes:['computer:desktop:request'],...overrides});
@@ -88,8 +93,101 @@ test('cancelled presence releases F9 and does not turn a model assertion into pr
 test('restart binding preserves an original Runtime unknown result and blocks the new provider',async()=>{
   const f=fixture();await f.host.start(context());
   f.application.runtime.listTasks=()=>({items:[{taskId:'task-1'}]});
-  f.application.runtime.readToolExecutions=()=>[{toolName:'computer.desktop.click',executionStarted:true,state:'unknown'}];
+  f.application.runtime.getTask=()=>({taskId:'task-1',state:'waiting_reconciliation'});
+  f.application.runtime.readToolExecutions=()=>[{taskId:'task-1',evidenceId:'run-1',inputDigest:'a'.repeat(64),
+    toolName:'computer.desktop.click',toolVersion:'1.0.0',policyDecision:'allow',executionStarted:true,state:'unknown'}];
   f.host.bind(f.application);assert.equal(f.host.snapshot().state,'blocked');assert.deepEqual(f.host.tools,[]);
+  assert.equal(f.host.snapshot().recoveryTaskId,'task-1');assert.equal(f.host.snapshot().recoveryRunId,'run-1');
+});
+
+test('real persisted non-form unknown retains its original recovery task/run after active provider work is empty and restart',async()=>{
+  const base=path.resolve('.cache/windows-control-recovery');await mkdir(base,{recursive:true});
+  const directory=await mkdtemp(path.join(base,'case-')),database=path.join(directory,'runtime.sqlite');
+  let executions=0,app,host;
+  const descriptor={name:'computer.desktop.click',version:'1.0.0',sideEffect:'external_write',
+    requiredScopes:['computer:desktop:control'],requiresPresence:true,idempotencySupport:false,recoverySupport:false,
+    inputSchema:{type:'object',properties:{targetRef:{type:'string'},loc:{type:'array',items:{type:'integer'},minItems:2,maxItems:2}},
+      required:['targetRef','loc'],additionalProperties:false},outputSchema:{type:'object'}};
+  function open(){
+    let blocked=false;
+    host=createDesktopWindowsControlHost({isFullAccess:()=>true,createControlHost:options=>({
+      tools:[{descriptor,async execute(args,scope){
+        executions++;
+        await options.attempts.record({taskId:scope.taskId,runId:scope.runId,toolName:descriptor.name,toolVersion:descriptor.version,
+          authorizationRef:scope.authorizationRef,argumentsDigest:scope.argumentsDigest,targetRef:args.targetRef,observationDigest:'b'.repeat(64)},
+        {...scope,arguments:args});
+        blocked=true;throw new ProtocolError('RESULT_UNKNOWN','Synthetic dispatched action lost its acknowledgement');
+      }}],activeTasks:()=>[],start:async()=>{},stop:async()=>{},dispose:async()=>{},block(){blocked=true;},
+      health:()=>({state:blocked?'blocked':'ready'})})});
+    app=createRuntimeApplication({path:database,profile:'huawei_ict_agentarts',tools:host.tools,isUserPresent:id=>host.hasPresence(id)});
+    host.bind(app);return {app,host};
+  }
+  try {
+    open();const runtime=app.runtime;
+    const task=runtime.submitTask({goal:'Synthetic private recovery goal',conversationId:'ordinary-chat-not-a-form',idempotencyKey:randomUUID()});
+    const deadline=new Date(Date.now()+60000).toISOString(),runId=randomUUID(),args={targetRef:randomUUID(),loc:[10,20]};
+    runtime.saveCheckpoint(task.taskId,'application-deadline',deadline);
+    runtime.transitionTask(task.taskId,'planning');runtime.transitionTask(task.taskId,'running');
+    await host.start({deadline,signal:new AbortController().signal});
+    await host.preparePresence({taskId:task.taskId,deadline,signal:new AbortController().signal});
+    const pending=runtime.requestToolApproval(runId,task.taskId,descriptor,deadline,toolArgumentsDigest(args));
+    runtime.respondApproval(runId,'allow_once',pending.revision);runtime.transitionTask(task.taskId,'running');
+    const result=await runtime.send({kind:'request',protocolVersion:'1.0.0',requestId:randomUUID(),taskId:task.taskId,
+      deadline,idempotencyKey:runId,operation:'tool.invoke',payload:{toolName:descriptor.name,toolVersion:descriptor.version,
+        arguments:args,scopeRef:runId}},new AbortController().signal);
+    assert.equal(result.outcome,'ok');assert.equal(result.data.state,'unknown');
+    assert.deepEqual(host.activeTasks(),[]);assert.equal(app.activeTaskCount,0);
+    const originalTask=runtime.getTask(task.taskId),originalRuns=runtime.readToolExecutions(task.taskId);
+    assert.equal(originalTask.state,'waiting_reconciliation');assert.equal(originalRuns[0].state,'unknown');
+    assert.equal(originalRuns[0].executionStarted,true);assert.equal(originalRuns[0].policyDecision,'allow');
+    assert(runtime.loadCheckpoint(task.taskId,'windows-desktop-attempt:'+runId));
+    assert.equal(host.snapshot().recoveryTaskId,task.taskId);assert.equal(host.snapshot().recoveryRunId,runId);
+    assert.equal(host.snapshot().activeTaskId,undefined);
+    assert.doesNotMatch(JSON.stringify(host.snapshot()),/Synthetic private recovery goal|ordinary-chat-not-a-form|argumentsDigest|observationDigest/);
+    await host.close();app.close();app=undefined;
+
+    open();assert.deepEqual(host.activeTasks(),[]);assert.equal(app.activeTaskCount,0);
+    assert.equal(host.snapshot().state,'blocked');assert.equal(host.snapshot().recoveryTaskId,task.taskId);
+    assert.equal(host.snapshot().recoveryRunId,runId);assert.equal(host.snapshot().activeTaskId,undefined);
+    assert.deepEqual(app.runtime.getTask(task.taskId),originalTask);assert.deepEqual(app.runtime.readToolExecutions(task.taskId),originalRuns);
+    assert.deepEqual(host.tools,[]);await host.start({deadline,signal:new AbortController().signal});assert.equal(executions,1);
+  }finally{
+    await host?.close();app?.close();await rm(directory,{recursive:true,force:true});
+  }
+});
+
+test('recovery discovery reads original paginated records without an active-task filter and clears only its view after original resolution',async()=>{
+  const f=fixture();await f.host.start(context());
+  const original={taskId:'original-task',evidenceId:'original-run',inputDigest:'c'.repeat(64),toolName:'computer.desktop.type',
+    toolVersion:'1.0.0',policyDecision:'allow',executionStarted:true,state:'unknown'};
+  let resolved=false;const calls=[];
+  f.application.runtime.listTasks=input=>{calls.push(input);return input.beforeSequence===undefined
+    ?{items:[{taskId:'newer-task'}],snapshotSequence:100,nextBeforeSequence:50}
+    :{items:[{taskId:'original-task'}],snapshotSequence:100};};
+  f.application.runtime.getTask=taskId=>({taskId,state:taskId==='original-task'?'failed':'running'});
+  f.application.runtime.readToolExecutions=taskId=>taskId==='original-task'?[{...original,state:resolved?'confirmed':'unknown'}]
+    :[{...original,taskId:'newer-task',toolName:'browser.click'}];
+  f.host.bind(f.application);
+  assert.equal(f.host.snapshot().recoveryTaskId,'original-task');assert.equal(f.host.snapshot().recoveryRunId,'original-run');
+  assert(calls.every(input=>input.states===undefined));assert(calls.some(input=>input.beforeSequence===50));
+  resolved=true;
+  assert.equal(f.host.snapshot().recoveryTaskId,undefined);assert.equal(f.host.snapshot().recoveryRunId,undefined);
+  assert.equal(f.host.snapshot().state,'blocked','a navigation projection never unblocks the provider or reconciles a task');
+  await f.host.close();
+});
+
+test('recovery identifiers are never guessed from provider health, pending UI task IDs or unrelated/denied original records',async()=>{
+  const f=fixture({isFullAccess:()=>true});await f.host.start(context());await f.host.preparePresence(context());
+  f.provider.block();f.application.runtime.listTasks=()=>({items:[{taskId:'task-1'}]});
+  f.application.runtime.getTask=()=>({taskId:'task-1',state:'waiting_reconciliation'});
+  const record={taskId:'task-1',evidenceId:'run-1',inputDigest:'d'.repeat(64),toolName:'computer.desktop.click',
+    toolVersion:'1.0.0',policyDecision:'allow',executionStarted:true,state:'unknown'};
+  for(const change of [{policyDecision:'deny'},{executionStarted:false},{taskId:'foreign-task'},{inputDigest:'not-an-original-digest'},
+    {state:'confirmed'},{toolName:'browser.click'}]){
+    f.application.runtime.readToolExecutions=()=>[{...record,...change}];
+    assert.equal(f.host.snapshot().recoveryTaskId,undefined);assert.equal(f.host.snapshot().recoveryRunId,undefined);
+  }
+  await f.host.close();
 });
 test('shared broker receipt is authoritative even before a local lease expires',async()=>{
   let current=false;
@@ -192,4 +290,128 @@ test('trusted Full access policy does not weaken original Runtime attempt identi
   await f.options.attempts.record(identity,{...context(),arguments:args});
   await assert.rejects(f.options.attempts.record(identity,{...context(),arguments:args}),{code:'RESULT_UNKNOWN'});
   assert.equal(f.checkpoints.size,1);await f.host.close();
+});
+
+function renewablePresenceFixture({fullAccess=true}={}) {
+  let time=clock,binding='sandbox:1:full-access',conversation='original-ui',taskState='running',cancelRequested=false;
+  let native,requests=0,timerId=0;const timers=new Map();
+  const record={taskId:'task-1',evidenceId:'run-1',toolName:'computer.request_access',toolVersion:'1.0.0',
+    inputDigest:'e'.repeat(64),policyDecision:'allow',executionStarted:true,state:'started'};
+  const broker=createToolPresenceHost({now:()=>time,isFullAccess:()=>fullAccess,readPolicyBinding:()=>binding,
+    isTaskCurrent:taskId=>taskId==='task-1'&&['running','waiting_approval'].includes(taskState)&&!cancelRequested,
+    readTaskBinding:taskId=>taskId==='task-1'?conversation:undefined,onPrompt:()=>{},
+    registerNativeShortcut:callback=>{native=callback;return()=>{native=undefined;};},
+    setTimer:(callback,delay)=>{const id=++timerId;timers.set(id,{at:time+delay,callback});return id;},clearTimer:id=>timers.delete(id)});
+  const request=broker.requestPresence.bind(broker);broker.requestPresence=scope=>{requests++;return request(scope);};
+  const f=fixture({presenceHost:broker,isFullAccess:()=>fullAccess,readPolicyBinding:()=>binding,now:()=>time});
+  f.application.readToolConversation=()=>conversation;
+  f.application.runtime.getTask=taskId=>({taskId,conversationId:conversation,state:taskState,cancelRequested});
+  f.application.runtime.readToolExecutions=()=>[record];
+  f.application.runtime.matchesToolExecutionInput=(_run,input)=>input.scopeRef==='grant-1'&&toolArgumentsDigest(input.arguments)===toolArgumentsDigest({});
+  const scope=()=>context({deadline:new Date(clock+120000).toISOString()});
+  f.application.runtime.loadCheckpoint=()=>scope().deadline;
+  return {...f,broker,record,scope,get requests(){return requests;},
+    advance(milliseconds){time+=milliseconds;for(const [id,timer]of [...timers])if(timer.at<=time){timers.delete(id);timer.callback();}},
+    set full(value){fullAccess=value;},set binding(value){binding=value;},set conversation(value){conversation=value;},
+    set taskState(value){taskState=value;},set cancelled(value){cancelRequested=value;},fire:()=>native?.(),
+    async requestAccess(){const pending=f.host.tools.find(tool=>tool.descriptor.name==='computer.request_access').execute({},scope());
+      if(!fullAccess){await new Promise(resolve=>setImmediate(resolve));native();}
+      const result=await pending;record.state='confirmed';return result;},
+    async close(){await f.host.close();broker.close();}};
+}
+
+test('original Full access request refreshes at 29.9s through a new broker receipt and exports after the old 30s limit',async()=>{
+  const f=renewablePresenceFixture();try {
+    await f.host.start(f.scope());const first=await f.requestAccess();assert.equal(first.state,'policy_allowed');assert.equal(f.requests,1);
+    const exportPolicy=f.host.competitionToolExports.find(item=>item.toolName==='computer.desktop.observe');
+    f.advance(29900);
+    const fresh=await f.host.refreshPolicyPresence(f.scope());assert.equal(f.requests,2);
+    assert.equal(fresh.source,'full-access-policy');assert.equal(fresh.expiresAt,new Date(clock+59900).toISOString());
+    f.advance(300);assert.equal(f.host.hasPresence('task-1'),true);
+    assert.deepEqual(exportPolicy.project({taskId:'task-1',result:{state:'observed'},signal:f.scope().signal}),{state:'observed'});
+    assert.equal(f.record.state,'confirmed');assert.equal(f.host.snapshot().presenceTasks[0].expiresAt,fresh.expiresAt);
+  }finally{await f.close();}
+});
+
+test('expired short policy receipt may renew only from the existing original request and same task binding',async()=>{
+  const f=renewablePresenceFixture();try {
+    await f.host.start(f.scope());await f.requestAccess();f.advance(31000);assert.equal(f.host.hasPresence('task-1'),false);
+    await assert.rejects(f.host.refreshPolicyPresence({...f.scope(),taskId:'task-2'}),{code:'UNAUTHORIZED'});assert.equal(f.requests,1);
+    const fresh=await f.host.refreshPolicyPresence(f.scope());assert.equal(f.requests,2);
+    assert.equal(fresh.expiresAt,new Date(clock+61000).toISOString());assert.equal(f.host.hasPresence('task-1'),true);
+  }finally{await f.close();}
+});
+
+test('unrequested or direct prepared policy presence cannot seed automatic renewal',async()=>{
+  const f=renewablePresenceFixture();try {
+    await f.host.start(f.scope());
+    await assert.rejects(f.host.refreshPolicyPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,0);
+    await f.host.preparePresence(f.scope());assert.equal(f.requests,1);
+    await assert.rejects(f.host.refreshPolicyPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,1);
+    f.record.policyDecision='deny';await f.requestAccess();
+    await assert.rejects(f.host.refreshPolicyPresence(f.scope()),{code:'UNAUTHORIZED'});
+  }finally{await f.close();}
+});
+
+test('restricted F9 receipt remains its original 30s and never becomes renewable after switching to Full access',async()=>{
+  const f=renewablePresenceFixture({fullAccess:false});try {
+    await f.host.start(f.scope());const first=await f.requestAccess();assert.equal(first.state,'presence_confirmed');
+    f.advance(29900);await assert.rejects(f.host.refreshPolicyPresence(f.scope()),{code:'UNAUTHORIZED'});
+    assert.equal(f.host.hasPresence('task-1'),true,'refusing renewal must not shorten a valid F9 receipt');assert.equal(f.requests,1);
+    f.full=true;await assert.rejects(f.host.refreshPolicyPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,1);
+    f.advance(200);assert.equal(f.host.hasPresence('task-1'),false);
+  }finally{await f.close();}
+});
+
+test('policy revision, restricted mode, conversation change, original request failure and unknown task revoke renewal eligibility',async()=>{
+  for(const change of [f=>{f.binding='sandbox:2:full-access';},f=>{f.full=false;},f=>{f.conversation='another-ui';},
+    f=>{f.record.state='unknown';},f=>{f.taskState='waiting_reconciliation';},f=>{f.cancelled=true;},f=>{f.provider.block();}]) {
+    const f=renewablePresenceFixture();try {
+      await f.host.start(f.scope());await f.requestAccess();f.advance(29900);change(f);
+      await assert.rejects(f.host.refreshPolicyPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,1);
+      f.binding='sandbox:1:full-access';f.full=true;f.conversation='original-ui';f.record.state='confirmed';f.taskState='running';f.cancelled=false;
+      await assert.rejects(f.host.refreshPolicyPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,1);
+    }finally{await f.close();}
+  }
+});
+
+test('stop, original deadline changes and cancelled refresh cannot extend an earlier policy presence',async()=>{
+  for(const kind of ['stop','deadline','cancelled']) {
+    const f=renewablePresenceFixture();try {
+      await f.host.start(f.scope());await f.requestAccess();
+      const scope=f.scope();
+      if(kind==='stop')await f.host.stop();
+      if(kind==='deadline')scope.deadline=new Date(clock+119000).toISOString();
+      if(kind==='cancelled'){const controller=new AbortController();controller.abort();scope.signal=controller.signal;}
+      await assert.rejects(f.host.refreshPolicyPresence(scope),{code:kind==='cancelled'?'CANCELLED':'UNAUTHORIZED'});
+      assert.equal(f.requests,1);
+    }finally{await f.close();}
+  }
+});
+
+test('production preflight retains current browser policy and restricted F9 receipts without signing new presence',async()=>{
+  for(const fullAccess of [false,true]){
+    const f=renewablePresenceFixture({fullAccess});try{
+      await f.host.start(f.scope());
+      if(fullAccess)await f.host.preparePresence(f.scope());else await f.requestAccess();
+      f.advance(29900);
+      const receipt=await f.host.prepareToolPresence(f.scope());
+      assert.equal(receipt.source,fullAccess?'full-access-policy':'native-gesture');
+      assert.equal(receipt.expiresAt,new Date(clock+30000).toISOString());assert.equal(f.requests,1);
+      f.advance(200);await assert.rejects(f.host.prepareToolPresence(f.scope()),{code:'UNAUTHORIZED'});
+      assert.equal(f.requests,1,'An expired unseeded receipt cannot be renewed by a tool preflight');
+    }finally{await f.close();}
+  }
+});
+
+test('production preflight renews only the original confirmed seed and fails closed on a changed binding',async()=>{
+  const f=renewablePresenceFixture();try{
+    await f.host.start(f.scope());await f.requestAccess();f.advance(31000);
+    const receipt=await f.host.prepareToolPresence(f.scope());assert.equal(f.requests,2);
+    assert.equal(receipt.expiresAt,new Date(clock+61000).toISOString());
+    f.binding='sandbox:2:full-access';
+    await assert.rejects(f.host.prepareToolPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,2);
+    f.binding='sandbox:1:full-access';
+    await assert.rejects(f.host.prepareToolPresence(f.scope()),{code:'UNAUTHORIZED'});assert.equal(f.requests,2);
+  }finally{await f.close();}
 });

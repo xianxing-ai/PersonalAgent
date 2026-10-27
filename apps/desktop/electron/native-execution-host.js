@@ -68,7 +68,8 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   }
   function createCommandTool(options){
     const root=realpathSync.native(options.rootPath),rootIdentity=identity(root);
-    const executables=[...new Set(options.recipes.map(recipe=>realpathSync.native(recipe.executable)))];
+    const fixedRecipes=options.recipes.map(recipe=>({executable:realpathSync.native(recipe.executable),args:[...(recipe.args??[])]}));
+    const executables=[...new Set(fixedRecipes.map(recipe=>recipe.executable))];
     const executor={async execute(request){
       assertBinding(request);
       const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertBinding});
@@ -82,10 +83,18 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           authorizationRef:context.authorizationRef,argumentsDigest:context.argumentsDigest,deadline:executionDeadline};
         assertBinding(binding);
         const mode=policy.mode;
-        const roots=[systemRoot,...executables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath)];
+        // Project recipes launch the pinned helper, which then starts the selected
+        // Node. A separate node-check recipe is optional and cannot supply that
+        // child's read/execute permission by accident.
+        const node=realpathSync.native(verified.configuration.nodeExecutable);
+        const usesNodeChild=fixedRecipes.some(recipe=>recipe.executable===verified.pins.helperPath
+          &&recipe.args[0]==='--cwd'&&recipe.args[1]===root&&recipe.args[2]==='--exe'
+          &&recipe.args[3]===node&&recipe.args[4]==='--');
+        const allowedExecutables=usesNodeChild?[...new Set([...executables,node])]:executables;
+        const roots=[systemRoot,...allowedExecutables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath)];
         const profile={sandboxRef:policy.ref,revision:policy.revision,mode,backend:mode==='full-access'?'none':'windows-psec',
           readRoots:[...new Set([...roots,...(mode==='workspace-write'?[]:[root])])],
-          writeRoots:mode==='workspace-write'?[root]:[],executableAllowlist:executables,
+          writeRoots:mode==='workspace-write'?[root]:[],executableAllowlist:allowedExecutables,
           network:{mode:mode==='full-access'?'unrestricted':'deny'}};
         return {...binding,profile};
       },

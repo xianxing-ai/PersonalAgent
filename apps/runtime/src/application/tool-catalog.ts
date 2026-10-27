@@ -2,12 +2,17 @@ import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {ToolDescriptor} from '@personal-agent/contracts';
 import type {AgentToolPort} from '@personal-agent/agents';
 import {Buffer} from 'node:buffer';
+import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {MAX_AVAILABLE_TOOLS, MAX_AVAILABLE_TOOLS_JSON_BYTES} from '@personal-agent/coordination';
 import type {TaskRuntime} from '../index.js';
 import type {CompetitionToolExport} from './coordination.js';
+import {TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION} from './tool-discovery.js';
 
 const CHECKPOINT = 'competition-tool-catalog';
+const DISCOVERY_POOL = 'competition-tool-discovery-pool:v1';
+const DISCOVERY_SELECTION = 'competition-tool-discovery-selection:';
+const fingerprint = (value:unknown):string => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const NAME = /^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/;
 const VERSION = /^[0-9A-Za-z][0-9A-Za-z_.-]{0,63}$/;
 
@@ -18,6 +23,8 @@ export interface CompetitionToolAvailability {
   modelExposure?: 'internal';
   /** Explicit host-approved input paths whose scalar enum values are public, e.g. /units. */
   publicEnumPaths?: readonly string[];
+  /** Fixed host-authored help. Arbitrary descriptor root metadata stays private. */
+  publicDescription?: string;
   /** Trusted host health and scope check; registration alone never means ready. */
   available(input: {taskId: string; revision: number; deadline: string; signal: AbortSignal}): boolean | Promise<boolean>;
 }
@@ -44,7 +51,12 @@ interface CatalogCheckpoint {
   revision: number;
   deadline: string;
   entries: CompetitionAvailableTool[];
+  discoveryRunId?:string;
 }
+
+interface DiscoveryPool {version:'1.0';revision:number;deadline:string;digest:string;entries:CompetitionAvailableTool[];}
+interface DiscoverySelection {version:'1.0';poolDigest:string;arguments:{query:string;cursor?:string};
+  entries:CompetitionAvailableTool[];result:Record<string,unknown>;}
 
 function safeSchema(value: unknown, depth = 0, publicEnums: ReadonlySet<string> = new Set(), parameterPath = ''): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || depth > 8) {
@@ -106,7 +118,9 @@ function safeSchema(value: unknown, depth = 0, publicEnums: ReadonlySet<string> 
 }
 
 function projectedSchema(descriptor: ToolDescriptor, binding: CompetitionToolAvailability): Record<string, unknown> {
-  return safeSchema(descriptor.inputSchema, 0, new Set(binding.publicEnumPaths ?? []));
+  const schema=safeSchema(descriptor.inputSchema, 0, new Set(binding.publicEnumPaths ?? []));
+  if(binding.publicDescription) schema.description=binding.publicDescription;
+  return schema;
 }
 
 function withoutDescriptions(schema: Record<string, unknown>): Record<string, unknown> {
@@ -118,8 +132,15 @@ function withoutDescriptions(schema: Record<string, unknown>): Record<string, un
 }
 
 function sameSchema(fresh: Record<string, unknown>, saved: Record<string, unknown>): boolean {
-  return isDeepStrictEqual(fresh, saved) || isDeepStrictEqual(withoutDescriptions(fresh), saved);
+  return isDeepStrictEqual(fresh, saved) || isDeepStrictEqual(withoutDescriptions(fresh), saved)
+    || isDeepStrictEqual(withoutParameterDescriptions(fresh),saved);
 }
+
+function withoutParameterDescriptions(schema:Record<string,unknown>):Record<string,unknown> {
+  return {...withoutDescriptions(schema),...(typeof schema.description==='string'?{description:schema.description}:{})};
+}
+const fitsCatalog=(entries:readonly CompetitionAvailableTool[]):boolean => entries.length<=MAX_AVAILABLE_TOOLS
+  &&Buffer.byteLength(JSON.stringify(entries),'utf8')<=MAX_AVAILABLE_TOOLS_JSON_BYTES;
 
 export class RuntimeCompetitionToolCatalog {
   readonly sideEffect: ToolDescriptor['sideEffect'];
@@ -130,7 +151,7 @@ export class RuntimeCompetitionToolCatalog {
     return new RuntimeCompetitionToolCatalog(this.runtime,tools,
       this.exports.filter(item=>allowed(item.toolName,item.toolVersion)),
       this.availability.filter(item=>allowed(item.toolName,item.toolVersion)),
-      this.workers.filter(item=>allowed(item.requiredTool.name,item.requiredTool.version)),this.isUserPresent);
+      this.workers.filter(item=>allowed(item.requiredTool.name,item.requiredTool.version)),this.isUserPresent,this.discoveryEnabled);
   }
 
   constructor(
@@ -140,6 +161,7 @@ export class RuntimeCompetitionToolCatalog {
     private readonly availability: readonly CompetitionToolAvailability[],
     private readonly workers:readonly CompetitionWorkerCapability[] = [],
     private readonly isUserPresent:((taskId:string)=>boolean)|undefined = undefined,
+    private readonly discoveryEnabled=false,
   ) {
     const names = new Set<string>();
     for (const entry of availability) {
@@ -147,6 +169,8 @@ export class RuntimeCompetitionToolCatalog {
       if (!NAME.test(entry.toolName) || !VERSION.test(entry.toolVersion)
         || typeof entry.available !== 'function' || names.has(key)
         || (entry.modelExposure!==undefined&&entry.modelExposure!=='internal')
+        || (entry.publicDescription!==undefined&&(typeof entry.publicDescription!=='string'||!entry.publicDescription.trim()
+          ||entry.publicDescription.length>512||/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(entry.publicDescription)))
         || (entry.publicEnumPaths !== undefined && (!Array.isArray(entry.publicEnumPaths)
           || entry.publicEnumPaths.some(value => typeof value !== 'string'
             || !/^\/(?:[A-Za-z][A-Za-z0-9_.:-]*|\*)(?:\/(?:[A-Za-z][A-Za-z0-9_.:-]*|\*))*$/.test(value))))) {
@@ -262,7 +286,7 @@ export class RuntimeCompetitionToolCatalog {
         || !this.exports.some(item => item.toolName === binding.toolName && item.toolVersion === binding.toolVersion)) continue;
       if (!await this.ready(binding, {...input, revision})) continue;
       selected.push({name: descriptor.name, version: descriptor.version, inputSchema: projectedSchema(descriptor, binding)});
-      if (selected.length > MAX_AVAILABLE_TOOLS) {
+      if (selected.length > MAX_AVAILABLE_TOOLS && !this.discoveryEnabled) {
         throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog exceeds its limit');
       }
     }
@@ -273,13 +297,126 @@ export class RuntimeCompetitionToolCatalog {
       if(descriptor.name!==worker.toolName || descriptor.version!==worker.toolVersion)throw new ProtocolError('UNAUTHORIZED','Worker descriptor identity changed');
       selected.push({...descriptor,inputSchema:safeSchema(descriptor.inputSchema,0,new Set(worker.publicEnumPaths))});
     }
+    const originalEntries=structuredClone(selected);
     if (Buffer.byteLength(JSON.stringify(selected), 'utf8') > MAX_AVAILABLE_TOOLS_JSON_BYTES) {
-      for (const item of selected) item.inputSchema = withoutDescriptions(item.inputSchema);
+      for (const item of selected) item.inputSchema = withoutParameterDescriptions(item.inputSchema);
     }
-    if(selected.length>MAX_AVAILABLE_TOOLS || Buffer.byteLength(JSON.stringify(selected),'utf8')>MAX_AVAILABLE_TOOLS_JSON_BYTES)throw new ProtocolError('INVALID_ARGUMENT','Competition tool catalog structure exceeds its limit');
+    if(!fitsCatalog(selected)) {
+      const discovery=originalEntries.find(item=>item.name===TOOL_DISCOVERY_NAME&&item.version===TOOL_DISCOVERY_VERSION);
+      if(!this.discoveryEnabled||!discovery||!fitsCatalog([discovery]))
+        throw new ProtocolError('INVALID_ARGUMENT','Competition tool catalog structure exceeds its limit');
+      selected.splice(0,selected.length,discovery);
+    }
     this.assertCurrent({...input, revision});
+    if(this.discoveryEnabled) {
+      const pool:DiscoveryPool={version:'1.0',revision,deadline:input.deadline,digest:fingerprint(originalEntries),entries:originalEntries};
+      if(!this.runtime.saveCheckpointOnce(input.taskId,DISCOVERY_POOL,pool)
+        &&!isDeepStrictEqual(this.runtime.loadCheckpoint(input.taskId,DISCOVERY_POOL),pool))
+        throw new ProtocolError('REVISION_CONFLICT','Original discovery tool set changed');
+    }
     this.runtime.saveCheckpoint(input.taskId, CHECKPOINT, {revision, deadline: input.deadline, entries: selected});
     return structuredClone(selected);
+  }
+
+  private discoveryPool(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal}):DiscoveryPool {
+    this.assertCurrent(input);
+    const pool=this.runtime.loadCheckpoint(input.taskId,DISCOVERY_POOL) as DiscoveryPool|undefined;
+    if(!this.discoveryEnabled||pool?.version!=='1.0'||pool.deadline!==input.deadline||pool.revision>input.revision
+      ||!Array.isArray(pool.entries)||pool.digest!==fingerprint(pool.entries)
+      ||!pool.entries.some(entry=>entry.name===TOOL_DISCOVERY_NAME&&entry.version===TOOL_DISCOVERY_VERSION))
+      throw new ProtocolError('UNAUTHORIZED','Original task tool discovery binding is unavailable');
+    return pool;
+  }
+
+  private async entryCurrent(entry:CompetitionAvailableTool,input:{taskId:string;revision:number;deadline:string;signal:AbortSignal}):Promise<boolean> {
+    const worker=this.workers.find(value=>value.toolName===entry.name&&value.toolVersion===entry.version);
+    if(worker) {
+      const current=await this.readProvider(input,view=>worker.describe(view));
+      return current!==undefined&&current.name===entry.name&&current.version===entry.version
+        &&sameSchema(safeSchema(current.inputSchema,0,new Set(worker.publicEnumPaths)),entry.inputSchema);
+    }
+    const binding=this.availability.find(value=>value.toolName===entry.name&&value.toolVersion===entry.version);
+    const descriptor=this.tools.list().find(value=>value.name===entry.name&&value.version===entry.version);
+    return !!binding&&binding.modelExposure!=='internal'&&!!descriptor
+      &&(!descriptor.requiresPresence||this.isUserPresent!==undefined)
+      &&this.exports.some(value=>value.toolName===entry.name&&value.toolVersion===entry.version)
+      &&sameSchema(projectedSchema(descriptor,binding),entry.inputSchema)&&await this.ready(binding,input);
+  }
+
+  /** Read-only discovery over this task's original frozen candidates, never a general invoker. */
+  async search(input:{taskId:string;runId:string;deadline:string;signal:AbortSignal;arguments:{query:string;cursor?:string}}):Promise<Record<string,unknown>> {
+    const view={...input,revision:this.runtime.getTask(input.taskId).revision},pool=this.discoveryPool(view);
+    const previous=this.runtime.loadCheckpoint(input.taskId,DISCOVERY_SELECTION+input.runId) as DiscoverySelection|undefined;
+    if(previous) {
+      if(previous.poolDigest!==pool.digest||!isDeepStrictEqual(previous.arguments,input.arguments))
+        throw new ProtocolError('REVISION_CONFLICT','Discovery run identity is bound to another query');
+      return structuredClone(previous.result);
+    }
+    const query=input.arguments.query.trim().toLowerCase(),terms=query.split(/\s+/u).filter(Boolean);
+    const candidates=pool.entries.filter(entry=>entry.name!==TOOL_DISCOVERY_NAME
+      &&terms.every(term=>`${entry.name} ${String(entry.inputSchema.description??'')}`.toLowerCase().includes(term)));
+    let offset=0;
+    if(input.arguments.cursor!==undefined) {
+      try {
+        const cursor=JSON.parse(Buffer.from(input.arguments.cursor,'base64url').toString('utf8')) as Record<string,unknown>;
+        if(Object.keys(cursor).length!==4||cursor.task!==input.taskId||cursor.pool!==pool.digest||cursor.query!==fingerprint(query)
+          ||!Number.isSafeInteger(cursor.offset)||(cursor.offset as number)<0||(cursor.offset as number)>candidates.length)throw Error();
+        offset=cursor.offset as number;
+      }catch{throw new ProtocolError('INVALID_ARGUMENT','Discovery cursor does not match the original task and query');}
+    }
+    const discovery=pool.entries.find(entry=>entry.name===TOOL_DISCOVERY_NAME&&entry.version===TOOL_DISCOVERY_VERSION)!;
+    if(!await this.entryCurrent(discovery,view))throw new ProtocolError('UNAUTHORIZED','Original discovery tool became unavailable');
+    let entries:CompetitionAvailableTool[]=[discovery];
+    const matches:{name:string;version:string;state:'selected'|'unavailable'|'schema_too_large'}[]=[];
+    let next=offset;
+    for(;next<candidates.length&&matches.length<MAX_AVAILABLE_TOOLS-1;next++) {
+      const entry=candidates[next]!;
+      if(!await this.entryCurrent(entry,view)){matches.push({name:entry.name,version:entry.version,state:'unavailable'});continue;}
+      const proposed=[...entries,entry];
+      const compact=proposed.map(item=>({...item,inputSchema:withoutParameterDescriptions(item.inputSchema)}));
+      if(fitsCatalog(proposed))entries=proposed;
+      else if(fitsCatalog(compact))entries=compact;
+      else if(entries.length===1){matches.push({name:entry.name,version:entry.version,state:'schema_too_large'});continue;}
+      else break;
+      matches.push({name:entry.name,version:entry.version,state:'selected'});
+    }
+    const counts=new Map<string,number>();
+    for(const entry of pool.entries)if(entry.name!==TOOL_DISCOVERY_NAME){const namespace=entry.name.split('.')[0]!;counts.set(namespace,(counts.get(namespace)??0)+1);}
+    const groups=[...counts].sort(([a],[b])=>a.localeCompare(b)).map(([namespace,count])=>({namespace,count}));
+    const result:Record<string,unknown>={catalogRef:pool.digest,query:input.arguments.query,totalMatches:candidates.length,offset,hasMore:next<candidates.length,
+      ...(next<candidates.length?{nextCursor:Buffer.from(JSON.stringify({task:input.taskId,pool:pool.digest,query:fingerprint(query),offset:next})).toString('base64url')}:{}),
+      groups:groups.slice(0,64),groupsTruncated:groups.length>64,matches,
+      selectedTools:entries.slice(1).map(({name,version})=>({name,version})),authorization:'checked_on_invocation'};
+    const selection:DiscoverySelection={version:'1.0',poolDigest:pool.digest,arguments:structuredClone(input.arguments),entries:structuredClone(entries),result};
+    this.assertCurrent(view);
+    if(!this.runtime.saveCheckpointOnce(input.taskId,DISCOVERY_SELECTION+input.runId,selection))
+      throw new ProtocolError('REVISION_CONFLICT','Discovery selection already exists');
+    return structuredClone(result);
+  }
+
+  /** Activate only a result independently recorded as confirmed by the original Runtime. */
+  async confirmDiscovery(input:{taskId:string;runId:string;toolName:string;toolVersion:string;arguments:Record<string,unknown>;
+    result:unknown;deadline:string;signal:AbortSignal}):Promise<void> {
+    if(input.toolName!==TOOL_DISCOVERY_NAME||input.toolVersion!==TOOL_DISCOVERY_VERSION)return;
+    const view={...input,revision:this.runtime.getTask(input.taskId).revision},pool=this.discoveryPool(view);
+    const selection=this.runtime.loadCheckpoint(input.taskId,DISCOVERY_SELECTION+input.runId) as DiscoverySelection|undefined;
+    const record=this.runtime.readToolExecutions(input.taskId).find(value=>value.evidenceId===input.runId);
+    const cache=this.runtime.loadCheckpoint(input.taskId,'tool-result-'+input.runId) as {result:unknown}|undefined;
+    if(!selection||selection.poolDigest!==pool.digest||!isDeepStrictEqual(selection.arguments,input.arguments)
+      ||!isDeepStrictEqual(selection.result,input.result)||!isDeepStrictEqual(cache?.result,input.result)
+      ||!record||record.state!=='confirmed'||record.policyDecision!=='allow'||record.executionStarted!==true
+      ||record.toolName!==TOOL_DISCOVERY_NAME||record.toolVersion!==TOOL_DISCOVERY_VERSION
+      ||!this.runtime.matchesToolExecutionInput(record,{arguments:input.arguments,scopeRef:input.runId})
+      ||!fitsCatalog(selection.entries))throw new ProtocolError('UNAUTHORIZED','Discovery selection has no matching confirmed Runtime receipt');
+    for(const entry of selection.entries) {
+      const original=pool.entries.find(value=>value.name===entry.name&&value.version===entry.version);
+      if(!original||!sameSchema(original.inputSchema,entry.inputSchema)||!await this.entryCurrent(entry,view))
+        throw new ProtocolError('UNAUTHORIZED','Discovered capability changed before selection');
+    }
+    this.assertCurrent(view);
+    const saved=this.runtime.loadCheckpoint(input.taskId,CHECKPOINT) as CatalogCheckpoint|undefined;
+    if(saved?.discoveryRunId===input.runId){if(!isDeepStrictEqual(saved.entries,selection.entries))throw new ProtocolError('REVISION_CONFLICT','Confirmed discovery selection changed');return;}
+    this.runtime.saveCheckpoint(input.taskId,CHECKPOINT,{revision:view.revision,deadline:input.deadline,entries:selection.entries,discoveryRunId:input.runId});
   }
 
   /** A continuation reuses only the original selection. Approval may advance the

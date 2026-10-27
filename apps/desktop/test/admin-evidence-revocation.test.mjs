@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {adminAuxiliaryDocument,recordFollowingNodes} from '../test-support/admin-history-dom.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g,
   char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
@@ -10,7 +11,7 @@ function element() {
     removeEventListener(name,listener){if(this.listeners.get(name)===listener)this.listeners.delete(name);},
     replaceChildren(){this.innerHTML='';},
     attributes: new Map(), setAttribute(name,value) {this.attributes.set(name,value);},
-    getAttribute(name) {return this.attributes.get(name)??null;}, insertBefore() {}};
+    getAttribute(name) {return this.attributes.get(name)??null;}, insertBefore() {},after:recordFollowingNodes};
 }
 
 async function harness(t, invoke) {
@@ -27,7 +28,7 @@ async function harness(t, invoke) {
   globalThis.window = {addEventListener(name, listener) {
     const listeners = windowListeners.get(name) ?? [];listeners.push(listener);windowListeners.set(name, listeners);
   }};
-  globalThis.document = {createElement: element};
+  globalThis.document = adminAuxiliaryDocument();
   globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
   const {mountAdmin} = await import('../src/features/admin/view.js');
   const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search',

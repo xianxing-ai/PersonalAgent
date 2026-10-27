@@ -300,3 +300,32 @@ test('immediate cancellation of an accepted but unstarted followup leaves a clos
     assert.equal(f.app.readSubagentConversation(scope).canSubmit,true);
   } finally {f.app.close();}
 });
+
+test('visible parents select their original children before the global limit and bind subsequent cursors',async()=>{
+  const f=fixture();
+  try {
+    const visible=[await origin(f,'visible-a'),await origin(f,'visible-b'),await origin(f,'visible-c')];
+    const parentTaskIds=visible.map(item=>item.parentTaskId),ids=new Set(visible.map(item=>item.taskId));
+    for(let index=0;index<105;index++)await origin(f,`unrelated-${index}`);
+    const global=f.app.listSubagentConversations({limit:100});
+    assert.equal(global.items.length,100);assert.ok(global.nextCursor);assert.ok(global.items.every(item=>!ids.has(item.taskId)));
+    const {acceptedTaskId}=f.app.submitSubagentConversationMessage({...visible[0],text:'Current visible followup',requestId:'visible-followup'});
+    const latest=await settle(f.app,acceptedTaskId);assert.equal(latest.state,'succeeded');
+    let page=f.app.listSubagentConversations({parentTaskIds,limit:1});
+    assert.equal(page.items[0].taskId,visible[0].taskId);assert.equal(page.items[0].updatedAt,latest.updatedAt);
+    assert.ok(page.nextCursor);
+    const originalCursor=page.nextCursor,seen=new Set();
+    do {
+      assert.ok(page.items.length<=1);
+      for(const item of page.items){assert.ok(ids.has(item.taskId));assert.equal(seen.has(item.taskId),false);seen.add(item.taskId);}
+      if(!page.nextCursor)break;
+      page=f.app.listSubagentConversations({parentTaskIds:[...parentTaskIds].reverse(),limit:1,cursor:page.nextCursor});
+    }while(true);
+    assert.deepEqual(seen,ids);
+    assert.throws(()=>f.app.listSubagentConversations({parentTaskIds:[parentTaskIds[0]],limit:1,cursor:originalCursor}),{code:'INVALID_ARGUMENT'});
+    assert.throws(()=>f.app.listSubagentConversations({parentTaskIds,limit:1,cursor:global.nextCursor}),{code:'INVALID_ARGUMENT'});
+    assert.throws(()=>f.app.listSubagentConversations({limit:1,cursor:originalCursor}),{code:'INVALID_ARGUMENT'});
+    assert.deepEqual(f.app.listSubagentConversations({parentTaskIds:[],limit:1}),{items:[]});
+    assert.throws(()=>f.app.listSubagentConversations({parentTaskIds:[parentTaskIds[0],parentTaskIds[0]]}),{code:'INVALID_ARGUMENT'});
+  }finally{f.app.close();}
+});

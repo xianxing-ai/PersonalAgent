@@ -3,6 +3,7 @@ import {performance} from 'node:perf_hooks';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolDescriptor, ToolHost} from '@personal-agent/contracts';
 export * from './desktop-control.js';
+export * from './native-desktop.js';
 
 export const SYSTEM_OBSERVATION_TOOL_NAME = 'computer.system.observe';
 export const SYSTEM_OBSERVATION_TOOL_VERSION = '1.0.0';

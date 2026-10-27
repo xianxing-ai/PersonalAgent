@@ -54,6 +54,8 @@ export interface AgentArtsRuntimeApplicationOptions
   websocketUrl?: string;
   allowHttpsFallback?: boolean;
   websocketAuthorizationProvider?: AgentArtsAuthorizationProvider;
+  /** Host-only delivery recovery of an original accepted WSS request, without invoke replay. */
+  recoverAcceptedStatus?: true;
   websocketFactory?: AgentArtsWebSocketFactory;
   /** Offline/native socket injection, independent of the task transport protocol. */
   realtimeSocket?: RealtimeSocketConstructor;
@@ -103,6 +105,7 @@ export function createAgentArtsRuntimeApplication(
     websocketUrl,
     allowHttpsFallback,
     websocketAuthorizationProvider,
+    recoverAcceptedStatus,
     websocketFactory,
     realtimeSocket,
     onTransportState,
@@ -115,6 +118,8 @@ export function createAgentArtsRuntimeApplication(
     observationApplicationId,
     ...runtimeOptions
   } = options;
+  if(recoverAcceptedStatus!==undefined&&(recoverAcceptedStatus!==true||transport!=='wss'))
+    throw new ProtocolError('INVALID_ARGUMENT','Accepted-status recovery requires explicit WSS transport');
   if (deploymentVersion !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(deploymentVersion)) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Invalid fixed AgentArts deployment version');
   }
@@ -160,6 +165,7 @@ export function createAgentArtsRuntimeApplication(
       && onTransportState === undefined ? undefined : {
         ...(websocketAuthorizationProvider === undefined ? {} : {authorizationProvider: websocketAuthorizationProvider}),
         ...(websocketFactory === undefined ? {} : {factory: websocketFactory}),
+        ...(recoverAcceptedStatus===true?{recoverAcceptedStatus:true as const}:{}),
         ...(onTransportState === undefined ? {} : {onState: onTransportState}),
         onDispatch: (request, receipt) => {
           application.runtime.saveCheckpoint(request.taskId, 'competition-cloud-inflight', receipt);

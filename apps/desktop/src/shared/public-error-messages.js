@@ -1,5 +1,6 @@
 // Reviewed, literal public messages. Exact matching prevents external response
 // bodies or interpolated filesystem/user data from becoming public diagnostics.
+export const knowledgeSourceNotReadyMessage='受信知识源尚未就绪，请先检查模型与知识源配置';
 export const publicErrorMessages = new Set([
   'Authorization is missing or revoked',
   'Authorization is not bound to this task and tool',
@@ -19,6 +20,9 @@ export const publicErrorMessages = new Set([
   '系统加密存储不可用，无法安全保存 API Key；本次配置未写入磁盘',
   'API Key 未配置；密钥只会保留在主进程内存中',
   '请先保存盘古模型配置','模型已停用，请先启用','请先配置 AgentArts','模型已停用','请先保存模型配置',
+  'Runtime 仍有活动任务；请先等待完成或停止任务后再退出',
+  '邮箱配置正在更新，请等待完成后再启动监测','邮箱配置正在更新，请等待完成后再读取邮件','邮箱配置正在更新，请等待完成后再退出',
+  knowledgeSourceNotReadyMessage,
   '思考深度必须是 0 到 5',
   '原开发者 Harness 设置或工作区许可已变化',
   '持续工作流原部署已改变',

@@ -18,6 +18,26 @@ test('owned cleanup accepts normal process exit and refuses an unregistered appl
   await closeDesktop(app);assert.equal(attempt.cleanup.state,'closed');assert.equal(attempt.cleanup.method,'graceful');
   await assert.rejects(closeDesktop({close:()=>{throw Error('foreign app touched');}}),/unowned Desktop/u);
 });
+test('Windows launcher exit cannot hide its still-running pinned Electron main process',async()=>{
+  const child=new EventEmitter();Object.assign(child,{pid:12345,exitCode:null,signalCode:null,kill:()=>{throw Error('launcher must not be killed');}});
+  const executablePath=path.resolve('Synthetic-electron.exe'),mainProcessId=23456;
+  const identity={state:'alive',pid:mainProcessId,parentPid:child.pid,executablePath,
+    startTicks:String(BigInt(Date.now())*10000n+621355968000000000n)};
+  let mainExited=false,forces=0;
+  const app={process:()=>child,close:async()=>{child.exitCode=0;child.emit('exit',0);}};
+  const attempt={};trackOwnedDesktop(app,{executablePath,mainProcessId},attempt,Date.now(),{
+    inspect:binding=>{assert.equal(binding.pid,mainProcessId);return mainExited?{state:'exited'}:identity;},
+    terminate:binding=>{assert.deepEqual(binding,identity);forces++;mainExited=true;return{state:'terminated'};},
+  });
+  await closeDesktop(app);
+  assert.equal(forces,1);assert.equal(attempt.processIdentity.launcherPid,child.pid);
+  assert.equal(attempt.processIdentity.pid,mainProcessId);assert.equal(attempt.cleanup.mainProcessExited,true);
+  assert.equal(attempt.cleanup.state,'closed');assert.equal(attempt.cleanup.method,'verified-owned-tree');
+  const foreign={...identity,parentPid:child.pid+1};
+  assert.throws(()=>trackOwnedDesktop({process:()=>child},{executablePath,mainProcessId},{},Date.now(),{inspect:()=>foreign}),
+    /must descend from its original launcher/u);
+});
+
 test('blocked quit is bounded, force only the pinned owned tree once, and reject a replaced identity',async t=>{
   t.mock.timers.enable({apis:['Date','setTimeout'],now:0});
   for(const replaced of [false,true]){
@@ -140,7 +160,30 @@ test('public Pelican question automation verifies the original descendant and ex
   await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',question),/exact arguments/);
   save(question.taskId,'application-tool-invocation:'+question.sourceApprovalId,{...invocation,arguments:{...args,path:'other.svg'},
     argumentsDigest:toolArgumentsDigest({...args,path:'other.svg'})});
-  await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',question),/public SVG/);
+  await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',question),/public fixture files/);
+  const saveFixtureInvocation=(toolName,argumentsValue)=>{
+    const value={toolName,arguments:argumentsValue,argumentsDigest:toolArgumentsDigest(argumentsValue),deadline};
+    save(question.taskId,'application-tool-invocation:'+question.sourceApprovalId,value);
+    return{...question,toolName};
+  };
+  for(const sourcePath of ['pelican.svg','pelican.test.cjs','package.json'])await originalQuestionBinding(file,'Synthetic-original-main',
+    saveFixtureInvocation('workspace.read_text',{path:sourcePath}));
+  const developmentBoundary={publicReadPaths:['metric-01.cjs','project.test.cjs','package.json'],publicWritePaths:['metric-01.cjs']};
+  await originalQuestionBinding(file,'Synthetic-original-main',saveFixtureInvocation('workspace.read_text',{path:'metric-01.cjs'}),developmentBoundary);
+  await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',
+    saveFixtureInvocation('workspace.read_text',{path:'metric-02.cjs'}),developmentBoundary),/public fixture files/);
+  for(const toolName of ['workspace.preview_text_patch','workspace.stage_text_patch','workspace.apply_text_patch']) {
+    await originalQuestionBinding(file,'Synthetic-original-main',saveFixtureInvocation(toolName,{path:'metric-01.cjs'}),developmentBoundary);
+    await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',
+      saveFixtureInvocation(toolName,{path:'project.test.cjs'}),developmentBoundary),/public fixture source files/);
+  }
+  await originalQuestionBinding(file,'Synthetic-original-main',saveFixtureInvocation('workspace.list_entries',{path:'.'}));
+  await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',saveFixtureInvocation('workspace.list_entries',{path:'other'})),/fixture root/);
+  save(question.taskId,'subtask-parent',{parentTaskId:'Synthetic-original-main',subtaskId:'user-work'});
+  const teamQuestion=saveFixtureInvocation('subagent.team.dispatch',{requestId:'fixture-team',subtasks:[{subtaskId:'fixture-coder',role:'coder',goal:'Fix the public SVG'}]});
+  await originalQuestionBinding(file,'Synthetic-original-main',teamQuestion);
+  save(question.taskId,'subtask-parent',{parentTaskId:'Synthetic-original-main',subtaskId:'other-work'});
+  await assert.rejects(originalQuestionBinding(file,'Synthetic-original-main',teamQuestion),/original default worker/);
   db.close();
 });
 

@@ -17,7 +17,7 @@ const envelopeSchema={type:'object',additionalProperties:false,required:['bindin
 export function createDesktopMailReviewHost({getApplication,mail,question,readConfigurationRef,confirmConsent,getNotifications,
   namespace,labelKeys=['meeting','work','subscription','transaction','personal','other'],onUpdate=()=>{},now=Date.now}){
   const application=()=>getApplication(),runtime=()=>application().runtime;
-  let store,saved,closed=false,busy=false,controller=new AbortController();
+  let store,saved,closed=false,busy=false,controller=new AbortController(),configurationAttempt;
   const prepared=new Map();
   const configuration=()=>{try{const value=readConfigurationRef();return typeof value==='string'&&value?value:undefined;}catch{return undefined;}};
   const state=()=>{if(!store)store=runtime().bindTrustedHostState('desktop-mail-review');
@@ -51,6 +51,8 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
     for(const entry of Object.values(s.entries))if(entry.taskId&&!terminal.has(runtime().getTask(entry.taskId).state)){
       runtime().requestCancel(entry.taskId,'Mail review consent revoked');entry.state='revoked';}
     persist();};
+  const invalidateConfiguration=()=>{configurationAttempt?.abort();configurationAttempt=undefined;};
+  const disable=async()=>{state().enabled=false;stop();};
   const recordNotification=(entry,outcome)=>{
     const value=outcome?.attempts?.banner?.state;if(!['delivered','failed','unknown'].includes(value))return;
     const settled=value!=='unknown';
@@ -118,16 +120,21 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
       if(!input||Object.keys(input).some(key=>!['enabled','selectedBindings'].includes(key))||typeof input.enabled!=='boolean')denied();
       if(!input.enabled){await api.revoke();return api.snapshot();}
       if(closed)denied();
-      if(controller.signal.aborted)controller=new AbortController();
       const selected=input.selectedBindings??[];if(!Array.isArray(selected)||selected.some(value=>!valid(value))
         ||new Set(selected.map(ref=>ref.workKey)).size!==selected.length)denied();
       const config=configuration();if(!config)denied();
       const deadline=new Date(now()+30*60_000).toISOString();
-      const selectedRetries=()=>selected.flatMap(ref=>{const item=mail.readReviewAnalysis(ref.workKey,context(deadline));
+      invalidateConfiguration();const attempt=new AbortController();configurationAttempt=attempt;
+      try{
+      const selectedRetries=()=>selected.flatMap(ref=>{const item=mail.readReviewAnalysis(ref.workKey,{deadline,signal:attempt.signal});
         if(!item||!equal(binding(item),ref))denied();
         if(item.state==='pending'){if(state().entries[ref.workKey])denied();return [];}
         const retry=retryEntry(ref,item);return [{...ref,previousTaskId:retry.entry.taskId,reason:retry.reason}];});
       const retries=selectedRetries(),retryDigest=digest(retries);
+      // The confirmation belongs to this settings operation, independently of
+      // the existing execution generation which is revoked only after consent.
+      const isCurrent=()=>{try{return !closed&&configurationAttempt===attempt&&!attempt.signal.aborted
+        &&now()<Date.parse(deadline)&&configuration()===config&&digest(selectedRetries())===retryDigest;}catch{return false;}};
       const consent=await confirmConsent({payload:{enabled:true,selectedBindings:structuredClone(selected),configurationRef:config,
         ...(retries.length?{selectedRetries:structuredClone(retries)}:{})},
         scope:{configurationRef:config,selectedBindingsDigest:digest(selected),headersOnly:true,newOnly:true,
@@ -135,9 +142,11 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
         summary:'允许明确选择的邮件及启用后新模糊邮件的信头在所选云模型复核；不读取正文，不批量发送历史邮件'
           +(retries.some(retry=>retry.reason==='legacy-mail-review-before-dispatch')?'；包括重新复核已证实在发送前失败的所选旧任务':'')
           +(retries.some(retry=>retry.reason==='mail-review-remote-invalid-argument')?'；包括重新复核远端已明确以参数错误拒绝的所选旧任务':''),
-        deadline,signal:controller.signal,isCurrent:()=>{try{return !closed&&configuration()===config&&digest(selectedRetries())===retryDigest;}catch{return false;}}});
-      if(consent!==true||closed||configuration()!==config||digest(selectedRetries())!==retryDigest)denied();
-      await api.revoke();closed=false;controller=new AbortController();
+        deadline,signal:attempt.signal,isCurrent});
+      if(consent!==true||!isCurrent())denied();
+      await disable();
+      if(!isCurrent())denied();
+      controller=new AbortController();
       const s=state();
       for(const retry of retries){const item=mail.readReviewAnalysis(retry.workKey,context(deadline)),permit=retryEntry(retry,item);
         if(permit.reason!==retry.reason)denied();
@@ -148,6 +157,7 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
         s.retryHistory[retry.previousTaskId].state='released';delete s.entries[retry.workKey];persist();
       }
       Object.assign(s,{enabled:true,configurationRef:config,watermark:new Date(now()).toISOString(),generation:randomUUID(),selected:structuredClone(selected)});persist();return api.snapshot();
+      }finally{if(configurationAttempt===attempt)configurationAttempt=undefined;}
     },
     prepareAuthorization(scope){
       if(scope.toolName!=='mail.review')return;
@@ -250,7 +260,7 @@ export function createDesktopMailReviewHost({getApplication,mail,question,readCo
       }catch{/* Safe metadata remains pending; original tasks are never re-dispatched. */}
       finally{busy=false;}
     },
-    async revoke(){state().enabled=false;stop();},
-    async close(){closed=true;stop();},
+    async revoke(){invalidateConfiguration();await disable();},
+    async close(){closed=true;invalidateConfiguration();stop();},
   };return api;
 }

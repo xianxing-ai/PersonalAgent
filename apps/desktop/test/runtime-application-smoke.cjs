@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {spawnSync} = require('node:child_process');
 const {_electron} = require('playwright');
+const {closeDesktop,trackOwnedDesktop,evaluateBounded}=require('../../../tests/manual/agentarts/desktop-pelican-default-live.cjs');
 
 const desktopDir = path.resolve(__dirname, '..');
 const repoDir = path.resolve(desktopDir, '../..');
@@ -13,17 +14,13 @@ const workspaceElectron = path.resolve(repoDir, 'node_modules/electron/dist/elec
 const executablePath = fs.existsSync(localElectron) ? localElectron : workspaceElectron;
 const terminalStates = new Set(['succeeded', 'failed', 'cancelled']);
 
-function waitFor(predicate, timeoutMs = 10_000) {
+async function waitFor(predicate, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
-  return new Promise((resolve, reject) => {
-    const poll = () => {
-      if (predicate()) return resolve();
-      if (Date.now() >= deadline) return reject(new Error('Timed out waiting for acceptance state'));
-      setTimeout(poll, 25);
-    };
-    poll();
-  });
+  while(Date.now()<deadline){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,25));}
+  throw new Error('Timed out waiting for acceptance state');
 }
+async function hostSnapshot(page){const response=await evaluateBounded(page,()=>window.desktop.invoke('snapshot'));
+  assert.equal(response.ok,true,response.error);return response.value;}
 
 function createModelServer(secret) {
   const requests = [];
@@ -75,9 +72,11 @@ async function pageFor(app, mode) {
 }
 
 async function launchDesktop(userData, diagnostics) {
+  const started=Date.now(),attempt={cleanup:undefined};
+  const loader=path.join(path.dirname(require.resolve('playwright-core/package.json')),'lib/server/electron/loader.js');
   const app = await _electron.launch({
     executablePath,
-    args: [desktopDir],
+    args: ['-r',loader,desktopDir],
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: undefined,
@@ -93,6 +92,19 @@ async function launchDesktop(userData, diagnostics) {
       PANGU_API_KEY: undefined,
     },
   });
+  trackOwnedDesktop(app,{executablePath,mainProcessId:await evaluateBounded(app,()=>process.pid)},attempt,started);
+  app.context().setDefaultTimeout(15_000);
+  if(process.env.PA_DESKTOP_TRACE_WINDOW_LIFECYCLE==='1'){
+    let output='';app.process().stderr.on('data',chunk=>{output+=chunk.toString();const lines=output.split(/\r?\n/);output=lines.pop();
+      for(const line of lines)if(line.startsWith('PA_SMOKE_NATIVE '))console.log(line);});
+    await evaluateBounded(app,({BrowserWindow})=>{for(const method of ['setPosition','setBounds','setShape','show','showInactive','hide','close']){
+      const original=BrowserWindow.prototype[method];if(typeof original!=='function')continue;
+      BrowserWindow.prototype[method]=function(...args){const detail={method,id:this.id};
+        process._rawDebug('PA_SMOKE_NATIVE '+JSON.stringify({...detail,phase:'before'}));
+        const result=Reflect.apply(original,this,args);
+        process._rawDebug('PA_SMOKE_NATIVE '+JSON.stringify({...detail,phase:'after'}));return result;};
+    }});
+  }
   app.on('window', page => {
     page.on('pageerror', error => diagnostics.errors.push(error.message));
     page.on('console', message => {
@@ -104,7 +116,7 @@ async function launchDesktop(userData, diagnostics) {
   await orb.evaluate(() => window.desktop.invoke('orb.open'));
   const panel = await pageFor(app, 'panel');
   await panel.waitForSelector('#send');
-  return {app, orb, panel};
+  return {app, orb, panel,attempt};
 }
 
 async function openAdmin(app, panel) {
@@ -122,7 +134,7 @@ async function openAdmin(app, panel) {
 async function openWorkspace(app, panel) {
   const existing = app.windows().find(page => page.url().includes('mode=workspace'));
   if (existing) return existing;
-  const opening = app.waitForEvent('window');
+  const opening = app.waitForEvent('window',{timeout:15_000});
   await panel.locator('#panel-expand').click();
   const workspace = await opening;
   await workspace.waitForSelector('#workspace-stage');
@@ -159,9 +171,13 @@ function scanFiles(root, needle) {
   fs.mkdirSync(cacheRoot, {recursive: true});
   const userData = fs.mkdtempSync(path.join(cacheRoot, 'runtime-acceptance-'));
   const diagnostics = {errors: [], logs: []};
-  let session;
+  let session,stage='launch';
+  const mark=value=>{stage=value;console.log(JSON.stringify({stage}));};
+  const closeNormally=async()=>{await closeDesktop(session.app);assert.equal(session.attempt.cleanup.method,'graceful',
+    'Normal product quit must close the original Desktop without forced cleanup');};
   try {
     session = await launchDesktop(userData, diagnostics);
+    mark('model-settings');
     let {app, orb, panel} = session;
     let admin = await openAdmin(app, panel);
     await admin.locator('#model-add').click();
@@ -170,7 +186,7 @@ function scanFiles(root, needle) {
     await admin.locator('#model-deployment').fill('acceptance-deployment');
     await admin.locator('#model-api-key').fill(secret);
     await admin.locator('#model-save').click();
-    await admin.waitForFunction(async () => (await window.desktop.invoke('snapshot')).value.model.configured === true);
+    await waitFor(async()=>(await hostSnapshot(admin)).model.configured===true);
     assert.equal(await admin.locator('#model-api-key').inputValue(), '');
     assert.equal((await admin.content()).includes(secret), false);
     assert.equal(JSON.stringify(await admin.evaluate(() => window.desktop.invoke('snapshot'))).includes(secret), false);
@@ -178,14 +194,19 @@ function scanFiles(root, needle) {
     await admin.locator('#model-test').click();
     await waitFor(() => server.requests.some(item => item.prompt === 'Reply with exactly OK.'));
     assert.ok(server.requests.every(item => item.authorized));
+    const configuredModel=(await hostSnapshot(panel)).model;
+    assert.equal(configuredModel.provider,'pangu');
+    await panel.waitForFunction(label=>document.querySelector('[data-picker-model]')?.textContent===label,configuredModel.label);
 
     const panelGoal = '小窗口 Runtime Application 验收';
+    mark('original-panel-task');
     await submitAndWait(panel, 'textarea[aria-label="任务内容"]', '#send', panelGoal, `本地盘古回答：${panelGoal}`);
     const panelSnapshot = await panel.evaluate(() => window.desktop.invoke('snapshot'));
     assert.equal(panelSnapshot.value.tasks.length, 1);
     assert.equal(panelSnapshot.value.tasks[0].state, 'succeeded');
 
     const reopenGoal = '窗口重开不重复执行';
+    mark('workspace-open');
     await panel.locator('textarea[aria-label="任务内容"]').fill(reopenGoal);
     await panel.locator('#send').click();
     await waitFor(() => server.requests.filter(item => item.prompt === reopenGoal).length === 1);
@@ -196,13 +217,17 @@ function scanFiles(root, needle) {
     assert.equal(workspaceSnapshot.value.connection, panelSnapshot.value.connection);
     assert.equal(workspaceSnapshot.value.model.deployment, panelSnapshot.value.model.deployment);
     assert.equal(workspaceSnapshot.value.tasks.length, 0);
+    mark('workspace-close');
     const closed = workspace.waitForEvent('close');
     await workspace.locator('[data-window="close"]').click();
     await closed;
-    await orb.evaluate(() => window.desktop.invoke('orb.open'));
+    mark('workspace-reopen');
+    await evaluateBounded(orb,() => window.desktop.invoke('orb.open'));
+    mark('panel-restored');
     panel = await pageFor(app, 'panel');
     workspace = await openWorkspace(app, panel);
-    await panel.waitForFunction(async expected => (await window.desktop.invoke('snapshot')).value.tasks.some(task => task.userMessage === expected && task.state === 'succeeded'), reopenGoal, {timeout: 10_000});
+    mark('workspace-restored');
+    await waitFor(async()=>(await hostSnapshot(panel)).tasks.some(task=>task.userMessage===reopenGoal&&task.state==='succeeded'));
     assert.equal(server.requests.filter(item => item.prompt === reopenGoal).length, 1);
 
     await workspace.locator('[data-window="close"]').click();
@@ -210,15 +235,17 @@ function scanFiles(root, needle) {
     panel = await pageFor(app, 'panel');
     await panel.waitForFunction(expected => document.body.innerText.includes(expected), `本地盘古回答：${reopenGoal}`, {timeout: 10_000});
     admin = await openAdmin(app, panel);
+    mark('model-disable');
     if (!(await admin.locator('#model-enabled').count())) await admin.locator('[data-page="models"]').click();
     await admin.locator('#model-enabled').uncheck();
-    await admin.waitForFunction(async () => (await window.desktop.invoke('snapshot')).value.model.enabled === false);
+    await waitFor(async()=>(await hostSnapshot(admin)).model.enabled===false);
     const callsBeforeDisabledSubmit = server.requests.length;
     const disabledSubmit = await panel.evaluate(() => window.desktop.invoke('task.submit', '停用后不得调用模型'));
     assert.equal(disabledSubmit.ok, false);
     assert.match(disabledSubmit.error, /模型已停用/);
     assert.equal(server.requests.length, callsBeforeDisabledSubmit);
-    await app.close();
+    mark('normal-quit-and-restart');
+    await closeNormally();
     session = undefined;
 
     session = await launchDesktop(userData, diagnostics);
@@ -233,7 +260,7 @@ function scanFiles(root, needle) {
 
     admin = await openAdmin(app, panel);
     await admin.locator('#model-enabled').check();
-    await admin.waitForFunction(async () => (await window.desktop.invoke('snapshot')).value.model.enabled === true);
+    await waitFor(async()=>(await hostSnapshot(admin)).model.enabled===true);
     const callsBeforeRetest = server.requests.length;
     await admin.locator('#model-add').click();
     await admin.locator('#model-test').click();
@@ -242,62 +269,66 @@ function scanFiles(root, needle) {
     await submitAndWait(panel, 'textarea[aria-label="任务内容"]', '#send', enabledGoal, `本地盘古回答：${enabledGoal}`);
 
     const cancelGoal = '取消测试先确认受理再等待 Runtime 终态';
+    mark('cancel-original-task');
     await panel.locator('textarea[aria-label="任务内容"]').fill(cancelGoal);
     await panel.locator('#send').click();
     await waitFor(() => server.requests.some(item => item.prompt === cancelGoal));
     const active = await panel.evaluate(() => window.desktop.invoke('snapshot'));
-    const activeTask = active.value.tasks.find(task => !terminalStates.has(task.state));
+    const activeTask = active.value.tasks.find(task => task.userMessage===cancelGoal&&!terminalStates.has(task.state));
     assert.ok(activeTask);
     const cancelResult = await panel.evaluate(taskId => window.desktop.invoke('task.cancel', taskId), activeTask.taskId);
     assert.equal(cancelResult.ok, true);
     assert.equal(cancelResult.value.cancelAccepted, true);
     assert.ok(['cancelling', 'cancelled'].includes(cancelResult.value.state));
     await waitFor(() => server.aborted >= 1);
-    await panel.waitForFunction(async taskId => (await window.desktop.invoke('snapshot')).value.tasks.find(task => task.taskId === taskId)?.state === 'cancelled', activeTask.taskId);
+    await waitFor(async()=>(await hostSnapshot(panel)).tasks.find(task=>task.taskId===activeTask.taskId)?.state==='cancelled');
 
     const quitGoal = '退出保护必须保留活动 Runtime';
+    mark('active-task-quit-guard');
     await panel.locator('textarea[aria-label="任务内容"]').fill(quitGoal);
     await panel.locator('#send').click();
     await waitFor(() => server.requests.some(item => item.prompt === quitGoal));
     workspace = await openWorkspace(app, panel);
     const quitResult = await workspace.evaluate(() => window.desktop.invoke('app.quit'));
     assert.equal(quitResult.ok, true);
-    await workspace.waitForFunction(async () => /仍有活动任务/.test((await window.desktop.invoke('snapshot')).value.connectionError));
+    await waitFor(async()=>/仍有活动任务/.test((await hostSnapshot(workspace)).connectionError));
     assert.equal(workspace.isClosed(), false);
     const quitSnapshot = await panel.evaluate(() => window.desktop.invoke('snapshot'));
-    const quitTask = quitSnapshot.value.tasks.find(task => !terminalStates.has(task.state));
+    const quitTask = quitSnapshot.value.tasks.find(task => task.userMessage===quitGoal&&!terminalStates.has(task.state));
+    assert.ok(quitTask,'The exact original quit-guard fixture must remain active');
     const quitCancel = await panel.evaluate(taskId => window.desktop.invoke('task.cancel', taskId), quitTask.taskId);
     assert.equal(quitCancel.ok, true);
     assert.equal(quitCancel.value.cancelAccepted, true);
     assert.ok(['cancelling', 'cancelled'].includes(quitCancel.value.state));
-    await panel.waitForFunction(async taskId => (await window.desktop.invoke('snapshot')).value.tasks.find(task => task.taskId === taskId)?.state === 'cancelled', quitTask.taskId);
-    await workspace.waitForFunction(async () => !/仍有活动任务/.test((await window.desktop.invoke('snapshot')).value.connectionError ?? ''));
+    await waitFor(async()=>(await hostSnapshot(panel)).tasks.find(task=>task.taskId===quitTask.taskId)?.state==='cancelled');
+    await waitFor(async()=>!/仍有活动任务/.test((await hostSnapshot(workspace)).connectionError??''));
 
     const qaDir = process.env.PA_DESKTOP_QA_OUTPUT || path.join(os.tmpdir(), 'personal-agent-qa');
     fs.mkdirSync(qaDir, {recursive: true});
     await workspace.screenshot({path: path.join(qaDir, 'runtime-application-workspace.png')});
     const finalSnapshot = await workspace.evaluate(() => window.desktop.invoke('snapshot'));
+    assert.equal(await workspace.locator('[data-picker-model]').textContent(),finalSnapshot.value.model.label);
     assert.equal(JSON.stringify(finalSnapshot).includes(secret), false);
     assert.equal((await workspace.content()).includes(secret), false);
     assert.equal(diagnostics.errors.length, 0);
     assert.equal(diagnostics.logs.some(line => line.includes(secret)), false);
 
-    await app.close();
+    mark('final-normal-quit');
+    await closeNormally();
     session = undefined;
     assert.deepEqual(scanFiles(userData, secret), []);
     const gitSearch = spawnSync('git', ['grep', '-l', '--fixed-strings', secret], {cwd: repoDir, encoding: 'utf8'});
     assert.notEqual(gitSearch.status, 0, gitSearch.stdout);
     assert.ok(server.requests.every(item => item.authorized));
     console.log(`PASS: local Runtime Application desktop acceptance (${server.requests.length} model requests, ${server.aborted} cancelled)`);
+  } catch(error){console.error('FAIL at '+stage+': '+String(error?.stack??error));throw error;
   } finally {
     if (session) {
-      try { await session.app.close(); } catch {}
+      try { await closeDesktop(session.app); } catch(error){console.error('Owned cleanup unconfirmed: '+error.message);}
     }
     await server.close();
-    const resolved = path.resolve(userData);
-    if (resolved.startsWith(path.resolve(cacheRoot) + path.sep) && path.basename(resolved).startsWith('runtime-acceptance-')) {
-      fs.rmSync(resolved, {recursive: true, force: true});
-    }
+    // Retain the isolated original profile and diagnostics for failure analysis.
+    console.log(JSON.stringify({stage:'closed',profile:path.basename(userData),cleanup:session?.attempt?.cleanup?.state??'normal-quit'}));
   }
 })().catch(error => {
   console.error(error);

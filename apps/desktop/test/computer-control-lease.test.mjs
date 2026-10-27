@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {ProtocolError} from '@personal-agent/contracts';
+import {ProtocolError,ToolNotStartedError} from '@personal-agent/contracts';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
 import {ToolGateway,toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createComputerControlLease} from '../electron/computer-control-lease.js';
@@ -57,6 +57,16 @@ test('original Runtime unknown blocks all new writes across newly constructed le
   original.state='confirmed';original.reconciliationOutcome='applied';
   await f.lease().wrap(tool('computer.notepad.replace_text',async()=>{calls++;return {state:'observed'};})).execute({},context({taskId:'task-2',runId:'new-run'}));
   assert.equal(calls,1,'trusted original Runtime reconciliation allows fresh work, never replays the old run');
+});
+
+test('the shared input preflight supplies trusted zero-dispatch proof without hiding the original unknown',async()=>{
+  const f=fixture(),lease=f.lease();let calls=0;
+  const original=f.record('computer.desktop.click',context(),{state:'unknown'});
+  f.tasks.push({taskId:'task-1',state:'waiting_reconciliation'});
+  const action=lease.wrap(tool('computer.desktop.type',async()=>{calls++;return {state:'observed'};}));
+  const error=await action.execute({},context({taskId:'new-task',runId:'new-run'})).catch(error=>error);
+  assert.ok(error instanceof ToolNotStartedError);assert.equal(error.code,'RESULT_UNKNOWN');
+  assert.equal(calls,0);assert.equal(original.state,'unknown');assert.equal(lease.snapshot().writeBlocked,true);
 });
 test('an unknown handoff cannot exploit the gap before Runtime persists it, and only original reconciliation releases the retained lease',async()=>{
   const f=fixture(),lease=f.lease();let calls=0;

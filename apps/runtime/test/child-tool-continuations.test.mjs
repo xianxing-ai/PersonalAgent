@@ -19,6 +19,43 @@ const first=descriptor('fixture.first','local_write'),second=descriptor('fixture
 const text=value=>({kind:'text',text:value});
 const proposal=(id,tool,args={value:1})=>({kind:'tool_proposal',proposalId:id,toolName:tool.name,toolVersion:tool.version,arguments:args});
 
+test('opted-in ordinary user tasks retain their original directory both within a turn and after approval resume',async t=>{
+  for(const optIn of [false,true])for(const needsApproval of [false,true])await t.test(`goal=${optIn}; approval=${needsApproval}`,async()=>{
+    const requests=[],executions=[];
+    const tools=[first,second].map(tool=>({descriptor:tool,execute:async args=>{executions.push(tool.name);return {value:args.value};}}));
+    const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'ordinary-continuation',
+      responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',...(optIn?{continuationContext:'goal'}:{}),
+      tools,competitionMaxSteps:4,authorizationProvider:{read:async()=> 'Bearer synthetic'},
+      automaticTools:(needsApproval?[second]:[first,second]).map(tool=>({toolName:tool.name,toolVersion:tool.version})),
+      competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true})),
+      competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+        exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result})),
+      fetchImpl:async(_url,init)=>{
+        const query=JSON.parse(JSON.parse(init.body).query);requests.push(query);
+        const answer=!query.continuation?proposal('ordinary-first',first)
+          :query.continuation.proposalId==='ordinary-first'&&query.availableTools?proposal('ordinary-second',second)
+          :text(query.continuation.proposalId==='ordinary-second'?'Both synthetic operations completed':'Legacy single-tool reply');
+        return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(answer)}},{event:'task_end'},{event:'end'}]),
+          {headers:{'content-type':'application/json'}});
+      }});
+    try{
+      const client=new Client(app);await client.connect();
+      const {taskId}=await client.call('task.submit',{goal:'Complete both synthetic operations',conversationId:'ordinary'},
+        {idempotencyKey:'ordinary',timeoutMs:60000});
+      if(needsApproval){await until(()=>app.runtime.getTask(taskId).state==='waiting_approval');
+        const approval=(await client.call('approval.list',{taskId})).items.find(item=>item.state==='pending');
+        await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});}
+      await until(()=>['succeeded','failed','waiting_reconciliation'].includes(app.runtime.getTask(taskId).state)&&app.activeTaskCount===0);
+      assert.equal(app.runtime.getTask(taskId).state,'succeeded');
+      assert.deepEqual(executions,optIn?[first.name,second.name]:[first.name]);
+      assert.equal(requests.length,optIn?3:2);
+      if(optIn){assert.equal(requests[1].goal,requests[0].goal);assert.deepEqual(requests[1].availableTools,requests[0].availableTools);
+        assert.deepEqual(requests[2].availableTools,requests[0].availableTools);}
+      else assert.equal(requests[1].availableTools,undefined);
+    }finally{app.close();}
+  });
+});
+
 async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2},environment=false}={}) {
   let app,client,rootId,dispatchingTaskId;
   const requests=[],sends=[],executions=[],sockets=[],state={firstAllowed:true,extraReady:false,blockAvailability:false};

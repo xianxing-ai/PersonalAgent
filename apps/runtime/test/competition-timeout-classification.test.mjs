@@ -13,6 +13,27 @@ const descriptor=sideEffect=>({name:'fixture.action',version:'1.0.0',sideEffect,
 const exportsFor=tools=>tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
   exportPolicyVersion:'fixture-v1',accepts:()=>true,project:({result})=>result}));
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+test('a fresh deadline before worker dispatch fails; persisted unknown and resumed work stay conservative',async()=>{
+  for(const mode of ['fresh','held','resumed']){
+    let now=Date.parse('2030-01-01T00:00:00Z'),calls=0;
+    const runtime=new TaskRuntime(':memory:',{now:()=>new Date(now)});
+    try{
+      const task=runtime.submitTask({goal:'Synthetic pre-worker deadline',conversationId:'pre-worker',idempotencyKey:'pre-worker'});
+      if(mode==='held')runtime.saveCheckpoint(task.taskId,'competition-cloud-inflight',{synthetic:true});
+      if(mode==='resumed'){
+        runtime.transitionTask(task.taskId,'planning');runtime.transitionTask(task.taskId,'waiting_approval');
+      }
+      const transition=runtime.transitionTask.bind(runtime);
+      runtime.transitionTask=(id,state,...rest)=>{const value=transition(id,state,...rest);if(state==='running')now+=100;return value;};
+      const result=await runtime.runTask(task.taskId,async()=>{calls++;return {resultSummary:'must not run'};},
+        {deadline:'2030-01-01T00:00:00.050Z',sideEffect:'external_write',...(mode==='resumed'?{resume:true}:{})});
+      assert.equal(calls,0);assert.deepEqual(runtime.readToolExecutions(task.taskId),[]);
+      assert.equal(result.state,mode==='fresh'?'failed':'waiting_reconciliation');
+      assert.equal(result.error.code,mode==='fresh'?'TIMEOUT':'RESULT_UNKNOWN');
+    }finally{runtime.close();}
+  }
+});
 async function submit(app,key='timeout',duration=120) {
   const response=await app.send({kind:'request',protocolVersion:'1.0.0',requestId:'fixture-request',operation:'task.submit',
     deadline:new Date(Date.now()+duration).toISOString(),idempotencyKey:key,

@@ -1,0 +1,577 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-27",
+  "profile": "huawei_ict_agentarts",
+  "issue": 523,
+  "pullRequest": 522,
+  "baselineCommit": "b213144abcbd23a7b367d9778bd09604c65a4369",
+  "workingBranch": "codex/fix-desktop-polling-523",
+  "deliveryAtCapture": "local-uncommitted-not-pushed-not-merged",
+  "environment": {
+    "benchmarkNode": "24.15.0",
+    "checkNode": "24.15.0",
+    "checkNpm": "11.12.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13650HX",
+    "logicalCores": 20,
+    "totalMemoryBytes": 16780455936
+  },
+  "sourceSha256": {
+    "apps/desktop/electron/main.js": "a4076364a2fbfab538b74a8eaeca1d5c5471f566b51f3aecabeba9347339855b",
+    "apps/desktop/electron/maintenance-poll.js": "7e0efa536ec818446b263032fcaedba9be2e3add9497ce0678fd9fc155431320",
+    "apps/desktop/electron/resource-policy.js": "63778b33d40f4c3571f5cf679ad6378678f9d6401f68e7ae28416e34347be6fe",
+    "apps/desktop/electron/proactive-workflow-host.js": "0dc59518d0a57a08af0a27d38ba268fafa5c16432eb199d9f486b577b7d3ffd2",
+    "apps/desktop/test/maintenance-poll.test.mjs": "b9ba54e6d1ab965f0d785cdff2de7b33c8cd9e8f0044da234db069fdf2264cc8",
+    "apps/desktop/test/proactive-maintenance-history.test.mjs": "0f4fa1810861ceaa9f3a06599e976738eb1e2a8fd57867d67e73a6c523b4eea1",
+    "apps/desktop/test/pr376-regressions-smoke.cjs": "7febfea2f8aac8c9ef975ca9bbb77793d5b8aee7a477be3b069421f3193b4a65",
+    "apps/runtime/src/index.ts": "eaf71fca0c1ecaf30cbb2bfae0349699fffb5dc3c7246c15244398a4bc1b6240",
+    "apps/runtime/dist/index.js": "cffede7a36bba0651ee1e439f2ae3e6e320c7cdcb8232a99b14f778697489fd9"
+  },
+  "benchmarks": [
+    {
+      "label": "before",
+      "size": 1000,
+      "fixture": {
+        "tasks": 1000,
+        "events": 6000,
+        "bodyBytes": 1280,
+        "synthetic": true
+      },
+      "node": "v24.15.0",
+      "platform": "win32",
+      "arch": "x64",
+      "warmups": 5,
+      "sourceSha256": "81e47a0090d988d7b620733b62a9b63dcd2fba9f52b2a3fb796ff5ee192980c8",
+      "samplesMs": [
+        48.787500000000136,
+        43.69360000000006,
+        48.15219999999999,
+        46.45479999999998,
+        47.76429999999982,
+        45.92480000000023,
+        43.23540000000003,
+        45.409200000000055,
+        45.848799999999756,
+        46.028499999999894,
+        48.910499999999956,
+        57.61869999999999,
+        50.0942,
+        46.6244999999999,
+        48.67330000000038,
+        48.33650000000034,
+        51.16210000000001,
+        45.4041000000002,
+        47.42450000000008,
+        48.15340000000015,
+        69.86670000000004,
+        48.384900000000016,
+        39.92399999999998,
+        43.70329999999967,
+        46.033300000000054,
+        43.51170000000002,
+        39.05119999999988,
+        39.383800000000065,
+        46.746200000000044,
+        42.14019999999982
+      ],
+      "tickMs": {
+        "count": 30,
+        "p50": 46.45479999999998,
+        "p95": 57.61869999999999,
+        "max": 69.86670000000004
+      },
+      "calls": {
+        "taskPages": 300,
+        "candidatePages": 0,
+        "hydratedTasks": 30000,
+        "checkpointReads": 60000
+      },
+      "wallMs": 1476.4395,
+      "cpuMicros": {
+        "user": 813000,
+        "system": 687000
+      },
+      "memory": {
+        "rss": 306298880,
+        "heapTotal": 207949824,
+        "heapUsed": 93030264,
+        "external": 22231957,
+        "arrayBuffers": 52359
+      },
+      "eventLoopUtilization": {
+        "idle": 0,
+        "active": 1476.582999999635,
+        "utilization": 1
+      },
+      "eventLoopDelayMs": {
+        "p50": 46.628863,
+        "p95": 69.926911,
+        "max": 92.995583
+      },
+      "limitations": [
+        "Real Runtime and SQLite; synthetic ordinary tasks only; no proactive session, model, cloud, Electron IPC or DOM",
+        "Continuous calls measure maintenance work cost, not application idle CPU; sampled RSS, not peak"
+      ]
+    },
+    {
+      "label": "after",
+      "size": 1000,
+      "fixture": {
+        "tasks": 1000,
+        "events": 6000,
+        "bodyBytes": 1280,
+        "synthetic": true
+      },
+      "node": "v24.15.0",
+      "platform": "win32",
+      "arch": "x64",
+      "warmups": 5,
+      "sourceSha256": "0dc59518d0a57a08af0a27d38ba268fafa5c16432eb199d9f486b577b7d3ffd2",
+      "samplesMs": [
+        0.2905000000000655,
+        0.12059999999996762,
+        0.10730000000012296,
+        0.13679999999999382,
+        0.13420000000019172,
+        0.0968000000000302,
+        0.08140000000003056,
+        0.06349999999997635,
+        0.07179999999993925,
+        0.06869999999980791,
+        0.18609999999989668,
+        0.11720000000013897,
+        0.07320000000004256,
+        0.07169999999996435,
+        0.06880000000001019,
+        0.07179999999993925,
+        0.05829999999991742,
+        0.053699999999935244,
+        0.08789999999999054,
+        0.06790000000000873,
+        0.05700000000001637,
+        0.05529999999998836,
+        0.05989999999997053,
+        0.06849999999985812,
+        0.06320000000005166,
+        0.06430000000000291,
+        0.06749999999988177,
+        0.06369999999992615,
+        0.06290000000012697,
+        0.07669999999984611
+      ],
+      "tickMs": {
+        "count": 30,
+        "p50": 0.06880000000001019,
+        "p95": 0.18609999999989668,
+        "max": 0.2905000000000655
+      },
+      "calls": {
+        "taskPages": 0,
+        "candidatePages": 30,
+        "hydratedTasks": 0,
+        "checkpointReads": 0
+      },
+      "wallMs": 3.008100000000013,
+      "cpuMicros": {
+        "user": 15000,
+        "system": 0
+      },
+      "memory": {
+        "rss": 234721280,
+        "heapTotal": 207163392,
+        "heapUsed": 66960368,
+        "external": 22231957,
+        "arrayBuffers": 52359
+      },
+      "eventLoopUtilization": {
+        "idle": 0,
+        "active": 3.1304999999701977,
+        "utilization": 1
+      },
+      "eventLoopDelayMs": {
+        "p50": 0.951807,
+        "p95": 12.918783,
+        "max": 12.918783
+      },
+      "limitations": [
+        "Real Runtime and SQLite; synthetic ordinary tasks only; no proactive session, model, cloud, Electron IPC or DOM",
+        "Continuous calls measure maintenance work cost, not application idle CPU; sampled RSS, not peak"
+      ]
+    },
+    {
+      "label": "before",
+      "size": 10000,
+      "fixture": {
+        "tasks": 10000,
+        "events": 60000,
+        "bodyBytes": 1280,
+        "synthetic": true
+      },
+      "node": "v24.15.0",
+      "platform": "win32",
+      "arch": "x64",
+      "warmups": 5,
+      "sourceSha256": "81e47a0090d988d7b620733b62a9b63dcd2fba9f52b2a3fb796ff5ee192980c8",
+      "samplesMs": [
+        215.21540000000005,
+        281.82159999999976,
+        357.85729999999967,
+        364.3368999999998,
+        409.75629999999956,
+        69.40920000000006,
+        107.33629999999994,
+        168.11479999999938,
+        188.3189000000002,
+        221.78669999999966,
+        217.84019999999964,
+        254.35570000000007,
+        307.2423000000008,
+        322.79769999999917,
+        366.0701000000008,
+        53.60539999999946,
+        82.91159999999945,
+        108.5639000000001,
+        145.08100000000013,
+        194.0612999999994,
+        217.0668999999998,
+        251.11120000000028,
+        295.27999999999975,
+        341.27490000000034,
+        386.679900000001,
+        42.17029999999977,
+        79.88919999999962,
+        117.13730000000032,
+        171.71290000000045,
+        185.251400000001
+      ],
+      "tickMs": {
+        "count": 30,
+        "p50": 215.21540000000005,
+        "p95": 386.679900000001,
+        "max": 409.75629999999956
+      },
+      "calls": {
+        "taskPages": 300,
+        "candidatePages": 0,
+        "hydratedTasks": 30000,
+        "checkpointReads": 60000
+      },
+      "wallMs": 6575.84,
+      "cpuMicros": {
+        "user": 1765000,
+        "system": 4593000
+      },
+      "memory": {
+        "rss": 287903744,
+        "heapTotal": 208998400,
+        "heapUsed": 50385984,
+        "external": 22231957,
+        "arrayBuffers": 52359
+      },
+      "eventLoopUtilization": {
+        "idle": 0,
+        "active": 6575.958999999799,
+        "utilization": 1
+      },
+      "eventLoopDelayMs": {
+        "p50": 194.117631,
+        "p95": 366.215167,
+        "max": 409.993215
+      },
+      "limitations": [
+        "Real Runtime and SQLite; synthetic ordinary tasks only; no proactive session, model, cloud, Electron IPC or DOM",
+        "Continuous calls measure maintenance work cost, not application idle CPU; sampled RSS, not peak"
+      ]
+    },
+    {
+      "label": "after",
+      "size": 10000,
+      "fixture": {
+        "tasks": 10000,
+        "events": 60000,
+        "bodyBytes": 1280,
+        "synthetic": true
+      },
+      "node": "v24.15.0",
+      "platform": "win32",
+      "arch": "x64",
+      "warmups": 5,
+      "sourceSha256": "0dc59518d0a57a08af0a27d38ba268fafa5c16432eb199d9f486b577b7d3ffd2",
+      "samplesMs": [
+        0.3099000000001979,
+        0.12609999999995125,
+        0.09479999999985012,
+        0.12470000000030268,
+        0.2278000000001157,
+        0.1954000000000633,
+        0.10350000000016735,
+        0.08460000000013679,
+        0.08019999999987704,
+        0.07379999999966458,
+        0.07510000000002037,
+        0.058399999999892316,
+        0.06069999999999709,
+        0.05889999999999418,
+        0.0603000000000975,
+        0.0557000000003427,
+        0.05580000000009022,
+        0.05989999999974316,
+        0.07210000000031869,
+        0.07600000000002183,
+        0.06749999999965439,
+        0.05490000000008877,
+        0.05780000000004293,
+        0.058800000000246655,
+        0.05360000000018772,
+        0.0543999999999869,
+        0.05510000000003856,
+        0.0567999999998392,
+        0.056199999999989814,
+        0.05330000000003565
+      ],
+      "tickMs": {
+        "count": 30,
+        "p50": 0.0603000000000975,
+        "p95": 0.2278000000001157,
+        "max": 0.3099000000001979
+      },
+      "calls": {
+        "taskPages": 0,
+        "candidatePages": 30,
+        "hydratedTasks": 0,
+        "checkpointReads": 0
+      },
+      "wallMs": 2.9998999999997977,
+      "cpuMicros": {
+        "user": 0,
+        "system": 15000
+      },
+      "memory": {
+        "rss": 281624576,
+        "heapTotal": 206639104,
+        "heapUsed": 85826984,
+        "external": 22231957,
+        "arrayBuffers": 52359
+      },
+      "eventLoopUtilization": {
+        "idle": 0,
+        "active": 3.115500000305474,
+        "utilization": 1
+      },
+      "eventLoopDelayMs": {
+        "p50": 1.012223,
+        "p95": 13.287423,
+        "max": 13.287423
+      },
+      "limitations": [
+        "Real Runtime and SQLite; synthetic ordinary tasks only; no proactive session, model, cloud, Electron IPC or DOM",
+        "Continuous calls measure maintenance work cost, not application idle CPU; sampled RSS, not peak"
+      ]
+    }
+  ],
+  "electron": {
+    "mode": "real-Electron-real-Runtime-real-SQLite-synthetic-data-and-transport",
+    "fixture": {
+      "tasks": 10000,
+      "events": 60000,
+      "bodyBytes": 1280,
+      "synthetic": true
+    },
+    "profile": "huawei_ict_agentarts",
+    "startupToPanelMs": 15165.2516,
+    "visibleTasks": 40,
+    "snapshotRoundTripMs": {
+      "count": 30,
+      "p50": 82.27110000000175,
+      "p95": 116.64450000000215,
+      "max": 140.14830000000075
+    },
+    "rawSnapshotRoundTripMs": [
+      96.34490000000005,
+      100.38620000000083,
+      96.24619999999777,
+      116.64450000000215,
+      97.86870000000272,
+      97.16150000000198,
+      110.5506000000023,
+      95.69830000000002,
+      84.40190000000075,
+      82.27110000000175,
+      111.46470000000045,
+      87.90820000000167,
+      89.1394999999975,
+      79.61529999999766,
+      140.14830000000075,
+      106.46960000000036,
+      92.89110000000073,
+      68.40259999999762,
+      76.25979999999981,
+      64.23730000000069,
+      70.33050000000003,
+      71.26910000000134,
+      71.2706999999973,
+      68.9326000000001,
+      76.40669999999955,
+      67.63929999999891,
+      77.327699999998,
+      72.01440000000002,
+      62.26180000000022,
+      66.380799999999
+    ],
+    "windows": [
+      {
+        "mode": "panel",
+        "title": "PersonalAgent",
+        "domNodes": 1048,
+        "text": 52892
+      },
+      {
+        "mode": "admin",
+        "title": "PersonalAgent",
+        "domNodes": 436,
+        "text": 1618
+      },
+      {
+        "mode": "workspace",
+        "title": "PersonalAgent",
+        "domNodes": 953,
+        "text": 53350
+      }
+    ],
+    "main": {
+      "versions": {
+        "node": "24.20.0",
+        "acorn": "8.18.0",
+        "ada": "4.0.0",
+        "amaro": "1.1.11",
+        "ares": "1.34.8",
+        "brotli": "1.2.0",
+        "cldr": "48.0",
+        "icu": "78.2",
+        "llhttp": "9.4.3",
+        "merve": "1.2.2",
+        "modules": "149",
+        "napi": "10",
+        "nbytes": "0.1.4",
+        "ncrypto": "0.0.1",
+        "nghttp2": "1.70.0",
+        "nghttp3": "",
+        "ngtcp2": "",
+        "openssl": "0.0.0",
+        "simdjson": "4.6.6",
+        "simdutf": "7.7.0",
+        "sqlite": "3.53.4",
+        "tz": "2025c",
+        "undici": "7.29.0",
+        "unicode": "17.0",
+        "uv": "1.52.1",
+        "uvwasi": "0.0.23",
+        "v8": "15.2.124.19-electron.0",
+        "zlib": "1.3.2.1-motley",
+        "zstd": "1.6.0",
+        "electron": "44.2.0",
+        "chrome": "152.0.7977.76"
+      },
+      "wallMs": 5005.3233,
+      "cpuMicros": {
+        "user": 157000,
+        "system": 15000
+      },
+      "singleCoreCpuPercent": 3.4363414646961967,
+      "eventLoopUtilization": {
+        "idle": 0,
+        "active": 0,
+        "utilization": 0
+      },
+      "memory": {
+        "rss": 410501120,
+        "heapTotal": 159502336,
+        "heapUsed": 63498324,
+        "external": 22853816,
+        "arrayBuffers": 0
+      },
+      "eventLoopDelayMs": {
+        "p50": 15.491071,
+        "p95": 16.179199,
+        "max": 31.801343
+      },
+      "ipcSends": 4,
+      "ipcBytes": 403878,
+      "displays": [
+        {
+          "size": {
+            "width": 1920,
+            "height": 1080
+          },
+          "scaleFactor": 1
+        }
+      ],
+      "cloudTaskCalls": 0,
+      "unexpectedNetworkRequests": 0
+    },
+    "status": "passed",
+    "closed": true,
+    "errors": [],
+    "limitations": [
+      "Synthetic 10000-task profile; no user history or real cloud/model/device acceptance",
+      "Sampled main-process CPU/RSS and one startup; not an all-machine SLO",
+      "Electron eventLoopUtilization returned all zero values and is unavailable for this receipt",
+      "No same-scenario pre-change full-app startup comparison; final idle CPU excludes deliberate IPC load"
+    ]
+  },
+  "checks": {
+    "root": {
+      "command": "npm run check",
+      "exitCode": 0,
+      "log": "check-a4.log"
+    },
+    "nativeReasoningSlider": {
+      "command": "node apps/desktop/test/native-reasoning-slider-smoke.cjs",
+      "exitCode": 0,
+      "realMain": true,
+      "transport": "synthetic-fetch",
+      "realModelCalls": 0,
+      "errors": []
+    },
+    "pr376": {
+      "command": "node apps/desktop/test/pr376-regressions-smoke.cjs",
+      "exitCode": 0,
+      "cases": 14,
+      "main": "generated-stub-with-production-renderer-and-draft-hosts",
+      "bothDraftsReadBackAfterQuit": true
+    }
+  },
+  "localLogSha256": {
+    "history-before.log": "810b600755fa89c95aa2fe114c21346a9a63058a2464187a52916cda140fd990",
+    "fix-regressions.log": "3ae09f902cf51b2c56a480f07b85fcd7b60f22fbf670ed1c4a2708135576d9d1",
+    "focused.log": "e0367088094e2aa8f1d667c8ab2d190fdaff3b291c97675310043064c846b072",
+    "local-http-a2.log": "730b1dc46b32e112e4b49d87f82bae07594a3f3048eccec7f26627e8438fdd26",
+    "native-slider-a1.log": "4a5885e4a40f38c4d34c2cb38b482924dc02bb606182d4a66aa2fda2b6ba7f48",
+    "pr376-a1.log": "fddaaea1915065969b295676791f20600cce35cca3b8d734931717c6e0364bbc",
+    "pr376-a2.log": "e1e3acacb5a449b96a8a50ac0547e31d162b97a681cea338f8cb6f0857c87faf",
+    "pr376-a3.log": "4655c07aa5c737d40135a05bdaea7f416ad609c9809c8af42ef0a005b5410909",
+    "pr376-a4.log": "f8b25d43cba2cd064dcedd7b1d151c4bc29415adbc3b5fce28d7ebdd6fde8dd7",
+    "pr376-a5.log": "d228bfcf2f88e6079a14026604cc31ffd13c0c0517e136dac3a42fabf7554dd9",
+    "pr376-a6.log": "bc46288fd7502fe42507671a4f4a04cbf467724b8d96840cd620e3a4f47174a0",
+    "pr376-a7.log": "fe1441f9834e02ba6c6394152ef1ee165cd18f78512da72c2dbe16ee3cc67c35",
+    "pr376-a8.log": "cd4a35a09f1736e3d9fba13a5b5624c28494e191c32c3e2145313f6dfbcee086",
+    "electron-idle-a1.log": "753fe9b31ebfbd5c27dcfa1786f62d80b030dae13156676d9217cdbd4fb17cd8",
+    "electron-idle-a2.log": "13e09048db3a1dcfb4bad6510b373741367c690b772bd2c78b2fcb25fd34ce66",
+    "electron-idle-a3.log": "f400089aa2f98afa02835f98ecb3c56f899ae24f1e22c0ca2aa3d2b9b5c4fce0",
+    "build-baseline.log": "45c7aa77617951a8188aeef2cfbb83f4bc21a28f468a0ad3512482c2402e8e2b",
+    "build-baseline-a2.log": "9da3c3b75d202182f64745c550fa1fbc07c0e9a9405d6d34faed02aa408062cd",
+    "desktop-typecheck.log": "09a0286f32d3e7b48abf19108d9f7b9376b05901f7e28a34faba92736bc38c79",
+    "environment-preflight.log": "b9b0a52f16c90d24988e97aa8eccdd47d0da61885b3015863cae0cc7e76b9432",
+    "check.log": "642a79428aad9ea4ac3e790ab0e614c599e01bf9a52680ddb899446345122d65",
+    "check-a2.log": "fa2f6a40c8c04ac80b13ea332e1356ecaecdd8f7039fdb3cde994c9c8f5ef73b",
+    "check-a3.log": "8d0d452c73c95b74b588665f1f67a6dcc26d4316b0bbaad90e08a5d6cfa3b60a",
+    "check-a4.log": "74946def86974f002e9abe708d0db5276a57ffee797ee672f108c81042065938"
+  },
+  "limitations": [
+    "Synthetic local data and transport only; no user profile, real model, mailbox, AgentArts deployment or device acceptance",
+    "Sampled memory and CPU; no all-machine or long-duration SLO claim",
+    "No Core wire, Schema, dependency, migration or authorization changes",
+    "Root check previous environment failures and interrupted runs are retained in the log hash index"
+  ]
+}

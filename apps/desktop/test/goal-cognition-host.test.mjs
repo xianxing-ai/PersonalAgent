@@ -12,6 +12,7 @@ import {createAgentArtsRuntimeApplication,createProactiveCognitionHost} from '@p
 import {createDesktopGoalCognitionHost} from '../electron/goal-cognition-host.js';
 import {createGoalHostCore} from '../electron/goal-host-core.js';
 import {Conversations} from '../electron/conversations.js';
+import {TaskProjectionCache} from '../electron/task-projection-cache.js';
 import {approvalCards} from '../src/features/conversation/approval-card.js';
 
 const namespace='synthetic-desktop-cognition';
@@ -693,18 +694,15 @@ async function originalGoalTaskSurface() {
     if(ts.isCallExpression(n)&&n.expression.getText(ast)==='createDesktopProactiveHost') {
       notify=n.arguments[0].properties.find(p=>p.name?.getText(ast)==='onAnalysisTask').initializer.getText(ast);
     }
-    if(ts.isPropertyAssignment(n)&&n.name.getText(ast)==='tasks'&&n.initializer.getText(ast).startsWith('orderedTasks().filter(')&&n.initializer.getText(ast).includes('visibleConversationTask(task,surface)')) {
-      filter=n.initializer.expression.expression.getText(ast);
-    }
     ts.forEachChild(n,visit);
   }
-  visit(ast);assert.ok(notify&&filter);
-  const conversations=new Conversations(undefined),taskGoals=new Map(),tasks=new Map();
+  visit(ast);filter=declaration('conversationProjection').match(/const scoped=([^;]+);/)?.[1];assert.ok(notify&&filter);
+  const conversations=new Conversations(undefined),taskGoals=new Map(),tasks=new TaskProjectionCache();
   const context=vm.createContext({conversations,taskGoals,tasks,Date});
   vm.runInContext(text.match(/const TASK_GOAL_LIMIT = \d+;/)[0]+'\n'+declaration('rememberTaskGoal')+'\n'+declaration('orderedTasks')+'\n'+declaration('taskSurface')+'\n'+declaration('visibleConversationTask'),context);
   return {conversations,taskGoals,tasks,notify:vm.runInContext('('+notify+')',context),
-    panelTasks:()=>{context.surface='panel';return vm.runInContext(filter,context);},
-    adminTasks:()=>{context.surface=undefined;return vm.runInContext(filter,context);}};
+    panelTasks:()=>{context.surface='panel';context.ordered=context.orderedTasks();return vm.runInContext(filter,context);},
+    adminTasks:()=>{context.surface=undefined;context.ordered=context.orderedTasks();return vm.runInContext(filter,context);}};
 }
 
 test('Goal task metadata makes accepted lost receipts visible in the original panel once per Host',async t=>{

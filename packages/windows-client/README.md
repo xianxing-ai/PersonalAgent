@@ -1,4 +1,46 @@
-# Windows Client：系统观测与 Windows-MCP 受控适配
+# Windows Client：系统观测、原生电脑控制与 Windows-MCP 兼容适配
+
+## 2026-10-25 兼容适配的观察有效期回归（Local/Synthetic）
+
+保留主线修复：Windows-MCP 兼容入口在异步校验或 attempt 持久化后重验原 targetRef 有效期，
+持久 attempt 仍保留且不重放。先红后绿、原检查与独立复核见[验收证据](ACCEPTANCE-20261025.md)。
+这项修复未替换下述默认原生执行器，也不表示真实 Windows 或 PA-016 整体验收。
+
+## 2026-10-24 默认原生电脑控制（in_progress）
+
+当前 Competition 实施工作树默认接入 `createWindowsNativeDesktopControlHost()`，通过固定
+`personal-agent-desktop/1` stdio 协议调用应用自有 .NET 8 UIA／Win32 组件。普通用户无需配置
+Python 路径；源码 checkout 的组件准备需要 .NET 8 SDK，安装形态只使用应用随包提供的组件。
+自包含 bundle 已有独立运行时 initialize 回执，但安装器、签名和干净 OS 验收仍 `not_run`。
+Windows-MCP 保留为显式 `PA_WINDOWS_CONTROL_PYTHON` 开发兼容入口，下方 2026-10-18 记录按其
+原范围保留，不再代表默认执行器。
+
+原生目录提供 16 个 `computer.desktop.*` 工具：`list_windows`、`observe`、`activate`、
+`screenshot`、`click`、`type`、`set_value`、`invoke`、`select`、`focus`、`scroll`、`move`、
+`drag`、`shortcut`、`press`、`wait`；Desktop 另接 `computer.request_access`。目录存在不等于
+组件、目标或权限已可用；每次调用仍经原 Runtime／Policy／ToolGateway，共享输入 lease，
+保留 task/run、参数 digest、原 attempt、期限和取消。普通权限、前台、HWND／PID／启动身份、
+输入 generation 与一次性 targetRef 保护原目标；UIA／Win32 仍不是原子事务或内核输入沙箱。
+
+仅受信 `ToolNotStartedError` 身份可证明零分派。内部接管／目标变化映射到公共
+`REVISION_CONFLICT`；分派后结果未知仍为 `RESULT_UNKNOWN`，禁止重做或换引擎试写。
+动作观察不等于业务完成；`set_value` 等明确读回只验证对应控件后置条件。
+
+电脑设置已接启用、观察出口、准备／重试、停止和原会话入口，错误保留 code／stage／安全详情。
+截图只返回本地 artifact 元数据。可选 `computer.vision.inspect` 由 Desktop 单独装配，默认
+关闭，来源默认 AgentArts 并保留自定义模型；只消费原任务 confirmed 截图，经精确图像出机
+授权后调用显式视觉模型，不给普通文字 planner 原图，不把视觉描述称为独立目标验证。
+
+当前证据分别为：真实合成 WPF 设备 13 项、真实 Runtime 原生链 11 项、实际 Electron 产品
+17 项、直连 AgentArts 模型的本地新镜像浏览器链通过；真实视觉联合链也已通过随机 Canvas
+标记识别与云端续答，原图 17,880 bytes、编码 body 24,454 bytes，原 Evidence 仍 conditional。
+原生云端严格六工具重验已通过，含独立 UIA／fixture 读回、PNG、原 SQLite 和资源释放；
+这些证据不是新镜像正式平台部署或全产品验收。当前检查的
+6 项测试环境失败修后 33 项定向及 57 项根集成通过，原失败日志保留；访问成功语义已补入
+Desktop 使用的 Runtime 固定能力上下文并 7/7 定向通过。全目录 65 项及最终集成交主工作包。
+具体工具实际调用、回执路径、迁移、运行入口和未验矩阵见
+[电脑操控交付记录](../../docs/COMPUTER_CONTROL_COMPLETION_20261024.md)与
+[ADR-0039](../../docs/adr/0039-native-desktop-control.md)。
 
 2026-10-25 系统观测完成时间修复及 Linux/Fake 分账验证见
 [MOD-17 验收记录](STATUS-ACCEPTANCE-20261025.md)。

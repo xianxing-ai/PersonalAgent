@@ -3,6 +3,7 @@ import {ProtocolError,validateContract,validateToolValue} from '@personal-agent/
 import {createRuntimeAtomicStatePort} from '@personal-agent/runtime';
 import {runRuntimeConnectorChangeDecision} from '@personal-agent/runtime/application';
 import {decodeMailCursor} from '@personal-agent/mail';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const hashText=value=>createHash('sha256').update(value).digest('hex');
@@ -124,15 +125,17 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
   const runtime=application.runtime,atomic=createRuntimeAtomicStatePort(runtime,'desktop-connector-changes');
   const key=digest(namespace),lifetime=new AbortController();
   let active,closed=false,lastError,cachedSummary;
+  const cachedMailBaselines=new Map();
   const projectedDecisions=new Set();
   const decisionTasks=new Set();
   const load=()=>atomic.read(key);
-  const empty=()=>({version:1,sources:{},events:{},watches:{}});
+  const empty=()=>({version:1,sources:{},events:{},watches:{},mailEpochs:{},mailWatchDomains:{}});
   const state=()=>{const value=load()?.value??empty();if(value.version!==1)fail('REVISION_CONFLICT');return structuredClone(value);};
   function update(change) {
     const saved=load(),value=structuredClone(saved?.value??empty());change(value);
     if(!atomic.compareAndSet(key,saved?.revision,value))fail('REVISION_CONFLICT');
     cachedSummary=undefined;
+    cachedMailBaselines.clear();
     try{onUpdate();}catch{}
   }
   function authorized(source,configurationRef) {
@@ -179,20 +182,97 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
         if(sourceKind==='mail') {
           const cursor=decodeMailCursor(result.nextCursor);
           const source=digest(['mail',authorization.configurationRef,responsibility,result.account,result.folder,cursor.uidValidity]);
+          // UIDVALIDITY is an opaque epoch identity. Keep one current pointer per
+          // original read responsibility, account and folder, independent of UID.
+          const domain=digest(['mail',authorization.configurationRef,responsibility,result.account,result.folder]);
+          const started=Date.parse(record.startedAt),finished=Date.parse(record.finishedAt);
+          if(!Number.isFinite(started)||!Number.isFinite(finished)||finished<started)fail('RESULT_UNKNOWN');
           update(value=>{
-            const prior=value.sources[source]??={configurationRef:authorization.configurationRef,kind:'mail',heads:{},initialized:false};
+            value.mailEpochs??={}; // State written before this pointer existed remains readable.
+            const current=value.mailEpochs[domain];
+            if(current&&(typeof current.source!=='string'||!Number.isFinite(Date.parse(current.startedAt))
+              ||!Number.isFinite(Date.parse(current.finishedAt))))fail('REVISION_CONFLICT');
+            if(current?.source!==source&&current!==undefined&&started<=Date.parse(current.startedAt)) {
+              // Two different epochs starting within one clock tick have no
+              // trustworthy order. Fence both until a later confirmed read.
+              if(started===Date.parse(current.startedAt))current.ambiguous=true;
+              return;
+            }
+            if(current?.ambiguous&&started<=Date.parse(current.startedAt))return;
+            if(!current||started>Date.parse(current.startedAt)
+              ||current.source===source&&started===Date.parse(current.startedAt)
+                &&finished>=Date.parse(current.finishedAt))
+              value.mailEpochs[domain]={source,startedAt:record.startedAt,finishedAt:record.finishedAt};
+            const prior=value.sources[source]??={configurationRef:authorization.configurationRef,kind:'mail',heads:{},
+              initialized:false,baselineProjectionVersion:1};
             const added=[];
+            const highUid=prior.maxUid??0;
+            if(!Number.isSafeInteger(highUid)||highUid<0)fail('REVISION_CONFLICT');
+            const intent=runtime.loadCheckpoint(taskId,'host-tool-intent'),lease=runtime.loadCheckpoint(taskId,'mail-read-session');
+            const persisted=runtime.loadCheckpoint(taskId,'mail-triage-persisted-cursor-v1');
+            // Only the original triage host can attest that the first page
+            // started from its durable cursor. A caller-supplied mail.inbox
+            // cursor, including a watch page, is not a mailbox baseline.
+            const watchCursorBaseline=!prior.initialized&&result.items.length===0&&!result.hasMore&&cursor.lastUid>0
+              &&watchOrigin?.source==='mail'&&watchOrigin.configurationRef===authorization.configurationRef
+              &&typeof lease==='string'&&!!lease&&persisted?.version===1
+              &&persisted.sessionId===lease&&persisted.batchId===lease
+              &&typeof persisted.generation==='string'&&!!persisted.generation
+              &&persisted.firstPageTaskId===taskId&&persisted.runId===record.evidenceId
+              &&persisted.commandId===`mail:${lease}:1`
+              &&persisted.accountRef===result.account&&persisted.folder===result.folder
+              &&persisted.limit===intent?.arguments?.limit
+              &&persisted.savedCursor===result.nextCursor
+              &&persisted.queryDigest===digest({folder:'INBOX',startCursor:persisted.savedCursor})
+              &&intent?.namespace===namespace&&intent.toolName===record.toolName&&intent.toolVersion===record.toolVersion
+              &&intent.commandId===persisted.commandId&&intent.argumentsDigest===persisted.argumentsDigest
+              &&intent.argumentsDigest===toolArgumentsDigest(intent.arguments)
+              &&runtime.matchesToolExecutionInput(record,{arguments:intent.arguments,scopeRef:record.evidenceId})
+              &&intent.arguments?.account===result.account&&intent.arguments?.folder===result.folder
+              &&intent.arguments.limit===persisted.limit
+              &&intent.arguments?.cursor===result.nextCursor;
+            let highestReturnedUid=watchCursorBaseline?Math.max(highUid,cursor.lastUid):highUid;
             for(const item of result.items) {
               validateContract('connectorItem',item);
               if(item.source!=='mail'||item.accountRef!==result.account||item.sensitivity!=='private')fail('SCOPE_DENIED');
+              const prefix=result.folder+':',uidText=item.externalId.startsWith(prefix)?item.externalId.slice(prefix.length):'';
+              const uid=/^[1-9]\d*$/.test(uidText)?Number(uidText):NaN;
+              if(!Number.isSafeInteger(uid)||uid>cursor.lastUid)fail('SCOPE_DENIED');
+              highestReturnedUid=Math.max(highestReturnedUid,uid);
               const entity=digest(item.dedupeKey),revision=digest([item.dedupeKey,item.occurredAt]);
-              if(!prior.heads[entity]&&prior.initialized)added.push({entity,revision});
+              // Same-epoch pages may be observed after a newer page. Their UIDs
+              // can complete the baseline, but only UIDs beyond the confirmed
+              // page watermark nominate a new-mail event.
+              if(!prior.heads[entity]&&prior.initialized&&uid>highUid)added.push({entity,revision});
               prior.heads[entity]=revision;
             }
+            // Only the original watch's bound triage cursor may seed an empty
+            // baseline. Other empty pages cannot raise the returned UID mark.
+            prior.maxUid=highestReturnedUid;
             // A confirmed inbox page is the admission boundary, not one task per UID.
             if(added.length)event(value,source,record,'mail.new',digest([record.taskId,record.evidenceId]),digest(added),
               {entities:added.map(item=>item.entity)});
-            if(!result.hasMore)prior.initialized=true;
+            // A cursor-only empty result may just echo an arbitrary caller
+            // watermark. It cannot prove that the mailbox was read from start.
+            if(!result.hasMore&&(result.items.length>0||cursor.lastUid===0||watchCursorBaseline))prior.initialized=true;
+            // Private projection index only. The epoch pointer and initialized
+            // flag above remain the authority for whether a watch may remind.
+            if(watchOrigin?.source==='mail'&&watchOrigin.configurationRef===authorization.configurationRef
+              &&typeof watchOrigin.watchId==='string'&&watchOrigin.watchId
+              &&typeof watchOrigin.taskId==='string'&&watchOrigin.taskId
+              &&typeof watchOrigin.runId==='string'&&watchOrigin.runId
+              &&typeof watchOrigin.conversationId==='string'&&watchOrigin.conversationId) {
+              value.mailWatchDomains??={};
+              const watchKey=digest(watchOrigin.watchId),old=value.mailWatchDomains[watchKey];
+              const binding=old?.domain===domain&&old.configurationRef===authorization.configurationRef
+                &&old.originTaskId===watchOrigin.taskId&&old.originRunId===watchOrigin.runId
+                &&old.conversationId===watchOrigin.conversationId
+                ?old:{watchId:watchOrigin.watchId,domain,configurationRef:authorization.configurationRef};
+              Object.assign(binding,{readTaskId:taskId,originTaskId:watchOrigin.taskId,
+                originRunId:watchOrigin.runId,conversationId:watchOrigin.conversationId});
+              if(prior.initialized&&prior.baselineProjectionVersion===1)binding.readySource=source;
+              value.mailWatchDomains[watchKey]=binding;
+            }
           });
         } else {
           if(result.cache?.state==='stale'||result.cache?.lastError)continue;
@@ -223,8 +303,16 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
     const current=state().events[item.id];
     if(!current||current.revision!==item.revision)fail('REVISION_CONFLICT');
     authorized(item.kind==='mail.new'?'mail':'weather',item.configurationRef);
-    if(item.kind==='weather.changed'&&state().sources[item.source]?.latestEventId!==item.id)fail('REVISION_CONFLICT');
     const source=original(item.origin.taskId,item.origin.runId);
+    if(item.kind==='mail.new') {
+      const watchOrigin=readWatchOrigin?.(item.origin.taskId);
+      const conversationId=watchOrigin?.conversationId??resolveUserConversation(item.origin.taskId);
+      if(typeof conversationId!=='string'||!conversationId)fail('SCOPE_DENIED');
+      const responsibility=watchOrigin?['watch',watchOrigin.watchId,conversationId]:['conversation',conversationId];
+      const domain=digest(['mail',item.configurationRef,responsibility,source.result.account,source.result.folder]);
+      const epoch=state().mailEpochs?.[domain];
+      if(epoch&&(epoch.ambiguous||epoch.source!==item.source))fail('REVISION_CONFLICT');
+    }else if(state().sources[item.source]?.latestEventId!==item.id)fail('REVISION_CONFLICT');
     return source;
   }
   function silent(item) {
@@ -363,6 +451,25 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
     }
     return cachedSummary;
   }
+  function mailBaselineFact(watchId) {
+    const watchKey=digest(watchId);
+    if(cachedMailBaselines.has(watchKey))return cachedMailBaselines.get(watchKey);
+    const value=load()?.value??empty();if(value.version!==1)fail('REVISION_CONFLICT');
+    const binding=value.mailWatchDomains?.[watchKey];
+    if(binding?.watchId!==watchId){cachedMailBaselines.set(watchKey,undefined);return undefined;}
+    const epoch=value.mailEpochs?.[binding.domain],source=epoch?.source,head=value.sources?.[source];
+    let stage='unknown';
+    if(typeof binding.domain==='string'&&typeof source==='string'&&head?.kind==='mail'
+      &&head.configurationRef===binding.configurationRef&&head.baselineProjectionVersion===1) {
+      if(epoch.ambiguous)stage='epoch_pending';
+      else if(head.initialized===true&&binding.readySource===source)stage='ready';
+      else if(head.initialized===false&&binding.readySource&&binding.readySource!==source)stage='epoch_pending';
+      else if(head.initialized===false&&!binding.readySource)stage='establishing_baseline';
+    }
+    const fact={watchId,configurationRef:binding.configurationRef,readTaskId:binding.readTaskId,
+      originTaskId:binding.originTaskId,originRunId:binding.originRunId,conversationId:binding.conversationId,state:stage};
+    cachedMailBaselines.set(watchKey,fact);return fact;
+  }
   return {observeTask,flush,
     ownsDecisionTask(taskId){
       if(closed)return false;
@@ -370,9 +477,22 @@ export function createDesktopConnectorChangeHost({application,namespace,chooser,
       if(runtime.loadCheckpoint(taskId,'connector-change-origin')===undefined)return false;
       decisionTasks.add(taskId);return true;
     },
-    snapshot(){
-      return {available:!closed,...summary().counts,
-      ...(lastError?{errorCode:lastError}:{}),verification:'unverified'};},
+    snapshot({mailWatchId}={}){
+      const current=summary();let mailAuthorization;
+      const binding=typeof mailWatchId==='string'&&mailWatchId?mailBaselineFact(mailWatchId):undefined;
+      if(binding)try{mailAuthorization=readSourceAuthorization('mail');}catch{}
+      let origin;
+      if(binding&&binding.watchId===mailWatchId&&typeof binding.readTaskId==='string')
+        try{origin=readWatchOrigin?.(binding.readTaskId);}catch{}
+      const currentWatch=!closed&&origin?.source==='mail'&&origin.watchId===mailWatchId
+        &&origin.configurationRef===binding?.configurationRef
+        &&origin.taskId===binding?.originTaskId&&origin.runId===binding?.originRunId
+        &&origin.conversationId===binding?.conversationId&&Date.parse(origin.expiresAt)>now();
+      const mailWatchBaselines=binding?[{watchId:mailWatchId,state:currentWatch
+        &&mailAuthorization?.available===true&&mailAuthorization.configurationRef===binding.configurationRef
+          ?binding.state:'unknown'}]:[];
+      return {available:!closed,...current.counts,
+      mailWatchBaselines,...(lastError?{errorCode:lastError}:{}),verification:'unverified'};},
     async close(){closed=true;lifetime.abort();await active;},
   };
 }

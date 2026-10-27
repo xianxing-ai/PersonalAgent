@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {PROTOCOL_VERSION,validateToolValue} from '@personal-agent/contracts';
+import {PROTOCOL_VERSION,ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
 import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
@@ -46,7 +46,7 @@ function workspaceRuntime() {
 }
 
 test('Synthetic question workspace is discoverable with old consent false but executes and exports only its exact receipt',async t=>{
-  const {root,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'Synthetic-private-name.js'),'Synthetic source');
+  const {root,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'Synthetic-public-name.js'),'Synthetic source body remains local');
   const question=workspaceQuestions(),host=open({question,findExecutable:()=>undefined});host.bindApplication(workspaceRuntime());
   assert.ok(host.tools.length,JSON.stringify(host.snapshot()));
   const tool=host.tools.find(item=>item.descriptor.name==='workspace.list_entries'),input={path:'.'},scope=workspaceOperation(tool,input);
@@ -57,13 +57,44 @@ test('Synthetic question workspace is discoverable with old consent false but ex
   host.prepareExport({...scope,phase:'preflight'});assert.equal(policy.accepts({...scope,arguments:input}),true);
   await assert.rejects(tool.execute(input,scope));question.allow(scope);
   const result=await tool.execute(input,scope);assert.ok(result.entries.length>0);
-  const projection=policy.project({...scope,result});assert.deepEqual(projection,{listed:true,truncated:false});
-  assert.equal(JSON.stringify(projection).includes('Synthetic-private-name'),false);
+  const projection=policy.project({...scope,result});assert.deepEqual(projection,{listed:true,path:'.',entries:result.entries,truncated:false});
+  assert.equal(policy.exportPolicyVersion,'workspace-relative-directory-v1');
+  const exportRequirement=question.entries.get(JSON.stringify([scope.taskId,scope.runId])).requirements.find(item=>item.requirementId==='workspace-export');
+  assert.match(exportRequirement.summary,/相对目录路径、直接子条目名称/);
+  assert.ok(projection.entries.some(entry=>entry.name==='Synthetic-public-name.js'&&entry.kind==='file'));
+  assert.doesNotMatch(JSON.stringify(projection),/Synthetic source body remains local/);
+  assert.equal(JSON.stringify(projection).includes(root),false);
   assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),true);
-  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection:{...projection,entries:result.entries}}),false);
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection:{...projection,entries:[]}}),false);
+  for(const name of ['../outside','/outside','C:/private','nested/child','nested\\child','.'])
+    assert.throws(()=>policy.project({...scope,result:{...result,entries:[{name,kind:'file'}]}}),{code:'UNAUTHORIZED'});
+  for(const directory of ['../outside','C:/private','/outside'])
+    assert.throws(()=>policy.project({...scope,result:{...result,path:directory}}),{code:'UNAUTHORIZED'});
   await assert.rejects(tool.execute({path:'different'},scope));await assert.rejects(tool.execute(input,{...scope,runId:'other'}));
   await assert.rejects(host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true}),/提问卡/);
   host.revoke();await assert.rejects(tool.execute(input,scope));assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),false);
+});
+
+test('relative directory contents require their own exact export decision after a local list grant',async t=>{
+  const {root,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'public-directory-entry.txt'),'LOCAL_BODY_ONLY');
+  const question=workspaceQuestions(),originalCurrent=question.currentRequirement;
+  let exportAllowed=false;
+  question.currentRequirement=(scope,id)=>{
+    originalCurrent(scope,id);
+    if(id==='workspace-export'&&!exportAllowed)throw new ProtocolError('UNAUTHORIZED','Synthetic directory export denied');
+  };
+  const host=open({question,findExecutable:()=>undefined});host.bindApplication(workspaceRuntime());
+  const tool=host.tools.find(item=>item.descriptor.name==='workspace.list_entries'),input={path:'.',limit:1},scope=workspaceOperation(tool,input);
+  const policy=host.competitionToolExports.find(item=>item.toolName===tool.descriptor.name);
+  host.prepareExport({...scope,phase:'preflight'});question.allow(scope);
+  const result=await tool.execute(input,scope);
+  assert.throws(()=>policy.project({...scope,result}),{code:'UNAUTHORIZED'});
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection:{listed:true,...result}}),false);
+  exportAllowed=true;
+  const projection=policy.project({...scope,result});
+  assert.equal(projection.entries.length,1);assert.equal(projection.path,'.');
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),true);
+  assert.doesNotMatch(JSON.stringify(projection),/LOCAL_BODY_ONLY/);
 });
 
 test('Synthetic workspace permanent resource survives normal close and changes on explicit revoke, never persisting a grant',async t=>{

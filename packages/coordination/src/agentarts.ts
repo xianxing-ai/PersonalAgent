@@ -61,6 +61,8 @@ export interface AgentArtsRuntimeConfig {
 
 export interface AgentArtsWebSocketOptions {
   authorizationProvider?: AgentArtsAuthorizationProvider;
+  /** Host opt-in: read back a still-pending accepted invocation; never sends another invoke. */
+  recoverAcceptedStatus?: true;
   factory?: AgentArtsWebSocketFactory;
   onState?: (state: AgentArtsTransportState) => void;
   /** Trusted local persistence, synchronously committed before send. Never a remote claim. */
@@ -1197,6 +1199,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     if (websocketOptions?.factory !== undefined && typeof websocketOptions.factory !== 'function') {
       invalid('AgentArts WebSocket factory is invalid');
     }
+    if(websocketOptions?.recoverAcceptedStatus!==undefined&&websocketOptions.recoverAcceptedStatus!==true)
+      invalid('Invalid AgentArts accepted-status recovery selection');
     if (websocketOptions?.onState !== undefined && typeof websocketOptions.onState !== 'function') {
       invalid('AgentArts WebSocket observer is invalid');
     }
@@ -1228,7 +1232,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.onWebSocketTerminal = websocketOptions?.onTerminal;
     this.identityObserver = identityObserver;
     this.websocket = validated.websocketUrl === undefined ? undefined
-      : new AgentArtsWebSocketTransport(validated.websocketUrl, websocketOptions?.factory, websocketOptions?.onState);
+      : new AgentArtsWebSocketTransport(validated.websocketUrl, websocketOptions?.factory, websocketOptions?.onState,
+        websocketOptions?.recoverAcceptedStatus===true?(receipt,controls)=>this.queryStatus(receipt,controls):undefined);
   }
 
   /** Releases reusable sessions. It never resumes or retries an in-flight invocation. */

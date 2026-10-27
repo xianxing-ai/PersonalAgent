@@ -39,6 +39,19 @@ export function userTaskDelegationProposal(binding: UserTaskDelegation): Coordin
     arguments: {subtasks: [structuredClone(binding.subtask)]}, verification: 'unverified'};
 }
 
+/** A fluent cloud summary cannot replace the original required child's execution outcome. */
+export function assertUserTaskDelegationComplete(runtime:TaskRuntime,taskId:string):void {
+  const binding=readUserTaskDelegation(runtime,taskId);
+  if(!binding)return;
+  const child=runtime.findTaskByIdempotencyKey(`subagent-dispatch-${taskId}-${binding.subtask.subtaskId}`);
+  const parent=child?runtime.loadCheckpoint(child.taskId,'subtask-parent') as {parentTaskId?:string;subtaskId?:string}|undefined:undefined;
+  if(!child||child.conversationId!==`desktop-subtask:${taskId}`||parent?.parentTaskId!==taskId
+    ||parent.subtaskId!==binding.subtask.subtaskId)
+    throw new ProtocolError('UNAUTHORIZED','Original required delegated execution is unavailable');
+  if(child.state!=='succeeded')throw new ProtocolError(child.state==='cancelled'?'CANCELLED':child.error?.code??'EXTERNAL_FAILURE',
+    '任务执行未完成；请查看子任务错误及已确认的操作记录，再决定如何继续。');
+}
+
 /** Enforced both before requesting approval and by the actual Gateway policy boundary. */
 export function assertUserTaskDelegationInvocation(runtime: TaskRuntime,
   input: {taskId: string; toolName: string; authorizationRef: string; argumentsDigest?: string}): void {

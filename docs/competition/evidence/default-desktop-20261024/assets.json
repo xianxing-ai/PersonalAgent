@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "kind": "public_fixture_artifacts",
+  "assets": [
+    {
+      "file": "pelican-frame-1.png",
+      "sha256": "3b2beb4a38eb597e52d13c8c6a3dbe258bc1dfabb4cd5b0495e27c70e31cf8ef",
+      "byteLength": 33972
+    },
+    {
+      "file": "pelican-frame-2.png",
+      "sha256": "37505d7ad4478da0e97ee77a4b6da58dc6fa5ab4685c5d1ee976e5533dee2edd",
+      "byteLength": 32153
+    },
+    {
+      "file": "pelican-fixed.svg",
+      "sha256": "98fb717de42e4227f565b77d9b7ed2b646af39017ec3f23d97d2fe2834c15396",
+      "byteLength": 2537
+    }
+  ],
+  "source": "Actual repaired public fixture and two original owned Chromium artifact-viewer captures",
+  "visualReview": "Both frames and the owned Desktop result were inspected during the original run"
+}

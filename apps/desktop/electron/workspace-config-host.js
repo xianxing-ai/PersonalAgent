@@ -429,7 +429,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(name==='workspace.git_diff_check'||name==='workspace.node_check'||isProject(tool))return object({
       recipeId:{type:'string',enum:[name==='workspace.git_diff_check'?'git-diff-check':name==='workspace.node_check'?'node-check':name==='workspace.npm_build'?'npm-build':'npm-test']},
       exitCode:{type:'integer'},passed:boolean});
-    if(name==='workspace.list_entries')return object({listed:boolean,truncated:boolean});
+    if(name==='workspace.list_entries')return question?object({listed:boolean,
+      path:tool.descriptor.outputSchema.properties.path,entries:tool.descriptor.outputSchema.properties.entries,truncated:boolean})
+      :object({listed:boolean,truncated:boolean});
     if(name==='workspace.preview_text_patch')return object({previewed:boolean,changed:boolean});
     if(name==='workspace.stage_text_patch')return object({staged:boolean,changed:boolean});
     if(name==='workspace.apply_text_patch')return object({applied:boolean,changed:boolean});
@@ -535,7 +537,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(taskConsent)entry.taskConsent=taskConsent;
     prepared.set(key,entry);
     const ruleBindingDigest=hash({resource,resourceGeneration,toolName:request.toolName,toolVersion:request.toolVersion,
-      scopes:descriptor?.requiredScopes??source.scopes,projectionVersion:'workspace-redacted-v3'});
+      scopes:descriptor?.requiredScopes??source.scopes,
+      projectionVersion:tool?.descriptor.name==='workspace.list_entries'?'workspace-relative-directory-v1':'workspace-redacted-v3'});
     question.prepare(request,{requirements:[{requirementId:'workspace-session',kind:'connector_session',
       scopes:descriptor?.requiredScopes??source.scopes??[],bindingDigest:signature,ruleBindingDigest,
       summary:'仅对已选择且仍有效的工作区执行本操作所列读写或固定命令；不开放任意路径、命令或其他任务'}],
@@ -564,7 +567,9 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     }
     if(exportRequested&&tool&&tool.descriptor.name!=='workspace.read_text')question.prepareExport(request,{
       requirementId:'workspace-export',projectionSchema:projectionSchema(tool),
-      summary:'仅将本操作的固定脱敏元数据发送到当前任务选定的 AgentArts 模型；不含源码、stdout 或本机绝对路径（最多 960 KiB）',
+      summary:tool.descriptor.name==='workspace.list_entries'
+        ?'向当前任务选定的 AgentArts 模型发送本次已选工作区内的相对目录路径、直接子条目名称与文件/目录类型及截断标记；不含文件正文、本机绝对路径或其他目录（最多 960 KiB）'
+        :'仅将本操作的固定脱敏元数据发送到当前任务选定的 AgentArts 模型；不含源码、stdout 或本机绝对路径（最多 960 KiB）',
       bindingDigest:hash({signature,kind:'export'}),ruleBindingDigest:hash({ruleBindingDigest,kind:'export',schema:projectionSchema(tool)})});
   }
   async function prepareDependencies(context) {
@@ -1021,7 +1026,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       return {recipeId,exitCode:result.exitCode,passed:result.exitCode===0};
     }
     if(codingRepairExportOperation(tool.descriptor.name))return projectCodingRepairResult(tool.descriptor.name,result);
-    if(tool.descriptor.name==='workspace.list_entries')return {listed:true,truncated:result.truncated};
+    if(tool.descriptor.name==='workspace.list_entries') {
+      if(!question)return {listed:true,truncated:result.truncated};
+      const relative=value=>typeof value==='string'&&value.length>0&&!path.isAbsolute(value)
+        &&!/[:\\\u0000-\u001f]/u.test(value)&&(value==='.'||value.split('/').every(part=>part&&part!=='.'&&part!=='..'));
+      if(!relative(result.path)||result.entries.some(entry=>!relative(entry.name)||entry.name==='.'||entry.name.includes('/')))
+        throw new ProtocolError('UNAUTHORIZED','Directory export requires original relative workspace entries');
+      return {listed:true,path:result.path,entries:result.entries.map(entry=>({name:entry.name,kind:entry.kind})),truncated:result.truncated};
+    }
     if(tool.descriptor.name==='workspace.preview_text_patch')return {previewed:true,changed:result.changed};
     if(tool.descriptor.name==='workspace.stage_text_patch')return {staged:true,changed:result.changed};
     if(tool.descriptor.name==='workspace.apply_text_patch')return {applied:result.applied,changed:result.changed};
@@ -1170,7 +1182,8 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       exportPolicyVersion:codingRepairExportOperation(tool.descriptor.name)?'coding-repair-metadata-v1':isProject(tool)?'authorized-project-script-redacted-v1'
         :tool.descriptor.name==='workspace.node_check'
           ? 'authorized-node-check-redacted-v1':tool.descriptor.name==='workspace.read_text'
-            ? 'workspace-reference-3.0.0':'coding-local-result-redacted-v2',
+            ? 'workspace-reference-3.0.0':tool.descriptor.name==='workspace.list_entries'&&question
+              ? 'workspace-relative-directory-v1':'coding-local-result-redacted-v2',
       accepts:input=> {
         if(!(question?questionReady():consent?.cloudExportAllowed===true) || !enabled(tool) || !bound(input.taskId)) return false;
         if(question)try {

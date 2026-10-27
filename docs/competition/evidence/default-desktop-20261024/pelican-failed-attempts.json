@@ -1,0 +1,312 @@
+{
+  "schemaVersion": 1,
+  "kind": "failed_attempt_metadata_only",
+  "profile": "huawei_ict_agentarts",
+  "attempts": [
+    {
+      "attempt": "a1",
+      "startedAt": "2026-10-24T10:41:01.737Z",
+      "finishedAt": "2026-10-24T10:41:16.188Z",
+      "status": "failed",
+      "stage": "launch",
+      "reason": "Owned launcher identity mismatch before cloud execution",
+      "receiptSha256": "44e91b81e8384c8e066b19cc73701ff9458be8123e19b332f329c17ae94858be",
+      "source": {
+        "desktopMainSha256": "ccc8d69b9efff2bae3c729aa97dab50322e1fe20af0c814b014fec1279ffe015",
+        "toolSurfaceSha256": "c0d77cd42cda1be9dfb3b39f65173f823dc3c3582b5c1b1c38ba5f8cc13d95f3",
+        "workspaceConfigHostSha256": "db533143dac9f29ea2a78df77905f3f6cf4ced5f7d91e8eb3b214665e55222b0",
+        "codingDecisionSourceSha256": "88176a743790a3361d78fb61c174379d64dc2fc6278268042a717fe2690a5349",
+        "codingDecisionBuildSha256": "3171af20c77442e7e954d5622950eb91998db60cf29cdc68e9909bba0e310d81",
+        "coordinationBuildSha256": "74621d89c66dc2cb1eec95080ec9d661a55eab692e72281396ec4a1280a37cf0",
+        "runtimeApplicationBuildSha256": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "runnerSha256": "affead424561dcb255d3e78a72a2dbe3c4d0bcc1fef3de28997b1704ba34acb2"
+      }
+    },
+    {
+      "attempt": "a2",
+      "startedAt": "2026-10-24T10:46:11.328Z",
+      "finishedAt": "2026-10-24T10:46:42.812Z",
+      "status": "failed",
+      "stage": "wait-original-model-and-tools",
+      "reason": "Runner omitted original list_entries question",
+      "receiptSha256": "197459faa2de8219eee1ee0e5bbf942b6462cf4f973b855d7f9f1430f95869f0",
+      "parentState": "running",
+      "recordedToolStates": [
+        {
+          "toolName": "subagent.dispatch",
+          "state": "started",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.list_entries",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        }
+      ],
+      "source": {
+        "desktopMainSha256": "ccc8d69b9efff2bae3c729aa97dab50322e1fe20af0c814b014fec1279ffe015",
+        "toolSurfaceSha256": "c0d77cd42cda1be9dfb3b39f65173f823dc3c3582b5c1b1c38ba5f8cc13d95f3",
+        "workspaceConfigHostSha256": "db533143dac9f29ea2a78df77905f3f6cf4ced5f7d91e8eb3b214665e55222b0",
+        "codingDecisionSourceSha256": "88176a743790a3361d78fb61c174379d64dc2fc6278268042a717fe2690a5349",
+        "codingDecisionBuildSha256": "3171af20c77442e7e954d5622950eb91998db60cf29cdc68e9909bba0e310d81",
+        "coordinationBuildSha256": "74621d89c66dc2cb1eec95080ec9d661a55eab692e72281396ec4a1280a37cf0",
+        "runtimeApplicationBuildSha256": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "runnerSha256": "dd19f3ba4d468dbfc6558ecfb054aaaf805007cf2bfa8128867835b230071f74"
+      }
+    },
+    {
+      "attempt": "a3",
+      "startedAt": "2026-10-24T10:48:29.283Z",
+      "finishedAt": "2026-10-24T10:49:15.150Z",
+      "status": "failed",
+      "stage": "wait-original-model-and-tools",
+      "reason": "Runner omitted legitimate one-coder team question",
+      "receiptSha256": "73362e8c28a47e521d69b67e87c4250e225c2dafe90dafb601ed33c777dbf635",
+      "parentState": "running",
+      "recordedToolStates": [
+        {
+          "toolName": "subagent.dispatch",
+          "state": "started",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        }
+      ],
+      "source": {
+        "desktopMainSha256": "ccc8d69b9efff2bae3c729aa97dab50322e1fe20af0c814b014fec1279ffe015",
+        "toolSurfaceSha256": "c0d77cd42cda1be9dfb3b39f65173f823dc3c3582b5c1b1c38ba5f8cc13d95f3",
+        "workspaceConfigHostSha256": "db533143dac9f29ea2a78df77905f3f6cf4ced5f7d91e8eb3b214665e55222b0",
+        "codingDecisionSourceSha256": "88176a743790a3361d78fb61c174379d64dc2fc6278268042a717fe2690a5349",
+        "codingDecisionBuildSha256": "3171af20c77442e7e954d5622950eb91998db60cf29cdc68e9909bba0e310d81",
+        "coordinationBuildSha256": "74621d89c66dc2cb1eec95080ec9d661a55eab692e72281396ec4a1280a37cf0",
+        "runtimeApplicationBuildSha256": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "runnerSha256": "7a3b82b6ab6ef61b86bd517c37781e12895b3a2cd5b5e7aad7cacf0d989a482e"
+      }
+    },
+    {
+      "attempt": "a4",
+      "startedAt": "2026-10-24T10:51:37.795Z",
+      "finishedAt": "2026-10-24T10:53:02.248Z",
+      "status": "failed",
+      "stage": "reopen-original-runtime-evidence",
+      "reason": "Production native preparation read an incomplete workspace binding",
+      "receiptSha256": "874048f860f15892e3145267d11df6a0fa19cd7a35b7c9855f2880f8299c4e7e",
+      "parentState": "succeeded",
+      "recordedToolStates": [
+        {
+          "toolName": "subagent.dispatch",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.preview_text_patch",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.apply_text_patch",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.npm_test",
+          "state": "failed",
+          "policyDecision": "deny",
+          "executionStarted": false
+        }
+      ],
+      "source": {
+        "desktopMainSha256": "ccc8d69b9efff2bae3c729aa97dab50322e1fe20af0c814b014fec1279ffe015",
+        "toolSurfaceSha256": "c0d77cd42cda1be9dfb3b39f65173f823dc3c3582b5c1b1c38ba5f8cc13d95f3",
+        "workspaceConfigHostSha256": "db533143dac9f29ea2a78df77905f3f6cf4ced5f7d91e8eb3b214665e55222b0",
+        "codingDecisionSourceSha256": "88176a743790a3361d78fb61c174379d64dc2fc6278268042a717fe2690a5349",
+        "codingDecisionBuildSha256": "3171af20c77442e7e954d5622950eb91998db60cf29cdc68e9909bba0e310d81",
+        "coordinationBuildSha256": "74621d89c66dc2cb1eec95080ec9d661a55eab692e72281396ec4a1280a37cf0",
+        "runtimeApplicationBuildSha256": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "runnerSha256": "d5dbfbf50f4ee5a22a9860f0745b73c65cb3947c211435624ee8482884551b8b"
+      }
+    },
+    {
+      "attempt": "a5",
+      "startedAt": "2026-10-24T10:59:06.084Z",
+      "finishedAt": "2026-10-24T11:00:43.573Z",
+      "status": "failed",
+      "stage": "wait-original-model-and-tools",
+      "reason": "Legacy approval projection during original native preparation",
+      "receiptSha256": "69537500332bf83c60fb821b5e376d615bfd555e1b47378664777df258fd2089",
+      "parentState": "running",
+      "recordedToolStates": [
+        {
+          "toolName": "subagent.dispatch",
+          "state": "started",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.preview_text_patch",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.apply_text_patch",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        }
+      ],
+      "source": {
+        "desktopMainSha256": "81f52c6c8cb27f4369ae73f7015a2fa8394d60024d760740020f046fc417bc51",
+        "toolSurfaceSha256": "c0d77cd42cda1be9dfb3b39f65173f823dc3c3582b5c1b1c38ba5f8cc13d95f3",
+        "workspaceConfigHostSha256": "db533143dac9f29ea2a78df77905f3f6cf4ced5f7d91e8eb3b214665e55222b0",
+        "codingDecisionSourceSha256": "88176a743790a3361d78fb61c174379d64dc2fc6278268042a717fe2690a5349",
+        "codingDecisionBuildSha256": "3171af20c77442e7e954d5622950eb91998db60cf29cdc68e9909bba0e310d81",
+        "coordinationBuildSha256": "74621d89c66dc2cb1eec95080ec9d661a55eab692e72281396ec4a1280a37cf0",
+        "runtimeApplicationBuildSha256": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "runnerSha256": "d5dbfbf50f4ee5a22a9860f0745b73c65cb3947c211435624ee8482884551b8b"
+      }
+    },
+    {
+      "attempt": "a6",
+      "startedAt": "2026-10-24T11:04:42.786Z",
+      "finishedAt": "2026-10-24T11:06:39.518Z",
+      "status": "failed",
+      "stage": "reopen-original-runtime-evidence",
+      "reason": "Model reported an unavailable tool without completing the required patch; strict acceptance rejected it",
+      "receiptSha256": "1297064f8b89dc11aa0fb9dfa67b5857a4710d53b953042783c5e9e7aaa85ccb",
+      "parentState": "succeeded",
+      "recordedToolStates": [
+        {
+          "toolName": "subagent.dispatch",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.list_entries",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.list_entries",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        }
+      ],
+      "source": {
+        "desktopMainSha256": "fb23aa04dfeaedf67b163de1c91532358be5b4a9a6e0ca9276441c6c8edfb678",
+        "toolSurfaceSha256": "c0d77cd42cda1be9dfb3b39f65173f823dc3c3582b5c1b1c38ba5f8cc13d95f3",
+        "workspaceConfigHostSha256": "db533143dac9f29ea2a78df77905f3f6cf4ced5f7d91e8eb3b214665e55222b0",
+        "codingDecisionSourceSha256": "88176a743790a3361d78fb61c174379d64dc2fc6278268042a717fe2690a5349",
+        "codingDecisionBuildSha256": "3171af20c77442e7e954d5622950eb91998db60cf29cdc68e9909bba0e310d81",
+        "coordinationBuildSha256": "74621d89c66dc2cb1eec95080ec9d661a55eab692e72281396ec4a1280a37cf0",
+        "runtimeApplicationBuildSha256": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "runnerSha256": "d5dbfbf50f4ee5a22a9860f0745b73c65cb3947c211435624ee8482884551b8b"
+      }
+    },
+    {
+      "attempt": "a7",
+      "startedAt": "2026-10-24T11:25:56.428Z",
+      "finishedAt": "2026-10-24T11:27:01.576Z",
+      "status": "failed",
+      "stage": "wait-original-model-and-tools",
+      "reason": "Runner omitted read access to original public test/package files",
+      "receiptSha256": "291905bac9813023add4be85d3d5c7bc7de9899809949899d37ae460b823bdb6",
+      "parentState": "running",
+      "recordedToolStates": [
+        {
+          "toolName": "subagent.dispatch",
+          "state": "started",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.list_entries",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.list_entries",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "workspace.read_text",
+          "state": "confirmed",
+          "policyDecision": "allow",
+          "executionStarted": true
+        },
+        {
+          "toolName": "subagent.team.dispatch",
+          "state": "started",
+          "policyDecision": "allow",
+          "executionStarted": true
+        }
+      ],
+      "source": {
+        "desktopMainSha256": "fb23aa04dfeaedf67b163de1c91532358be5b4a9a6e0ca9276441c6c8edfb678",
+        "toolSurfaceSha256": "c0d77cd42cda1be9dfb3b39f65173f823dc3c3582b5c1b1c38ba5f8cc13d95f3",
+        "workspaceConfigHostSha256": "db533143dac9f29ea2a78df77905f3f6cf4ced5f7d91e8eb3b214665e55222b0",
+        "codingDecisionSourceSha256": "88176a743790a3361d78fb61c174379d64dc2fc6278268042a717fe2690a5349",
+        "codingDecisionBuildSha256": "3171af20c77442e7e954d5622950eb91998db60cf29cdc68e9909bba0e310d81",
+        "coordinationBuildSha256": "74621d89c66dc2cb1eec95080ec9d661a55eab692e72281396ec4a1280a37cf0",
+        "runtimeApplicationBuildSha256": "c413d1fca0fd729238e34757bffb6ee1105055c9ac7b2fce1b7bb5d52b72c526",
+        "runnerSha256": "807a94332470240b5ae5755d622ee7cc28d4f83f84a51692c7b0d3e03210812f"
+      }
+    }
+  ],
+  "limitations": [
+    "Reasons describe the observed failure or runner guard, not a remotely proven unique root cause",
+    "Original failure receipts, encrypted host profiles and SQLite files remain local and are not exported"
+  ]
+}

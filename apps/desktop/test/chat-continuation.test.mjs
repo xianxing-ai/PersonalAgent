@@ -57,9 +57,14 @@ for(const clarification of [false,true,'long'])for(const childFailure of [false,
   const deadline=Date.now()+15000;
   while(!['succeeded','failed','waiting_reconciliation'].includes(app.runtime.getTask(taskId).state)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,10));
   const task=app.runtime.getTask(taskId);
-  assert.equal(task.state,'succeeded',JSON.stringify({error:task.error,children:app.readSubagentTasks(taskId)}));
+  assert.equal(task.state,childFailure?'failed':'succeeded',JSON.stringify({error:task.error,children:app.readSubagentTasks(taskId)}));
   assert.equal(childCalls,1);assert.equal(parentCalls,1);
-  assert.match(task.resultSummary,childFailure?/回答失败/:/哈喽！/);
+  if(childFailure) {
+   assert.equal(task.error.code,'EXTERNAL_FAILURE');
+   assert.match(task.error.message,/任务执行未完成.*子任务错误/);
+   assert.equal(task.resultSummary,undefined,'A cloud summary cannot commit a successful task after the original required child failed');
+   assert.equal(app.readSubagentTasks(taskId)[0].state,'failed');
+  }else assert.match(task.resultSummary,/哈喽！/);
   assert.equal(app.runtime.loadCheckpoint(taskId,'competition-loop').receipts[0].exportPolicyVersion,'1.2.0');
   const execution=app.runtime.readToolExecutions(taskId)[0];
   assert.equal(execution.state,'confirmed');assert.equal(execution.policyDecision,'allow');assert.equal(execution.executionStarted,true);

@@ -31,10 +31,15 @@ export function createModelThinkingController(invoke,report,{onChange=()=>{},rea
     const defaults=snapshot.agentArtsModels?.preferences,catalog=snapshot.agentArtsModels?.catalog;
     const submodel=defaults?.catalogRevision===catalog?.revision?models.find(item=>item.id===defaults?.defaultSubmodelId):undefined;
     const configured=snapshot.agentArts?.configured===true||snapshot.model?.configured===true;
-    const modelLabel=!native.available&&(manual||catalog)
+    const fakeModel=snapshot.fakeModel===true;
+    const customModel=snapshot.model?.provider==='pangu';
+    const customLabel=snapshot.model?.configured===true
+      ?`${snapshot.model.label||'自定义模型'}${snapshot.model.enabled===false?'（已停用）':''}`:'模型未配置';
+    const modelLabel=fakeModel?(snapshot.model?.label||'Fake Model · 离线测试'):customModel?customLabel:!native.available&&(manual||catalog)
       ?model?.displayName?`${model.displayName}（不可用）`:manual?'所选模型不可用':'默认模型不可用'
       :model?.displayName??(configured?'AgentArts 默认模型':'模型未配置');
-    const catalogDetail=!catalog?(configured
+    const catalogDetail=fakeModel?'当前使用明确的离线测试模型，云模型连接及原生思考强度需另行确认。':customModel
+      ?snapshot.model?.configured===true?'自定义模型入口；模型选择与连接测试请前往模型设置。':'模型连接未配置，请在模型设置完成配置。':!catalog?(configured
       ?'模型目录未加载；AgentArts 已配置，具体模型和原生思考强度待目录确认。'
       :'模型连接未配置，请在模型设置完成配置。'):undefined;
     return {preference,native,models,manual,nativeSlider,index,max:nativeSlider?values.length-1:5,level,

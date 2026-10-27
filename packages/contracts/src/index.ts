@@ -28,8 +28,22 @@ const requestValidator = validator('request');
 const responseValidator = validator('response');
 const eventValidator = validator('event');
 const resultValidators = new Map<string, ReturnType<typeof validator>>();
+const protocolErrors = new WeakSet<object>();
 export class ProtocolError extends Error {
-  constructor(public readonly code: string, message: string, public readonly retryable = false, public readonly retryAfterMs?: number) { super(message); }
+  constructor(public readonly code: string, message: string, public readonly retryable = false, public readonly retryAfterMs?: number) { super(message); protocolErrors.add(this); }
+}
+/** Trusted local error identity, including subclasses, without external prototype traversal. */
+export function isProtocolError(error: unknown): error is ProtocolError {
+  return typeof error === 'object' && error !== null && protocolErrors.has(error);
+}
+const toolNotStartedProofs = new WeakSet<object>();
+/** Trusted executor proof: no mutation was dispatched. Never recreate from untrusted wire data. */
+export class ToolNotStartedError extends ProtocolError {
+  constructor(code: string, message: string) { super(code, message); this.name = 'ToolNotStartedError'; toolNotStartedProofs.add(this); }
+}
+/** Identity-only check; never runs untrusted prototype/getter traps or accepts a forged wire object. */
+export function isToolNotStartedError(error: unknown): error is ToolNotStartedError {
+  return typeof error === 'object' && error !== null && toolNotStartedProofs.has(error);
 }
 function check(valid: ReturnType<typeof validator>, value: unknown): void {
   if (!valid(value)) throw new ProtocolError('INVALID_ARGUMENT', 'Message does not match the public schema');

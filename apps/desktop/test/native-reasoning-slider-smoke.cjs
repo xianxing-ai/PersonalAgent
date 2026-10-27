@@ -1,4 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const {pathToFileURL}=require('node:url');
 const {_electron}=require('playwright');
 (async()=>{
   const folder=process.env.PA_PICKER_TEST_OUTPUT??fs.mkdtempSync(path.join(os.tmpdir(),'pa-model-picker-'));fs.mkdirSync(folder,{recursive:true});
@@ -27,7 +28,7 @@ const {_electron}=require('playwright');
     const panel=app.windows().find(p=>p.url().includes('mode=panel'));await panel.locator('.model-thinking-trigger').waitFor();
     await panel.waitForFunction(async()=>Boolean((await window.desktop.invoke('snapshot')).value?.agentArtsModels?.catalog));
     assert.match(panel.url(),/mode=panel/);assert.match(await panel.title(),/PersonalAgent/);
-    assert.equal((await read(panel)).connectionError,'');
+    assert.equal((await read(panel)).connectionError,undefined,'Root Main has no connection error');
     assert.equal(await panel.locator('input[type=range]').count(),1);
     assert.equal(await panel.getByRole('slider',{name:/执行步骤预算|主思考模型|模型原生思考深度/}).count(),0);
     let admin=app.windows().find(p=>p.url().includes('mode=admin'));const openingAdmin=admin?undefined:app.waitForEvent('window');
@@ -76,8 +77,11 @@ const {_electron}=require('playwright');
     await drag(.1,.9);assert.equal((await read(workspace)).conversationPreference.executionModel.reasoningEffort,'max','mouse release persists the advertised native effort');
     await geometry(workspace);await shot(workspace,'workspace-manual-max.png');
     const workspacePreference=(await read(workspace)).conversationPreference;
-    const saved=JSON.parse(fs.readFileSync(path.join(userData,'conversations.json'),'utf8'));
-    assert.deepEqual(new Map(saved.preferences).get('desktop-workspace'),workspacePreference,'workspace slider persists through the original conversation store');
+    const {Conversations}=await import(pathToFileURL(path.join(__dirname,'../electron/conversations.js')).href);
+    const storedConversations=new Conversations(path.join(userData,'conversations.json'));
+    try{assert.deepEqual(storedConversations.preference('desktop-workspace'),workspacePreference,
+      'workspace slider persists through the supported conversation store readback');}
+    finally{storedConversations.close();}
     const beforeWorkspaceQueries=(await app.evaluate(()=>globalThis.reasoningSliderSmoke.queries)).length;
     await workspace.keyboard.press('Escape');
     await workspace.getByRole('textbox',{name:'工作区任务内容',exact:true}).fill('synthetic workspace picker max');await workspace.locator('[data-send]').click();

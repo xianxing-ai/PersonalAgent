@@ -1,0 +1,163 @@
+{
+  "version": 2,
+  "profile": "huawei_ict_agentarts",
+  "status": "provisional",
+  "sourceFiles": [
+    {
+      "path": "apps/desktop/electron/main.js",
+      "sha256": "00345dbf74a24097146fea6361c5de60e741c254eec209f6474885d5da4194d4"
+    },
+    {
+      "path": "apps/desktop/electron/connector-change-host.js",
+      "sha256": "3fa0a36ddc16001e1da447e63014e2e0a04cb62baa47c118d833c7854200b173"
+    },
+    {
+      "path": "apps/desktop/src/app/mail-controls.js",
+      "sha256": "e3dbafe34ab460f50d938cee4e019101454d5a95709eab0b222c8faa0c67286c"
+    },
+    {
+      "path": "apps/desktop/test/xhigh-mail-baseline-status.test.mjs",
+      "sha256": "38bba14bb0647c65750dba787c0e16d533fc38a4b3c7bdf673d1a22a4559b54a"
+    },
+    {
+      "path": "apps/desktop/docs/MAIL_BASELINE_STATUS_20261026.md",
+      "sha256": "9d9eef2021a494f62d448c7c7e73031640d1d00dc9249858188a2d7839f6a188"
+    }
+  ],
+  "layers": {
+    "typecheck": {
+      "kind": "desktop_typecheck",
+      "receiptSha256": "b46cb0a91071dfcbe0ee90f8f10724dc650617d4e064a6e8f47e555a4ab7dca9",
+      "logSha256": "bc2bb4159c3b286051e2cdff1765d49eeac5cd63fb68a6d8465f0c30f2c8b346",
+      "sourceSnapshotSha256": "8d34558467554242b76901d7a70b95286d98320cc5f211b729c5402c9abbae0c",
+      "sourceCount": 1721,
+      "exitCode": 0,
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "focusedBeforeWording": {
+      "kind": "focused_before_wording",
+      "receiptSha256": "c6f721ad5c5620de7439b7d73f4908fd7a02041b9a6a80da4277993cc80abfcf",
+      "logSha256": "1106eb883681071c98e15976b23fcf2f501df83c00d6a4dae175d9d31f8ead5c",
+      "sourceSnapshotSha256": "8d34558467554242b76901d7a70b95286d98320cc5f211b729c5402c9abbae0c",
+      "sourceCount": 1721,
+      "exitCode": 0,
+      "counts": {
+        "tests": 68,
+        "pass": 68,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "finalWording": {
+      "kind": "final_wording",
+      "receiptSha256": "ba6b20d5ba7253ec348de4ac1e7a2cad40624c5e152a382dd10591e1887699de",
+      "logSha256": "c750ab7d0e10eba6bad3c41c8bf768133ecf1496fcf5ebfa022c3480f249426f",
+      "sourceSnapshotSha256": "2966b1711157b096b8257bf379d1a95ba5ae13ab9039b608e1c10c463bad9732",
+      "sourceCount": 1721,
+      "exitCode": 0,
+      "counts": {
+        "tests": 17,
+        "pass": 17,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      }
+    },
+    "watchToMain": {
+      "resultSha256": "4005dc6fecb67e2eedf4854c8837e62452830561a01250e1c15d39bbc2e25509",
+      "scriptSha256": "7526076103a26961f9e6104583ff8d065e65e5023f65898c6331365f29d912c5",
+      "initialFixtureFailureSha256": "ae893e679eb4ba1bc9b440ac3848becaab67696f43df416c2c4eb64d1370bde2",
+      "trace": [
+        {
+          "stage": "before_confirmed_page",
+          "baselineState": "waiting_first_read",
+          "pending": 0
+        },
+        {
+          "stage": "trusted_empty_saved_cursor_page",
+          "baselineState": "ready",
+          "pending": 0
+        },
+        {
+          "stage": "later_uid_nominated",
+          "baselineState": "ready",
+          "pending": 1
+        },
+        {
+          "stage": "source_revoked_before_tick",
+          "baselineState": "unknown",
+          "pending": 1
+        },
+        {
+          "stage": "watch_expired_before_tick",
+          "baselineState": "unknown",
+          "pending": 1
+        },
+        {
+          "stage": "watch_retired_after_expiry_tick",
+          "baselineState": "unknown",
+          "pending": 1
+        }
+      ],
+      "fake": [
+        "QQ",
+        "Laya",
+        "approval"
+      ],
+      "real": [
+        "WatchHost",
+        "MailTriageHost",
+        "Runtime/Policy/ToolGateway",
+        "ChangeHost",
+        "Main AST"
+      ]
+    },
+    "rendered": {
+      "resultSha256": "a4bbad0d917fb48168f6daf6d787f6101c8e85ed8edbd98032afc813230fb39f",
+      "scriptSha256": "26ea9b5b8e6b10d845fa9f1463f934ac6afa48cc36b894d660768b9f6604a03d",
+      "runLogSha256": "58e06459907da07cccecbdbeb3df9a14d5c994c9e9ceba5c60f1d7d8556644be",
+      "initialFixtureFailureSha256": "18b2c1ba1e8cc97bc80ff85d469776f346b6492b4935200fd32697ac9ee0de7c",
+      "initialFixtureFailureScope": "Original harness AST stub failed before browser; v2 render itself passed",
+      "syntheticIpc": true,
+      "states": 5,
+      "desktopViewportWidth": 1280,
+      "narrowViewportWidth": 600,
+      "pageErrors": 0,
+      "blockedNonlocalRequests": 0,
+      "focusAndDraftRetained": true,
+      "noHorizontalOverflowAt600": true,
+      "screenshots": [
+        {
+          "path": "docs/competition/evidence/desktop-integration-20261025/mail-baseline-ready-20261026.png",
+          "sha256": "9d72cf8c393f2b4f0c10041a2bb741909dda29ad81baf5916bcc73065101637f",
+          "viewportWidth": 1280
+        },
+        {
+          "path": "docs/competition/evidence/desktop-integration-20261025/mail-baseline-narrow-20261026.png",
+          "sha256": "4505de1ffadc1f897c6b1c73fb5aa1b55ccde89acef63efab9a4a0f8720b1573",
+          "viewportWidth": 600
+        }
+      ]
+    }
+  },
+  "earlierWholeCheck": {
+    "passed": 6145,
+    "skipped": 29,
+    "failed": 0,
+    "coversTheseFiveFiles": false
+  },
+  "unverified": [
+    "real QQ Mail",
+    "native Laya",
+    "complete Electron production IPC",
+    "cloud model",
+    "Windows OS notification"
+  ]
+}

@@ -33,6 +33,21 @@ function fixture(saved={}) {
   return {host,scope,task,prepare,respond,saved,options,changeGeneration:()=>generation='g2',changes:()=>changes};
 }
 
+test('Runtime-owned approval remains unified while its asynchronous native preparation has no card yet',()=>{
+  const f=fixture();f.prepare();f.task.state='waiting_approval';
+  const application=f.options.getApplication(),runtime=application.runtime;
+  runtime.getApproval=runId=>({taskId:f.scope.taskId,state:runId===f.scope.runId?'pending':'denied'});
+  let marker={state:'pending',argumentsDigest:H};
+  runtime.loadCheckpoint=(taskId,checkpointKey)=>{
+    assert.equal(taskId,f.scope.taskId);assert.equal(checkpointKey,'authorization-question-active:'+f.scope.runId);return marker;
+  };
+  assert.equal(f.host.snapshot().length,0);assert.equal(f.host.hasPending(f.scope.runId),true);
+  assert.equal(f.host.hasPending('other-run'),false);
+  marker={state:'pending',argumentsDigest:R};assert.equal(f.host.hasPending(f.scope.runId),false);
+  marker={state:'resolved',argumentsDigest:H};assert.equal(f.host.hasPending(f.scope.runId),false);
+  f.host.close();assert.equal(f.host.hasPending(f.scope.runId),false);
+});
+
 test('one card receives tool, connector and bounded export requirements without prior session consent',async()=>{
   const f=fixture();f.prepare();assert.equal(f.host.snapshot().length,0,'preflight only registers, with no private export');
   assert.equal(f.host.requiresAuthorization(f.scope),true,'routine reads/writes must enter the host question');

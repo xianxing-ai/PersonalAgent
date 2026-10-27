@@ -1,7 +1,13 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import {MAX_COORDINATION_INITIAL_QUERY_BYTES,validateToolValue} from '@personal-agent/contracts';
 import type {TaskSnapshot} from '@personal-agent/contracts';
+import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
 import type {TaskRuntime} from '../index.js';
+import {EXECUTION_CAPACITY_CHECKPOINT,MAX_OMITTED_TOOL_SUMMARIES,MAX_PRIOR_EXECUTION_CONTINUATIONS,
+  assertExecutionCapacityReceiptPrefix,resolveExecutionStepLimit} from './execution-capacity.js';
+import type {ExecutionCapacityReceipt,OmittedExecutionSummary} from './execution-capacity.js';
+import {TOOL_DISCOVERY_DESCRIPTOR,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION} from './tool-discovery.js';
 
 export interface RuntimeStartupHarnessEventOrigin {
   deliveryId:string;eventDigest:string;sourceTaskId:string;originalParentTaskId:string;
@@ -48,33 +54,67 @@ export interface RuntimeStartupRecovery {
 
 const TERMINAL=new Set(['succeeded','failed','cancelled']);
 const KEY='runtime-startup-recovery:v1';
+const DISCOVERY_POOL='competition-tool-discovery-pool:v1',DISCOVERY_SELECTION='competition-tool-discovery-selection:';
+const CAPACITY_DECISION='competition-capacity-decision:v1',CONTINUATION_WINDOW='competition-continuation-window:v1',
+  SENT_WINDOW='competition-sent-continuation-window:v1';
 const BASE_KEYS=new Set(['runtime-interruption:v1',KEY,'application-profile','application-goal','application-deadline',
   'competition-configuration-binding','competition-max-steps','competition-context:v1','competition-tool-catalog',
   'competition-loop','competition-confirmed-replay','competition-cloud-inflight','competition-cloud-unknown',
   'competition-cloud-received','competition-cloud-request-identity','competition-cloud-dispatch-binding',
   'competition-cloud-dispatch-context','execution-model','task-thinking','task-model-preference','required-subagent-delegation:v1',
   'subtask-parent','subtask-execution-binding','subtask-coordination-binding','subtask-tools-binding','subtask-thinking-binding',
-  'subtask-progress-records','subagent-parent-wait','subagent-current-summary','harness-event-origin','developer-harness-executor:v1']);
+  'subtask-progress-records','subagent-parent-wait','subagent-current-summary','harness-event-origin','developer-harness-executor:v1',
+  EXECUTION_CAPACITY_CHECKPOINT,CAPACITY_DECISION,CONTINUATION_WINDOW,SENT_WINDOW,DISCOVERY_POOL]);
 const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
+const count=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
+const positive=(value:unknown):value is number=>count(value)&&value>0;
+const hash=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+const exact=(value:unknown,required:string[],optional:string[]=[]):value is Record<string,unknown>=>object(value)
+  &&required.every(key=>Object.hasOwn(value,key))&&Object.keys(value).every(key=>required.includes(key)||optional.includes(key));
+const fingerprint=(value:unknown):string=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+function omissionMetadata(value:unknown):value is OmittedExecutionSummary {
+  if(!exact(value,['count','digest','tools','unlisted'])||!count(value.count)||!hash(value.digest)
+    ||!Array.isArray(value.tools)||value.tools.length>MAX_OMITTED_TOOL_SUMMARIES
+    ||!exact(value.unlisted,['count','digest'])||!count(value.unlisted.count)||!hash(value.unlisted.digest))return false;
+  let total=value.unlisted.count;const names=new Set<string>();
+  for(const tool of value.tools){
+    if(!exact(tool,['toolName','toolVersion','count','digest'])||typeof tool.toolName!=='string'
+      ||!/^[A-Za-z][A-Za-z0-9_.:-]{0,127}$/.test(tool.toolName)||typeof tool.toolVersion!=='string'
+      ||!/^[0-9A-Za-z][0-9A-Za-z_.-]{0,63}$/.test(tool.toolVersion)||!positive(tool.count)||!hash(tool.digest))return false;
+    const identity=JSON.stringify([tool.toolName,tool.toolVersion]);if(names.has(identity))return false;
+    names.add(identity);total+=tool.count;
+  }
+  return Number.isSafeInteger(total)&&total===value.count;
+}
+/** Catalog pages may omit descriptions, but no structural Schema change is accepted. */
+function withoutDescriptions(schema:Record<string,unknown>,keepRoot=false):Record<string,unknown> {
+  const {description,...result}=schema;
+  if(object(result.properties))result.properties=Object.fromEntries(Object.entries(result.properties)
+    .map(([key,value])=>[key,withoutDescriptions(value as Record<string,unknown>)]));
+  if(object(result.items))result.items=withoutDescriptions(result.items);
+  return {...result,...(keepRoot&&typeof description==='string'?{description}:{})};
+}
 function reject(message:string):never {throw Object.assign(new Error(message),{code:'REVISION_CONFLICT'});}
 
 /** Classifies the original durable tasks; execution remains in RuntimeApplication. */
 export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptions):RuntimeStartupRecovery {
   const runtime=options.runtime,now=options.now??(()=>new Date());
   let recovery:Promise<RuntimeStartupRecoveryReport>|undefined;
-  const inventory=():TaskSnapshot[]=>{
+  const inventory=(conversationId?:string):TaskSnapshot[]=>{
     const result:TaskSnapshot[]=[];let before:number|undefined,snapshot:number|undefined;
     do {
-      const page=runtime.listTasks({limit:100,...(before===undefined?{}:{beforeSequence:before}),
+      const page=runtime.listTasks({limit:100,...(conversationId===undefined?{}:{conversationId}),
+        ...(before===undefined?{}:{beforeSequence:before}),
         ...(snapshot===undefined?{}:{snapshotSequence:snapshot})});
-      result.push(...page.items);before=page.nextBeforeSequence;snapshot=page.snapshotSequence;
+      result.push(...page.items.filter(task=>conversationId===undefined||task.conversationId===conversationId));
+      before=page.nextBeforeSequence;snapshot=page.snapshotSequence;
     }while(before!==undefined);
     return result;
   };
   const read=(taskId:string)=>{
     const task=runtime.getTask(taskId),keys=runtime.listCheckpointKeys(taskId);
     const checkpoints=Object.fromEntries(keys.filter(key=>key!==KEY).map(key=>[key,runtime.loadCheckpoint(taskId,key)]));
-    const records=runtime.readToolExecutions(taskId),children=inventory().filter(child=>child.conversationId===`desktop-subtask:${taskId}`);
+    const records=runtime.readToolExecutions(taskId),children=inventory(`desktop-subtask:${taskId}`);
     const parent=object(checkpoints['subtask-parent'])?checkpoints['subtask-parent']:undefined;
     let parentTask:TaskSnapshot|undefined;
     if(typeof parent?.parentTaskId==='string'){try{parentTask=runtime.getTask(parent.parentTaskId);}catch{/* Missing original parent stays manual. */}}
@@ -100,6 +140,85 @@ export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptio
     return {task,keys,checkpoints,records,children,parent,parentTask,eventRoot,origin,eventScope,descriptors:runtime.readToolDescriptors()};
   };
   type RecoveryPlan={facts:ReturnType<typeof read>;item:RuntimeStartupRecoveryItem;deadline?:string;action?:'cancel'|'expire'|'resume'|undefined};
+  /** New snapshots are recognized data, never an alternative execution or authorization proof. */
+  const additionalCheckpointsSafe=(facts:ReturnType<typeof read>,stepLimit:number):boolean=>{
+    const {task,checkpoints:cp,records,descriptors}=facts,capacity=cp[EXECUTION_CAPACITY_CHECKPOINT];
+    const loop=cp['competition-loop'],receipts=object(loop)&&Array.isArray(loop.receipts)?loop.receipts:[];
+    const originalProposal=(id:unknown)=>typeof id==='string'&&receipts.some(receipt=>object(receipt)&&object(receipt.proposal)
+      &&receipt.proposal.proposalId===id);
+    if(facts.keys.includes(EXECUTION_CAPACITY_CHECKPOINT)&&!object(capacity))return false;
+    if(object(capacity)&&(!count(capacity.evaluatedReceiptCount)||capacity.evaluatedReceiptCount>receipts.length
+      ||(capacity.extensions===0?capacity.evaluatedReceiptCount!==0:!positive(capacity.evaluatedReceiptCount))))return false;
+    if(object(capacity)) {
+      try {assertExecutionCapacityReceiptPrefix(capacity,receipts as ExecutionCapacityReceipt[]);}
+      catch{return false;}
+      // Capacity earned from reads remains bound to those original Runtime executions, not only a planner history digest.
+      for(const receipt of receipts.slice(0,capacity.evaluatedReceiptCount as number)) {
+        if(!object(receipt)||!object(receipt.proposal)||!object(receipt.proposal.arguments)||typeof receipt.runId!=='string')return false;
+        const record=records.find(item=>item.evidenceId===receipt.runId);
+        if(!record||record.toolName!==receipt.proposal.toolName||record.toolVersion!==receipt.proposal.toolVersion
+          ||!runtime.matchesToolExecutionInput(record,{arguments:receipt.proposal.arguments,scopeRef:receipt.runId}))return false;
+      }
+    }
+    const decision=cp[CAPACITY_DECISION];
+    if(facts.keys.includes(CAPACITY_DECISION)&&(!object(capacity)||!exact(decision,['reason','step','windowEndStep'])
+      ||!['extended','explicit_limit','unconfirmed_progress','no_confirmed_progress'].includes(decision.reason as string)
+      ||!positive(decision.step)||decision.step>stepLimit||decision.windowEndStep!==stepLimit))return false;
+    const window=cp[CONTINUATION_WINDOW];
+    if(facts.keys.includes(CONTINUATION_WINDOW)&&(!object(capacity)
+      ||!exact(window,['version','currentProposalId','originalReceiptCount','priorCount','omitted'])||window.version!=='1.0'
+      ||!originalProposal(window.currentProposalId)||!positive(window.originalReceiptCount)||window.originalReceiptCount>receipts.length
+      ||!count(window.priorCount)||window.priorCount>MAX_PRIOR_EXECUTION_CONTINUATIONS||!omissionMetadata(window.omitted)
+      ||window.priorCount+window.omitted.count+1>window.originalReceiptCount))return false;
+    const sent=cp[SENT_WINDOW];
+    if(facts.keys.includes(SENT_WINDOW)&&(!object(capacity)
+      ||!exact(sent,['version','currentProposalId','priorCount','queryBytes','additionallyOmitted'])||sent.version!=='1.0'
+      ||!originalProposal(sent.currentProposalId)||!count(sent.priorCount)||sent.priorCount>MAX_PRIOR_EXECUTION_CONTINUATIONS
+      ||!positive(sent.queryBytes)||sent.queryBytes>MAX_COORDINATION_INITIAL_QUERY_BYTES||!omissionMetadata(sent.additionallyOmitted)
+      ||sent.priorCount+sent.additionallyOmitted.count>MAX_PRIOR_EXECUTION_CONTINUATIONS))return false;
+    const selectionKeys=facts.keys.filter(key=>key.startsWith(DISCOVERY_SELECTION));
+    if(!facts.keys.includes(DISCOVERY_POOL))return selectionKeys.length===0;
+    const pool=cp[DISCOVERY_POOL],catalog=cp['competition-tool-catalog'];
+    try {
+      if(!exact(pool,['version','revision','deadline','digest','entries'])||pool.version!=='1.0'||!count(pool.revision)
+        ||pool.revision>task.revision||pool.deadline!==cp['application-deadline']||!hash(pool.digest)||!Array.isArray(pool.entries)
+        ||pool.digest!==fingerprint(pool.entries)||!exact(catalog,['revision','deadline','entries'],['discoveryRunId'])
+        ||!count(catalog.revision)||catalog.revision<pool.revision||catalog.revision>task.revision||catalog.deadline!==pool.deadline)return false;
+      // The full original pool can exceed one cloud page; validate each entry using the same public parser.
+      const entries=pool.entries.map(entry=>parseCoordinationAvailableTools([entry])[0]!);
+      if(!entries.some(entry=>entry.name===TOOL_DISCOVERY_NAME&&entry.version===TOOL_DISCOVERY_VERSION)
+        ||!descriptors.some(tool=>tool.name===TOOL_DISCOVERY_NAME&&tool.version===TOOL_DISCOVERY_VERSION&&tool.sideEffect==='read')
+        ||entries.some((entry,index)=>!descriptors.some(tool=>tool.name===entry.name&&tool.version===entry.version)
+          ||entries.slice(0,index).some(prior=>prior.name===entry.name&&prior.version===entry.version)))return false;
+      const originalEntries=(selected:unknown)=>parseCoordinationAvailableTools(selected).every(entry=>entries.some(original=>
+        original.name===entry.name&&original.version===entry.version&&(isDeepStrictEqual(original.inputSchema,entry.inputSchema)
+          ||isDeepStrictEqual(withoutDescriptions(original.inputSchema),entry.inputSchema)
+          ||isDeepStrictEqual(withoutDescriptions(original.inputSchema,true),entry.inputSchema))));
+      if(!originalEntries(catalog.entries)||!parseCoordinationAvailableTools(catalog.entries)
+        .some(entry=>entry.name===TOOL_DISCOVERY_NAME&&entry.version===TOOL_DISCOVERY_VERSION))return false;
+      for(const key of selectionKeys){
+        const runId=key.slice(DISCOVERY_SELECTION.length),prefix=`competition-tool-${task.taskId}-`,selection=cp[key];
+        const step=runId.startsWith(prefix)?Number(runId.slice(prefix.length)):NaN;
+        if(!positive(step)||step>stepLimit||runId!==prefix+step
+          ||!exact(selection,['version','poolDigest','arguments','entries','result'])||selection.version!=='1.0'
+          ||selection.poolDigest!==pool.digest||!object(selection.arguments)||!originalEntries(selection.entries))return false;
+        validateToolValue(TOOL_DISCOVERY_DESCRIPTOR.inputSchema,selection.arguments);
+        validateToolValue(TOOL_DISCOVERY_DESCRIPTOR.outputSchema,selection.result);
+        const selected=parseCoordinationAvailableTools(selection.entries),record=records.find(item=>item.evidenceId===runId),cache=cp['tool-result-'+runId];
+        if(selected[0]?.name!==TOOL_DISCOVERY_NAME||selected[0]?.version!==TOOL_DISCOVERY_VERSION||!object(selection.result)
+          ||selection.result.catalogRef!==pool.digest||selection.result.query!==selection.arguments.query
+          ||!isDeepStrictEqual(selection.result.selectedTools,selected.slice(1).map(({name,version})=>({name,version}))))return false;
+        if(!record||record.toolName!==TOOL_DISCOVERY_NAME||record.toolVersion!==TOOL_DISCOVERY_VERSION
+          ||record.state!=='confirmed'||record.policyDecision!=='allow'||!record.executionStarted||!object(cache)
+          ||!isDeepStrictEqual(cache.result,selection.result)
+          ||!runtime.matchesToolExecutionInput(record,{arguments:selection.arguments,scopeRef:runId}))return false;
+      }
+      return catalog.discoveryRunId===undefined||typeof catalog.discoveryRunId==='string'
+        &&selectionKeys.includes(DISCOVERY_SELECTION+catalog.discoveryRunId)
+        &&object(cp[DISCOVERY_SELECTION+catalog.discoveryRunId])
+        &&isDeepStrictEqual((cp[DISCOVERY_SELECTION+catalog.discoveryRunId] as Record<string,unknown>).entries,catalog.entries);
+    }catch{return false;}
+  };
   const plan=(taskId:string):RecoveryPlan=>{
     const facts=read(taskId),{task,checkpoints:cp,records,children,parent,parentTask,eventRoot,eventScope,descriptors}=facts;
     let classification:RuntimeStartupRecoveryItem['classification']='manual',reason='unsupported_original_checkpoint';
@@ -118,7 +237,8 @@ export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptio
     }
     if(cp['application-profile']!=='huawei_ict_agentarts' || cp['competition-configuration-binding']!==options.configurationRef)
       return finish('manual','original_profile_or_configuration_differs');
-    if(facts.keys.some(key=>!BASE_KEYS.has(key)&&!key.startsWith('tool-result-')&&!key.startsWith('routine-tool-policy:')))
+    if(facts.keys.some(key=>!BASE_KEYS.has(key)&&!key.startsWith('tool-result-')&&!key.startsWith('routine-tool-policy:')
+      &&!key.startsWith(DISCOVERY_SELECTION)))
       return finish('manual','checkpoint_requires_its_original_recovery_host');
     if(cp['competition-cloud-inflight'] || cp['competition-cloud-unknown'] || cp['competition-cloud-received'])
       return finish('unknown','original_cloud_result_is_not_consumed');
@@ -145,6 +265,10 @@ export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptio
     const deadline=cp['application-deadline'];
     if(typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||typeof task.goal!=='string'||cp['application-goal']!==task.goal)
       return finish('manual','original_goal_or_deadline_is_unavailable');
+    let stepLimit:number;
+    try {stepLimit=resolveExecutionStepLimit(cp['competition-max-steps'],cp[EXECUTION_CAPACITY_CHECKPOINT],deadline);}
+    catch{return finish('manual','original_execution_capacity_binding_is_invalid');}
+    if(!additionalCheckpointsSafe(facts,stepLimit))return finish('manual','original_execution_metadata_or_discovery_binding_is_invalid');
     const interruption=cp['runtime-interruption:v1'];
     const adopted=task.state==='waiting_reconciliation'&&object(interruption)&&interruption.version==='1.0'
       &&interruption.taskId===taskId&&interruption.recoveredRevision===task.revision;
@@ -156,7 +280,7 @@ export function createRuntimeStartupRecovery(options:RuntimeStartupRecoveryOptio
         .every(key=>cp[key]===undefined)) {
       classification='before_first_send';reason='durable_dispatch_has_no_original_attempt';
     } else if(records.length>0&&object(loop)&&Number.isSafeInteger(loop.step)&&(loop.step as number)>=1
-      &&Number.isSafeInteger(cp['competition-max-steps'])&&(loop.step as number)<=(cp['competition-max-steps'] as number)) {
+      &&(loop.step as number)<=stepLimit) {
       const matches=Array.isArray(loop.receipts)&&object(loop.continuation)?loop.receipts.filter(object)
         .filter(item=>object(item.proposal)&&item.proposal.proposalId===(loop.continuation as Record<string,unknown>).proposalId):[];
       const receipt=matches.length===1?matches[0]:undefined;

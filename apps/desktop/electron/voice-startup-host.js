@@ -35,7 +35,7 @@ export function createDesktopVoiceStartupHost({config, liveVoice, output, prepar
       // A hide, suspend or quit can supersede startup while release is pending.
       // Preparation itself opens the panel, so guard it before that side effect.
       if (current !== revision || disposed) return snapshot();
-      await prepare();
+      await prepare({isCurrent: () => current === revision && !disposed});
       if (current !== revision || disposed) return snapshot();
       // Recheck settings after asynchronous panel/Wake preparation; never use an old enabled bit.
       const latest = config.snapshot();
@@ -49,7 +49,11 @@ export function createDesktopVoiceStartupHost({config, liveVoice, output, prepar
       const result = await (resume ? controller.resume(request) : controller.start(request));
       if (current === revision) {publish(); return {...result,resumeAllowed,reason:failure};}
       return snapshot();
-    } catch {
+    } catch (error) {
+      // Only a superseded cancellation with confirmed release is a normal stop.
+      // Keep provider failures and an unknown or pending release on the error path.
+      if (current !== revision && error?.code === 'CANCELLED'
+        && controller.snapshot().resourcesReleased === true) return snapshot();
       if (current === revision) {failure='启动语音未就绪，请检查配置和设备；未自动重试';resumeAllowed=false;publish();}
       throw Error('启动语音未就绪，请检查配置和设备');
     }

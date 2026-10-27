@@ -1,5 +1,43 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-26 会话私有 SQLite 移交候选（provisional，审查中）
+
+Desktop Conversations 的同步 API/内存视图保留，候选将消息、草稿、偏好和 UI 任务链接写入独立 SQLite，不改变 TaskRuntime、Core wire 或 Runtime 数据库迁移。首次变更才迁移 v1～v4；原字节备份、v5 marker、代次/revision/row CAS 和未知提交独立核实必须同时成立。ready 后缺库不能建空库；Main 草稿提交未知先阻止清理，最终 will-quit 关闭连接。完整最新历史 v5→v4 导出仍不可用。
+
+收到的来源回执不等于本候选实测；完整原始日志与 65 项相对 main 不同/缺失的 A12 输入未随包交付，历史快照及其中的 team broker、模型控制和 provider 守卫不能宣称已完整复原。当前候选独立根 build 已通过，构建事实与历史快照缺口分开。两项 v2 Windows GUI smoke 和公共 Evidence 仍 pending；PR376 stub 不代表 Root Main 生命周期。接口冻结等级不变，[ADR-0041](../adr/0041-desktop-conversation-incremental-persistence.md) 仍 proposed；迁移/重开/RSS/磁盘代价和恢复限制见该 ADR。
+
+## 2026-10-26 邮件首读基线私有展示（provisional，晚于 A11）
+
+Main 已将当前邮件 watch 的私有基线状态投影到 Admin；ready 仅证明首读基线已确认，提醒仍由本机判断和通知设置决定。旧 watch 与失效来源保守显示 unknown，不增加公共 Schema、许可或数据库迁移。[增量 Evidence](../competition/evidence/desktop-integration-20261025/mail-baseline-ui-20261026.json)按五文件源码 SHA 与定向检查分层。
+
+Desktop typecheck exit 0、聚焦 68/68、最终文案 17/17。原 watch→Runtime/Policy/ToolGateway→Main AST 的本机结果使用 Fake QQ/Laya/审批；Edge 实际页面渲染使用合成 IPC。A11 整仓 6,145 通过早于本增量，不覆盖五文件最终字节；接口冻结等级不变。
+
+## 2026-10-26 十一包与 Root MCP 私有组合边界（provisional）
+
+本轮主集成树的十一项局部修复覆盖控制、Runtime、历史、语音、连接器、快照、邮件变化 epoch、视觉、通知终态、通知点击及持久邮件游标；Root MCP 产品链另按管理、Preload、页面、Main 和原 Runtime/Policy 消费链核对。组合源码到位不提升既有 frozen 范围，也不把 Fake 服务、注册、配置、页面截图或工具提案解释为真实平台能力。
+
+`mail-triage-persisted-cursor-v1` 是可信宿主写入原 Runtime 任务的私有 checkpoint，只绑定从本地 pipeline 读取的首个持久 cursor、session/batch、原命令、参数摘要、任务与 run。Desktop 只有在原 watch 读页 confirmed、来源/配置/lease/执行输入一致且空终结页回显同一 cursor 时建立该 watch 的 UID 基线；任意合法调用者提交的非零 cursor 空页仍不代表邮箱已读完。该增量没有改变公共 `mail.inbox` Schema、Core wire 或数据库迁移；旧任务缺此 checkpoint 时保持保守行为。既有迁移 11/12 属此前性能与显示查询工作包，回退需按其原记录处理。
+
+通知展示、点击回调、ack 与重开恢复分别以受信端口及原结果回执判定，不把展示成功当作实际点击或 OS 投递。视觉取消、过期、撤销及关闭后的迟到结果只由生产宿主配 Fake 依赖的局部回归覆盖。当前源码绑定的整仓、Runtime Application、显式 Fake 原生窗口和 Root MCP 产品链回执各为 exit 0，四份快照同为 1,720 项、SHA256 `7a25e23633e72792bdd5d40b12044c0d60b419e32257dd3f9557592044d0a4a9`，覆盖 45 项本轮必需源输入；整仓 6,174 项中 6,145 通过、29 跳过。详见[脱敏组合回执](../competition/evidence/desktop-integration-20261025/combined-verification-repair-20261026.json)。这不提升冻结等级，也不宣称真实邮箱、云平台、物理设备或 Windows OS 通知的当前验收。
+
+## 2026-10-24 渐进执行与按需工具目录（provisional，组合验收中）
+
+10 月 25 日桌面集成复验修复已销毁窗口的快照监听器释放、固定错误文案及现有自定义模型身份显示，不改变公共 wire、授权范围或 Local 功能边界。原生窗口实际关闭／重开、回环模型请求取消及正常退出通过；第七轮组合 6,037 pass／29 skip。邮件准备的取消、配置更新守卫与按原 watchId 的跨对话停止保持私有宿主行为，83/83 聚焦、6/6 合成 IPC 实际渲染通过；第九轮最终增量 6,059 pass／29 skip／0 fail，171 份冻结源码 hash 已核对。证据与未验证项见[复验记录](../competition/evidence/desktop-integration-20261025/README.md)，不据此提升接口冻结等级。
+
+之后的非 Fake 首启巡检为 Vault 选择增加现有知识源宿主的准备态显示，固定错误归类为配置问题，已存记忆读取与原授权守卫保留。7 pass／2 skip、Desktop 语法及实际正常重开读回见[独立首启回执](../competition/evidence/desktop-integration-20261025/vault-first-start.json)；该四文件增量晚于第九轮冻结源码，不宣称被原全检覆盖，也不新增公共 Schema 或冻结真实知识源能力。
+
+10 月 26 日同一首启路径补齐原本机授权 Runtime 的能力目录、任务快照及有界事件投影；升级装配前释放原事件轮询，不创建 Local Agent 或第二套任务库。授权提示仅撤下自己确定结束的旧判断，保留其他错误、原任务历史及 `RESULT_UNKNOWN`。实际生产 IPC 的 Skill 生命周期及正常重开通过，目录选择为显式合成、云调用为零；聚焦 30 pass／1 skip，证据见[首启授权回执](../competition/evidence/desktop-integration-20261025/first-start-authorization-20261026.json)。这批改动仍为 Desktop 私有装配行为，接口冻结等级不变。
+
+Competition 可信宿主可显式启用 `competitionExecution:{mode:'progressive',windowSteps?,maxSteps?}` 与 `competitionToolDiscovery:true`；Desktop 默认组合启用。执行窗口与模型思考深度分离，新任务在原 Runtime 确认不同输入的进展后续窗；取消、期限、显式上限、未知操作和重复操作仍约束执行。旧任务不补写此策略或扩大原预算。子任务及子会话新轮沿原任务来源继承策略，使用各自的新轮期限，完整历史与原终态保留。
+
+新增 host-only `capability.search@1.0.0` 经原 Policy/ToolGateway 只读检索任务初始可用集合。超过单次 64 项／24 KiB 时先公布发现入口，原 Runtime 确认检索回执后切换有界工具页；选择工具不授予执行权限。游标绑定原任务、目录摘要和检索词，发送前重验原 Schema 与当前 readiness。`CompetitionToolAvailability.publicDescription` 只允许可信组合显式发布有界说明，不复制任意外部根级 metadata。
+
+出机只携带当前及至多 32 条近期回执，并按完整请求 1.1 MB 门槛缩减发送窗口；完整原回执、结果、授权及 Evidence 不删减。能力上下文根据原始候选集区分未在当前页与未配置／不可用，并披露省略和进度计数，计数不作为目标完成证据。执行策略不改变 Core wire 或镜像单次容量；组合中的查询索引迁移 11/12 另见内存实施记录。不据本地检查宣称云模型上下文、单次输出或正式平台部署已扩容。设计与当前验证见 [ADR-0040](../adr/0040-progressive-cloud-development.md) 和[实施记录](../competition/PROGRESSIVE_EXECUTION_20261024.md)。
+
+`listSubagentConversations` 的 host-only 读取兼容增加 `parentTaskIds`，在 SQL 候选查询前限定当前可见父任务，而不是先截全局 100 条再过滤。此模式的游标绑定父任务集合；原归属／幂等键／plan 校验、最新合法续聊、游标水位与 seenTaskIds 仍保留，实际查询错误不会被空列表掩盖。该显示查询不截断执行、取消、审批、恢复或原回答来源所用的权威子任务读取。
+
+`AgentArtsRuntimeApplicationOptions.recoverAcceptedStatus:true` 是仅用于 WSS 的显式 host-only 选项，Desktop 组合启用。已持久 accepted 的活跃请求每 30 秒最多发起一次原身份状态读，单读至多 10 秒且不越过原任务期限，重新读取当前凭据。只有匹配原四字段及服务实例的合法终态，才能进入原 parser／持久回调／Runtime 路径；unknown、身份不符和读失败继续保留原等待，不重发 invoke、不复活已结束任务。125 项相关聚焦回归通过；真实云多文件验收单独登记，未提升冻结等级。
+
 ## 2026-10-25 同对话文字结果语音输出（provisional）
 
 ModelGateway 的可选 host-only `RealtimeSession.speakText(text)` 由用户已开启 Live 的同对话新文字任务消费；原 Runtime 成功终态触发，有界排队、task/revision 去重、切换对话/停止/打断丢弃晚到结果。未开启 Live 或 provider 缺端口明确 unavailable；无新公开 voice wire、授权、provider 或任务循环。accepted 不代表音频/播放已验证；实际 response 参数及 item 删除的云兼容性和实体设备仍未验收，不提升冻结状态。见 [接线及本地验证](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
@@ -10,6 +48,14 @@ ModelGateway 的可选 host-only `RealtimeSession.speakText(text)` 由用户已�
 `ContextCompactionOptions` 增加 host-only `force`、`previous`、`remember` 和 Runtime 原委派关系解析的 `cacheConversationId`，原自动阈值链复用经同会话/来源/策略/模型绑定的进程内摘要。
 Desktop 提供明确保存的推荐预算；出机确认、原数据与工具 continuation 保留。无 Core wire、Schema 或数据库迁移。
 实现、失效规则与未验证边界见 [会话压缩说明](../modules/HARNESS_CONTEXT_COMPACTION_20261020.md)。
+
+## 2026-10-24 原生电脑、受控浏览器与可选视觉（provisional，已进入主集成树）
+
+Competition Desktop 组合新增固定 `personal-agent-desktop/1` 原生 stdio 执行器、16 个 `computer.desktop.*` 工具、原任务 `computer.request_access`、12 个 `browser.*` 工具及可选 `computer.vision.inspect`。默认视觉关闭、来源为 AgentArts 代理，保留自定义兼容接口；注册和配置不授予执行或图片出机权限。Main／Preload／IPC 使用原 Runtime／Policy／Questions／ToolGateway，未新增任务库或 Core wire 操作。
+
+host-only `ModelRequest.images` 为显式 PNG 输入；旧无图请求兼容。视觉端口严格绑定原任务已 confirmed 的截图、SHA、大小、目标配置 revision 和一次出机决定，发送前及结果投影时重验。AgentArts 限整个编码 JSON 请求不超过 5,000,000 UTF-8 字节。`ToolNotStartedError` 仅接受本进程受信零分派证明，已分派且结果未知仍保留核实；原生内部目标变化等错误映射到既有公共错误码，不扩展公共 Schema。
+
+实机原生、Runtime、受控 Edge、实际 Electron 设置及直接云端浏览器／视觉联合回执分别见[实施与验收记录](../COMPUTER_CONTROL_COMPLETION_20261024.md)。视觉联测真实识别独立随机 Canvas 标记并沿原任务续答，Evidence 仍为 `conditional`；本机执行已发布镜像不等于新 AgentArts 平台部署。原 `capabilityContext` 给 Desktop 已 opt-in 的环境上下文增加固定 `computer.request_access@1.0.0` 成功语义，不复制外部 Schema 描述、不授予权限。原独立树在视觉开启时观察到 65 项阻断；主集成树现以按需工具发现保留原 64 项／24 KiB 单次限制，65 项实际 Runtime／Policy 回归已通过，不静默裁剪。最终组合与真实默认对话记录见上述实施记录。保持 `provisional`，不据子集联测冻结整个电脑或模型工具链。
 
 ## 2026-10-23 缓存邮件信头云端复核（provisional）
 

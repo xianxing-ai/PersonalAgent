@@ -1,5 +1,13 @@
 # PersonalAgent Desktop
 
+2026-10-27 / Issue #523：在 PR #522 上改用原 Runtime 检查点索引读取持续工作流，后台维护按宿主独立节流和防重入；事件与待办仍走原 120ms 入口。修复前后测量、Windows GUI 与验证边界见[修复记录](docs/DESKTOP_IDLE_POLLING_ISSUE523_20261027.md)。
+
+2026-10-26 会话持久化移交候选（review）：Conversations 的同步 API 与内存视图保留，私有 SQLite 增量保存消息、草稿、偏好及 UI 任务链接；TaskRuntime 仍是任务与执行事实来源。旧 v1～v4 只读启动不迁移，首次修改经原字节备份、事务导入和独立读回后写入旧版拒绝的 v5 marker；ready 缺库拒绝空建，未知提交冻结并核实。Main 最终退出接线已在候选中，Windows 打包与真实用户资料迁移未验收。
+
+来源 Windows/Node24.15 合成 10k×2KiB 样本的 append P50/P95 为旧版 49.05/56.92 ms、候选 1.50/7.36 ms；同时首次迁移 957.32 vs 69.67 ms，重开 195.07 vs 67.293 ms，峰值 RSS 336.391 vs 158.492 MiB，关闭后 marker+backup+DB 60.861 vs 21.154 MiB。逻辑 payload 减少不代表物理 I/O，canonical 消息 Map 仍常驻，不能据此宣称内存或启动改善。最新完整 v5→v4 历史导出尚未实现，禁止删库/marker 或直接恢复旧备份假称保留新历史。
+
+已接收源码与回执并三方整合到 main `934b7c44` 的候选；来源尚有 65 项未交付的 A12 输入与 main 不同/缺失，完整原始日志未提供，不能称完整 Windows 工程复原或继承 A12 全绿。移交时待验的两项 GUI smoke 已在本次 Issue #523 本地修复中补跑通过，详见上方记录；公共 SQLite Evidence 仍 pending，PR376 stub 不证明实际 Root 生命周期。Linux 验证单列，不提升接口冻结状态。[ADR-0041](../../docs/adr/0041-desktop-conversation-incremental-persistence.md) 仍 proposed。
+
 2026-10-23：界面快照中的同步权限检查、空闲待办广播和高刷新率 Canvas 绘制修复，见[范围、权限边界与验证](docs/DESKTOP_PERFORMANCE_20261023.md)。已完成本地体验，进入 PR 审查。
 
 2026-10-21 新邮件、明显天气变化的订阅与本机 Laya 提醒判断，见
