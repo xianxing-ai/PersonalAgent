@@ -14,6 +14,7 @@ import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {computerControlFailure} from './computer-control-errors.js';
 import {createComputerControlLaya} from './computer-control-laya.js';
+import {createOpenCliBrowserHost} from './opencli-browser-host.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
@@ -386,7 +387,7 @@ let developerSettings;
 let developerDeploymentFailure='';
 let toolPresenceHost,windowsControlHost,windowsControlClosing,computerControlLaya;
 let computerControlLease;
-let computerControlConfig,browserControlHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
+let computerControlConfig,browserControlHost,openCliBrowserHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
 let browserControlClosed=false;
 let computerLaunch;
 const computerTasks=new Set();
@@ -835,18 +836,18 @@ function computerControlSnapshot(surface){
   const owned=!surface||active&&conversationToolAccess?.resolveConversation(active)===conversations?.activeConversationId(surface);
   const recoveryOwned=!surface||recoveryTaskId&&conversationToolAccess?.resolveConversation(recoveryTaskId)===conversations?.activeConversationId(surface);
   const input=computerControlLease?.snapshot()??{state:'unavailable',busy:false,writeBlocked:true};
-  if(current.state==='blocked'||browserControlHost?.snapshot().state==='blocked')Object.assign(input,{state:'blocked',writeBlocked:true});
+  if(current.state==='blocked'||browserControlHost?.snapshot().state==='blocked'||openCliBrowserHost?.snapshot().state==='blocked')Object.assign(input,{state:'blocked',writeBlocked:true});
   return {...publicStatus,...(owned&&active?{activeTaskId:active}:{}),...(recoveryOwned&&recoveryTaskId?{recoveryTaskId}:{}),waitingConfirmation:owned&&current.waitingConfirmation===true,
-    input,browser:browserControlHost?.snapshot()??{state:'unavailable',available:false},vision:computerVisionHost?.snapshot()??computerVisionConfig?.snapshot(),
+    input,browser:{...(browserControlHost?.snapshot()??{state:'unavailable',available:false}),connected:openCliBrowserHost?.snapshot()},vision:computerVisionHost?.snapshot()??computerVisionConfig?.snapshot(),
     ...(computerPreparing?{state:'preparing',reason:'正在准备电脑组件；可以立即停止。'}:{})};
 }
 
 async function stopComputerControl(){
   computerPreparing?.abort();
   if(computerLaunch){computerLaunch.stopped=true;conversationDelivery.interruptPending(computerLaunch.conversationId);}
-  const activeTasks=[...new Set([...computerTasks,...(windowsControlHost?.activeTasks?.()??[]),...(browserControlHost?.activeTasks?.()??[])])]
+  const activeTasks=[...new Set([...computerTasks,...(windowsControlHost?.activeTasks?.()??[]),...(browserControlHost?.activeTasks?.()??[]),...(openCliBrowserHost?.activeTasks?.()??[])])]
     .filter(taskId=>{try{return !terminalTaskStates.has(runtimeApplication.runtime.getTask(taskId).state);}catch{return false;}});
-  const stopped=await Promise.allSettled([windowsControlHost?.stop(),browserControlHost?.stop()]);
+  const stopped=await Promise.allSettled([windowsControlHost?.stop(),browserControlHost?.stop(),openCliBrowserHost?.stop()]);
   const cancelled=await Promise.allSettled(activeTasks.map(taskId=>client.call('task.cancel',{taskId,reason:'用户停止电脑输入'})));
   publish();
   const failures=[...stopped.map((item,index)=>({item,stage:index===0?'stop.desktop':'stop.browser'})),
@@ -2109,6 +2110,13 @@ async function initializeRuntime() {
             if(scope.phase!=='export')await windowsControlHost.preparePresence(scope);
             return windowsControlHost.hasPresence(scope.taskId);
           },onUpdate:publish});
+        openCliBrowserHost=createOpenCliBrowserHost({
+          readTask:taskId=>{try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}},
+          authorize:async scope=>{
+            if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
+            if(scope.phase!=='export')await windowsControlHost.preparePresence(scope);
+            return windowsControlHost.hasPresence(scope.taskId);
+          },onUpdate:publish});
         if(computerVisionConfig)computerVisionHost=createComputerVisionHost({configuration:computerVisionConfig,
           getApplication:()=>runtimeApplication,question:authorizationQuestionPort,
           isObservationAllowed:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true,
@@ -2391,9 +2399,9 @@ async function initializeRuntime() {
       };
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       const desktopControl={
-        tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[]),...(browserControlHost?.tools??[]),...(computerVisionHost?.tools??[])],
-        availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[]),...(browserControlHost?.competitionToolAvailability??[]),...(computerVisionHost?.competitionToolAvailability??[])],
-        exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[]),...(browserControlHost?.competitionToolExports??[]),...(computerVisionHost?.competitionToolExports??[])],
+        tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[]),...(browserControlHost?.tools??[]),...(openCliBrowserHost?.tools??[]),...(computerVisionHost?.tools??[])],
+        availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[]),...(browserControlHost?.competitionToolAvailability??[]),...(openCliBrowserHost?.competitionToolAvailability??[]),...(computerVisionHost?.competitionToolAvailability??[])],
+        exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[]),...(browserControlHost?.competitionToolExports??[]),...(openCliBrowserHost?.competitionToolExports??[]),...(computerVisionHost?.competitionToolExports??[])],
       };
       const historyTool=syntheticMvp?undefined:createConversationHistoryTool({readContext:({taskId,signal})=>{
         const task=runtimeApplication.runtime.getTask(taskId);
@@ -2557,6 +2565,7 @@ async function initializeRuntime() {
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
+          ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
@@ -2644,6 +2653,7 @@ async function initializeRuntime() {
       developerDeployment?.host.bind(runtimeApplication);
       windowsControlHost?.bind(runtimeApplication);
       browserControlHost?.bind(runtimeApplication);
+      openCliBrowserHost?.bind(runtimeApplication);
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
       referenceApplication=runtimeApplication;
@@ -3349,7 +3359,7 @@ async function action(event, name, payload) {
       try{
         const context={signal:owned.signal,deadline:new Date(Date.now()+120000).toISOString()};
         if(!process.env.PA_WINDOWS_CONTROL_PYTHON)await prepareNativeDesktopComponent({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath,...context});
-        await windowsControlHost.start(context);return {computerControl:computerControlSnapshot()};
+        await windowsControlHost.start(context);openCliBrowserHost?.start();return {computerControl:computerControlSnapshot()};
       }finally{if(computerPreparing===owned)computerPreparing=undefined;publish();}
     }
     if(name==='computer.control.confirm'){
@@ -4494,6 +4504,7 @@ app.whenReady().then(async () => {
     catch{console.error('[conversations] close failed after committed quit');}
     weatherCardHost?.dispose();
   });
+  app.once('will-quit',()=>{void openCliBrowserHost?.close();});
   ipcMain.on('desktop:draft-close',(event,entries)=>{
     try{flushConversationDrafts(event,entries,{panel,workspace,conversations});event.returnValue={ok:true};}
     catch{event.returnValue={ok:false,error:'关闭前草稿保存未确认，请保持窗口打开并重试'};}

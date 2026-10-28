@@ -96,7 +96,7 @@ export function mountComputerControls(root, invoke) {
       'windows-broker':'Windows 原生组件', 'windows-mcp':'兼容电脑组件', synthetic:'离线联调组件'}[state?.provider?.source];
     field('provider').textContent = !known ? '' : `本机操作：${state.providerAvailable ? '组件已连接' : '组件未就绪'}${source ? ` · ${source}` : ''}`;
     const browser = state?.browser;
-    field('browser').textContent = browser ? `浏览器操作：${browser.available === true ? '已准备' : '未就绪'}${browser.reason ? ` · ${safeReason(browser.reason, '请准备浏览器组件后重试')}` : ''}` : '';
+    field('browser').textContent = browser ? `独立浏览器：${browser.available === true ? '已准备' : '未就绪'}${browser.reason ? ` · ${safeReason(browser.reason, '请准备浏览器组件后重试')}` : ''}${browser.connected ? `；现有浏览器：${safeReason(browser.connected.reason, '需要 OpenCLI 扩展连接')}` : ''}` : '';
     field('failure').textContent = state?.failure ? failureText(state.failure, 'host') : '';
     button('prepare').disabled = !known || !state.enabled || Boolean(pending) || blocked() || unconfirmed
       || preparingStates.has(state.state) || busy() || state.waitingConfirmation;

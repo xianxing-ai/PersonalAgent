@@ -6,7 +6,7 @@
   --panel-line:rgba(229,239,255,.09);--panel-menu:#252a32;
   --fg:#f5f7fa;--fg-2:#e2e7ee;--muted:#bdc5cf;--faint:#aeb8c5;
   --fg-placeholder:#b8c1cc;--focus-ring:#adccf2;
-  position:relative;box-sizing:border-box;grid-template-rows:auto auto minmax(0,1fr) auto;
+  position:relative;box-sizing:border-box;
   border:0;border-radius:40px;clip-path:inset(0 round 40px);
   background:linear-gradient(145deg,rgba(222,237,255,.09),transparent 43%),var(--panel-coat);
   backdrop-filter:none;-webkit-backdrop-filter:none;
@@ -33,8 +33,7 @@
 .panel>div:has(>.conversation-sessions)>[data-session-status]:empty {display:none}
 .panel>div:has(>.conversation-sessions)>[data-session-status]:not(:empty) {margin:4px 22px}
 .panel .conversation-sessions {max-height:100px;overflow:auto;padding:8px 20px;border:0}
-.panel>.thread {grid-row:3;padding:14px 24px 22px;overscroll-behavior:contain;scrollbar-gutter:stable}
-.panel>.conversation-rail {grid-row:3}
+.panel>.thread {padding:14px 24px 22px;overscroll-behavior:contain;scrollbar-gutter:stable}
 .panel .thread>.who {font-size:10.5px;line-height:1.6;margin-bottom:14px;color:var(--muted)}
 .panel .thread>.bubble {background:transparent;border:0;box-shadow:none;text-align:left;font-size:27px;line-height:1.35;font-weight:600;letter-spacing:-.045em;padding:14px 0 22px}
 .panel .quick-start {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 24px}
@@ -51,7 +50,7 @@
 .panel #live-open-settings {border:0;border-radius:999px;padding:6px 11px;background:var(--panel-lens);color:var(--fg-2);font:inherit;font-size:11px;box-shadow:inset 0 1px 0 var(--panel-glint)}
 .panel .user-message {border:0;border-radius:19px 19px 6px 19px;background:var(--panel-hover);box-shadow:none}
 .panel>.composer {
-  grid-row:4;margin:0 12px 12px;padding:14px 14px 10px;border:0;border-radius:25px;
+  margin:0 12px 12px;padding:14px 14px 10px;border:0;border-radius:25px;
   background:linear-gradient(155deg,rgba(233,244,255,.06),transparent 70%),var(--panel-lens);
   backdrop-filter:none;-webkit-backdrop-filter:none;
   box-shadow:inset 0 1px 0 var(--panel-glint),0 8px 24px rgba(0,0,0,.055);
