@@ -98,7 +98,8 @@ import {createRuntimeProactiveWorkflowHost, createRuntimeProactiveWorkflowTools}
 import type {RuntimeProactiveWorkflowHost, RuntimeProactiveWorkflowHostOptions} from './proactive-workflow-application.js';
 import type {AuthorizationQuestionRequest} from './authorization-question.js';
 import {createRuntimeOwnedWorkflowHost, createRuntimeOwnedWorkflowTools} from './owned-workflow-application.js';
-import type {RuntimeOwnedWorkflowHostOptions, RuntimeWorkflowShadowReleaseOptions} from './owned-workflow-application.js';
+import type {RuntimeOwnedWorkflowHostOptions, RuntimeWorkflowShadowReleaseOptions,
+  RuntimeVoiceFinalTranscriptOptions} from './owned-workflow-application.js';
 import {createRuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import type {RuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import {createRuntimeProactiveDecisionTools} from './proactive-decision-tools.js';
@@ -378,6 +379,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   proactiveWorkflows?: true;
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
   workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
+  /** F02_N03 final-only Desktop receipt reader. Absent → tool stays unregistered / unavailable. */
+  voiceFinalTranscript?: RuntimeVoiceFinalTranscriptOptions;
   codingRepair?:RuntimeCodingRepairOptions;
   developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   /** Current trusted product configuration, pinned by its host to the original task revision. */
@@ -611,7 +614,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT','Required user delegation needs a dispatch and a summary step');
     }
     if (!['local', 'huawei_ict_agentarts'].includes(this.profile)
-      || (this.profile === 'local' && (options.coordination !== undefined || options.competitionToolExports !== undefined || options.competitionToolAvailability !== undefined || options.repairCandidateVersion !== undefined || options.hostUserNamespace !== undefined || options.workflowShadowRelease !== undefined))
+      || (this.profile === 'local' && (options.coordination !== undefined || options.competitionToolExports !== undefined || options.competitionToolAvailability !== undefined || options.repairCandidateVersion !== undefined || options.hostUserNamespace !== undefined || options.workflowShadowRelease !== undefined || options.voiceFinalTranscript !== undefined))
       || (options.repairCandidateVersion !== undefined && options.repairCandidateVersion !== '1.0')
       || (options.localRepair !== undefined && options.repairCandidateVersion !== '1.0')
       || (this.profile === 'huawei_ict_agentarts' && options.text !== undefined)) {
@@ -739,8 +742,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             if(!this.runtime.saveCheckpointOnce(receipt.taskId,key,receipt)
               &&!isDeepStrictEqual(this.runtime.loadCheckpoint(receipt.taskId,key),receipt))
               throw new ProtocolError('REVISION_CONFLICT','Original local coding decision receipt changed');
-          }})]:[])]:[]), ...createRuntimeOwnedWorkflowTools(
-      options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
+          }})]:[])]:[]), ...createRuntimeOwnedWorkflowTools({
+        ...(options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
+        ...(options.voiceFinalTranscript ? {voiceFinalTranscript: options.voiceFinalTranscript} : {}),
+      }),
       ...(options.proactiveWorkflows ? createRuntimeProactiveDecisionTools({
         ...(options.proactiveDecision?.localChooser ? {localChooser: options.proactiveDecision.localChooser} : {}),
         ...(options.coordination ? {teacherExchange:(request:CoordinationRequest,context:ToolContext)=>
@@ -761,7 +766,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             .then(()=>this.refreshSubagentParent(taskId)).catch(()=>{});
         }
       },
-      ...(options.tools || discoveryTool || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
+      ...(options.tools || discoveryTool || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.voiceFinalTranscript || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           this.harnessExperienceRecipes(request.taskId,{
             deadline:this.runtime.loadCheckpoint(request.taskId,'application-deadline') as string,
