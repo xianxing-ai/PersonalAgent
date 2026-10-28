@@ -372,6 +372,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   competitionMessageTimeoutMs?:number;
   mailReview?:RuntimeMailReviewOptions;
   retainPriorToolResults?:boolean;
+  /** Pin guarded goal-carrying continuations for newly dispatched Competition tasks only. */
+  enableNewTaskToolContinuations?:true;
   /** Competition user submissions must execute in a durable child; the root only dispatches and summarizes. */
   delegateUserTasks?: true;
   /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
@@ -526,6 +528,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
   private readonly competitionToolExports: readonly CompetitionToolExport[];
   private readonly retainPriorToolResults:boolean;
+  private readonly enableNewTaskToolContinuations:boolean;
   private competitionMaxSteps: number;
   private readonly competitionInitialSteps:number;
   private readonly competitionExecution:RuntimeApplicationOptions['competitionExecution'];
@@ -691,6 +694,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       accepts:()=>true,project:({result}:{result:unknown})=>structuredClone(result),
     }]:[])].map(binding => Object.freeze({...binding}));
     this.retainPriorToolResults=options.retainPriorToolResults===true;
+    this.enableNewTaskToolContinuations=options.enableNewTaskToolContinuations===true;
     if (this.readDeveloperHarnessConfiguration) this.competitionToolExports = [...this.competitionToolExports, {
       toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
       exportPolicyVersion:'developer-harness-runtime-facts-v1',accepts:()=>true,
@@ -1530,6 +1534,29 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return this.runtime.eraseTaskCopies({...input,externalCopiesPurged});
   }
   get coordinationConfigurationRef():string {return this.coordinationBinding;}
+
+  /** Trusted transport selection, pinned to the original task and deployment. */
+  usesGoalContinuation(taskId:string):boolean {
+    if(this.retainPriorToolResults)return true;
+    const saved=this.runtime.loadCheckpoint(taskId,'competition-continuation-context:v1');
+    if(saved===undefined)return false;
+    const task=this.runtime.getTask(taskId);
+    const expected={version:'1.0',taskId,configurationRef:this.coordinationBinding,
+      goal:task.goal,deadline:this.runtime.loadCheckpoint(taskId,'application-deadline')};
+    if(!isDeepStrictEqual(saved,expected) || typeof task.goal!=='string'
+      || typeof expected.deadline!=='string' || this.runtime.loadCheckpoint(taskId,'application-goal')!==task.goal) {
+      throw new ProtocolError('REVISION_CONFLICT','Original continuation context binding changed');
+    }
+    return true;
+  }
+
+  private pinGoalContinuation(taskId:string,goal:string,deadline:string):void {
+    const binding={version:'1.0',taskId,configurationRef:this.coordinationBinding,goal,deadline};
+    if(!this.runtime.saveCheckpointOnce(taskId,'competition-continuation-context:v1',binding)
+      && !isDeepStrictEqual(this.runtime.loadCheckpoint(taskId,'competition-continuation-context:v1'),binding)) {
+      throw new ProtocolError('REVISION_CONFLICT','Original continuation context binding changed');
+    }
+  }
 
   /** Connect the existing learning lifecycle to canonical original Runtime journals. */
   createHarnessExperienceApplication(options:RuntimeHarnessExperienceApplicationOptions) {
@@ -2505,6 +2532,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       worker.saveCheckpoint('application-profile',this.profile);
       worker.saveCheckpoint('application-goal',child.goal);
       worker.saveCheckpoint('application-deadline',worker.deadline);
+      if(this.usesGoalContinuation(binding.parentTaskId) && !this.retainPriorToolResults)
+        this.pinGoalContinuation(worker.taskId,child.goal,worker.deadline);
       worker.saveCheckpoint('competition-max-steps',maxSteps);
       this.seedExecutionCapacity(worker.taskId,maxSteps,worker.deadline,binding.parentTaskId);
     } else if(worker.loadCheckpoint('application-goal')!==child.goal
@@ -2525,7 +2554,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return runRuntimeCodingRepairWorkflow(this,subtask,worker,tools,this.codingRepair);
     }
     return runCoordinationWorker(this.runtime,this.coordination,tools,worker.taskId,child.goal,worker,
-      {retainPriorToolResults:this.retainPriorToolResults,allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+      {retainPriorToolResults:this.usesGoalContinuation(worker.taskId),allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }
@@ -4312,10 +4341,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const catalog=this.taskCompetitionCatalog(taskId);
       const execution = startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
-        {resume: true,retainPriorToolResults:this.retainPriorToolResults, toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {resume: true,retainPriorToolResults:this.usesGoalContinuation(taskId), toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId),
           ...(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')!==undefined
-            ||this.retainPriorToolResults&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
+            ||this.usesGoalContinuation(taskId)&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
@@ -4903,6 +4932,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId, 'competition-configuration-binding', this.coordinationBinding);
       this.runtime.saveCheckpoint(taskId, 'application-goal', goal);
       this.runtime.saveCheckpoint(taskId, 'application-deadline', deadline);
+      if(this.enableNewTaskToolContinuations && !this.retainPriorToolResults)
+        this.pinGoalContinuation(taskId,goal,deadline);
       const manualCompaction=this.runtime.loadCheckpoint(taskId,CONTEXT_COMPACTION_COMMAND)===true;
       let preference:ReturnType<NonNullable<RuntimeApplicationOptions['readConversationPreference']>>;
       try {
@@ -4951,9 +4982,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
       },{deadline,sideEffect:'read'}):startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
-        {retainPriorToolResults:this.retainPriorToolResults,toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {retainPriorToolResults:this.usesGoalContinuation(taskId),toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId),
-          ...(this.retainPriorToolResults&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
+          ...(this.usesGoalContinuation(taskId)&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},

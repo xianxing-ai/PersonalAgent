@@ -165,7 +165,9 @@ else {
   };
   const subagents=mountSubagentCompletionNotice(thread,invoke);
   window.addEventListener('unload',()=>subagents.dispose(),{once:true});
-  const updateProgress=mountTaskProgress(thread,tasksNode);
+  // Keep the current status outside history: a long old message must not hide
+  // a pending presence request while the task appears to be doing nothing.
+  const updateProgress=mountTaskProgress(thread.parentElement,thread,taskId=>invoke('computer.control.confirm',{taskId}));
   const quickStart=root.querySelector('#quick-start');
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
@@ -493,7 +495,8 @@ else {
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
-    updateProgress(data.tasks.filter(task=>!task.outputTruncated));
+    updateProgress(data.tasks.filter(task=>!task.outputTruncated),data.computerControl,
+      {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
     const notifs=Array.isArray(data.notifications)?data.notifications:[];

@@ -1165,6 +1165,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly onWebSocketAccepted: AgentArtsWebSocketOptions['onAccepted'];
   private readonly onWebSocketTerminal: AgentArtsWebSocketOptions['onTerminal'];
   private readonly identityObserver: AgentArtsRequestIdentityObserver | undefined;
+  private readonly taskContinuationContext: ((taskId: string) => 'goal' | undefined) | undefined;
   private closed = false;
 
   constructor(
@@ -1176,6 +1177,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void,
     websocketOptions?: AgentArtsWebSocketOptions,
     identityObserver?: AgentArtsRequestIdentityObserver,
+    taskContinuationContext?: (taskId: string) => 'goal' | undefined,
   ) {
     const validated = validateRuntimeConfig(config);
     if (!authorizationProvider || typeof authorizationProvider.read !== 'function') {
@@ -1210,6 +1212,8 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     if (identityObserver !== undefined && typeof identityObserver !== 'function') {
       invalid('AgentArts request identity observer is invalid');
     }
+    if (taskContinuationContext !== undefined && (typeof taskContinuationContext !== 'function'
+      || validated.responseMode !== 'tool-proposal-json')) invalid('AgentArts task continuation selector is invalid');
     this.gatewayOrigin = validated.gatewayOrigin;
     this.runtimeName = validated.runtimeName;
     this.invokeMode = validated.invokeMode;
@@ -1231,6 +1235,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.onWebSocketAccepted = websocketOptions?.onAccepted;
     this.onWebSocketTerminal = websocketOptions?.onTerminal;
     this.identityObserver = identityObserver;
+    this.taskContinuationContext = taskContinuationContext;
     this.websocket = validated.websocketUrl === undefined ? undefined
       : new AgentArtsWebSocketTransport(validated.websocketUrl, websocketOptions?.factory, websocketOptions?.onState,
         websocketOptions?.recoverAcceptedStatus===true?(receipt,controls)=>this.queryStatus(receipt,controls):undefined);
@@ -1285,8 +1290,10 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
 
   async invoke(request: CoordinationRequest): Promise<CoordinationResult> {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
+    const selectedContext = this.continuationContext ?? this.taskContinuationContext?.(request.taskId);
+    if (selectedContext !== undefined && selectedContext !== 'goal') invalid('AgentArts task continuation selection is invalid');
     const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, priorContinuations, availableTools, textOnly,executionModel} =
-      validateRequest(request, this.responseMode, this.initialRequestMode, this.continuationContext);
+      validateRequest(request, this.responseMode, this.initialRequestMode, selectedContext);
     if (continuation !== undefined && this.beforeSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts continuation export guard is unavailable');
     }
@@ -1303,7 +1310,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       : availableTools === undefined && this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
         && Object.prototype.hasOwnProperty.call(continuation.result, 'repairContext')
         ? executionModel===undefined?candidateContinuationQuery(continuation):JSON.stringify({continuation,...modelSelection})
-        : JSON.stringify({continuation,...(this.continuationContext==='goal'?{goal,
+        : JSON.stringify({continuation,...(selectedContext==='goal'?{goal,
           ...(availableTools===undefined?{}:{availableTools}),
           ...(priorContinuations?.length?{priorContinuations}:{})}:{}),...modelSelection});
     if(new TextEncoder().encode(query).byteLength>1_100_000)invalid('AgentArts complete query exceeds the byte limit');
@@ -1316,7 +1323,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       taskId, revision, goal, deadline, signal: combined.signal,
       ...(textOnly ? {textOnly:true as const} : {}),
       ...(continuation === undefined ? {} : {continuation}),
-      ...(this.continuationContext==='goal'&&priorContinuations?.length?{priorContinuations}:{}),
+      ...(selectedContext==='goal'&&priorContinuations?.length?{priorContinuations}:{}),
       ...(availableTools === undefined ? {} : {availableTools}),
     });
     let stage: AgentArtsDiagnosticStage = 'authorization';

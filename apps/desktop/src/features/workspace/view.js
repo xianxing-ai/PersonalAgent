@@ -31,7 +31,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     </main></section>`;
   const subagents=mountSubagentConversations(root.querySelector('#workspace-stage'),invoke,escape);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
-  const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage);
+  const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage,taskId=>invoke('computer.control.confirm',{taskId}));
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
   root.querySelector('.workspace-top').after(preferences);
   let feedbackRevision=0;
@@ -155,7 +155,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();
     composer.update(data);
-    updateProgress(data.tasks);
+    updateProgress(data.tasks,data.computerControl,
+      {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
     root.querySelector('#workspace-greeting').hidden=current.tasks.length>0;root.querySelector('#workspace-intro').hidden=current.tasks.length>0;root.querySelector('#workspace-welcome').classList.toggle('compact',current.tasks.length>0);
     const signature=JSON.stringify(data.tasks);
     if(signature!==lastSignature){

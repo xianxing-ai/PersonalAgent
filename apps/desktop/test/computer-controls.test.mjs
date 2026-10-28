@@ -278,3 +278,29 @@ test('a late operation failure remains diagnostic and cannot overwrite a newer h
   assert.equal(ui.button('prepare').disabled, true);
   assert.equal(ui.field('launch').disabled, true);
 });
+
+test('connected browser probe shows extension guidance without launching a task', async t => {
+  const ui = harness(t, name => {
+    if (name === 'computer.control.probeConnectedBrowser') {
+      return {computerControl:status({browser:{state:'ready', available:true,
+        connected:{source:'opencli', available:false, reason:'OpenCLI 扩展尚未连接。',
+          extension:{connected:false, reason:'OpenCLI 扩展尚未连接。', guide:'请安装并启用 OpenCLI Browser Bridge 扩展。'},
+          guide:'请安装并启用 OpenCLI Browser Bridge 扩展。'}}})};
+    }
+  });
+  ui.render(status({browser:{state:'ready', available:true,
+    connected:{source:'opencli', available:false, reason:'尚未检测 OpenCLI 扩展连接。',
+      extension:{connected:false, reason:'尚未检测 OpenCLI 扩展连接。', guide:'请安装并启用 OpenCLI Browser Bridge 扩展。'},
+      guide:'请安装并启用 OpenCLI Browser Bridge 扩展。'}}}));
+  assert.match(ui.field('connected-guide').textContent, /Browser Bridge|检测现有浏览器扩展/);
+  assert.equal(ui.button('probe-connected').disabled, false);
+  await ui.click('probe-connected');
+  assert.deepEqual(ui.calls[0], {name:'computer.control.probeConnectedBrowser', payload:{}});
+  assert.equal(ui.calls.some(call => call.name === 'computer.control.launch'), false);
+  assert.match(ui.field('connected-guide').textContent, /Browser Bridge|扩展/);
+  ui.render(status({browser:{state:'ready', available:true,
+    connected:{source:'opencli', available:true, reason:'OpenCLI Browser Bridge 扩展已连通。',
+      extension:{connected:true, reason:'OpenCLI Browser Bridge 扩展已连通。', guide:'guide'}}}}));
+  assert.match(ui.field('browser').textContent, /扩展已连通/);
+  assert.match(ui.field('connected-guide').textContent, /已连通/);
+});

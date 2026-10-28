@@ -12,9 +12,21 @@ const hints = {
   cancelled: '任务已取消；已经发生的外部操作不会因此自动撤销。',
 };
 
-export function taskProgress(tasks) {
+export function taskProgress(tasks, computer, authorization = {}) {
   const task = currentTask(Array.isArray(tasks) ? tasks : []);
   if (!task) return null;
+  if (['running','planning','waiting_approval'].includes(task.state) && authorization.conversationId
+    && authorization.questions?.some(question=>question.conversationId===authorization.conversationId
+      && question.state==='pending' && Date.parse(question.expiresAt)>(authorization.now??Date.now()))) {
+    return {state:task.state,label:'等待操作授权',detail:'操作尚未获准执行。请查看下方授权卡；也可以停止当前任务。'};
+  }
+  // Main has already restricted this projection to the visible conversation,
+  // including its executing child. Do not relabel the persisted Runtime state.
+  if (['running', 'planning', 'waiting_approval'].includes(task.state)
+    && computer?.waitingConfirmation === true && typeof computer.activeTaskId === 'string') {
+    return {state: task.state, label: '等待本机确认',confirmationTaskId:computer.activeTaskId,
+      detail: '电脑操作尚未开始。确认本次在场后继续原任务；也可保持目标应用在前台按 F9。任务中的停止按钮随时可用。'};
+  }
   const step = ['running', 'planning', 'verifying'].includes(task.state)
     ? task.steps?.find(item => ['running', 'executing', 'verifying'].includes(item.state)) : undefined;
   return {state: task.state, label: stateNames[task.state] ?? '状态待确认',
@@ -23,15 +35,26 @@ export function taskProgress(tasks) {
 }
 
 // Presentation only: consumes the existing Runtime snapshot and never advances task state.
-export function mountTaskProgress(container, before = null) {
+export function mountTaskProgress(container, before = null, confirmPresence) {
   const status = document.createElement('section');
   status.className = 'task-progress';status.hidden = true;
   status.setAttribute('role', 'status');status.setAttribute('aria-live', 'polite');status.setAttribute('aria-atomic', 'true');
   const label = document.createElement('strong'), detail = document.createElement('span');
   status.append(label, detail);container.insertBefore(status, before);
-  let signature;
-  return tasks => {
-    const value = taskProgress(tasks), next = JSON.stringify(value);
+  let signature,current,pending=false;
+  const confirm=typeof confirmPresence==='function'?document.createElement('button'):null;
+  if(confirm){confirm.type='button';confirm.textContent='确认本次在场';confirm.hidden=true;status.append(confirm);
+    confirm.onclick=async()=>{
+      const taskId=current?.confirmationTaskId;if(!taskId||pending)return;
+      pending=true;confirm.disabled=true;
+      try{await confirmPresence(taskId);}
+      catch{if(current?.confirmationTaskId===taskId)detail.textContent='本次确认未获回执，请查看原任务状态；不会自动重试。';}
+      finally{pending=false;confirm.disabled=false;}
+    };
+  }
+  return (tasks, computer, authorization) => {
+    const value = taskProgress(tasks, computer, authorization), next = JSON.stringify(value);
+    current=value;if(confirm)confirm.hidden=!value?.confirmationTaskId;
     if (signature === next) return;
     signature = next;status.hidden = !value;
     if (!value) {label.textContent = '';detail.textContent = '';delete status.dataset.state;return;}

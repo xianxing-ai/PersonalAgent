@@ -2,7 +2,11 @@
 
 > 2026-10-17增量：Owner 已明确恢复编码最小修复的实现，要求算法与对应多轮工作流进入自有镜像，见 [ADR-0033](../adr/0033-coding-minimal-repair-workflow.md)。该工作包当前 in_progress；下文及历史记录中对此部分的暂停不再是现行指令。模型资格、整体架构与其余工作流完成状态不由此升级。
 
-日期：2026-10-18。目标 Profile：`huawei_ict_agentarts`。当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；Laya 仅能由独立 Local Profile 使用，当前仍是实验候选，不属于当前 Competition 路径。其他设计、接线和验收仍按实际证据确认。
+> 2026-10-27 增量：按用户要求，Competition Desktop 可在电脑操作中使用本机 Laya 对当前真实观察的有限控件给出建议；AgentArts 仍负责主编排，Runtime／Policy／ToolGateway 仍负责授权和执行。该建议不授予权限、不能替代 AgentArts 失败后的编排，也不代表设备闭环已经验收，详见[当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
+> 同日续接修复：新提交的 Competition Desktop 任务将目标续接方式固定到任务，委派子任务继承该绑定；续接时经原有出机和工具目录校验传递目标及原工具目录。已存在的旧任务维持原协议及配置标识。带新绑定的进行中任务回退到不理解该绑定的旧版本时，不保证可继续；应保留任务和执行记录，不重放未知写操作。模拟 Runtime/Policy/ToolGateway 验证不能替代部署后真实设备验收；云端模型 JSON 格式错误的具体内容仍需后续证据。
+
+日期：2026-10-18。目标 Profile：`huawei_ict_agentarts`。当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本机 Laya 的电脑控件建议按上述增量处理。其他设计、接线和验收仍按实际证据确认。
 本页取代历史设计中冲突的模型部署、默认并行、发布和完成状态描述；不撤销既有 Runtime 权限边界，
 不把设计保存、接口存在或单条真实案例提升为全部模块完成。历史原文与日期见[导航](README.md)。
 
@@ -14,14 +18,14 @@
 
 | 部分 | 当前设计选择 | 已有实现与证据边界 |
 | --- | --- | --- |
-| 语义判断 | Competition 语义编排由 AgentArts Agent/Workflow 承担；本机 Laya 仅为独立 Local Profile 的实验候选 | 原权重及 SDK 单实例宿主服务/selector 曾在本机试验中调用；领域资格未证明，两个历史案例各3处裁决全部升级 DeepSeek，不构成当前 Competition 路径或全局决策资格证明 |
+| 语义判断 | Competition 语义编排由 AgentArts Agent/Workflow 承担；本机 Laya 可按上述增量建议电脑控件 | 原权重及 SDK 单实例宿主服务/selector 曾在本机试验中调用；历史案例和本轮可选建议均不构成全局决策资格或真实设备验收 |
 | 高级模型 | DeepSeek 经 AgentArts 新 `/inference/v1` 模型代理，底层平台 MaaS 来源如实记录 | 真实代理 API 已返回；不直连供应商 fallback，不把语音百炼入口用作 DeepSeek 替代；文字 JSON 工具提案不等于原生 function calling |
 | 工作流 | AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本地 Runtime 经 `CloudAgentPort` 消费已部署工作流 | 历史目录、代码与固定版本回执只证明对应内容已读回；28 项和185个节点不等于28项真实业务验收 |
 | 实际执行 | 原本机 Runtime/Policy/ToolGateway/Evidence 负责权限、工具、副作用读回与任务终态 | 镜像只提出候选/宿主请求；验签 receipt、模型结论与来源文本都不能授予权限 |
 | 语音 | 百炼已有 Live 端口与本机加密配置；语音可主动询问、接受确认/暂停/静默设置 | 已有端口及有限握手证据；真实麦克风、听说、通知设置和 AgentArts 主任务完整组合仍分别验收；AgentArts SIS 适配不可用 |
 | 记忆 | Wiki 正文/来源版本与 Memory/FactChangeFeed 分工，按权限读取上下文、目标与经验 | 消费公开端口；引用、实体、版本、撤回和缺口保留，不把摘要当原文或把记忆当授权 |
 
-本机 Laya 的“常驻”仅是未来独立 Local Profile 的候选部署目标，不属于当前 Competition 路径；实验镜像不含权重、Python 或 PyTorch。
+本机 Laya 的长期常驻仍是候选部署目标；电脑控件建议在本机按需准备，不将模型权重、Python 或 PyTorch 放入 Competition 镜像。
 现有宿主可管理单实例生命周期，历史真实测试按轮启动/停止；Desktop 长期驻留、设备休眠/恢复和长期资源占用
 仍需对应接线与验收。电脑离线不虚构可执行能力；不新增云电脑、任务库、调度器或模型入口。
 

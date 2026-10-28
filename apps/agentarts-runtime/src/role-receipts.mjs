@@ -51,6 +51,11 @@ export function createRoleReceiptWriter({deploymentVersion, write = line => proc
       }
       if (receipt.status === 'completed' && Number.isSafeInteger(receipt.totalTokens) && receipt.totalTokens >= 0) output.totalTokens = receipt.totalTokens;
       if (receipt.status === 'failed' && ['model_gateway','response_shape','response_json','response_object'].includes(receipt.failureStage)) output.failureStage = receipt.failureStage;
+      if(receipt.status==='failed'&&receipt.failureStage==='response_json') {
+        if(['object','array','fenced','other'].includes(receipt.responseJsonShape))output.responseJsonShape=receipt.responseJsonShape;
+        if(Number.isSafeInteger(receipt.responseJsonChars)&&receipt.responseJsonChars>=0&&receipt.responseJsonChars<=16000)output.responseJsonChars=receipt.responseJsonChars;
+        if(['stop','length','content_filter','tool_calls','other'].includes(receipt.responseStopReason))output.responseStopReason=receipt.responseStopReason;
+      }
       void Promise.resolve(write(JSON.stringify(output)+'\n')).catch(() => {});
     } catch { /* A failed observability sink cannot change model orchestration. */ }
   };
