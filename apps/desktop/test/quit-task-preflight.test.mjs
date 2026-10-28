@@ -99,7 +99,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
   }};
   const optional = ['voiceStartupHost','remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
-    'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','goalCloudHost','calendarMeetingHost',
+    'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','wikiImportHost','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
@@ -255,13 +255,17 @@ test('accepted quit releases the active orb drag timer', async () => {
 
 test('accepted quit closes Wiki, pairing and installed Skills before Runtime; an active task refuses it',async()=>{
   const f=fixture({count:1});f.context.wikiSourceMonitor={close(){f.calls.push('wiki-monitor-close');}};
+  f.context.wikiImportHost={close(){f.calls.push('wiki-import-close');}};
   f.context.obsidianPairing={close(){f.calls.push('obsidian-pairing-close');}};
   f.context.installedSkillsHost={close(){f.calls.push('installed-skills-close');}};
   f.app.quit();await tick();assert.equal(f.calls.includes('wiki-monitor-close'),false);
+  assert.equal(f.calls.includes('wiki-import-close'),false);
   assert.equal(f.calls.includes('obsidian-pairing-close'),false);
   assert.equal(f.calls.includes('installed-skills-close'),false);
   f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();await tick();
   assert.equal(f.exited,true);assert.equal(f.calls.filter(call=>call==='wiki-monitor-close').length,1);
+  assert.equal(f.calls.filter(call=>call==='wiki-import-close').length,1);
+  assert.ok(f.calls.indexOf('wiki-import-close')<f.calls.indexOf('runtime-close'));
   assert.ok(f.calls.indexOf('wiki-monitor-close')<f.calls.indexOf('runtime-close'));
   assert.equal(f.calls.filter(call=>call==='obsidian-pairing-close').length,1);
   assert.equal(f.calls.filter(call=>call==='installed-skills-close').length,1);

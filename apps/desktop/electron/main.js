@@ -41,6 +41,7 @@ import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
+import {createWikiImportHost} from './wiki-import-host.js';
 import {createDesktopObsidianPairing} from './obsidian-pairing-host.js';
 import {createObsidianPairingUI} from './obsidian-pairing-ui.js';
 import {createMicrophoneCaptureHost} from './microphone-capture-host.js';
@@ -346,7 +347,7 @@ let windowsControlClosed=false;
 let referenceHost;
 let referenceClosing;
 let referenceClosed=false;
-let knowledgeSourceConfig,knowledgeTools,wikiSourceMonitor,obsidianPairing;
+let knowledgeSourceConfig,knowledgeTools,wikiSourceMonitor,obsidianPairing,wikiImportHost;
 let competitionToolAvailabilityList = [];
 let mailConfig;
 let calendarConfig;
@@ -700,6 +701,8 @@ function snapshot(surface) {
     knowledge: (obsidianPairing?.source ?? knowledgeSourceConfig)?.snapshot()??structuredClone(knowledgeStatus),
     knowledgeSource:surface ? undefined : knowledgeSourceConfig ? {...knowledgeSourceConfig.snapshot(),
       monitor:wikiSourceMonitor?.snapshot(),pairing:obsidianPairing?.snapshot()} : undefined,
+    wikiImport:surface ? undefined : wikiImportHost?.snapshot() ?? (competitionMode
+      ? {available:false,selectionAvailable:false,reason:'请先在模型设置中配置 AgentArts，再重新启动后导入 Wiki'} : undefined),
     voice: voiceInput ? {...voiceInput.snapshot(), hostReady:true, experimental: sisConfigHost?.snapshot().configured,
       configuration: sisConfigHost?.snapshot()} : {available: false, status: voiceInitializationFailure ? 'error' : 'unconfigured',
       hostReady:false,
@@ -2199,8 +2202,22 @@ async function initializeRuntime() {
       // ListOpsAgentRunLog 需要 AK/SK 签名宿主与平台 applicationId（resource_id），
       // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
       refreshHarnessContextHost(runtimeModule.createContextModelSummarizer);
+      wikiImportHost?.close();
+      wikiImportHost=await createWikiImportHost({userData:app.getPath('userData'),safeStorage,namespace,
+        hostIdentity:createHash('sha256').update(app.getPath('userData')).digest('hex'),changed:publish,
+        selectFiles:async()=>{
+          const choice=await dialog.showOpenDialog(admin,{title:'选择要生成 Wiki 的文件',properties:['openFile','multiSelections']});
+          return choice.canceled?undefined:choice.filePaths;
+        },selectFolder:async()=>{
+          const choice=await dialog.showOpenDialog(admin,{title:'选择要生成 Wiki 的资料文件夹',properties:['openDirectory']});
+          return choice.canceled?undefined:choice.filePaths[0];
+        },selectLibrary:async()=>{
+          const choice=await dialog.showOpenDialog(admin,{title:'选择 Wiki 保存目录',properties:['openDirectory','createDirectory']});
+          return choice.canceled?undefined:choice.filePaths[0];
+        }});
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
+        wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
         assertHarnessEventCurrent:(rootTaskId,origin)=>{
           if(!harnessEventsHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','原生事件授权宿主尚未装配');
@@ -2400,6 +2417,7 @@ async function initializeRuntime() {
         const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
         thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
       }
+      wikiImportHost.bind(runtimeApplication.wikiImport);
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
       codingWorkspace.bindApplication(runtimeApplication);
@@ -3294,6 +3312,11 @@ async function action(event, name, payload) {
       localServicesStopped = false;
     }
     publish(); return mailSnapshot();
+  }
+  if (typeof name==='string' && name.startsWith('wiki.import.')) {
+    if(sender!==admin || !competitionMode || !wikiImportHost) throw Error('Wiki 导入仅在正式管理后台可用');
+    const result=await wikiImportHost.action(name.slice('wiki.import.'.length),payload);
+    publish();return result;
   }
   if(name==='knowledge.pair' || name==='knowledge.pair.revoke') {
     if(sender!==admin || !competitionMode || !obsidianPairing || payload!==undefined) throw Error('配对仅允许管理后台打开原生窗口');
@@ -4361,6 +4384,7 @@ app.whenReady().then(async () => {
       learningStore?.close();
       obsidianPairing?.close();
       knowledgeSourceConfig?.close();
+      wikiImportHost?.close();
       proactiveHost?.close();
       goalCloudHost?.close();
       calendarMeetingHost?.close();
