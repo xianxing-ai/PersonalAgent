@@ -23,6 +23,7 @@ export * from './coding-repair.js';
 export * from './harness-candidates.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
+export * from './workflow-voice-final-transcript.js';
 export {createProactiveHostProofs} from './proactive-host-proofs.js';
 export type {ProactiveHostProofBinding,ProactiveHostProofKind} from './proactive-host-proofs.js';
 export type {OwnedWorkflowAdvanceRequest, OwnedWorkflowAdvanceResult, WorkflowNodeContext,

@@ -74,12 +74,14 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
+import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
 import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
+import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
@@ -97,6 +99,8 @@ import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 import {createToolPresenceHost} from './tool-presence-host.js';
 import {createConversationToolSurface} from './conversation-tool-surface.js';
 import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
+import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-host.js';
+import {resolveDesktopVoiceFinalTranscript} from './voice-final-transcript-host.js';
 import {createSystemObservationConversation} from './system-observation-conversation.js';
 import {createDesktopWindowsControlHost} from './windows-control-host.js';
 import {createComputerControlLease} from './computer-control-lease.js';
@@ -117,6 +121,8 @@ import {createPublicReferenceQuestionConsent} from './public-reference-question.
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
+import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
 import {agentArtsFailureNotice} from './agentarts-failure-notice.js';
@@ -321,6 +327,7 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
+let agentArtsObservationConfig;
 let agentArtsModels;
 let activeCloudBinding;
 let activeCloudTransportSignature;
@@ -352,7 +359,7 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -695,7 +702,9 @@ function taskResultMetadata(task) {
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
   const failure=cloudRequestFailureNotice || cloudTransportNotice;
-  return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason};
+  const observation = agentArtsObservationConfig?.snapshot();
+  return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason,
+    ...(observation ? {observation} : {})};
 }
 
 function visibleConversationTask(task,surface){return !(task.goal?.startsWith('判断是否告知用户：')&&connectorChangeHost?.ownsDecisionTask(task.taskId))&&(!surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface));}
@@ -1788,6 +1797,8 @@ function initializeHarnessEventPorts(runtimeModule) {
     resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
     readPersistedSession:(taskId,sessionId)=>runtimeModule.readPersistedRuntimeProactiveWorkflow(runtimeApplication.runtime,taskId,sessionId),
     notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
+    // Production controller consumer; absent cloudPersistentHost stays unavailable (no invented port).
+    controller:createDesktopProactiveControllerHost({getRuntime:()=>runtimeApplication?.runtime}),
     bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
     context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
       readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
@@ -2419,13 +2430,28 @@ async function initializeRuntime() {
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
-      // 平台观测读回（MOD-32）默认装配为显式 unavailable：真实 ShowOpsTrace /
-      // ListOpsAgentRunLog 需要 AK/SK 签名宿主与平台 applicationId（resource_id），
-      // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
+      // 平台观测读回（MOD-32）：仅当受信设置提供观测 AK/SK（及可选 applicationId）时
+      // 注入 observationAuthorization / observationApplicationId；缺省保持显式 unavailable。
+      // 绝不复用 invoke Bearer，也不静默装配 Fake 签名器。
       refreshHarnessContextHost(runtimeModule.createContextModelSummarizer);
+      // F23 shadow promote/readback: only when host supplies trusted CAS + acceptance +
+      // verifiers via resolveDesktopWorkflowShadowRelease({...}). No production ports yet
+      // → undefined → tools stay unregistered; never invent Fake ports here.
+      const workflowShadowRelease = resolveDesktopWorkflowShadowRelease();
+      // F02_N03 voice.final_transcript: only when Desktop injects a trusted final-only
+      // receipt port via resolveDesktopVoiceFinalTranscript({port}). Absent → tool stays
+      // unregistered; engine reports unavailable (no Fake ASR / silent success).
+      const voiceFinalTranscript = resolveDesktopVoiceFinalTranscript();
+      const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         delegateUserTasks: true,
+        ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
+        ...(voiceFinalTranscript ? {voiceFinalTranscript} : {}),
+        ...(observationOptions?.observationAuthorization
+          ? {observationAuthorization: observationOptions.observationAuthorization} : {}),
+        ...(observationOptions?.observationApplicationId
+          ? {observationApplicationId: observationOptions.observationApplicationId} : {}),
         assertHarnessEventCurrent:(rootTaskId,origin)=>{
           if(!harnessEventsHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','原生事件授权宿主尚未装配');
           harnessEventsHost.assertHarnessEventCurrent(rootTaskId,origin);
@@ -2769,10 +2795,19 @@ async function initializeRuntime() {
   client = runtimeConnection.client;
   if (notificationApplicationHost) {
     notificationApplicationHost.bindApplication(runtimeApplication, client);
+    const readCurrentVoiceQuestion=({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
+      .find(question=>question.state==='pending')??null;
+    const focusVoiceQuestion=question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();};
     voiceCommandHost = createDesktopVoiceCommandHost({onUpdate:publish,
-      readCurrentQuestion:({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
-        .find(question=>question.state==='pending')??null,
-      focusQuestion:question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();}});
+      readCurrentQuestion:readCurrentVoiceQuestion,focusQuestion:focusVoiceQuestion});
+    // Live final → prepareTaskApproval focuses the original card; voice never calls authorization.respond.
+    if (conversationToolAccess) {
+      voiceApprovalBridge = createVoiceRuntimeApprovalBridge({
+        readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
+        readCurrentQuestion:readCurrentVoiceQuestion,
+        focusQuestion:focusVoiceQuestion,
+      });
+    }
   }
   if(proactiveWorkflowApplication){
     proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
@@ -3503,6 +3538,23 @@ async function action(event, name, payload) {
     try {
       const result = agentArtsConfig.revoke();
       return {...result, reason: '已清除保存在本机的 AgentArts 凭据与绑定配置。'};
+    } finally {publish();}
+  }
+  if (name === 'agentarts.observation.configure' || name === 'agentarts.observation.revoke') {
+    if (sender !== admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
+      || runtimeStartup.snapshot().state === 'starting') throw Error('请在任务、通话及启动结束后从设置配置观测凭据');
+    if (!agentArtsObservationConfig) throw Error('AgentArts 观测配置宿主尚未装配');
+    try {
+      if (name === 'agentarts.observation.revoke' && payload !== undefined) {
+        throw Error('撤销观测凭据不接受额外参数');
+      }
+      const result = name === 'agentarts.observation.revoke'
+        ? agentArtsObservationConfig.revoke()
+        : agentArtsObservationConfig.configure(payload);
+      return {...result, requiresRestart: true,
+        reason: name === 'agentarts.observation.revoke'
+          ? '已清除本机观测 AK/SK；重启后观测读回恢复为显式 unavailable。'
+          : '观测凭据已加密保存；请重启应用以注入 observationAuthorization（不复用 invoke Bearer）。'};
     } finally {publish();}
   }
   if (['todo.authorize','todo.revoke','todo.configureNotifications','todo.dismiss','todo.create','todo.update'].includes(name)) {
@@ -4415,6 +4467,7 @@ async function initializeLiveVoice() {
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
+    prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope)??null,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       contextMessages:readDesktopConversationContext({conversationId,deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal}),
@@ -4505,6 +4558,8 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  agentArtsObservationConfig = createAgentArtsObservationConfig({
+    userData: app.getPath('userData'), safeStorage});
   if(competitionMode&&!fakeMode)weatherCardHost=createWeatherCardHost({userData:app.getPath('userData'),getApplication:()=>runtimeApplication,
     readToolVersion:()=>productTools?.tools.find(tool=>tool.descriptor.name==='weather.forecast')?.descriptor.version,onUpdate:publish});
   app.once('will-quit',()=>{

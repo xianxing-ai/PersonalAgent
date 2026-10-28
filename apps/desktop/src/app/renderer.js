@@ -25,6 +25,7 @@ import {mountDesktopShell} from '../ui/desktop-shell.js';
 import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
+import {mountProactiveWorkflowControls} from './proactive-workflow-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
 import {mountPanelLight} from './panel-light.js';
@@ -228,6 +229,7 @@ else {
   };
   const liveControls=mountLiveVoiceControls(root,invoke,{compact:true});
   const proactiveControls=mountProactiveControls(root.querySelector('.thread'),invoke);
+  const proactiveWorkflowControls=mountProactiveWorkflowControls(root.querySelector('.thread'),invoke);
   const wakeControls=document.createElement('details');
   wakeControls.className='wake-controls';
   const wakeSummary=document.createElement('summary');wakeSummary.textContent='语音唤醒';
@@ -499,6 +501,7 @@ else {
       {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
+    proactiveWorkflowControls.render(data.proactiveWorkflow);
     const notifs=Array.isArray(data.notifications)?data.notifications:[];
     if(notifs.length>0){
       bellMenu.innerHTML=notifs.slice(0,5).map(n=>`<div class="notice bell-notice"><strong>${escape(n.summary)}</strong><br><small>${escape(new Date(n.occurredAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</small></div>`).join('');
