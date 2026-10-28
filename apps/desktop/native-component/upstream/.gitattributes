@@ -1,0 +1,4 @@
+# The publisher verifies these verbatim upstream bytes against sources.json.
+**/LICENSE* -text
+# Keep upstream notice whitespace intact; first-party source checks are unchanged.
+**/THIRD-PARTY-NOTICES.TXT -text whitespace=-blank-at-eol

@@ -183,6 +183,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     // A saved continuation has already consumed this exact export. Its final send
     // guard reads the original confirmed result; it must not reopen tool execution.
     if(existing?.consumers.has(requirementId)&&existing.request.requirements.some(item=>item.requirementId===requirementId&&item.kind==='export')
+      &&getApplication().runtime.getTask(scope.taskId).state!=='running'
       &&scope.deadline===existing.request.deadline&&!scope.signal?.aborted){
       service().assertConsumedResult(existing.receipt,existing.request,requirementId,consumerId);return true;
     }
@@ -269,6 +270,20 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     getApplication().assertHostIntentQuestionDerivative(parent.request.taskId,source.taskId,operationDigest);
     batchDerivations.set(key(source),{kind:'intent',parent,operationDigest,requirementId:'intent',assertCurrent});return true;
   }
+  function hasPending(runId){
+    const current=getApplication();if(closed||!current?.runtime)return false;
+    if(service().hasPending(runId))return true;
+    // Runtime marks ownership before asynchronous native preparation. That
+    // interval must never expose the same operation through legacy approval.
+    try{
+      const approval=current.runtime.getApproval(runId);
+      if(approval.state!=='pending')return false;
+      const active=current.runtime.loadCheckpoint?.(approval.taskId,'authorization-question-active:'+runId);
+      if(active?.state!=='pending')return false;
+      const invocation=current.readAuthorizationQuestionInvocation(approval.taskId,runId);
+      return Boolean(invocation&&invocation.argumentsDigest===active.argumentsDigest);
+    }catch(error){if(error?.code==='NOT_FOUND')return false;throw error;}
+  }
   return {
     requiresAuthorization:scope=>preparations.has(key(scope)),
     requiresNativeForAuthorization:scope=>preparations.get(key(scope))?.taskConsent?.requiresNative===true,
@@ -278,7 +293,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     consume:(...args)=>service().consume(...args),assertRequirement:(...args)=>service().assertRequirement(...args),
     respond:(input,conversationId)=>service().respond(input,conversationId),
     snapshot:conversationId=>closed||!getApplication()?.runtime?[]:service().snapshot(conversationId),
-    hasPending:runId=>!closed&&Boolean(getApplication()?.runtime)&&service().hasPending(runId),
+    hasPending,
     automaticallyApproves:()=>!closed&&Boolean(getApplication()?.runtime)&&service().sandboxSnapshot().selected.mode==='full-access',
     sandboxSnapshot:()=>service().sandboxSnapshot(),selectSandbox:input=>service().selectSandbox(input),revokeRule:input=>service().revokeRule(input),
     close(){closed=true;questions?.close();preparations.clear();operations.clear();owners.clear();batchDerivations.clear();projections.clear();},

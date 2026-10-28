@@ -1,7 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
-import {parseEvent, parseRequest, parseResponse, PROTOCOL_VERSION, ProtocolError, validateContract} from '@personal-agent/contracts';
+import {parseEvent, parseRequest, parseResponse, PROTOCOL_VERSION, ProtocolError, isToolNotStartedError, validateContract} from '@personal-agent/contracts';
 import type {Event, Operation, Request, Response, Result, TaskSnapshot, ToolDescriptor} from '@personal-agent/contracts';
 import {openStorage} from '@personal-agent/storage';
 import type {Migration} from '@personal-agent/storage';
@@ -34,6 +34,15 @@ export type {
 type TaskState = TaskSnapshot['state'];
 type TaskError = NonNullable<TaskSnapshot['error']>;
 type SideEffect = 'read' | 'local_write' | 'external_write';
+type CompetitionLoopReadSnapshot = {taskId:string;active:boolean;observed:boolean;raw:string|undefined;value:unknown};
+
+function freezeCheckpointJson(value:unknown):unknown {
+  if(value!==null&&typeof value==='object') {
+    for(const item of Object.values(value))freezeCheckpointJson(item);
+    Object.freeze(value);
+  }
+  return value;
+}
 
 export interface ToolExecutionRecord {
   protocolVersion: string;
@@ -300,6 +309,19 @@ export const RUNTIME_MIGRATIONS: readonly Migration[] = [{
 }, {
   version:10,
   sql:'CREATE TABLE trusted_host_state (namespace TEXT NOT NULL,state_key TEXT NOT NULL,value_json TEXT NOT NULL,PRIMARY KEY(namespace,state_key)) STRICT;'
+}, {
+  version:11,
+  // Query-only indexes. No task, event, checkpoint or private body is copied or rewritten.
+  sql:[
+    'CREATE INDEX tasks_conversation_state ON tasks(conversation_id,state,task_id);',
+    'CREATE INDEX tasks_state ON tasks(state);',
+    "CREATE INDEX task_events_created_task ON task_events(task_id,sequence) WHERE type='task.created';",
+    "CREATE INDEX task_events_created_display ON task_events(occurred_at,task_id,sequence) WHERE type='task.created';",
+    'CREATE INDEX task_checkpoints_key_task ON task_checkpoints(checkpoint_key,task_id);'
+  ].join('\n')
+}, {
+  version:12,
+  sql:"CREATE INDEX task_checkpoints_parent ON task_checkpoints(checkpoint_key,json_extract(value_json,'$.parentTaskId'),task_id);"
 }];
 
 export class RuntimeError extends Error {
@@ -374,6 +396,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   bindTrustedHostState(namespace:string) {return bindHostStateStore(this.db,namespace);}
   readonly policy: AuthorizationPolicy;
   private readonly db: DatabaseSync;
+  private readonly competitionLoopReads=new WeakMap<object,CompetitionLoopReadSnapshot>();
   private readonly now: () => Date;
   private readonly idFactory: () => string;
   private readonly toolGateway: RuntimeToolGateway | undefined;
@@ -485,6 +508,23 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   listTasks(input: {conversationId?: string; states?: TaskState[]; beforeSequence?: number; snapshotSequence?: number; limit?: number}): Result<'task.list'> {
+    return this.selectTaskPage(input);
+  }
+
+  /** Host-only candidate selection. Checkpoint presence is only a query filter; callers must
+   * still validate the original binding/identity before treating a candidate as a child. */
+  listTaskCheckpointPage(input:Parameters<TaskRuntime['listTasks']>[0],checkpointKeys:string[],parentTaskIds?:readonly string[]):Result<'task.list'> {
+    if(!Array.isArray(checkpointKeys)||!checkpointKeys.length||checkpointKeys.length>8
+      ||checkpointKeys.some(key=>typeof key!=='string'||!key||key.length>128))
+      throw new RuntimeError('INVALID_ARGUMENT','Invalid checkpoint candidate keys');
+    if(parentTaskIds!==undefined&&(!Array.isArray(parentTaskIds)||parentTaskIds.length>100
+      ||parentTaskIds.some(id=>typeof id!=='string'||!id.trim()||id.trim()!==id||id.length>512)
+      ||new Set(parentTaskIds).size!==parentTaskIds.length))
+      throw new RuntimeError('INVALID_ARGUMENT','Invalid parent checkpoint scope');
+    return this.selectTaskPage(input,checkpointKeys,parentTaskIds);
+  }
+
+  private selectTaskPage(input:Parameters<TaskRuntime['listTasks']>[0],checkpointKeys?:string[],parentTaskIds?:readonly string[]):Result<'task.list'> {
     const limit = input.limit ?? 50;
     const latestSequence = this.snapshotSequence();
     const snapshotSequence = input.snapshotSequence ?? latestSequence;
@@ -495,10 +535,45 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     if (input.beforeSequence !== undefined) { clauses.push('e.sequence < ?'); params.push(input.beforeSequence); }
     if (input.conversationId !== undefined) { clauses.push('t.conversation_id = ?'); params.push(requireText(input.conversationId, 'conversationId')); }
     if (input.states?.length) { clauses.push(`t.state IN (${input.states.map(() => '?').join(', ')})`); params.push(...input.states); }
+    if(checkpointKeys){
+      const checkpointClauses=[`checkpoint_key IN (${checkpointKeys.map(()=>'?').join(',')})`];params.push(...checkpointKeys);
+      if(parentTaskIds!==undefined){
+        checkpointClauses.push(parentTaskIds.length?`json_extract(value_json,'$.parentTaskId') IN (${parentTaskIds.map(()=>'?').join(',')})`:'0');
+        params.push(...parentTaskIds);
+      }
+      clauses.push(`t.task_id IN (SELECT task_id FROM task_checkpoints WHERE ${checkpointClauses.join(' AND ')})`);
+    }
     const rows = this.db.prepare(`SELECT t.task_id, t.goal, t.conversation_id, t.attachment_refs_json, t.state, t.revision, t.updated_at, t.steps_json, t.evidence_refs_json, t.result_summary, t.error_json, t.cancel_requested, e.sequence AS created_sequence FROM tasks t JOIN task_events e ON e.task_id = t.task_id WHERE ${clauses.join(' AND ')} ORDER BY e.sequence DESC LIMIT ?`).all(...params, limit + 1) as unknown as Array<TaskRow & {created_sequence: number}>;
     const more = rows.length > limit;
     const page = rows.slice(0, limit);
     return {items: page.map(row=>this.publicTask(taskFromRow(row))), snapshotSequence, ...(more ? {nextBeforeSequence: page.at(-1)!.created_sequence} : {})};
+  }
+
+  /** Host-only display pagination. Full task/Evidence history stays in SQLite; the frozen
+   * conversation.list response and task.list cursor semantics are not changed. */
+  readTaskDisplayPage(input: {conversationId?: string; snapshotSequence?: number; limit?: number;
+    before?: {createdAt:string;key:string}; after?: {createdAt:string;key:string}} = {}): {
+      items: Array<TaskSnapshot & {createdAt:string}>; snapshotSequence:number; hasMore:boolean;
+    } {
+    const limit=input.limit??40,latest=this.snapshotSequence(),snapshotSequence=input.snapshotSequence??latest;
+    if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new RuntimeError('INVALID_ARGUMENT','Invalid display page limit');
+    if(!Number.isSafeInteger(snapshotSequence)||snapshotSequence<0||snapshotSequence>latest)
+      throw new RuntimeError('INVALID_ARGUMENT','Invalid display snapshot sequence');
+    if(input.before&&input.after)throw new RuntimeError('INVALID_ARGUMENT','Conflicting display cursors');
+    const cursor=input.before??input.after;
+    if(cursor&&(typeof cursor.createdAt!=='string'||!Number.isFinite(Date.parse(cursor.createdAt))
+      ||typeof cursor.key!=='string'||cursor.key.length>512))throw new RuntimeError('INVALID_ARGUMENT','Invalid display cursor');
+    const clauses=["e.type='task.created'",'e.sequence<=?'],params:SQLInputValue[]=[snapshotSequence];
+    if(input.conversationId!==undefined){clauses.push('t.conversation_id=?');params.push(requireText(input.conversationId,'conversationId'));}
+    if(cursor){const comparison=input.after?'>':'<';clauses.push(`(e.occurred_at ${comparison} ? OR (e.occurred_at=? AND ('task:'||t.task_id) ${comparison} ?))`);
+      params.push(cursor.createdAt,cursor.createdAt,cursor.key);}
+    const order=input.after?'ASC':'DESC';params.push(limit+1);
+    // Start with the ordered creation index. Joining from conversation_id first makes SQLite
+    // materialize/sort every matching body before LIMIT (52ms for the 10k synthetic fixture).
+    const rows=this.db.prepare(`SELECT t.*,e.occurred_at AS display_created_at FROM task_events e INDEXED BY task_events_created_display JOIN tasks t ON t.task_id=e.task_id
+      WHERE ${clauses.join(' AND ')} ORDER BY e.occurred_at ${order},e.task_id ${order} LIMIT ?`).all(...params) as unknown as Array<TaskRow&{display_created_at:string}>;
+    return {items:rows.slice(0,limit).map(row=>({...this.publicTask(taskFromRow(row)),createdAt:row.display_created_at})),
+      snapshotSequence,hasMore:rows.length>limit};
   }
 
   listConversations(input: {conversationId?: string; beforeSequence?: number; snapshotSequence?: number; limit?: number}): Result<'conversation.list'> {
@@ -507,18 +582,23 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     const snapshotSequence = input.snapshotSequence ?? latestSequence;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RuntimeError('INVALID_ARGUMENT', 'limit must be between 1 and 100');
     if (!Number.isSafeInteger(snapshotSequence) || snapshotSequence < 0 || snapshotSequence > latestSequence) throw new RuntimeError('INVALID_ARGUMENT', 'Invalid snapshot sequence');
-    const rows = this.db.prepare(`SELECT t.task_id, t.goal, t.conversation_id, t.attachment_refs_json, t.state, t.revision, t.updated_at, t.steps_json, t.evidence_refs_json, t.result_summary, t.error_json, t.cancel_requested, e.sequence AS created_sequence FROM tasks t JOIN task_events e ON e.task_id = t.task_id AND e.type = 'task.created' WHERE e.sequence <= ? ORDER BY e.sequence DESC`).all(snapshotSequence) as unknown as Array<TaskRow & {created_sequence: number}>;
-    const grouped = new Map<string, {sequence: number; tasks: TaskSnapshot[]}>();
     const conversationId = input.conversationId === undefined ? undefined : requireText(input.conversationId, 'conversationId');
-    for (const row of rows) {
-      if (conversationId !== undefined && row.conversation_id !== conversationId) continue;
-      const current = grouped.get(row.conversation_id) ?? {sequence: row.created_sequence, tasks: []};
-      current.tasks.push(this.publicTask(taskFromRow(row))); grouped.set(row.conversation_id, current);
-    }
-    const conversations = [...grouped.entries()].filter(([, value]) => input.beforeSequence === undefined || value.sequence < input.beforeSequence).sort((a, b) => b[1].sequence - a[1].sequence);
-    const more = conversations.length > limit;
-    const page = conversations.slice(0, limit);
-    return {items: page.map(([id, value]) => ({conversationId: id, updatedAt: value.tasks.reduce((latest, task) => task.updatedAt > latest ? task.updatedAt : latest, value.tasks[0]!.updatedAt), taskCount: value.tasks.length, tasks: value.tasks.reverse()})), snapshotSequence, ...(more ? {nextBeforeSequence: page.at(-1)![1].sequence} : {})};
+    const params:SQLInputValue[]=[snapshotSequence];
+    if(conversationId!==undefined)params.push(conversationId);
+    if(input.beforeSequence!==undefined)params.push(input.beforeSequence);
+    params.push(limit+1);
+    // Select conversation identities in SQL first. Only the selected conversations hydrate full
+    // tasks; the existing wire still returns their complete history for compatibility.
+    const candidates=this.db.prepare(`SELECT t.conversation_id,MAX(e.sequence) AS sequence FROM tasks t JOIN task_events e ON e.task_id=t.task_id AND e.type='task.created'
+      WHERE e.sequence<=? ${conversationId!==undefined?'AND t.conversation_id=?':''} GROUP BY t.conversation_id
+      ${input.beforeSequence!==undefined?'HAVING MAX(e.sequence)<?':''} ORDER BY sequence DESC LIMIT ?`).all(...params) as unknown as Array<{conversation_id:string;sequence:number}>;
+    const more=candidates.length>limit,page=candidates.slice(0,limit);
+    return {items:page.map(entry=>{
+      const rows=this.db.prepare("SELECT t.* FROM tasks t JOIN task_events e ON e.task_id=t.task_id AND e.type='task.created' WHERE t.conversation_id=? AND e.sequence<=? ORDER BY e.sequence")
+        .all(entry.conversation_id,snapshotSequence) as unknown as TaskRow[];
+      const tasks=rows.map(row=>this.publicTask(taskFromRow(row)));
+      return {conversationId:entry.conversation_id,updatedAt:tasks.reduce((latest,task)=>task.updatedAt>latest?task.updatedAt:latest,tasks[0]!.updatedAt),taskCount:tasks.length,tasks};
+    }),snapshotSequence,...(more?{nextBeforeSequence:page.at(-1)!.sequence}:{})};
   }
 
   listApprovals(input: {approvalId?: string; taskId?: string; state?: 'pending' | 'allowed' | 'denied'; beforeRowId?: number; limit?: number}): Result<'approval.list'> {
@@ -752,7 +832,20 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   /** Host-question invalidation resolves the same pending approval without issuing a grant. */
-  invalidatePendingApproval(approvalId:string,reason:'cancelled'|'stale'):void {
+  invalidatePendingApproval(approvalId:string,reason:'cancelled'|'stale',cause?:unknown):void {
+    // Only fixed local scope errors may become public task errors; arbitrary provider errors can contain private data.
+    const nativeUnavailable='当前外部进程隔离后端或原授权不可用，未降级为普通进程';
+    const safeCauses=new Set(['Mail conversation read is outside the active manual batch','Mail page is outside the original manual batch',nativeUnavailable]);
+    let causeMessage:string|undefined,nativeCauseCode:TaskError['code']|undefined;
+    try {
+      const message=cause&&typeof cause==='object'?Object.getOwnPropertyDescriptor(cause,'message'):undefined;
+      if(message&&Object.hasOwn(message,'value')&&typeof message.value==='string'&&safeCauses.has(message.value)) {
+        causeMessage=message.value;
+        const code=Object.getOwnPropertyDescriptor(cause,'code');
+        if(causeMessage===nativeUnavailable&&code&&Object.hasOwn(code,'value')&&code.value==='UNSUPPORTED_CAPABILITY')
+          nativeCauseCode='UNSUPPORTED_CAPABILITY';
+      }
+    } catch { /* Untrusted accessors and proxies cannot disclose a provider body or replace invalidation. */ }
     const resolved=this.transaction(()=>{
       const approval=this.getApproval(approvalId);
       if(approval.state!=='pending')return [];
@@ -763,7 +856,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       const evidenceId=approvalId+'-question-invalidation';
       const record:ToolExecutionRecord={evidenceId,inputDigest:createHash('sha256').update(approvalId).digest('hex'),
         protocolVersion:PROTOCOL_VERSION,requestId:approvalId,taskId:approval.taskId,toolName:approval.toolName,toolVersion:'approval',
-        startedAt:this.timestamp(),finishedAt:this.timestamp(),state:'failed',errorCode:reason==='cancelled'?'CANCELLED':'REVISION_CONFLICT',
+        startedAt:this.timestamp(),finishedAt:this.timestamp(),state:'failed',errorCode:reason==='cancelled'?'CANCELLED':nativeCauseCode??'REVISION_CONFLICT',
         policyDecision:'deny',executionStarted:false};
       this.db.prepare('INSERT INTO tool_execution_records (evidence_id, task_id, record_json) VALUES (?, ?, ?)')
         .run(evidenceId,approval.taskId,JSON.stringify(record));
@@ -771,8 +864,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
         const unknown=this.readToolExecutions(task.taskId).some(value=>value.state==='started'||value.state==='unknown')
           ||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-inflight'))||Boolean(this.loadCheckpoint(task.taskId,'competition-cloud-unknown'));
         this.updateTask(task.taskId,unknown?'waiting_reconciliation':reason==='cancelled'?'cancelled':'failed',
-          {evidenceRefs:[...new Set([...task.evidenceRefs,evidenceId])],error:{code:unknown?'RESULT_UNKNOWN':reason==='cancelled'?'CANCELLED':'REVISION_CONFLICT',retryable:false,
-            message:unknown?'原授权请求已失效；已有操作结果仍待核实，不会重新执行。':'原授权请求已失效，本次操作未执行；请在当前对话重新提出。'}},true);
+          {evidenceRefs:[...new Set([...task.evidenceRefs,evidenceId])],error:{code:unknown?'RESULT_UNKNOWN':reason==='cancelled'?'CANCELLED':nativeCauseCode??'REVISION_CONFLICT',retryable:false,
+            message:unknown?'原授权请求已失效；已有操作结果仍待核实，不会重新执行。':causeMessage??'原授权请求已失效，本次操作未执行；请在当前对话重新提出。'}},true);
       }
       return [approval];
     });
@@ -940,7 +1033,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
         case 'event.subscribe': {
           if (request.payload.streamId !== 'tasks') throw new RuntimeError('NOT_FOUND', 'Event stream not found');
           const afterSequence = request.payload.afterSequence ?? 0;
-          this.readEvents(afterSequence);
+          this.validateEventCursor(afterSequence);
           data = {subscriptionId: 'subscription-' + randomUUID(), replayFrom: afterSequence + 1};
           break;
         }
@@ -1006,6 +1099,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             this.emit('tool.completed', {runId, state: 'confirmed', evidenceRefs: [runId]}, request.taskId);
           } catch (error) {
             const errorCode = error instanceof ProtocolError ? error.code : 'EXTERNAL_FAILURE';
+            if (isToolNotStartedError(error)) record.executionStarted = false;
             if (!record.executionStarted) record.policyDecision = 'deny';
             this.saveToolExecution({...record, state: errorCode === 'RESULT_UNKNOWN' ? 'unknown' : 'failed', errorCode, finishedAt: this.timestamp()});
             if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') {
@@ -1600,6 +1694,43 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return row ? structuredClone(JSON.parse(row.value_json)) : undefined;
   }
 
+  /** Host-only synchronous export check. No result or authorization is cached between calls. */
+  withCompetitionLoopRead(taskId:string,check:(scope:object)=>void):void {
+    const scope=Object.freeze({}),state:CompetitionLoopReadSnapshot={taskId,active:true,observed:false,raw:undefined,value:undefined};
+    this.competitionLoopReads.set(scope,state);
+    try {
+      const result:unknown=check(scope);
+      if(result!==undefined) {
+        void Promise.resolve(result).catch(()=>undefined);
+        throw new RuntimeError('INVALID_ARGUMENT','Competition export check must be synchronous');
+      }
+      if(this.closed||!state.active)throw new RuntimeError('UNAUTHORIZED','Original Competition export read scope is unavailable');
+      if(state.observed)this.readCompetitionLoopForExport(taskId,scope);
+    } finally {state.active=false;this.competitionLoopReads.delete(scope);}
+  }
+
+  /** An opaque, Runtime-bound scope only shares immutable decoded JSON during one final check. */
+  readCompetitionLoopForExport(taskId:string,scope:object):unknown {
+    const state=this.competitionLoopReads.get(scope);
+    if(this.closed||!state?.active||state.taskId!==taskId)
+      throw new RuntimeError('UNAUTHORIZED','Original Competition export read scope is unavailable');
+    try {
+      const row=this.db.prepare("SELECT value_json FROM task_checkpoints WHERE task_id = ? AND checkpoint_key = 'competition-loop'").get(taskId) as
+        unknown as {value_json:string}|undefined;
+      const raw=row?.value_json;
+      // Re-read exact persisted bytes on EVERY access and at scope exit. This also
+      // detects another connection's writes without caching authorization tables or
+      // rejecting legitimate host metadata/one-time lease updates elsewhere.
+      if(state.observed) {
+        if(raw!==state.raw)throw new RuntimeError('REVISION_CONFLICT','Original Competition receipt checkpoint changed during export');
+        return state.value;
+      }
+      const value=raw===undefined?undefined:freezeCheckpointJson(JSON.parse(raw));
+      state.raw=raw;state.value=value;state.observed=true;
+      return value;
+    } catch(error) {state.active=false;throw error;}
+  }
+
   requestCancel(taskId: string, _reason?: string): {taskId: string; state: TaskState; cancelAccepted: boolean} {
     const wasCreated = this.getTask(taskId).state === 'created';
     const wasWaitingApproval = this.getTask(taskId).state === 'waiting_approval';
@@ -1697,6 +1828,13 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       this.transitionTask(taskId, 'running');
       const remaining = deadlineMs - this.now().getTime();
       if (remaining <= 0) {
+        // This fresh activation has not called the worker. Its Runtime can prove
+        // zero dispatch, while persisted effects/children still veto that proof.
+        // A resumed worker may have effects from an earlier activation.
+        if (initial.state === 'created' && !options.resume) {
+          effectsTrackedByRuntime = true;
+          this.runtimeToolTracking.add(taskId);
+        }
         timedOut = true;
         controller.abort();
         throw new DeadlineExceeded();
@@ -1855,12 +1993,38 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     });
   }
 
-  readEvents(afterSequence = 0): Event[] {
+  private validateEventCursor(afterSequence: number): number {
     if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) throw new RuntimeError('INVALID_ARGUMENT', 'Invalid event cursor');
     const last = this.db.prepare('SELECT max(sequence) AS value FROM task_events').get() as unknown as {value: number | null};
     if (afterSequence > (last.value ?? 0)) throw new RuntimeError('INVALID_ARGUMENT', 'Event cursor is ahead of the stream');
+    return last.value ?? 0;
+  }
+
+  /** Trusted host pagination; the public event.subscribe wire remains unchanged. The caller keeps
+   * the first throughSequence while draining and yields between batches. New events wait for the
+   * next drain, so a producer cannot extend a single synchronous read indefinitely. */
+  readEventBatch(input: {afterSequence?: number; throughSequence?: number; limit?: number} = {}): {
+    events: Event[]; throughSequence: number; hasMore: boolean;
+  } {
+    const after = input.afterSequence ?? 0, latest = this.validateEventCursor(after);
+    const throughSequence = input.throughSequence ?? latest, limit = input.limit ?? 128;
+    if (!Number.isSafeInteger(throughSequence) || throughSequence < after || throughSequence > latest)
+      throw new RuntimeError('INVALID_ARGUMENT', 'Invalid event snapshot sequence');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512)
+      throw new RuntimeError('INVALID_ARGUMENT', 'Event batch limit must be between 1 and 512');
+    const rows = this.db.prepare('SELECT sequence, event_id, stream_id, task_id, type, occurred_at, payload_json FROM task_events WHERE stream_id = ? AND sequence > ? AND sequence <= ? ORDER BY sequence LIMIT ?')
+      .all('tasks', after, throughSequence, limit + 1) as unknown as EventRow[];
+    return {events: rows.slice(0, limit).map(row => this.eventFromRow(row)), throughSequence, hasMore: rows.length > limit};
+  }
+
+  readEvents(afterSequence = 0): Event[] {
+    this.validateEventCursor(afterSequence);
     const rows = this.db.prepare('SELECT sequence, event_id, stream_id, task_id, type, occurred_at, payload_json FROM task_events WHERE stream_id = ? AND sequence > ? ORDER BY sequence').all('tasks', afterSequence) as unknown as EventRow[];
-    return rows.map(row => parseEvent({
+    return rows.map(row => this.eventFromRow(row));
+  }
+
+  private eventFromRow(row: EventRow): Event {
+    return parseEvent({
       kind: 'event',
       protocolVersion: '1.0.0',
       eventId: row.event_id,
@@ -1871,7 +2035,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       occurredAt: row.occurred_at,
       payload: row.task_id && this.loadCheckpoint(row.task_id,'private-copy-erasure')!==undefined
         ?this.redactEventBody(row.type,JSON.parse(row.payload_json)):JSON.parse(row.payload_json)
-    }));
+    });
   }
 
   private validateScheduleInput(input: ScheduleInput): void {

@@ -1,9 +1,14 @@
-import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError,ToolNotStartedError,isToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 
 const OBSERVE='computer.desktop.observe';
-const names=new Set(['computer.notepad.replace_text',OBSERVE,'computer.desktop.click',
-  'computer.desktop.type','computer.desktop.scroll','computer.desktop.move','computer.desktop.shortcut']);
-const isWrite=name=>names.has(name)&&name!==OBSERVE;
+const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.screenshot','computer.desktop.wait',
+  'browser.observe','browser.screenshot','browser.wait']);
+const controlled=name=>name==='computer.notepad.replace_text'||/^computer\.desktop\.[a-z_]+$/.test(name)||/^browser\.[a-z_]+$/.test(name);
+const isWrite=name=>controlled(name)&&!reads.has(name);
+export {isWrite as isComputerControlWrite};
+// Native orchestration can end while its original tool outcome stays unknown.
+// Normal running tasks include the current Gateway's not-yet-dispatched started record.
+export const computerControlRecoveryTaskStates=Object.freeze(['waiting_reconciliation','failed','cancelled']);
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 
 /** One main-process input lease shared by the native Notepad and Windows-MCP
@@ -36,7 +41,7 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
   function originalUnknown(source) {
     let beforeSequence;
     do {
-      const page=source.listTasks({states:['waiting_reconciliation'],limit:100,
+      const page=source.listTasks({states:computerControlRecoveryTaskStates,limit:100,
         ...(beforeSequence===undefined?{}:{beforeSequence})});
       if(!page||!Array.isArray(page.items))fail('UNSUPPORTED_CAPABILITY','原电脑操作记录读取无效');
       for(const task of page.items) {
@@ -52,14 +57,21 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
     return false;
   }
   function wrap(tool) {
-    if(!names.has(tool?.descriptor?.name))return tool;
+    if(!controlled(tool?.descriptor?.name??''))return tool;
     if(wrappers.has(tool))return wrappers.get(tool);
     const wrapped={...tool,descriptor:tool.descriptor,async execute(input,context){
-      check(context);
-      if(active)fail('REVISION_CONFLICT','另一个电脑控制引擎正在执行；本次尚未调用设备');
-      const source=runtime();refreshSettling(source);
-      const write=isWrite(tool.descriptor.name);
-      if(write&&(settling||originalUnknown(source)))fail('RESULT_UNKNOWN','原电脑操作尚未核实；禁止新的电脑写入，不会重放原操作');
+      const write=isWrite(tool.descriptor.name);let source;
+      try{
+        check(context);
+        if(active)fail('REVISION_CONFLICT','另一个电脑控制引擎正在执行；本次尚未调用设备');
+        source=runtime();refreshSettling(source);
+        if(write&&(settling||originalUnknown(source)))fail('RESULT_UNKNOWN','原电脑操作尚未核实；禁止新的电脑写入，不会重放原操作');
+      }catch(error){
+        // Only this trusted wrapper knows the driver has not been called.
+        if(write)throw new ToolNotStartedError(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE',
+          error instanceof ProtocolError?error.message:'原电脑操作记录读取失败，本次没有分派新输入');
+        throw error;
+      }
       const owner={taskId:context.taskId,runId:context.runId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
         authorizationRef:context.authorizationRef,arguments:structuredClone(input),uncertain:false};
       // There is no await between testing ownership and acquiring this lease.
@@ -74,7 +86,7 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
         if(write)settling=owner;
         return result;
       }catch(error){
-        if(write){owner.uncertain=true;settling=owner;}
+        if(write&&!isToolNotStartedError(error)){owner.uncertain=true;settling=owner;}
         throw error;
       }finally{if(active===owner)active=undefined;}
     }};

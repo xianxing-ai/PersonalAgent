@@ -19,7 +19,7 @@ const titles={
 /** Public health only; global native prompts and other conversations are not context. */
 export function projectComputerConversationStatus(snapshot) {
   if(!snapshot)return {state:'unavailable',available:false};
-  const states=new Set(['ready','unavailable','waiting_confirmation','blocked','disposed']);
+  const states=new Set(['ready','unavailable','waiting_confirmation','blocked','disposed','stopped','checking_policy','observation_export_disabled']);
   return {state:states.has(snapshot.state)?snapshot.state:'unavailable',available:snapshot.available===true,
     providerAvailable:snapshot.providerAvailable===true,
     observationExportAllowed:snapshot.observationExportAllowed===true,

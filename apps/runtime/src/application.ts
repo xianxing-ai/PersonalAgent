@@ -29,6 +29,8 @@ export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
 export {createRuntimeWikiImportHost,WIKI_IMPORT_TOOL,WIKI_IMPORT_VERSION} from './application/wiki-import.js';
 export type {RuntimeWikiImportOptions,RuntimeWikiImportHost,RuntimeWikiModel} from './application/wiki-import.js';
 export {createAgentArtsWikiModel} from './application/wiki-image-adapter.js';
+export {MAIL_REVIEW_TOOL,MAIL_REVIEW_RESULT,parseMailReviewResult} from './application/mail-review-task.js';
+export type {MailReviewBinding,MailReviewEnvelope,MailReviewResult,RuntimeMailReviewOptions} from './application/mail-review-task.js';
 export type {AgentArtsObservationApplication} from './application/agentarts.js';
 export {createCalendarEventReadTool, CALENDAR_EVENT_READ_TOOL, CALENDAR_EVENT_READ_VERSION} from './application/calendar-read.js';
 export type {CalendarReadBinding, CalendarEventReadOptions} from './application/calendar-read.js';

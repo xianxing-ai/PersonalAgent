@@ -6,6 +6,7 @@ import {attachAgentWebSocketTransport, equalInboundToken} from './websocket-tran
 import {createBindingDispatcher} from './binding-dispatch.mjs';
 import {ownedRequestPath} from './request-path.mjs';
 import {createStageTimeline} from './stage-timeline.mjs';
+import {invocationExpiry,scheduleExpiry} from './invocation-timeout.mjs';
 
 const MAX_BYTES = 1_200_000;
 const safeId = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
@@ -27,10 +28,11 @@ function parsePayload(payload, workflowGoalInput) {
 }
 /** Both modes serve the same code. Only trusted startup selects mode/authentication. */
 export function createAgentServer({orchestrator, mode, authToken, wssAuthToken = authToken, workflowGoalInput,
-  getBindings, defaultControllerId, testVersionController, serviceControllers = {}, realtimeProxy, executionModels, onStageRecord, timeoutMs = 60_000, maxConcurrency = 8, websocket = {}}) {
+  getBindings, defaultControllerId, testVersionController, serviceControllers = {}, realtimeProxy, executionModels, onStageRecord, timeoutMode = 'fixed', timeoutMs = timeoutMode === 'fixed' ? 60_000 : undefined, maxConcurrency = 8, websocket = {}}) {
   if (!['agentarts','standalone-validation'].includes(mode)
     || !orchestrator || typeof orchestrator.invoke !== 'function'
-    || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647
+    || !['fixed','request-deadline'].includes(timeoutMode)
+    || (!(timeoutMs === undefined && timeoutMode === 'request-deadline') && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647))
     || !Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1
     || (authToken !== undefined && (typeof authToken !== 'string' || authToken.length < 32))) {
     throw new ProtocolError('INVALID_ARGUMENT','Invalid server configuration');
@@ -140,21 +142,25 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     const abort = () => { if (!response.writableEnded) controller.abort(new ProtocolError('CANCELLED','Invocation disconnected')); };
     request.once('aborted',abort); response.once('close',abort);
     const receivedAt = Date.now();
-    let expiresAt = receivedAt + timeoutMs;
+    // Receipt lookup is a bounded control-plane upload, not a model invocation.
+    let expiresAt = timeoutMs === undefined ? (statusRequest ? receivedAt+60_000 : undefined) : receivedAt + timeoutMs;
     let timer;
     let cancel;
     try {
       const supplied = request.headers['x-pa-deadline'];
+      if (timeoutMode === 'request-deadline' && !statusRequest && supplied === undefined)
+        throw new ProtocolError('INVALID_ARGUMENT','Invocation deadline required');
       if (supplied !== undefined) {
         if (typeof supplied !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(supplied)
           || !Number.isFinite(Date.parse(supplied))
           || supplied.replace(/\.000Z$/, 'Z') !== new Date(supplied).toISOString().replace(/\.000Z$/, 'Z')) throw new ProtocolError('INVALID_ARGUMENT','Invalid invocation deadline');
-        expiresAt = Math.min(expiresAt,Date.parse(supplied));
+        expiresAt = invocationExpiry(supplied,statusRequest ? timeoutMs ?? 60_000 : timeoutMs,receivedAt);
       }
+      if (expiresAt === undefined) throw new ProtocolError('INVALID_ARGUMENT','Invocation deadline required');
       if (expiresAt <= Date.now()) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
       // Covers uploads, non-cooperative providers and serialization, not only model calls.
       const expired = new Promise((_,reject) => {
-        timer = setTimeout(() => {const error = new ProtocolError('TIMEOUT','Invocation deadline expired'); controller.abort(error); reject(error);}, expiresAt-Date.now());
+        timer = scheduleExpiry(expiresAt,() => {const error = new ProtocolError('TIMEOUT','Invocation deadline expired'); controller.abort(error); reject(error);});
       });
       const cancelled = new Promise((_,reject) => {
         cancel = () => reject(controller.signal.reason);
@@ -192,7 +198,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
         {event:'error',data:{error_code:code,status:'failed'}});
     } finally {
       httpControllers.delete(controller);
-      clearTimeout(timer); if (cancel) controller.signal.removeEventListener('abort',cancel);
+      timer?.(); if (cancel) controller.signal.removeEventListener('abort',cancel);
       request.removeListener('aborted',abort); response.removeListener('close',abort);
       if (invocationSlot) release();
       if (closing && !request.complete) {
@@ -207,8 +213,8 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     socket.once('close',() => httpSockets.delete(socket));
     if (closing) endSocket(socket);
   });
-  server.requestTimeout = timeoutMs;
-  server.headersTimeout = Math.min(timeoutMs,60_000);
+  server.requestTimeout = timeoutMs ?? 0;
+  server.headersTimeout = Math.min(timeoutMs ?? 60_000,60_000);
   transport = attachAgentWebSocketTransport(server,{...websocket,realtimeProxy,authToken:wssAuthToken,
     invoke:value=>invoke({...value,bindingAuthorized:true,channel:'websocket'}),acquire,release,timeoutMs});
   // Node HTTP close does not close upgraded sockets. Stop them before awaiting close.

@@ -5,7 +5,7 @@ const hints = {
   running: '正在执行，新的进展会显示在这里。', verifying: '正在核对执行结果。',
   waiting_approval: '需要你的确认后才能继续，请查看任务中的授权请求。',
   waiting_external: '正在等待外部结果。',
-  waiting_reconciliation: '执行结果尚未核实，请查看这轮对话的详情。',
+  waiting_reconciliation: '未取得有效执行回执，暂不能确认是否已执行；请勿重复提交同一操作。',
   cancelling: '已请求停止，正在等待执行结束。',
   succeeded: '任务已完成，可以查看这轮对话的结果。',
   failed: '任务未完成，请查看这轮对话中的错误说明。',
@@ -18,7 +18,8 @@ export function taskProgress(tasks) {
   const step = ['running', 'planning', 'verifying'].includes(task.state)
     ? task.steps?.find(item => ['running', 'executing', 'verifying'].includes(item.state)) : undefined;
   return {state: task.state, label: stateNames[task.state] ?? '状态待确认',
-    detail: step?.label ? `当前步骤：${step.label}` : hints[task.state] ?? '等待新的任务状态。'};
+    detail: task.state==='waiting_reconciliation'&&task.error?.message ? task.error.message
+      : step?.label ? `当前步骤：${step.label}` : hints[task.state] ?? '等待新的任务状态。'};
 }
 
 // Presentation only: consumes the existing Runtime snapshot and never advances task state.

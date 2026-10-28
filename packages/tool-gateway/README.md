@@ -1,5 +1,18 @@
 # 工具网关（MOD-05）
 
+2026-10-23 错误呈现增量：执行失败只公开固定原因分类，不回显外部异常正文。
+安全消息包含 `stage=execute/output_validation`、原分类 `cause`，可用时包含
+HTTP 状态及 Schema keyword/受信顶层字段名。权限不足、资源缺失、连接拒绝、
+认证失败与配额受限可区分。输入校验失败仍发生在授权消费与执行之前；
+已进入写工具的取消、超时、异常和无效返回继续为 `RESULT_UNKNOWN`，
+保留待核实状态，不自动重放。Desktop 通过原 TaskRuntime 错误消息消费这些原因；
+原执行记录和 Evidence 标识继续用于核实。
+
+离线验证入口：模块 `npm test --workspace=@personal-agent/tool-gateway`；
+`PA_ERROR_DISPLAY_UI_TEST=1 node --test apps/desktop/test/tool-error-display-pipeline.test.mjs`
+将受控真实异常穿过 Gateway、SQLite Runtime 与生产 Workspace 模块的 Chromium DOM。
+后者使用本机离线合成工具和明确 IPC 替身，不代表 Electron/Windows、真实云模型或账号实测。
+
 <!-- current-design-20261009 -->
 > 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 <!-- architecture-scope-20261013 -->

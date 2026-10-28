@@ -2,6 +2,16 @@
 
 `RealtimeSession.speakText?(text)` 为受信宿主的可选同会话文字播报入口，返回 `{accepted:true}` 仅表示交给模型，不是音频或播放证明。Desktop 已开启 Live 的同对话新文字任务消费此口；单条上限 8000 字符，繁忙返回 `REALTIME_BUSY`。播报禁工具，完成/中断删除临时输入 item；provider 的 response-scoped 参数和删除事件兼容性、真实模型/设备尚未验收，详见 [接线说明](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
 
+## 可选 PNG 视觉输入（provisional）
+
+`ModelMessage.content` 保持字符串。受信宿主可在 `ModelRequest.images` 传入 `{mediaType:'image/png', dataBase64, sha256}` 数组；只接收 canonical base64 内存数据，不接受 URL、data URL、文件路径或额外字段。原 task/artifact/目标/目的地/授权绑定不放进模型请求，由宿主 reader 与注入的 guarded fetch 在实际出机前重验。端口的 PNG/SHA 校验不是授权、像素解码或完整 PNG 解码器。
+
+`MODEL_IMAGE_LIMITS`：最多 4 图，每图最多 8 MiB，合计 16 MiB，IHDR 最多 32 million pixels；校验 PNG signature、IHDR、非零尺寸、末尾 IEND、标准 base64、字节长度和 SHA256，不修改原图。宿主须按已验证端点限制进一步收窄。ModelGateway 自动追加 vision 要求；OpenAI compatible 的受信构造选项 `vision:true` 显式声明支持，缺省 false。文本端点（包括 Pangu）在凭据/API 调用前拒绝图片。端点支持是 conditional 声明，不按模型名推断能力。
+
+启用后，图片作为最后一个 user 消息的 `content:[{type:'text',text}, {type:'image_url',image_url:{url:'data:image/png;base64,...'}}]` 传输；没有 user 消息则拒绝，不将 base64 放入文本消息。空 images 或无 images 保持旧文本请求格式。消息、图片与请求参数在异步等待前快照；凭据等待、fetch、响应 JSON 等待均受原取消和 deadline 限制，最终 fetch 仍需宿主守卫。Provider 不记录图片或凭据，结果仅含文本及既有元数据；Fake 的诊断请求记录也不留 images。若配置 requestTokenBudget，其受信计量器须正确理解实际多模态 body，不能把文本 tokenizer 的 base64 token 数冒称视觉 token 计量。
+
+Competition 的可选单次视觉分析由原 Runtime/Policy/ToolGateway 发起，视觉描述仍是不可信观察；默认 AgentArts 文本 planner、自定义模型入口与既有 CloudAgentPort 协议不变。离线测试只证明真实 Provider 序列化和拒绝路径，不证明真实云视觉、目标授权或任意应用操作完成。方案见 [ADR-0039](../../docs/adr/0039-native-desktop-control.md)。
+
 OpenAI 兼容 Provider 的受信构造选项 `responseFormat:'json_object'` 可显式请求 JSON 对象输出，默认不设置。当前 AgentArts 镜像的严格 JSON 角色启用此选项；不代表原生工具调用或 JSON Schema 能力已验证。实际平台兼容性及真实复验见 [聊天修复记录](../../docs/competition/CHAT_CONTINUATION_REPLY_20261019.md)。
 
 <!-- current-design-20261009 -->

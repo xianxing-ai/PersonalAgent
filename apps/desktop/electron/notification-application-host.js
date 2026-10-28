@@ -38,18 +38,37 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
   function recordOutcome(roundId) {
     const service = current(), round = service.getInterruptionRound(roundId);
     if (!round?.attempts.banner) return round;
-    const outcome = channel.readDeliveryOutcome(channelId(roundId));
-    if (!outcome || !['delivered', 'failed'].includes(outcome.deliveryState)) return round;
-    const updated = service.completeDelivery({roundId, channel: 'banner', state: outcome.deliveryState,
-      evidenceRefs: outcome.evidenceRefs});
-    // Native click/read and native show are independent receipts.
-    if (outcome.userRead === true) service.acknowledgeRead({operationId: 'native-read-' + digest(roundId), itemIds: round.itemIds});
-    publish(); return updated;
+    const id=channelId(roundId),outcome = channel.readDeliveryOutcome(id);
+    if (!outcome || outcome.id!==id || outcome.roundId!==undefined&&outcome.roundId!==roundId) return round;
+    const terminal=['delivered','failed'].includes(outcome.deliveryState);
+    const updated=terminal?service.completeDelivery({roundId,channel:'banner',state:outcome.deliveryState,
+      evidenceRefs:outcome.evidenceRefs}):round;
+    // A native click can mark the original feed read while the channel send is
+    // still unknown. It never supplies a show receipt or changes that attempt.
+    const clicked=outcome.deliveryState!=='failed'&&(Number.isFinite(Date.parse(outcome.clickedAt))
+      ||terminal&&outcome.userRead===true);
+    if(clicked)service.acknowledgeRead({operationId:'native-read-'+digest(roundId),itemIds:round.itemIds});
+    if(terminal||clicked)publish();
+    return updated;
   }
   function receipt(outcome) {
-    const roundId = deliveries.get(outcome?.id);
+    const roundId = deliveries.get(outcome?.id)??(typeof outcome?.roundId==='string'
+      &&channelId(outcome.roundId)===outcome.id?outcome.roundId:undefined);
     if (!roundId || disposed) return;
     try {recordOutcome(roundId);} catch { /* Original sending/unknown state requires readback, never resend. */ }
+  }
+  function restoreClickReceipts() {
+    let receipts;
+    try {receipts=channel.listClickReceipts?.();}catch{return;}
+    if(!Array.isArray(receipts))return;
+    for(const receipt of receipts) {
+      if(typeof receipt?.id!=='string'||typeof receipt.roundId!=='string'
+        ||receipt.id!==channelId(receipt.roundId)||!Number.isFinite(Date.parse(receipt.clickedAt)))continue;
+      try {
+        if(!host.getInterruptionRound(receipt.roundId)?.attempts.banner)continue;
+        deliveries.set(receipt.id,receipt.roundId);recordOutcome(receipt.roundId);
+      }catch{ /* A stale or unbound click cannot create a new round or retry a send. */ }
+    }
   }
   async function waitForSettings(taskId, command, isCurrent) {
     let responded = false;
@@ -141,6 +160,7 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
         verifyUserCommand: validCommand,
         resolveUserCommand: (_input, context) => commands.get(context.taskId)?.command});
       if(savedLegacyPolicy!==undefined)host.importLegacyPolicy(legacyScope,savedLegacyPolicy);
+      restoreClickReceipts();
       return host;
     },
     get runtimeHost() {return current();},
@@ -183,7 +203,7 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       if (!begun.maySend) return begun.round;
       const id = channelId(roundId); deliveries.set(id, roundId);
       try {
-        await channel.sendAdvisoryNotification({id, title, body, source});
+        await channel.sendAdvisoryNotification({id, title, body, source, roundId});
         const outcome = channel.readDeliveryOutcome(id);
         if (outcome && ['delivered', 'failed'].includes(outcome.deliveryState)) return recordOutcome(roundId);
       } catch { /* The OS may already have accepted it. Persist unknown and read the original port. */ }

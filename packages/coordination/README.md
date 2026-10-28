@@ -28,6 +28,23 @@ transport of the CloudAgentPort boundary.
 
 ## 2026-10-09 WSS client increment (provisional)
 
+2026-10-23 transport diagnostics: the existing `onDiagnostic` failure receipt also
+retains the socket phase (`wss_connect`, `wss_ready`, `wss_invoke`), bounded close
+code, fixed close-code classification and allowlisted socket error code when
+available. `closeReason` is a classification, never the peer's arbitrary reason
+text. Request identity and result-unknown semantics remain unchanged; a sent
+invocation is never automatically replayed. The original caller deadline and
+cancellation already bound pending requests, including non-cooperative HTTP
+adapters. No additional five-minute request cap is imposed. The owned server
+already sends native ping and the production `ws` client automatically replies
+with pong. Real loopback WS/HTTP tests verify these paths; they do not establish
+Huawei gateway/proxy timeout behavior or cloud availability.
+`formatAgentArtsFailureDetail(error)` projects only local typed failures into a
+fixed, bounded `cloud:` detail: HTTP status, validated terminal code, or safe
+socket facts. Runtime appends this to its existing sanitized task error, including
+the original reconciliation transition, so the user can see the failure cause
+without enabling debug logs. Arbitrary adapter error messages remain withheld.
+
 ### Read-only unknown-result lookup (MOD-04B, provisional)
 
 `AgentArtsCloudAgentPort.queryStatus(receipt, {deadline, signal})` is an explicit

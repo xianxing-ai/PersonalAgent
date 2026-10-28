@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "profile": "huawei_ict_agentarts",
+  "verification": "verified",
+  "scope": "Current formal Desktop instance and configured workspace; complete HTML file generation and browser interaction",
+  "formalUserDirectoryExplicitlySelected": true,
+  "taskRecordsReadFromFormalRuntimeDatabase": true,
+  "deploymentVersion": "arm64-output32k-1023",
+  "maxOutputTokens": 32768,
+  "thinkingDepth": 5,
+  "fast": false,
+  "tasks": [
+    {"taskId": "86a948cc-7899-4595-8729-839ae9306a3d", "role": "parent", "state": "succeeded", "modelId": "deepseek-v4.1-flash", "reasoningEffort": "max"},
+    {"taskId": "83428747-445c-4cc1-8dde-6ab3c83f2347", "role": "child", "state": "succeeded", "modelId": "deepseek-v4.1-flash", "reasoningEffort": "max"}
+  ],
+  "tools": [
+    {"taskId": "86a948cc-7899-4595-8729-839ae9306a3d", "toolName": "subagent.dispatch", "state": "confirmed", "policyDecision": "allow", "executionStarted": true},
+    {"taskId": "83428747-445c-4cc1-8dde-6ab3c83f2347", "toolName": "workspace.create_text", "state": "confirmed", "policyDecision": "allow", "executionStarted": true}
+  ],
+  "artifact": {
+    "fileName": "formal-code-smoke-1792730520349.html",
+    "byteLength": 826,
+    "sha256": "7f718c1d7b5d2e099a9e01aa9d6ff0e7794cbb8a7cf8078566276921e5fda012",
+    "completeHtml": true,
+    "createdByApplicationTool": true,
+    "manuallyWrittenByAcceptanceDriver": false
+  },
+  "approvals": {"manualApprovalClicks": 0, "finalPendingCards": 0},
+  "render": {
+    "observedAt": "2026-10-23T04:44:02.622Z",
+    "browser": "Microsoft Edge",
+    "title": "正式工作区代码验收",
+    "initialCount": "0",
+    "afterTwoClicks": "2",
+    "pageErrors": [],
+    "externalRequests": 0,
+    "passed": true
+  },
+  "limitations": "Verifies this complete small file and the current formal write path; not arbitrary large files or all product capabilities."
+}

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "kind": "authenticated_agentarts_console_ui_readback",
+  "observedOn": "2026-10-24",
+  "profile": "huawei_ict_agentarts",
+  "evidenceLevel": "ui_observation",
+  "source": "https://console.huaweicloud.com/agentarts/?region=cn-southwest-2",
+  "runtime": {
+    "name": "pa-owned-bindings-0dae0ff5-api",
+    "id": "9a65747e-05f0-475c-a2dc-f24dd3ed87ae",
+    "statusText": "正常",
+    "latestAccessEndpoint": "Latest",
+    "latestVersion": "arm64-output32k-1023",
+    "versionListed": true,
+    "updatedAtText": "2026/10/23 12:20:16 GMT+08:00",
+    "imageReference": "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned:context-128k-20261022",
+    "imageDigest": "not_read",
+    "startupCommandOverridePresent": true,
+    "startupCommandContentsExported": false,
+    "containerSourceRevision": "unknown",
+    "loggingText": "已开启",
+    "idleSessionTimeoutMinutes": 15,
+    "maximumLifetimeHours": 24,
+    "instanceCpuMilli": 2000,
+    "instanceMemoryMiB": 8192
+  },
+  "comparison": {
+    "publicFixtureConfiguredVersion": "arm64-output32k-1023",
+    "versionLabelMatchesUi": true,
+    "pr511GhcrImageFormalPlatformDeployment": "not_proven",
+    "deploymentVersionTraceApiReadback": "not_run"
+  },
+  "platformConfigurationChanged": false,
+  "newDeploymentCreated": false,
+  "credentialMaterialIncluded": false,
+  "limitations": [
+    "UI labels do not prove immutable image digest, startup override semantics or the exact source executing in the container.",
+    "This is distinct from the PR511 GHCR image run locally with real models.",
+    "No API Key, token, environment table, original log body or private account identifier is included.",
+    "No trace correlation for the 45-step public task was established by a platform API."
+  ]
+}

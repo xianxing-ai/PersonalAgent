@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "kind": "read_only_original_wss_status_query",
+  "startedAt": "2026-10-24T13:45:49.054Z",
+  "invokesSent": 0,
+  "toolExecutions": 0,
+  "originalRuntimeModified": false,
+  "status": "received",
+  "taskId": "1457e7fb-92fb-48f0-9ed3-9c2e7da0bd37",
+  "frameKeys": [
+    "protocolVersion",
+    "sessionId",
+    "requestId",
+    "idempotencyKey",
+    "payloadDigest",
+    "type",
+    "serverInstanceId",
+    "state"
+  ],
+  "state": "unknown",
+  "identityMatches": true,
+  "instanceMatches": true,
+  "originalRequestId": "77595a57-6be4-4b63-92fc-4652561b26bd",
+  "originalPayloadDigest": "9d65e68e5112e164419a57e60961d9d705b184a641fb7f1a8c08b81c73faa7e4",
+  "eventCount": 0,
+  "finishedAt": "2026-10-24T13:45:50.085Z",
+  "originalReceiptSha256": "6ead4f97b7b98762d67ad593576a1f676779556ad49864d06866f6a4a81231e0"
+}

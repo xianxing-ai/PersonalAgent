@@ -15,7 +15,8 @@ const descriptor={name:'fixture.voice-pending',version:'1.0.0',sideEffect:'read'
   outputSchema:{type:'object'}};
 test('Live computer health excludes native prompts, paths and other conversation task identifiers',()=>{
   const value=projectComputerConversationStatus({state:'ready',available:true,providerAvailable:true,
-    observationExportAllowed:false,taskId:'foreign-task',presenceTasks:[{taskId:'another-ui'}],
+    observationExportAllowed:false,taskId:'foreign-task',recoveryTaskId:'foreign-recovery-task',recoveryRunId:'foreign-original-run',
+    presenceTasks:[{taskId:'another-ui'}],
     reason:'private window title',provider:{pythonExecutable:'private-path'},unknownCredential:'private-token'});
   assert.deepEqual(value,{state:'ready',available:true,providerAvailable:true,observationExportAllowed:false,
     verification:'not_device_verified'});

@@ -1,8 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import ts from 'typescript';
+import {adminAuxiliaryDocument,recordFollowingNodes} from '../test-support/admin-history-dom.mjs';
+import {errorDisplayText} from '../src/shared/error-display.js';
 
 const element = () => ({dataset: {}, listeners: new Map(), textContent: '', value: '', disabled: false,
-  addEventListener(name, listener) {this.listeners.set(name, listener);}, setAttribute() {}, insertBefore() {}});
+  addEventListener(name, listener) {this.listeners.set(name, listener);}, setAttribute() {}, insertBefore() {},after:recordFollowingNodes,append:recordFollowingNodes});
 async function harness(t, invoke) {
   const keys = ['window', 'document', 'matchMedia'];
   const originals = new Map(keys.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -11,7 +15,7 @@ async function harness(t, invoke) {
     if (original) Object.defineProperty(globalThis, key, original); else delete globalThis[key];
   }});
   globalThis.window = {addEventListener() {}};
-  globalThis.document = {createElement: element};
+  globalThis.document = adminAuxiliaryDocument();
   globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
   const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search', '.main',
     '#page-title', '#connection', '#content', '#error'].map(key => [key, element()]));
@@ -31,6 +35,7 @@ async function harness(t, invoke) {
   const render = mountAdmin(root, invoke, value => String(value ?? ''));
   const base = {tasks: [], approvals: [], capabilities: [], health: [], connection: 'fixture',
     adminNavigation: {page: 'memory', revision: 1},
+    knowledgeSource: {available: true},
     privateMemory: {available: true, vaultSelected: true, writeEnabled: true}};
   return {render, base, root, html: () => html, replacements: () => replacements};
 }
@@ -56,6 +61,38 @@ test('unrelated host updates preserve memory query, summary nodes and their inpu
   ui.render({...ui.base, privateMemory: {...ui.base.privateMemory, writeEnabled: false}});
   assert.ok(ui.replacements() > before);
   assert.match(ui.html(), /data-memory-save="0" disabled/);
+});
+
+test('Vault selection waits for its actual source host while saved memories remain readable',async t=>{
+  const ui=await harness(t,async()=>({facts:[],hasMore:false}));
+  const before={...ui.base,knowledgeSource:undefined,privateMemory:{...ui.base.privateMemory,vaultSelected:false}};
+  ui.render(before);
+  assert.match(ui.html(),/id="memory-select-vault" disabled/);
+  assert.match(ui.html(),/受信知识源尚未就绪，请先检查模型与知识源配置/);
+  assert.doesNotMatch(ui.html(),/id="memory-list-saved" disabled/);
+  const replacements=ui.replacements();
+  ui.render({...before,knowledgeSource:{available:false}});
+  assert.ok(ui.replacements()>replacements,'The source host can become ready without changing the selected-Vault state');
+  assert.doesNotMatch(ui.html(),/id="memory-select-vault" disabled/);
+  assert.doesNotMatch(ui.html(),/受信知识源尚未就绪，请先检查模型与知识源配置/);
+});
+
+test('actual Main refuses a missing source host with an actionable fixed configuration reason',async()=>{
+  const source=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8');
+  const ast=ts.createSourceFile('main.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);let branch;
+  function visit(node){if(ts.isIfStatement(node)&&node.expression.getText(ast).includes("name.startsWith('memory.')"))branch=node.getText(ast);
+    ts.forEachChild(node,visit);}
+  visit(ast);assert.ok(branch);
+  const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+  const invoke=new AsyncFunction('context','name','payload','sender','with(context){'+branch+'}');
+  const admin={},context={admin,competitionMode:true,runtimeApplication:{},knowledgeSourceConfig:undefined,
+    knowledgeSourceNotReadyMessage:'受信知识源尚未就绪，请先检查模型与知识源配置'};
+  await assert.rejects(()=>invoke(context,'memory.selectVault',undefined,admin),error=>{
+    const message=errorDisplayText(error,'ipc');
+    assert.match(message,/^受信知识源尚未就绪，请先检查模型与知识源配置 \[stage=ipc; code=CONFIGURATION\]$/);return true;
+  });
+  const tainted=errorDisplayText(Error('受信知识源尚未就绪，请先检查模型与知识源配置 /private/Vault/SYNTHETIC_PRIVATE_DETAIL'),'ipc');
+  assert.match(tainted,/code=CONFIGURATION/);assert.doesNotMatch(tainted,/SYNTHETIC_PRIVATE_DETAIL|\/private/);
 });
 
 test('pending Vault selection stays disabled across host ticks and cancellation restores the control', async t => {

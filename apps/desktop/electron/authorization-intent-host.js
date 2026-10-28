@@ -6,6 +6,7 @@ export const AUTHORIZATION_INTENT_ACTIONS=Object.freeze([
   'memory.save','memory.erase','memory.withdraw','memory.consume','experience.activate',
   'skill.install','skill.enable','skill.uninstall','skill.run','reference.catalog','reference.source',
   'knowledge.session','knowledge.configure','knowledge.read','knowledge.catalog','workflow.enable','workflow.delete','facts.erase','feeds.classify',
+  'mail.review.configure','computer.observation.configure',
   'remoteMcp.configure','knowledge.pair','voice.capture','developer.export','harness.export',
 ]);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -49,7 +50,7 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
         ...(entry.decisionDeadline?{decisionDeadline:entry.decisionDeadline}:{}),assertCurrent:()=>entry.current()});
       if(entry.parent)question.deriveHostIntent(entry.parent,scope,{operationDigest:entry.operation.digest,assertCurrent:()=>entry.current()});
     },
-    async request({action,payload,scope,summary,deadline=new Date(now()+180000).toISOString(),signal=new AbortController().signal,isCurrent,operation}){
+    async request({action,payload,scope,summary,deadline=new Date(now()+180000).toISOString(),signal=new AbortController().signal,isCurrent,operation,onError}){
       if(closed||!AUTHORIZATION_INTENT_ACTIONS.includes(action)||typeof isCurrent!=='function'||!isCurrent()
         ||signal.aborted||!Number.isFinite(Date.parse(deadline))||now()>=Date.parse(deadline)||typeof summary!=='string'||summary.length>512)return false;
       const application=getApplication();if(!application?.submitHostToolTask)return false;
@@ -73,10 +74,11 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
         try{await application.waitForHostToolTask(entry.taskId);}finally{signal.removeEventListener('abort',abort);}
         const result=application.readHostToolTask(entry.taskId);
         const allowed=current()&&entry.executed&&result.task.state==='succeeded'&&result.confirmed?.result?.decisionRecorded===true;
+        if(!allowed&&result.task.error)onError?.(result.task.error);
         if(allowed&&operationKey)application.runtime.saveCheckpoint(operation.taskId,operationKey,
           {taskId:entry.taskId,runId:'host-tool-'+entry.taskId,deadline,signal:undefined});
         return allowed;
-      }catch{return false;}finally{pending.delete(commandId);}
+      }catch(error){onError?.(error);return false;}finally{pending.delete(commandId);}
     },
     close(){closed=true;pending.clear();},
   };

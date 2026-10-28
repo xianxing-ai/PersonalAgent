@@ -1,0 +1,63 @@
+{
+  "profile": "huawei_ict_agentarts",
+  "implementationCommit": "756203c90ee954ee7c47f4741da361f7296feadf",
+  "verification": "real_desktop_mail_in_progress",
+  "privateHeadersExported": false,
+  "bodiesRead": false,
+  "mailboxModified": false,
+  "publicTestReception": {
+    "verifiedBy": "read-only IMAP SEARCH and matching envelope readback",
+    "searchedFolders": 7,
+    "receivedInInbox": 3,
+    "unread": 3,
+    "productClassificationVerified": false,
+    "nativeReminderVerified": false
+  },
+  "snapshotLatency": {
+    "records": 3000,
+    "layaRunning": false,
+    "samplesPerPhase": 20,
+    "before": {"at": "2026-10-23T05:10:20.579Z", "meanMs": 84.545, "p95Ms": 96.8},
+    "after": {"at": "2026-10-23T05:31:45.397Z", "meanMs": 14.045, "p95Ms": 15.2},
+    "appRestartedBetweenPhases": true
+  },
+  "memory": {
+    "reductionVerified": false,
+    "weightsChanged": false,
+    "beforeMainPrivateBytes": 269901824,
+    "afterStartupMainPrivateBytes": 324206592,
+    "activeSampleMainPrivateMiBRange": [305.4, 412.8],
+    "activePythonPrivateMiB": 2435.1,
+    "afterAdditional1300Messages": {"mainPrivateMiB": 300.7, "pythonPrivateMiB": 2436.1},
+    "note": "Short samples and a restart do not establish lower sustained or peak memory. CPU model memory remains significant."
+  },
+  "deduplication": {
+    "realItemObservationsBeforeFix": 3100,
+    "uniqueDeliveryIdentities": 3000,
+    "repeatedPageItemObservations": 100,
+    "changedContentIdentities": 0,
+    "realDuplicateInferenceProven": false,
+    "offlineExactReplayNewInferenceCalls": 0
+  },
+  "checks": {
+    "fullCheckBeforeFinalFocusedChanges": {"exitCode": 0, "passed": 5502, "failed": 0, "skipped": 27},
+    "mailProviderAfterChange": {"passed": 53, "failed": 0, "realServiceNotRun": 2},
+    "connectorChangeFocused": {"passed": 75, "failed": 0},
+    "layaAdmissionFocused": {"passed": 7, "failed": 0},
+    "finalArchitecture": {"passed": 3, "failed": 0},
+    "runtimeTriageAuthorizationFocusedAfterIndependentReview": {"passed": 27, "failed": 0}
+  },
+  "tokenWindow": {
+    "verification": "installed tokenizer and actual SDK serialization; synthetic data, no model forward",
+    "modelMaximum": 8192,
+    "groupsChecked": 55,
+    "allActualBelowBoundAndWindow": true,
+    "longChinese100": {"groups": 20, "maximumActual": 1598, "maximumBound": 7589},
+    "escapedUnicode100": {"groups": 34, "maximumActual": 3254, "maximumBound": 7491}
+  },
+  "limits": [
+    "A hard crash can recompute up to 16 completed but not yet persisted classifications; an unfinished page never advances its cursor.",
+    "After HTTP cancellation, an uninterruptible CPU forward can briefly keep the Python admission gate busy; no blind retry was added.",
+    "Three received public tests still require product classification and actual native-notification readback."
+  ]
+}

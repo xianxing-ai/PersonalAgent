@@ -14,22 +14,26 @@ test('competition conversation gives Runtime a cloud execution deadline without 
     return runtime.send(request, signal);
   }}, () => runtime.clock.now());
   await client.connect();
-  const {taskId} = await submitConversationTask(client,
-    {goal: '输出九九乘法表', conversationId: 'desktop-panel'}, {competition: true});
-  const submitted = requests.at(-1);
-  assert.equal(Date.parse(submitted.deadline) - runtime.clock.now(), 180_000);
-  assert.ok(submitted.idempotencyKey);
-  await client.call('task.get', {taskId});
-  assert.equal(Date.parse(requests.at(-1).deadline) - runtime.clock.now(), 10_000);
+  for (const contextCompaction of [false, true]) {
+    const {taskId} = await submitConversationTask(client,
+      {goal: '输出九九乘法表', conversationId: 'desktop-panel'}, {competition: true, contextCompaction});
+    const submitted = requests.at(-1);
+    assert.equal(Date.parse(submitted.deadline) - runtime.clock.now(), 30 * 60_000);
+    assert.ok(submitted.idempotencyKey);
+    await client.call('task.get', {taskId});
+    assert.equal(Date.parse(requests.at(-1).deadline) - runtime.clock.now(), 10_000);
+  }
 });
-test('configured context compaction reserves bounded task time without extending ordinary tasks', async () => {
+test('configured context compaction keeps the longer Competition budget and other profiles defaults', async () => {
   const calls=[];
   const client={call:async(...args)=>{calls.push(args);return {taskId:'synthetic'};}};
   await submitConversationTask(client,{goal:'ordinary continuation',conversationId:'synthetic'},
     {competition:true,contextCompaction:true});
-  assert.equal(calls.at(-1)[2].timeoutMs,600_000);
-  await submitConversationTask(client,{goal:'/压缩',conversationId:'synthetic'},{contextCompaction:true});
-  assert.equal(calls.at(-1)[2].timeoutMs,undefined);
+  assert.equal(calls.at(-1)[2].timeoutMs,30 * 60_000);
+  for (const contextCompaction of [false, true]) {
+    await submitConversationTask(client,{goal:'/压缩',conversationId:'synthetic'},{contextCompaction});
+    assert.equal(calls.at(-1)[2].timeoutMs,undefined);
+  }
 });
 test('panel stays within negative-origin and small display work areas',()=>{
   for(const area of [{x:-1920,y:0,width:1920,height:1080},{x:0,y:-800,width:1280,height:800},{x:0,y:0,width:320,height:480}]) {

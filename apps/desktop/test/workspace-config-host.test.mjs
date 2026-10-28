@@ -6,7 +6,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import {PROTOCOL_VERSION,validateToolValue} from '@personal-agent/contracts';
+import {PROTOCOL_VERSION,ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
 import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
@@ -46,7 +46,7 @@ function workspaceRuntime() {
 }
 
 test('Synthetic question workspace is discoverable with old consent false but executes and exports only its exact receipt',async t=>{
-  const {root,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'Synthetic-private-name.js'),'Synthetic source');
+  const {root,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'Synthetic-public-name.js'),'Synthetic source body remains local');
   const question=workspaceQuestions(),host=open({question,findExecutable:()=>undefined});host.bindApplication(workspaceRuntime());
   assert.ok(host.tools.length,JSON.stringify(host.snapshot()));
   const tool=host.tools.find(item=>item.descriptor.name==='workspace.list_entries'),input={path:'.'},scope=workspaceOperation(tool,input);
@@ -57,13 +57,44 @@ test('Synthetic question workspace is discoverable with old consent false but ex
   host.prepareExport({...scope,phase:'preflight'});assert.equal(policy.accepts({...scope,arguments:input}),true);
   await assert.rejects(tool.execute(input,scope));question.allow(scope);
   const result=await tool.execute(input,scope);assert.ok(result.entries.length>0);
-  const projection=policy.project({...scope,result});assert.deepEqual(projection,{listed:true,truncated:false});
-  assert.equal(JSON.stringify(projection).includes('Synthetic-private-name'),false);
+  const projection=policy.project({...scope,result});assert.deepEqual(projection,{listed:true,path:'.',entries:result.entries,truncated:false});
+  assert.equal(policy.exportPolicyVersion,'workspace-relative-directory-v1');
+  const exportRequirement=question.entries.get(JSON.stringify([scope.taskId,scope.runId])).requirements.find(item=>item.requirementId==='workspace-export');
+  assert.match(exportRequirement.summary,/相对目录路径、直接子条目名称/);
+  assert.ok(projection.entries.some(entry=>entry.name==='Synthetic-public-name.js'&&entry.kind==='file'));
+  assert.doesNotMatch(JSON.stringify(projection),/Synthetic source body remains local/);
+  assert.equal(JSON.stringify(projection).includes(root),false);
   assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),true);
-  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection:{...projection,entries:result.entries}}),false);
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection:{...projection,entries:[]}}),false);
+  for(const name of ['../outside','/outside','C:/private','nested/child','nested\\child','.'])
+    assert.throws(()=>policy.project({...scope,result:{...result,entries:[{name,kind:'file'}]}}),{code:'UNAUTHORIZED'});
+  for(const directory of ['../outside','C:/private','/outside'])
+    assert.throws(()=>policy.project({...scope,result:{...result,path:directory}}),{code:'UNAUTHORIZED'});
   await assert.rejects(tool.execute({path:'different'},scope));await assert.rejects(tool.execute(input,{...scope,runId:'other'}));
   await assert.rejects(host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true}),/提问卡/);
   host.revoke();await assert.rejects(tool.execute(input,scope));assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),false);
+});
+
+test('relative directory contents require their own exact export decision after a local list grant',async t=>{
+  const {root,open}=await workspaceBindingFixture(t);await writeFile(path.join(root,'public-directory-entry.txt'),'LOCAL_BODY_ONLY');
+  const question=workspaceQuestions(),originalCurrent=question.currentRequirement;
+  let exportAllowed=false;
+  question.currentRequirement=(scope,id)=>{
+    originalCurrent(scope,id);
+    if(id==='workspace-export'&&!exportAllowed)throw new ProtocolError('UNAUTHORIZED','Synthetic directory export denied');
+  };
+  const host=open({question,findExecutable:()=>undefined});host.bindApplication(workspaceRuntime());
+  const tool=host.tools.find(item=>item.descriptor.name==='workspace.list_entries'),input={path:'.',limit:1},scope=workspaceOperation(tool,input);
+  const policy=host.competitionToolExports.find(item=>item.toolName===tool.descriptor.name);
+  host.prepareExport({...scope,phase:'preflight'});question.allow(scope);
+  const result=await tool.execute(input,scope);
+  assert.throws(()=>policy.project({...scope,result}),{code:'UNAUTHORIZED'});
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection:{listed:true,...result}}),false);
+  exportAllowed=true;
+  const projection=policy.project({...scope,result});
+  assert.equal(projection.entries.length,1);assert.equal(projection.path,'.');
+  assert.equal(policy.accepts({...scope,arguments:input,phase:'final',projection}),true);
+  assert.doesNotMatch(JSON.stringify(projection),/LOCAL_BODY_ONLY/);
 });
 
 test('Synthetic workspace permanent resource survives normal close and changes on explicit revoke, never persisting a grant',async t=>{
@@ -560,6 +591,58 @@ test('harness workspace consumer preserves consent and actual scope with a stabl
   await assert.rejects(host.harnessRepairHost.snapshot('unused',context),{code:'UNAUTHORIZED'});
 });
 
+test('a workspace without package.json never advertises a required npm-test recipe and keeps F15 honestly unavailable',async t=>{
+  for (const withCheckFile of [true,false]) await t.test(withCheckFile
+    ?'a selected check file exposes only the node-check recipe'
+    :'no exposed recipe leaves F15 unavailable instead of ready',async t=>{
+    const {root,node,configuration,open}=await workspaceBindingFixture(t);
+    // Metadata fixtures only: the npm CLI and the job helper are never launched.
+    const npm=path.join(path.dirname(root),'npm-cli.js'),helper=path.join(path.dirname(root),'WindowsJobProcessHost.exe');
+    await Promise.all([writeFile(npm,'// synthetic npm metadata only'),writeFile(helper,'synthetic helper metadata only')]);
+    const record=JSON.parse(await readFile(configuration,'utf8'));
+    record.encryptedNpmCli=Buffer.from(npm).toString('base64');
+    if (withCheckFile) {
+      await writeFile(path.join(root,'check.js'),'const synthetic = true;\n');
+      record.encryptedCheckFile=Buffer.from('check.js').toString('base64');
+    }
+    await writeFile(configuration,JSON.stringify(record));
+    const question=workspaceQuestions();
+    const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined,jobHelperExecutable:helper,
+      createCommandRecipeTool:createWorkspaceCommandRecipeTool,createWorkspaceCommandTool:options=>createWorkspaceCommandTool(options),
+      readHarnessVersions:()=>({workflowVersion:'F15-fixture-v1',runtimeVersion:'runtime-fixture-v1',executionKind:'real_host'})});
+    const checkpoints=new Map();
+    host.bindApplication({readToolConversation:()=> 'fixture-conversation',runtime:{
+      loadCheckpoint:(task,key)=>checkpoints.get(task+':'+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+':'+key,value)}});
+    const context={taskId:'owner-task',runId:'fixture-run',authorizationRef:'fixture-run',
+      scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],
+      deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+    const tool=host.tools.find(item=>item.descriptor.name==='workspace.read_text');
+    const proposalId='synthetic-proposal';
+    host.prepareExport({taskId:context.taskId,runId:context.runId,proposalId,deadline:context.deadline,signal:context.signal,
+      authorizationRef:context.authorizationRef,scopes:context.scopes,phase:'preflight',
+      proposal:{proposalId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{path:'check.js'}}});
+    question.allow({taskId:context.taskId,runId:context.runId});
+    const binding=host.readDeveloperConfiguration();
+    assert.ok(binding,'the developer configuration must stay bound to the selected workspace');
+    const scope={ownerTaskId:context.taskId,actualTaskId:context.taskId,parentTaskId:'parent-task',scopeRef:context.runId,
+      configurationRef:'a'.repeat(64),inputDigest:'b'.repeat(64),deadline:context.deadline,workspaceRef:binding.bindingId};
+    const result=await host.readHarnessCandidateContext(context,scope);
+    if (withCheckFile) {
+      assert.ok(result,'the selected node check keeps F15 available');
+      assert.deepEqual(result.recipes.map(recipe=>recipe.recipeId),['node-check']);
+      assert.equal(result.recipes.every(recipe=>recipe.required===true),true);
+    } else {
+      assert.equal(result,undefined,'a workspace without any exposed recipe must not report a runnable F15');
+    }
+    assert.equal(Boolean(result?.recipes?.some(recipe=>recipe.recipeId==='npm-test'||recipe.recipeId==='npm-build')),false,
+      'a workspace without package.json must never advertise a required npm recipe');
+    assert.equal(host.tools.some(item=>['workspace.npm_test','workspace.npm_build'].includes(item.descriptor.name)),false);
+    const current=host.readHarnessExperienceCurrentSync();
+    if (withCheckFile)assert.ok(current,'the current F15 experience stays readable for the selected node check');
+    else assert.equal(current,undefined,'the current F15 experience must be honestly unavailable');
+  });
+});
+
 test('local read consent permits MCP binding without granting AgentArts availability or export',async t=>{
   const {root,open}=await workspaceBindingFixture(t);
   const host=open();
@@ -808,6 +891,10 @@ test('native workspace selections expose standalone Node tests and retain normal
       const checkpoints=new Map();host.bindApplication({runtime:{loadCheckpoint:(id,key)=>checkpoints.get(`${id}:${key}`),
         saveCheckpoint:(id,key,value)=>checkpoints.set(`${id}:${key}`,value)}});
       assert.equal(host.snapshot().projectScriptsAvailable,true);
+      const createTool=host.tools.find(tool=>tool.descriptor.name==='workspace.create_text');
+      assert.ok(createTool,'create-only workspace tool is registered with the locked helper');
+      assert.deepEqual(createTool.descriptor.requiredScopes,['workspace:read','workspace:write','workspace:create']);
+      assert.equal(createTool.descriptor.sideEffect,'local_write');
       const snapshot=await host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:true,projectCodeAllowed:true});
       assert.equal(snapshot.nodeCheckAvailable,true);
       assert.deepEqual(snapshot.projectCommands,standalone?['test']:['build','test']);

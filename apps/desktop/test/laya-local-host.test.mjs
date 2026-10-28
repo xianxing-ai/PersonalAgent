@@ -70,8 +70,31 @@ test('loaded identity is content-stable across restart and changes with weights,
   // Metadata-only changes revoke readiness conservatively, but a new explicit load keeps content identity stable.
   const unchanged=host.readClassifierIdentity();
   await utimes(config.script,new Date(1000),new Date(1000));
+  assert.equal(host.readClassifierIdentity(),undefined);
   assert.equal(host.snapshot().ready,false);await host.stop();await host.start();
   assert.equal(host.readClassifierIdentity(),unchanged);
+});
+
+test('frequent display snapshots retain known state while trusted reads revoke missing artifacts',async t=>{
+  const config=await artifacts(t);let calls=0;
+  const host=createLocalLayaHost({projectRoot:'project',discover:()=>config,freeMemory:()=>8*1024**3,
+    launch:fakeChild,request:async()=>healthy(),createService:()=>({classify:async()=>{calls++;return [];}})});
+  t.after(()=>host.stop());await host.start();
+  await rm(config.model,{recursive:true});
+  for(let index=0;index<1000;index++)assert.equal(host.snapshot().ready,true);
+  await assert.rejects(host.classify({signal:new AbortController().signal}),/尚未就绪/);
+  assert.equal(calls,0);assert.equal(host.snapshot().state,'identity_changed');
+  assert.equal(host.readClassifierIdentity(),undefined);
+});
+
+test('artifact mutation during inference prevents result publication',async t=>{
+  const config=await artifacts(t);
+  const host=createLocalLayaHost({projectRoot:'project',discover:()=>config,freeMemory:()=>8*1024**3,
+    launch:fakeChild,request:async()=>healthy(),createService:()=>({classify:async()=>{
+      await writeFile(config.script,'# mutated during inference');return ['stale'];}})});
+  t.after(()=>host.stop());await host.start();
+  await assert.rejects(host.classify({signal:new AbortController().signal}),{code:'CANCELLED'});
+  assert.equal(host.snapshot().state,'identity_changed');
 });
 
 test('cancellation and unknown or changed startup artifacts cannot publish an identity',async t=>{
@@ -89,4 +112,52 @@ test('cancellation and unknown or changed startup artifacts cannot publish an id
   assert.equal((await missing.start()).state,'error');assert.equal(missing.readClassifierIdentity(),undefined);
   const exited=createLocalLayaHost({...setup,launch:()=>{const child=fakeChild();queueMicrotask(()=>child.emit('exit',1));return child;}});
   assert.equal((await exited.start()).ready,false);assert.equal(exited.readClassifierIdentity(),undefined);
+});
+
+async function inferenceFixture(t){
+  const config=await artifacts(t),calls=[],releases=[];let active=0,peak=0,generation=0;
+  const invoke=kind=>async input=>{active++;peak=Math.max(peak,active);calls.push({kind,generation,signal:input.signal});
+    try{return await new Promise(resolve=>releases.push(()=>resolve(kind)));}finally{active--;}};
+  const host=createLocalLayaHost({projectRoot:'project',discover:()=>config,freeMemory:()=>8*1024**3,
+    launch:()=>{generation++;return fakeChild();},request:async()=>healthy(),
+    createService:()=>({classify:invoke('classify')}),createChooser:()=>({choose:invoke('choose')})});
+  t.after(async()=>{releases.splice(0).forEach(release=>release());await host.stop();});await host.start();
+  return{host,calls,releases,get peak(){return peak;}};
+}
+const inferenceInput=()=>({signal:new AbortController().signal,deadline:new Date(Date.now()+60_000).toISOString()});
+const turn=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('classify and choose share one generation-scoped inference admission',async t=>{
+  const f=await inferenceFixture(t),first=f.host.classify(inferenceInput());await turn();
+  const second=f.host.choose(inferenceInput()),third=f.host.classify(inferenceInput());await turn();
+  assert.deepEqual(f.calls.map(c=>c.kind),['classify']);
+  f.releases.shift()();assert.equal(await first,'classify');await turn();assert.equal(f.calls[1].kind,'choose');
+  f.releases.shift()();assert.equal(await second,'choose');await turn();
+  f.releases.shift()();assert.equal(await third,'classify');assert.equal(f.peak,1);
+});
+test('waiting caller cancellation returns without releasing the active inference slot',async t=>{
+  const f=await inferenceFixture(t),first=f.host.classify(inferenceInput());await turn();
+  const controller=new AbortController(),second=f.host.choose({...inferenceInput(),signal:controller.signal});
+  const rejected=assert.rejects(second,{name:'AbortError'});controller.abort();await rejected;
+  const third=f.host.choose(inferenceInput());await turn();assert.equal(f.calls.length,1);
+  f.releases.shift()();await first;await turn();assert.equal(f.calls.length,2);
+  f.releases.shift()();await third;assert.equal(f.peak,1);
+});
+test('waiting deadlines expire without provider dispatch and invalid deadlines fail before admission',async t=>{
+  const f=await inferenceFixture(t),first=f.host.classify(inferenceInput());await turn();
+  await assert.rejects(f.host.choose({...inferenceInput(),deadline:new Date(Date.now()+25).toISOString()}),{code:'TIMEOUT'});
+  await assert.rejects(f.host.choose({...inferenceInput(),deadline:'invalid'}),{code:'INVALID_ARGUMENT'});
+  await assert.rejects(f.host.choose({...inferenceInput(),deadline:new Date(0).toISOString()}),{code:'TIMEOUT'});
+  assert.equal(f.calls.length,1);f.releases.shift()();await first;
+});
+test('stop cancels old waiters and restart cannot route them into the next model generation',async t=>{
+  const f=await inferenceFixture(t),first=f.host.classify(inferenceInput());await turn();
+  const firstRejected=assert.rejects(first,{name:'AbortError'});
+  const waiting=f.host.choose(inferenceInput()),rejected=assert.rejects(waiting,{name:'AbortError'});
+  await f.host.stop();await rejected;assert.equal(f.calls[0].signal.aborted,true);
+  // Deliberately ignore active cancellation; its queued waiter still belongs to the old generation.
+  await f.host.start();const fresh=f.host.choose(inferenceInput());await turn();
+  assert.deepEqual(f.calls.map(c=>[c.kind,c.generation]),[['classify',1],['choose',2]]);
+  f.releases.shift()();await firstRejected;await turn();assert.equal(f.calls.length,2);
+  f.releases.shift()();await fresh;
 });

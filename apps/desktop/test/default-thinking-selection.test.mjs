@@ -44,10 +44,15 @@ test('default mode persists, creates a rollback copy and resolves changed config
   const f=await hostFixture(file);f.controller.previewLevel(5);await f.controller.commitLevel(5);await f.controller.flush();
   assert.deepEqual(f.conversations.preference('desktop-panel'),{depth:5,fast:false,modelSelection:'default'});
   const restored=new Conversations(file);assert.equal(restored.preference('desktop-panel').modelSelection,'default');assert.equal(restored.session('desktop-panel').draft,'保留历史草稿');
-  const backup=readdirSync(folder).find(name=>name.includes('.before-default-thinking-'));assert.ok(backup);assert.equal(readFileSync(path.join(folder,backup),'utf8'),previous);
+  const backup=readdirSync(folder).find(name=>name.includes('.before-default-thinking-'));assert.ok(backup);
+  assert.equal(JSON.parse(previous).version,5,'the active path is an old-loader rejecting marker');
+  const rollback=JSON.parse(readFileSync(path.join(folder,backup),'utf8'));
+  assert.equal(rollback.version,4);assert.equal(rollback.sessions.find(s=>s.id==='desktop-panel').draft,'保留历史草稿');
+  assert.deepEqual(rollback.preferences,[],'the one-time logical backup predates the default selection');
   f.models.configure({catalogRevision:revision,defaultModelId:'custom-model',defaultSubmodelId:'b'});
   assert.equal(readDesktopExecutionModel(f.models,restored.preference('desktop-panel')).modelId,'custom-model');
   assert.equal(readDesktopExecutionModel(f.models,restored.preference('desktop-panel')).reasoningEffort,undefined);
+  restored.close();f.conversations.close();old.close();
 });
 test('actual main default-preset action rejects stale catalog, invalid input and stale conversation atomically',async()=>{
   const f=await hostFixture(),valid={modelId:'',modelSelection:'default',depth:5,fast:false,catalogRevision:revision,conversationId:'desktop-panel'};

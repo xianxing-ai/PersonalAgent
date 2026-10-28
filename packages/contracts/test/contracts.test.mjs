@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFileSync} from 'node:fs';
-import {parseRequest,parseResponse,parseEvent,encodeFrame,FrameDecoder,MAX_FRAME_BYTES,validateContract} from '../dist/index.js';
+import {parseRequest,parseResponse,parseEvent,encodeFrame,FrameDecoder,MAX_FRAME_BYTES,validateContract,validateToolValue} from '../dist/index.js';
 const fixtures = JSON.parse(readFileSync(new URL('../fixtures/requests.json',import.meta.url),'utf8'));
+test('tool validation names only declared public fields and fixed schema keywords, never extra keys or values',()=>{
+  const schema={type:'object',required:['title'],additionalProperties:false,properties:{title:{type:'string',minLength:3}}};
+  assert.throws(()=>validateToolValue(schema,{}),error=>error.code==='INVALID_ARGUMENT'&&error.message==='Tool value violates schema [keyword=required; field=title]');
+  assert.throws(()=>validateToolValue(schema,{title:7}),error=>error.message==='Tool value violates schema [keyword=type; field=title]');
+  assert.throws(()=>validateToolValue(schema,{title:'ok!',private_mail_body:'synthetic-secret'}),error=>error.message==='Tool value violates schema [keyword=additionalProperties]');
+  assert.throws(()=>validateToolValue({type:'object',required:['/private/token=synthetic-secret'],properties:{}},{}),error=>!error.message.includes('synthetic-secret'));
+  assert.doesNotThrow(()=>validateToolValue(schema,{title:'valid'}));
+});
 test('all 17 operations accept portable fixtures and reject malformed/forged requests', () => {
   assert.equal(fixtures.valid.length,17);
   for (const request of fixtures.valid) assert.deepEqual(parseRequest(request),request);

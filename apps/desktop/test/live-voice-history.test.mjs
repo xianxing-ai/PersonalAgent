@@ -83,9 +83,10 @@ test('recovered user and assistant transcripts persist in the same real Conversa
   const cache=path.resolve('apps/desktop/.cache');
   mkdirSync(cache,{recursive:true});
   const directory=mkdtempSync(path.join(cache,'live-history-'));
+  let conversations,restored;
   try {
     const file=path.join(directory,'conversations.json');
-    const conversations=new Conversations(file);
+    conversations=new Conversations(file);
     conversations.add('text-task','panel','已有文字问题');
     let failed=true;
     const history=createLiveVoiceHistory({save:value=>{
@@ -97,7 +98,7 @@ test('recovered user and assistant transcripts persist in the same real Conversa
     failed=false;
     assert.equal(history.flush(),true);
     history.record(message('a1','修正语音回答','assistant'));
-    const restored=new Conversations(file);
+    restored=new Conversations(file);
     assert.equal(restored.goal('text-task'),'已有文字问题');
     assert.deepEqual(restored.messagesFor('panel').map(value=>[value.id,value.role,value.text]),
       [['u1','user','语音问题'],['a1','assistant','修正语音回答']]);
@@ -105,6 +106,7 @@ test('recovered user and assistant transcripts persist in the same real Conversa
       readContext:()=>({messages:restored.messagesFor('panel')})});
     assert.deepEqual(restarted.context().map(value=>value.text),['语音问题','修正语音回答']);
   } finally {
+    restored?.close();conversations?.close();
     if(path.dirname(directory)!==cache) throw Error('test fixture escaped cache');
     rmSync(directory,{recursive:true,force:true});
   }

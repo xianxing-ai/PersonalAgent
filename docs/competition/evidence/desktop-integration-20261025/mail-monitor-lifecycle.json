@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "status": "passed_scoped_local_verification",
+  "profile": "huawei_ict_agentarts",
+  "sourceState": "uncommitted_frozen_working_tree",
+  "sourceHashes": {
+    "apps/desktop/electron/main.js": "2b28072f4fd237d31cc9360127dcdee53bdbc432ebdce006a441695ee6f874fc",
+    "apps/desktop/electron/mail-monitor-preparation.js": "d142d6450f00366bcfd03a6dd706542a0c98e5d306b82614fbe2d922c993da7d",
+    "apps/desktop/electron/connector-watch-host.js": "1d707f5f6b0b7830f9858d6472f406af39ed5236b35b8c4bd2bbd160d7efc02c",
+    "apps/desktop/src/app/mail-controls.js": "ab52910fc1e75424abe3d194bfe7482502d09562f5818f6592ccc2dfa085a79c",
+    "apps/desktop/src/shared/public-error-messages.js": "e802be7e0814957ed9bd58775ec4ab9da4f95f2007c2d6c6191569a58cddaefa",
+    "apps/desktop/test/mail-monitor-preparation.test.mjs": "95e586cfdd0beee1bc23a35904e9deb2390ff70cf793021a2eb725e22cc3351d",
+    "apps/desktop/test/mail-monitor-startup.test.mjs": "76ccf87d9262866e15f576940364bbeed18e43d580ee68d522dfbfc90de7b2a2",
+    "apps/desktop/test/connector-watch-host.test.mjs": "1a0a48a2b349c4f2602c8cb7b7e6e4dbeb9cd2a3f0746bd5de0413870e19de8e",
+    "apps/desktop/test/quit-task-preflight.test.mjs": "cc1e159735406ae37092e040f9e861a952d35b7bfac3ffc623eef03346e1d448"
+  },
+  "focused": {
+    "command": "node --test --test-concurrency=1 mail-monitor-preparation, mail-monitor-startup, connector-watch-host, authorization-settings-migration, quit-task-preflight",
+    "exitCode": 0,
+    "counts": {
+      "tests": 83,
+      "pass": 83,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "logSha256": "8219052765c0994d0275cc7688742ca1a701fdda6856d57cc5f4ff70bff3e4c7"
+  },
+  "runtime": {
+    "kind": "actual_Runtime_Policy_SQLite_with_synthetic_service_ports",
+    "profile": "huawei_ict_agentarts",
+    "realMailboxReads": 0,
+    "realModelCalls": 0,
+    "unknownStopInjected": true,
+    "unknownStopCalls": 1,
+    "tasks": [
+      {
+        "taskId": "507d5773-44a0-47a6-a3ed-5a3f2fdede32",
+        "state": "succeeded",
+        "records": [
+          {
+            "toolName": "connector.watch.start",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "host-tool-507d5773-44a0-47a6-a3ed-5a3f2fdede32"
+          }
+        ]
+      },
+      {
+        "taskId": "8b1c9c79-77cf-4188-9e96-87ee565fd51a",
+        "state": "succeeded",
+        "records": [
+          {
+            "toolName": "connector.watch.stop",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "host-tool-8b1c9c79-77cf-4188-9e96-87ee565fd51a"
+          }
+        ]
+      },
+      {
+        "taskId": "e7d7d812-52a8-47a9-a9ef-95602a965add",
+        "state": "cancelled",
+        "records": []
+      },
+      {
+        "taskId": "163773e4-878d-4a1a-ae21-8cb1fac33269",
+        "state": "succeeded",
+        "records": [
+          {
+            "toolName": "connector.watch.start",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "host-tool-163773e4-878d-4a1a-ae21-8cb1fac33269"
+          }
+        ]
+      },
+      {
+        "taskId": "9fbe0cb6-40ee-49c8-99e8-a5ad7bb1d281",
+        "state": "cancelled",
+        "records": []
+      },
+      {
+        "taskId": "e0523d75-5017-4e0c-8020-1a6cfc1435d1",
+        "state": "succeeded",
+        "records": [
+          {
+            "toolName": "connector.watch.stop",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "host-tool-e0523d75-5017-4e0c-8020-1a6cfc1435d1"
+          }
+        ]
+      },
+      {
+        "taskId": "6e801bbd-7467-4ee1-8f1e-04926918d2f3",
+        "state": "succeeded",
+        "records": [
+          {
+            "toolName": "connector.watch.start",
+            "state": "confirmed",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "host-tool-6e801bbd-7467-4ee1-8f1e-04926918d2f3"
+          }
+        ]
+      },
+      {
+        "taskId": "561a996f-81da-4849-aec3-ddcde86f8b5d",
+        "state": "waiting_reconciliation",
+        "records": [
+          {
+            "toolName": "connector.watch.stop",
+            "state": "unknown",
+            "policyDecision": "allow",
+            "executionStarted": true,
+            "evidenceId": "host-tool-561a996f-81da-4849-aec3-ddcde86f8b5d"
+          }
+        ]
+      },
+      {
+        "taskId": "2055a71a-d1e1-426f-8e3c-ae7dce8479ac",
+        "state": "created",
+        "records": []
+      }
+    ]
+  },
+  "crossConversation": [
+    {
+      "scenario": "pending_stop_after_conversation_switch",
+      "watchId": "watch-4a443ea3d355f471518013e54f926eae7007f7efd73c332c7242114afd01ef9f",
+      "taskId": "ca35a3ba-7372-488d-b89c-978be57e64e4",
+      "state": "waiting_approval",
+      "stopCalls": 0,
+      "realMailboxReads": 0,
+      "realModelCalls": 0,
+      "originalRecordsUnchanged": true
+    },
+    {
+      "scenario": "unknown_stop_after_local_retirement",
+      "watchId": "watch-86e65ee011a8eaec45e864a7c3a8fe6c3b23d587ccdf89521d01fee006816d79",
+      "taskId": "256d2295-5c5c-4666-a075-15a6bc857abc",
+      "state": "waiting_reconciliation",
+      "stopCalls": 1,
+      "realMailboxReads": 0,
+      "realModelCalls": 0,
+      "originalRecordsUnchanged": true,
+      "replacementWatchId": "watch-aba4d619597cd4a86574d86626bb61e7078051133661009b55010f01a15660aa",
+      "replacementStopTaskId": "de73f452-497d-4cd1-bc5c-1ed054df2518"
+    },
+    {
+      "scenario": "unknown_stop_before_local_retirement",
+      "watchId": "watch-76b036b61863ab91b3438765155d5defd4338682bb877462c3533babb450da25",
+      "taskId": "561a996f-81da-4849-aec3-ddcde86f8b5d",
+      "state": "waiting_reconciliation",
+      "stopCalls": 1,
+      "realMailboxReads": 0,
+      "realModelCalls": 0,
+      "originalRecordsUnchanged": true
+    }
+  ],
+  "rendered": {
+    "kind": "actual_production_renderer_in_installed_Edge_with_synthetic_IPC",
+    "realMainIPC": false,
+    "exitCode": 0,
+    "counts": {
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "sourceHashes": {
+      "apps/desktop/src/app/mail-controls.js": "ab52910fc1e75424abe3d194bfe7482502d09562f5818f6592ccc2dfa085a79c",
+      "apps/desktop/test/notification-settings.test.mjs": "be56f962f54b9ce569028ec3451538bb14aedd7343f68bd54fa0266ae988abe0"
+    },
+    "logSha256": "4f5ceb464cc2b5ef7cfab97035fb297b009a72b3626a03d51265eecf4b5aa1df"
+  },
+  "nativeWindows": {
+    "kind": "actual_Electron_native_windows_with_explicit_Fake_Runtime",
+    "realCloud": false,
+    "exitCode": 0,
+    "logSha256": "6ea4a482bb0f5f35e0bfc43510797d1d86b041844a312cf800a42b5c60acbb41",
+    "testSourceSha256": "26462f0ac8ba65e0a0d66d6228bbb96530b5b92095d9b282d8c81c3a0cafb189"
+  },
+  "verified": [
+    "Stop and revoke remain available while model preparation is pending.",
+    "Stopping, revoking, closing settings or shutting down invalidates stale preparation without stopping the shared local model.",
+    "Repeated Stop preserves the original approval; a later opposite intent cancels only this hosts nonterminal settings task.",
+    "Configuration updates block new starts and batch reads, including after settings is reopened.",
+    "Cross-conversation Stop binds the exact original watch, including unknown outcomes before and after local retirement.",
+    "A later distinct watch can be stopped without replaying or rewriting an older unknown Stop.",
+    "Unknown tool results and ordinary unrelated Runtime tasks remain unchanged."
+  ],
+  "originalFailures": [
+    {
+      "attempt": "autonomous-mail-monitor-lifetime-regressions-before-20261025",
+      "exitCode": 1,
+      "observation": "Repeated Stop invalidated the original approval, and a late shutdown branch read a closed snapshot.",
+      "logSha256": "1198f5d209fbf02fad4f554adc225664c4023b3c60e004ca92cf8d1938b59fb6"
+    },
+    {
+      "attempt": "autonomous-mail-monitor-configuration-race-before-20261025",
+      "exitCode": 1,
+      "observation": "Reopening settings during a pending configuration update could start with the old configuration.",
+      "logSha256": "7ea07c0db9cd305eb96667e7ef76a725fa8a79c21b237a9affc8d8aadb7589f1"
+    },
+    {
+      "attempt": "autonomous-mail-read-configuration-before-20261025",
+      "exitCode": 1,
+      "observation": "Manual batch read could begin during a pending configuration update.",
+      "logSha256": "91ddf0f6f3cf83cfd402b5bdf181c112febabc47f81da3073f0c5bc3fc4794ae"
+    },
+    {
+      "attempt": "autonomous-mail-cross-conversation-before-20261025",
+      "exitCode": 1,
+      "observation": "A Stop clicked after a main-conversation switch created a second pending task for the same watch.",
+      "logSha256": "ef9fd2604e5d6dce666ed88cddc796484f0b1bb8addb8737e3e4d91e48551754"
+    },
+    {
+      "attempt": "autonomous-mail-cross-conversation-unknown-before-20261025",
+      "exitCode": 1,
+      "observation": "After local retirement the disabled projection hid the original unknown Stop when settings belonged to another main conversation.",
+      "logSha256": "b97b45c9e4c2739f28137701a1137694bd23053f8d8364403e21b3744efb6a2f"
+    },
+    {
+      "attempt": "autonomous-native-window-smoke-20261025-a1",
+      "exitCode": 1,
+      "observation": "The smoke observer returned before the host and rendered button had settled.",
+      "logSha256": "df7af14d2303cebf77351ecc18cb4fda234baaa84c0512df7180663f2745dc17"
+    },
+    {
+      "attempt": "autonomous-mail-monitor-rendered-20261025-a1",
+      "exitCode": 1,
+      "observation": "The old fixture server mapped shared modules to the wrong namespace; the actual renderer did not load.",
+      "logSha256": "359b519ede94492022a9a2fb0174d25443edda37b15f6d1e22fd15832362209d"
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "mail-monitor-starting.png",
+      "bytes": 51703,
+      "sha256": "bd678a82787844b8b9a3214e604bc0388897dc9666749c861ce678a5b82d4b77",
+      "reviewed": true,
+      "edited": false
+    },
+    {
+      "path": "mail-monitor-configuring.png",
+      "bytes": 50282,
+      "sha256": "6fc24ae011cced309a83691b4e8f93f2d70fb2efaeb1e7b2465e56251558f736",
+      "reviewed": true,
+      "edited": false
+    },
+    {
+      "path": "mail-monitor-settings.png",
+      "bytes": 49635,
+      "sha256": "6baf33c5cad54417eb03f6a635d7b490018549cb3147feaec75e3556caa45042",
+      "reviewed": true,
+      "edited": false
+    },
+    {
+      "path": "native-window-panel.png",
+      "bytes": 119609,
+      "sha256": "a74f2cb93fc57cfcdc446abbe2b3b4f8988c9443a92a6e60f8bbce64bfd57464",
+      "reviewed": true,
+      "edited": false
+    }
+  ],
+  "limitations": [
+    "The production Main mail branch is extracted by AST with explicit synthetic service ports; this does not prove a full real-account IPC run.",
+    "Actual Runtime, Policy, ToolGateway and SQLite receipts use synthetic ports; source polling is a no-op and reads no mailbox.",
+    "Rendered tests use actual renderer modules with synthetic IPC. Native-window smoke explicitly uses Fake Runtime.",
+    "No new real mailbox, model, cloud review, delivered notification or natural weather event was exercised by this delta.",
+    "Check counts overlap and are not a sum of unique product functions."
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "observedAt": "2026-10-23T11:02:00.266Z",
+  "profile": "huawei_ict_agentarts",
+  "formalDesktop": true,
+  "realCloud": true,
+  "publicTest": "PA-REAL-AUTO-20261023-1856",
+  "manualMailboxReadUsed": false,
+  "manualReviewSelectionUsed": false,
+  "bodiesRead": false,
+  "privateHeadersIncludedInEvidence": false,
+  "subscription": {
+    "parentTaskId": "8d734974-f417-4b8b-822e-9d0fc9cc0117",
+    "toolTaskId": "7818d79b-0509-493d-bb7e-64dd28ad58c5",
+    "parentState": "succeeded",
+    "toolTaskState": "succeeded",
+    "tool": "connector.watch.start",
+    "toolState": "confirmed",
+    "policyDecision": "allow",
+    "watchId": "watch-166ec51a14df679e1da7bce782c682fd33325e69648ec2a6a7ea6b68e72adbcc",
+    "intervalMs": 120000,
+    "mode": "poll-only",
+    "readSequence": 1,
+    "sourceTaskId": "a84c6222-2232-421d-a40f-5e7a9b908da7",
+    "sourceTool": "mail.inbox",
+    "sourceState": "confirmed",
+    "sourceExecutionStarted": true
+  },
+  "localDecision": {
+    "taskId": "18d67b72-4bc1-4a1e-91c1-c03f5b18bf36",
+    "state": "succeeded",
+    "action": "defer",
+    "reason": "uncertain",
+    "decidedAt": "2026-10-23T10:58:55.562Z"
+  },
+  "automaticCloudReview": {
+    "taskId": "1f9e751e-c083-4ad8-84e3-1bd9aa76e027",
+    "state": "succeeded",
+    "hostState": "applied",
+    "selectedBindingsCount": 0,
+    "policyEnabled": true,
+    "watermark": "2026-10-23T10:37:22.465Z",
+    "firstObservedAt": "2026-10-23T10:58:47.000Z",
+    "requestIdentityCount": 1,
+    "requestAttempts": 1,
+    "reviewedAt": "2026-10-23T10:59:22.879Z",
+    "label": "meeting",
+    "impact": "high_impact",
+    "notificationRecommendation": "notify",
+    "reasonCode": "meeting_change"
+  },
+  "notification": {
+    "batchId": "e5311313-2afb-4485-a518-b96abe20e39b",
+    "hostState": "delivered",
+    "serviceBannerState": "delivered",
+    "nativeId": "notification-round-d268a60785f1acc633f323a243e95ff69a245777bbb192b91cb44cdddd65f0e2",
+    "nativeState": "delivered",
+    "nativeDeliveredAt": "2026-10-23T10:59:30.996Z",
+    "serviceObservedAt": "2026-10-23T10:59:30.998Z",
+    "userReadAcknowledged": false
+  },
+  "passed": true,
+  "limits": [
+    "One earlier natural-language request only listed old disabled subscriptions; it did not create one and was not counted as success",
+    "A separate non-test mail review task returned an AgentArts terminal EXTERNAL_FAILURE; its failed record remains and was not automatically retried",
+    "Local Laya uncertainty remains; this acceptance proves the authorized ambiguous-header cloud review path, not improved local-only accuracy",
+    "Polling is not push; this does not prove continuous availability or all other device/platform functions"
+  ]
+}

@@ -35,7 +35,8 @@ async function fixture(t,{connectorFailure,publicFailure,publicAvailable=true}={
   t.after(()=>{settings.close();rmSync(userData,{recursive:true,force:true});});
   const developerDeployment=await settings.createDeployment({});
   assert.equal(existsSync(path.join(userData,'developer-settings.json')),false);
-  const context=vm.createContext({developerDeployment,todoHost:undefined,feedsHost:undefined,goalCloudHost:undefined,connectorConversationTools:{async prepareExport(scope){
+  const context=vm.createContext({developerDeployment,computerVisionHost:undefined,windowsControlHost:undefined,
+    todoHost:undefined,feedsHost:undefined,goalCloudHost:undefined,connectorConversationTools:{async prepareExport(scope){
     calls.push({participant:'connector',scope});if(connectorFailure)throw connectorFailure;
   }},publicReferenceConsent:publicAvailable?{
     async requestPreflight(query,scope){calls.push({participant:'public-preflight',query,scope});if(publicFailure)throw publicFailure;},

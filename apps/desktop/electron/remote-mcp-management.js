@@ -2,6 +2,7 @@ import {fileURLToPath} from 'node:url';
 import {readFileSync,statSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
+import {errorDisplayText} from '../src/shared/error-display.js';
 
 const marker='desktop-remote-mcp-v1';
 const exact=(value,keys)=>value && typeof value==='object' && !Array.isArray(value)
@@ -9,7 +10,8 @@ const exact=(value,keys)=>value && typeof value==='object' && !Array.isArray(val
 function reject(){throw Error('远程 MCP 操作被拒绝；请检查配置、原任务与当前会话');}
 
 /** Dedicated trusted window; the regular admin can only open it. One owner per userData. */
-export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,config,host,application,client,namespace,confirmAuthorization=async()=>false,onUpdate=()=>{}}){
+export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,config,host,application,client,namespace,
+  confirmAuthorization=async()=>false,focusAuthorizationQuestion=()=>false,onUpdate=()=>{}}){
   const channel='desktop:remote-mcp';
   let current,closed=false,busy=false,configurationEpoch=0;
   function readTask(taskId){
@@ -92,6 +94,14 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
         // All allow/deny decisions bind the original conversation question and revision.
         throw new ProtocolError('UNAUTHORIZED','请在原任务的对话提问卡处理本次 MCP 调用');
       }
+      if(name==='focusQuestion'){
+        if(!exact(payload,['taskId']))reject();
+        const task=readTask(payload.taskId);
+        if(task.state!=='waiting_approval'||task.approval?.state!=='pending'
+          ||!await focusAuthorizationQuestion({taskId:task.taskId,approvalId:task.approval.approvalId}))
+          throw new ProtocolError('REVISION_CONFLICT','原对话授权卡已失效，请停止原任务后再重新提出');
+        assertWindow(origin);return readTask(task.taskId);
+      }
       if(name==='cancel'){
         if(!exact(payload,['taskId']))reject();readTask(payload.taskId);
         await client().call('task.cancel',{taskId:payload.taskId,reason:'用户停止远程 MCP 任务'});return readTask(payload.taskId);
@@ -101,7 +111,7 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
   };
   ipcMain.handle(channel,async(...args)=>{
     try{return {ok:true,value:await request(...args)};}
-    catch(error){return {ok:false,error:`远程 MCP 操作未完成${error instanceof ProtocolError?`（${error.code}）`:''}；请核对原任务、配置及会话状态`};}
+    catch(error){return {ok:false,error:errorDisplayText(error,'ipc')};}
   });
   return Object.freeze({state,readTask,
     async confirmConnection(request){

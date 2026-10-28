@@ -1,0 +1,446 @@
+{
+  "schemaVersion": 1,
+  "kind": "completed_public_run_independent_readback",
+  "profile": "huawei_ict_agentarts",
+  "status": "passed_real_default_desktop_beyond_32_readback",
+  "startedAt": "2026-10-24T15:18:20.313Z",
+  "finishedAt": "2026-10-24T15:18:24.730Z",
+  "originalReceiptSha256": "e12ccefe7fa1d54214e52616407c4b0ce455b8df1ee69a34be53b8a27a390f4f",
+  "independentReadbackReceiptSha256": "4d5d585527ea54b4b85e71d0b186b2ae3c50304092f55da25fd62c9b16e721b5",
+  "originalAttemptStatus": "failed",
+  "sourceTaskId": "1e01593e-3ce4-4859-82ae-9938a5637b0b",
+  "originalSource": {
+    "apps/desktop/electron/main.js": "58b1928c4f39bb809b66acca528046c185fb6b58a27759f22bfde554e698aeb2",
+    "apps/desktop/electron/native-execution-host.js": "265cd4c9b73617bcac419c9d0812bc681f9fc72cdea80811a30fe11555aeab79",
+    "apps/desktop/electron/workspace-command-recipes.js": "f66f6d7bf431d08954f4835e658e81899e70c16cf0e503a9e7532630d41a8ede",
+    "apps/runtime/src/application/execution-capacity.ts": "59fc8c5f43260be90eb7610b5986c360bcffa7afc2c719734d461fb9ac401808",
+    "apps/desktop/electron/workspace-config-host.js": "2165a7c56d36e78a19787521388542af4d646aff2ef29f047b3afd0973470b78",
+    "apps/runtime/src/index.ts": "d61b52aa15468f1cb36a703aa7c9708dd9f68a12beb5b6e80613ae067dfa85e6",
+    "apps/runtime/src/application/runtime-application.ts": "0faf9f5458281418440aedd6b9081c281470521b0ffab425db6687be961e58aa",
+    "apps/runtime/src/application/capability-context.ts": "cd03199b1c62920ecafda1367e04faa5f767b69087468d3742d91053292c24da",
+    "apps/runtime/src/application/coordination.ts": "8f90f0a7b2d81edc6b7c46f645b08e1045a50fd741c0e66c3c175ab55739938c",
+    "apps/runtime/src/application/user-task-delegation.ts": "afe50431f468668c83a669e511693c783c497e65a710b72a5bcc4cbf852e934d",
+    "apps/runtime/src/application/agentarts.ts": "36145e10307e49d16742a9abd8aff2730153e97ae2f38ffea018e176af3af239",
+    "packages/coordination/src/agentarts.ts": "950af76716306a1268378dce2a4561aae39a777a82e8c053c4d6c075d30a17d7",
+    "packages/coordination/src/agentarts-websocket.ts": "57f050241abcef6de594db1ce8fe026c48ee6ab7844cea90f115ac4e5d26834a",
+    "apps/runtime/src/application/competition-cloud-status.ts": "2bf97af45516b7f157291cb80f45d53a2f3f712eee3d166d293df2b4b90d0a86",
+    "apps/runtime/dist/application/runtime-application.js": "31efe44e3493757e999c65900f3502e820edf94a1ff54ce92ef87ce2ff619865",
+    "apps/runtime/dist/application/competition-cloud-status.js": "c979d93accbd584e22a7593ca0f6f015bbec95410b2900dc709af21880079343",
+    "tests/manual/agentarts/desktop-progressive-development-live.cjs": "7fbd632e437f40ccb6353e5ee899408fde74e9918f8ecd3bb0522ffb25ed99fb"
+  },
+  "readbackSource": {
+    "tests/manual/agentarts/desktop-progressive-development-live.cjs": "8a4cd80c124c5ef8bef57333b29b66be13426a45e0c8ce58da802838855a05d7",
+    "tests/manual/agentarts/desktop-progressive-development-readback.cjs": "3a29a2034ba4b6d7012e3b88b88d9d7b330b1193bbe150fe2928bda26cd6fe64"
+  },
+  "automation": {
+    "fakeModel": false,
+    "fakeTools": false,
+    "physicalHumanClick": "not_run",
+    "approvalActivation": "visible original unified question; exact persisted invocation and receipt checked"
+  },
+  "configuredTarget": {
+    "configured": true,
+    "deploymentVersion": "arm64-output32k-1023",
+    "transport": "wss",
+    "urlEndpoint": "arm64-output32k-1023",
+    "platformVersionReadback": "not_run"
+  },
+  "originalApprovals": 18,
+  "persistence": {
+    "parentState": "succeeded",
+    "executionTaskId": "46f05e7a-5f0d-4927-ab02-56c52cf52832",
+    "executionState": "succeeded",
+    "inertBookkeepingRoots": 1,
+    "step": 45,
+    "confirmedCalls": 44,
+    "originalReceiptCount": 44,
+    "toolCounts": {
+      "workspace.list_entries": 1,
+      "workspace.read_text": 14,
+      "workspace.preview_text_patch": 14,
+      "workspace.apply_text_patch": 14,
+      "workspace.npm_test": 1
+    },
+    "capacity": {
+      "version": "1.0",
+      "mode": "progressive",
+      "deadline": "2026-10-24T15:29:58.837Z",
+      "initialWindowSteps": 32,
+      "windowSteps": 32,
+      "windowEndStep": 64,
+      "extensions": 1,
+      "evaluatedReceiptCount": 31,
+      "evaluatedReceiptDigest": "a71222973fb115507006ba1871499a2666352c6901cd40c24f66a073beb2eb95"
+    },
+    "continuationWindow": {
+      "priorCount": 32,
+      "queryBytes": 37799
+    },
+    "postWindowCloudContext": {
+      "requestId": "a398aa96-7aa7-4a9c-b874-c23b8fab0603",
+      "payloadDigest": "cafbf3a2d6bf8632fd4c6a58b7dc2c10d72877ca70808535e96bad8d906b9f8d",
+      "step": 45,
+      "initialMaxSteps": 32,
+      "catalogDigest": "545606d746b6315bb024d780ce1a6e7f30932d06efe6e3db2ebb906cfc196d58",
+      "catalogCount": 46
+    },
+    "records": [
+      {
+        "toolName": "workspace.list_entries",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-1"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-2"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-3"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-4"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-5"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-6"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-7"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-8"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-9"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-10"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-11"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-12"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-13"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-14"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-15"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-16"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-17"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-18"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-19"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-20"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-21"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-22"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-23"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-24"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-25"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-26"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-27"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-28"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-29"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-30"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-31"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-32"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-33"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-34"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-35"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-36"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-37"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-38"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-39"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-40"
+      },
+      {
+        "toolName": "workspace.read_text",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-41"
+      },
+      {
+        "toolName": "workspace.preview_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-42"
+      },
+      {
+        "toolName": "workspace.apply_text_patch",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-43"
+      },
+      {
+        "toolName": "workspace.npm_test",
+        "state": "confirmed",
+        "policyDecision": "allow",
+        "executionStarted": true,
+        "evidenceId": "competition-tool-46f05e7a-5f0d-4927-ab02-56c52cf52832-44"
+      }
+    ],
+    "evidenceCount": 44,
+    "cloudRequestCount": 32
+  },
+  "fixture": {
+    "sourceFileSetPreserved": true,
+    "fixedFilesUnchanged": true,
+    "allExpectedEdits": true,
+    "hashes": {
+      "metric-01.cjs": "78ba81539864ce0baad6fe609eb3e1e1dde21870c16abb6423a266c37589006a",
+      "metric-02.cjs": "4bebbfaf38a25588992fea55211c2cea386d9540ef96f7fb9d6da4151d8513ca",
+      "metric-03.cjs": "2b1e44e88120d8c91171f29654d8acfb34cc2347d459b7ae446112189ae1c762",
+      "metric-04.cjs": "925620caa2894c052cd726d856ecae7ccbe6f1b0ace0878e7be00cf5a7979841",
+      "metric-05.cjs": "dd5022ba614a0e49f313da9b477ee0a2f7e107e2d649f833939ece304bc33e36",
+      "metric-06.cjs": "e7cf8759f5a533d464e6b3370ddfd324b6c30d53daaf6a897c3efb510e29bf6a",
+      "metric-07.cjs": "051ab609575e0506d237f64194a6274fc7f02d1d0d908bae498b19547da4d3c9",
+      "metric-08.cjs": "fc42b6096a4c5cdbc48deeff263b43da99fc0b241329a0b645c4bf44b76e7306",
+      "metric-09.cjs": "e31e3bbb865783a51056fe9e61d9353dc53e5ffcd179369360fc9ffc7dbf8358",
+      "metric-10.cjs": "64e5227f74bcf2de2225220b405d6c4d9b804f30dfaf556803c76aea4b41a78c",
+      "metric-11.cjs": "8acff581180718782ec3dc31f4c41cde4550f678b5fcc0a12330ccad4be9ddb6",
+      "metric-12.cjs": "70501815c6cb2e64ccacacc39c3ca9f37b80c590348f3aebbab123fa4adb0a78",
+      "metric-13.cjs": "fc9e1b784c95f0683685dd7e79bf3f2a68c097f7af0cf59fd33139ef3a2762a9",
+      "metric-14.cjs": "867aca9cc74236d011dc8daa3468fb3885d4ce4e34f0ad93c1b1b123efe4f0b0",
+      "package.json": "298ca6cdc5d5b4330d8cb7dd525cc6b9a8feab892c7967dbcac55e6d63436332",
+      "project.test.cjs": "98032f00cb6f5bc5d27de116616321f3cf63ef494e86f34f92c709897f4ce451"
+    }
+  },
+  "independentNodeVerification": {
+    "status": "passed",
+    "exitCode": 0,
+    "passed": 14,
+    "stdoutSha256": "afd70d9288c33072a4b6618a63831ea82a8d5d5dd4ab2aaa0a41e18f69ddc4c7"
+  },
+  "restart": {
+    "mode": "isolated_copy_of_closed_original_profile",
+    "taskState": "succeeded",
+    "originalRecordsRetained": true,
+    "cloudRequestCountUnchanged": true,
+    "noOriginalInvokeOrToolReplay": true
+  },
+  "originalReceiptAndDatabaseUnchanged": true,
+  "skippedProfileLinkCount": 1,
+  "cleanupStates": [
+    "closed"
+  ],
+  "limitations": [
+    "The original acceptance receipt remains failed; this is a separate readback with corrected document-equivalence criteria.",
+    "The restart uses an isolated copy of the original closed test profile. It does not restore an old permission or repeat an invoke.",
+    "Physical human clicks, new platform deployment and arbitrary large projects are not proved."
+  ]
+}

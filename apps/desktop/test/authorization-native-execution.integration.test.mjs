@@ -20,6 +20,23 @@ async function until(read,label,timeout=30000){
   throw Error('Native authorization integration did not reach '+label);
 }
 
+function assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted}){
+  const task=app.runtime.getTask(taskId),approval=app.runtime.getApproval(runId),records=app.runtime.readToolExecutions(taskId);
+  assert.equal(task.state,'failed');assert.equal(task.error?.code,'UNSUPPORTED_CAPABILITY');
+  assert.equal(preparationError?.code,'UNSUPPORTED_CAPABILITY');
+  assert.equal(task.error.message,'当前外部进程隔离后端或原授权不可用，未降级为普通进程');
+  assert.equal(approval.state,'denied');assert.equal(approval.revision,2);
+  assert.equal(approval.resolution?.actor,'system');assert.equal(approval.resolution?.reason,'stale');
+  assert.equal(records.length,1);assert.equal(records[0].evidenceId,runId+'-question-invalidation');
+  assert.equal(records[0].errorCode,'UNSUPPORTED_CAPABILITY');assert.equal(records[0].state,'failed');
+  assert.equal(records[0].policyDecision,'deny');assert.equal(records[0].executionStarted,false);
+  assert.equal(existsSync(marker),false);assert.equal(existsSync(substituted),false);
+  assert.equal(app.runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId),undefined);
+  assert.equal(app.runtime.policy.get(runId),undefined);assert.equal(question.snapshot().length,0);
+  for(const revision of [1,2])assert.throws(()=>app.runtime.respondApproval(runId,'allow_once',revision),{code:'REVISION_CONFLICT'});
+  assert.equal(app.runtime.getApproval(runId).revision,2);assert.equal(app.runtime.policy.get(runId),undefined);
+}
+
 test('optional native integration requires a successful baseline and explicit unavailable PSEC API diagnostics',()=>{
   const unavailable={backend:'windows-psec',enforced:false,outcome:'unavailable',exitCode:null,stopped:true,reason:'native-create-environment:-2146233053'};
   const receipt={available:false,enforced:false,results:{baseline:{backend:'none',outcome:'exited',exitCode:0,stopped:true},readOnly:unavailable,workspaceWrite:unavailable,cancel:unavailable}};
@@ -28,6 +45,55 @@ test('optional native integration requires a successful baseline and explicit un
     {...receipt,results:{...receipt.results,baseline:{...receipt.results.baseline,exitCode:23}}},
     {...receipt,results:{...receipt.results,readOnly:{...unavailable,reason:'invalid-or-unavailable-trusted-configuration'}}},
     {...receipt,results:{...receipt.results,workspaceWrite:{...unavailable,reason:'native-create-environment:-2147467259'}}}])assert.equal(unsupportedPsec(patch),false);
+});
+
+// Explicit Fake probe only: the real Runtime and production hosts must reject before
+// creating a card, grant or command execution. This does not verify Windows isolation.
+test('an unavailable native probe preserves the safe cause through the actual authorization consumer',async t=>{
+  await mkdir(integrationCache,{recursive:true});
+  const base=realpathSync.native(await mkdtemp(path.join(integrationCache,'fake-unavailable-'))),workspace=path.join(base,'workspace');
+  await mkdir(workspace);
+  const nodeExecutable=realpathSync.native(process.execPath),marker=path.join(workspace,'once.txt'),substituted=path.join(workspace,'substituted.txt');
+  const unavailable={backend:'windows-psec',enforced:false,outcome:'unavailable',exitCode:null,stopped:true,reason:'native-create-environment:-2146233052'};
+  const receipt={backend:'windows-psec',available:false,enforced:false,results:{
+    baseline:{backend:'none',enforced:false,outcome:'exited',exitCode:0,stopped:true},readOnly:unavailable,workspaceWrite:unavailable,cancel:unavailable}};
+  let app,native,preparationError,authorizationCalls=0,probeCalls=0,toolExecutions=0,nativeExecutorCalls=0;
+  const getApplication=()=>app;
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),
+    getApplication,namespace:'fake-unavailable',resolveConversation:taskId=>app.readToolConversation(taskId),available:()=>true,
+    profiles:[{ref:'fake-unavailable',label:'Explicit Fake unavailable probe',mode:'workspace-write',revision:1,available:true}],
+    defaultProfileRef:'fake-unavailable',describeExecution:(request,profile)=>native.describeExecution(request,profile)});
+  native=createDesktopNativeExecutionHost({coding:{...coding,
+    readWindowsNativeHelperAttestation:helperPath=>({helperPath,helperSha256:'a'.repeat(64)}),
+    async verifyWindowsNativeSandbox(){probeCalls++;return receipt;},
+    createWindowsNativeSandboxExecutor(){nativeExecutorCalls++;throw Error('Unavailable probe must never create an executor');}},
+    question,getApplication,readConfiguration:()=>({rootPath:workspace,nodeExecutable,bindingId:'fake-unavailable'}),
+    ensureHelper:async()=>nodeExecutable,probeRootPath:path.join(base,'readiness'),systemRoot:path.dirname(nodeExecutable),localAppData:workspace});
+  const command=native.createCommandTool({rootPath:workspace,recipes:[{id:'must-not-run',executable:nodeExecutable,
+    args:['-e',"require('node:fs').writeFileSync('once.txt','must-not-run')"]}]});
+  const tool={...command,async execute(...args){toolExecutions++;return command.execute(...args);}};
+  app=createRuntimeApplication({path:path.join(base,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'fake-unavailable',
+    tools:[tool],requiresToolAuthorization:scope=>question.requiresAuthorization(scope),requestToolAuthorization:async scope=>{
+      authorizationCalls++;
+      try{await native.prepare(scope);}catch(error){preparationError=error;throw error;}
+      return question.requestToolAuthorization(scope);
+    }});
+  let taskId;
+  t.after(async()=>{
+    question.close();native.close();
+    if(taskId&&!['succeeded','failed','cancelled'].includes(app.runtime.getTask(taskId).state))app.runtime.requestCancel(taskId,'Synthetic fixture cleanup');
+    await until(()=>app.activeTaskCount===0,'fake unavailable cleanup');app.close();
+  });
+  const input={commandId:'fake-unavailable',toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+    arguments:{recipeId:'must-not-run'},deadline:new Date(Date.now()+90000).toISOString()};
+  taskId=app.submitHostToolTask(input).task.taskId;
+  await until(()=>app.runtime.getTask(taskId).state==='failed','fake unavailable refusal');
+  await until(()=>app.activeTaskCount===0,'fake unavailable worker');
+  const runId='host-tool-'+taskId;
+  assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted});
+  assert.equal(app.submitHostToolTask(input).task.taskId,taskId,'replay retains the same terminal task');
+  assert.equal(authorizationCalls,1);assert.equal(probeCalls,1);assert.equal(toolExecutions,0);assert.equal(nativeExecutorCalls,0);
+  assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted});
 });
 
 // Real Runtime, Policy, ToolGateway, question service/host and native execution host.
@@ -88,23 +154,14 @@ test('one real original question gates a production PSEC command and never reple
     return ['failed','cancelled','waiting_reconciliation'].includes(task.state)?{task}:undefined;
   },'original question or terminal readiness failure');
   if(!prepared.card){
-    // The authorization host rejects preparation, then Runtime invalidates the original
-    // pending approval. Its terminal error describes that stale authority, not the host error.
-    const approval=app.runtime.getApproval(runId),records=app.runtime.readToolExecutions(taskId);
+    // Runtime invalidates the same pending approval and preserves the fixed safe
+    // native refusal in both task and denied execution record; it never grants authority.
+    const approval=app.runtime.getApproval(runId);
     t.diagnostic('Native preparation failure: '+JSON.stringify({taskState:prepared.task.state,
       taskErrorCode:prepared.task.error?.code,preparationErrorCode:preparationError?.code,
       approvalState:approval.state,approvalRevision:approval.revision,
       readiness:readiness?{backend:readiness.backend,available:readiness.available,enforced:readiness.enforced,results:readiness.results}:null}));
-    assert.equal(prepared.task.state,'failed');assert.equal(prepared.task.error?.code,'REVISION_CONFLICT');
-    assert.equal(preparationError?.code,'UNSUPPORTED_CAPABILITY');
-    assert.equal(approval.state,'denied');assert.equal(approval.revision,2);
-    assert.equal(approval.resolution?.actor,'system');assert.equal(approval.resolution?.reason,'stale');
-    assert.equal(records.length,1);assert.equal(records[0].evidenceId,runId+'-question-invalidation');
-    assert.equal(records[0].errorCode,'REVISION_CONFLICT');assert.equal(records[0].state,'failed');
-    assert.equal(records[0].policyDecision,'deny');assert.equal(records[0].executionStarted,false);
-    assert.equal(existsSync(marker),false);assert.equal(existsSync(substituted),false);
-    assert.equal(app.runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId),undefined);
-    assert.equal(app.runtime.policy.get(runId),undefined);assert.equal(question.snapshot().length,0);
+    assertPreparationRefused({app,question,taskId,runId,preparationError,marker,substituted});
     const diagnostic={required,taskState:prepared.task.state,errorCode:prepared.task.error.code,
       readiness:readiness?{backend:readiness.backend,available:readiness.available,enforced:readiness.enforced,results:readiness.results}:null};
     await writeFile(path.join(base,'unavailable-receipt.json'),JSON.stringify(diagnostic,null,2));

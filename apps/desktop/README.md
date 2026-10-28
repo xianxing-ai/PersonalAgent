@@ -1,10 +1,20 @@
 # PersonalAgent Desktop
 
+2026-10-27 / Issue #523：在 PR #522 上改用原 Runtime 检查点索引读取持续工作流，后台维护按宿主独立节流和防重入；事件与待办仍走原 120ms 入口。修复前后测量、Windows GUI 与验证边界见[修复记录](docs/DESKTOP_IDLE_POLLING_ISSUE523_20261027.md)。
+
+2026-10-26 会话持久化移交候选（review）：Conversations 的同步 API 与内存视图保留，私有 SQLite 增量保存消息、草稿、偏好及 UI 任务链接；TaskRuntime 仍是任务与执行事实来源。旧 v1～v4 只读启动不迁移，首次修改经原字节备份、事务导入和独立读回后写入旧版拒绝的 v5 marker；ready 缺库拒绝空建，未知提交冻结并核实。Main 最终退出接线已在候选中，Windows 打包与真实用户资料迁移未验收。
+
+来源 Windows/Node24.15 合成 10k×2KiB 样本的 append P50/P95 为旧版 49.05/56.92 ms、候选 1.50/7.36 ms；同时首次迁移 957.32 vs 69.67 ms，重开 195.07 vs 67.293 ms，峰值 RSS 336.391 vs 158.492 MiB，关闭后 marker+backup+DB 60.861 vs 21.154 MiB。逻辑 payload 减少不代表物理 I/O，canonical 消息 Map 仍常驻，不能据此宣称内存或启动改善。最新完整 v5→v4 历史导出尚未实现，禁止删库/marker 或直接恢复旧备份假称保留新历史。
+
+已接收源码与回执并三方整合到 main `934b7c44` 的候选；来源尚有 65 项未交付的 A12 输入与 main 不同/缺失，完整原始日志未提供，不能称完整 Windows 工程复原或继承 A12 全绿。移交时待验的两项 GUI smoke 已在本次 Issue #523 本地修复中补跑通过，详见上方记录；公共 SQLite Evidence 仍 pending，PR376 stub 不证明实际 Root 生命周期。Linux 验证单列，不提升接口冻结状态。[ADR-0041](../../docs/adr/0041-desktop-conversation-incremental-persistence.md) 仍 proposed。
+
 2026-10-23：界面快照中的同步权限检查、空闲待办广播和高刷新率 Canvas 绘制修复，见[范围、权限边界与验证](docs/DESKTOP_PERFORMANCE_20261023.md)。已完成本地体验，进入 PR 审查。
 
 2026-10-21 新邮件、明显天气变化的订阅与本机 Laya 提醒判断，见
 [接线、使用和验收边界](../../docs/competition/CONNECTOR_CHANGE_TRIGGERS_20261021.md)。
 仅在原工具审批后持续读取，poll-only 不等于远端推送；其他连接器和默认云闭环分别验收。
+
+2026-10-23 / Issue #506：邮件变化按实际确认的 `mail.inbox` 页合并，首次完整读取仍只建立基线；每页新增邮件创建一个本机 Laya 判断任务，不逐封创建任务，也不把私人信头送到云模型。长页在同一任务内分组串行检查完整信头，保留原期限和门槛，任一组无法确认则整页暂缓。未开工的旧单封事件按同一原读取页合并；已有判断、取消和通知回执继续沿原身份恢复。静默／暂缓判断不进入聊天流，需要提醒时只走已有通知中心与渠道。关闭邮件变化提醒可在「通知与打扰」选择「连接器」、标识填 `mail`，读取当前范围后将打扰模式设为「静默」并保存；不会关闭天气提醒或邮件读取。持续订阅本身仍可通过现有 `connector.watch.stop` 停止。离线 focused 测试已覆盖分页、去重、恢复、原来源权限与通知回执；真实账号与桌面最终验收仍由本轮集成执行，不以 Fake 回执替代。
 
 ## 2026-10-22 主工作区重新设计（review）
 
@@ -225,7 +235,7 @@ Competition 文字接线由可信 Desktop 主进程显式选择，不由 Rendere
 `PA_AGENTARTS_AUTHORIZATION` 请求头值。Authorization 只在每次云调用时由主进程
 读取，不进入任务正文、Renderer 快照、日志或仓库。缺少或非法配置会让 Runtime
 初始化或调用明确失败；Competition 模式不会回退到盘古、Local Agent 或 Fake。
-Competition 的 `task.submit` 使用 180 秒请求 deadline，以覆盖多工作流编排；该 deadline
+Competition 的 `task.submit` 使用 30 分钟请求 deadline，以覆盖多工作流编排；该 deadline
 仍由 Client 写入请求并贯穿 TaskRuntime 与 AgentArts 调用。本地取消或超时沿现有契约
 传递：任务 deadline 到期时 Runtime 向协调与 AgentArts 调用传播终止信号，用户取消则
 通过 `task.cancel`；提交调用本身超时不等于任务已经停止。上述路径均不自动重试，
@@ -234,9 +244,12 @@ Local 与 Fake 继续使用 Client 的默认 deadline。
 管理后台原有盘古配置、测试和启停动作在 Competition 模式下会明确拒绝，避免把
 Local 配置误写成 AgentArts 状态。
 
-Competition 对话提交显式提供 120 秒任务期限，覆盖云端工作流与本地后续处理；
+Competition 对话提交显式提供 30 分钟任务期限，覆盖云端工作流与本地后续处理；
 回答提前完成时立即返回，用户仍可取消。状态查询继续使用 Client 的 10 秒 RPC 默认值。
 此期限经公开请求传给 Runtime，不能把默认 RPC 期限误当成整个云端任务的执行预算。
+#521 原先在 180 秒基线上采用 600 秒总预算；本次兼容整合将其作为最低预留，不缩短 #503 已有的 30 分钟，两种 Competition 模式均为 30 分钟；摘要确认及单次摘要请求仍各受 180 秒和原任务剩余期限约束。
+子任务沿用原父任务的绝对 deadline，派发与恢复均不重新获得 30 分钟；云端未显式配置
+`PA_AGENT_TIMEOUT_MS` 时同样跟随该 deadline。部署仍设置较短上限时会提前超时。
 
 Competition 语音试用显式接华为 SIS 短音频 ASR 和同步 TTS，保持现有按键采集、
 Runtime 文字消费和本机 WAV 播放。可信面板中的“华为 SIS 语音配置”只接受

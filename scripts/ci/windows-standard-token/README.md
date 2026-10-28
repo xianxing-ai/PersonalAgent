@@ -32,6 +32,50 @@ list. Environment uses the inherited Unicode block, without rebuilding or loggin
 Ordinary Runner Job nesting, linked-token ACL access to checkout/helper/Node/TEMP, native ABI,
 and handle behavior must be verified on Windows before CI adoption.
 
+## Bounded native failure metadata
+
+After the original `--run-check` child exits, the still-loaded launcher preserves its
+uint exit and reads fixed Application Error Event1000 metadata itself. It never
+executes a checkout script or starts another command from the original Runner token.
+The Node pin is captured before the ordinary-token child starts. In each `--run-check`
+process, preparation also exercises the literal XML success/failure parser paths,
+Regex, projection and the actual report serializer with its reused options/cache.
+The pure thread-pool warm-up is fully joined before `Start`; it cannot continue loading
+dependencies in the background during the original check. Preparation failure leaves
+the original check running normally, then Program emits only constant `unavailable`
+JSON without entering the collector again. No repository script, dynamic assembly
+path, external command or ACL change is involved. All new `wevtapi.dll`
+imports resolve only from System32; no PATH or writable application-directory DLL
+lookup is used.
+
+The existing short `--smoke` asserts the same preparation and bounded XML parser selftest,
+and emits a separate read-only Event Log probe status. A separate smoke process does
+not substitute for preparation in the actual `--run-check` process. Every prepared
+complete check, including a healthy check, probes after closing the original child/Job.
+The selftest covers hostile paths, versions,
+timestamps, duplicate fields, DTD/external entities, oversized input and unchanged exits,
+including 0xC0000409. It does not generate a native crash. A healthy check emits only
+probe status. A failed check may emit at most sixteen `node.exe` candidates matching
+the captured Node version and original UTC check window. A candidate has only event
+record/time, application/module basenames and versions, exception code and fault offset.
+There is no test-child PID mapping; candidates do not establish a test or root cause.
+Missing events and read failures remain `no_matching_candidates` / `unavailable`.
+The healthy probe distinguishes no events, successful rendering without projection,
+rejection by size/format bounds and unavailable reads. It does not promise that a
+matching crash event exists; native render failures report `unavailable`, never no-match.
+
+The query scans at most 128 records, renders at most 64 KiB per XML event, prohibits DTD
+and external entities, and has a six-second caller budget. Handles and buffers are
+released in their owning reader's `using`/`finally` paths; process exit reclaims any
+reader still blocked in a local Windows API after the budget expires. The worker never
+logs or writes files. Only bounded projected JSON reaches stdout; raw XML/messages,
+paths, environment, identities, credentials, reports, dumps and exception details do
+not. Diagnostic failures cannot replace the original check exit.
+
+The Linux route tests guard this execution/security contract without compiling C#.
+Actual Windows compilation, XML selftest and read-only access must be verified in the
+official Windows run; Linux tests or a missing event do not supply that evidence.
+
 ## Short smoke (not the full check)
 
 From the original checkout/cwd on a Windows x64 or ARM64 Runner with native Node and preinstalled native .NET 8 SDK/runtime:

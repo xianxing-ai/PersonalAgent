@@ -5,6 +5,23 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import {EventEmitter} from 'node:events';
 import {createDraftQuitPreflight} from '../electron/draft-quit-preflight.js';
+import {createSnapshotPublisher} from '../electron/snapshot-publisher.js';
+import {createMailMonitorPreparation} from '../electron/mail-monitor-preparation.js';
+
+test('accepted quit cancels only pending mail preparation before closing the Runtime',async()=>{
+  const f=fixture(),preparation=createMailMonitorPreparation();f.context.mailMonitorPreparation=preparation;
+  let finish,valid;const starting=preparation.run(context=>{valid=context.isCurrent;return new Promise(resolve=>{finish=resolve;});});
+  await tick();f.app.quit();await starting;await tick();await tick();
+  assert.equal(valid(),false);assert.equal(preparation.hasPending(),false);assert.equal(f.exited,true);
+  finish();await tick();assert.equal(f.calls.filter(value=>value==='runtime-close').length,1);
+});
+
+test('an accepted mail configuration write blocks quit until its own completion',async()=>{
+  const f=fixture(),preparation=createMailMonitorPreparation();f.context.mailMonitorPreparation=preparation;
+  const finish=preparation.beginConfigurationChange();f.app.quit();await tick();
+  assert.equal(f.exited,false);assert.equal(f.calls.includes('runtime-close'),false);assert.match(f.context.runtimeError,/邮箱配置正在更新/);
+  finish();assert.equal(f.exited,false);f.app.quit();await tick();await tick();assert.equal(f.exited,true);
+});
 
 test('actual Main commits draft receipts before cleanup and normal window destruction cannot cancel final quit',async()=>{
   const f=fixture();
@@ -100,12 +117,13 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
   const optional = ['voiceStartupHost','remoteMcpHost','remoteMcpConfig','remoteMcpManagement','remoteMcpClosing','referenceHost','proactiveHost','todoHost','notepadHost','mailHost','localLaya','mailConfig',
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','wikiImportHost','goalCloudHost','calendarMeetingHost',
-    'mailAnalysisHost','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
+    'mailAnalysisHost','mailMonitorPreparation','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
-    'windowsControlHost','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
+    'windowsControlHost','browserControlHost','browserControlClosing','computerVisionHost','computerVisionConfig','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
     'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
-    Promise, Error, setTimeout, clearTimeout, clearInterval, console, app, voiceInput, wakeVoice,
+    Promise, Error, setTimeout, clearTimeout, clearInterval, clearImmediate, console, app, voiceInput, wakeVoice,
+    resourcePoll:undefined,eventContinuation:undefined,snapshotPublisher:createSnapshotPublisher({project:()=>({})}),
     submitting:new Set(),draftQuitPreflight:{allow:()=>true,commit:()=>true,cancel(){}},panelMaterial:{allowQuit:()=>true},
     runtimeStartup: {snapshot: () => ({state: startup})}, runtimeApplication: {activeTaskCount: count,
       close() {calls.push('runtime-close');}}, runtimeError: '', runtimeClosed: false,
@@ -117,7 +135,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
       calls.push('live-stop');return {active: true, reason: 'Live 音频资源释放未确认'};
     }} : undefined,
     localServicesStopped: false, localServicesStopping: false, remoteMcpClosed: false, referenceClosed: false,
-    windowsControlClosed: false, windowsControlClosing: undefined, harnessEventsClosed:false,connectorTriggersClosed:false,
+    windowsControlClosed: false, windowsControlClosing: undefined, browserControlClosed:false,harnessEventsClosed:false,connectorTriggersClosed:false,
     todoClosed: false, notepadClosed: false, coordinationWatchInputs: new Map(), publicSkillSources: new Map(),
     poll: undefined, orbDragPoll: undefined, eventPoll: undefined, stopP5DeviceTelemetry() {calls.push('telemetry-stop');},
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
@@ -138,6 +156,20 @@ test('an already active task refuses quit before permanent voice or wake disposa
   assert.equal(f.calls.includes('telemetry-stop'), false);assert.equal(f.calls.includes('runtime-close'), false);
   assert.equal((await f.voiceInput.beginCapture()).status, 'listening');
   assert.equal((await f.wakeVoice.enable()).phase, 'listening');
+});
+
+test('actual Main releases optional vision before authorization and Runtime shutdown, including unbound configuration',async()=>{
+  for(const bound of [false,true]){
+    const f=fixture();
+    f.context.computerVisionConfig={dispose(){f.calls.push('vision-config-dispose');}};
+    f.context.computerVisionHost=bound?{close(){f.calls.push('vision-host-close');}}:undefined;
+    f.context.authorizationQuestionHost={close(){f.calls.push('authorization-close');}};
+    f.app.quit();await tick();await tick();await tick();
+    assert.equal(f.exited,true);
+    assert.ok(f.calls.indexOf('vision-config-dispose')<f.calls.indexOf('authorization-close'));
+    assert.ok(f.calls.indexOf('authorization-close')<f.calls.indexOf('runtime-close'));
+    if(bound)assert.ok(f.calls.indexOf('vision-host-close')<f.calls.indexOf('vision-config-dispose'));
+  }
 });
 
 test('app.quit with a failed draft preflight preserves Runtime, tray and every host',async()=>{
@@ -317,6 +349,34 @@ test('Windows control closes once after active work and before Runtime; scoped p
   assert.ok(f.calls.indexOf('windows-close')<f.calls.indexOf('runtime-close'));
   for(const name of ['developerDeployment','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation'])
     assert.equal(f.calls.filter(call=>call===name+'-close').length,1);
+});
+
+test('actual Main awaits one browser close before Runtime and repeated pending quits share it',async()=>{
+  const f=fixture({count:1});let release;
+  f.context.browserControlHost={close(){f.calls.push('browser-close');return new Promise(resolve=>{release=()=>{f.calls.push('browser-close-confirmed');resolve();};});}};
+  f.app.quit();await tick();assert.equal(f.calls.includes('browser-close'),false);assert.equal(f.exited,false);
+  f.context.runtimeApplication.activeTaskCount=0;f.app.quit();await tick();await tick();
+  assert.equal(f.calls.filter(call=>call==='browser-close').length,1);assert.equal(f.exited,false);
+  assert.equal(f.context.browserControlClosed,false);assert.equal(f.calls.includes('runtime-close'),false);
+  f.app.quit();f.app.quit();await tick();
+  assert.equal(f.calls.filter(call=>call==='browser-close').length,1);assert.equal(f.calls.includes('runtime-close'),false);
+  release();await tick();await tick();await tick();
+  assert.equal(f.exited,true);assert.equal(f.context.browserControlClosed,true);
+  assert.equal(f.calls.filter(call=>call==='browser-close').length,1);assert.equal(f.calls.filter(call=>call==='runtime-close').length,1);
+  assert.ok(f.calls.indexOf('browser-close')<f.calls.indexOf('browser-close-confirmed'));
+  assert.ok(f.calls.indexOf('browser-close-confirmed')<f.calls.indexOf('runtime-close'));
+});
+
+test('actual Main browser close failure blocks quit and retains Runtime without automatic close replay',async()=>{
+  const f=fixture();let cancelled=0;
+  f.context.draftQuitPreflight={allow:()=>true,commit:()=>true,cancel(){cancelled++;}};
+  f.context.browserControlHost={async close(){f.calls.push('browser-close');throw Error('synthetic browser release not confirmed');}};
+  f.app.quit();await tick();await tick();await tick();
+  assert.equal(f.exited,false);assert.equal(f.app.isQuitting,false);assert.equal(f.context.runtimeClosed,false);
+  assert.equal(f.context.browserControlClosed,false);assert.equal(f.context.browserControlClosing,undefined);
+  assert.equal(f.calls.filter(call=>call==='browser-close').length,1);assert.equal(f.calls.includes('runtime-close'),false);
+  assert.equal(f.calls.includes('unregister-shortcuts'),false);assert.equal(cancelled,1);
+  assert.match(f.context.runtimeError,/浏览器控制进程停止尚未确认/);
 });
 
 test('the original final task guard still catches work that appears during cleanup', async () => {

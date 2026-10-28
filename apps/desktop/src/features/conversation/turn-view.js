@@ -6,11 +6,14 @@ export function updateConversationTurns(container, html, {tasks,pendingCancelIds
   staged.innerHTML=html;
   const previous=[...container.children],next=[...staged.children];
   const plans=[];
-  let safe=previous.length===next.length;
-  for(let index=0;safe&&index<previous.length;index++) {
-    const card=previous[index],replacement=next[index];
-    if(!card.dataset.turn||card.dataset.turn!==replacement.dataset.turn
-      ||typeof card.cloneNode!=='function'||card.cloneNode(false).outerHTML!==replacement.cloneNode(false).outerHTML) {safe=false;break;}
+  const previousById=new Map(previous.map(card=>[card.dataset.turn,card]));
+  const nextIds=new Set(next.map(card=>card.dataset.turn));
+  let safe=previousById.size===previous.length&&nextIds.size===next.length&&!nextIds.has(undefined)&&!previousById.has(undefined);
+  // Real DOM inserts preserve all unchanged turns even when the page gains or loses a turn.
+  if(previous.length!==next.length&&typeof container.insertBefore!=='function')safe=false;
+  for(let index=0;safe&&index<next.length;index++) {
+    const replacement=next[index],card=previousById.get(replacement.dataset.turn);
+    if(!card||typeof card.cloneNode!=='function'||card.cloneNode(false).outerHTML!==replacement.cloneNode(false).outerHTML){plans.push({replacement});continue;}
     const button=card.querySelector(cancelSelector),fresh=replacement.querySelector(cancelSelector);
     const id=button?.dataset[cancelAttribute];
     const task=tasks.find(item=>item.taskId===id);
@@ -30,12 +33,15 @@ export function updateConversationTurns(container, html, {tasks,pendingCancelIds
   // Reuse the nodes already parsed into `staged`: assigning innerHTML again would re-parse the
   // whole transcript a second time for the same result.
   if(!safe) {container.replaceChildren(...next);return;}
+  const desired=[];
   for(const {card,replacement,children,freshChildren,button,action,freshAction,canKeep} of plans) {
-    if(card.outerHTML===replacement.outerHTML)continue;
+    if(!card){desired.push(replacement);continue;}
+    if(card.outerHTML===replacement.outerHTML){desired.push(card);continue;}
     if(!canKeep) {
-      if(card.outerHTML!==replacement.outerHTML)card.replaceWith(replacement);
+      desired.push(replacement);
       continue; // Unchanged turns retain selection, disclosure and keyboard focus.
     }
+    desired.push(card);
     // Refresh every other action as before; only task.cancel retains its native gesture state.
     const actionChildren=[...action.childNodes],freshActionChildren=[...freshAction.childNodes];
     for(let index=0;index<actionChildren.length;index++) {
@@ -45,4 +51,8 @@ export function updateConversationTurns(container, html, {tasks,pendingCancelIds
       if(child!==action&&child.outerHTML!==freshChildren[index].outerHTML) child.replaceWith(freshChildren[index]);
     });
   }
+  if(typeof container.insertBefore==='function'){
+    for(let index=0;index<desired.length;index++)if(container.children[index]!==desired[index])container.insertBefore(desired[index],container.children[index]??null);
+    const retained=new Set(desired);for(const card of [...container.children])if(!retained.has(card))card.remove();
+  }else for(let index=0;index<previous.length;index++)if(previous[index]!==desired[index])previous[index].replaceWith(desired[index]);
 }

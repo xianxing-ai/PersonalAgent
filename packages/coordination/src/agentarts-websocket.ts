@@ -18,6 +18,8 @@ const MAX_RESULT_BYTES = MAX_AGENTARTS_RESULT_BYTES;
 const MAX_CONNECTIONS = 64;
 const MAX_TOMBSTONES = 128;
 const OPEN = 1;
+const ACCEPTED_STATUS_INTERVAL_MS = 30_000;
+const ACCEPTED_STATUS_TIMEOUT_MS = 10_000;
 
 /** The host may inject an offline socket. Production keeps TLS verification and redirects disabled. */
 export type AgentArtsWebSocket = Pick<WebSocket, 'readyState' | 'on' | 'send' | 'close' | 'terminate'>;
@@ -54,6 +56,7 @@ export interface AgentArtsUnknownReceipt {
 }
 
 type StatusResponse = Extract<AgentArtsTransportFrame, {type: 'status'; serverInstanceId: string}>;
+type TerminalFrame = Extract<AgentArtsTransportFrame, {type: 'result' | 'error'}>;
 
 /** Capture and validate persisted metadata before awaiting current host credentials. */
 export function snapshotAgentArtsUnknownReceipt(receipt: AgentArtsUnknownReceipt): AgentArtsUnknownReceipt {
@@ -83,7 +86,7 @@ export function createAgentArtsUnknownReceipt(init: AgentArtsFetchInit): AgentAr
 /** Created only by the local adapter. A remote JSON error cannot create this classification. */
 export class AgentArtsResultUnknownError extends ProtocolError {
   readonly receipt: AgentArtsUnknownReceipt;
-  constructor(receipt: AgentArtsUnknownReceipt) {
+  constructor(receipt: AgentArtsUnknownReceipt, readonly connectionDiagnostic?: AgentArtsConnectionDiagnostic) {
     super('EXTERNAL_FAILURE', 'AgentArts result requires reconciliation', false);
     this.receipt = Object.freeze({...receipt});
   }
@@ -100,7 +103,8 @@ export class AgentArtsRemoteInvocationError extends ProtocolError {
 
 /** Local transport proof that this invoke was never handed to WSS. No remote error text is retained. */
 export class AgentArtsBeforeInvokeError extends ProtocolError {
-  constructor(failure: 'connection' | 'upgrade' | 'authorization' = 'connection') {
+  constructor(failure: 'connection' | 'upgrade' | 'authorization' = 'connection',
+    readonly connectionDiagnostic?: AgentArtsConnectionDiagnostic) {
     super(failure === 'authorization' ? 'UNAUTHORIZED' : failure === 'upgrade' ? 'UNSUPPORTED_CAPABILITY' : 'EXTERNAL_FAILURE',
       failure === 'authorization' ? 'AgentArts WebSocket authorization denied'
         : failure === 'upgrade' ? 'AgentArts WebSocket upgrade is unavailable' : 'AgentArts WebSocket connection is unavailable', false);
@@ -131,15 +135,43 @@ export class AgentArtsTerminalError extends AgentArtsRemoteInvocationError {
 /** An invoke frame has never been handed to the socket. This is the only automatic fallback condition. */
 class BeforeInvokeConnectionError extends AgentArtsBeforeInvokeError {}
 
+/** Content-free socket facts. Remote close text and arbitrary Error properties are never copied. */
+export interface AgentArtsConnectionDiagnostic {
+  readonly transportPhase: 'wss_connect' | 'wss_ready' | 'wss_invoke';
+  readonly closeCode?: number;
+  readonly closeReason?: 'normal' | 'going_away' | 'protocol_error' | 'abnormal' | 'server_error' | 'other';
+  readonly socketErrorCode?: 'ECONNRESET' | 'ECONNREFUSED' | 'ETIMEDOUT' | 'ENOTFOUND'
+    | 'EAI_AGAIN' | 'EPIPE' | 'CERT_HAS_EXPIRED' | 'UNABLE_TO_VERIFY_LEAF_SIGNATURE';
+}
+function connectionDiagnostic(connection: Connection, code?: unknown, error?: unknown): AgentArtsConnectionDiagnostic {
+  const transportPhase = !connection.opened ? 'wss_connect' : !connection.negotiated ? 'wss_ready' : 'wss_invoke';
+  const closeCode = typeof code === 'number' && Number.isInteger(code) && code >= 1000 && code <= 4999 ? code : undefined;
+  const reasons = new Map<number, AgentArtsConnectionDiagnostic['closeReason']>([
+    [1000, 'normal'], [1001, 'going_away'], [1002, 'protocol_error'], [1006, 'abnormal'], [1011, 'server_error'],
+  ]);
+  const allowed = ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE',
+    'CERT_HAS_EXPIRED', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'];
+  let socketErrorCode: AgentArtsConnectionDiagnostic['socketErrorCode'];
+  try {
+    const candidate = (error as {code?: unknown} | undefined)?.code;
+    if (typeof candidate === 'string' && allowed.includes(candidate)) socketErrorCode = candidate as typeof socketErrorCode;
+  } catch { /* Untrusted error accessors cannot change the failure path. */ }
+  return Object.freeze({transportPhase, ...(closeCode === undefined ? {} : {closeCode,
+    closeReason: reasons.get(closeCode) ?? 'other'}), ...(socketErrorCode === undefined ? {} : {socketErrorCode})});
+}
+
 interface Pending {
   readonly receipt: AgentArtsUnknownReceipt;
   readonly deadline: string;
+  readonly signal: AbortSignal;
   sent: boolean;
   accepted: boolean;
+  settling: boolean;
   resolve(response: AgentArtsResponse): void;
   reject(error: unknown): void;
   afterAccepted(receipt: AgentArtsUnknownReceipt): void;
   afterTerminal(receipt: AgentArtsUnknownReceipt): void;
+  startStatusRecovery(): void;
   cleanup(): void;
 }
 interface Connection {
@@ -153,6 +185,7 @@ interface Connection {
   readonly tombstones: Set<string>;
   opened: boolean;
   negotiated: boolean;
+  supportsStatus: boolean;
   closed: boolean;
   leases: number;
   serverInstanceId?: string;
@@ -200,7 +233,10 @@ export class AgentArtsWebSocketTransport {
   private disposed = false;
   constructor(private readonly url: string,
     private readonly factory: AgentArtsWebSocketFactory = socketFactory,
-    private readonly observe?: (state: AgentArtsTransportState) => void) {}
+    private readonly observe?: (state: AgentArtsTransportState) => void,
+    /** Host-only read callback; it refreshes credentials without issuing another invoke. */
+    private readonly recoverAcceptedStatus?: (receipt: AgentArtsUnknownReceipt,
+      controls: {deadline: string; signal: AbortSignal}) => Promise<StatusResponse>) {}
 
   private report(state: AgentArtsTransportState): void {
     try { this.observe?.(Object.freeze(state)); } catch { /* Observation never changes execution. */ }
@@ -289,10 +325,97 @@ export class AgentArtsWebSocketTransport {
   }
   private dropPending(connection: Connection, requestId: string): Pending | undefined {
     const pending = connection.pending.get(requestId);
-    if (pending) { connection.pending.delete(requestId); pending.cleanup(); this.remember(connection, requestId); }
+    if (pending) { connection.pending.delete(requestId); this.remember(connection, requestId); pending.cleanup(); }
     return pending;
   }
-  private breakConnection(connection: Connection, error: unknown): void {
+  private isPendingActive(connection: Connection, pending: Pending): boolean {
+    return !this.disposed && !connection.closed && !pending.signal.aborted
+      && connection.pending.get(pending.receipt.requestId) === pending
+      && Date.parse(pending.deadline) > Date.now();
+  }
+  /** Both the original socket and a validated status read settle this exact Pending once. */
+  private settleTerminal(connection: Connection, pending: Pending, frame: TerminalFrame): void {
+    if (!this.isPendingActive(connection, pending) || pending.settling) return;
+    if (!pending.sent || (frame.type === 'result' ? !pending.accepted : frame.accepted !== pending.accepted)) {
+      throw failProtocol();
+    }
+    const payload = frame.type === 'result' ? JSON.stringify(frame.events) : undefined;
+    if (payload !== undefined && Buffer.byteLength(payload, 'utf8') > MAX_RESULT_BYTES) throw failProtocol();
+    pending.settling = true;
+    try { pending.afterTerminal({...pending.receipt, accepted: pending.accepted}); }
+    catch {
+      // A failed durable receipt cannot deliver success or be retried as a read failure.
+      this.breakConnection(connection, failProtocol());
+      return;
+    }
+    // Host persistence may synchronously cancel or close the original request.
+    if (!this.isPendingActive(connection, pending)) return;
+    this.dropPending(connection, pending.receipt.requestId);
+    if (frame.type === 'result') {
+      pending.resolve({status: 200, headers: {get: () => 'application/json'}, text: async () => payload!});
+    } else {
+      pending.reject(new AgentArtsTerminalError({...pending.receipt, accepted: pending.accepted}, frame.code));
+    }
+  }
+  private watchAcceptedStatus(connection: Connection, pending: Pending): () => void {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let readTimer: ReturnType<typeof setTimeout> | undefined;
+    let query: AbortController | undefined;
+    const active = (): boolean => !stopped && !pending.settling && this.isPendingActive(connection, pending);
+    const schedule = (): void => {
+      if (!active() || !this.recoverAcceptedStatus || !connection.supportsStatus
+        || Date.parse(pending.deadline) - Date.now() <= ACCEPTED_STATUS_INTERVAL_MS) return;
+      timer = setTimeout(() => { timer = undefined; void read(); }, ACCEPTED_STATUS_INTERVAL_MS);
+      timer.unref?.();
+    };
+    const read = async (): Promise<void> => {
+      if (!active() || query || !this.recoverAcceptedStatus) return;
+      const deadlineMs = Math.min(Date.parse(pending.deadline), Date.now() + ACCEPTED_STATUS_TIMEOUT_MS);
+      if (deadlineMs <= Date.now()) return;
+      const controller = new AbortController();
+      query = controller;
+      const timeout = setTimeout(() => controller.abort(), deadlineMs - Date.now());
+      readTimer = timeout;
+      timeout.unref?.();
+      try {
+        const receipt = snapshotAgentArtsUnknownReceipt({...pending.receipt, accepted: true});
+        const response = await this.recoverAcceptedStatus(receipt,
+          {deadline: new Date(deadlineMs).toISOString(), signal: controller.signal});
+        if (!active() || controller.signal.aborted) return;
+        const frame = parseAgentArtsTransportFrame(response);
+        if (frame.type !== 'status' || !('state' in frame)
+          || frame.serverInstanceId !== receipt.serverInstanceId || frame.sessionId !== receipt.sessionId
+          || frame.requestId !== receipt.requestId || frame.idempotencyKey !== receipt.idempotencyKey
+          || frame.payloadDigest !== receipt.payloadDigest) return;
+        const identity = {protocolVersion: frame.protocolVersion, sessionId: frame.sessionId,
+          requestId: frame.requestId, idempotencyKey: frame.idempotencyKey,
+          payloadDigest: frame.payloadDigest, serverInstanceId: frame.serverInstanceId};
+        if (frame.state === 'completed') {
+          this.settleTerminal(connection, pending, {...identity, type: 'result', events: frame.events});
+        } else if (frame.state === 'failed' || frame.state === 'cancelled') {
+          this.settleTerminal(connection, pending, {...identity, type: 'error', code: frame.code, accepted: true});
+        }
+      } catch { /* A failed read observes nothing about the original invocation's terminal state. */ }
+      finally {
+        clearTimeout(timeout);
+        if (readTimer === timeout) readTimer = undefined;
+        if (query === controller) query = undefined;
+        // Do not overlap even if a host callback takes time to acknowledge its read cancellation.
+        schedule();
+      }
+    };
+    schedule();
+    return (): void => {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+      if (readTimer !== undefined) clearTimeout(readTimer);
+      readTimer = undefined;
+      query?.abort();
+    };
+  }
+  private breakConnection(connection: Connection, error: unknown, diagnostic?: AgentArtsConnectionDiagnostic): void {
     if (connection.closed) return;
     connection.closed = true;
     if (this.connections.get(connection.sessionId) === connection) this.connections.delete(connection.sessionId);
@@ -301,7 +424,7 @@ export class AgentArtsWebSocketTransport {
       this.dropPending(connection, requestId);
       if (pending.sent) {
         this.report({state: 'result_unknown', sessionId: connection.sessionId, requestId});
-        pending.reject(new AgentArtsResultUnknownError({...pending.receipt, accepted: pending.accepted}));
+        pending.reject(new AgentArtsResultUnknownError({...pending.receipt, accepted: pending.accepted}, diagnostic));
       } else pending.reject(error);
     }
     try { connection.socket.terminate(); } catch { /* Best-effort socket cleanup. */ }
@@ -317,7 +440,8 @@ export class AgentArtsWebSocketTransport {
       socket = this.openSocket(sessionId, headers);
     } catch { throw new BeforeInvokeConnectionError(); }
     const connection: Connection = {sessionId, fingerprint, socket, ready, resolveReady, rejectReady,
-      pending: new Map(), tombstones: new Set(), opened: false, negotiated: false, closed: false, leases: 0};
+      pending: new Map(), tombstones: new Set(), opened: false, negotiated: false, supportsStatus: false,
+      closed: false, leases: 0};
     this.connections.set(sessionId, connection);
     this.report({state: 'connecting', sessionId});
     socket.on('open', () => { connection.opened = true; });
@@ -331,10 +455,16 @@ export class AgentArtsWebSocketTransport {
       }
       this.breakConnection(connection, new AgentArtsWebSocketUpgradeError(status));
     });
-    socket.on('error', () => this.breakConnection(connection,
-      connection.opened ? failProtocol() : new BeforeInvokeConnectionError()));
-    socket.on('close', () => this.breakConnection(connection,
-      connection.opened ? failProtocol() : new BeforeInvokeConnectionError()));
+    socket.on('error', (error: unknown) => {
+      const diagnostic = connectionDiagnostic(connection, undefined, error);
+      this.breakConnection(connection, connection.opened ? new AgentArtsBeforeInvokeError('connection', diagnostic)
+        : new BeforeInvokeConnectionError('connection', diagnostic), diagnostic);
+    });
+    socket.on('close', (code: unknown) => {
+      const diagnostic = connectionDiagnostic(connection, code);
+      this.breakConnection(connection, connection.opened ? new AgentArtsBeforeInvokeError('connection', diagnostic)
+        : new BeforeInvokeConnectionError('connection', diagnostic), diagnostic);
+    });
     socket.on('message', (data: unknown, binary: unknown) => {
       if (connection.closed) return;
       try {
@@ -343,6 +473,7 @@ export class AgentArtsWebSocketTransport {
           if (!connection.opened || connection.negotiated || connection.pending.size
             || !frame.capabilities.includes('invoke') || !frame.capabilities.includes('cancel')) throw failProtocol();
           connection.serverInstanceId = frame.serverInstanceId;
+          connection.supportsStatus = frame.capabilities.includes('status');
           connection.negotiated = true;
           connection.resolveReady();
           this.report({state: 'wss_ready', sessionId});
@@ -361,23 +492,11 @@ export class AgentArtsWebSocketTransport {
           if (!pending.sent || pending.accepted || frame.deadline !== pending.deadline) throw failProtocol();
           pending.accepted = true;
           pending.afterAccepted({...pending.receipt, accepted: true});
+          pending.startStatusRecovery();
           return;
         }
-        if (frame.type === 'result') {
-          if (!pending.sent || !pending.accepted) throw failProtocol();
-          const payload = JSON.stringify(frame.events);
-          if (Buffer.byteLength(payload, 'utf8') > MAX_RESULT_BYTES) throw failProtocol();
-          pending.afterTerminal({...pending.receipt, accepted: true});
-          this.dropPending(connection, frame.requestId);
-          pending.resolve({status: 200, headers: {get: () => 'application/json'},
-            text: async () => payload});
-          return;
-        }
-        if (frame.type === 'error') {
-          if (!pending.sent || frame.accepted !== pending.accepted) throw failProtocol();
-          pending.afterTerminal({...pending.receipt, accepted: pending.accepted});
-          this.dropPending(connection, frame.requestId);
-          pending.reject(new AgentArtsTerminalError({...pending.receipt,accepted:pending.accepted}, frame.code));
+        if (frame.type === 'result' || frame.type === 'error') {
+          this.settleTerminal(connection, pending, frame);
           return;
         }
         throw failProtocol();
@@ -420,6 +539,7 @@ export class AgentArtsWebSocketTransport {
       const frame = encodeAgentArtsTransportFrame({protocolVersion: AGENTARTS_TRANSPORT_VERSION,
         type: 'invoke', sessionId, requestId, idempotencyKey: requestId, payloadDigest, deadline, payload});
       return await new Promise<AgentArtsResponse>((resolve, reject) => {
+        let stopStatusRecovery: (() => void) | undefined;
         const abort = (): void => {
           const pending = this.dropPending(selected, requestId);
           if (!pending) return;
@@ -430,10 +550,12 @@ export class AgentArtsWebSocketTransport {
           }
           reject(new ProtocolError('CANCELLED', 'AgentArts request cancelled'));
         };
-        const pending: Pending = {receipt, deadline, sent: false, accepted: false, resolve, reject,
+        const pending: Pending = {receipt, deadline, signal: init.signal,
+          sent: false, accepted: false, settling: false, resolve, reject,
           afterAccepted: receipt => guards.afterAccepted?.(receipt),
           afterTerminal: receipt => guards.afterTerminal?.(receipt),
-          cleanup: () => init.signal.removeEventListener('abort', abort)};
+          startStatusRecovery: () => { stopStatusRecovery = this.watchAcceptedStatus(selected, pending); },
+          cleanup: () => { init.signal.removeEventListener('abort', abort); stopStatusRecovery?.(); }};
         if (selected.pending.has(requestId)) { reject(failProtocol()); return; }
         selected.pending.set(requestId, pending);
         init.signal.addEventListener('abort', abort, {once: true});

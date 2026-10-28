@@ -28,8 +28,22 @@ const requestValidator = validator('request');
 const responseValidator = validator('response');
 const eventValidator = validator('event');
 const resultValidators = new Map<string, ReturnType<typeof validator>>();
+const protocolErrors = new WeakSet<object>();
 export class ProtocolError extends Error {
-  constructor(public readonly code: string, message: string, public readonly retryable = false, public readonly retryAfterMs?: number) { super(message); }
+  constructor(public readonly code: string, message: string, public readonly retryable = false, public readonly retryAfterMs?: number) { super(message); protocolErrors.add(this); }
+}
+/** Trusted local error identity, including subclasses, without external prototype traversal. */
+export function isProtocolError(error: unknown): error is ProtocolError {
+  return typeof error === 'object' && error !== null && protocolErrors.has(error);
+}
+const toolNotStartedProofs = new WeakSet<object>();
+/** Trusted executor proof: no mutation was dispatched. Never recreate from untrusted wire data. */
+export class ToolNotStartedError extends ProtocolError {
+  constructor(code: string, message: string) { super(code, message); this.name = 'ToolNotStartedError'; toolNotStartedProofs.add(this); }
+}
+/** Identity-only check; never runs untrusted prototype/getter traps or accepts a forged wire object. */
+export function isToolNotStartedError(error: unknown): error is ToolNotStartedError {
+  return typeof error === 'object' && error !== null && toolNotStartedProofs.has(error);
 }
 function check(valid: ReturnType<typeof validator>, value: unknown): void {
   if (!valid(value)) throw new ProtocolError('INVALID_ARGUMENT', 'Message does not match the public schema');
@@ -63,7 +77,20 @@ export function parseEvent(value: unknown): Event {
 export function validateContract(name: 'snapshot' | 'tool' | 'connector' | 'evidence' | 'connectorItem' | 'connectorAction', value: unknown): void {
   check(validator(name), value);
 }
-export function validateToolValue(schema: object, value: unknown): void { check(ajv.compile(schema), value); }
+export function validateToolValue(schema: object, value: unknown): void {
+  const valid=ajv.compile(schema);
+  if(valid(value))return;
+  const issue=valid.errors?.[0];
+  const allowedKeywords=new Set(['required','type','enum','const','minimum','maximum','minLength','maxLength','pattern','format','additionalProperties','minItems','maxItems','oneOf','anyOf']);
+  const keyword=issue&&allowedKeywords.has(issue.keyword)?issue.keyword:'schema';
+  const properties=(schema as {properties?:Record<string,unknown>}).properties;
+  const candidate=issue?.keyword==='required'?issue.params.missingProperty:issue?.instancePath.split('/')[1];
+  // Only a property declared by the registered schema may be named. Never copy
+  // additionalProperties, values, paths, regex patterns or AJV's raw message.
+  const field=typeof candidate==='string'&&/^[A-Za-z][A-Za-z0-9_]{0,47}$/.test(candidate)
+    &&properties&&Object.hasOwn(properties,candidate)?candidate:undefined;
+  throw new ProtocolError('INVALID_ARGUMENT',`Tool value violates schema [keyword=${keyword}${field?`; field=${field}`:''}]`);
+}
 export function encodeFrame(message: Request | Response | Event): Uint8Array {
   const bytes = new TextEncoder().encode(JSON.stringify(message) + '\n');
   if (bytes.length > MAX_FRAME_BYTES) throw new ProtocolError('INVALID_ARGUMENT', 'Frame exceeds 1 MiB');

@@ -48,7 +48,8 @@ try {
   # Keep the original process handle open through taskkill, preventing PID reuse.
   & 'C:\\Windows\\System32\\taskkill.exe' /PID $binding.pid /T /F 1>$null 2>$null
   if(-not $owned.WaitForExit(3000)) { throw 'Owned process did not stop' }
-  Write-Output '{"state":"terminated"}'`:`@{state='alive';pid=$owned.Id;startTicks=$ticks;executablePath=$image} | ConvertTo-Json -Compress`}
+  Write-Output '{"state":"terminated"}'`:`$metadata=Get-CimInstance Win32_Process -Filter ('ProcessId='+$binding.pid)
+  @{state='alive';pid=$owned.Id;parentPid=[int]$metadata.ParentProcessId;startTicks=$ticks;executablePath=$image} | ConvertTo-Json -Compress`}
 } finally { if($owned) { $owned.Dispose() } }`;
   const result=run('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
     ['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
@@ -61,17 +62,21 @@ try {
     &&typeof value.executablePath==='string'&&path.isAbsolute(value.executablePath),'Invalid owned process identity receipt');
   return value;
 }
-function trackOwnedDesktop(app,{executablePath},attempt,started=Date.now(),{inspect=windowsOwnedProcess,terminate=binding=>windowsOwnedProcess(binding,true)}={}){
+function trackOwnedDesktop(app,{executablePath,mainProcessId},attempt,started=Date.now(),{inspect=windowsOwnedProcess,terminate=binding=>windowsOwnedProcess(binding,true)}={}){
   const child=app.process();assert.ok(child&&Number.isSafeInteger(child.pid)&&typeof child.kill==='function','original runner ChildProcess required');
-  const record={child,pid:child.pid,attempt,terminate,identity:undefined};ownedDesktops.set(app,record);
-  attempt.processIdentity={pid:child.pid,state:'unconfirmed'};
-  const identity=inspect({pid:child.pid});
+  const pid=mainProcessId??child.pid;
+  assert.ok(Number.isSafeInteger(pid)&&pid>0,'valid owned Electron main PID required');
+  const record={child,pid,attempt,inspect,terminate,identity:undefined};ownedDesktops.set(app,record);
+  attempt.processIdentity={pid,launcherPid:child.pid,state:'unconfirmed'};
+  const identity=inspect({pid});
   assert.equal(identity.state,'alive','owned Desktop must still be alive when tracked');
+  assert.equal(identity.pid,pid,'owned main process PID mismatch');
+  if(pid!==child.pid)assert.equal(identity.parentPid,child.pid,'owned Electron must descend from its original launcher');
   assert.equal(path.resolve(identity.executablePath).toLowerCase(),path.resolve(executablePath).toLowerCase(),'owned executable identity mismatch');
   const createdMs=Number((BigInt(identity.startTicks)-621355968000000000n)/10000n);
   assert.ok(createdMs>=started-2000&&createdMs<=Date.now()+2000,'owned process start identity mismatch');
   record.identity=identity;
-  attempt.processIdentity={pid:child.pid,state:'verified',createdAt:new Date(createdMs).toISOString(),
+  attempt.processIdentity={pid,launcherPid:child.pid,state:'verified',createdAt:new Date(createdMs).toISOString(),
     executablePathDigest:sha(path.resolve(identity.executablePath).toLowerCase())};
   return record;
 }
@@ -157,7 +162,12 @@ async function closeDesktop(app) {
     const phase=name=>cleanup.phases.push({phase:name,elapsedMs:Date.now()-started});
     try {
       phase('graceful-close');await bounded(()=>app.close(),10_000,'Owned Desktop normal quit timed out').catch(()=>{});
-      if(await waitOwnedExit(owned.child,500)){cleanup.method='graceful';return;}
+      const launcherExited=await waitOwnedExit(owned.child,500);
+      // On Windows Playwright owns cmd.exe; its exit alone cannot prove that the
+      // connected Electron and its renderers stopped.
+      const mainExited=owned.identity&&owned.pid!==owned.child.pid
+        ?owned.inspect(owned.identity).state==='exited':launcherExited;
+      if(launcherExited&&mainExited){cleanup.method='graceful';cleanup.mainProcessExited=true;return;}
       phase('verified-owned-tree-termination');
       if(owned.identity){const result=owned.terminate(owned.identity);
         assert.ok(['terminated','exited'].includes(result.state),'owned process identity changed; foreign process tree was not touched');
@@ -165,8 +175,10 @@ async function closeDesktop(app) {
       }else{owned.child.kill('SIGKILL');cleanup.method='original-owned-child';}
       assert.equal(await waitOwnedExit(owned.child,3000),true,'Owned Desktop process did not exit after bounded cleanup');
       assert.ok(owned.identity,'owned child stopped; descendant identity remains unconfirmed');
+      if(owned.pid!==owned.child.pid)assert.equal(owned.inspect(owned.identity).state,'exited','Owned Electron did not exit after bounded cleanup');
+      cleanup.mainProcessExited=true;
     }finally{cleanup.elapsedMs=Date.now()-started;cleanup.processExited=owned.child.exitCode!==null&&owned.child.exitCode!==undefined||Boolean(owned.child.signalCode);
-      cleanup.state=cleanup.processExited&&cleanup.method?'closed':'unconfirmed';}
+      cleanup.state=cleanup.processExited&&cleanup.mainProcessExited&&cleanup.method?'closed':'unconfirmed';}
   })();
   return owned.closing;
 }
@@ -235,7 +247,8 @@ async function settingsNavigationState(admin) {
   });
 }
 
-async function originalQuestionBinding(database,sourceTaskId,question) {
+async function originalQuestionBinding(database,sourceTaskId,question,{publicReadPaths=[fixtureName,checkName,'package.json'],
+  publicWritePaths=[fixtureName]}={}) {
   const {toolArgumentsDigest}=await import('@personal-agent/tool-gateway');
   const db=new DatabaseSync(database,{readOnly:true});
   try {
@@ -251,14 +264,26 @@ async function originalQuestionBinding(database,sourceTaskId,question) {
     assert.ok(original&&original.toolName===question.toolName,'the question must name its original pending tool invocation');
     assert.equal(original.argumentsDigest,toolArgumentsDigest(original.arguments),'the original exact arguments must remain bound');
     assert.ok(Date.parse(question.expiresAt)<=Date.parse(original.deadline),'a question cannot extend the original operation deadline');
-    if(['workspace.read_text','coding.repair.read'].includes(question.toolName))assert.equal(original.arguments.path,fixtureName,
-      'source export is restricted to the new public SVG');
+    if(['workspace.read_text','coding.repair.read'].includes(question.toolName))assert.ok(
+      publicReadPaths.includes(original.arguments.path),
+      'source export is restricted to the declared original public fixture files');
+    if(['workspace.preview_text_patch','workspace.stage_text_patch','workspace.apply_text_patch'].includes(question.toolName))
+      assert.ok(publicWritePaths.includes(original.arguments.path),'patches are restricted to the original public fixture source files');
+    if(question.toolName==='workspace.list_entries')assert.equal(original.arguments.path,'.',
+      'directory metadata export is restricted to the new public fixture root');
+    if(question.toolName==='subagent.team.dispatch') {
+      const coordinator=load(question.taskId,'subtask-parent');
+      assert.ok(coordinator?.parentTaskId===sourceTaskId&&coordinator.subtaskId==='user-work',
+        'only this original default worker may dispatch the fixture team');
+      assert.ok(Array.isArray(original.arguments.subtasks)&&original.arguments.subtasks.length===1
+        &&original.arguments.subtasks[0].role==='coder','the fixture team may contain only its one coding member');
+    }
     return {argumentsDigest:original.argumentsDigest,deadline:original.deadline};
   } finally {db.close();}
 }
 
-async function readAllowedOriginalQuestion(database,sourceTaskId,pending,observed,binding) {
-  assert.deepEqual(await originalQuestionBinding(database,sourceTaskId,observed),binding,'the original invocation binding must remain unchanged');
+async function readAllowedOriginalQuestion(database,sourceTaskId,pending,observed,binding,boundary) {
+  assert.deepEqual(await originalQuestionBinding(database,sourceTaskId,observed,boundary),binding,'the original invocation binding must remain unchanged');
   const db=new DatabaseSync(database,{readOnly:true});
   try {
     db.exec('PRAGMA query_only=ON');
@@ -400,7 +425,8 @@ async function launch({executablePath,userData,workspace,node,npm}, report) {
   try {
     app=await _electron.launch(electronLaunchOptions({executablePath,userData}));
     mark('electron-connected');
-    trackOwnedDesktop(app,{executablePath},attempt,started);
+    const mainProcessId=await evaluateBounded(app,()=>process.pid);
+    trackOwnedDesktop(app,{executablePath,mainProcessId},attempt,started);
     stdout=app.process()?.stdout;
     onOutput=chunk=>{
       buffer+=chunk.toString('utf8');
@@ -434,7 +460,8 @@ async function launch({executablePath,userData,workspace,node,npm}, report) {
     return {app,panel,orb,report};
   } catch(error) {
     attempt.state='failed';attempt.elapsedMs=Date.now()-started;
-    if(app)await closeDesktop(app);
+    attempt.failure={message:String(error?.message??'Owned Desktop startup failed').replace(/[A-Z]:[\\/][^\n]+/gi,'[local path]')};
+    if(app)try{await closeDesktop(app);}catch(cleanupError){attempt.cleanupFailure={message:String(cleanupError?.message??'Owned Desktop cleanup unconfirmed')};}
     throw error;
   } finally {stdout?.off('data',onOutput);}
 }
@@ -472,9 +499,35 @@ async function readback(database, sourceTaskId, requireComplete, {workflow=false
       const entries=runtime.loadCheckpoint(task.taskId,'competition-tool-catalog')?.entries??[];
       return {taskId:task.taskId,count:entries.length,tools:entries.map(entry=>entry.name)};
     });
+    const executionCapacities=tasks.flatMap(task=>{
+      const state=runtime.loadCheckpoint(task.taskId,'competition-execution-capacity:v1');
+      return state?[{taskId:task.taskId,mode:state.mode,initialWindowSteps:state.initialWindowSteps,
+        windowSteps:state.windowSteps,windowEndStep:state.windowEndStep,extensions:state.extensions,
+        ...(state.maxSteps===undefined?{}:{maxSteps:state.maxSteps}),deadline:state.deadline}]:[];
+    });
+    const discoveryPools=tasks.flatMap(task=>{
+      const pool=runtime.loadCheckpoint(task.taskId,'competition-tool-discovery-pool:v1');
+      return pool?[{taskId:task.taskId,count:pool.entries.length,digest:pool.digest,
+        confirmedSearches:rows.filter(row=>row.taskId===task.taskId&&row.toolName==='capability.search'
+          &&row.state==='confirmed'&&row.policyDecision==='allow'&&row.executionStarted).length}]:[];
+    });
+    const continuationWindows=tasks.flatMap(task=>{
+      const window=runtime.loadCheckpoint(task.taskId,'competition-sent-continuation-window:v1');
+      return window?[{taskId:task.taskId,priorCount:window.priorCount,queryBytes:window.queryBytes}]:[];
+    });
     const clouds = tasks.flatMap(task=>{
       const identity=runtime.loadCheckpoint(task.taskId,'competition-cloud-request-identity');
       return (identity?.requests??[]).map(request=>({taskId:task.taskId,...request}));
+    });
+    const dispatchContexts=tasks.flatMap(task=>{
+      const context=runtime.loadCheckpoint(task.taskId,'competition-cloud-dispatch-context');
+      if(!context)return [];
+      const catalog=runtime.loadCheckpoint(task.taskId,'competition-tool-catalog');
+      if(context.catalog)assert.equal(context.catalog.entriesDigest,sha(JSON.stringify(catalog?.entries)),
+        'the original cloud dispatch must bind the persisted exact tool catalog');
+      return [{taskId:task.taskId,requestId:context.invocation.requestId,payloadDigest:context.invocation.payloadDigest,
+        phase:context.request.phase,revision:context.request.revision,step:context.loop.step,maxSteps:context.loop.maxSteps,
+        catalog:context.catalog?{entriesDigest:context.catalog.entriesDigest,count:catalog.entries.length}:null}];
     });
     const records = rows.map(row=>({taskId:row.taskId,toolName:row.toolName,toolVersion:row.toolVersion,
       state:row.state,policyDecision:row.policyDecision,executionStarted:row.executionStarted,
@@ -588,6 +641,7 @@ async function readback(database, sourceTaskId, requireComplete, {workflow=false
         advanceCount:graph.state.sequence,hostTaskIds:originalHosts.filter(host=>host.ownerTaskId===graph.taskId).map(host=>host.localTaskId),
         verification:graph.state.confirmedHost?.['workflow.host.f15_n05']?.result?.verification,
         publication:graph.state.confirmedHost?.['workflow.host.f15_n06']?.result}))}:{}),
+      executionCapacities,discoveryPools,continuationWindows,dispatchContexts,
       records,localDecisions,authorizationDiagnostics,evidenceRefs:[...new Set(evidence.map(item=>item.evidenceId))],cloudRequests:clouds};
   } finally {application.close();}
 }
@@ -678,6 +732,8 @@ async function main() {
       workspaceConfigHostSha256:fileSha(path.join(desktop,'electron/workspace-config-host.js')),
       codingDecisionSourceSha256:fileSha(path.join(root,'apps/runtime/src/application/coding-decision-tool.ts')),
       codingDecisionBuildSha256:fileSha(path.join(root,'apps/runtime/dist/application/coding-decision-tool.js')),
+      coordinationBuildSha256:fileSha(path.join(root,'apps/runtime/dist/application/coordination.js')),
+      runtimeApplicationBuildSha256:fileSha(path.join(root,'apps/runtime/dist/application/runtime-application.js')),
       runnerSha256:fileSha(__filename)},
     nativeHelper:{sha256:fileSha(helper),processIdentityQuery:'passed',sourceBuildProvenance:'not_reestablished'},
     wiringSurface:workflowMode?'apps/desktop production main panel → original delegated child → published coding.repair.workflow/F15'
@@ -767,9 +823,9 @@ async function main() {
       for(const pending of value.authorizationQuestions??[]) {
         if(pending.state!=='pending'||report.approvals.some(item=>item.questionId===pending.questionId&&item.revision===pending.revision))continue;
         // This fresh userData has one original main turn; deny any unrelated tool.
-        assert.ok(['workspace.read_text','workspace.preview_text_patch','workspace.stage_text_patch',
+        assert.ok(['workspace.list_entries','workspace.read_text','workspace.preview_text_patch','workspace.stage_text_patch',
           'workspace.apply_text_patch','workspace.node_check','workspace.npm_test','workspace.git_diff_check',
-          'subagent.dispatch',...(workflowMode?['coding.repair.start','coding.repair.read','decision.choose_candidate',
+          'subagent.dispatch','subagent.team.dispatch',...(workflowMode?['coding.repair.start','coding.repair.read','decision.choose_candidate',
             'workflow.host.f15_n04','workflow.host.f15_n05','workflow.host.f15_n06']:[])].includes(pending.toolName),
           'only original fixture coding questions may be automated');
         assert.ok(pending.requirements.every(item=>['tool','connector_session','export'].includes(item.kind)),
@@ -795,6 +851,12 @@ async function main() {
     await closeDesktop(session.app);session=undefined;
     report.stage='reopen-original-runtime-evidence';persist();
     report.persistence=await readback(database,source.taskId,true,{workflow:workflowMode});
+    assert.ok(report.persistence.executionCapacities.some(state=>state.taskId!==source.taskId&&state.mode==='progressive'),
+      'the default delegated task must persist its original progressive execution policy');
+    assert.ok(report.persistence.continuationWindows.some(window=>window.taskId!==source.taskId),
+      'the original default child must record an actual bounded cloud continuation');
+    assert.ok(report.persistence.continuationWindows.every(window=>window.priorCount<=32&&window.queryBytes<=1_100_000),
+      'every recorded default cloud continuation must respect the published transport bounds');
     assert.deepEqual(fixtureFileSet(workspace),originalFiles,'no additional source-workspace files or directories may be created');
     for(const [name,digest]of Object.entries(fixedFiles))assert.equal(fileSha(path.join(workspace,name)),digest,'checker and package bytes must stay original');
     const after=fs.readFileSync(fixture,'utf8');

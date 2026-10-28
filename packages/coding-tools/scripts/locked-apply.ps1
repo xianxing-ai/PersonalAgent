@@ -149,6 +149,53 @@ function Invoke-LockedApply($Request) {
 }
 
 
+
+function Invoke-LockedCreate($Request) {
+  $source = $null
+  try {
+    $after = [Convert]::FromBase64String([string]$Request.afterBase64)
+    if ($after.Length -gt 1048576 -or (Get-Sha256Hex $after) -ne [string]$Request.afterSha256) {
+      throw 'Invalid candidate bytes'
+    }
+    try {
+      $source = [System.IO.FileStream]::new(
+        [string]$Request.sourcePath,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::None,
+        4096,
+        [System.IO.FileOptions]::WriteThrough
+      )
+    } catch [System.IO.IOException] {
+      if ([System.IO.File]::Exists([string]$Request.sourcePath)) { return @{state = 'exists'} }
+      throw
+    }
+    [PersonalAgentFileIdentity]::RequireSingleRegularFile($source.SafeFileHandle)
+    $finalPath = [System.IO.Path]::GetFullPath([PersonalAgentFileIdentity]::FinalPath($source.SafeFileHandle))
+    $expectedPath = [System.IO.Path]::GetFullPath([string]$Request.sourcePath)
+    $root = [System.IO.Path]::GetFullPath([string]$Request.rootPath).TrimEnd('\')
+    if (-not [string]::Equals($finalPath, $expectedPath, [StringComparison]::OrdinalIgnoreCase) -or
+        -not $finalPath.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+      throw 'Opened source is outside the authorized root'
+    }
+    $source.Write($after, 0, $after.Length)
+    $source.Flush($true)
+    $source.Position = 0
+    $readback = Read-Exactly $source ([int]$source.Length)
+    if ((Get-Sha256Hex $readback) -ne [string]$Request.afterSha256) { throw 'In-lock readback mismatch' }
+    if (-not [string]::Equals(
+      [System.IO.Path]::GetFullPath([PersonalAgentFileIdentity]::FinalPath($source.SafeFileHandle)),
+      $expectedPath,
+      [StringComparison]::OrdinalIgnoreCase
+    )) { throw 'Opened source path changed during create' }
+    return @{state = 'created'}
+  } catch {
+    return @{state = 'unknown'}
+  } finally {
+    if ($null -ne $source) { $source.Dispose() }
+  }
+}
+
 try {
   [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
   [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
@@ -162,7 +209,8 @@ try {
     $process.Dispose()
   }
   $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
-  $result = Invoke-LockedApply $request
+  if ([string]$request.operation -eq 'create') { $result = Invoke-LockedCreate $request }
+  else { $result = Invoke-LockedApply $request }
   [Console]::Out.WriteLine(($result | ConvertTo-Json -Compress))
   [Console]::Out.Flush()
 } catch {

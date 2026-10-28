@@ -120,9 +120,38 @@ test('WSS upgrade diagnostics cannot be forged by a local export guard or ordina
       const {requestId, ...diagnostic} = diagnostics[0];
       assert.match(requestId, /^[0-9a-f-]{36}$/);
       assert.deepEqual(diagnostic, {stage: mode === 'export_guard' ? 'export_guard' : 'transport',
-        code: mode === 'export_guard' ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE'});
+        code: mode === 'export_guard' ? 'UNAUTHORIZED' : 'EXTERNAL_FAILURE',
+        ...(mode === 'socket_error' ? {transportPhase: 'wss_connect'} : {})});
       assert.equal(http, 0); assert.equal(socket.sent.length, 0);
       assert.equal(JSON.stringify(diagnostics).includes('PRIVATE_'), false);
     } finally { port.close(); }
+  }
+});
+
+test('socket diagnostics only retain bounded close facts and allowlisted local error codes', async () => {
+  for (const [code, expected] of [[1001, {closeCode: 1001, closeReason: 'going_away'}],
+    [4000, {closeCode: 4000, closeReason: 'other'}], ['1011', {}], [5000, {}], [1001.5, {}]]) {
+    const h = harness((frame, socket) => {
+      if (frame.type !== 'invoke') return;
+      socket.emit('close', code, Buffer.from('PRIVATE_REMOTE_REASON'));
+    });
+    try {
+      await assert.rejects(h.port.invoke(request(1)), AgentArtsResultUnknownError);
+      const {requestId, ...diagnostic} = h.diagnostics[0];
+      assert.deepEqual(diagnostic, {stage: 'transport', code: 'EXTERNAL_FAILURE',
+        transportPhase: 'wss_invoke', resultUnknown: true, ...expected});
+      assert.equal(h.http, 0);
+    } finally { h.port.close(); }
+  }
+  for (const code of ['ECONNRESET', 'PRIVATE_TOKEN=secret']) {
+    const h = harness((frame, socket) => {
+      if (frame.type === 'invoke') socket.emit('error', Object.assign(Error('PRIVATE_MESSAGE'), {code}));
+    });
+    try {
+      await assert.rejects(h.port.invoke(request(1)), AgentArtsResultUnknownError);
+      assert.equal(h.diagnostics[0].socketErrorCode, code === 'ECONNRESET' ? code : undefined);
+      assert.equal(JSON.stringify(h.diagnostics).includes('PRIVATE_'), false);
+      assert.equal(h.http, 0);
+    } finally { h.port.close(); }
   }
 });

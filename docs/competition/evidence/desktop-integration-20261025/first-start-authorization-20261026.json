@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "status": "passed_scoped_first_start_authorization_lifecycle",
+  "profile": "huawei_ict_agentarts",
+  "fakeRuntime": false,
+  "fakeModel": false,
+  "credentialsInjected": false,
+  "modelTasks": 0,
+  "finalFullCheck": "combined-verification-first-start.json",
+  "precedingFullCheck": "combined-verification-mail.json",
+  "changes": {
+    "files": [
+      "apps/desktop/electron/main.js",
+      "apps/desktop/src/features/admin/view.js",
+      "apps/desktop/src/shared/public-error-messages.js",
+      "apps/desktop/test/private-memory-render.test.mjs",
+      "apps/desktop/test/capability-status.test.mjs",
+      "apps/desktop/test/laya-main-startup.test.mjs",
+      "apps/desktop/test/authorization-notice-lifecycle.test.mjs",
+      "apps/desktop/test/installed-skills-product-smoke.cjs"
+    ],
+    "sourceHashes": {
+      "apps/desktop/electron/main.js": "df32b88da0067575c0e401509fe43868e86560b8273a9aa78af2c761124b6d42",
+      "apps/desktop/src/features/admin/view.js": "f0055555236d6c762090963ae636947be2eb97cbdab4fc3131ebf5c6da1d0ccf",
+      "apps/desktop/src/shared/public-error-messages.js": "d6404627a1bd71c1542681ebc259d2b56ee0d5a206db594c3fd5aa00bc4fbcc2",
+      "apps/desktop/test/private-memory-render.test.mjs": "4f261a20ad8b23051371b94aea150b35777e8bb7bc2f8138c46c554da4bf2a05",
+      "apps/desktop/test/capability-status.test.mjs": "f33fdb3b962e00fb5bb57ee1fe7238f98df73104d35e22959b9b515a0dbdf833",
+      "apps/desktop/test/laya-main-startup.test.mjs": "ac91aaf03264cc7cd70294f392ab59e663cc7557f02da2249fa8129176f2881b",
+      "apps/desktop/test/authorization-notice-lifecycle.test.mjs": "a5255b4096f6a6d5dfbdb3518c9eaa6205bf0ffcd3b86352939b8ee8f2664a95",
+      "apps/desktop/test/installed-skills-product-smoke.cjs": "cf829f350329390e21a69626eb69882e3d5df28b72c74081a0dd4080ff3d8fdc"
+    },
+    "publicSchemaChanges": false,
+    "localAgentAdded": false,
+    "authoritativeRuntime": "same original Competition TaskRuntime and SQLite",
+    "eventProjection": "existing snapshots and bounded event reader; local event interval is released before full Runtime assembly",
+    "notices": "only the owning prior cancellation, denial or generic non-authorized decision notice retires; unrelated errors and older RESULT_UNKNOWN remain"
+  },
+  "firstWorkspace": {
+    "attempt": "autonomous-desktop-first-start-20261026-a1",
+    "exitCode": 1,
+    "counts": {
+      "tests": 2115,
+      "pass": 2102,
+      "fail": 3,
+      "cancelled": 0,
+      "skipped": 10
+    },
+    "logSha256": "e9ed0ddbda9931a2f95a0d386418fe49db285096ebfa565d539e664f580ebccd",
+    "reason": "Three Laya startup VM cases had not supplied the new capability reader. Original assertions were retained and actual reading was supplied; final full check covers the updated fixture."
+  },
+  "regressions": [
+    {
+      "attempt": "autonomous-authorization-notice-before-20261026",
+      "exitCode": 1,
+      "counts": {
+        "tests": 5,
+        "pass": 2,
+        "fail": 3,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "d0a0eaaacbcdf09ae373eef135f68ab5eb12a375c88019ad989c262864e13cae"
+    },
+    {
+      "attempt": "autonomous-authorization-notice-concurrency-before-20261026",
+      "exitCode": 1,
+      "counts": {
+        "tests": 6,
+        "pass": 5,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "3639ac7d2c24ba5f2975203c4980a3167f7773fab7ee491a45eef9e739f177f2"
+    }
+  ],
+  "focused": {
+    "attempt": "autonomous-first-start-focused-20261026-a8",
+    "exitCode": 0,
+    "counts": {
+      "tests": 31,
+      "pass": 30,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 1
+    },
+    "logSha256": "7f322eef669bf2fcafaa0bf26dbbb1eaff5b644fcf0b810fb62debd328396427",
+    "scopes": [
+      "actual Main functions extracted by AST with explicit host projections",
+      "real Runtime, Policy, SQLite and capability Client",
+      "source readiness, redaction and authorization settings boundaries"
+    ],
+    "note": "The final full check also covers the later assertion that the old local-control poll is released before Runtime reassembly."
+  },
+  "failedProductAttempts": [
+    {
+      "attempt": "autonomous-skills-product-20261026-a1",
+      "exitCode": 1,
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "f3327b3e4a8e2dc02aedbdce324f75d4cc0cd8b737f8068469b99bbaf1391e31",
+      "reason": "The initial harness used Panel task.cancel for a host-only decision and the original task was not yet projected; it is not a real tool RESULT_UNKNOWN receipt."
+    },
+    {
+      "attempt": "autonomous-skills-product-20261026-a2",
+      "exitCode": 1,
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "bd07caf6f5f84240a2e9ed0bdb543cca98e4353f6531d64d06cbd862962de6d8",
+      "reason": "The harness initially required CANCELLED text, while the actual cancelled decision had no task error and used the generic authorization fallback notice."
+    },
+    {
+      "attempt": "autonomous-skills-product-20261026-a3",
+      "exitCode": 1,
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "1d1a0bf3f29058697ba1c38ce448f1f1743c10dc4d32a3f60ecbf7722cb0ab66",
+      "reason": "A new request failed to restore the underlying configuration error because the fallback notice was not owned."
+    },
+    {
+      "attempt": "autonomous-skills-product-20261026-a4-diagnostic",
+      "exitCode": 1,
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "112675eb44105228303094e6f2de0bf2695ee122842ab12ef8d30f512fff186f",
+      "reason": "The task PATH omitted pinned Node; no product instance launched."
+    },
+    {
+      "attempt": "autonomous-skills-product-20261026-a5-diagnostic",
+      "exitCode": 1,
+      "counts": {
+        "tests": 0,
+        "pass": 0,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "logSha256": "f31727a5e05d6ee2f1d0d1e01817e43c6fbccdf696a8d2aaf6f6d60758e857c6",
+      "reason": "Fixed metadata diagnostics confirmed the fallback had no onError value; temporary diagnostic code was removed before the passing run."
+    }
+  ],
+  "product": {
+    "attempt": "autonomous-skills-product-20261026-a6",
+    "exitCode": 0,
+    "counts": {
+      "tests": 0,
+      "pass": 0,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "logSha256": "27458f26fe843402311259c8021e931b9930ebf29313b6396181f2bf10cd16b6",
+    "state": "passed",
+    "main": "actual product",
+    "preload": "actual IPC",
+    "renderer": "actual admin and conversation",
+    "nativeDialogs": "explicit synthetic",
+    "runtime": "actual Competition authorization control plane and SQLite",
+    "runtimeConfigured": false,
+    "capabilityDirectoryAutoLoaded": true,
+    "cancelledNoticeRetired": true,
+    "authorizationTasks": [
+      {
+        "task_id": "cb15a106-7616-4b62-852c-836c6b8f40c6",
+        "state": "cancelled"
+      },
+      {
+        "task_id": "a282b06d-5e74-4bfb-aab5-43f3982d9477",
+        "state": "succeeded"
+      },
+      {
+        "task_id": "b7047240-f287-4f6c-8684-370b36a87c93",
+        "state": "succeeded"
+      },
+      {
+        "task_id": "0c56bc1c-a4b5-490e-8f9a-4dc5519fde56",
+        "state": "succeeded"
+      }
+    ],
+    "skillRunRejected": true,
+    "noModelTask": true,
+    "sourceUnchanged": true,
+    "restart": true,
+    "pageErrors": [],
+    "launches": [
+      {
+        "processIdentity": {
+          "pid": 13036,
+          "launcherPid": 29756,
+          "state": "verified",
+          "createdAt": "2026-10-26T04:45:22.531Z",
+          "executablePathDigest": "b4cc11fecce41ed0cf0d063100f106f3883e845c96d5dd8d6de27255a7d54e75"
+        },
+        "cleanup": {
+          "state": "closed",
+          "phases": [
+            {
+              "phase": "graceful-close",
+              "elapsedMs": 0
+            }
+          ],
+          "method": "graceful",
+          "mainProcessExited": true,
+          "elapsedMs": 824,
+          "processExited": true
+        }
+      },
+      {
+        "processIdentity": {
+          "pid": 20760,
+          "launcherPid": 19116,
+          "state": "verified",
+          "createdAt": "2026-10-26T04:45:26.588Z",
+          "executablePathDigest": "b4cc11fecce41ed0cf0d063100f106f3883e845c96d5dd8d6de27255a7d54e75"
+        },
+        "cleanup": {
+          "state": "closed",
+          "phases": [
+            {
+              "phase": "graceful-close",
+              "elapsedMs": 0
+            }
+          ],
+          "method": "graceful",
+          "mainProcessExited": true,
+          "elapsedMs": 566,
+          "processExited": true
+        }
+      }
+    ],
+    "sourceHashes": {
+      "apps/desktop/electron/main.js": "df32b88da0067575c0e401509fe43868e86560b8273a9aa78af2c761124b6d42",
+      "apps/desktop/electron/installed-skills-host.js": "fb337bcb0dc295c7612a9f5bfa05fb5742498585a7b5ae18dec84668f936fa63",
+      "apps/desktop/electron/authorization-intent-host.js": "a7ce10170ef9d395cfd807f775978690471b1cd6afd8cde93ba92c1914132b09",
+      "apps/desktop/electron/authorization-question-host.js": "b3d542c4af30f1624fda27d78dabcc566dc49a6dc1fd13647640de6a6bab9992",
+      "apps/desktop/src/app/installed-skills-controls.js": "b98aa5cf7be1fa4ba3d0e2ae06954fb2654c178160656415c37da3fe2de19501",
+      "apps/desktop/test/installed-skills-product-smoke.cjs": "cf829f350329390e21a69626eb69882e3d5df28b72c74081a0dd4080ff3d8fdc"
+    },
+    "cancelledExecutionStarted": false,
+    "cancelledExecutionErrorCode": "CANCELLED",
+    "decisionActor": "controlled test via the actual conversation authorization card",
+    "nativeScreenshotsPublished": false
+  },
+  "earlierNativeJourney": {
+    "kind": "actual CUA production first-start with a public synthetic local Skill",
+    "tasks": [
+      {
+        "taskId": "1981039c-3bf5-42ef-a6d7-834381fee884",
+        "state": "cancelled",
+        "errorCode": "CANCELLED"
+      },
+      {
+        "taskId": "78f2b825-1c4a-44cf-b9f8-024c360cff18",
+        "state": "cancelled",
+        "errorCode": "CANCELLED"
+      },
+      {
+        "taskId": "d919a1c6-6dd6-46f0-910c-26a804985c3f",
+        "state": "succeeded"
+      }
+    ],
+    "skills": [
+      {
+        "name": "public-journey-skill",
+        "version": "9bba7416a4f2",
+        "digest": "9bba7416a4f227a3dcf2f3aeb738ea1825561a5f06c92b1d04b59f44c42b9b54",
+        "enabled": false,
+        "files": [
+          "SKILL.md"
+        ]
+      }
+    ],
+    "preferences": {
+      "theme": "system",
+      "language": "system",
+      "fontScale": 1.2,
+      "calm": true,
+      "alwaysOnTop": true,
+      "snap": true,
+      "hover": false,
+      "shortcut": false
+    },
+    "actor": "controlled simulated user, not independent human approval",
+    "latestCodeNativeObservation": "The models settings were readable after resetting the CUA session. User input and minimization then blocked later native observation.",
+    "priorReopenExitCode": "not recorded; original process no longer present",
+    "screenshotsPublished": false
+  },
+  "limitations": [
+    "The passing product smoke used explicit synthetic native directory and message dialogs; it does not establish the latest native OS picker or desktop compositor behavior.",
+    "Earlier actual CUA install and preview observations belong to their original source snapshot and are not relabelled as current native acceptance.",
+    "No real mailbox, provider, microphone, cloud upload, new platform deployment or system-wide memory SLO was tested in this increment.",
+    "One optional browser check remained skipped in the focused set; the full-check skipped count is recorded separately.",
+    "Original cancelled and failed tasks and logs remain intact; no successful decision is a claim that its business operation or any arbitrary tool was authorized."
+  ]
+}

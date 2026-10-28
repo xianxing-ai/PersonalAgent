@@ -1,5 +1,45 @@
 # 开发计划与进度
 
+## 2026-10-26 本地工程移交与会话 SQLite（review，历史快照未完整复原）
+
+已实际接收并核验本地源码 ZIP，在 `934b7c44` 的独立工作树准备三方候选，尚未提交、推送或发布。119 份基线原文的长度/SHA256/Git blob ID 均符合 manifest；`b2fb20dd` commit provenance 未核实。来源 A12 中另有 65 项未交付输入与当前 main 不同或缺失，包括 team broker 及部分 provider/模型控制基线；因此不能称完整 Windows 工程已还原或继承 A12 全绿。当前候选的独立根 build 已通过，65 项是历史快照可复原性清单，不是当前候选构建缺文件清单；定向测试结果与平台限制另按实际记录判断。
+
+会话私有 SQLite 候选与 Main 退出接线保持 TaskRuntime 权威；首次写入才迁移 v1～v4，v5 ready 缺库拒绝空建，提交未知冻结并独立核实。来源合成负载显示稳态写延迟改善，同时首次迁移、重开、RSS 和磁盘占用回退；Map 仍常驻，最新 v5→v4 导出未实现。[ADR-0041](adr/0041-desktop-conversation-incremental-persistence.md) 继续 proposed。来源回执已经收到并核验，完整原始日志未交付；两项修正后的 Windows GUI smoke 与公共 Evidence 最终化仍 pending，Linux 检查不替代它们。下文 A11/作者验证保持其原源码和平台范围。
+
+## 2026-10-26 邮件首读基线 UI 增量（provisional，晚于 A11）
+
+Root 五文件已接入 Main→Admin 私有首读基线投影；源码 SHA、Desktop typecheck exit 0、聚焦 68/68、最终文案 17/17 分层记录见[本次 Evidence](competition/evidence/desktop-integration-20261025/mail-baseline-ui-20261026.json)。已安装 Edge 渲染真实 Renderer/Admin/邮件控件/CSS，IPC 与邮箱状态为明显标记的本机合成夹具；五状态、停止／核实优先级、草稿焦点与 600px 布局通过。
+
+原 WatchHost／MailTriageHost／Runtime-Policy-ToolGateway／ChangeHost→Main AST 的同一 watchId 集成使用显式 Fake QQ/Laya/审批，覆盖首读基线、后续 UID 事件及撤销／过期保守状态。A11 整仓 6,145 通过／29 跳过早于本 UI，不能覆盖五文件最终字节；真实邮箱、完整 Electron 生产 IPC、云模型与 OS 通知仍待分别验收。
+
+## 2026-10-26 十一包修复与 Root MCP 组合（review，四项组合回执已核）
+
+目标仍为 `huawei_ict_agentarts`。本轮在主集成树汇合控制边界、Runtime 容量与恢复、历史缓存与分页、语音 UI、连接器生命周期、快照资源、邮件变化 epoch、视觉生命周期、通知终态、通知点击证据及邮件持久游标共十一项局部修复；Root MCP 管理窗口、Preload、页面和 Main 接线作为另一个组合检查面。各项作者聚焦验证与主集成源码身份分别记录，不能把独立工作树的通过计数相加，也不能据复制源码认定当前组合通过。
+
+邮件持久游标只为原 `MailTriageHost` 首个读取任务写私有 checkpoint，并由原 watch 来源、Runtime 执行输入、Policy/ToolGateway 回执共同核对空页基线；没有新增公共 Schema 或数据库迁移。该说明仅限此增量，历史与显示查询的既有迁移 11/12 仍按各自实施记录和数据库回退边界处理。通知点击增量保留展示、点击、ack 及重开的独立状态证据；最终源码哈希已按冻结后回执核对。
+
+最终四份当前源码绑定回执均 exit 0、执行期间源码未变，且共享同一 1,720 项快照（SHA256 `7a25e23633e72792bdd5d40b12044c0d60b419e32257dd3f9557592044d0a4a9`），覆盖十一包及 Root MCP 的 45 项必需源输入。整仓 `npm run check` 为 6,174 项：6,145 通过、29 跳过、0 失败；Runtime Application smoke、显式 Fake Runtime 原生窗口 smoke、Root MCP 产品链各自 exit 0。实际回执哈希、MCP 产品摘要及原始测量见[组合 Evidence](competition/evidence/desktop-integration-20261025/combined-verification-repair-20261026.json)和[说明](competition/evidence/desktop-integration-20261025/repair-batch-20261026.md)。历史 A10 与 MCP a7 的源码快照较早，不能替代本轮；局部聚焦及合成性能测量仍只证明对应版本和夹具。真实 QQ 邮箱、AgentArts 部署、Windows OS 通知点击、物理设备与跨环境性能分别保留原验收缺口，Git/PR/发布和模块整体状态另据实际事实登记。
+
+## 2026-10-24 默认桌面对话渐进执行（in_progress）
+
+目标 `huawei_ict_agentarts`；主集成工作树 `<source-worktree>`，分支 `codex/autonomous-change-loop`。默认对话保留 AgentArts 云模型与自定义模型入口，执行窗口从思考深度解耦；原 Runtime 在确认进展后续窗，工具目录过大时经原只读检索回执分页，近期发送窗口服从原传输限制，完整记录继续本地持久化。实现与逐项验证见[实施记录](competition/PROGRESSIVE_EXECUTION_20261024.md)。
+
+电脑／视觉、权限／子智能体团队与内存优化工作包已串行进入本树。默认生产桌面经真实部署 WSS 的单文件修复闭环，以及 14 模块原任务的 45 步持续开发已核对：后者窗口 32→64、44 次原 confirmed 子工具、14 项原生测试、14 项独立检查和隔离副本冷启动均通过。原第六次验收脚本因补丁跨度比较而失败的回执保留，独立读回没有修改原 SQLite 或重发调用；见[公开脱敏回执](competition/evidence/default-desktop-20261024/README.md)。修复覆盖相对目录投影、固定 Node 配方、子任务失败时拒绝父成功及活跃 accepted 云请求的只读状态恢复。
+
+10 月 25 日实际 UI 复验修复窗口销毁后的快照监听器异常、模型停用／退出保护提示丢失及兼容入口模型标签错误。真实 Electron／Runtime 的回环 HTTP 模型夹具 7 请求、2 取消及正常重启退出通过；原生窗口显式 Fake Runtime smoke exit 0。第六轮整仓的三项环境失败保留，补足任务 PATH 的 OpenSSL 后定向通过；第七轮整仓 exit 0（6,037 pass／29 skip／0 fail）。证据见[桌面复验记录](competition/evidence/desktop-integration-20261025/README.md)。
+
+邮件准备期间的停止／撤销、配置更新守卫与原 watchId 的跨对话停止已补齐；83/83 聚焦、6/6 实际 Renderer 加合成 IPC 通过。真实 Runtime 的 unknown 在 retire 前后均保留原任务和执行记录，后来新建的 watch 可独立停止；该增量没有访问真实邮箱或云模型。第九轮最终整仓 exit 0（6,059 pass／29 skip／0 fail），37 组及 57 项根集成完整执行，171 份冻结源码 hash 已核对。完整生产 IPC 的新一键邮件链、自然天气变化、物理接管和平台新部署仍未验收；旧失败与 unknown 保留，不据受控任务宣称任意大型项目或产品发布。
+
+第九轮后实际操作非 Fake Competition 新配置，修复未装配知识源时 Vault 按钮仍可点击并只报泛化错误的问题；沿原知识源状态显示固定配置提示，保留已存记忆读取与原权限边界。7 pass／2 skip 聚焦、Desktop 语法和实际正常重开读回通过；新源码 hash 与第九轮分开记录，不补造旧全检覆盖。该路径的基础偏好、设置搜索及合成个人资料持久化也已实用核对，见[首启回执](competition/evidence/desktop-integration-20261025/vault-first-start.json)。
+
+10 月 26 日首启增量使未配置云端的原 Competition 授权控制平面自动读取能力目录、原任务快照和有界事件；重新装配完整 Runtime 前释放旧轮询。新授权撤下自己先前的取消／未获授权提示，恢复底层配置说明；无关错误、并发旧请求的 `RESULT_UNKNOWN` 和原 Runtime 终态保留。实际 Main／IPC／Renderer／Runtime／SQLite 的 Skill 安装、取消、重开及卸载产品流程通过，一条取消与三条成功原决策未重放，源目录不变；原生目录选择在本轮产品冒烟中为显式合成。聚焦 30 pass／1 skip；组合检查与失败历史按[首启授权回执](competition/evidence/desktop-integration-20261025/first-start-authorization-20261026.json)单列，未新增云调用或公共 Schema。
+
+## 2026-10-24 电脑操控 C0～C6（in_progress，已进入主集成树）
+
+目标 `huawei_ict_agentarts`，MOD-11/12/16/17 与 ModelGateway 的必要接线；独立实施工作树 `<source-worktree>`，分支 `codex/computer-control-completion`。固定原生组件、强目标与共享输入控制、原任务访问/停止/恢复、受控浏览器、加密可选视觉设置及 PNG 视觉端口已接到现有 Main／Runtime。当前源码与证据入口见[交付记录](COMPUTER_CONTROL_COMPLETION_20261024.md)，不由此改写其他负责人的模块状态。
+
+真实 Windows 合成窗口、Runtime、Edge、实际 Electron 和直连云模型按层记录；视觉完成原截图随机标记识别及原任务续答，原生完成六工具云链、UIA／独立窗口读回、PNG 与原 SQLite 验证，所有先前失败保留。必要检查分项完成：首轮全检的 6 项测试环境失败修复后 33 项定向与 57 项根集成通过，原 exit 1 和 40 项 skip 保留；固定访问成功语义另经 Runtime 编译及 7 项定向验证。完整工具目录 64→65 的发现／容量修复由主集成工作包处理。正式新平台部署、安装器/签名/干净系统、物理接管和多屏 DPI 仍未验收。源码尚未提交，不宣称整包 `done`、PR 合并或产品发布。
+
 ## 2026-10-21 连接器变化与默认自主闭环（in_progress）
 
 用户要求补齐默认桌面开发、持续来源与主动处理，并明确新邮件/明显天气变化先通知主对话，
@@ -10,6 +50,8 @@
 恢复真实验收后，真实QQ单封信头→AgentArts续接及默认天气订阅/停止已通过；默认鹈鹕原决策
 返回复核而停在unknown，未修改文件。自然新邮件/显著天气变化→Laya→真实提醒仍未验证。
 
+2026-10-24 核对补充：上述为 10 月 21 日阶段记录。后续 [10 月 23 日公开测试新邮件回执](competition/evidence/pr503-cloud-mail-20261023/mail-auto-notification-20261023.json)已记录正式 Desktop 的订阅自动收取、Laya defer、单次云复核与 Windows delivered；这不是本轮重复实跑，也不证明长期准确率。后加的一键监测设置仍缺新的生产 IPC 验收，显著天气变化及其他来源仍保留缺项。默认工作区修复的最新成功与多文件扩窗进展见本页 10 月 24 日主工作包，不沿用旧鹈鹕 unknown 作为当前唯一结论。
+
 ## 2026-10-21 悬浮面板玻璃主题与原生圆角（review）
 
 `DESKTOP-LIQUID-GLASS-20261021`：目标 `huawei_ict_agentarts`，MOD-11/12，PA-001/PA-002。用户确认本机深色玻璃和真实外层圆角后授权提交 PR；从 `61b05cf1` 独立交付 `codex/panel-liquid-glass-20261021`。仅修改 Desktop 面板展示、原生材质与必要验证；没有纳入并行工作区重排、Runtime/AgentArts、公共协议、依赖或迁移。实际接线、Windows SDK/.NET Framework 要求、不透明回退和验证边界见 [交付记录](../apps/desktop/docs/PANEL_LIQUID_GLASS_20261021.md)。实施 Codex / 提交 `2511375597-lab`，拟审查 `Potatos498`、拟合并 `goo122`（均待实际接手）；未授权合并，不据本机 Fake 界面或视觉批准声明真实云能力完成。
@@ -17,7 +59,7 @@
 ## 2026-10-21 强制截断、对话引导与排队（review）
 
 - Profile / 模块：`huawei_ict_agentarts` / MOD-11、13，复用既有 Runtime 取消与上下文；本轮实现负责人为当前 Codex 对话。
-- 工作树：`D:/worktree/3def/PersonalAgent`，基线 `e7d4e0c6`；拥有 Desktop 主进程交付占位、主面板发送/队列/输出投影及相关回归；未修改公共 wire、Runtime 状态机、依赖或数据库迁移。
+- 工作树：`<source-worktree>`，基线 `e7d4e0c6`；拥有 Desktop 主进程交付占位、主面板发送/队列/输出投影及相关回归；未修改公共 wire、Runtime 状态机、依赖或数据库迁移。
 - 行为：停止先冻结输出并释放 composer，取消和语音独立请求；引导截断并提交带原上下文的新一轮，排队保存待发送草稿并可逐条立即发送/编辑。迟到受理请求取消，迟到输出不能复活。历史已取消的待核实任务不再阻塞新消息。
 - UNKNOWN：保留 cloud checkpoint、原工具结果及真实 `waiting_reconciliation`，在已知缺少读回时展示阻塞原因。`cancelRequested + deadline 过期` 不是无证据改账为 cancelled 的充分条件，不直接 SQL 更新 tasks。
 - 验收：见 [本轮证据](../apps/desktop/docs/CONVERSATION_DELIVERY_20261021.md)。已只读核验用户提供的术前单文件备份；用户另已确认离线收账后解锁，本轮未写真实数据库。
@@ -607,3 +649,13 @@ DEV-WORKFLOWS 历史真实验收：MOD-36 已取得只读模型预审回执；MO
 - 外观证据：恢复后的原版与产品待机球体在原稿 132px 画布下逐像素一致，170 点。恢复覆盖 10 个设计源码/说明文件，修改前内容另留备份。
 - 环境：Windows，Node 26.3.0 / npm 11.16.0；与底座声明的 Node 24.15.x 不同，目标 Node 版本待集成环境验证。
 - 继续入口：[桌面模块说明](../apps/desktop/README.md)。真实 Runtime、语音、模型、账号配置、物理多屏/DPI、系统背景模糊及分发仍待接入/验收；fake 仅在显式联调模式使用。
+
+### image-reliability-20261023 / 镜像问题核验、具体报错与能力自知
+
+- 目标 Profile：`huawei_ict_agentarts`；模块：MOD-03/05/11 与 AgentArts 工具目录、连接器消费；输入为用户附件《镜像待完善问题清单-20261023.md》14项线索及用户追加的具体报错、基于实际能力提出建议要求。
+- 负责人：本轮 Codex 集成交付负责人；各委派工作包在独立工作树保留原作者修改。自审及交叉工程复核记录见总矩阵，不冒充 GitHub 非作者批准。拟非作者审查者、拟合并者均待正式接手，实际批准与合并尚无记录；正式 PR 待集成负责人发布。
+- 状态：`in_progress`（各补丁进入 `review`，尚未完成组合验收与合并，不登记 `done`）。集成工作树 `.worktrees/image-reliability-integration-20261023`，分支 `codex/image-reliability-integration-20261023`。
+- 拥有范围：本轮约定的 ToolGateway 安全错误投影、Coordination/Runtime 诊断传递、Desktop 报错与历史邮件卡片、AgentArts 提示与工具目录、Runtime 能力状态上下文及专有回归/证据。已有 deadline、幂等、心跳与请求身份须沿真实调用链核验，不因附件描述重复造机制；不创建第二任务库、调度器或授权层。
+- 交付与验收：逐项区分已确认缺陷、已有实现和阻塞；错误保留可核对安全原因且不泄露外部原文/凭据、不盲重放未知写入；能力建议来自当前公开 catalog、readiness 及任务安全错误，配置/注册/就绪不冒充授权，合法批准仍可执行，隐藏工具不披露，原 Schema/Policy/预算与终态语义保留。以生产 consumer、边界回归和最终组合检查验证，不用静态提示或测试替身冒充真实服务可用。
+- 结果证据与继续入口：[本轮逐项总矩阵](competition/evidence/IMAGE_RELIABILITY_MATRIX_20261023.md)；逐项命令、提交、验证及剩余缺口在该处更新，不在此复制易漂移的通过数量。ARM64 本地 QEMU 容器协议检查与真实模型调用分别记账，不能冒充原生 ARM 硬件或完整模型闭环。
+- 剩余问题：真实 AgentArts 模型/平台评测、Windows 实体验收及较新 SWR 镜像查询仍有环境或凭据阻塞；不据旧 GHCR 镜像验证宣称最新 SWR 已取得或补丁已部署。#503 邮件/变化通知与 #509 天气配置仍为未合并独立 PR，保留其作者改动与证据边界，不将其后续实现记为本工作包已经合并交付。正式审查、最终 CI、合并及发布结果待实际发生后登记。

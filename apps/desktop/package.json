@@ -7,6 +7,7 @@
   "scripts": {
     "postinstall": "node -e \"require('electron/install.js')\"",
     "start": "electron .",
+    "prestart": "node scripts/prepare-native-desktop.mjs",
     "build:windows-host": "node scripts/build-windows-host.mjs",
     "dev:fake": "electron . --fake-runtime",
     "typecheck": "node --check electron/main.js && node --check electron/runtime.js && node --check electron/conversations.js && node --check electron/preload.cjs && node --check src/app/renderer.js && node --check src/features/admin/view.js && node --check src/features/admin/profile.js && node --check src/features/workspace/view.js && node --check src/features/workspace/connectors.js && node --check src/features/orb/orb.js && node --check src/features/conversation/state.js && node --check src/features/conversation/rail.js && node --check src/ui/preferences.js",
@@ -29,6 +30,7 @@
     "test:native-reasoning-smoke": "node test/native-reasoning-product-smoke.cjs"
   },
   "dependencies": {
+    "playwright": "1.63.0",
     "@personal-agent/agentarts": "0.1.0-alpha.1",
     "@personal-agent/contracts": "0.1.0-alpha.1",
     "@personal-agent/mcp": "0.1.0-alpha.1",
@@ -56,7 +58,6 @@
   },
   "devDependencies": {
     "@personal-agent/testkit": "0.1.0-alpha.1",
-    "electron": "44.2.0",
-    "playwright": "1.63.0"
+    "electron": "44.2.0"
   }
 }

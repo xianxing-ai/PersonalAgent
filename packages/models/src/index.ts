@@ -1,4 +1,5 @@
 import { ProtocolError, validateToolValue } from '@personal-agent/contracts';
+import {createHash} from 'node:crypto';
 import type { ToolDescriptor } from '@personal-agent/contracts';
 export {StructuredToolProvider} from './structured-tools.js';
 export {QwenRealtimeModelGateway} from './realtime.js';
@@ -40,6 +41,49 @@ export interface ModelDeployment {
 export interface ModelMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+}
+
+/** Trusted host supplies original, authorized PNG bytes; never a URL or file path.
+ * Task/artifact/export authorization stays at the host and its final fetch guard. */
+export interface ModelImageInput {
+  mediaType: 'image/png';
+  dataBase64: string;
+  sha256: string;
+}
+
+export const MODEL_IMAGE_LIMITS = Object.freeze({maxImages: 4, maxBytesPerImage: 8 * 1024 * 1024,
+  maxTotalBytes: 16 * 1024 * 1024, maxPixels: 32_000_000});
+
+/** Validate and copy before any async work. Does not decode pixels or authorize export. */
+export function snapshotModelImages(value: readonly ModelImageInput[] | undefined): ModelImageInput[] | undefined {
+  if (value === undefined) return undefined;
+  const invalid = (): never => {throw new ProtocolError('INVALID_ARGUMENT', 'Model images must be bounded PNG data with matching SHA256');};
+  if (!Array.isArray(value) || value.length > MODEL_IMAGE_LIMITS.maxImages) return invalid();
+  let totalBytes = 0;
+  return Array.from(value).map(image => {
+    if (!image || typeof image !== 'object' || Array.isArray(image)) return invalid();
+    const fields = Object.getOwnPropertyDescriptors(image);
+    if (Object.keys(fields).sort().join(',') !== 'dataBase64,mediaType,sha256'
+      || Object.values(fields).some(field => !Object.hasOwn(field, 'value'))) return invalid();
+    const mediaType: unknown = fields.mediaType?.value;
+    const dataBase64: unknown = fields.dataBase64?.value;
+    const sha256: unknown = fields.sha256?.value;
+    if (mediaType !== 'image/png' || typeof dataBase64 !== 'string' || typeof sha256 !== 'string'
+      || !/^[a-f0-9]{64}$/.test(sha256)
+      || dataBase64.length > 4 * Math.ceil(MODEL_IMAGE_LIMITS.maxBytesPerImage / 3)
+      || dataBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) return invalid();
+    const bytes = Buffer.from(dataBase64, 'base64');
+    totalBytes += bytes.length;
+    if (bytes.length < 45 || bytes.length > MODEL_IMAGE_LIMITS.maxBytesPerImage || totalBytes > MODEL_IMAGE_LIMITS.maxTotalBytes
+      || bytes.toString('base64') !== dataBase64
+      || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      || bytes.readUInt32BE(8) !== 13 || bytes.toString('ascii', 12, 16) !== 'IHDR'
+      || bytes.readUInt32BE(16) < 1 || bytes.readUInt32BE(20) < 1
+      || bytes.readUInt32BE(16) * bytes.readUInt32BE(20) > MODEL_IMAGE_LIMITS.maxPixels
+      || bytes.readUInt32BE(bytes.length - 12) !== 0 || bytes.toString('ascii', bytes.length - 8, bytes.length - 4) !== 'IEND'
+      || createHash('sha256').update(bytes).digest('hex') !== sha256) return invalid();
+    return {mediaType, dataBase64, sha256};
+  });
 }
 
 export interface ToolProposal {
@@ -92,6 +136,7 @@ export type ModelRequestBudget =
 
 export interface ModelRequest {
   messages: readonly ModelMessage[];
+  images?: readonly ModelImageInput[];
   tools: readonly ToolDescriptor[];
   requiredCapabilities?: readonly ModelCapability[];
   maxOutputTokens?: number;
@@ -203,8 +248,13 @@ export class ModelGateway implements ModelPort {
   }
 
   async complete(request: ModelRequest): Promise<ModelResult> {
+    request = {...request, messages: request.messages.map(message => ({...message})),
+      tools: structuredClone(request.tools),
+      ...(request.requiredCapabilities === undefined ? {} : {requiredCapabilities: [...request.requiredCapabilities]}),
+      ...(request.images === undefined ? {} : {images: snapshotModelImages(request.images)!})};
     validateRequest(request);
     const required = new Set<ModelCapability>(request.requiredCapabilities ?? ['text']);
+    if (request.images?.length) required.add('vision');
     if (request.tools.length > 0) {
       required.add('toolCalling');
       required.add('structuredOutput');
@@ -271,7 +321,9 @@ export class FakeModelProvider implements ModelProvider {
 
   async complete(request: ModelRequest): Promise<ModelResult> {
     validateRequest(request);
-    this.seenRequests.push({...request, messages: request.messages.map(message => ({...message})), tools: request.tools.map(tool => structuredClone(tool))});
+    // Fixtures retain metadata only; do not turn image payloads into a diagnostic log.
+    const {images: _images, ...recordedRequest} = request;
+    this.seenRequests.push({...recordedRequest, messages: request.messages.map(message => ({...message})), tools: request.tools.map(tool => structuredClone(tool))});
     const step = this.steps[this.cursor++];
     if (!step) throw new ProtocolError('EXTERNAL_FAILURE', 'Fake model has no response step remaining');
     const response = typeof step === 'function' ? await step(request) : step;
@@ -362,7 +414,8 @@ export class PanguModelProvider implements ModelProvider {
 
   async complete(request: ModelRequest): Promise<ModelResult> {
     validateRequest(request);
-    if (request.tools.length > 0 || request.requiredCapabilities?.some(capability => capability !== 'text')) {
+    if (request.images !== undefined && (!Array.isArray(request.images) || request.images.length > 0)
+      || request.tools.length > 0 || request.requiredCapabilities?.some(capability => capability !== 'text')) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Pangu provider currently supports text completion only');
     }
     const messages = request.messages.map(message => {

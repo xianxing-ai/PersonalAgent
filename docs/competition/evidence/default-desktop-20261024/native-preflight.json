@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "kind": "real_windows_native_preflight",
+  "profile": "huawei_ict_agentarts",
+  "startedAt": "2026-10-24T11:19:22.602Z",
+  "finishedAt": "2026-10-24T11:19:24.089Z",
+  "wallMs": 1487,
+  "nodeVersion": "v24.15.0",
+  "helperSourceBuildProvenance": "not_reestablished",
+  "backend": "windows-psec",
+  "available": true,
+  "enforced": true,
+  "readOnly": true,
+  "workspaceWrite": true,
+  "networkDeny": true,
+  "descendants": true,
+  "reparse": true,
+  "cancellation": true,
+  "helperSha256": "c7d5316f9e901542f553d56e6e4893b29fe4623fd667612bceed65c6e8789f1c",
+  "results": {
+    "baseline": {
+      "backend": "none",
+      "enforced": false,
+      "outcome": "exited",
+      "exitCode": 0,
+      "stopped": true
+    },
+    "readOnly": {
+      "backend": "windows-psec",
+      "enforced": true,
+      "outcome": "exited",
+      "exitCode": 0,
+      "stopped": true
+    },
+    "workspaceWrite": {
+      "backend": "windows-psec",
+      "enforced": true,
+      "outcome": "exited",
+      "exitCode": 0,
+      "stopped": true
+    },
+    "cancel": {
+      "backend": "windows-psec",
+      "enforced": true,
+      "outcome": "cancelled",
+      "exitCode": null,
+      "stopped": true
+    }
+  },
+  "originalReceiptSha256": "b32f101142d98a503226405a9c40e68846fcfbc8cc697ca6279ade32c579c22c"
+}

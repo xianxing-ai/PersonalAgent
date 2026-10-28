@@ -18,6 +18,7 @@ function fixture(saved={}) {
     readAuthorizationQuestionInvocation:()=>['running','waiting_approval'].includes(task.state)?original:undefined,
     bindAuthorizationQuestion(){},
     readAuthorizationQuestionDestination:()=>H,
+    readAuthorizationQuestionReceiptBinding:()=>undefined,
     readAuthorizationQuestionBinding:()=>['running','waiting_approval'].includes(task.state)?{conversationId:'conversation-1',digest:'original-owner'}:undefined};
   const options={createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>application,namespace:'test',
     resolveConversation:()=> 'conversation-1',available:()=>true,onUpdate:()=>changes++,
@@ -32,6 +33,21 @@ function fixture(saved={}) {
   return {host,scope,task,prepare,respond,saved,options,changeGeneration:()=>generation='g2',changes:()=>changes};
 }
 
+test('Runtime-owned approval remains unified while its asynchronous native preparation has no card yet',()=>{
+  const f=fixture();f.prepare();f.task.state='waiting_approval';
+  const application=f.options.getApplication(),runtime=application.runtime;
+  runtime.getApproval=runId=>({taskId:f.scope.taskId,state:runId===f.scope.runId?'pending':'denied'});
+  let marker={state:'pending',argumentsDigest:H};
+  runtime.loadCheckpoint=(taskId,checkpointKey)=>{
+    assert.equal(taskId,f.scope.taskId);assert.equal(checkpointKey,'authorization-question-active:'+f.scope.runId);return marker;
+  };
+  assert.equal(f.host.snapshot().length,0);assert.equal(f.host.hasPending(f.scope.runId),true);
+  assert.equal(f.host.hasPending('other-run'),false);
+  marker={state:'pending',argumentsDigest:R};assert.equal(f.host.hasPending(f.scope.runId),false);
+  marker={state:'resolved',argumentsDigest:H};assert.equal(f.host.hasPending(f.scope.runId),false);
+  f.host.close();assert.equal(f.host.hasPending(f.scope.runId),false);
+});
+
 test('one card receives tool, connector and bounded export requirements without prior session consent',async()=>{
   const f=fixture();f.prepare();assert.equal(f.host.snapshot().length,0,'preflight only registers, with no private export');
   assert.equal(f.host.requiresAuthorization(f.scope),true,'routine reads/writes must enter the host question');
@@ -43,6 +59,53 @@ test('one card receives tool, connector and bounded export requirements without 
   const lease=f.host.authorizeExport(f.scope,{id:'todo-1'});assert.match(lease.resultDigest,/^[a-f0-9]{64}$/);
   assert.throws(()=>f.host.authorizeExport(f.scope,{id:'todo-1',secret:'do-not-export'}),/已失效/);
   f.changeGeneration();assert.throws(()=>f.host.currentRequirement(f.scope,'todo-session'),{code:'UNAUTHORIZED'});
+  f.host.close();
+});
+
+test('repeated preparation cannot extend a decision deadline or change the original invocation deadline',async()=>{
+  const f=fixture(),originalDeadline=f.scope.deadline;
+  const earlier=new Date(Date.parse(originalDeadline)-30000).toISOString();
+  const later=new Date(Date.parse(originalDeadline)-10000).toISOString();
+  f.prepare();
+  f.host.prepare(f.scope,{decisionDeadline:earlier});
+  f.host.prepare(f.scope,{decisionDeadline:later});
+  f.prepare();
+  assert.throws(()=>f.host.prepare(f.scope,{decisionDeadline:new Date(Date.parse(originalDeadline)+1).toISOString()}),{code:'UNAUTHORIZED'});
+  f.task.state='waiting_approval';
+  const decision=f.host.requestToolAuthorization(f.scope);
+  assert.equal(f.host.snapshot()[0].expiresAt,earlier);
+  assert.equal(f.scope.deadline,originalDeadline);
+  f.respond('allow_once');assert.equal(await decision,'allow_once');
+  f.host.close();
+});
+
+test('running original export checks reuse the exact consumed requirement without a completed receipt',async()=>{
+  const f=fixture();f.prepare();f.task.state='waiting_approval';const decision=f.host.requestToolAuthorization(f.scope);
+  f.respond('allow_once');await decision;f.task.state='running';
+  const value={id:'todo-1'},lease=f.host.authorizeExport(f.scope,value);
+  assert.deepEqual(f.host.authorizeExport(f.scope,value),lease);
+  assert.deepEqual(f.host.authorizeConsumedExport(f.scope,value),lease);
+  assert.deepEqual(f.host.authorizeConsumedExport(f.scope,structuredClone(value)),lease);
+  assert.throws(()=>f.host.authorizeExport(f.scope,{id:'todo-2'}),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.authorizeConsumedExport(f.scope,{id:'todo-2'}),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.authorizeConsumedExport({...f.scope,argumentsDigest:R},value),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.authorizeConsumedExport({...f.scope,deadline:new Date(0).toISOString()},value),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.authorizeConsumedExport({...f.scope,signal:AbortSignal.abort()},value),{code:'UNAUTHORIZED'});
+  f.task.cancelRequested=true;
+  assert.throws(()=>f.host.authorizeExport(f.scope,value),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.authorizeConsumedExport(f.scope,value),{code:'UNAUTHORIZED'});
+  f.task.cancelRequested=false;f.changeGeneration();
+  assert.throws(()=>f.host.authorizeExport(f.scope,value),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.authorizeConsumedExport(f.scope,value),{code:'UNAUTHORIZED'});
+  f.host.close();
+});
+
+test('nonrunning export checks still require the original confirmed result receipt',async()=>{
+  const f=fixture();f.prepare();f.task.state='waiting_approval';const decision=f.host.requestToolAuthorization(f.scope);
+  f.respond('allow_once');await decision;f.task.state='running';
+  const value={id:'todo-1'};f.host.authorizeExport(f.scope,value);f.task.state='succeeded';
+  assert.throws(()=>f.host.currentRequirement(f.scope,'export'),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.authorizeConsumedExport(f.scope,value),{code:'UNAUTHORIZED'});
   f.host.close();
 });
 

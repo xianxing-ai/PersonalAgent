@@ -1,11 +1,13 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import type {RegisteredTool, StoragePort, ProtocolContracts, ToolContext} from '@personal-agent/contracts';
 import {QQMailProvider, register as registerMail} from '@personal-agent/mail';
 import {LayaTriageService, LocalLayaBatchHttpTransport} from '@personal-agent/cognition';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {RuntimeApplication} from './runtime-application.js';
 import {createInboxTriagePipeline} from './inbox-triage.js';
-import type {InboxAnalysisAcceptance, InboxTriageContext} from './inbox-triage.js';
+import type {InboxAnalysisAcceptance, InboxTriageContext, InboxCloudReviewResult, InboxAnalysisFilter} from './inbox-triage.js';
 import {MAIL_READ_SESSION_CHECKPOINT} from './mail-read-session.js';
 
 const classifierPolicy = Object.freeze({model: 'multilingual', promptVersion: 'mail-triage-v1',
@@ -39,6 +41,8 @@ export interface QQMailTriageHostOptions {
     assertCurrent(batch: MailLocalBatchBinding): void;
     assertPage(scope: MailBatchPageScope,batch: MailLocalBatchBinding): void;
     assertConsumed(scope: MailBatchPageScope,batch: MailLocalBatchBinding): void;
+    /** End page access while retaining the session binding until deadline/cancel/revoke. */
+    finishPages(batch: MailLocalBatchBinding): void;
     finish(batch: MailLocalBatchBinding): void;
   };
 }
@@ -55,9 +59,10 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
   let sessionId: string | undefined;
   let controller = new AbortController();
   let closed = false, refreshing = false, reading = 0, status = options.triage ? 'ready' : 'unavailable';
-  let taskId: string | undefined, cursor: string | undefined, deadline = '';
+  let taskId: string | undefined, cursor: string | undefined, initialSavedCursor: string | undefined, deadline = '';
   let analysisSessionId: string | undefined;
   let expiredCursor: string | undefined;
+  let stoppedStatus = 'disabled';
   let submittingPage=false;
   let batch:MailLocalBatchBinding|undefined,firstPageScope:MailBatchPageScope|undefined,pageScope:MailBatchPageScope|undefined;
   const canRequest=()=>!closed&&(options.batchAuthorization?options.batchAuthorization.canRequest():options.isSessionAllowed());
@@ -101,19 +106,21 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
         reading--;
         // connect() may have finished after dispose() saw no current client.
         if (signal.aborted || !permitted()) await provider.dispose();
-        if (controller.signal.aborted && reading === 0) status = 'disabled';
+        if (controller.signal.aborted && reading === 0) status = stoppedStatus;
       }
     }});
     return () => {tools.length = 0;};
   }}, {provider, accountRef: options.accountRef});
   const snapshot = () => {
-    const summary = pipeline?.snapshot();
+    const summary = pipeline?.summary();
     return {configured: true, status: controller.signal.aborted && reading > 0 ? 'stop_unconfirmed' : status,
       headersOnly: true, counts: {total: summary?.total ?? 0, needsReview: summary?.needsReview ?? 0,
+        cloudReviewed: summary?.cloudReviewed ?? 0,
         highImpactCandidates: summary?.highImpactCandidates ?? 0, meetingCandidates: summary?.meetingCandidates ?? 0,
         groups: summary?.groups ?? {}},
       reason: !pipeline ? '本地 Laya 服务未配置，尚未读取邮箱'
-        : status === 'resync_required' ? '邮箱分页游标已失效；下次主动读取将从当前邮箱重新同步，已有记录保留' : undefined};
+        : status === 'resync_required' ? '邮箱分页游标已失效；下次主动读取将从当前邮箱重新同步，已有记录保留'
+        : status === 'failed' ? '邮箱读取失败，已有分类记录和分页进度保留；可重新开始批量分类以继续读取' : undefined};
   };
   const next = () => {
     if (!application || !sessionId) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Inbox Runtime is not bound');
@@ -130,21 +137,23 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
       }
     }
     else if (page.state === 'done') {
-      if(batch)options.batchAuthorization?.finish(batch);
+      if(batch)options.batchAuthorization?.finishPages(batch);
       application.stopMailReadSession(sessionId); sessionId = undefined; taskId = undefined; status = 'complete';
     } else status = page.state;
   };
-  const cancel = async () => {
+  const stop = async (finalStatus: string) => {
+    stoppedStatus = finalStatus;
     controller.abort();
     if(batch)options.batchAuthorization?.finish(batch);
-    batch=undefined;firstPageScope=undefined;pageScope=undefined;
+    batch=undefined;firstPageScope=undefined;pageScope=undefined;initialSavedCursor=undefined;
     analysisSessionId = undefined;
     if (application && sessionId) application.stopMailReadSession(sessionId);
     sessionId = undefined;
-    status = reading > 0 ? 'stop_unconfirmed' : 'disabled';
+    status = reading > 0 ? 'stop_unconfirmed' : stoppedStatus;
     await provider.dispose();
     return snapshot();
   };
+  const cancel = () => stop('disabled');
   const analysisContext = (context: InboxTriageContext) => {
     if (!context || !(context.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(context.deadline))) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Invalid inbox analysis context');
@@ -155,23 +164,62 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
     return {deadline: new Date(Math.min(Date.parse(context.deadline), Date.parse(deadline))).toISOString(),
       signal: AbortSignal.any([context.signal, controller.signal])};
   };
+  const cachedReviewContext = (context:InboxTriageContext) => {
+    if(!context||!(context.signal instanceof AbortSignal)||!Number.isFinite(Date.parse(context.deadline)))
+      throw new ProtocolError('INVALID_ARGUMENT','Invalid inbox review context');
+    if(context.signal.aborted)throw new ProtocolError('CANCELLED','Inbox review cancelled');
+    if(Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Inbox review deadline expired');
+    if(!canRequest())throw new ProtocolError('UNAUTHORIZED','Cached inbox processing is not authorized');
+    if(!pipeline)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Cached inbox review is unavailable');
+    return context;
+  };
   return Object.freeze({
     tools: Object.freeze([...tools]), snapshot,
     prepareAuthorization(scope:MailBatchPageScope) {
       if(!options.batchAuthorization||scope.toolName!=='mail.inbox')return;
-      if(!batch||!sessionId||batch.batchId!==sessionId||scope.deadline!==batch.deadline||!batchCurrent())
-        throw new ProtocolError('UNAUTHORIZED','Mail page is outside the original manual batch');
+      if(!batch||!batchCurrent())throw new ProtocolError('UNAUTHORIZED',scope.deadline!==(batch?.deadline??deadline)
+        ?'Mail conversation read is outside the active manual batch':'Mail page is outside the original manual batch');
+      if(scope.deadline!==batch.deadline)return;
+      if(!sessionId||batch.batchId!==sessionId)throw new ProtocolError('UNAUTHORIZED','Mail page is outside the original manual batch');
       if(scope.taskId!==taskId){
         if(!submittingPage||application?.runtime.loadCheckpoint(scope.taskId,MAIL_READ_SESSION_CHECKPOINT)!==sessionId)
           throw new ProtocolError('UNAUTHORIZED','Mail page has no original session membership');
         taskId=scope.taskId;
       }
       options.batchAuthorization.preparePage(scope,batch,firstPageScope);
+      if(initialSavedCursor!==undefined&&firstPageScope===undefined) {
+        const original=application?.readHostToolTask(scope.taskId);
+        const intent=application?.runtime.loadCheckpoint(scope.taskId,'host-tool-intent') as
+          {namespace?:unknown;commandId?:unknown;toolName?:unknown;toolVersion?:unknown;
+            arguments?:{account?:unknown;folder?:unknown;limit?:unknown;cursor?:unknown};
+            argumentsDigest?:unknown;deadline?:unknown}|undefined;
+        if(application?.runtime.loadCheckpoint(scope.taskId,MAIL_READ_SESSION_CHECKPOINT)!==sessionId
+          ||original?.task.taskId!==scope.taskId||original.commandId!==`mail:${sessionId}:1`
+          ||original.toolName!=='mail.inbox'||original.toolVersion!==scope.toolVersion
+          ||intent?.commandId!==original.commandId
+          ||intent.toolName!=='mail.inbox'||intent.toolVersion!==scope.toolVersion
+          ||intent.deadline!==batch.deadline||intent.arguments?.account!==batch.accountRef
+          ||intent.arguments.folder!==batch.folder||intent.arguments.limit!==batch.limit
+          ||intent.arguments.cursor!==initialSavedCursor
+          ||intent.argumentsDigest!==toolArgumentsDigest(intent.arguments))
+          throw new ProtocolError('UNAUTHORIZED','Original persisted inbox cursor is not bound to this page');
+        const anchor={version:1,sessionId,batchId:batch.batchId,generation:batch.generation,
+          accountRef:batch.accountRef,folder:batch.folder,limit:batch.limit,queryDigest:batch.queryDigest,
+          savedCursor:initialSavedCursor,firstPageTaskId:scope.taskId,runId:scope.runId,
+          commandId:intent.commandId,argumentsDigest:intent.argumentsDigest};
+        const key='mail-triage-persisted-cursor-v1';
+        if(!application.runtime.saveCheckpointOnce(scope.taskId,key,anchor)
+          &&!isDeepStrictEqual(application.runtime.loadCheckpoint(scope.taskId,key),anchor))
+          throw new ProtocolError('REVISION_CONFLICT','Original persisted inbox cursor binding changed');
+        if(!batchCurrent()||sessionId!==anchor.sessionId||batch?.generation!==anchor.generation
+          ||taskId!==scope.taskId||application.runtime.loadCheckpoint(scope.taskId,MAIL_READ_SESSION_CHECKPOINT)!==sessionId)
+          throw new ProtocolError('UNAUTHORIZED','Original persisted inbox cursor session changed');
+      }
     },
     /** Local-only projections. Root must separately authorize every cloud send. */
-    pendingAnalyses(context: InboxTriageContext) {
+    pendingAnalyses(context: InboxTriageContext, filter?: InboxAnalysisFilter) {
       const current = analysisContext(context);
-      return (pipeline?.pendingAnalyses(current) ?? []).map(item => ({...item, sessionId: analysisSessionId!}));
+      return (pipeline?.pendingAnalyses(current,filter) ?? []).map(item => ({...item, sessionId: analysisSessionId!}));
     },
     /** Synchronous current-head read, including accepted items, for beforeCompetitionSend. */
     readAnalysis(workKey: string, context: InboxTriageContext) {
@@ -186,6 +234,30 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
       }
       return {...pipeline.confirmAnalysisAccepted(input, current), sessionId: analysisSessionId!};
     },
+    applyAnalysisReview(input: InboxAnalysisAcceptance & {readonly sessionId: string; readonly review: InboxCloudReviewResult}, context: InboxTriageContext) {
+      const current=analysisContext(context);
+      if (!input || input.sessionId !== analysisSessionId || !pipeline) throw new ProtocolError('UNAUTHORIZED','Inbox review belongs to a different session');
+      const {sessionId: _sessionId,...review}=input;
+      return pipeline.applyAnalysisReview(review,current);
+    },
+    /** Trusted Runtime cloud-review adapter only. No local batch or loaded model is needed;
+     * each header export must still pass its original source and cloud authorization. */
+    pendingReviewAnalyses(context:InboxTriageContext,filter?:InboxAnalysisFilter) {
+      const current=cachedReviewContext(context);return pipeline!.pendingReviewAnalyses(current,filter);
+    },
+    readReviewAnalysis(workKey:string,context:InboxTriageContext) {
+      const current=cachedReviewContext(context);return pipeline!.readReviewAnalysis(workKey,current);
+    },
+    confirmCachedAnalysisAccepted(input:InboxAnalysisAcceptance,context:InboxTriageContext) {
+      const current=cachedReviewContext(context);return pipeline!.confirmCachedAnalysisAccepted(input,current);
+    },
+    applyCachedAnalysisReview(input:InboxAnalysisAcceptance & {readonly review:InboxCloudReviewResult},context:InboxTriageContext) {
+      const current=cachedReviewContext(context);return pipeline!.applyCachedAnalysisReview(input,current);
+    },
+    /** Caller must prove the original Runtime task failed before cloud invocation. */
+    retryCachedAnalysis(input:Omit<InboxAnalysisAcceptance,'taskId'> & {readonly previousTaskId:string},context:InboxTriageContext) {
+      const current=cachedReviewContext(context);return pipeline!.retryCachedAnalysis(input,current);
+    },
     bindApplication(value: RuntimeApplication) {
       if (application && application !== value) throw Error('Inbox host is already bound');
       application = value;
@@ -199,8 +271,10 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
       const savedCursor = pipeline.readCursor(scope);
       const session = application.startMailReadSession({accountRef: options.accountRef, folder: 'INBOX', expiresAt,
         ...(savedCursor ? {cursor: savedCursor} : {})});
+      if(batch)options.batchAuthorization?.finish(batch);
       sessionId = session.sessionId; analysisSessionId = session.sessionId;
-      deadline = expiresAt; cursor = savedCursor; expiredCursor = undefined; controller = new AbortController();
+      deadline = expiresAt; cursor = savedCursor; initialSavedCursor = savedCursor;
+      expiredCursor = undefined; controller = new AbortController();
       firstPageScope=undefined;pageScope=undefined;
       batch={batchId:session.sessionId,generation:randomUUID(),accountRef:options.accountRef,folder:'INBOX',limit:session.limit,
         queryDigest:createHash('sha256').update(JSON.stringify({folder:'INBOX',startCursor:savedCursor??null})).digest('hex'),deadline:session.expiresAt};
@@ -217,8 +291,8 @@ export function createQQMailTriageHost(options: QQMailTriageHostOptions) {
         status = read.task.state;
         if (['failed', 'cancelled'].includes(status)) {
           const stale = read.task.state === 'failed' && read.task.error?.code === 'CURSOR_EXPIRED' && cursor;
-          await cancel();
-          if (stale) {expiredCursor = cursor; status = 'resync_required';}
+          if (stale) expiredCursor = cursor;
+          await stop(stale ? 'resync_required' : read.task.state === 'failed' ? 'failed' : 'disabled');
           return snapshot();
         }
         return snapshot();

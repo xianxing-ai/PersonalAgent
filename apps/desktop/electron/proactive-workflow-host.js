@@ -75,8 +75,8 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
       if(typeof readPersistedSession!=='function')return [];
       const result=[];let beforeSequence,snapshotSequence;
       do {
-        const page=application.runtime.listTasks({limit:100,...(beforeSequence===undefined?{}:{beforeSequence}),
-          ...(snapshotSequence===undefined?{}:{snapshotSequence})});
+        const page=application.runtime.listTaskCheckpointPage({limit:100,...(beforeSequence===undefined?{}:{beforeSequence}),
+          ...(snapshotSequence===undefined?{}:{snapshotSequence})},[KEY]);
         snapshotSequence=page.snapshotSequence;beforeSequence=page.nextBeforeSequence;
         for(const task of page.items) {
           const binding=application.runtime.loadCheckpoint(task.taskId,KEY);
@@ -149,7 +149,9 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     /** Main-only maintenance access. Existing signed sessions and Runtime still own execution. */
     async acquireMaintenance(taskId,request) {return bind(taskId,request);},
     maintenancePage(input={}) {
-      const page=application.runtime.listTasks({limit:100,...input});
+      // Select through Runtime's existing checkpoint index before hydrating bodies.
+      // A checkpoint is only a candidate: the original binding/privacy checks below remain required.
+      const page=application.runtime.listTaskCheckpointPage({limit:100,...input},[KEY]);
       return {...page,items:page.items.flatMap(task=>{
         const binding=application.runtime.loadCheckpoint(task.taskId,KEY);
         if(binding?.version!==1||binding.taskId!==task.taskId)return [];
@@ -167,8 +169,8 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     listConversation(conversationId) {
       const result=[];let beforeSequence,snapshotSequence,pages=0;
       do {
-        const page=application.runtime.listTasks({...(resolveUserConversation?{}:{conversationId}),limit:100,
-          ...(beforeSequence===undefined?{}:{beforeSequence}),...(snapshotSequence===undefined?{}:{snapshotSequence})});
+        const page=application.runtime.listTaskCheckpointPage({...(resolveUserConversation?{}:{conversationId}),limit:100,
+          ...(beforeSequence===undefined?{}:{beforeSequence}),...(snapshotSequence===undefined?{}:{snapshotSequence})},[KEY]);
         snapshotSequence=page.snapshotSequence;
         for(const task of page.items) {
           const binding=application.runtime.loadCheckpoint(task.taskId,KEY);

@@ -55,7 +55,12 @@ export function createDesktopHost() {
     const requestId=data(receipt,'requestId'),httpStatus=data(receipt,'httpStatus'),contentType=data(receipt,'contentType');
     const resultUnknown=data(receipt,'resultUnknown'),transportPhase=data(receipt,'transportPhase');
     if(typeof resultUnknown==='boolean')detail.resultUnknown=resultUnknown;
-    if(transportPhase==='wss_upgrade')detail.transportPhase=transportPhase;
+    if(['wss_upgrade','wss_connect','wss_ready','wss_invoke'].includes(transportPhase))detail.transportPhase=transportPhase;
+    const closeCode=data(receipt,'closeCode'),closeReason=data(receipt,'closeReason'),socketErrorCode=data(receipt,'socketErrorCode');
+    if(Number.isInteger(closeCode)&&closeCode>=1000&&closeCode<=4999)detail.closeCode=closeCode;
+    if(['normal','going_away','protocol_error','abnormal','server_error','other'].includes(closeReason))detail.closeReason=closeReason;
+    if(['ECONNRESET','ECONNREFUSED','ETIMEDOUT','ENOTFOUND','EAI_AGAIN','EPIPE',
+      'CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE'].includes(socketErrorCode))detail.socketErrorCode=socketErrorCode;
     if (typeof requestId === 'string'
       && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) detail.requestId=requestId;
     if (Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599) detail.httpStatus=httpStatus;

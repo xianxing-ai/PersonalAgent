@@ -1,21 +1,33 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {constants,copyFileSync,existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
-import path from 'node:path';
+import {closeSync,existsSync,fsyncSync,openSync,readFileSync,writeFileSync} from 'node:fs';
+import {isDeepStrictEqual} from 'node:util';
 import {resultText} from '../src/features/conversation/result-text.js';
+import {canRetryConversationMigration,inspectPendingConversationMigration,openConversationSqliteStore,prepareConversationSqliteStore,readConversationMarker} from './conversation-sqlite-store.js';
 
 // Desktop-owned metadata. Runtime still owns task state and results.
 export class Conversations {
   constructor(file) {
     this.file = file;
     this.loadedVersion=4;
+    this.store=undefined;
+    this.legacyBytes=undefined;
+    this.closed=false;
+    this.migrationUncertain=false;
     this.turns = new Map();
     this.messages = new Map();
+    this.messageRevision = 0;
+    this.displayMessageIndex = undefined;
     this.preferences = new Map();
     this.sessions=new Map(['panel','workspace'].map(surface=>['desktop-'+surface,{id:'desktop-'+surface,surface,title:surface==='panel'?'原面板对话':'原工作区对话',archived:false,createdAt:new Date(0).toISOString(),draft:''}]));
     this.activeSessions={panel:'desktop-panel',workspace:'desktop-workspace'};
     if (file && existsSync(file)) {
-      const data = JSON.parse(readFileSync(file, 'utf8'));
-      this.loadedVersion=data.version;
+      const bytes=readFileSync(file),parsed=JSON.parse(bytes.toString('utf8'));
+      const marker=parsed?.version===5?readConversationMarker(bytes):null;
+      const opened=marker?openConversationSqliteStore(file,bytes,this.stateSnapshot()):null;
+      if(opened)this.store=opened.store;else this.legacyBytes=bytes;
+      const data=opened?{version:4,...opened.state}:parsed;
+      this.loadedVersion=opened?5:data.version;
+      try{
       if (![1,2,3,4].includes(data.version) || !Array.isArray(data.turns) || (data.version >= 2 && !Array.isArray(data.messages))) throw Error('对话记录格式无法读取');
       if (data.version >= 3) {
         if (!Array.isArray(data.preferences)) throw Error('对话偏好格式无法读取');
@@ -37,8 +49,16 @@ export class Conversations {
         if (this.messages.has(valid.id)) throw Error('对话消息标识重复');
         this.messages.set(valid.id, valid);
       }
-    }
+      if(opened&&!isDeepStrictEqual(this.stateSnapshot(),opened.state))
+        throw Error('对话数据库内容不能按原语义无损读取');
+      if(this.legacyBytes&&existsSync(`${file}.sqlite`))
+        inspectPendingConversationMigration(file,this.stateSnapshot(),this.legacyBytes);
+      }catch(error){this.store?.close();throw error;}
+    }else if(file&&existsSync(`${file}.sqlite`))throw Error('对话标记缺失，不能从孤立数据库恢复');
   }
+  stateSnapshot(){return {sessions:[...this.sessions.values()],activeSessions:{...this.activeSessions},
+    turns:[...this.turns.values()],messages:[...this.messages.values()],preferences:[...this.preferences]};}
+  close(){if(this.closed)return;this.store?.close();this.closed=true;}
   validateSession(value){
     if(!value||typeof value!=='object'||Object.keys(value).some(k=>!['id','surface','title','archived','createdAt','draft'].includes(k))||!['panel','workspace'].includes(value.surface)||typeof value.id!=='string'||!(value.id==='desktop-'+value.surface||new RegExp('^desktop-'+value.surface+':[a-f0-9-]{36}$').test(value.id))||typeof value.title!=='string'||!value.title.trim()||value.title.length>100||/[\u0000-\u001f\u007f]/.test(value.title)||typeof value.archived!=='boolean'||!Number.isFinite(Date.parse(value.createdAt))||typeof value.draft!=='string'||value.draft.length>100000)throw Error('对话元数据无效');
     return value;
@@ -48,29 +68,37 @@ export class Conversations {
   conversationIdForTask(task){return this.turns.get(task.taskId)?.conversationId??(this.sessions.has(task.conversationId)?task.conversationId:taskSurfaceId(this.surface(task.taskId)));}
   containsConversation(id){return this.sessions.has(id);}
   snapshot(surface){return {activeId:this.activeConversationId(surface),sessions:[...this.sessions.values()].filter(s=>s.surface===surface).map(({draft,...session})=>({...session})),draft:this.session(this.activeConversationId(surface)).draft};}
-  saveSessions(sessions,activeSessions=this.activeSessions){this.save(this.turns,this.messages,this.preferences,sessions,activeSessions);this.sessions=sessions;this.activeSessions=activeSessions;}
+  saveSessions(sessions,activeSessions=this.activeSessions,changes){this.save(this.turns,this.messages,this.preferences,sessions,activeSessions,changes);this.sessions=sessions;this.activeSessions=activeSessions;}
   create(surface,title='新对话'){
     this.activeConversationId(surface);const value=this.validateSession({id:'desktop-'+surface+':'+randomUUID(),surface,title,archived:false,createdAt:new Date().toISOString(),draft:''});
-    const sessions=new Map(this.sessions);sessions.set(value.id,value);this.saveSessions(sessions,{...this.activeSessions,[surface]:value.id});return {...value};
+    const sessions=new Map(this.sessions);sessions.set(value.id,value);this.saveSessions(sessions,{...this.activeSessions,[surface]:value.id},
+      [{kind:'sessions',id:value.id,value},{kind:'active',id:surface,value:value.id}]);return {...value};
   }
-  switch(surface,id){const value=this.session(id,surface);if(value.archived)throw Error('请先恢复已归档对话');this.saveSessions(new Map(this.sessions),{...this.activeSessions,[surface]:id});return value;}
-  rename(surface,id,title){const value=this.validateSession({...this.session(id,surface),title});const sessions=new Map(this.sessions);sessions.set(id,value);this.saveSessions(sessions);return {...value};}
+  switch(surface,id){const value=this.session(id,surface);if(value.archived)throw Error('请先恢复已归档对话');this.saveSessions(new Map(this.sessions),{...this.activeSessions,[surface]:id},
+    [{kind:'active',id:surface,value:id}]);return value;}
+  rename(surface,id,title){const value=this.validateSession({...this.session(id,surface),title});const sessions=new Map(this.sessions);sessions.set(id,value);this.saveSessions(sessions,this.activeSessions,
+    [{kind:'sessions',id,value}]);return {...value};}
   archive(surface,id,archived=true){
     const value={...this.session(id,surface),archived};const sessions=new Map(this.sessions);sessions.set(id,value);let active={...this.activeSessions};
     if(archived&&active[surface]===id){let next=[...sessions.values()].find(s=>s.surface===surface&&!s.archived);if(!next){next=this.validateSession({id:'desktop-'+surface+':'+randomUUID(),surface,title:'新对话',archived:false,createdAt:new Date().toISOString(),draft:''});sessions.set(next.id,next);}active[surface]=next.id;}
-    this.saveSessions(sessions,active);return {...value};
+    const changes=[{kind:'sessions',id,value}];
+    for(const [newId,newValue] of sessions)if(!this.sessions.has(newId))changes.push({kind:'sessions',id:newId,value:newValue});
+    if(active[surface]!==this.activeSessions[surface])changes.push({kind:'active',id:surface,value:active[surface]});
+    this.saveSessions(sessions,active,changes);return {...value};
   }
-  setDraft(surface,id,draft){const value=this.validateSession({...this.session(id,surface),draft});if(this.sessions.get(id).draft===draft)return;const sessions=new Map(this.sessions);sessions.set(id,value);this.saveSessions(sessions);}
+  setDraft(surface,id,draft){const value=this.validateSession({...this.session(id,surface),draft});if(this.sessions.get(id).draft===draft)return;const sessions=new Map(this.sessions);sessions.set(id,value);this.saveSessions(sessions,this.activeSessions,
+    [{kind:'sessions',id,value}]);}
   flushDrafts(surface,entries){
     this.activeConversationId(surface);
     if(!Array.isArray(entries)||entries.length>this.sessions.size)throw Error('关闭草稿格式无效');
-    const sessions=new Map(this.sessions),ids=new Set();let changed=false;
+    const sessions=new Map(this.sessions),ids=new Set(),changes=[];
     for(const entry of entries){
       if(!entry||Object.keys(entry).length!==2||!Object.hasOwn(entry,'conversationId')||!Object.hasOwn(entry,'text')||ids.has(entry.conversationId))throw Error('关闭草稿格式无效');
       const prior=this.session(entry.conversationId,surface),value=this.validateSession({...prior,draft:entry.text});
-      ids.add(entry.conversationId);sessions.set(value.id,value);changed||=prior.draft!==value.draft;
+      ids.add(entry.conversationId);sessions.set(value.id,value);
+      if(prior.draft!==value.draft)changes.push({kind:'sessions',id:value.id,value});
     }
-    if(changed)this.saveSessions(sessions);
+    if(changes.length)this.saveSessions(sessions,this.activeSessions,changes);
   }
   surface(taskId) { return this.turns.get(taskId)?.surface ?? 'panel'; }
   goal(taskId) { return this.turns.get(taskId)?.goal; }
@@ -90,7 +118,8 @@ export class Conversations {
   setPreference(conversationId, input) {
     const value = this.validatePreference(conversationId, input);
     const next = new Map(this.preferences);next.set(conversationId,value);
-    this.save(this.turns,this.messages,next);this.preferences=next;
+    this.save(this.turns,this.messages,next,this.sessions,this.activeSessions,
+      [{kind:'preferences',id:conversationId,value}]);this.preferences=next;
     return {...value};
   }
   add(taskId, surface, goal, conversationId=this.turns.get(taskId)?.conversationId??taskSurfaceId(surface)) {
@@ -99,7 +128,8 @@ export class Conversations {
     this.session(conversationId,surface);
     const turns = new Map(this.turns);
     turns.set(taskId, {taskId, surface, goal, conversationId, createdAt:new Date().toISOString()});
-    this.save(turns, this.messages);
+    this.save(turns,this.messages,this.preferences,this.sessions,this.activeSessions,
+      [{kind:'turns',id:taskId,value:turns.get(taskId)}]);
     this.turns = turns;
   }
   validateLiveMessage(message) {
@@ -123,46 +153,107 @@ export class Conversations {
       const updated = {...prior, text: valid.text};
       const messages = new Map(this.messages);
       messages.set(valid.id, updated);
-      this.save(this.turns, messages);
+      this.save(this.turns,messages,this.preferences,this.sessions,this.activeSessions,
+        [{kind:'messages',id:valid.id,value:updated}]);
+      const previousMessages=this.messages;
       this.messages = messages;
+      this.advanceMessageDisplayIndex(updated,previousMessages);
+      this.messageRevision++;
       return {...updated};
     }
     const messages = new Map(this.messages);
     messages.set(valid.id, valid);
-    this.save(this.turns, messages);
+    this.save(this.turns,messages,this.preferences,this.sessions,this.activeSessions,
+      [{kind:'messages',id:valid.id,value:valid}]);
+    const previousMessages=this.messages;
     this.messages = messages;
+    this.advanceMessageDisplayIndex(valid,previousMessages);
+    this.messageRevision++;
     return {...valid};
+  }
+  advanceMessageDisplayIndex(message,previousMessages) {
+    const index=this.displayMessageIndex;
+    if(!index)return;
+    if(index.source!==previousMessages||index.size!==previousMessages.size){this.displayMessageIndex=undefined;return;}
+    if(!previousMessages.has(message.id)){
+      const entry=messageDisplayKey(message);
+      insertMessageDisplayKey(index.all,entry);
+      let entries=index.conversations.get(message.conversationId);
+      if(!entries){entries=[];index.conversations.set(message.conversationId,entries);}
+      insertMessageDisplayKey(entries,entry);
+    }
+    // Body revisions keep their original timestamp and conversation. Do not keep
+    // the replaced Map (and its previous body) alive through the metadata index.
+    index.source=this.messages;index.size=this.messages.size;
+  }
+  readMessageDisplayPage({conversationId,limit=41,before,after,messageThrough}={}) {
+    if(!Number.isInteger(limit)||limit<1||limit>128)throw Error('历史消息页大小无效');
+    let index=this.displayMessageIndex;
+    if(!index||index.source!==this.messages||index.size!==this.messages.size){
+      const all=[],conversations=new Map();
+      for(const message of this.messages.values()){
+        const entry=messageDisplayKey(message);all.push(entry);
+        let entries=conversations.get(message.conversationId);
+        if(!entries){entries=[];conversations.set(message.conversationId,entries);}
+        entries.push(entry);
+      }
+      all.sort(compareMessageDisplayKeys);for(const entries of conversations.values())entries.sort(compareMessageDisplayKeys);
+      this.displayMessageIndex=index={source:this.messages,size:this.messages.size,all,conversations};
+    }
+    const entries=conversationId===undefined?index.all:index.conversations.get(conversationId)??[];
+    const first=after?messageDisplayBoundary(entries,after,true):0;
+    let end=before?messageDisplayBoundary(entries,before):entries.length;
+    // Every message key starts with "message:", so this includes all tie keys
+    // at the original watermark while excluding later messages.
+    if(messageThrough!==undefined)end=Math.min(end,messageDisplayBoundary(entries,{createdAt:messageThrough,key:'\uffff'}));
+    const selected=after?entries.slice(first,Math.max(first,Math.min(end,first+limit)))
+      :entries.slice(Math.max(first,end-limit),Math.max(first,end));
+    return selected.map(({id,createdAt})=>({id,createdAt}));
   }
   messagesFor(surface,conversationId) {
     return [...this.messages.values()].filter(message => (surface === undefined || message.surface === surface)&&(!conversationId||message.conversationId===conversationId))
       .sort((a,b) => Date.parse(a.createdAt)-Date.parse(b.createdAt)).map(message => ({...message}));
   }
-  save(turns, messages, preferences = this.preferences,sessions=this.sessions,activeSessions=this.activeSessions) {
-    if (!this.file) return;
-    mkdirSync(path.dirname(this.file), {recursive:true});
-    const temporary = `${this.file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const content = JSON.stringify({version:4,sessions:[...sessions.values()],activeSessions,turns:[...turns.values()],messages:[...messages.values()],preferences:[...preferences]});
-    if(existsSync(this.file)&&[...preferences.values()].some(value=>value.modelSelection==='default')&&![...this.preferences.values()].some(value=>value.modelSelection==='default')){
-      const original=readFileSync(this.file,'utf8'),digest=createHash('sha256').update(original).digest('hex').slice(0,16),backup=this.file+'.before-default-thinking-'+digest+'.bak';
-      if(!existsSync(backup))copyFileSync(this.file,backup,constants.COPYFILE_EXCL);
-      if(readFileSync(backup,'utf8')!==original)throw Error('默认思考设置备份未获确认，未覆盖对话记录');
+  deriveChanges(turns,messages,preferences,sessions,activeSessions){
+    const changes=[];
+    for(const [kind,old,next] of [['turns',this.turns,turns],['messages',this.messages,messages],
+      ['preferences',this.preferences,preferences],['sessions',this.sessions,sessions]]){
+      for(const [id,value] of next)if(!old.has(id)||!isDeepStrictEqual(old.get(id),value))
+        changes.push({kind,id,value});
+      for(const id of old.keys())if(!next.has(id))throw Error('对话记录不能在未定义迁移中删除');
     }
-    if(this.loadedVersion<4&&existsSync(this.file)){
-      const original=readFileSync(this.file,'utf8');const digest=createHash('sha256').update(original).digest('hex').slice(0,16);const backup=this.file+'.v'+this.loadedVersion+'-'+digest+'.bak';
-      if(!existsSync(backup))copyFileSync(this.file,backup,constants.COPYFILE_EXCL);
-      if(readFileSync(backup,'utf8')!==original)throw Error('原对话迁移备份未获确认，未覆盖历史');
-    }
-    writeFileSync(temporary, content, 'utf8');
-    try {
-      for(let attempt=0;;attempt++){
-        try{renameSync(temporary,this.file);break;}catch(error){
-          if(!existsSync(temporary)&&existsSync(this.file)&&readFileSync(this.file,'utf8')===content)break;
-          if(!['EPERM','EBUSY'].includes(error.code)||attempt>=4)throw error;
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);
-        }
+    for(const surface of ['panel','workspace'])if(activeSessions[surface]!==this.activeSessions[surface])
+      changes.push({kind:'active',id:surface,value:activeSessions[surface]});
+    return changes;
+  }
+  saveDefaultThinkingBackup(){
+    if(!this.file||!existsSync(this.file))return;
+    const bytes=this.legacyBytes??Buffer.from(JSON.stringify({version:4,...this.stateSnapshot()}));
+    const digest=createHash('sha256').update(bytes).digest('hex').slice(0,16);
+    const backup=`${this.file}.before-default-thinking-${digest}.bak`;
+    if(!existsSync(backup))writeFileSync(backup,bytes,{flag:'wx'});
+    if(!readFileSync(backup).equals(bytes))throw Error('默认思考设置备份未获确认，未覆盖对话记录');
+    const handle=openSync(backup,'r+');try{fsyncSync(handle);}finally{closeSync(handle);}
+  }
+  save(turns,messages,preferences=this.preferences,sessions=this.sessions,activeSessions=this.activeSessions,changes){
+    if(this.closed)throw Error('对话存储已关闭');
+    if(!this.file)return;
+    if(this.migrationUncertain)throw Error('对话迁移未确认，需重开核实');
+    if(this.store&&this.file!==this.store.file)throw Error('对话存储路径已改变，拒绝写入');
+    const delta=changes??this.deriveChanges(turns,messages,preferences,sessions,activeSessions);
+    if(!delta.length)return;
+    if([...preferences.values()].some(value=>value.modelSelection==='default')
+      &&![...this.preferences.values()].some(value=>value.modelSelection==='default'))
+      this.saveDefaultThinkingBackup();
+    if(!this.store){
+      try{this.store=prepareConversationSqliteStore(this.file,this.stateSnapshot(),this.legacyBytes);}
+      catch(error){
+        this.migrationUncertain=!canRetryConversationMigration(this.file,this.stateSnapshot(),this.legacyBytes);
+        throw error;
       }
-    } catch (err) {try{unlinkSync(temporary);}catch{}throw err;}
-    this.loadedVersion=4;
+      this.legacyBytes=undefined;this.loadedVersion=5;
+    }
+    this.store.commit(delta);
   }
   history(tasks, taskId) {
     const surface = this.surface(taskId);
@@ -184,3 +275,15 @@ export class Conversations {
 }
 
 function taskSurfaceId(surface){return 'desktop-'+surface;}
+const messageDisplayKey=message=>({id:message.id,createdAt:message.createdAt,key:'message:'+message.id});
+const compareMessageDisplayKeys=(a,b)=>a.createdAt<b.createdAt?-1:a.createdAt>b.createdAt?1:a.key<b.key?-1:a.key>b.key?1:0;
+function messageDisplayBoundary(entries,key,after=false){
+  let low=0,high=entries.length;
+  while(low<high){const middle=(low+high)>>>1,comparison=compareMessageDisplayKeys(entries[middle],key);
+    if(comparison<0||after&&comparison===0)low=middle+1;else high=middle;}
+  return low;
+}
+function insertMessageDisplayKey(entries,entry){
+  if(!entries.length||compareMessageDisplayKeys(entries.at(-1),entry)<0)entries.push(entry);
+  else entries.splice(messageDisplayBoundary(entries,entry),0,entry);
+}

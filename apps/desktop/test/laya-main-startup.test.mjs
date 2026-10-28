@@ -12,6 +12,7 @@ import {createRuntimeApplication,AuthorizationQuestions} from '@personal-agent/r
 import {EventCursor} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {register} from '../electron/runtime.js';
+import {readCapabilityDirectory} from '../electron/capability-directory.js';
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from '../electron/authorization-intent-host.js';
 
@@ -26,6 +27,10 @@ const localInitialize = main.slice(main.indexOf('async function initializeLocalL
   .replaceAll('await import(', 'await load(');
 const authorizationInitialize = main.slice(main.indexOf('function initializeAuthorizationHosts('),main.indexOf('async function initializeLocalLaya() {'))
   .replaceAll('await import(', 'await load(');
+const capabilityStart=main.indexOf('async function syncCapabilities() {');
+const capabilityEnd=main.indexOf('\nasync function syncRuntimeSnapshots() {',capabilityStart);
+assert.ok(capabilityStart>=0&&capabilityEnd>capabilityStart,'actual capability startup must be present');
+const capabilityInitialize=main.slice(capabilityStart,capabilityEnd);
 const authorizationPort = main.slice(main.indexOf('const authorizationQuestionPort='),main.indexOf('\nlet syntheticRepairHost;'));
 const startupStart = main.indexOf('  try {\n    conversations = new Conversations(dataPaths.conversations);');
 const startupEnd = main.indexOf('\n\n  const area = screen.getPrimaryDisplay().workArea;', startupStart);
@@ -49,10 +54,14 @@ async function fixture(t, {memory = 8 * 1024 ** 3} = {}) {
   const element = {querySelector:selector => nodes[selector.match(/"([^"]+)"/)[1]]};
   const previousDocument = globalThis.document;
   globalThis.document = {createElement:() => element};
-  const admin = {}, calls = [];
+  const admin = {}, calls = [],clearedPolls=[];
   const context = vm.createContext({
     path, mkdirSync, Error, ProtocolError, dir:path.join(directory, 'apps/desktop/electron'),
-    createDesktopAuthorizationQuestionHost,createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL,EventCursor,register,
+    createDesktopAuthorizationQuestionHost,createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL,EventCursor,register,readCapabilityDirectory,
+    capabilityReadRevision:0,capabilityDirectory:{state:'loading'},capabilities:[],health:[],
+    eventPoll:undefined,setInterval:()=>({syntheticEventPoll:true}),clearInterval(value){clearedPolls.push(value);},
+    async syncRuntimeSnapshots(){assert.equal(context.runtimeApplication.activeTaskCount,0);},
+    async pumpEvents(){assert.equal(context.runtimeApplication.activeTaskCount,0);},
     desktopHost:{userNamespace:'synthetic-laya'},authorizationQuestionHost:undefined,authorizationIntentHost:undefined,
     nativeExecutionHost:undefined,localAuthorizationOnly:false,runtime:undefined,runtimeConnection:undefined,client:undefined,eventCursor:undefined,
     panel:undefined,workspace:undefined,openPanel:()=>assert.fail('no authorization operation requested'),
@@ -107,23 +116,25 @@ async function fixture(t, {memory = 8 * 1024 ** 3} = {}) {
     if(previousDocument===undefined)delete globalThis.document; else globalThis.document=previousDocument;
     assert.equal(path.dirname(directory), realpathSync(base)); rmSync(directory,{recursive:true,force:true});
   });
-  const boot = vm.runInContext(`${authorizationPort}\n${authorizationInitialize}\n${localInitialize}\n${initialize}\ninitializeRuntime`, context);
+  const boot = vm.runInContext(`${authorizationPort}\n${capabilityInitialize}\n${authorizationInitialize}\n${localInitialize}\n${initialize}\ninitializeRuntime`, context);
   context.runtimeStartup = createDeferredRuntimeStartup({isConfigured:() => false, initialize:boot});
   await vm.runInContext(`(async () => {${startup}})()`, context);
   assert.equal(context.runtimeStartup.snapshot().state,'configuration_required');
   assert.equal(context.runtimeError,'请先配置 AgentArts');assert.equal(context.localAuthorizationOnly,true);
+  assert.equal(context.capabilityDirectory.state,'loaded');
+  assert.deepEqual(context.capabilities.map(tool=>tool.name),[AUTHORIZATION_INTENT_TOOL]);
   assert.equal(localControlCreations,1);assert.equal(runtimeCreations,0);assert.equal(context.runtimeApplication.activeTaskCount,0);
   const action = vm.runInContext(`(async function(event,name,payload){const sender=event.sender;
     if(name==='snapshot')return {laya:localLaya?.snapshot()};${route}${mailRoute}})`, context);
   context.action = action;
   const ipc = vm.runInContext(`(${handler})`, context);
-  const invokeContext = vm.createContext({activeDesktopConversationId:undefined, readDeveloperSettingsDiagnostic,
+  const invokeContext = vm.createContext({activeDesktopConversationId:undefined,adoptSnapshotRead:undefined, readDeveloperSettingsDiagnostic,
     bridge:{invoke:(name,payload) => {calls.push(name); return ipc({sender:admin},name,payload);}}});
   const invoke = vm.runInContext(`(${invokeSource})`, invokeContext);
   controls = mountLayaControls({querySelector:() => ({before() {}})}, invoke);
   controls.render(context.localLaya?.snapshot());
   return {context, boot, action, controls, nodes, calls, launches:() => launches,
-    runtimeCreations:() => runtimeCreations, localControlCreations:()=>localControlCreations,setMemory:value => {currentMemory=value;}};
+    runtimeCreations:() => runtimeCreations, localControlCreations:()=>localControlCreations,clearedPolls,setMemory:value => {currentMemory=value;}};
 }
 
 test('actual Main without cloud binding or mail configuration still dispatches the explicit Laya button to its original host', async t => {
@@ -136,7 +147,9 @@ test('actual Main without cloud binding or mail configuration still dispatches t
   assert.match(f.nodes.status.textContent, /本机 Laya 已连接/);
   assert.equal(f.launches(), 1);
   const originalHost = f.context.localLaya;
+  const originalPoll = f.context.eventPoll;
   await assert.rejects(f.boot(), /请先配置 AgentArts/);
+  assert.deepEqual(f.clearedPolls,[originalPoll]);assert.equal(f.context.eventPoll,undefined,'the old local-control poll is released before Runtime reassembly');
   assert.equal(f.context.localLaya, originalHost, 'retrying cloud setup cannot orphan the owned model process');
   await f.nodes.stop.onclick();
   assert.equal(f.context.localLaya.snapshot().state, 'stopped');

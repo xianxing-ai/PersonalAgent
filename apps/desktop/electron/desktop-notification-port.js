@@ -24,7 +24,8 @@ const text = (value, max) => typeof value === 'string' && value.trim().length > 
 function validInput(input) {
   if (typeof input !== 'object' || input === null) return false;
   return text(input.id, 256) && text(input.title, 200) && text(input.body, 2000)
-    && (input.source === undefined || text(input.source, 80));
+    && (input.source === undefined || text(input.source, 80))
+    && (input.roundId === undefined || text(input.roundId, 256));
 }
 
 /** 默认系统通知器：Electron Notification，懒加载。 */
@@ -60,7 +61,7 @@ export function createDesktopNotificationPort(options = {}) {
   const filePath = options.storageDir === undefined
     ? undefined : path.join(options.storageDir, RECORDS_FILE);
 
-  let records = [];
+  let records = [], disposed = false;
   if (filePath !== undefined && existsSync(filePath)) {
     const parsed = JSON.parse(readFileSync(filePath, 'utf8'));
     if (typeof parsed !== 'object' || parsed === null || !Array.isArray(parsed.records)) {
@@ -105,16 +106,21 @@ export function createDesktopNotificationPort(options = {}) {
     const delivered = ['delivered', 'acknowledged'].includes(record.state);
     return {id, deliveryState: delivered ? 'delivered' : record.state === 'failed' ? 'failed' : 'unknown',
       deliveredAt: record.deliveredAt, userRead: record.state === 'acknowledged',
-      evidenceRefs: delivered ? [`desktop-notification:${id}:show`] : []};
+      evidenceRefs: delivered ? [`desktop-notification:${id}:show`] : [],
+      ...(record.roundId ? {roundId: record.roundId} : {}),
+      ...(record.clickedAt ? {clickedAt: record.clickedAt} : {})};
   }
   const publishOutcome = id => {try {options.onOutcome?.(readDeliveryOutcome(id));} catch {}};
 
   return Object.freeze({
     /** P5 设备通知端口兼容入口：落盘意图 → 系统投递，delivered 只认系统回执。 */
     async sendAdvisoryNotification(input) {
+      if (disposed) return {delivered: false, error: '通知端口已释放'};
       if (!validInput(input)) return {delivered: false, error: '通知输入无效'};
       const existing = records.find(record => record.id === input.id);
       if (existing) {
+        if (input.roundId !== undefined && existing.roundId !== undefined && existing.roundId !== input.roundId)
+          return {delivered: false, error: '通知 ID 已绑定不同轮次'};
         // 幂等重试：不重复弹系统通知；persisted（= unknown）也绝不重发，交 reconcile。
         return existing.state === 'delivered' || existing.state === 'acknowledged'
           ? {delivered: true}
@@ -124,6 +130,7 @@ export function createDesktopNotificationPort(options = {}) {
       const record = {
         id: input.id, title: input.title, body: input.body,
         source: input.source ?? 'desktop', state: 'persisted', queuedAt,
+        ...(input.roundId ? {roundId: input.roundId} : {}),
       };
       try {
         persist([...records, record]);
@@ -136,6 +143,12 @@ export function createDesktopNotificationPort(options = {}) {
       } catch {
         supported = false;
       }
+      // The original intent stays unknown if this instance was released while
+      // checking OS support. A successor must read it back, never send it anew.
+      if (disposed) return {delivered: false, error: '通知端口已释放，原投递待核实'};
+      const latest = records.find(item => item.id === record.id);
+      if (latest?.state !== 'persisted') return {delivered: latest?.state === 'delivered' || latest?.state === 'acknowledged',
+        ...(['failed'].includes(latest?.state) ? {error: '原通知已确认失败'} : {})};
       if (!supported) {
         persistState(record.id, {state: 'failed', error: '系统通知在此环境不可用'});
         return {delivered: false, error: '系统通知在此环境不可用'};
@@ -146,29 +159,47 @@ export function createDesktopNotificationPort(options = {}) {
           {id: record.id, title: record.title, body: record.body},
           {
             onShow: () => {
-              if (settled) return;
+              if (disposed || settled) return;
+              const current = records.find(item => item.id === record.id);
+              if (current?.state !== 'persisted') {settled = true;return;}
               settled = true;
               try {
-                persistState(record.id, {state: 'delivered', deliveredAt: new Date(now()).toISOString()});
+                persistState(record.id, {state: current.clickedAt ? 'acknowledged' : 'delivered',
+                  deliveredAt: new Date(now()).toISOString(),
+                  ...(current.clickedAt ? {acknowledgedAt: current.clickedAt} : {})});
                 publishOutcome(record.id);
               } catch { /* 回执落盘失败保持 persisted，交 reconcile */ }
             },
             onClick: () => {
-              settled = true;
+              if (disposed) return;
               const current = records.find(item => item.id === record.id);
+              if (!current || current.state === 'failed' || current.state === 'acknowledged') return;
+              if (current.state === 'persisted') {
+                // A click is a separate user action. Keep delivery unknown until
+                // an actual show receipt confirms the channel send.
+                try {
+                  persistState(record.id, {clickedAt: current.clickedAt ?? new Date(now()).toISOString()});
+                  publishOutcome(record.id);
+                } catch {}
+                return;
+              }
+              settled = true;
+              const clickedAt = current.clickedAt ?? new Date(now()).toISOString();
               persistState(record.id, {
-                state: 'acknowledged', acknowledgedAt: new Date(now()).toISOString(),
-                ...(current?.deliveredAt === undefined ? {deliveredAt: new Date(now()).toISOString()} : {}),
+                state: 'acknowledged', clickedAt, acknowledgedAt: clickedAt,
+                ...(current?.deliveredAt === undefined ? {deliveredAt: clickedAt} : {}),
               });
               publishOutcome(record.id);
             },
             onFailed: () => {
-              if (settled) return;
+              if (disposed || settled) return;
+              if (records.find(item => item.id === record.id)?.state !== 'persisted') {settled = true;return;}
               settled = true;
               try {persistState(record.id, {state: 'failed', error: '系统通知失败回执'}); publishOutcome(record.id);} catch {}
             },
           },
         );
+        if (disposed) {try {handle?.close?.();} catch {} return {delivered: false, error: '通知端口已释放，原投递待核实'};}
         openHandles.set(record.id, handle);
       } catch (error) {
         // show may throw after the OS accepted the notification. The original
@@ -182,6 +213,7 @@ export function createDesktopNotificationPort(options = {}) {
 
     /** 用户已读（面板点击等）；未投递/未确认的通知不标记已读。 */
     acknowledge(id) {
+      if (disposed) return {acknowledged: false};
       const record = records.find(item => item.id === id);
       if (record === undefined || record.state === 'failed' || record.state === 'persisted') {
         return {acknowledged: false};
@@ -195,6 +227,7 @@ export function createDesktopNotificationPort(options = {}) {
 
     /** 只有受信宿主可核实中断投递的真实结果；unknown 不重发，核实后才收敛。 */
     reconcile(id, delivered) {
+      if (disposed) return;
       const record = records.find(item => item.id === id);
       if (record === undefined || record.state !== 'persisted') return;
       persistState(id, delivered
@@ -205,11 +238,21 @@ export function createDesktopNotificationPort(options = {}) {
 
     readDeliveryOutcome,
 
+    /** Private, bounded readback for original Runtime round bindings after restart. */
+    listClickReceipts() {
+      return records.flatMap(record=>{
+        // Older delivered-click records wrote acknowledgedAt before clickedAt existed.
+        const clickedAt=record.clickedAt??(record.state==='acknowledged'?record.acknowledgedAt:undefined);
+        return record.roundId&&clickedAt?[{id:record.id,roundId:record.roundId,clickedAt}]:[];
+      });
+    },
+
     list() {
       return records.map(record => ({...record}));
     },
 
     dispose() {
+      disposed = true;
       for (const handle of openHandles.values()) {
         try { handle.close(); } catch { /* best effort */ }
       }

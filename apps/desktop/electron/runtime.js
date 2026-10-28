@@ -9,6 +9,7 @@ export async function register(host) {
   return {
     client,
     readEvents: host.readEvents,
+    readEventBatch: host.readEventBatch,
     dispose() {
       release?.();
     },
@@ -21,13 +22,13 @@ export async function requestTaskCancellation(client, taskId, refreshTask) {
   return {...result, state: task.state};
 }
 
-export function submitConversationTask(client, payload, {competition = false, contextCompaction = false} = {}) {
+export function submitConversationTask(client, payload, {competition = false, contextCompaction = false, competitionTimeoutMs = 30 * 60_000} = {}) {
   // Runtime persists the submit request's deadline for the complete task.
   // Client's 10s RPC default is too short for a deployed cloud workflow.
   return client.call('task.submit', payload, {
     idempotencyKey: crypto.randomUUID(),
     // Summary consent and segmented model calls share the immutable task deadline.
-    // Reserve time at submission instead of extending an already authorized task.
-    ...(competition ? {timeoutMs: contextCompaction ? 600_000 : 180_000} : {}),
+    // Reserve at least 600s at submission without shortening the longer cloud budget.
+    ...(competition ? {timeoutMs: contextCompaction ? Math.max(competitionTimeoutMs, 600_000) : competitionTimeoutMs} : {}),
   });
 }

@@ -87,6 +87,8 @@ export interface ConfiguredSubagentModelOptions {
   contextLimitTokens?: number;
   requestTokenBudget?: VisibleRequestTokenBudget;
   requestFormat?: OpenAICompatibleRequestFormat;
+  /** Trusted optional PNG vision declaration for the auxiliary OpenAI-compatible endpoint. */
+  vision?: boolean;
 }
 
 /** Runtime composition only; Desktop injects credentials, never imports providers. */
@@ -108,6 +110,9 @@ export function createConfiguredSubagentModelGateway(
   }
   if (config.requestFormat !== undefined && config.provider !== 'openai-compatible') {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Request formats require the OpenAI-compatible auxiliary provider');
+  }
+  if (config.vision === true && config.provider !== 'openai-compatible') {
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Vision requires the OpenAI-compatible auxiliary provider');
   }
   const Provider = config.provider === 'pangu' ? PanguModelProvider : OpenAICompatibleModelProvider;
   const provider = new StructuredToolProvider(new Provider(config));

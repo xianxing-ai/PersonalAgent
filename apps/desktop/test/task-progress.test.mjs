@@ -8,7 +8,9 @@ test('progress selects an unfinished task ahead of a later finished turn without
  assert.equal(JSON.stringify(tasks),before);assert.equal(taskProgress([]),null);
 });
 test('waiting and cancellation hints never claim completion or undo',()=>{
- assert.match(taskProgress([{state:'waiting_reconciliation'}]).detail,/尚未核实/);
+ assert.match(taskProgress([{state:'waiting_reconciliation'}]).detail,/暂不能确认是否已执行/);
+ assert.equal(taskProgress([{state:'waiting_reconciliation',error:{message:'具体安全原因'}}]).detail,'具体安全原因');
+ assert.equal(taskProgress([{state:'waiting_reconciliation'}]).label,'执行异常');
  assert.match(taskProgress([{state:'cancelling'}]).detail,/等待执行结束/);
  assert.match(taskProgress([{state:'cancelled'}]).detail,/不会因此自动撤销/);
  assert.equal(taskProgress([{state:'unknown-new-state'}]).label,'状态待确认');

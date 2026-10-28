@@ -18,6 +18,7 @@ export function createConversationDelivery(submitting) {
       if(request&&request!==except){request.interrupted=true;requests.delete(conversationId);submitting.delete(conversationId);return request;}
     },
     truncate,
+    clearBody(taskId) {truncated.delete(taskId);},
     acceptStop(taskId,result) {
       if(result?.taskId===taskId&&(result.cancelAccepted===true||['succeeded','failed','cancelled'].includes(result.state)))acceptedStops.add(taskId);
       else throw Error('任务停止未受理，请重试停止');
