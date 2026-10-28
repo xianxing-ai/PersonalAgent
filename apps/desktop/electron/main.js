@@ -3359,8 +3359,16 @@ async function action(event, name, payload) {
       try{
         const context={signal:owned.signal,deadline:new Date(Date.now()+120000).toISOString()};
         if(!process.env.PA_WINDOWS_CONTROL_PYTHON)await prepareNativeDesktopComponent({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath,...context});
-        await windowsControlHost.start(context);openCliBrowserHost?.start();return {computerControl:computerControlSnapshot()};
+        await windowsControlHost.start(context);openCliBrowserHost?.start();
+        if(openCliBrowserHost)await openCliBrowserHost.probeExtension({signal:owned.signal}).catch(()=>{});
+        return {computerControl:computerControlSnapshot()};
       }finally{if(computerPreparing===owned)computerPreparing=undefined;publish();}
+    }
+    if(name==='computer.control.probeConnectedBrowser'){
+      if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','扩展检测不接受额外参数');
+      if(!openCliBrowserHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','现有浏览器控制尚未装配');
+      const connectedBrowser=await openCliBrowserHost.probeExtension();
+      publish();return {computerControl:computerControlSnapshot(),connectedBrowser};
     }
     if(name==='computer.control.confirm'){
       if(!payload||typeof payload.taskId!=='string'||Object.keys(payload).some(key=>key!=='taskId'))throw new ProtocolError('INVALID_ARGUMENT','缺少原电脑任务');

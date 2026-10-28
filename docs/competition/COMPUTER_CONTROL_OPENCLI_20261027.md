@@ -21,3 +21,4 @@ OpenCLI 执行放在自有 Node 子进程；取消/期限到达/停止终止该�
 - 真实 Competition 请求已经进入本机授权/在场等待；修复子任务授权没有进入原会话卡片的问题，并把本机等待解释固定在面板历史滚动区外。用户选择暂不确认；未代按 F9、未更改只读策略，测试请求通过原 UI 停止并读回 cancelled。
 - 新增工具未完成获授权后的整条 AgentArts → Runtime → 浏览器 → 云端最终回答验收。不能据此宣称原 `EXTERNAL_FAILURE` 全链消除，或已具备 Codex 等效能力。真实浏览器 click、复杂跨网站流程、安装包自带扩展、原生桌面写入仍未验收。
 - 此增量是 Desktop 本机依赖与接线，没有更改云端镜像代码；本机已重启加载。没有把本次本机启动描述为新云端镜像发布。
+- 2026-10-28 对齐增量（双 DNS、click 独立读回、扩展探测引导、本机 click 入口与获授权整链手册）见 [COMPUTER_CONTROL_OPENCLI_PARITY_20261028.md](COMPUTER_CONTROL_OPENCLI_PARITY_20261028.md)。
