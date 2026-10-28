@@ -106,6 +106,35 @@ test('rejects invented quotes, unknown schema fields and fabricated claim refere
   await assert.rejects(compile([document], {model: reference}), {code: 'INVALID_MODEL_OUTPUT'});
 });
 
+test('repairs only returned invalid model output within the original budget and keeps strict evidence', async () => {
+  const {document} = fixture();
+  let extraction = 0;
+  const model = fakeModel((output, request) => {
+    if (request.stage === 'extract' && ++extraction === 1) output.claims[0].evidence[0].quote = '捏造的引用';
+    else if (request.stage === 'extract' && extraction === 2) output.claims[0].unknown = true;
+    return output;
+  });
+  const result = await compile([document], {model});
+  const calls = model.calls.filter(request => request.stage === 'extract');
+  assert.equal(calls.length, 3);
+  assert.equal(new Set(calls.map(request => request.requestId)).size, 3);
+  assert.equal(result.usage.calls, 4);
+  assert.equal(result.usage.inputTokens, 40);
+  assert.equal(result.usage.outputTokens, 40);
+  assert.equal(result.claims[0].evidence[0].quote, document.units[0].text);
+  assert.ok(result.usage.inputCharacters > calls[0].system.length + calls[0].input.length);
+
+  const invalid = fakeModel((output, request) => {
+    if (request.stage === 'extract') output.claims[0].evidence[0].quote = '捏造的引用';
+    return output;
+  });
+  await assert.rejects(compile([document], {model: invalid, budget: {...budget, maxCalls: 2}}), {code: 'BUDGET_EXCEEDED'});
+  assert.equal(invalid.calls.length, 2);
+  const failed = fakeModel(() => {throw new Error('transport result unknown');});
+  await assert.rejects(compile([document], {model: failed}), /transport result unknown/);
+  assert.equal(failed.calls.length, 1);
+});
+
 test('renders long source text with many Markdown fences without dropping content or overflowing the call stack',async()=>{
   const value='x`'.repeat(150_000),{document}=fixture(value);
   const model={fingerprint:'synthetic-fence',async invoke(){return {output:{claims:[]}};}};

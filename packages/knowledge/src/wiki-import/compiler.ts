@@ -199,27 +199,39 @@ export async function compileWiki(options: CompileWikiOptions): Promise<WikiComp
     if (cached !== undefined) {
       const result = validate(cached); usage.cacheHits++; checkWikiImportContext(context); return result;
     }
-    const inputCharacters = system.length + inputText.length + JSON.stringify(schema).length;
-    const remaining = budget.maxOutputCharacters - usage.outputCharacters;
-    if (usage.calls >= budget.maxCalls || usage.inputCharacters + inputCharacters > budget.maxInputCharacters || remaining <= 0) {
-      throw new WikiImportError('BUDGET_EXCEEDED');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      checkWikiImportContext(context);
+      const attemptSystem = attempt === 0 ? system : system + `\n第 ${attempt} 次纠错：此前输出未通过格式或证据校验。重新阅读输入，严格遵守 Schema；引用必须是原文中的连续原样片段，不得猜测数字、代号或引用。`;
+      const inputCharacters = attemptSystem.length + inputText.length + JSON.stringify(schema).length;
+      const remaining = budget.maxOutputCharacters - usage.outputCharacters;
+      if (usage.calls >= budget.maxCalls || usage.inputCharacters + inputCharacters > budget.maxInputCharacters || remaining <= 0) {
+        throw new WikiImportError('BUDGET_EXCEEDED');
+      }
+      const maxOutputCharacters = Math.min(48_000, remaining);
+      const requestId = attempt === 0 ? key : wikiImportHash(JSON.stringify({version: VERSION, model: model.fingerprint, stage, system: attemptSystem, input: inputText}));
+      usage.calls++; usage.inputCharacters += inputCharacters;
+      const result = await model.invoke({stage, requestId, system: attemptSystem, input: inputText, outputSchema: schema, maxOutputCharacters}, context);
+      checkWikiImportContext(context);
+      if (!result || result.output === undefined) fail();
+      const size = (typeof result.output === 'string' ? result.output : JSON.stringify(result.output))?.length;
+      if (size === undefined || size > maxOutputCharacters) fail();
+      usage.outputCharacters += size;
+      for (const kind of ['inputTokens', 'outputTokens'] as const) {
+        const count = result.usage?.[kind];
+        if (count !== undefined && (!Number.isSafeInteger(count) || count < 0)) fail();
+        usage[kind] += count ?? 0;
+      }
+      let validated: T;
+      try {
+        validated = validate(result.output);
+      } catch (error) {
+        if (!(error instanceof WikiImportError) || error.code !== 'INVALID_MODEL_OUTPUT' || attempt === 2) throw error;
+        continue;
+      }
+      options.cache?.set(key, parse(result.output));
+      return validated;
     }
-    const maxOutputCharacters = Math.min(48_000, remaining);
-    usage.calls++; usage.inputCharacters += inputCharacters;
-    const result = await model.invoke({stage, requestId: key, system, input: inputText, outputSchema: schema, maxOutputCharacters}, context);
-    checkWikiImportContext(context);
-    if (!result || result.output === undefined) fail();
-    const size = (typeof result.output === 'string' ? result.output : JSON.stringify(result.output))?.length;
-    if (size === undefined || size > maxOutputCharacters) fail();
-    usage.outputCharacters += size;
-    for (const kind of ['inputTokens', 'outputTokens'] as const) {
-      const count = result.usage?.[kind];
-      if (count !== undefined && (!Number.isSafeInteger(count) || count < 0)) fail();
-      usage[kind] += count ?? 0;
-    }
-    const validated = validate(result.output);
-    options.cache?.set(key, parse(result.output));
-    return validated;
+    throw new WikiImportError('INVALID_MODEL_OUTPUT');
   }
 
   const claimsById = new Map<string, WikiClaim>(), windows = extractionWindows(documents);
