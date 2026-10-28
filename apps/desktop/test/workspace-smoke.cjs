@@ -76,8 +76,8 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     await panel.locator('#panel-expand').click();
     const workspace = await opened;
     await workspace.waitForSelector('#workspace-stage');
-    await workspace.waitForFunction(() => document.documentElement.dataset.windowMaximized === 'true');
-    assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(win=>win.webContents.getURL().includes('mode=workspace')).isMaximized()),true,'expand opens a maximized workspace without a desktop surround');
+    await workspace.waitForFunction(() => document.documentElement.dataset.windowMaximized === 'false');
+    assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(win=>win.webContents.getURL().includes('mode=workspace')).isMaximized()),false,'expand opens a resizable normal window so the native corners are visible');
 
     assert.equal(await workspace.locator('.workspace-compose-area').count(), 0);
     assert.equal(await workspace.locator('#workspace-input').count(), 0);
@@ -97,7 +97,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
       return {bounds: win.getBounds(), contentBounds:win.getContentBounds(), maximized:win.isMaximized(), area: screen.getDisplayMatching(win.getBounds()).workArea, panelVisible: BrowserWindow.getAllWindows().find(item => item.webContents.getURL().includes('mode=panel')).isVisible()};
     });
     assert.equal(bounds.panelVisible, false);
-    for (const key of ['x','y','width','height']) assert.ok(Math.abs(bounds.contentBounds[key]-bounds.area[key])<=1,`expanded content must fill the work area: ${JSON.stringify(bounds)}`);
+    assert.ok(bounds.contentBounds.width<=bounds.area.width && bounds.contentBounds.height<=bounds.area.height,`workspace fits the work area: ${JSON.stringify(bounds)}`);
     assert.ok(
       Math.abs(bounds.bounds.x + bounds.bounds.width / 2 - (bounds.area.x + bounds.area.width / 2)) <= 1.5,
       `workspace is not horizontally centered: ${JSON.stringify(bounds)}`,
@@ -113,27 +113,29 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     const adminOpened = app.waitForEvent('window');
     await workspace.locator('.cc-settings').click();
     const admin = await adminOpened;
-    await admin.waitForSelector('[data-page="appearance"]');
+    await admin.waitForSelector('[data-page="appearance"]',{state:'attached'});
     for (const removed of ['import', 'browser', 'account', 'usage']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
     assert.equal(await admin.locator('.side [data-page="tasks"]').count(), 1, 'the current task monitoring route remains available');
-    await admin.locator('[data-page="appearance"]').click();
+    await admin.locator('[data-jump="appearance"]').click();
     for (const theme of ['dark', 'light']) {
       await admin.locator('#pref-theme').selectOption(theme);
       await workspace.waitForFunction(value => document.documentElement.dataset.theme === value, theme);
-      assert.equal(await workspace.locator('.workspace').evaluate(element => getComputedStyle(element).backgroundColor), theme==='light'?'rgba(244, 244, 244, 0.9)':'rgba(25, 25, 25, 0.88)', 'workspace acrylic coat follows black and white themes');
-      assert.equal(await admin.locator('.admin').evaluate(element => getComputedStyle(element).backgroundColor), theme === 'light' ? 'rgb(250, 250, 250)' : 'rgb(16, 16, 16)');
+      const expected=theme==='light'?'rgb(233, 235, 238)':'rgb(17, 18, 21)';
+      assert.equal(await workspace.locator('.workspace').evaluate(element => getComputedStyle(element).backgroundColor),expected,'workspace follows the selected solid glass theme');
+      assert.equal(await admin.locator('.admin').evaluate(element => getComputedStyle(element).backgroundColor),expected,'settings follow the same theme');
       await assertFlatShell(workspace,'.workspace');
       await assertFlatShell(admin,'.admin');
       for (const page of [workspace,admin]) {
         await page.locator('[data-window="maximize"]').click();
-        await page.waitForTimeout(100);
+        await page.waitForFunction(() => document.documentElement.dataset.windowMaximized === 'true');
         await assertFlatShell(page,page===workspace?'.workspace':'.admin');
         await page.locator('[data-window="maximize"]').click();
-        await page.waitForTimeout(100);
+        await page.waitForFunction(() => document.documentElement.dataset.windowMaximized === 'false');
         await assertFlatShell(page,page===workspace?'.workspace':'.admin');
       }
       await workspace.screenshot({path: path.join(output, `workspace-${theme}.png`)});
       await captureNative('workspace', `native-workspace-${theme}.png`);
+      await captureNative('admin', `native-admin-${theme}.png`);
       if (theme === 'light') await captureNative('workspace', 'native-workspace.png');
     }
     await admin.locator('#pref-theme').selectOption('system');
@@ -156,7 +158,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     await captureNative('panel', 'native-panel.png');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output,'shell-receipt.json'),JSON.stringify({profile:'explicit_fake_runtime',bounds,shellCases,pageErrors:errors},null,2));
-    console.log('PASS: black/white acrylic workspace and original settings themes; maximize/restore; connectors, orb, conversations and native captures verified; screenshots: ' + output);
+    console.log('PASS: light/dark solid glass workspace and settings; maximize/restore; connectors, orb, conversations and native captures verified; screenshots: ' + output);
   } finally {
     await closeDesktop(app);
   }

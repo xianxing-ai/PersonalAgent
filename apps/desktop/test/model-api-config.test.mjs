@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdirSync,mkdtempSync,readFileSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {createRuntimeApplication, createDesktopSubagentDispatchTool, createConfiguredSubagentModelGateway} from '@personal-agent/runtime/application';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
@@ -21,6 +21,56 @@ function fixture(fetch) {
   return {options,host:createModelApiConfig(options)};
 }
 const answer = () => new Response(JSON.stringify({choices:[{message:{content:'Synthetic answer'}}]}));
+
+test('new Harness settings use defaults while existing explicit values and model bindings survive later saves', () => {
+  let requests=0;
+  const {host,options}=fixture(()=>{requests++;throw Error('saving must not call a model');});
+  let restored;
+  try {
+    const model=host.configure({...input,id:'summary'}).models[0];
+    const selection={enabled:true,modelId:model.id,configurationRef:model.configurationRef};
+    host.configureHarness({expectedRevision:'unconfigured',enabled:true,context:selection});
+    let saved=host.readHarnessConfiguration();
+    assert.equal(saved.maxExecutorSteps,32);assert.equal(saved.context.maxOutputTokens,2048);
+    assert.deepEqual({...saved.context.policy,version:'test'}, {version:'test',triggerCharacters:96000,targetCharacters:64000,
+      maxCharacters:128000,retainMessages:8,maxSourceMessages:2000,segmentCharacters:32000,maxSummaryCharacters:4000});
+    restored=createModelApiConfig(options);
+    assert.deepEqual(restored.readHarnessConfiguration(),saved);restored.dispose();restored=undefined;
+    const custom={triggerCharacters:12000,targetCharacters:9000,maxCharacters:16000,retainMessages:2,
+      maxSourceMessages:40,segmentCharacters:7500,maxSummaryCharacters:120};
+    host.configureHarness({expectedRevision:saved.revision,enabled:true,maxExecutorSteps:7,
+      context:{...selection,maxOutputTokens:500,policy:custom}});
+    saved=host.readHarnessConfiguration();
+    host.configureHarness({expectedRevision:saved.revision,enabled:true,context:selection});
+    saved=host.readHarnessConfiguration();
+    assert.equal(saved.maxExecutorSteps,7);assert.equal(saved.context.maxOutputTokens,500);
+    assert.deepEqual({...saved.context.policy,version:'test'},{...custom,version:'test'});
+    const bytes=readFileSync(path.join(options.userData,'model-api-config.json'));
+    for(const patch of [
+      {maxExecutorSteps:null,context:selection},
+      {context:{...selection,maxOutputTokens:null}},
+      {context:{...selection,policy:{triggerCharacters:1}}},
+      {context:{...selection,modelId:'missing'}},
+    ]) {
+      assert.throws(()=>host.configureHarness({expectedRevision:saved.revision,enabled:true,...patch}));
+      assert.deepEqual(readFileSync(path.join(options.userData,'model-api-config.json')),bytes);
+    }
+    assert.throws(()=>host.configureHarness({expectedRevision:'old',enabled:true,context:selection}),/变化/);
+    assert.equal(requests,0);
+  } finally {restored?.dispose();host.dispose();}
+});
+
+test('a failed encrypted configuration read cannot be overwritten by saving Harness defaults', () => {
+  const {host,options}=fixture(()=>{throw Error('no network');});host.dispose();
+  const target=path.join(options.userData,'model-api-config.json'),original='invalid encrypted user configuration';
+  writeFileSync(target,original);
+  const damaged=createModelApiConfig(options);
+  try {
+    assert.equal(damaged.snapshot().status,'unavailable');
+    assert.throws(()=>damaged.configureHarness({expectedRevision:'unconfigured',enabled:true,context:{enabled:false}}),/未修改原文件/);
+    assert.equal(readFileSync(target,'utf8'),original);
+  } finally {damaged.dispose();}
+});
 
 test('version-bound native settings traverse actual Competition child serialization independently of depth', async () => {
   const bodies = [];

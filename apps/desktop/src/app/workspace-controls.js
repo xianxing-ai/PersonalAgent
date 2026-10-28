@@ -45,11 +45,12 @@ export function mountWorkspaceControls(root, invoke) {
 
   function updateButtons() {
     const configured = state.configured === true;
-    field('select').disabled = busy;
-    field('select-node').disabled = busy || !configured;
-    field('select-file').disabled = busy || !configured;
-    field('select-npm').disabled = busy || !configured || state.nodeConfigured !== true;
-    field('revoke').disabled = busy || (!configured && state.cloudExportAllowed !== true);
+    const unavailable=state.selectionAvailable===false;
+    field('select').disabled = busy || unavailable;
+    field('select-node').disabled = busy || unavailable || !configured;
+    field('select-file').disabled = busy || unavailable || !configured;
+    field('select-npm').disabled = busy || unavailable || !configured || state.nodeConfigured !== true;
+    field('revoke').disabled = busy || unavailable || (!configured && state.cloudExportAllowed !== true);
     updateStatus();
   }
 

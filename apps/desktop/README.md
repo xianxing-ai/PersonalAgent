@@ -1,5 +1,7 @@
 # PersonalAgent Desktop
 
+2026-10-27～28：普通设置入口、Solid Glass 材质、Windows 窗口圆角、简化配置默认值、默认工作文件夹与工作区星云重绘优化，见[实现与验证边界](docs/SOLID_GLASS_SETTINGS_20261027.md)。
+
 2026-10-27 / Issue #523：在 PR #522 上改用原 Runtime 检查点索引读取持续工作流，后台维护按宿主独立节流和防重入；事件与待办仍走原 120ms 入口。修复前后测量、Windows GUI 与验证边界见[修复记录](docs/DESKTOP_IDLE_POLLING_ISSUE523_20261027.md)。
 
 2026-10-26 会话持久化移交候选（review）：Conversations 的同步 API 与内存视图保留，私有 SQLite 增量保存消息、草稿、偏好及 UI 任务链接；TaskRuntime 仍是任务与执行事实来源。旧 v1～v4 只读启动不迁移，首次修改经原字节备份、事务导入和独立读回后写入旧版拒绝的 v5 marker；ready 缺库拒绝空建，未知提交冻结并核实。Main 最终退出接线已在候选中，Windows 打包与真实用户资料迁移未验收。

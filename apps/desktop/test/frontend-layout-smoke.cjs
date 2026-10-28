@@ -104,6 +104,9 @@ const {_electron}=require('playwright');
   for(const [width,height,zoom,theme] of [[1120,760,1,'light'],[1120,760,1.3,'dark'],[800,600,1,'dark'],[800,600,1.3,'light'],[600,400,1.3,'light']]){
    await resize('admin',width,height,zoom);await admin.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);
    for(const section of pages){
+    const advanced=admin.locator('.advanced-nav');
+    const isAdvanced=await admin.locator(`[data-page="${section}"]`).evaluate(node=>Boolean(node.closest('details')));
+    if(isAdvanced && !await advanced.evaluate(node=>node.open))await advanced.locator('summary').click();
     await admin.locator(`[data-page="${section}"]`).click();
     await layout(admin,`admin/${section}/${width}x${height}/${zoom}/${theme}`);
     if(section==='models'){

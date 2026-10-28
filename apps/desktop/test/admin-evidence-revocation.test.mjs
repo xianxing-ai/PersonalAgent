@@ -31,8 +31,10 @@ async function harness(t, invoke) {
   globalThis.document = adminAuxiliaryDocument();
   globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
   const {mountAdmin} = await import('../src/features/admin/view.js');
-  const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search',
+  const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search', '.advanced-nav',
     '.main', '#page-title', '#connection', '#content', '#error'].map(key => [key, element()]));
+  nodes.get('#admin-search').value = '';
+  nodes.get('.advanced-nav').open = false;
   const root = {innerHTML: '', querySelector: key => nodes.get(key) ?? null,
     querySelectorAll: key => key === '[data-revoke]' ? revokeButtons : []};
   let revokeButtons = [];

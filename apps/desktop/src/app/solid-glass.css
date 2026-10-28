@@ -1,0 +1,109 @@
+/* Solid, readable panes. The native panel retains its existing DWM backdrop;
+   dense content uses inexpensive opaque layers instead of nested live blurs. */
+:root {
+  --sg-ground:#111215;--sg-rail:#191a1e;--sg-pane:#202126;--sg-card:#25262b;
+  --sg-control:#2c2d33;--sg-hover:#34353c;--sg-line:rgba(255,255,255,.105);
+  --sg-rim:rgba(255,255,255,.105);--sg-shadow:rgba(0,0,0,.24);
+}
+:root[data-theme="light"] {
+  --sg-ground:#e9ebee;--sg-rail:#eef0f2;--sg-pane:#f4f5f6;--sg-card:#fafbfc;
+  --sg-control:#f3f4f6;--sg-hover:#e6e8eb;--sg-line:rgba(29,35,44,.13);
+  --sg-rim:rgba(255,255,255,.9);--sg-shadow:rgba(35,42,55,.10);
+}
+
+.admin {background:var(--sg-ground)}
+.admin .admin-bar {background:var(--sg-rail);border-bottom:1px solid var(--sg-line)}
+.admin .side {background:var(--sg-rail);border-right:1px solid var(--sg-line)}
+.admin>.main {background:var(--sg-ground)}
+.admin .side-home {padding:4px 10px 8px}
+.admin .side .brand {letter-spacing:-.025em}
+.admin .admin-search {background:var(--sg-control);border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim)}
+.admin .side nav button {border:1px solid transparent;transition:background-color .15s,border-color .15s,color .15s}
+.admin .side nav button:hover {background:var(--sg-hover)}
+.admin .side nav button[aria-current="page"] {background:var(--sg-control);border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim)}
+.admin .primary-nav {display:grid;gap:3px;margin-bottom:16px}
+.admin .advanced-nav {border-top:1px solid var(--sg-line);padding-top:9px}
+.admin .advanced-nav[hidden] {display:none}
+.admin .advanced-nav>summary {display:flex;align-items:center;min-height:38px;padding:8px 10px;border-radius:10px;color:var(--fg-2);font-size:13px;cursor:pointer;list-style:none}
+.admin .advanced-nav>summary::-webkit-details-marker {display:none}
+.admin .advanced-nav>summary::after {content:'＋';margin-left:auto;color:var(--muted)}
+.admin .advanced-nav[open]>summary::after {content:'−'}
+.admin .advanced-nav>summary:hover {background:var(--sg-hover)}
+.admin .advanced-nav>summary:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-2px}
+.admin :is(.sheet,.settings-list,.model-list,.card,.sis-settings) {
+  background:var(--sg-card);border:1px solid var(--sg-line);
+  box-shadow:inset 0 1px 0 var(--sg-rim),0 8px 24px -14px var(--sg-shadow);
+}
+.admin :is(.settings-list,.model-list) {border-radius:16px;overflow:hidden}
+.admin :is(.setting-row,.model-item) {border-color:var(--sg-line)}
+.admin .main :is(.btn,input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea) {
+  border-color:var(--sg-line);background-color:var(--sg-control);color:var(--fg);
+  box-shadow:inset 0 1px 0 var(--sg-rim);
+}
+.admin .main .btn:hover:not(:disabled) {background:var(--sg-hover)}
+.admin .main .btn-primary {background:var(--fg);color:var(--bg)}
+.admin .main .btn-primary:hover:not(:disabled) {background:var(--fg-2);color:var(--bg)}
+.admin .main .btn-danger {color:var(--danger)}
+.admin .main :is(input,select,textarea):focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
+.admin .feeds-advanced {margin:14px 0;padding:12px;border:1px solid var(--sg-line);border-radius:12px;background:var(--sg-pane)}
+.admin .feeds-advanced summary {cursor:pointer;font-weight:600}
+.admin .feeds-advanced label {display:grid;gap:6px;margin:10px 0}
+.admin .feeds-advanced input {width:100%;max-width:420px;padding:8px;border:1px solid var(--sg-line);border-radius:9px}
+.admin .connection-intro {margin:0 0 18px}
+.admin .connection-intro h2 {margin:0 0 8px;font-size:18px}
+.admin .connection-intro p {max-width:650px;color:var(--muted);line-height:1.7}
+.admin :is(.connection-diagnostics,.laya-advanced)>summary {cursor:pointer;font-weight:600}
+.admin .laya-advanced {margin:12px 0;padding:15px;border:1px solid var(--sg-line);border-radius:16px;background:var(--sg-card);box-shadow:inset 0 1px 0 var(--sg-rim)}
+.admin .laya-advanced[hidden] {display:none}
+.admin .laya-advanced>.sheet {margin:12px 0 0}
+.admin .sis-advanced,.admin .connection-advanced {margin:12px 0;padding:12px;border:1px solid var(--sg-line);border-radius:12px;background:var(--sg-pane)}
+.admin :is(.sis-advanced,.connection-advanced)>summary {cursor:pointer;font-weight:600}
+
+.panel {
+  --panel-coat:rgba(24,25,29,.80);--panel-lens:rgba(255,255,255,.075);
+  --panel-hover:rgba(255,255,255,.13);--panel-glint:rgba(255,255,255,.16);
+  --panel-line:rgba(255,255,255,.10);--panel-menu:#292a30;
+  background:var(--panel-coat);box-shadow:inset 0 1px 0 var(--panel-glint),inset 0 0 0 1px var(--panel-line);
+}
+:root[data-theme="light"] .panel {
+  --panel-coat:rgba(239,241,244,.84);--panel-lens:rgba(255,255,255,.52);
+  --panel-hover:rgba(255,255,255,.72);--panel-glint:rgba(255,255,255,.85);
+  --panel-line:rgba(34,40,50,.12);--panel-menu:#f7f8fa;
+}
+.panel :is(.quick-start button,.composer,.voice-runtime-controls,.user-message) {
+  background:var(--panel-lens);box-shadow:inset 0 1px 0 var(--panel-glint),0 5px 16px rgba(0,0,0,.06);
+}
+.panel :is(.quick-start button,.composer,.voice-runtime-controls) {border:1px solid var(--panel-line)}
+
+.command-center {
+  --cc-bg:var(--sg-ground);--cc-rail:var(--sg-rail);--cc-panel:var(--sg-pane);
+  --cc-soft:var(--sg-card);--cc-hover:var(--sg-hover);--cc-line:var(--sg-line);
+  --cc-input:var(--sg-card);--cc-solid:var(--sg-card);background:var(--sg-ground);
+}
+:root[data-theme="light"] .command-center {
+  --cc-bg:var(--sg-ground);--cc-rail:var(--sg-rail);--cc-panel:var(--sg-pane);
+  --cc-soft:var(--sg-card);--cc-hover:var(--sg-hover);--cc-line:var(--sg-line);
+  --cc-input:var(--sg-card);--cc-solid:var(--sg-card);
+}
+.command-center .cc-rail {box-shadow:inset -1px 0 0 var(--sg-line)}
+.command-center :is(.workspace-composer,.connector-card,.cc-search) {
+  border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim),0 8px 22px -15px var(--sg-shadow);
+}
+.command-center .workspace-composer:focus-within {border-color:var(--cc-dim);box-shadow:inset 0 1px 0 var(--sg-rim),0 0 0 1px var(--cc-dim)}
+.command-center .connector-card:hover {background:var(--sg-hover)}
+.command-center .cc-hero {border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim),0 8px 24px -14px var(--sg-shadow)}
+/* Motion is reserved for actual activity; the scene remains sharp and static. */
+.command-center .cc-hero-field {animation:none;filter:none}
+:root[data-theme="light"] .command-center .cc-hero-field {filter:invert(1)}
+
+@media(prefers-reduced-motion:reduce) {.admin .side nav button {transition:none}}
+@media(prefers-reduced-transparency:reduce) {
+  .panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}
+  :root[data-theme="light"] .panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}
+}
+@media(forced-colors:active) {
+  .admin,.admin .side,.admin>.main,.command-center {background:Canvas;color:CanvasText}
+  .admin :is(.sheet,.settings-list,.model-list,.card,.sis-settings),.panel,.command-center :is(.workspace-composer,.connector-card) {background:Canvas;border:1px solid CanvasText;box-shadow:none}
+  .admin .side nav button[aria-current="page"] {border-color:Highlight}
+  .panel :is(.quick-start button,.composer,.voice-runtime-controls,.user-message) {background:Canvas;color:CanvasText;border:1px solid CanvasText;box-shadow:none}
+}

@@ -18,8 +18,9 @@ test('admin history paging reports the original safe error and releases navigati
   globalThis.document=adminAuxiliaryDocument();
   globalThis.matchMedia=()=>({matches:false,addEventListener(){}});
   const {mountAdmin}=await import('../src/features/admin/view.js');
-  const nodes=new Map(['.admin-bar','#admin-close','nav','#admin-search','.main','#page-title','#connection','#content','#error']
+  const nodes=new Map(['.admin-bar','#admin-close','nav','#admin-search','.advanced-nav','.main','#page-title','#connection','#content','#error']
     .map(key=>[key,element()]));
+  nodes.get('#admin-search').value='';nodes.get('.advanced-nav').open=false;
   const root={innerHTML:'',querySelector:key=>nodes.get(key)??null,querySelectorAll:()=>[]},calls=[];
   const render=mountAdmin(root,async(name,payload)=>{
     if(name==='authorization.sandbox.read')return {selected:{label:'Synthetic unavailable',mode:'unavailable',revision:0},profiles:[],rules:[]};
@@ -55,8 +56,10 @@ test('admin loads redacted history by explicit pages and rereads after approval'
   t.mock.method(globalThis, 'setTimeout', () => 1);
   t.mock.method(globalThis, 'clearTimeout', () => {});
   const {mountAdmin} = await import('../src/features/admin/view.js');
-  const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search',
+  const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search', '.advanced-nav',
     '.main', '#page-title', '#connection', '#content', '#error'].map(key => [key, element()]));
+  nodes.get('#admin-search').value = '';
+  nodes.get('.advanced-nav').open = false;
   const controls = new Map();
   let html = '';
   Object.defineProperty(nodes.get('#content'), 'innerHTML', {

@@ -9,12 +9,12 @@ import {mountTodoControls} from '../src/app/todo-controls.js';
 
 test('todo controls retain open completion and show terminal items without reopening actions',async()=>{
   const previous=globalThis.document,fields=new Map(),calls=[];
-  const node=()=>({children:[],append(...values){this.children.push(...values);},replaceChildren(){this.children=[];},
+  const node=()=>({children:[],addEventListener(){},append(...values){this.children.push(...values);},replaceChildren(){this.children=[];},
     querySelector(selector){if(!fields.has(selector))fields.set(selector,node());return fields.get(selector);}});
   globalThis.document={createElement:()=>node()};
   try{
     const state={available:true,items:[{id:'active',title:'Active',status:'open'},
-      {id:'finished',title:'Finished',status:'done'},{id:'cancelled',title:'Cancelled',status:'cancelled'}]};
+      {id:'finished',title:'Finished',status:'done'},{id:'cancelled',title:'Cancelled',status:'cancelled'}],notifications:[]};
     const controls=mountTodoControls(node(),async(name,input)=>{calls.push({name,input});return state;});
     controls.render(state);
     const rows=fields.get('[data-todo="items"]').children;
