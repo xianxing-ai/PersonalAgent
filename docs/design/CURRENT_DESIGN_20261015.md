@@ -2,7 +2,7 @@
 
 > 2026-10-17增量：Owner 已明确恢复编码最小修复的实现，要求算法与对应多轮工作流进入自有镜像，见 [ADR-0033](../adr/0033-coding-minimal-repair-workflow.md)。该工作包当前 in_progress；下文及历史记录中对此部分的暂停不再是现行指令。模型资格、整体架构与其余工作流完成状态不由此升级。
 
-日期：2026-10-18。目标 Profile：`huawei_ict_agentarts`。当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；Laya 仅能由独立 Local Profile 使用，当前仍是实验候选，不属于当前 Competition 路径。其他设计、接线和验收仍按实际证据确认。
+日期：2026-10-18，后续限定修订见 [Competition Profile](../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)。目标 Profile：`huawei_ict_agentarts`。当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本机 Laya 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，不授予权限、不接管工具执行，也不是云端失败后的回退 Agent。独立 Local Profile 仍是实验候选。其他设计、接线和验收仍按实际证据确认。
 本页取代历史设计中冲突的模型部署、默认并行、发布和完成状态描述；不撤销既有 Runtime 权限边界，
 不把设计保存、接口存在或单条真实案例提升为全部模块完成。历史原文与日期见[导航](README.md)。
 
@@ -14,14 +14,14 @@
 
 | 部分 | 当前设计选择 | 已有实现与证据边界 |
 | --- | --- | --- |
-| 语义判断 | Competition 语义编排由 AgentArts Agent/Workflow 承担；本机 Laya 仅为独立 Local Profile 的实验候选 | 原权重及 SDK 单实例宿主服务/selector 曾在本机试验中调用；领域资格未证明，两个历史案例各3处裁决全部升级 DeepSeek，不构成当前 Competition 路径或全局决策资格证明 |
+| 语义判断 | Competition 语义编排由 AgentArts Agent/Workflow 承担；本机 Laya 仅在上述有限场景保留既有有界判断，独立 Local Profile 仍为实验候选 | 原权重及 SDK 单实例宿主服务/selector 曾在本机试验中调用；领域资格未证明，两个历史案例各3处裁决全部升级 DeepSeek，不构成全局决策资格证明 |
 | 高级模型 | DeepSeek 经 AgentArts 新 `/inference/v1` 模型代理，底层平台 MaaS 来源如实记录 | 真实代理 API 已返回；不直连供应商 fallback，不把语音百炼入口用作 DeepSeek 替代；文字 JSON 工具提案不等于原生 function calling |
 | 工作流 | AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本地 Runtime 经 `CloudAgentPort` 消费已部署工作流 | 历史目录、代码与固定版本回执只证明对应内容已读回；28 项和185个节点不等于28项真实业务验收 |
 | 实际执行 | 原本机 Runtime/Policy/ToolGateway/Evidence 负责权限、工具、副作用读回与任务终态 | 镜像只提出候选/宿主请求；验签 receipt、模型结论与来源文本都不能授予权限 |
-| 语音 | 百炼已有 Live 端口与本机加密配置；语音可主动询问、接受确认/暂停/静默设置 | 已有端口及有限握手证据；真实麦克风、听说、通知设置和 AgentArts 主任务完整组合仍分别验收；AgentArts SIS 适配不可用 |
+| 语音 | 百炼已有 Live 端口与本机加密配置；语音用于输入、询问、暂停/静默等受信控制命令；需要人工批准时只走对话卡片，完全访问按既有策略自动同意 | 已有端口及有限握手证据；真实麦克风、听说、通知设置和 AgentArts 主任务完整组合仍分别验收；AgentArts SIS 适配不可用 |
 | 记忆 | Wiki 正文/来源版本与 Memory/FactChangeFeed 分工，按权限读取上下文、目标与经验 | 消费公开端口；引用、实体、版本、撤回和缺口保留，不把摘要当原文或把记忆当授权 |
 
-本机 Laya 的“常驻”仅是未来独立 Local Profile 的候选部署目标，不属于当前 Competition 路径；实验镜像不含权重、Python 或 PyTorch。
+本机 Laya 的“常驻”是未来独立 Local Profile 的候选部署目标，不因上述有限判断例外而成为 Competition 的主编排或回退 Agent；实验镜像不含权重、Python 或 PyTorch。
 现有宿主可管理单实例生命周期，历史真实测试按轮启动/停止；Desktop 长期驻留、设备休眠/恢复和长期资源占用
 仍需对应接线与验收。电脑离线不虚构可执行能力；不新增云电脑、任务库、调度器或模型入口。
 
@@ -48,14 +48,14 @@
 session 先存 intent，验签/CAS 提交后释放 proposal；仅受信纯 frontier 能重算丢失响应，不运行模型或工具。
 真实连接器账号、长期运行、无设备云宿主与完整业务消费方接线仍按接口目录逐项确认。
 
-## 3. 无人值守、归来与语音确认
+## 3. 无人值守、归来与语音控制
 
 用户进入无人值守后，系统继续已有授权下的工作和来源摄取；沿原任务/检查点运行，不延长原期限或 scope。
 设备依赖离线时保留 waiting_device；独立且真实可用的 cloud_persistent 分支可继续，不能凭配置名声称云持久宿主存在。
 pause/resume/cancel/return 都绑定原会话与控制 revision。取消受理与执行停止区分，未知结果保留核实入口。
 
-需要用户决定时，语音/界面说明当前事实、证据、具体问题和需要的动作；清楚且已有授权的步骤不机械再问。
-最终结构化用户命令由受信宿主核验来源、finality、echo、有效期与参数摘要，再走原授权路径。
+需要人工业务批准时，只在原对话审批卡展示事实、证据、范围和“同意 / 拒绝”，不先用文字或语音重复索要确认；清楚且已有授权的步骤不机械再问。用户选定完全访问时按既有策略自动同意应用层审批，仍生成精确单次回执并重新校验。
+语音输入及暂停、静默等控制命令由受信宿主核验来源、finality、echo、有效期与当前控制 revision；语音不直接批准工具执行或结果出机，人工决定和自动同意均须绑定原任务、工具和参数，见 [ADR-0042](../adr/0042-task-scoped-approval-cards.md)。
 语音 partial、播报回声、模型自述“用户同意”或旧录音不能自行更改权限、静默或打扰额度。
 
 归来摘要从原持久状态汇总 done/changed/pending/blocked 和新增 Evidence，只保留仍有效变化；

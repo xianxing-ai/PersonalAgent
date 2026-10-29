@@ -3,7 +3,7 @@
 <!-- current-design-20261009 -->
 > 当前入口：[详细设计](design/CURRENT_DESIGN_20261015.md) · [逐图状态](design/WORKFLOW_STATUS_20261015.md) · [当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) · [历史设计导航](design/README.md)。协作者 zemeng5208、goo122、Potatos498、2511375597-lab 的审批与 Owner 逐 PR 审核例外按 [CONTRIBUTING](../CONTRIBUTING.md) / [AGENTS](../AGENTS.md)；必需技术 CI 不豁免。设计、代码合入与真实验收分别记录，旧阅读/合并规则不作为当前门槛。
 
-当前主架构文档来自 2026-10-13 方案；本机 Laya 已确认为本地运行方案，外部比赛资格及真实平台验收仍须核证。阅读顺序如下：
+当前主架构文档来自 2026-10-13 方案，并受当前详细设计及 Competition Profile 的后续修订约束；本机 Laya 仅用于邮件/天气提醒选择及默认编码修复的既有有界判断，站点资格、外部比赛资格及真实平台验收仍须核证。阅读顺序如下：
 
 | 文档 | 回答的问题 |
 | --- | --- |
