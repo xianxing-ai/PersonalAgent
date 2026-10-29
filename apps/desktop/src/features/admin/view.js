@@ -7,6 +7,7 @@ import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
+import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
 import {mountComputerControls} from '../../app/computer-controls.js';
 import {mountComputerVisionControls} from '../../app/computer-vision-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
@@ -166,7 +167,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
   let installedSkillsControls,sisControls,notificationControls,computerControls,computerVisionControls;
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
@@ -372,6 +373,8 @@ export function mountAdmin(root, invoke, escape) {
     computerVisionControls?.render(data.computerControl?.vision);computerVisionControls?.show(section==='computer');
     if (section==='computer') proactiveControls ??= mountProactiveControls(root.querySelector('.main'),invoke,{settings:true});
     proactiveControls?.render(data.proactive);proactiveControls?.show(section==='computer');
+    if (section==='computer') proactiveWorkflowControls ??= mountProactiveWorkflowControls(root.querySelector('.main'),invoke,{settings:true});
+    proactiveWorkflowControls?.render(data.proactiveWorkflow);proactiveWorkflowControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
     notepadControls?.render(data.notepad);notepadControls?.show(section==='computer');
     if (section==='connections' && data.mail) mailControls ??= mountMailControls(root.querySelector('.main'),invoke);

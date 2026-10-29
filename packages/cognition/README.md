@@ -9,7 +9,7 @@
 
 目标profile：huawei_ict_agentarts。工程责任：MOD-28（zemeng5208）、MOD-36（goo122）、MOD-38（Potatos498）。产品流程：F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F26、F27、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
 
-保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主；Competition 仅在邮件/天气提醒选择及默认编码修复中保留既有有界判断，独立 Local Profile 仍是实验候选。仅资格验证通过的站点可直接决定，其他升级原受信teacher。责任、记忆/上下文、分派、恢复与影子等功能按当前公开端口及 AgentArts 编排分别接线，不据此扩大本机 Laya 的判断范围；模型不签发权限或写主终态。
+保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主；Competition 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，并允许对当前已观察窗口的有限控件提出建议，独立 Local Profile 仍是实验候选。仅资格验证通过的站点可直接决定，其他升级原受信teacher。责任、记忆/上下文、分派、恢复与影子等功能按当前公开端口及 AgentArts 编排分别接线，不据此扩大本机 Laya 的判断范围；模型不签发权限或写主终态。
 
 复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
 

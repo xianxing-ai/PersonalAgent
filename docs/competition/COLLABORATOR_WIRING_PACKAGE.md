@@ -8,7 +8,7 @@
 
 目标 `huawei_ict_agentarts`。本包登记当前工作包，不重新分配历史作者或 MOD；长期归属唯一来源是 [MODULE_ASSIGNMENTS](../MODULE_ASSIGNMENTS.md)。当前设计与全图状态分别见 [当前设计](../design/CURRENT_DESIGN_20261015.md)、[28 项状态](../design/WORKFLOW_STATUS_20261015.md)。旧模块验收保留日期和范围，不能代替当前调用方读回。
 
-当前 Competition Profile 由 AgentArts 负责 Agent/Workflow 的构建、编排、评估和部署；本机 Laya 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，边界见 [Competition Profile](HUAWEI_ICT_AGENTARTS_PROFILE.md)。独立 Local Profile 仍为实验候选，CW-01 暂不开展 Local 扩展；CW-03 的一般编排及 CW-06 的主影子比较不扩展为本机 Laya 的通用职责，上述有限场景仍按 Profile 执行。下列 Laya 运行数据仅是历史实验回执。
+当前 Competition Profile 由 AgentArts 负责 Agent/Workflow 的构建、编排、评估和部署；本机 Laya 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，并可对当前已观察窗口的有限控件提出建议，边界见 [Competition Profile](HUAWEI_ICT_AGENTARTS_PROFILE.md)。独立 Local Profile 仍为实验候选，CW-01 暂不开展 Local 扩展；CW-03 的一般编排及 CW-06 的主影子比较不扩展为本机 Laya 的通用职责，上述有限场景仍按 Profile 执行。下列 Laya 运行数据仅是历史实验回执。
 
 ## 交付责任与事实基线
 
@@ -26,7 +26,7 @@
 - 本机 Laya 这六次输入约 182–618ms，未达 150ms；未校准站点均实际升级 DeepSeek。经验复用不等于训练。
 - 原 28 图/185 节点仍保留并串行推进；图目录不证明 28 项业务真实闭环。本轮影子是专项串行双跑，日常机会/收益开关尚未真实验收。
 
-DeepSeek 经 AgentArts 新代理，平台底层 MaaS 来源如实保留；客户端不直接 fallback MaaS。本机 Laya 与百炼语音保留既有端口；Laya 仅在本包开头所述邮件/天气提醒选择及默认编码修复中保留既有有界判断，不授权、不执行工具、不作云失败回退。SIS 本机短音频 ASR/同步 TTS 与经 AgentArts 双工是不同能力，后者仍未验。密钥、私人账户数据和机器私有绝对路径不进入本包。
+DeepSeek 经 AgentArts 新代理，平台底层 MaaS 来源如实保留；客户端不直接 fallback MaaS。本机 Laya 与百炼语音保留既有端口；Laya 的有限判断和电脑控件建议按本包开头及 Profile 所述范围执行，不授权、不执行工具、不作云失败回退。SIS 本机短音频 ASR/同步 TTS 与经 AgentArts 双工是不同能力，后者仍未验。密钥、私人账户数据和机器私有绝对路径不进入本包。
 
 ## 新的具体分工矩阵
 

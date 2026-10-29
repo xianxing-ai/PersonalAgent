@@ -135,7 +135,7 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 | --- | --- | --- |
 | ARM64镜像/SWR与指定云版本目录/关联日志 | 本轮范围已有真实回执；PR集成另记 | 不把目录当平台原生评估或28业务闭环 |
 | Wukong/Pelican公开隔离fixture | 两套主/影子+单CAS通过；41工具Evidence | 保留Pelican首轮partial；分支父成功不冒称协调锚点终态成功 |
-| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | Competition 仅保留邮件/天气提醒选择及默认编码修复的既有有界判断；独立 Local Profile 的领域/holdout校准仍待其获得实施范围 |
+| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | Competition 保留邮件/天气提醒选择及默认编码修复的既有有界判断，以及对当前已观察窗口有限控件的建议；独立 Local Profile 的领域/holdout校准仍待其获得实施范围 |
 | 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
 | 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
 | 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |

@@ -2,7 +2,11 @@
 
 > 2026-10-17增量：Owner 已明确恢复编码最小修复的实现，要求算法与对应多轮工作流进入自有镜像，见 [ADR-0033](../adr/0033-coding-minimal-repair-workflow.md)。该工作包当前 in_progress；下文及历史记录中对此部分的暂停不再是现行指令。模型资格、整体架构与其余工作流完成状态不由此升级。
 
-日期：2026-10-18，后续限定修订见 [Competition Profile](../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)。目标 Profile：`huawei_ict_agentarts`。当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本机 Laya 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，不授予权限、不接管工具执行，也不是云端失败后的回退 Agent。独立 Local Profile 仍是实验候选。其他设计、接线和验收仍按实际证据确认。
+> 2026-10-27 增量：按用户要求，Competition Desktop 可在电脑操作中使用本机 Laya 对当前真实观察的有限控件给出建议；AgentArts 仍负责主编排，Runtime／Policy／ToolGateway 仍负责授权和执行。该建议不授予权限、不能替代 AgentArts 失败后的编排，也不代表设备闭环已经验收，详见[当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
+> 同日续接修复：新提交的 Competition Desktop 任务将目标续接方式固定到任务，委派子任务继承该绑定；续接时经原有出机和工具目录校验传递目标及原工具目录。已存在的旧任务维持原协议及配置标识。带新绑定的进行中任务回退到不理解该绑定的旧版本时，不保证可继续；应保留任务和执行记录，不重放未知写操作。模拟 Runtime/Policy/ToolGateway 验证不能替代部署后真实设备验收；云端模型 JSON 格式错误的具体内容仍需后续证据。
+
+日期：2026-10-18，后续限定修订见 [Competition Profile](../competition/HUAWEI_ICT_AGENTARTS_PROFILE.md)。目标 Profile：`huawei_ict_agentarts`。当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本机 Laya 在邮件/天气提醒选择、默认编码修复中保留既有有界判断，并允许对当前已观察窗口的有限控件提出建议，不授予权限、不接管工具执行，也不是云端失败后的回退 Agent。独立 Local Profile 仍是实验候选。其他设计、接线和验收仍按实际证据确认。
 本页取代历史设计中冲突的模型部署、默认并行、发布和完成状态描述；不撤销既有 Runtime 权限边界，
 不把设计保存、接口存在或单条真实案例提升为全部模块完成。历史原文与日期见[导航](README.md)。
 
@@ -21,7 +25,7 @@
 | 语音 | 百炼已有 Live 端口与本机加密配置；语音用于输入、询问、暂停/静默等受信控制命令；需要人工批准时只走对话卡片，完全访问按既有策略自动同意 | 已有端口及有限握手证据；真实麦克风、听说、通知设置和 AgentArts 主任务完整组合仍分别验收；AgentArts SIS 适配不可用 |
 | 记忆 | Wiki 正文/来源版本与 Memory/FactChangeFeed 分工，按权限读取上下文、目标与经验 | 消费公开端口；引用、实体、版本、撤回和缺口保留，不把摘要当原文或把记忆当授权 |
 
-本机 Laya 的“常驻”是未来独立 Local Profile 的候选部署目标，不因上述有限判断例外而成为 Competition 的主编排或回退 Agent；实验镜像不含权重、Python 或 PyTorch。
+本机 Laya 的长期驻留仍是候选能力目标；已有有限场景的判断和电脑控件建议不构成 Competition 全域编排或回退 Agent。电脑控件建议在本机按需准备，不能把模型权重、Python 或 PyTorch 带入 Competition 镜像。
 现有宿主可管理单实例生命周期，历史真实测试按轮启动/停止；Desktop 长期驻留、设备休眠/恢复和长期资源占用
 仍需对应接线与验收。电脑离线不虚构可执行能力；不新增云电脑、任务库、调度器或模型入口。
 

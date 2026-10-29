@@ -25,6 +25,7 @@ import {mountDesktopShell} from '../ui/desktop-shell.js';
 import {mountWindowControls} from '../ui/window-controls.js';
 import {mountLiveVoiceControls} from './live-voice-controls.js';
 import {mountProactiveControls} from './proactive-controls.js';
+import {mountProactiveWorkflowControls} from './proactive-workflow-controls.js';
 import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
 import {mountPanelLight} from './panel-light.js';
@@ -165,7 +166,9 @@ else {
   };
   const subagents=mountSubagentCompletionNotice(thread,invoke);
   window.addEventListener('unload',()=>subagents.dispose(),{once:true});
-  const updateProgress=mountTaskProgress(thread,tasksNode);
+  // Keep the current status outside history: a long old message must not hide
+  // a pending presence request while the task appears to be doing nothing.
+  const updateProgress=mountTaskProgress(thread.parentElement,thread,taskId=>invoke('computer.control.confirm',{taskId}));
   const quickStart=root.querySelector('#quick-start');
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
@@ -226,6 +229,7 @@ else {
   };
   const liveControls=mountLiveVoiceControls(root,invoke,{compact:true});
   const proactiveControls=mountProactiveControls(root.querySelector('.thread'),invoke);
+  const proactiveWorkflowControls=mountProactiveWorkflowControls(root.querySelector('.thread'),invoke);
   const wakeControls=document.createElement('details');
   wakeControls.className='wake-controls';
   const wakeSummary=document.createElement('summary');wakeSummary.textContent='语音唤醒';
@@ -493,9 +497,11 @@ else {
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
-    updateProgress(data.tasks.filter(task=>!task.outputTruncated));
+    updateProgress(data.tasks.filter(task=>!task.outputTruncated),data.computerControl,
+      {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
+    proactiveWorkflowControls.render(data.proactiveWorkflow);
     const notifs=Array.isArray(data.notifications)?data.notifications:[];
     if(notifs.length>0){
       bellMenu.innerHTML=notifs.slice(0,5).map(n=>`<div class="notice bell-notice"><strong>${escape(n.summary)}</strong><br><small>${escape(new Date(n.occurredAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}))}</small></div>`).join('');

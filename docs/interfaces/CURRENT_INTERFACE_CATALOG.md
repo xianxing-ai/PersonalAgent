@@ -53,6 +53,10 @@ Desktop 提供明确保存的推荐预算；出机确认、原数据与工具 co
 
 Competition Desktop 组合新增固定 `personal-agent-desktop/1` 原生 stdio 执行器、16 个 `computer.desktop.*` 工具、原任务 `computer.request_access`、12 个 `browser.*` 工具及可选 `computer.vision.inspect`。默认视觉关闭、来源为 AgentArts 代理，保留自定义兼容接口；注册和配置不授予执行或图片出机权限。Main／Preload／IPC 使用原 Runtime／Policy／Questions／ToolGateway，未新增任务库或 Core wire 操作。
 
+2026-10-27 增量（provisional）：原生 Desktop 可选注册 `computer.desktop.suggest_control@1.0.0`，接受原任务最新 `targetRef` 和简单操作类型，以同一观察中的可用控件向本机 Laya 请求有界建议。仅传任务目标、窗口标题和控件角色／名称／支持的 pattern，不传控件值或坐标；建议不执行输入、不授予权限、不证明目标完成。候选过多、观察截断、选择不确定或本机模型不可用均显式返回复核或不可用；目标、在场、取消和期限在选择前后重新核对。该工具仍经原 Runtime、Policy、ToolGateway 和观察出口规则；实际操作仍须独立授权并读回。此增量尚未取得真实设备和平台完整链路验收，不能据此声称已修复云端模型响应解析失败。
+
+2026-10-28 增量（provisional）：`browser.connected.*` 对齐受控浏览器的公共 URL 双 DNS／origin 再校验；`click` 要求独立观察与 `fieldVerified`；新增只读 `browser.connected.wait`；设置面提供只读 `computer.control.probeConnectedBrowser` 与固定扩展引导，不自动安装扩展。本机 click 脚本与获授权整链手册见 [OpenCLI 对齐记录](../competition/COMPUTER_CONTROL_OPENCLI_PARITY_20261028.md)。不把本机 doctor／click 收据或坐标式 Computer Use API 升格为 Competition 冻结能力；云端获授权整链默认另记。
+
 host-only `ModelRequest.images` 为显式 PNG 输入；旧无图请求兼容。视觉端口严格绑定原任务已 confirmed 的截图、SHA、大小、目标配置 revision 和一次出机决定，发送前及结果投影时重验。AgentArts 限整个编码 JSON 请求不超过 5,000,000 UTF-8 字节。`ToolNotStartedError` 仅接受本进程受信零分派证明，已分派且结果未知仍保留核实；原生内部目标变化等错误映射到既有公共错误码，不扩展公共 Schema。
 
 实机原生、Runtime、受控 Edge、实际 Electron 设置及直接云端浏览器／视觉联合回执分别见[实施与验收记录](../COMPUTER_CONTROL_COMPLETION_20261024.md)。视觉联测真实识别独立随机 Canvas 标记并沿原任务续答，Evidence 仍为 `conditional`；本机执行已发布镜像不等于新 AgentArts 平台部署。原 `capabilityContext` 给 Desktop 已 opt-in 的环境上下文增加固定 `computer.request_access@1.0.0` 成功语义，不复制外部 Schema 描述、不授予权限。原独立树在视觉开启时观察到 65 项阻断；主集成树现以按需工具发现保留原 64 项／24 KiB 单次限制，65 项实际 Runtime／Policy 回归已通过，不静默裁剪。最终组合与真实默认对话记录见上述实施记录。保持 `provisional`，不据子集联测冻结整个电脑或模型工具链。
@@ -139,6 +143,8 @@ Desktop `subagent.dispatch` 导出策略更新为 `1.2.0`：`userRequest` 经原
 ## 2026-10-19 委派聊天答复投影（provisional，文字链路真实复验通过）
 
 稳定性增量：Provider 的可选受信 `responseFormat:'json_object'` 仅在 AgentArts 严格 JSON 角色启用，默认文本行为不变，不修改 ModelRequest 或能力冻结状态；模型代理仅记录固定格式标签。角色回执附加固定 `failureStage` 枚举，不记录模型正文或任意错误文本。`owned-1.4` 重启轮失败，`owned-1.5` 上下文通过但主桌面问候仍暴露角色身份；最终 `owned-1.6` 八项真实对话及主桌面问候通过。整仓检查未全绿，全部MOD及原生工具调用不据此冻结，详见同一修复记录。
+
+2026-10-27 工作树增量：对 `response_json` 失败的角色回执增加受限的响应形状分类、字符数和结束原因，不记录模型原文或解析异常；这是后续诊断能力，不改变解析、自动重试、工具执行或已部署版本，也不能反查此前未记录的响应。
 
 Desktop `subagent.dispatch` 导出策略 `1.1.0` 在现有有界 JSON result 中附加可选宿主原问题 `userRequest`，子任务正文与可信 footer 的 `resultMetadata` 分离。原问题仅来自当前任务的委派 checkpoint，不采信子任务同名字段；保留原任务/版本/导出守卫、状态与错误。云端为普通 continuation 注入用户答复提示，初始派发和修复报告路径不变。无 Core wire、公共 envelope、数据库迁移或新依赖；旧待核实任务不重绑、不重发。自动化、真实验证及限制见 [修复记录](../competition/CHAT_CONTINUATION_REPLY_20261019.md)，不扩大冻结或全部业务可用范围。
 

@@ -7,8 +7,8 @@ const text=value=>typeof value==='string'&&!!value.trim();
 
 /** Desktop binds trusted configuration and user commands. The original Runtime owns its worker. */
 export function createDesktopProactiveWorkflowApplication({application,readConfiguration,notificationHost,
-  context,bindings,localDeviceAvailable,resolveUserConversation,onSession=()=>{},readPersistedSession,
-  onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter}) {
+  context,bindings,controller,cloudPersistentHost,localDeviceAvailable,resolveUserConversation,onSession=()=>{},
+  readPersistedSession,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter}) {
   const sessions=new Map(),controls=new Map();
   const publish=()=>{try{onUpdate();}catch{}};
   function configuration() {
@@ -54,6 +54,8 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
       pureAdvance:{kind:'signed_frontier_no_effects'},localDeviceAvailable,
       ...(resolveUserConversation?{resolveUserConversation:id=>resolveUserConversation(id===binding.taskId?binding.sourceTaskId:id)}:{}),
       ...(notificationHost?{notificationHost}:{}),...(contextPorts?{context:contextPorts}:{}),...(bindings?{bindings}:{}),
+      ...(controller?{controller}:{}),
+      ...(cloudPersistentHost?{cloudPersistentHost}:{}),
       verifyControlCommand:command=>controls.get(command.commandId)===digest(command),
       resumeWorker:()=>application.resumeProactiveTask(taskId)});
     sessions.set(taskId,{binding,host});host.subscribe(publish);onSession(sessions.get(taskId));return sessions.get(taskId);

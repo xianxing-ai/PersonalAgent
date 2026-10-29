@@ -13,6 +13,8 @@ import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {computerControlFailure} from './computer-control-errors.js';
+import {createComputerControlLaya} from './computer-control-laya.js';
+import {createOpenCliBrowserHost} from './opencli-browser-host.js';
 import {projectSubagentResult} from './subagent-result-projection.js';
 import {createConversationHistoryTool} from './conversation-history-tool.js';
 import {createConnectorConversationTools} from './connector-conversation-tools.js';
@@ -72,12 +74,14 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
+import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
 import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
+import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
@@ -95,6 +99,8 @@ import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 import {createToolPresenceHost} from './tool-presence-host.js';
 import {createConversationToolSurface} from './conversation-tool-surface.js';
 import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
+import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-host.js';
+import {resolveDesktopVoiceFinalTranscript} from './voice-final-transcript-host.js';
 import {createSystemObservationConversation} from './system-observation-conversation.js';
 import {createDesktopWindowsControlHost} from './windows-control-host.js';
 import {createComputerControlLease} from './computer-control-lease.js';
@@ -115,6 +121,8 @@ import {createPublicReferenceQuestionConsent} from './public-reference-question.
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
+import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
 import {agentArtsFailureNotice} from './agentarts-failure-notice.js';
@@ -319,6 +327,7 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
+let agentArtsObservationConfig;
 let agentArtsModels;
 let activeCloudBinding;
 let activeCloudTransportSignature;
@@ -350,7 +359,7 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -383,9 +392,9 @@ let codingWorkspace;
 let developerDeployment;
 let developerSettings;
 let developerDeploymentFailure='';
-let toolPresenceHost,windowsControlHost,windowsControlClosing;
+let toolPresenceHost,windowsControlHost,windowsControlClosing,computerControlLaya;
 let computerControlLease;
-let computerControlConfig,browserControlHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
+let computerControlConfig,browserControlHost,openCliBrowserHost,computerPreparing,browserControlClosing,computerVisionConfig,computerVisionHost;
 let browserControlClosed=false;
 let computerLaunch;
 const computerTasks=new Set();
@@ -693,7 +702,9 @@ function taskResultMetadata(task) {
 function agentArtsSnapshot() {
   const value = agentArtsConfig?.snapshot();
   const failure=cloudRequestFailureNotice || cloudTransportNotice;
-  return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason};
+  const observation = agentArtsObservationConfig?.snapshot();
+  return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason,
+    ...(observation ? {observation} : {})};
 }
 
 function visibleConversationTask(task,surface){return !(task.goal?.startsWith('判断是否告知用户：')&&connectorChangeHost?.ownsDecisionTask(task.taskId))&&(!surface||taskSurface(task)===surface&&conversations?.conversationIdForTask(task)===conversations?.activeConversationId(surface));}
@@ -834,18 +845,18 @@ function computerControlSnapshot(surface){
   const owned=!surface||active&&conversationToolAccess?.resolveConversation(active)===conversations?.activeConversationId(surface);
   const recoveryOwned=!surface||recoveryTaskId&&conversationToolAccess?.resolveConversation(recoveryTaskId)===conversations?.activeConversationId(surface);
   const input=computerControlLease?.snapshot()??{state:'unavailable',busy:false,writeBlocked:true};
-  if(current.state==='blocked'||browserControlHost?.snapshot().state==='blocked')Object.assign(input,{state:'blocked',writeBlocked:true});
+  if(current.state==='blocked'||browserControlHost?.snapshot().state==='blocked'||openCliBrowserHost?.snapshot().state==='blocked')Object.assign(input,{state:'blocked',writeBlocked:true});
   return {...publicStatus,...(owned&&active?{activeTaskId:active}:{}),...(recoveryOwned&&recoveryTaskId?{recoveryTaskId}:{}),waitingConfirmation:owned&&current.waitingConfirmation===true,
-    input,browser:browserControlHost?.snapshot()??{state:'unavailable',available:false},vision:computerVisionHost?.snapshot()??computerVisionConfig?.snapshot(),
+    input,browser:{...(browserControlHost?.snapshot()??{state:'unavailable',available:false}),connected:openCliBrowserHost?.snapshot()},vision:computerVisionHost?.snapshot()??computerVisionConfig?.snapshot(),
     ...(computerPreparing?{state:'preparing',reason:'正在准备电脑组件；可以立即停止。'}:{})};
 }
 
 async function stopComputerControl(){
   computerPreparing?.abort();
   if(computerLaunch){computerLaunch.stopped=true;conversationDelivery.interruptPending(computerLaunch.conversationId);}
-  const activeTasks=[...new Set([...computerTasks,...(windowsControlHost?.activeTasks?.()??[]),...(browserControlHost?.activeTasks?.()??[])])]
+  const activeTasks=[...new Set([...computerTasks,...(windowsControlHost?.activeTasks?.()??[]),...(browserControlHost?.activeTasks?.()??[]),...(openCliBrowserHost?.activeTasks?.()??[])])]
     .filter(taskId=>{try{return !terminalTaskStates.has(runtimeApplication.runtime.getTask(taskId).state);}catch{return false;}});
-  const stopped=await Promise.allSettled([windowsControlHost?.stop(),browserControlHost?.stop()]);
+  const stopped=await Promise.allSettled([windowsControlHost?.stop(),browserControlHost?.stop(),openCliBrowserHost?.stop()]);
   const cancelled=await Promise.allSettled(activeTasks.map(taskId=>client.call('task.cancel',{taskId,reason:'用户停止电脑输入'})));
   publish();
   const failures=[...stopped.map((item,index)=>({item,stage:index===0?'stop.desktop':'stop.browser'})),
@@ -1786,6 +1797,8 @@ function initializeHarnessEventPorts(runtimeModule) {
     resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
     readPersistedSession:(taskId,sessionId)=>runtimeModule.readPersistedRuntimeProactiveWorkflow(runtimeApplication.runtime,taskId,sessionId),
     notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
+    // Production controller consumer; absent cloudPersistentHost stays unavailable (no invented port).
+    controller:createDesktopProactiveControllerHost({getRuntime:()=>runtimeApplication?.runtime}),
     bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'local_device',effect:'read'}],
     context:()=>createDesktopProactiveContextPorts({readMemory:()=>proactiveHost?.publicMemory,
       readGoals:()=>runtimeApplication.runtime.provisionCoordinationStore(desktopHost.userNamespace),
@@ -2082,6 +2095,9 @@ async function initializeRuntime() {
         computerControlConfig=createComputerControlConfig({userData:app.getPath('userData')});
         const computerPreference=computerControlConfig.snapshot();
         const compatibilityPython=process.env.PA_WINDOWS_CONTROL_PYTHON;
+        computerControlLaya=createComputerControlLaya({getHost:()=>localLaya,readTask:taskId=>{
+          try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}
+        }});
         windowsControlHost=createDesktopWindowsControlHost({createControlHost:compatibilityPython?createWindowsDesktopControlHost:createWindowsNativeDesktopControlHost,
           isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
@@ -2092,7 +2108,7 @@ async function initializeRuntime() {
           readObservationExportPreference:()=>{const preference=computerControlConfig.snapshot();
             return preference.observationExportConfigured?preference.allowObservationExport:process.env.PA_WINDOWS_CONTROL_EXPORT==='1'?true:undefined;},
           providerOptions:compatibilityPython?{}:{executable:nativeDesktopExecutable({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath}),
-            artifactDirectory:path.join(app.getPath('userData'),'computer-artifacts')}});
+            artifactDirectory:path.join(app.getPath('userData'),'computer-artifacts'),selectControl:input=>computerControlLaya.select(input)}});
         windowsControlHost.configure({enabled:computerPreference.enabled,allowObservationExport:computerPreference.allowObservationExport||process.env.PA_WINDOWS_CONTROL_EXPORT==='1'});
         if(process.platform==='win32'&&computerPreference.enabled){
           await windowsControlHost.start({deadline:new Date(Date.now()+60_000).toISOString(),signal:new AbortController().signal});
@@ -2101,6 +2117,13 @@ async function initializeRuntime() {
           downloadDirectory:path.join(app.getPath('downloads'),'PersonalAgent'),
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
           authorizePresence:async scope=>{
+            if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
+            if(scope.phase!=='export')await windowsControlHost.preparePresence(scope);
+            return windowsControlHost.hasPresence(scope.taskId);
+          },onUpdate:publish});
+        openCliBrowserHost=createOpenCliBrowserHost({
+          readTask:taskId=>{try{return runtimeApplication?.runtime.getTask(taskId);}catch{return undefined;}},
+          authorize:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
             if(scope.phase!=='export')await windowsControlHost.preparePresence(scope);
             return windowsControlHost.hasPresence(scope.taskId);
@@ -2387,9 +2410,9 @@ async function initializeRuntime() {
       };
       const agentArtsTransportConfig = agentArtsConfig.transportConfig(cloudBinding);
       const desktopControl={
-        tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[]),...(browserControlHost?.tools??[]),...(computerVisionHost?.tools??[])],
-        availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[]),...(browserControlHost?.competitionToolAvailability??[]),...(computerVisionHost?.competitionToolAvailability??[])],
-        exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[]),...(browserControlHost?.competitionToolExports??[]),...(computerVisionHost?.competitionToolExports??[])],
+        tools:[...(toolPresenceHost?.tools??[]),...(windowsControlHost?.tools??[]),...(browserControlHost?.tools??[]),...(openCliBrowserHost?.tools??[]),...(computerVisionHost?.tools??[])],
+        availability:[...(toolPresenceHost?.competitionToolAvailability??[]),...(windowsControlHost?.competitionToolAvailability??[]),...(browserControlHost?.competitionToolAvailability??[]),...(openCliBrowserHost?.competitionToolAvailability??[]),...(computerVisionHost?.competitionToolAvailability??[])],
+        exports:[...(toolPresenceHost?.competitionToolExports??[]),...(windowsControlHost?.competitionToolExports??[]),...(browserControlHost?.competitionToolExports??[]),...(openCliBrowserHost?.competitionToolExports??[]),...(computerVisionHost?.competitionToolExports??[])],
       };
       const historyTool=syntheticMvp?undefined:createConversationHistoryTool({readContext:({taskId,signal})=>{
         const task=runtimeApplication.runtime.getTask(taskId);
@@ -2407,13 +2430,28 @@ async function initializeRuntime() {
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
-      // 平台观测读回（MOD-32）默认装配为显式 unavailable：真实 ShowOpsTrace /
-      // ListOpsAgentRunLog 需要 AK/SK 签名宿主与平台 applicationId（resource_id），
-      // 当前桌面进程不持有观测凭据，也不把 invoke 用的 Bearer 降级复用为观测签名。
+      // 平台观测读回（MOD-32）：仅当受信设置提供观测 AK/SK（及可选 applicationId）时
+      // 注入 observationAuthorization / observationApplicationId；缺省保持显式 unavailable。
+      // 绝不复用 invoke Bearer，也不静默装配 Fake 签名器。
       refreshHarnessContextHost(runtimeModule.createContextModelSummarizer);
+      // F23 shadow promote/readback: only when host supplies trusted CAS + acceptance +
+      // verifiers via resolveDesktopWorkflowShadowRelease({...}). No production ports yet
+      // → undefined → tools stay unregistered; never invent Fake ports here.
+      const workflowShadowRelease = resolveDesktopWorkflowShadowRelease();
+      // F02_N03 voice.final_transcript: only when Desktop injects a trusted final-only
+      // receipt port via resolveDesktopVoiceFinalTranscript({port}). Absent → tool stays
+      // unregistered; engine reports unavailable (no Fake ASR / silent success).
+      const voiceFinalTranscript = resolveDesktopVoiceFinalTranscript();
+      const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         delegateUserTasks: true,
+        ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
+        ...(voiceFinalTranscript ? {voiceFinalTranscript} : {}),
+        ...(observationOptions?.observationAuthorization
+          ? {observationAuthorization: observationOptions.observationAuthorization} : {}),
+        ...(observationOptions?.observationApplicationId
+          ? {observationApplicationId: observationOptions.observationApplicationId} : {}),
         assertHarnessEventCurrent:(rootTaskId,origin)=>{
           if(!harnessEventsHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','原生事件授权宿主尚未装配');
           harnessEventsHost.assertHarnessEventCurrent(rootTaskId,origin);
@@ -2553,9 +2591,11 @@ async function initializeRuntime() {
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
+          ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
+          if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
           if(phase==='preflight'&&(/^computer\.desktop\./u.test(proposal?.toolName??'')||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
           await computerVisionHost?.prepareExport(scope);
           await todoHost?.prepareExport?.(scope);
@@ -2600,6 +2640,8 @@ async function initializeRuntime() {
         ...(process.env.PA_AGENTARTS_WORKFLOW_GOAL_INPUT === undefined ? {} : {workflowGoalInput: process.env.PA_AGENTARTS_WORKFLOW_GOAL_INPUT}),
         responseMode: agentArtsResponseMode ?? 'tool-proposal-json',
         ...(process.env.PA_AGENTARTS_CONTINUATION_CONTEXT?{continuationContext:process.env.PA_AGENTARTS_CONTINUATION_CONTEXT}:{}),
+        ...(!syntheticMvp && (agentArtsResponseMode ?? 'tool-proposal-json')==='tool-proposal-json'
+          ? {enableNewTaskToolContinuations:true} : {}),
         ...(syntheticMvp ? {competitionToolExports: syntheticTools.competitionToolExports} : {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
@@ -2637,6 +2679,7 @@ async function initializeRuntime() {
       developerDeployment?.host.bind(runtimeApplication);
       windowsControlHost?.bind(runtimeApplication);
       browserControlHost?.bind(runtimeApplication);
+      openCliBrowserHost?.bind(runtimeApplication);
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
       referenceApplication=runtimeApplication;
@@ -2752,10 +2795,19 @@ async function initializeRuntime() {
   client = runtimeConnection.client;
   if (notificationApplicationHost) {
     notificationApplicationHost.bindApplication(runtimeApplication, client);
+    const readCurrentVoiceQuestion=({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
+      .find(question=>question.state==='pending')??null;
+    const focusVoiceQuestion=question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();};
     voiceCommandHost = createDesktopVoiceCommandHost({onUpdate:publish,
-      readCurrentQuestion:({conversationId}={})=>authorizationQuestionHost?.snapshot(conversationId??conversations.activeConversationId('panel'))
-        .find(question=>question.state==='pending')??null,
-      focusQuestion:question=>{if(question.conversationId!==conversations.activeConversationId('panel'))return;pinned=true;openPanel(true);publish();}});
+      readCurrentQuestion:readCurrentVoiceQuestion,focusQuestion:focusVoiceQuestion});
+    // Live final → prepareTaskApproval focuses the original card; voice never calls authorization.respond.
+    if (conversationToolAccess) {
+      voiceApprovalBridge = createVoiceRuntimeApprovalBridge({
+        readPendingApproval:scope=>conversationToolAccess.readPendingApproval(scope),
+        readCurrentQuestion:readCurrentVoiceQuestion,
+        focusQuestion:focusVoiceQuestion,
+      });
+    }
   }
   if(proactiveWorkflowApplication){
     proactiveRuntimePump=createDesktopProactiveRuntimePump({getApplication:()=>runtimeApplication,
@@ -3342,8 +3394,16 @@ async function action(event, name, payload) {
       try{
         const context={signal:owned.signal,deadline:new Date(Date.now()+120000).toISOString()};
         if(!process.env.PA_WINDOWS_CONTROL_PYTHON)await prepareNativeDesktopComponent({electronDir:dir,packaged:app.isPackaged,resourcesPath:process.resourcesPath,...context});
-        await windowsControlHost.start(context);return {computerControl:computerControlSnapshot()};
+        await windowsControlHost.start(context);openCliBrowserHost?.start();
+        if(openCliBrowserHost)await openCliBrowserHost.probeExtension({signal:owned.signal}).catch(()=>{});
+        return {computerControl:computerControlSnapshot()};
       }finally{if(computerPreparing===owned)computerPreparing=undefined;publish();}
+    }
+    if(name==='computer.control.probeConnectedBrowser'){
+      if(payload!==undefined&&(!payload||typeof payload!=='object'||Object.keys(payload).length))throw new ProtocolError('INVALID_ARGUMENT','扩展检测不接受额外参数');
+      if(!openCliBrowserHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','现有浏览器控制尚未装配');
+      const connectedBrowser=await openCliBrowserHost.probeExtension();
+      publish();return {computerControl:computerControlSnapshot(),connectedBrowser};
     }
     if(name==='computer.control.confirm'){
       if(!payload||typeof payload.taskId!=='string'||Object.keys(payload).some(key=>key!=='taskId'))throw new ProtocolError('INVALID_ARGUMENT','缺少原电脑任务');
@@ -3478,6 +3538,23 @@ async function action(event, name, payload) {
     try {
       const result = agentArtsConfig.revoke();
       return {...result, reason: '已清除保存在本机的 AgentArts 凭据与绑定配置。'};
+    } finally {publish();}
+  }
+  if (name === 'agentarts.observation.configure' || name === 'agentarts.observation.revoke') {
+    if (sender !== admin || !competitionMode || runtimeApplication?.activeTaskCount || liveVoice?.hasActive()
+      || runtimeStartup.snapshot().state === 'starting') throw Error('请在任务、通话及启动结束后从设置配置观测凭据');
+    if (!agentArtsObservationConfig) throw Error('AgentArts 观测配置宿主尚未装配');
+    try {
+      if (name === 'agentarts.observation.revoke' && payload !== undefined) {
+        throw Error('撤销观测凭据不接受额外参数');
+      }
+      const result = name === 'agentarts.observation.revoke'
+        ? agentArtsObservationConfig.revoke()
+        : agentArtsObservationConfig.configure(payload);
+      return {...result, requiresRestart: true,
+        reason: name === 'agentarts.observation.revoke'
+          ? '已清除本机观测 AK/SK；重启后观测读回恢复为显式 unavailable。'
+          : '观测凭据已加密保存；请重启应用以注入 observationAuthorization（不复用 invoke Bearer）。'};
     } finally {publish();}
   }
   if (['todo.authorize','todo.revoke','todo.configureNotifications','todo.dismiss','todo.create','todo.update'].includes(name)) {
@@ -4390,6 +4467,7 @@ async function initializeLiveVoice() {
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
+    prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope)??null,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       contextMessages:readDesktopConversationContext({conversationId,deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal}),
@@ -4480,6 +4558,8 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  agentArtsObservationConfig = createAgentArtsObservationConfig({
+    userData: app.getPath('userData'), safeStorage});
   if(competitionMode&&!fakeMode)weatherCardHost=createWeatherCardHost({userData:app.getPath('userData'),getApplication:()=>runtimeApplication,
     readToolVersion:()=>productTools?.tools.find(tool=>tool.descriptor.name==='weather.forecast')?.descriptor.version,onUpdate:publish});
   app.once('will-quit',()=>{
@@ -4487,6 +4567,7 @@ app.whenReady().then(async () => {
     catch{console.error('[conversations] close failed after committed quit');}
     weatherCardHost?.dispose();
   });
+  app.once('will-quit',()=>{void openCliBrowserHost?.close();});
   ipcMain.on('desktop:draft-close',(event,entries)=>{
     try{flushConversationDrafts(event,entries,{panel,workspace,conversations});event.returnValue={ok:true};}
     catch{event.returnValue={ok:false,error:'关闭前草稿保存未确认，请保持窗口打开并重试'};}

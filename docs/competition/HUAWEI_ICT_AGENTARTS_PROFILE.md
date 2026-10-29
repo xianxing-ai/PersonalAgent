@@ -1,5 +1,9 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
+## 电脑操作限定增量（2026-10-27）
+
+按用户要求，Competition Desktop 可使用本机 Laya 对本任务已观察窗口中的有限控件提出可选建议；AgentArts 仍负责主编排，建议不执行操作、不授予权限，也不是云端失败后的 Local 回退。原任务的 Runtime、Policy、ToolGateway、目标时效、在场确认和独立读回仍分别生效。真实设备和平台完整闭环尚未验收，当前接线与证据边界见[接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
 ## 本轮限定修订（2026-10-22）
 
 用户在连接器闭环工作包中明确要求“连接器发生改动就通知主对话走 Laya 是否告知用户那条路”，并要求恢复默认桌面鹈鹕真实验收。本轮因此保留既有本机有界候选判断端口，用于邮件/天气提醒选择及默认编码修复原有判断；这是对下文 2026-10-18 “Competition 不调用 Laya”限制的限定修订。AgentArts 继续承担原云端编排，Laya 不授予权限、不接管工具执行、不成为云端失败后的回退 Agent。来源、Laya 实际决定、原主对话和最终通知回执分别验收，未满足的环节不能算通过。接线及边界见 [ADR-0035](../adr/0035-connector-change-triggers.md)。

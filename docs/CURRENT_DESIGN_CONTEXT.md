@@ -3,7 +3,7 @@
 <!-- current-design-alignment-20261015 -->
 ## 当前 Profile 边界（2026-10-18）
 
-当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本地 Runtime 经 `CloudAgentPort` 调用已部署工作流。本机 Laya 在 Competition 中仅保留邮件/天气提醒选择及默认编码修复的既有有界判断，独立 Local Profile 仍是实验候选；Laya 不授予权限或接管工具执行，AgentArts 失败不静默回退到 Local Profile。
+当前只实施 Competition Profile，由 AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署；本地 Runtime 经 `CloudAgentPort` 调用已部署工作流。本机 Laya 在 Competition 中保留邮件/天气提醒选择及默认编码修复的既有有界判断，并可对当前已观察窗口的有限控件提出建议，独立 Local Profile 仍是实验候选；Laya 不授予权限或接管工具执行，AgentArts 失败不静默回退到 Local Profile。
 
 ## 2026-10-15 本机 Laya 实验摘要与回执（历史）
 
@@ -52,7 +52,7 @@ Laya6判断182–618ms未达150ms、各案例3裁决升级DeepSeek；无高级�
 | 未知结果与恢复 | 本地持久发送标记、防重发与 `waiting_reconciliation` | 本地重启防重发已有验证；当前源码提供显式 WSS accepted-status 恢复选项，须满足原身份和状态约束，不重发原请求。云端持久回执及跨云重启恢复仍未由此证明；具体接口和证据见[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)与[路线图](ROADMAP.md) |
 | 任务/权限/执行 | 本地 Runtime/Policy/ToolGateway/Evidence | 保持既有边界；云结果需要校验及本地读回 |
 | 记忆 | Wiki 正文 + 来源绑定 Memory 投影/FactChangeFeed | goo122 负责 MOD-08/09；自动同步/整理未交付 |
-| 决策 | Competition Agent/Workflow 由 AgentArts 承担；本机 Laya 仅保留邮件/天气提醒选择及默认编码修复的既有有界判断 | 独立 Local 接线与候选资格仍待验收；Laya 不授予权限或接管工具执行，AgentArts 失败不回退 Local |
+| 决策 | Competition Agent/Workflow 由 AgentArts 承担；本机 Laya 保留邮件/天气提醒选择及默认编码修复的既有有界判断，并可对当前已观察窗口的有限控件提出建议 | 独立 Local 接线与候选资格仍待验收；Laya 不授予权限或接管工具执行，AgentArts 失败不回退 Local |
 | 合并 | 常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 对具体 PR 的审核例外须记录授权、意见处置与保留分歧，不伪称独立批准 | 有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断性技术缺陷已处理后合并；四位协作者跨 PR 均衡承担审查与合并 |
 | 分享 | GitHub PR + GHCR 固定版本/digest + 配置说明 | `97aa51a6` AMD64/ARM64 预览已发布并独立验证；main 合并、真实华为部署与验收分别记录 |
 

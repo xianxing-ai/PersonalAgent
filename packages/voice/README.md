@@ -10,7 +10,7 @@
 
 语音用于输入、询问及受信控制命令，保留直接本地停止；需要人工决定的业务批准只在原对话审批卡完成，完全访问按既有策略自动同意，最终转写不能直接消费授权。
 
-以下为 2026-10-13 架构实验的历史说明；当前 Competition 仅在邮件/天气提醒选择和默认编码修复中保留既有本机 Laya 有界判断，其他职责以 [Competition Profile](../../docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 为准。
+以下为 2026-10-13 架构实验的历史说明；当前 Competition 的有限本机 Laya 使用范围及其他职责以 [Competition Profile](../../docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 为准。
 
 当时实验由本机Laya提供有限候选判断，仅资格验证通过的站点可直接决定；资格不足、不确定或复杂问题升级原受信teacher。国内执行模型经AgentArts调用，本模块提供实际能力或候选，模型不能代签授权/宣布主任务成功。调用仍经既有公开端口、Runtime/Policy/ToolGateway或ModelGateway；同资源写入、取消、版本、结果未知与Evidence沿用既有语义。模板依赖由自有ARM64镜像串行推进；并行和机会影子尚需实际验收，架构未最终定型。
 
