@@ -250,8 +250,12 @@ export function createOpenCliBrowserHost({authorize,readTask,createPage=createOp
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',
       publicDescription:tool.descriptor.inputSchema.description,available:()=>!closed&&!stopped&&!blocked})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'opencli-task-page-v1',
-      accepts:({taskId})=>!closed&&!stopped&&!blocked&&readTask?.(taskId)?.state==='running',
-      project:async({taskId,runId,result,signal})=>{const receipt=receipts.get(runId);
+      // Runtime preflight runs before invoke; final projection keys the receipt by task + digest (runId is optional).
+      accepts:({taskId,signal,phase})=>!closed&&!stopped&&!blocked&&!signal?.aborted
+        &&(phase==='preflight'||[...receipts.values()].some(item=>item.taskId===taskId)),
+      project:async({taskId,runId,result,signal})=>{
+        const receipt=(typeof runId==='string'?receipts.get(runId):undefined)
+          ??[...receipts.values()].find(item=>item.taskId===taskId&&item.digest===sha(result));
         if(!receipt||receipt.taskId!==taskId||receipt.digest!==sha(result))fail('UNAUTHORIZED','浏览器出口不匹配原执行回执');
         await permit({...receipt.scope,signal},'export');
         if(now()>=Date.parse(result.expiresAt)||sessions.get(taskId)?.observation?.targetRef!==result.targetRef)fail('UNAUTHORIZED','浏览器观察已经过期');return structuredClone(result);}})),

@@ -29,11 +29,12 @@
 - 本机扩展探测：`probeOpenCliExtension` / doctor 在本机返回连通（`connected:true`）。
 - 本机 OpenCLI 公网站点 click（2026-10-28，用户关闭 Fake-IP 后）：**passed**。`opencli doctor` 扩展已连通；`assertOpenCliPublicUrl('https://httpbin.org/forms/post')` 准入；点击同站 `Submit order` 后独立观察读回同站导航 `https://httpbin.org/post`，`fieldVerified=true`。收据：`.cache/computer-control-live/opencli-click-device-receipt.json`（`ok:true`）。此前 Fake-IP 下 `example.com`/`wikipedia` 解析到 `198.18.0.0/15` 被正确拒绝；关闭后部分站点（如 wikipedia）仍可能因污染 AAAA `2001::1` 被拒，故本轮选用已通过双 DNS 的 httpbin。此收据只覆盖设备侧 OpenCLI click，不含 Desktop 主对话 Competition 授权续答。
 - 获授权云端模型代理 + 本机发布镜像联测（2026-10-28 用户登录 AgentArts 控制台后继续）：**passed**。从控制台读出运行时环境（不入 Git／聊天），本地 `docker run --platform linux/arm64 personal-agent:computer-fix-23161679-20261027` 监听 `127.0.0.1:18080`，再跑 `tests/manual/agentarts/computer-control-joint.mjs`。任务 `fe9a7576-b537-48ba-8909-1b2879779ef8` 终态 `succeeded`；6 次镜像 `/invocations` 均为 200；5 次 `allow_once` 审批；确认工具 `browser.open` / `type` / `click` / `observe` / `screenshot`；独立 DOM 读回与本机 PNG 截图均通过。收据：`.cache/computer-control-live/opencli-cloud-chain-receipt.json`（`cloudChain:passed`）与 `.cache/computer-control-joint/<runId>/receipt.json`。模型路由记录为 `agentarts-proxy-direct`（本机镜像直连云端推理代理）；**不是**正式平台新部署读回，也**不是** Desktop 内 OpenCLI `browser.connected.*` Competition 整链。
-- 正式 Desktop Competition 会话（主对话 → 授权/在场 → `browser.connected.*` → 云端终答）：仍待本分支 Desktop 实跑；当前机器上的 Electron 属于另一工作树 `zemeng-production-wiring`，不代替本分支验收。
+- OpenCLI 公网站点 Runtime/Policy 联测（2026-10-29）：**passed**。修复 `browser.connected.*` Competition 结果导出（preflight + 按 task/digest 投影，对齐 `browser.*`）；`tests/manual/agentarts/opencli-connected-joint.mjs` 经本机 arm64 发布镜像 + 云端模型代理，在真实 Chrome OpenCLI Bridge 上对 `https://httpbin.org/forms/post` 完成 `browser.connected.open` → `click`，任务 `c1ddd4e7-7249-4c7f-895a-3a7fd0aa665c` 终态 `succeeded`（3 次 invocations 200、2 次 allow_once、含 export）。收据：`.cache/computer-control-live/opencli-connected-joint-receipt.json` 与 `.cache/computer-control-joint/<runId>/receipt.json`。这是 Competition Runtime 消费 OpenCLI 公网站点的证据，**不是** Desktop 主对话 UI + 用户在场卡整链。
+- 正式 Desktop Competition 会话（主对话 UI → 授权/在场 → `browser.connected.*` → 云端终答）：仍待本分支 Desktop 窗口实跑（Computer Use sidecar 本机不可用时需人工点选）。
 - 跨站流程、安装器内置扩展、正式平台部署、任意坐标 grounding：仍未验收。
 - 不宣称 provisional 升为 frozen，不宣称已达 Codex 坐标 API 或安装器／多屏 DPI 级完成。控制台曾展示运行时密钥明文；测后应在 AgentArts 轮换相关凭据。
 
-### 仍待恢复的 Desktop Competition 入口
+### 仍待恢复的 Desktop UI 入口
 
 1. 在本工作树启动已配置 AgentArts 的正式 Desktop，主对话提交现有浏览器公网站点任务，用户确认在场后读回 Evidence 与终答。
 2. 正式平台部署读回（deployment/version/trace）仍单独验收，不由本机镜像联测代替。
