@@ -141,6 +141,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     globalShortcut: {unregisterAll() {calls.push('unregister-shortcuts');}},
     publish() {calls.push('publish');},
   });
+  context.remoteMcpServices={dispose:()=>context.remoteMcpHost.dispose()};
   for (const name of ['stopWakeVoice','disposeWakeForQuit','reportPanelVoiceFailure','reportQuitFailure','stopOrbDrag']) {
     vm.runInContext(declaration(name), context);
   }

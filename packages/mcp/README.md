@@ -1,5 +1,7 @@
 # MCP — Competition read-only slice
 
+2026-10-29 受控管理增量：远程 MCP 管理窗口的任务读回仅返回任务状态、工具身份、审批状态及原 Evidence 引用，不向该窗口返回原始参数或 MCP 原始结果；执行记录和结果仍由原 Runtime 保存。公开 Context7 真实握手和 tools/list 成功，其工具未声明 outputSchema；现有 Host 默认仍拒绝该目录。受信定义可显式设置 `allowMissingOutputSchema: true`，必须固定目录摘要、服务身份/版本及本地输出 Schema；只允许远端缺少该声明，存在但不匹配仍拒绝，`structuredContent`、大小和本地输出 Schema 校验不变。该策略参与授权绑定，变化必须重新装配和审批。Context7 未发起 tools/call，不视为真实远程执行或 AgentArts 验收。基线、测试和后续缺口见 [工作记录](../../docs/modules/MOD-06-MCP-SAFETY-20261029.md)。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
@@ -109,6 +111,10 @@ await mcp.dispose();
 G14 的 [Desktop 增量](../../apps/desktop/README.md) 已提供 safeStorage、会话 nonce、独立管理窗口与 Competition 生产 Runtime 装配；两次实际 Electron 重启、原 Runtime 单次审批/结果读回/旧许可拒绝/撤销通过。对话框响应显式合成、远端为 loopback HTTP fixture，不改变真实平台/OAuth 未验收边界；详见[管理记录](../../docs/modules/MOD-06-MANAGEMENT-20261016.md)及[宿主首片](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
 
 ### 公开参考结果出机
+
+Desktop 远程只读 MCP 的 Competition 出口默认关闭。受信服务定义可显式设置 `publicExport: {sensitivity: 'PUBLIC', arguments: <固定输入对象>, maxBytes: <1..16384>}`；配置须经原对话授权确认，固定输入须符合工具输入 Schema，输出 Schema 须声明字符串 `text`。模型只能提议该固定输入，执行仍经过原 Runtime/Policy/ToolGateway；只允许已确认结果的有界 `text` 投影，并绑定原任务、run、配置、目录、目标与原审批卡。连接前和目录校验失败时不提供可用能力。用户必须只将确认为公开的数据配置为 PUBLIC；此配置不是执行授权。
+
+Desktop 多服务使用独立加密配置，首次添加或迁移后需重启应用重新装配；重启不会自动连接或恢复旧执行许可。旧配置可显式复制迁移且原密文保留；重复内部工具名会使冲突服务不可用，须在受信定义中指定不同的本地工具名。当前合成双服务和 Electron 测试不代替真实 AgentArts 或第三方验收。
 
 `createPublicReferenceExport`（MCP，policy `3.0.0`）与 `createWorkspaceReferenceExport`（workspace，policy `workspace-reference-3.0.0`）复用现有 trusted `CompetitionToolExport.accepts/project`。无配置默认拒绝。保留原 MCP / `WorkspaceReadResult` schema，workspace 支持安全相对 `.js` 等路径和精确 `maxBytes` 参数，不冒 MCP。
 

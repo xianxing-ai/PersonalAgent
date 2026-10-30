@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-29 MCP 管理任务读回（provisional）
+
+Desktop 远程 MCP 管理窗口的任务读回只显示原任务状态、工具身份、审批状态和 Evidence 引用，不向 Renderer 返回原始参数或工具结果；原 Runtime 持久记录和原对话审批卡保留。受信配置可显式允许缺少远端 outputSchema，仍固定服务/目录并用本地 Schema 校验 structuredContent；默认严格匹配不变，策略纳入任务授权绑定。真实 Context7 仅完成握手及目录读取，未发起工具调用，不证明其结果兼容；不提升接口冻结或真实验收状态。测试及缺口见 [MOD-06 工作记录](../modules/MOD-06-MCP-SAFETY-20261029.md)。
+
 ## 2026-10-26 会话私有 SQLite 移交候选（provisional，审查中）
 
 Desktop Conversations 的同步 API/内存视图保留，候选将消息、草稿、偏好和 UI 任务链接写入独立 SQLite，不改变 TaskRuntime、Core wire 或 Runtime 数据库迁移。首次变更才迁移 v1～v4；原字节备份、v5 marker、代次/revision/row CAS 和未知提交独立核实必须同时成立。ready 后缺库不能建空库；Main 草稿提交未知先阻止清理，最终 will-quit 关闭连接。完整最新历史 v5→v4 导出仍不可用。

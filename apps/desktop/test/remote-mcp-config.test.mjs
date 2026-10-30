@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {createRemoteMcpConfig} from '../electron/remote-mcp-config.js';
 import {createDesktopRemoteMcpHost} from '../electron/remote-mcp-host.js';
+import {createRemoteMcpCompetition} from '../electron/remote-mcp-competition.js';
 import {remoteMcpDirectoryDigest} from '@personal-agent/mcp';
 import {fixture,endpoint,descriptor,directory} from '../../../packages/mcp/test/remote-http-fixture.mjs';
 
@@ -40,9 +41,56 @@ test('encrypted configuration reloads disconnected with a fresh session binding 
   assert.equal(restored.secretStore.read(binding.credential.secretRef,signal()),token);
 });
 
+test('remote MCP is absent from Competition discovery and export unless explicitly configured PUBLIC',async t=>{
+  const s=setup(t);s.config.configure(input());const host=createDesktopRemoteMcpHost({config:s.config});
+  try{const competition=createRemoteMcpCompetition({host,config:s.config,readApplication:()=>undefined,question:{}});
+    assert.deepEqual(competition.competitionToolAvailability,[]);assert.deepEqual(competition.competitionToolExports,[]);
+  }finally{await host.dispose();}
+});
+
+test('PUBLIC Competition availability requires a connected host and rechecks directory drift',async t=>{
+  const s=setup(t),f=await fixture({requiredAuthorization:`Bearer ${token}`});
+  s.config.configure({...input(),publicExport:{sensitivity:'PUBLIC',arguments:{key:'public'},maxBytes:1024}});
+  const host=createDesktopRemoteMcpHost({config:s.config,fetch:f.fetch,confirmConnection:async()=>true});
+  const app={runtime:{getTask:()=>({state:'running',cancelRequested:false})}};
+  const competition=createRemoteMcpCompetition({host,config:s.config,readApplication:()=>app,question:{}});
+  const query=()=>({taskId:'synthetic-task',signal:signal(),deadline:future()});
+  try{
+    assert.equal(await competition.competitionToolAvailability[0].available(query()),false);
+    await host.connect({signal:signal(),deadline:future()});
+    assert.equal(await competition.competitionToolAvailability[0].available(query()),true);
+    f.mode.schema={type:'object'};
+    assert.equal(await competition.competitionToolAvailability[0].available(query()),false);
+    assert.equal(host.snapshot().connected,false);assert.equal(f.calls().length,0);
+  }finally{await host.dispose();await f.close();}
+});
+
+test('explicit missing-output policy survives encrypted reload and requires a new binding',async t=>{
+  const s=setup(t),f=await fixture({omitOutputSchema:true,requiredAuthorization:`Bearer ${token}`});
+  const settings={...input(),directoryDigest:remoteMcpDirectoryDigest(directory({omitOutputSchema:true})),allowMissingOutputSchema:true};
+  s.config.configure(settings);s.config.dispose();
+  const restored=createRemoteMcpConfig(s.options);t.after(()=>restored.dispose());
+  assert.equal(restored.hostConfiguration().allowMissingOutputSchema,true);
+  const host=createDesktopRemoteMcpHost({config:restored,fetch:f.fetch,confirmConnection:async()=>true});
+  try{
+    await host.connect({signal:signal(),deadline:future()});assert.equal(f.calls().length,0);
+    const old=host.arguments({key:'public'});
+    restored.configure({...settings,allowMissingOutputSchema:false});
+    assert.throws(()=>host.arguments({key:'public'}),rejected('REVISION_CONFLICT'));
+    const next=createDesktopRemoteMcpHost({config:restored,fetch:f.fetch,confirmConnection:async()=>true});
+    try{await assert.rejects(next.connect({signal:signal(),deadline:future()}),rejected('PROTOCOL_MISMATCH'));}
+    finally{await next.dispose();}
+    assert.equal(f.calls().length,0);assert.match(old.bindingRef,/^[a-f0-9]{64}$/);
+  }finally{await host.dispose();await f.close();}
+});
+
 test('invalid input and failed encryption preserve the prior file, binding and revocation signal',t=>{
   const s=setup(t);s.config.configure(input());const raw=readFileSync(s.target,'utf8'),before=s.config.binding(),priorSignal=s.config.revocationSignal();
-  for(const change of [{enabled:true},{endpoint:'http://other.example/mcp'},{endpoint:'https://user:password@other.example/mcp'},
+  for(const change of [{enabled:true},{allowMissingOutputSchema:'true'},
+    {publicExport:{sensitivity:'PRIVATE',arguments:{key:'public'},maxBytes:1024}},
+    {publicExport:{sensitivity:'PUBLIC',arguments:{unexpected:'public'},maxBytes:1024}},
+    {publicExport:{sensitivity:'PUBLIC',arguments:{key:'public'},maxBytes:16385}},
+    {endpoint:'http://other.example/mcp'},{endpoint:'https://user:password@other.example/mcp'},
     {endpoint:'https://other.example/mcp?token=secret'},{directoryDigest:'wrong'},{credential:null},
     {credential:{token:'bad\r\nheader',expiresAt:future()}},{credential:{token,expiresAt:future(-1)}},
     {tool:{...input().tool,descriptor:{...descriptor,sideEffect:'write'}}}]){
@@ -85,12 +133,73 @@ test('native connection confirmation reveals no token, starts no tool and is ren
     assert.equal(host.snapshot().connected,false);assert.equal(f.requests.length,0);
     assert.throws(()=>host.arguments({key:'public'}),rejected('UNSUPPORTED_CAPABILITY'));
     assert.equal((await host.connect({signal:signal(),deadline:future()})).connected,true);assert.equal(f.calls().length,0);
+    assert.equal(host.snapshot().diagnosticStage,'connected');assert.equal(host.snapshot().diagnosticFailed,false);
+    assert.doesNotMatch(JSON.stringify(host.snapshot()),/synthetic-access-token|secretRef|configurationRef/);
     assert.match(host.arguments({key:'public'}).bindingRef,/^[a-f0-9]{64}$/);
     await host.connect({signal:signal(),deadline:future()});assert.equal(confirmations,1);
     await host.disconnect();assert.equal(host.snapshot().connected,false);
     await host.connect({signal:signal(),deadline:future()});assert.equal(confirmations,2);
     s.config.configure(input());assert.equal(host.snapshot().connected,false);assert.equal(host.snapshot().requiresReassembly,true);
     assert.throws(()=>host.arguments({key:'public'}),rejected('REVISION_CONFLICT'));
+  }finally{await host.dispose();await f.close();}
+});
+
+test('connection failure reports only the local phase, without remote diagnostics or credentials',async t=>{
+  const s=setup(t),f=await fixture({requiredAuthorization:`Bearer ${token}`,identity:'different'});s.config.configure(input());
+  const host=createDesktopRemoteMcpHost({config:s.config,fetch:f.fetch,confirmConnection:async()=>true});
+  try{
+    await assert.rejects(host.connect({signal:signal(),deadline:future()}),rejected('PROTOCOL_MISMATCH'));
+    const state=host.snapshot();assert.equal(state.diagnosticStage,'handshake');assert.equal(state.diagnosticFailed,true);
+    assert.doesNotMatch(JSON.stringify(state),/different|synthetic-access-token|provider private|secretRef/);
+    assert.equal(f.calls().length,0);
+  }finally{await host.dispose();await f.close();}
+});
+
+test('directory recheck withdraws a silently changed service before tool execution',async t=>{
+  const s=setup(t),f=await fixture({requiredAuthorization:`Bearer ${token}`});s.config.configure(input());
+  const host=createDesktopRemoteMcpHost({config:s.config,fetch:f.fetch,confirmConnection:async()=>true});
+  try{
+    await host.connect({signal:signal(),deadline:future()});await host.verifyDirectory({signal:signal(),deadline:future()});
+    f.mode.schema={type:'object'};
+    await assert.rejects(host.verifyDirectory({signal:signal(),deadline:future()}),rejected('REVISION_CONFLICT'));
+    assert.equal(host.snapshot().connected,false);assert.equal(f.calls().length,0);
+  }finally{await host.dispose();await f.close();}
+});
+
+test('a failed Runtime record after execution started remains an unknown remote outcome',async t=>{
+  const s=setup(t),f=await fixture({requiredAuthorization:`Bearer ${token}`});s.config.configure(input());
+  let args;
+  const record={evidenceId:'run',toolName:descriptor.name,toolVersion:'2.0.0',state:'failed',executionStarted:true,policyDecision:'allow'};
+  const runtime={readToolExecutions:()=>[record],loadCheckpoint:(_id,key)=>key==='host-tool-intent'
+    ?{toolName:record.toolName,toolVersion:record.toolVersion,arguments:args}:undefined,
+    matchesToolExecutionInput:()=>true};
+  const host=createDesktopRemoteMcpHost({config:s.config,fetch:f.fetch,confirmConnection:async()=>true,readRuntime:()=>runtime});
+  try{
+    await host.connect({signal:signal(),deadline:future()});args=host.arguments({key:'public'});
+    await assert.rejects(host.tools[0].execute(args,{taskId:'task',runId:'run',scopes:descriptor.requiredScopes,signal:signal(),deadline:future()}),rejected('RESULT_UNKNOWN'));
+    record.executionStarted=false;
+    await assert.rejects(host.tools[0].execute(args,{taskId:'task',runId:'run',scopes:descriptor.requiredScopes,signal:signal(),deadline:future()}),rejected('EXTERNAL_FAILURE'));
+    assert.equal(f.calls().length,0);
+  }finally{await host.dispose();await f.close();}
+});
+
+for(const originalSource of ['invocation','pending'])test(`Competition ${originalSource} uses only the original Runtime checkpoint and matching run`,async t=>{
+  const s=setup(t),f=await fixture({requiredAuthorization:`Bearer ${token}`});s.config.configure(input());
+  const runId='competition-tool-task-1';let args,match=true;
+  const record={evidenceId:runId,toolName:descriptor.name,toolVersion:'2.0.0',state:'started',executionStarted:true,policyDecision:'allow'};
+  const original=()=>({toolName:record.toolName,toolVersion:record.toolVersion,arguments:args});
+  const runtime={readToolExecutions:()=>[record],loadCheckpoint:(_id,key)=>originalSource==='invocation' && key===`application-tool-invocation:${runId}`
+    ?original():originalSource==='pending' && key==='competition-loop'?{step:1,pending:original()}:undefined,
+    matchesToolExecutionInput:(_record,input)=>match && input.scopeRef===runId && input.arguments===args,
+    isToolExecutionActive:()=>true};
+  const host=createDesktopRemoteMcpHost({config:s.config,fetch:f.fetch,confirmConnection:async()=>true,readRuntime:()=>runtime});
+  try{
+    await host.connect({signal:signal(),deadline:future()});args=host.arguments({key:'public'});
+    const context={taskId:'task',runId,scopes:descriptor.requiredScopes,signal:signal(),deadline:future()};
+    match=false;await assert.rejects(host.tools[0].execute(args,context),rejected('REVISION_CONFLICT'));
+    assert.equal(f.calls().length,0);match=true;
+    assert.deepEqual(await host.tools[0].execute(args,context),{text:'public synthetic reference'});
+    assert.equal(f.calls().length,1);
   }finally{await host.dispose();await f.close();}
 });
 

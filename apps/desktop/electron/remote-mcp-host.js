@@ -6,15 +6,22 @@ function fail(code){throw new ProtocolError(code,'远程 MCP 尚未连接、配�
 /** Trusted composition only. Configuration/connection consent never grants a tool call. */
 export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>false,fetch,readRuntime}){
   const selected=config.hostConfiguration(),pin=JSON.stringify(config.binding()),lifetime=new AbortController();
+  let diagnosticStage,diagnosticFailed=false;
   const service=createBoundRemoteReadonlyMcpHost(selected?{
     endpoint:selected.endpoint,server:selected.server,tool:selected.tool,binding:selected.binding,
+    ...(selected.allowMissingOutputSchema===true?{allowMissingOutputSchema:true}:{}),
     readCurrentBinding:config.binding,revocationSignal:config.revocationSignal(),secretStore:config.secretStore,
-    enabled:false,...(fetch?{fetch}:{}),
+    enabled:false,onDiagnostic:stage=>{if(stage==='failed')diagnosticFailed=true;else {diagnosticStage=stage;diagnosticFailed=false;}},...(fetch?{fetch}:{}),
     ...(readRuntime?{readRunReceipt(query){
       const runtime=readRuntime();if(!runtime)fail('UNSUPPORTED_CAPABILITY');
       const record=runtime.readToolExecutions(query.taskId).find(item=>item.evidenceId===query.runId);
       if(!record)fail('UNAUTHORIZED');
-      const intent=runtime.loadCheckpoint(query.taskId,'host-tool-intent');
+      const loop=runtime.loadCheckpoint(query.taskId,'competition-loop');
+      const pending=Number.isSafeInteger(loop?.step) && loop.step>0
+        && query.runId===`competition-tool-${query.taskId}-${loop.step}` ? loop.pending : undefined;
+      const intent=runtime.loadCheckpoint(query.taskId,'host-tool-intent')
+        ?? (query.runId.startsWith(`competition-tool-${query.taskId}-`)
+          ? runtime.loadCheckpoint(query.taskId,`application-tool-invocation:${query.runId}`) ?? pending : undefined);
       if(record.toolName!==selected.tool.descriptor.name || record.toolVersion!==selected.tool.descriptor.version
         || !intent || intent.toolName!==record.toolName || intent.toolVersion!==record.toolVersion
         || intent.arguments.bindingRef!==service.tools[0].descriptor.inputSchema.properties.bindingRef.const
@@ -26,7 +33,9 @@ export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>fa
         if(!saved || !Object.hasOwn(saved,'result') || !record.executionStarted || record.policyDecision!=='allow')fail('EXTERNAL_FAILURE');
         return {argumentsDigest,state:'confirmed',result:saved.result};
       }
-      if(record.state==='failed')return {argumentsDigest,state:'failed'};
+      // Runtime failure after execution began does not establish whether the
+      // remote server received or completed the request.
+      if(record.state==='failed')return {argumentsDigest,state:record.executionStarted?'unknown':'failed'};
       if(record.state==='started' && record.executionStarted && record.policyDecision==='allow' && runtime.isToolExecutionActive(record))return undefined;
       return {argumentsDigest,state:'unknown'};
     }}:{}),
@@ -44,6 +53,7 @@ export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>fa
   }
   function snapshot(){const active=service.health(),saved=config.snapshot(),changed=JSON.stringify(config.binding())!==pin;
     return {...saved,status:active.connected?'connected':saved.configured&&changed?'reassembly_required':saved.status,
+      ...(diagnosticStage?{diagnosticStage,diagnosticFailed}:{}),
       connected:active.connected,sessionAllowed:active.connected,toolAvailable:active.connected,requiresReassembly:changed,
       ...(active.errorCode?{errorCode:active.errorCode}:{})};}
   return Object.freeze({tools:service.tools,register:host=>service.register(host),snapshot,
@@ -75,6 +85,7 @@ export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>fa
     },
     arguments(input){current();const bindingRef=service.currentConfigurationRef();if(!bindingRef)fail('UNSUPPORTED_CAPABILITY');
       const value={bindingRef,arguments:structuredClone(input)};validateToolValue(service.tools[0].descriptor.inputSchema,value);return value;},
+    async verifyDirectory(context){check(context.signal,context.deadline);await service.verifyDirectory(context);check(context.signal,context.deadline);},
     disconnect(){consent.abort();return service.setEnabled(false);},
     async dispose(){if(closed)return;closed=true;lifetime.abort();await service.dispose();},
   });

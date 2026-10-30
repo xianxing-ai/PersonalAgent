@@ -34,6 +34,8 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
   const negativeCases=[],attempts=[],questionDecisions=[],pageErrors=[];
   async function open(runtimeReady=true){
     const selectedEnvironment={...environment};if(!runtimeReady){delete selectedEnvironment.PA_AGENTARTS_GATEWAY_URL;delete selectedEnvironment.PA_AGENTARTS_RUNTIME_NAME;}
+    if(selectedEnvironment.NODE_EXTRA_CA_CERTS)selectedEnvironment.PA_MCP_SMOKE_CA=selectedEnvironment.NODE_EXTRA_CA_CERTS;
+    delete selectedEnvironment.NODE_EXTRA_CA_CERTS;
     const started=Date.now(),attempt={runtimeReady};attempts.push(attempt);
     const app=await _electron.launch({executablePath,args:[path.resolve(__dirname,'remote-mcp-product-fixture.mjs')],env:selectedEnvironment});
     try{
@@ -75,8 +77,8 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
   }
   async function connect(decision='allow_once'){await instance.page.locator('#connect').click();return choose(decision);}
   async function revoke(){await instance.page.locator('#revoke').click();await choose('allow_once');}
-  async function save(page){
-    await page.locator('#import').click();await page.waitForFunction(()=>document.getElementById('definition').textContent.includes('synthetic-reference'));
+  async function save(page,toolName='mcp.remote.reference'){
+    await page.locator('#import').click();await page.waitForFunction(name=>document.getElementById('definition').textContent.includes(name),toolName);
     await page.locator('#token').fill(token);await page.locator('#expires').fill(new Date(Date.now()+3600000).toISOString());
     await page.locator('#save').click();await choose('allow_once');await page.waitForFunction(()=>document.getElementById('status').textContent.includes('重启'));
     assert.equal(await page.locator('#token').inputValue(),'');
@@ -96,7 +98,14 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
     await close();instance=await open();({app,admin,page}=instance);
     const before=f.requests.length;await page.waitForFunction(()=>document.getElementById('status').textContent.includes('默认断开'));assert.equal(f.requests.length,before);
     await connect('deny');await page.waitForFunction(()=>document.getElementById('error').textContent.length>0);assert.equal(f.requests.length,before);
-    await connect();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));assert.equal(f.calls().length,0);
+    await connect();try{await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));}
+    catch(error){const status=await page.evaluate(()=>window.remoteMcp.invoke('state'));
+      const network=await app.evaluate(()=>globalThis.remoteMcpSmoke.networkErrorCodes);
+      const ca=await app.evaluate(()=>({configured:!!process.env.PA_MCP_SMOKE_CA,
+        readable:!!process.env.PA_MCP_SMOKE_CA&&process.getBuiltinModule('fs').existsSync(process.env.PA_MCP_SMOKE_CA),
+        globalExtraCount:process.getBuiltinModule('tls').getCACertificates('extra').length}));
+      console.error('MCP connection diagnostic',JSON.stringify({stage:status.value?.diagnosticStage,failed:status.value?.diagnosticFailed,
+        code:status.value?.errorCode,httpRequests:f.requests.length,toolCalls:f.calls().length,networkErrorCodes:network,ca}));throw error;}assert.equal(f.calls().length,0);
     await page.locator('#arguments').fill(JSON.stringify({key:'public'}));
     try{await page.locator('#submit').click();}
     catch(error){
@@ -111,6 +120,7 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
     await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('succeeded'));assert.equal(f.calls().length,1);
     assert.equal(await page.locator('#task-result img').count(),0);assert.equal(await page.evaluate(()=>window.injected===true),false);
     const result=await page.locator('#task-result').textContent();assert.equal(result.includes(token),false);assert.match(result,/evidenceRefs/);
+    assert.doesNotMatch(result,/synthetic result|<img|"key"/,'management history must not expose raw arguments or results');
     await page.locator('#disconnect').click();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('默认断开'));
     assert.equal(await page.locator('#submit').isDisabled(),true);assert.equal(f.calls().length,1);
     await connect();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));
@@ -150,7 +160,39 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
     await revoke();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('未配置'));
     assert.equal(fs.existsSync(path.join(userData,'remote-mcp-config.json')),false);assert.equal(await page.locator('#submit').isDisabled(),true);
     await close();
+    const second=await fixture({tls:trusted.options,requiredAuthorization:`Bearer ${token}`});
+    const multiServices=[];
+    try{
+      environment.PA_USER_DATA_DIR=path.join(folder,'multi');environment.PA_MCP_SMOKE_ENDPOINT=f.secureEndpoint;
+      environment.PA_MCP_SMOKE_EXTRA_ENDPOINT=second.secureEndpoint;environment.NODE_EXTRA_CA_CERTS=trusted.file;
+      instance=await open(false);page=instance.page;
+      for(const [id,service] of [['a',f],['b',second]]){
+        await page.locator('#server-id').fill(id);await page.locator('#new-server').click();
+        await page.waitForFunction(id=>document.getElementById('server').value===id,id);
+        fs.writeFileSync(definitionFile,JSON.stringify({...definition,endpoint:service.secureEndpoint,
+          tool:{...definition.tool,descriptor:{...definition.tool.descriptor,name:`mcp.remote.${id}`}}}));
+        await save(page,`mcp.remote.${id}`);
+      }
+      assert.equal(second.calls().length,0);await close();instance=await open();page=instance.page;
+      for(const [id,service] of [['a',f],['b',second]]){
+        await page.locator('#server').selectOption(id);await page.waitForFunction(id=>document.getElementById('server').value===id,id);
+        const beforeCalls=service.calls().length;await connect();await page.waitForFunction(()=>document.getElementById('status').textContent.includes('已连接'));
+        await page.locator('#arguments').fill(JSON.stringify({key:'public'}));const prior=await page.locator('#task-id').inputValue();
+        await page.locator('#submit').click();await page.waitForFunction(id=>document.getElementById('task-id').value!==id,prior);
+        await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('waiting_approval'));
+        const taskId=await page.locator('#task-id').inputValue();assert.equal(service.calls().length,beforeCalls);
+        await page.locator('#review-question').click();await choose('allow_once',{taskId});
+        await page.waitForFunction(()=>document.getElementById('task-result').textContent.includes('succeeded'));
+        assert.equal(service.calls().length,beforeCalls+1);assert.doesNotMatch(await page.locator('#task-result').textContent(),/synthetic result|"key"/);
+        multiServices.push({id,toolCalls:1});
+      }
+      await page.locator('#server').selectOption('a');await page.waitForFunction(()=>document.getElementById('server').value==='a');
+      await revoke();await waitFor(async()=>{const result=await page.evaluate(()=>window.remoteMcp.invoke('state'));
+        return result.ok && !result.value.services.some(item=>item.id==='a') && result.value.services.some(item=>item.id==='b'&&item.connected);},'independent service revocation');
+      await close();
+    }finally{if(instance)await close().catch(error=>console.error('Owned multi-service cleanup failure:',error));await second.close();delete environment.PA_MCP_SMOKE_EXTRA_ENDPOINT;}
     const destinationRequests=f.requests.length;
+    const expectedFCalls=f.calls().length;
     for(const mode of ['untrusted-ca','hostname-mismatch','directory-mismatch','redirect']){
       const tls=mode==='hostname-mismatch'?wrongHost:trusted;
       const service=await fixture({tls:tls.options,requiredAuthorization:'Bearer '+token,
@@ -168,7 +210,7 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
         assert.equal(await negativePage.locator('#submit').isDisabled(),true);assert.equal(service.calls().length,0);
         if(['untrusted-ca','hostname-mismatch'].includes(mode))assert.equal(service.requests.length,0,'TLS rejects before HTTP headers');
         assert.equal(f.requests.length,destinationRequests,'a redirect cannot forward any request or credential to the destination');
-        assert.equal(f.calls().length,1);await revoke();
+        assert.equal(f.calls().length,expectedFCalls);await revoke();
         await negativePage.waitForFunction(()=>document.getElementById('status').textContent.includes('未配置'));
         assert.equal(fs.existsSync(path.join(environment.PA_USER_DATA_DIR,'remote-mcp-config.json')),false);await close();
         negativeCases.push({mode,errorCode,toolCalls:service.calls().length,httpRequests:service.requests.length});
@@ -178,9 +220,9 @@ async function snapshot(page){const response=await page.evaluate(()=>window.desk
     assert.ok(f.requests.filter(request=>request.method==='POST').every(request=>request.headers.authorization==='Bearer '+token));
     assert.deepEqual(pageErrors,[]);
     const receipt={status:'passed',profile:'huawei_ict_agentarts',main:'actual product',renderer:'actual isolated management and conversation cards',safeStorage:'actual Electron',
-      nativeDialogs:'explicit synthetic directory and message dialogs; actual conversation decisions',remoteTransport:'actual loopback HTTPS/TLS, default fetch',reopens:2,negativeCases,
+      nativeDialogs:'explicit synthetic directory and message dialogs; actual conversation decisions',remoteTransport:'actual loopback HTTPS/TLS, original fetch with loopback-only test CA dispatcher',reopens:2,negativeCases,
       approvalBeforeCall:true,mcpToolCalls:f.calls().length,connectionDeniedBeforeNetwork:true,taskDenied:true,disconnect:true,
-      oldApprovalRejected:true,oldApprovalRejectedBeforeExpiry:true,pendingRestart,deniedRecord,ciphertextRemoved:true,questionDecisions,attempts,pageErrors,unexpectedRequests,systemTrustChanged:false,tlsVerificationDisabled:false,modelCalls:0,agentArtsCalls:0};
+      oldApprovalRejected:true,oldApprovalRejectedBeforeExpiry:true,pendingRestart,deniedRecord,multiServices,ciphertextRemoved:true,questionDecisions,attempts,pageErrors,unexpectedRequests,systemTrustChanged:false,tlsVerificationDisabled:false,modelCalls:0,agentArtsCalls:0};
     fs.writeFileSync(path.join(folder,'receipt.json'),JSON.stringify(receipt,null,2));console.log(JSON.stringify(receipt));
   }catch(error){primaryFailure=error;console.error('Primary acceptance failure:',error);throw error;}
   finally{if(instance)await close({allowPendingTermination:Boolean(primaryFailure)}).catch(error=>console.error('Owned cleanup failure:',error));await f.close();

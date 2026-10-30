@@ -23,6 +23,10 @@ export interface RemoteReadonlyMcpOptions {
   enabled?:boolean;
   fetch?:FetchLike;
   expectedDirectoryDigest?:string;
+  /** Explicit trusted opt-in; the pinned host output schema still validates structuredContent. */
+  allowMissingOutputSchema?:boolean;
+  /** Non-sensitive local stage only; it never proves that the server received a request. */
+  onDiagnostic?:(stage:'connecting'|'handshake'|'directory'|'connected'|'preflight'|'dispatch'|'response'|'validated'|'failed')=>void;
   /** Trusted Runtime receipt lookup; never grants execution or invents an absent run. */
   readRunReceipt?:(query:RemoteMcpRunQuery)=>RemoteMcpRunReceipt|undefined;
 }
@@ -56,6 +60,8 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       if(endpoint.protocol!=='https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || !options.server.name || !options.server.version || !options.tool.remoteName || !descriptor?.requiredScopes.length || descriptor.inputSchema.type!=='object' || descriptor.outputSchema.type!=='object')fail('INVALID_ARGUMENT');
       validateContract('tool',descriptor);
       if(options.expectedDirectoryDigest!==undefined && !/^[a-f0-9]{64}$/.test(options.expectedDirectoryDigest))fail('INVALID_ARGUMENT');
+      if(options.allowMissingOutputSchema!==undefined && typeof options.allowMissingOutputSchema!=='boolean')fail('INVALID_ARGUMENT');
+      if(options.allowMissingOutputSchema && !options.expectedDirectoryDigest)fail('INVALID_ARGUMENT');
     }catch{fail('INVALID_ARGUMENT');}
   }
   let enabled=options?.enabled ?? false,disposed=false,busy=false,starting=false,generation=0;
@@ -68,6 +74,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
   const sending=new Map<string,RequestScope>();
   const registrations=new Set<()=>void>();
   const runs=new Map<string,{taskId:string;runId:string;binding:string;generation:number;result?:unknown;confirmed:boolean}>();
+  function diagnostic(stage:Parameters<NonNullable<RemoteReadonlyMcpOptions['onDiagnostic']>>[0]){try{options?.onDiagnostic?.(stage);}catch{/* Diagnostics do not control execution. */}}
   function receipt(query:RemoteMcpRunQuery){
     let value:RemoteMcpRunReceipt|undefined;
     try{value=options?.readRunReceipt?.(query);}catch(error){fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
@@ -119,7 +126,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
     session=new AbortController();
     const connectionSession=session;
     const configured=options!;
-    const epoch=++generation;state='connecting';errorCode=undefined;
+    const epoch=++generation;state='connecting';errorCode=undefined;diagnostic('connecting');
     try{await scoped(context,async()=>{
       const guardedFetch:FetchLike=async(url,init)=>{
         if(epoch!==generation || connectionSession.signal.aborted)fail('CANCELLED');
@@ -154,21 +161,32 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
       next.onclose=()=>invalidate('EXTERNAL_FAILURE',epoch);
       next.onerror=error=>invalidate(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE',epoch);
       next.setNotificationHandler(ToolListChangedNotificationSchema,()=>invalidate('REVISION_CONFLICT',epoch));
-      await next.connect(nextTransport,{signal:operation!,timeout:Math.max(1,Math.min(30000,Date.parse(context.deadline)-Date.now()))});
+      diagnostic('handshake');await next.connect(nextTransport,{signal:operation!,timeout:Math.max(1,Math.min(30000,Date.parse(context.deadline)-Date.now()))});
       const server=next.getServerVersion();
       if(server?.name!==configured.server.name || server.version!==configured.server.version || nextTransport.protocolVersion!=='2025-11-25' || !next.getServerCapabilities()?.tools)fail('PROTOCOL_MISMATCH');
-      const listed=await next.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
+      diagnostic('directory');const listed=await next.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
       if(listed.nextCursor)fail('PROTOCOL_MISMATCH');
       if(configured.expectedDirectoryDigest && remoteMcpDirectoryDigest(listed.tools)!==configured.expectedDirectoryDigest)fail('REVISION_CONFLICT');
       const selected=listed.tools.filter(tool=>tool.name===configured.tool.remoteName);
-      if(selected.length!==1 || canonical(selected[0]!.inputSchema)!==canonical(descriptor!.inputSchema) || canonical(selected[0]!.outputSchema)!==canonical(descriptor!.outputSchema))fail('PROTOCOL_MISMATCH');
+      if(selected.length!==1 || canonical(selected[0]!.inputSchema)!==canonical(descriptor!.inputSchema)
+        || !(selected[0]!.outputSchema===undefined && configured.allowMissingOutputSchema===true)
+          && canonical(selected[0]!.outputSchema)!==canonical(descriptor!.outputSchema))fail('PROTOCOL_MISMATCH');
       check(operation!,context.deadline);if(epoch!==generation)fail('CANCELLED');
-      discoveredTools=listed.tools.length;state='connected';
+      discoveredTools=listed.tools.length;state='connected';diagnostic('connected');
     });}catch(error){
-      const code=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
+      diagnostic('failed');const code=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
       if(epoch===generation){await stop();if(enabled&&!disposed)state='error';errorCode=code;}
       fail(code);
     }finally{starting=false;}
+  }
+  async function verifyDirectory(context:{signal:AbortSignal;deadline:string}){
+    if(disposed || state!=='connected' || !enabled || !client || !options?.expectedDirectoryDigest)fail('UNSUPPORTED_CAPABILITY');
+    const epoch=generation,active=client,expected=options.expectedDirectoryDigest;
+    await scoped(context,async()=>{
+      diagnostic('preflight');const listed=await active.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
+      if(listed.nextCursor || remoteMcpDirectoryDigest(listed.tools)!==expected){invalidate('REVISION_CONFLICT',epoch);fail('REVISION_CONFLICT');}
+      check(operation!,context.deadline);if(epoch!==generation || state!=='connected')fail('CANCELLED');
+    });
   }
   async function execute(value:unknown,context:ToolContext){
     if(disposed || state!=='connected' || !enabled || !client)fail('UNSUPPORTED_CAPABILITY');
@@ -203,24 +221,25 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
     const epoch=generation,active=client!;
     return scoped(context,async()=>{
       if(options!.expectedDirectoryDigest){
+        diagnostic('preflight');
         const listed=await active.listTools(undefined,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
         if(listed.nextCursor || remoteMcpDirectoryDigest(listed.tools)!==options!.expectedDirectoryDigest){invalidate('REVISION_CONFLICT',epoch);fail('REVISION_CONFLICT');}
         check(operation!,context.deadline);
       }
       const run={taskId:context.taskId,runId:context.runId,binding,generation:epoch,confirmed:false,result:undefined as unknown};runs.set(key,run);
-      const result=await active.callTool({name:options!.tool.remoteName,arguments:args},CallToolResultSchema,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});
+      diagnostic('dispatch');const result=await active.callTool({name:options!.tool.remoteName,arguments:args},CallToolResultSchema,{signal:operation!,timeout:Math.max(1,Date.parse(context.deadline)-Date.now())});diagnostic('response');
       check(operation!,context.deadline);
       if(epoch!==generation || state!=='connected')fail('CANCELLED');
       if(result.isError || !result.structuredContent || Buffer.byteLength(JSON.stringify(result.structuredContent))>MAX_BYTES)fail('EXTERNAL_FAILURE');
       try{validateToolValue(descriptor!.outputSchema,result.structuredContent);}catch{fail('PROTOCOL_MISMATCH');}
-      run.result=structuredClone(result.structuredContent);run.confirmed=true;
+      run.result=structuredClone(result.structuredContent);run.confirmed=true;diagnostic('validated');
       return structuredClone(run.result);
     });
   }
   const tools:readonly RegisteredTool[]=descriptor?[{descriptor:structuredClone(descriptor),execute:async(value,context)=>{
-    try{return await execute(value,context);}catch(error){fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
+    try{return await execute(value,context);}catch(error){diagnostic('failed');fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
   }}]:[];
-  return {tools,health,start,stop,
+  return {tools,health,start,stop,verifyDirectory,
     async setEnabled(value:boolean){if(disposed)fail('UNSUPPORTED_CAPABILITY');enabled=value;if(!value)await stop();else if(state==='disabled')state=options?'disconnected':'unavailable';return health();},
     register(host:ToolHost){const releases=tools.map(tool=>host.register(tool));const release=()=>{registrations.delete(release);for(const item of releases)item();};registrations.add(release);return release;},
     async dispose(){if(disposed)return;disposed=true;enabled=false;for(const release of registrations)release();await stop();runs.clear();},
