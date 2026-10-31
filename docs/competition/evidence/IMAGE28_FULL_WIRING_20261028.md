@@ -68,6 +68,9 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 
 ## 本轮检查记录
 
+- 2026-10-31 白名单 worker 与 Desktop receipt 修复后启动的第二轮 `npm run check` exit 0，根集成 57/57；期间继续了 F27 定向开发，因此最终组合 HEAD 仍须在集成后稳定运行整仓门禁。
+- `test:runtime-application-smoke` 首次在进程身份核验失败：Windows PowerShell 默认编码损坏中文用户名路径。固定查询的 UTF-8 输出后保留原 PID/exe/startTicks 断言；同时修复启动函数失败发生在 session 返回前时未清理原实例的问题。定向 helper 与实际启动函数 13/13 通过；本次遗留隔离实例只在核对工作树 exe、启动时间、原 runner 祖先链后关闭。重跑实际 Electron + Runtime Application smoke exit 0：7 次本机 Synthetic 模型请求、2 次取消，正常退出/重启、活动任务退出阻止、模型配置与敏感值检查通过。该项是 Local profile 产品回归，不是 AgentArts 或 IMAGE28 真实云验收。
+
 - 2026-10-31 接管修复基线 `49f0467b`（含 main `e7d7c7e7`）：在独立工作树、完整替换短 PATH、OpenSSL/.NET 8/PowerShell 及工作树外 TEMP 环境运行 `npm run check`，exit 0；根集成 57/57。该运行开始于通用白名单 worker 修改前；新增白名单 API 的后续完整 check 仍待集成运行，不能以并行期间的旧构建覆盖新改动。
 
 - Node 24.15.0 / npm 11.12.0：`npm run check` 的架构门禁 3/3、契约夹具 4/4 与生成类型检查通过，进入工作区测试后出现 `@personal-agent/coordination` 取消错误码不符（实际 `EXTERNAL_FAILURE`，预期 `CANCELLED`）以及 `packages/knowledge/test/bridge.test.mjs` 的 TLS 用例失败。knowledge 测试阶段长期无新输出，已中断；其后工作区与根集成检查未完成。首次检查使用的受限 PATH 未含 `C:\msys64\ucrt64\bin`，故环境影响待隔离确认；不能据此声称检查通过。
