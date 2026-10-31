@@ -104,20 +104,29 @@
 
 ## zemeng5208（核心 / AgentArts / 原生设备与编码）
 
-### 必须交付（能力与云；前端接线交 lab）
+### 本轮已落地（2026-10-31，代码层；非整图验收）
 
-1. **AgentArts**：固定 deployment、评测集整图联跑；禁止静默 Local 回退；F09 前缀云验收。
-2. **F02 原生语音能力**：声学防回声、final 回执、设备证据（UI 接线归 lab）。
-3. **F14 原生观察能力**：`browser.observe`、输入锁、会话绑定（UI 归 lab）。
-4. **F15 真实验收**：真人独立审核签名、实机 WinForms 目视（配置 UI 归 lab）。
-5. **F18/F19**：PR/Issue 图路径与平台/授权读回。
-6. **F20 worker 信任闭环**：按 [F20_WORKER_TRUST_GAPS_20261029.md](F20_WORKER_TRUST_GAPS_20261029.md)；齐备后 lab 注入 Desktop；此前禁止 `ownedWorkflowWorker`。
-7. **F22/F26/F28 能力与 gate**、**cloudPersistent**（有关机后云证据才允许；Desktop 组合由 lab 在口齐后接线）。
-8. **整图协调**：汇总三人+lab Evidence；勾选 152 与矩阵；华为优先验收。
+1. **F09**：Desktop 仅在 **pinned deployment** 时注入 `f09WorkflowWorkerPorts`；ports 要求 `agentarts-deployment:*` + `real_host` harness。
+2. **F18/F19/F22/F26**：Runtime fail-closed 工厂已导出（无受信口 → `tools:[]`）；单测覆盖 empty 路径。
+3. **F20**：`verifyF20HarnessCompletion` / `assertF20CandidateSelection` 已落地；**仍禁止**注入 `ownedWorkflowWorker`（N03 候选检查工具与 Schema 未齐）。
+4. **F02/F14/F28 Desktop 受信端口模块**：`f02-voice-graph-ports.js` / `f14-observation-graph-ports.js` / `f28-model-graph-ports.js`（供 lab 组合；设备证据仍 `deviceEvidenceReady:false`）。
+5. **cloudPersistent**：`createUnavailableCloudPersistentHost` 已接入 proactive Desktop 宿主（`available()===false`）。
+
+### 仍须本人完成（需云/设备/真人，保持 unavailable）
+
+1. **AgentArts**：固定 deployment 评测集整图联跑；F09 前缀**云**验收 Evidence。
+2. **F02**：物理麦/扬声器防回声与播报证据（端口骨架已有）。
+3. **F14**：真实 Playwright/输入锁联跑 Evidence。
+4. **F15**：真人 Ed25519 签名 + WinForms 目视。
+5. **F18/F19**：真实 GitHub Token 读回与 merge/close（工厂齐，口未接）。
+6. **F20**：按 [F20_WORKER_TRUST_GAPS](F20_WORKER_TRUST_GAPS_20261029.md) 改 N03 候选检查 Schema + Desktop trial 接线后，才允许 lab 注入 worker。
+7. **F22/F26**：真实 shadow / 平台部署读回端口注入。
+8. **整图协调**：勾选 152 与矩阵；华为优先验收。
 
 ### 不要做的
 
 - 不把前端/Desktop 消费接线默认揽回（已交 lab）；不代替 Potatos/goo 造业务/底座口。
+- 不在缺云证据时把 `cloudPersistentHost.available` 设为 true；不提前注入 `ownedWorkflowWorker`。
 
 ---
 

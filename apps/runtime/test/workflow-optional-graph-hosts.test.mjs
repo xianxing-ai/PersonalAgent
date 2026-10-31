@@ -14,6 +14,11 @@ import {createRuntimeF21SourceManifestHost,createRuntimeF21ProtocolHealthHost} f
 import {createRuntimeF25OutboundContextHost} from '../dist/application/workflow-f25-outbound-graph-host.js';
 import {createRuntimeF27ModelCapabilitiesHost} from '../dist/application/workflow-f27-model-graph-host.js';
 import {createRuntimeF28NativeConfigHost,createRuntimeF28NativeConfigGuard} from '../dist/application/workflow-f28-model-native-host.js';
+import {createRuntimeF18BoundPrDiffHost,createRuntimeF18MergeGateHost,createRuntimeF18RegisteredMergeHost} from '../dist/application/workflow-f18-pr-graph-host.js';
+import {createRuntimeF19IssueSnapshotHost,createRuntimeF19EnqueueRepairHost,createRuntimeF19MergedRepairReadbackHost,
+  createRuntimeF19CloseIssueHost} from '../dist/application/workflow-f19-issue-graph-host.js';
+import {createRuntimeF22ShadowObservationHost} from '../dist/application/workflow-f22-shadow-graph-host.js';
+import {createRuntimeF26DeploymentReadbackHost} from '../dist/application/workflow-f26-deployment-graph-host.js';
 
 function hostFixture(workflowId,nodeId,toolName){
   const now=Date.now(),deadline=new Date(now+60_000).toISOString(),signal=new AbortController().signal;
@@ -54,6 +59,15 @@ test('optional graph hosts stay absent without trusted providers',()=>{
   assert.equal(createRuntimeF27ModelCapabilitiesHost().tools.length,0);
   assert.equal(createRuntimeF28NativeConfigHost().tools.length,0);
   assert.equal(createRuntimeF28NativeConfigGuard().tools.length,0);
+  assert.equal(createRuntimeF18BoundPrDiffHost().tools.length,0);
+  assert.equal(createRuntimeF18MergeGateHost().tools.length,0);
+  assert.equal(createRuntimeF18RegisteredMergeHost().tools.length,0);
+  assert.equal(createRuntimeF19IssueSnapshotHost().tools.length,0);
+  assert.equal(createRuntimeF19EnqueueRepairHost().tools.length,0);
+  assert.equal(createRuntimeF19MergedRepairReadbackHost().tools.length,0);
+  assert.equal(createRuntimeF19CloseIssueHost().tools.length,0);
+  assert.equal(createRuntimeF22ShadowObservationHost().tools.length,0);
+  assert.equal(createRuntimeF26DeploymentReadbackHost().tools.length,0);
 });
 
 test('F04 memory host reads only through injected MemoryQueryPort',async()=>{

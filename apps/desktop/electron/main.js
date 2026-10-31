@@ -2445,7 +2445,19 @@ async function initializeRuntime() {
       const systemObserveTool=productTools?.tools?.find(tool=>tool.descriptor?.name==='computer.system.observe');
       workflowGraphComposition=createDesktopWorkflowGraphComposition({runtimeModule,getApplication:()=>runtimeApplication,
         feedsHost,todoHost,mailHost,notificationApplicationHost,systemObserveTool});
-      const f09WorkflowWorkerPorts=feedsHost?createF09WorkflowWorkerPorts({getApplication:()=>runtimeApplication,feedsHost}):undefined;
+      // F09 worker ports require a pinned AgentArts deployment (matches ownedImage gate).
+      // Unpinned / missing version stays unavailable — never inject ports that would look ready without image.
+      const agentArtsPinned=(()=>{
+        const snap=agentArtsConfig.snapshot();
+        return snap?.deploymentSelection==='pinned'
+          &&typeof snap.deploymentVersion==='string'
+          &&!!snap.deploymentVersion.trim()
+          &&!/^(latest|current|default)$/iu.test(snap.deploymentVersion);
+      })();
+      const f09WorkflowWorkerPorts=feedsHost&&agentArtsPinned?createF09WorkflowWorkerPorts({
+        getApplication:()=>runtimeApplication,feedsHost,
+        readHarnessVersions:()=>readDesktopHarnessVersions(),
+      }):undefined;
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),

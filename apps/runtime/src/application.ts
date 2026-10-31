@@ -184,6 +184,13 @@ export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workfl
 export {createRuntimeF14ObservationHost} from './application/workflow-f14-observation-host.js';
 export {createRuntimeF16CiFailureHost} from './application/workflow-f16-ci-failure-host.js';
 export type {F16CiFailureOptions,F16FailureBinding,F16FailureResult} from './application/workflow-f16-ci-failure-host.js';
+export {createRuntimeF18BoundPrDiffHost,createRuntimeF18MergeGateHost,createRuntimeF18RegisteredMergeHost} from './application/workflow-f18-pr-graph-host.js';
+export {createRuntimeF19IssueSnapshotHost,createRuntimeF19EnqueueRepairHost,createRuntimeF19MergedRepairReadbackHost,
+  createRuntimeF19CloseIssueHost} from './application/workflow-f19-issue-graph-host.js';
+export {createRuntimeF22ShadowObservationHost} from './application/workflow-f22-shadow-graph-host.js';
+export {createRuntimeF26DeploymentReadbackHost} from './application/workflow-f26-deployment-graph-host.js';
+export {verifyF20HarnessCompletion} from './application/f20-verify-completion.js';
+export {assertF20CandidateSelection} from './application/f20-candidate-frontier.js';
 export {createRuntimeF17FailureReportHost} from './application/workflow-f17-failure-report-host.js';
 export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';

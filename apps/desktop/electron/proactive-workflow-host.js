@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {createRuntimeProactiveImageAdapter} from '@personal-agent/runtime/application';
+import {createUnavailableCloudPersistentHost} from './cloud-persistent-unavailable.js';
 
 const KEY='desktop-proactive-workflow-v1';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -52,6 +53,8 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     const host=application.createProactiveWorkflowHost({taskId,sessionId:binding.sessionId,taskDeadline:binding.taskDeadline,
       contractRef:binding.contractRef,advancePort:adapter.advancePort,verifyAdvance:adapter.verifyAdvance,sign:adapter.sign,
       pureAdvance:{kind:'signed_frontier_no_effects'},localDeviceAvailable,
+      // Explicit unavailable until post-shutdown cloud Evidence exists (never invent available:true).
+      cloudPersistentHost:createUnavailableCloudPersistentHost(),
       ...(resolveUserConversation?{resolveUserConversation:id=>resolveUserConversation(id===binding.taskId?binding.sourceTaskId:id)}:{}),
       ...(notificationHost?{notificationHost}:{}),...(contextPorts?{context:contextPorts}:{}),...(bindings?{bindings}:{}),
       verifyControlCommand:command=>controls.get(command.commandId)===digest(command),

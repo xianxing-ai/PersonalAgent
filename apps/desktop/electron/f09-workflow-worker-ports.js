@@ -5,14 +5,16 @@ const text=value=>typeof value==='string'&&value.trim().length>0&&value.length<=
 
 /**
  * Trusted Desktop ports for F09 worker. Image binding is merged by AgentArts composition.
- * F10 enqueue remains unavailable; worker must stop before claiming research completion.
+ * Caller must only construct this when AgentArts deployment is pinned; harnessVersions must
+ * report agentarts-deployment:* + real_host. F10 enqueue remains unavailable.
  */
-export function createF09WorkflowWorkerPorts({getApplication,feedsHost,now=Date.now}={}) {
+export function createF09WorkflowWorkerPorts({getApplication,feedsHost,readHarnessVersions,now=Date.now}={}) {
   if(typeof getApplication!=='function'||!feedsHost
     ||typeof feedsHost.authorizeWorkflowFeedSourceExport!=='function'
     ||typeof feedsHost.assertWorkflowFeedAccess!=='function'
-    ||typeof feedsHost.snapshot!=='function')
-    throw Error('F09 worker ports require feeds host and Runtime application reader');
+    ||typeof feedsHost.snapshot!=='function'
+    ||typeof readHarnessVersions!=='function')
+    throw Error('F09 worker ports require feeds host, harness versions, and Runtime application reader');
 
   const active=(scope)=>{
     if(!plain(scope)||!text(scope.taskId)||!(scope.signal instanceof AbortSignal)||scope.signal.aborted)
@@ -27,7 +29,16 @@ export function createF09WorkflowWorkerPorts({getApplication,feedsHost,now=Date.
     return application;
   };
 
+  const deploymentReady=()=>{
+    const versions=readHarnessVersions();
+    return plain(versions)
+      &&versions.executionKind==='real_host'
+      &&typeof versions.workflowVersion==='string'
+      &&versions.workflowVersion.startsWith('agentarts-deployment:');
+  };
+
   const sessionReady=()=>{
+    if(!deploymentReady())return false;
     const snap=feedsHost.snapshot();
     return snap?.sessionAllowed===true&&Array.isArray(snap.subscriptions)&&snap.subscriptions.length>0;
   };
