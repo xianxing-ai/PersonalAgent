@@ -113,8 +113,13 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
     if (kind==='host'&&!mapped.length) mapped.push(host(`unavailable.${node.id}`));
     const condition = ['F02_N09','F24_N06'].includes(node.id)
       ? '本地可信停止事件已触发；云端不会自行触发急停' : node.condition;
+    // The reviewed F24 recovery edges also order execution: without N11, an
+    // ordinary recovery skips N09 when both cancellation predecessors skip.
+    const dependencies=[...node.dependencies];
+    if(['F24_N02','F24_N09'].includes(node.id)&&!dependencies.includes('F24_N11')
+      &&feature.edges.some(edge=>edge.source==='F24_N11'&&edge.target===node.id))dependencies.push('F24_N11');
     return {id:node.id,label:node.label,designKind:node.kind,kind,
-      dependencies:node.dependencies.map(nodeId=>({nodeId,
+      dependencies:dependencies.map(nodeId=>({nodeId,
         required:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
       ...(['F02_N09','F06_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
