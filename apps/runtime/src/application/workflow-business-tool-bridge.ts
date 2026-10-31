@@ -4,6 +4,7 @@ import {ProtocolError,ToolNotStartedError,validateToolValue} from '@personal-age
 import type {ToolContext,ToolDescriptor} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {RuntimeApplication,SubmitHostToolTaskRequest} from './runtime-application.js';
+import type {ToolExecutionRecord} from '../index.js';
 import {assertOwnedWorkflowHostScope,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 
 export interface WorkflowBusinessToolRequest {actionKey:string;input:Record<string,unknown>}
@@ -18,15 +19,100 @@ export interface WorkflowBusinessToolReceipt {
 export interface WorkflowBusinessToolReadback {
   state:string;taskId?:string;runId?:string;confirmed?:WorkflowBusinessToolReceipt;
 }
+export type WorkflowBusinessToolSourceReference=Pick<WorkflowBusinessToolReceipt,'taskId'|'runId'|'scopeRef'|'toolVersion'|'arguments'>;
+export interface WorkflowBusinessToolSourceProof {
+  readonly graph:Readonly<{taskId:string;sessionId:string;workflowId:string;nodeId:string;operationId:string}>;
+  readonly sourceHost:Readonly<{taskId:string;runId:string;toolName:string;toolVersion:string}>;
+  readonly actionKey:string;
+  readonly descriptor:Readonly<ToolDescriptor>;
+  readonly request:Readonly<SubmitHostToolTaskRequest>;
+  readonly record:Readonly<ToolExecutionRecord>;
+  readonly receipt:Readonly<WorkflowBusinessToolReceipt>;
+}
 type Application=RuntimeApplication;
 type Invocation={taskId:string;runId:string;toolName:string;toolVersion:string;arguments:unknown;deadline:string};
 const childSourceKey='workflow-business-tool:source';
 const activeChildren=new WeakMap<Application,Map<string,(invocation:Invocation)=>void>>();
-type Intent={version:1;sourceTaskId:string;sourceRunId:string;parentTaskId:string;operationId:string;sessionId:string;
+type Intent={version:2;sourceTaskId:string;sourceRunId:string;parentTaskId:string;operationId:string;sessionId:string;
+  workflowId:string;nodeId:string;sourceToolName:string;sourceToolVersion:string;sourceArgumentsDigest:string;
   namespace:string;actionKey:string;inputDigest:string;descriptor:ToolDescriptor;request:SubmitHostToolTaskRequest};
 function fail(code:string,message:string):never {throw new ProtocolError(code,message);}
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const plain=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
+const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=2048;
+
+/** Exact graph -> host -> business receipt proof, not an authority to dispatch
+ * or export. Direct graph tools retain their separate original proof path. */
+export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>,
+  scope:Pick<OwnedWorkflowHostScope,'parentTaskId'|'sessionId'|'deadline'>,
+  ref:WorkflowBusinessToolSourceReference,toolName:string):WorkflowBusinessToolSourceProof {
+  const {runtime}=application;
+  if(!ref||![ref.taskId,ref.runId,ref.scopeRef,ref.toolVersion,toolName,scope.parentTaskId,scope.sessionId,scope.deadline].every(text)
+    ||ref.runId!=='host-tool-'+ref.taskId||ref.scopeRef!==ref.runId||!plain(ref.arguments))fail('UNAUTHORIZED','Original business source reference is invalid');
+  const marker=runtime.loadCheckpoint(ref.taskId,childSourceKey);
+  if(!plain(marker)||!text(marker.sourceTaskId)||!text(marker.sourceRunId)||!text(marker.commandId)||!text(marker.intentDigest))
+    fail('UNAUTHORIZED','Original business source proof is unavailable');
+  const intent=runtime.loadCheckpoint(marker.sourceTaskId,'workflow-business-tool:'+marker.commandId) as Intent|undefined;
+  if(!intent||intent.version!==2||!plain(intent.request)||!plain(intent.descriptor)||!text(intent.actionKey)
+    ||marker.intentDigest!==toolArgumentsDigest(intent)||intent.sourceTaskId!==marker.sourceTaskId||intent.sourceRunId!==marker.sourceRunId
+    ||intent.sourceRunId!=='host-tool-'+intent.sourceTaskId||intent.parentTaskId!==scope.parentTaskId||intent.sessionId!==scope.sessionId
+    ||marker.commandId!=='workflow-business-'+hash([intent.sourceTaskId,intent.sourceRunId,intent.actionKey])
+    ||intent.request.commandId!==marker.commandId||intent.request.toolName!==toolName||intent.request.toolVersion!==ref.toolVersion
+    ||intent.request.deadline!==scope.deadline||!isDeepStrictEqual(intent.request.arguments,ref.arguments)
+    ||intent.descriptor.name!==toolName||intent.descriptor.version!==ref.toolVersion
+    ||!isDeepStrictEqual(runtime.readToolDescriptors().find(tool=>tool.name===toolName&&tool.version===ref.toolVersion),intent.descriptor))
+    fail('UNAUTHORIZED','Original business action, input or descriptor changed');
+  if(!isDeepStrictEqual(marker,{sourceTaskId:intent.sourceTaskId,sourceRunId:intent.sourceRunId,
+    commandId:intent.request.commandId,intentDigest:toolArgumentsDigest(intent)})
+    ||!isDeepStrictEqual(runtime.loadCheckpoint(ref.taskId,'coding-repair:parent'),{taskId:intent.sourceTaskId,operationId:intent.request.commandId})
+    ||!isDeepStrictEqual(runtime.loadCheckpoint(intent.sourceTaskId,'coding-repair:host:'+intent.request.commandId),
+      {localTaskId:ref.taskId,request:intent.request}))fail('UNAUTHORIZED','Original business child edge changed');
+  const hostIntent=runtime.loadCheckpoint(intent.sourceTaskId,'host-tool-intent');
+  const ownerIntent=runtime.loadCheckpoint(scope.parentTaskId,'owned-workflow:intent:'+intent.operationId);
+  if(!plain(hostIntent)||!plain(hostIntent.arguments)||hostIntent.namespace!==intent.namespace
+    ||hostIntent.commandId!==intent.operationId||hostIntent.toolName!==intent.sourceToolName||hostIntent.toolVersion!==intent.sourceToolVersion
+    ||hostIntent.deadline!==scope.deadline||hostIntent.argumentsDigest!==intent.sourceArgumentsDigest
+    ||toolArgumentsDigest(hostIntent.arguments)!==intent.sourceArgumentsDigest
+    ||!isDeepStrictEqual(runtime.loadCheckpoint(intent.sourceTaskId,'coding-repair:parent'),{taskId:scope.parentTaskId,operationId:intent.operationId})
+    ||!isDeepStrictEqual(runtime.loadCheckpoint(scope.parentTaskId,'coding-repair:host:'+intent.operationId),{localTaskId:intent.sourceTaskId,
+      request:{commandId:intent.operationId,toolName:intent.sourceToolName,toolVersion:intent.sourceToolVersion,arguments:hostIntent.arguments,deadline:scope.deadline}})
+    ||!plain(ownerIntent)||ownerIntent.taskId!==scope.parentTaskId||ownerIntent.sessionId!==scope.sessionId
+    ||ownerIntent.workflowId!==intent.workflowId||ownerIntent.deadline!==scope.deadline||!plain(ownerIntent.proposal)
+    ||ownerIntent.proposal.operationId!==intent.operationId||ownerIntent.proposal.nodeId!==intent.nodeId
+    ||ownerIntent.proposal.toolName!==intent.sourceToolName||ownerIntent.proposal.toolVersion!==intent.sourceToolVersion
+    ||!isDeepStrictEqual(ownerIntent.proposal.arguments,hostIntent.arguments))fail('UNAUTHORIZED','Original source host graph edge changed');
+  const source=application.readHostToolTask(intent.sourceTaskId);
+  const sourceRecord=runtime.readToolExecutions(intent.sourceTaskId).find(record=>record.evidenceId===intent.sourceRunId);
+  if(source.commandId!==intent.operationId||source.toolName!==intent.sourceToolName||source.toolVersion!==intent.sourceToolVersion
+    ||!sourceRecord||!sourceRecord.executionStarted||sourceRecord.policyDecision!=='allow'
+    ||sourceRecord.toolName!==intent.sourceToolName||sourceRecord.toolVersion!==intent.sourceToolVersion
+    ||!runtime.matchesToolExecutionInput(sourceRecord,{arguments:hostIntent.arguments,scopeRef:intent.sourceRunId}))
+    fail('UNAUTHORIZED','Original source host execution is unavailable');
+  const childIntent=runtime.loadCheckpoint(ref.taskId,'host-tool-intent'),read=application.readHostToolTask(ref.taskId);
+  const record=runtime.readToolExecutions(ref.taskId).find(item=>item.evidenceId===ref.runId);
+  const saved=runtime.loadCheckpoint(ref.taskId,'tool-result-'+ref.runId);
+  if(!plain(childIntent)||childIntent.namespace!==intent.namespace||childIntent.commandId!==intent.request.commandId
+    ||childIntent.toolName!==toolName||childIntent.toolVersion!==ref.toolVersion||childIntent.deadline!==scope.deadline
+    ||childIntent.argumentsDigest!==toolArgumentsDigest(ref.arguments)||!isDeepStrictEqual(childIntent.arguments,ref.arguments)
+    ||read.task.state!=='succeeded'||read.task.cancelRequested||read.commandId!==intent.request.commandId
+    ||read.toolName!==toolName||read.toolVersion!==ref.toolVersion||read.confirmed?.runId!==ref.runId
+    ||!read.confirmed.evidenceRefs.includes(ref.runId)||!read.task.evidenceRefs.includes(ref.runId)
+    ||!record||record.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'
+    ||record.toolName!==toolName||record.toolVersion!==ref.toolVersion
+    ||!runtime.matchesToolExecutionInput(record,{arguments:ref.arguments,scopeRef:ref.scopeRef})
+    ||!plain(saved)||!Object.hasOwn(saved,'result')||!isDeepStrictEqual(saved.result,read.confirmed.result))
+    fail('UNAUTHORIZED','Original business source is not confirmed');
+  validateToolValue(intent.descriptor.outputSchema,saved.result);
+  const proof=structuredClone({graph:{taskId:intent.parentTaskId,sessionId:intent.sessionId,workflowId:intent.workflowId,
+    nodeId:intent.nodeId,operationId:intent.operationId},sourceHost:{taskId:intent.sourceTaskId,runId:intent.sourceRunId,
+    toolName:intent.sourceToolName,toolVersion:intent.sourceToolVersion},actionKey:intent.actionKey,descriptor:intent.descriptor,
+    request:intent.request,record,receipt:{taskId:ref.taskId,runId:ref.runId,scopeRef:ref.scopeRef,toolName,toolVersion:ref.toolVersion,
+      arguments:ref.arguments,evidenceRefs:read.confirmed.evidenceRefs,result:saved.result}});
+  const freeze=(value:unknown):void=>{if(value&&typeof value==='object'){
+    for(const item of Object.values(value))freeze(item);Object.freeze(value);
+  }};
+  freeze(proof);return proof;
+}
 
 /** Runtime's existing pre-Policy path calls this for every dispatch/resume. A
  * persisted pending child cannot recover a process-local parent authority. */
@@ -81,8 +167,10 @@ export function createWorkflowBusinessToolBridge(options:{
     const args=structuredClone(resolution.arguments);
     if(!isDeepStrictEqual(JSON.parse(JSON.stringify(args)),args))fail('INVALID_ARGUMENT','Business arguments must retain their JSON value');
     const commandId='workflow-business-'+hash([context.taskId,context.runId,request.actionKey]);
-    const intent:Intent={version:1,sourceTaskId:context.taskId,sourceRunId:context.runId,parentTaskId:scope.parentTaskId,
+    const intent:Intent={version:2,sourceTaskId:context.taskId,sourceRunId:context.runId,parentTaskId:scope.parentTaskId,
       operationId:scope.operationId,sessionId:scope.sessionId,namespace:host.namespace,actionKey:request.actionKey,
+      workflowId:resolution.workflowId,nodeId:resolution.nodeId,sourceToolName:source.toolName,sourceToolVersion:source.toolVersion,
+      sourceArgumentsDigest:toolArgumentsDigest(sourceArguments),
       inputDigest:toolArgumentsDigest(copied.input),descriptor:structuredClone(descriptor),
       request:{commandId,toolName:descriptor.name,toolVersion:descriptor.version,arguments:args,deadline:context.deadline}};
     const key='workflow-business-tool:'+commandId;
@@ -161,7 +249,8 @@ export function createWorkflowBusinessToolBridge(options:{
         if(!runtime.saveCheckpointOnce(childId,'coding-repair:parent',{taskId:context.taskId,operationId:bound.intent.request.commandId})
           ||!runtime.saveCheckpointOnce(context.taskId,'coding-repair:host:'+bound.intent.request.commandId,
             {localTaskId:childId,request:bound.intent.request}))fail('REVISION_CONFLICT','Business child was already bound');
-        const marker={sourceTaskId:context.taskId,sourceRunId:context.runId,commandId:bound.intent.request.commandId};
+        const marker={sourceTaskId:context.taskId,sourceRunId:context.runId,commandId:bound.intent.request.commandId,
+          intentDigest:toolArgumentsDigest(bound.intent)};
         if(!runtime.saveCheckpointOnce(childId,childSourceKey,marker))fail('REVISION_CONFLICT','Business child authority was already bound');
         const guards=activeChildren.get(application)??new Map<string,(invocation:Invocation)=>void>();
         activeChildren.set(application,guards);

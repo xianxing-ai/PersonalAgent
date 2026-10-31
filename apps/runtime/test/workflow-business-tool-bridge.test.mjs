@@ -7,7 +7,8 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
-import {createRuntimeApplication,createRuntimeOwnedWorkflowHost,createWorkflowBusinessToolBridge} from '../dist/application.js';
+import {createRuntimeApplication,createRuntimeOwnedWorkflowHost,createWorkflowBusinessToolBridge,
+  readWorkflowBusinessToolSource} from '../dist/application.js';
 
 // Actual SQLite, Runtime, Policy, ToolGateway and HostBridge; only the business
 // service and graph proposal are Synthetic. No platform or account acceptance.
@@ -103,6 +104,78 @@ test('denying the independent business approval never executes it or confirms th
   assert.equal(f.calls,0);assert.equal(f.app.runtime.readToolExecutions(child.taskId)[0].executionStarted,false);
 });
 
+test('the public source proof reads only the exact confirmed graph-host-business lineage and returns an immutable copy',async t=>{
+  const f=await setup(t),child=await f.begin();
+  const scope={parentTaskId:f.parent.taskId,sessionId:'synthetic-session',deadline:f.context.deadline};
+  const ref={taskId:child.taskId,runId:child.runId,scopeRef:child.runId,toolVersion:f.business.descriptor.version,arguments:f.request.input};
+  const read=()=>readWorkflowBusinessToolSource(f.app,scope,ref,f.business.descriptor.name);
+  assert.throws(read,{code:'UNAUTHORIZED'});assert.equal(f.calls,0);
+  await f.decide(child.taskId);assert.equal((await f.settle()).task.state,'succeeded');
+  const proof=read();
+  assert.deepEqual(proof.graph,{taskId:f.parent.taskId,sessionId:'synthetic-session',workflowId:'F06',nodeId:'F06_N03',operationId:'synthetic-original-create'});
+  assert.deepEqual(proof.sourceHost,{taskId:f.source.localTaskId,runId:f.context.runId,toolName:f.outer.descriptor.name,toolVersion:f.outer.descriptor.version});
+  assert.equal(proof.actionKey,f.request.actionKey);assert.deepEqual(proof.descriptor,f.business.descriptor);
+  assert.deepEqual(proof.request.arguments,ref.arguments);assert.deepEqual(proof.receipt,f.receipt);
+  assert.equal(proof.record.state,'confirmed');assert.equal(proof.record.policyDecision,'allow');
+  assert.throws(()=>{proof.receipt.result.item.id='substituted';},TypeError);
+  assert.throws(()=>{proof.request.arguments.title='substituted';},TypeError);
+  assert.throws(()=>{proof.descriptor.requiredScopes.push('substituted');},TypeError);
+  assert.deepEqual(read(),proof);assert.equal(f.calls,1);
+  // This helper proves the original evidence. Current cloud export authority is
+  // still a separate gate; revocation must not invent, rewrite or retry evidence.
+  f.revoke();assert.deepEqual(read(),proof);assert.equal(f.calls,1);
+});
+
+test('source proof refuses changed edges, marker, action, descriptor, arguments and caller reference without another dispatch',async t=>{
+  const f=await setup(t),child=await f.begin();await f.decide(child.taskId);await f.settle();
+  const scope={parentTaskId:f.parent.taskId,sessionId:'synthetic-session',deadline:f.context.deadline};
+  const ref={taskId:child.taskId,runId:child.runId,scopeRef:child.runId,toolVersion:f.business.descriptor.version,arguments:f.request.input};
+  const read=()=>readWorkflowBusinessToolSource(f.app,scope,ref,f.business.descriptor.name);
+  const proof=read(),runtime=f.app.runtime,commandId=proof.request.commandId,source=f.source.localTaskId,operationId=proof.graph.operationId;
+  const cases=[
+    ['business parent edge',child.taskId,'coding-repair:parent',value=>{value.taskId=f.parent.taskId;}],
+    ['business forward edge',source,'coding-repair:host:'+commandId,value=>{value.localTaskId=source;}],
+    ['source parent edge',source,'coding-repair:parent',value=>{value.operationId='substituted';}],
+    ['graph forward edge',f.parent.taskId,'coding-repair:host:'+operationId,value=>{value.localTaskId=child.taskId;}],
+    ['source marker',child.taskId,'workflow-business-tool:source',value=>{value.sourceTaskId=f.parent.taskId;}],
+    ['source run marker',child.taskId,'workflow-business-tool:source',value=>{value.sourceRunId='substituted';}],
+    ['sealed proof marker',child.taskId,'workflow-business-tool:source',value=>{value.intentDigest='substituted';}],
+    ['legacy proof marker',child.taskId,'workflow-business-tool:source',value=>{delete value.intentDigest;}],
+    ['fixed action',source,'workflow-business-tool:'+commandId,value=>{value.actionKey+='-substituted';}],
+    ['descriptor',source,'workflow-business-tool:'+commandId,value=>{value.descriptor.requiredScopes=[];}],
+    ['child arguments',source,'workflow-business-tool:'+commandId,value=>{value.request.arguments.title='substituted';}],
+    ['legacy intent',source,'workflow-business-tool:'+commandId,value=>{value.version=1;}],
+    ['host input',source,'host-tool-intent',value=>{value.arguments.title='substituted';}],
+    ['child input',child.taskId,'host-tool-intent',value=>{value.arguments.title='substituted';}],
+    ['graph session',f.parent.taskId,'owned-workflow:intent:'+operationId,value=>{value.sessionId='substituted';}],
+    ['graph node',f.parent.taskId,'owned-workflow:intent:'+operationId,value=>{value.proposal.nodeId='F06_N04';}],
+    ['graph input',f.parent.taskId,'owned-workflow:intent:'+operationId,value=>{value.proposal.arguments.title='substituted';}]
+  ];
+  for(const [label,taskId,key,mutate] of cases)await t.test(label,()=>{
+    const original=runtime.loadCheckpoint(taskId,key),changed=structuredClone(original);mutate(changed);
+    runtime.saveCheckpoint(taskId,key,changed);
+    try{assert.throws(read,{code:'UNAUTHORIZED'});}finally{runtime.saveCheckpoint(taskId,key,original);}
+    assert.deepEqual(read(),proof);assert.equal(f.calls,1);
+  });
+  for(const changed of [{...ref,taskId:source},{...ref,runId:'substituted'},{...ref,scopeRef:'substituted'},
+    {...ref,toolVersion:'9.0.0'},{...ref,arguments:{title:'substituted'}}])
+    assert.throws(()=>readWorkflowBusinessToolSource(f.app,scope,changed,f.business.descriptor.name),{code:'UNAUTHORIZED'});
+  for(const changed of [{...scope,parentTaskId:source},{...scope,sessionId:'substituted'},{...scope,deadline:new Date(0).toISOString()}])
+    assert.throws(()=>readWorkflowBusinessToolSource(f.app,changed,ref,f.business.descriptor.name),{code:'UNAUTHORIZED'});
+  assert.throws(()=>readWorkflowBusinessToolSource(f.app,scope,ref,'calendar.create'),{code:'UNAUTHORIZED'});
+  const scopes=f.business.descriptor.requiredScopes;f.business.descriptor.requiredScopes=['substituted'];
+  try{assert.throws(read,{code:'UNAUTHORIZED'});}finally{f.business.descriptor.requiredScopes=scopes;}
+  assert.deepEqual(read(),proof);assert.equal(f.calls,1);
+});
+
+test('source proof never promotes an unknown business write to confirmed evidence after SQLite restart',async t=>{
+  const f=await setup(t,{unknown:true}),child=await f.begin();await f.decide(child.taskId);await f.settle();
+  const scope={parentTaskId:f.parent.taskId,sessionId:'synthetic-session',deadline:f.context.deadline};
+  const ref={taskId:child.taskId,runId:child.runId,scopeRef:child.runId,toolVersion:f.business.descriptor.version,arguments:f.request.input};
+  const read=()=>readWorkflowBusinessToolSource(f.app,scope,ref,f.business.descriptor.name);
+  assert.throws(read,{code:'UNAUTHORIZED'});await f.reopen();assert.throws(read,{code:'UNAUTHORIZED'});assert.equal(f.calls,1);
+});
+
 test('a changed input, forged parent or unknown action cannot replace the original child',async t=>{
   const f=await setup(t),child=await f.begin();
   await assert.rejects(f.bridge.invoke({...f.request,input:{title:'Synthetic substitution'}},f.context),{code:'REVISION_CONFLICT'});
@@ -193,5 +266,6 @@ test('an old pending approval after process restart cannot execute without its o
   await wait(()=>app.activeTaskCount===0);
   assert.equal(calls,0,'the old child approval cannot replace the missing active parent authority');
   assert.equal(app.readHostToolTask(data.child.taskId).confirmed,undefined);
+  assert.equal(app.runtime.readToolExecutions(data.child.taskId).find(record=>record.evidenceId===data.child.runId).executionStarted,false);
   assert.deepEqual(app.runtime.readToolExecutions(data.source.localTaskId),original);
 });
