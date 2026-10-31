@@ -1,4 +1,4 @@
-import {closeSync,constants,existsSync,fstatSync,lstatSync,mkdirSync,openSync,readFileSync,readSync,renameSync,writeFileSync} from 'node:fs';
+import {closeSync,constants,existsSync,fstatSync,lstatSync,mkdirSync,openSync,readFileSync,readSync,realpathSync,renameSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
@@ -6,6 +6,14 @@ import {F16_F17_CONFIGURATIONS} from './f16-f17-workflow-ports.js';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','F16/F17 原生 case 选择或工作区固定命令不可用');};
+const samePath=(a,b)=>process.platform==='win32'?a.toLowerCase()===b.toLowerCase():a===b;
+function assertNativeCasePath(selected){
+  if(!samePath(realpathSync.native(selected),path.resolve(selected)))fail();
+  for(let directory=path.dirname(selected);;directory=path.dirname(directory)){
+    const stat=lstatSync(directory);if(!stat.isDirectory()||stat.isSymbolicLink())fail();
+    if(directory===path.dirname(directory))break;
+  }
+}
 const f17Schema={type:'object',additionalProperties:false,required:['selectionRef','repository','recipeId'],
   properties:Object.fromEntries(['selectionRef','repository','recipeId'].map(key=>[key,F16_F17_CONFIGURATIONS.F17.inputSchema.properties[key]]))};
 
@@ -46,6 +54,7 @@ export function createF16F17CaseConfiguration({userData,safeStorage,readWorkspac
       const binding=readWorkspace()?.bindingId;if(!binding)fail();
       const selected=await selectFile(workflow);if(selected===undefined)return host.snapshot(workflow);
       if(readWorkspace()?.bindingId!==binding||typeof selected!=='string'||!path.isAbsolute(selected))fail();
+      assertNativeCasePath(selected);
       const stat=lstatSync(selected);
       if(!stat.isFile()||stat.isSymbolicLink()||stat.size>256*1024)fail();
       const fd=openSync(selected,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0));
@@ -56,6 +65,9 @@ export function createF16F17CaseConfiguration({userData,safeStorage,readWorkspac
         while(size<bytes.length&&(count=readSync(fd,bytes,size,bytes.length-size,null))>0)size+=count;
         const after=fstatSync(fd);
         if(size>256*1024||after.size!==opened.size||after.mtimeMs!==opened.mtimeMs||after.ctimeMs!==opened.ctimeMs)fail();
+        assertNativeCasePath(selected);const current=lstatSync(selected);
+        if(!current.isFile()||current.isSymbolicLink()||current.dev!==after.dev||current.ino!==after.ino
+          ||current.size!==after.size||current.mtimeMs!==after.mtimeMs||current.ctimeMs!==after.ctimeMs)fail();
         return host.setFromNativeSelection(workflow,JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,size))));
       }finally{closeSync(fd);}
     },
