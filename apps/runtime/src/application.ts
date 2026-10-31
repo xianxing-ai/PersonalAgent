@@ -220,5 +220,7 @@ export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,R
 export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
   RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';
 export {createWorkflowBusinessToolBridge,readWorkflowBusinessToolSource} from './application/workflow-business-tool-bridge.js';
+export {createF24RecoveryWorkflowPorts} from './application/workflow-f24-worker.js';
+export type {F24RecoveryWorkflowOptions} from './application/workflow-f24-worker.js';
 export type {WorkflowBusinessToolRequest,WorkflowBusinessToolResolution,WorkflowBusinessToolReceipt,
   WorkflowBusinessToolReadback,WorkflowBusinessToolSourceReference,WorkflowBusinessToolSourceProof} from './application/workflow-business-tool-bridge.js';
