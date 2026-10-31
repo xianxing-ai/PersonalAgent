@@ -16,6 +16,7 @@ Profile：`huawei_ict_agentarts`。工作树：`.worktrees/pr531-f03-f24`。
 - initial/receipt/completion 均消费 Main 统一的 exact export 卡授权。授权前后重验原配置、身份及实际结果 revision；不向模型发送笔记路径、正文、凭据或原写入参数。
 - N01 确认原图持久绑定；N03/N04 复用原授权和已开始的执行记录；N05/N11 读取实际检查点。恢复路径不创建新执行。N06/N08 仅观察已有本地取消，不能由云端制造停止事件；N07 对已开始的写入保持 skipped，不能声称“从未提交”。N09 调用已有只读核实与元数据 finalize；N10 保留核实后的已发生效果；N12 只发布有原 verified Evidence 的结果。
 - `unknown` 不完成。原 N09 工具同样停在 `waiting_reconciliation`。`reconcileOriginalReadback` 只核实该原 N09、原目标及其真实读回证据，再按现有 Runtime reconciliation 完成该读取回执；并发/重复请求不启动图、不写笔记、不重新执行工具。后续继续图使用已有 Runtime resume 入口，仍须原 deadline 与授权。
+- 原生 UI 桥：Main 注入工厂 `recovery` 至 `RuntimeApplicationOptions.f24Recovery`；`readF24RecoveryStatus/Available` 只从当前可见原用户任务的 forced-delegation、原 `subagent.dispatch` 确认回执及精确幂等子任务定位 N09，不扫描历史。`reconcileF24WorkflowTask(taskId,expectedRevision,scope)` 以原 graph deadline 读回；新原生 scope 只能缩短等待，不能延长期限。unknown 保持原任务，confirmed 后调用原 `resumeOwnedWorkflowTask` 继续同一张图及其 exact export 卡，不伪装成纯本地终结。父取消、部署变化、原请求 revision 或委派变化均拒绝。
 
 ## F24 模板兼容性修复
 
@@ -29,6 +30,7 @@ Profile：`huawei_ict_agentarts`。工作树：`.worktrees/pr531-f03-f24`。
 - 实际 Engine 回归覆盖普通、无取消恢复、取消在途、unknown 恢复分支，证明恢复读回不再被 skipped 前驱误跳过，unknown 仍不完成。
 - 新增受控文件实测：在独立临时知识库创建公开合成笔记，经实际 `createKnowledgeWriteTool/openControlledVaultWriter` 写入后，测试故意丢失调用回执；F24 消费真实 journal/readback/finalize，验证实际 SHA256、原备份字节及仅一次写入。它证明本机受控文件恢复消费，不代替真实用户笔记或云验收。
 - 定向 18/18（含上述本机文件实测）；较宽 AgentArts、configured worker、F03/F24 历史宿主及 Knowledge reconciliation 回归 285/285；架构门禁 3/3；Runtime/AgentArts build、Desktop 工厂语法检查及 `git diff --check` 通过。
+- 原生用户 parent 恢复桥与实际公开 package export 的 Desktop 工厂消费补测：84/84，包含 F24 历史宿主、真实受控文件读回、原委派/部署/revision/期限拒绝，以及既有 native/subagent termination 回归。没有把新的观察期限用作旧图续期。
 - 其余模型、写入工具、知识读回及导出授权测试明确为 Synthetic；用户原会话、AgentArts 部署与统一授权卡的联合验收尚未完成。Main 公共出口与工厂装配由集成工作树串行接线；本包不宣称 #531 完成或可合并。
 
 ## F03 后续边界

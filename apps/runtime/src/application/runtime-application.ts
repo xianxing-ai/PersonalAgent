@@ -103,6 +103,7 @@ import {WORKSPACE_PATCH_APPLY_TOOL_NAME, WorkspacePatchReconciliationAdapter} fr
 import type {WorkspacePatchReconciliationPort, WorkspacePatchReconciliationReadback} from './workspace-patch-reconciliation.js';
 import {KnowledgeWriteReconciliationAdapter} from './knowledge-write-reconciliation.js';
 import type {KnowledgeWriteReconciliationPort} from './knowledge-write-reconciliation.js';
+import type {RuntimeF24RecoveryPort} from './workflow-f24-worker.js';
 import type {WindowsHostRecovery, WindowsHostRunIdentity} from './windows-host-adapter.js';
 import {parseWindowsHostFrame} from '@personal-agent/contracts/windows-host';
 import {createRuntimeNotificationHost} from './notification-host.js';
@@ -402,6 +403,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   ownedWorkflowWorker?:RuntimeOwnedWorkflowWorkerOptions;
   f09WorkflowWorker?:RuntimeF09WorkflowWorkerOptions;
   configuredWorkflowWorkers?:readonly RuntimeConfiguredWorkflowOptions[];
+  /** Original F24 knowledge readback only; current configured worker remains the execution owner. */
+  f24Recovery?:RuntimeF24RecoveryPort;
   developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   /** Current trusted product configuration, pinned by its host to the original task revision. */
   readDeveloperWorkflows?:(scope:RuntimeDeveloperWorkflowScope)=>RuntimeDeveloperWorkflowsOptions|undefined;
@@ -530,6 +533,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly readF20WorkspaceRef?:RuntimeHarnessCandidatesOptions['readF20WorkspaceRef'];
   private readonly f09WorkflowWorker?:RuntimeF09WorkflowWorkerCapability;
   private readonly configuredWorkflowWorkers:RuntimeConfiguredWorkflowCapability[]=[];
+  private readonly f24Recovery?:RuntimeF24RecoveryPort;
+  private readonly activeF24Recovery=new Set<string>();
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   private readonly readDeveloperWorkflows?:RuntimeApplicationOptions['readDeveloperWorkflows'];
   private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
@@ -697,6 +702,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Invalid trusted host user namespace');
     }
     this.hostUserNamespace = options.hostUserNamespace;
+    if(options.f24Recovery) {
+      if(this.profile!=='huawei_ict_agentarts'||!this.hostUserNamespace||typeof options.f24Recovery.readAvailable!=='function'
+        ||typeof options.f24Recovery.reconcileOriginalReadback!=='function')throw new ProtocolError('INVALID_ARGUMENT','F24 recovery requires the trusted Competition host');
+      this.f24Recovery=options.f24Recovery;
+    }
     if(options.knowledgeWriteReconciliation) {
       if(this.profile!=='huawei_ict_agentarts' || !this.hostUserNamespace)throw new ProtocolError('INVALID_ARGUMENT','Knowledge recovery requires the trusted Competition host');
       // Assigned after TaskRuntime is constructed below.
@@ -2838,6 +2848,78 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const marker=readRuntimeSubagentSibling(this.runtime,child.taskId);
       return marker?.binding.ownerTaskId===owner.taskId&&marker.binding.parentTaskId===taskId;
     }).flatMap(child=>this.harnessCandidateRecoveryTargets(child.taskId,child.revision));
+  }
+
+  private f24RecoveryTarget(taskId:string,expectedRevision:number):{graphTaskId:string;localTaskId:string;deadline:string}|undefined {
+    if(this.profile!=='huawei_ict_agentarts'||!this.f24Recovery)return;
+    const requested=this.runtime.getTask(taskId);
+    if(requested.revision!==expectedRevision||requested.state!=='waiting_reconciliation'||requested.cancelRequested
+      ||this.activeTextTasks.has(taskId)||this.runtime.isTaskActive(taskId))return;
+    const direct=this.readDelegatedUserTaskParent(taskId),rootId=direct?.taskId??taskId;
+    const delegation=readUserTaskDelegation(this.runtime,rootId);
+    if(!delegation||!Number.isFinite(Date.parse(delegation.deadline))||this.now().getTime()>=Date.parse(delegation.deadline))return;
+    const root=this.runtime.getTask(rootId),runId=`competition-tool-${rootId}-1`;
+    const dispatch=this.runtime.readToolExecutions(rootId).find(record=>record.evidenceId===runId);
+    if(root.state!=='waiting_reconciliation'||root.cancelRequested||this.activeTextTasks.has(rootId)||this.runtime.isTaskActive(rootId)
+      ||this.runtime.loadCheckpoint(rootId,'competition-cloud-inflight')||this.runtime.loadCheckpoint(rootId,'competition-cloud-unknown')
+      ||!dispatch||dispatch.toolName!==SUBAGENT_DISPATCH_TOOL_NAME||dispatch.toolVersion!=='1.0.0'||dispatch.state!=='confirmed'
+      ||dispatch.policyDecision!=='allow'||!dispatch.executionStarted
+      ||!this.runtime.matchesToolExecutionInput(dispatch,{arguments:{subtasks:[delegation.subtask]},scopeRef:runId}))return;
+    const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${rootId}-${delegation.subtask.subtaskId}`);
+    if(!owner||direct&&owner.taskId!==taskId||owner.state!=='waiting_reconciliation'||owner.cancelRequested
+      ||this.activeTextTasks.has(owner.taskId)||this.runtime.isTaskActive(owner.taskId)
+      ||!isDeepStrictEqual(this.runtime.loadCheckpoint(owner.taskId,'subtask-parent'),
+        {...delegation.subtask,parentTaskId:rootId,parentDeadline:delegation.deadline})
+      ||this.readDelegatedUserTaskParent(owner.taskId)?.taskId!==rootId
+      ||this.runtime.loadCheckpoint(owner.taskId,'competition-cloud-inflight')||this.runtime.loadCheckpoint(owner.taskId,'competition-cloud-unknown'))return;
+    this.assertCompetitionTaskConfiguration(rootId);this.assertCompetitionTaskConfiguration(owner.taskId);
+    const worker=this.configuredWorkflowWorkers.find(worker=>worker.describe().name==='workflow.recovery.knowledge'&&worker.isActive(owner.taskId));
+    const pending=worker?.pendingHostTask(owner.taskId);
+    if(!pending||!this.f24Recovery.readAvailable({taskId:owner.taskId,deadline:delegation.deadline,signal:new AbortController().signal}))return;
+    return {graphTaskId:owner.taskId,localTaskId:pending.taskId,deadline:delegation.deadline};
+  }
+
+  /** Read-only eligibility, not proof of an effect or authority to resume. */
+  readF24RecoveryStatus(taskId:string):{kind:'f24_knowledge';phase:'waiting_readback'|'ready_to_resume';deadline:string}|undefined {
+    try{const target=this.f24RecoveryTarget(taskId,this.runtime.getTask(taskId).revision);if(!target)return;
+      return {kind:'f24_knowledge',phase:this.runtime.getTask(target.localTaskId).state==='succeeded'?'ready_to_resume':'waiting_readback',deadline:target.deadline};
+    }catch{return undefined;}
+  }
+  readF24RecoveryAvailable(taskId:string):boolean {return this.readF24RecoveryStatus(taskId)!==undefined;}
+
+  /** Native original-result readback, then existing graph continuation. Never
+   * discovers arbitrary history, extends the original deadline, or retries a write. */
+  async reconcileF24WorkflowTask(taskId:string,expectedRevision:number,scope:{deadline:string;signal:AbortSignal}):Promise<{
+    task:TaskSnapshot;kind:'f24_knowledge';state:'unknown'|'confirmed';resumed:boolean;
+    readbacks:{taskId:string;localTaskId:string;state:'unknown'|'confirmed'}[];
+  }> {
+    if(scope.signal.aborted)throw new ProtocolError('CANCELLED','Original F24 observation cancelled');
+    const target=this.f24RecoveryTarget(taskId,expectedRevision);
+    if(!target||!this.f24Recovery)throw new ProtocolError('UNAUTHORIZED','Original F24 recovery is unavailable');
+    const remaining=Math.min(Date.parse(scope.deadline),Date.parse(target.deadline))-this.now().getTime();
+    if(!Number.isFinite(remaining)||remaining<=0)throw new ProtocolError('TIMEOUT','Original F24 observation expired');
+    if(this.activeF24Recovery.has(target.graphTaskId))throw new ProtocolError('REVISION_CONFLICT','Original F24 readback is already active');
+    this.activeF24Recovery.add(target.graphTaskId);
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),remaining);
+    const signal=AbortSignal.any([scope.signal,controller.signal]);
+    try {
+      const result=await this.f24Recovery.reconcileOriginalReadback({taskId:target.graphTaskId,deadline:target.deadline,signal});
+      if(signal.aborted)throw new ProtocolError('CANCELLED','Original F24 observation cancelled');
+      const current=this.f24RecoveryTarget(taskId,expectedRevision);
+      if(!current||!isDeepStrictEqual(current,target)||result.localTaskId!==target.localTaskId
+        ||!['unknown','confirmed'].includes(result.state))throw new ProtocolError('REVISION_CONFLICT','Original F24 recovery target changed');
+      let resumed=false;
+      if(result.state==='confirmed') {
+        const read=this.readHostToolTask(target.localTaskId),record=this.runtime.readToolExecutions(target.localTaskId)
+          .find(item=>item.evidenceId===read.confirmed?.runId);
+        if(read.task.state!=='succeeded'||!read.confirmed||!record||record.state!=='confirmed'||record.policyDecision!=='allow'
+          ||!record.executionStarted||!read.confirmed.evidenceRefs.includes(record.evidenceId))
+          throw new ProtocolError('RESULT_UNKNOWN','Original F24 host result is not confirmed');
+        this.resumeOwnedWorkflowTask(target.graphTaskId);resumed=true;
+      }
+      return {task:this.runtime.getTask(taskId),kind:'f24_knowledge',state:result.state,resumed,
+        readbacks:[{taskId:target.graphTaskId,localTaskId:target.localTaskId,state:result.state}]};
+    }finally{clearTimeout(timer);this.activeF24Recovery.delete(target.graphTaskId);}
   }
 
   /** Metadata only. A root resolves its canonical owner/plan executors; users never need task IDs. */

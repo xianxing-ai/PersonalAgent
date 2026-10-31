@@ -18,6 +18,10 @@ export interface F24RecoveryWorkflowOptions {
   sourceConfiguration:()=>{sourceId:string;configRevision:number}|undefined;
   authorizeExport:(request:ExportRequest)=>Promise<boolean>;
 }
+export interface RuntimeF24RecoveryPort {
+  readAvailable:(scope:F24RecoveryScope)=>boolean;
+  reconcileOriginalReadback:(scope:F24RecoveryScope)=>Promise<{state:'unknown'|'confirmed';localTaskId:string}>;
+}
 const object=(properties:Record<string,unknown>)=>({type:'object',additionalProperties:false,required:Object.keys(properties),properties});
 const text={type:'string',minLength:1,maxLength:2048};
 function fail(code:string,message:string):never {throw new ProtocolError(code,message);}
@@ -33,6 +37,7 @@ const statusProperties={sourceTaskId:text,sourceRunId:text,taskRevision:{type:'i
 export function createF24RecoveryWorkflowPorts(options?:F24RecoveryWorkflowOptions):{
   tools:RegisteredTool[];configuredWorkflowWorkerPorts:Worker[];unavailable:string|null;
   reconcileOriginalReadback?:(scope:F24RecoveryScope)=>Promise<{state:'unknown'|'confirmed';localTaskId:string}>;
+  recovery?:RuntimeF24RecoveryPort;
 } {
   if(!options?.application||!options.hostUserNamespace||typeof options.sourceConfiguration!=='function'||typeof options.authorizeExport!=='function')
     return {tools:[],configuredWorkflowWorkerPorts:[],unavailable:'f24_original_knowledge_recovery_unavailable'};
@@ -186,7 +191,7 @@ export function createF24RecoveryWorkflowPorts(options?:F24RecoveryWorkflowOptio
       return {result,resultSummary:'Original knowledge operation independently read back; no write was replayed'};
     }};
   const recoveries=new Map<string,Promise<{state:'unknown'|'confirmed';localTaskId:string}>>();
-  async function reconcile(scope:F24RecoveryScope):Promise<{state:'unknown'|'confirmed';localTaskId:string}> {
+  function recoveryBinding(scope:F24RecoveryScope) {
     const input=original(scope),pending=app.readPendingOwnedWorkflowHostTask(scope.taskId);
     if(!pending)fail('UNSUPPORTED_CAPABILITY','Original F24 pending readback unavailable');
     const localTaskId=pending.taskId,runId='host-tool-'+localTaskId;
@@ -201,6 +206,10 @@ export function createF24RecoveryWorkflowPorts(options?:F24RecoveryWorkflowOptio
     const read=app.readHostToolTask(localTaskId),record=app.runtime.readToolExecutions(localTaskId).find(item=>item.evidenceId===runId);
     if(!record||record.toolName!==intent.toolName||record.toolVersion!==intent.toolVersion||record.policyDecision!=='allow'||!record.executionStarted
       ||!app.runtime.matchesToolExecutionInput(record,{arguments:{},scopeRef:runId}))fail('UNAUTHORIZED','Original F24 recovery execution changed');
+    return {input,localTaskId,runId,hostScope,read,record};
+  }
+  async function reconcile(scope:F24RecoveryScope):Promise<{state:'unknown'|'confirmed';localTaskId:string}> {
+    const {input,localTaskId,runId,hostScope,read,record}=recoveryBinding(scope);
     if(read.task.state==='succeeded'&&record.state==='confirmed') {
       if(!isDeepStrictEqual(read.confirmed?.result,await verified(hostScope)))fail('REVISION_CONFLICT','Original F24 recovery result changed');
       return {state:'confirmed',localTaskId};
@@ -221,9 +230,13 @@ export function createF24RecoveryWorkflowPorts(options?:F24RecoveryWorkflowOptio
     binding(hostScope);app.runtime.reconcileToolExecution(localTaskId,runId,'applied',result,[evidenceId]);
     return {state:'confirmed',localTaskId};
   }
-  return {tools,configuredWorkflowWorkerPorts:[worker],unavailable:null,reconcileOriginalReadback(scope){
+  const recovery:RuntimeF24RecoveryPort={readAvailable(scope){
+    try{const {read,record}=recoveryBinding(scope);return read.task.state==='succeeded'&&record.state==='confirmed'
+      ||read.task.state==='waiting_reconciliation'&&record.state==='unknown'&&!app.runtime.isToolExecutionActive(record);}catch{return false;}
+  },reconcileOriginalReadback(scope){
     // Duplicate requests share the original readback only; no graph/tool replay.
     original(scope);const active=recoveries.get(scope.taskId);if(active)return active;
     const work=reconcile(scope).finally(()=>recoveries.delete(scope.taskId));recoveries.set(scope.taskId,work);return work;
   }};
+  return {tools,configuredWorkflowWorkerPorts:[worker],unavailable:null,recovery,reconcileOriginalReadback:recovery.reconcileOriginalReadback};
 }

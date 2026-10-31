@@ -36,6 +36,7 @@ async function fixture({outcome='applied',conversation='synthetic-chat',exportAl
       {id:'recheck',description:'Synthetic abstention',value:{},abstain:true}]});
   const image={bindingId:'synthetic-f24-image',advance:request=>engine.advance(request),receiptSecret:async()=>secret};
   const applicationOptions={path,profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f24',
+    f24Recovery:bundle.recovery,
     coordinationBinding:'synthetic-f24-deployment',tools,configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),
     knowledgeWriteReconciliation:{reconcile:async(original,context)=>{readCalls++;if(knowledge)return knowledge.writer.reconcile(original,context);
       return {state:outcome,operationId:'a'.repeat(64),backupId:'synthetic-backup',
@@ -209,4 +210,50 @@ test('F24 reads the actual controlled file writer journal after a Synthetic lost
     assert.equal(await readFile(join(recovery,receipt.result.backupId),'utf8'),before);
     assert.equal(await readFile(join(root,'sample.md'),'utf8'),after);
   }finally{f?.app.close();await rm(directory,{recursive:true,force:true});}
+});
+
+test('native F24 action locates only the original visible parent owner and resumes after exact readback',async()=>{
+  const f=await fixture({outcome:'unknown'});try{const {root,child}=await f.run(),native=()=>({deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
+    assert.equal(f.app.readF24RecoveryAvailable(root.taskId),true);assert.equal(f.app.readF24RecoveryAvailable(child.taskId),true);
+    assert.equal(f.app.readF24RecoveryAvailable(f.sourceTaskId),false);
+    assert.equal(f.app.readF24RecoveryStatus(root.taskId).phase,'waiting_readback');
+    assert.deepEqual(f.counts,{writeCalls:1,readCalls:1,finalizeCalls:0});
+    const unknown=await f.app.reconcileF24WorkflowTask(root.taskId,f.app.runtime.getTask(root.taskId).revision,native());
+    assert.equal(unknown.state,'unknown');assert.equal(unknown.resumed,false);assert.equal(unknown.task.state,'waiting_reconciliation');
+    f.setOutcome('applied');
+    const known=await f.app.reconcileF24WorkflowTask(root.taskId,f.app.runtime.getTask(root.taskId).revision,native());
+    assert.equal(known.state,'confirmed');assert.equal(known.resumed,true);assert.equal(known.readbacks[0].taskId,child.taskId);
+    await f.until(()=>f.app.runtime.getTask(root.taskId).state==='succeeded'&&f.app.activeTaskCount===0);
+    assert.equal(f.app.readF24RecoveryAvailable(root.taskId),false);assert.equal(f.counts.writeCalls,1);
+    await assert.rejects(()=>f.app.reconcileF24WorkflowTask(root.taskId,f.app.runtime.getTask(root.taskId).revision,native()),{code:'UNAUTHORIZED'});
+  }finally{f.app.close();}
+});
+
+test('native F24 eligibility rejects changed delegation, deployment, requested revision and observer deadline without reading',async()=>{
+  const f=await fixture({outcome:'unknown'});try{const {root,child}=await f.run(),revision=f.app.runtime.getTask(root.taskId).revision;
+    const parent=f.app.runtime.loadCheckpoint(child.taskId,'subtask-parent');
+    f.app.runtime.saveCheckpoint(child.taskId,'subtask-parent',{...parent,parentTaskId:'foreign'});
+    assert.equal(f.app.readF24RecoveryAvailable(root.taskId),false);
+    f.app.runtime.saveCheckpoint(child.taskId,'subtask-parent',parent);
+    const configuration=f.app.runtime.loadCheckpoint(child.taskId,'competition-configuration-binding');
+    f.app.runtime.saveCheckpoint(child.taskId,'competition-configuration-binding','foreign-deployment');
+    assert.equal(f.app.readF24RecoveryAvailable(root.taskId),false);
+    f.app.runtime.saveCheckpoint(child.taskId,'competition-configuration-binding',configuration);
+    const scope={deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal};
+    await assert.rejects(()=>f.app.reconcileF24WorkflowTask(root.taskId,revision-1,scope),{code:'UNAUTHORIZED'});
+    await assert.rejects(()=>f.app.reconcileF24WorkflowTask(root.taskId,revision,{...scope,deadline:new Date(Date.now()-1).toISOString()}),{code:'TIMEOUT'});
+    assert.deepEqual(f.counts,{writeCalls:1,readCalls:1,finalizeCalls:0});
+  }finally{f.app.close();}
+});
+
+test('native F24 does not revive an expired original delegation using a new observer deadline',async()=>{
+  const f=await fixture({outcome:'unknown'});try{const {root,child}=await f.run();
+    const saved=f.app.runtime.loadCheckpoint(root.taskId,'application-deadline');
+    f.app.runtime.saveCheckpoint(root.taskId,'application-deadline',new Date(Date.now()-1).toISOString());
+    assert.equal(f.app.readF24RecoveryAvailable(root.taskId),false);assert.equal(f.app.readF24RecoveryAvailable(child.taskId),false);
+    await assert.rejects(()=>f.app.reconcileF24WorkflowTask(root.taskId,f.app.runtime.getTask(root.taskId).revision,
+      {deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal}));
+    assert.deepEqual(f.counts,{writeCalls:1,readCalls:1,finalizeCalls:0});
+    f.app.runtime.saveCheckpoint(root.taskId,'application-deadline',saved);
+  }finally{f.app.close();}
 });
