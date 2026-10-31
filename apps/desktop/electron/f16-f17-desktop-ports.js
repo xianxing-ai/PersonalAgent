@@ -60,16 +60,18 @@ export function createDesktopF16F17WorkflowPorts({runtimeModule,getApplication,c
     assertCurrent(workflow,scope){current(workflow,scope);},
     async readSelection(workflow,scope){
       const {application,selected,binding}=current(workflow,scope);
-      const value=workflow==='F17'?findF17InitialFailure(application,scope,selected.selection):undefined;
+      const value=workflow==='F17'?findF17InitialFailure(application,scope,selected.selection):selected.selection;
       if(!value)return undefined;
       application.runtime.saveCheckpointOnce(scope.taskId,'f16-f17:desktop-source:'+workflow,binding);current(workflow,scope);
       return {...value,configurationRef:selected.configurationRef};
     }};
   const ports=createF16F17WorkflowPorts({runtimeModule,getApplication,workspace,
-    authority:{available,assertCurrent:workspace.assertCurrent},authorizeExport,now});
-  // No production service currently proves preserved test intent or emits the repaired CI identity.
-  // F15's signed review and Laya's advisory choice cannot be relabelled as that proof.
-  if(!ports.unavailable.includes('f16_test_intent_verifier_unavailable'))ports.unavailable.push('f16_test_intent_verifier_unavailable');
-  ports.unavailable.push('f16_repaired_ci_identity_recipe_unavailable');
+    authority:{available,assertCurrent:workspace.assertCurrent},authorizeExport,
+    f16TestIntent:'preserved-bytes',f16CiIdentityRecipe:'github-readback',now});
+  // Production read/review services are real. The original node still runs an existing
+  // node-check/npm recipe; none submits and publishes a verified commit through Git.
+  // Do not advertise a repair workflow that will knowingly stop after applying a patch.
+  ports.configuredWorkflowWorkerPorts=ports.configuredWorkflowWorkerPorts.filter(port=>port.workflowId!=='F16');
+  ports.unavailable.push('f16_ci_publication_tool_chain_unavailable');
   return ports;
 }

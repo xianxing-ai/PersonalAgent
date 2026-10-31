@@ -7,7 +7,7 @@ import {resolve,join} from 'node:path';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {createGitTools,createWorkspaceCommandTool,createWorkspacePatchPreviewTool} from '@personal-agent/coding-tools';
-import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
+import {createWorkflowDecisionTool,OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier} from '@personal-agent/agentarts';
 import {register as registerGitHub} from '@personal-agent/github';
 import * as publicRuntime from '@personal-agent/runtime/application';
 // Root owns the public re-exports; inject the exact built modules until that shared edit lands.
@@ -26,6 +26,7 @@ import {createDesktopDeveloperToolsHost} from '../electron/developer-tools-host.
 import {findF17InitialFailure,readF17InitialFailure} from '../electron/f17-initial-failure-source.js';
 import {createWorkflowExportConsent} from '../electron/workflow-export-consent.js';
 import {readF16F17DecisionScope,prepareF16F17DecisionQuestion} from '../electron/f16-f17-decision-source.js';
+import {readConfiguredWorkflowDecisionScope,prepareConfiguredWorkflowDecisionQuestion} from '../electron/configured-workflow-decision-source.js';
 
 const runtimeModule={...publicRuntime,createF16CiFailurePorts,createF17ReproductionPorts,createF17ConfiguredDriverResolver,
   createF17ObservedCommandTool,createF16HeadReader,readF16Source,awaitF16Port};
@@ -34,42 +35,54 @@ const sleep=()=>new Promise(resolve=>setTimeout(resolve,5));
 
 // Explicit synthetic image/selector/consent and temporary public-shaped repository.
 // Commands and Git execute locally; the original configured worker, Policy, bridge and SQLite are real.
-async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=false,substitute,skipDecision=false,abstain=false,exportMutation,noReview=false,ciFailure=false,productionSources=false,ownedComposition=false}={}){
+async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=false,denyReview=false,substitute,skipDecision=false,abstain=false,exportMutation,noReview=false,ciFailure=false,productionSources=false,ownedComposition=false,realEngine=false,preservedAcceptance=false,noPublication=false}={}){
   const cache=resolve('.cache/f16-f17');await mkdir(cache,{recursive:true});
   const directory=await mkdtemp(join(cache,'configured-')),root=join(directory,'workspace');await mkdir(root);
-  const sourceText=productionSources?'function broken( {\n':"import test from 'node:test';import assert from 'node:assert/strict';test('original failure',()=>assert.equal(1,2));\n";
-  await writeFile(join(root,'failure.test.mjs'),sourceText);
+  const sourceText=preservedAcceptance?'export const sum=(a,b)=>a-b;\n':productionSources?'function broken( {\n':"import test from 'node:test';import assert from 'node:assert/strict';test('original failure',()=>assert.equal(1,2));\n";
+  const sourcePath=preservedAcceptance?'src/math.mjs':'failure.test.mjs';
+  if(preservedAcceptance){
+    await mkdir(join(root,'src'));await mkdir(join(root,'.github/workflows'),{recursive:true});
+    await writeFile(join(root,'package.json'),JSON.stringify({scripts:{test:'node --test failure.test.mjs'}}));
+    await writeFile(join(root,'.github/workflows/ci.yml'),'name: Synthetic CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm test\n');
+    await writeFile(join(root,'failure.test.mjs'),"import test from 'node:test';import assert from 'node:assert/strict';import {sum} from './src/math.mjs';test('sum',()=>assert.equal(sum(1,2),3));\n");
+  }
+  await writeFile(join(root,sourcePath),sourceText);
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
   git('init','-b','fixture');git('config','user.name','Synthetic');git('config','user.email','fixture@example.invalid');
   git('add','.');git('commit','-qm','Synthetic failure');git('remote','add','origin','https://github.com/xianxing-ai/PersonalAgent.git');
   const headSha=git('rev-parse','HEAD'),repository='xianxing-ai/PersonalAgent';let app,client,ports,revoked=false;
   const counters={command:0,head:0},exports=[],requests=[],actions=[];
-  const patch={path:'failure.test.mjs',expectedSha256:createHash('sha256').update(sourceText).digest('hex'),
-    edits:[{oldText:'assert.equal(1,2)',newText:'assert.equal(1,1)'}]};
+  const patch={path:sourcePath,expectedSha256:createHash('sha256').update(sourceText).digest('hex'),
+    edits:[preservedAcceptance?{oldText:'a-b',newText:'a+b'}:{oldText:'assert.equal(1,2)',newText:'assert.equal(1,1)'}]};
   const recipe={id:productionSources?'node-check':workflow==='F17'?'reproduce':'ci-verify',executable:process.execPath,args:workflow==='F17'?['--test','--test-reporter=tap','failure.test.mjs']:
     ['--input-type=module','-e',"import {execFileSync as run} from 'node:child_process';run(process.execPath,['--test','failure.test.mjs']);run('git',['add','failure.test.mjs']);run('git',['commit','-qm','Synthetic verified patch']);process.stdout.write(JSON.stringify({repository:'xianxing-ai/PersonalAgent',headSha:run('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),runId:9,jobId:10}));"]};
+  if(preservedAcceptance)recipe.args=['--input-type=module','-e',"import {execFileSync as run} from 'node:child_process';run(process.execPath,['--test','failure.test.mjs']);"
+    +(noPublication?'':"run('git',['add','src/math.mjs']);run('git',['commit','-qm','Synthetic publication boundary']);")
+    +"console.log('Local check only, no CI identity in stdout');"];
   const originalCommand=createWorkspaceCommandTool({rootPath:root,recipes:[recipe]}),commandTool={...originalCommand,
     execute:async(...args)=>{counters.command++;return originalCommand.execute(...args);}};
   const originalGit=createGitTools({repository,rootPath:root,sourceBranch:'fixture',remoteName:'origin',
-    remoteUrl:'https://github.com/xianxing-ai/PersonalAgent.git',allowedPaths:['failure.test.mjs'],authorName:'Synthetic',
+    remoteUrl:'https://github.com/xianxing-ai/PersonalAgent.git',allowedPaths:[sourcePath],authorName:'Synthetic',
     authorEmail:'fixture@example.invalid',readVerification:async()=>undefined}).head;
   const gitTool={...originalGit,execute:async(...args)=>{counters.head++;
     if(unknownHead&&counters.head===3)throw new ProtocolError('RESULT_UNKNOWN','Synthetic interrupted HEAD');
     return originalGit.execute(...args);}};
   const originalDecision=createWorkflowDecisionTool({selector:{select:async request=>({selectedId:request.candidates[0].id})}});
   const decision={...originalDecision,async execute(input,context){
-    if(productionSources){
-      const proof=readF16F17DecisionScope(app,context);assert.equal(proof?.workflowId,'F17');
+    if(productionSources||realEngine){
+      const readDecision=realEngine?readConfiguredWorkflowDecisionScope:readF16F17DecisionScope;
+      const prepareDecision=realEngine?prepareConfiguredWorkflowDecisionQuestion:prepareF16F17DecisionQuestion;
+      const proof=readDecision(app,context);assert.equal(proof?.workflowId,workflow);
       assert.equal(proof.taskId,context.taskId);assert.ok(Object.isFrozen(proof));
       let fence;
-      assert.deepEqual(prepareF16F17DecisionQuestion({application:app,scope:context,question:{prepare:(scope,options)=>{
+      assert.deepEqual(prepareDecision({application:app,scope:context,question:{prepare:(scope,options)=>{
         assert.equal(scope,context);assert.deepEqual(Object.keys(options),['assertCurrent']);fence=options.assertCurrent;
       }}}),proof);assert.equal(fence(),true);
-      assert.throws(()=>readF16F17DecisionScope(app,{...context,argumentsDigest:'f'.repeat(64)}),{code:'UNAUTHORIZED'});
-      assert.throws(()=>readF16F17DecisionScope(app,{...context,proposal:{toolName:'decision.choose_candidate',toolVersion:'1.0.0',arguments:{}}}),{code:'UNAUTHORIZED'});
+      assert.throws(()=>readDecision(app,{...context,argumentsDigest:'f'.repeat(64)}),{code:'UNAUTHORIZED'});
+      assert.throws(()=>readDecision(app,{...context,proposal:{toolName:'decision.choose_candidate',toolVersion:'1.0.0',arguments:{}}}),{code:'UNAUTHORIZED'});
       const key='coding-repair:host:'+proof.operationId,edge=app.runtime.loadCheckpoint(proof.parentTaskId,key);
       app.runtime.saveCheckpoint(proof.parentTaskId,key,{...edge,localTaskId:'foreign'});
-      assert.throws(()=>readF16F17DecisionScope(app,context),{code:'UNAUTHORIZED'});
+      assert.throws(()=>readDecision(app,context),{code:'UNAUTHORIZED'});
       assert.equal(fence(),false);
       app.runtime.saveCheckpoint(proof.parentTaskId,key,edge);
     }
@@ -93,7 +106,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
   const reviewTool={descriptor:{name:'workflow.host.f16_n04',version:'1.0.0',inputSchema:{type:'object',properties:{},additionalProperties:false},
     outputSchema:{type:'object'},sideEffect:'read',requiredScopes:['workspace:read'],idempotencySupport:false,recoverySupport:false,requiresPresence:false},
     execute:async()=>({noCheatingDetected:true,patchDigest:hash(patch),reviewRef:'synthetic-review'})};
-  const f16TestIntent=noReview?undefined:{tool:reviewTool,available:async()=>true,verifyReceipt:async({review})=>
+  const f16TestIntent=noReview?undefined:preservedAcceptance?'preserved-bytes':{tool:reviewTool,available:async()=>true,verifyReceipt:async({review})=>
     review.result.noCheatingDetected===true&&review.result.patchDigest===hash(patch)&&review.readback.task.state==='succeeded'};
   const image={bindingId:'synthetic-'+workflow+'-image',available:async()=>true,receiptSecret:async()=>'synthetic-secret-at-least-32-characters',
     async advance(request){requests.push(request);const index=request.checkpoint?Number(request.checkpoint.split(':')[1])+1:0;
@@ -114,6 +127,17 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
         proposals:[{kind:'tool_proposal',nodeId,operationId,proposalId:operationId,originControlRevision:request.controlRevision,
           inputDigest:hash(args),toolSchemaDigest:hash(descriptor.inputSchema),toolName,toolVersion:descriptor.version,
           arguments:args,resourceKeys:[],effect:descriptor.sideEffect==='read'?'read':'write'}]};}};
+  if(realEngine){
+    const secret=ownedComposition?'synthetic-shared-receipt-secret-123456789':'synthetic-secret-at-least-32-characters';
+    const engine=new OwnedWorkflowEngine({checkpointSecret:secret,externalHost:true,
+      decisionTool:{name:'decision.choose_candidate',version:'1.0.0'},receiptVerifier:createOwnedWorkflowReceiptVerifier({secret}),
+      prepareCandidates:async context=>[{id:'execute',description:'Synthetic original fixed node candidate',
+        value:context.node.kind==='tool'?{toolName:F16_F17_CONFIGURATIONS[workflow].nodes[context.node.id],toolVersion:'1.0.0',
+          arguments:context.node.id==='F16_N03'?context.input.patch:{recipeId:context.input.recipeId}}:
+          context.node.kind==='host'?{arguments:{}}:{legitimateFix:true}},
+        {id:'defer',description:'Synthetic abstain',value:{},abstain:true}]});
+    image.advance=async request=>{requests.push(request);return engine.advance(request);};
+  }
   async function source(scope,id,toolName,args){
     const request={commandId:'initial-'+id,toolName,toolVersion:'1.0.0',arguments:args,deadline:scope.deadline};
     const prepared=app.prepareHostToolTask(request);
@@ -166,7 +190,8 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
       if(!caseConfiguration.snapshot('F17').configured)caseConfiguration.setFromNativeSelection('F17',{selectionRef:'fixture',repository,recipeId:recipe.id});
       ports=createDesktopF16F17WorkflowPorts({runtimeModule,getApplication:()=>app,codingWorkspace,developerDeployment,caseConfiguration,
         authorizeExport:exportConsent});
-    }else ports=createF16F17WorkflowPorts({runtimeModule,getApplication:()=>app,workspace,authority,authorizeExport:authority.authorizeExport,f16TestIntent});
+    }else ports=createF16F17WorkflowPorts({runtimeModule,getApplication:()=>app,workspace,authority,authorizeExport:authority.authorizeExport,f16TestIntent,
+      ...(preservedAcceptance?{f16CiIdentityRecipe:'github-readback'}:{})});
     const tools=[decision,productionSources?developerHost.tools.find(tool=>tool.descriptor.name==='workspace.git.head'):gitTool,
       patchTool,...github,ports.commandTool,...ports.tools,publicRuntime.createDesktopSubagentDispatchTool({competitionOnly:true,
       getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scoped)=>app.runDefaultSubagentWorker(task,worker,scoped)})];
@@ -205,7 +230,8 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
           const body=JSON.parse(init.body),request=typeof body.query==='string'&&body.query.startsWith('{')?JSON.parse(body.query):{};
           assert.equal(url,'https://synthetic.agentarts.invalid/runtimes/f17-runtime/invocations'
             +(request.operation==='advance'?'?endpoint=fixed-f17-fixture':''));
-          const value=request.operation==='advance'?await image.advance({...request,requestId:init.headers['X-Request-Id']}):await coordination.execute(originalRequest);
+          const value=request.operation==='advance'?await image.advance({...request,requestId:init.headers['X-Request-Id'],
+            sessionId:init.headers['x-hw-agentarts-session-id'],deadline:init.headers['X-PA-Deadline'],signal:init.signal}):await coordination.execute(originalRequest);
           const {verification:_verification,...response}=value;
           return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(response),index:0}},
             {event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});
@@ -222,11 +248,14 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
         {idempotencyKey:'fixture-workflow',timeoutMs:120000});let child;
       for(let i=0;i<3000;i++){
         for(const task of app.runtime.listTasks({limit:100}).items)for(const approval of app.runtime.listApprovals({taskId:task.taskId,state:'pending'}).items){
-          const denied=denyNestedHead&&app.runtime.loadCheckpoint(task.taskId,'workflow-business-tool:source')
-            &&app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='workspace.git.head';
+          const name=app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName;
+          const denied=denyNestedHead&&app.runtime.loadCheckpoint(task.taskId,'workflow-business-tool:source')&&name==='workspace.git.head'
+            ||denyReview&&name==='workflow.host.f16_n04';
           await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:denied?'deny':'allow_once'});
         }
         [child]=app.readSubagentTasks(submitted.taskId);
+        if(denyReview&&child&&app.activeTaskCount===0&&app.runtime.listTasks({limit:100}).items.some(task=>
+          task.state==='cancelled'&&app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='workflow.host.f16_n04'))return child;
         if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))return child;
         await sleep();
       }throw Error('Configured fixture did not settle: '+JSON.stringify(child));
@@ -236,6 +265,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
 
 test('F16/F17 ports stay absent without real services and F16 requires an independent test intent verifier',()=>{
   assert.equal(createF16F17WorkflowPorts().configuredWorkflowWorkerPorts.length,0);
+  assert.deepEqual(createF16F17WorkflowPorts({f16CiIdentityRecipe:'replacement'}).unavailable,['f16_ci_identity_configuration_unavailable']);
   assert.ok(Object.isFrozen(F16_F17_CONFIGURATIONS.F17.inputSchema.properties));
 });
 
@@ -257,7 +287,7 @@ test('F17 production adapters consume native case, existing workspace commands a
   assert.equal(task.state,'succeeded',JSON.stringify(task.error));assert.equal(f.counters.command,2);
   assert.deepEqual(f.ports.configuredWorkflowWorkerPorts.map(port=>port.workflowId),['F17']);
   assert.equal(Object.hasOwn(f.ports.configuredWorkflowWorkerPorts[0],'image'),false);
-  assert.ok(f.ports.unavailable.includes('f16_test_intent_verifier_unavailable'));
+  assert.ok(f.ports.unavailable.includes('f16_ci_publication_tool_chain_unavailable'));
   const selected=f.app.runtime.loadCheckpoint(task.taskId,'f16-f17:configured-selection:F17');
   assert.equal(selected.selected.initialFailure.kind,'competition');
   assert.equal(selected.input.initialFailure.exitCode,1);assert.match(selected.input.initialFailure.stderr,/SyntaxError/);
@@ -265,6 +295,50 @@ test('F17 production adapters consume native case, existing workspace commands a
   const reportTask=f.app.runtime.listTasks({limit:100}).items.find(value=>f.app.runtime.loadCheckpoint(value.taskId,'f17:failure-report:synthetic-F17_N04'));
   assert.ok(reportTask);assert.ok(f.exports.some(value=>value.stage==='completion'));
   await f.reopen();assert.equal(f.app.runtime.getTask(task.taskId).state,'succeeded');assert.equal(f.counters.command,2);
+});
+
+test('F17 actual owned Engine selects every executable node through the shared configured question proof',async t=>{
+  const f=await fixture(t,{productionSources:true,ownedComposition:true,realEngine:true}),task=await f.run();
+  assert.equal(task.state,'succeeded',JSON.stringify(task.error));assert.equal(f.counters.command,2);
+  const decisions=f.app.runtime.listTasks({limit:100}).items.filter(task=>f.app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='decision.choose_candidate');
+  assert.equal(decisions.length,3,'N02, N03 and N04 use original Policy children');
+  assert.ok(f.exports.some(value=>value.stage==='completion'));await f.reopen();assert.equal(f.counters.command,2);
+});
+
+test('F16 actual Engine consumes production byte verifier and original GitHub run/job identity without parsing local stdout',async t=>{
+  // Local commit is an explicit synthetic publication boundary, not a remote push or CI trigger.
+  const f=await fixture(t,{workflow:'F16',preservedAcceptance:true,realEngine:true}),task=await f.run();
+  assert.equal(f.ports.configuredWorkflowWorkerPorts.find(port=>port.workflowId==='F16').configurationVersion,'f16-desktop-v3-bytes');
+  assert.equal(task.state,'succeeded',JSON.stringify(task.error));assert.equal(f.counters.command,1);
+  const tasks=f.app.runtime.listTasks({limit:100}).items;
+  const review=tasks.find(task=>f.app.runtime.loadCheckpoint(task.taskId,'f16:test-intent-review'));
+  assert.equal(f.app.runtime.loadCheckpoint(review.taskId,'f16:test-intent-review').policy,'unchanged-acceptance-bytes-v1');
+  const command=tasks.find(task=>f.app.runtime.loadCheckpoint(task.taskId,'f16:ci-readback-identity'));
+  const original=f.app.readHostToolTask(command.taskId).confirmed;
+  assert.match(original.result.stdout,/Local check only/);assert.equal(original.result.exitCode,0);
+  assert.equal(f.app.runtime.loadCheckpoint(command.taskId,'f16:ci-readback-run').run.runId,9);
+  await f.reopen();assert.equal(f.counters.command,1);assert.equal(f.app.runtime.getTask(task.taskId).state,'succeeded');
+});
+
+test('F16 passing local command without a published repaired commit cannot become GitHub success',async t=>{
+  const f=await fixture(t,{workflow:'F16',preservedAcceptance:true,realEngine:true,noPublication:true}),task=await f.run();
+  assert.equal(task.state,'failed');assert.match(task.error.message,/f16_ci_publication_required/);
+  assert.equal(f.exports.filter(value=>value.stage==='completion').length,0);assert.equal(f.counters.command,1);
+});
+
+test('F16 original acceptance bytes are rechecked after export consent is awaited',async t=>{
+  const f=await fixture(t,{workflow:'F16',preservedAcceptance:true,realEngine:true,
+    exportMutation:async({value,root})=>{if(value.stage==='receipt'&&value.value.result?.policy==='unchanged-acceptance-bytes-v1')
+      await writeFile(join(root,'failure.test.mjs'),'// removed original tests\n');}}),task=await f.run();
+  assert.equal(task.state,'failed');assert.equal(f.counters.command,0);assert.match(task.error.message,/acceptance bytes/);
+});
+
+test('F16 production acceptance reviewer still requires its original Policy approval',async t=>{
+  const f=await fixture(t,{workflow:'F16',preservedAcceptance:true,realEngine:true,denyReview:true}),task=await f.run();
+  assert.equal(task.state,'waiting_approval');assert.equal(f.counters.command,0);
+  const review=f.app.runtime.listTasks({limit:100}).items.find(task=>f.app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='workflow.host.f16_n04');
+  assert.ok(review);assert.equal(review.state,'cancelled');assert.equal(f.app.runtime.loadCheckpoint(review.taskId,'f16:test-intent-review'),undefined);
+  assert.ok(f.app.runtime.readToolExecutions(review.taskId).every(record=>record.executionStarted!==true));
 });
 
 test('F17 image-free ports execute through the original AgentArts composition owned image and fixed deployment',async t=>{

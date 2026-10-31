@@ -65,6 +65,35 @@ test('API document settings invoke native selection with the fixed sample recipe
   ui.render({nodeConfigured:false});assert.equal(ui.fields['f20-configure'].disabled,true);
 });
 
+test('F16/F17 case controls consume host selectionRef and availability without accepting paths or granting execution',async t=>{
+  const calls=[],ui=harness(t,async(action,input)=>{calls.push({action,input});return {coding:{configured:true,f16f17:{
+    [input.workflowId]:{configured:true,selectionRef:'<case & original>'},unavailable:['原失败回执尚未取得']}}};});
+  ui.render();assert.equal(ui.fields['f16-select'].disabled,true);assert.equal(ui.fields['f17-select'].disabled,true);
+  for(const workflowId of ['F16','F17']){
+    ui.render({f16f17:{[workflowId]:{configured:false},unavailable:[]}});
+    await ui.click(workflowId.toLowerCase()+'-select');
+    assert.deepEqual(calls.at(-1),{action:'coding.f16f17.select',input:{workflowId}});
+    assert.match(ui.fields[workflowId.toLowerCase()+'-state'].textContent,/<case & original>.*宿主报告不可用.*原失败回执/);
+  }
+  ui.render({f16f17:{F16:{configured:true,selectionRef:'fixed'},unavailable:[]}});
+  assert.match(ui.fields['f16-state'].textContent,/执行时核对原失败来源与许可/);
+  assert.doesNotMatch(ui.fields['f16-state'].textContent,/已授权|运行成功|可用/);
+  ui.render({f16f17:{F16:{configured:true,selectionRef:'ci'},F17:{configured:true,selectionRef:'test'},
+    unavailable:['f16_ci_publication_tool_chain_unavailable']}});
+  assert.match(ui.fields['f16-state'].textContent,/GitHub CI 的流程尚未就绪/);
+  assert.doesNotMatch(ui.fields['f17-state'].textContent,/宿主报告不可用|f16_/);
+  ui.render({configured:false,f16f17:{F16:{configured:false},unavailable:[]}});assert.equal(ui.fields['f16-select'].disabled,true);
+});
+
+test('case selection keeps the original host snapshot when native selection fails or returns an unconfirmed response',async t=>{
+  let reply;const ui=harness(t,()=>reply);
+  ui.render({f16f17:{F17:{configured:true,selectionRef:'original'},unavailable:[]}});
+  reply=undefined;await ui.click('f17-select');assert.match(ui.fields['f17-state'].textContent,/original/);
+  assert.match(ui.fields.status.textContent,/未获确认/);
+  reply=Promise.reject(Error('synthetic picker failure'));await ui.click('f17-select');
+  assert.match(ui.fields['f17-state'].textContent,/original/);assert.match(ui.fields.status.textContent,/未完成/);
+});
+
 test('workspace settled actions restore keyboard position only while origin remains valid and undisturbed',async t=>{
   let resolve,reject;const calls=[],ui=harness(t,action=>{calls.push(action);return new Promise((yes,no)=>{resolve=yes;reject=no;});});
   for(const name of ['select','revoke'])for(const outcome of ['success','failure','invalid']){

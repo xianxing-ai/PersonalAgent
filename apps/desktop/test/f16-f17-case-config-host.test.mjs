@@ -34,12 +34,26 @@ test('F17 native case picker persists only configuration and rejects substituted
 
 test('F17 native picker refuses oversized/link sources and unavailable secure storage',async t=>{
   const base=resolve('.cache/f16-f17');await mkdir(base,{recursive:true});const root=await mkdtemp(join(base,'selection-'));
-  t.after(()=>rm(root,{recursive:true,force:true}));let selected;
-  const options={userData:root,safeStorage:{isEncryptionAvailable:()=>false},
+  t.after(()=>rm(root,{recursive:true,force:true}));let selected,encrypted=false;
+  const options={userData:root,safeStorage:{isEncryptionAvailable:()=>encrypted,
+    encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()},
     readWorkspace:()=>({bindingId:'binding',rootPath:root,command:{recipeIds:['npm-test']},available:()=>true}),selectFile:async()=>selected};
   const host=createF16F17CaseConfiguration(options),selection={selectionRef:'project',repository:'xianxing-ai/PersonalAgent',recipeId:'npm-test'};
   assert.throws(()=>host.setFromNativeSelection('F17',selection));
+  encrypted=true;
   selected=join(root,'large');await writeFile(selected,Buffer.alloc(256*1024+1));await assert.rejects(host.selectFromNativeDialog('F17'));
   const target=join(root,'case');await writeFile(target,JSON.stringify(selection));selected=join(root,'link');
-  await symlink(target,selected);await assert.rejects(host.selectFromNativeDialog('F17'));
+  let fileLink=false;
+  try{await symlink(target,selected);fileLink=true;}catch(error){
+    // Windows ordinary users may lack SeCreateSymbolicLinkPrivilege. Only this
+    // unavailable fixture primitive is replaced; the rejection test continues.
+    if(process.platform!=='win32'||error.code!=='EPERM')throw error;
+  }
+  if(fileLink)await assert.rejects(host.selectFromNativeDialog('F17'),{code:'UNSUPPORTED_CAPABILITY'});
+  const directory=join(root,'original-parent'),linked=join(root,'linked-parent');await mkdir(directory);
+  await writeFile(join(directory,'case.json'),JSON.stringify(selection));
+  await symlink(directory,linked,process.platform==='win32'?'junction':'dir');
+  selected=linked;await assert.rejects(host.selectFromNativeDialog('F17'),{code:'UNSUPPORTED_CAPABILITY'});
+  selected=join(linked,'case.json');await assert.rejects(host.selectFromNativeDialog('F17'),{code:'UNSUPPORTED_CAPABILITY'});
+  selected=join(directory,'case.json');assert.deepEqual(await host.selectFromNativeDialog('F17'),{configured:true,selectionRef:'project'});
 });
