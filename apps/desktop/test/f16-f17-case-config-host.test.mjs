@@ -57,3 +57,20 @@ test('F17 native picker refuses oversized/link sources and unavailable secure st
   selected=join(linked,'case.json');await assert.rejects(host.selectFromNativeDialog('F17'),{code:'UNSUPPORTED_CAPABILITY'});
   selected=join(directory,'case.json');assert.deepEqual(await host.selectFromNativeDialog('F17'),{configured:true,selectionRef:'project'});
 });
+
+test('F16 native case requires explicit new restricted branch publication and accepts no Git evidence or credentials',async t=>{
+  const base=resolve('.cache/f16-f17');await mkdir(base,{recursive:true});const root=await mkdtemp(join(base,'f16-case-'));
+  t.after(()=>rm(root,{recursive:true,force:true}));
+  const host=createF16F17CaseConfiguration({userData:root,safeStorage:{isEncryptionAvailable:()=>true,
+    encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()},
+    readWorkspace:()=>({bindingId:'original',rootPath:root,command:{recipeIds:['npm-test']},available:()=>true})});
+  const selection={selectionRef:'original-ci',repository:'owner/restricted-test',recipeId:'npm-test',headSha:'a'.repeat(40),runId:7,jobId:8,
+    patch:{path:'src/main.js',expectedSha256:'b'.repeat(64),edits:[{oldText:'a-b',newText:'a+b'}]}};
+  assert.throws(()=>host.setFromNativeSelection('F16',selection));
+  for(const publication of [{branch:'main',createNewBranch:true},{branch:'repair/a..b',createNewBranch:true},
+    {branch:'repair/exact',createNewBranch:false},{branch:'repair/exact',createNewBranch:true,token:'injected'},
+    {branch:'repair/exact',createNewBranch:true,verificationRunId:'invented'}])
+    assert.throws(()=>host.setFromNativeSelection('F16',{...selection,publication}));
+  assert.deepEqual(host.setFromNativeSelection('F16',{...selection,publication:{branch:'repair/exact',createNewBranch:true}}),
+    {configured:true,selectionRef:'original-ci'});
+});
