@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {ProtocolError,validateContract,validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError,isToolNotStartedError,validateContract,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext,ToolDescriptor,ToolHost} from '@personal-agent/contracts';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {CallToolResultSchema,ListToolsResultSchema,ToolListChangedNotificationSchema} from '@modelcontextprotocol/sdk/types.js';
@@ -77,7 +77,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
   function diagnostic(stage:Parameters<NonNullable<RemoteReadonlyMcpOptions['onDiagnostic']>>[0]){try{options?.onDiagnostic?.(stage);}catch{/* Diagnostics do not control execution. */}}
   function receipt(query:RemoteMcpRunQuery){
     let value:RemoteMcpRunReceipt|undefined;
-    try{value=options?.readRunReceipt?.(query);}catch(error){fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
+    try{value=options?.readRunReceipt?.(query);}catch(error){if(isToolNotStartedError(error))throw error;fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
     if(!value)return undefined;
     if(value.argumentsDigest!==query.argumentsDigest)fail('REVISION_CONFLICT');
     if(!['confirmed','failed','unknown'].includes(value.state))fail('EXTERNAL_FAILURE');
@@ -237,7 +237,7 @@ export function createRemoteReadonlyMcpHost(input?:RemoteReadonlyMcpOptions){
     });
   }
   const tools:readonly RegisteredTool[]=descriptor?[{descriptor:structuredClone(descriptor),execute:async(value,context)=>{
-    try{return await execute(value,context);}catch(error){diagnostic('failed');fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
+    try{return await execute(value,context);}catch(error){diagnostic('failed');if(isToolNotStartedError(error))throw error;fail(error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE');}
   }}]:[];
   return {tools,health,start,stop,verifyDirectory,
     async setEnabled(value:boolean){if(disposed)fail('UNSUPPORTED_CAPABILITY');enabled=value;if(!value)await stop();else if(state==='disabled')state=options?'disconnected':'unavailable';return health();},

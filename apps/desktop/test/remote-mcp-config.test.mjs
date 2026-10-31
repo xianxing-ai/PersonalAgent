@@ -169,16 +169,16 @@ test('directory recheck withdraws a silently changed service before tool executi
 test('a failed Runtime record after execution started remains an unknown remote outcome',async t=>{
   const s=setup(t),f=await fixture({requiredAuthorization:`Bearer ${token}`});s.config.configure(input());
   let args;
-  const record={evidenceId:'run',toolName:descriptor.name,toolVersion:'2.0.0',state:'failed',executionStarted:true,policyDecision:'allow'};
+  const record={evidenceId:'host-tool-task',toolName:descriptor.name,toolVersion:'2.0.0',state:'failed',executionStarted:true,policyDecision:'allow'};
   const runtime={readToolExecutions:()=>[record],loadCheckpoint:(_id,key)=>key==='host-tool-intent'
     ?{toolName:record.toolName,toolVersion:record.toolVersion,arguments:args}:undefined,
     matchesToolExecutionInput:()=>true};
   const host=createDesktopRemoteMcpHost({config:s.config,fetch:f.fetch,confirmConnection:async()=>true,readRuntime:()=>runtime});
   try{
     await host.connect({signal:signal(),deadline:future()});args=host.arguments({key:'public'});
-    await assert.rejects(host.tools[0].execute(args,{taskId:'task',runId:'run',scopes:descriptor.requiredScopes,signal:signal(),deadline:future()}),rejected('RESULT_UNKNOWN'));
+    await assert.rejects(host.tools[0].execute(args,{taskId:'task',runId:record.evidenceId,scopes:descriptor.requiredScopes,signal:signal(),deadline:future()}),rejected('RESULT_UNKNOWN'));
     record.executionStarted=false;
-    await assert.rejects(host.tools[0].execute(args,{taskId:'task',runId:'run',scopes:descriptor.requiredScopes,signal:signal(),deadline:future()}),rejected('EXTERNAL_FAILURE'));
+    await assert.rejects(host.tools[0].execute(args,{taskId:'task',runId:record.evidenceId,scopes:descriptor.requiredScopes,signal:signal(),deadline:future()}),rejected('EXTERNAL_FAILURE'));
     assert.equal(f.calls().length,0);
   }finally{await host.dispose();await f.close();}
 });

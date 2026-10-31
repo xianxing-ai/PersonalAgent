@@ -1,4 +1,4 @@
-import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError,ToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 import {createBoundRemoteReadonlyMcpHost,remoteMcpArgumentsDigest} from '@personal-agent/mcp';
 
 function fail(code){throw new ProtocolError(code,'远程 MCP 尚未连接、配置已变更或本次会话未获确认');}
@@ -14,14 +14,17 @@ export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>fa
     enabled:false,onDiagnostic:stage=>{if(stage==='failed')diagnosticFailed=true;else {diagnosticStage=stage;diagnosticFailed=false;}},...(fetch?{fetch}:{}),
     ...(readRuntime?{readRunReceipt(query){
       const runtime=readRuntime();if(!runtime)fail('UNSUPPORTED_CAPABILITY');
-      const record=runtime.readToolExecutions(query.taskId).find(item=>item.evidenceId===query.runId);
+      const records=runtime.readToolExecutions(query.taskId);
+      const record=records.find(item=>item.evidenceId===query.runId);
       if(!record)fail('UNAUTHORIZED');
       const loop=runtime.loadCheckpoint(query.taskId,'competition-loop');
-      const pending=Number.isSafeInteger(loop?.step) && loop.step>0
-        && query.runId===`competition-tool-${query.taskId}-${loop.step}` ? loop.pending : undefined;
-      const intent=runtime.loadCheckpoint(query.taskId,'host-tool-intent')
-        ?? (query.runId.startsWith(`competition-tool-${query.taskId}-`)
-          ? runtime.loadCheckpoint(query.taskId,`application-tool-invocation:${query.runId}`) ?? pending : undefined);
+      const readIntent=runId=>runId===`host-tool-${query.taskId}`
+        ? runtime.loadCheckpoint(query.taskId,'host-tool-intent')
+        : runId.startsWith(`competition-tool-${query.taskId}-`)
+          ? runtime.loadCheckpoint(query.taskId,`application-tool-invocation:${runId}`)
+            ?? (Number.isSafeInteger(loop?.step) && loop.step>0 && runId===`competition-tool-${query.taskId}-${loop.step}` ? loop.pending : undefined)
+          : undefined;
+      const intent=readIntent(query.runId);
       if(record.toolName!==selected.tool.descriptor.name || record.toolVersion!==selected.tool.descriptor.version
         || !intent || intent.toolName!==record.toolName || intent.toolVersion!==record.toolVersion
         || intent.arguments.bindingRef!==service.tools[0].descriptor.inputSchema.properties.bindingRef.const
@@ -36,7 +39,21 @@ export function createDesktopRemoteMcpHost({config,confirmConnection=async()=>fa
       // Runtime failure after execution began does not establish whether the
       // remote server received or completed the request.
       if(record.state==='failed')return {argumentsDigest,state:record.executionStarted?'unknown':'failed'};
-      if(record.state==='started' && record.executionStarted && record.policyDecision==='allow' && runtime.isToolExecutionActive(record))return undefined;
+      if(record.state==='started' && record.executionStarted && record.policyDecision==='allow' && runtime.isToolExecutionActive(record)){
+        // A new run/connection/configuration is not reconciliation of an earlier
+        // unconfirmed operation. The original Runtime input remains the anchor;
+        // confirmed reads, different inputs and independent tasks are new work.
+        for(const previous of records){
+          if(previous.evidenceId===query.runId || previous.toolName!==record.toolName
+            || !previous.executionStarted || previous.state==='confirmed' || previous.reconciliationOutcome==='not_applied')continue;
+          const original=readIntent(previous.evidenceId);
+          if(!original || original.toolName!==previous.toolName || original.toolVersion!==previous.toolVersion
+            || !runtime.matchesToolExecutionInput(previous,{arguments:original.arguments,scopeRef:previous.evidenceId}))fail('REVISION_CONFLICT');
+          if(remoteMcpArgumentsDigest(original.arguments.arguments)===query.argumentsDigest)
+            throw new ToolNotStartedError('REVISION_CONFLICT','原远程 MCP 操作尚未核实，不能换用新的 run 重发');
+        }
+        return undefined;
+      }
       return {argumentsDigest,state:'unknown'};
     }}:{}),
   }:undefined);

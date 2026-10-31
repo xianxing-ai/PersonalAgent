@@ -2,6 +2,16 @@
 
 目标 Profile：`huawei_ict_agentarts`；基线 `f0ba7d347075480a5850626ed1cebd1c22d08624`；状态 `in_progress`，接口 `provisional`。
 
+## 2026-10-31：未知原操作跨 run 重发修复
+
+PR #530 的审查缺陷可复现：同一 Runtime 任务中，远端收到原调用后丢失响应，断开重连并以新 run 和新 Policy 许可调用相同参数，会再次向服务发送请求。原实现仅按 taskId/runId 查回执，新的 run 看不到原操作的未确认结果。
+
+Desktop 现在复用原 Runtime 的持久执行记录、输入摘要及调用 checkpoint，在新 run 分派前关联同任务、同名工具的相同业务参数；原调用已开始且未确认、未证明未执行时拒绝新分派。关联不包含会话 nonce 或当前配置引用，因此重连、SQLite 重启及重新配置不能抹掉原义务。原记录与参数不符时拒绝，不能从缺失 checkpoint 推断可重发。未分派的新 run 保留受信 `ToolNotStartedError` 身份，由 Runtime 记为未执行；不把拒绝本身伪造为另一次远端未知操作。没有新增数据库、公共 wire Schema 或授权机制。
+
+新增 `tests/integration/remote-mcp-operation-runtime.test.mjs` 经实际 SQLite、Policy、ToolGateway 和本机合成 HTTP 服务验证：关闭关联检查时断言失败（新 run 返回 `ok`），修复后 1/1 通过；覆盖断连重连、Runtime/配置重建、配置 revision 变化、原 run 参数替换、原回执不变及未分派标记。已确认后的新查询、不同输入及独立任务仍可执行，不进行全局参数去重。历史真实 Cloudflare 未知操作未重试；本轮第三方 MCP/AgentArts 调用为 0。
+
+此修复只完成本地重发边界，不证明未知原操作已经核实，也不替代第三方工具、真人授权、Electron 或 AgentArts 真实验收。下文保留历史测试及当时的限制。
+
 ## 本次增量
 
 `apps/desktop/electron/remote-mcp-management.js` 的原任务读回只向管理窗口返回 taskId、任务状态、工具身份、审批状态和已确认 Evidence 引用，不返回原始业务参数或原始 MCP 结果。原对话授权卡、Runtime 任务/回执和工具结果持久化不变；本变更不新增授权、数据库或公共 wire 接口。

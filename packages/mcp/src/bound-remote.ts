@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError,isToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext,ToolHost} from '@personal-agent/contracts';
 import type {SecretStorePort} from '@personal-agent/connector-host';
 import {canonical,createRemoteReadonlyMcpHost} from './remote.js';
@@ -95,6 +95,7 @@ export function createBoundRemoteReadonlyMcpHost(input?:BoundRemoteReadonlyMcpOp
     try{assertCurrent(signal);const result=await action();assertCurrent(signal);return result;}
     catch(error){
       if(base.health().state==='error' && base.health().errorCode==='REVISION_CONFLICT')revoke('REVISION_CONFLICT');
+      if(!revokedCode && !signal.aborted && isToolNotStartedError(error))throw error;
       fail(revokedCode??(signal.aborted?'CANCELLED':error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE'));
     }
   }
