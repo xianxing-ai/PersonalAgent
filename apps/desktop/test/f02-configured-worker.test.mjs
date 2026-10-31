@@ -13,18 +13,18 @@ const schema=properties=>({type:'object',additionalProperties:false,required:Obj
 // Actual delegated worker, Runtime, Policy, HostBridge and card service. Cloud
 // image, ASR/device/independent acoustic verifier and business service are Fake.
 async function fixture(t,{acoustic=true,forgeSettled=false,unknown=false,denyExport=false,replaceInput=false,cancelAtPlayback=false,cancelAtTranscript=false,revokeAtTranscript=false,alterOriginalInput=false}={}){
-  let app,questions,source,question,steps=0,calls=0,playbackStarted=false,transcriptRead=false,revoked=false;const exports=[],transcript='Synthetic final user audio';
+  let app,questions,source,question,voiceTime,steps=0,calls=0,playbackStarted=false,transcriptRead=false,revoked=false;const exports=[],transcript='Synthetic final user audio';
   const business={descriptor:{name:'fixture.voice.operation',version:'1.0.0',sideEffect:'local_write',requiredScopes:['fixture:write'],
     inputSchema:schema({value:{const:'original'}}),outputSchema:schema({done:{const:true}}),requiresPresence:false,idempotencySupport:false,recoverySupport:false},
     execute:async()=>{calls++;if(unknown)throw Object.assign(Error('Synthetic accepted, result unknown'),{code:'RESULT_UNKNOWN'});return {done:true};}};
   const final=binding=>{transcriptRead=true;if(cancelAtTranscript||revokeAtTranscript)return undefined;
     const receipt=question?{...binding,sessionId:'synthetic-voice',utteranceId:'synthetic-utterance',text:transcript,
     transcriptDigest:createHash('sha256').update(transcript).digest('hex'),source:'live_input_audio',phase:'final',origin:'user',
-    echo:'unknown',questionPlaybackVerified:false,startedAt:new Date(Date.now()-200).toISOString(),completedAt:new Date(Date.now()-100).toISOString(),expiresAt:question.expiresAt}:undefined;
+    echo:'unknown',questionPlaybackVerified:false,startedAt:new Date(voiceTime-200).toISOString(),completedAt:new Date(voiceTime-100).toISOString(),expiresAt:question.expiresAt}:undefined;
     return receipt&&factory.authorizeFinalRead(binding,receipt)?receipt:undefined;
   };
-  const live={askCurrentQuestion:()=>{playbackStarted=true;return {state:'queued',questionId:question.questionId,questionRevision:1};},
-    readQuestionDelivery:()=>cancelAtPlayback?undefined:({sessionId:'synthetic-voice',drainId:'synthetic-drain',completedAt:new Date(Date.now()-300).toISOString(),playbackVerified:false}),
+  const live={askCurrentQuestion:()=>{playbackStarted=true;voiceTime??=Date.now();return {state:'queued',questionId:question.questionId,questionRevision:1};},
+    readQuestionDelivery:()=>cancelAtPlayback?undefined:({sessionId:'synthetic-voice',drainId:'synthetic-drain',completedAt:new Date(voiceTime-300).toISOString(),playbackVerified:false}),
     readFinalUserAudio:final,readFinalCaptureEvidence:binding=>({sessionId:'synthetic-voice',utteranceId:'synthetic-utterance',
       transcriptDigest:final(binding)?.transcriptDigest,capture:{synthetic:true}})};
   const authorization=new Proxy({},{get(_target,name){return (...args)=>questions[name](...args);}});
@@ -40,6 +40,7 @@ async function fixture(t,{acoustic=true,forgeSettled=false,unknown=false,denyExp
         questions.respond({questionId:question.questionId,expectedRevision:question.revision,decision:'allow_once'},question.conversationId);
         await until(()=>['succeeded','waiting_reconciliation','failed'].includes(app.runtime.getTask(source.taskId).state));
         if(alterOriginalInput){
+          assert.equal(app.runtime.getTask(source.taskId).state,'succeeded','substitute only after the original effect is confirmed');
           const key='application-tool-invocation:host-tool-'+source.taskId,original=app.runtime.loadCheckpoint(source.taskId,key);
           app.runtime.saveCheckpoint(source.taskId,key,{...original,arguments:{value:'substituted'}});
         }
