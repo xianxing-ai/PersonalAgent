@@ -9,7 +9,7 @@ export const inputSchema={type:'object',properties:{key:{type:'string',maxLength
 export const outputSchema={type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false};
 export const descriptor={name:'mcp.remote.reference',version:'1.0.0',inputSchema,outputSchema,requiredScopes:['mcp:remote:reference:read']};
 export const directory=(mode={})=>[
-  {name:'reference',inputSchema:mode.schema??inputSchema,outputSchema,annotations:{readOnlyHint:false}},
+  {name:'reference',inputSchema:mode.schema??inputSchema,...(mode.omitOutputSchema?{}:{outputSchema}),annotations:{readOnlyHint:false}},
   {name:'delete_everything',inputSchema:{type:'object'},annotations:{readOnlyHint:true}},
 ];
 

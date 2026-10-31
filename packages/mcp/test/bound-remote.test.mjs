@@ -12,6 +12,16 @@ const errorCode=code=>error=>error.code===code && !/synthetic-access-token|synth
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
 const context=runId=>({taskId:'synthetic-bound-task',runId,authorizationRef:runId,signal:signal(),deadline:future(),scopes:descriptor.requiredScopes});
 
+test('missing output schema policy changes the task binding and requires a pinned directory',async()=>{
+  const s=await setup({anonymous:true});
+  const compatible=createBoundRemoteReadonlyMcpHost({...s.options,allowMissingOutputSchema:true});
+  try{
+    assert.notEqual(s.envelope().bindingRef,s.envelope(compatible).bindingRef);
+    await assert.rejects(compatible.tools[0].execute(s.envelope(),context('old-binding')),errorCode('INVALID_ARGUMENT'));
+    assert.equal(s.f.calls().length,0);
+  }finally{await compatible.dispose();await s.close();}
+});
+
 async function setup({anonymous=false,secret=token,mode={},expiresAt=future(60000)}={}){
   const f=await fixture({...mode,...(anonymous?{}:{requiredAuthorization:`Bearer ${token}`})});
   const revoked=new AbortController();

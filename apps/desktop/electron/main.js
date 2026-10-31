@@ -114,9 +114,10 @@ import {prepareNativeDesktopComponent,nativeDesktopExecutable} from './native-de
 import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
-import {createRemoteMcpConfig} from './remote-mcp-config.js';
-import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
+import {createRemoteMcpCompetitionComposition} from './remote-mcp-competition.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
+import {createRemoteMcpRegistry} from './remote-mcp-registry.js';
+import {createDesktopRemoteMcpServices} from './remote-mcp-services.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createPublicReferenceQuestionConsent} from './public-reference-question.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
@@ -322,7 +323,7 @@ let memoryLearningHost,learningApplication,learningStore;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
 let installedSkillsHost;
-let remoteMcpConfig,remoteMcpHost,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
+let remoteMcpConfig,remoteMcpHost,remoteMcpServices,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
 let voiceInput;
@@ -2430,7 +2431,7 @@ async function initializeRuntime() {
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
-        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
+        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2461,6 +2462,8 @@ async function initializeRuntime() {
       // unregistered; engine reports unavailable (no Fake ASR / silent success).
       const voiceFinalTranscript = resolveDesktopVoiceFinalTranscript();
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
+      const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
+        readApplication:()=>runtimeApplication,question:authorizationQuestionPort});
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         wikiImport:wikiImportHost.runtimeOptions,
@@ -2609,11 +2612,13 @@ async function initializeRuntime() {
             .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
+          ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
+          await remoteMcpCompetition.prepare(scope);
           if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
           if(phase==='preflight'&&(/^computer\.desktop\./u.test(proposal?.toolName??'')||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
           await computerVisionHost?.prepareExport(scope);
@@ -2665,8 +2670,8 @@ async function initializeRuntime() {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
-          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
+            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability]})),
+          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -4612,12 +4617,14 @@ app.whenReady().then(async () => {
   });
 
   if(competitionMode) {
-    remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
-    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    const registry=createRemoteMcpRegistry({userData:app.getPath('userData'),safeStorage});
+    remoteMcpServices=await createDesktopRemoteMcpServices({registry,readRuntime:()=>runtimeApplication?.runtime,
+      confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    ({config:remoteMcpConfig,host:remoteMcpHost}=remoteMcpServices.get('legacy'));
     remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
       confirmAuthorization:request=>confirmApplicationAuthorization('remoteMcp.configure',request.payload,request),
       focusAuthorizationQuestion:focusRemoteMcpAuthorizationQuestion,
-      config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
+      config:remoteMcpConfig,host:remoteMcpHost,services:remoteMcpServices,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
       namespace:desktopHost.userNamespace,onUpdate:publish});
   }
   agentArtsModels=createAgentArtsModelSettings({configuration:agentArtsConfig,readCatalog:async({deadline,signal})=>{
@@ -4787,7 +4794,7 @@ app.whenReady().then(async () => {
       event.preventDefault();
       if(!remoteMcpClosing) {
         remoteMcpManagement.close();
-        remoteMcpClosing=remoteMcpHost.dispose().then(()=>{remoteMcpConfig.dispose();remoteMcpClosed=true;app.quit();})
+        remoteMcpClosing=remoteMcpServices.dispose().then(()=>{remoteMcpClosed=true;app.quit();})
           .catch(()=>{remoteMcpClosing=undefined;reportQuitFailure('远程 MCP 关闭未确认，请先断开连接后再退出');});
       }
       return;

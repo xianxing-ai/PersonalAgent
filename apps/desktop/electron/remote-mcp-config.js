@@ -1,7 +1,7 @@
 import {existsSync,mkdirSync,readFileSync,renameSync,unlinkSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {ProtocolError,validateContract} from '@personal-agent/contracts';
+import {ProtocolError,validateContract,validateToolValue} from '@personal-agent/contracts';
 
 const uuid=value=>typeof value==='string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(value);
 const exact=(value,allowed,required=allowed)=>value && typeof value==='object' && !Array.isArray(value)
@@ -11,7 +11,8 @@ const token=value=>typeof value==='string' && value.length>0 && value.length<=81
 const date=value=>text(value,64) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString()===value;
 function fail(code){throw new ProtocolError(code,'远程 MCP 配置操作未完成，请检查本机安全存储或重新装配');}
 function connection(value){
-  if(!exact(value,['endpoint','server','tool','directoryDigest']) || !text(value.endpoint,2048)
+  if(!exact(value,['endpoint','server','tool','directoryDigest','allowMissingOutputSchema','publicExport'],['endpoint','server','tool','directoryDigest']) || !text(value.endpoint,2048)
+    || (value.allowMissingOutputSchema!==undefined && typeof value.allowMissingOutputSchema!=='boolean')
     || !exact(value.server,['name','version']) || !text(value.server.name,256) || !text(value.server.version,128)
     || !exact(value.tool,['remoteName','descriptor']) || !text(value.tool.remoteName,256)
     || !exact(value.tool.descriptor,['name','version','inputSchema','outputSchema','requiredScopes'])
@@ -22,6 +23,13 @@ function connection(value){
     || value.tool.descriptor.inputSchema?.type!=='object' || value.tool.descriptor.outputSchema?.type!=='object'
     || !value.tool.descriptor.requiredScopes?.length)throw Error();
   validateContract('tool',{...value.tool.descriptor,sideEffect:'read',requiresPresence:false,idempotencySupport:true,recoverySupport:false});
+  if(value.publicExport!==undefined){
+    const policy=value.publicExport;
+    if(!exact(policy,['sensitivity','arguments','maxBytes']) || policy.sensitivity!=='PUBLIC'
+      || !Number.isSafeInteger(policy.maxBytes) || policy.maxBytes<1 || policy.maxBytes>16384
+      || value.tool.descriptor.outputSchema.properties?.text?.type!=='string')throw Error();
+    validateToolValue(value.tool.descriptor.inputSchema,policy.arguments);
+  }
   return structuredClone({...value,endpoint:endpoint.href});
 }
 function validSaved(value){
@@ -66,7 +74,7 @@ export function createRemoteMcpConfig({userData,safeStorage}){
       if(closed)fail('UNSUPPORTED_CAPABILITY');
       let value;
       try{
-        if(!exact(input,['endpoint','server','tool','directoryDigest','credential'],['endpoint','server','tool','directoryDigest']))throw Error();
+        if(!exact(input,['endpoint','server','tool','directoryDigest','credential','allowMissingOutputSchema','publicExport'],['endpoint','server','tool','directoryDigest']))throw Error();
         const {credential,...settings}=input,normalized=connection(settings);
         if(credential!==undefined && (!exact(credential,['token','expiresAt']) || !token(credential.token) || !date(credential.expiresAt) || Date.parse(credential.expiresAt)<=Date.now()))throw Error();
         if(saved?.revision===Number.MAX_SAFE_INTEGER)throw Error();

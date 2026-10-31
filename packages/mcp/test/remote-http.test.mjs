@@ -1,16 +1,51 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createRequire} from 'node:module';
-import {createRemoteReadonlyMcpHost} from '../dist/index.js';
+import {createRemoteReadonlyMcpHost,remoteMcpDirectoryDigest} from '../dist/index.js';
 import {ToolGateway,toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
-import {fixture,endpoint,descriptor} from './remote-http-fixture.mjs';
+import {fixture,endpoint,descriptor,directory} from './remote-http-fixture.mjs';
 
 const future=(ms=5000)=>new Date(Date.now()+ms).toISOString();
 const signal=()=>new AbortController().signal;
 const context=runId=>({taskId:'synthetic-remote-task',runId,authorizationRef:runId,signal:signal(),deadline:future(),scopes:descriptor.requiredScopes});
 const invocation=(runId,key='public')=>({...context(runId),toolName:descriptor.name,toolVersion:descriptor.version,arguments:{key}});
 const denied=code=>error=>error.code===code && !/private diagnostic|Bearer|synthetic-session/.test(error.message);
+
+test('missing remote output schema requires explicit host policy and still validates structured output',async()=>{
+  const f=await fixture({omitOutputSchema:true});
+  const options={endpoint,server:{name:'synthetic-reference',version:'1.0.0'},tool:{remoteName:'reference',descriptor},enabled:true,fetch:f.fetch,
+    expectedDirectoryDigest:remoteMcpDirectoryDigest(directory({omitOutputSchema:true}))};
+  const strict=createRemoteReadonlyMcpHost(options);
+  const compatible=createRemoteReadonlyMcpHost({...options,allowMissingOutputSchema:true});
+  assert.throws(()=>createRemoteReadonlyMcpHost({...options,expectedDirectoryDigest:undefined,allowMissingOutputSchema:true}),denied('INVALID_ARGUMENT'));
+  assert.throws(()=>createRemoteReadonlyMcpHost({...options,allowMissingOutputSchema:'true'}),denied('INVALID_ARGUMENT'));
+  const gateway=new ToolGateway({policy:new InMemoryAuthorizationPolicy()});
+  try{
+    await assert.rejects(strict.start({signal:signal(),deadline:future()}),denied('PROTOCOL_MISMATCH'));
+    await compatible.start({signal:signal(),deadline:future()});compatible.register(gateway);
+    await assert.rejects(gateway.invoke(invocation('missing-schema-denied')),denied('UNAUTHORIZED'));
+    assert.equal(f.calls().length,0);
+    assert.deepEqual(await compatible.tools[0].execute({key:'public'},context('valid-output')),{text:'public synthetic reference'});
+    f.mode.result={content:[{type:'text',text:'untrusted text'}]};
+    await assert.rejects(compatible.tools[0].execute({key:'public'},context('unstructured-output')),denied('EXTERNAL_FAILURE'));
+    await assert.rejects(compatible.tools[0].execute({key:'public'},context('unstructured-output')),denied('RESULT_UNKNOWN'));
+    f.mode.result={content:[],structuredContent:{text:3}};
+    await assert.rejects(compatible.tools[0].execute({key:'public'},context('invalid-output')),denied('PROTOCOL_MISMATCH'));
+    f.mode.omitOutputSchema=false;
+    await assert.rejects(compatible.tools[0].execute({key:'public'},context('changed-directory')),denied('REVISION_CONFLICT'));
+    assert.equal(f.calls().length,3);
+  }finally{await strict.dispose();await compatible.dispose();await f.close();}
+});
+
+test('explicit missing-schema policy cannot accept a conflicting advertised schema',async()=>{
+  const f=await fixture();
+  const conflicting={...descriptor,outputSchema:{type:'object',properties:{other:{type:'string'}},required:['other']}};
+  const host=createRemoteReadonlyMcpHost({endpoint,server:{name:'synthetic-reference',version:'1.0.0'},tool:{remoteName:'reference',descriptor:conflicting},
+    enabled:true,fetch:f.fetch,expectedDirectoryDigest:remoteMcpDirectoryDigest(directory()),allowMissingOutputSchema:true});
+  try{await assert.rejects(host.start({signal:signal(),deadline:future()}),denied('PROTOCOL_MISMATCH'));assert.equal(f.calls().length,0);}
+  finally{await host.dispose();await f.close();}
+});
 
 test('SDK sends queued before cancellation cannot issue HTTP after the operation has ended',async()=>{
   const {StreamableHTTPClientTransport}=createRequire(import.meta.url)('@modelcontextprotocol/sdk/client/streamableHttp.js');
