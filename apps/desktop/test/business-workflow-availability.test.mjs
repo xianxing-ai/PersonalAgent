@@ -9,15 +9,17 @@ test('business availability binds actual account revision and notification polic
     notificationHost:{snapshot:()=>({available:active}),getInterruptionPolicy:()=>policy},
     readCalendarBinding:()=>binding,deviceAvailable:()=>device});
   const scope={taskId:'Synthetic',signal:new AbortController().signal};
-  const todo=read('F06',scope),calendar=read('F07',scope),reschedule=read('F11',scope);
+  const todo=read('F06',scope),calendar=read('F07',scope),reschedule=read('F11',scope),notification=read('F12',scope);
+  assert.equal(notification.ready,true);
   assert.equal(todo.ready,true);assert.equal(calendar.ready,true);assert.match(calendar.bindingId,/^[a-f0-9]{64}$/);
   assert.equal(reschedule.ready,true);assert.notEqual(reschedule.bindingId,calendar.bindingId);
   binding={...binding,revision:2};assert.notEqual(read('F07',scope).bindingId,calendar.bindingId);
   assert.notEqual(read('F11',scope).bindingId,reschedule.bindingId);
   policy={revision:2};assert.notEqual(read('F06',scope).bindingId,todo.bindingId);
   allowed=false;assert.equal(read('F06',scope).ready,false);assert.equal(read('F11',scope).ready,false);allowed=true;
-  device=false;assert.equal(read('F06',scope).ready,false);device=true;
+  device=false;assert.equal(read('F06',scope).ready,false);
+  assert.equal(read('F12',scope).ready,true);assert.notEqual(read('F12',scope).bindingId,notification.bindingId);device=true;
   binding=undefined;assert.equal(read('F07',scope).ready,false);assert.equal(read('F11',scope).ready,false);
   assert.equal(read('F08',scope).ready,false);assert.equal(read('F06',{...scope,signal:AbortSignal.abort()}).ready,false);
-  active=false;assert.equal(read('F06',scope).ready,false);
+  active=false;assert.equal(read('F06',scope).ready,false);assert.equal(read('F12',scope).ready,false);
 });

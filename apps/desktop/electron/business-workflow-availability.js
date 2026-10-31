@@ -22,6 +22,12 @@ export function createBusinessWorkflowAvailability({namespace,getApplication,tod
           return {ready:false};
         return {ready:true,bindingId:hash({namespace,workflowId,binding})};
       }
+      if(workflowId==='F12'){
+        if(notificationHost?.snapshot().available!==true)return {ready:false};
+        // The original host owns item-scoped policy and actual device outcomes.
+        // A local digest remains readable when native banners are unsupported.
+        return {ready:true,bindingId:hash({namespace,workflowId,bannerSupported:deviceAvailable()===true})};
+      }
       return {ready:false};
     }catch{return {ready:false};}
   };

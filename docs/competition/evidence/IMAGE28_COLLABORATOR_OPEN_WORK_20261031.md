@@ -18,9 +18,10 @@
 | 共用调用链 | 原图 host/business child 的精确预检、统一出机卡、configured decision 来源验证已接 Main | 固定本轮镜像的真实整链 |
 | F02 | Live/capture/原问题卡的工厂已接同一 Runtime/image | 真实声学证据、ASR 与同一回合设备验收 |
 | F06/F07 | 实际图引擎、原待办调度/投递与原日历读写工厂已接 Main；未来提醒和重启去重已验证 | 原账号/云/Windows 通知联合验收 |
-| F08/F12 | 真发送/归档及通知口已实现 | 完整配置 worker 消费面及账号读回 |
+| F08 | 真发送/归档口已实现 | 完整配置 worker 消费面及账号读回 |
+| F12 | 原 feed/策略、单条通知投递和显式 digest 的 configured worker 已接 Main，真实 availability 与原 N02 唯一注册已验证 | 真实归来事件、语音、多条 batch、Windows banner 与云整图 |
 | F11 | 完整显式改期方案已接同一图引擎/Main，日历与原提醒独立审批、原 revision 条件更新 | 缺决定的语音补问、天气来源、真实账号/云验收 |
-| F13/F14 | 原系统采样与浏览器设备工厂正在接 Main；原卡及同一输入租约保持 | F13 云/配额/确认恢复 provider；F14 字段竞态读回和真实设备整图 |
+| F13/F14 | 原系统采样与浏览器设备工厂已接 Main；原卡、同一输入租约、实际引擎和提交前字段竞态拒绝已验证 | F13 云/配额/确认恢复 provider；F14 真实设备整图 |
 | F16/F17 | F17 原失败命令/HEAD 观测、case 原生选择和 Main 已接；UI 与 F16 原字节/CI 身份校验已集成 | F16 提交/推送/触发新 CI 的生产链及受限真实仓库验收 |
 | F20 | 固定 TS 检查器、原 trial/恢复端口、case UI 和 Main 已接 | 原生隔离实机、真人签名与固定云图联合验收 |
 | F24 | 原 knowledge writer journal/readback/finalize 工厂、原父任务核实/继续入口已接 Main 与对话，本地受控文件丢失回执后零重写通过 | 真实原会话/云联合验收及其余业务效果类型 |

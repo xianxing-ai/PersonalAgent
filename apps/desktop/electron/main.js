@@ -2547,11 +2547,13 @@ async function initializeRuntime() {
       f14Workflow=agentArtsPinned?createF14WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         browserHost:browserControlHost,computerControlLease,authorizationQuestions:authorizationQuestionHost,
         authorizeExport:authorizeWorkflowExport}):undefined;
+      const businessHostNames=new Set((businessWorkflow?.tools??[]).map(tool=>tool.descriptor.name));
+      const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!businessHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
-        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...(workflowGraphComposition.tools??[]),
+        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
         ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),

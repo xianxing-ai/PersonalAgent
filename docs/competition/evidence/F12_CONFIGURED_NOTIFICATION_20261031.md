@@ -12,7 +12,7 @@
 
 Runtime 新公开 `createRuntimeF12ConfiguredReadHosts`；原 delivery factory 仅增加原持久 suppressed 结果的读回支持及可选结果复核 callback。Desktop 实际注入精确 feed/round/Policy 复核；所有 receipt 与 completion 出口在异步许可前后重新核验。未知结果不标记成功，原设备失败返回 `notificationState:'failed',delivered:false`。
 
-Main 集成须注入原 NotificationApplicationHost 单例和真实用户/设备 availability，优先本工厂的受绑定 N02，避免旧 graph composition 的固定 productivity N02 占同名工具。工厂不提前读取尚未 bind 的 runtimeHost。原 settings 工具仍只用于受信 UI 设置命令，不以模型工具目录投影其 nullable Schema 来授予设置权。
+Main 已注入原 NotificationApplicationHost 单例和真实用户/设备 availability，优先本工厂的受绑定 N02，过滤旧 graph composition 同名工具，避免固定 productivity N02 占用实际条目范围。无原生 banner 设备时仍可读取 digest；实际投递结果由原宿主确认。工厂不提前读取尚未 bind 的 runtimeHost。原 settings 工具仍只用于受信 UI 设置命令，不以模型工具目录投影其 nullable Schema 来授予设置权。
 
 ## 验证与缺项
 
@@ -21,3 +21,5 @@ Main 集成须注入原 NotificationApplicationHost 单例和真实用户/设备
 未完成项：真实用户归来事件生产来源、通知语音渠道、多条合并 batch 的领域内容/逐项绑定、真实 Windows banner、真实云整图及评测。缺归来事件时不把 on_return 方法存在当作来源证明；on_return/scheduled 不在本 worker 请求 Schema 中，条件能力保持 unavailable。单条 ready batch 不存在时保持 unavailable，不绕过原 digest/pause 队列。独立 read ack 仍归既有 UI 原操作，查询不代替它。
 
 本地验证：F12 实际组合 **14/14**；含 F06/F07/F11 真实引擎及工厂回归 **40/40**；既有通知应用/SQLite/原端口组 **30/30**（其中包括本增量首轮 10 项）；AgentArts **242/242**；AgentArts/Runtime 构建、架构门禁 **3/3** 和 diff 检查通过。日志在本工作树忽略目录 `.cache/pr531-business/f12-business-regression.log`、`f12-runtime-boundaries.log`、`f12-agentarts-tests.log`、`f12-architecture.log`。根集成分支承担最终全仓 check。本记录不表示 F12 全完成或 #531 已可合并。
+
+根集成工作树 `.worktrees/pr531-integration` 的 AgentArts/Runtime 构建与 F12/F14/真实 availability 定向 **37/37** 通过（`.cache/integration-f12-targeted.log`），包含原设备缺失时 digest 可读、宿主关闭及设备绑定变化检查。OS 和云端仍是上文列出的未验收项。
