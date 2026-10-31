@@ -130,6 +130,19 @@ test('F06 todo write and notification deliver enforce trusted bindings',async()=
   await assert.rejects(deliver.tools[0].execute({notification:{id:'other'}},f5.context),{code:'UNAUTHORIZED'});
 });
 
+test('F06 explicit reminder time reaches todo.create and its original schedule is persisted',async()=>{
+  const args={todoTitle:'Reminder',due:'2026-11-01T10:00:00.000Z',remindUtc:'2026-11-01T09:00:00.000Z'};
+  const f=hostFixture('F06','F06_N03','workflow.host.f06_n03',args),scheduleId='todo-reminder:todo-1:'+args.remindUtc;
+  const write=createRuntimeF06TodoWriteHost({...f,verifyWriteBinding:async()=>true,
+    invokeTodoCreate:async(_scope,input)=>{assert.deepEqual(input,{title:args.todoTitle,dueUtc:args.due,remindUtc:args.remindUtc});
+      return {item:{id:'todo-1',revision:1},reminderTrigger:{scheduleId}};}});
+  await write.tools[0].execute(args,f.context);
+  assert.equal(f.application.runtime.loadCheckpoint('parent','f06:n03-todo:session').reminderScheduleId,scheduleId);
+  const missing=createRuntimeF06TodoWriteHost({...f,verifyWriteBinding:async()=>true,
+    invokeTodoCreate:async()=>({item:{id:'todo-1',revision:1},reminderTrigger:null})});
+  await assert.rejects(missing.tools[0].execute(args,f.context),{code:'RESULT_UNKNOWN'});
+});
+
 test('F07 calendar freshness compares trusted live source version',async()=>{
   const f=hostFixture('F07','F07_N04','workflow.host.f07_n04');
   const setArgs=args=>{const deadline=f.context.deadline;
@@ -228,16 +241,21 @@ test('F12 quiet hours and delivery require trusted notification ports',async()=>
   let saved;
   deliverFixture.application.readHostToolTask=()=>({commandId:'operation',toolName:'workflow.host.f12_n04',task:{state:'succeeded'},
     confirmed:{runId:'host-tool-child',evidenceRefs:['host-tool-child'],result:saved}});
-  const host={beginDelivery:()=>undefined,completeDelivery:()=>undefined};
+  let receipt={state:'unknown',evidenceRefs:[]};
+  const host={getInterruptionRound:()=>({attempts:{banner:receipt}})};
   let binding=true;
   const deliver=createRuntimeF12NotificationDeliverHost({...deliverFixture,notificationHost:host,
     verifyDeliveryBinding:async()=>binding,
-    resolveDeliveryReceipt:async()=>({state:'unknown',evidenceRefs:[]})});
+    resolveDeliveryReceipt:async()=>structuredClone(receipt)});
+  await assert.rejects(deliver.tools[0].execute(args,deliverFixture.context),{code:'RESULT_UNKNOWN'});
+  receipt={state:'delivered',evidenceRefs:['device-receipt-r1']};
   saved=await deliver.tools[0].execute(args,deliverFixture.context);
-  assert.deepEqual(saved,{delivered:false,roundId:'r1'});
+  assert.deepEqual(saved,{delivered:true,roundId:'r1'});
   await deliver.authorizeReceipt({context:deliverFixture.context,result:saved});
-  await assert.rejects(deliver.authorizeReceipt({context:deliverFixture.context,result:{delivered:true,roundId:'r1'}}),{code:'UNAUTHORIZED'});
+  await assert.rejects(deliver.authorizeReceipt({context:deliverFixture.context,result:{delivered:false,roundId:'r1'}}),{code:'UNAUTHORIZED'});
   await assert.rejects(deliver.tools[0].execute({...args,itemId:'other'},deliverFixture.context),{code:'UNAUTHORIZED'});
+  host.getInterruptionRound=()=>undefined;
+  await assert.rejects(deliver.tools[0].execute(args,deliverFixture.context),{code:'RESULT_UNKNOWN'});
   binding=false;
   await assert.rejects(deliver.tools[0].execute(args,deliverFixture.context),{code:'UNAUTHORIZED'});
 });

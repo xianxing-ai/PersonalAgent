@@ -54,20 +54,20 @@ export function createRuntimeF12QuietHoursHost(options?:{
   return {tools:[tool],unavailable:null};
 }
 
-/** F12_N04: delivery uses NotificationHost begin/complete; delivered only on explicit receipt state. */
+/** F12_N04: the device host persists begin/complete before and after the effect. Read it back here. */
 export function createRuntimeF12NotificationDeliverHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
-  notificationHost:Pick<RuntimeNotificationHost,'beginDelivery'|'completeDelivery'>;
+  notificationHost:Pick<RuntimeNotificationHost,'getInterruptionRound'>;
   requiredScopes:readonly string[];
   verifyDeliveryBinding:(scope:Scope,input:{roundId:string;itemId:string;channel:NotificationChannel})=>Promise<boolean>;
-  /** Trusted desktop/device readback; must not assume delivery from beginDelivery alone. */
+  /** Uses the existing durable device delivery port, then reads the original attempt; unknown must not resend. */
   resolveDeliveryReceipt:(scope:Scope,input:{roundId:string;itemId:string;channel:NotificationChannel},context:ToolContext)=>Promise<{state:'delivered'|'unknown'|'failed';evidenceRefs:readonly string[]}>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:{delivered:boolean;roundId:string})=>Promise<boolean>;
   now:()=>Date;
 }):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
-  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'||typeof options.notificationHost?.beginDelivery!=='function'
-    ||typeof options.notificationHost.completeDelivery!=='function'||typeof options.resolveDeliveryReceipt!=='function'
+  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'||typeof options.notificationHost?.getInterruptionRound!=='function'
+    ||typeof options.resolveDeliveryReceipt!=='function'
     ||!Array.isArray(options.requiredScopes)||!options.requiredScopes.length
     ||typeof options.verifyDeliveryBinding!=='function'||typeof options.assertCurrent!=='function'
     ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
@@ -90,8 +90,10 @@ export function createRuntimeF12NotificationDeliverHost(options?:{
       const receipt=await options.resolveDeliveryReceipt(scope,bound,context);active(context,input);
       if(!receipt||!['delivered','unknown','failed'].includes(receipt.state)||!Array.isArray(receipt.evidenceRefs))
         failOwnedHost('UNSUPPORTED_CAPABILITY','F12 delivery receipt unavailable');
-      host.beginDelivery({roundId:bound.roundId,channel:bound.channel});
-      host.completeDelivery({roundId:bound.roundId,channel:bound.channel,state:receipt.state,evidenceRefs:receipt.evidenceRefs});
+      const attempt=host.getInterruptionRound(bound.roundId)?.attempts[bound.channel];
+      if(!attempt||attempt.state!==receipt.state||!isDeepStrictEqual(attempt.evidenceRefs,receipt.evidenceRefs))
+        failOwnedHost('RESULT_UNKNOWN','F12 original durable device receipt unavailable');
+      if(receipt.state==='unknown')failOwnedHost('RESULT_UNKNOWN','F12 original device delivery requires reconciliation');
       active(context,input);
       return {delivered:receipt.state==='delivered',roundId:bound.roundId};
     }});

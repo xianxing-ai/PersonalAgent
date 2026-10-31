@@ -17,7 +17,7 @@ export interface F11CalendarChangeGuardOptions {
 }
 const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0&&v.length<=1024;
 
-/** Guard for a future F11_N05 implementation. This never invokes a write or
+/** Guard for F11_N05. This never invokes a write or
  * registers a graph node. Call only with a binding resolved by trusted host. */
 export async function verifyF11ConfirmedCalendarAndReminder(options:F11CalendarChangeGuardOptions|undefined,
   scope:OwnedWorkflowHostScope,binding:F11CalendarChangeBinding):Promise<{calendarUpdated:true;oldTrafficAlarmVoided:true}> {

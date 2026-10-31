@@ -12,7 +12,7 @@ const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0;
 export function createRuntimeF07CalendarFreshnessHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
   requiredScopes:readonly string[];
-  readSourceVersion:(scope:Scope)=>Promise<string>;
+  readSourceVersion:(scope:Scope,context:ToolContext,phase:'execute'|'before_export'|'after_export')=>Promise<string>;
   /** Check the version at read against the same graph's original confirmed calendar read. */
   verifyReadBinding:(scope:Scope,input:{calendarVersionAtRead:string;calendarVersionNow:string})=>Promise<boolean>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
@@ -28,11 +28,12 @@ export function createRuntimeF07CalendarFreshnessHost(options?:{
   const active=(context:ToolContext,args?:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F07',nodeId:'F07_N04',
     hostToolName:'workflow.host.f07_n04',proposalArguments:args??(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown}|undefined)?.arguments,
     assertCurrent:options.assertCurrent,now:options.now});
-  const check=async(scope:Scope,context:ToolContext,input:{calendarVersionAtRead:string;calendarVersionNow:string})=>{
+  const check=async(scope:Scope,context:ToolContext,input:{calendarVersionAtRead:string;calendarVersionNow:string},
+    phase:'execute'|'before_export'|'after_export'='execute')=>{
     if(!text(input.calendarVersionAtRead)||!text(input.calendarVersionNow))failOwnedHost('INVALID_ARGUMENT','F07 calendar version arguments invalid');
     if(await options.verifyReadBinding(scope,input)!==true)failOwnedHost('UNAUTHORIZED','F07 original calendar read binding unavailable');
     active(context,input);
-    const live=await options.readSourceVersion(scope);active(context,input);
+    const live=await options.readSourceVersion(scope,context,phase);active(context,input);
     if(!text(live))failOwnedHost('UNSUPPORTED_CAPABILITY','F07 calendar source version unavailable');
     const versionConsistent=input.calendarVersionAtRead===input.calendarVersionNow&&input.calendarVersionNow===live;
     return {versionConsistent,sourceVersion:live};
@@ -49,12 +50,12 @@ export function createRuntimeF07CalendarFreshnessHost(options?:{
     if(saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f07_n04'||saved.task.state!=='succeeded'
       ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)
       ||!isDeepStrictEqual(saved.confirmed.result,result))failOwnedHost('UNAUTHORIZED','F07 original freshness receipt unavailable');
-    const latest=await check(scope,context,args);
+    const latest=await check(scope,context,args,'before_export');
     if(!isDeepStrictEqual(latest,result))failOwnedHost('REVISION_CONFLICT','F07 calendar changed before receipt export');
     if(await options.authorizeExport(scope,structuredClone(result) as {versionConsistent:boolean;sourceVersion:string})!==true)
       failOwnedHost('UNAUTHORIZED','F07 calendar freshness export denied');
     active(context,args);
-    if(!isDeepStrictEqual(await check(scope,context,args),result))
+    if(!isDeepStrictEqual(await check(scope,context,args,'after_export'),result))
       failOwnedHost('REVISION_CONFLICT','F07 calendar changed while authorizing receipt export');
   }};
 }

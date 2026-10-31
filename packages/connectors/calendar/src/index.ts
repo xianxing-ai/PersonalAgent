@@ -1,4 +1,6 @@
 import { ProtocolError } from '@personal-agent/contracts';
+import {calendarSnapshotVersion} from './snapshot-version.js';
+export {calendarSnapshotVersion} from './snapshot-version.js';
 import type { RegisteredTool, ToolDescriptor, ToolHost } from '@personal-agent/contracts';
 import { CalendarConnector, CALENDAR_CONNECTOR_VERSION } from './connector.js';
 import { CalendarService, eventToItem } from './service.js';
@@ -47,6 +49,7 @@ const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
     },
     hasMore: {type: 'boolean'},
     nextCursor: {type: 'string'},
+    sourceVersion: {type: 'string',pattern:'^calendar-window-sha256:[a-f0-9]{64}$'},
   },
 };
 
@@ -166,6 +169,7 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         window: page.window,
         hasMore: page.hasMore,
         nextCursor: page.hasMore ? encodePageCursor(page.window.fromUtc, page.window.toUtc, Number(page.nextCursor)) : '',
+        ...(!page.hasMore&&!raw.cursor?{sourceVersion:calendarSnapshotVersion(page.window,page.items)}:{}),
       };
     },
   };

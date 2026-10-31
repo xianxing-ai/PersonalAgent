@@ -13,10 +13,10 @@ export function createRuntimeF06TodoWriteHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
   /** Trusted composition must invoke todo.create through the original Runtime,
    * Policy and ToolGateway, with a stable operation identity and readback. */
-  invokeTodoCreate:(scope:Scope,input:{title:string;dueUtc?:string},context:ToolContext)=>Promise<unknown>;
+  invokeTodoCreate:(scope:Scope,input:{title:string;dueUtc?:string;remindUtc?:string},context:ToolContext)=>Promise<unknown>;
   requiredScopes:readonly string[];
   /** Must prove this write matches the graph operation idempotency key. */
-  verifyWriteBinding:(scope:Scope,input:{todoTitle:string;due?:string})=>Promise<boolean>;
+  verifyWriteBinding:(scope:Scope,input:{todoTitle:string;due?:string;remindUtc?:string})=>Promise<boolean>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:{todoId:string;opKey:string})=>Promise<boolean>;
   now:()=>Date;
@@ -27,35 +27,43 @@ export function createRuntimeF06TodoWriteHost(options?:{
     ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
     return {tools:[],unavailable:'f06_todo_write_trusted_ports_unavailable'};
   const {application}=options,runtime=application.runtime,requiredScopes=[...options.requiredScopes];
-  const active=(context:ToolContext,input:{todoTitle:string;due?:string})=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F06',nodeId:'F06_N03',
+  const active=(context:ToolContext,input:{todoTitle:string;due?:string;remindUtc?:string})=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F06',nodeId:'F06_N03',
     hostToolName:'workflow.host.f06_n03',proposalArguments:input,assertCurrent:options.assertCurrent,now:options.now});
-  const write=async(scope:Scope,context:ToolContext,input:{todoTitle:string;due?:string})=>{
-    if(!text(input.todoTitle)||input.due!==undefined&&!text(input.due))failOwnedHost('INVALID_ARGUMENT','F06 todo write arguments invalid');
+  const write=async(scope:Scope,context:ToolContext,input:{todoTitle:string;due?:string;remindUtc?:string})=>{
+    if(!text(input.todoTitle)||input.due!==undefined&&!text(input.due)
+      ||input.remindUtc!==undefined&&!text(input.remindUtc))failOwnedHost('INVALID_ARGUMENT','F06 todo write arguments invalid');
     if(await options.verifyWriteBinding(scope,input)!==true)failOwnedHost('UNAUTHORIZED','F06 todo write lacks original graph binding');
     active(context,input);
-    const payload:{title:string;dueUtc?:string}={title:input.todoTitle};
+    const payload:{title:string;dueUtc?:string;remindUtc?:string}={title:input.todoTitle};
     if(input.due!==undefined)payload.dueUtc=input.due;
+    // A due date is not permission to create a reminder. Preserve only the explicit reminder time.
+    if(input.remindUtc!==undefined)payload.remindUtc=input.remindUtc;
     const created=await options.invokeTodoCreate(scope,payload,context);
     active(context,input);
     if(!plain(created)||!plain(created.item)||!text(created.item.id))failOwnedHost('EXTERNAL_FAILURE','Todo write receipt unavailable');
     const revision=created.item.revision;
     if(!Number.isSafeInteger(revision)||Number(revision)<1)
       failOwnedHost('EXTERNAL_FAILURE','Todo write revision unavailable');
+    const trigger=created.reminderTrigger;
+    if(input.remindUtc!==undefined&&(!plain(trigger)||!text(trigger.scheduleId)))
+      failOwnedHost('RESULT_UNKNOWN','Created todo reminder receipt unavailable');
     // Persist the exact N03 identity for F06_N04 reminder binding; never invent reminders.
     runtime.saveCheckpointOnce(scope.parentTaskId,'f06:n03-todo:'+scope.sessionId,{
-      sessionId:scope.sessionId,operationId:scope.operationId,todoId:created.item.id,revision});
+      sessionId:scope.sessionId,operationId:scope.operationId,todoId:created.item.id,revision,
+      ...(plain(trigger)&&text(trigger.scheduleId)?{reminderScheduleId:trigger.scheduleId}:{})});
     const bound=runtime.loadCheckpoint(scope.parentTaskId,'f06:n03-todo:'+scope.sessionId) as
-      {sessionId?:string;operationId?:string;todoId?:string;revision?:number}|undefined;
+      {sessionId?:string;operationId?:string;todoId?:string;revision?:number;reminderScheduleId?:string}|undefined;
     if(bound?.sessionId!==scope.sessionId||bound.operationId!==scope.operationId||bound.todoId!==created.item.id
-      ||bound.revision!==revision)failOwnedHost('REVISION_CONFLICT','F06 todo write binding changed');
+      ||bound.revision!==revision||bound.reminderScheduleId!==(plain(trigger)&&text(trigger.scheduleId)?trigger.scheduleId:undefined))
+      failOwnedHost('REVISION_CONFLICT','F06 todo write binding changed');
     return {todoId:created.item.id as string,opKey:scope.operationId};
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F06_N03',kind:'host',sideEffect:'local_write',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,required:['todoTitle'],properties:{
-      todoTitle:{type:'string',minLength:1,maxLength:200},due:{type:'string'}}},
+      todoTitle:{type:'string',minLength:1,maxLength:200},due:{type:'string'},remindUtc:{type:'string'}}},
     outputSchema:{type:'object',additionalProperties:false,required:['todoId','opKey'],properties:{
       todoId:{type:'string'},opKey:{type:'string'}}},
-    async execute(input,context){const args=input as {todoTitle:string;due?:string};return write(active(context,args),context,args);}});
+    async execute(input,context){const args=input as {todoTitle:string;due?:string;remindUtc?:string};return write(active(context,args),context,args);}});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
     const parent=runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId?:string;operationId?:string}|undefined;
     const intent=parent?.taskId&&parent.operationId?runtime.loadCheckpoint(parent.taskId,'owned-workflow:intent:'+parent.operationId) as {proposal?:{arguments?:unknown}}|undefined:undefined;
