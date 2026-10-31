@@ -7,7 +7,7 @@ import {attachExactExports} from './developer-deployment-config.js';
 import {connectorResultProjectionSchema} from './connector-result-projection.js';
 
 const MAIL_ACCOUNT='desktop-qq-inbox';
-const MAIL_TOOLS=new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send']);
+const MAIL_TOOLS=new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send','mail.send','mail.archive']);
 const CALENDAR_TOOLS=new Set(['calendar.events','calendar.create','calendar.update','calendar.cancel']);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','连接器配置或本次任务许可已失效');};

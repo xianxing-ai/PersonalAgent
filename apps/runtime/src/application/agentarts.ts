@@ -16,6 +16,7 @@ import {createRuntimeOwnedWorkflowImageAdapter} from './owned-workflow-image-ada
 import {createRuntimeWikiImportHost} from './wiki-import.js';
 import type {RuntimeWikiImportOptions,RuntimeWikiImportHost} from './wiki-import.js';
 import {createAgentArtsWikiModel} from './wiki-image-adapter.js';
+import type {RuntimeConfiguredWorkflowOptions} from './configured-workflow-worker.js';
 import {
   createAgentArtsObservationHost,
   type AgentArtsObservationAuthorization,
@@ -78,6 +79,8 @@ export interface AgentArtsRuntimeApplicationOptions
    * A fully configured `f09WorkflowWorker` on RuntimeApplicationOptions still wins.
    */
   f09WorkflowWorkerPorts?: Omit<RuntimeF09WorkflowWorkerOptions,'image'>;
+  /** Trusted per-graph ports share the fixed AgentArts image; absent deployment stays unavailable. */
+  configuredWorkflowWorkerPorts?: readonly Omit<RuntimeConfiguredWorkflowOptions,'image'>[];
   fetchHandlesHostAuthorization?:true;
   wikiImport?:RuntimeWikiImportOptions;
   /** Trusted observation read-back authorization; real reads need an AK/SK signer,
@@ -128,6 +131,7 @@ export function createAgentArtsRuntimeApplication(
     beforeCompetitionSend,
     readOwnedWorkflowReceiptSecret,
     f09WorkflowWorkerPorts,
+    configuredWorkflowWorkerPorts,
     fetchHandlesHostAuthorization,
     wikiImport,
     observationAuthorization,
@@ -222,6 +226,8 @@ export function createAgentArtsRuntimeApplication(
   const f09FromPorts=ownedImage&&f09WorkflowWorkerPorts
     ?{...f09WorkflowWorkerPorts,image:ownedImage} satisfies RuntimeF09WorkflowWorkerOptions:undefined;
   const f09WorkflowWorker=runtimeOptions.f09WorkflowWorker??(runtimeF09WorkflowWorkerConfigured(f09FromPorts)?f09FromPorts:undefined);
+  const configuredWorkflowWorkers=[...(runtimeOptions.configuredWorkflowWorkers??[]),
+    ...(ownedImage?(configuredWorkflowWorkerPorts??[]).map(ports=>({...ports,image:ownedImage})):[])];
   const wikiModel=wikiImport?createAgentArtsWikiModel({gatewayUrl,runtimeName,authorizationProvider,
     ...(deploymentVersion===undefined?{}:{deploymentVersion}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
     ...(transport?{transport}:{}),...(websocketUrl?{websocketUrl}:{}),...(websocketFactory?{websocketFactory}:{}),
@@ -238,6 +244,7 @@ export function createAgentArtsRuntimeApplication(
     profile: 'huawei_ict_agentarts',
     ...(runtimeOptions.codingRepair?{}:ownedImage?{codingRepair:{image:ownedImage}}:{}),
     ...(f09WorkflowWorker?{f09WorkflowWorker}:{}),
+    ...(configuredWorkflowWorkers.length?{configuredWorkflowWorkers}:{}),
     ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.

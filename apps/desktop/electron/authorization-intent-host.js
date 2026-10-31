@@ -7,7 +7,7 @@ export const AUTHORIZATION_INTENT_ACTIONS=Object.freeze([
   'skill.install','skill.enable','skill.uninstall','skill.run','reference.catalog','reference.source',
   'knowledge.session','knowledge.configure','knowledge.read','knowledge.catalog','workflow.enable','workflow.delete','facts.erase','feeds.classify',
   'mail.review.configure','computer.observation.configure',
-  'remoteMcp.configure','knowledge.pair','voice.capture','developer.export','harness.export',
+  'remoteMcp.configure','knowledge.pair','voice.capture','developer.export','harness.export','workflow.export',
 ]);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','原授权操作已失效');};
