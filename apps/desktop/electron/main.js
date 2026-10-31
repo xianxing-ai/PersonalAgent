@@ -125,6 +125,7 @@ import {createNativePublicReferenceConsent} from './public-reference-consent.js'
 import {createPublicReferenceQuestionConsent} from './public-reference-question.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createF20WorkflowWorkerPorts} from './f20-workflow-worker-ports.js';
+import {prepareWorkflowHostPreflight} from './workflow-host-preflight.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
@@ -2529,6 +2530,7 @@ async function initializeRuntime() {
       // unregistered; engine reports unavailable (no Fake ASR / silent success).
       const voiceFinalTranscript = resolveDesktopVoiceFinalTranscript();
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
+      let prepareWorkflowToolExport;
       const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
         readApplication:()=>runtimeApplication,question:authorizationQuestionPort});
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
@@ -2669,7 +2671,8 @@ async function initializeRuntime() {
         tools: conversationTools,
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
-        requestToolAuthorization:scope=>{
+        requestToolAuthorization:async scope=>{
+          await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
           if(/^(?:computer\.desktop\.|computer\.request_access$|computer\.vision\.|browser\.)/.test(scope.toolName))computerTasks.add(scope.taskId);
           authorizationIntentHost.prepareQuestion(scope);
           calendarMeetingHost?.prepareAuthorization?.(scope);
@@ -2688,7 +2691,7 @@ async function initializeRuntime() {
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_|workflow\.host\.f09_)/u.test(scope.toolName),
-        prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
+        prepareCompetitionToolExport:prepareWorkflowToolExport=async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
           await remoteMcpCompetition.prepare(scope);
           if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
