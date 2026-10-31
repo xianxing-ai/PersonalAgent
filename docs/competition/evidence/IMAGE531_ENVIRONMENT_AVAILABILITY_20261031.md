@@ -14,6 +14,8 @@
 
 产品 Live/SIS 真实识别、同一问题回合的播放/最终转写、WinForms 目视与独立真人签名仍未验收。
 
+2026-10-31 12:59:30 UTC，另通过仓库 `p5-device-native-receipt.mjs` 的一次性验收入口，调用真实 Electron Notification 发送公开合成提醒。`Notification.isSupported()` 为 true，原生 `show` 事件得到 `delivered=true`，原回执已保存；case 为 `p5-native-case-pr531-20261031`，未重复发送。该探针使用隔离 userData 和本地夹具存储，不调用账号/云；`userRead=unobserved`、`runtimeToolEvidenceVerified=false`，不视作 F12 原图投递或用户已读。入口准备期间的启动顺序与夹具接口错误发生于投递前，修正后仅产生一次设备投递。回执在集成树 `.cache/pr531-native-notification/receipt.json`。
+
 ## 真实 Edge 与原执行链
 
 2026-10-31 12:46:52 UTC，在集成 `46ca9165` 运行仓库已有 `apps/desktop/test/browser-control-runtime-acceptance.mjs`，真实可见 Edge、独立浏览器配置、本地合成页面与原 Runtime/SQLite/Policy/ToolGateway/输入租约共 **11 项通过**。原任务 `171e9279-c095-42d4-8bb4-e55f9b104a66` 为 succeeded，实际覆盖未授权启动拒绝、参数替换拒绝、输入互斥、原确认结果零重复设备执行、输入与点击后的独立 DOM 读回、本地截图和数据库重开读回。原关闭工具释放自有浏览器，最终租约 idle。
