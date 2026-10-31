@@ -1,5 +1,8 @@
 # 当前接口目录与冻结登记
 
+## 2026-10-27 LLM Wiki 批次导入（provisional，待验收）
+
+新增 `knowledge.compile_wiki`、`knowledge.ask_wiki` host-only 工具与 `@personal-agent/contracts/wiki-workflow` 1 版服务协议，按来源/输出库/版本/预算绑定用户授权，复用 TaskRuntime、Policy、ToolGateway 和 AgentArts ModelGateway。来源解析、引用页、检索、进程内问答及 generation 读回已在本工作包接线；旧基线候选在隔离 AgentArts 和桌面合成数据测试中通过，证据见 [云端验收记录](../competition/evidence/wiki-cloud-acceptance-20261028.md)。最新主线集成版本的真实云验收、内容质量、长期运行与跨批次自动维护尚未确认，不提升 frozen 或生产可用状态。设计及迁移边界见 [ADR-0038](../adr/0038-llm-wiki-import.md)。
 ## 2026-10-26 会话私有 SQLite 移交候选（provisional，审查中）
 
 Desktop Conversations 的同步 API/内存视图保留，候选将消息、草稿、偏好和 UI 任务链接写入独立 SQLite，不改变 TaskRuntime、Core wire 或 Runtime 数据库迁移。首次变更才迁移 v1～v4；原字节备份、v5 marker、代次/revision/row CAS 和未知提交独立核实必须同时成立。ready 后缺库不能建空库；Main 草稿提交未知先阻止清理，最终 will-quit 关闭连接。完整最新历史 v5→v4 导出仍不可用。

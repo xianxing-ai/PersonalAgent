@@ -1,5 +1,13 @@
 # @personal-agent/knowledge — provisional Vault ports
 
+## LLM Wiki 批次导入（provisional）
+
+`@personal-agent/knowledge/document-import` 将宿主已授权的字节解析为带来源单位和覆盖状态的资料，生产入口使用有内存及期限限制的 worker。支持 Markdown、TXT、HTML、CSV、PDF、DOCX、PPTX、XLSX、PNG 和 JPEG；打包的中英文 OCR 数据在构建时复制到 dist，运行时不联网下载。无法解析、低置信度及未理解的图形进入待处理报告。
+
+`@personal-agent/knowledge/wiki-import` 将来源单位、经 Runtime 传入的模型回调和预算编译为引用原文版本的页面；本地存储提供 generation、发布读回、来源失效和可重建的中文子串检索。使用方负责原始授权、选择范围、TaskRuntime、取消与云端发送，不能将这些端口本身当成授权。SQLite 与 Markdown 正文未整体加密；不存在跨 SQLite/文件系统的原子事务。生成的内容不会自动成为用户确认的长期事实。
+
+桌面入口、AgentArts 版本化模型服务和同一次授权会话内的自动更新见 [ADR-0038](../../docs/adr/0038-llm-wiki-import.md)。本地 Fake、文档解析及 OCR 验证不代表真实云部署、模型语义质量或真实桌面验收完成。
+
 <!-- current-design-20261009 -->
 > 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 <!-- architecture-scope-20261013 -->
