@@ -7,6 +7,7 @@ import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
 import {createRoleReceiptWriter} from './role-receipts.mjs';
 import {createAgentArtsModelFetch} from './model-proxy.mjs';
 import {createTestVersionController} from './test-version-controller.mjs';
+import {createWikiWorkflowController} from './wiki-controller.mjs';
 import {createImageServices,loadImageServiceConfiguration} from './image-services.mjs';
 import {agentRealtimeProxyFromEnvironment} from './realtime-proxy.mjs';
 import {createExecutionModelRegistry,loadExecutionModelConfiguration} from './model-catalog.mjs';
@@ -81,7 +82,8 @@ try {
     undefined, workflowEngine,executionModels?{executionModels}:undefined);
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
-  server = createAgentServer({orchestrator,mode,serviceControllers:imageServices.controllers,
+  server = createAgentServer({orchestrator,mode,serviceControllers:{...imageServices.controllers,
+    wikiVersion:createWikiWorkflowController({model:new ModelGateway(models.plan),onCall:record=>process.stdout.write(JSON.stringify(record)+'\n')})},
     executionModels,
     realtimeProxy:agentRealtimeProxyFromEnvironment(process.env,{onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')}),
     onStageRecord:record=>process.stdout.write(JSON.stringify(record)+'\n'),...(authToken ? {authToken}:{}),
