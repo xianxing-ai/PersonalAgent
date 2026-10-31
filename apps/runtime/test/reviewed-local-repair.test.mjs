@@ -64,7 +64,9 @@ async function fixture(t) {
 }
 test('pure Goal review reuses Policy/ToolGateway and durable CAS without synthetic Fact evidence',async t=>{
   const f=await fixture(t),repair=f.app.submitLocalRepair(f.submission);
+  const proofInput={taskId:repair.taskId,sourceTaskId:f.sourceId,reviewTaskId:f.review.taskId,graphNamespace:namespace};
   assert.equal((await settle(f.app,repair.taskId,['waiting_approval','failed'])).state,'waiting_approval');
+  assert.equal(f.app.readF03PlanRepairReceipt(proofInput),undefined,'approval is not a repair receipt');
   assert.equal(f.app.runtime.bindCoordinationStore(namespace).read().revision,3);
   await approve(f.client,repair.taskId);
   const done=await settle(f.app,repair.taskId,['succeeded','failed']);assert.equal(done.state,'succeeded',JSON.stringify(done.error));
@@ -74,10 +76,44 @@ test('pure Goal review reuses Policy/ToolGateway and durable CAS without synthet
   assert.equal(records.length,1);assert.equal(records[0].toolName,'cognition.commit_repair');
   assert.equal(records[0].policyDecision,'allow');assert.equal(records[0].executionStarted,true);assert.equal(records[0].state,'confirmed');
   assert.ok(done.evidenceRefs.includes(records[0].evidenceId));
+  const proof=f.app.readF03PlanRepairReceipt(proofInput);
+  assert.equal(proof?.graphRevision,4);assert.equal(proof.graphUpdateVerified,true);
+  assert.deepEqual(proof.updatedNodes,[{id:'plan',revision:2,kind:'plan'}]);
+  assert.ok(Object.isFrozen(proof) && Object.isFrozen(proof.updatedNodes) && Object.isFrozen(proof.updatedNodes[0]) && Object.isFrozen(proof.evidenceRefs));
   assert.equal(f.app.submitLocalRepair(f.submission).taskId,repair.taskId);
   const reopened=f.reopen();assert.equal(reopened.runtime.bindCoordinationStore(namespace).read().revision,4);
   assert.equal(reopened.submitLocalRepair(f.submission).state,'succeeded');
   assert.equal(reopened.runtime.readToolExecutions(repair.taskId).length,1);
+  assert.deepEqual(reopened.readF03PlanRepairReceipt(proofInput),proof,'original proof survives SQLite reopen without dispatch');
+});
+
+test('F03 plan receipt rejects substituted original sources and preserves known historical effects after later revisions',async t=>{
+  const f=await fixture(t),repair=f.app.submitLocalRepair(f.submission);
+  await settle(f.app,repair.taskId,['waiting_approval']);await approve(f.client,repair.taskId);
+  assert.equal((await settle(f.app,repair.taskId,['succeeded','failed'])).state,'succeeded');
+  const input={taskId:repair.taskId,sourceTaskId:f.sourceId,reviewTaskId:f.review.taskId,graphNamespace:namespace};
+  const original=f.app.readF03PlanRepairReceipt(input);assert.ok(original);
+  for(const field of ['taskId','sourceTaskId','reviewTaskId','graphNamespace']) {
+    assert.equal(f.app.readF03PlanRepairReceipt({...input,[field]:'foreign-'+input[field]}),undefined,field);
+  }
+  for(const [taskId,key,replace] of [
+    [f.review.taskId,'proactive-cognition-review-v1',value=>({...value,bindingVersion:'substituted'})],
+    [f.sourceId,'competition-repair-candidate',value=>({...value,candidate:{...value.candidate,expectedGraphRevision:999}})],
+    [repair.taskId,'local-repair-intent',value=>({...value,sourceTaskId:'foreign-source'})],
+    [repair.taskId,'tool-result-'+original.runId,()=>({result:{kind:'applied',graphRevision:3}})],
+  ]) {
+    const saved=f.app.runtime.loadCheckpoint(taskId,key);f.app.runtime.saveCheckpoint(taskId,key,replace(saved));
+    assert.equal(f.app.readF03PlanRepairReceipt(input),undefined,key);
+    f.app.runtime.saveCheckpoint(taskId,key,saved);assert.deepEqual(f.app.readF03PlanRepairReceipt(input),original);
+  }
+  const store=f.app.runtime.bindCoordinationStore(namespace);
+  store.append(4,node('unrelated','goal',[]));
+  assert.equal(f.app.readF03PlanRepairReceipt(input).graphUpdateVerified,true,'unrelated later revisions preserve verified target heads');
+  store.append(5,node('plan','plan',[ref('goal',2)],'Later independent plan'));
+  const historical=f.app.readF03PlanRepairReceipt(input);
+  assert.equal(historical.graphRevision,4);assert.equal(historical.currentGraphRevision,6);
+  assert.equal(historical.graphUpdateVerified,false);assert.deepEqual(historical.updatedNodes,original.updatedNodes);
+  assert.equal(f.app.runtime.readToolExecutions(repair.taskId).length,1,'reads never replay the original CAS');
 });
 test('changed review, cloud candidate, current graph or revoked resolver rejects before any CAS',async t=>{
   for(const changed of ['review','candidate','graph','revoked']) {

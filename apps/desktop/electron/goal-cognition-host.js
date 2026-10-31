@@ -223,26 +223,12 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
   function verifiedRepair(value,bound) {
     const {task,intent}=bound;
     if(intent.reviewDigest!==toolArgumentsDigest(value.review)) return {};
-    const original=store.read(intent.binding.graphRevision);
-    const prepared=prepareReviewedRepair(original,value.review.evaluatedAt,value.review,intent.candidate.candidate);
-    if(prepared.kind!=='prepared' || !isDeepStrictEqual(prepared.binding,intent.binding)) return {};
-    for(const record of application.runtime.readToolExecutions(task.taskId)) {
-      if(record.toolName!=='cognition.commit_repair' || record.toolVersion!=='1.0.0' || record.state!=='confirmed'
-        || record.policyDecision!=='allow' || !record.executionStarted || !task.evidenceRefs.includes(record.evidenceId)
-        || !application.runtime.matchesToolExecutionInput(record,{arguments:{intentDigest:toolArgumentsDigest(intent)},scopeRef:record.evidenceId})) continue;
-      const result=application.runtime.loadCheckpoint(task.taskId,'tool-result-'+record.evidenceId)?.result;
-      if(result?.kind!=='applied' || result.graphRevision!==prepared.preview.after.snapshot.revision
-        || !isDeepStrictEqual(store.read(result.graphRevision),prepared.preview.after.snapshot)) continue;
-      const updatedNodes=prepared.preview.inputs.map(node=>{
-        const applied=prepared.preview.after.snapshot.history.findLast(item=>item.id===node.id);return {id:applied.id,revision:applied.revision,kind:applied.kind};
-      });
-      const current=store.read();
-      const verified=updatedNodes.every(ref=>sameRef(current.history.findLast(node=>node.id===ref.id),ref));
-      return {executionVerified:true,graphUpdateVerified:verified,evidenceRefs:[record.evidenceId],
-        graphRevision:result.graphRevision,updatedNodes,
-        executionStatus:verified?'选定修复已执行，涉及的图节点版本已持久读回':'修复写入已确认，但目标已有后续版本，当前状态需复核'};
-    }
-    return {};
+    const receipt=application.readF03PlanRepairReceipt({taskId:task.taskId,sourceTaskId:intent.sourceTaskId,
+      reviewTaskId:intent.reviewTaskId,graphNamespace:namespace});
+    if(!receipt) return {};
+    return {executionVerified:true,graphUpdateVerified:receipt.graphUpdateVerified,evidenceRefs:receipt.evidenceRefs,
+      graphRevision:receipt.graphRevision,updatedNodes:receipt.updatedNodes,
+      executionStatus:receipt.graphUpdateVerified?'选定修复已执行，涉及的图节点版本已持久读回':'修复写入已确认，但目标已有后续版本，当前状态需复核'};
   }
   function record(value) {
     if (!value?.review) return;

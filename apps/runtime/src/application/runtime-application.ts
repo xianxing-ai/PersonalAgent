@@ -61,8 +61,8 @@ import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
 import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt} from './coordination.js';
-import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
-import type {LocalRepairHostOptions, SubmitLocalRepairRequest} from './local-repair.js';
+import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, readReviewedLocalRepairReceipt, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
+import type {LocalRepairHostOptions, SubmitLocalRepairRequest, ReviewedLocalRepairReceiptInput} from './local-repair.js';
 import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
@@ -4169,6 +4169,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (this.runtime.getTask(taskId).state !== 'succeeded') return undefined;
     const result = this.runtime.loadCheckpoint(taskId, 'competition-repair-candidate');
     return result === undefined ? undefined : parseCoordinationRepairCandidate(result);
+  }
+
+  /** Host-only original F03 plan proof; reading never authorizes, resumes or executes a repair. */
+  readF03PlanRepairReceipt(input: ReviewedLocalRepairReceiptInput) {
+    return readReviewedLocalRepairReceipt(this.runtime,input);
   }
 
   /** An explicit trusted-host action creates a separate local task; never a cloud callback. */
