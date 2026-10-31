@@ -191,6 +191,9 @@ export type {HarnessExperienceCanonicalReaders} from './application/harness-expe
 export {createRuntimeOwnedWorkflowImageAdapter} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeF14ObservationHost} from './application/workflow-f14-observation-host.js';
 export {createRuntimeF16CiFailureHost} from './application/workflow-f16-ci-failure-host.js';
+export {createF16CiFailurePorts} from './application/f16-ci-failure-ports.js';
+export {createF16HeadReader} from './application/f16-head-reader.js';
+export {readF16Source,awaitF16Port} from './application/f16-source-receipts.js';
 export type {F16CiFailureOptions,F16FailureBinding,F16FailureResult} from './application/workflow-f16-ci-failure-host.js';
 export {createRuntimeF18BoundPrDiffHost,createRuntimeF18MergeGateHost,createRuntimeF18RegisteredMergeHost} from './application/workflow-f18-pr-graph-host.js';
 export {createRuntimeF19IssueSnapshotHost,createRuntimeF19EnqueueRepairHost,createRuntimeF19MergedRepairReadbackHost,
@@ -202,6 +205,9 @@ export {assertF20CandidateSelection} from './application/f20-candidate-frontier.
 export {verifyF20ReviewCompletion} from './application/f20-trial-binding.js';
 export type {RuntimeF20CandidateExpectation} from './application/f20-verify-completion.js';
 export {createRuntimeF17FailureReportHost} from './application/workflow-f17-failure-report-host.js';
+export {createF17ReproductionPorts} from './application/f17-reproduction-ports.js';
+export {createF17ConfiguredDriverResolver} from './application/f17-configured-driver.js';
+export {createF17ObservedCommandTool} from './application/f17-command-observer.js';
 export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';
 export {createRuntimeProactiveDecisionTools,RUNTIME_PROACTIVE_DECISION_TOOLS} from './application/proactive-decision-tools.js';
