@@ -1,32 +1,39 @@
-# 前端设计与工程搭建交接（2026-10-17）
+# 前端与前端接线责任分区（2026-10-17 起；2026-10-31 修订）
 
-本页整理 2026-10-17 的独有分工，2026-10-18 复核公开任务状态。目标 Profile：`huawei_ict_agentarts`；当前 Competition 不调用 Laya。历史指派不证明功能完成，也不授权覆盖正在开发的文件。
+目标 Profile：`huawei_ict_agentarts`。当前执行遵循 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 文首的临时单人接管安排；以下保留接管前的归属与交付边界。
 
-[PR #378](https://github.com/zemeng5208/PersonalAgent/pull/378) 已合并，作者为 `2511375597-lab`，交付六套交互设计提案。[Issue #379](https://github.com/zemeng5208/PersonalAgent/issues/379) 本轮读回仍 open、assignee 为 `2511375597-lab`，没有评论；指派尚不能证明本人接手或完成。提案合并不表示 Owner 已选定其中某套风格。长期归属及后续变更以 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 与实际工作包为准。
+## 接管前负责人：`2511375597-lab`
 
-## 交付职责
+Owner 明确：**全部前端与前端接线**、以及 **MOD-10 参赛研究**，均由 `2511375597-lab` 负责。
 
-- 负责前端信息架构、视觉与交互、组件状态、样式/token、布局、键盘与动效，以及现有 Desktop 的目录、组件组织、页面装配、视图状态和公开接口适配；交付可运行页面，不只交静态原型。
-- 覆盖大工作区、主对话/多对话、模型与思考深度、设置/授权/审批、任务及子任务、连接器、知识记忆、Evidence 与语音状态等前端表面。
-- 经现有安全 Preload/Client/IPC 接真实任务、会话、审批版本与配置；缺能力展示 unavailable，演示数据明确标明。Renderer 不持密钥，不直接访问数据库、Shell、Provider；任务终态和授权事实由原可信链路决定。
-- 核实中文输入法、草稿保存、频繁状态事件、多窗口、缩放及关键交互；未保存草稿不被后台刷新覆盖，区分合成输入、实际渲染与真实设备验收。
-- 评估成熟组件的必要复用，记录来源、版本、实际复用部分、适配及国内环境构建打包条件；参考设计不等于已引入生产依赖。
+### 前端
 
-## 文件、协作者与当前占用
+- 信息架构、视觉与交互、组件状态、样式/token、布局、键盘与动效。
+- `apps/desktop/src/**`：Renderer 装配、页面控件、`features/`、`ui/`、`desktop-settings/` 等。
+- 大工作区、主对话/多对话、模型与思考深度、设置/授权/审批、任务及子任务、连接器/知识/Evidence/语音等 **UI 表面**。
 
-主要范围是 `apps/desktop/src/app/` 的 Renderer 装配、页面控件和样式，`src/features/` 的页面交互，以及 `src/ui/`、`src/desktop-settings/` 等前端结构和对应文档、必要测试。当前生产基础是 Electron 与原生 HTML/CSS/JavaScript；Node/React Flow 设计查看器是设计资产，不自动成为生产框架。
+### 前端接线
 
-zemeng5208 保留产品目标、核心架构、Electron 主进程/Preload、语音设备、Windows/编码执行及 AgentArts 后端；goo122 与 Potatos498 保留各自 Runtime/协议/知识记忆、连接器、通知与开发修复链。前端负责人交付调用方接线，后端缺口由原能力负责人处理。
+- Desktop 组合：`apps/desktop/electron/main.js` 中 `conversationTools` / availability / exports、图 host 条件注入、`workspace-controls.js`、设置相关 IPC（如 `coding.review.*`、`coding.f20.configure`）。
+- 经安全 Preload/Client/IPC 消费真实任务、会话、审批与配置；缺能力展示 unavailable。
+- Renderer 不持密钥，不直连数据库/Shell/Provider；终态与授权由原受信链路决定。
+- 相关 Desktop/UI smoke 与 Evidence（标明 composition/UI 级，不冒充云或账号完成）。
 
-你不是唯一协作者。开始实现前核对最新 main、在途 PR、文件占用与实际分支，保留他人改动。使用独立工作树；重叠文件先协调单一写入者。本次恢复工作不得触碰 `native-reasoning-slider` 与 `live-task-visibility-fix` 两棵活动工作树，也不借历史分工接管其中成果。已有悬浮球形态、动画、拖拽及面板承接约定继续作为基线。
+### MOD-10 参赛研究
 
-## 首批交付与验收
+- 目录：`docs/research/agentarts`、`docs/research/model-training`（PA-022 / PA-026）。
+- 交付来源、实验、成本与条件结论；不把提示/记忆称为参数训练；不代替 AgentArts 平台联跑验收（联跑仍归 zemeng）。
 
-1. 先确认接手状态、基线、文件范围和待定风格，复用已有多对话、模型/思考深度、输入优化及语音设置成果。
-2. 提交设计功能映射与前端工程结构，在同一现有应用完成可运行大工作区、设置页和主对话必要交互，消费真实公开接口。
-3. 随实际改动提交必要验证、运行/打开方式、实际复用清单、截图及缺口。UI 构建或 CI 不证明真实设备、云端或所有业务完成。
-4. PR 按当时有效的非作者批准、技术检查、主线及冲突规则交付；本页不改变审批资格、保护规则或真实账号授权。
+## 不归 lab（仍归原负责人）
 
-## 历史暂停与后续实现
+| 负责人 | 保留 |
+| --- | --- |
+| zemeng5208 | AgentArts 云与编排、语音/Windows **原生能力**、编码工具后端、Competition 平台联跑 |
+| goo122 | Runtime/Policy/ToolGateway、协议、知识记忆后端口 |
+| Potatos498 | 业务连接器 **后端口**与真实账号读回 |
 
-原交接中的“最小计划修复算法暂停”不作为现行指令。后续编码最小修复已有实现，见 [ADR-0033](../../adr/0033-coding-minimal-repair-workflow.md) 与 [F15 V6 说明](../../competition/CODING_MINIMAL_REPAIR_V6.md)；真实云/设备验收按各版本 Evidence 分别确认，不据此升级其他计划修复或全部工作流。Windows 分发及云发布按当前专项授权，不由本前端交接自行恢复。
+lab 只接公开口，不伪造后端；不把 UI 可点写成整图 done。
+
+## 历史
+
+[PR #378](https://github.com/zemeng5208/PersonalAgent/pull/378) 曾交付设计提案；[Issue #379](https://github.com/zemeng5208/PersonalAgent/issues/379) 为早期指派记录。2026-10-31 起责任分区以上表为准，覆盖「仅设计/仅 Renderer」的窄解释。

@@ -25,6 +25,7 @@ import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
 import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
+import {mountWikiImportControls} from '../../app/wiki-import-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
 import {profilePage, bindProfile} from './profile.js';
 import {approvalPresentation, authorizationHistoryHtml, authorizationListHtml, nextApprovalExpiry} from './approval-status.js';
@@ -169,7 +170,8 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls,sisControls,notificationControls,computerControls,computerVisionControls;
+  let installedSkillsControls,sisControls,notificationControls,wikiImportControls,computerControls,computerVisionControls;
+  window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
   window.addEventListener('unload',()=>authorizationSettingsControls?.dispose(),{once:true});
@@ -406,6 +408,8 @@ export function mountAdmin(root, invoke, escape) {
     if(section==='memory' && data.knowledgeSource) knowledgeSourceControls??=mountKnowledgeSourceControls(root.querySelector('.main'),invoke);
     knowledgeSourceControls?.update(data.knowledgeSource);
     if(knowledgeSourceControls) knowledgeSourceControls.element.hidden=section!=='memory';
+    if(section==='memory' && data.wikiImport) wikiImportControls??=mountWikiImportControls(root.querySelector('.main'),invoke);
+    if(wikiImportControls) {wikiImportControls.update(data.wikiImport);wikiImportControls.show(section==='memory');}
     if(section==='memory' && data.memoryLearning && !memoryLearningControls) {
       memoryLearningRoot=document.createElement('div');memoryLearningRoot.className='memory-learning-settings';
       root.querySelector('.main').append(memoryLearningRoot);

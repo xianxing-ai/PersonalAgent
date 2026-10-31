@@ -14,6 +14,8 @@
     "dev:text-fake": "electron . --fake-model",
     "test": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter=./test-support/node-test-failure-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stderr test/*.test.mjs",
     "test:smoke": "node test/electron-smoke.cjs",
+    "test:wiki-smoke": "node test/wiki-import-smoke.cjs",
+    "test:wiki-product-smoke": "node test/wiki-import-product-smoke.cjs",
     "test:pr376-smoke": "node test/pr376-regressions-smoke.cjs",
     "test:frontend-layout": "node test/frontend-layout-smoke.cjs",
     "test:desktop-local": "node test/desktop-local-smoke.cjs",

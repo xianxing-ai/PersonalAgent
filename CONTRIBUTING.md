@@ -1,5 +1,7 @@
 # 协作开发规范
 
+当前开发分工及临时单人接管安排见 [MODULE_ASSIGNMENTS](docs/MODULE_ASSIGNMENTS.md) 文首；下文长期职责保留为基线，独立审核与技术 CI 门槛继续适用。
+
 ## 当前各 MOD 自主接线交付（2026-10-15）
 
 每个 MOD 的负责人自己完成实现、公开契约、实际调用方接线、必要消费测试、Evidence 和文档，再交付可审查变更。根 composition 负责协调共享配置/依赖/边界，不接收“只有端口，中央统一代接代验”的完成声明。可在协调共享文件后随模块补所需注册、配置、UI及宿主消费；保留单一 Runtime/Policy/ToolGateway/Evidence/Scheduler。
@@ -14,9 +16,9 @@
 | --- | --- |
 | 产品负责人（用户） | 已决定只实施 Huawei ICT AgentArts Competition Profile；Local Profile 可选保留；负责产品目标、关键交互、范围与重大取舍 |
 | `goo122` | 工程/存储、公共协议、TaskRuntime、ModelGateway/Provider、本地工具/MCP/Skills、知识与记忆，以及 MOD-33/36/37 开发底座和文档维护 |
-| `zemeng` / `zemeng5208` | 项目主要负责人；核心架构/认知、AgentArts/Competition、桌面/语音/Windows 与编码工具，独立交付本主线 |
-| `Potatos498` | MOD-20～26 业务连接器与消费接线、MOD-34/35/38 修复链、定位器与 Issue 工作流，独立实现、验证和交付 |
-| `2511375597-lab` | 仓库协作者，参与 PR 审查和合并；具体模块范围待在 MODULE_ASSIGNMENTS 明确，不在此代定 |
+| `zemeng` / `zemeng5208` | 项目主要负责人；核心架构/认知、AgentArts/Competition 云与编排、语音/Windows 原生能力与编码工具后端；独立交付本主线（前端与 MOD-10 已划出） |
+| `Potatos498` | MOD-20～26 业务连接器后端口与真实来源、MOD-34/35/38 修复链、定位器与 Issue 工作流；业务 UI/Desktop 消费接线交 `2511375597-lab` |
+| `2511375597-lab` | **全部前端与前端接线**（Renderer、设置/工作区、Desktop 组合与 IPC）、**MOD-10 参赛研究**；并参与 PR 审查和合并；详见 MODULE_ASSIGNMENTS |
 | 模块负责人 | 在分配范围内实现、验证、维护文档、报告阻碍 |
 | 评审者 | 对照需求、接口、权限边界及验收证据审查 |
 

@@ -1,7 +1,7 @@
 # MOD-10：模型训练可行性与进入实验的条件
 
-研究日期：2026-10-13（UTC+08）；Profile：`huawei_ict_agentarts`；负责人：zemeng。
-对应 [PA-022 与模块验收](../../MODULE_ASSIGNMENTS.md)：给出来源、实验、成本和条件结论。
+研究日期：2026-10-13（UTC+08）；Profile：`huawei_ict_agentarts`；接管前负责人：`2511375597-lab`（2026-10-31 Owner 修订；历史作者 zemeng 保留）。当前执行遵循 [临时单人接管安排](../../MODULE_ASSIGNMENTS.md)。
+对应 [PA-022 与模块验收](../../MODULE_ASSIGNMENTS.md)：给出来源、实验、成本和条件结论；不代替 AgentArts 平台联跑验收（联跑仍归 zemeng）。
 本文完成公开能力和现有证据的研究收口，**没有启动训练、购买资源或新增模型调用**。
 当前账号是否能训练、可训练的具体模型、训练数据及实际账单均未读回，不能记为参数训练完成。
 

@@ -1,5 +1,7 @@
 # 自有 AgentArts Runtime 镜像
 
+`wikiVersion: 1` 是受内层宿主凭据保护的 provisional 编译/问答服务，经同一 `/invocations` 和 ModelGateway 执行，不持有本机文件路径或工具授权。请求绑定摘要、阶段和输出预算；资料作为不可信输入，响应标记为 `unverified` 并由调用方重新检查引用。新的云端镜像必须先经明确授权发布并实测，旧镜像不因此获得 Wiki 能力；详情见 [ADR-0038](../../docs/adr/0038-llm-wiki-import.md)。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
