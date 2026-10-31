@@ -11,6 +11,8 @@ export { GitHubService } from './service.js';
 export { GitHubConnector, GITHUB_CONNECTOR_VERSION } from './connector.js';
 export { GhCliProvider } from './gh.js';
 export type { GhProviderOptions } from './gh.js';
+export {createGitHubF18F19Tools} from './f18-f19.js';
+export type {GitHubF18F19Options} from './f18-f19.js';
 export { SpawnGhCommandRunner } from './runner.js';
 export type { GhCommand, GhCommandResult, GhCommandRunner } from './runner.js';
 export { FakeGitHubProvider } from './fake-provider.js';

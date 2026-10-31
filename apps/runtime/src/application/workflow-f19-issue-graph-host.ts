@@ -2,6 +2,7 @@ import {isDeepStrictEqual} from 'node:util';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
+import {readWorkflowBusinessToolSource} from './workflow-business-tool-bridge.js';
 import {assertOwnedWorkflowHostScope,failOwnedHost,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 
 type Scope=OwnedWorkflowHostScope;
@@ -21,7 +22,11 @@ function basePorts(options?:{application?:Pick<RuntimeApplication,'runtime'|'rea
     requiredScopes:[...options.requiredScopes],assertCurrent:options.assertCurrent,authorizeExport:options.authorizeExport,now:options.now};
 }
 
-function cacheOriginal(runtime:RuntimeApplication['runtime'],binding:OriginalRead,toolName:string):unknown {
+function cacheOriginal(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>,scope:Scope,binding:OriginalRead,toolName:string):unknown {
+  const {runtime}=application;
+  const proof=readWorkflowBusinessToolSource(application,scope,binding,toolName);
+  if(proof.graph.workflowId!=='F19'||proof.sourceHost.taskId!==scope.localTaskId||proof.graph.operationId!==scope.operationId)
+    failOwnedHost('UNAUTHORIZED','F19 original business source belongs to another host');
   if(!object(binding)||!text(binding.taskId)||!text(binding.runId)||!text(binding.toolVersion)||!text(binding.scopeRef)||!object(binding.arguments))
     failOwnedHost('UNSUPPORTED_CAPABILITY','F19 original read binding unavailable');
   let record:ReturnType<typeof runtime.readToolExecutions>[number]|undefined,saved:unknown;
@@ -43,7 +48,7 @@ export function createRuntimeF19IssueSnapshotHost(options?:{
   requiredScopes:readonly string[];
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  resolveIssueSnapshot:(scope:Scope)=>Promise<{repo:string;snapshotRead:OriginalRead}|undefined>;
+  resolveIssueSnapshot:(scope:Scope,context:ToolContext)=>Promise<{repo:string;snapshotRead:OriginalRead}|undefined>;
   authorizeExport:(scope:Scope,result:{count:number})=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
@@ -53,12 +58,12 @@ export function createRuntimeF19IssueSnapshotHost(options?:{
     hostToolName:'workflow.host.f19_n01',assertCurrent:ports.assertCurrent,now:ports.now});
   const read=async(context:ToolContext)=>{
     const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveIssueSnapshot']>>;
-    try {binding=await options.resolveIssueSnapshot(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue snapshot unavailable');}
+    binding=await options.resolveIssueSnapshot(scope,context);
     active(context);
     if(!binding||!repo(binding.repo))failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue snapshot unavailable');
     const args=binding.snapshotRead?.arguments;
     if(!object(args)||args.repo!==binding.repo)failOwnedHost('UNAUTHORIZED','F19 issue snapshot identity changed');
-    const snapshot=cacheOriginal(runtime,binding.snapshotRead,'github.issue_snapshot');
+    const snapshot=cacheOriginal(options.application,scope,binding.snapshotRead,'github.issue_snapshot');
     if(!object(snapshot)||!Number.isSafeInteger(snapshot.count)||(snapshot.count as number)<0)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue snapshot evidence unavailable');
     return {count:snapshot.count as number};
@@ -130,7 +135,7 @@ export function createRuntimeF19MergedRepairReadbackHost(options?:{
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 merged repair readback unavailable');
     const args=binding.readback?.arguments;
     if(!object(args)||args.repo!==binding.repo||args.issueId!==binding.issueId)failOwnedHost('UNAUTHORIZED','F19 merged readback identity changed');
-    const readback=cacheOriginal(runtime,binding.readback,'github.merged_repair_readback');
+    const readback=cacheOriginal(options.application,scope,binding.readback,'github.merged_repair_readback');
     if(!object(readback)||readback.issueId!==binding.issueId||typeof readback.verified!=='boolean')
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 merged repair evidence unavailable');
     return {verified:readback.verified as boolean,issueId:binding.issueId};
@@ -166,7 +171,7 @@ export function createRuntimeF19CloseIssueHost(options?:{
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 close issue unavailable');
     const args=binding.closeRead?.arguments;
     if(!object(args)||args.repo!==binding.repo||args.issueId!==binding.issueId)failOwnedHost('UNAUTHORIZED','F19 close issue identity changed');
-    const closed=cacheOriginal(runtime,binding.closeRead,'github.registered_close_issue');
+    const closed=cacheOriginal(options.application,scope,binding.closeRead,'github.registered_close_issue');
     if(!object(closed)||closed.issueId!==binding.issueId||typeof closed.closed!=='boolean'||closed.closed!==true)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 close issue evidence unavailable');
     return {issueId:binding.issueId,closed:true};
