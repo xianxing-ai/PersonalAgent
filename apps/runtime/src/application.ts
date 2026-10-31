@@ -26,6 +26,9 @@ export type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope,Deve
 export {DEVELOPER_HARNESS_TOOL_NAME,DEVELOPER_HARNESS_TOOL_VERSION} from './application/developer-harness.js';
 export type {RuntimeDeveloperHarnessOptions,DeveloperHarnessResult} from './application/developer-harness.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
+export {createRuntimeWikiImportHost,WIKI_IMPORT_TOOL,WIKI_IMPORT_VERSION} from './application/wiki-import.js';
+export type {RuntimeWikiImportOptions,RuntimeWikiImportHost,RuntimeWikiModel} from './application/wiki-import.js';
+export {createAgentArtsWikiModel} from './application/wiki-image-adapter.js';
 export {MAIL_REVIEW_TOOL,MAIL_REVIEW_RESULT,parseMailReviewResult} from './application/mail-review-task.js';
 export type {MailReviewBinding,MailReviewEnvelope,MailReviewResult,RuntimeMailReviewOptions} from './application/mail-review-task.js';
 export type {AgentArtsObservationApplication} from './application/agentarts.js';

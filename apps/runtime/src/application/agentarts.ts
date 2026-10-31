@@ -13,6 +13,9 @@ import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
 import type {RealtimeSocketConstructor} from '@personal-agent/models';
 import {createHash} from 'node:crypto';
 import {createRuntimeOwnedWorkflowImageAdapter} from './owned-workflow-image-adapter.js';
+import {createRuntimeWikiImportHost} from './wiki-import.js';
+import type {RuntimeWikiImportOptions,RuntimeWikiImportHost} from './wiki-import.js';
+import {createAgentArtsWikiModel} from './wiki-image-adapter.js';
 import {
   createAgentArtsObservationHost,
   type AgentArtsObservationAuthorization,
@@ -66,6 +69,7 @@ export interface AgentArtsRuntimeApplicationOptions
   /** Explicit host-only key source for an image configured with a receipt-key override. */
   readOwnedWorkflowReceiptSecret?: (signal:AbortSignal)=>Promise<string>;
   fetchHandlesHostAuthorization?:true;
+  wikiImport?:RuntimeWikiImportOptions;
   /** Trusted observation read-back authorization; real reads need an AK/SK signer,
    * and an absent provider leaves observation explicitly unavailable. */
   observationAuthorization?: AgentArtsObservationAuthorization;
@@ -77,6 +81,7 @@ export interface AgentArtsRuntimeApplicationOptions
 }
 
 export type AgentArtsRuntimeApplication = AgentArtsObservationApplication & {
+  wikiImport?:RuntimeWikiImportHost;
   /** Trusted host only; reads persisted identity and returns metadata, never cloud event bodies. */
   queryCompetitionCloudStatus(taskId:string,scope:CompetitionCloudStatusScope):Promise<CompetitionCloudStatusObservation>;
 };
@@ -113,6 +118,7 @@ export function createAgentArtsRuntimeApplication(
     beforeCompetitionSend,
     readOwnedWorkflowReceiptSecret,
     fetchHandlesHostAuthorization,
+    wikiImport,
     observationAuthorization,
     observationFetchImpl,
     observationApplicationId,
@@ -202,8 +208,17 @@ export function createAgentArtsRuntimeApplication(
       ...(websocketFactory?{websocketFactory}:{}),...(fetchImpl?{fetchImpl}:{}),...(invokeMode?{invokeMode}:{}),
       ...(workflowGoalInput?{workflowGoalInput}:{}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
       ...(onTransportState?{onTransportState}:{}),...(readOwnedWorkflowReceiptSecret?{readReceiptSecret:readOwnedWorkflowReceiptSecret}:{})}):undefined;
+  const wikiModel=wikiImport?createAgentArtsWikiModel({gatewayUrl,runtimeName,authorizationProvider,
+    ...(deploymentVersion===undefined?{}:{deploymentVersion}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
+    ...(transport?{transport}:{}),...(websocketUrl?{websocketUrl}:{}),...(websocketFactory?{websocketFactory}:{}),
+    ...(websocketAuthorizationProvider?{websocketAuthorizationProvider}:{}),...(fetchImpl?{fetchImpl}:{}),
+    ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),...(invokeMode?{invokeMode}:{}),
+    ...(workflowGoalInput?{workflowGoalInput}:{})}):undefined;
+  const wikiHost=wikiImport&&wikiModel?createRuntimeWikiImportHost({...wikiImport,model:wikiModel}):undefined;
   application = createRuntimeApplication({
     ...runtimeOptions,
+    ...(wikiHost?{tools:[...(runtimeOptions.tools??[]),...wikiHost.tools],
+      hostOnlyTools:[...(runtimeOptions.hostOnlyTools??[]),...wikiHost.hostOnlyTools]}:{}),
     retainPriorToolResults:continuationContext==='goal',
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
@@ -226,8 +241,9 @@ export function createAgentArtsRuntimeApplication(
     coordination: new CompetitionCoordinator(cloud),
   });
   const statusReader=new CompetitionCloudStatusReader(application.runtime,application.coordinationConfigurationRef,cloud,transport==='wss');
+  wikiHost?.bind(application);
   const closeRuntime = application.close.bind(application);
-  application.close = () => { closeRuntime(); statusReader.close(); cloud.close(); ownedImage?.close(); };
+  application.close = () => { closeRuntime(); statusReader.close(); cloud.close(); ownedImage?.close(); wikiHost?.close(); wikiModel?.close(); };
   // The platform observation consumer lives only on the Competition composition; the
   // default (local) application keeps no observation surface at all.
   const observationHost = createAgentArtsObservationHost({
@@ -238,6 +254,7 @@ export function createAgentArtsRuntimeApplication(
     ...(observationApplicationId === undefined ? {} : {applicationId: observationApplicationId}),
   });
   return Object.assign(application, {
+    ...(wikiHost?{wikiImport:wikiHost}:{}),
     queryCompetitionCloudStatus: statusReader.query.bind(statusReader),
     readTaskPlatformObservation: (input: AgentArtsObservationInput) => observationHost.read(input),
   }) as AgentArtsRuntimeApplication;
