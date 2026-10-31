@@ -16,7 +16,15 @@ test('public catalog reports 28 designs/185 nodes and exact public adapter requi
     {name:'workspace.read_text',version:'1.0.0'},{name:'workspace.run_allowed_command',version:'1.0.0'});
     const result=await f.host.tools[0].execute({},f.context);assert.equal(result.designWorkflowCount,28);assert.equal(result.designNodeCount,185);
     assert.equal(result.workflows.reduce((n,w)=>n+w.nodeCount,0),185);assert.equal(result.workflows.length,28);
-    assert.equal(result.adapterRequirementCount,152);assert.equal(result.hostRequirementCount,111);assert.equal(result.guardRequirementCount,41);
+    const requirements=getOwnedWorkflowAdapterRequirements();
+    assert.equal(result.adapterRequirementCount,requirements.length);
+    assert.equal(result.hostRequirementCount,requirements.filter(item=>item.kind==='host').length);
+    assert.equal(result.guardRequirementCount,requirements.filter(item=>item.kind==='guard').length);
+    assert.deepEqual(result.workflows.flatMap(workflow=>workflow.adapters.map(adapter=>({workflowId:workflow.workflowId,
+      nodeId:adapter.nodeId,kind:adapter.kind,toolName:adapter.toolName,toolVersion:adapter.version}))),
+      requirements.map(({workflowId,nodeId,kind,toolName,toolVersion})=>({workflowId,nodeId,kind,toolName,toolVersion})));
+    assert.equal(requirements.find(item=>item.workflowId==='F16'&&item.nodeId==='F16_N05').toolName,
+      'workflow.host.f16_n05');
     assert.equal(result.authorizationGranted,false);assert.equal(result.readinessChecked,false);assert.equal(result.remoteImageVerification,'unverified');
     const f20=result.workflows.find(w=>w.workflowId==='F20');assert.equal(f20.adapters.length,0);assert.equal(f20.state,'unavailable');assert.equal(f20.entry.state,'unavailable');
     assert.ok(result.workflows.find(w=>w.workflowId==='F16').unavailableReasons.includes('conversation_entry_not_registered'));

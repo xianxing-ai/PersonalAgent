@@ -3,6 +3,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {F16_F17_CONFIGURATIONS} from './f16-f17-workflow-ports.js';
+import {F16_PUBLICATION_SCHEMA} from './f16-publication-host.js';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','F16/F17 原生 case 选择或工作区固定命令不可用');};
@@ -16,6 +17,9 @@ function assertNativeCasePath(selected){
 }
 const f17Schema={type:'object',additionalProperties:false,required:['selectionRef','repository','recipeId'],
   properties:Object.fromEntries(['selectionRef','repository','recipeId'].map(key=>[key,F16_F17_CONFIGURATIONS.F17.inputSchema.properties[key]]))};
+const f16Schema={...F16_F17_CONFIGURATIONS.F16.inputSchema,required:[...F16_F17_CONFIGURATIONS.F16.inputSchema.required,'publication'],
+  properties:{...F16_F17_CONFIGURATIONS.F16.inputSchema.properties,
+  publication:F16_PUBLICATION_SCHEMA}};
 
 /** Main-only selection, not authorization. No output, TaskRuntime task/run IDs,
  * stack or approval is accepted from JSON. F17 obtains these solely from TaskRuntime. */
@@ -30,7 +34,9 @@ export function createF16F17CaseConfiguration({userData,safeStorage,readWorkspac
   function checked(workflow,value,workspace){
     if(!['F16','F17'].includes(workflow)||!workspace?.bindingId||!path.isAbsolute(workspace.rootPath??'')
       ||!Array.isArray(workspace.command?.recipeIds)||!workspace.command.recipeIds.includes(value?.recipeId))fail();
-    validateToolValue(workflow==='F17'?f17Schema:F16_F17_CONFIGURATIONS.F16.inputSchema,value);
+    validateToolValue(workflow==='F17'?f17Schema:f16Schema,value);
+    if(workflow==='F16'&&(value.publication.branch.includes('..')||value.publication.branch.split('/').some(part=>
+      !part||part.startsWith('.')||part.endsWith('.')||part.endsWith('.lock'))))fail();
   }
   function current(workflow){
     try{

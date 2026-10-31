@@ -6,6 +6,7 @@ import {GITHUB_CONNECTOR_VERSION} from '@personal-agent/github';
 import {readF17InitialFailure} from './f17-initial-failure-source.js';
 import {createF16TestIntentPort} from './f16-test-intent-port.js';
 import {selectF16RepairedRun,selectF16RepairedJob} from './f16-ci-identity-recipe.js';
+import {createF16PublicationHost,F16_PUBLICATION_SCHEMA} from './f16-publication-host.js';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -35,12 +36,13 @@ export const F16_F17_CONFIGURATIONS=freeze({
 
 /** AgentArts composition owns the image. These ports never create a Runtime, executor or grant. */
 export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,workspace,authority,authorizeExport,f16TestIntent,
-  f16CiIdentityRecipe,now=()=>new Date()}={}) {
+  f16CiIdentityRecipe,f16Publication,now=()=>new Date()}={}) {
   const unavailable=[],tools=[],configuredWorkflowWorkerPorts=[];
   if(f16CiIdentityRecipe!==undefined&&f16CiIdentityRecipe!=='github-readback'
     ||f16CiIdentityRecipe==='github-readback'&&f16TestIntent!=='preserved-bytes'&&typeof f16TestIntent?.readBaseline!=='function')
     return {tools,configuredWorkflowWorkerPorts,unavailable:['f16_ci_identity_configuration_unavailable']};
-  const configurationVersion=workflow=>workflow==='F16'&&f16CiIdentityRecipe==='github-readback'
+  const configurationVersion=workflow=>workflow==='F16'&&f16Publication
+    ?'f16-desktop-v4-publication'+(f16Publication.configurationRef?':'+f16Publication.configurationRef:''):workflow==='F16'&&f16CiIdentityRecipe==='github-readback'
     ?'f16-desktop-v3-bytes':F16_F17_CONFIGURATIONS[workflow].configurationVersion;
   const required=['createF16CiFailurePorts','createF17ReproductionPorts','createF17ConfiguredDriverResolver','createF17ObservedCommandTool',
     'createRuntimeF16CiFailureHost','createRuntimeF17FailureReportHost','createWorkflowBusinessToolBridge','readF16Source','createF16HeadReader','awaitF16Port'];
@@ -76,7 +78,12 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
   };
   const sourceRef=read=>({taskId:read.taskId,runId:read.runId,scopeRef:read.scopeRef,toolVersion:read.toolVersion,arguments:read.arguments});
   const headAction=/^f(16|17)\.head\.(execute|before_export|after_export|before_command|after_command)\.([0-9]|[12][0-9]|3[01])$/;
-  const bridges=new WeakMap();
+  const bridges=new WeakMap();let publisher;
+  const definitionFor=workflow=>workflow==='F16'&&f16Publication?{...F16_F17_CONFIGURATIONS.F16,
+    nodes:{...F16_F17_CONFIGURATIONS.F16.nodes,F16_N05:'workflow.host.f16_n05'},
+    inputSchema:object({...F16_F17_CONFIGURATIONS.F16.inputSchema.properties,publication:F16_PUBLICATION_SCHEMA}),
+    tools:[...F16_F17_CONFIGURATIONS.F16.tools,'workflow.host.f16_n05','workspace.git.commit','workspace.git.push','workspace.git.read_publication']}
+    :F16_F17_CONFIGURATIONS[workflow];
   const recipeRun=scope=>{
     const saved=app().runtime.loadCheckpoint(scope.localTaskId,'f16:ci-readback-run');
     const bound=binding('F16',scope),patch=bound.confirmedOperations.find(operation=>operation.nodeId==='F16_N03'
@@ -108,13 +115,14 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
     return identity;
   };
   const resolveTool=(request,scope)=>{
+    if(request.actionKey.startsWith('f16.publish.'))return publisher?.resolveTool(request,scope);
     const workflow=request.actionKey.startsWith('f16.')?'F16':request.actionKey.startsWith('f17.')?'F17':undefined;
     if(!workflow)return;
     const bound=binding(workflow,scope),input=bound.input;
     let nodeId,toolName,args;
     if(headAction.test(request.actionKey)){
       const phase=request.actionKey.split('.')[2];
-      nodeId=workflow==='F16'?(app().readHostToolTask(scope.localTaskId).toolName==='workspace.run_allowed_command'?'F16_N05':
+      nodeId=workflow==='F16'?(['workspace.run_allowed_command','workflow.host.f16_n05'].includes(app().readHostToolTask(scope.localTaskId).toolName)?'F16_N05':
         app().readHostToolTask(scope.localTaskId).toolName==='workflow.host.f16_n04'?'F16_N04':'F16_N01'):
         ['before_command','after_command'].includes(phase)?'F17_N03':'F17_N04';
       if(workflow==='F16'&&['before_command','after_command'].includes(phase))return;
@@ -124,14 +132,14 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
       if(request.actionKey.endsWith('.runs')){toolName='github.actions.run.list';args={repo:input.repository,status:'failure'};}
       else if(request.actionKey.endsWith('.jobs')){toolName='github.actions.job.list';args={repo:input.repository,runId:input.runId};}
       else {toolName='github.actions.log.read';args={repo:input.repository,runId:input.runId,jobId:input.jobId,maxChars:65536};}
-    }else if(workflow==='F16'&&['f16.completion.runs','f16.completion.jobs'].includes(request.actionKey)){
+    }else if(workflow==='F16'&&/^f16\.completion\.(?:(?:before_export|after_export)\.([0-9]|[12][0-9]|3[01])\.)?(runs|jobs)$/.test(request.actionKey)){
       nodeId='F16_N05';
       if(request.actionKey.endsWith('.runs')){toolName='github.actions.run.list';args={repo:input.repository,status:'success'};}
       else {toolName='github.actions.job.list';args={repo:input.repository,runId:
         f16CiIdentityRecipe==='github-readback'?recipeRun(scope).run.runId:ciIdentity(scope).runId};}
     }else return;
     if(!isDeepStrictEqual(request.input,args))fail('UNAUTHORIZED','F16/F17 business input substitution');
-    return {workflowId:workflow,nodeId,hostToolName:F16_F17_CONFIGURATIONS[workflow].nodes[nodeId],toolName,toolVersion:toolVersion(toolName),arguments:args};
+    return {workflowId:workflow,nodeId,hostToolName:definitionFor(workflow).nodes[nodeId],toolName,toolVersion:toolVersion(toolName),arguments:args};
   };
   const bridge=()=>{
     const application=app();let value=bridges.get(application);
@@ -188,13 +196,27 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
     F17:r.createRuntimeF17FailureReportHost({application,now,requiredScopes:['workspace:read'],workspaceRoot:workspace.root,
       readDriver:r.createF17ConfiguredDriverResolver(application,{configurationVersion:F16_F17_CONFIGURATIONS.F17.configurationVersion}),
       resolveReproduction:f17.resolveReproduction,assertCurrent:scope=>{binding('F17',scope);},authorizeExport:authorizeHost('F17')})};
+  if(f16Publication){
+    if(f16CiIdentityRecipe!=='github-readback'||typeof f16Publication.installGitPort!=='function'
+      ||typeof f16Publication.assertCurrent!=='function')fail('UNSUPPORTED_CAPABILITY','Original F16 publication configuration required');
+    publisher=createF16PublicationHost({getApplication:app,runtimeModule:r,binding,bridge,now,
+      readSource:(scope,ref,name)=>r.readF16Source(application,scope,ref,name),
+      async assertReview(scope){const bound=binding('F16',scope);
+        if(await wait(scope,()=>f16TestIntent.verifyReceipt({taskId:scope.parentTaskId,deadline:scope.deadline,signal:scope.signal,
+          input:bound.input,patch:bound.confirmedOperations.find(v=>v.nodeId==='F16_N03'&&v.toolName==='workspace.apply_text_patch'),
+          review:bound.confirmedOperations.find(v=>v.nodeId==='F16_N04'&&v.toolName==='workflow.host.f16_n04')}))!==true)
+          fail('UNAUTHORIZED','Original F16 acceptance changed before publication');},
+      configuration:{...f16Publication,githubVersion:GITHUB_CONNECTOR_VERSION,readBaseline:(scope,input)=>f16TestIntent.readBaseline(scope,input)}});
+    f16Publication.installGitPort(publisher.gitPort);
+  }
   const initialInput=async(workflow,scope,args)=>{
     current(workflow,scope);const selected=await wait(scope,()=>workspace.readSelection(workflow,scope));current(workflow,scope);
     if(!selected||selected.selectionRef!==args.selectionRef)fail('UNAUTHORIZED','Original workspace selection changed');
     const saved={selectionRef:selected.selectionRef,repository:selected.repository,headSha:selected.headSha,recipeId:selected.recipeId};
     if(!workspace.recipes.some(v=>v.id===selected.recipeId))fail('UNSUPPORTED_CAPABILITY','Original selected recipe unavailable');
     let input;
-    if(workflow==='F16')input={...saved,runId:selected.runId,jobId:selected.jobId,patch:selected.patch};
+    if(workflow==='F16')input={...saved,runId:selected.runId,jobId:selected.jobId,patch:selected.patch,
+      ...(f16Publication?{publication:selected.publication}:{})};
     else if(selected.initialFailure?.kind==='competition'){
       const source=readF17InitialFailure(app(),scope,selected);
       input={...saved,sourceDigest:hash(source),initialFailure:source.command.result};
@@ -215,7 +237,7 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
         fail('UNAUTHORIZED','Original failure output and version are not bound');
       input={...saved,sourceDigest:hash({command,before,after}),initialFailure:command.result};
     }
-    validateToolValue(F16_F17_CONFIGURATIONS[workflow].inputSchema,input);
+    validateToolValue(definitionFor(workflow).inputSchema,input);
     const key='f16-f17:configured-selection:'+workflow;
     app().runtime.saveCheckpointOnce(scope.taskId,key,{selected,input});
     if(!isDeepStrictEqual(app().runtime.loadCheckpoint(scope.taskId,key),{selected,input}))fail('REVISION_CONFLICT','Original selection or failure source replaced');
@@ -252,6 +274,23 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
       if(await wait(scope,()=>f16TestIntent.verifyReceipt({...scope,input:structuredClone(bound.input),
         patch:structuredClone(saved.operations.F16_N03),review:structuredClone(saved.operations.F16_N04)}))!==true)
         fail('UNAUTHORIZED','Original test intent review is no longer current');
+      if(publisher){
+        const key='f16:completion-read-sequence:'+stage,prior=app().runtime.loadCheckpoint(saved.localTaskId,key);
+        const index=prior===undefined?0:prior+1;
+        if(prior!==undefined&&(!Number.isSafeInteger(prior)||prior<0)||!Number.isSafeInteger(index)||index<0||index>31)
+          fail('UNAUTHORIZED','Original completion readback budget exhausted');
+        app().runtime.saveCheckpoint(saved.localTaskId,key,index);
+        const ctx=context(saved.localTaskId,scope),published=await publisher.readPublishedHead(hostScope,ctx,stage,index);
+        const identity=ciIdentity(hostScope);
+        const runRead=await bridge().invoke({actionKey:'f16.completion.'+stage+'.'+index+'.runs',input:{repo:bound.input.repository,status:'success'}},ctx);
+        const jobRead=await bridge().invoke({actionKey:'f16.completion.'+stage+'.'+index+'.jobs',input:{repo:bound.input.repository,runId:identity.runId}},ctx);
+        const runs=r.readF16Source(application,hostScope,sourceRef(runRead),'github.actions.run.list');
+        const jobs=r.readF16Source(application,hostScope,sourceRef(jobRead),'github.actions.job.list');
+        const original=recipeRun(hostScope),run=selectF16RepairedRun({...original,runs});
+        const fresh=selectF16RepairedJob({input:bound.input,run,originalJob:original.failureJobs.result.items.find(job=>job.id===bound.input.jobId),jobs});
+        if(published.result.state!=='applied'||published.result.headSha!==saved.headSha||!isDeepStrictEqual(fresh,identity))
+          fail('REVISION_CONFLICT','Published HEAD or GitHub CI changed during completion consent');
+      }
     }
     const observed=await head(hostScope,context(saved.localTaskId,scope),bound.input.repository,workflow.toLowerCase(),stage);
     if(observed.result.headSha!==saved.headSha||observed.result.fingerprint!==saved.fingerprint)
@@ -259,7 +298,7 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
     binding(workflow,hostScope);
   };
   for(const workflow of ['F16','F17']){
-    const definition=F16_F17_CONFIGURATIONS[workflow];
+    const definition=definitionFor(workflow);
     if(workflow==='F16'&&(f16TestIntent?.tool?.descriptor?.name!=='workflow.host.f16_n04'
       ||f16TestIntent.tool.descriptor.version!=='1.0.0'||typeof f16TestIntent.available!=='function'||typeof f16TestIntent.verifyReceipt!=='function')){
       unavailable.push('f16_test_intent_verifier_unavailable');continue;}
@@ -268,9 +307,10 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
       unavailable.push('f16_workspace_recovery_unavailable');continue;}
     tools.push(...hosts[workflow].tools);
     if(workflow==='F16')tools.push(f16TestIntent.tool);
+    if(workflow==='F16'&&publisher)tools.push(publisher.tool);
     configuredWorkflowWorkerPorts.push({workflowId:workflow,toolName:definition.toolName,toolVersion:definition.version,
       configurationVersion:configurationVersion(workflow),requestSchema:structuredClone(definition.requestSchema),inputSchema:structuredClone(definition.inputSchema),
-      resultSchema:structuredClone(definition.resultSchema),publicEnumPaths:[],sideEffect:'local_write',
+      resultSchema:structuredClone(definition.resultSchema),publicEnumPaths:[],sideEffect:workflow==='F16'&&publisher?'external_write':'local_write',
       requiredTools:definition.tools.map(name=>({name,version:toolVersion(name)})),
       async available(scope){try{current(workflow,scope);const allowed=await wait(scope,()=>authority.available(workflow,scope));
         const ready=allowed===true&&await wait(scope,()=>workspace.available(workflow,scope))===true
@@ -322,7 +362,7 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
           if(selections.length!==1||!choice||choice.abstain===true)return false;
         }
         const args=proposal.nodeId==='F16_N03'?input.patch:
-          ['F16_N05','F17_N03'].includes(proposal.nodeId)?{recipeId:input.recipeId}:{};
+          (proposal.nodeId==='F17_N03'||proposal.nodeId==='F16_N05'&&!publisher)?{recipeId:input.recipeId}:{};
         return isDeepStrictEqual(proposal.arguments,args);
       },
       async authorizeExport(value){
@@ -357,6 +397,15 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
           if(f16TestIntent.assertReceiptCurrent)await wait(value,()=>f16TestIntent.assertReceiptCurrent({scope:{parentTaskId:taskId,
             localTaskId,sessionId:intent.sessionId,deadline,signal},input:bound.input,patch:bound.confirmedOperations.find(operation=>
               operation.nodeId==='F16_N03'&&operation.toolName==='workspace.apply_text_patch'),result:originalRead.confirmed.result}));
+        }
+        if(workflow==='F16'&&stage==='receipt'&&proposal.toolName==='workflow.host.f16_n05'){
+          const parent=app().runtime.loadCheckpoint(localTaskId,'coding-repair:parent');
+          const intent=app().runtime.loadCheckpoint(taskId,'owned-workflow:intent:'+parent.operationId);
+          const sourceScope={parentTaskId:taskId,localTaskId,operationId:parent.operationId,sessionId:intent.sessionId,deadline,signal};
+          publisher.verify(sourceScope,originalRead.confirmed.result);
+          const observed=await head(sourceScope,context(localTaskId,value),binding('F16',sourceScope).input.repository,'f16','after_export');
+          if(observed.result.headSha!==originalRead.confirmed.result.headSha||observed.result.workspaceClean!==true)
+            fail('REVISION_CONFLICT','Published HEAD changed during export consent');
         }
         if(stage==='initial'&&!isDeepStrictEqual(value.value,await initialInput(workflow,value,{selectionRef:value.value.selectionRef})))
           fail('REVISION_CONFLICT','Initial source changed during export');
@@ -409,8 +458,9 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
           const failureRuns=r.readF16Source(application,commandScope,original.runList,'github.actions.run.list');
           const failureJobs=r.readF16Source(application,commandScope,original.jobList,'github.actions.job.list');
           const observed=await head(commandScope,ctx,input.repository,'f16','execute');
-          const commandSource=r.readF16Source(application,commandScope,{taskId:command.localTaskId,runId:ctx.runId,scopeRef:ctx.runId,
-            toolVersion:command.toolVersion,arguments:{recipeId:input.recipeId}},'workspace.run_allowed_command');
+          const commandSource=publisher?publisher.verify(commandScope,command.result).command:
+            r.readF16Source(application,commandScope,{taskId:command.localTaskId,runId:ctx.runId,scopeRef:ctx.runId,
+              toolVersion:command.toolVersion,arguments:{recipeId:input.recipeId}},'workspace.run_allowed_command');
           const patchRecord=app().runtime.readToolExecutions(patchOperation.localTaskId).find(item=>item.evidenceId===patchOperation.readback.confirmed.runId);
           const read=await bridge().invoke({actionKey:'f16.completion.runs',input:{repo:input.repository,status:'success'}},ctx);
           const runs=r.readF16Source(application,commandScope,sourceRef(read),'github.actions.run.list');
@@ -436,7 +486,8 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
           ||!Number.isFinite(Date.parse(run.createdAt))||Date.parse(run.createdAt)<Date.parse(patchRecord.finishedAt))
           fail('UNAUTHORIZED','Original repaired commit CI is not independently confirmed');
         binding(workflow,owner);
-        const result={ciStatus:'passed',headSha:identity.headSha,runId:identity.runId,jobId:identity.jobId,verificationRunId:command.readback.confirmed.runId};
+        const result={ciStatus:'passed',headSha:identity.headSha,runId:identity.runId,jobId:identity.jobId,
+          verificationRunId:publisher?publisher.command(commandScope).ref.runId:command.readback.confirmed.runId};
         rememberCompletion(workflow,owner,result,operations,identity.headSha,currentHead.result.fingerprint,[runSource,jobSource]);
         return {result,resultSummary:'Original patch, test intent and repaired commit CI confirmed'};
       },
@@ -444,5 +495,8 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,worksp
   }
   const commandTool=configuredWorkflowWorkerPorts.some(v=>v.workflowId==='F17')?r.createF17ObservedCommandTool({getApplication,
     tool:workspace.commandTool,recipes:workspace.recipes,now,invokeWorkspaceHead,assertCurrent:scope=>{binding('F17',scope);}}):workspace.commandTool;
-  return {tools,configuredWorkflowWorkerPorts,commandTool,workspacePatchReconciliation:workspace.patchReconciliation,unavailable};
+  return {tools,configuredWorkflowWorkerPorts,commandTool,workspacePatchReconciliation:workspace.patchReconciliation,unavailable,
+    ...(publisher?{preparePublicationQuestion:(scope,question)=>publisher.prepareQuestion(scope,question),
+      confirmPublicationPresence:scope=>publisher.confirmPresence(scope),
+      readUnknownPublicationInspection:(taskId,scope)=>publisher.readUnknownInspection(taskId,scope)}:{})};
 }

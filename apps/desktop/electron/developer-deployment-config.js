@@ -206,11 +206,12 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
       &&(typeof available!=='function'||await available({capability,...scope})===true)&&current(scope);}catch{return false;}};
     const assertCurrent=scope=>{if(!current(scope))denied();workspace.assertCurrent(scope);};
     let consent;
-    provider=new githubModule.GhCliProvider({runner:new githubModule.SpawnGhCommandRunner(binary.path,{...environment}),
-      repositories:[repository],readToken:async scope=>{assertCurrent(scope);return readToken();}});
+    const providerOptions={runner:new githubModule.SpawnGhCommandRunner(binary.path,{...environment}),
+      repositories:[repository],readToken:async scope=>{assertCurrent(scope);return readToken();}};
+    provider=new githubModule.GhCliProvider(providerOptions);
     const options={githubModule,github:{provider,repairLinks:configuration.github.repairLinks===true,available:scope=>ready('github',scope)},
       git:{options:{repository,rootPath:root,...git,getCredentials:async scope=>{assertCurrent(scope);return {token:readToken()};}},
-        available:scope=>ready('workspace.git',scope)},
+        available:scope=>ready('workspace.git',scope),assertCurrent},
       ...(workspace.command?{command:{...workspace.command,available:async scope=>await ready('workspace.run_allowed_command',scope)
         &&await workspace.command.available(scope)===true}}:{}),
       testLocate:{cacheRootPath,available:scope=>ready('workspace.locate_test_failures',scope)},now};
@@ -271,7 +272,20 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
       if(!await ready(repositoryDescriptor.name,context))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Configured repository context is unavailable');
       return {repository};
     }};
-    host={...originalHost,tools:[...originalHost.tools,repositoryTool],competitionToolAvailability:[...originalHost.competitionToolAvailability,
+    host={...originalHost,
+      readF16PublicationConfiguration(scope){const value=originalHost.readF16PublicationConfiguration?.(scope);
+        return value?{...value,configurationRef:hash(raw)}:undefined;},
+      createF18F19Tools({requiredChecks,eligibleReviewers,beforeWrite}){
+        if(!active||typeof githubModule.createGitHubF18F19Tools!=='function')return undefined;
+        // The runner and token adapter remain inside the original trusted deployment.
+        // Caller supplies only explicit gates and an original Runtime write journal.
+        return githubModule.createGitHubF18F19Tools({...providerOptions,requiredChecks,eligibleReviewers,beforeWrite}).map(tool=>({
+          ...tool,execute:async(input,scope)=>{
+            if(!await ready(tool.descriptor.name,scope))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original GitHub deployment is unavailable');
+            assertCurrent(scope);const result=await tool.execute(input,scope);assertCurrent(scope);return result;
+          }}));
+      },
+      tools:[...originalHost.tools,repositoryTool],competitionToolAvailability:[...originalHost.competitionToolAvailability,
       {toolName:repositoryDescriptor.name,toolVersion:repositoryDescriptor.version,publicEnumPaths:[],available:scope=>ready(repositoryDescriptor.name,scope)}],
       close(){active=false;originalHost.close();}};
     const exports=attachExactExports(host,{current,ready,assertCurrent,confirmExport,containsCredential:value=>value.includes(readToken()),policyBinding:hash(raw),now});

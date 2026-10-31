@@ -8,7 +8,110 @@ import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
+import {createHash} from 'node:crypto';
 import {createGitTools, registerGitTools, readGitWorkspaceFingerprint} from '../dist/dev-workflows/git-tools.js';
+
+const publicationDigest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+async function publicationFixture(t,{consumer=true,mutateOnSave=false}={}){
+  const f=repositoryFixture();t.after(f.dispose);
+  writeFileSync(join(f.options.rootPath,'src/main.ts'),'export const value = 2;\n');
+  const publication={selectionRef:'native-fixture-case',branch:f.options.sourceBranch,baseHeadSha:f.headSha,repairDigest:'d'.repeat(64)};
+  const args={repository:f.options.repository,expectedHeadSha:f.headSha,paths:['src/main.ts'],message:'verified repair',verificationRunId:'original-command',publication};
+  const context={taskId:'commit-child',runId:'commit-run',authorizationRef:'original-approval',scopes:['workspace:git:commit'],
+    signal:new AbortController().signal,deadline:new Date(Date.now()+60000).toISOString()};
+  const {files}=await readGitWorkspaceFingerprint(f.options.rootPath,f.options.allowedPaths),intents=new Map(),observed=[];
+  const port={assertCurrent:async(_ctx,value)=>assert.deepEqual(value,publication),
+    load:async(_ctx,target)=>intents.get(target.taskId+':'+target.runId),
+    saveOnce:async(ctx,intent)=>{assert.equal(intents.has(ctx.taskId+':'+ctx.runId),false);
+      assert.equal(f.git(['rev-parse','HEAD']),f.headSha,'intent must precede ref mutation');intents.set(ctx.taskId+':'+ctx.runId,structuredClone(intent));
+      if(mutateOnSave)writeFileSync(join(f.options.rootPath,'src/main.ts'),'export const value = 3;\n');},
+    observed:async(_ctx,intent,result)=>observed.push({intent,result})}; // Explicit trusted-port substitute for this unit test.
+  const tools=createGitTools({...f.options,publication:port,readVerification:async()=>({taskId:'original-command-child',runId:args.verificationRunId,
+    toolName:'workspace.run_allowed_command',status:'confirmed',exitCode:0,headSha:f.headSha,files,
+    ...(consumer?{consumer:{taskId:context.taskId,runId:context.runId,argumentsDigest:publicationDigest(args)}}:{})})});
+  return {...f,tools,port,args,context,intents,observed};
+}
+
+test('F16 Git cross-child verification needs an exact trusted consumer; no model receipt or replacement arguments',async t=>{
+  const f=await publicationFixture(t,{consumer:false});
+  await assert.rejects(f.tools.commit.execute(f.args,f.context),/Trusted successful command receipt/);
+  assert.equal(f.git(['rev-parse','HEAD']),f.headSha);assert.equal(f.intents.size,0);
+  const good=await publicationFixture(t);
+  await assert.rejects(good.tools.commit.execute({...good.args,message:'substituted'},good.context),/Trusted successful command receipt/);
+  assert.equal(good.intents.size,0);
+});
+
+test('F16 Git seals the exact commit before ref CAS; original intent is never replayed',async t=>{
+  const f=await publicationFixture(t),result=await f.tools.commit.execute(f.args,f.context);
+  const intent=f.intents.get(f.context.taskId+':'+f.context.runId);
+  assert.deepEqual(intent.expected,result);assert.equal(result.parentSha,f.headSha);
+  assert.equal(f.git(['rev-parse','HEAD']),result.headSha);assert.equal(f.git(['status','--porcelain']),'');
+  await assert.rejects(f.tools.commit.execute(f.args,f.context),{code:'RESULT_UNKNOWN'});
+  assert.equal(f.git(['rev-parse','HEAD']),result.headSha);
+  const args={repository:f.options.repository,taskId:f.context.taskId,runId:f.context.runId,publication:f.args.publication};
+  const readContext={...f.context,taskId:'read-child',runId:'read-run',scopes:['workspace:git:read']};
+  assert.equal((await f.tools.publicationRead.execute(args,readContext)).state,'applied');
+  assert.equal(f.observed.length,1);
+  await assert.rejects(f.tools.publicationRead.execute({...args,runId:'foreign'},readContext));
+  f.git(['-c','user.name=Fixture','-c','user.email=fixture@example.com','commit','--allow-empty','-m','foreign HEAD']);
+  assert.equal((await f.tools.publicationRead.execute(args,readContext)).state,'unknown');
+});
+
+test('F16 publication rechecks real file identity after awaiting durable intent',async t=>{
+  const f=await publicationFixture(t,{mutateOnSave:true});
+  await assert.rejects(f.tools.commit.execute(f.args,f.context),/changed while sealing commit intent/);
+  assert.equal(f.git(['rev-parse','HEAD']),f.headSha);assert.equal(f.intents.size,1);
+  await assert.rejects(f.tools.commit.execute(f.args,f.context),{code:'RESULT_UNKNOWN'});
+});
+
+test('F16 Git publication stays unavailable without its trusted original Runtime port',async t=>{
+  const f=await publicationFixture(t),tools=createGitTools(f.options);
+  await assert.rejects(tools.commit.execute(f.args,f.context),/unavailable/);
+  assert.equal(f.git(['rev-parse','HEAD']),f.headSha);
+});
+
+test('F16 push rejects any existing remote branch without a write or publication journal',async t=>{
+  const f=await publicationFixture(t),committed=await f.tools.commit.execute(f.args,f.context);
+  const originalSpawn=childProcess.spawn;let pushes=0,remoteReads=0,saves=0;
+  t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
+  t.mock.method(childProcess,'spawn',(file,args,options)=>{
+    if(!args.includes('ls-remote')&&!args.includes('push'))return originalSpawn(file,args,options);
+    const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.stdin=new PassThrough();child.kill=()=>true;
+    queueMicrotask(()=>{if(args.includes('push'))pushes++;else{remoteReads++;child.stdout.write(committed.headSha+'\trefs/heads/'+f.options.sourceBranch+'\n');}
+      child.emit('close',0);});return child;
+  });syncBuiltinESMExports();
+  const tools=createGitTools({...f.options,getCredentials:async()=>({token:'explicit-synthetic-token'}),publication:{...f.port,saveOnce:async()=>{saves++;}}});
+  await assert.rejects(tools.push.execute({repository:f.options.repository,expectedHeadSha:committed.headSha,publication:f.args.publication},
+    {...f.context,taskId:'push-child',runId:'push-run',scopes:['workspace:git:push']}),/already exists remotely/);
+  assert.equal(pushes,0);assert.equal(saves,0);assert.equal(remoteReads,1);
+});
+
+test('F16 publication refuses Git URL rewrites before any network command or durable push intent',async t=>{
+  const f=await publicationFixture(t),committed=await f.tools.commit.execute(f.args,f.context);
+  f.git(['config','url.https://other.invalid/.pushInsteadOf','https://example.com/']);
+  const originalSpawn=childProcess.spawn;let network=0,saves=0;
+  t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
+  t.mock.method(childProcess,'spawn',(file,args,options)=>{
+    if(args.includes('push')||args.includes('ls-remote')){network++;throw new Error('Unexpected network command');}
+    return originalSpawn(file,args,options);
+  });syncBuiltinESMExports();
+  const tools=createGitTools({...f.options,getCredentials:async()=>({token:'explicit-synthetic-token'}),
+    publication:{...f.port,saveOnce:async()=>{saves++;}}});
+  await assert.rejects(tools.push.execute({repository:f.options.repository,expectedHeadSha:committed.headSha,publication:f.args.publication},
+    {...f.context,taskId:'push-child',runId:'push-run',scopes:['workspace:git:push']}),/URL rewriting/);
+  assert.equal(network,0);assert.equal(saves,0);
+});
+
+for(const reason of ['cancel','deadline'])test('F16 publication authority await obeys '+reason+' before any write',async t=>{
+  const f=await publicationFixture(t);let entered,clock=Date.now();const ready=new Promise(resolve=>{entered=resolve;}),controller=new AbortController();
+  const tools=createGitTools({...f.options,now:()=>clock,publication:{...f.port,assertCurrent:async()=>{entered();return new Promise(()=>{});}}});
+  const context={...f.context,signal:controller.signal,deadline:new Date(clock+10000).toISOString()};
+  if(reason==='deadline')t.mock.timers.enable({apis:['setTimeout']});
+  const operation=tools.commit.execute(f.args,context);await ready;
+  if(reason==='cancel')controller.abort();else{clock+=10000;t.mock.timers.tick(10000);t.mock.timers.reset();}
+  await assert.rejects(settles(operation),{code:reason==='cancel'?'CANCELLED':'TIMEOUT'});
+  assert.equal(f.git(['rev-parse','HEAD']),f.headSha);assert.equal(f.intents.size,0);
+});
 
 function fixture() {
   const rootPath=mkdtempSync(join(tmpdir(),'git-tools-contract-'));

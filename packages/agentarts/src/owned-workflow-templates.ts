@@ -67,7 +67,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F15_N01:[tool('workspace.read_text')],F15_N04:[host('workspace.patch_scope_check')],
   F15_N05:[host('runtime.patch_and_required_checks')],F15_N06:[host('runtime.deliver_patch_evidence')],
   F16_N01:[host('github.bound_ci_failure')],F16_N03:[tool('workspace.apply_text_patch')],F16_N04:[host('workspace.test_intent_check')],
-  F16_N05:[tool('workspace.run_allowed_command')],F17_N03:[tool('workspace.run_allowed_command')],F17_N04:[host('runtime.deliver_failure_report')],
+  F16_N05:[host('runtime.publish_verified_repair')],F17_N03:[tool('workspace.run_allowed_command')],F17_N04:[host('runtime.deliver_failure_report')],
   F18_N01:[host('github.bound_pr_diff')],F18_N04:[host('github.current_head_merge_gate')],F18_N05:[host('github.registered_merge')],
   F19_N01:[host('github.issue_snapshot')],F19_N03:[host('runtime.enqueue_issue_repair')],F19_N04:[host('github.merged_repair_readback')],
   F19_N05:[host('github.registered_close_issue')],F20_N01:[tool('workspace.read_text')],F20_N03:[tool('coding.repair.trial')],
@@ -121,7 +121,7 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
           || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04','F12_N05',
-            'F24_N07','F24_N08','F24_N10','F24_N11','F25_N04'].includes(node.id) ? 'write':'read',
+            'F16_N05','F24_N07','F24_N08','F24_N10','F24_N11','F25_N04'].includes(node.id) ? 'write':'read',
       capabilities:mapped.map(item=>({...item})),
       inputFields:[...node.inputFields],outputFields:[...node.outputFields],
       ...(node.evidenceRequirement?{evidenceRequirement:node.evidenceRequirement}:{}),
