@@ -52,6 +52,10 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 
 ## 2026-10-31 接管复核与修复
 
+- 新增接线方案（provisional）：除已有 F09/F15/F20 专用 worker 外，组合层可注入固定图白名单配置，由同一 Runtime worker/driver/HostBridge 执行。每项配置必须给出固定图和入口名称、模型请求及可信实际输入 Schema、工具白名单、原输入解析、可用性、当前任务检查、独立前沿验证、精确出机授权和原本地回执完成验证。模型不能提供任意 workflowId、替换工具目录或省略验证回调；未完整配置不注册。保留现有数据库与调度器，新增 checkpoint 命名空间，不修改已有 F09/F15/F20 协议。此配置端口本身不代表某图生产接线或真实验收通过。
+- F13 首条纵向的实际依赖：N02 必须经原 Gateway 调用系统观察，再分别读取真实 cloud/quota/lock 状态；N04 必须依赖宿主生命周期和原执行记录完成受信恢复。当前没有后者的公共消费端口，不能把只读诊断前缀、CPU 观察或返回 false 当整图完成。
+- 上述白名单入口已接入 `RuntimeApplicationOptions.configuredWorkflowWorkers`、原 Competition 目录/派发/审批恢复及原结果出机链。当前无 Desktop 生产配置注入。11 项 Synthetic 验证包含实际 delegated user-work、Policy/HostBridge、原审批恢复、缺提供者不注册、外来节点拒绝、云 settled 无原回执拒绝和 unknown child 禁重放；与 F09/F20/driver/optional-host 回归合计 43/43 通过，Runtime 构建及架构门禁 3/3 通过。
+
 - F02/F14/F28 Desktop 出机授权原实现比较 Promise 与 `true`，使异步同意被拒绝；现等待真实结果，并在返回前重验原任务未取消。三个回归先失败，修复后通过。
 - F08_N10/N13、F25_N03、F28_N03 原调用未将实际参数交给原图意图校验，真实非空参数被拒绝，而旧合成夹具用空意图掩盖了问题。现绑定原参数，覆盖更换授权、旧操作、私有标记、检查请求和前驱内容的拒绝路径。
 - F28_N03 guard 接受 Engine 实际发布的 `workflowId/nodeId/input/predecessorOutputs/predecessorStates`，并验证原意图。该适配仍是 provisional；原 `{check}` guard 形状不能匹配真实 Engine。模型支持角色不证明原分派条件成立，缺受信原分派判定时仍返回 unknown。
@@ -59,6 +63,8 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 - 当前定向：Runtime 构建通过；`workflow-optional-graph-hosts`、`zemeng-graph-ports` 与 `workflow-graph-composition` 共 22/22 通过，均为本机合成边界验证。真实图、邮件/日历账号、平台评测、物理语音、独立真人签名和关机后云宿主均未据此验收，152 项仍不勾选。
 
 ## 本轮检查记录
+
+- 2026-10-31 接管修复基线 `49f0467b`（含 main `e7d7c7e7`）：在独立工作树、完整替换短 PATH、OpenSSL/.NET 8/PowerShell 及工作树外 TEMP 环境运行 `npm run check`，exit 0；根集成 57/57。该运行开始于通用白名单 worker 修改前；新增白名单 API 的后续完整 check 仍待集成运行，不能以并行期间的旧构建覆盖新改动。
 
 - Node 24.15.0 / npm 11.12.0：`npm run check` 的架构门禁 3/3、契约夹具 4/4 与生成类型检查通过，进入工作区测试后出现 `@personal-agent/coordination` 取消错误码不符（实际 `EXTERNAL_FAILURE`，预期 `CANCELLED`）以及 `packages/knowledge/test/bridge.test.mjs` 的 TLS 用例失败。knowledge 测试阶段长期无新输出，已中断；其后工作区与根集成检查未完成。首次检查使用的受限 PATH 未含 `C:\msys64\ucrt64\bin`，故环境影响待隔离确认；不能据此声称检查通过。
 - 后续以含 OpenSSL 的 PATH 串行运行 `agentarts-proposal-invocations.test.mjs` 和 `agentarts-status-recovery.test.mjs`：54/54 通过；首次全量输出被截断，尚不能确定其失败正属于这两个文件，因此这不消除首错。
