@@ -506,7 +506,21 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
             return {...await observe(scope,args,toolName),artifact};
           }
           await recordAttempt(scope,args,toolName,()=>{recorded=true;});
-          if(seen.taskId!==scope.taskId)currentTarget(scope,args,toolName);
+          if(seen.taskId!==scope.taskId){
+            currentTarget(scope,args,toolName);
+            if(name==='click'){
+              const fields=seen.controls.filter(item=>typeof item.value==='string'&&['input','textarea'].includes(item.tag));
+              const unchanged=await page.evaluate(({attribute,fields})=>fields.every(field=>{
+                const matches=document.querySelectorAll(`[${attribute}="${field.ref}"]`),el=matches[0];
+                if(matches.length!==1||!el)return false;
+                const name=(el.getAttribute('aria-label')??el.labels?.[0]?.innerText??el.getAttribute('placeholder')??el.innerText??'').trim().slice(0,200);
+                return el.tagName.toLowerCase()===field.tag&&(el.getAttribute('type')??'').toLowerCase()===field.inputType.toLowerCase()
+                  &&name===field.name&&Boolean(el.disabled)===field.disabled&&String(el.value??'')===field.value;
+              }),{attribute:seen.attribute,fields});
+              active(scope);if(unchanged!==true)fail('REVISION_CONFLICT','原工作流确认的字段已改变，未发送提交点击');
+              currentTarget(scope,args,toolName);
+            }
+          }
           targets.delete(args.targetRef);dispatched=true;
           const timeout=Math.max(1,Date.parse(scope.deadline)-now());
           if(name==='click')await selected.locator.click({timeout});

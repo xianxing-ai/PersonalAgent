@@ -12,23 +12,27 @@
 
 ## 验证计划
 
-真实 Runtime/Policy/原审批卡配明确 Fake 镜像和设备，验证完整固定 worker、独立批准、拒绝、参数替换、精确子任务/观察谱系、并发输入互斥、取消/期限、未知写不重放、重启失去会话不恢复。真实设备/UI 由主工作树串行安排，另记证据。
+真实 OwnedWorkflowEngine/Runtime/Policy/原审批卡配明确 Fake 候选生成/选择、transport、出口同意和设备，验证完整固定 worker、独立批准、拒绝、参数替换、精确子任务/观察谱系、并发输入互斥、取消/期限、未知写不重放、重启失去会话不恢复。真实设备/UI 由主工作树串行安排，另记证据。
 
 ## 实现与根装配
 
 - `createF14WorkflowWorkerPorts({getApplication,browserHost,computerControlLease,authorizationQuestions,authorizeExport})` 返回 `tools`、`configuredWorkflowWorkerPorts`、`authorizeWorkflowTarget`。构造前可以懒取 Runtime；实际调用只接受当前 Runtime。Main 将原浏览器构造的 `authorizeWorkflowTarget` 迟绑定至该函数，继续使用同一 `computerControlLease.wrapTools`，并移除旧孤立 N01 的重复注册。
 - 固定入口 `workflow.browser.form` 输入为 `{url,values:[{label,text}],clickTarget}`。仅消费已有、自有、已连接页面；不自动打开页面，不导航任意窗口。URL 禁止凭据、query/hash，字段标签唯一，当前控件必须唯一匹配。每次填写读回新观察，下一步只承认该原返回的 targetRef。当前完成范围要求提交后仍在原页面，导航结果不冒充已验证业务成功。
-- N01 原独立 `browser.observe`；N02 原输入锁 reservation；N03 每个字段独立 `browser.type`；N05 原正式卡 `currentRequirement`；N06 只有 N05 确认后才能独立 `browser.click`。每个 host 与 business child 都有独立 Policy。不要把 N05 配为跳过原卡的自动工具。
-- N05 的已消费回执只在 confirmed 后读取。最终成功必须具备全部五个原本地节点和原提交回执，结果 `{receiptId,lockReleased:true,goalVerified:false}` 明确不证明外部业务办理成功。回执出口在原授权等待前后复核原 grant，取消、撤销与过期不会借新出口审批继续执行。
+- N01 原独立 `browser.observe`；N02 原输入锁 reservation；N03 每个字段独立 `browser.type`；N05 原正式卡 `currentRequirement`；N06 只有 N05 确认后才能独立重新观察、核对字段值并 `browser.click`。每个 host 与 business child 都有独立 Policy。不要把 N05 配为跳过原卡的自动工具。
+- 实际 Engine 为六个节点各生成一次 `decision.choose_candidate`，N05/N06 还需要原条件 guard。固定 frontier 校验原依赖结果与当前 grant、原决策输入/候选值；host 参数必须与原确认选择及绑定输入完全一致，不接受模型分支跳过 N05。guard 只返回选中原节点，不能代替其独立 Policy。所有决策卡复用生产 `prepareConfiguredWorkflowDecisionQuestion`。
+- 配置版本升为 `desktop-f14-original-v2`，原配置绑定不被静默迁移。字段文本最多 500 字符，与现有浏览器观察的完整值上限一致。N06 通过独立 `f14.browser.before_submit` 读取原字段，N05 等待中值变即拒绝，不重写、不点击；点击宿主在原 attempt 等待后、设备 I/O 前再次核验当前字段值、控件身份与 target 授权。图检查点仅保存原 child 引用，不复制原 DOM 结果。
+- N05 的已消费回执只在 confirmed 后读取。最终成功必须具备全部五个原本地节点、六次决策、两个条件检查和原提交回执，结果 `{receiptId,lockReleased:true,goalVerified:false}` 明确不证明外部业务办理成功。回执出口在原授权等待前后复核原 grant，观察消费还复核原 host 与 business child 的当前授权；取消、撤销与过期不会借新出口审批继续执行。
 - `createF13WorkflowWorkerPorts({getApplication,systemObserveTool,authorizeExport})` 同样返回两类端口。N02 真实 system tool 经独立原 child 执行，但本地采样没有 cloud/quota/lock 三项所需证据；N04 没有可确认恢复 provider，明确拒绝。整个 worker 保持 `f13_cloud_quota_lock_probe_and_confirmed_recovery_unavailable`，`available=false`。这不是 F13 全图完成。
 - 新 Runtime 公共导出仅 `createRuntimeF14DeviceControlHost` 和 `createRuntimeF13DiagnosticControlHost`；没有新 wire、Schema 迁移、依赖或第二套调度器。原 browser/lease 默认路径不变。
 
 ## 本地结果与未验证项
 
 - 根构建、最终 Runtime 构建、架构门禁通过。
+- 第一版 `f91741f7` 完整 `npm run check` exit 0：6708 tests / 6663 pass / 45 skip / 0 fail（`.cache/check-f13-f14-final.log`）。后续字段与实际 Engine 修复必须独立验证，不沿用该结果。
 - 受影响 Desktop 浏览器/共享锁、F13/F14 配置与 Runtime 图宿主定向 **83/83**。配置测试包含实际委派 worker、Runtime、Policy、原卡、共享输入锁和 SQLite；镜像、设备和系统采样为明确 Synthetic/Fake。
 - 覆盖独立批准、原 N05 成功/拒绝/跳过、固定参数替换、错误原 target owner、丢失 reservation、取消、到期、原 host grant 撤销、等待导出期间撤销、出口拒绝、伪 cloud settled，以及原 click unknown 只发生一次。真实 SQLite 重启保留 unknown，原 reservation 不重建，新写仍被持久记录阻止。
 - 浏览器宿主回归使用真实生产 host 配合 Fake Playwright，证明跨 task 回调默认为拒绝、原 target 一次性、并在 attempt 等待后、实际 I/O 前重验当前受信 handoff。若原 attempt 已记而授权随后失效，保守保留未知并阻断，不猜测撤回。
 - 初次浏览器测试因 sandbox 自身 loopback `EACCES` 导致四项失败；获授权后按原代码与断言重跑通过，未放宽网络边界。完整 `npm run check` 另记录；83 项定向不替代全仓检查。
+- 实际 Engine 替换手工推进镜像后，Engine/原卡/浏览器/共享锁定向 78/78；全图包含成功、正式确认拒绝、候选分支试图跳过确认、确认期间字段变化、原参数替换、原 host 导出后的撤销/拒绝及真实 SQLite unknown 重启。后续增加观察授权撤销测试及最终全仓结果另记。
 
 主装配/AgentArts 原部署及 trace、实际页面/设备整链尚未验收。F13 真实远端探针与确认恢复 provider 仍缺失；F14 仅已打开自有页面的固定表单路径，不代表任意 Windows 窗口或所有站点可用。不得据本包宣布 PR #531 已达真实验收合并条件。

@@ -19,13 +19,23 @@ const specs=[
 export function createRuntimeF14DeviceControlHost(options:{getApplication:()=>Pick<RuntimeApplication,'runtime'>;
   assertCurrent:(scope:OwnedWorkflowHostScope,context:ToolContext)=>void;
   invoke:(nodeId:string,input:Record<string,unknown>,scope:OwnedWorkflowHostScope,context:ToolContext)=>Promise<unknown>;
+  guard:(nodeId:string,input:Record<string,unknown>,scope:OwnedWorkflowHostScope,context:ToolContext)=>Promise<'selected'>;
   now?:()=>Date;
 }):{tools:RegisteredTool[]} {
-  return {tools:specs.map(([nodeId,sideEffect,inputSchema,outputSchema])=>createOwnedWorkflowAdapter({nodeId,kind:'host',
+  const tools=specs.map(([nodeId,sideEffect,inputSchema,outputSchema])=>createOwnedWorkflowAdapter({nodeId,kind:'host',
     sideEffect,requiredScopes:['workflow:device'],inputSchema,outputSchema,async execute(input,context){
       const current=()=>assertOwnedWorkflowHostScope({runtime:options.getApplication().runtime,context,workflowId:'F14',nodeId,
         hostToolName:'workflow.host.'+nodeId.toLowerCase(),proposalArguments:input,hostArguments:input,
         assertCurrent:options.assertCurrent,...(options.now?{now:options.now}:{})});
       const result=await options.invoke(nodeId,input as Record<string,unknown>,current(),context);current();return result;
-    }}))};
+    }}));
+  for(const nodeId of ['F14_N05','F14_N06'])tools.push(createOwnedWorkflowAdapter({nodeId,kind:'guard',sideEffect:'read',requiredScopes:['workflow:device'],
+    inputSchema:object({workflowId:{const:'F14'},nodeId:{const:nodeId},input:{type:'object'},predecessorOutputs:{type:'object'},predecessorStates:{type:'object'}}),
+    outputSchema:object({state:{const:'selected'}}),async execute(input,context){
+      const scope=assertOwnedWorkflowHostScope({runtime:options.getApplication().runtime,context,workflowId:'F14',nodeId,
+        hostToolName:'workflow.guard.'+nodeId.toLowerCase(),proposalArguments:input,hostArguments:input,
+        assertCurrent:options.assertCurrent,...(options.now?{now:options.now}:{})});
+      return {state:await options.guard(nodeId,input as Record<string,unknown>,scope,context)};
+    }}));
+  return {tools};
 }
