@@ -68,3 +68,17 @@ for(const [name,create,options] of [
     await assert.rejects(authorization,/no longer current/);
   });
 }
+
+for(const [name,create,options] of [
+  ['F14',createF14ObservationGraphPorts,{browserObserveTool:{descriptor:{name:'browser.observe',version:'1.0.0',sideEffect:'read'}}}],
+  ['F28',createF28ModelGraphPorts,{modelApiHost:{readHarnessConfiguration:()=>({})}}],
+])test(`${name} permits the original completed host receipt only while its parent is active`,async()=>{
+  let parentState='running',childState='succeeded',childCancelled=false;
+  const scope={parentTaskId:'graph',localTaskId:'host',taskId:'host'};
+  const bundle=create({...options,getApplication:()=>({runtime:{getTask:id=>id==='graph'
+    ?{state:parentState,cancelRequested:false}:{state:childState,cancelRequested:childCancelled}}}),authorizeExport:async()=>true});
+  assert.equal(await bundle.ports.authorizeExport(scope,{}),true);
+  parentState='succeeded';await assert.rejects(bundle.ports.authorizeExport(scope,{}),/no longer current/);
+  parentState='running';childCancelled=true;await assert.rejects(bundle.ports.authorizeExport(scope,{}),/no longer current/);
+  childCancelled=false;childState='waiting_reconciliation';await assert.rejects(bundle.ports.authorizeExport(scope,{}),/no longer current/);
+});

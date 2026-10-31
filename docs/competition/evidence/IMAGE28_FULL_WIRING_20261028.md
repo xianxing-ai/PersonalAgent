@@ -57,6 +57,7 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 - 上述白名单入口已接入 `RuntimeApplicationOptions.configuredWorkflowWorkers`、原 Competition 目录/派发/审批恢复及原结果出机链。当前无 Desktop 生产配置注入。11 项 Synthetic 验证包含实际 delegated user-work、Policy/HostBridge、原审批恢复、缺提供者不注册、外来节点拒绝、云 settled 无原回执拒绝和 unknown child 禁重放；与 F09/F20/driver/optional-host 回归合计 43/43 通过，Runtime 构建及架构门禁 3/3 通过。
 
 - F02/F14/F28 Desktop 出机授权原实现比较 Promise 与 `true`，使异步同意被拒绝；现等待真实结果，并在返回前重验原任务未取消。三个回归先失败，修复后通过。
+- F14/F28 Desktop 当前任务检查曾拒绝已成功的 host child，导致实际 receipt 阶段无法出机。现分开检查仍活动的原 graph parent 与已完成的原 host child；取消、失败或待对账 child 不获放行。两项回归先失败再通过；9/9 Desktop port 测试通过，不代表浏览器或模型服务实测。
 - F08_N10/N13、F25_N03、F28_N03 原调用未将实际参数交给原图意图校验，真实非空参数被拒绝，而旧合成夹具用空意图掩盖了问题。现绑定原参数，覆盖更换授权、旧操作、私有标记、检查请求和前驱内容的拒绝路径。
 - F28_N03 guard 接受 Engine 实际发布的 `workflowId/nodeId/input/predecessorOutputs/predecessorStates`，并验证原意图。该适配仍是 provisional；原 `{check}` guard 形状不能匹配真实 Engine。模型支持角色不证明原分派条件成立，缺受信原分派判定时仍返回 unknown。
 - Desktop F08 不再用“存在 mail 工具和任意授权引用”冒充精确操作授权；F13 不再直接执行注册工具绕过 Gateway，也不生成未探测的云/配额/锁事实。缺独立受信提供者时不注册这两个图适配；F12 quiet-hours 保留并重验原父子任务。

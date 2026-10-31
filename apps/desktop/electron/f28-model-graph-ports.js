@@ -10,9 +10,14 @@ export function createF28ModelGraphPorts({getApplication,modelApiHost,authorizeE
   const assertCurrent=scope=>{
     const application=getApplication();
     if(!application?.runtime)throw Error('F28 Runtime unavailable');
-    const task=application.runtime.getTask(scope.localTaskId??scope.taskId);
-    if(task.cancelRequested||!['running','waiting_approval','waiting_reconciliation'].includes(task.state))
+    const task=application.runtime.getTask(scope.parentTaskId??scope.taskId);
+    if(task.cancelRequested||!['running','waiting_approval'].includes(task.state))
       throw Error('F28 original task is no longer current');
+    if(scope.localTaskId){
+      const local=application.runtime.getTask(scope.localTaskId);
+      if(local.cancelRequested||!['running','waiting_approval','succeeded'].includes(local.state))
+        throw Error('F28 original host is no longer current');
+    }
   };
 
   const readNativeConfig=async(scope,input)=>{
