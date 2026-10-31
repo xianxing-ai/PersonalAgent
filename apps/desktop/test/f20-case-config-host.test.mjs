@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,readFile,rm,writeFile} from 'node:fs/promises';
+import {mkdtemp,mkdir,readFile,rm,symlink,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {createF20CaseConfiguration} from '../electron/f20-case-config-host.js';
@@ -25,6 +25,15 @@ test('native-selected case is encrypted, bound to its workspace and fixed recipe
     assert.match(selected.sourceVersion,/^[a-f0-9]{64}$/);assert.equal(host.resolveInput('different',scope),undefined);
     assert.equal(host.resolveInput('api-case',{...scope,deadline:'2000-01-01T00:00:00.000Z'}),undefined);
     assert.deepEqual(open().resolveInput('api-case',scope),selected);
+    const rootAlias=path.join(temp,'selected-workspace-alias');
+    await symlink(root,rootAlias,process.platform==='win32'?'junction':'dir');
+    workspace.rootPath=rootAlias;
+    assert.deepEqual(host.resolveInput('api-case',scope),selected,'a selected root alias and its native target use the same containment basis');
+    workspace.rootPath=root;
+    await symlink(path.join(root,'src'),path.join(root,'linked-source'),process.platform==='win32'?'junction':'dir');
+    workspace.checkFile='linked-source/api.js';
+    assert.throws(()=>host.setFromNativeSelection({...input,codeFile:'linked-source/api.js'}),{code:'UNAUTHORIZED'},'source descendants still cannot use links');
+    workspace.checkFile='src/api.js';
     workspace.available=()=>false;assert.equal(host.resolveInput('api-case',scope),undefined);
     assert.deepEqual(host.readConfiguredInput('api-case'),selected,'native metadata readback does not revive unavailable execution');
     assert.equal(host.readConfiguredInput('different'),undefined);

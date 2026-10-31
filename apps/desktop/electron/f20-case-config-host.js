@@ -11,6 +11,7 @@ function relative(value) {
 }
 function sourceFile(root,value) {
   if(!relative(value))throw new ProtocolError('INVALID_ARGUMENT','F20 source must be a relative workspace file');
+  root=realpathSync.native(root);
   let current=root;
   for(const segment of value.split('/')) {
     current=path.join(current,segment);
