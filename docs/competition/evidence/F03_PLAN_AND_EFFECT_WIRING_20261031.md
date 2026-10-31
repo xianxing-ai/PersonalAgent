@@ -25,3 +25,13 @@ Competition Profile，基线 `d5e67c8a` 加 F24 原知识写入恢复。以下�
 `RuntimeApplication.readF03PlanRepairReceipt({taskId,sourceTaskId,reviewTaskId,graphNamespace})` 复用原 local repair intent、原 Goal review/candidate、原 `local-repair-<taskId>` ToolGateway run 与完整 CAS 后快照。缺少或被替换的原证明返回 unavailable；只读接口不执行、续跑、签发或消费许可。返回不可变原节点版本与 `graphUpdateVerified`：目标被后续版本替换时保留已发生的历史效果，但当前核实标志为 false；无关节点更新不影响原目标核实。Desktop Goal 实际调用方已改为消费该端口，移除其重复的私有回执核验。
 
 本地验证：Runtime build 通过；`reviewed-local-repair`、Desktop `goal-cognition-host` 和 `goal-cognition-empty-projection` 共 69/69 通过。使用实际 Runtime/SQLite/Policy/ToolGateway/CAS 与显式 Synthetic 模型，覆盖审批前无回执、原数据库重开、来源/候选/intent/结果/命名空间替换、无关及目标后续版本、重复读取零执行，并回归原桌面 Goal 消费链。此增量不证明 F03 原因果、外部补偿、整图或 AgentArts 真实验收完成。
+
+## 已交付增量 B1：原知识写入的 Fact 观察回执
+
+现有 `createTrustedKnowledgeTools` → `createKnowledgeWriteProjection` → Desktop `privateMemory.revalidateSource` 实际链保存原 task/run/argumentsDigest/operationId、写入前后 SHA 及真实 `revalidateWikiFact` 返回的 previous/current Fact refs、原引文摘要和来源版本。Desktop 在原受信 Wiki lease 内前后读回同一路径的来源 SHA；后来独立写入已替换原内容时不给出该原操作的读回。Runtime 校验来源、版本、状态、重复 Fact 与额外字段后，把回执存入原 projection checkpoint。原 unknown 写入不进入该投影，已知写入结果与投影失败保持分离；原写入最终核实路径也传递实际 current SHA。
+
+回执覆盖范围明确为 `observed_active_heads`：它证明本次观察的 Fact 变化，不单独证明完整原因果链或“没有其他效果”。已撤回头、历史缺记录、进程在 Fact 提交后但回执保存前中断，均不补造归因。后续消费者还须连接原 Plan 执行映射、原依赖版本、实际 Fact projection links / impact causes 并读回当前版本。原来源较早版本的 Fact 也保留其真实 `sourceRevision`，不能仅因同一路径就归给本次写入。
+
+兼容：原 void provider 与旧 checkpoint 可继续恢复，但没有 `factReadback` 时不得声称 Fact 证据已验证；没有数据库时不创建或导入私人 Fact。新数据仅为原 checkpoint 的可选字段，没有数据库迁移、清库、额外写入重试或新的云端字段。
+
+本地验证：Runtime build；13/13 原工具/投影测试（实际 ToolGateway/Policy、显式 Synthetic writer/provider）；27/27 Desktop Wiki 来源与 F24 恢复回归，其中 Wiki 版本测试读取独立临时目录中的实际合成文件及 SQLite，F24 同时回归实际受控文件 journal。无私人知识库、真实模型或云端验收声明。

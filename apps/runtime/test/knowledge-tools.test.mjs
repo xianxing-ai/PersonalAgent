@@ -4,7 +4,7 @@ import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createTrustedKnowledgeTools} from '../dist/application/knowledge-tools.js';
 
-function fixture() {
+function fixture(projectionPort) {
   let reads = 0, writes = 0, reconciliations = 0;
   let binding = {sourceId: 'synthetic', namespace: 'admin', configRevision: 1, available: true,
     writeAvailable: true, dataLevel: 'private', cloudExportAllowed: false, publicQueries: ['公开查询'], allowedNotePaths: ['demo.md']};
@@ -21,7 +21,7 @@ function fixture() {
         path: input.path, beforeSha256: input.expectedSha256, afterSha256: 'b'.repeat(64), operationId: 'c'.repeat(64),
         backupId: 'local-only', state: 'verified', changed: true};}}};
   }};
-  const factory = createTrustedKnowledgeTools(source);
+  const factory = createTrustedKnowledgeTools(source,projectionPort);
   factory.bindApplication({runtime: {loadCheckpoint: (task, key) => checkpoints.get(task + key),
     saveCheckpoint: (task, key, value) => checkpoints.set(task + key, value)}});
   const policy = new InMemoryAuthorizationPolicy(), gateway = new ToolGateway({policy});
@@ -35,7 +35,7 @@ function fixture() {
     return {toolName: tool.descriptor.name, toolVersion: tool.descriptor.version, arguments: args,
       taskId, runId: 'run-' + taskId, authorizationRef, deadline, signal: new AbortController().signal};
   }
-  return {factory, gateway, policy, read, write, input, invocation, counts: () => ({reads, writes, reconciliations}),
+  return {factory, gateway, policy, read, write, input, invocation, checkpoints, counts: () => ({reads, writes, reconciliations}),
     change: patch => {binding = {...binding, ...patch};}, binding: () => binding};
 }
 
@@ -92,4 +92,25 @@ test('write stays behind one-use Policy with the exact operation digest and reda
   const exported = f.factory.competitionToolExports[1];
   assert.deepEqual(exported.project({taskId: 'task', proposalId: 'p', result, signal: unauthorized.signal}), {state: 'verified', changed: true});
   assert.equal(exported.accepts({taskId: 'task', proposalId: 'p', arguments: {...args, path: 'unselected.md'}}), false);
+});
+
+test('actual tool composition pins original write SHA and stores the host Fact readback without exporting it',async()=>{
+  let request;
+  const f=fixture({revalidate:async input=>{
+    request=input;return {version:1,sourceId:input.sourceId,configRevision:input.configRevision,path:input.path,
+      sourceRevision:input.expectedSha256,memoryNamespace:'synthetic-memory',coverage:'observed_active_heads',facts:[{
+        previous:{id:'synthetic-fact',revision:1},current:{id:'synthetic-fact',revision:2},sourceDigest:'d'.repeat(64),
+        sourceRevision:'a'.repeat(64),state:'withdrawn',appended:true}]};
+  }});
+  f.change({dataLevel:'public',cloudExportAllowed:true});
+  const args={sourceId:'synthetic',configRevision:1,path:'demo.md',expectedSha256:'a'.repeat(64),edits:[{oldText:'old',newText:'new'}]};
+  const invocation=f.invocation(f.write,args),result=await f.gateway.invoke(invocation);
+  assert.deepEqual(request,{sourceId:'synthetic',configRevision:1,path:'demo.md',expectedSha256:result.afterSha256});
+  const saved=f.checkpoints.get('taskknowledge-write-projections-v1')[0];
+  assert.equal(saved.runId,invocation.runId);assert.equal(saved.argumentsDigest,toolArgumentsDigest(args));
+  assert.equal(saved.operationId,result.operationId);assert.equal(saved.factReadback.facts[0].current.revision,2);
+  assert.deepEqual(f.factory.competitionToolExports[1].project({taskId:'task',proposalId:'p',result,signal:invocation.signal}),
+    {state:'verified',changed:true});
+  await f.factory.recoverProjection('task',{deadline:invocation.deadline,signal:invocation.signal});
+  assert.equal(f.counts().writes,1);
 });

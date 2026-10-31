@@ -182,6 +182,7 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource, proj
           const accepted = input.acceptedOriginal;
           projection?.accept(accepted.taskId, accepted.runId, accepted.argumentsDigest, {
             operationId: result.operationId, state: result.outcome === 'applied' ? 'verified' : 'conflict',
+            afterSha256: result.currentSha256,
             changed: result.outcome === 'applied' && result.currentSha256 !==
               (accepted.originalInput as KnowledgeNotePatch).expectedSha256}, accepted.originalInput as KnowledgeNotePatch);
           // Commit the original Runtime result before callers independently recover projections.
