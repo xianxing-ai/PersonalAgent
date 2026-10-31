@@ -19,12 +19,13 @@ export function createF16CiFailurePorts(options:F16CiFailurePortsOptions) {
   if(!options.selectionCheckpointKey?.trim()||typeof options.invokeWorkspaceHead!=='function')
     sourceFailure('F16 trusted selection and HEAD invocation required');
   const {application}=options;
+  const key=(scope:Scope)=>options.selectionCheckpointKey+':'+scope.sessionId;
   const snapshot=(scope:Scope,binding:F16FailureBinding)=>[
     readF16Source(application,scope,binding.runList,'github.actions.run.list'),
     readF16Source(application,scope,binding.jobList,'github.actions.job.list'),
     readF16Source(application,scope,binding.logRead,'github.actions.log.read')];
   const selection=(scope:Scope)=>{
-    const saved=application.runtime.loadCheckpoint(scope.parentTaskId,options.selectionCheckpointKey) as
+    const saved=application.runtime.loadCheckpoint(scope.parentTaskId,key(scope)) as
       {parentTaskId:string;sessionId:string;deadline:string;binding:F16FailureBinding;sources:unknown}|undefined;
     if(!saved||saved.parentTaskId!==scope.parentTaskId||saved.sessionId!==scope.sessionId||saved.deadline!==scope.deadline
       ||!isDeepStrictEqual(saved.sources,snapshot(scope,saved.binding)))sourceFailure('F16 selected source changed');
@@ -34,7 +35,7 @@ export function createF16CiFailurePorts(options:F16CiFailurePortsOptions) {
     bindSelection(scope:Scope,binding:F16FailureBinding) {
       const saved={parentTaskId:scope.parentTaskId,sessionId:scope.sessionId,deadline:scope.deadline,
         binding:structuredClone(binding),sources:snapshot(scope,binding)};
-      application.runtime.saveCheckpointOnce(scope.parentTaskId,options.selectionCheckpointKey,saved);
+      application.runtime.saveCheckpointOnce(scope.parentTaskId,key(scope),saved);
       if(!isDeepStrictEqual(saved,selection(scope)))sourceFailure('F16 selection cannot be replaced');
     },
     resolveFailure:async(scope:Scope)=>selection(scope).binding,

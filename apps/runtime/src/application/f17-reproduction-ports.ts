@@ -37,7 +37,9 @@ export function createF17ReproductionPorts(options:F17ReproductionPortsOptions) 
     if(!sourceObject(prepared)||prepared.parentTaskId!==scope.parentTaskId||prepared.sessionId!==scope.sessionId
       ||prepared.deadline!==scope.deadline||prepared.repository!==binding.repository||prepared.operationId!==binding.operationId
       ||!recipe||prepared.recipeDigest!==digest(recipe)||!isDeepStrictEqual(prepared.beforeHead,before)
-      ||typeof prepared.preparedAt!=='string'||Date.parse(prepared.preparedAt)>Date.parse(command.record.startedAt))
+      ||typeof prepared.preparedAt!=='string'||!Number.isFinite(Date.parse(prepared.preparedAt))
+      ||Date.parse(before.record.finishedAt!)>Date.parse(prepared.preparedAt)
+      ||Date.parse(prepared.preparedAt)>Date.parse(command.record.startedAt))
       sourceFailure('F17 original recipe preparation unavailable');
     if(!recipe||command.read.commandId!==binding.operationId||!isDeepStrictEqual(binding.command.arguments,{recipeId:recipe.id})
       ||!isDeepStrictEqual(binding.beforeHead.arguments,{repository:binding.repository})

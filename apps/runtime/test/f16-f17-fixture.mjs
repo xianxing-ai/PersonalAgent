@@ -22,10 +22,11 @@ export async function fixture(t,workflow='F16') {
   const head=git('rev-parse','HEAD'),repository='xianxing-ai/PersonalAgent',recipe={id:'reproduce',executable:process.execPath,args:['--test','--test-reporter=tap','failure.test.mjs']};
   const deadlines=new Date(Date.now()+120000).toISOString(),controller=new AbortController();
   const counters={github:0,head:0,command:0};let app,client,host,ports,scope,parent,bridge,proposal,original,gate=true;
-  let exportAction=async()=>true,headAction;
+  let exportAction=async()=>true,headAction,githubAction;
   const tools=[];
   const provider={verification:'mock',execute:async(op,input)=>{
     counters.github++;
+    if(githubAction)await githubAction(op,input);
     const page=items=>({items,page:1,nextPage:null,hasMore:false});
     if(op==='actions.run.list')return page([{id:7,name:'Synthetic CI',status:'completed',conclusion:'failure',headSha:head,url:'https://github.com/xianxing-ai/PersonalAgent/actions/runs/7',createdAt:new Date().toISOString()}]);
     if(op==='actions.job.list')return page([{id:8,runId:7,name:'Synthetic test job',status:'completed',conclusion:'failure',url:'https://github.com/xianxing-ai/PersonalAgent/actions/runs/7/job/8'}]);
@@ -92,6 +93,7 @@ export async function fixture(t,workflow='F16') {
   return {root,directory,head,repository,recipe,counters,controller,scope,original,proposal,request,source,approve,wait,ref,git,
     get app(){return app;},get host(){return host;},get ports(){return ports;},get bridge(){return bridge;},reopen,
     gateOff:()=>{gate=false;},onExport:fn=>{exportAction=fn;},onHead:fn=>{headAction=fn;},
+    onGitHub:fn=>{githubAction=fn;},
     context(id){return {taskId:id,runId:'host-tool-'+id,authorizationRef:'host-tool-'+id,scopes:['fixture:report'],deadline:deadlines,signal:controller.signal};},
     async prepareF16(){
       const runList=await source(request('runs','github.actions.run.list',{repo:repository,status:'failure'}));

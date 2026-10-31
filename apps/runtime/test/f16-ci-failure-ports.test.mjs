@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {ProtocolError} from '@personal-agent/contracts';
 import {fixture} from './f16-f17-fixture.mjs';
 import {awaitF16Port} from '../dist/application/f16-source-receipts.js';
 
@@ -59,4 +60,27 @@ test('F16 trusted waits terminate on cancellation/deadline without replaying an 
   const pending=awaitF16Port(scope,()=>new Date(),()=>{calls++;return new Promise(()=>{});});
   await new Promise(r=>setTimeout(r,1));controller.abort();await assert.rejects(pending,{code:'CANCELLED'});assert.equal(calls,1);
   await assert.rejects(awaitF16Port({signal:new AbortController().signal,deadline:new Date(Date.now()+20).toISOString()},()=>new Date(),()=>new Promise(()=>{})),{code:'TIMEOUT'});
+});
+
+test('F16 unknown CI log receipt stays unavailable and is not dispatched again after restart',async t=>{
+  const f=await fixture(t);f.onGitHub(async op=>{if(op==='actions.log.read')throw new ProtocolError('RESULT_UNKNOWN','Synthetic unknown public read');});
+  await assert.rejects(f.prepareF16());
+  const original=f.app.runtime.loadCheckpoint(f.scope.parentTaskId,'coding-repair:host:log');
+  assert.equal(f.app.runtime.getTask(original.localTaskId).state,'waiting_reconciliation');
+  const ref=id=>({taskId:id,runId:'host-tool-'+id,scopeRef:'host-tool-'+id,toolVersion:'0.1.0-alpha.1',arguments:f.app.runtime.loadCheckpoint(id,'host-tool-intent').arguments});
+  const binding={repo:f.repository,headSha:f.head,runId:7,jobId:8,
+    runList:ref(f.app.runtime.loadCheckpoint(f.scope.parentTaskId,'coding-repair:host:runs').localTaskId),
+    jobList:ref(f.app.runtime.loadCheckpoint(f.scope.parentTaskId,'coding-repair:host:jobs').localTaskId),logRead:ref(original.localTaskId)};
+  assert.throws(()=>f.ports.bindSelection(f.scope,binding),{code:'UNAUTHORIZED'});
+  await f.reopen();assert.throws(()=>f.ports.bindSelection(f.scope,binding),{code:'UNAUTHORIZED'});assert.equal(f.counters.github,3);
+});
+
+test('F16 revoked authority and cancelled/expired receipt exports stop before any fresh source read',async t=>{
+  const f=await fixture(t);await f.prepareF16();const {localTaskId:id}=f.bridge.submit(f.original,f.proposal),read=await f.approve(id);
+  assert.equal(read.task.state,'succeeded');const count=f.counters.head;
+  await assert.rejects(f.host.authorizeReceipt({context:{...f.context(id),scopes:[]},result:read.confirmed.result}),{code:'SCOPE_DENIED'});
+  await assert.rejects(f.host.authorizeReceipt({context:{...f.context(id),deadline:new Date(0).toISOString()},result:read.confirmed.result}),{code:'TIMEOUT'});
+  f.gateOff();await assert.rejects(f.host.authorizeReceipt({context:f.context(id),result:read.confirmed.result}),{code:'UNAUTHORIZED'});
+  f.controller.abort();await assert.rejects(f.host.authorizeReceipt({context:f.context(id),result:read.confirmed.result}),{code:'CANCELLED'});
+  assert.equal(f.counters.head,count);
 });

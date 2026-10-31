@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
+import {createHash} from 'node:crypto';
+import {createF17ConfiguredDriverResolver} from '../dist/application/f17-configured-driver.js';
 import {fixture} from './f16-f17-fixture.mjs';
 
 test('F17 real failing recipe and original version become a persistent stack report through Policy/HostBridge',async t=>{
@@ -48,8 +50,21 @@ test('F17 export denial and source change while awaiting permission reject compl
 test('F17 cancelled or expired original receipt export cannot read versions or replay reproduction',async t=>{
   const f=await fixture(t,'F17');await f.prepareF17();const {localTaskId:id}=f.bridge.submit(f.original,f.proposal);
   const read=await f.approve(id);assert.equal(read.task.state,'succeeded');const count=f.counters.head;
+  await assert.rejects(f.host.authorizeReceipt({context:{...f.context(id),deadline:'2000-01-01T00:00:00.000Z'},
+    result:read.confirmed.result}),{code:'TIMEOUT'});
   f.controller.abort();await assert.rejects(f.host.authorizeReceipt({context:f.context(id),result:read.confirmed.result}),{code:'CANCELLED'});
   assert.equal(f.counters.head,count);assert.equal(f.counters.command,1);
+});
+
+test('F17 invalid or out-of-order preparation timestamps cannot bind a failed reproduction',async t=>{
+  const f=await fixture(t,'F17'),binding=await f.prepareF17(),key='f17:reproduction:prepared:repro';
+  const saved=f.app.runtime.loadCheckpoint(f.scope.parentTaskId,key),heads=f.counters.head;
+  for(const preparedAt of ['invalid','2000-01-01T00:00:00.000Z','2100-01-01T00:00:00.000Z']){
+    f.app.runtime.saveCheckpoint(f.scope.parentTaskId,key,{...saved,preparedAt});
+    await assert.rejects(f.ports.resolveReproduction(f.scope,{taskId:binding.command.taskId,operationId:'repro',
+      arguments:{recipeId:'reproduce'}}),{code:'UNAUTHORIZED'});
+  }
+  assert.equal(f.counters.head,heads);assert.equal(f.counters.command,1);
 });
 
 test('F17 unknown after report persistence is retained across SQLite restart and never replays the reproduction',async t=>{
@@ -62,4 +77,18 @@ test('F17 unknown after report persistence is retained across SQLite restart and
   assert.equal(f.app.runtime.getTask(id).state,'waiting_reconciliation');assert.equal(f.counters.command,1);
   assert.notEqual(f.bridge.readReceipt(f.original,f.proposal)?.state,'confirmed');
   await assert.rejects(f.host.authorizeReceipt({context:f.context(id),result:{}}));
+});
+
+test('F17 configured-worker checkpoint resolver rejects a substituted pending proposal or original session',async t=>{
+  const f=await fixture(t,'F17'),hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
+  const pending={proposalId:'original-proposal',toolName:'workflow.f17.test_locate',toolVersion:'1.0.0',arguments:{}};
+  const namespace='owned-workflow:configured:'+hash([pending.toolName,pending.proposalId]),runtime=f.app.runtime,id=f.scope.parentTaskId;
+  runtime.saveCheckpoint(id,'competition-loop',{pending,pendingRevision:3});
+  runtime.saveCheckpoint(id,namespace+':binding',{taskId:id,deadline:f.scope.deadline,revision:3,proposalDigest:hash(pending)});
+  runtime.saveCheckpoint(id,namespace+':graph',{sessionId:f.scope.sessionId});
+  const resolve=createF17ConfiguredDriverResolver(f.app,{name:pending.toolName,version:pending.toolVersion});
+  assert.equal(resolve(f.scope),namespace+':graph');
+  assert.throws(()=>resolve({...f.scope,sessionId:'foreign'}),{code:'UNAUTHORIZED'});
+  runtime.saveCheckpoint(id,'competition-loop',{pending:{...pending,arguments:{forged:true}},pendingRevision:3});
+  assert.throws(()=>resolve(f.scope),{code:'UNAUTHORIZED'});
 });

@@ -18,7 +18,7 @@ const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest(
 export function createRuntimeF17FailureReportHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
   /** Trusted original workflow driver checkpoint, never model supplied. */
-  driverCheckpointKey:string;
+  driverCheckpointKey:string|((scope:Scope)=>string);
   /** Trusted workspace root for local parser classification; snippet reads remain disabled. */
   workspaceRoot:string;
   requiredScopes:readonly string[];
@@ -27,7 +27,8 @@ export function createRuntimeF17FailureReportHost(options?:{
   now:()=>Date;
   resolveReproduction:(scope:Scope,command:{taskId:string;operationId:string;arguments:Record<string,unknown>})=>Promise<F17Reproduction>;
 }):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
-  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'||!text(options.driverCheckpointKey)
+  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'
+    ||!(text(options.driverCheckpointKey)||typeof options.driverCheckpointKey==='function')
     ||!text(options.workspaceRoot)||!Array.isArray(options.requiredScopes)||!options.requiredScopes.length
     ||!options.requiredScopes.every(text)||typeof options.assertCurrent!=='function'||typeof options.authorizeExport!=='function'
     ||typeof options.now!=='function'||typeof options.resolveReproduction!=='function')return {tools:[],unavailable:'f17_failure_report_trusted_ports_unavailable'};
@@ -38,9 +39,11 @@ export function createRuntimeF17FailureReportHost(options?:{
       hostToolName:'workflow.host.f17_n04',proposalArguments:{},assertCurrent:options.assertCurrent,now:options.now});
   };
   const deriveSource=(scope:Scope)=>{
-    const state=runtime.loadCheckpoint(scope.parentTaskId,options.driverCheckpointKey) as {sessionId?:string;controlRevision?:number;
+    const driverKey=typeof options.driverCheckpointKey==='function'?options.driverCheckpointKey(scope):options.driverCheckpointKey;
+    if(!text(driverKey))failOwnedHost('UNAUTHORIZED','Original F17 driver key unavailable');
+    const state=runtime.loadCheckpoint(scope.parentTaskId,driverKey) as {sessionId?:string;controlRevision?:number;
       confirmedOperations?:Record<string,{nodeId?:string;toolName?:string;localTaskId?:string;operationId?:string;result?:unknown}>}|undefined;
-    const binding=runtime.loadCheckpoint(scope.parentTaskId,options.driverCheckpointKey+':driver-binding') as
+    const binding=runtime.loadCheckpoint(scope.parentTaskId,driverKey+':driver-binding') as
       {taskId?:string;workflowId?:string;sessionId?:string;deadline?:string}|undefined;
     if(state?.sessionId!==scope.sessionId||binding?.taskId!==scope.parentTaskId||binding.workflowId!=='F17'
       ||binding.sessionId!==scope.sessionId||binding.deadline!==scope.deadline)
@@ -69,7 +72,7 @@ export function createRuntimeF17FailureReportHost(options?:{
       failOwnedHost('UNAUTHORIZED','Original failed test command is not confirmed');
     const command=readF16Source(options.application,scope,{taskId:localTaskId,runId:read.confirmed.runId,
       toolVersion:read.toolVersion,scopeRef:read.confirmed.runId,arguments:operation.proposal.arguments},'workspace.run_allowed_command');
-    return {entry,operation,original,parent,read,command,value,operationId,localTaskId};
+    return {driverKey,entry,operation,original,parent,read,command,value,operationId,localTaskId};
   };
   const derive=async(scope:Scope)=>{
     const source=deriveSource(scope),{value,operationId,localTaskId,read}=source;
