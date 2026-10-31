@@ -67,6 +67,7 @@ export function createF11CalendarWorkflowPorts({getApplication,bridge,todoHost,a
   };
   return {
     assertCurrent:scope=>{binding(scope);},
+    readChangeBinding(scope){const original=saved(scope);return original&&{...original,reminderId:binding(scope).plan.reminder.scheduleId};},
     async verifyPlan(scope,input){
       const {app,plan}=binding(scope);if(!isDeepStrictEqual(input,{update:plan.update,reminder:plan.reminder}))return false;
       if(app.runtime.loadCheckpoint(scope.parentTaskId,clearKey(scope)))

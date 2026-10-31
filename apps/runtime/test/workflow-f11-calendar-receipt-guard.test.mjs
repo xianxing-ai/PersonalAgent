@@ -26,6 +26,7 @@ test('F11 node retains the calendar receipt and requires old reminder cancellati
   f.options.application.runtime.getTask=()=>({state:'running',cancelRequested:false,evidenceRefs:['run']});
   let invalidated=false,readback=true,calls=[];
   const host=createRuntimeF11CalendarChangeHost({...f.options,calendarUpdate:{descriptor:{name:'calendar.update',inputSchema:{type:'object'}}},
+    readChangeBinding:()=>f.binding,
     requiredScopes:['calendar:write','todo:write'],now:()=>new Date(),assertCurrent:()=>{},authorizeExport:async()=>true,
     verifyPlan:async()=>true,verifyUpdatedEvent:async()=>readback,verifyReminderInvalidated:async()=>invalidated,
     invokeCalendarUpdate:async()=>{calls.push('calendar.update');const {reminderId,...record}=f.binding;return record;},
