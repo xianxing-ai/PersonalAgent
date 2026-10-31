@@ -1,4 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import * as productivity from '@personal-agent/productivity';
 import * as notifications from '@personal-agent/notifications';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
@@ -68,17 +69,24 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       outputSchema:{type:'object',additionalProperties:false,required:['isTaskAlreadyFinished','shouldFireAlarm'],properties:{
         isTaskAlreadyFinished:{type:'boolean'},shouldFireAlarm:{type:'boolean'}}},
       async execute(input,context) {
-        if(await verifyWorkflowReminderBinding({todoId:input.todoId,revision:input.revision,context})!==true)
+        const item=service.get(input.todoId),scheduleId=item.reminder&&productivity.reminderScheduleId(item.id,item.reminder.remindAt.utc);
+        const reminderRecord=scheduleId&&records()[scheduleId];
+        const verification=await verifyWorkflowReminderBinding({todoId:input.todoId,revision:input.revision,context,
+          currentItem:item,reminderRecord,schedule:application.runtime.listSchedules(conversationId).find(value=>value.scheduleId===scheduleId),
+          deliveryRound:reminderRecord?.batchId&&notificationHost?.runtimeHost?.getInterruptionRound(
+            'desktop-batch-'+notifications.notificationDigest(reminderRecord.batchId))});
+        const delivered=verification?.delivered===true&&verification.revision===item.revision&&item.revision===input.revision+1;
+        if(verification!==true&&!delivered)
           throw Error('待办提醒缺少同一图的原确认回执绑定');
         // The binding check can be asynchronous; revalidate consent after it.
         assertAccess(context,input,adapter);
-        const item=service.get(input.todoId);
-        if(item.revision!==input.revision)throw Error('待办提醒版本已变化，请重新读取原操作');
+        if(!isDeepStrictEqual(item,service.get(input.todoId))||item.revision!==input.revision&&!delivered)
+          throw Error('待办提醒版本已变化，请重新读取原操作');
         if(!item.reminder)throw Error('当前待办没有可核验的提醒');
         const when=Date.parse(item.reminder.remindAt.utc),currentTime=now();
         if(!Number.isFinite(when)||!Number.isFinite(currentTime))throw Error('提醒时钟不可用');
         return {isTaskAlreadyFinished:item.status!=='open',shouldFireAlarm:item.status==='open'
-          && item.reminder.state==='scheduled' && currentTime>=when};
+          && (item.reminder.state==='scheduled'||delivered) && currentTime>=when};
       }});
     implementations.push(adapter);
   }
@@ -253,7 +261,7 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       publicEnumPaths:tool.descriptor.name==='todo.list'?['/status']:tool.descriptor.name==='todo.update'?['/status','/missedPolicy']:tool.descriptor.name==='todo.create'?['/missedPolicy']:[],
       available:({taskId,signal})=>!signal.aborted && (question?questionReady():current()) && bound(taskId,true)}));},
     get competitionToolExports(){return tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
-      exportPolicyVersion:question?'question-todo-bounded-v2':'authorized-todo-session-v1',accepts:scope=>{
+      exportPolicyVersion:question?'question-todo-bounded-v3':'authorized-todo-session-v1',accepts:scope=>{
         if(!question)return current()&&bound(scope.taskId);
         try{const entry=original(scope);if(entry.argumentsDigest!==hash(scope.arguments))return false;
           if(scope.phase==='final'){
@@ -264,8 +272,20 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       },
       project:scope=>{
         const {taskId,result,signal}=scope;
-        if(question){const entry=original(scope);question.currentRequirement({...entry.scope,signal},'todo-session');
-          question.authorizeExport({...entry.scope,signal},result,'todo-export');entry.projectionDigest=hash(result);}
+        if(question){const entry=original(scope),exact={...entry.scope,signal};
+          if(application.runtime.getTask(taskId).state==='succeeded'){
+            const readback=application.readHostToolTask(taskId),intent=application.runtime.loadCheckpoint(taskId,'host-tool-intent');
+            if(readback.task.state!=='succeeded'||readback.commandId!==entry.scope.proposalId
+              ||readback.toolName!==entry.scope.toolName||readback.toolVersion!==entry.scope.toolVersion
+              ||readback.confirmed?.runId!==entry.scope.runId||!readback.confirmed.evidenceRefs.includes(entry.scope.runId)
+              ||!isDeepStrictEqual(readback.confirmed.result,result)||intent?.commandId!==entry.scope.proposalId
+              ||intent.toolName!==entry.scope.toolName||intent.toolVersion!==entry.scope.toolVersion
+              ||intent.deadline!==entry.scope.deadline||hash(intent.arguments)!==entry.argumentsDigest
+              ||typeof question.assertConsumedResult!=='function'||typeof question.authorizeConsumedExport!=='function')
+              throw Error('待办原已确认结果的出机许可不可用');
+            question.assertConsumedResult(exact,'todo-session');question.authorizeConsumedExport(exact,result,'todo-export');
+          }else {question.currentRequirement(exact,'todo-session');question.authorizeExport(exact,result,'todo-export');}
+          entry.projectionDigest=hash(result);}
         else if(signal.aborted || !current() || !bound(taskId)) throw Error('待办云端许可已撤销');
         if(Buffer.byteLength(JSON.stringify(result),'utf8')>960*1024) throw Error('待办结果过大，请按状态缩小查询范围');
         return structuredClone(result);

@@ -113,9 +113,9 @@ test('F06 todo write and notification deliver enforce trusted bindings',async()=
   assert.equal(createRuntimeF06TodoWriteHost({...f,todoCreate:{descriptor:{name:'todo.create'},execute:async()=>({})},verifyWriteBinding:async()=>true}).tools.length,0);
   const write=createRuntimeF06TodoWriteHost({...f,invokeTodoCreate,verifyWriteBinding:async()=>binding});
   const created=await write.tools[0].execute({todoTitle:'t'},f.context);
-  assert.equal(created.todoId,'todo-1');assert.equal(created.opKey,'operation');assert.equal(invoked,1);
+  assert.equal(created.todoId,'todo-1');assert.equal(created.revision,1);assert.equal(created.opKey,'operation');assert.equal(invoked,1);
   assert.deepEqual(f.application.runtime.loadCheckpoint('parent','f06:n03-todo:session'),
-    {sessionId:'session',operationId:'operation',todoId:'todo-1',revision:1});
+    {sessionId:'session',operationId:'operation',todoId:'todo-1',revision:1,item:{id:'todo-1',revision:1}});
   await assert.rejects(write.tools[0].execute({todoTitle:'changed'},f.context),{code:'UNAUTHORIZED'});
   binding=false;await assert.rejects(write.tools[0].execute({todoTitle:'t'},f.context),{code:'UNAUTHORIZED'});
   assert.equal(invoked,1);

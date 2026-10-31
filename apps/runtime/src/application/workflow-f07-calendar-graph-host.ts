@@ -65,7 +65,7 @@ export function createRuntimeF07CalendarWriteHost(options?:{
   application:Pick<RuntimeApplication,'runtime'>;
   calendarCreate:RegisteredTool;
   /** Invoke the original calendar operation through Runtime Policy/ToolGateway. */
-  invokeCalendarCreate:(input:{summary:string;startUtc:string;endUtc:string;location?:string},context:ToolContext)=>Promise<unknown>;
+  invokeCalendarCreate:(input:{summary:string;startUtc:string;endUtc:string;location?:string},context:ToolContext,scope:Scope)=>Promise<unknown>;
   requiredScopes:readonly string[];
   verifyWriteBinding:(scope:Scope,input:{title:string;slot:unknown})=>Promise<boolean>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
@@ -91,7 +91,7 @@ export function createRuntimeF07CalendarWriteHost(options?:{
     if(!requiredScopes.every(item=>context.scopes.includes(item))||!calendarCreate.descriptor.requiredScopes.every(item=>context.scopes.includes(item)))
       failOwnedHost('SCOPE_DENIED','F07 calendar scope required');
     const created=await options.invokeCalendarCreate({summary:input.title,startUtc:slot.startUtc,endUtc:slot.endUtc,
-      ...(text(slot.location)?{location:slot.location}:{})},context);
+      ...(text(slot.location)?{location:slot.location}:{})},context,scope);
     active(context,input);
     const state=plain(created)&&typeof created.state==='string'?created.state:undefined;
     return {eventCreated:state==='created'||state==='confirmed',externalInviteHeld:false};

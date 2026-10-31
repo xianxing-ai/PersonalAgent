@@ -1,4 +1,5 @@
 import {ProtocolError} from '@personal-agent/contracts';
+import {isDeepStrictEqual} from 'node:util';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
@@ -49,20 +50,21 @@ export function createRuntimeF06TodoWriteHost(options?:{
       failOwnedHost('RESULT_UNKNOWN','Created todo reminder receipt unavailable');
     // Persist the exact N03 identity for F06_N04 reminder binding; never invent reminders.
     runtime.saveCheckpointOnce(scope.parentTaskId,'f06:n03-todo:'+scope.sessionId,{
-      sessionId:scope.sessionId,operationId:scope.operationId,todoId:created.item.id,revision,
+      sessionId:scope.sessionId,operationId:scope.operationId,todoId:created.item.id,revision,item:structuredClone(created.item),
       ...(plain(trigger)&&text(trigger.scheduleId)?{reminderScheduleId:trigger.scheduleId}:{})});
     const bound=runtime.loadCheckpoint(scope.parentTaskId,'f06:n03-todo:'+scope.sessionId) as
-      {sessionId?:string;operationId?:string;todoId?:string;revision?:number;reminderScheduleId?:string}|undefined;
+      {sessionId?:string;operationId?:string;todoId?:string;revision?:number;reminderScheduleId?:string;item?:unknown}|undefined;
     if(bound?.sessionId!==scope.sessionId||bound.operationId!==scope.operationId||bound.todoId!==created.item.id
-      ||bound.revision!==revision||bound.reminderScheduleId!==(plain(trigger)&&text(trigger.scheduleId)?trigger.scheduleId:undefined))
+      ||bound.revision!==revision||!isDeepStrictEqual(bound.item,created.item)
+      ||bound.reminderScheduleId!==(plain(trigger)&&text(trigger.scheduleId)?trigger.scheduleId:undefined))
       failOwnedHost('REVISION_CONFLICT','F06 todo write binding changed');
-    return {todoId:created.item.id as string,opKey:scope.operationId};
+    return {todoId:created.item.id as string,revision:Number(revision),opKey:scope.operationId};
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F06_N03',kind:'host',sideEffect:'local_write',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,required:['todoTitle'],properties:{
       todoTitle:{type:'string',minLength:1,maxLength:200},due:{type:'string'},remindUtc:{type:'string'}}},
-    outputSchema:{type:'object',additionalProperties:false,required:['todoId','opKey'],properties:{
-      todoId:{type:'string'},opKey:{type:'string'}}},
+    outputSchema:{type:'object',additionalProperties:false,required:['todoId','revision','opKey'],properties:{
+      todoId:{type:'string'},revision:{type:'integer',minimum:1},opKey:{type:'string'}}},
     async execute(input,context){const args=input as {todoTitle:string;due?:string;remindUtc?:string};return write(active(context,args),context,args);}});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
     const parent=runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId?:string;operationId?:string}|undefined;

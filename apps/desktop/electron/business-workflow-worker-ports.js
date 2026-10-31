@@ -1,0 +1,261 @@
+import {isDeepStrictEqual} from 'node:util';
+import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {calendarSnapshotVersion} from '@personal-agent/calendar';
+import {getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
+import {createF06TodoWorkflowPorts} from './f06-todo-workflow-ports.js';
+import {createF07CalendarWorkflowPorts} from './f07-calendar-workflow-ports.js';
+
+const fail=(code,message)=>{throw new ProtocolError(code,message);};
+const object=(properties,required=Object.keys(properties))=>({type:'object',additionalProperties:false,properties,required});
+const text={type:'string',minLength:1,maxLength:1024};
+const instant={type:'string',pattern:'^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$'};
+const f06Schema=object({todoTitle:{...text,maxLength:200},due:instant,remindUtc:instant},['todoTitle','remindUtc']);
+const f07Schema=object({title:{...text,maxLength:200},slot:object({startUtc:instant,endUtc:instant,location:{...text,maxLength:512}},['startUtc','endUtc']),
+  calendarReadArguments:object({fromUtc:instant,toUtc:instant,limit:{type:'integer',minimum:1,maximum:100}},['fromUtc','toUtc'])});
+const f06Write=input=>({todoTitle:input.todoTitle,...(input.due!==undefined?{due:input.due}:{}),remindUtc:input.remindUtc});
+const calendarCreate=input=>({summary:input.title,startUtc:input.slot.startUtc,endUtc:input.slot.endUtc,
+  ...(input.slot.location!==undefined?{location:input.slot.location}:{})});
+const canonicalInstant=value=>{
+  const time=Date.parse(value),canonical=Number.isFinite(time)?new Date(time).toISOString():'';
+  if(canonical!==(value.includes('.')?value:value.replace('Z','.000Z')))fail('INVALID_ARGUMENT','Business time is not a valid UTC instant');
+  return canonical;
+};
+
+/** Fixed business graph composition. The caller supplies the pinned image separately.
+ * This facade resolves the real application only at execution, before any Runtime exists at startup. */
+export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,
+  competitionToolExports=[],prepareCompetitionToolExport,authorizeExport,readBusinessAvailability,now=Date.now}={}) {
+  const tools=[],hosts=[],configuredWorkflowWorkerPorts=[],unavailable=[];
+  if(!runtimeModule||typeof getApplication!=='function'||typeof authorizeExport!=='function'
+    ||typeof readBusinessAvailability!=='function'||typeof prepareCompetitionToolExport!=='function'
+    ||typeof runtimeModule.createWorkflowBusinessToolBridge!=='function')
+    return {tools,hosts,configuredWorkflowWorkerPorts,unavailable:['business_workflow_trusted_ports_unavailable']};
+  const lazy=read=>new Proxy({}, {get:(_,key)=> (...args)=>{
+    const target=read();if(typeof target?.[key]!=='function')fail('UNSUPPORTED_CAPABILITY','Original Runtime method unavailable');
+    return target[key](...args);
+  }});
+  const runtime=lazy(()=>getApplication()?.runtime),methods=lazy(()=>getApplication());
+  const application=new Proxy({runtime},{get:(target,key)=>key==='runtime'?target.runtime:methods[key]});
+  const descriptor=name=>businessTools.find(tool=>tool.descriptor?.name===name)?.descriptor;
+  const operation=(bound,nodeId,toolName)=>bound.confirmedOperations.find(item=>item.nodeId===nodeId&&item.toolName===toolName);
+  const completedNode=(bound,nodeId)=>operation(bound,nodeId,['F06_N02','F07_N03'].includes(nodeId)?'decision.choose_candidate'
+    :nodeId==='F07_N02'?'calendar.events':'workflow.host.'+nodeId.toLowerCase());
+  const graphScope=scope=>({taskId:scope.parentTaskId??scope.taskId,deadline:scope.deadline,signal:scope.signal});
+  function current(workflowId,scope,input) {
+    const own=graphScope(scope);
+    if(own.signal?.aborted)fail('CANCELLED','Business workflow cancelled');
+    if(!Number.isFinite(Date.parse(own.deadline))||Date.parse(own.deadline)<=now())fail('TIMEOUT','Business workflow deadline expired');
+    const task=getApplication()?.runtime?.getTask(own.taskId);
+    if(!task||task.cancelRequested||!['running','waiting_approval','waiting_reconciliation'].includes(task.state))
+      fail('UNAUTHORIZED','Original business workflow is no longer active');
+    const availability=readBusinessAvailability(workflowId,own);
+    if(availability?.ready!==true||typeof availability.bindingId!=='string'||!availability.bindingId)
+      fail('UNSUPPORTED_CAPABILITY','Business account or device is unavailable');
+    const saved=runtime.loadCheckpoint(own.taskId,'business-workflow:'+workflowId+':availability');
+    if(saved&&(saved.bindingId!==availability.bindingId||saved.deadline!==own.deadline))
+      fail('REVISION_CONFLICT','Original business availability binding changed');
+    if(input&&availability.bindingId!==input.businessBindingId)fail('REVISION_CONFLICT','Business account or device binding changed');
+    return availability.bindingId;
+  }
+  function binding(workflowId,scope) {
+    const own=graphScope(scope),bound=getApplication().readConfiguredWorkflowBinding({taskId:own.taskId,workflowId,
+      sessionId:scope.sessionId,signal:scope.signal});
+    if(!bound||bound.deadline!==scope.deadline)fail('UNAUTHORIZED','Original configured business graph unavailable');
+    current(workflowId,scope,bound.input);return bound;
+  }
+  const receiptExport=workflowId=>async(scope,value)=>{
+    binding(workflowId,scope);
+    const allowed=await authorizeExport({...graphScope(scope),workflowId,stage:'receipt',value});
+    binding(workflowId,scope);return allowed===true;
+  };
+  function addHost(host) {
+    if(host?.tools?.length){hosts.push(host);tools.push(...host.tools);return true;}
+    unavailable.push(host?.unavailable??'business_host_unavailable');return false;
+  }
+  function originalReceipt(taskId,scope,expected) {
+    const app=getApplication(),readback=app.readHostToolTask(taskId),intent=runtime.loadCheckpoint(taskId,'host-tool-intent');
+    const runId='host-tool-'+taskId,tool=[...businessTools,...tools].find(item=>item.descriptor.name===intent?.toolName
+      &&item.descriptor.version===intent?.toolVersion)?.descriptor;
+    const record=app.runtime.readToolExecutions(taskId).find(item=>item.evidenceId===runId);
+    if(!intent||!tool||intent.deadline!==scope.deadline||readback.task.state!=='succeeded'||readback.commandId!==intent.commandId
+      ||readback.toolName!==tool.name||readback.toolVersion!==tool.version||readback.confirmed?.runId!==runId
+      ||!readback.confirmed.evidenceRefs.includes(runId)||!isDeepStrictEqual(readback.confirmed.result,expected)
+      ||!record||record.toolName!==tool.name||record.toolVersion!==tool.version||record.policyDecision!=='allow'
+      ||!record.executionStarted||record.state!=='confirmed'
+      ||!runtime.matchesToolExecutionInput(record,{arguments:intent.arguments,scopeRef:runId}))
+      fail('UNAUTHORIZED','Original business result evidence unavailable');
+    return {intent,tool,context:{taskId,runId,authorizationRef:runId,scopes:[...tool.requiredScopes],deadline:scope.deadline,signal:scope.signal}};
+  }
+  async function exportBusinessResult(taskId,result,scope) {
+    const {intent,tool,context}=originalReceipt(taskId,scope,result);
+    const policy=competitionToolExports.find(item=>item.toolName===tool.name&&item.toolVersion===tool.version);
+    if(!policy)fail('UNSUPPORTED_CAPABILITY','Original business result export policy unavailable');
+    const proposal={kind:'tool_proposal',proposalId:intent.commandId,toolName:tool.name,toolVersion:tool.version,
+      arguments:structuredClone(intent.arguments),verification:'unverified'};
+    const exportScope={taskId,proposalId:intent.commandId,arguments:structuredClone(intent.arguments),signal:scope.signal};
+    if(policy.accepts({...exportScope,phase:'preflight'})!==true)fail('UNAUTHORIZED','Original business result export scope denied');
+    await prepareCompetitionToolExport({phase:'projection',taskId,runId:context.runId,proposal,deadline:scope.deadline,signal:scope.signal});
+    const projection=await policy.project({taskId,proposalId:intent.commandId,result:structuredClone(result),signal:scope.signal});
+    originalReceipt(taskId,scope,result);
+    if(!isDeepStrictEqual(projection,result)||policy.accepts({...exportScope,phase:'final',projection})!==true)
+      fail('UNAUTHORIZED','Business graph result exceeds the original export projection');
+  }
+  function child(workflowId,mappings) {
+    let bridge,originalApplication;
+    const getBridge=()=>{
+      if(originalApplication&&originalApplication!==getApplication())fail('REVISION_CONFLICT','Original business Runtime changed');
+      if(bridge)return bridge;
+      originalApplication=getApplication();
+      bridge=runtimeModule.createWorkflowBusinessToolBridge({application:originalApplication,now:()=>new Date(now()),
+      assertCurrent:scope=>{binding(workflowId,scope);},
+      resolveTool(request,scope){
+        const bound=binding(workflowId,scope),mapping=mappings[request.actionKey];
+        if(!mapping)fail('UNAUTHORIZED','Business action is not host configured');
+        const [nodeId,toolName,arguments_]=mapping(bound.input),tool=descriptor(toolName);
+        if(!tool||!isDeepStrictEqual(request.input,arguments_))fail('UNAUTHORIZED','Business child descriptor or arguments changed');
+        return {workflowId,nodeId,hostToolName:'workflow.host.'+nodeId.toLowerCase(),toolName,
+          toolVersion:tool.version,arguments:structuredClone(arguments_)};
+      }});return bridge;
+    };
+    return {read:(request,context)=>getBridge().read(request,context),async invoke(request,context){
+      const receipt=await getBridge().invoke(request,context);
+      await exportBusinessResult(receipt.taskId,receipt.result,context);return receipt;
+    }};
+  }
+  function config(workflowId,requestSchema,requiredNames,resultSchema,frontier,complete) {
+    const all=[...businessTools,...tools],requiredTools=requiredNames.map(name=>({name,
+      version:name==='decision.choose_candidate'?'1.0.0':all.find(tool=>tool.descriptor.name===name)?.descriptor.version}));
+    if(requiredTools.some(tool=>!tool.version)){unavailable.push(workflowId.toLowerCase()+'_required_tools_unavailable');return;}
+    if(requiredTools.some(tool=>businessTools.some(item=>item.descriptor.name===tool.name)
+      &&!competitionToolExports.some(item=>item.toolName===tool.name&&item.toolVersion===tool.version))){
+      unavailable.push(workflowId.toLowerCase()+'_business_export_policy_unavailable');return;
+    }
+    const inputSchema=object({...requestSchema.properties,businessBindingId:text},[...requestSchema.required,'businessBindingId']);
+    const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',configurationVersion:'business-20261031-v1',
+      requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:[],sideEffect:'external_write',
+      available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
+      async resolveInput(arguments_,scope){
+        validateToolValue(requestSchema,arguments_);const businessBindingId=current(workflowId,scope);
+        arguments_=structuredClone(arguments_);
+        if(workflowId==='F06'&&(!Number.isFinite(Date.parse(arguments_.remindUtc))
+          ||arguments_.due!==undefined&&!Number.isFinite(Date.parse(arguments_.due))))fail('INVALID_ARGUMENT','Todo reminder time invalid');
+        if(workflowId==='F06'&&Date.parse(arguments_.remindUtc)>now())
+          fail('UNSUPPORTED_CAPABILITY','F06 future reminder graph continuation is unavailable; use the original Todo schedule');
+        if(workflowId==='F06'){
+          arguments_.remindUtc=canonicalInstant(arguments_.remindUtc);
+          if(arguments_.due!==undefined)arguments_.due=canonicalInstant(arguments_.due);
+        }
+        if(workflowId==='F07'){
+          const {slot,calendarReadArguments:window}=arguments_;
+          if(!(Date.parse(window.fromUtc)<=Date.parse(slot.startUtc)&&Date.parse(slot.startUtc)<Date.parse(slot.endUtc)
+            &&Date.parse(slot.endUtc)<=Date.parse(window.toUtc)))fail('INVALID_ARGUMENT','Calendar slot must fit the original read window');
+          for(const [value,keys]of [[slot,['startUtc','endUtc']],[window,['fromUtc','toUtc']]])
+            for(const key of keys)value[key]=canonicalInstant(value[key]);
+        }
+        runtime.saveCheckpointOnce(scope.taskId,'business-workflow:'+workflowId+':availability',{bindingId:businessBindingId,deadline:scope.deadline});
+        current(workflowId,scope);
+        return {...structuredClone(arguments_),businessBindingId};
+      },
+      assertCurrent:scope=>{current(workflowId,scope);},
+      async assertFrontier(scope){
+        current(workflowId,scope,scope.input);
+        const bound=binding(workflowId,{...scope,sessionId:scope.state.sessionId});
+        if(!isDeepStrictEqual(bound.input,scope.input))return false;
+        const template=getOwnedWorkflowTemplate(workflowId),node=template.nodes.find(item=>item.id===scope.proposal.nodeId);
+        if(!node||node.dependencies.some(edge=>edge.required&&scope.state.result?.nodes[edge.nodeId]?.state!=='completed'))return false;
+        if(node.dependencies.some(edge=>edge.required&&!['input','assemble'].includes(template.nodes.find(item=>item.id===edge.nodeId)?.kind)
+          &&!completedNode(bound,edge.nodeId)))return false;
+        if(scope.proposal.toolName==='decision.choose_candidate'){
+          let context;try{context=JSON.parse(scope.proposal.arguments.context);}catch{return false;}
+          // A semantic selection never widens the fixed plan used by the business write checks below.
+          return context.workflowId===workflowId&&context.nodeId===node.id&&node.kind!=='input';
+        }
+        return frontier(scope,bound);
+      },
+      async authorizeExport(scope){
+        current(workflowId,scope,scope.stage==='initial'?scope.value:undefined);
+        if(scope.stage==='receipt'&&scope.value?.state==='confirmed'){
+          const host=hosts.find(item=>item.tools.some(tool=>tool.descriptor.name===scope.proposal?.toolName));
+          if(host?.authorizeReceipt){
+            const {context}=originalReceipt(scope.localTaskId,scope,scope.value.result);
+            await host.authorizeReceipt({context,result:structuredClone(scope.value.result)});
+          }else if(businessTools.some(tool=>tool.descriptor.name===scope.proposal?.toolName))
+            await exportBusinessResult(scope.localTaskId,scope.value.result,scope);
+        }
+        const result=await authorizeExport({...scope,workflowId});current(workflowId,scope,scope.stage==='initial'?scope.value:undefined);
+        return result===true;
+      },
+      async verifyCompletion(scope){
+        current(workflowId,scope,scope.input);
+        const bound=binding(workflowId,{...scope,sessionId:scope.state.sessionId});
+        if(!isDeepStrictEqual(bound.input,scope.input)||getOwnedWorkflowTemplate(workflowId).nodes.some(node=>node.required
+          &&(scope.state.result?.nodes[node.id]?.state!=='completed'||!['input','assemble'].includes(node.kind)&&!completedNode(bound,node.id))))
+          fail('RESULT_UNKNOWN','Business workflow required nodes are incomplete');
+        const result=await complete(scope,bound);current(workflowId,scope,scope.input);return result;
+      }};
+    configuredWorkflowWorkerPorts.push(worker);
+  }
+  if(todoHost?.snapshot&&notificationHost?.reconcileDelivery&&descriptor('todo.create')
+    &&runtimeModule.createRuntimeF06TodoWriteHost&&runtimeModule.createRuntimeF06NotificationDeliverHost){
+    const bridge=child('F06',{'f06.todo.create':input=>['F06_N03','todo.create',{title:input.todoTitle,
+      ...(input.due!==undefined?{dueUtc:input.due}:{}),remindUtc:input.remindUtc}]});
+    const ports=createF06TodoWorkflowPorts({getApplication,bridge,todoHost,notificationHost,authorizeExport:receiptExport('F06'),now});
+    const hostOptions={...ports,application,assertCurrent:scope=>{binding('F06',scope);},now:()=>new Date(now())};
+    addHost(runtimeModule.createRuntimeF06TodoWriteHost({...hostOptions,requiredScopes:descriptor('todo.create').requiredScopes}));
+    addHost(runtimeModule.createRuntimeF06NotificationDeliverHost({...hostOptions,requiredScopes:['notifications:deliver']}));
+    config('F06',f06Schema,['decision.choose_candidate','todo.create','workflow.host.f06_n03','workflow.host.f06_n04','workflow.host.f06_n05'],
+      object({todoId:text,delivered:{const:true}}),async(scope,bound)=>{
+        const {proposal}=scope,saved=runtime.loadCheckpoint(scope.taskId,'f06:n03-todo:'+scope.state.sessionId);
+        if(proposal.nodeId==='F06_N03'&&proposal.toolName==='workflow.host.f06_n03')return isDeepStrictEqual(proposal.arguments,f06Write(bound.input));
+        const identity=saved&&{todoId:saved.todoId,revision:saved.revision};
+        if(proposal.nodeId==='F06_N04'&&proposal.toolName==='workflow.host.f06_n04')return !!identity&&isDeepStrictEqual(proposal.arguments,identity);
+        if(proposal.nodeId==='F06_N05'&&proposal.toolName==='workflow.host.f06_n05')return !!identity&&isDeepStrictEqual(proposal.arguments,{notification:identity})
+          &&operation(bound,'F06_N04','workflow.host.f06_n04')?.result.shouldFireAlarm===true;
+        return false;
+      },async(scope,bound)=>{
+        const created=operation(bound,'F06_N03','workflow.host.f06_n03'),delivered=operation(bound,'F06_N05','workflow.host.f06_n05');
+        const saved=runtime.loadCheckpoint(scope.taskId,'f06:n03-todo:'+scope.state.sessionId);
+        if(!created||!saved||created.result.todoId!==saved.todoId||delivered?.result.delivered!==true)
+          fail('RESULT_UNKNOWN','F06 original Todo or delivery receipt unavailable');
+        const result=await ports.deliverNotification({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId},
+          {notification:{todoId:saved.todoId,revision:saved.revision}});
+        if(result.delivered!==true)fail('RESULT_UNKNOWN','F06 original notification is not delivered');
+        return {result:{todoId:saved.todoId,delivered:true},resultSummary:'Original Todo reminder delivery confirmed'};
+      });
+  }else unavailable.push('f06_business_dependencies_unavailable');
+  if(descriptor('calendar.events')&&descriptor('calendar.create')&&runtimeModule.createRuntimeF07CalendarFreshnessHost
+    &&runtimeModule.createRuntimeF07CalendarWriteHost){
+    const mappings={'f07.calendar.create':input=>['F07_N05','calendar.create',calendarCreate(input)]};
+    for(const phase of ['execute','before_export','after_export'])mappings['f07.calendar.recheck.'+phase]=input=>['F07_N04','calendar.events',input.calendarReadArguments];
+    const bridge=child('F07',mappings),ports=createF07CalendarWorkflowPorts({getApplication,bridge,authorizeExport:receiptExport('F07'),now});
+    const hostOptions={...ports,application,assertCurrent:scope=>{binding('F07',scope);},now:()=>new Date(now())};
+    addHost(runtimeModule.createRuntimeF07CalendarFreshnessHost({...hostOptions,requiredScopes:descriptor('calendar.events').requiredScopes}));
+    addHost(runtimeModule.createRuntimeF07CalendarWriteHost({...hostOptions,calendarCreate:businessTools.find(tool=>tool.descriptor.name==='calendar.create'),
+      requiredScopes:descriptor('calendar.create').requiredScopes}));
+    config('F07',f07Schema,['decision.choose_candidate','calendar.events','calendar.create','workflow.host.f07_n04','workflow.host.f07_n05'],
+      object({eventId:text,eventCreated:{const:true},externalInviteHeld:{const:false}}),async(scope,bound)=>{
+        const {proposal}=scope;
+        if(proposal.nodeId==='F07_N02'&&proposal.toolName==='calendar.events')return isDeepStrictEqual(proposal.arguments,bound.input.calendarReadArguments);
+        const original=operation(bound,'F07_N02','calendar.events')?.result;
+        if(!original||original.hasMore!==false||original.nextCursor!==''||original.sourceVersion!==calendarSnapshotVersion(original.window,original.items))return false;
+        if(proposal.nodeId==='F07_N04'&&proposal.toolName==='workflow.host.f07_n04')
+          return isDeepStrictEqual(proposal.arguments,{calendarVersionAtRead:original.sourceVersion,calendarVersionNow:original.sourceVersion});
+        if(proposal.nodeId==='F07_N05'&&proposal.toolName==='workflow.host.f07_n05'){
+          const slot=bound.input.slot,fresh=operation(bound,'F07_N04','workflow.host.f07_n04')?.result;
+          const overlaps=original.items.some(item=>{const [start,end]=String(item.validFor).split('/');
+            return !Number.isFinite(Date.parse(start))||!Number.isFinite(Date.parse(end))
+              ||Date.parse(start)<Date.parse(slot.endUtc)&&Date.parse(end)>Date.parse(slot.startUtc);});
+          return !overlaps&&fresh?.versionConsistent===true&&fresh.sourceVersion===original.sourceVersion
+            &&isDeepStrictEqual(proposal.arguments,{title:bound.input.title,slot});
+        }
+        return false;
+      },async(scope,bound)=>{
+        const result=operation(bound,'F07_N05','workflow.host.f07_n05')?.result;
+        if(result?.eventCreated!==true||result.externalInviteHeld!==false)fail('RESULT_UNKNOWN','F07 original creation receipt unavailable');
+        const item=ports.readCreatedEvent({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId});
+        if(typeof item.externalId!=='string'||!item.externalId)fail('RESULT_UNKNOWN','F07 original event identifier unavailable');
+        return {result:{eventId:item.externalId,eventCreated:true,externalInviteHeld:false},resultSummary:'Original calendar creation and provider readback confirmed'};
+      });
+  }else unavailable.push('f07_business_dependencies_unavailable');
+  return {tools,hosts,configuredWorkflowWorkerPorts,unavailable};
+}

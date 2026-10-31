@@ -1,5 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
 import {notificationDigest} from '@personal-agent/notifications';
+import {applyReminderDispatches} from '@personal-agent/productivity';
 import {ProtocolError} from '@personal-agent/contracts';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
@@ -28,6 +29,11 @@ export function createF06TodoWorkflowPorts({getApplication,bridge,todoHost,notif
     const snapshot=todoHost.snapshot(),item=snapshot.items.find(value=>value.id===saved.todoId);
     if(!item||item.status!=='open'||!item.reminder||item.reminder.remindAt.utc!==bound.input.remindUtc)
       fail('REVISION_CONFLICT','F06 original todo reminder changed');
+    const updatedAt=Date.parse(item.updatedAt);
+    const [delivered]=saved.item&&Number.isFinite(updatedAt)?applyReminderDispatches([saved.item],
+      [{scheduleId:saved.reminderScheduleId,status:'fired'}],()=>updatedAt):[];
+    if(!delivered||!isDeepStrictEqual(item,delivered)||updatedAt>now())
+      fail('REVISION_CONFLICT','F06 original todo changed after its reminder read');
     const entry=snapshot.notifications.find(value=>value.notificationId===saved.reminderScheduleId);
     if(!entry?.batchId)fail('RESULT_UNKNOWN','F06 reminder has no durable notification batch');
     const roundId='desktop-batch-'+notificationDigest(entry.batchId);
