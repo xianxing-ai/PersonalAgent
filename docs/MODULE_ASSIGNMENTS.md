@@ -2,9 +2,22 @@
 
 平台协作权限仅PersonalAgent AgentArts项目及关联资源的查看/编辑/部署/调用/调试/日志/评估管理，不含全云/IAM/其他项目；授权需求不代表已获访问，项目角色与入驻见 [协作访问记录](competition/AGENTARTS_COLLABORATION_ACCESS.md)。公开材料不写真实hid/秘密。
 
-## 2026-10-17 交接记录补交（2026-10-18整理）
+## 2026-10-31 Owner 责任分区修订（现行）
 
-此前未提交的[前端设计与工程搭建交接](design/frontend-collaborator-20261017/README.md)记录Owner将前端设计、Renderer工程组织及页面消费接线交给`2511375597-lab`；Electron主进程/Preload、设备、Runtime、Policy与各业务后端仍归原负责人。具体认领、实现与验收按对应工作包分别记录，不因本记录推定完成，也不接管正在进行的思考滑块和Live/子会话修复。
+Owner 明确：**`2511375597-lab` 为前端与前端接线责任分区唯一负责人**，并承接 **MOD-10 参赛研究**。
+
+| 负责人 | 现行责任分区 |
+| --- | --- |
+| **2511375597-lab** | **全部前端**（`apps/desktop/src/**` Renderer、设置/工作区/对话 UI、样式与交互）；**全部前端接线**（Desktop 组合：`main.js` 中对话工具/设置 IPC/图 host 条件注入、`workspace-controls`、相关 smoke）；**MOD-10**（`docs/research/agentarts`、`docs/research/model-training`，PA-022/PA-026 参赛研究）；并参与审查与合并 |
+| **zemeng5208** | 核心架构/认知、AgentArts **云与编排**、语音/Windows **原生能力包与设备宿主**、编码工具后端、Competition 平台联跑与整图协调；不再默认承担前端 UI/组合接线与 MOD-10 |
+| **goo122** | Runtime/Policy/ToolGateway、协议、知识记忆、MCP/Skills、工程底座；不负责前端 |
+| **Potatos498** | MOD-20～26 **业务连接器后端口**与真实账号读回、MOD-34/35/38；业务设置/结果的 **UI 与 Desktop 消费接线**交 lab |
+
+边界：lab 只消费公开口，不实现 Runtime/Policy、不伪造邮件/云部署、不把 UI 可点写成整图 done。Electron 受信设备能力（语音链路、键鼠/浏览器原生执行）仍归 zemeng；lab 负责其 UI/IPC 与生产组合注入。细则见 [前端交接](design/frontend-collaborator-20261017/README.md) 与 [IMAGE28 待办](competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md)。
+
+## 2026-10-17 交接记录补交（2026-10-18整理；已被上方 10-31 修订覆盖前端范围）
+
+此前[前端设计与工程搭建交接](design/frontend-collaborator-20261017/README.md)已将前端设计、Renderer 与页面消费接线交给`2511375597-lab`。2026-10-31 起进一步明确：**全部前端 + Desktop 前端接线 + MOD-10** 均归 lab；Runtime/Policy、业务连接器实现、AgentArts 云端、语音/Windows 原生能力仍归原负责人。历史「主进程一律归 zemeng」表述以本节为准收窄为受信设备/安全宿主，不再包括对话工具组合与设置 IPC。
 
 另保留[MOD-32 CLI历史交接](handoffs/20261017-mod32-cli.md)：它记录2026-10-17给出的有界日志/Trace接线任务，不把当时未收到回执写成今天未开工。下方CW工作包、Local-only边界及现行四人评审规则保持有效。
 
@@ -41,23 +54,24 @@ goo122 具体交付 MOD-08/09 的 Wiki 适配、来源版本、事实/检索投�
 
 本文件是未来工作负责人、文件所有权和交付边界的唯一登记处。[Competition Profile](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 定义当前优先参赛路径，[PRD](PRD.md) 定义需求，[公共开发协议](DEVELOPMENT_PROTOCOL.md) 定义互通语义，[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) 决定接口是否冻结或可用，[ROADMAP](ROADMAP.md) 维护执行状态。
 
-截至 2026-10-17，2511375597-lab 为已确认的第四位协作者，可按上述现行规则参与跨 PR 审查与合并；具体 MOD/文件职责按后续明确认领工作包登记。以下 2026-10-07 三人模块分工保留为当时归属记录，加入第四人不自动转移既有文件所有权。
+截至 2026-10-31，四人责任分区以文首 **2026-10-31 Owner 修订** 为准。以下 2026-10-07 三人表为历史基线，**已被 10-31 修订改正**：MOD-10 与前端/Desktop 消费接线归 `2511375597-lab`；zemeng 行中的「桌面」不再包含前端 UI/组合接线。
 
-## 0. 三人独立交付分工（2026-10-07 历史修订）
+## 0. 独立交付分工（2026-10-07 基线 + 2026-10-31 修订）
 
-用户明确要求三个人都能独立工作，不因另一人的 PR 审批、集成排队或尚未提供的 Fake 而停工。**zemeng（GitHub：zemeng5208，即用户）继续负责项目核心、AgentArts 与技术方向**。本修订替代同日早先“Potatos 全部执行权转给 zemeng”的临时安排；三人各自拥有完整交付责任。
+用户明确要求协作者都能独立工作，不因另一人的 PR 审批、集成排队或尚未提供的 Fake 而停工。**zemeng（GitHub：zemeng5208）继续负责项目核心、AgentArts 与技术方向**。2026-10-31 起第四人责任分区已明确。
 
-| 负责人 | 独立主线 | 模块归属 | 可独立交付的结果 |
+| 负责人 | 独立主线 | 模块归属（现行） | 可独立交付的结果 |
 | --- | --- | --- | --- |
-| **zemeng / zemeng5208** | **核心认知、AgentArts、桌面与受控执行** | MOD-04B、10～19、27～32；MOD-19 仍暂停 | CloudAgent/Competition 编排、Agent/Workflow/多 Agent、Goal/Fact/Decision/Plan、Laya/主动认知、Desktop/语音/Windows/编码工具、比赛评估与 Demo；含本主线所需消费接线 |
-| **goo122** | **基础运行时、协议与知识记忆** | MOD-01～03、04A、05～09、33、36、37；MOD-37 按原范围待开工 | TaskRuntime、ModelGateway/Provider、Policy/ToolGateway、存储/凭据、MCP/Skills、知识/Obsidian/记忆/学习、协议与工程底座、GitHub 连接器、代码预审与 API 文档维护；含本主线所需宿主和管理接线 |
-| **Potatos498** | **业务能力与业务侧用户流程** | MOD-20～26、34、35、38；未选社交平台仍不自动开工 | 待办/日历/邮件/订阅/通知/研究/天气/已选社交连接器、CI 修复、测试失败定位、Issue 分类与修复 PR；含业务设置页、业务工具注册、业务结果展示与真实来源验收 |
+| **zemeng / zemeng5208** | **核心认知、AgentArts 云与编排、受控原生执行** | MOD-04B、14～19、27～32；MOD-19 仍暂停；**不含 MOD-10**；MOD-11 中受信主进程/设备宿主 | CloudAgent/Competition 编排、Agent/Workflow、Goal/Fact/Decision/Plan、Laya/主动认知、语音/Windows **原生**、编码工具后端、比赛平台联跑与 Demo |
+| **2511375597-lab** | **前端、前端接线、参赛研究** | **MOD-10**；MOD-11/12/13 的 Renderer/UI/设置与 Desktop **消费组合接线** | 全部前端表面、图 host/worker/IPC 条件注入、MOD-10 研究结论与文档；相关 smoke/Evidence |
+| **goo122** | **基础运行时、协议与知识记忆** | MOD-01～03、04A、05～09、33、36、37；MOD-37 按原范围待开工 | TaskRuntime、ModelGateway/Provider、Policy/ToolGateway、存储/凭据、MCP/Skills、知识/Obsidian/记忆/学习、协议与工程底座、GitHub 连接器、代码预审与 API 文档维护 |
+| **Potatos498** | **业务连接器后端口与修复链** | MOD-20～26、34、35、38；未选社交平台仍不自动开工 | 待办/日历/邮件/订阅/通知/研究/天气连接器实现与真实来源验收、CI/测试/Issue 修复链；**UI/Desktop 消费接线归 lab** |
 
-zemeng 掌握核心产品架构、认知语义和 AgentArts 云端方向；另外两人可在其既定目标内直接完成普通实现与交付，无需先等 zemeng 分派下一步或批准 PR。历史作者、评审、证据和已集成成果保留原归属。
+zemeng 掌握核心产品架构、认知语义和 AgentArts 云端方向；goo122 / Potatos498 / 2511375597-lab 可在既定分区内直接完成普通实现与交付。历史作者、评审、证据和已集成成果保留原归属。
 
 ### 0.1 DEV-WORKFLOWS 归属
 
-按用户最新减负要求，六项由 goo122 与 Potatos498 各承担三项，zemeng 不再承担本组日常实现、返修或集中验收，继续负责核心认知、AgentArts 与桌面执行主线。两人的交付包含必要接线、自审和实际验收，不能把集成或验收默认交回 zemeng。
+按用户减负要求，六项由 goo122 与 Potatos498 各承担三项，zemeng 不再承担本组日常实现、返修或集中验收，继续负责核心认知与 AgentArts；前端/MOD-10 不在本组。两人的交付包含必要后端口与自审，Desktop UI 消费由 lab 接线，不能把集成或验收默认交回 zemeng。
 
 | 模块 | 功能 | 负责人 | 独立交付边界 |
 | --- | --- | --- | --- |
@@ -68,7 +82,7 @@ zemeng 掌握核心产品架构、认知语义和 AgentArts 云端方向；另�
 | MOD-37 | API 文档维护 | goo122 | 协议/exports 与文档一致性；当前仍为待开工规划 |
 | MOD-38 | Issue 分类与修复 PR | Potatos498 | 分类、受控标签写回和修复流程接入 |
 
-主要维护文件：goo122 负责 `packages/connectors/github/`、`packages/cognition/src/dev-workflows/code-review*` 及 MOD-37 文档维护工作包；Potatos498 负责 `packages/coding-tools/src/dev-workflows/ci-fix*`、`git-tools*`、`packages/coding-tools/src/test-locate/` 和 `packages/cognition/src/dev-workflows/issue-triage*` 及对应测试。上述 cognition/dev-workflows 文件是模块归属的明确例外，核心 cognition/AgentArts 仍归 zemeng；共享 exports、`apps/runtime/src/dev-workflows-runtime.ts` 及 Desktop 接线由实际变更人随工作包完成，保持兼容并自行验证。
+主要维护文件：goo122 负责 `packages/connectors/github/`、`packages/cognition/src/dev-workflows/code-review*` 及 MOD-37 文档维护工作包；Potatos498 负责 `packages/coding-tools/src/dev-workflows/ci-fix*`、`git-tools*`、`packages/coding-tools/src/test-locate/` 和 `packages/cognition/src/dev-workflows/issue-triage*` 及对应测试。上述 cognition/dev-workflows 文件是模块归属的明确例外，核心 cognition/AgentArts 仍归 zemeng；共享 exports、`apps/runtime/src/dev-workflows-runtime.ts` 的后端口随工作包交付，**Desktop/UI 消费接线归 2511375597-lab**，保持兼容并自行验证。
 
 DEV-WORKFLOWS 保留已授权的 Local Profile 增量范围。每个模块由自己的负责人验证和交付，不再要求 Potatos 集中验收其余两人的成果。
 
@@ -90,9 +104,10 @@ DEV-WORKFLOWS 保留已授权的 Local Profile 增量范围。每个模块由自
 
 | 主线 | 上游未就绪时 | 本人负责的验证 | 不需等待的事项 |
 | --- | --- | --- | --- |
-| zemeng 核心与 AgentArts | Fake CloudAgent/Memory/Tool/Runtime；固定契约与合成事实 | 编排、审批消费、认知与端口回归；有授权后做云端/桌面/设备真实读回 | goo122 的真实数据库与模型配置、Potatos 的真实账号、对方 PR 批准 |
-| goo122 基础运行时、知识记忆与开发底座 | FakeCoordination、固定来源与测试 Vault、显式模型/工具替身 | 状态、持久化、迁移、取消/恢复、权限及公开消费契约；GitHub Provider、代码预审与文档一致性 | AgentArts 控制台和部署、真实 Desktop、zemeng 的审批 |
-| Potatos 业务能力与开发修复链 | FakeClock/Storage/ToolHost、固定 Provider 响应和测试日志 | 业务读写/去重/时区/失败语义、定位器、CI 修复、Issue 分类与修复 PR、业务注册与展示；有授权后做真实来源读回 | 核心 Agent 完成、云端账号、goo122 的专属集成 PR |
+| zemeng 核心与 AgentArts | Fake CloudAgent/Memory/Tool/Runtime；固定契约与合成事实 | 编排、审批消费、认知与端口回归；有授权后做云端/设备真实读回 | goo122 数据库与模型配置、Potatos 真实账号、lab 前端接线、对方 PR 批准 |
+| goo122 基础运行时、知识记忆与开发底座 | FakeCoordination、固定来源与测试 Vault、显式模型/工具替身 | 状态、持久化、迁移、取消/恢复、权限及公开消费契约；GitHub Provider、代码预审与文档一致性 | AgentArts 控制台和部署、lab Desktop 消费、zemeng 的审批 |
+| Potatos 业务后端口与开发修复链 | FakeClock/Storage/ToolHost、固定 Provider 响应和测试日志 | 业务读写/去重/时区/失败语义、定位器、CI/Issue 修复链、工具注册；有授权后做真实来源读回 | 核心 Agent、云端账号、lab 业务 UI 接线、goo122 集成 |
+| 2511375597-lab 前端/接线/MOD-10 | 契约一致 Fake/Unavailable UI；固定研究来源 | Renderer/设置/组合接线 smoke；MOD-10 研究结论与条件清单；不冒充云/账号完成 | goo/Potatos/zemeng 公开后端口与设备能力 |
 
 人员归属是长期维护责任，不是跨目录修复的阻断权。已有实现优先复用；必要的小范围跨模块接线由提出需求的人随工作包完成，保持公开依赖方向和单一契约来源。
 
@@ -112,17 +127,28 @@ DEV-WORKFLOWS 保留已授权的 Local Profile 增量范围。每个模块由自
 
 goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私人环境时，通过 FakeCoordinationPort 和固定夹具运行。
 
-## 4. zemeng：核心认知、桌面执行与 AgentArts
+## 4. zemeng：核心认知、受控原生执行与 AgentArts
 
 | ID | 模块 / 需求 | 主要维护目录 | 依赖 | 独立交付与验收 |
 | --- | --- | --- | --- | --- |
 | MOD-04B | Competition Coordination 与可选 Local Agent / PA-003、PA-012 | packages/coordination、packages/agents | MOD-02、03、05；Local 才依赖 04A | Competition 路径只消费 CloudAgent/Memory/Tool 端口；既有 Local Agent 代码保留为可选 baseline |
-| MOD-10 | 模型与 AgentArts 能力研究 / PA-022、PA-026 | docs/research/model-training、docs/research/agentarts | 供应商能力与数据条件 | 给出来源、实验、成本和条件结论；不把提示或记忆称为参数训练 |
-| MOD-11 | 桌面外壳与桥接 | apps/desktop/electron、apps/desktop/src/app | MOD-02 | 窗口、托盘、受控 IPC；Renderer 无系统权限 |
+| MOD-11（受信宿主部分） | 桌面外壳中的主进程安全宿主 | apps/desktop/electron 中设备/凭据/原生宿主（与 lab 组合接线分区协作） | MOD-02 | 窗口生命周期、托盘、受控 Preload；与 lab 的 Renderer/组合接线划界 |
+| MOD-14 | 语音会话能力 / PA-007 | packages/voice；（UI 在 lab） | MOD-02、04B、11 | ASR/TTS、播放、停止播报；与 task.cancel 保持分离；UI/IPC 归 lab |
+| MOD-15 | 唤醒词与连续语音 / PA-021 | packages/voice-wake | MOD-14 | 授权音频流、默认关闭、撤销停止、误触和回声实机测试 |
+
+## 4.1 2511375597-lab：前端、前端接线与 MOD-10 参赛研究
+
+| ID | 模块 / 需求 | 主要维护目录 | 依赖 | 独立交付与验收 |
+| --- | --- | --- | --- | --- |
+| MOD-10 | 模型与 AgentArts **参赛研究** / PA-022、PA-026 | docs/research/model-training、docs/research/agentarts | 供应商能力与公开文档/已有实验 | 给出来源、实验、成本和条件结论；不把提示或记忆称为参数训练；不代替平台联跑验收 |
+| MOD-11（前端/组合） | 桌面外壳与桥接的 UI/消费接线 | apps/desktop/src/app、electron 中对话工具/设置 IPC/图 host 组合 | MOD-02 | 受控 IPC 消费、conversationTools 合并、图 host 条件注入；Renderer 无系统权限 |
 | MOD-12 | 悬浮球与展开面板 / PA-001 | apps/desktop/src/features/orb、apps/desktop/src/features/conversation | MOD-02、11 | ORB、单面板、多屏、取消与状态映射；真实桌面合成验收 |
 | MOD-13 | 管理后台与授权界面 / PA-002、PA-023 | apps/desktop/src/features/admin、apps/desktop/src/ui | MOD-02、11 | 能力、任务、审批、配置界面；未公布能力明确显示不可用 |
-| MOD-14 | 语音会话 / PA-007 | packages/voice、apps/desktop/src/features/voice | MOD-02、04B、11 | ASR/TTS、播放、停止播报；与 task.cancel 保持分离 |
-| MOD-15 | 唤醒词与连续语音 / PA-021 | packages/voice-wake | MOD-14 | 授权音频流、默认关闭、撤销停止、误触和回声实机测试 |
+
+## 4.2 zemeng 续：设备、编码与 Competition 后端
+
+| ID | 模块 / 需求 | 主要维护目录 | 依赖 | 独立交付与验收 |
+| --- | --- | --- | --- | --- |
 | MOD-16 | Windows 执行与凭据适配 / PA-016 | apps/windows-host、packages/windows-client | MOD-02、05 | Named Pipe、目标确认、输入串行、用户接管、后置验证、安全存储 |
 | MOD-17 | 电脑状态读取 / PA-011（不集成 TraceGuard） | packages/windows-client（与 MOD-16 同一提供者，不另建 TraceGuard 包） | MOD-02、05、16 | 普通用户权限、必要真实观测与不可观测声明；PA-018 治理/恢复按 2026-09-17 用户修订排除 |
 | MOD-18 | 编程执行工具 / PA-017 | packages/coding-tools | MOD-02、05 | 授权工作区、patch/command、保留用户改动、输出 Artifact 和验证状态 |
