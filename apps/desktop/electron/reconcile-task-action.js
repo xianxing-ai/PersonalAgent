@@ -5,7 +5,12 @@ export async function reconcileTaskFromSurface({taskId,sender,panel,workspace,ta
  const task=tasks.get(taskId);if(taskSurface(task)!==(sender===workspace?'workspace':'panel'))throw Error('无法核实其他工作区的任务');
  if(task.state!=='waiting_reconciliation')throw Error('当前任务不在待核实状态');
  let native;
- if(application?.readHarnessCandidateRecoveryAvailable?.(taskId)){
+ if(application?.readF24RecoveryAvailable?.(taskId)){
+  if(typeof application.reconcileF24WorkflowTask!=='function'||typeof observe!=='function')throw Error('原知识写入的核实入口尚不可用');
+  const current=application.runtime.getTask(taskId);
+  if(current.state!=='waiting_reconciliation'||current.revision!==task.revision)throw Error('原任务已变化，请刷新后核实');
+  native=await observe(scope=>application.reconcileF24WorkflowTask(taskId,current.revision,scope));
+ }else if(application?.readHarnessCandidateRecoveryAvailable?.(taskId)){
   if(typeof application.reconcileHarnessCandidateTask!=='function'||typeof observe!=='function')throw Error('原编码试验的核实入口尚不可用');
   const current=application.runtime.getTask(taskId);
   if(current.state!=='waiting_reconciliation'||current.revision!==task.revision)throw Error('原任务已变化，请刷新后核实');

@@ -1,5 +1,6 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import * as mailModule from '@personal-agent/mail';
 import * as calendarModule from '@personal-agent/calendar';
@@ -7,7 +8,7 @@ import {attachExactExports} from './developer-deployment-config.js';
 import {connectorResultProjectionSchema} from './connector-result-projection.js';
 
 const MAIL_ACCOUNT='desktop-qq-inbox';
-const MAIL_TOOLS=new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send']);
+const MAIL_TOOLS=new Set(['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send','mail.send','mail.archive']);
 const CALENDAR_TOOLS=new Set(['calendar.events','calendar.create','calendar.update','calendar.cancel']);
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','连接器配置或本次任务许可已失效');};
@@ -42,6 +43,14 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
     if(question&&scope.questionExecution===true)question.currentRequirement(scope,scope.kind+'-session');};
   const available=(name,scope)=>taskScope(scope)&&Boolean(identity(family(name)))
     &&getApplication().runtime.getTask(scope.taskId).state==='running'&&(question?questionReady():typeof confirmExport==='function');
+  const pendingHostQuestion=scope=>{
+    if(!question||!questionReady()||!taskScope(scope)||scope.runId!=='host-tool-'+scope.taskId)return false;
+    const application=getApplication(),pending=application.readPendingToolInvocation(scope.taskId,scope.runId);
+    const host=application.readHostToolTask(scope.taskId),proposal=scope.proposal;
+    return host.task.state==='waiting_approval'&&host.commandId===proposal.proposalId
+      &&pending?.toolName===proposal.toolName&&pending.toolVersion===proposal.toolVersion
+      &&pending.deadline===scope.deadline&&isDeepStrictEqual(pending.arguments,proposal.arguments);
+  };
   const proxy=kind=>new Proxy({providerKind:kind==='mail'?'qq':'caldav',verification:'conditional'}, {get(target,key){
     if(key in target)return target[key];
     if(kind==='calendar'&&key==='writes')return Object.freeze(Object.fromEntries(
@@ -133,13 +142,28 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
     const entry=prepared.get(preparationKey(scope));
     if(!entry||!current({...entry.scope,signal:scope.signal??entry.scope.signal}))denied();return entry;
   };
+  const confirmedHostResult=(entry,result)=>{
+    const application=getApplication(),scope=entry.scope;
+    if(application.runtime.getTask(scope.taskId).state==='running')return false;
+    const host=application.readHostToolTask(scope.taskId);
+    const intent=application.runtime.loadCheckpoint(scope.taskId,'host-tool-intent');
+    if(scope.runId!=='host-tool-'+scope.taskId||host.task.state!=='succeeded'
+      ||host.commandId!==scope.proposalId||host.toolName!==scope.toolName||host.toolVersion!==scope.toolVersion
+      ||host.confirmed?.runId!==scope.runId||!host.confirmed.evidenceRefs.includes(scope.runId)
+      ||!isDeepStrictEqual(host.confirmed.result,result)||intent?.commandId!==scope.proposalId
+      ||intent.toolName!==scope.toolName||intent.toolVersion!==scope.toolVersion||intent.deadline!==scope.deadline
+      ||digest(intent.arguments)!==entry.argumentsDigest)denied();
+    return true;
+  };
   const questionExports=tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
     exportPolicyVersion:'connector-question-bounded-v2',accepts:scope=>{
       try{const entry=originalPreparation(scope);
         if(entry.scope.toolName!==tool.descriptor.name||entry.argumentsDigest!==digest(scope.arguments))return false;
         if(scope.phase==='final'){
           if(!entry.resultDigest||entry.resultDigest!==digest(scope.projection))return false;
-          question.currentRequirement({...entry.scope,signal:scope.signal??entry.scope.signal},entry.kind+'-export');
+          const exact={...entry.scope,signal:scope.signal??entry.scope.signal};
+          if(confirmedHostResult(entry,scope.projection))question.assertConsumedResult(exact,entry.kind+'-export');
+          else question.currentRequirement(exact,entry.kind+'-export');
         }return true;
       }catch{return false;}
     },project:scope=>{
@@ -148,15 +172,21 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>512*1024
         ||[mail?.current()?.authCode,...secrets].some(secret=>secret&&text.includes(secret))
         ||/(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|Bearer\s+[A-Za-z0-9_.-]{16,})/u.test(text))denied();
-      question.currentRequirement({...entry.scope,signal:scope.signal},entry.kind+'-session');
-      question.authorizeExport({...entry.scope,signal:scope.signal},scope.result,entry.kind+'-export');
+      const exact={...entry.scope,signal:scope.signal??entry.scope.signal};
+      if(confirmedHostResult(entry,scope.result)){
+        question.assertConsumedResult(exact,entry.kind+'-session');
+        question.authorizeConsumedExport(exact,scope.result,entry.kind+'-export');
+      }else{
+        question.currentRequirement(exact,entry.kind+'-session');
+        question.authorizeExport(exact,scope.result,entry.kind+'-export');
+      }
       entry.resultDigest=digest(scope.result);return structuredClone(scope.result);
     }}));
   return {...exports.host,...(question?{competitionToolExports:questionExports}:{}),async prepareExport(scope){
     if(!tools.some(tool=>tool.descriptor.name===scope.proposal?.toolName))return;
     if(scope.phase==='preflight'){
       const kind=family(scope.proposal.toolName),binding=identity(kind),conversationId=resolveConversation(scope.taskId);
-      if(!binding||!conversationId||!available(scope.proposal.toolName,scope))denied();
+      if(!binding||!conversationId||!available(scope.proposal.toolName,scope)&&!pendingHostQuestion(scope))denied();
       for(const [key,value]of bindings)if(Date.parse(value.deadline)<=now())bindings.delete(key);
       const key=bindingKey(scope.taskId,kind);
       if(bindings.size>=512&&!bindings.has(key))denied();

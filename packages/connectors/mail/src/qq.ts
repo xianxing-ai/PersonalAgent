@@ -6,6 +6,7 @@ import { ProtocolError } from '@personal-agent/contracts';
 import type { ProtocolContracts } from '@personal-agent/contracts';
 import type {
   MailFetchInput,
+  MailArchiveInput,
   MailFolder,
   MailMarkSeenInput,
   MailMessage,
@@ -61,6 +62,7 @@ export function messageFromImap(uid: number, folder: string, envelope: ImapEnvel
 
 /** QQ 邮箱真实提供商：IMAP（imapflow）读侧 + SMTP（nodemailer）写侧。 */
 export class QQMailProvider implements MailProvider {
+  private readonly archiveInflight=new Map<string,{fingerprint:string;result:Promise<ProtocolContracts['connectorAction']>}>();
   readonly providerKind = 'qq';
   readonly verification = 'conditional' as const;
   private readonly options: Required<Pick<QQMailOptions, 'imapHost' | 'imapPort' | 'smtpHost' | 'smtpPort'>> & QQMailOptions;
@@ -217,7 +219,8 @@ export class QQMailProvider implements MailProvider {
     }
   }
 
-  async send(_accountRef: string, input: MailSendInput & {idempotencyKey: string}): Promise<MailSendResult> {
+  async send(_accountRef: string, input: MailSendInput & {idempotencyKey: string},context?:MailOperationContext): Promise<MailSendResult> {
+    guardMailWrite(context);
     if (input.idempotencyKey.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
     // Provider 层同样单飞 + 输入绑定（goo122 2026-09-13 复审 P1）：在途 Promise 先登记再 await，
     // 并发同键只触发一次 sendMail；键换输入直接拒绝。持久化的最终责任在 Runtime，
@@ -230,14 +233,15 @@ export class QQMailProvider implements MailProvider {
       }
       return prior.inflight;
     }
-    const inflight = this.sendViaTransporter(input);
+    const inflight = this.sendViaTransporter(input,context);
     this.sendInflight.set(input.idempotencyKey, {fingerprint, inflight});
     const result = await inflight;
     this.sendActions.set(input.idempotencyKey, result);
     return result;
   }
 
-  private async sendViaTransporter(input: MailSendInput & {idempotencyKey: string}): Promise<MailSendResult> {
+  private async sendViaTransporter(input: MailSendInput & {idempotencyKey: string},context?:MailOperationContext): Promise<MailSendResult> {
+    guardMailWrite(context);
     const messageId = this.operationMessageId('send', input.idempotencyKey);
     if (this.transporter === null) {
       this.transporter = nodemailer.createTransport({
@@ -249,18 +253,64 @@ export class QQMailProvider implements MailProvider {
       });
     }
     let result: MailSendResult;
+    let abort:()=>void=()=>{};
+    const cancelled=new Promise<never>((_resolve,reject)=>{abort=()=>reject(new Error('SMTP result unknown after cancellation'));
+      context?.signal?.addEventListener('abort',abort,{once:true});});
     try {
       const info: SentMessageInfo = await Promise.race([
         this.transporter.sendMail({from: this.options.user, to: input.to, subject: input.subject, text: input.text, messageId}),
         rejectAfter(input.timeoutMs),
+        cancelled,
       ]);
       result = {state: 'confirmed', messageId};
       if (typeof info.messageId === 'string') result.messageId = info.messageId;
     } catch (error) {
       // 超时或连接中断都意味着「结果未知」，不是失败：绝不盲重试（PA-014）。
       result = {state: 'unknown', messageId, reason: 'SMTP result unknown; reconcile the Message-ID before any retry'};
-    }
+    } finally {context?.signal?.removeEventListener('abort',abort);}
     return result;
+  }
+
+  async archive(_accountRef:string,input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
+    guardMailWrite(context);
+    if(!input.idempotencyKey||!input.folder||!Number.isSafeInteger(input.uid)||input.uid<1
+      ||!Number.isSafeInteger(input.uidValidity)||input.uidValidity<1||!/^<[^<>\s]+>$/u.test(input.messageId))
+      throw new ProtocolError('INVALID_ARGUMENT','Archive requires the original folder, UID epoch and Message-ID');
+    const fingerprint=JSON.stringify([input.folder,input.uid,input.uidValidity,input.messageId]),prior=this.archiveInflight.get(input.idempotencyKey);
+    if(prior){if(prior.fingerprint!==fingerprint)throw new ProtocolError('INVALID_ARGUMENT','Archive key belongs to different input');return prior.result;}
+    const result=this.moveToArchive(input,context);this.archiveInflight.set(input.idempotencyKey,{fingerprint,result});return result;
+  }
+
+  private async moveToArchive(input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
+    const folder=(await this.listFolders(undefined,context)).find(value=>value.role==='archive');guardMailWrite(context);
+    if(!folder||folder.path===input.folder)throw new ProtocolError('UNSUPPORTED_CAPABILITY','A distinct advertised Archive mailbox is required');
+    const client=await this.connect();guardMailWrite(context);
+    // imapflow otherwise emulates MOVE with COPY + EXPUNGE. Do not broaden an archive into that fallback.
+    if(!client.capabilities.has('MOVE')||!client.capabilities.has('UIDPLUS'))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Verified archive requires native MOVE and UIDPLUS');
+    let lock:{release():void}|undefined=await client.getMailboxLock(input.folder),started=false;
+    const actionId='mail-archive:'+input.idempotencyKey,unknown=():ProtocolContracts['connectorAction']=>({actionId,state:'unknown',externalId:input.messageId,evidenceRefs:[]});
+    try {
+      guardMailWrite(context);
+      if(!client.mailbox||Number(client.mailbox.uidValidity)!==input.uidValidity)
+        throw new ProtocolError('CURSOR_EXPIRED','Original mail UID epoch changed');
+      const original=await client.fetchOne(String(input.uid),{envelope:true},{uid:true});guardMailWrite(context);
+      if(!original||original.envelope?.messageId!==input.messageId)throw new ProtocolError('REVISION_CONFLICT','Original message identity changed');
+      started=true;
+      const moved=await client.messageMove(String(input.uid),folder.path,{uid:true});
+      guardMailWrite(context);
+      const destinationUid=moved&&moved.uidMap?.get(input.uid);
+      // The move may already have taken effect. Never repeat it or invent a receipt when UIDPLUS/readback is absent.
+      if(!destinationUid||!moved||moved.destination!==folder.path||moved.uidValidity===undefined)return unknown();
+      const remaining=await client.fetchOne(String(input.uid),{uid:true},{uid:true});
+      if(remaining)return unknown();
+      lock.release();lock=undefined;lock=await client.getMailboxLock(folder.path);guardMailWrite(context);
+      if(!client.mailbox||client.mailbox.uidValidity!==moved.uidValidity)return unknown();
+      const archived=await client.fetchOne(String(destinationUid),{envelope:true},{uid:true});
+      if(!archived||archived.envelope?.messageId!==input.messageId)return unknown();
+      return {actionId,state:'confirmed',externalId:folder.path+':'+destinationUid,evidenceRefs:[]};
+    }catch(error){if(started)return unknown();if(error instanceof ProtocolError)throw error;throw mapImapError(error);}
+    finally {lock?.release();}
   }
 
   private operationMessageId(kind: string, key: string): string {

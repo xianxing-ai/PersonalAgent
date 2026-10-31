@@ -65,6 +65,49 @@ interface ReviewedRepairIntent extends ReviewedRepairRequest {
 type LocalRepairIntent = FactRepairIntent | ReviewedRepairIntent;
 const reviewed=(intent: LocalRepairIntent): intent is ReviewedRepairIntent => 'sourceKind' in intent && intent.sourceKind==='goal_review';
 
+export interface ReviewedLocalRepairReceiptInput {taskId: string; sourceTaskId: string; reviewTaskId: string; graphNamespace: string;}
+
+/** Read the original approved CAS only. A later node version does not erase its historical effect. */
+export function readReviewedLocalRepairReceipt(runtime: TaskRuntime, input: ReviewedLocalRepairReceiptInput) {
+  try {
+    const {taskId,sourceTaskId,reviewTaskId,graphNamespace}=input;
+    const task=runtime.getTask(taskId),intent=runtime.loadCheckpoint(taskId,LOCAL_REPAIR_CHECKPOINT) as LocalRepairIntent | undefined;
+    if (!intent || !reviewed(intent) || intent.sourceTaskId!==sourceTaskId || intent.reviewTaskId!==reviewTaskId
+      || intent.graphNamespace!==graphNamespace || task.conversationId!==`desktop-proactive-goals:${graphNamespace}`
+      || runtime.findTaskByIdempotencyKey('local-repair:'+intent.idempotencyKey)?.taskId!==taskId
+      || !task.attachmentRefs?.includes('local-repair-intent:'+toolArgumentsDigest(intent))) return;
+    const source=runtime.getTask(sourceTaskId),reviewTask=runtime.getTask(reviewTaskId);
+    const review=runtime.loadCheckpoint(reviewTaskId,'proactive-cognition-review-v1') as import('./proactive-cognition-host.js').ProactiveCognitionReview | undefined;
+    const cloud=parseCoordinationRepairCandidate(runtime.loadCheckpoint(sourceTaskId,'competition-repair-candidate'));
+    if (source.state!=='succeeded' || source.conversationId!==task.conversationId
+      || reviewTask.state!=='succeeded' || reviewTask.conversationId!==`proactive-cognition:${graphNamespace}`
+      || !review || review.taskId!==reviewTaskId || toolArgumentsDigest(review)!==intent.reviewDigest
+      || toolArgumentsDigest(cloud)!==intent.cloudCandidateDigest) return;
+    const store=runtime.bindCoordinationStore(graphNamespace);
+    const prepared=prepareReviewedRepair(store.read(intent.binding.graphRevision),review.evaluatedAt,review,intent.candidate.candidate);
+    if (prepared.kind!=='prepared' || !isDeepStrictEqual(prepared.binding,intent.binding)) return;
+    const runId='local-repair-'+taskId,record=runtime.readToolExecutions(taskId).find(item=>item.evidenceId===runId);
+    if (!record || record.taskId!==taskId || record.toolName!==LOCAL_REPAIR_TOOL || record.toolVersion!=='1.0.0'
+      || record.state!=='confirmed' || record.policyDecision!=='allow' || !record.executionStarted
+      || !task.evidenceRefs.includes(runId)
+      || !runtime.matchesToolExecutionInput(record,{arguments:{intentDigest:toolArgumentsDigest(intent)},scopeRef:runId})) return;
+    const result=runtime.loadCheckpoint(taskId,'tool-result-'+runId) as {result?: {kind?: string; graphRevision?: number}} | undefined;
+    const graphRevision=result?.result?.graphRevision;
+    if (result?.result?.kind!=='applied' || graphRevision!==prepared.preview.after.snapshot.revision
+      || !isDeepStrictEqual(store.read(graphRevision),prepared.preview.after.snapshot)) return;
+    const updatedNodes=prepared.preview.inputs.map(node=>{
+      const applied=prepared.preview.after.snapshot.history.findLast(item=>item.id===node.id)!;
+      return Object.freeze({id:applied.id,revision:applied.revision,kind:applied.kind});
+    });
+    const current=store.read();
+    return Object.freeze({taskId,runId,sourceTaskId,reviewTaskId,graphNamespace,graphRevision,
+      currentGraphRevision:current.revision,inputDigest:record.inputDigest,candidateDigest:intent.binding.candidateDigest,
+      graphUpdateVerified:updatedNodes.every(ref=>{
+        const head=current.history.findLast(node=>node.id===ref.id);return !!head && sameRef(head,ref);
+      }),updatedNodes:Object.freeze(updatedNodes),evidenceRefs:Object.freeze([runId])});
+  } catch {return undefined;}
+}
+
 function denied(message = 'Local repair binding is invalid'): never {
   throw new ProtocolError('UNAUTHORIZED', message);
 }

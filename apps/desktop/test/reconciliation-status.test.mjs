@@ -39,6 +39,15 @@ test('non-waiting tasks do not read checkpoints or suggest recovery',()=>{
   assert.equal(calls.length,0);
 });
 
+test('F24 status describes continuation without claiming the original write or whole task succeeded',()=>{
+ const {application}=fixture({'application-deadline':deadline});
+ application.readF24RecoveryStatus=id=>{assert.equal(id,task.taskId);return {kind:'f24_knowledge',phase:'waiting_readback',deadline};};
+ application.readHarnessCandidateRecoveryAvailable=()=>assert.fail('do not substitute a different recovery action');
+ const result=readReconciliationStatus(application,{...task,cancelRequested:false},()=>Date.parse(deadline)-1);
+ assert.equal(result.actionLabel,'核实原结果并继续');assert.match(result.notice,/仍需审批/);assert.equal(result.blockedReason,undefined);
+ assert.equal(result.deadlineExpired,false);assert.doesNotMatch(result.notice,/已完成|已写入|成功/);
+});
+
 test('native Harness readback remains available despite cloud markers and expiration',()=>{
   const {application}=fixture({'application-deadline':deadline,'competition-cloud-inflight':{},'competition-cloud-unknown':{}});
   application.readHarnessCandidateRecoveryAvailable=taskId=>{assert.equal(taskId,task.taskId);return true;};

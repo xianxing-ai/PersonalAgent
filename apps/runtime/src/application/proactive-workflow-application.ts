@@ -59,6 +59,10 @@ export interface RuntimeProactiveWorkflowHostOptions {
   routeConnectorEvent?(event: ProactiveEvent): Partial<Pick<UnsignedEvent, 'change' | 'previousVersion' | 'expiresAt' | 'priority' | 'responsibilityRefs' | 'goalRefs' | 'anchorRefs' | 'contractRef'>>;
   /** Authenticated native UI/final user instruction check; model/source fields cannot satisfy it. */
   verifyControlCommand?(command: RuntimeProactiveControlCommand, source: TaskSnapshot, context: Context): boolean | Promise<boolean>;
+  /** Exact native user decision for one lifecycle transition; not an action grant. */
+  verifyResponsibilityLifecycle?(command:RuntimeResponsibilityLifecycleCommand,source:TaskSnapshot,context:Context):boolean|Promise<boolean>;
+  /** Same original lifecycle decision checked synchronously inside the Runtime CAS transaction. */
+  assertResponsibilityLifecycleCurrent?(command:RuntimeResponsibilityLifecycleCommand,source:TaskSnapshot,context:Context):void;
   /** Trusted structural provenance only. Does not replace execution identity, deadlines, quotes or grants. */
   resolveUserConversation?(taskId: string): string | undefined;
   /** Existing controller consumer. An uncertain call is read back, never automatically sent again. */
@@ -66,6 +70,14 @@ export interface RuntimeProactiveWorkflowHostOptions {
     readReceipt(eventId: string, context: Context): Promise<RuntimeProactiveControllerReceipt | undefined>};
   /** Existing worker re-entry, supplied by the real caller when approvals suspend its worker. */
   resumeWorker?(): void;
+}
+export interface RuntimeResponsibilityLifecycleCommand {
+  commandId:string;responsibilityId:string;responsibilityRevision:number;expectedLifecycleRevision:number|null;
+  action:'activate'|'revoke';sourceTaskId:string;validUntil?:string;
+}
+interface ResponsibilityLifecycle {
+  revision:number;responsibilityRevision:number;state:'active'|'revoked';validUntil:string;
+  activationQuote:ProactiveSourceQuote;revocationQuote?:ProactiveSourceQuote;
 }
 interface Entry {event: UnsignedEvent; payload: unknown}
 interface FrozenRequest {input: Omit<ProactiveAdvanceRequest, 'signal' | 'checkpoint'>; entryIds: string[];
@@ -85,6 +97,9 @@ interface ApplicationState {
   contexts: Record<string, unknown>; itemStates: Record<string, unknown>; schedules: Record<string, string>;
   contextValidity?: Record<string, {state: 'needs_refresh'; reason: string; observedAt: string}>;
   controllerReports: Record<string, {report: RuntimeProactiveChildReport; state: 'pending' | 'confirmed'; receipt?: RuntimeProactiveControllerReceipt}>;
+  /** Additive only. Missing on historic records means unknown, never active. */
+  responsibilityLifecycles?:Record<string,ResponsibilityLifecycle>;
+  responsibilityLifecycleOperations?:Record<string,{digest:string;responsibilityId:string;revision:number}>;
 }
 function fail(code: string, message: string): never {throw new ProtocolError(code, message);}
 const text = (value: unknown): value is string => typeof value === 'string' && !!value.trim();
@@ -174,6 +189,97 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
   };
   const quote = (task: TaskSnapshot): ProactiveSourceQuote => ({conversationId: task.conversationId!, messageId: task.taskId,
     quoteRef: 'runtime:task:' + task.taskId + ':goal', sha256: hashText(task.goal!)});
+  function lifecycleSource(taskId:string):TaskSnapshot {
+    const task=sourceTask(taskId);
+    if(runtime.loadCheckpoint(taskId,'private-copy-erasure-binding')!==undefined)fail('UNAUTHORIZED','Original lifecycle source was withheld');
+    return task;
+  }
+  function lifecycleResponsibility(snapshot:ReturnType<typeof read>,id:string,revision:number):UnsignedResponsibility {
+    const responsibility=Object.hasOwn(snapshot.state.responsibilities,id)?snapshot.state.responsibilities[id]:undefined;
+    if(!responsibility||responsibility.id!==id||responsibility.revision!==revision
+      ||!Array.isArray(responsibility.sourceQuotes)||!responsibility.sourceQuotes.length)
+      return fail('UNSUPPORTED_CAPABILITY','Original responsibility provenance unavailable');
+    for(const source of responsibility.sourceQuotes)
+      if(digest(quote(lifecycleSource(source.messageId)))!==digest(source))fail('REVISION_CONFLICT','Original responsibility source changed');
+    return responsibility;
+  }
+  async function recordResponsibilityLifecycle(raw:RuntimeResponsibilityLifecycleCommand,context:Context) {
+    if(!raw||typeof raw!=='object'||Array.isArray(raw)
+      ||Object.keys(raw).some(key=>!['commandId','responsibilityId','responsibilityRevision','expectedLifecycleRevision','action','sourceTaskId','validUntil'].includes(key))
+      ||typeof raw.commandId!=='string'||!/^[A-Za-z0-9._:-]{1,128}$/.test(raw.commandId)
+      ||['__proto__','constructor','prototype'].includes(raw.commandId)
+      ||!text(raw.responsibilityId)||raw.responsibilityId.length>256||['__proto__','constructor','prototype'].includes(raw.responsibilityId)
+      ||!Number.isSafeInteger(raw.responsibilityRevision)||raw.responsibilityRevision<1
+      ||!(raw.expectedLifecycleRevision===null||Number.isSafeInteger(raw.expectedLifecycleRevision)&&raw.expectedLifecycleRevision>0)
+      ||!['activate','revoke'].includes(raw.action)||!text(raw.sourceTaskId)
+      ||raw.action==='activate'&&(typeof raw.validUntil!=='string'||!Number.isFinite(Date.parse(raw.validUntil)))
+      ||raw.action==='revoke'&&raw.validUntil!==undefined)
+      return fail('INVALID_ARGUMENT','Invalid responsibility lifecycle command');
+    const command=structuredClone(raw);active(context);
+    if(!options.verifyResponsibilityLifecycle||!options.assertResponsibilityLifecycleCurrent)
+      return fail('UNSUPPORTED_CAPABILITY','Trusted responsibility lifecycle authorization unavailable');
+    const verifyLifecycle=options.verifyResponsibilityLifecycle,assertLifecycle=options.assertResponsibilityLifecycleCurrent;
+    const decisionSource=lifecycleSource(command.sourceTaskId);
+    let allowed:boolean;
+    try {allowed=await verifyLifecycle(structuredClone(command),structuredClone(decisionSource),context);}
+    catch {active(context);return fail('UNAUTHORIZED','Original responsibility lifecycle decision unavailable');}
+    if(allowed!==true)
+      return fail('UNAUTHORIZED','Original responsibility lifecycle decision unavailable');
+    active(context);
+    const snapshot=read(),operations=snapshot.state.responsibilityLifecycleOperations??{},lifecycles=snapshot.state.responsibilityLifecycles??{};
+    const commandDigest=digest(command),previous=Object.hasOwn(operations,command.commandId)?operations[command.commandId]:undefined;
+    if(previous) {
+      if(previous.digest!==commandDigest)fail('REVISION_CONFLICT','Original lifecycle command changed');
+      try {const checked:unknown=assertLifecycle(structuredClone(command),structuredClone(decisionSource),context);
+        if(checked!==undefined){void Promise.resolve(checked).catch(()=>undefined);throw Error('invalid gate');}}
+      catch {return fail('UNAUTHORIZED','Original responsibility lifecycle decision unavailable');}
+      active(context);
+      return {state:'recorded' as const,revision:previous.revision};
+    }
+    const responsibility=lifecycleResponsibility(snapshot,command.responsibilityId,command.responsibilityRevision);
+    const old=Object.hasOwn(lifecycles,command.responsibilityId)?lifecycles[command.responsibilityId]:undefined;
+    if((old?.revision??null)!==command.expectedLifecycleRevision)fail('REVISION_CONFLICT','Original responsibility lifecycle changed');
+    if(command.action==='revoke'&&(!old||old.state!=='active'||old.responsibilityRevision!==responsibility.revision))
+      fail('REVISION_CONFLICT','Original active responsibility is unavailable');
+    if(command.action==='activate'&&(!command.validUntil||Date.parse(command.validUntil)<=now()))
+      fail('INVALID_ARGUMENT','Explicit future responsibility expiry required');
+    const next:ResponsibilityLifecycle=command.action==='activate'
+      ?{revision:(old?.revision??0)+1,responsibilityRevision:responsibility.revision,state:'active',validUntil:command.validUntil!,activationQuote:quote(decisionSource)}
+      :{...old!,revision:old!.revision+1,state:'revoked',revocationQuote:quote(decisionSource)};
+    snapshot.state.responsibilityLifecycles={...lifecycles,[command.responsibilityId]:next};
+    snapshot.state.responsibilityLifecycleOperations={...operations,[command.commandId]:{digest:commandDigest,responsibilityId:command.responsibilityId,revision:next.revision}};
+    let committed:boolean;
+    try {committed=runtime.compareAndSetTrustedHostStateGuarded('runtime-proactive-workflows',key,snapshot.revision,snapshot.state,()=>{
+      active(context);const currentSource=lifecycleSource(command.sourceTaskId);
+      if(digest(quote(currentSource))!==digest(quote(decisionSource)))fail('REVISION_CONFLICT','Original lifecycle decision source changed');
+      lifecycleResponsibility(snapshot,command.responsibilityId,command.responsibilityRevision);
+      const checked:unknown=assertLifecycle(structuredClone(command),structuredClone(currentSource),context);
+      if(checked!==undefined){void Promise.resolve(checked).catch(()=>undefined);fail('UNAUTHORIZED','Lifecycle authorization gate must be synchronous');}
+    });} catch {return fail('RESULT_UNKNOWN','Original responsibility lifecycle requires readback');}
+    if(!committed)fail('REVISION_CONFLICT','Original responsibility lifecycle changed');
+    try {active(context);const checked:unknown=assertLifecycle(structuredClone(command),structuredClone(decisionSource),context);
+      if(checked!==undefined){void Promise.resolve(checked).catch(()=>undefined);throw Error('invalid gate');}}
+    catch {return fail('RESULT_UNKNOWN','Original responsibility lifecycle requires readback');}
+    notify();return {state:'recorded' as const,revision:next.revision};
+  }
+  function readResponsibilityLifecycle(input:{responsibilityId:string;responsibilityRevision:number},context:Context) {
+    active(context,true);
+    if(!input||!text(input.responsibilityId)||!Number.isSafeInteger(input.responsibilityRevision)||input.responsibilityRevision<1)
+      fail('INVALID_ARGUMENT','Invalid responsibility lifecycle reference');
+    const snapshot=read(),record=snapshot.state.responsibilityLifecycles?.[input.responsibilityId];
+    if(!record)return {state:'unavailable' as const,reason:'lifecycle_not_recorded'};
+    if(record.responsibilityRevision!==input.responsibilityRevision)return {state:'unavailable' as const,reason:'responsibility_revision_changed'};
+    lifecycleResponsibility(snapshot,input.responsibilityId,input.responsibilityRevision);
+    if(!Number.isSafeInteger(record.revision)||record.revision<1||!['active','revoked'].includes(record.state)
+      ||!Number.isFinite(Date.parse(record.validUntil))||!record.activationQuote||record.state==='revoked'&&!record.revocationQuote)
+      fail('REVISION_CONFLICT','Original responsibility lifecycle invalid');
+    if(digest(quote(lifecycleSource(record.activationQuote.messageId)))!==digest(record.activationQuote)
+      ||record.revocationQuote&&digest(quote(lifecycleSource(record.revocationQuote.messageId)))!==digest(record.revocationQuote))
+      fail('REVISION_CONFLICT','Original lifecycle decision source changed');
+    if(record.state==='revoked')return {state:'unavailable' as const,reason:'responsibility_revoked'};
+    if(Date.parse(record.validUntil)<=now())return {state:'unavailable' as const,reason:'responsibility_expired'};
+    return {state:'current' as const,revision:record.revision,validUntil:record.validUntil};
+  }
   function appendEntry(state: ApplicationState, entry: Entry) {
     const old = state.entries[entry.event.eventId];
     if (old && digest(old) !== digest(entry)) fail('REVISION_CONFLICT', 'Original proactive event identity changed');
@@ -445,6 +551,7 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
     save(snapshot); return result;
   }
   const host = {
+    recordResponsibilityLifecycle,readResponsibilityLifecycle,
     taskId: options.taskId, sessionId: options.sessionId,
     get binding() {return structuredClone(binding());},
     eventSink: {async persist(batch: ProactiveBatch, context: ProactiveContext) {

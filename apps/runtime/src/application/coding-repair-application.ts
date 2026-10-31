@@ -15,6 +15,9 @@ import type {WorkerContext,WorkerResult} from '../index.js';
 import type {RuntimeApplication} from './runtime-application.js';
 import {createRuntimeOwnedWorkflowHost} from './owned-workflow-application.js';
 import {runRuntimeOwnedWorkflowDriver} from './owned-workflow-driver.js';
+import {createCodingRepairFrontierGuard} from './coding-repair-frontier.js';
+import {codingRepairReviewOperationId} from './coding-repair-signed-review.js';
+import type {RuntimeCodingRepairIndependentReviewPort} from './coding-repair-frontier.js';
 import type {RuntimeOwnedWorkflowDriverState} from './owned-workflow-driver.js';
 
 export const CODING_REPAIR_WORKFLOW_TOOL='coding.repair.workflow';
@@ -35,6 +38,10 @@ export interface RuntimeCodingRepairOptions {
   /** Exact, native-confirmed source export. Missing port is unavailable, never consent. */
   projectSource?:(input:{taskId:string;localTaskId:string;proposal:Extract<WorkflowProposal,{kind:'tool_proposal'}>;
     receipt:WorkflowReceipt;authorization:{taskId:string;runId:string};deadline:string;signal:AbortSignal})=>Promise<unknown>;
+  /** Independent, locally confirmed review; absent provider keeps patch execution unavailable. */
+  independentReview?:RuntimeCodingRepairIndependentReviewPort;
+  /** Trusted composition enables the separately registered signed-review HostBridge operation. */
+  independentReviewProducer?:boolean;
 }
 export interface RuntimeCodingRepairRequest {version:1;mode:'main'|'isolated';allowedPaths?:string[];subtasks:SubtaskDefinition[]}
 type Request=RuntimeCodingRepairRequest;
@@ -155,13 +162,45 @@ export async function runRuntimeCodingRepairWorkflow(application:RuntimeApplicat
     state.input={goal:subtask.goal,codingRepair,...(state.input.executionModel?{executionModel:state.input.executionModel}:{})};save();
   }
   const catalog=parseCoordinationAvailableTools(tools.list().filter(tool=>
-    tool.name!==CODING_REPAIR_WORKFLOW_TOOL&&(tool.name.startsWith('coding.repair.')||tool.name.startsWith('workflow.host.f15_')
+    tool.name!==CODING_REPAIR_WORKFLOW_TOOL&&tool.name!=='workflow.host.f15_independent_review'&&(tool.name.startsWith('coding.repair.')||tool.name.startsWith('workflow.host.f15_')
       ||tool.name.startsWith('workflow.guard.f15_')||tool.name==='workspace.coding_snapshot'||tool.name==='decision.choose_candidate'))
     .map(tool=>({name:tool.name,version:tool.version,inputSchema:tool.inputSchema})));
 
+  const guard=createCodingRepairFrontierGuard(application,bridge,{taskId:worker.taskId,sessionId:state.sessionId,
+    controlRevision:state.controlRevision,initialRunId:state.initialRunId,codingRepair:state.input.codingRepair,
+    deadline:worker.deadline,signal:worker.signal,...(options.independentReview?{independentReview:options.independentReview}:{}),
+    ...(request.allowedPaths?{allowedPaths:request.allowedPaths}:{})});
   return runRuntimeOwnedWorkflowDriver(application,worker,state,{
     workflowId:'F15',checkpointKey:CODING_REPAIR_STATE,mode:request.mode,image:options.image,bridge,catalog,
     requestId:sequence=>'coding-'+worker.taskId+'-'+sequence,
+    authorizeProposal:async({proposal,state:graph})=>{
+      if(proposal.nodeId==='F15_N05'&&options.independentReviewProducer===true&&options.independentReview) {
+        const common=guard.reviewContext(graph),key={taskId:common.taskId,sessionId:common.sessionId,snapshotId:common.snapshotId,patchDigest:common.patchDigest};
+        const operationId=codingRepairReviewOperationId(key),args={sessionId:key.sessionId,snapshotId:key.snapshotId,patchDigest:key.patchDigest};
+        const descriptor=tools.list().find(tool=>tool.name==='workflow.host.f15_independent_review'&&tool.version==='1.0.0');
+        if(!descriptor)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Independent review producer is unavailable');
+        validateToolValue(descriptor.inputSchema,args);
+        application.runtime.saveCheckpointOnce(worker.taskId,'coding-repair:review-preflight:'+operationId,key);
+        if(!isDeepStrictEqual(worker.loadCheckpoint('coding-repair:review-preflight:'+operationId),key))
+          throw new ProtocolError('REVISION_CONFLICT','Original independent review binding changed');
+        const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+        const original:Extract<WorkflowProposal,{kind:'tool_proposal'}>={kind:'tool_proposal',nodeId:'F15_N04',operationId,proposalId:operationId,
+          inputDigest:hash(args),originControlRevision:graph.controlRevision,toolName:descriptor.name,toolVersion:descriptor.version,
+          toolSchemaDigest:hash(descriptor.inputSchema),arguments:args,resourceKeys:[],effect:'read'};
+        const binding={taskId:worker.taskId,sessionId:graph.sessionId,workflowId:'F15',controlRevision:graph.controlRevision,deadline:worker.deadline};
+        const local=bridge.submit(binding,original);
+        graph.waiting={localTaskId:local.localTaskId,operationId};save();
+        const cancel=()=>{try{application.runtime.requestCancel(local.localTaskId,'Original review was cancelled');}catch{/* Retain terminal child. */}};
+        worker.signal.addEventListener('abort',cancel,{once:true});
+        try{if(worker.signal.aborted)cancel();await application.waitForHostToolTask(local.localTaskId);active();}
+        finally{worker.signal.removeEventListener('abort',cancel);}
+        const receipt=bridge.readReceipt(binding,original);
+        if(!receipt||receipt.state==='unknown'||receipt.state==='stopping')return {localTaskId:local.localTaskId,operationId};
+        if(receipt.state!=='confirmed')throw new ProtocolError('UNAUTHORIZED','Independent review did not approve the original patch');
+        delete graph.waiting;save();
+      }
+      guard({proposal,state:graph});
+    },
     authorizeReceipt:async({proposal,receipt,localTaskId,state})=>{
       if(proposal.toolName==='coding.repair.read') {
         if(!options.projectSource)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Exact native source export authorization is unavailable');

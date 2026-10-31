@@ -40,7 +40,7 @@ async function project(policy,s,result){return policy.project({taskId:s.taskId,p
 
 test('registers only existing supplemental tools; missing configuration and absent native consent stay closed',async t=>{
   const f=fixture(t,{mail:{current:()=>undefined},calendar:{binding:()=>undefined}});
-  assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
+  assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.send','mail.archive','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
   for(const tool of f.host.tools){const s=scope(tool);assert.equal(await f.host.competitionToolAvailability.find(x=>x.toolName===tool.descriptor.name).available(s),false);
     await assert.rejects(f.host.prepareExport({...s,phase:'preflight'}),{code:'UNAUTHORIZED'});}
   assert.deepEqual(f.calls,[]);
@@ -63,6 +63,21 @@ test('public mail account, draft, mark-seen, reconciliation and calendar impleme
   assert.equal(reads.length,1,'only mail.inbox reports a read binding; account listing, writes and calendar do not');
   assert.deepEqual(Object.keys(reads[0]).sort(),['runId','taskId']);assert.equal(reads[0].taskId,'original');
   assert.equal(Object.isFrozen(reads[0]),true);assert.doesNotMatch(JSON.stringify(reads),/subject|authCode|synthetic-private-code|@qq/);
+});
+
+for(const [name,args] of [['mail.send',{to:'synthetic@example.invalid',subject:'Synthetic',text:'Synthetic body'}],
+  ['mail.archive',{folder:'INBOX',uid:2,uidValidity:123,messageId:'<synthetic@example.invalid>'}]])
+test(`${name} retains an independent exact permit and fails before provider access when revoked`,async t=>{
+  const f=fixture(t),writes=[];
+  if(name==='mail.send'){
+    const original=f.provider.send.bind(f.provider);
+    f.provider.send=(account,input,context)=>{writes.push(input);return original(account,input,context);};
+  }else f.provider.archive=(_account,input)=>{writes.push(input);return {actionId:'synthetic-archive',state:'confirmed',evidenceRefs:['synthetic:archive']};};
+  const {tool,s,policy}=await prepare(f.host,name,args);
+  await assert.rejects(tool.execute(args,{...s,scopes:[]}),{code:'UNAUTHORIZED'});assert.deepEqual(writes,[]);
+  const result=await tool.execute(args,s);assert.equal(writes.length,1);assert.equal(writes[0].idempotencyKey,s.runId);
+  assert.deepEqual(await project(policy,s,result),result);
+  f.revokeMail();await assert.rejects(tool.execute(args,s),{code:'UNAUTHORIZED'});assert.equal(writes.length,1);
 });
 
 test('read binding is never called for a forged or unauthorized ordinary mail invocation',async t=>{

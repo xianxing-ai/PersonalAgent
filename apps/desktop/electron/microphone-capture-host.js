@@ -44,7 +44,7 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
         signal:combined,isCurrent});
       if(accepted!==true||!isCurrent())throw Error('本次麦克风用途未获得有效对话卡授权');
     } finally {if(pendingAuthorization===record)pendingAuthorization=undefined;}
-    authorization = {contents: panel.webContents, expiresAt};
+    authorization = {id:randomUUID(),contents: panel.webContents, expiresAt,purpose};
     return {authorized: true, expiresAt: new Date(authorization.expiresAt).toISOString()};
   }
 
@@ -74,7 +74,8 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
       const ready = deferred();
       const stopped = deferred();
       session = {token, contents: authorization.contents, sinks: new Set(), ready,
-        stopped, readyState: 'starting', stopPromise: undefined, revokePermission: undefined};
+        stopped, readyState: 'starting', stopPromise: undefined, revokePermission: undefined,
+        authorizationId:authorization.id,purpose:authorization.purpose,frames:0,bytes:0,nonzeroFrames:0};
       capture = session;
       lastRelease = {stopped: false, verified: false, reason: 'capturing'};
       try {
@@ -153,6 +154,7 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
     if (message.type === 'ready' && session.readyState === 'starting'
       && message.trackLive === true && message.sampleRate === 16_000) {
       session.readyState = 'ready';
+      session.startedAt=new Date(now()).toISOString();
       session.ready.resolve();
       return true;
     }
@@ -165,6 +167,9 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
       const data = message.data;
       if (!(data instanceof Uint8Array) || !data.byteLength || data.byteLength % 2
         || data.byteLength > MAX_FRAME_BYTES) { void stop(session, 'device_unavailable'); return false; }
+      session.frames++;session.bytes+=data.byteLength;
+      if(data.some(value=>value!==0))session.nonzeroFrames++;
+      session.lastFrameAt=new Date(now()).toISOString();
       try { onLevel?.(pcmLevel(data)); } catch { /* Loudness is visual and must not affect capture. */ }
       for (const {sink} of session.sinks) {
         try { sink.onFrame(data); } catch { void stop(session, 'device_unavailable'); }
@@ -186,5 +191,17 @@ export function createMicrophoneCaptureHost({permissionGate, getPanel, confirmAu
     return false;
   }
 
-  return {authorize, revoke, snapshot, binding: {start}, receive};
+  // Host-only transport evidence. No PCM, transcript, echo or human audibility claim.
+  function readCaptureReceipt({purpose,deadline,signal}={}) {
+    const session=capture;
+    if(!session||session.readyState!=='ready'||session.stopPromise||!authorization
+      ||session.authorizationId!==authorization.id||session.purpose!==purpose||signal?.aborted
+      ||!Number.isFinite(Date.parse(deadline))||now()>=Date.parse(deadline)||now()>=authorization.expiresAt
+      ||validPanel()?.webContents!==session.contents)return undefined;
+    return Object.freeze({captureId:session.token,authorizationId:session.authorizationId,purpose:session.purpose,
+      startedAt:session.startedAt,...(session.lastFrameAt?{lastFrameAt:session.lastFrameAt}:{}),
+      expiresAt:new Date(authorization.expiresAt).toISOString(),frames:session.frames,bytes:session.bytes,
+      nonzeroFrames:session.nonzeroFrames,sampleRateHz:16000,channels:1,trackLive:true});
+  }
+  return {authorize, revoke, snapshot, binding: {start}, receive,readCaptureReceipt};
 }

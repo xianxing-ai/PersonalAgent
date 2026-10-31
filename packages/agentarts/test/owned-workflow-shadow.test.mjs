@@ -33,7 +33,7 @@ async function fixture(t,{plan=metadata(),configured=true,comparisonRequested=fa
     return context.nodeId==='F20_N01'&&context.mode==='main'?{selectedId:'primary',metadata:plan}:{selectedId:'primary'};
   }}});
   const descriptor=decisionTool.descriptor;
-  const tools=[{name:descriptor.name,version:descriptor.version,inputSchema:descriptor.inputSchema},...['workspace.read_text','workspace.run_allowed_command'].map(name=>({name,version:'1.0.0',inputSchema:empty}))];
+  const tools=[{name:descriptor.name,version:descriptor.version,inputSchema:descriptor.inputSchema},...['workspace.read_text','coding.repair.trial'].map(name=>({name,version:'1.0.0',inputSchema:empty}))];
   const modelCandidates=async context=>{prepared++;const value=context.node.kind==='tool'
     ?{toolName:context.node.capabilities[0].name,toolVersion:'1.0.0',arguments:{}}:{fixture:context.node.id};
     return [{id:'primary',description:'fixture primary',value,metadata:plan},{id:'alternative',description:'fixture alternative',value}];};

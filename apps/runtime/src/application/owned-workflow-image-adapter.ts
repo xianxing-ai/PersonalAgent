@@ -12,6 +12,8 @@ export interface RuntimeOwnedWorkflowImageOptions {
   fetchHandlesHostAuthorization?:true;
   websocketFactory?:AgentArtsWebSocketFactory;fetchImpl?:AgentArtsFetch;invokeMode?:'debug'|'published';workflowGoalInput?:string;
   assertDeploymentBinding?:()=>void;onTransportState?:(state:AgentArtsTransportState)=>void;
+  /** Synchronous trusted source/configuration fence, including after credential awaits and before WSS sends. */
+  assertWorkflowCurrent?:(request:OwnedWorkflowAdvanceRequest)=>void;
   /** Host-only compatibility for a deployed explicit key override. No Renderer configuration. */
   readReceiptSecret?:(signal:AbortSignal)=>Promise<string>;
 }
@@ -37,7 +39,7 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
   const active=(request:OwnedWorkflowAdvanceRequest)=>{
     if(!(request.signal instanceof AbortSignal)||!Number.isFinite(Date.parse(request.deadline))
       ||!Number.isFinite(Date.parse(request.taskDeadline??request.deadline)))throw new ProtocolError('INVALID_ARGUMENT','Invalid owned-workflow invocation lifetime');
-    options.assertDeploymentBinding?.();if(request.signal.aborted)throw new ProtocolError('CANCELLED','Original graph request cancelled');
+    options.assertDeploymentBinding?.();options.assertWorkflowCurrent?.(request);if(request.signal.aborted)throw new ProtocolError('CANCELLED','Original graph request cancelled');
     if(Date.now()>=Math.min(Date.parse(request.deadline),Date.parse(request.taskDeadline??request.deadline)))throw new ProtocolError('TIMEOUT','Original graph deadline expired');};
   const read=async(provider:AgentArtsAuthorizationProvider,signal:AbortSignal)=>{const value=await provider.read(signal);
     if(typeof value!=='string'||!value.trim()||/[\u0000-\u001f\u007f]/.test(value))throw new ProtocolError('UNAUTHORIZED','Owned-workflow credential unavailable');return value;};

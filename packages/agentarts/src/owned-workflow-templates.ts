@@ -70,7 +70,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F16_N05:[tool('workspace.run_allowed_command')],F17_N03:[tool('workspace.run_allowed_command')],F17_N04:[host('runtime.deliver_failure_report')],
   F18_N01:[host('github.bound_pr_diff')],F18_N04:[host('github.current_head_merge_gate')],F18_N05:[host('github.registered_merge')],
   F19_N01:[host('github.issue_snapshot')],F19_N03:[host('runtime.enqueue_issue_repair')],F19_N04:[host('github.merged_repair_readback')],
-  F19_N05:[host('github.registered_close_issue')],F20_N01:[tool('workspace.read_text')],F20_N03:[tool('workspace.run_allowed_command')],
+  F19_N05:[host('github.registered_close_issue')],F20_N01:[tool('workspace.read_text')],F20_N03:[tool('coding.repair.trial')],
   F21_N01:[host('mcp_skill.source_manifest')],F21_N02:[host('mcp_skill.install_registry')],
   F21_N03:[host('mcp_skill.protocol_health')],F21_N04:[host('mcp_skill.isolated_probe')],F21_N05:[host('mcp_skill.enable_authorized')],
   F22_N09:[host('shadow.trigger_snapshot')],F22_N01:[host('shadow.versioned_snapshot')],
@@ -113,11 +113,16 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
     if (kind==='host'&&!mapped.length) mapped.push(host(`unavailable.${node.id}`));
     const condition = ['F02_N09','F24_N06'].includes(node.id)
       ? '本地可信停止事件已触发；云端不会自行触发急停' : node.condition;
+    // The reviewed F24 recovery edges also order execution: without N11, an
+    // ordinary recovery skips N09 when both cancellation predecessors skip.
+    const dependencies=[...node.dependencies];
+    if(['F24_N02','F24_N09'].includes(node.id)&&!dependencies.includes('F24_N11')
+      &&feature.edges.some(edge=>edge.source==='F24_N11'&&edge.target===node.id))dependencies.push('F24_N11');
     return {id:node.id,label:node.label,designKind:node.kind,kind,
-      dependencies:node.dependencies.map(nodeId=>({nodeId,
+      dependencies:dependencies.map(nodeId=>({nodeId,
         required:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F02_N09','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F02_N09','F06_N05','F11_N04','F11_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
           || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04','F12_N05',

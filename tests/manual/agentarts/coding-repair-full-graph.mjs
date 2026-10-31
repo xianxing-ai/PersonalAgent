@@ -1,13 +1,14 @@
 import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {delimiter,join,resolve} from 'node:path';
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,createHash,generateKeyPairSync,sign} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {Client} from '@personal-agent/client';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier,createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
 import {createRuntimeApplication,readRuntimeCodingVerificationEvidence,CODING_REPAIR_WORKFLOW_TOOL} from '@personal-agent/runtime/application';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
+import {createRuntimeCodingRepairSignedReview,codingRepairReviewBytes} from '../../../apps/runtime/dist/application/coding-repair-signed-review.js';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const powerShellPath=process.env.PA_TEST_PWSH??process.env.PATH?.split(delimiter).map(directory=>join(directory,'pwsh.exe')).find(existsSync)??'C:/Program Files/PowerShell/7/pwsh.exe';
@@ -114,6 +115,20 @@ export async function runCodingRepairFullGraphFixture(options={}) {
     const tool=original.find(item=>item.descriptor.name==='coding.repair.'+source);tools.push({...tool,descriptor:{...tool.descriptor,name}});
   }
   tools.push(createWorkflowDecisionTool({selector:options.selector??{select:async request=>request.candidates.find(candidate=>candidate.id!=='review').id}}));
+  // This is a synthetic reviewer with a real ephemeral Ed25519 key. The key and
+  // approval are test fixtures, not proof of a real independent human review.
+  let signedReview;
+  if(options.fakeModel===true&&options.disableSyntheticReview!==true){
+    const {publicKey,privateKey}=generateKeyPairSync('ed25519'),reviews=new Map();
+    signedReview=createRuntimeCodingRepairSignedReview(()=>app,{reviewerId:'synthetic-independent-reviewer',authorId:'synthetic-coder',
+      policyId:'synthetic-review-policy-v1',publicKey:publicKey.export({type:'spki',format:'pem'}),assertCurrent:()=>true,
+      read:key=>{const id=JSON.stringify(key);let value=reviews.get(id);if(!value){
+        const review={version:1,...key,reviewerId:'synthetic-independent-reviewer',authorId:'synthetic-coder',policyId:'synthetic-review-policy-v1',
+          decision:'approved',reviewedAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+120000).toISOString()};
+        value={review,signature:sign(null,codingRepairReviewBytes(review),privateKey).toString('base64')};reviews.set(id,value);}
+        return value;}});
+    tools.push(signedReview.tool);
+  }
   const mode=options.mode??'main';
   const coordination=options.coordination??(options.fakeModel===true?new FakeCoordinationPort(request=>{
     if(request.continuation)return {kind:'text',text:'The original F15 child completed with actual verification receipts',verification:'mock'};
@@ -124,7 +139,8 @@ export async function runCodingRepairFullGraphFixture(options={}) {
     coordinationBinding:sha('explicit-fake-original-fixed-deployment'),tools,
     automaticTools:[...tools.filter(tool=>!options.manualApprovalTools?.includes(tool.descriptor.name)).map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),{toolName:CODING_REPAIR_WORKFLOW_TOOL,toolVersion:'1.0.0'}],
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true})),
-    codingRepair:{image:options.image??createExplicitFakeCodingRepairImage(target,observed),authorizeMetadata:()=>{},projectSource:async input=>input.receipt.result},
+    codingRepair:{image:options.image??createExplicitFakeCodingRepairImage(target,observed),authorizeMetadata:()=>{},projectSource:async input=>input.receipt.result,
+      ...(signedReview?{independentReview:signedReview.port,independentReviewProducer:true}:{})},
     ...(options.applicationOptions??{})};
   const createApplication=options.createApplication??createRuntimeApplication;
   app=createApplication(config);options.selector?.bindApplication?.(app);

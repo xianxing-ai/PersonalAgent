@@ -1,4 +1,5 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import {f20DocumentCandidateSchema} from '@personal-agent/contracts/f20-candidate';
 import {deflateRawSync,inflateRawSync} from 'node:zlib';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
@@ -28,6 +29,8 @@ export interface WorkflowNodeContext {
   template:OwnedWorkflowTemplate;node:OwnedWorkflowNode;input:unknown;
   predecessorOutputs:Readonly<Record<string,unknown>>;availableTools:readonly CoordinationAvailableTool[];
   predecessorStates:Readonly<Record<string,string>>;
+  /** Correlation only; the local host must independently verify the original operation and authorization. */
+  predecessorOperations?:Readonly<Record<string,{operationId:string;toolName:string;toolVersion:string}>>;
   deadline:string;signal:AbortSignal;requestId:string;mode:OwnedWorkflowMode;namespace:string;
   /** Sealed F15 round plus SHA-bound current sources, never a tool grant. */
   codingRepair?:CodingRepairFrontier;
@@ -150,6 +153,9 @@ export function workflowCandidateMetadata(node:OwnedWorkflowNode,tools:readonly 
     selectionBasis:node.kind==='tool'?'published_schema_and_task_arguments'
       :node.kind==='host'?'bound_host_arguments_and_task_scope':'actual_sources_and_current_output_requirements',
     resultEvidenceStage:proposed?'after_actual_execution':'required_for_generated_claims'},
+    ...(['F20_N02','F20_N04'].includes(node.id)?{candidateValueSchema:f20DocumentCandidateSchema(),
+      candidateConstraint:node.id==='F20_N04'?'Retain the exact original selected F20 document candidate for source-supported review, or abstain. Do not claim publication.'
+        :'Include a TypeScript example with an explicitly typed object using an exported type from the selected contract. Do not choose paths, recipes or authorization.'}:{}),
     publishedTools:tools.filter(tool=>node.capabilities.some(cap=>cap.kind==='tool'&&cap.name===tool.name)
       ||node.kind==='host'&&tool.name===workflowHostToolName(node.id)).map(tool=>copy(tool))};
 }
@@ -325,6 +331,11 @@ export class OwnedWorkflowEngine {
         return [dep.nodeId,value??null];
       }))),
       predecessorStates:Object.fromEntries(node.dependencies.map(dep=>[dep.nodeId,state.nodes[dep.nodeId]!.state])),
+      ...(node.id==='F09_N02'&&state.nodes.F09_N01?.state==='completed'
+        &&state.nodes.F09_N01.proposal?.kind==='tool_proposal'&&state.nodes.F09_N01.proposal.toolName==='feeds.collect'
+        &&!!state.nodes.F09_N01.evidenceRefs?.length?{predecessorOperations:{F09_N01:{
+          operationId:state.nodes.F09_N01.proposal.operationId,toolName:state.nodes.F09_N01.proposal.toolName,
+          toolVersion:state.nodes.F09_N01.proposal.toolVersion}}}:{}),
       availableTools:copy(tools),deadline:request.deadline,signal:request.signal,requestId:request.requestId,
       mode:state.mode,namespace:state.namespace};
   }
@@ -478,6 +489,7 @@ export class OwnedWorkflowEngine {
         ...(context.node.evidenceRequirement?{evidenceRequirement:context.node.evidenceRequirement}:{})},
       ...workflowCandidateMetadata(context.node,context.availableTools),
       ...decisionInput(context),predecessorStates:context.predecessorStates,predecessors:context.predecessorOutputs,
+      ...(context.predecessorOperations?{predecessorOperations:context.predecessorOperations}:{}),
       ...(context.codingRepair?{codingRepair:{round:context.codingRepair.round,scopePaths:context.codingRepair.scopePaths,
         currentSnapshot:context.codingRepair.snapshot,diagnostics:context.codingRepair.diagnostics,
         objective:'Prefer the smallest supported file/line repair among feasible candidates; size is not correctness. Actual current verification is mandatory.',

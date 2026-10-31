@@ -37,3 +37,15 @@ for (const [file, content] of [['harness-candidates.generated.ts', candidateType
     if (current !== content.replaceAll('\r\n', '\n')) throw new Error('Generated candidate types/schema are stale; run contracts generate');
   } else await writeFile(path, content);
 }
+const f20Schema = JSON.parse(await readFile(new URL('../schema/f20-candidate.json', import.meta.url), 'utf8'));
+const f20Types = await compile(f20Schema, 'F20DocumentCandidate', {
+  bannerComment: '// Generated from schema/f20-candidate.json. Do not edit.', unknownAny: true,
+});
+const f20Runtime = '// Generated from schema/f20-candidate.json. Do not edit.\nexport default ' + JSON.stringify(f20Schema) + ';\n';
+for (const [file, content] of [['f20-candidate.generated.ts', f20Types], ['f20-candidate.schema.ts', f20Runtime]]) {
+  const path = new URL('../src/' + file, import.meta.url);
+  if (process.argv.includes('--check')) {
+    const current = (await readFile(path, 'utf8')).replaceAll('\r\n', '\n');
+    if (current !== content.replaceAll('\r\n', '\n')) throw new Error('Generated F20 candidate types/schema are stale; run contracts generate');
+  } else await writeFile(path, content);
+}

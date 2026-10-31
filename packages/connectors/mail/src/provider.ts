@@ -64,6 +64,12 @@ export interface MailMarkSeenInput {
   idempotencyKey: string;
 }
 
+/** Exact original message epoch and identity; the server must advertise an Archive mailbox. */
+export interface MailArchiveInput extends MailMarkSeenInput {
+  uidValidity:number;
+  messageId:string;
+}
+
 /** Trusted execution context; kept separate from mail content and idempotency fingerprints. */
 export interface MailOperationContext {
   signal?: AbortSignal;
@@ -87,7 +93,8 @@ export interface MailProvider {
   fetchPage(accountRef: string, input: MailFetchInput): MailPage | Promise<MailPage>;
   getMessage(accountRef: string, folder: string, uid: number): MailMessage | undefined | Promise<MailMessage | undefined>;
   markSeen(accountRef: string, input: MailMarkSeenInput, context?: MailOperationContext): {uid: number; seen: boolean} | Promise<{uid: number; seen: boolean}>;
-  send(accountRef: string, input: MailSendInput & {idempotencyKey: string}): MailSendResult | Promise<MailSendResult>;
+  send(accountRef: string, input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): MailSendResult | Promise<MailSendResult>;
+  archive?(accountRef:string,input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']>;
   /** Optional real draft capability; absent providers remain unsupported. No SMTP delivery. */
   saveDraft?(accountRef: string, input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): Promise<ProtocolContracts['connectorAction']>;
   /** Synchronous trusted binding check, needed when the service has no original send record. */

@@ -5,6 +5,7 @@ import { MailService } from './service.js';
 import type { MailProvider } from './provider.js';
 import { decodeMailCursor } from './provider.js';
 import { MailAccountRegistry, RegistryMailProvider } from './registry.js';
+import {registerMailWriteTools} from './write-tools.js';
 
 export { MailConnector, MAIL_CONNECTOR_VERSION } from './connector.js';
 export { MailService, messageToItem } from './service.js';
@@ -15,7 +16,7 @@ export { MailAccountRegistry, RegistryMailProvider } from './registry.js';
 export type { BoundMailAccount } from './registry.js';
 export { decodeMailCursor, encodeMailCursor } from './provider.js';
 export type {
-  MailCursor, MailFetchInput, MailFolder, MailMarkSeenInput, MailMessage, MailOperationContext, MailPage,
+  MailCursor, MailFetchInput, MailFolder, MailMarkSeenInput, MailArchiveInput, MailMessage, MailOperationContext, MailPage,
   MailProvider, MailSendInput, MailSendResult,
 } from './provider.js';
 
@@ -148,6 +149,7 @@ export function register(host: ToolHost, options: MailModuleOptions): () => void
     if (!account) throw new ProtocolError('INVALID_ARGUMENT', 'An explicitly bound mail account is required');
     return account;
   };
+  extra.push(registerMailWriteTools(host,provider,service,resolveAccount));
   extra.push(host.register({
     descriptor: {
       name: 'mail.mark_seen', version: MAIL_CONNECTOR_VERSION,

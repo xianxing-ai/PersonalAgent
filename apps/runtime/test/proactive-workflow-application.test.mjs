@@ -101,6 +101,54 @@ function fixture(extra = {}) {
     close: async () => {await connectorRunner.dispose(); app.close();}};
 }
 
+test('responsibility lifecycle requires trusted original decision, preserves old records and enforces expiry and source binding', async () => {
+  let authorized = true;
+  const f = fixture({options: {verifyResponsibilityLifecycle: async () => authorized,
+    assertResponsibilityLifecycleCurrent: () => {if (!authorized) throw Error('fixture revoked');}}});
+  try {
+    const id = 'fixture-lifecycle';
+    f.host.registerResponsibility({id, revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    const ref = {responsibilityId: id, responsibilityRevision: 1};
+    assert.deepEqual(f.host.readResponsibilityLifecycle(ref, f.context), {state: 'unavailable', reason: 'lifecycle_not_recorded'});
+    const foreign = f.app.runtime.submitTask({goal: 'Foreign instruction', conversationId: 'foreign-conversation', idempotencyKey: 'foreign-lifecycle'});
+    const command = {commandId: 'activate-one', ...ref, expectedLifecycleRevision: null, action: 'activate', sourceTaskId: f.source.taskId,
+      validUntil: new Date(Date.parse(f.deadline) - 119_000).toISOString()};
+    await assert.rejects(f.host.recordResponsibilityLifecycle({...command, sourceTaskId: foreign.taskId}, f.context), {code: 'UNAUTHORIZED'});
+    authorized = false;
+    await assert.rejects(f.host.recordResponsibilityLifecycle(command, f.context), {code: 'UNAUTHORIZED'});
+    authorized = true;
+    assert.deepEqual(await f.host.recordResponsibilityLifecycle(command, f.context), {state: 'recorded', revision: 1});
+    assert.equal(f.host.readResponsibilityLifecycle(ref, f.context).state, 'current');
+    f.advanceClock(1001);
+    assert.deepEqual(f.host.readResponsibilityLifecycle(ref, f.context), {state: 'unavailable', reason: 'responsibility_expired'});
+  } finally {await f.close();}
+});
+
+test('responsibility revocation is atomic, checks the execution gate and does not repeat a command', async () => {
+  let gate = true;
+  const f = fixture({options: {verifyResponsibilityLifecycle: async () => true,
+    assertResponsibilityLifecycleCurrent: () => {if (!gate) throw Error('fixture authorization revoked');}}});
+  try {
+    const id = 'fixture-revoke', ref = {responsibilityId: id, responsibilityRevision: 1};
+    f.host.registerResponsibility({id, revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    const activation = {commandId: 'activate', ...ref, expectedLifecycleRevision: null, action: 'activate', sourceTaskId: f.source.taskId, validUntil: f.deadline};
+    gate = false;
+    await assert.rejects(f.host.recordResponsibilityLifecycle(activation, f.context), {code: 'RESULT_UNKNOWN'});
+    assert.equal(f.host.readResponsibilityLifecycle(ref, f.context).reason, 'lifecycle_not_recorded');
+    gate = true;
+    assert.deepEqual(await f.host.recordResponsibilityLifecycle(activation, f.context), {state: 'recorded', revision: 1});
+    assert.deepEqual(await f.host.recordResponsibilityLifecycle(activation, f.context), {state: 'recorded', revision: 1});
+    const revoke = {commandId: 'revoke-one', ...ref, expectedLifecycleRevision: 1, action: 'revoke', sourceTaskId: f.source.taskId};
+    const outcomes = await Promise.allSettled([f.host.recordResponsibilityLifecycle(revoke, f.context),
+      f.host.recordResponsibilityLifecycle({...revoke, commandId: 'revoke-two'}, f.context)]);
+    assert.equal(outcomes.filter(outcome => outcome.status === 'fulfilled').length, 1);
+    assert.equal(outcomes.find(outcome => outcome.status === 'rejected').reason.code, 'REVISION_CONFLICT');
+    assert.deepEqual(f.host.readResponsibilityLifecycle(ref, f.context), {state: 'unavailable', reason: 'responsibility_revoked'});
+    f.host.registerResponsibility({id, revision: 2, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    assert.equal(f.host.readResponsibilityLifecycle({...ref, responsibilityRevision: 2}, f.context).reason, 'responsibility_revision_changed');
+  } finally {await f.close();}
+});
+
 test('real application consumes durable connector and original user quote, public context, original Scheduler and immutable wake', async () => {
   const f = fixture({wake: true});
   try {

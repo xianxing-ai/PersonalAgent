@@ -86,6 +86,35 @@ test('public address admission rejects special ranges, mapped IPv6, private DNS 
   await assert.rejects(assertPublicBrowserUrl('https://example.com',{dnsLookup:async()=>[{address:'8.8.8.8'},{address:'192.168.1.1'}]}),{code:'UNAUTHORIZED'});
 });
 
+test('a trusted workflow target handoff admits only the exact next child and retains current-page checks',async()=>{
+  let expected;
+  const f=await fixture({authorizeWorkflowTarget:input=>Boolean(expected&&input.sourceTaskId==='task-1'
+    &&input.scope.taskId==='next-child'&&input.toolName==='browser.type'&&input.targetRef===expected
+    &&input.args.ref==='r1'&&input.args.text==='bound value')});
+  try{
+    const observed=await f.invoke('open',{url:'https://example.com/'});expected=observed.targetRef;
+    await assert.rejects(f.invoke('type',{targetRef:expected,ref:'r1',text:'bound value'},{taskId:'sibling'}),notStarted('UNAUTHORIZED'));
+    await assert.rejects(f.invoke('type',{targetRef:expected,ref:'r1',text:'substituted'},{taskId:'next-child'}),notStarted('UNAUTHORIZED'));
+    const typed=await f.invoke('type',{targetRef:expected,ref:'r1',text:'bound value'},{taskId:'next-child'});
+    assert.equal(typed.controls[0].value,'bound value');
+    await assert.rejects(f.invoke('type',{targetRef:expected,ref:'r1',text:'bound value'},{taskId:'next-child'}),notStarted('UNAUTHORIZED'));
+    assert.equal(f.calls.filter(item=>item[0]==='fill').length,1);
+  }finally{await f.close();}
+});
+
+test('revoking a workflow target during the original attempt wait prevents the device dispatch',async()=>{
+  let allowed=true;
+  const f=await fixture({authorizeWorkflowTarget:()=>allowed,attempts:{record:async identity=>{
+    if(identity.toolName==='browser.type')allowed=false;
+  }}});
+  try{
+    const observed=await f.invoke('open',{url:'https://example.com/'});
+    await assert.rejects(f.invoke('type',{targetRef:observed.targetRef,ref:'r1',text:'bound value'},{taskId:'next-child'}),{code:'RESULT_UNKNOWN'});
+    assert.equal(f.calls.filter(item=>item[0]==='fill').length,0);
+    assert.equal(f.host.snapshot().state,'blocked','original recorded attempt is retained conservatively');
+  }finally{await f.close();}
+});
+
 test('stable tools expose bounded public schemas, own visible profile and open/observe/type/click readback',async()=>{
   const f=await fixture();try {
     const stable=f.host.tools;assert.equal(stable.length,12);assert.equal(f.host.tools,stable);
