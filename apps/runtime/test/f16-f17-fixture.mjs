@@ -69,7 +69,8 @@ export async function fixture(t,workflow='F16') {
   async function reopen() {
     if(app){while(app.activeTaskCount)await new Promise(r=>setTimeout(r,3));app.close();}
     app=createRuntimeApplication(config);client=new Client(app);await client.connect();
-    const common={application:app,now:()=>new Date(),invokeWorkspaceHead:(_scope,request)=>source(request)};
+    const common={application:app,now:()=>new Date(),invokeWorkspaceHead:(scope,request)=>source({commandId:scope.localTaskId+':'+request.actionKey,
+      toolName:request.toolName,toolVersion:request.toolVersion,arguments:request.arguments,deadline:request.deadline})};
     ports=workflow==='F16'?createF16CiFailurePorts({...common,selectionCheckpointKey:'f16:selection'}):
       createF17ReproductionPorts({...common,checkpointPrefix:'f17:reproduction:',recipes:[recipe]});
     const options={...shellOptions,application:app,...ports,assertCurrent:s=>{

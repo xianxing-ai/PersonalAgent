@@ -4,6 +4,7 @@ import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
 import {assertOwnedWorkflowHostScope,failOwnedHost,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 import {awaitF16Port,readF16Source,type F16SourceRead} from './f16-source-receipts.js';
+import type {F16ReadStage} from './f16-ci-failure-ports.js';
 
 type Scope=OwnedWorkflowHostScope;
 type OriginalRead=F16SourceRead;
@@ -15,9 +16,9 @@ export interface F16CiFailureOptions {
   /** Synchronously checks the actual graph frontier, current authority, and source binding. */
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   /** Resolve the original user's selection and authorized tool invocations. */
-  resolveFailure:(scope:Scope)=>Promise<F16FailureBinding|undefined>;
+  resolveFailure:(scope:Scope,context:ToolContext)=>Promise<F16FailureBinding|undefined>;
   /** Read the real workspace HEAD, through the existing authorized Runtime tool. */
-  readCurrentHead:(scope:Scope)=>Promise<string>;
+  readCurrentHead:(scope:Scope,context:ToolContext,stage:F16ReadStage)=>Promise<string>;
   /** Authorize this exact log snippet and identity for the actual graph destination. */
   authorizeExport:(scope:Scope,result:F16FailureResult)=>Promise<boolean>;
 }
@@ -30,24 +31,24 @@ const sha=(v:unknown):v is string=>typeof v==='string'&&/^(?:[a-f0-9]{40}|[a-f0-
  * external CI request and cannot turn absent or synthetic results into CI proof. */
 export function createRuntimeF16CiFailureHost(options?:F16CiFailureOptions):{tools:RegisteredTool[];
   authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
-  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'
+  if(!options?.application||typeof options.application.readHostToolTask!=='function'
     ||!Array.isArray(options.requiredScopes)||!options.requiredScopes.length||!options.requiredScopes.every(v=>text(v))
     ||typeof options.now!=='function'||typeof options.assertCurrent!=='function'||typeof options.resolveFailure!=='function'
     ||typeof options.readCurrentHead!=='function'||typeof options.authorizeExport!=='function')
     return {tools:[],unavailable:'f16_ci_failure_trusted_ports_unavailable'};
-  const runtime=options.application.runtime,requiredScopes=[...options.requiredScopes];
+  const runtime=()=>options.application.runtime,requiredScopes=[...options.requiredScopes];
   const active=(context:ToolContext)=>{
     if(!requiredScopes.every(s=>context.scopes.includes(s)))failOwnedHost('SCOPE_DENIED','F16 CI scope required');
-    return assertOwnedWorkflowHostScope({runtime,context,workflowId:'F16',nodeId:'F16_N01',hostToolName:'workflow.host.f16_n01',
+    return assertOwnedWorkflowHostScope({runtime:runtime(),context,workflowId:'F16',nodeId:'F16_N01',hostToolName:'workflow.host.f16_n01',
       assertCurrent:options.assertCurrent,now:options.now});
   };
   const sources=(scope:Scope,binding:F16FailureBinding)=>[
     readF16Source(options.application,scope,binding.runList,'github.actions.run.list'),
     readF16Source(options.application,scope,binding.jobList,'github.actions.job.list'),
     readF16Source(options.application,scope,binding.logRead,'github.actions.log.read')];
-  const read=async(context:ToolContext)=>{
+  const read=async(context:ToolContext,stage:F16ReadStage)=>{
     const scope=active(context);let binding:F16FailureBinding|undefined;
-    binding=await awaitF16Port(scope,options.now,()=>options.resolveFailure(scope));
+    binding=await awaitF16Port(scope,options.now,()=>options.resolveFailure(scope,context));
     active(context);
     if(!binding||!text(binding.repo,201)||!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(binding.repo)
       ||!sha(binding.headSha)||!positive(binding.runId)||!positive(binding.jobId))
@@ -64,7 +65,7 @@ export function createRuntimeF16CiFailureHost(options?:F16CiFailureOptions):{too
       ||!object(job)||job.status!=='completed'||job.conclusion!=='failure'||job.runId!==binding.runId
       ||!object(log)||!text(log.text,65536)||typeof log.truncated!=='boolean')
       failOwnedHost('UNSUPPORTED_CAPABILITY','F16 bound failure evidence unavailable');
-    const head=await awaitF16Port(scope,options.now,()=>options.readCurrentHead(scope));
+    const head=await awaitF16Port(scope,options.now,()=>options.readCurrentHead(scope,context,stage));
     active(context);if(head!==binding.headSha)failOwnedHost('REVISION_CONFLICT','F16 workspace head changed');
     if(!isDeepStrictEqual(original,sources(scope,binding)))failOwnedHost('REVISION_CONFLICT','F16 source changed during HEAD read');
     const result:F16FailureResult={errorClass:'unknown',commitSha:binding.headSha,runId:binding.runId,jobId:binding.jobId,
@@ -76,17 +77,17 @@ export function createRuntimeF16CiFailureHost(options?:F16CiFailureOptions):{too
     allowed=await awaitF16Port(scope,options.now,()=>options.authorizeExport(scope,structuredClone(before.result)));
     if(allowed!==true)failOwnedHost('UNAUTHORIZED','F16 CI export denied');
     active(context);
-    if(!isDeepStrictEqual(before,await read(context)))failOwnedHost('REVISION_CONFLICT','F16 CI evidence changed during export');
+    if(!isDeepStrictEqual(before,await read(context,'after_export')))failOwnedHost('REVISION_CONFLICT','F16 CI evidence changed during export');
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F16_N01',kind:'host',sideEffect:'read',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},outputSchema:{type:'object',additionalProperties:false,
       required:['errorClass','commitSha','runId','jobId','logSnippet','truncated'],properties:{errorClass:{type:'string',enum:['unknown']},
         commitSha:{type:'string'},runId:{type:'integer'},jobId:{type:'integer'},logSnippet:{type:'string'},truncated:{type:'boolean'}}},
     async execute(input,context){if(!isDeepStrictEqual(input,{}))failOwnedHost('INVALID_ARGUMENT','F16 host takes no model bindings');
-      const before=await read(context);await allow(context,before);
+      const before=await read(context,'execute');
       const scope=active(context),key='f16:ci-failure:'+scope.operationId;
-      runtime.saveCheckpointOnce(scope.localTaskId,key,before);
-      if(!isDeepStrictEqual(runtime.loadCheckpoint(scope.localTaskId,key),before))
+      runtime().saveCheckpointOnce(scope.localTaskId,key,before);
+      if(!isDeepStrictEqual(runtime().loadCheckpoint(scope.localTaskId,key),before))
         failOwnedHost('REVISION_CONFLICT','F16 original source selection changed');
       return before.result;}});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
@@ -95,14 +96,14 @@ export function createRuntimeF16CiFailureHost(options?:F16CiFailureOptions):{too
       ||saved.task.taskId!==scope.localTaskId||saved.task.state!=='succeeded'
       ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)
       ||!isDeepStrictEqual(saved.confirmed.result,result))failOwnedHost('UNAUTHORIZED','F16 original receipt unavailable');
-    const before=await read(context);
+    const before=await read(context,'before_export');
     if(!isDeepStrictEqual(result,before.result)
-      ||!isDeepStrictEqual(before,runtime.loadCheckpoint(scope.localTaskId,'f16:ci-failure:'+scope.operationId)))
+      ||!isDeepStrictEqual(before,runtime().loadCheckpoint(scope.localTaskId,'f16:ci-failure:'+scope.operationId)))
       failOwnedHost('REVISION_CONFLICT','F16 CI evidence changed');
     await allow(context,before);
     active(context);
     if(!isDeepStrictEqual(saved,options.application.readHostToolTask(context.taskId))
-      ||!isDeepStrictEqual(before,runtime.loadCheckpoint(scope.localTaskId,'f16:ci-failure:'+scope.operationId)))
+      ||!isDeepStrictEqual(before,runtime().loadCheckpoint(scope.localTaskId,'f16:ci-failure:'+scope.operationId)))
       failOwnedHost('REVISION_CONFLICT','F16 completed receipt changed during export');
   }};
 }

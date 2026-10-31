@@ -7,6 +7,8 @@ import type {RuntimeApplication} from './runtime-application.js';
 import {assertOwnedWorkflowHostScope,failOwnedHost,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 import {awaitF16Port,readF16Source} from './f16-source-receipts.js';
 import type {F17Reproduction} from './f17-reproduction-ports.js';
+import type {RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
+import type {F16ReadStage} from './f16-ci-failure-ports.js';
 
 type Scope=OwnedWorkflowHostScope;
 type Report={failureCount:number;locatedFrameCount:number;reportRef:string;all6PassResolved:false};
@@ -18,32 +20,37 @@ const digest=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest(
 export function createRuntimeF17FailureReportHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
   /** Trusted original workflow driver checkpoint, never model supplied. */
-  driverCheckpointKey:string|((scope:Scope)=>string);
+  driverCheckpointKey?:string;
+  /** Public configured-worker binding, selected by Runtime from its original pending proposal. */
+  readDriver?:(scope:Scope)=>RuntimeConfiguredWorkflowBinding;
   /** Trusted workspace root for local parser classification; snippet reads remain disabled. */
   workspaceRoot:string;
   requiredScopes:readonly string[];
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:Report)=>Promise<boolean>;
   now:()=>Date;
-  resolveReproduction:(scope:Scope,command:{taskId:string;operationId:string;arguments:Record<string,unknown>})=>Promise<F17Reproduction>;
+  resolveReproduction:(scope:Scope,command:{taskId:string;operationId:string;arguments:Record<string,unknown>},
+    context:ToolContext,stage:F16ReadStage)=>Promise<F17Reproduction>;
 }):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
-  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'
-    ||!(text(options.driverCheckpointKey)||typeof options.driverCheckpointKey==='function')
+  if(!options?.application||typeof options.application.readHostToolTask!=='function'
+    ||!(text(options.driverCheckpointKey)||typeof options.readDriver==='function')
     ||!text(options.workspaceRoot)||!Array.isArray(options.requiredScopes)||!options.requiredScopes.length
     ||!options.requiredScopes.every(text)||typeof options.assertCurrent!=='function'||typeof options.authorizeExport!=='function'
     ||typeof options.now!=='function'||typeof options.resolveReproduction!=='function')return {tools:[],unavailable:'f17_failure_report_trusted_ports_unavailable'};
-  const runtime=options.application.runtime,requiredScopes=[...options.requiredScopes];
+  const runtime=()=>options.application.runtime,requiredScopes=[...options.requiredScopes];
   const active=(context:ToolContext)=>{
     if(!requiredScopes.every(v=>context.scopes.includes(v)))failOwnedHost('SCOPE_DENIED','F17 report scope required');
-    return assertOwnedWorkflowHostScope({runtime,context,workflowId:'F17',nodeId:'F17_N04',
+    return assertOwnedWorkflowHostScope({runtime:runtime(),context,workflowId:'F17',nodeId:'F17_N04',
       hostToolName:'workflow.host.f17_n04',proposalArguments:{},assertCurrent:options.assertCurrent,now:options.now});
   };
   const deriveSource=(scope:Scope)=>{
-    const driverKey=typeof options.driverCheckpointKey==='function'?options.driverCheckpointKey(scope):options.driverCheckpointKey;
-    if(!text(driverKey))failOwnedHost('UNAUTHORIZED','Original F17 driver key unavailable');
-    const state=runtime.loadCheckpoint(scope.parentTaskId,driverKey) as {sessionId?:string;controlRevision?:number;
+    const runtime=options.application.runtime;
+    const driver=options.readDriver?.(scope),driverKey=options.driverCheckpointKey;
+    if(!driver&&!text(driverKey))failOwnedHost('UNAUTHORIZED','Original F17 driver unavailable');
+    const state=driver??runtime.loadCheckpoint(scope.parentTaskId,driverKey!) as {sessionId?:string;controlRevision?:number;
       confirmedOperations?:Record<string,{nodeId?:string;toolName?:string;localTaskId?:string;operationId?:string;result?:unknown}>}|undefined;
-    const binding=runtime.loadCheckpoint(scope.parentTaskId,driverKey+':driver-binding') as
+    const binding=driver?{taskId:scope.parentTaskId,workflowId:'F17',sessionId:driver.sessionId,deadline:driver.deadline}:
+      runtime.loadCheckpoint(scope.parentTaskId,driverKey+':driver-binding') as
       {taskId?:string;workflowId?:string;sessionId?:string;deadline?:string}|undefined;
     if(state?.sessionId!==scope.sessionId||binding?.taskId!==scope.parentTaskId||binding.workflowId!=='F17'
       ||binding.sessionId!==scope.sessionId||binding.deadline!==scope.deadline)
@@ -72,12 +79,13 @@ export function createRuntimeF17FailureReportHost(options?:{
       failOwnedHost('UNAUTHORIZED','Original failed test command is not confirmed');
     const command=readF16Source(options.application,scope,{taskId:localTaskId,runId:read.confirmed.runId,
       toolVersion:read.toolVersion,scopeRef:read.confirmed.runId,arguments:operation.proposal.arguments},'workspace.run_allowed_command');
-    return {driverKey,entry,operation,original,parent,read,command,value,operationId,localTaskId};
+    return {driverIdentity:driver?{configurationVersion:driver.configurationVersion,configurationDigest:driver.configurationDigest}:driverKey,
+      entry,operation,original,parent,read,command,value,operationId,localTaskId};
   };
-  const derive=async(scope:Scope)=>{
+  const derive=async(scope:Scope,context:ToolContext,stage:F16ReadStage)=>{
     const source=deriveSource(scope),{value,operationId,localTaskId,read}=source;
     const reproduction=await awaitF16Port(scope,options.now,()=>options.resolveReproduction(scope,{taskId:localTaskId,operationId,
-      arguments:source.command.ref.arguments}));
+      arguments:source.command.ref.arguments},context,stage));
     if(!isDeepStrictEqual(source,deriveSource(scope))||reproduction.command.taskId!==localTaskId
       ||reproduction.command.runId!==read.confirmed!.runId||!isDeepStrictEqual(reproduction.command.arguments,source.command.ref.arguments))
       failOwnedHost('REVISION_CONFLICT','F17 source changed during version read');
@@ -98,19 +106,19 @@ export function createRuntimeF17FailureReportHost(options?:{
         locatedFrameCount:{type:'integer',minimum:0},reportRef:{type:'string'},all6PassResolved:{const:false}}},
     async execute(input,context){
       if(!isDeepStrictEqual(input,{}))failOwnedHost('INVALID_ARGUMENT','F17 host takes no model report');
-      const scope=active(context),before=await derive(scope),key='f17:failure-report:'+scope.operationId;
+      const scope=active(context),before=await derive(scope,context,'execute'),key='f17:failure-report:'+scope.operationId;
       active(context);
-      runtime.saveCheckpointOnce(scope.localTaskId,key,before);
-      if(!isDeepStrictEqual(runtime.loadCheckpoint(scope.localTaskId,key),before))
+      runtime().saveCheckpointOnce(scope.localTaskId,key,before);
+      if(!isDeepStrictEqual(runtime().loadCheckpoint(scope.localTaskId,key),before))
         failOwnedHost('REVISION_CONFLICT','Original F17 report changed');
       active(context);
-      if(!isDeepStrictEqual(before,await derive(scope)))failOwnedHost('REVISION_CONFLICT','Original failed test changed');
+      if(!isDeepStrictEqual(before,await derive(scope,context,'execute')))failOwnedHost('REVISION_CONFLICT','Original failed test changed');
       active(context);
       return before.report;
     }});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
     const scope=active(context),key='f17:failure-report:'+scope.operationId,host=options.application.readHostToolTask(scope.localTaskId);
-    const before=await derive(scope),saved=runtime.loadCheckpoint(scope.localTaskId,key);
+    const before=await derive(scope,context,'before_export'),saved=runtime().loadCheckpoint(scope.localTaskId,key);
     if(host.commandId!==scope.operationId||host.toolName!=='workflow.host.f17_n04'||host.toolVersion!=='1.0.0'
       ||host.task.taskId!==scope.localTaskId||host.task.state!=='succeeded'||host.confirmed?.runId!==context.runId
       ||!host.confirmed.evidenceRefs.includes(context.runId)||!isDeepStrictEqual(host.confirmed.result,result)
@@ -119,7 +127,7 @@ export function createRuntimeF17FailureReportHost(options?:{
     if(await awaitF16Port(scope,options.now,()=>options.authorizeExport(scope,structuredClone(before.report)))!==true)
       failOwnedHost('UNAUTHORIZED','F17 exact report export denied');
     active(context);
-    if(!isDeepStrictEqual(before,await derive(scope))||!isDeepStrictEqual(saved,runtime.loadCheckpoint(scope.localTaskId,key))
+    if(!isDeepStrictEqual(before,await derive(scope,context,'after_export'))||!isDeepStrictEqual(saved,runtime().loadCheckpoint(scope.localTaskId,key))
       ||!isDeepStrictEqual(host,options.application.readHostToolTask(scope.localTaskId)))
       failOwnedHost('REVISION_CONFLICT','Original F17 report changed during export');
     active(context);

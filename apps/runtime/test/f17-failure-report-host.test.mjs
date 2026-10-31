@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
-import {createHash} from 'node:crypto';
 import {createF17ConfiguredDriverResolver} from '../dist/application/f17-configured-driver.js';
 import {fixture} from './f16-f17-fixture.mjs';
 
@@ -79,16 +78,14 @@ test('F17 unknown after report persistence is retained across SQLite restart and
   await assert.rejects(f.host.authorizeReceipt({context:f.context(id),result:{}}));
 });
 
-test('F17 configured-worker checkpoint resolver rejects a substituted pending proposal or original session',async t=>{
-  const f=await fixture(t,'F17'),hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
-  const pending={proposalId:'original-proposal',toolName:'workflow.f17.test_locate',toolVersion:'1.0.0',arguments:{}};
-  const namespace='owned-workflow:configured:'+hash([pending.toolName,pending.proposalId]),runtime=f.app.runtime,id=f.scope.parentTaskId;
-  runtime.saveCheckpoint(id,'competition-loop',{pending,pendingRevision:3});
-  runtime.saveCheckpoint(id,namespace+':binding',{taskId:id,deadline:f.scope.deadline,revision:3,proposalDigest:hash(pending)});
-  runtime.saveCheckpoint(id,namespace+':graph',{sessionId:f.scope.sessionId});
-  const resolve=createF17ConfiguredDriverResolver(f.app,{name:pending.toolName,version:pending.toolVersion});
-  assert.equal(resolve(f.scope),namespace+':graph');
+test('F17 resolver consumes only the public binding and rejects another configuration or session',async t=>{
+  const f=await fixture(t,'F17');let bound={sessionId:f.scope.sessionId,deadline:f.scope.deadline,configurationVersion:'fixture-v2'};
+  const resolve=createF17ConfiguredDriverResolver({readConfiguredWorkflowBinding(request){
+    assert.equal(request.workflowId,'F17');assert.equal(request.taskId,f.scope.parentTaskId);
+    return request.sessionId===bound?.sessionId?bound:undefined;
+  }},{configurationVersion:'fixture-v2'});
+  assert.equal(resolve(f.scope),bound);
   assert.throws(()=>resolve({...f.scope,sessionId:'foreign'}),{code:'UNAUTHORIZED'});
-  runtime.saveCheckpoint(id,'competition-loop',{pending:{...pending,arguments:{forged:true}},pendingRevision:3});
-  assert.throws(()=>resolve(f.scope),{code:'UNAUTHORIZED'});
+  bound={...bound,configurationVersion:'replaced'};assert.throws(()=>resolve(f.scope),{code:'UNAUTHORIZED'});
+  bound=undefined;assert.throws(()=>resolve(f.scope),{code:'UNAUTHORIZED'});
 });

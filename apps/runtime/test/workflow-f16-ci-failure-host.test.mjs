@@ -54,7 +54,8 @@ test('F16 rejects changed head, unauthorized source and denied log egress',async
   const f=fixture(),host=createRuntimeF16CiFailureHost(f.options);f.head('b'.repeat(40));
   await assert.rejects(host.tools[0].execute({},f.context),{code:'REVISION_CONFLICT'});
   f.head(f.binding.headSha);f.records[2].policyDecision='deny';await assert.rejects(host.tools[0].execute({},f.context),{code:'UNAUTHORIZED'});
-  f.records[2].policyDecision='allow';f.deny();await assert.rejects(host.tools[0].execute({},f.context),{code:'UNAUTHORIZED'});
+  f.records[2].policyDecision='allow';const result=await host.tools[0].execute({},f.context);f.complete(result);f.deny();
+  await assert.rejects(host.authorizeReceipt({context:f.context,result}),{code:'UNAUTHORIZED'});
 });
 test('F16 rejects nonfailed runs, unrelated jobs and missing logs',async()=>{
   const f=fixture(),host=createRuntimeF16CiFailureHost(f.options);

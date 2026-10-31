@@ -11,7 +11,7 @@ test('F16 original Policy child consumes confirmed CI reads and fresh workspace 
   await f.reopen();
   const read=await f.approve(id);assert.equal(read.task.state,'succeeded',JSON.stringify(read.task.error));
   const result=read.confirmed.result;assert.equal(result.commitSha,f.head);assert.equal(result.errorClass,'unknown');
-  assert.equal(f.counters.github,3);assert.ok(f.counters.head>=2);
+  assert.equal(f.counters.github,3);assert.equal(f.counters.head,1);
   await f.host.authorizeReceipt({context:f.context(id),result});
   const receipt=f.bridge.readReceipt(f.original,f.proposal);assert.equal(receipt.state,'confirmed');
   await f.reopen();assert.equal(f.bridge.submit(f.original,f.proposal).localTaskId,id);

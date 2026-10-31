@@ -1,9 +1,11 @@
-import {createHash,randomUUID} from 'node:crypto';
+import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
+import type {ToolContext} from '@personal-agent/contracts';
 import type {WorkspaceCommandRecipe} from '@personal-agent/coding-tools';
 import type {OwnedWorkflowHostScope as Scope} from './workflow-owned-host-scope.js';
-import type {F16HeadRequest} from './f16-ci-failure-ports.js';
-import {awaitF16Port,readF16Source,sourceObject,sourceFailure,type F16SourceRead,type F16SourceApplication} from './f16-source-receipts.js';
+import type {F16HeadRequest,F16ReadStage} from './f16-ci-failure-ports.js';
+import {readF16Source,sourceObject,sourceFailure,type F16SourceRead,type F16SourceApplication} from './f16-source-receipts.js';
+import {createF16HeadReader} from './f16-head-reader.js';
 
 export interface F17ReproductionBinding {
   operationId:string;repository:string;command:F16SourceRead;beforeHead:F16SourceRead;afterHead:F16SourceRead;
@@ -18,7 +20,7 @@ export interface F17ReproductionPortsOptions {
   /** Same trusted recipe definitions supplied to createWorkspaceCommandTool. No secret values are persisted. */
   recipes:readonly WorkspaceCommandRecipe[];
   now:()=>Date;
-  invokeWorkspaceHead:(scope:Scope,request:F16HeadRequest)=>Promise<F16SourceRead>;
+  invokeWorkspaceHead:(scope:Scope,request:F16HeadRequest,context:ToolContext)=>Promise<F16SourceRead>;
 }
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -27,6 +29,7 @@ export function createF17ReproductionPorts(options:F17ReproductionPortsOptions) 
   if(!options.checkpointPrefix?.trim()||!options.recipes.length||typeof options.invokeWorkspaceHead!=='function')
     sourceFailure('F17 trusted recipes, version sources and HEAD invocation required');
   const recipes=structuredClone(options.recipes);
+  const readHead=createF16HeadReader(options);
   const snapshot=(scope:Scope,binding:F17ReproductionBinding)=>{
     const {application}=options;
     const command=readF16Source(application,scope,binding.command,'workspace.run_allowed_command');
@@ -34,7 +37,20 @@ export function createF17ReproductionPorts(options:F17ReproductionPortsOptions) 
     const after=readF16Source(application,scope,binding.afterHead,'workspace.git.head');
     const recipe=recipes.find(v=>v.id===binding.command.arguments.recipeId);
     const prepared=application.runtime.loadCheckpoint(scope.parentTaskId,options.checkpointPrefix+'prepared:'+binding.operationId);
-    if(!sourceObject(prepared)||prepared.parentTaskId!==scope.parentTaskId||prepared.sessionId!==scope.sessionId
+    const observed=application.runtime.loadCheckpoint(binding.command.taskId,'f17:command-observation');
+    if(observed!==undefined){
+      const finished=application.runtime.loadCheckpoint(binding.command.taskId,'f17:command-observation:finished');
+      const last=application.runtime.loadCheckpoint(binding.command.taskId,'f17:command-observation:after');
+      if(!sourceObject(observed)||observed.version!==1||observed.parentTaskId!==scope.parentTaskId
+        ||observed.sessionId!==scope.sessionId||observed.operationId!==binding.operationId||observed.deadline!==scope.deadline
+        ||observed.taskId!==binding.command.taskId||observed.runId!==binding.command.runId||observed.repository!==binding.repository
+        ||!recipe||observed.recipeDigest!==digest(recipe)||!isDeepStrictEqual(observed.beforeHead,before)||!isDeepStrictEqual(last,after)
+        ||!sourceObject(finished)||finished.resultDigest!==digest(command.result))sourceFailure('F17 original execution observation changed');
+      const times=[command.record.startedAt,before.record.finishedAt,observed.startedAt,finished.finishedAt,after.record.startedAt,command.record.finishedAt];
+      if(!times.every(v=>typeof v==='string'&&Number.isFinite(Date.parse(v)))
+        ||times.some((v,i)=>i>0&&Date.parse(v as string)<Date.parse(times[i-1] as string)))
+        sourceFailure('F17 original execution order changed');
+    }else if(!sourceObject(prepared)||prepared.parentTaskId!==scope.parentTaskId||prepared.sessionId!==scope.sessionId
       ||prepared.deadline!==scope.deadline||prepared.repository!==binding.repository||prepared.operationId!==binding.operationId
       ||!recipe||prepared.recipeDigest!==digest(recipe)||!isDeepStrictEqual(prepared.beforeHead,before)
       ||typeof prepared.preparedAt!=='string'||!Number.isFinite(Date.parse(prepared.preparedAt))
@@ -51,12 +67,13 @@ export function createF17ReproductionPorts(options:F17ReproductionPortsOptions) 
       ||typeof before.result.headSha!=='string'||!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(before.result.headSha)
       ||typeof before.result.fingerprint!=='string'||!/^[a-f0-9]{64}$/u.test(before.result.fingerprint)
       ||![before.record.finishedAt,command.record.startedAt,command.record.finishedAt,after.record.startedAt].every(v=>typeof v==='string'&&Number.isFinite(Date.parse(v)))
-      ||Date.parse(before.record.finishedAt!)>Date.parse(command.record.startedAt)
-      ||Date.parse(command.record.finishedAt!)>Date.parse(after.record.startedAt))sourceFailure('F17 command version evidence unavailable');
+      ||observed===undefined&&(Date.parse(before.record.finishedAt!)>Date.parse(command.record.startedAt)
+      ||Date.parse(command.record.finishedAt!)>Date.parse(after.record.startedAt)))sourceFailure('F17 command version evidence unavailable');
     const reproduction:F17Reproduction={repository:binding.repository,headSha:before.result.headSha,
       workspaceFingerprint:before.result.fingerprint,recipeId:recipe.id,recipeDigest:digest(recipe),
       command:binding.command,beforeHead:binding.beforeHead,afterHead:binding.afterHead};
-    return {reproduction,sources:{command,before,after}};
+    return {reproduction,sources:{command,before,after,preparation:observed??prepared,
+      ...(observed!==undefined?{finished:application.runtime.loadCheckpoint(binding.command.taskId,'f17:command-observation:finished')}:{})}};
   };
   const selected=(scope:Scope,operationId:string)=>{
     const saved=options.application.runtime.loadCheckpoint(scope.parentTaskId,options.checkpointPrefix+operationId) as
@@ -66,7 +83,14 @@ export function createF17ReproductionPorts(options:F17ReproductionPortsOptions) 
       sourceFailure('F17 original reproduction binding changed');
     return structuredClone(saved);
   };
+  const bindReproduction=(scope:Scope,binding:F17ReproductionBinding)=>{
+    const saved={parentTaskId:scope.parentTaskId,sessionId:scope.sessionId,deadline:scope.deadline,
+      binding:structuredClone(binding),snapshot:snapshot(scope,binding)};
+    options.application.runtime.saveCheckpointOnce(scope.parentTaskId,options.checkpointPrefix+binding.operationId,saved);
+    if(!isDeepStrictEqual(saved,selected(scope,binding.operationId)))sourceFailure('F17 reproduction cannot be replaced');
+  };
   return {
+    assertReproductionCurrent(scope:Scope,operationId:string){selected(scope,operationId);},
     /** Call before dispatching N03 using the same registered recipe table. */
     prepareReproduction(scope:Scope,input:{operationId:string;repository:string;recipeId:string;beforeHead:F16SourceRead}) {
       const recipe=recipes.find(v=>v.id===input.recipeId);
@@ -85,22 +109,23 @@ export function createF17ReproductionPorts(options:F17ReproductionPortsOptions) 
       }
       options.application.runtime.saveCheckpointOnce(scope.parentTaskId,key,{...value,preparedAt:options.now().toISOString()});
     },
-    bindReproduction(scope:Scope,binding:F17ReproductionBinding) {
-      const saved={parentTaskId:scope.parentTaskId,sessionId:scope.sessionId,deadline:scope.deadline,
-        binding:structuredClone(binding),snapshot:snapshot(scope,binding)};
-      options.application.runtime.saveCheckpointOnce(scope.parentTaskId,options.checkpointPrefix+binding.operationId,saved);
-      if(!isDeepStrictEqual(saved,selected(scope,binding.operationId)))sourceFailure('F17 reproduction cannot be replaced');
+    bindReproduction,
+    bindObservedReproduction(scope:Scope,command:F16SourceRead){
+      const read=readF16Source(options.application,scope,command,'workspace.run_allowed_command');
+      const observed=options.application.runtime.loadCheckpoint(command.taskId,'f17:command-observation');
+      const after=options.application.runtime.loadCheckpoint(command.taskId,'f17:command-observation:after');
+      if(!sourceObject(observed)||typeof observed.repository!=='string'||!sourceObject(observed.beforeHead)
+        ||!sourceObject(after))sourceFailure('F17 original before/after observations unavailable');
+      bindReproduction(scope,{operationId:read.read.commandId,repository:observed.repository,command,
+        beforeHead:observed.beforeHead.ref as F16SourceRead,afterHead:after.ref as F16SourceRead});
     },
-    resolveReproduction:async(scope:Scope,command:{taskId:string;operationId:string;arguments:Record<string,unknown>})=>{
+    resolveReproduction:async(scope:Scope,command:{taskId:string;operationId:string;arguments:Record<string,unknown>},
+      context:ToolContext,stage:F16ReadStage)=>{
       const before=selected(scope,command.operationId),bound=before.snapshot.reproduction;
       if(bound.command.taskId!==command.taskId||!isDeepStrictEqual(bound.command.arguments,command.arguments))
         sourceFailure('F17 reproduction is from another command');
-      const request:F16HeadRequest={commandId:'f17-head:'+randomUUID(),toolName:'workspace.git.head',toolVersion:'1.0.0',
-        arguments:{repository:bound.repository},deadline:scope.deadline};
-      const ref=await awaitF16Port(scope,options.now,()=>options.invokeWorkspaceHead(scope,structuredClone(request)));
-      const current=readF16Source(options.application,scope,ref,request.toolName);
-      if(current.read.commandId!==request.commandId||ref.toolVersion!==request.toolVersion||!isDeepStrictEqual(ref.arguments,request.arguments)
-        ||!sourceObject(current.result)||current.result.headSha!==bound.headSha||current.result.fingerprint!==bound.workspaceFingerprint
+      const current=await readHead(scope,context,bound.repository,'f17',stage);
+      if(!sourceObject(current.result)||current.result.headSha!==bound.headSha||current.result.fingerprint!==bound.workspaceFingerprint
         ||!isDeepStrictEqual(before,selected(scope,command.operationId)))sourceFailure('F17 workspace or source changed');
       return structuredClone(bound);
     },
