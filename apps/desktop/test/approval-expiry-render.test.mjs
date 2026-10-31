@@ -36,8 +36,10 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<'
   t.mock.method(globalThis, 'clearTimeout', id => timers.delete(id));
 
   function harness() {
-    const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search',
+    const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search', '.advanced-nav',
       '.main', '#page-title', '#connection', '#content', '#error'].map(key => [key, element()]));
+    nodes.get('#admin-search').value = '';
+    nodes.get('.advanced-nav').open = false;
     let html = '';
     let buttons = [];
     let crossOnWrite = true;

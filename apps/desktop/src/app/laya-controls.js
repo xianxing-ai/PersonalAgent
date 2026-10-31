@@ -2,7 +2,8 @@ export function mountLayaControls(root, invoke) {
   const element = document.createElement('section');
   element.className = 'sheet';
   element.innerHTML = '<h2>本地 Laya</h2><p>用于邮件分类和候选判断。手动启动后在本机处理，关闭即释放模型。</p><button class="btn" data-laya="start">启动本地模型</button> <button class="btn" data-laya="stop">停止并释放</button><p data-laya="status" role="status"></p>';
-  root.querySelector('#error').before(element);
+  const anchor=root.querySelector('#error');
+  if(anchor)anchor.before(element);else root.append(element);
   let state = {}, pendingAction, operation = 0, publication = 0, unconfirmed = false, receiptLost = false, feedback = '';
   const startable = new Set(['stopped', 'unavailable', 'memory_insufficient', 'error']);
   const stoppable = new Set(['ready', 'starting', 'identity_changed', 'stop_unconfirmed']);

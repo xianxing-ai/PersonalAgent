@@ -17,8 +17,10 @@ async function harness(t, invoke) {
   globalThis.window = {addEventListener() {}};
   globalThis.document = adminAuxiliaryDocument();
   globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
-  const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search', '.main',
+  const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search', '.advanced-nav', '.main',
     '#page-title', '#connection', '#content', '#error'].map(key => [key, element()]));
+  nodes.get('#admin-search').value = '';
+  nodes.get('.advanced-nav').open = false;
   let html = '', memoryNodes = new Map(), replacements = 0;
   Object.defineProperty(nodes.get('#content'), 'innerHTML', {get: () => html, set(value) {
     html = value; replacements++; memoryNodes = new Map();

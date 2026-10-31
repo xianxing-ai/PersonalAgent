@@ -1,7 +1,7 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {validateHarnessConfiguration} from './harness-configuration.js';
+import {DEFAULT_CONTEXT_OUTPUT_TOKENS,DEFAULT_CONTEXT_POLICY,DEFAULT_HARNESS_STEPS,validateHarnessConfiguration} from './harness-configuration.js';
 
 const providers = new Set(['pangu', 'openai-compatible']);
 const efforts = ['none', 'low', 'medium', 'high'];
@@ -220,6 +220,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
     readHarnessConfiguration(){active();return structuredClone(harness);},
     configureHarness(input){
       active();
+      if(restoreFailed)fail('模型加密配置无法读取，未修改原文件');
       if(profile!=='huawei_ict_agentarts'||!input||typeof input!=='object'||Array.isArray(input)
         ||Object.keys(input).some(key=>!['expectedRevision','enabled','maxExecutorSteps','context','events'].includes(key))
         ||input.expectedRevision!==harness.revision||typeof input.enabled!=='boolean'||!input.context||typeof input.context!=='object'
@@ -227,10 +228,14 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
         ||Object.keys(input.context).some(key=>!['enabled','modelId','configurationRef','maxOutputTokens','policy'].includes(key)))
         fail('开发者 Harness 配置已变化，请刷新后保存');
       const revision=randomUUID();
-      const context=input.context.enabled?{...input.context,policy:{...input.context.policy,version:'desktop-context:'+revision}}
+      if(input.context.policy!==undefined&&(!input.context.policy||typeof input.context.policy!=='object'||Array.isArray(input.context.policy)))
+        fail('开发者 Harness 配置无效');
+      const context=input.context.enabled?{...input.context,
+        maxOutputTokens:input.context.maxOutputTokens===undefined?(harness.context.maxOutputTokens??DEFAULT_CONTEXT_OUTPUT_TOKENS):input.context.maxOutputTokens,
+        policy:{...(input.context.policy??harness.context.policy??DEFAULT_CONTEXT_POLICY),version:'desktop-context:'+revision}}
         :{...harness.context,enabled:false};
       const next=validateHarnessConfiguration({version:1,revision,enabled:input.enabled,
-        ...(input.maxExecutorSteps===undefined?(harness.maxExecutorSteps===undefined?{}:{maxExecutorSteps:harness.maxExecutorSteps})
+        ...(input.maxExecutorSteps===undefined?(harness.maxExecutorSteps===undefined?(input.enabled?{maxExecutorSteps:DEFAULT_HARNESS_STEPS}:{}):{maxExecutorSteps:harness.maxExecutorSteps})
           :{maxExecutorSteps:input.maxExecutorSteps}),context,events:input.events??harness.events});
       if(next.context.enabled&&!selectedEntry(next.context.modelId,next.context.configurationRef))fail('请选择当前可用的摘要模型版本');
       persist(entries,defaultId,next);harness=next;return snapshot();

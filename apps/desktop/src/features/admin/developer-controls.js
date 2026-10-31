@@ -7,7 +7,7 @@ export function mountDeveloperControls(root,invoke){
   const view=document.createElement('section');view.className='sheet developer-settings';
   view.innerHTML='<h2>代码开发工具设置</h2><p class="notice">主对话和语音可在选定工作区读代码、隔离试改、运行允许的命令，并按权限提交改动。复用已选择的编程工作区和模型；保存配置不授予执行、推送或出机权限。</p>'+
     '<p data-developer-status role="status"></p><p data-developer-workspace class="notice"></p>'+
-    '<label><input type="checkbox" data-developer-enabled>启用代码开发工具</label><button type="button" class="btn btn-sm" data-developer-refresh>刷新状态</button>'+
+    '<details class="sis-advanced"><summary>开发工具配置（可选）</summary><label><input type="checkbox" data-developer-enabled>启用代码开发工具</label><button type="button" class="btn btn-sm" data-developer-refresh>刷新状态</button>'+
     '<form class="settings-form" data-developer-form><label>GitHub 仓库<input name="repository" placeholder="owner/repository" required maxlength="201"></label>'+
     '<label>受信 gh 可执行文件<input name="executable" placeholder="选择工作区外的 gh.exe 绝对路径" required></label>'+
     '<label><input name="repairLinks" type="checkbox">启用 GitHub 修复链接工具（仍需原任务审批）</label>'+
@@ -19,7 +19,7 @@ export function mountDeveloperControls(root,invoke){
     '<label>任务步骤预算<input name="maxSteps" type="number" min="1" max="64"></label><label>任务 token 预算<input name="maxTokens" type="number" min="1" max="131072"></label>'+
     '<label>审查规则（每行一条）<textarea name="reviewRules" rows="3"></textarea></label>'+
     '<details><summary>可选 Issue/CI 规则</summary><p class="notice">沿原工作流的 issueTriage / ciFix 配置；不会自动创建真实 Issue 或重跑 CI。</p><textarea name="advanced" rows="4" placeholder="{}"></textarea></details>'+
-    '<button class="btn btn-sm" type="submit" data-developer-save>保存开发配置</button></form><p data-developer-feedback class="notice" role="status"></p>';
+    '<button class="btn btn-sm" type="submit" data-developer-save>保存开发配置</button></form><p data-developer-feedback class="notice" role="status"></p></details>';
   root.append(view);
   const form=view.querySelector('form'),field=name=>form.elements.namedItem(name);
   const feedback=view.querySelector('[data-developer-feedback]'),enabled=view.querySelector('[data-developer-enabled]');

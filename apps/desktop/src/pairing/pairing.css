@@ -1,3 +1,10 @@
 body {font: 15px "Microsoft YaHei", sans-serif; padding: 18px; color: #20242a; background: #f7f8fa;}
 h1 {font-size: 22px; margin: 0 0 12px;} p {line-height: 1.6;} input {display: block; width: 95%; margin: 8px 0 12px; padding: 8px;}
 button {padding: 8px 16px; margin-right: 8px; cursor: pointer;}
+
+:root {color-scheme:light dark}
+body {color:light-dark(#20242a,#edf0f5);background:light-dark(#e9ebee,#111215)}
+form {padding:16px;border:1px solid light-dark(#d1d5db,#414248);border-radius:16px;background:light-dark(#fafbfc,#25262b);box-shadow:inset 0 1px 0 light-dark(#fff,#ffffff1a)}
+input,button {box-sizing:border-box;border:1px solid light-dark(#cbd0d7,#484a51);border-radius:9px;background:light-dark(#f3f4f6,#2c2d33);color:inherit}
+input:focus-visible,button:focus-visible {outline:2px solid light-dark(#526a88,#adc3e0);outline-offset:2px}
+@media(forced-colors:active) {form {box-shadow:none;border:1px solid CanvasText}}

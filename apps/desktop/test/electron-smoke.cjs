@@ -104,7 +104,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    await panel.locator('#admin').click();
    const admin=await opened;
    await admin.waitForURL(/mode=admin/);
-   await admin.waitForSelector('[data-page="models"]');
+   await admin.waitForSelector('[data-page="models"]',{state:'attached'});
    // Task monitoring remains reachable through both its navigation item and Host route.
    await panel.evaluate(()=>window.desktop.invoke('admin.open',{page:'tasks'}));
    await admin.waitForSelector('tbody');
@@ -140,12 +140,10 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    await admin.locator('[data-page="settings"]').click();
    assert.equal(await admin.locator('#model-config-form').count(),0);
    assert.equal(await admin.locator('.settings-single').count(),1);
-   assert.deepEqual(await admin.locator('.side [data-page]').evaluateAll(buttons=>buttons.map(button=>button.dataset.page)),[
-     'tasks','models','memory','notifications','authorizations','archive',
-     'settings','profile','appearance','voice','personalization','pets','shortcuts',
-     'connections','computer','capabilities','configuration','hooks','git','environment','worktrees','analytics',
-   ]);
+   assert.deepEqual(await admin.locator('.primary-nav [data-page]').evaluateAll(buttons=>buttons.map(button=>button.dataset.page)),['settings','connections','authorizations']);
+   assert.equal(await admin.locator('.advanced-nav').evaluate(details=>details.open),false);
    assert.equal(await admin.locator('.nav-icon').count(),22);
+   await admin.locator('.advanced-nav>summary').click();
    await admin.locator('[data-page="appearance"]').click();
    await admin.locator('#pref-theme').selectOption('light');
    assert.equal(await admin.evaluate(()=>document.documentElement.dataset.theme),'light');
