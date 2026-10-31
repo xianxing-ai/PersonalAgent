@@ -33,6 +33,10 @@ Profile：`huawei_ict_agentarts`。工作树：`.worktrees/pr531-f03-f24`。
 - 原生用户 parent 恢复桥与实际公开 package export 的 Desktop 工厂消费补测：84/84，包含 F24 历史宿主、真实受控文件读回、原委派/部署/revision/期限拒绝，以及既有 native/subagent termination 回归。没有把新的观察期限用作旧图续期。
 - 其余模型、写入工具、知识读回及导出授权测试明确为 Synthetic；用户原会话、AgentArts 部署与统一授权卡的联合验收尚未完成。Main 公共出口与工厂装配由集成工作树串行接线；本包不宣称 #531 完成或可合并。
 
+## Main 与对话调用方集成
+
+Main 已将工厂 `recovery` 传给原 `createAgentArtsRuntimeApplication`，`task.reconcile.finish` 只在 Runtime 公布原 F24 资格时调用 `reconcileF24WorkflowTask`，并沿原窗口观察范围与当前任务 revision 执行。对话显示“核实原结果并继续”；未知结果保留待核实，确认后由原 Runtime 继续原图，所需云调用与出机卡仍沿原门禁。Desktop 不设置任务终态、不重发知识写入。集成树 Runtime build 及实际文件/原父任务/公开工厂/界面动作与状态边界 **36/36** 通过；不代替真实账号与云联合验收。
+
 ## F03 后续边界
 
 现有 reviewedRepair 可对原 Goal/Plan 图做 CAS 版本修复；Goal NodeVersion 只有来源/依赖等计划字段，不包含实际外部 task/run/effect 与 change-cause 绑定。不能把相同对象的历史写入或模型候选当成 F03 N06 因果证明。F03 对真实外部效果的恢复/补偿仍需要原实际执行调用方持久化该绑定，以及对应真实 effect reader；现有 F03 N07 fail-closed 保留。

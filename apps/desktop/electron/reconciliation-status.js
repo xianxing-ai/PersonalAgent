@@ -15,6 +15,12 @@ export function readReconciliationStatus(application,task,now=Date.now) {
       status.deadline=new Date(timestamp).toISOString();
       status.deadlineExpired=timestamp<=current;
     }
+    const knowledgeRecovery=application.readF24RecoveryStatus?.(task.taskId);
+    if(knowledgeRecovery?.kind==='f24_knowledge') {
+      status.actionLabel='核实原结果并继续';
+      status.notice='确认结果后将继续原任务；仍需审批的操作会另行询问。';
+      return status;
+    }
     {
       // These trusted read APIs own the native recovery/received-failure checks. A cloud
       // marker may coexist with a valid recovery path; the UI must not hide that path.

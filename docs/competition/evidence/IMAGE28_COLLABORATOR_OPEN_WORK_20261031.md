@@ -22,7 +22,7 @@
 | F13/F14 | 原系统采样与浏览器设备工厂正在接 Main；原卡及同一输入租约保持 | F13 云/配额/确认恢复 provider；F14 字段竞态读回和真实设备整图 |
 | F16/F17 | F17 原失败命令/HEAD 观测、case 原生选择和 Main 已接；UI 与 F16 原字节/CI 身份校验已集成 | F16 提交/推送/触发新 CI 的生产链及受限真实仓库验收 |
 | F20 | 固定 TS 检查器、原 trial/恢复端口、case UI 和 Main 已接 | 原生隔离实机、真人签名与固定云图联合验收 |
-| F24 | 原 knowledge writer journal/readback/finalize 工厂已接 Main，本地受控文件丢失回执后零重写通过 | 对话核实/继续调用方、真实原会话/云联合验收 |
+| F24 | 原 knowledge writer journal/readback/finalize 工厂、原父任务核实/继续入口已接 Main 与对话，本地受控文件丢失回执后零重写通过 | 真实原会话/云联合验收及其余业务效果类型 |
 | F01/F03–F05/F10/F15/F18–F19/F21–F23/F25–F28 | 保留原交接清单及已有局部实现 | 尚不能据已导出工厂或局部通过宣称全图接线完成 |
 
 环境的实际探针、固定旧部署与 HTTP 401、原生 .NET 8 启动缺口见 [本机与真实服务可用性](IMAGE531_ENVIRONMENT_AVAILABILITY_20261031.md)。集成 `a2898daa` 全量检查为 6625 项：6578 通过、45 跳过、2 失败；原 Main 回调定位失败已修复并 5/5 复验，Windows 原生 case 链接夹具修复后，设备/原卡/案例/UI/退出与提醒并发定向 137/137 通过，实际 Electron 工作区 smoke（Fake Runtime，隔离 userData）通过。当前增量仍需最终组合检查，各子树通过不替代此最终检查。

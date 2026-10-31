@@ -2594,6 +2594,7 @@ async function initializeRuntime() {
         delegateUserTasks: true,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
+        ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
@@ -4508,7 +4509,10 @@ async function action(event, name, payload) {
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
-    reportNative:result=>dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
+    reportNative:result=>result.kind==='f24_knowledge'?dialog.showMessageBox(sender,{type:'info',
+      message:result.state==='confirmed'?'已核实原结果，正在继续原任务':'原写入结果仍待核实',
+      detail:result.state==='confirmed'?'原写入没有重发。任务完成前，仍需审批的操作会另行询问。':'本次没有重发写入，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
+      :dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
       detail:(result.readbacks??[]).map(item=>`${item.taskId}：${({clear:'原宿主当前已空闲；这不证明未知试验成功',in_progress:'原宿主仍在执行',unknown:'原宿主状态仍无法确认'})[item.recovery.state]??'状态未知'}；证据 ${item.evidenceRef}`).join('\n')
         +'\n本次只读取原会话，没有重发试验或更改原 UNKNOWN。',buttons:['关闭'],noLink:true})});
   if (name === 'task.cancel') {
