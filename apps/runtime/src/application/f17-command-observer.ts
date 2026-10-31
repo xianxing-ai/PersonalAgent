@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
-import type {WorkspaceCommandRecipe} from '@personal-agent/coding-tools';
+import type {F17RecipeBinding} from './f17-recipe-binding.js';
 import type {RuntimeApplication} from './runtime-application.js';
 import {assertOwnedWorkflowHostScope,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 import {createF16HeadReader} from './f16-head-reader.js';
@@ -13,7 +13,7 @@ const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value))
 /** Wrap the registered implementation inside its existing Policy/Gateway invocation.
  * The original command is called once. No new command tool, executor or grant is created. */
 export function createF17ObservedCommandTool(options:{getApplication:()=>RuntimeApplication;tool:RegisteredTool;
-  recipes:readonly WorkspaceCommandRecipe[];now:()=>Date;
+  recipes:readonly F17RecipeBinding[];now:()=>Date;
   assertCurrent:(scope:OwnedWorkflowHostScope,context:ToolContext)=>void;
   invokeWorkspaceHead:(scope:OwnedWorkflowHostScope,request:F16HeadRequest,context:ToolContext)=>Promise<F16SourceRead>}):RegisteredTool {
   if(options.tool.descriptor.name!=='workspace.run_allowed_command'||options.tool.descriptor.version!=='1.0.0'
