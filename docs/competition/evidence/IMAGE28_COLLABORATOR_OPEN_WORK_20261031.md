@@ -4,7 +4,7 @@
 
 > Profile：`huawei_ict_agentarts`。归属与开放缺口登记（可随分工文档合入 main）。  
 > 接线代码在 [#531](https://github.com/xianxing-ai/PersonalAgent/pull/531) / `codex/image28-full-wiring`，**接线未完成前勿合并该 PR**。  
-> 对照：[28 图工作记录](IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。  
+> 对照：[28 图工作记录](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。#531 尚未合入的资料链接固定到交接时提交，避免本分工文档先合入后出现断链。  
 > **规则**：缺受信口保持 unavailable，禁止 Fake/静默回退 Local；每人交付「生产口 → 实际调用方 → 测试 → Evidence」；勾选 152 项须具备生产注册 + 真实宿主 + 约定证据。  
 > **分工修订（Owner，2026-10-31）**：**`2511375597-lab` 负责全部前端与前端接线**（Renderer/设置页/工作区 UI、Desktop 组合层把图 host/worker/IPC 接到对话与设置、相关 smoke）。Electron 受信设备宿主（语音/键鼠/WinForms 原生能力本身）、Runtime/Policy、业务连接器实现、AgentArts 云端仍归原负责人；lab 只接公开口，不伪造后端。  
 > #531 已代实现大量 fail-closed 工厂与部分 Desktop 条件接线；**下表是仍须各负责人本人完成的缺口**。
@@ -72,9 +72,9 @@
 
 ### 必须交付的受信口（后端；UI 交 lab）
 
-1. **F06**：生产 `invokeTodoCreate`（Policy/ToolGateway）；N05 真实投递回执；对齐 `f06:n03-todo:{session}`。参考 [F06_REMINDER_WIRING_20261029.md](F06_REMINDER_WIRING_20261029.md)。
-2. **F07**：日历版本口、账户配置、写入外部读回、N05 网关。参考 [F07_FRESHNESS_20261029.md](F07_FRESHNESS_20261029.md)。
-3. **F08**：Gateway **真归档**与 **真 SMTP 发送**（`mark_seen`/`save_draft` 不可冒充）；N12 Sent 对账。参考 [F08_MAIL_BOUNDARY_20261029.md](F08_MAIL_BOUNDARY_20261029.md)。口齐后通知 lab 注册 Desktop。
+1. **F06**：生产 `invokeTodoCreate`（Policy/ToolGateway）；N05 真实投递回执；对齐 `f06:n03-todo:{session}`。参考 [F06_REMINDER_WIRING_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F06_REMINDER_WIRING_20261029.md)。
+2. **F07**：日历版本口、账户配置、写入外部读回、N05 网关。参考 [F07_FRESHNESS_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F07_FRESHNESS_20261029.md)。
+3. **F08**：Gateway **真归档**与 **真 SMTP 发送**（`mark_seen`/`save_draft` 不可冒充）；N12 Sent 对账。参考 [F08_MAIL_BOUNDARY_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F08_MAIL_BOUNDARY_20261029.md)。口齐后通知 lab 注册 Desktop。
 4. **F09**：真实 feeds 提供者与会话授权；配合 zemeng 云联跑、lab 组合。
 5. **F11**：`calendar.update` 语义与真实写读回、提醒失效（守卫已有，缺生产工具链）。
 6. **F12 N04**：真实渠道投递读回端口（供 lab 接线与展示）。
@@ -113,7 +113,7 @@
 3. **F14 原生观察能力**：`browser.observe`、输入锁、会话绑定（UI 归 lab）。
 4. **F15 真实验收**：真人独立审核签名、实机 WinForms 目视（配置 UI 归 lab）。
 5. **F18/F19**：PR/Issue 图路径与平台/授权读回。
-6. **F20 worker 信任闭环**：按 [F20_WORKER_TRUST_GAPS_20261029.md](F20_WORKER_TRUST_GAPS_20261029.md)；齐备后 lab 注入 Desktop；此前禁止 `ownedWorkflowWorker`。
+6. **F20 worker 信任闭环**：按 [F20_WORKER_TRUST_GAPS_20261029.md](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/F20_WORKER_TRUST_GAPS_20261029.md)；齐备后 lab 注入 Desktop；此前禁止 `ownedWorkflowWorker`。
 7. **F22/F26/F28 能力与 gate**、**cloudPersistent**（有关机后云证据才允许；Desktop 组合由 lab 在口齐后接线）。
 8. **整图协调**：汇总三人+lab Evidence；勾选 152 与矩阵；华为优先验收。
 
