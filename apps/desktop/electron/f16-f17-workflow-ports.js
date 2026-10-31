@@ -3,6 +3,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
 import {GITHUB_CONNECTOR_VERSION} from '@personal-agent/github';
+import {readF17InitialFailure} from './f17-initial-failure-source.js';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -30,17 +31,16 @@ export const F16_F17_CONFIGURATIONS=freeze({
     tools:['decision.choose_candidate','workspace.run_allowed_command','workflow.host.f17_n04','workspace.git.head']},
 });
 
-/** Main supplies real image, workspace selection and authorization services. Missing services
- * keep that graph absent. This factory never creates a Runtime, executor or authorization. */
-export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,images,workspace,authority,authorizeExport,f16TestIntent,now=()=>new Date()}={}) {
-  const unavailable=[],tools=[],configuredWorkflowWorkers=[];
+/** AgentArts composition owns the image. These ports never create a Runtime, executor or grant. */
+export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,workspace,authority,authorizeExport,f16TestIntent,now=()=>new Date()}={}) {
+  const unavailable=[],tools=[],configuredWorkflowWorkerPorts=[];
   const required=['createF16CiFailurePorts','createF17ReproductionPorts','createF17ConfiguredDriverResolver','createF17ObservedCommandTool',
     'createRuntimeF16CiFailureHost','createRuntimeF17FailureReportHost','createWorkflowBusinessToolBridge','readF16Source','createF16HeadReader','awaitF16Port'];
   if(!r||required.some(name=>typeof r[name]!=='function')||typeof getApplication!=='function'
     ||!workspace?.root||!Array.isArray(workspace.recipes)||!workspace.recipes.length||!workspace.commandTool
     ||typeof workspace.readSelection!=='function'||typeof workspace.assertCurrent!=='function'||typeof workspace.available!=='function'
     ||typeof authority?.available!=='function'||typeof authority.assertCurrent!=='function'||typeof authorizeExport!=='function')
-    return {tools,configuredWorkflowWorkers,unavailable:['f16_f17_trusted_services_unavailable']};
+    return {tools,configuredWorkflowWorkerPorts,unavailable:['f16_f17_trusted_services_unavailable']};
   const app=()=>{const application=getApplication();if(!application)fail('UNSUPPORTED_CAPABILITY','Original Runtime unavailable');return application;};
   const wait=(scope,work)=>r.awaitF16Port(scope,now,work);
   const application={get runtime(){return app().runtime;},readHostToolTask:id=>app().readHostToolTask(id),
@@ -142,7 +142,10 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,images
     if(!workspace.recipes.some(v=>v.id===selected.recipeId))fail('UNSUPPORTED_CAPABILITY','Original selected recipe unavailable');
     let input;
     if(workflow==='F16')input={...saved,runId:selected.runId,jobId:selected.jobId,patch:selected.patch};
-    else{
+    else if(selected.initialFailure?.kind==='competition'){
+      const source=readF17InitialFailure(app(),scope,selected);
+      input={...saved,sourceDigest:hash(source),initialFailure:source.command.result};
+    }else{
       const sourceScope={parentTaskId:scope.taskId,deadline:scope.deadline,sessionId:selected.sourceSessionId};
       const original=selected.initialFailure;
       if(!original)fail('UNSUPPORTED_CAPABILITY','Original failing test source unavailable');
@@ -201,9 +204,7 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,images
     binding(workflow,hostScope);
   };
   for(const workflow of ['F16','F17']){
-    const definition=F16_F17_CONFIGURATIONS[workflow],image=images?.[workflow];
-    if(!image?.bindingId||typeof image.advance!=='function'||typeof image.receiptSecret!=='function'||typeof image.available!=='function'){
-      unavailable.push(workflow.toLowerCase()+'_image_unavailable');continue;}
+    const definition=F16_F17_CONFIGURATIONS[workflow];
     if(workflow==='F16'&&(f16TestIntent?.tool?.descriptor?.name!=='workflow.host.f16_n04'
       ||f16TestIntent.tool.descriptor.version!=='1.0.0'||typeof f16TestIntent.available!=='function'||typeof f16TestIntent.verifyReceipt!=='function')){
       unavailable.push('f16_test_intent_verifier_unavailable');continue;}
@@ -212,12 +213,12 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,images
       unavailable.push('f16_workspace_recovery_unavailable');continue;}
     tools.push(...hosts[workflow].tools);
     if(workflow==='F16')tools.push(f16TestIntent.tool);
-    configuredWorkflowWorkers.push({workflowId:workflow,toolName:definition.toolName,toolVersion:definition.version,
+    configuredWorkflowWorkerPorts.push({workflowId:workflow,toolName:definition.toolName,toolVersion:definition.version,
       configurationVersion:definition.configurationVersion,requestSchema:structuredClone(definition.requestSchema),inputSchema:structuredClone(definition.inputSchema),
       resultSchema:structuredClone(definition.resultSchema),publicEnumPaths:[],sideEffect:'local_write',
-      requiredTools:definition.tools.map(name=>({name,version:toolVersion(name)})),image,
+      requiredTools:definition.tools.map(name=>({name,version:toolVersion(name)})),
       async available(scope){try{current(workflow,scope);const allowed=await wait(scope,()=>authority.available(workflow,scope));
-        const ready=allowed===true&&await wait(scope,()=>workspace.available(workflow,scope))===true&&await wait(scope,()=>image.available(scope))===true
+        const ready=allowed===true&&await wait(scope,()=>workspace.available(workflow,scope))===true
           &&(workflow!=='F16'||await wait(scope,()=>f16TestIntent.available(scope))===true);
         current(workflow,scope);return ready;}catch{return false;}},
       assertCurrent:scope=>{current(workflow,scope);},resolveInput:(args,scope)=>initialInput(workflow,scope,args),
@@ -337,7 +338,7 @@ export function createF16F17WorkflowPorts({runtimeModule:r,getApplication,images
       },
     });
   }
-  const commandTool=configuredWorkflowWorkers.some(v=>v.workflowId==='F17')?r.createF17ObservedCommandTool({getApplication,
+  const commandTool=configuredWorkflowWorkerPorts.some(v=>v.workflowId==='F17')?r.createF17ObservedCommandTool({getApplication,
     tool:workspace.commandTool,recipes:workspace.recipes,now,invokeWorkspaceHead,assertCurrent:scope=>{binding('F17',scope);}}):workspace.commandTool;
-  return {tools,configuredWorkflowWorkers,commandTool,workspacePatchReconciliation:workspace.patchReconciliation,unavailable};
+  return {tools,configuredWorkflowWorkerPorts,commandTool,workspacePatchReconciliation:workspace.patchReconciliation,unavailable};
 }

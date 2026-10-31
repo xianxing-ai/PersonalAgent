@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {ToolContext} from '@personal-agent/contracts';
-import type {WorkspaceCommandRecipe} from '@personal-agent/coding-tools';
+import type {F17RecipeBinding} from './f17-recipe-binding.js';
 import type {OwnedWorkflowHostScope as Scope} from './workflow-owned-host-scope.js';
 import type {F16HeadRequest,F16ReadStage} from './f16-ci-failure-ports.js';
 import {readF16Source,sourceObject,sourceFailure,type F16SourceRead,type F16SourceApplication} from './f16-source-receipts.js';
@@ -17,8 +17,8 @@ export interface F17Reproduction {
 export interface F17ReproductionPortsOptions {
   application:F16SourceApplication;
   checkpointPrefix:string;
-  /** Same trusted recipe definitions supplied to createWorkspaceCommandTool. No secret values are persisted. */
-  recipes:readonly WorkspaceCommandRecipe[];
+  /** Original recipe definitions or the existing command host's immutable configuration binding. */
+  recipes:readonly F17RecipeBinding[];
   now:()=>Date;
   invokeWorkspaceHead:(scope:Scope,request:F16HeadRequest,context:ToolContext)=>Promise<F16SourceRead>;
 }

@@ -18,6 +18,14 @@ import {createF17ObservedCommandTool} from '../../runtime/dist/application/f17-c
 import {createF16HeadReader} from '../../runtime/dist/application/f16-head-reader.js';
 import {readF16Source,awaitF16Port} from '../../runtime/dist/application/f16-source-receipts.js';
 import {createF16F17WorkflowPorts,F16_F17_CONFIGURATIONS} from '../electron/f16-f17-workflow-ports.js';
+import {createDesktopF16F17WorkflowPorts} from '../electron/f16-f17-desktop-ports.js';
+import {createF16F17CaseConfiguration} from '../electron/f16-f17-case-config-host.js';
+import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
+import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
+import {createDesktopDeveloperToolsHost} from '../electron/developer-tools-host.js';
+import {findF17InitialFailure,readF17InitialFailure} from '../electron/f17-initial-failure-source.js';
+import {createWorkflowExportConsent} from '../electron/workflow-export-consent.js';
+import {readF16F17DecisionScope,prepareF16F17DecisionQuestion} from '../electron/f16-f17-decision-source.js';
 
 const runtimeModule={...publicRuntime,createF16CiFailurePorts,createF17ReproductionPorts,createF17ConfiguredDriverResolver,
   createF17ObservedCommandTool,createF16HeadReader,readF16Source,awaitF16Port};
@@ -26,10 +34,10 @@ const sleep=()=>new Promise(resolve=>setTimeout(resolve,5));
 
 // Explicit synthetic image/selector/consent and temporary public-shaped repository.
 // Commands and Git execute locally; the original configured worker, Policy, bridge and SQLite are real.
-async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=false,substitute,skipDecision=false,abstain=false,exportMutation,noReview=false,ciFailure=false}={}){
+async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=false,substitute,skipDecision=false,abstain=false,exportMutation,noReview=false,ciFailure=false,productionSources=false,ownedComposition=false}={}){
   const cache=resolve('.cache/f16-f17');await mkdir(cache,{recursive:true});
   const directory=await mkdtemp(join(cache,'configured-')),root=join(directory,'workspace');await mkdir(root);
-  const sourceText="import test from 'node:test';import assert from 'node:assert/strict';test('original failure',()=>assert.equal(1,2));\n";
+  const sourceText=productionSources?'function broken( {\n':"import test from 'node:test';import assert from 'node:assert/strict';test('original failure',()=>assert.equal(1,2));\n";
   await writeFile(join(root,'failure.test.mjs'),sourceText);
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
   git('init','-b','fixture');git('config','user.name','Synthetic');git('config','user.email','fixture@example.invalid');
@@ -38,7 +46,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
   const counters={command:0,head:0},exports=[],requests=[],actions=[];
   const patch={path:'failure.test.mjs',expectedSha256:createHash('sha256').update(sourceText).digest('hex'),
     edits:[{oldText:'assert.equal(1,2)',newText:'assert.equal(1,1)'}]};
-  const recipe={id:workflow==='F17'?'reproduce':'ci-verify',executable:process.execPath,args:workflow==='F17'?['--test','--test-reporter=tap','failure.test.mjs']:
+  const recipe={id:productionSources?'node-check':workflow==='F17'?'reproduce':'ci-verify',executable:process.execPath,args:workflow==='F17'?['--test','--test-reporter=tap','failure.test.mjs']:
     ['--input-type=module','-e',"import {execFileSync as run} from 'node:child_process';run(process.execPath,['--test','failure.test.mjs']);run('git',['add','failure.test.mjs']);run('git',['commit','-qm','Synthetic verified patch']);process.stdout.write(JSON.stringify({repository:'xianxing-ai/PersonalAgent',headSha:run('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),runId:9,jobId:10}));"]};
   const originalCommand=createWorkspaceCommandTool({rootPath:root,recipes:[recipe]}),commandTool={...originalCommand,
     execute:async(...args)=>{counters.command++;return originalCommand.execute(...args);}};
@@ -48,7 +56,25 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
   const gitTool={...originalGit,execute:async(...args)=>{counters.head++;
     if(unknownHead&&counters.head===3)throw new ProtocolError('RESULT_UNKNOWN','Synthetic interrupted HEAD');
     return originalGit.execute(...args);}};
-  const decision=createWorkflowDecisionTool({selector:{select:async request=>({selectedId:request.candidates[0].id})}});
+  const originalDecision=createWorkflowDecisionTool({selector:{select:async request=>({selectedId:request.candidates[0].id})}});
+  const decision={...originalDecision,async execute(input,context){
+    if(productionSources){
+      const proof=readF16F17DecisionScope(app,context);assert.equal(proof?.workflowId,'F17');
+      assert.equal(proof.taskId,context.taskId);assert.ok(Object.isFrozen(proof));
+      let fence;
+      assert.deepEqual(prepareF16F17DecisionQuestion({application:app,scope:context,question:{prepare:(scope,options)=>{
+        assert.equal(scope,context);assert.deepEqual(Object.keys(options),['assertCurrent']);fence=options.assertCurrent;
+      }}}),proof);assert.equal(fence(),true);
+      assert.throws(()=>readF16F17DecisionScope(app,{...context,argumentsDigest:'f'.repeat(64)}),{code:'UNAUTHORIZED'});
+      assert.throws(()=>readF16F17DecisionScope(app,{...context,proposal:{toolName:'decision.choose_candidate',toolVersion:'1.0.0',arguments:{}}}),{code:'UNAUTHORIZED'});
+      const key='coding-repair:host:'+proof.operationId,edge=app.runtime.loadCheckpoint(proof.parentTaskId,key);
+      app.runtime.saveCheckpoint(proof.parentTaskId,key,{...edge,localTaskId:'foreign'});
+      assert.throws(()=>readF16F17DecisionScope(app,context),{code:'UNAUTHORIZED'});
+      assert.equal(fence(),false);
+      app.runtime.saveCheckpoint(proof.parentTaskId,key,edge);
+    }
+    return originalDecision.execute(input,context);
+  }};
   const github=[];
   registerGitHub({register:tool=>{github.push(tool);return ()=>{};}},{provider:{verification:'mock',execute:async(op,input)=>{
     const success=input.status==='success'||input.runId===9,page=items=>({items,page:1,nextPage:null,hasMore:false});
@@ -114,15 +140,51 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
     }};
   const authority={available:async()=>true,assertCurrent(){if(revoked)throw Error('Synthetic revoked authority');},
     async authorizeExport(value){exports.push(value);if(exportMutation)await exportMutation({value,app,git,root});return deny!==value.stage;}};
+  const exportConsent=productionSources?createWorkflowExportConsent({getApplication:()=>app,
+    readDeploymentBinding:()=>revoked?undefined:'synthetic-fixed-deployment',confirmAuthorization:async(action,value,request)=>{
+      assert.equal(action,'workflow.export');assert.equal(request.isCurrent(),true);
+      return authority.authorizeExport({...request.scope,value,deadline:request.deadline,signal:request.signal});
+    }}):authority.authorizeExport;
+  let codingWorkspace,developerHost,caseConfiguration,developerDeployment;
+  const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()}; // Explicit test-only secure storage.
+  if(productionSources){
+    await writeFile(join(directory,'coding-workspace.json'),JSON.stringify({version:1,encrypted:Buffer.from(root).toString('base64'),
+      encryptedNode:Buffer.from(process.execPath).toString('base64'),encryptedCheckFile:Buffer.from('failure.test.mjs').toString('base64')}));
+  }
   function open(){
-    ports=createF16F17WorkflowPorts({runtimeModule,getApplication:()=>app,images:{[workflow]:image},workspace,authority,
-      authorizeExport:authority.authorizeExport,f16TestIntent});
-    const tools=[decision,gitTool,patchTool,...github,ports.commandTool,...ports.tools,publicRuntime.createDesktopSubagentDispatchTool({competitionOnly:true,
+    if(productionSources){
+      codingWorkspace=createWorkspaceConfigHost({userData:directory,safeStorage,findExecutable:()=>undefined,
+        createCommandRecipeTool:options=>createWorkspaceCommandRecipeTool({...options,createWorkspaceCommandTool})});
+      const config=codingWorkspace.readDeveloperConfiguration();assert.ok(config?.command,'actual workspace command configured');
+      const counted={...config.command.tool,execute:async(...args)=>{counters.command++;return config.command.tool.execute(...args);}};
+      developerHost=createDesktopDeveloperToolsHost({command:{...config.command,tool:counted},git:{
+        options:{repository,rootPath:root,sourceBranch:'fixture',remoteName:'origin',remoteUrl:'https://github.com/'+repository+'.git',
+          allowedPaths:['failure.test.mjs'],authorName:'Synthetic',authorEmail:'fixture@example.invalid'},available:config.available}});
+      // Explicit synthetic deployment envelope; real workspace/command/Git adapters underneath.
+      developerDeployment={host:developerHost,snapshot:()=>({configured:!revoked,state:revoked?'closed':'configured',repository})};
+      caseConfiguration=createF16F17CaseConfiguration({userData:directory,safeStorage,readWorkspace:()=>codingWorkspace.readDeveloperConfiguration()});
+      if(!caseConfiguration.snapshot('F17').configured)caseConfiguration.setFromNativeSelection('F17',{selectionRef:'fixture',repository,recipeId:recipe.id});
+      ports=createDesktopF16F17WorkflowPorts({runtimeModule,getApplication:()=>app,codingWorkspace,developerDeployment,caseConfiguration,
+        authorizeExport:exportConsent});
+    }else ports=createF16F17WorkflowPorts({runtimeModule,getApplication:()=>app,workspace,authority,authorizeExport:authority.authorizeExport,f16TestIntent});
+    const tools=[decision,productionSources?developerHost.tools.find(tool=>tool.descriptor.name==='workspace.git.head'):gitTool,
+      patchTool,...github,ports.commandTool,...ports.tools,publicRuntime.createDesktopSubagentDispatchTool({competitionOnly:true,
       getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scoped)=>app.runDefaultSubagentWorker(task,worker,scoped)})];
-    app=publicRuntime.createRuntimeApplication({path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
-      hostUserNamespace:'synthetic-f16-f17-configured',coordinationBinding:'synthetic-deployment',tools,configuredWorkflowWorkers:ports.configuredWorkflowWorkers,
+    const options={path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,competitionMaxSteps:8,
+      hostUserNamespace:'synthetic-f16-f17-configured',coordinationBinding:'synthetic-deployment',tools,
+      configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(port=>({...port,image})),
       workspacePatchReconciliation:ports.workspacePatchReconciliation,
       coordination:{execute:async request=>{
+        if(productionSources&&app.runtime.getTask(request.taskId).conversationId!=='fixture-chat'){
+          const completed=app.runtime.loadCheckpoint(request.taskId,'competition-loop')?.receipts?.length??0;
+          if(completed<3){
+            const command=completed===1;
+            return {kind:'tool_proposal',proposalId:'original-'+completed,toolName:command?'workspace.run_allowed_command':'workspace.git.head',
+              toolVersion:'1.0.0',arguments:command?{recipeId:recipe.id}:{repository},verification:'unverified'};
+          }
+          if(completed===3)return {kind:'tool_proposal',proposalId:'fixture-graph',toolName:F16_F17_CONFIGURATIONS[workflow].toolName,
+            toolVersion:'1.0.0',arguments:{selectionRef:'fixture'},verification:'unverified'};
+        }
         if(app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation)
           return {kind:'text',text:'Synthetic configured continuation',verification:'unverified'};
         return {kind:'tool_proposal',proposalId:'fixture-graph',toolName:F16_F17_CONFIGURATIONS[workflow].toolName,toolVersion:'1.0.0',
@@ -130,11 +192,31 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
       competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
         publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
       competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,exportPolicyVersion:'synthetic-v1',
-        accepts:()=>true,project:({result})=>result}))});client=new Client(app);
+        accepts:()=>true,project:({result})=>result}))};
+    if(ownedComposition){
+      const {configuredWorkflowWorkers:_workers,coordination,profile:_profile,...shared}=options;let originalRequest;
+      app=publicRuntime.createAgentArtsRuntimeApplication({...shared,configuredWorkflowWorkerPorts:ports.configuredWorkflowWorkerPorts,
+        gatewayUrl:'https://synthetic.agentarts.invalid',runtimeName:'f17-runtime',deploymentVersion:'fixed-f17-fixture',
+        initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',
+        authorizationProvider:{read:async()=> 'Bearer synthetic-invoke-credential'},
+        readOwnedWorkflowReceiptSecret:async()=> 'synthetic-shared-receipt-secret-123456789',
+        beforeCompetitionSend:request=>{originalRequest=request;},
+        fetchImpl:async(url,init)=>{
+          const body=JSON.parse(init.body),request=typeof body.query==='string'&&body.query.startsWith('{')?JSON.parse(body.query):{};
+          assert.equal(url,'https://synthetic.agentarts.invalid/runtimes/f17-runtime/invocations'
+            +(request.operation==='advance'?'?endpoint=fixed-f17-fixture':''));
+          const value=request.operation==='advance'?await image.advance({...request,requestId:init.headers['X-Request-Id']}):await coordination.execute(originalRequest);
+          const {verification:_verification,...response}=value;
+          return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(response),index:0}},
+            {event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});
+        }});
+    }else app=publicRuntime.createRuntimeApplication(options);
+    if(productionSources){codingWorkspace.bindApplication(app);developerHost.bind(app);}
+    client=new Client(app);
   }
-  open();await client.connect();
-  t.after(async()=>{for(let i=0;i<500&&app.activeTaskCount;i++)await sleep();app.close();await rm(directory,{recursive:true,force:true});});
-  return {get app(){return app;},get ports(){return ports;},counters,exports,requests,actions,git,headSha,
+  open();if(productionSources)await codingWorkspace.authorize({cloudExportAllowed:true,commandAllowed:true,writeAllowed:false});await client.connect();
+  t.after(async()=>{for(let i=0;i<500&&app.activeTaskCount;i++)await sleep();app.close();developerHost?.close();codingWorkspace?.close();await rm(directory,{recursive:true,force:true});});
+  return {get app(){return app;},get ports(){return ports;},get cases(){return caseConfiguration;},get workspace(){return codingWorkspace;},counters,exports,requests,actions,git,headSha,
     async run(){
       const submitted=await client.call('task.submit',{goal:'Locate the synthetic failing test',conversationId:'fixture-chat'},
         {idempotencyKey:'fixture-workflow',timeoutMs:120000});let child;
@@ -148,11 +230,12 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
         if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))return child;
         await sleep();
       }throw Error('Configured fixture did not settle: '+JSON.stringify(child));
-    },async reopen(){assert.equal(app.activeTaskCount,0);app.close();open();await client.connect();},revoke:()=>{revoked=true;}};
+    },async reopen(){assert.equal(app.activeTaskCount,0);app.close();developerHost?.close();codingWorkspace?.close();open();
+      if(productionSources)await codingWorkspace.authorize({cloudExportAllowed:true,commandAllowed:true,writeAllowed:false});await client.connect();},revoke:()=>{revoked=true;}};
 }
 
 test('F16/F17 ports stay absent without real services and F16 requires an independent test intent verifier',()=>{
-  assert.equal(createF16F17WorkflowPorts().configuredWorkflowWorkers.length,0);
+  assert.equal(createF16F17WorkflowPorts().configuredWorkflowWorkerPorts.length,0);
   assert.ok(Object.isFrozen(F16_F17_CONFIGURATIONS.F17.inputSchema.properties));
 });
 
@@ -167,6 +250,68 @@ test('F17 Desktop configuration drives actual worker, two-layer Policy children 
   assert.equal(observation.beforeHead.provenance.proof.sourceHost.taskId,commandTask);
   assert.ok(f.exports.some(v=>v.stage==='completion'));await f.reopen();assert.equal(f.app.runtime.getTask(task.taskId).state,'succeeded');
   assert.equal(f.counters.command,2);
+});
+
+test('F17 production adapters consume native case, existing workspace commands and same-task original receipts',async t=>{
+  const f=await fixture(t,{productionSources:true}),task=await f.run();
+  assert.equal(task.state,'succeeded',JSON.stringify(task.error));assert.equal(f.counters.command,2);
+  assert.deepEqual(f.ports.configuredWorkflowWorkerPorts.map(port=>port.workflowId),['F17']);
+  assert.equal(Object.hasOwn(f.ports.configuredWorkflowWorkerPorts[0],'image'),false);
+  assert.ok(f.ports.unavailable.includes('f16_test_intent_verifier_unavailable'));
+  const selected=f.app.runtime.loadCheckpoint(task.taskId,'f16-f17:configured-selection:F17');
+  assert.equal(selected.selected.initialFailure.kind,'competition');
+  assert.equal(selected.input.initialFailure.exitCode,1);assert.match(selected.input.initialFailure.stderr,/SyntaxError/);
+  assert.equal(selected.input.headSha,f.headSha);assert.match(selected.selected.configurationRef,/^[a-f0-9]{64}$/);
+  const reportTask=f.app.runtime.listTasks({limit:100}).items.find(value=>f.app.runtime.loadCheckpoint(value.taskId,'f17:failure-report:synthetic-F17_N04'));
+  assert.ok(reportTask);assert.ok(f.exports.some(value=>value.stage==='completion'));
+  await f.reopen();assert.equal(f.app.runtime.getTask(task.taskId).state,'succeeded');assert.equal(f.counters.command,2);
+});
+
+test('F17 image-free ports execute through the original AgentArts composition owned image and fixed deployment',async t=>{
+  const f=await fixture(t,{productionSources:true,ownedComposition:true}),task=await f.run();
+  assert.equal(task.state,'succeeded',JSON.stringify(task.error));assert.equal(f.counters.command,2);
+  assert.equal(f.requests.length,4);assert.ok(f.exports.some(value=>value.stage==='completion'));
+});
+
+test('F17 production case configuration rejects injected output and invalidates changed workspace selection',async t=>{
+  const f=await fixture(t,{productionSources:true});
+  assert.throws(()=>f.cases.setFromNativeSelection('F17',{selectionRef:'fixture',repository:'xianxing-ai/PersonalAgent',
+    recipeId:'node-check',initialFailure:{stdout:'invented'}}));
+  f.workspace.revoke();
+  const task=await f.run();assert.notEqual(task.state,'succeeded');assert.equal(f.counters.command,0);
+  assert.equal(f.exports.length,0);
+});
+
+test('F17 same-task initial source substitution is rejected after initial export awaits',async t=>{
+  const f=await fixture(t,{productionSources:true,exportMutation:async({value,app})=>{
+    if(value.stage!=='initial')return;
+    const selected=app.runtime.loadCheckpoint(value.taskId,'f16-f17:configured-selection:F17').selected;
+    const key='tool-result-'+selected.initialFailure.commandRunId,saved=app.runtime.loadCheckpoint(value.taskId,key);
+    app.runtime.saveCheckpoint(value.taskId,key,{...saved,result:{...saved.result,stderr:'substituted'}});
+  }});
+  const task=await f.run();assert.equal(task.state,'failed');assert.equal(task.error.code,'REVISION_CONFLICT');assert.equal(f.counters.command,1);
+});
+
+test('F17 source reader rejects foreign, unknown, expired and reordered original receipts',async t=>{
+  const checks=[];
+  const f=await fixture(t,{productionSources:true,exportMutation:async({value,app})=>{
+    if(value.stage!=='initial')return;
+    const selected=app.runtime.loadCheckpoint(value.taskId,'f16-f17:configured-selection:F17').selected;
+    const scope={taskId:value.taskId,deadline:value.deadline,signal:value.signal};
+    const proof=readF17InitialFailure(app,scope,selected);checks.push(proof.command.runId);
+    assert.throws(()=>readF17InitialFailure(app,{...scope,deadline:new Date(0).toISOString()},selected));
+    assert.throws(()=>readF17InitialFailure(app,scope,{...selected,initialFailure:{...selected.initialFailure,commandRunId:'competition-tool-foreign-2'}}));
+    const loop=app.runtime.loadCheckpoint(value.taskId,'competition-loop');
+    const altered=structuredClone(loop);[altered.receipts[0],altered.receipts[2]]=[altered.receipts[2],altered.receipts[0]];
+    app.runtime.saveCheckpoint(value.taskId,'competition-loop',altered);
+    assert.throws(()=>readF17InitialFailure(app,scope,selected));
+    app.runtime.saveCheckpoint(value.taskId,'competition-loop',loop);
+    const noAfter={...loop,receipts:loop.receipts.slice(0,2)};
+    app.runtime.saveCheckpoint(value.taskId,'competition-loop',noAfter);
+    assert.equal(findF17InitialFailure(app,scope,selected),undefined);
+    app.runtime.saveCheckpoint(value.taskId,'competition-loop',loop);
+  }});
+  const task=await f.run();assert.equal(task.state,'succeeded',JSON.stringify(task.error));assert.ok(checks.length>0);assert.equal(new Set(checks).size,1);
 });
 
 test('F17 unavailable permission and substituted recipe cannot run the graph command',async t=>{
@@ -227,7 +372,7 @@ test('F16 Desktop configuration verifies original CI children, patch review and 
 test('F16 missing real review service stays unavailable and failed repaired CI cannot complete',async t=>{
   const missing=await fixture(t,{workflow:'F16',noReview:true});
   assert.ok(missing.ports.unavailable.includes('f16_test_intent_verifier_unavailable'));
-  assert.equal(missing.ports.configuredWorkflowWorkers.length,0);
+  assert.equal(missing.ports.configuredWorkflowWorkerPorts.some(port=>port.workflowId==='F16'),false);
   const failed=await fixture(t,{workflow:'F16',ciFailure:true}),task=await failed.run();
   assert.equal(task.state,'failed');assert.equal(task.error.code,'UNAUTHORIZED');assert.equal(failed.counters.command,1);
   assert.equal(failed.exports.some(value=>value.stage==='completion'),false);
