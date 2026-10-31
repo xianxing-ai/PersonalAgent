@@ -14,6 +14,12 @@
 
 产品 Live/SIS 真实识别、同一问题回合的播放/最终转写、WinForms 目视与独立真人签名仍未验收。
 
+## 真实 Edge 与原执行链
+
+2026-10-31 12:46:52 UTC，在集成 `46ca9165` 运行仓库已有 `apps/desktop/test/browser-control-runtime-acceptance.mjs`，真实可见 Edge、独立浏览器配置、本地合成页面与原 Runtime/SQLite/Policy/ToolGateway/输入租约共 **11 项通过**。原任务 `171e9279-c095-42d4-8bb4-e55f9b104a66` 为 succeeded，实际覆盖未授权启动拒绝、参数替换拒绝、输入互斥、原确认结果零重复设备执行、输入与点击后的独立 DOM 读回、本地截图和数据库重开读回。原关闭工具释放自有浏览器，最终租约 idle。
+
+页面及审批决定是明确 Synthetic；模型、云和账号调用均为 0，截图未出机。该结果证明本机浏览器与原执行链可用，不证明 F14 configured worker 真实云整图或 Electron Renderer 验收。脱敏回执在集成树 `.cache/browser-control-runtime/9defe1ff-c37c-4f5f-9f63-0ba96f7bc316/receipt.json`，日志 `.cache/integration-real-edge-acceptance.log`。
+
 ## AgentArts 配置与实际连接
 
 - 默认 Desktop userData 未发现可直接使用的 AgentArts、邮箱和日历配置。已找到的四份历史 AgentArts 加密配置文件格式可读，但当前 Electron safeStorage 解密失败；原文件未改写。此结论只针对已检查的路径，不代表机器不存在其他配置。

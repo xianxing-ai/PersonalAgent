@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | 共用调用链 | 原图 host/business child 的精确预检、统一出机卡、configured decision 来源验证已接 Main | 固定本轮镜像的真实整链 |
 | F02 | Live/capture/原问题卡的工厂已接同一 Runtime/image | 真实声学证据、ASR 与同一回合设备验收 |
+| F03 | 原计划修复只读回执已由 Goal 消费；原知识写入 SHA 与实际 Fact 观察版本进入原 checkpoint，根定向 23/23 通过 | 实际 Plan 执行来源、完整因果/补偿与云整图 |
 | F06/F07 | 实际图引擎、原待办调度/投递与原日历读写工厂已接 Main；未来提醒和重启去重已验证 | 原账号/云/Windows 通知联合验收 |
 | F08 | 真发送/归档口已实现 | 完整配置 worker 消费面及账号读回 |
 | F12 | 原 feed/策略、单条通知投递和显式 digest 的 configured worker 已接 Main，真实 availability 与原 N02 唯一注册已验证 | 真实归来事件、语音、多条 batch、Windows banner 与云整图 |
@@ -25,7 +26,7 @@
 | F16/F17 | F17 原失败命令/HEAD 观测、case 原生选择和 Main 已接；UI 与 F16 原字节/CI 身份校验已集成 | F16 提交/推送/触发新 CI 的生产链及受限真实仓库验收 |
 | F20 | 固定 TS 检查器、原 trial/恢复端口、case UI 和 Main 已接 | 原生隔离实机、真人签名与固定云图联合验收 |
 | F24 | 原 knowledge writer journal/readback/finalize 工厂、原父任务核实/继续入口已接 Main 与对话，本地受控文件丢失回执后零重写通过 | 真实原会话/云联合验收及其余业务效果类型 |
-| F01/F03–F05/F10/F15/F18–F19/F21–F23/F25–F28 | 保留原交接清单及已有局部实现 | 尚不能据已导出工厂或局部通过宣称全图接线完成 |
+| F01/F04–F05/F10/F15/F18–F19/F21–F23/F25–F28 | 保留原交接清单及已有局部实现 | 尚不能据已导出工厂或局部通过宣称全图接线完成 |
 
 环境的实际探针、固定旧部署与 HTTP 401、原生 .NET 8 启动缺口见 [本机与真实服务可用性](IMAGE531_ENVIRONMENT_AVAILABILITY_20261031.md)。集成 `a2898daa` 全量检查为 6625 项：6578 通过、45 跳过、2 失败；原 Main 回调定位失败已修复并 5/5 复验，Windows 原生 case 链接夹具修复后，设备/原卡/案例/UI/退出与提醒并发定向 137/137 通过，实际 Electron 工作区 smoke（Fake Runtime，隔离 userData）通过。当前增量仍需最终组合检查，各子树通过不替代此最终检查。
 
