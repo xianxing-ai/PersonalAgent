@@ -38,6 +38,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   readConversationId=()=>'desktop-panel',onDiagnostic=()=>{},
   historyStore, historyQueue,
   readCurrentQuestion = () => null, authorizeTaskRead = () => false, authorizeFinalRead,
+  /** Optional: focus original pending approval card from a trusted final; must not authorize. */
+  prepareTaskApproval = async () => null,
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
   const textOutput=createLiveTextOutput({readSession:()=>active,now,onUpdate:()=>publish()});
@@ -203,6 +205,22 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
               role: event.role, text: trimmed, createdAt: new Date(now()).toISOString()};
             try {history.record(message); flushHistory();}
             catch {fail('Live 历史待保存容量或标识异常，已停止通话；待保存记录保留'); return;}
+            // Trusted final may only focus the existing formal card; never call authorization.respond.
+            if (event.role === 'user' && event.phase === 'final' && event.source === 'input_audio') {
+              const question = readCurrentQuestion({conversationId: record.conversationId});
+              if (question?.state === 'pending' && typeof question.taskId === 'string'
+                && Number.isFinite(Date.parse(question.expiresAt)) && now() < Date.parse(question.expiresAt)) {
+                const scope = {
+                  taskId: question.taskId,
+                  conversationId: record.conversationId,
+                  deadline: new Date(Math.min(Date.parse(question.expiresAt), Date.parse(record.deadline))).toISOString(),
+                  signal: controller.signal,
+                };
+                record.approvalFocus = Promise.resolve()
+                  .then(() => isCurrent() ? prepareTaskApproval(scope) : null)
+                  .catch(() => null);
+              }
+            }
           }
           if (event.type !== 'audio') publish();
         },
@@ -320,6 +338,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
             && ['waiting_approval','waiting_reconciliation'].includes(result.state)) {
             pendingSnapshot=result;
             // End only this transcript wait. Runtime owns the original pending task.
+            // Card focus happens only from a trusted final via prepareTaskApproval.
             throw Error('Live 原任务正在等待审批');
           }
           return result;

@@ -15,6 +15,21 @@ test('failed role output includes only a fixed safe stage label',()=>{
  assert.equal(Object.hasOwn(JSON.parse(lines[5]),'failureStage'),false);
 });
 
+test('JSON failure shape admits only bounded fixed metadata and never raw model content',()=>{
+ const lines=[],write=createRoleReceiptWriter({write:line=>lines.push(line)});
+ write({...receipt,status:'failed',failureStage:'response_json',responseJsonShape:'fenced',responseJsonChars:120,
+   responseStopReason:'length',response:'private-model-output'});
+ const valid=JSON.parse(lines[0]);
+ assert.equal(valid.responseJsonShape,'fenced');assert.equal(valid.responseJsonChars,120);assert.equal(valid.responseStopReason,'length');
+ assert.equal(lines[0].includes('private'),false);
+ write({...receipt,status:'failed',failureStage:'response_json',responseJsonShape:'private-secret',responseJsonChars:16001,responseStopReason:'private-secret'});
+ const invalid=JSON.parse(lines[1]);
+ for(const key of ['responseJsonShape','responseJsonChars','responseStopReason'])assert.equal(Object.hasOwn(invalid,key),false);
+ assert.equal(lines[1].includes('private'),false);
+ write({...receipt,status:'failed',failureStage:'model_gateway',responseJsonShape:'object',responseJsonChars:10,responseStopReason:'stop'});
+ assert.equal(Object.hasOwn(JSON.parse(lines[2]),'responseJsonShape'),false);
+});
+
 test('host receipt allows only correlation/timing/usage and explicit deployment metadata',()=>{
   const lines=[],write=createRoleReceiptWriter({deploymentVersion:'arm64-194799c6',write:line=>lines.push(line)});
   write({...receipt,query:'private-user-input',response:'private-model-output',error:'private-error',

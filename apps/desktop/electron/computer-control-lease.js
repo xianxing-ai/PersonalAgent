@@ -1,7 +1,7 @@
 import {ProtocolError,ToolNotStartedError,isToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 
 const OBSERVE='computer.desktop.observe';
-const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.screenshot','computer.desktop.wait',
+const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.screenshot','computer.desktop.wait','computer.desktop.suggest_control',
   'browser.observe','browser.screenshot','browser.wait']);
 const controlled=name=>name==='computer.notepad.replace_text'||/^computer\.desktop\.[a-z_]+$/.test(name)||/^browser\.[a-z_]+$/.test(name);
 const isWrite=name=>controlled(name)&&!reads.has(name);

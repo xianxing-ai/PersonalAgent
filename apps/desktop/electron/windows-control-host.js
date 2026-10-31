@@ -114,7 +114,7 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
   }
   function recoveryFromRun(task,run,includeStarted=false) {
     if(!task||!runRef(task.taskId)||!run||run.taskId!==task.taskId||!runRef(run.evidenceId)
-      ||!controlName(run.toolName)||run.toolVersion!==VERSION||run.policyDecision!=='allow'||run.executionStarted!==true
+      ||!controlName(run.toolName)||run.toolName==='computer.desktop.suggest_control'||run.toolVersion!==VERSION||run.policyDecision!=='allow'||run.executionStarted!==true
       ||!SHA.test(run.inputDigest)
       ||!(run.state==='unknown'||run.state==='started'&&(includeStarted||task.state==='waiting_reconciliation')))return;
     return {taskId:task.taskId,runId:run.evidenceId,inputDigest:run.inputDigest};
@@ -323,8 +323,9 @@ export function createDesktopWindowsControlHost({createControlHost, pythonExecut
     },
     get tools(){return tools();},
     get competitionToolAvailability(){return [requestTool,...(provider?.tools??[])].map(tool=>({toolName:tool.descriptor.name,toolVersion:VERSION,
-      publicEnumPaths:['/button','/direction','/type','/caret_position'],
-      ...(tool.descriptor.name===REQUEST_TOOL?{publicDescription:'Checks current-task computer access. Successful policy_allowed or presence_confirmed means continue the original task with the next tool. authorizationGranted:false only means later tools need their own Runtime/Policy checks; it does not mean this access step failed. Request access again only after expiry, revocation, or an explicit missing-access error.'}:{}),
+      publicEnumPaths:['/button','/direction','/type','/caret_position','/operation'],
+      ...(tool.descriptor.name===REQUEST_TOOL?{publicDescription:'Checks current-task computer access. Successful policy_allowed or presence_confirmed means continue the original task with the next tool. authorizationGranted:false only means later tools need their own Runtime/Policy checks; it does not mean this access step failed. Request access again only after expiry, revocation, or an explicit missing-access error.'}
+        :tool.descriptor.name==='computer.desktop.suggest_control'?{publicDescription:'Optional local Laya suggestion for choosing an observed control for a simple operation. Pass the current targetRef and operation after observing; it never performs an action or grants permission. The suggestion is valid only for that observation. Review or unavailable means use the original observation or observe again.'}:{}),
       available:async context=>!closed&&enabled&&state.available&&provider?.health().state==='ready'
         && !context.signal?.aborted && now()<Date.parse(context.deadline)
         && (tool.descriptor.name===REQUEST_TOOL || observationExportAllowed())}));},

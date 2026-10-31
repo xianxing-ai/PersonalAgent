@@ -144,6 +144,10 @@ export function createAgentArtsRuntimeApplication(
     && runtimeOptions.competitionToolAvailability !== undefined) {
     throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog requires explicit initial request mode');
   }
+  if(runtimeOptions.enableNewTaskToolContinuations && (responseMode!=='tool-proposal-json'
+    || initialRequestMode!=='goal-with-tools-json')) {
+    throw new ProtocolError('INVALID_ARGUMENT','New task continuations require the guarded Competition tool catalog');
+  }
   let application: RuntimeApplication;
   const cloud = new AgentArtsCloudAgentPort(
     {
@@ -199,6 +203,7 @@ export function createAgentArtsRuntimeApplication(
         // Without the durable identity a later observation read reports unknown_request.
       }
     },
+    runtimeOptions.enableNewTaskToolContinuations ? taskId => application.usesGoalContinuation(taskId) ? 'goal' : undefined : undefined,
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
     ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,

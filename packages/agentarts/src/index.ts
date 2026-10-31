@@ -23,6 +23,7 @@ export * from './coding-repair.js';
 export * from './harness-candidates.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
+export * from './workflow-voice-final-transcript.js';
 export {createProactiveHostProofs} from './proactive-host-proofs.js';
 export type {ProactiveHostProofBinding,ProactiveHostProofKind} from './proactive-host-proofs.js';
 export type {OwnedWorkflowAdvanceRequest, OwnedWorkflowAdvanceResult, WorkflowNodeContext,
@@ -51,6 +52,10 @@ export interface RoleReceipt {
   spanId?: string; startedAt?: string; endedAt?: string; durationMs?: number;
   durationScope?: 'model_gateway_complete'; event?: 'workflow_candidates';
   failureStage?: 'model_gateway' | 'response_shape' | 'response_json' | 'response_object';
+  /** Fixed response-shape metadata only; never model text or parser error messages. */
+  responseJsonShape?: 'object' | 'array' | 'fenced' | 'other';
+  responseJsonChars?: number;
+  responseStopReason?: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'other';
   stage?: 'candidate_response'; nodeId?: string; candidateCount?: number; candidateArrayDigest?: string;
   errorCode?: 'UNSUPPORTED_CAPABILITY' | 'EXTERNAL_FAILURE';
   candidatePreparation?: 'model_gateway' | 'deterministic_binding';
@@ -357,6 +362,7 @@ export class OwnedAgentOrchestrator {
     let durationMs: number | undefined;
     let durationScope: RoleReceipt['durationScope'];
     let failureStage: NonNullable<RoleReceipt['failureStage']> = 'model_gateway';
+    let jsonDiagnostic:Pick<RoleReceipt,'responseJsonShape'|'responseJsonChars'|'responseStopReason'>|undefined;
     const end = () => ({...span, endedAt: new Date().toISOString(),
       durationMs: Math.max(0, durationMs ?? performance.now() - spanStart), ...(durationScope ? {durationScope} : {})});
     this.emit({...span, status: 'started'});
@@ -387,13 +393,23 @@ export class OwnedAgentOrchestrator {
       failureStage='response_shape';
       if (result.response.kind !== 'final' || result.response.text.length > 16_000) throw new Error();
       failureStage='response_json';
-      const parsed: unknown = JSON.parse(result.response.text);
+      let parsed:unknown;
+      try {parsed=JSON.parse(result.response.text);}
+      catch(error) {
+        const trimmed=result.response.text.trimStart();
+        const responseJsonShape=trimmed.startsWith('```')?'fenced':
+          trimmed.startsWith('{')?'object':trimmed.startsWith('[')?'array':'other';
+        const stop=result.stopReason;
+        const responseStopReason=stop==='stop'||stop==='length'||stop==='content_filter'||stop==='tool_calls'?stop:'other';
+        jsonDiagnostic={responseJsonShape,responseJsonChars:result.response.text.length,responseStopReason};
+        throw error;
+      }
       failureStage='response_object';
       record(parsed);
       this.emit({...end(), status: 'completed', ...(result.usage?.totalTokens === undefined ? {} : {totalTokens: result.usage.totalTokens})});
       return parsed;
     } catch (error) {
-      this.emit({...end(), status: 'failed', failureStage});
+      this.emit({...end(), status: 'failed', failureStage,...(failureStage==='response_json'?jsonDiagnostic:{})});
       if (error instanceof ProtocolError) throw error;
       throw new ProtocolError('EXTERNAL_FAILURE', 'Agent role returned an invalid response');
     }

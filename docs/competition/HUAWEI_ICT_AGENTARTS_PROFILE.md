@@ -1,10 +1,14 @@
 # 华为 ICT 创新赛 AgentArts Competition Profile
 
+## 电脑操作限定增量（2026-10-27）
+
+按用户要求，Competition Desktop 可使用本机 Laya 对本任务已观察窗口中的有限控件提出可选建议；AgentArts 仍负责主编排，建议不执行操作、不授予权限，也不是云端失败后的 Local 回退。原任务的 Runtime、Policy、ToolGateway、目标时效、在场确认和独立读回仍分别生效。真实设备和平台完整闭环尚未验收，当前接线与证据边界见[接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
+
 ## 本轮限定修订（2026-10-22）
 
 用户在连接器闭环工作包中明确要求“连接器发生改动就通知主对话走 Laya 是否告知用户那条路”，并要求恢复默认桌面鹈鹕真实验收。本轮因此保留既有本机有界候选判断端口，用于邮件/天气提醒选择及默认编码修复原有判断；这是对下文 2026-10-18 “Competition 不调用 Laya”限制的限定修订。AgentArts 继续承担原云端编排，Laya 不授予权限、不接管工具执行、不成为云端失败后的回退 Agent。来源、Laya 实际决定、原主对话和最终通知回执分别验收，未满足的环节不能算通过。接线及边界见 [ADR-0035](../adr/0035-connector-change-triggers.md)。
 
-## 当前架构决定（2026-10-18）
+## 2026-10-18 架构决定（下文 Laya 限制已由本轮限定修订）
 
 Owner 已确认：Laya 仅能由独立 Local Profile 使用，当前仍是实验候选，不属于当前 Competition 产品路径。当前只实施 `huawei_ict_agentarts` Competition Profile；AgentArts 负责 Competition Agent/Workflow 的构建、编排、评估和部署，本地 Runtime 经 `CloudAgentPort` 调用已部署工作流。Competition 路径不调用 Laya，AgentArts 失败也不得静默回退到 Local Profile。本决定不表示候选方案已通过资格验证、外部比赛资格已获认可或真实平台端到端验收完成；既有回执只证明对应固定版本与场景。
 
@@ -170,7 +174,9 @@ Profile 是受信组合入口的部署选择，不作为模型输出字段，也
 5. 本地 Runtime 根据目标系统读回和 Evidence 决定 Task/Goal/World State 更新；云端状态不越权覆盖。
 6. Competition Profile 不允许因云端不可用而静默切换 Local Profile，避免 Demo 与证据不一致。
 
-## 6. 目标端口与当前状态
+## 6. 目标端口与历史状态
+
+本节表格保留早期交接时的状态快照；后续 Workflow 输入、记忆投影及有限真实读回见[当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)，不能以本节旧状态否定后续增量。`ToolExecutionPort` 是目标名称，当前使用 AgentToolPort、RuntimeToolInvoker 及 Policy/ToolGateway；同名独立稳定端口尚未交付，见[公共协议](../DEVELOPMENT_PROTOCOL.md)。
 
 以下端口是目标消费面。main 已包含 Coordination、CloudAgent、CoordinationStore、ToolExecution 和 provisional Memory/FactChangeFeed 的部分实现；未提供生产装配或完整真实验收的外部语义保持 `unavailable`：
 
@@ -185,7 +191,9 @@ Profile 是受信组合入口的部署选择，不作为模型输出字段，也
 
 端口形状、生产可用性和冻结状态以[当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)为准。本文件只固定 profile 架构，不提前冻结尚不存在的 TypeScript API。
 
-## 7. 优先实施顺序
+## 7. 早期实施顺序（历史）
+
+以下 PR、分支和未交付描述是当时的交接快照，不能作为当前开工或合并状态；当前任务入口见[路线图](../ROADMAP.md)和[接线清单](../modules/CURRENT_MOD_WIRING_HANDOFF.md)。真实平台、调用方及设备证据仍需按各自范围核验。
 
 1. 已冻结本 profile 的职责、数据边界、验收矩阵和演示场景；Local 只保留现有代码，不新增能力。
 2. main 已集成最小 `CoordinationPort`、`CloudAgentPort`、Fake 和离线审批工具循环；Workflow 输入仍在堆叠分支，接口保持 provisional。
@@ -198,7 +206,9 @@ Profile 是受信组合入口的部署选择，不作为模型输出字段，也
 
 工具数量不是首要指标；先完成一条真实、可解释、可复现的 Golden Path。
 
-## 8. 比赛验收矩阵
+## 8. 早期比赛验收矩阵（历史状态）
+
+以下保留原证据要求和早期状态，不替代后续有限版本的发布、调用及本机执行回执；当前限制与证据范围见[接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)和[路线图](../ROADMAP.md)。
 
 | 赛题要求 | 必须提供的证据 | 当前状态 |
 | --- | --- | --- |

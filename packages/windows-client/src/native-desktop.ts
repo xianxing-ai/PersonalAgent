@@ -59,6 +59,13 @@ const active=(context:DesktopCallContext,now:()=>number)=>{if(context.signal.abo
 export interface NativeDesktopOptions {
   executable?:string;artifactDirectory?:string;transport?:NativeDesktopTransport;attempts:DesktopControlAttempts;now?:()=>number;
   authorizePresence(input:{taskId:string;targetRef?:string;signal:AbortSignal;deadline:string}):Promise<boolean>;
+  /** Advisory only: supplied controls come from the original local observation. */
+  selectControl?(input:NativeDesktopControlChoiceInput):Promise<{state:'selected'|'review'|'unavailable';controlRef?:string}>;
+}
+export interface NativeDesktopControlChoiceInput {
+  taskId:string;targetRef:string;operation:'type'|'set_value'|'click'|'invoke'|'select'|'focus';
+  windowTitle:string;controls:readonly {ref:string;role:string;name:string;patterns:readonly string[]}[];
+  expiresAt:string;deadline:string;signal:AbortSignal;
 }
 export interface NativeDesktopArtifactRead {
   taskId:string;artifactId:string;sha256?:string;signal:AbortSignal;deadline:string;
@@ -74,7 +81,8 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
   const now=options.now??Date.now,transport=options.transport??(options.executable?createNativeDesktopTransport({executable:options.executable}):undefined);
   let state:'unavailable'|'disconnected'|'connecting'|'ready'|'stopped'|'blocked'|'disposed'=transport?'disconnected':'unavailable';
   let controller=new AbortController(),busy=false,generation=0;
-  const targets=new Map<string,{taskId:string;windowRef:string;windowRect:NativeDesktopArtifactMetadata['windowRect'];expiresAt:number;digest:string}>(),windows=new Map<string,{taskId:string;expiresAt:number}>(),ongoing=new Set<string>();
+  const targets=new Map<string,{taskId:string;windowRef:string;windowRect:NativeDesktopArtifactMetadata['windowRect'];expiresAt:number;digest:string;
+    windowTitle:string;controls:NativeDesktopControlChoiceInput['controls'];truncated:boolean}>(),windows=new Map<string,{taskId:string;expiresAt:number}>(),ongoing=new Set<string>();
   const artifacts=new Map<string,{metadata:NativeDesktopArtifactMetadata;file:string;generation:number;targetDigest:string;signal:AbortSignal}>();
   function artifactScope(input:NativeDesktopArtifactRead) {
     if(!input||typeof input!=='object'||Object.keys(input).some(key=>!['taskId','artifactId','sha256','signal','deadline'].includes(key))
@@ -212,7 +220,14 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
         const windowRect={x:bounds.x as number,y:bounds.y as number,width:bounds.width as number,height:bounds.height as number};
         for(const [key,value]of targets)if(value.taskId===context.taskId)targets.delete(key);
         if(targets.size>=64)throw new ProtocolError('REVISION_CONFLICT','目标观察容量已满');
-        targets.set(snapshot.targetRef,{taskId:context.taskId,windowRef:snapshot.windowRef,windowRect,expiresAt,digest:hash(canonical(snapshot))});windows.set(snapshot.windowRef,{taskId:context.taskId,expiresAt});
+        // Never pass control values, coordinates, or a model-supplied candidate list to the local chooser.
+        const controls=snapshot.controls.filter((item):item is Json=>object(item)&&item.enabled===true&&typeof item.ref==='string'
+          &&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(item.ref)
+          &&typeof item.role==='string'&&item.role.length<=64&&typeof item.name==='string'&&item.name.length<=256
+          &&Array.isArray(item.patterns)&&item.patterns.every(pattern=>typeof pattern==='string'&&pattern.length<=32))
+          .map(item=>({ref:item.ref as string,role:item.role as string,name:item.name as string,patterns:[...(item.patterns as string[])]}));
+        targets.set(snapshot.targetRef,{taskId:context.taskId,windowRef:snapshot.windowRef,windowRect,expiresAt,digest:hash(canonical(snapshot)),
+          windowTitle:typeof snapshot.window.title==='string'?snapshot.window.title.slice(0,256):'',controls,truncated:snapshot.truncated!==false});windows.set(snapshot.windowRef,{taskId:context.taskId,expiresAt});
         const verified=write&&object(value.verification)&&value.verification.state==='verified';
         return {source:'windows-native',state:verified?'verified':write?'action_observed':'observed',goalVerified:verified,
           snapshot:{...snapshot,expiresAt:new Date(expiresAt).toISOString()},...(write&&object(value.verification)?{verification:value.verification}:{})};
@@ -227,6 +242,49 @@ export function createWindowsNativeDesktopControlHost(options:NativeDesktopOptio
         if(error instanceof ProtocolError)throw error;throw new ProtocolError('EXTERNAL_FAILURE','原生电脑观察失败');
       }finally{busy=false;ongoing.delete(context.taskId);}
     }}));
+  if(options.selectControl){
+    const schema=obj({...target,operation:{enum:['type','set_value','click','invoke','select','focus']}},['targetRef','operation']);
+    const outputSchema=obj({source:{const:'windows-native'},state:{enum:['control_suggested','control_needs_review','control_assist_unavailable']},
+      goalVerified:{const:false},targetRef:uuid,controlRef:uuid},['source','state','goalVerified','targetRef']);
+    tools.push({descriptor:{name:'computer.desktop.suggest_control',version:NATIVE_DESKTOP_VERSION,
+      inputSchema:{...schema,description:'对本任务刚观察的窗口，请本机 Laya 从真实可用控件中建议适合指定简单操作的控件；只返回建议，不操作电脑、不授予权限。无建议时依据原观察继续或重新观察。'},
+      outputSchema,sideEffect:'read',requiredScopes:['computer:desktop:control'],idempotencySupport:false,recoverySupport:false,requiresPresence:true},
+      async execute(raw,original){
+        const input=structuredClone(raw) as Json;validateToolValue(schema,input);
+        const context={...original,scopes:[...original.scopes],signal:AbortSignal.any([original.signal,controller.signal])};
+        active(context,now);
+        if(state!=='ready'||!transport?.isReady())throw new ProtocolError('UNSUPPORTED_CAPABILITY','电脑控制尚未准备好');
+        if(busy)throw new ProtocolError('REVISION_CONFLICT','另一个电脑操作正在执行');
+        if(!context.authorizationRef||!context.scopes.includes('computer:desktop:control')||await options.authorizePresence({taskId:context.taskId,
+          targetRef:input.targetRef as string,signal:context.signal,deadline:context.deadline})!==true)throw new ProtocolError('UNAUTHORIZED','本任务电脑访问许可已失效');
+        active(context,now);
+        if(state!=='ready'||!transport.isReady()||busy)throw new ProtocolError('REVISION_CONFLICT','电脑状态已变化');
+        const ref=input.targetRef as string,seen=targets.get(ref),operation=input.operation as NativeDesktopControlChoiceInput['operation'];
+        if(!seen||seen.taskId!==context.taskId||seen.expiresAt<=now())throw new ProtocolError('UNAUTHORIZED','目标已过期或不属于本任务，请重新观察');
+        const required:Record<NativeDesktopControlChoiceInput['operation'],string[]>={type:['focus','value'],set_value:['value'],click:[],invoke:['invoke'],select:['select'],focus:['focus']};
+        const controls=seen.controls.filter(item=>required[operation].length===0||required[operation].some(pattern=>item.patterns.includes(pattern)));
+        const result=(stateValue:'control_suggested'|'control_needs_review'|'control_assist_unavailable',controlRef?:string)=>({source:'windows-native',state:stateValue,goalVerified:false,
+          targetRef:ref,...(controlRef?{controlRef}:{})});
+        if(seen.truncated||controls.length===0||controls.length>15||new Set(controls.map(item=>item.ref)).size!==controls.length)return result('control_needs_review');
+        busy=true;ongoing.add(context.taskId);
+        try{
+          const selected=await options.selectControl!({taskId:context.taskId,targetRef:ref,operation,windowTitle:seen.windowTitle,
+            controls:structuredClone(controls),expiresAt:new Date(seen.expiresAt).toISOString(),deadline:context.deadline,signal:context.signal});
+          active(context,now);
+          if(state!=='ready'||!transport.isReady()||targets.get(ref)!==seen||seen.expiresAt<=now()
+            ||await options.authorizePresence({taskId:context.taskId,targetRef:ref,signal:context.signal,deadline:context.deadline})!==true)
+            throw new ProtocolError('UNAUTHORIZED','选择期间目标或本机访问许可已变化');
+          active(context,now);
+          if(state!=='ready'||!transport.isReady()||targets.get(ref)!==seen||seen.expiresAt<=now())
+            throw new ProtocolError('UNAUTHORIZED','选择期间目标或本机访问许可已变化');
+          if(!selected||!['selected','review','unavailable'].includes(selected.state)
+            ||selected.state==='selected'&&(typeof selected.controlRef!=='string'||!controls.some(item=>item.ref===selected.controlRef))
+            ||selected.state!=='selected'&&selected.controlRef!==undefined)
+            throw new ProtocolError('EXTERNAL_FAILURE','本机控件建议无效');
+          return selected.state==='selected'?result('control_suggested',selected.controlRef):result(selected.state==='review'?'control_needs_review':'control_assist_unavailable');
+        } finally {busy=false;ongoing.delete(context.taskId);}
+      }});
+  }
   return {get tools(){return tools;},activeTasks:()=>[...ongoing],readScreenshotArtifact,readScreenshotArtifactMetadata,
     health:()=>({state,configured:!!transport,source:'windows-native',upstream:{version:NATIVE_DESKTOP_VERSION,license:'project'},targetIdentity:'native_os_guard',recoverySupport:false}),
     async start(context:DesktopCallContext){active(context,now);if(['blocked','disposed'].includes(state))throw new ProtocolError('UNSUPPORTED_CAPABILITY','原电脑操作尚未核实或组件已释放');

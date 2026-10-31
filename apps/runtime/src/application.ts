@@ -158,7 +158,8 @@ export type {ConnectorChangeOrigin,ConnectorChangeDecisionTaskOptions} from './a
 export * from './application/notification-host.js';
 export * from './application/proactive-workflow-session.js';
 export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
-export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions} from './application/owned-workflow-application.js';
+export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions,
+  RuntimeVoiceFinalTranscriptOptions} from './application/owned-workflow-application.js';
 export {createRuntimeOwnedWorkflowWorkerCapability,ownedWorkflowWorkerInputSchema,OWNED_WORKFLOW_WORKER_TOOL,
   OWNED_WORKFLOW_WORKER_VERSION} from './application/owned-workflow-worker-capability.js';
 export type {RuntimeOwnedWorkflowWorkerOptions,RuntimeOwnedWorkflowWorkerCapability,RuntimeF20Input} from './application/owned-workflow-worker-capability.js';

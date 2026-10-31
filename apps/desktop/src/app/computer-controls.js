@@ -22,7 +22,12 @@ const safeReason = (value, fallback) => typeof value === 'string' && value.trim(
   .replace(/\\\\[^\s\\]+\\[^\s"'<>，；。！？,;)\]}]+/gu, '[路径已遮蔽]')
   .replace(/(?<![:/\w])\/(?:[^/\s"'<>，；。！？,;)\]}]+\/)*[^/\s"'<>，；。！？,;)\]}]+/gu, '[路径已遮蔽]') : fallback;
 const phases = {configure:'保存设置',prepare:'准备组件',stop:'停止电脑输入',confirm:'确认在场',launch:'提交任务',
-  launch_receipt:'读取任务受理回执',status_readback:'读回电脑状态',open_conversation:'打开原对话'};
+  launch_receipt:'读取任务受理回执',status_readback:'读回电脑状态',open_conversation:'打开原对话',
+  probeConnectedBrowser:'检测现有浏览器扩展'};
+const connectedGuide = value => {
+  const guide = value?.browser?.connected?.guide ?? value?.browser?.connected?.extension?.guide;
+  return typeof guide === 'string' && guide.trim() ? safeReason(guide, '') : '';
+};
 const failureText = (error, phase) => {
   const code = error?.code ?? error?.errorCode;
   const errorCode = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : 'EXTERNAL_FAILURE';
@@ -55,9 +60,11 @@ export function mountComputerControls(root, invoke) {
     <p data-computer="status" role="status" aria-live="polite"></p>
     <p data-computer="provider" class="computer-controls-hint"></p>
     <p data-computer="browser" class="computer-controls-hint"></p>
+    <p data-computer="connected-guide" class="computer-controls-hint"></p>
     <p data-computer="failure" role="alert" aria-live="polite"></p>
     <div class="form-actions computer-controls-actions">
       <button type="button" class="btn" data-computer-action="prepare" disabled>准备 / 重试</button>
+      <button type="button" class="btn" data-computer-action="probe-connected" disabled>检测现有浏览器扩展</button>
       <button type="button" class="btn btn-danger" data-computer-action="stop" disabled>立即停止电脑输入</button>
       <button type="button" class="btn" data-computer-action="confirm" hidden disabled>确认本次在场</button>
       <button type="button" class="btn" data-computer-action="open" disabled>查看原对话</button>
@@ -96,10 +103,18 @@ export function mountComputerControls(root, invoke) {
       'windows-broker':'Windows 原生组件', 'windows-mcp':'兼容电脑组件', synthetic:'离线联调组件'}[state?.provider?.source];
     field('provider').textContent = !known ? '' : `本机操作：${state.providerAvailable ? '组件已连接' : '组件未就绪'}${source ? ` · ${source}` : ''}`;
     const browser = state?.browser;
-    field('browser').textContent = browser ? `浏览器操作：${browser.available === true ? '已准备' : '未就绪'}${browser.reason ? ` · ${safeReason(browser.reason, '请准备浏览器组件后重试')}` : ''}` : '';
+    const connected = browser?.connected;
+    field('browser').textContent = browser ? `独立浏览器：${browser.available === true ? '已准备' : '未就绪'}${browser.reason ? ` · ${safeReason(browser.reason, '请准备浏览器组件后重试')}` : ''}${connected ? `；现有浏览器：${safeReason(connected.reason, '需要 OpenCLI 扩展连接')}${connected.extension?.connected === true || connected.extension?.available === true ? ' · 扩展已连通' : connected.extension ? ' · 扩展未连通' : ''}` : ''}` : '';
+    const guide = connectedGuide(state);
+    field('connected-guide').textContent = !known ? ''
+      : connected?.extension?.connected === true || connected?.extension?.available === true || connected?.available === true
+        ? '现有浏览器扩展已连通；任务仍须原对话授权与在场确认。'
+        : guide || '安装应用依赖不会自动安装浏览器扩展。可点“检测现有浏览器扩展”查看连通结果。';
     field('failure').textContent = state?.failure ? failureText(state.failure, 'host') : '';
     button('prepare').disabled = !known || !state.enabled || Boolean(pending) || blocked() || unconfirmed
       || preparingStates.has(state.state) || busy() || state.waitingConfirmation;
+    button('probe-connected').disabled = !known || !state.enabled || Boolean(pending) || blocked() || unconfirmed
+      || preparingStates.has(state.state);
     button('stop').disabled = pending === 'stop' || !known && !pending && !unconfirmed
       || known && !state.enabled && !state.providerAvailable && !busy() && !state.waitingConfirmation && !pending && !unconfirmed && !launchUnknown;
     button('confirm').hidden = state?.waitingConfirmation !== true;
@@ -176,6 +191,7 @@ export function mountComputerControls(root, invoke) {
       return;
     }
     if (action === 'confirm') return run('confirm', {taskId: state.activeTaskId});
+    if (action === 'probe-connected') return run('probeConnectedBrowser', {});
     if (action === 'prepare' || action === 'stop') return run(action, {});
   }
   function submit(event) {
