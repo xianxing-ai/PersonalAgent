@@ -1,19 +1,35 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {OwnedWorkflowHostBridge,createWorkflowShadowReleaseService,createWorkflowShadowReleaseAdapter,
-  createWorkflowShadowReleaseReadbackAdapter} from '@personal-agent/agentarts';
+  createWorkflowShadowReleaseReadbackAdapter,createVoiceFinalTranscriptService,createVoiceFinalTranscriptAdapter}
+  from '@personal-agent/agentarts';
 import type {RegisteredTool} from '@personal-agent/contracts';
-import type {WorkflowShadowHostPolicy} from '@personal-agent/agentarts';
+import type {VoiceFinalTranscriptPort,WorkflowShadowHostPolicy} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
 
 export type RuntimeWorkflowShadowReleaseOptions=Parameters<typeof createWorkflowShadowReleaseService>[0]
   & {sideEffect:'local_write'|'external_write'};
 
-/** Both steps enter the existing ToolGateway. Missing ports remain unavailable in the service. */
-export function createRuntimeOwnedWorkflowTools(options:{shadowRelease?:RuntimeWorkflowShadowReleaseOptions}):RegisteredTool[] {
-  if(!options.shadowRelease)return [];
-  const {sideEffect,...configuration}=options.shadowRelease;
-  const service=createWorkflowShadowReleaseService(configuration);
-  return [createWorkflowShadowReleaseAdapter(service,{sideEffect}),createWorkflowShadowReleaseReadbackAdapter(service)];
+export type RuntimeVoiceFinalTranscriptOptions={
+  port:VoiceFinalTranscriptPort;
+  requiredScopes?:readonly string[];
+  now?:()=>number;
+};
+
+/** Host adapters enter ToolGateway only when their trusted ports are injected. Missing ports stay unregistered. */
+export function createRuntimeOwnedWorkflowTools(options:{
+  shadowRelease?:RuntimeWorkflowShadowReleaseOptions;
+  voiceFinalTranscript?:RuntimeVoiceFinalTranscriptOptions;
+}):RegisteredTool[] {
+  const tools:RegisteredTool[]=[];
+  if(options.shadowRelease) {
+    const {sideEffect,...configuration}=options.shadowRelease;
+    const service=createWorkflowShadowReleaseService(configuration);
+    tools.push(createWorkflowShadowReleaseAdapter(service,{sideEffect}),createWorkflowShadowReleaseReadbackAdapter(service));
+  }
+  if(options.voiceFinalTranscript?.port&&typeof options.voiceFinalTranscript.port.readFinal==='function') {
+    tools.push(createVoiceFinalTranscriptAdapter(createVoiceFinalTranscriptService(options.voiceFinalTranscript)));
+  }
+  return tools;
 }
 
 export interface RuntimeOwnedWorkflowHostOptions {

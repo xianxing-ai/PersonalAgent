@@ -8,7 +8,7 @@
 
 目标 `huawei_ict_agentarts`。本包登记当前工作包，不重新分配历史作者或 MOD；长期归属唯一来源是 [MODULE_ASSIGNMENTS](../MODULE_ASSIGNMENTS.md)。当前设计与全图状态分别见 [当前设计](../design/CURRENT_DESIGN_20261015.md)、[28 项状态](../design/WORKFLOW_STATUS_20261015.md)。旧模块验收保留日期和范围，不能代替当前调用方读回。
 
-当前 Competition Profile 由 AgentArts 负责 Agent/Workflow 的构建、编排、评估和部署；本机 Laya 仅为独立 Local Profile 的实验候选，不是当前 Competition 消费方。CW-01 暂不开展 Local 扩展；CW-03 与 CW-06 的 Competition 接线和验收不得依赖 Laya。下列 Laya 运行数据仅是历史实验回执。
+当前 Competition Profile 由 AgentArts 负责 Agent/Workflow 的构建、编排、评估和部署；本机 Laya 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，并可对当前已观察窗口的有限控件提出建议，边界见 [Competition Profile](HUAWEI_ICT_AGENTARTS_PROFILE.md)。独立 Local Profile 仍为实验候选，CW-01 暂不开展 Local 扩展；CW-03 的一般编排及 CW-06 的主影子比较不扩展为本机 Laya 的通用职责，上述有限场景仍按 Profile 执行。下列 Laya 运行数据仅是历史实验回执。
 
 ## 交付责任与事实基线
 
@@ -16,7 +16,7 @@
 
 每个 MOD 负责人自己完成：实现 → 公开契约/exports → 真实调用方接线 → 必要消费测试 → 实际状态/Evidence → 文档和 PR。根 composition 只协调共享配置、依赖与边界，不替所有人实现适配或集中验收。需动共享入口时由该工作包随交付补接线并协调串行编辑；不能以“等中央接入”为完成条件。不得新增 Runtime、调度器、授权层、任务库或模型 fallback。
 
-常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须明确记录授权、意见处置与保留分歧，不能冒充独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步主线、无冲突且阻断意见已处理后合并；不得强推、直接推 main 或绕过技术检查。四位协作者跨 PR 均衡承担实质审查与合并；自审不替代独立批准。本包不执行提交、推送或发布。
+常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner zemeng5208 对具体 PR 的审核例外须明确记录授权、意见处置与保留分歧，不能冒充独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步主线、无冲突且阻断意见已处理后合并；不得强推、直接推 main 或绕过技术检查。四位协作者跨 PR 均衡承担实质审查与合并；自审不替代独立批准。本包不执行提交、推送或发布。
 
 截至本次文档核对，[V3](TEST_IMAGE_V3.md)、[运行说明](TEST_IMAGE_V3_RUN.md)、[完整实测汇总](evidence/test-image-v3-20261015/full-workflow-results.json) 与 [发布回执](evidence/test-image-v3-20261015/owned-release.json) 分别证明：
 
@@ -26,7 +26,7 @@
 - 本机 Laya 这六次输入约 182–618ms，未达 150ms；未校准站点均实际升级 DeepSeek。经验复用不等于训练。
 - 原 28 图/185 节点仍保留并串行推进；图目录不证明 28 项业务真实闭环。本轮影子是专项串行双跑，日常机会/收益开关尚未真实验收。
 
-DeepSeek 经 AgentArts 新代理，平台底层 MaaS 来源如实保留；客户端不直接 fallback MaaS。本机 Laya 与百炼语音保留既有端口；本机 Laya 端口不属于当前 Competition 路径。SIS 本机短音频 ASR/同步 TTS 与经 AgentArts 双工是不同能力，后者仍未验。密钥、私人账户数据和机器私有绝对路径不进入本包。
+DeepSeek 经 AgentArts 新代理，平台底层 MaaS 来源如实保留；客户端不直接 fallback MaaS。本机 Laya 与百炼语音保留既有端口；Laya 的有限判断和电脑控件建议按本包开头及 Profile 所述范围执行，不授权、不执行工具、不作云失败回退。SIS 本机短音频 ASR/同步 TTS 与经 AgentArts 双工是不同能力，后者仍未验。密钥、私人账户数据和机器私有绝对路径不进入本包。
 
 ## 新的具体分工矩阵
 
@@ -36,14 +36,14 @@ DeepSeek 经 AgentArts 新代理，平台底层 MaaS 来源如实保留；客户
 | --- | --- | --- | --- |
 | CW-01 本机 Laya 可信回执桥；zemeng5208；28/30 | `packages/agentarts/src/workflow-decision-tool.ts`、`owned-workflow-host-bridge.ts`；`apps/agentarts-runtime/src/local-laya.mjs`、`laya-selector.mjs`、`adaptive-decision.mjs`；封存候选/原 task+revision+deadline → 选择/Evidence/可信回执 | 保留公开工具与本地权限边界；不接入当前 Competition Runtime 或扩大 Local Profile | todo；暂缓 Local Profile 扩展。现有代码和历史夹具保留；仅在 Local Profile 获得独立实施范围后再决定是否推进 |
 | CW-02 AgentArts 镜像、代理与平台；zemeng5208；29/30/32 | `apps/agentarts-runtime/`、`packages/agentarts/`、`tests/manual/agentarts/`；受信配置/CloudAgentPort 请求 → 版本/模型/trace/评估读回 | 本人接 main/server/image-services 到原 CloudAgentPort 与 Runtime，平台 MCP 调用仍交原 ToolExecutionPort；依赖 MOD05/06/08 的公开能力 | in_progress；SWR/云目录与代理已验，远端两条全链和平台知识/MCP/trace/评估各自仍缺专项证据；下一步在精确云版本执行一个已授权公开只读工具，记录平台请求与本地 Evidence 关联 |
-| CW-03 主动事件与持续责任；zemeng5208；27/28/30 | `packages/agentarts/src/proactive-workflows.ts`、Runtime `proactive-cognition-host.ts`/`proactive-workflow-session.ts`、镜像 `proactive-controller.mjs`；四入口 eventRefs/原话/Goal → retrieve/classify/teacher/action proposal | 本人把 ConnectorHost 持久 eventId、用户指令、子任务回执、原 Scheduler wake 接入签名 advance；依赖 goo 记忆/Runtime、Potatos 业务来源，不直读私库 | in_progress；真实 HTTP/SQLite fixture 已验，真实账号责任闭环未验；下一步选一个来源和一条明确用户责任接四入口，Competition 判断由 AgentArts 承担，Local Laya 不作为当前接线依赖 |
+| CW-03 主动事件与持续责任；zemeng5208；27/28/30 | `packages/agentarts/src/proactive-workflows.ts`、Runtime `proactive-cognition-host.ts`/`proactive-workflow-session.ts`、镜像 `proactive-controller.mjs`；四入口 eventRefs/原话/Goal → retrieve/classify/teacher/action proposal | 本人把 ConnectorHost 持久 eventId、用户指令、子任务回执、原 Scheduler wake 接入签名 advance；依赖 goo 记忆/Runtime、Potatos 业务来源，不直读私库 | in_progress；真实 HTTP/SQLite fixture 已验，真实账号责任闭环未验；下一步选一个来源和一条明确用户责任接四入口，AgentArts 承担云端编排，邮件/天气提醒选择的既有本机 Laya 有界判断按 Profile 保留 |
 | CW-04 上下文、知识与记忆；goo122；08/09 | `packages/knowledge/`、`memory/`、`learning/`、`plugins/obsidian/`、Runtime `knowledge-*`/`memory-*`；带权限 source/version/citation → 当前事实/历史/引用/受控写回 | 本人向主动 retrieve、Goal 和 Competition 提供 `KnowledgePort`/`MemoryQueryPort`/`FactChangeFeed` 适配及消费测试；本地 Wiki 与平台 knowledge provider 分开注册 | in_progress；本地历史验收可复用但当前主动真实引用/平台原生知识未验；下一步用公开非私人测试 Vault 串 source correction/retract → 主动引用失效 → 重取，平台缺适配保持 unavailable |
 | CW-05 无人值守及归来摘要；zemeng5208；28/30 | `proactive-workflows.ts`、Runtime `proactive-workflow-session.ts`、现 Desktop 控制消费方；enter/return/pause/cancel/实际设备状态 → done/changed/pending/blocked | 本人把会话控制接原 TaskRuntime checkpoint/atomic CAS 与 Scheduler；通知仅消费 Potatos 公开 host；本机离线 waiting_device，仅有真实 cloud_persistent port 才继续 | in_progress；重启、独立分支、return fixture 已验，关机后云持续执行未验；下一步接实际用户离开/回来命令，验证同 batch 重启无重复、归来不补弹，保持原 deadline |
 | CW-06 主影子选择与收益记录；zemeng5208；30/31 | `workflow-shadow-policy.ts`、`workflow-shadow-release.ts`、镜像 `shadow-controller.mjs`/`trace-replay.mjs`；同次选择 metadata/可信资源/历史 receipt → run/defer/skip/need_teacher、比较、签名结果 | 本人把所选候选 shadowPlan 接原 Engine/HostBridge 与原 checkpoint 历史；Competition 比较基于 AgentArts 实际模型/工作流来源；Local Laya 不作为 Competition 参与方，不额外起模型判断或调度器 | in_progress；专项串行双跑是历史实验，日常 sampling/真实收益机会开关未验；下一步接一个非专项 Competition 任务，记录同基线隔离及真实资源/质量，缺反事实明确 unknown，不把 run 当已执行 |
 | CW-07 任务分配与主控升级；zemeng5208；04B/31 | `packages/agents/`、`packages/agentarts/`、Runtime 公开子任务派发消费方；子任务绑定/实际状态/Evidence → continue/summary/notify_controller/request_controller | 本人复用 `createRuntimeSubagentDispatchTool` 与原 runAgent/ModelGateway；父子持久绑定、报告引用和 task.progress 通知接主任务等待端；测试 helper 不代替生产装配 | in_progress；delegation 离线边界已验，完整真实模型委派未验；下一步把已绑定 child 的报告读回接一个实际主控，旧版本冲突拒绝，teacher建议不新增权限 |
 | CW-08 业务连接器及来源持久性；Potatos498；20–26 | `packages/productivity/`、`packages/connectors/{calendar,mail,feeds,research,weather}/`、业务设置/展示；受限凭据/源变化/cursor → 规范事件/工具结果/读回 | 本人经 `register`/ConnectorHost 接原 Runtime tools、主动 event sink、业务 UI 和原 Scheduler；MOD05主动host公开端口由 goo维护，业务 source/provider/sink 接线仍由本人交付 | in_progress；各历史读回与当前 mock 分开，未选社交平台不自动开工；下一步逐来源交一个真实配置的增量批次→持久sink→cursor确认，断连/撤权/过期不能伪 no_changes |
 | CW-09 通知静默与频次；Potatos498；23 | `packages/notifications/`、Runtime `notification-host.ts` 及实际通知渠道消费方；当前用户 policy/revision/source → feed/额度预占/真实渠道回执 | 本人把 `NotificationService`/`createRuntimeNotificationHost` 接主动 notify、用户设置、现 Scheduler 和桌面 delivery/ack；不只交 status 工具 | in_progress；静默0send、跨channel并发quota、重启/unknown/归来 fixture 已验；实际系统横幅/音频与真实账号未验；下一步接一条实际设备通知及回执，设置立即生效，unknown先核实不重发 |
-| CW-10 语音询问与当前参数确认；zemeng5208；13/14/15 | `packages/voice/`、`voice-wake/`、Desktop voice/admin/preload及原 Runtime approval消费方；final transcript+revision+当前待确认参数 → 用户命令/原审批回执 | 本人经既有 IPC/Client 接原审批 revision/参数摘要与通知设置；partial/echo/silence/old final 不消费授权；provider/key只设置页，密钥不回Renderer | in_progress；百炼无mic握手、UI/IPC fixture已有证据，物理音频与生产final→通知设置桥未验；下一步在用户授权设备窗口验证一次当前参数询问→最终语音→原审批，SIS经AA缺流桥保持 unavailable |
+| CW-10 语音输入与受信控制；zemeng5208；13/14/15 | `packages/voice/`、`voice-wake/`、Desktop voice/admin/preload；final transcript+会话/control revision → 用户输入或控制命令 | 本人经既有 IPC/Client 接输入和通知设置；人工业务批准走原对话审批卡，完全访问按既有策略自动同意，语音不直接批准；partial/echo/silence/old final 不消费授权；provider/key只设置页，密钥不回Renderer | in_progress；百炼无mic握手、UI/IPC fixture已有证据，物理音频与生产final→通知设置桥未验；下一步在用户授权设备窗口验证输入/控制命令、物理释放与卡片审批边界，SIS经AA缺流桥保持 unavailable |
 
 ### 各包必要测试、真实验收与 Evidence
 
@@ -60,7 +60,7 @@ DeepSeek 经 AgentArts 新代理，平台底层 MaaS 来源如实保留；客户
 | CW-07 | `node --test --test-isolation=none tests/manual/agentarts/test-version-delegation.test.mjs` | 原parent-child绑定、progress引用、真实模型分配/高级主控建议、取消/终态/版本冲突；不能以Fake证明模型质量 |
 | CW-08 | `node --test --test-isolation=none apps/runtime/test/proactive-connector-host.test.mjs packages/connector-host/test/proactive.test.mjs` | 每个source/provider及真实工具分别记录cursor、幂等、失败/撤权/设备状态、Evidence和UI消费；业务各包测试见下方全MOD表 |
 | CW-09 | `node --test --test-isolation=none apps/runtime/test/notification-host.test.mjs packages/notifications/test/interruption.test.mjs` | 当前设置revision、窗口额度、跨channel同轮、静默feed与未读、投递/unknown读回；coverage文件区分realHost/fixture/physicalDevice |
-| CW-10 | `node --test --test-isolation=none apps/desktop/test/sis-config-wake-lifecycle.test.mjs apps/desktop/test/quit-task-preflight.test.mjs` | 真实final/当前参数与原approval版本、录音/播放释放、拒绝partial/echo/过期；需要物理设备证据，不把通知测试合成ledger当ASR实机 |
+| CW-10 | `node --test --test-isolation=none apps/desktop/test/sis-config-wake-lifecycle.test.mjs apps/desktop/test/quit-task-preflight.test.mjs` | 真实final/会话与control revision、录音/播放释放、拒绝partial/echo/过期；另核对语音不能消费业务审批，人工决定来自原卡片、完全访问按既有策略自动同意；需要物理设备证据，不把通知测试合成ledger当ASR实机 |
 
 ## 全 MOD 接线交付表
 

@@ -4,23 +4,23 @@
   "files": [
     {
       "path": "docs/design/workflow-architecture-20261013/index.html",
-      "sha256": "420789c782506b3650b25830c5febb8b6201c6c9f17bdd2f877d0fc92a6329a9"
+      "sha256": "9e9a18e85483cb496869cae1ffa64962e2975b03945a2b24a965f387fc1737a9"
     },
     {
       "path": "docs/design/workflow-architecture-20261013/DESIGN.md",
-      "sha256": "bfd0d67c6981f688e035f6e7b70fb7b28e64dfb375a045fc0aa40d1da2557388"
+      "sha256": "95b411c5229609e5d2c9bf4ece5d39d9c50e8fbb6807e99cbb23c0a98b0ac45b"
     },
     {
       "path": "docs/design/workflow-architecture-20261013/WORKFLOWS.md",
-      "sha256": "26e75fd0dd3f69ad595f6216fafc92e799e7a95fd6118743a8eac3e204671679"
+      "sha256": "f8b56ec2d9eb2f4ccbb9b3f36562d26cb429a7124815d0aaa9284f72314d10d0"
     },
     {
       "path": "docs/design/workflow-architecture-20261013/IMPLEMENTATION.md",
-      "sha256": "c5d483c21bba8223b2362e1b31d4d9b75d8d8afb2a82a66d897748ff87255de3"
+      "sha256": "ed637c29b6d83a276ef089f35536e43dc7cda2497818df388e8e42a0b491bf43"
     },
     {
       "path": "docs/design/workflow-architecture-20261013/MODULES.md",
-      "sha256": "a4be204de1e194bdacbbab516415b725acee6294d80486b8ad5ec1af3046ff6f"
+      "sha256": "36476df2e399a15f308f5608853f3c15fd659fceaac391db026b8e754d98aec1"
     },
     {
       "path": "docs/design/workflow-architecture-20261013/modules.json",
@@ -28,8 +28,8 @@
     },
     {
       "path": "docs/design/workflow-architecture-20261013/DOCUMENTATION_INVENTORY.md",
-      "sha256": "ab68b4d9c0c65b25aae4425e783ddf781fa6fabfe148d7749e4085685e46841a"
+      "sha256": "fbd0a0987f78162d4770b36cfd3858f67b002df6d3015525101cf65a35aa7f0f"
     }
   ],
-  "digest": "422c6dec607317a49aabedbd67452cc68116ca48e78662386c06a7fc31c194b9"
+  "digest": "b672041f4f1586089bf97e252e4d888a3a927cf9d27c6ed0d93b701567a29d4f"
 }

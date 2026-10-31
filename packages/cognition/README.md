@@ -3,13 +3,13 @@
 2026-10-25 本地复核结果与限制见 [验收记录](ACCEPTANCE-20261025.md)；本轮无 production 改动。
 
 <!-- current-design-20261009 -->
-> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
 目标profile：huawei_ict_agentarts。工程责任：MOD-28（zemeng5208）、MOD-36（goo122）、MOD-38（Potatos498）。产品流程：F01、F02、F03、F04、F05、F06、F07、F08、F09、F10、F11、F12、F13、F14、F15、F16、F17、F18、F19、F20、F21、F22、F23、F24、F25、F26、F27、F28；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。
 
-保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主；本机Laya判断仅适用于独立Local Profile实验候选，不属于Competition路径；仅资格验证通过的站点可直接决定，其他升级原受信teacher，消费责任、记忆/上下文、分派、恢复与影子语义建议；不由模型签发权限或写主终态。
+保留现有本机LayaInferencePort、typed_choice与batch-server单实例宿主；Competition 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，并允许对当前已观察窗口的有限控件提出建议，独立 Local Profile 仍是实验候选。仅资格验证通过的站点可直接决定，其他升级原受信teacher。责任、记忆/上下文、分派、恢复与影子等功能按当前公开端口及 AgentArts 编排分别接线，不据此扩大本机 Laya 的判断范围；模型不签发权限或写主终态。
 
 复用既有公开契约与宿主注册，将所列功能的节点输入/输出映射到实际能力，交付必要消费接线。
 

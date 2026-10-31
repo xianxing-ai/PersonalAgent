@@ -100,6 +100,18 @@ test('restart binding preserves an original Runtime unknown result and blocks th
   assert.equal(f.host.snapshot().recoveryTaskId,'task-1');assert.equal(f.host.snapshot().recoveryRunId,'run-1');
 });
 
+test('an interrupted read-only Laya suggestion does not masquerade as an unknown desktop input',async()=>{
+  const f=fixture();await f.host.start(context());
+  f.application.runtime.listTasks=()=>({items:[{taskId:'task-1'}]});
+  f.application.runtime.getTask=()=>({taskId:'task-1',state:'waiting_reconciliation'});
+  f.application.runtime.readToolExecutions=()=>[{taskId:'task-1',evidenceId:'run-1',inputDigest:'a'.repeat(64),
+    toolName:'computer.desktop.suggest_control',toolVersion:'1.0.0',policyDecision:'allow',executionStarted:true,state:'unknown'}];
+  f.host.bind(f.application);
+  assert.equal(f.host.snapshot().state,'ready');
+  assert.equal(f.host.snapshot().recoveryTaskId,undefined);
+  await f.host.close();
+});
+
 test('real persisted non-form unknown retains its original recovery task/run after active provider work is empty and restart',async()=>{
   const base=path.resolve('.cache/windows-control-recovery');await mkdir(base,{recursive:true});
   const directory=await mkdtemp(path.join(base,'case-')),database=path.join(directory,'runtime.sqlite');

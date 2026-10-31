@@ -123,7 +123,8 @@ export type {ConnectorChangeOrigin,ConnectorChangeDecisionTaskOptions} from './a
 export * from './application/notification-host.js';
 export * from './application/proactive-workflow-session.js';
 export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
-export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions} from './application/owned-workflow-application.js';
+export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions,
+  RuntimeVoiceFinalTranscriptOptions} from './application/owned-workflow-application.js';
 export {createRuntimeCodingRepairDispatchTool,runRuntimeCodingRepairWorkflow,readRuntimeCodingVerificationEvidence,
   CODING_REPAIR_WORKFLOW_TOOL,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './application/coding-repair-application.js';
 export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './application/coding-repair-application.js';
