@@ -106,6 +106,8 @@ import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
 import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-host.js';
 import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
 import {createWorkflowExportConsent} from './workflow-export-consent.js';
+import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
+import {createBusinessWorkflowAvailability} from './business-workflow-availability.js';
 import {createSystemObservationConversation} from './system-observation-conversation.js';
 import {createDesktopWindowsControlHost} from './windows-control-host.js';
 import {createComputerControlLease} from './computer-control-lease.js';
@@ -2495,6 +2497,7 @@ async function initializeRuntime() {
       const f20WorkflowWorkerPorts=agentArtsPinned&&codingWorkspace?.readF20CaseConfiguration
         ?createF20WorkflowWorkerPorts({getApplication:()=>runtimeApplication,codingWorkspace,runtimeModule,
           readHarnessVersions:()=>readDesktopHarnessVersions(),readReviewerIdentity:()=>localLaya?.readClassifierIdentity?.()}):undefined;
+      let prepareWorkflowToolExport;
       const authorizeWorkflowExport=createWorkflowExportConsent({getApplication:()=>runtimeApplication,
         confirmAuthorization:confirmApplicationAuthorization,readDeploymentBinding:()=>{
           const selected=agentArtsConfig.snapshot();
@@ -2509,11 +2512,19 @@ async function initializeRuntime() {
           readQuestionDelivery:(...args)=>liveVoice?.readQuestionDelivery(...args),askCurrentQuestion:()=>liveVoice?.askCurrentQuestion()},
         microphoneHost:{readCaptureReceipt:(...args)=>microphoneCaptureHost?.readCaptureReceipt(...args)},
         voiceCommandHost:{prepareApproval:(...args)=>voiceCommandHost?.prepareApproval(...args)}}):undefined;
+      const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[])],todoHost,notificationHost:notificationApplicationHost,
+        competitionToolExports:[...(todoHost?.competitionToolExports??[]),...(connectorConversationTools?.competitionToolExports??[])],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,
+        readBusinessAvailability:createBusinessWorkflowAvailability({namespace,getApplication:()=>runtimeApplication,todoHost,
+          notificationHost:notificationApplicationHost,readCalendarBinding:()=>calendarConfig?.binding(),
+          deviceAvailable:()=>!app.isQuitting&&Notification.isSupported()})}):undefined;
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
-        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...(workflowGraphComposition.tools??[]),...(f02Workflow?.tools??[]),
+        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...(workflowGraphComposition.tools??[]),
+        ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
@@ -2543,7 +2554,6 @@ async function initializeRuntime() {
       // → undefined → tools stay unregistered; never invent Fake ports here.
       const workflowShadowRelease = resolveDesktopWorkflowShadowRelease();
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
-      let prepareWorkflowToolExport;
       const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
         readApplication:()=>runtimeApplication,question:authorizationQuestionPort});
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
@@ -2552,7 +2562,7 @@ async function initializeRuntime() {
         delegateUserTasks: true,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
-        configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[])],
+        configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[])],
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
         ...(observationOptions?.observationAuthorization
           ? {observationAuthorization: observationOptions.observationAuthorization} : {}),

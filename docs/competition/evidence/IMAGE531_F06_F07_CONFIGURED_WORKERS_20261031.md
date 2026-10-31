@@ -3,6 +3,13 @@
 Profile: `huawei_ict_agentarts`. Worktree: `.worktrees/pr531-business`, branch `codex/pr531-business-20261031`.
 This is a reviewable wiring increment, not full IMAGE28 or PR #531 acceptance.
 
+Integration Main now supplies the original Todo/connector tools and exact export policies, the shared original preflight callback,
+and the same pinned AgentArts image as the other configured workers. Availability reads the actual Todo task lease,
+notification host/policy and OS support, or the current calendar account/revision; it does not grant access or claim delivery.
+After rebuilding Runtime, the integrated availability, factory and actual Runtime consumer tests passed 11/11.
+An initial run with stale local Runtime dist failed two cases; the unchanged tests passed after rebuilding the current source.
+Future reminders and real account/image/device acceptance remain separate unfinished work.
+
 ## Production composition
 
 `createBusinessWorkflowWorkerPorts()` in `apps/desktop/electron/business-workflow-worker-ports.js` returns
