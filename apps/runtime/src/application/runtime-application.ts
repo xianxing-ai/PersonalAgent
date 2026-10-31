@@ -2,6 +2,7 @@ import {ProtocolError, validateToolValue,validateContract} from '@personal-agent
 import {createHash,randomUUID} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
+import {assertWorkflowBusinessToolInvocation} from './workflow-business-tool-bridge.js';
 import {createRuntimeCodingDecisionTool} from './coding-decision-tool.js';
 import type {AgentToolPort} from '@personal-agent/agents';
 import type {SubtaskDefinition} from '@personal-agent/agents';
@@ -840,6 +841,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         if (this.localRepair) gateway.register(createLocalRepairTool(() => this.runtime, this.localRepair));
         return {list:()=>gateway!.list(),invoke:invocation=>{
+          assertWorkflowBusinessToolInvocation(this,invocation);
           let userPresent=false;try{userPresent=options.isUserPresent?.(invocation.taskId)===true;}catch{/* Missing presence is never inferred. */}
           return gateway!.invoke({...invocation,userPresent});
         }};

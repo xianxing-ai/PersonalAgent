@@ -209,3 +209,6 @@ export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,R
   RUNTIME_PROACTIVE_TOOL_VERSION,readPersistedRuntimeProactiveWorkflow} from './application/proactive-workflow-application.js';
 export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
   RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';
+export {createWorkflowBusinessToolBridge} from './application/workflow-business-tool-bridge.js';
+export type {WorkflowBusinessToolRequest,WorkflowBusinessToolResolution,WorkflowBusinessToolReceipt,
+  WorkflowBusinessToolReadback} from './application/workflow-business-tool-bridge.js';
