@@ -5,7 +5,7 @@
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
-Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。本机 Laya 仅为独立 Local Profile 实验候选，不属于 Competition 产品路径；本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行事实。具体 Laya 调用范围、外部比赛资格和端到端验收仍按实际 Evidence 核实。
+Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 Agent/Workflow 构建、编排、评估与部署。本机 Laya 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，独立 Local Profile 仍为实验候选；本地 Runtime/Policy/ToolGateway/Evidence 保留授权与执行事实。具体 Laya 调用范围、外部比赛资格和端到端验收仍按实际 Evidence 核实。
 
 2026-10-16 [Desktop/TLS 组合验收](../../docs/modules/MOD-06-PRODUCT-TLS-20261016.md) 已在实际 Electron/安全存储与默认 HTTPS fetch 上完成成功链路及四类拒绝场景；原生对话框响应仍为合成。#369 评审的 run 缓存上限修复 `bfcb1ab1` 已普通推送并传递至 #373；接口保持 provisional，当前 CI/非作者评审及集成状态以 GitHub 为准。
 
@@ -16,7 +16,7 @@ Competition Profile 经 CloudAgentPort 调用 AgentArts，由 AgentArts 承担 A
 服务/凭据/原生确认仍为合成，worker 的配置安全存储为显式 Fake；Evidence 保持 conditional。第三方服务身份、OAuth/令牌签发、真人确认与云端出口仍未验收。本增量只新增验证入口和测试夹具，不改变生产 Host/Runtime 或其 provisional 状态。
 
 <!-- current-design-20261009 -->
-> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 
 
 目标profile：huawei_ict_agentarts。工程责任：MOD-06（goo122）。产品流程：F21；逐节点流程见[WORKFLOWS](../../docs/design/workflow-architecture-20261013/WORKFLOWS.md)，主架构见[DESIGN](../../docs/design/workflow-architecture-20261013/DESIGN.md)，模块接线见[MODULES](../../docs/design/workflow-architecture-20261013/MODULES.md)。

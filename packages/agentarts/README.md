@@ -8,7 +8,7 @@
 
 2026-10-19～20：`owned-1.6` 区分初始派发与 continuation 用户答复提示，分开助手身份与内部执行角色，避免将问候/写作/上下文回忆默认生成执行报告；保留严格 JSON、ModelGateway 和执行门禁。宿主投影、最终八项真实测试及整仓检查限制见 [修复记录](../../docs/competition/CHAT_CONTINUATION_REPLY_20261019.md)。
 
-2026-10-14 增量：生产镜像注入公开进程内 `OwnedCandidateSelector`，普通结果、World/Plan KEEP/RECHECK 及修复终审候选由唯一镜像内 Laya 最后选取 `proposal` 或 `review`。候选先经过既有严格来源/Schema 校验，Laya 只返回有限标识，不产生长文、权限、Evidence 或任务终态。既有构造器前三参数保持兼容；不注入选择器的历史调用不是新的嵌入 Laya 比赛配置。
+2026-10-14 历史增量：当时的镜像实验注入公开进程内 `OwnedCandidateSelector`，普通结果、World/Plan KEEP/RECHECK 及修复终审候选由唯一镜像内 Laya 最后选取 `proposal` 或 `review`。候选先经过既有严格来源/Schema 校验，Laya 只返回有限标识，不产生长文、权限、Evidence 或任务终态。既有构造器前三参数保持兼容；此历史实验不作为当前 Competition 全域模型职责，现行有限场景以 [Competition Profile](../../docs/competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 为准。
 
 可选第五参数接 `OwnedWorkflowEngine`；`getOwnedWorkflowCatalog/getOwnedWorkflowTemplate/invokeOwnedWorkflow` 公布并推进 F01–F28 的独立版本图。`prepareOwnedWorkflowCandidates` 复用现有角色 ModelGateway 制备候选数据，然后由相同选择器选择；真实 Host、工具和回执验证仍须独立注入。不新建任务库或公共 task wire，详细行为及缺口见自有工作流模块文档和镜像 README。目录/离线测试不证明真实 28 功能闭环。
 
@@ -25,7 +25,7 @@ World/Plan独立阶段返回 role_report；Review/Controller 返回 application_
 [镜像绑定说明](../../docs/competition/OWNED_IMAGE_BINDINGS.md)。
 
 <!-- current-design-20261009 -->
-> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 须取得一名合资格非作者对当前 head 的有效批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
+> 当前设计与协作入口（2026-10-17）：[当前详细设计](../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 
 `OwnedAgentOrchestrator` 只负责云端语义编排，复用 ModelGateway 和现有严格
 Coordination parser。普通目标走 fast，合法修复走 world → plan → review；
