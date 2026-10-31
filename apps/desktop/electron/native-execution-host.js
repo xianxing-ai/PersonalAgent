@@ -6,7 +6,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const blocked=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前外部进程隔离后端或原授权不可用，未降级为普通进程');};
 const external=name=>['workspace.run_allowed_command','workspace.node_check','workspace.npm_build','workspace.npm_test',
-  'workspace.git_diff_check','coding.repair.verify','coding.repair.check','workflow.host.f15_n05'].includes(name);
+  'workspace.git_diff_check','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
 const identity=value=>{const target=realpathSync.native(value),stat=statSync(target,{bigint:true});
   return [target,String(stat.dev),String(stat.ino),String(stat.birthtimeNs)];};
 
@@ -68,6 +68,12 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   }
   function createCommandTool(options){
     const root=realpathSync.native(options.rootPath),rootIdentity=identity(root);
+    // Main may add immutable compiler/support directories; tool input cannot supply them.
+    const {trustedReadRoots=[],...commandOptions}=options;
+    if(!Array.isArray(trustedReadRoots)||trustedReadRoots.length>4)blocked();
+    const supportRoots=trustedReadRoots.map(value=>{const target=realpathSync.native(value),relative=path.relative(root,target);
+      if(!statSync(target).isDirectory()||path.dirname(target)===target||relative!== '..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))blocked();
+      return {path:target,identity:digest(identity(target))};});
     const fixedRecipes=options.recipes.map(recipe=>({executable:realpathSync.native(recipe.executable),args:[...(recipe.args??[])]}));
     const executables=[...new Set(fixedRecipes.map(recipe=>recipe.executable))];
     const executor={async execute(request){
@@ -75,9 +81,10 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertBinding});
       return actual.execute(request);
     }};
-    return coding.createWorkspaceCommandTool({...options,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
+    return coding.createWorkspaceCommandTool({...commandOptions,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
       bind(context,executionDeadline){
-        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry||digest(identity(root))!==digest(rootIdentity))blocked();
+        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry||digest(identity(root))!==digest(rootIdentity)
+          ||supportRoots.some(value=>digest(identity(value.path))!==value.identity))blocked();
         const policy=question.readExecutionPolicy(entry);
         const binding={sandboxRef:policy.ref,revision:policy.revision,taskId:context.taskId,runId:context.runId,
           authorizationRef:context.authorizationRef,argumentsDigest:context.argumentsDigest,deadline:executionDeadline};
@@ -91,7 +98,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           &&recipe.args[0]==='--cwd'&&recipe.args[1]===root&&recipe.args[2]==='--exe'
           &&recipe.args[3]===node&&recipe.args[4]==='--');
         const allowedExecutables=usesNodeChild?[...new Set([...executables,node])]:executables;
-        const roots=[systemRoot,...allowedExecutables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath)];
+        const roots=[systemRoot,...allowedExecutables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath),...supportRoots.map(value=>value.path)];
         const profile={sandboxRef:policy.ref,revision:policy.revision,mode,backend:mode==='full-access'?'none':'windows-psec',
           readRoots:[...new Set([...roots,...(mode==='workspace-write'?[]:[root])])],
           writeRoots:mode==='workspace-write'?[root]:[],executableAllowlist:allowedExecutables,

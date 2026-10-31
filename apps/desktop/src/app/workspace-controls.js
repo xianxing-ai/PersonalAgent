@@ -18,6 +18,12 @@ export function mountWorkspaceControls(root, invoke) {
     <p class="notice">选择目录和运行组件只保存配置。读取、写入、受限命令和结果出机的具体范围，会在执行请求的对话提问卡一次确认，无需在设置重复允许。</p>
     <p class="notice">项目构建和测试会运行工作区代码。是否具备隔离能力以可信宿主报告的沙箱为准；组件未就绪不能通过卡片放行，每次执行仍经原 Policy 校验。</p>
     <button class="btn" type="button" data-workspace="revoke">撤销工作区授权</button>
+    <h3>API 文档检查</h3>
+    <p class="notice">选择 TypeScript 契约、实现和目标文档。示例在隔离目录进行类型检查，结果为待审文档候选；每次读取、执行与发送仍在原任务确认。</p>
+    <p class="notice" data-workspace="f20-state"></p>
+    <label>案例标识 <input data-workspace="f20-ref" autocomplete="off" maxlength="128" placeholder="api-docs"></label>
+    <label>文档模板 <textarea data-workspace="f20-template" rows="3" maxlength="4096" placeholder="描述参数、返回值和与实现一致的示例"></textarea></label>
+    <button class="btn" type="button" data-workspace="f20-configure">选择契约、实现和文档</button>
     <h3>独立补丁审核</h3>
     <p class="notice">由本机选择独立审核者的公钥与签名目录。确认独立性只表示用户确认，不证明审核者身份；补丁不会自动发送。</p>
     <p class="notice" data-workspace="review-state"></p>
@@ -60,6 +66,7 @@ export function mountWorkspaceControls(root, invoke) {
     field('revoke').disabled = busy || (!configured && state.cloudExportAllowed !== true);
     field('review-configure').disabled=busy||state.independentReview?.canConfigure!==true;
     field('review-revoke').disabled=busy||state.independentReview?.configured!==true;
+    field('f20-configure').disabled=busy||!configured||state.nodeConfigured!==true;
     updateStatus();
   }
 
@@ -84,6 +91,7 @@ export function mountWorkspaceControls(root, invoke) {
       ? `npm 文件：${state.npmCliConfigured === true ? '已确定' : '未找到，可手动选择'} · ${projectReady && !projectCommands.length ? '项目命令信息待读回' : `项目${projectDescription || '命令'}：${projectReady ? '可授权' : '暂不可用'}`}${typeof state.projectReason === 'string' && state.projectReason ? ` · ${state.projectReason}` : ''}`
       : '选择工作区后才会检查项目构建和测试是否可用。';
     const review=state.independentReview??{};
+    field('f20-state').textContent=state.f20?.configured===true?`已配置案例：${state.f20.inputRef}；运行条件会在任务执行时核对。`:'文档检查案例尚未配置。';
     field('review-state').textContent=review.installed===true
       ? `审核者：${review.reviewerId} · 策略：${review.policyId} · 独立性：用户确认 · 签名验证已接入`
       : review.configured===true?'已配置，但原任务绑定或本机展示尚不可用。':'独立审核尚未配置或当前不可用。';
@@ -144,6 +152,8 @@ export function mountWorkspaceControls(root, invoke) {
   field('review-configure').addEventListener('click',()=>run('coding.review.configure',{
     reviewerId:field('reviewer-id').value,policyId:field('review-policy').value}));
   field('review-revoke').addEventListener('click',()=>run('coding.review.revoke'));
+  field('f20-configure').addEventListener('click',()=>run('coding.f20.configure',{
+    inputRef:field('f20-ref').value.trim(),docTemplate:field('f20-template').value,recipeId:'f20-typescript-sample'}));
 
   render();
   return {render,show:visible=>{section.hidden=!visible;if(!visible) restoreFocus=false;}};

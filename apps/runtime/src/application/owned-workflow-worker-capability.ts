@@ -135,8 +135,6 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
     if(!state){state={version:1,sessionId:randomUUID(),controlRevision:0,bindingId:options.image.bindingId,sequence:0,
       input:structuredClone(input),receipts:[],resolvedValues:{},confirmedHost:{},evidenceRefs:[],timings:[]};context.saveCheckpoint(key,state);}
     if(!isDeepStrictEqual(state.input,input))fail('REVISION_CONFLICT','Original workflow input changed');
-    if(await options.authorizeExport({...scope,stage:'initial',inputRef,value:structuredClone(input)})!==true)
-      fail('UNAUTHORIZED','Exact F20 input export was denied');active(scope);
     const secret=await options.image.receiptSecret(scope.signal);active(scope);
     const host=createRuntimeOwnedWorkflowHost(application,{receiptSecret:secret,parentTaskId:scope.taskId,
       assertActive:(id,revision)=>{active(scope);if(id!==scope.taskId||revision!==state!.controlRevision)fail('REVISION_CONFLICT','Original workflow control changed');}});
@@ -223,6 +221,8 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
         state.evidenceRefs=[...new Set([...state.evidenceRefs,...receipt.evidenceRefs])];delete state.waiting;context.saveCheckpoint(key,state);
       }
     }
+    if(await options.authorizeExport({...scope,stage:'initial',inputRef,value:structuredClone(input)})!==true)
+      fail('UNAUTHORIZED','Exact F20 input export was denied');active(scope);
     const bridge={submit:(request:Parameters<typeof host.submit>[0],item:Parameters<typeof host.submit>[1])=>{
       if(item.kind!=='tool_proposal')fail('UNSUPPORTED_CAPABILITY','Workflow host adapter is unavailable');
       if(item.nodeId==='F20_N01'&&item.toolName==='workspace.read_text') {

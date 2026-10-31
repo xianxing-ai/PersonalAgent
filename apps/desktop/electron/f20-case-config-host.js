@@ -45,6 +45,8 @@ export function createF20CaseConfiguration({userData,safeStorage,readWorkspace})
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 case or fixed recipe is unavailable');
     if(value.recipeId==='node-check'&&workspace.checkFile!==value.codeFile)
       throw new ProtocolError('UNAUTHORIZED','F20 Node recipe must check the selected code file');
+    if(value.recipeId==='f20-typescript-sample'&&!value.schemaFile.endsWith('.ts'))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 TypeScript sample checking requires a TypeScript contract');
     sourceFile(workspace.rootPath,value.schemaFile);sourceFile(workspace.rootPath,value.codeFile);
   }
   function current() {

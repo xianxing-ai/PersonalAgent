@@ -17,6 +17,7 @@ import {createRuntimeWikiImportHost} from './wiki-import.js';
 import type {RuntimeWikiImportOptions,RuntimeWikiImportHost} from './wiki-import.js';
 import {createAgentArtsWikiModel} from './wiki-image-adapter.js';
 import type {RuntimeConfiguredWorkflowOptions} from './configured-workflow-worker.js';
+import {runtimeOwnedWorkflowWorkerConfigured,type RuntimeOwnedWorkflowWorkerOptions} from './owned-workflow-worker-capability.js';
 import {
   createAgentArtsObservationHost,
   type AgentArtsObservationAuthorization,
@@ -81,6 +82,7 @@ export interface AgentArtsRuntimeApplicationOptions
   f09WorkflowWorkerPorts?: Omit<RuntimeF09WorkflowWorkerOptions,'image'>;
   /** Trusted per-graph ports share the fixed AgentArts image; absent deployment stays unavailable. */
   configuredWorkflowWorkerPorts?: readonly Omit<RuntimeConfiguredWorkflowOptions,'image'>[];
+  f20WorkflowWorkerPorts?: Omit<RuntimeOwnedWorkflowWorkerOptions,'image'>;
   fetchHandlesHostAuthorization?:true;
   wikiImport?:RuntimeWikiImportOptions;
   /** Trusted observation read-back authorization; real reads need an AK/SK signer,
@@ -132,6 +134,7 @@ export function createAgentArtsRuntimeApplication(
     readOwnedWorkflowReceiptSecret,
     f09WorkflowWorkerPorts,
     configuredWorkflowWorkerPorts,
+    f20WorkflowWorkerPorts,
     fetchHandlesHostAuthorization,
     wikiImport,
     observationAuthorization,
@@ -217,6 +220,8 @@ export function createAgentArtsRuntimeApplication(
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
     ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,
+      ...(f20WorkflowWorkerPorts?{assertWorkflowCurrent:(request:import('@personal-agent/agentarts').OwnedWorkflowAdvanceRequest)=>{
+        if(request.workflowId==='F20')f20WorkflowWorkerPorts.assertCurrent({taskId:request.taskId,deadline:request.taskDeadline??request.deadline,signal:request.signal});}}:{}),
       ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),
       ...(transport===undefined?{}:{transport}),...(websocketUrl===undefined?{}:{websocketUrl}),
       ...(allowHttpsFallback===undefined?{}:{allowHttpsFallback}),...(websocketAuthorizationProvider?{websocketAuthorizationProvider}:{}),
@@ -235,6 +240,7 @@ export function createAgentArtsRuntimeApplication(
     ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),...(invokeMode?{invokeMode}:{}),
     ...(workflowGoalInput?{workflowGoalInput}:{})}):undefined;
   const wikiHost=wikiImport&&wikiModel?createRuntimeWikiImportHost({...wikiImport,model:wikiModel}):undefined;
+  const f20FromPorts=ownedImage&&f20WorkflowWorkerPorts?{...f20WorkflowWorkerPorts,image:ownedImage}:undefined;
   application = createRuntimeApplication({
     ...runtimeOptions,
     ...(wikiHost?{tools:[...(runtimeOptions.tools??[]),...wikiHost.tools],
@@ -245,6 +251,7 @@ export function createAgentArtsRuntimeApplication(
     ...(runtimeOptions.codingRepair?{}:ownedImage?{codingRepair:{image:ownedImage}}:{}),
     ...(f09WorkflowWorker?{f09WorkflowWorker}:{}),
     ...(configuredWorkflowWorkers.length?{configuredWorkflowWorkers}:{}),
+    ...(runtimeOptions.ownedWorkflowWorker?{}:runtimeOwnedWorkflowWorkerConfigured(f20FromPorts)?{ownedWorkflowWorker:f20FromPorts}:{}),
     ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.

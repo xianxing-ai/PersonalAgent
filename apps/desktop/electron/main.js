@@ -123,6 +123,7 @@ import {createRemoteMcpManagement} from './remote-mcp-management.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createPublicReferenceQuestionConsent} from './public-reference-question.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
+import {createF20WorkflowWorkerPorts} from './f20-workflow-worker-ports.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
@@ -2484,6 +2485,9 @@ async function initializeRuntime() {
         getApplication:()=>runtimeApplication,feedsHost,
         readHarnessVersions:()=>readDesktopHarnessVersions(),
       }):undefined;
+      const f20WorkflowWorkerPorts=agentArtsPinned&&codingWorkspace?.readF20CaseConfiguration
+        ?createF20WorkflowWorkerPorts({getApplication:()=>runtimeApplication,codingWorkspace,runtimeModule,
+          readHarnessVersions:()=>readDesktopHarnessVersions(),readReviewerIdentity:()=>localLaya?.readClassifierIdentity?.()}):undefined;
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
@@ -2527,6 +2531,7 @@ async function initializeRuntime() {
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
+        ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
         ...(voiceFinalTranscript ? {voiceFinalTranscript} : {}),
         ...(observationOptions?.observationAuthorization
@@ -2541,6 +2546,7 @@ async function initializeRuntime() {
         readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
         ...(codingWorkspace.harnessRepairHost&&typeof codingWorkspace.readHarnessCandidateContext==='function'?{
           harnessCandidates:{host:codingWorkspace.harnessRepairHost,
+            readF20WorkspaceRef:scope=>codingWorkspace.readF20WorkspaceRef(scope),
             readContext:(context,scope)=>codingWorkspace.readHarnessCandidateContext(context,scope),
             reconcileOriginalSession:input=>codingWorkspace.reconcileHarnessOriginalSession(input)},
         }:{}),

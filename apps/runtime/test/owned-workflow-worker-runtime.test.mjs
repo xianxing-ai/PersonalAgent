@@ -3,15 +3,22 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
+import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
+import {createRuntimeCodingDecisionTool} from '../dist/application/coding-decision-tool.js';
+import {f20ReviewContext,verifyF20ReviewCompletion} from '../dist/application/f20-trial-binding.js';
 import {createRuntimeApplication,createDesktopSubagentDispatchTool,OWNED_WORKFLOW_WORKER_TOOL} from '../dist/application.js';
 
 // Synthetic image and workspace; Runtime, Policy, Gateway and host children are real.
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-function fixture({configured=true,unknown=false,unknownSource=false,replaceSample=false,denyExport=false,denyFrontier=false}={}) {
-  let app;const calls=[],cloud=[],advances=[];
+function fixture({configured=true,unknown=false,unknownSource=false,replaceSample=false,denyExport=false,denyFrontier=false,typedReview=false,replaceReview=false}={}) {
+  let app;const calls=[],cloud=[],advances=[],reviews=[];
   const caseInput={schemaFile:'schema.json',codeFile:'api.ts',recipeId:'check-api',docTemplate:'template',targetDoc:'docs/api.md',sourceVersion:'fixture-v1'};
   const candidate={version:1,docMarkdown:'# Fixture API',sampleSnippet:'export const example = true;'};
-  const decisionArgs=nodeId=>({context:JSON.stringify({workflowId:'F20',nodeId,candidateValues:[{id:'synthetic-candidate',value:candidate}]})});
+  const decisionArgs=nodeId=>({context:JSON.stringify({workflowId:'F20',nodeId,candidateValues:[{id:'synthetic-candidate',
+    value:replaceReview&&nodeId==='F20_N04'?{...candidate,docMarkdown:'substituted'}:candidate},
+    ...(typedReview?[{id:'owned-review',value:{},abstain:true}]:[])]}),...(typedReview?{requestId:nodeId,
+      candidates:[{id:'synthetic-candidate',description:'Review original candidate against original sources'},
+        {id:'owned-review',description:'Unsupported or uncertain; abstain'}]}:{})});
   const tool=(name,sideEffect,properties,required,execute)=>({descriptor:{name,version:'1.0.0',sideEffect,
     requiredScopes:['synthetic:f20'],inputSchema:{type:'object',properties,required,additionalProperties:false},outputSchema:{type:'object'},
     idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async(args,context)=>{
@@ -25,6 +32,12 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
       ['candidateId','patches','recipeIds'],(args,context)=>{
       if(unknown)throw new ProtocolError('RESULT_UNKNOWN','Synthetic trial result is unknown');
       const parent=app.runtime.loadCheckpoint(context.taskId,'coding-repair:parent');
+      const actualBinding=app.readF20TrialBinding(context);
+      assert.equal(actualBinding.ownerTaskId,parent.taskId);
+      assert.equal(actualBinding.candidateId,args.candidateId);
+      assert.equal(actualBinding.samplePath,'api.ts.f20-sample.ts');
+      assert.match(actualBinding.sourceDigest,/^[a-f0-9]{64}$/);
+      assert.throws(()=>app.readF20TrialBinding({...context,runId:'another-run'}),{code:'UNAUTHORIZED'});
       return {binding:{version:1,taskId:parent.taskId,trialTaskId:context.taskId,candidateId:args.candidateId,artifactId:'fixture-artifact',
         workspaceId:'fixture-workspace',sessionId:'fixture-session',baselineSnapshotId:'fixture-baseline',inputDigest:hash('source'),
         configurationDigest:hash('configuration'),workflowVersion:'fixture-v1',runtimeVersion:'fixture-v1',recipeFingerprint:hash('recipe'),
@@ -35,6 +48,17 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
           runId:'fixture-verify',packageIds:[],files:[],evidenceRefs:[context.runId],diagnostics:[]}]}};})];
   tools.unshift(createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,scoped)=>app.runDefaultSubagentWorker(subtask,worker,scoped)}));
+  if(typedReview){
+    const decision=createRuntimeCodingDecisionTool({readContext:(context,original)=>f20ReviewContext(app,context,original),
+      save:(key,receipt)=>app.runtime.saveCheckpointOnce(receipt.taskId,key,receipt),localChooser:{choose:async input=>{
+        reviews.push(input.context);return {state:'selected',eligibleForRuntime:true,selected:{id:'synthetic-candidate',revision:1},reason:'selected',calibrated:false,
+          scores:input.candidates.map(value=>({candidate:{id:value.id,revision:value.revision},probability:null})),
+          receipt:{id:toolArgumentsDigest({context:input.context,candidates:input.candidates}),promptVersion:'action-choice-v1',
+            contextDigest:createHash('sha256').update(input.context).digest('hex'),
+            candidates:input.candidates.map(value=>({candidate:{id:value.id,revision:value.revision},digest:toolArgumentsDigest(value)}))}};}}});
+    tools[tools.findIndex(tool=>tool.descriptor.name==='decision.choose_candidate')]={...decision,execute:(args,context)=>{
+      calls.push({name:decision.descriptor.name,args,taskId:context.taskId,runId:context.runId});return decision.execute(args,context);}};
+  }
   const image={bindingId:'synthetic-f20-image',receiptSecret:async()=> 'synthetic-receipt-secret-at-least-32-chars',advance:async request=>{
     advances.push(request.requestId);const phase=request.checkpoint?Number(request.checkpoint):0;
     const [name,node,args]=phase===0?['workspace.read_text','F20_N01',{path:'schema.json'}]
@@ -51,7 +75,8 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
   }};
   const ownedWorkflowWorker={image,available:()=>true,assertCurrent:()=>{},assertFrontier:()=>!denyFrontier,authorizeExport:async()=>!denyExport,
     resolveInput:async()=>caseInput,
-    verifyCompletion:async({sourceReads,read})=>{
+    verifyCompletion:async request=>{const {sourceReads,read}=request;
+      if(typedReview)assert.equal(verifyF20ReviewCompletion(app,request),true);
       assert.ok(sourceReads.some(item=>item.confirmed.result.path==='schema.json'));
       assert.ok(sourceReads.some(item=>item.confirmed.result.path==='api.ts'));
       assert.ok(sourceReads.filter(item=>item.confirmed.result.path==='schema.json').some(item=>item.commandId!==read.commandId));
@@ -67,7 +92,7 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
-  return {app,calls,cloud,advances,caseInput};
+  return {app,calls,cloud,advances,caseInput,reviews};
 }
 async function drive(f,client,taskId,{onApproval}={}) {
   for(let attempt=0;attempt<600;attempt++) {
@@ -95,6 +120,22 @@ test('actual Runtime reads both sources and resumes original graph host approval
     assert.ok(f.cloud.some(request=>request.taskId===child.taskId&&request.availableTools?.some(tool=>tool.name===OWNED_WORKFLOW_WORKER_TOOL)));
     assert.ok(f.cloud.some(request=>request.taskId===child.taskId&&request.continuation?.result?.published===false));
     assert.equal(f.advances.length,5);assert.equal(f.app.readSubagentTasks(child.taskId).length,0);
+  }finally{f.app.close();}
+});
+test('F20 semantic review uses the original local sources and trial with a bound typed decision receipt',async()=>{
+  const f=fixture({typedReview:true}),{client,task}=await submit(f);try{
+    const child=await drive(f,client,task.taskId);assert.equal(child.state,'succeeded',JSON.stringify(child.error));
+    const review=JSON.parse(f.reviews.at(-1));
+    assert.equal(review.originalCandidate.docMarkdown,'# Fixture API');
+    assert.ok(review.originalSources.some(source=>source.path==='schema.json'));
+    assert.ok(review.originalSources.some(source=>source.path==='api.ts'));
+    assert.equal(review.originalTrial.binding.trialTaskId,f.calls.find(call=>call.name==='coding.repair.trial').taskId);
+  }finally{f.app.close();}
+});
+test('F20 refuses a replaced document before semantic review or completion',async()=>{
+  const f=fixture({typedReview:true,replaceReview:true}),{client,task}=await submit(f);try{
+    const child=await drive(f,client,task.taskId);assert.equal(child.state,'failed');
+    assert.equal(f.reviews.length,1,'only original N02 selection reached the local model');
   }finally{f.app.close();}
 });
 test('missing F20 provider is not advertised in Runtime catalog',async()=>{

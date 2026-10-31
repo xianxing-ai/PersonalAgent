@@ -1,4 +1,5 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
+import {f20DocumentCandidateSchema} from '@personal-agent/contracts/f20-candidate';
 import {deflateRawSync,inflateRawSync} from 'node:zlib';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
@@ -152,6 +153,9 @@ export function workflowCandidateMetadata(node:OwnedWorkflowNode,tools:readonly 
     selectionBasis:node.kind==='tool'?'published_schema_and_task_arguments'
       :node.kind==='host'?'bound_host_arguments_and_task_scope':'actual_sources_and_current_output_requirements',
     resultEvidenceStage:proposed?'after_actual_execution':'required_for_generated_claims'},
+    ...(['F20_N02','F20_N04'].includes(node.id)?{candidateValueSchema:f20DocumentCandidateSchema(),
+      candidateConstraint:node.id==='F20_N04'?'Retain the exact original selected F20 document candidate for source-supported review, or abstain. Do not claim publication.'
+        :'Include a TypeScript example with an explicitly typed object using an exported type from the selected contract. Do not choose paths, recipes or authorization.'}:{}),
     publishedTools:tools.filter(tool=>node.capabilities.some(cap=>cap.kind==='tool'&&cap.name===tool.name)
       ||node.kind==='host'&&tool.name===workflowHostToolName(node.id)).map(tool=>copy(tool))};
 }

@@ -17,6 +17,7 @@ test('an unprepared native backend reports lossless JSON so an ordinary applicat
     }
     const required=host.describeExecution({toolName:'workspace.npm_test',requirements:[]},{mode:'workspace-write'});
     assert.equal(required.required,true);assert.equal(required.available,false);assert.equal(required.enforced,false);
+    assert.equal(host.describeExecution({toolName:'coding.repair.trial',requirements:[]},{mode:'workspace-write'}).required,true);
     await assert.rejects(host.prepare({toolName:'workspace.npm_test'}),/未降级/);
   }finally{host.close();}
 });
@@ -48,7 +49,7 @@ test('production Main supplies the pinned workspace and Node binding to native c
 
 test('a project-only helper recipe can read its exact pinned Node without a node-check recipe',async()=>{
   const directory=mkdtempSync(path.join(tmpdir(),'pa-native-project-child-'));
-  const locations=Object.fromEntries(['workspace','helper','node','system'].map(name=>{
+  const locations=Object.fromEntries(['workspace','helper','node','system','compiler'].map(name=>{
     const folder=path.join(directory,name);mkdirSync(folder);return[name,realpathSync.native(folder)];}));
   const helper=path.join(locations.helper,'WindowsJobProcessHost.exe'),node=path.join(locations.node,'node.exe');
   writeFileSync(helper,'explicit synthetic helper');writeFileSync(node,'explicit synthetic Node');
@@ -74,6 +75,14 @@ test('a project-only helper recipe can read its exact pinned Node without a node
     assert.deepEqual(profile.executableAllowlist,[canonicalHelper,canonicalNode]);
     assert.ok(profile.readRoots.includes(locations.node));assert.deepEqual(profile.writeRoots,[]);
     assert.equal(profile.network.mode,'deny');assert.ok(!profile.readRoots.includes(directory),'Do not grant the common parent');
+    const compiler=host.createCommandTool({rootPath:locations.workspace,recipes:[{id:'f20-typescript-sample',executable:canonicalNode,args:['fixed-check.cjs']}],
+      trustedReadRoots:[locations.compiler]});
+    const compiledProfile=compiler.trustedSandbox.bind(context,scope.deadline).profile;
+    assert.ok(compiledProfile.readRoots.includes(locations.compiler));assert.deepEqual(compiledProfile.writeRoots,[]);
+    assert.deepEqual(compiledProfile.executableAllowlist,[canonicalNode]);
+    assert.throws(()=>host.createCommandTool({rootPath:locations.workspace,recipes:[recipe],trustedReadRoots:[locations.workspace]}),{code:'UNSUPPORTED_CAPABILITY'});
+    rmSync(locations.compiler,{recursive:true});mkdirSync(locations.compiler);
+    assert.throws(()=>compiler.trustedSandbox.bind(context,scope.deadline),{code:'UNSUPPORTED_CAPABILITY'});
     const foreign=host.createCommandTool({rootPath:locations.workspace,recipes:[{...recipe,args:[...recipe.args.slice(0,3),canonicalHelper,'--','--test']}]});
     assert.ok(!foreign.trustedSandbox.bind(context,scope.deadline).profile.readRoots.includes(locations.node),
       'An arbitrary nested target cannot acquire the selected Node root');

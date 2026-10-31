@@ -56,6 +56,15 @@ test('workspace settings retain real configuration and revocation but cannot gra
   assert.equal(ui.fields.select.disabled,false,'missing configuration still has a real picker');
 });
 
+test('API document settings invoke native selection with the fixed sample recipe and no paths or authority',async t=>{
+  const calls=[],ui=harness(t,async(action,input)=>{calls.push({action,input});return {coding:{configured:true,nodeConfigured:true,f20:{configured:true,inputRef:'api-case'}}};});
+  ui.render();ui.fields['f20-ref'].value='api-case';ui.fields['f20-template'].value='Describe only supported parameters';
+  await ui.click('f20-configure');
+  assert.deepEqual(calls,[{action:'coding.f20.configure',input:{inputRef:'api-case',docTemplate:'Describe only supported parameters',recipeId:'f20-typescript-sample'}}]);
+  assert.match(ui.fields['f20-state'].textContent,/api-case/);
+  ui.render({nodeConfigured:false});assert.equal(ui.fields['f20-configure'].disabled,true);
+});
+
 test('workspace settled actions restore keyboard position only while origin remains valid and undisturbed',async t=>{
   let resolve,reject;const calls=[],ui=harness(t,action=>{calls.push(action);return new Promise((yes,no)=>{resolve=yes;reject=no;});});
   for(const name of ['select','revoke'])for(const outcome of ['success','failure','invalid']){

@@ -9,7 +9,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {PROTOCOL_VERSION,ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {createWorkspaceConfigHost} from '../electron/workspace-config-host.js';
 import {createWorkspaceCommandRecipeTool} from '../electron/workspace-command-recipes.js';
-import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
+import {captureCodingRepairSnapshot,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
 import {AuthorizationQuestions,createRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
 import {LayaActionChoiceService} from '@personal-agent/cognition';
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
@@ -453,8 +453,8 @@ test('original Runtime decision, unified question and consumed selectedId lease 
   assert.equal(application.runtime.readToolExecutions(prepared.taskId).length,1,'export never executes the decision again');
 });
 
-async function workspaceBindingFixture(t) {
-  const cache=path.resolve(fileURLToPath(new URL('../../../.cache/',import.meta.url)));
+async function workspaceBindingFixture(t,{external=false}={}) {
+  const cache=external?os.tmpdir():path.resolve(fileURLToPath(new URL('../../../.cache/',import.meta.url)));
   await mkdir(cache,{recursive:true});
   const base=await mkdtemp(path.join(cache,'p6-workspace-binding-'));
   const root=path.join(base,'workspace'),otherRoot=path.join(base,'other-workspace');
@@ -483,6 +483,77 @@ async function workspaceBindingFixture(t) {
   return {root,node,configuration,open};
 }
 const allowWorkspaceRead=host=>host.authorize({cloudExportAllowed:true,writeAllowed:false,commandAllowed:false});
+
+test('F20 workspace provider runs the exact isolated TypeScript sample and never publishes it',async t=>{
+  const {root,node,configuration,open}=await workspaceBindingFixture(t,{external:true});
+  const sources={'contract.ts':'export interface Request {name:string;}','api.ts':'export const version=1;','fixture.js':'export const marker=1;'};
+  for(const [file,content] of Object.entries(sources))await writeFile(path.join(root,file),content);
+  const record=JSON.parse(await readFile(configuration,'utf8'));record.encryptedCheckFile=Buffer.from('fixture.js').toString('base64');
+  record.encryptedNode=Buffer.from(process.execPath).toString('base64');
+  record.encryptedNpmCli=Buffer.from('unavailable-for-this-compiler-only-fixture').toString('base64');
+  await writeFile(configuration,JSON.stringify(record));
+  // Explicit Runtime/consent/version metadata fixture; the isolated host, files, Node and TS compiler are real.
+  const host=open({findExecutable:name=>name==='pwsh.exe'?node:undefined,createCommandRecipeTool:createWorkspaceCommandRecipeTool,
+    readHarnessVersions:()=>({workflowVersion:'synthetic-image-v1',runtimeVersion:'fixture-runtime',executionKind:'real_host'})});
+  const checkpoints=new Map();let f20;
+  host.bindApplication({readToolConversation:()=> 'fixture-conversation',readF20TrialBinding:()=>f20,
+    runtime:{loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}});
+  await host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true});
+  host.setF20CaseFromNativeSelection({inputRef:'typescript-case',schemaFile:'contract.ts',codeFile:'api.ts',recipeId:'f20-typescript-sample',
+    docTemplate:'Document only supported fields',targetDoc:'api.md'});
+  const context={taskId:'actual-f20-child',runId:'host-tool-actual-f20-child',authorizationRef:'host-tool-actual-f20-child',
+    scopes:['workspace:read','workspace:write','workspace:apply','workspace:execute'],deadline:new Date(Date.now()+120000).toISOString(),signal:new AbortController().signal};
+  checkpoints.set(context.taskId+'coding-repair:parent',{taskId:'f20-owner'});
+  const input=host.resolveF20Case('typescript-case',{...context,taskId:'f20-owner'});
+  const sha=value=>createHash('sha256').update(value).digest('hex');
+  const sourceDigest=sha(JSON.stringify({sourceVersion:input.sourceVersion,schemaFile:input.schemaFile,codeFile:input.codeFile,
+    schemaSha256:sha(sources['contract.ts']),codeSha256:sha(sources['api.ts'])}));
+  f20={input,inputRef:'typescript-case',sourceDigest,samplePath:'api.ts.f20-sample.ts',sourceReads:['contract.ts','api.ts'].map(file=>({confirmed:{result:{path:file,content:sources[file]}}}))};
+  const scope={ownerTaskId:'f20-owner',actualTaskId:context.taskId,parentTaskId:'f20-owner',scopeRef:context.runId,
+    configurationRef:sourceDigest,inputDigest:sourceDigest,deadline:context.deadline,workspaceRef:host.readDeveloperConfiguration().bindingId};
+  const bound=await host.readHarnessCandidateContext(context,scope);assert.ok(bound);
+  assert.deepEqual(bound.recipes.map(recipe=>recipe.recipeId),['f20-typescript-sample']);
+  const started=await host.harnessRepairHost.start({mode:'isolated',allowedPaths:[f20.samplePath]},context);
+  const snippet="import type {Request} from './contract.js'; const sample:Request={name:'checked'};";
+  const checked=await host.harnessRepairHost.check(started.session.sessionId,[{path:f20.samplePath,expectedSha256:null,edits:[],createText:snippet}],['f20-typescript-sample'],context);
+  assert.equal(checked.verification[0].status,'VALID');assert.equal(checked.verification[0].exitCode,0);
+  assert.equal(checked.snapshot.files.find(file=>file.path===f20.samplePath).sha256,sha(snippet));
+  await assert.rejects(readFile(path.join(root,f20.samplePath)),{code:'ENOENT'});
+  await assert.rejects(host.harnessRepairHost.publish({},context),{code:'UNAUTHORIZED'});
+  await writeFile(path.join(root,'contract.ts'),'export interface Request {changed:boolean;}');
+  assert.equal(await host.readHarnessCandidateContext(context,scope),undefined,'a changed original contract invalidates the trial context');
+});
+
+test('F20 source export consumes the original explicit question and rejects substitution, drift and revocation',async t=>{
+  const {root,node,open}=await workspaceBindingFixture(t);
+  await writeFile(path.join(root,'contract.ts'),'export interface Request {name:string;}');await writeFile(path.join(root,'api.ts'),'export const value=1;');
+  const question=workspaceQuestions(),app=workspaceRuntime();let binding,readback;
+  app.readF20WorkflowBinding=()=>binding;app.readHostToolTask=()=>readback;
+  const host=open({question,findExecutable:name=>name==='pwsh.exe'?node:undefined,createWorkspaceCommandTool});host.bindApplication(app);
+  host.setF20CaseFromNativeSelection({inputRef:'f20-case',schemaFile:'contract.ts',codeFile:'api.ts',recipeId:'f20-typescript-sample',docTemplate:'fixed template',targetDoc:'api.md'});
+  const tool=host.tools.find(item=>item.descriptor.name==='workspace.read_text'),scope=workspaceOperation(tool,{path:'contract.ts'},'f20-source-child');
+  scope.runId='host-tool-'+scope.taskId;
+  const parent={taskId:'f20-owner',deadline:scope.deadline,signal:scope.signal};
+  binding={input:host.resolveF20Case('f20-case',parent),inputRef:'f20-case',sourceReads:[],sourceDigest:'a'.repeat(64)};
+  app.runtime.saveCheckpoint(scope.taskId,'coding-repair:parent',{taskId:parent.taskId,operationId:'original-source'});
+  app.runtime.saveCheckpoint(parent.taskId,'coding-repair:host:original-source',{localTaskId:scope.taskId,request:{...scope.proposal,deadline:scope.deadline}});
+  app.readAuthorizationQuestionInvocation=()=>scope.proposal;
+  host.prepareAuthorization(scope);
+  await assert.rejects(tool.execute(scope.proposal.arguments,scope));question.allow(scope);
+  const result=await tool.execute(scope.proposal.arguments,scope);
+  readback={task:{taskId:scope.taskId,state:'succeeded'},commandId:'original-source',confirmed:{result,evidenceRefs:[scope.runId]}};
+  binding.sourceReads=[readback];
+  const request={...parent,inputRef:'f20-case',stage:'receipt',localTaskId:scope.taskId,operationId:'original-source',value:result};
+  assert.equal(await host.authorizeF20Export(request),true);
+  assert.equal(await host.authorizeF20Export({...request,value:{...result,content:'substituted'}}),false);
+  assert.equal(await host.authorizeF20Export({...parent,inputRef:'f20-case',stage:'initial',value:binding.input}),true);
+  const baseline=(await captureCodingRepairSnapshot(root)).snapshot;
+  assert.equal(await host.assertF20CompletionSources(parent,baseline),true);
+  await writeFile(path.join(root,'dependency.ts'),'export const changed=true;');
+  await assert.rejects(host.assertF20CompletionSources(parent,baseline),{code:'REVISION_CONFLICT'});
+  await writeFile(path.join(root,'contract.ts'),'changed');await assert.rejects(host.authorizeF20Export(request),{code:'REVISION_CONFLICT'});
+  await writeFile(path.join(root,'contract.ts'),result.content);host.revoke();await assert.rejects(host.authorizeF20Export(request));
+});
 
 test('developer configuration is Main-only, preserves the original task lease and never grants metadata export',async t=>{
   const {root,open}=await workspaceBindingFixture(t),host=open(),checkpoints=new Map();

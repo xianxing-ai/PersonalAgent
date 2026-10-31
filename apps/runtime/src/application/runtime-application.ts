@@ -35,6 +35,7 @@ import {createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool,creat
   HARNESS_TRIAL_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL} from '@personal-agent/coding-tools';
 import type {IsolatedCodingRepairHost} from '@personal-agent/coding-tools';
 import type {HarnessCandidateContext,HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
+import {readRuntimeF20Binding,readRuntimeF20TrialBinding,f20ReviewContext} from './f20-trial-binding.js';
 import type {CodingRepairInput} from '@personal-agent/contracts/coding-repair';
 import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import {parseCodingRepairInput,parseCodingRepairCheckReadback,parseCodingRepairPublishRequest,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
@@ -144,6 +145,8 @@ export interface RuntimeHarnessScope {
 export interface RuntimeHarnessCandidatesOptions {
   host:IsolatedCodingRepairHost;
   readContext:(context:ToolContext,scope:RuntimeHarnessScope)=>HarnessCandidateContext|undefined|Promise<HarnessCandidateContext|undefined>;
+  /** Main-only workspace identity for the separately validated F20 graph trial. */
+  readF20WorkspaceRef?:(scope:{taskId:string;deadline:string;signal:AbortSignal})=>string|undefined;
   /** Native original-session observation only; this supplies no model ToolContext or execution grant. */
   reconcileOriginalSession?:(input:{session:CodingRepairInput;trialRunId:string;expectedRevision:number;deadline:string;
     signal:AbortSignal;assertCurrent:()=>void})=>Promise<HarnessTrialRecovery>;
@@ -524,6 +527,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly ownsCodingReviewBridge:boolean;
   private readonly codingWorker?:ReturnType<typeof createRuntimeCodingRepairWorkerCapability>;
   private readonly ownedWorkflowWorker?:RuntimeOwnedWorkflowWorkerCapability;
+  private readonly readF20WorkspaceRef?:RuntimeHarnessCandidatesOptions['readF20WorkspaceRef'];
   private readonly f09WorkflowWorker?:RuntimeF09WorkflowWorkerCapability;
   private readonly configuredWorkflowWorkers:RuntimeConfiguredWorkflowCapability[]=[];
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
@@ -581,6 +585,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly knowledgeWriteReconciliation?: KnowledgeWriteReconciliationAdapter;
 
   constructor(options: RuntimeApplicationOptions) {
+    this.readF20WorkspaceRef=options.harnessCandidates?.readF20WorkspaceRef;
     if(options.mailReview&&(options.profile!=='huawei_ict_agentarts'||!options.coordination))
       throw new ProtocolError('INVALID_ARGUMENT','Mail review requires Competition coordination');
     this.hostOnlyToolNames=new Set([...(options.hostOnlyTools??[]),...(options.mailReview?[MAIL_REVIEW_TOOL]:[]),
@@ -771,6 +776,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     })]:[]),...(harnessTool?[harnessTool]:[]),...(this.codingRepair?[createRuntimeCodingRepairDispatchTool(()=>this),
       ...(options.proactiveDecision?.localChooser&&!options.tools?.some(tool=>tool.descriptor.name==='decision.choose_candidate')
         ?[createRuntimeCodingDecisionTool({localChooser:options.proactiveDecision.localChooser,
+          readContext:(context,original)=>f20ReviewContext(this,context,original),
           save:(key,receipt)=>{
             if(!this.runtime.saveCheckpointOnce(receipt.taskId,key,receipt)
               &&!isDeepStrictEqual(this.runtime.loadCheckpoint(receipt.taskId,key),receipt))
@@ -3721,6 +3727,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   resolveHarnessScope(context:ToolContext,source?:{actualTaskId:string;runId:string;scopeRef:string}):RuntimeHarnessScope|undefined {
     try {
+      const f20=this.readF20TrialBinding(context);
+      if(f20){
+        if(source&&(source.actualTaskId!==context.taskId||source.runId!==context.runId||source.scopeRef!==context.authorizationRef))return undefined;
+        const workspaceRef=this.readF20WorkspaceRef?.({taskId:f20.ownerTaskId,deadline:context.deadline,signal:context.signal});
+        if(!workspaceRef||!f20.sourceDigest)return undefined;
+        return {ownerTaskId:f20.ownerTaskId,actualTaskId:context.taskId,parentTaskId:f20.ownerTaskId,scopeRef:context.authorizationRef,
+          deadline:context.deadline,workspaceRef,inputDigest:f20.sourceDigest,configurationRef:f20.sourceDigest};
+      }
       const actual=this.runtime.getTask(context.taskId),peer=readRuntimeSubagentSibling(this.runtime,actual.taskId);
       const owner=this.runtime.getTask(peer?.binding.ownerTaskId??actual.taskId);
       const saved=this.runtime.loadCheckpoint(owner.taskId,'subtask-parent') as
@@ -3760,6 +3774,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(sourcePeer)this.assertDeveloperHarnessExecutorCurrent(source.actualTaskId);
       return {...scope,actualTaskId:source.actualTaskId,scopeRef:source.scopeRef};
     } catch {return undefined;}
+  }
+
+  readF20WorkflowBinding(scope:{taskId:string;deadline:string;signal:AbortSignal}) {
+    if(!this.ownedWorkflowWorker?.isActive(scope.taskId))return undefined;
+    return readRuntimeF20Binding(this,scope);
+  }
+
+  readF20TrialBinding(context:ToolContext) {
+    const parent=this.runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId?:string}|undefined;
+    if(!parent?.taskId||!this.ownedWorkflowWorker?.isActive(parent.taskId))return undefined;
+    return readRuntimeF20TrialBinding(this,context);
+  }
+
+  readF20HarnessContext(scope:{taskId:string;deadline:string;signal:AbortSignal}):HarnessCandidateContext|undefined {
+    const original=this.readF20WorkflowBinding(scope);if(!original?.sourceDigest)return undefined;
+    const saved=this.runtime.loadCheckpoint(scope.taskId,'harness-candidates:configuration') as
+      {configurationRef?:string;workspaceRef?:string;context?:HarnessCandidateContext}|undefined;
+    const workspaceRef=this.readF20WorkspaceRef?.(scope);
+    if(!workspaceRef||saved?.workspaceRef!==workspaceRef||saved.configurationRef!==original.sourceDigest
+      ||saved.context?.binding.taskId!==scope.taskId||saved.context.binding.inputDigest!==original.sourceDigest
+      ||saved.context.binding.configurationDigest!==original.sourceDigest)return undefined;
+    return structuredClone(saved.context);
   }
 
   private assertDeveloperHarnessExecutorCurrent(taskId:string):void {
