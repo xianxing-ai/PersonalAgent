@@ -66,13 +66,16 @@ test('F07 frontier rejects substitute reads, stale versions, overlap and unconfi
   assert.equal(await frontier('F07_N05','workflow.host.f07_n05',args),false);
   await assert.rejects(f.worker.verifyCompletion({...f.scope,input:f.bound.input,state,readbacks:[]}),{code:'RESULT_UNKNOWN'});
 });
-test('F06 future reminders do not fake an elapsed clock or claim complete graph support',async()=>{
+test('F06 future reminders retain explicit time and require the trusted guard without advancing a clock',async()=>{
   const businessTools=[{descriptor:descriptor('todo.create','local_write')},{descriptor:descriptor('workflow.host.f06_n04')}];
   const f=setup({businessTools,competitionToolExports:businessTools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',accepts:()=>true,project:({result})=>result})),
     todoHost:{snapshot:()=>({items:[],notifications:[]})},notificationHost:{reconcileDelivery(){}}});
   const worker=f.composition.configuredWorkflowWorkerPorts.find(item=>item.workflowId==='F06');assert.ok(worker);
-  await assert.rejects(worker.resolveInput({todoTitle:'Future task',remindUtc:new Date(Date.now()+120000).toISOString()},f.scope),{code:'UNSUPPORTED_CAPABILITY'});
-  assert.equal(f.checkpoints.size,0);
+  const input={todoTitle:'Future task',remindUtc:new Date(Date.now()+120000).toISOString()};
+  assert.deepEqual(await worker.resolveInput(input,f.scope),{...input,businessBindingId:'original-account'});
+  assert.equal(worker.configurationVersion,'business-20261031-f06-v2');
+  assert.ok(worker.requiredTools.some(tool=>tool.name==='workflow.guard.f06_n05'));
+  assert.equal(f.checkpoints.size,1);
 });
 test('business exports refuse a confirmed-looking receipt without original execution proof',async()=>{
   const f=setup();f.app.readHostToolTask=()=>({task:{state:'succeeded'},confirmed:{result:{items:[]}}});

@@ -133,6 +133,15 @@ test('F12 observes both optional delivery and query guards before settling silen
   }
 });
 
+test('F06 semantic candidates cannot skip the local reminder guard',async()=>{
+  const runtime=engine({externalHost:true,prepareCandidates:async context=>candidates(context).map((candidate,index)=>
+    index===0?{...candidate,branches:[{nodeId:'F06_N05',state:'skipped'}]}:candidate)});
+  const original=request('F06'),first=await runtime.advance(original),second=await next(runtime,original,first);
+  assert.equal(getOwnedWorkflowTemplate('F06').nodes.find(node=>node.id==='F06_N05').hostGuard,true);
+  assert.equal(second.nodes.F06_N02.state,'failed');assert.equal(second.nodes.F06_N02.reason,'EXTERNAL_FAILURE');
+  assert.equal(second.nodes.F06_N05.state,'pending');assert.deepEqual(second.proposals,[]);
+});
+
 test('research branches run serially and the next branch waits for the original tool receipt',async()=>{
   let arrivals=0,active=0;
   const seen=[];

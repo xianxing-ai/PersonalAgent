@@ -43,7 +43,7 @@ export function createF07CalendarWorkflowPorts({getApplication,bridge,authorizeE
       return version(receipt.result);
     },
     async verifyWriteBinding(scope,input){
-      const {bound,sourceVersion}=baseline(scope),fresh=bound.confirmedOperations.find(op=>op.nodeId==='F07_N04');
+      const {bound,sourceVersion}=baseline(scope),fresh=bound.confirmedOperations.find(op=>op.nodeId==='F07_N04'&&op.toolName==='workflow.host.f07_n04');
       return isDeepStrictEqual(input,{title:bound.input.title,slot:bound.input.slot})
         &&fresh?.result?.versionConsistent===true&&fresh.result.sourceVersion===sourceVersion;
     },

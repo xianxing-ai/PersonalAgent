@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {createKnowledgeSearchTool} from '@personal-agent/knowledge/tool';
 import {createSystemObservationTool,SYSTEM_OBSERVATION_TOOL_NAME} from '@personal-agent/windows-client';
 import {createRuntimeF03MemoryQueryHost,createRuntimeF04MemoryQueryHost,createRuntimeF05JointRecallHost} from '../dist/application/workflow-f04-f05-recall-host.js';
-import {createRuntimeF06TodoWriteHost,createRuntimeF06NotificationDeliverHost} from '../dist/application/workflow-f06-todo-graph-host.js';
+import {createRuntimeF06TodoWriteHost,createRuntimeF06NotificationDeliverHost,createRuntimeF06ReminderGuard} from '../dist/application/workflow-f06-todo-graph-host.js';
 import {createRuntimeF07CalendarFreshnessHost,createRuntimeF07CalendarWriteHost} from '../dist/application/workflow-f07-calendar-graph-host.js';
 import {createRuntimeF08MailArchiveHost,createRuntimeF08MailSendHost,createRuntimeF08OperationScopeHost,
   createRuntimeF08WaitReconciliationHost,createRuntimeF08VersionedReplanHost} from '../dist/application/workflow-f08-mail-graph-host.js';
@@ -43,6 +43,7 @@ test('optional graph hosts stay absent without trusted providers',()=>{
   assert.equal(createRuntimeF05JointRecallHost().tools.length,0);
   assert.equal(createRuntimeF06TodoWriteHost().tools.length,0);
   assert.equal(createRuntimeF06NotificationDeliverHost().tools.length,0);
+  assert.equal(createRuntimeF06ReminderGuard().tools.length,0);
   assert.equal(createRuntimeF07CalendarFreshnessHost().tools.length,0);
   assert.equal(createRuntimeF07CalendarWriteHost().tools.length,0);
   assert.equal(createRuntimeF08MailArchiveHost().tools.length,0);
@@ -138,9 +139,26 @@ test('F06 explicit reminder time reaches todo.create and its original schedule i
       return {item:{id:'todo-1',revision:1},reminderTrigger:{scheduleId}};}});
   await write.tools[0].execute(args,f.context);
   assert.equal(f.application.runtime.loadCheckpoint('parent','f06:n03-todo:session').reminderScheduleId,scheduleId);
+  assert.deepEqual(f.application.runtime.loadCheckpoint('parent','f06:n03-todo:session').reminderTrigger,{scheduleId});
   const missing=createRuntimeF06TodoWriteHost({...f,verifyWriteBinding:async()=>true,
     invokeTodoCreate:async()=>({item:{id:'todo-1',revision:1},reminderTrigger:null})});
   await assert.rejects(missing.tools[0].execute(args,f.context),{code:'RESULT_UNKNOWN'});
+});
+
+test('F06 guard rechecks original intent, scope, cancellation and state across export consent',async()=>{
+  const args={workflowId:'F06',nodeId:'F06_N05',input:{},predecessorOutputs:{F06_N04:{shouldFireAlarm:false}},predecessorStates:{F06_N04:'completed'}};
+  const f=hostFixture('F06','F06_N05','workflow.guard.f06_n05',args);let state='skipped';
+  const guard=createRuntimeF06ReminderGuard({...f,resolveReminderState:async()=>state});
+  assert.deepEqual(await guard.tools[0].execute(args,f.context),{state:'skipped'});
+  await assert.rejects(guard.tools[0].execute({...args,nodeId:'F07_N05'},f.context));
+  await assert.rejects(guard.tools[0].execute(args,{...f.context,scopes:[]}),{code:'SCOPE_DENIED'});
+  await assert.rejects(guard.tools[0].execute(args,{...f.context,signal:AbortSignal.abort()}),{code:'CANCELLED'});
+  state='unknown';await assert.rejects(guard.tools[0].execute(args,f.context),{code:'RESULT_UNKNOWN'});
+  state='skipped';const changing=createRuntimeF06ReminderGuard({...f,resolveReminderState:async()=>state,
+    authorizeExport:async()=>{state='selected';return true;}});
+  await assert.rejects(changing.authorizeReceipt({context:f.context,result:{state:'skipped'}}),{code:'REVISION_CONFLICT'});
+  state='skipped';f.denyExport();await assert.rejects(guard.authorizeReceipt({context:f.context,result:{state:'skipped'}}),{code:'UNAUTHORIZED'});
+  f.gateOff();await assert.rejects(guard.tools[0].execute(args,f.context),{code:'UNAUTHORIZED'});
 });
 
 test('F07 calendar freshness compares trusted live source version',async()=>{

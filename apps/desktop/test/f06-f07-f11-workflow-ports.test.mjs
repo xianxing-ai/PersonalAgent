@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {calendarSnapshotVersion} from '@personal-agent/calendar';
+import {buildReminderTrigger} from '@personal-agent/productivity';
 import {createF06TodoWorkflowPorts} from '../electron/f06-todo-workflow-ports.js';
 import {createF07CalendarWorkflowPorts} from '../electron/f07-calendar-workflow-ports.js';
 import {createF11CalendarWorkflowPorts} from '../electron/f11-calendar-workflow-ports.js';
@@ -29,6 +30,30 @@ test('F06 forwards only the bound explicit reminder and preserves the original c
   f.controller.abort();await assert.rejects(ports.invokeTodoCreate(f.scope,input,{}),{code:'CANCELLED'});assert.equal(f.calls.length,1);
 });
 
+test('F06 future result requires the complete original pending schedule and unchanged item at actual observation time',async()=>{
+  const remindUtc=new Date(Date.now()+120000).toISOString(),f=fixture({todoTitle:'Original future task',remindUtc});
+  let item={id:'todo-1',revision:1,title:f.bound.input.todoTitle,status:'open',reminder:{state:'scheduled',missedPolicy:'run_once',remindAt:{utc:remindUtc,timeZone:'UTC'}}};
+  const original=structuredClone(item),trigger=buildReminderTrigger(item,'original-reminders');let schedule={...trigger,status:'pending'};
+  f.app.runtime.getSchedule=id=>{assert.equal(id,trigger.scheduleId);return schedule;};
+  f.app.runtime.saveCheckpointOnce('parent','f06:n03-todo:session',{sessionId:'session',todoId:item.id,revision:1,item:original,
+    reminderTrigger:trigger,reminderScheduleId:trigger.scheduleId});
+  f.bound.confirmedOperations.push({nodeId:'F06_N04',toolName:'workflow.host.f06_n04',result:{shouldFireAlarm:false,isTaskAlreadyFinished:false}});
+  const ports=createF06TodoWorkflowPorts({...f,bridge:{async invoke(){throw Error('readback must not write');}},todoHost:{snapshot:()=>({items:[item]})},
+    notificationHost:{reconcileDelivery(){throw Error('future schedule must not deliver');}}});
+  assert.deepEqual(await ports.readScheduledReminder(f.scope),{todoId:'todo-1'});assert.equal(await ports.resolveReminderState(f.scope),'skipped');
+  for(const patch of [{status:'cancelled'},{status:'fired',taskId:'foreign'},{goal:'replaced'},{runAt:new Date(Date.parse(remindUtc)-1000).toISOString()}]){
+    schedule={...trigger,status:'pending',...patch};await assert.rejects(ports.readScheduledReminder(f.scope),{code:'REVISION_CONFLICT'});
+  }
+  schedule={...trigger,status:'pending'};
+  for(const patch of [{title:'changed',revision:2},{status:'cancelled',revision:2},{reminder:{...original.reminder,remindAt:{utc:new Date(Date.parse(remindUtc)-1000).toISOString(),timeZone:'UTC'}},revision:2}]){
+    item={...original,...patch};await assert.rejects(ports.readScheduledReminder(f.scope),{code:'REVISION_CONFLICT'});
+  }
+  item=original;f.bound.confirmedOperations[0].result.shouldFireAlarm=true;
+  await assert.rejects(ports.readScheduledReminder(f.scope),{code:'UNAUTHORIZED'});
+  f.bound.confirmedOperations[0].result.shouldFireAlarm=false;f.controller.abort();
+  await assert.rejects(ports.readScheduledReminder(f.scope),{code:'CANCELLED'});
+});
+
 test('F07 freshness compares the complete original window to a separately authorized read',async()=>{
   const readArgs={fromUtc:'2026-10-31T00:00:00.000Z',toUtc:'2026-11-01T00:00:00.000Z'};
   const f=fixture({calendarReadArguments:readArgs,title:'Meeting',slot:{startUtc:'2026-10-31T10:00:00.000Z',endUtc:'2026-10-31T11:00:00.000Z'}});
@@ -42,7 +67,9 @@ test('F07 freshness compares the complete original window to a separately author
   await ports.readSourceVersion(f.scope,{},'before_export');await ports.readSourceVersion(f.scope,{},'after_export');
   assert.deepEqual(f.calls.map(call=>call.actionKey),['f07.calendar.recheck.execute','f07.calendar.recheck.before_export','f07.calendar.recheck.after_export']);
   assert.equal(await ports.verifyWriteBinding(f.scope,{title:'Meeting',slot:f.bound.input.slot}),false);
-  f.bound.confirmedOperations.push({nodeId:'F07_N04',result:{versionConsistent:true,sourceVersion:result.sourceVersion}});
+  f.bound.confirmedOperations.push({nodeId:'F07_N04',toolName:'decision.choose_candidate',result:{selectedId:'fixture'}});
+  assert.equal(await ports.verifyWriteBinding(f.scope,{title:'Meeting',slot:f.bound.input.slot}),false);
+  f.bound.confirmedOperations.push({nodeId:'F07_N04',toolName:'workflow.host.f07_n04',result:{versionConsistent:true,sourceVersion:result.sourceVersion}});
   assert.equal(await ports.verifyWriteBinding(f.scope,{title:'Meeting',slot:f.bound.input.slot}),true);
   current={...result,hasMore:true};await assert.rejects(ports.readSourceVersion(f.scope,{}),{code:'UNSUPPORTED_CAPABILITY'});
   await assert.rejects(ports.invokeCalendarCreate({summary:'Meeting'},{}),{code:'RESULT_UNKNOWN'});

@@ -117,7 +117,7 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       dependencies:node.dependencies.map(nodeId=>({nodeId,
         required:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F02_N09','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F02_N09','F06_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
           || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04','F12_N05',

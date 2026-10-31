@@ -1,6 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
 import {notificationDigest} from '@personal-agent/notifications';
-import {applyReminderDispatches} from '@personal-agent/productivity';
+import {applyReminderDispatches,buildReminderTrigger} from '@personal-agent/productivity';
 import {ProtocolError} from '@personal-agent/contracts';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
@@ -24,7 +24,7 @@ export function createF06TodoWorkflowPorts({getApplication,bridge,todoHost,notif
     const {app,bound}=binding(scope),saved=app.runtime.loadCheckpoint(scope.parentTaskId,'f06:n03-todo:'+scope.sessionId);
     if(!saved?.reminderScheduleId||saved.sessionId!==scope.sessionId
       ||!isDeepStrictEqual(notification,{todoId:saved.todoId,revision:saved.revision})
-      ||!bound.confirmedOperations.some(op=>op.nodeId==='F06_N04'&&op.result?.shouldFireAlarm===true
+      ||!bound.confirmedOperations.some(op=>op.nodeId==='F06_N04'&&op.toolName==='workflow.host.f06_n04'&&op.result?.shouldFireAlarm===true
         &&op.result?.isTaskAlreadyFinished===false))fail('UNAUTHORIZED','F06 reminder lacks its original ready receipt');
     const snapshot=todoHost.snapshot(),item=snapshot.items.find(value=>value.id===saved.todoId);
     if(!item||item.status!=='open'||!item.reminder||item.reminder.remindAt.utc!==bound.input.remindUtc)
@@ -42,6 +42,20 @@ export function createF06TodoWorkflowPorts({getApplication,bridge,todoHost,notif
       fail('RESULT_UNKNOWN','F06 original notification round unavailable');
     return {roundId,round};
   };
+  const scheduled=scope=>{
+    const {app,bound}=binding(scope),saved=app.runtime.loadCheckpoint(scope.parentTaskId,'f06:n03-todo:'+scope.sessionId);
+    const read=bound.confirmedOperations.find(op=>op.nodeId==='F06_N04'&&op.toolName==='workflow.host.f06_n04');
+    if(!saved?.reminderTrigger||saved.sessionId!==scope.sessionId||read?.result.shouldFireAlarm!==false
+      ||read.result.isTaskAlreadyFinished!==false)fail('UNAUTHORIZED','F06 original future reminder read unavailable');
+    const item=todoHost.snapshot().items.find(value=>value.id===saved.todoId),trigger=saved.reminderTrigger;
+    if(!item||item.revision!==saved.revision||!isDeepStrictEqual(item,saved.item)
+      ||!isDeepStrictEqual(buildReminderTrigger(item,trigger.conversationId),trigger)
+      ||trigger.scheduleId!==saved.reminderScheduleId||trigger.runAt!==bound.input.remindUtc
+      ||Date.parse(trigger.runAt)<=now())fail('REVISION_CONFLICT','F06 original future reminder changed or became due');
+    if(!isDeepStrictEqual(app.runtime.getSchedule(trigger.scheduleId),{...trigger,status:'pending'}))
+      fail('REVISION_CONFLICT','F06 original pending schedule changed');
+    return {todoId:saved.todoId};
+  };
   return {
     assertCurrent:scope=>{binding(scope);},
     async verifyWriteBinding(scope,input){return isDeepStrictEqual(fields(binding(scope).bound.input),input);},
@@ -55,6 +69,15 @@ export function createF06TodoWorkflowPorts({getApplication,bridge,todoHost,notif
       return receipt.result;
     },
     async verifyReminderReady(scope,{notification}){reminder(scope,notification);return true;},
+    async readScheduledReminder(scope){return scheduled(scope);},
+    async resolveReminderState(scope){
+      const {app,bound}=binding(scope),saved=app.runtime.loadCheckpoint(scope.parentTaskId,'f06:n03-todo:'+scope.sessionId);
+      const read=bound.confirmedOperations.find(op=>op.nodeId==='F06_N04'&&op.toolName==='workflow.host.f06_n04');
+      if(read?.result.shouldFireAlarm===false){scheduled(scope);return 'skipped';}
+      const {round}=reminder(scope,saved&&{todoId:saved.todoId,revision:saved.revision}),attempt=round.attempts.banner;
+      if(attempt?.state!=='delivered'||!attempt.evidenceRefs.length)fail('RESULT_UNKNOWN','F06 due reminder delivery is not confirmed');
+      return 'selected';
+    },
     async deliverNotification(scope,{notification}){
       const {roundId}=reminder(scope,notification);
       // Reconcile the original attempt only. A missing/unknown device receipt is never a resend request.

@@ -122,7 +122,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       await exportBusinessResult(receipt.taskId,receipt.result,context);return receipt;
     }};
   }
-  function config(workflowId,requestSchema,requiredNames,resultSchema,frontier,complete) {
+  function config(workflowId,requestSchema,requiredNames,resultSchema,frontier,complete,recheckCompletion) {
     const all=[...businessTools,...tools],requiredTools=requiredNames.map(name=>({name,
       version:name==='decision.choose_candidate'?'1.0.0':all.find(tool=>tool.descriptor.name===name)?.descriptor.version}));
     if(requiredTools.some(tool=>!tool.version)){unavailable.push(workflowId.toLowerCase()+'_required_tools_unavailable');return;}
@@ -131,7 +131,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       unavailable.push(workflowId.toLowerCase()+'_business_export_policy_unavailable');return;
     }
     const inputSchema=object({...requestSchema.properties,businessBindingId:text},[...requestSchema.required,'businessBindingId']);
-    const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',configurationVersion:'business-20261031-v1',
+    const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
+      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':'business-20261031-v1',
       requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
       async resolveInput(arguments_,scope){
@@ -139,8 +140,6 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         arguments_=structuredClone(arguments_);
         if(workflowId==='F06'&&(!Number.isFinite(Date.parse(arguments_.remindUtc))
           ||arguments_.due!==undefined&&!Number.isFinite(Date.parse(arguments_.due))))fail('INVALID_ARGUMENT','Todo reminder time invalid');
-        if(workflowId==='F06'&&Date.parse(arguments_.remindUtc)>now())
-          fail('UNSUPPORTED_CAPABILITY','F06 future reminder graph continuation is unavailable; use the original Todo schedule');
         if(workflowId==='F06'){
           arguments_.remindUtc=canonicalInstant(arguments_.remindUtc);
           if(arguments_.due!==undefined)arguments_.due=canonicalInstant(arguments_.due);
@@ -174,6 +173,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       },
       async authorizeExport(scope){
         current(workflowId,scope,scope.stage==='initial'?scope.value:undefined);
+        if(scope.stage==='completion'&&recheckCompletion)await recheckCompletion(scope);
         if(scope.stage==='receipt'&&scope.value?.state==='confirmed'){
           const host=hosts.find(item=>item.tools.some(tool=>tool.descriptor.name===scope.proposal?.toolName));
           if(host?.authorizeReceipt){
@@ -183,12 +183,15 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
             await exportBusinessResult(scope.localTaskId,scope.value.result,scope);
         }
         const result=await authorizeExport({...scope,workflowId});current(workflowId,scope,scope.stage==='initial'?scope.value:undefined);
+        if(scope.stage==='completion'&&recheckCompletion)await recheckCompletion(scope);
         return result===true;
       },
       async verifyCompletion(scope){
         current(workflowId,scope,scope.input);
         const bound=binding(workflowId,{...scope,sessionId:scope.state.sessionId});
         if(!isDeepStrictEqual(bound.input,scope.input)||getOwnedWorkflowTemplate(workflowId).nodes.some(node=>node.required
+          &&!(workflowId==='F06'&&node.id==='F06_N05'&&scope.state.result?.nodes[node.id]?.state==='skipped'
+            &&operation(bound,node.id,'workflow.guard.f06_n05')?.result.state==='skipped')
           &&(scope.state.result?.nodes[node.id]?.state!=='completed'||!['input','assemble'].includes(node.kind)&&!completedNode(bound,node.id))))
           fail('RESULT_UNKNOWN','Business workflow required nodes are incomplete');
         const result=await complete(scope,bound);current(workflowId,scope,scope.input);return result;
@@ -196,31 +199,57 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     configuredWorkflowWorkerPorts.push(worker);
   }
   if(todoHost?.snapshot&&notificationHost?.reconcileDelivery&&descriptor('todo.create')
-    &&runtimeModule.createRuntimeF06TodoWriteHost&&runtimeModule.createRuntimeF06NotificationDeliverHost){
+    &&runtimeModule.createRuntimeF06TodoWriteHost&&runtimeModule.createRuntimeF06NotificationDeliverHost&&runtimeModule.createRuntimeF06ReminderGuard){
     const bridge=child('F06',{'f06.todo.create':input=>['F06_N03','todo.create',{title:input.todoTitle,
       ...(input.due!==undefined?{dueUtc:input.due}:{}),remindUtc:input.remindUtc}]});
     const ports=createF06TodoWorkflowPorts({getApplication,bridge,todoHost,notificationHost,authorizeExport:receiptExport('F06'),now});
     const hostOptions={...ports,application,assertCurrent:scope=>{binding('F06',scope);},now:()=>new Date(now())};
     addHost(runtimeModule.createRuntimeF06TodoWriteHost({...hostOptions,requiredScopes:descriptor('todo.create').requiredScopes}));
     addHost(runtimeModule.createRuntimeF06NotificationDeliverHost({...hostOptions,requiredScopes:['notifications:deliver']}));
-    config('F06',f06Schema,['decision.choose_candidate','todo.create','workflow.host.f06_n03','workflow.host.f06_n04','workflow.host.f06_n05'],
-      object({todoId:text,delivered:{const:true}}),async(scope,bound)=>{
+    addHost(runtimeModule.createRuntimeF06ReminderGuard({...hostOptions,requiredScopes:['todo:read']}));
+    config('F06',f06Schema,['decision.choose_candidate','todo.create','workflow.host.f06_n03','workflow.host.f06_n04','workflow.guard.f06_n05','workflow.host.f06_n05'],
+      object({todoId:text,reminderState:{type:'string',enum:['scheduled','delivered']},delivered:{type:'boolean'}}),async(scope,bound)=>{
         const {proposal}=scope,saved=runtime.loadCheckpoint(scope.taskId,'f06:n03-todo:'+scope.state.sessionId);
         if(proposal.nodeId==='F06_N03'&&proposal.toolName==='workflow.host.f06_n03')return isDeepStrictEqual(proposal.arguments,f06Write(bound.input));
         const identity=saved&&{todoId:saved.todoId,revision:saved.revision};
         if(proposal.nodeId==='F06_N04'&&proposal.toolName==='workflow.host.f06_n04')return !!identity&&isDeepStrictEqual(proposal.arguments,identity);
+        if(proposal.nodeId==='F06_N05'&&proposal.toolName==='workflow.guard.f06_n05')return !!identity&&isDeepStrictEqual(proposal.arguments,{
+          workflowId:'F06',nodeId:'F06_N05',input:bound.input,predecessorStates:{F06_N04:'completed'},
+          predecessorOutputs:{F06_N04:operation(bound,'F06_N04','workflow.host.f06_n04')?.result}});
         if(proposal.nodeId==='F06_N05'&&proposal.toolName==='workflow.host.f06_n05')return !!identity&&isDeepStrictEqual(proposal.arguments,{notification:identity})
-          &&operation(bound,'F06_N04','workflow.host.f06_n04')?.result.shouldFireAlarm===true;
+          &&operation(bound,'F06_N04','workflow.host.f06_n04')?.result.shouldFireAlarm===true
+          &&operation(bound,'F06_N05','workflow.guard.f06_n05')?.result.state==='selected';
         return false;
       },async(scope,bound)=>{
         const created=operation(bound,'F06_N03','workflow.host.f06_n03'),delivered=operation(bound,'F06_N05','workflow.host.f06_n05');
         const saved=runtime.loadCheckpoint(scope.taskId,'f06:n03-todo:'+scope.state.sessionId);
-        if(!created||!saved||created.result.todoId!==saved.todoId||delivered?.result.delivered!==true)
+        if(!created||!saved||created.result.todoId!==saved.todoId)
           fail('RESULT_UNKNOWN','F06 original Todo or delivery receipt unavailable');
-        const result=await ports.deliverNotification({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId},
+        const originalScope={...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId};
+        if(scope.state.result.nodes.F06_N05.state==='skipped'){
+          await ports.readScheduledReminder(originalScope);
+          const result={todoId:saved.todoId,reminderState:'scheduled',delivered:false};
+          runtime.saveCheckpointOnce(scope.taskId,'business-workflow:F06:completion',{sessionId:scope.state.sessionId,result});
+          return {result,resultSummary:'Original Todo reminder schedule persisted; not yet delivered'};
+        }
+        if(delivered?.result.delivered!==true||operation(bound,'F06_N05','workflow.guard.f06_n05')?.result.state!=='selected')
+          fail('RESULT_UNKNOWN','F06 original delivery condition or receipt unavailable');
+        const result=await ports.deliverNotification(originalScope,
           {notification:{todoId:saved.todoId,revision:saved.revision}});
         if(result.delivered!==true)fail('RESULT_UNKNOWN','F06 original notification is not delivered');
-        return {result:{todoId:saved.todoId,delivered:true},resultSummary:'Original Todo reminder delivery confirmed'};
+        const completion={todoId:saved.todoId,reminderState:'delivered',delivered:true};
+        runtime.saveCheckpointOnce(scope.taskId,'business-workflow:F06:completion',{sessionId:scope.state.sessionId,result:completion});
+        return {result:completion,resultSummary:'Original Todo reminder delivery confirmed'};
+      },async scope=>{
+        const completion=runtime.loadCheckpoint(scope.taskId,'business-workflow:F06:completion');
+        if(!completion||!isDeepStrictEqual(completion.result,scope.value))fail('UNAUTHORIZED','F06 original completion changed');
+        const originalScope={...scope,parentTaskId:scope.taskId,sessionId:completion.sessionId};
+        if(completion.result.reminderState==='scheduled')await ports.readScheduledReminder(originalScope);
+        else{
+          const saved=runtime.loadCheckpoint(scope.taskId,'f06:n03-todo:'+completion.sessionId);
+          if(!saved||(await ports.deliverNotification(originalScope,{notification:{todoId:saved.todoId,revision:saved.revision}})).delivered!==true)
+            fail('RESULT_UNKNOWN','F06 original delivery is no longer confirmed');
+        }
       });
   }else unavailable.push('f06_business_dependencies_unavailable');
   if(descriptor('calendar.events')&&descriptor('calendar.create')&&runtimeModule.createRuntimeF07CalendarFreshnessHost

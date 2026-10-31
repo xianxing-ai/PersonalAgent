@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: b9603488d7d8db8dba98619de15c3627bc5dc6f49355d332de4cfea7a7f8cc65
+// Source projection sha256: 7e9c60521782a17d0f6b8824523f60706a9d53c78776587c048b36c77dee932e
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -1249,6 +1249,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收",
+      "未来提醒的原条目与pending schedule精确读回后以scheduled完成；仅真实投递回执可返回delivered，不推进时钟或延长原图deadline。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
       "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
     ],
@@ -1313,10 +1314,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "effectType": "写入（以工具描述为准）",
         "inputFields": [
           "todoTitle",
-          "due"
+          "due",
+          "remindUtc"
         ],
         "outputFields": [
           "todoId",
+          "revision",
           "opKey"
         ],
         "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
@@ -1330,11 +1333,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "required": true,
         "resourceKeys": [
-          "virtual_clock_timer"
+          "runtime_scheduler"
         ],
         "effectType": "读取",
         "inputFields": [
-          "advanceTo"
+          "todoId",
+          "revision"
         ],
         "outputFields": [
           "isTaskAlreadyFinished",
@@ -1360,6 +1364,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "delivered"
         ],
+        "condition": "原提醒已到期且仍有效；未到期的原持久调度返回已安排，由原Scheduler后续投递",
         "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
