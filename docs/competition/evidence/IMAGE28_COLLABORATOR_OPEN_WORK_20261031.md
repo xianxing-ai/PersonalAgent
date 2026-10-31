@@ -4,7 +4,7 @@
 
 > Profile：`huawei_ict_agentarts`。归属与开放缺口登记（可随分工文档合入 main）。  
 > 接线代码在 [#531](https://github.com/xianxing-ai/PersonalAgent/pull/531) / `codex/image28-full-wiring`，**接线未完成前勿合并该 PR**。  
-> 对照：[28 图工作记录](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。#531 尚未合入的资料链接固定到交接时提交，避免本分工文档先合入后出现断链。  
+> 对照：[28 图工作记录](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](https://github.com/xianxing-ai/PersonalAgent/blob/600f341d8cfff9aad0e831357663510c382aeaf9/docs/competition/evidence/IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。#531 尚未合入的资料链接固定到交接时提交，避免本分工文档先合入后出现断链。
 > **规则**：缺受信口保持 unavailable，禁止 Fake/静默回退 Local；每人交付「生产口 → 实际调用方 → 测试 → Evidence」；勾选 152 项须具备生产注册 + 真实宿主 + 约定证据。  
 > **分工修订（Owner，2026-10-31）**：**`2511375597-lab` 负责全部前端与前端接线**（Renderer/设置页/工作区 UI、Desktop 组合层把图 host/worker/IPC 接到对话与设置、相关 smoke）。Electron 受信设备宿主（语音/键鼠/WinForms 原生能力本身）、Runtime/Policy、业务连接器实现、AgentArts 云端仍归原负责人；lab 只接公开口，不伪造后端。  
 > #531 已代实现大量 fail-closed 工厂与部分 Desktop 条件接线；**下表是仍须各负责人本人完成的缺口**。
