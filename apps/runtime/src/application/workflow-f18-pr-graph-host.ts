@@ -2,6 +2,7 @@ import {isDeepStrictEqual} from 'node:util';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
+import {readWorkflowBusinessToolSource} from './workflow-business-tool-bridge.js';
 import {assertOwnedWorkflowHostScope,failOwnedHost,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 
 type Scope=OwnedWorkflowHostScope;
@@ -22,7 +23,11 @@ function basePorts(options?:{application?:Pick<RuntimeApplication,'runtime'|'rea
     requiredScopes:[...options.requiredScopes],assertCurrent:options.assertCurrent,authorizeExport:options.authorizeExport,now:options.now};
 }
 
-function cacheOriginal(runtime:RuntimeApplication['runtime'],binding:OriginalRead,toolName:string):unknown {
+function cacheOriginal(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>,scope:Scope,binding:OriginalRead,toolName:string):unknown {
+  const {runtime}=application;
+  const proof=readWorkflowBusinessToolSource(application,scope,binding,toolName);
+  if(proof.graph.workflowId!=='F18'||proof.sourceHost.taskId!==scope.localTaskId||proof.graph.operationId!==scope.operationId)
+    failOwnedHost('UNAUTHORIZED','F18 original business source belongs to another host');
   if(!object(binding)||!text(binding.taskId)||!text(binding.runId)||!text(binding.toolVersion)||!text(binding.scopeRef)||!object(binding.arguments))
     failOwnedHost('UNSUPPORTED_CAPABILITY','F18 original read binding unavailable');
   let record:ReturnType<typeof runtime.readToolExecutions>[number]|undefined,saved:unknown;
@@ -45,8 +50,8 @@ export function createRuntimeF18BoundPrDiffHost(options?:{
   requiredScopes:readonly string[];
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  resolveBoundDiff:(scope:Scope)=>Promise<{repo:string;prNumber:number;headSha:string;diffRead:OriginalRead}|undefined>;
-  authorizeExport:(scope:Scope,result:{headSha:string;filesChanged:number;additions:number;deletions:number})=>Promise<boolean>;
+  resolveBoundDiff:(scope:Scope,context:ToolContext)=>Promise<{repo:string;prNumber:number;headSha:string;diffRead:OriginalRead}|undefined>;
+  authorizeExport:(scope:Scope,result:{headSha:string;filesChanged:number;additions:number;deletions:number;diff:string;diffDigest:string})=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
   if(!ports||typeof options?.resolveBoundDiff!=='function')return {tools:[],unavailable:'f18_bound_pr_diff_trusted_ports_unavailable'};
@@ -55,23 +60,26 @@ export function createRuntimeF18BoundPrDiffHost(options?:{
     hostToolName:'workflow.host.f18_n01',assertCurrent:ports.assertCurrent,now:ports.now});
   const read=async(context:ToolContext)=>{
     const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveBoundDiff']>>;
-    try {binding=await options.resolveBoundDiff(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F18 bound PR diff unavailable');}
+    binding=await options.resolveBoundDiff(scope,context);
     active(context);
     if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.prNumber)||binding.prNumber<=0||!sha(binding.headSha))
       failOwnedHost('UNSUPPORTED_CAPABILITY','F18 bound PR diff unavailable');
     const args=binding.diffRead?.arguments;
     if(!object(args)||args.repo!==binding.repo||args.prNumber!==binding.prNumber||args.headSha!==binding.headSha)
       failOwnedHost('UNAUTHORIZED','F18 PR diff identity changed');
-    const diff=cacheOriginal(runtime,binding.diffRead,'github.bound_pr_diff');
+    const diff=cacheOriginal(options.application,scope,binding.diffRead,'github.bound_pr_diff');
     if(!object(diff)||diff.headSha!==binding.headSha||!Number.isSafeInteger(diff.filesChanged)||!Number.isSafeInteger(diff.additions)
-      ||!Number.isSafeInteger(diff.deletions)||(diff.filesChanged as number)<0||(diff.additions as number)<0||(diff.deletions as number)<0)
+      ||!Number.isSafeInteger(diff.deletions)||(diff.filesChanged as number)<0||(diff.additions as number)<0||(diff.deletions as number)<0
+      ||typeof diff.diff!=='string'||diff.diff.length>65536||typeof diff.diffDigest!=='string'||!/^[a-f0-9]{64}$/u.test(diff.diffDigest))
       failOwnedHost('UNSUPPORTED_CAPABILITY','F18 bound PR diff evidence unavailable');
-    return {headSha:binding.headSha,filesChanged:diff.filesChanged as number,additions:diff.additions as number,deletions:diff.deletions as number};
+    return {headSha:binding.headSha,filesChanged:diff.filesChanged as number,additions:diff.additions as number,deletions:diff.deletions as number,
+      diff:diff.diff,diffDigest:diff.diffDigest};
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F18_N01',kind:'host',sideEffect:'read',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
-    outputSchema:{type:'object',additionalProperties:false,required:['headSha','filesChanged','additions','deletions'],
-      properties:{headSha:{type:'string'},filesChanged:{type:'integer',minimum:0},additions:{type:'integer',minimum:0},deletions:{type:'integer',minimum:0}}},
+    outputSchema:{type:'object',additionalProperties:false,required:['headSha','filesChanged','additions','deletions','diff','diffDigest'],
+      properties:{headSha:{type:'string'},filesChanged:{type:'integer',minimum:0},additions:{type:'integer',minimum:0},deletions:{type:'integer',minimum:0},
+        diff:{type:'string',maxLength:65536},diffDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}}},
     async execute(_input,context){const result=await read(context);active(context);
       if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F18 PR diff export denied');
       active(context);if(!isDeepStrictEqual(result,await read(context)))failOwnedHost('REVISION_CONFLICT','F18 PR diff changed during export');
@@ -82,7 +90,7 @@ export function createRuntimeF18BoundPrDiffHost(options?:{
       ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)
       ||!isDeepStrictEqual(saved.confirmed.result,result))failOwnedHost('UNAUTHORIZED','F18 PR diff receipt unavailable');
     if(!isDeepStrictEqual(result,await read(context)))failOwnedHost('REVISION_CONFLICT','F18 PR diff changed');
-    if(await ports.authorizeExport(scope,structuredClone(result) as {headSha:string;filesChanged:number;additions:number;deletions:number})!==true)
+    if(await ports.authorizeExport(scope,structuredClone(result))!==true)
       failOwnedHost('UNAUTHORIZED','F18 PR diff export denied');
   }};
 }
@@ -93,8 +101,8 @@ export function createRuntimeF18MergeGateHost(options?:{
   requiredScopes:readonly string[];
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  resolveMergeGate:(scope:Scope)=>Promise<{repo:string;prNumber:number;headSha:string;gateRead:OriginalRead}|undefined>;
-  readCurrentHead:(scope:Scope)=>Promise<string>;
+  resolveMergeGate:(scope:Scope,context:ToolContext)=>Promise<{repo:string;prNumber:number;headSha:string;gateRead:OriginalRead}|undefined>;
+  readCurrentHead:(scope:Scope,context:ToolContext)=>Promise<string>;
   authorizeExport:(scope:Scope,result:{mergeRequirementsSatisfied:boolean;headSha:string})=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
@@ -105,17 +113,17 @@ export function createRuntimeF18MergeGateHost(options?:{
     hostToolName:'workflow.host.f18_n04',assertCurrent:ports.assertCurrent,now:ports.now});
   const read=async(context:ToolContext)=>{
     const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveMergeGate']>>;
-    try {binding=await options.resolveMergeGate(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F18 merge gate unavailable');}
+    binding=await options.resolveMergeGate(scope,context);
     active(context);
     if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.prNumber)||binding.prNumber<=0||!sha(binding.headSha))
       failOwnedHost('UNSUPPORTED_CAPABILITY','F18 merge gate unavailable');
     const args=binding.gateRead?.arguments;
     if(!object(args)||args.repo!==binding.repo||args.prNumber!==binding.prNumber||args.headSha!==binding.headSha)
       failOwnedHost('UNAUTHORIZED','F18 merge gate identity changed');
-    const gate=cacheOriginal(runtime,binding.gateRead,'github.current_head_merge_gate');
+    const gate=cacheOriginal(options.application,scope,binding.gateRead,'github.current_head_merge_gate');
     if(!object(gate)||gate.headSha!==binding.headSha||typeof gate.mergeRequirementsSatisfied!=='boolean')
       failOwnedHost('UNSUPPORTED_CAPABILITY','F18 merge gate evidence unavailable');
-    let head:string;try {head=await options.readCurrentHead(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F18 workspace head unavailable');}
+    const head=await options.readCurrentHead(scope,context);
     active(context);if(head!==binding.headSha)failOwnedHost('REVISION_CONFLICT','F18 workspace head changed');
     return {mergeRequirementsSatisfied:gate.mergeRequirementsSatisfied as boolean,headSha:binding.headSha};
   };
@@ -136,7 +144,7 @@ export function createRuntimeF18RegisteredMergeHost(options?:{
   requiredScopes:readonly string[];
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  resolveRegisteredMerge:(scope:Scope)=>Promise<{repo:string;prNumber:number;mergeRead:OriginalRead}|undefined>;
+  resolveRegisteredMerge:(scope:Scope,context:ToolContext)=>Promise<{repo:string;prNumber:number;mergeRead:OriginalRead}|undefined>;
   authorizeExport:(scope:Scope,result:{mergedSha:string;prClosed:boolean})=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
@@ -146,13 +154,13 @@ export function createRuntimeF18RegisteredMergeHost(options?:{
     hostToolName:'workflow.host.f18_n05',assertCurrent:ports.assertCurrent,now:ports.now});
   const read=async(context:ToolContext)=>{
     const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveRegisteredMerge']>>;
-    try {binding=await options.resolveRegisteredMerge(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F18 registered merge unavailable');}
+    binding=await options.resolveRegisteredMerge(scope,context);
     active(context);
     if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.prNumber)||binding.prNumber<=0)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F18 registered merge unavailable');
     const args=binding.mergeRead?.arguments;
     if(!object(args)||args.repo!==binding.repo||args.prNumber!==binding.prNumber)failOwnedHost('UNAUTHORIZED','F18 merge identity changed');
-    const merged=cacheOriginal(runtime,binding.mergeRead,'github.registered_merge');
+    const merged=cacheOriginal(options.application,scope,binding.mergeRead,'github.registered_merge');
     if(!object(merged)||!sha(merged.mergedSha)||typeof merged.prClosed!=='boolean')
       failOwnedHost('UNSUPPORTED_CAPABILITY','F18 registered merge evidence unavailable');
     return {mergedSha:merged.mergedSha as string,prClosed:merged.prClosed as boolean};
