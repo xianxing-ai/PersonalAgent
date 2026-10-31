@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {isDeepStrictEqual} from 'node:util';
 import {createRuntimeF16CiFailureHost} from '../dist/application/workflow-f16-ci-failure-host.js';
 
 function fixture(){
@@ -12,17 +13,27 @@ function fixture(){
     proposal:{nodeId:'F16_N01',operationId:'op',toolName:'workflow.host.f16_n01',arguments:{}}});
   const names=['github.actions.run.list','github.actions.job.list','github.actions.log.read'];
   const args=[{repo:'owner/repo',page:1,status:'failure'},{repo:'owner/repo',runId:7},{repo:'owner/repo',runId:7,jobId:8}];
-  const records=names.map((toolName,i)=>({taskId:'source',evidenceId:`read${i}`,toolName,toolVersion:'1',policyDecision:'allow',executionStarted:true,state:'confirmed'}));
-  const sources=args.map((arguments_,i)=>({taskId:'source',runId:`read${i}`,toolVersion:'1',scopeRef:'grant',arguments:arguments_}));
-  put('source','tool-result-read0',{result:{items:[{id:7,status:'completed',conclusion:'failure',headSha:head}]}});
-  put('source','tool-result-read1',{result:{items:[{id:8,runId:7,conclusion:'failure'}]}});
-  put('source','tool-result-read2',{result:{text:'synthetic test failure',truncated:false}});
-  const runtime={getTask:id=>id==='parent'?{state:'running'}:{evidenceRefs:['read0','read1','read2']},
+  const records=names.map((toolName,i)=>({taskId:'source'+i,evidenceId:`host-tool-source${i}`,toolName,toolVersion:'1',policyDecision:'allow',executionStarted:true,state:'confirmed'}));
+  const sources=args.map((arguments_,i)=>({taskId:'source'+i,runId:`host-tool-source${i}`,toolVersion:'1',scopeRef:`host-tool-source${i}`,arguments:arguments_}));
+  for(let i=0;i<3;i++){
+    const request={commandId:'read'+i,toolName:names[i],toolVersion:'1',arguments:args[i],deadline};
+    put('source'+i,'coding-repair:parent',{taskId:'parent',operationId:'read'+i});
+    put('source'+i,'host-tool-intent',request);
+    put('parent','coding-repair:host:read'+i,{localTaskId:'source'+i,request});
+  }
+  put('source0','tool-result-host-tool-source0',{result:{items:[{id:7,status:'completed',conclusion:'failure',headSha:head}]}});
+  put('source1','tool-result-host-tool-source1',{result:{items:[{id:8,runId:7,status:'completed',conclusion:'failure'}]}});
+  put('source2','tool-result-host-tool-source2',{result:{text:'synthetic test failure',truncated:false}});
+  const runtime={getTask:id=>id==='parent'?{state:'running'}:{evidenceRefs:['host-tool-'+id]},
+    saveCheckpointOnce:(id,key,value)=>{if(!checkpoints.has(id+'|'+key))put(id,key,structuredClone(value));},
     loadCheckpoint:(id,key)=>checkpoints.get(id+'|'+key),readToolExecutions:()=>records,
-    matchesToolExecutionInput:(record,input)=>input.scopeRef==='grant'&&input.arguments===args[Number(record.evidenceId.at(-1))]};
+    matchesToolExecutionInput:(record,input)=>input.scopeRef===record.evidenceId&&isDeepStrictEqual(input.arguments,args[Number(record.evidenceId.at(-1))])};
   const binding={repo:'owner/repo',headSha:head,runId:7,jobId:8,runList:sources[0],jobList:sources[1],logRead:sources[2]};
   let saved,currentHead=head,allowed=true;
-  const options={application:{runtime,readHostToolTask:()=>({commandId:'op',toolName:'workflow.host.f16_n01',task:{state:saved?'succeeded':'running'},
+  const options={application:{runtime,readHostToolTask:id=>id.startsWith('source')?{
+    commandId:'read'+id.at(-1),toolName:names[Number(id.at(-1))],toolVersion:'1',task:{taskId:id,state:'succeeded',evidenceRefs:['host-tool-'+id]},
+    confirmed:{runId:'host-tool-'+id,evidenceRefs:['host-tool-'+id],result:runtime.loadCheckpoint(id,'tool-result-host-tool-'+id).result}}:
+    ({commandId:'op',toolName:'workflow.host.f16_n01',toolVersion:'1.0.0',task:{taskId:'child',state:saved?'succeeded':'running'},
     confirmed:saved?{runId:context.runId,evidenceRefs:[context.runId],result:saved}:undefined})},requiredScopes:['ci:read'],now:()=>new Date(now),
     assertCurrent:()=>{},resolveFailure:async()=>binding,readCurrentHead:async()=>currentHead,authorizeExport:async()=>allowed};
   return {context,options,binding,records,put,complete:value=>saved=value,head:value=>currentHead=value,deny:()=>allowed=false};
@@ -47,9 +58,9 @@ test('F16 rejects changed head, unauthorized source and denied log egress',async
 });
 test('F16 rejects nonfailed runs, unrelated jobs and missing logs',async()=>{
   const f=fixture(),host=createRuntimeF16CiFailureHost(f.options);
-  f.put('source','tool-result-read0',{result:{items:[{id:7,status:'completed',conclusion:'success',headSha:f.binding.headSha}]}});
+  f.put('source0','tool-result-host-tool-source0',{result:{items:[{id:7,status:'completed',conclusion:'success',headSha:f.binding.headSha}]}});
   await assert.rejects(host.tools[0].execute({},f.context),{code:'UNSUPPORTED_CAPABILITY'});
-  f.put('source','tool-result-read0',{result:{items:[{id:7,status:'completed',conclusion:'failure',headSha:f.binding.headSha}]}});
-  f.put('source','tool-result-read1',{result:{items:[{id:8,runId:9,conclusion:'failure'}]}});
+  f.put('source0','tool-result-host-tool-source0',{result:{items:[{id:7,status:'completed',conclusion:'failure',headSha:f.binding.headSha}]}});
+  f.put('source1','tool-result-host-tool-source1',{result:{items:[{id:8,runId:9,status:'completed',conclusion:'failure'}]}});
   await assert.rejects(host.tools[0].execute({},f.context),{code:'UNSUPPORTED_CAPABILITY'});
 });
