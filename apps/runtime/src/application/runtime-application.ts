@@ -8,7 +8,14 @@ import type {SubtaskDefinition} from '@personal-agent/agents';
 import {createRuntimeCodingRepairDispatchTool,codingRepairWorkflowInputSchema,readRuntimeCodingRepairRequest,runRuntimeCodingRepairWorkflow,
   isRuntimeDispatchTool,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './coding-repair-application.js';
 import type {RuntimeCodingRepairOptions} from './coding-repair-application.js';
+import {codingRepairSignedReviewDescriptor} from './coding-repair-signed-review.js';
 import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-capability.js';
+import {createRuntimeOwnedWorkflowWorkerCapability,runtimeOwnedWorkflowWorkerConfigured,
+  OWNED_WORKFLOW_WORKER_TOOL,OWNED_WORKFLOW_WORKER_VERSION} from './owned-workflow-worker-capability.js';
+import type {RuntimeOwnedWorkflowWorkerOptions,RuntimeOwnedWorkflowWorkerCapability} from './owned-workflow-worker-capability.js';
+import {createRuntimeF09WorkflowWorkerCapability,runtimeF09WorkflowWorkerConfigured,
+  F09_WORKFLOW_WORKER_TOOL,F09_WORKFLOW_WORKER_VERSION} from './owned-workflow-f09-worker-capability.js';
+import type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability} from './owned-workflow-f09-worker-capability.js';
 import {capabilityContext} from './capability-context.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
@@ -379,6 +386,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
   workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
   codingRepair?:RuntimeCodingRepairOptions;
+  ownedWorkflowWorker?:RuntimeOwnedWorkflowWorkerOptions;
+  f09WorkflowWorker?:RuntimeF09WorkflowWorkerOptions;
   developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   /** Current trusted product configuration, pinned by its host to the original task revision. */
   readDeveloperWorkflows?:(scope:RuntimeDeveloperWorkflowScope)=>RuntimeDeveloperWorkflowsOptions|undefined;
@@ -498,7 +507,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly coordinationBinding: string;
   private readonly assertCoordinationBinding?: () => void;
   private readonly codingRepair?:RuntimeCodingRepairOptions;
+  private codingReviewProvider?:RegisteredTool;
+  private readonly ownsCodingReviewBridge:boolean;
   private readonly codingWorker?:ReturnType<typeof createRuntimeCodingRepairWorkerCapability>;
+  private readonly ownedWorkflowWorker?:RuntimeOwnedWorkflowWorkerCapability;
+  private readonly f09WorkflowWorker?:RuntimeF09WorkflowWorkerCapability;
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   private readonly readDeveloperWorkflows?:RuntimeApplicationOptions['readDeveloperWorkflows'];
   private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
@@ -554,7 +567,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   constructor(options: RuntimeApplicationOptions) {
     if(options.mailReview&&(options.profile!=='huawei_ict_agentarts'||!options.coordination))
       throw new ProtocolError('INVALID_ARGUMENT','Mail review requires Competition coordination');
-    this.hostOnlyToolNames=new Set([...(options.hostOnlyTools??[]),...(options.mailReview?[MAIL_REVIEW_TOOL]:[])]);
+    this.hostOnlyToolNames=new Set([...(options.hostOnlyTools??[]),...(options.mailReview?[MAIL_REVIEW_TOOL]:[]),
+      ...(options.codingRepair?['workflow.host.f15_independent_review']:[])]);
     this.hasToolAuthorizationHost=typeof options.requestToolAuthorization==='function';
     if (options.delegateUserTasks !== undefined && (options.delegateUserTasks !== true || options.profile !== 'huawei_ict_agentarts')) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Required user delegation needs Competition Profile');
@@ -726,7 +740,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       configurationRef:this.coordinationBinding,readConfiguration:()=>this.readDeveloperHarnessConfiguration!(),
       now:()=>this.now().getTime()} : undefined;
     const harnessTool = harnessHost ? createRuntimeDeveloperHarnessTool(harnessHost) : undefined;
-    const configuredTools = [...(options.tools ?? []),...(discoveryTool?[discoveryTool]:[]),...(options.mailReview?[createRuntimeMailReviewTool(options.mailReview,{
+    this.ownsCodingReviewBridge=Boolean(this.codingRepair&&!options.tools?.some(tool=>tool.descriptor.name==='workflow.host.f15_independent_review'));
+    const reviewBridge:RegisteredTool={descriptor:codingRepairSignedReviewDescriptor(),execute:async(input,context)=>{
+      if(!this.codingReviewProvider)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Independent coding review provider is unavailable');
+      return this.codingReviewProvider.execute(input,context);
+    }};
+    const configuredTools = [...(options.tools ?? []),...(this.ownsCodingReviewBridge?[reviewBridge]:[]),...(discoveryTool?[discoveryTool]:[]),...(options.mailReview?[createRuntimeMailReviewTool(options.mailReview,{
       revision:taskId=>this.runtime.getTask(taskId).revision,
       exchange:(request,context,envelope)=>this.executeMailReview(options,request,context,envelope),
       save:(taskId,binding,result)=>{if(!this.runtime.saveCheckpointOnce(taskId,MAIL_REVIEW_RESULT,{binding,result}))
@@ -1065,10 +1084,32 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return tools.invoke(request);
       }};
     });
-    if (options.competitionToolAvailability !== undefined||discoveryTool) {
+    if(this.profile==='huawei_ict_agentarts'&&this.delegateUserTasks&&runtimeOwnedWorkflowWorkerConfigured(options.ownedWorkflowWorker))
+      this.ownedWorkflowWorker=createRuntimeOwnedWorkflowWorkerCapability(this,options.ownedWorkflowWorker,taskId=>{
+        const tools=this.taskTools(taskId),frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
+        if(!tools||!Array.isArray(frozen)||frozen.some(descriptor=>!tools.list().some(current=>isDeepStrictEqual(current,descriptor))))return undefined;
+        return {list:()=>structuredClone(frozen),invoke:request=>{
+          const descriptor=frozen.find(tool=>tool.name===request.toolName&&tool.version===request.toolVersion);
+          if(request.taskId!==taskId||!descriptor||!isDeepStrictEqual(descriptor,tools.list().find(tool=>tool.name===request.toolName&&tool.version===request.toolVersion)))
+            throw new ProtocolError('UNAUTHORIZED','Workflow tool is outside the original worker binding');
+          return tools.invoke(request);
+        }};
+      });
+    if(this.profile==='huawei_ict_agentarts'&&this.delegateUserTasks&&runtimeF09WorkflowWorkerConfigured(options.f09WorkflowWorker))
+      this.f09WorkflowWorker=createRuntimeF09WorkflowWorkerCapability(this,options.f09WorkflowWorker,taskId=>{
+        const tools=this.taskTools(taskId),frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
+        if(!tools||!Array.isArray(frozen)||frozen.some(descriptor=>!tools.list().some(current=>isDeepStrictEqual(current,descriptor))))return undefined;
+        return {list:()=>structuredClone(frozen),invoke:request=>{
+          const descriptor=frozen.find(tool=>tool.name===request.toolName&&tool.version===request.toolVersion);
+          if(request.taskId!==taskId||!descriptor||!isDeepStrictEqual(descriptor,tools.list().find(tool=>tool.name===request.toolName&&tool.version===request.toolVersion)))
+            throw new ProtocolError('UNAUTHORIZED','F09 tool is outside the original worker binding');
+          return tools.invoke(request);
+        }};
+      });
+    if (options.competitionToolAvailability !== undefined||discoveryTool||this.ownedWorkflowWorker||this.f09WorkflowWorker) {
       if (!this.tools) throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog needs registered tools');
       this.competitionToolCatalog = new RuntimeCompetitionToolCatalog(
-        this.runtime, this.tools, this.competitionToolExports,[...(options.competitionToolAvailability??[]),...(discoveryTool?[{
+        this.runtime, this.tools, this.competitionToolExports,[...(options.competitionToolAvailability??[]).filter(item=>item.toolName!=='workflow.host.f15_independent_review'),...(discoveryTool?[{
           toolName:TOOL_DISCOVERY_NAME,toolVersion:TOOL_DISCOVERY_VERSION,publicDescription:TOOL_DISCOVERY_DESCRIPTION,
           available:()=>true,
         }]:[]),
@@ -1094,7 +1135,27 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
               const binding=options.competitionToolAvailability?.find(item=>item.toolName==='coding.repair.start'&&item.toolVersion==='1.0.0');
               if(!this.codingRepair?.projectSource||!this.codingRepair.authorizeMetadata||!binding||!await binding.available(input))return undefined;
               return this.codingWorker?.describe(input)??{name:'coding.repair.workflow',version:'1.0.0',inputSchema:codingRepairWorkflowInputSchema()};
-            }}]:[]),{
+            }}]:[]),...(this.ownedWorkflowWorker&&options.ownedWorkflowWorker?[{
+          toolName:OWNED_WORKFLOW_WORKER_TOOL,toolVersion:OWNED_WORKFLOW_WORKER_VERSION,publicEnumPaths:['/workflowId'],
+          sideEffect:'local_write' as const,requiredTool:{name:'workspace.read_text',version:'1.0.0'},
+          describeRegistered:()=>this.ownedWorkflowWorker?.describe(),
+          describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
+            const binding=options.ownedWorkflowWorker!,descriptors=this.taskTools(input.taskId)?.list()??[];
+            if(!runtimeOwnedWorkflowWorkerConfigured(binding)||!this.ownedWorkflowWorker
+              ||!descriptors.some(tool=>tool.name==='workspace.run_allowed_command'&&tool.version==='1.0.0')
+              ||!await binding.available(input))return undefined;
+            binding.assertCurrent(input);return this.ownedWorkflowWorker.describe();
+          }}]:[]),...(this.f09WorkflowWorker&&options.f09WorkflowWorker?[{
+          toolName:F09_WORKFLOW_WORKER_TOOL,toolVersion:F09_WORKFLOW_WORKER_VERSION,publicEnumPaths:['/workflowId'],
+          sideEffect:'read' as const,requiredTool:{name:'feeds.collect',version:'1.0.0'},
+          describeRegistered:()=>this.f09WorkflowWorker?.describe(),
+          describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
+            const binding=options.f09WorkflowWorker!,descriptors=this.taskTools(input.taskId)?.list()??[];
+            if(!runtimeF09WorkflowWorkerConfigured(binding)||!this.f09WorkflowWorker
+              ||!descriptors.some(tool=>tool.name==='workflow.host.f09_n02'&&tool.version==='1.0.0')
+              ||await binding.available(input)!==true)return undefined;
+            binding.assertCurrent(input);return this.f09WorkflowWorker.describe();
+          }}]:[]),{
           toolName:CLOUD_SKILL_TOOL_NAME,toolVersion:CLOUD_SKILL_TOOL_VERSION,publicEnumPaths:CLOUD_SKILL_PUBLIC_ENUM_PATHS,
           requiredTool:{name:'mcp.workspace.read_text',version:'1.0.0'},
           describeRegistered:()=>this.cloudSkill?{name:CLOUD_SKILL_TOOL_NAME,version:CLOUD_SKILL_TOOL_VERSION,inputSchema:CLOUD_SKILL_CHOICE_SCHEMA}:undefined,
@@ -1465,7 +1526,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Read only the original active F15 host child, for task-bound approval discovery. */
   readPendingOwnedWorkflowHostTask(taskId:string):TaskSnapshot|undefined {
-    try{return this.codingWorker?.pendingHostTask(taskId);}catch{return undefined;}
+    try{return this.codingWorker?.pendingHostTask(taskId)??this.ownedWorkflowWorker?.pendingHostTask(taskId)
+      ??this.f09WorkflowWorker?.pendingHostTask(taskId);}catch{return undefined;}
   }
 
   private resolveOriginalWorkerApproval(taskId:string,proposal:unknown):{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined {
@@ -1530,6 +1592,31 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return this.runtime.eraseTaskCopies({...input,externalCopiesPurged});
   }
   get coordinationConfigurationRef():string {return this.coordinationBinding;}
+
+  /** Main-process only. This describes the actual immutable deployment, never a model/person identity. */
+  readCodingRepairExecutionIdentity():{coordinationBinding:string;imageBinding:string}|undefined {
+    try {
+      if(this.profile!=='huawei_ict_agentarts'||!this.codingRepair?.image?.bindingId||!this.assertCoordinationBinding)return undefined;
+      this.assertCoordinationBinding();
+      return {coordinationBinding:this.coordinationBinding,imageBinding:this.codingRepair.image.bindingId};
+    }catch{return undefined;}
+  }
+
+  /** Trusted Desktop composition only; the original ToolGateway and Policy remain authoritative. */
+  configureCodingRepairIndependentReview(binding:{tool:RegisteredTool;port:NonNullable<RuntimeCodingRepairOptions['independentReview']>}):void {
+    if(!this.readCodingRepairExecutionIdentity()||!this.codingRepair||!this.tools)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original coding review host is unavailable');
+    if(!this.ownsCodingReviewBridge)throw new ProtocolError('REVISION_CONFLICT','Independent coding review tool is already owned by another host');
+    if(this.activeTextTasks.size||this.activeWindowsRecovery.size||this.workspacePatchReconciliation?.activeCount
+      ||this.runtime.listTasks({states:['created','planning','running','waiting_approval','waiting_external','waiting_reconciliation','verifying','cancelling'],limit:1}).items.length)
+      throw new ProtocolError('REVISION_CONFLICT','Cannot change coding review while original tasks are unfinished');
+    if(!binding?.tool||typeof binding.tool.execute!=='function'||!isDeepStrictEqual(binding.tool.descriptor,codingRepairSignedReviewDescriptor())
+      ||typeof binding.port?.read!=='function'||typeof binding.port.assertCurrent!=='function')
+      throw new ProtocolError('INVALID_ARGUMENT','Invalid independent coding review binding');
+    validateContract('tool',binding.tool.descriptor);
+    this.codingReviewProvider=binding.tool;
+    this.codingRepair.independentReview=binding.port;this.codingRepair.independentReviewProducer=true;
+  }
 
   /** Connect the existing learning lifecycle to canonical original Runtime journals. */
   createHarnessExperienceApplication(options:RuntimeHarnessExperienceApplicationOptions) {
@@ -2784,6 +2871,32 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private refreshCodingRepairParent(localTaskId:string):void {
     const binding=this.runtime.loadCheckpoint(localTaskId,CODING_REPAIR_PARENT) as {taskId?:string}|undefined;
     if(!binding?.taskId)return;
+    const workflow=this.activeOwnedWorkflowWorker(binding.taskId);
+    if(workflow) {
+      const task=this.runtime.getTask(binding.taskId),local=this.runtime.getTask(localTaskId);
+      const original=workflow.pendingHostTask(binding.taskId);
+      if(original?.taskId===localTaskId&&local.state==='waiting_reconciliation'&&!task.cancelRequested) {
+        // This is only a state projection of the original unknown child, not a
+        // continuation or permission to run it again.
+        void Promise.resolve(this.activeTextTasks.get(binding.taskId)).then(async()=>{
+          const current=this.runtime.getTask(binding.taskId!);
+          if(!current.cancelRequested&&current.state==='waiting_approval'&&this.activeOwnedWorkflowWorker(binding.taskId!)===workflow
+            &&workflow.pendingHostTask(binding.taskId!)?.taskId===localTaskId
+            &&this.runtime.getTask(localTaskId).state==='waiting_reconciliation') {
+            this.runtime.transitionTask(binding.taskId!,'waiting_reconciliation',{error:{code:'RESULT_UNKNOWN',
+              message:'Original workflow host operation requires reconciliation',retryable:false}});
+            await this.refreshSubagentParent(binding.taskId!);
+          }
+        }).catch(()=>{/* Preserve the original unknown operation. */});
+        return;
+      }
+      if(original?.taskId!==localTaskId||task.cancelRequested||!['waiting_approval','waiting_reconciliation'].includes(task.state)
+        ||!['succeeded','failed','cancelled'].includes(local.state))return;
+      void Promise.resolve(this.activeTextTasks.get(binding.taskId)).then(()=>this.resumeOwnedWorkflowTask(binding.taskId!)).catch(error=>{
+        try{this.runtime.saveCheckpoint(binding.taskId!,'owned-workflow:resume-error',{code:error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE'});}catch{/* Preserve original checkpoints. */}
+      });
+      return;
+    }
     const state=this.runtime.loadCheckpoint(binding.taskId,CODING_REPAIR_STATE) as {waiting?:{localTaskId?:string};pendingSend?:unknown}|undefined;
     const task=this.runtime.getTask(binding.taskId),local=this.runtime.getTask(localTaskId);
     const observeUnknown=local.state==='waiting_reconciliation'&&this.codingWorker?.isActive(binding.taskId)===true;
@@ -2793,6 +2906,36 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     void Promise.resolve(this.activeTextTasks.get(binding.taskId)).then(()=>this.resumeCodingRepairTask(binding.taskId!,observeUnknown)).catch(error=>{
       try{this.runtime.saveCheckpoint(binding.taskId!,'coding-repair:resume-error',{code:error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE'});}catch{/* Closed application retains its original checkpoints. */}
     });
+  }
+
+  private activeOwnedWorkflowWorker(taskId:string):RuntimeOwnedWorkflowWorkerCapability|RuntimeF09WorkflowWorkerCapability|undefined {
+    if(this.ownedWorkflowWorker?.isActive(taskId))return this.ownedWorkflowWorker;
+    if(this.f09WorkflowWorker?.isActive(taskId))return this.f09WorkflowWorker;
+    return undefined;
+  }
+  private resumeOwnedWorkflowTask(taskId:string):void {
+    if(this.activeTextTasks.has(taskId)||!this.tools)return;
+    const workflow=this.activeOwnedWorkflowWorker(taskId);
+    if(!workflow)throw new ProtocolError('UNAUTHORIZED','Original workflow worker binding is unavailable');
+    this.assertCompetitionTaskConfiguration(taskId);
+    workflow.assertResumeAllowed(taskId);
+    const task=this.runtime.getTask(taskId),binding=this.runtime.loadCheckpoint(taskId,'subtask-parent') as
+      (SubtaskDefinition&{parentTaskId:string;parentDeadline:string})|undefined;
+    if(!binding||task.cancelRequested||!['waiting_approval','waiting_reconciliation'].includes(task.state))
+      throw new ProtocolError('UNAUTHORIZED','Original workflow child is not resumable');
+    const {parentTaskId:_parentTaskId,parentDeadline:_parentDeadline,...definition}=binding;
+    const frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
+    const current=this.tools.list().filter(tool=>tool.name!==SUBAGENT_DISPATCH_TOOL_NAME)
+      .sort((a,b)=>a.name.localeCompare(b.name)||a.version.localeCompare(b.version));
+    if(!Array.isArray(frozen)||!isDeepStrictEqual(frozen,current))throw new ProtocolError('REVISION_CONFLICT','Original workflow tool scope changed');
+    if(task.state==='waiting_reconciliation')this.runtime.prepareVerifiedContinuation(taskId,task.revision);
+    const tools:AgentToolPort={list:()=>structuredClone(frozen),invoke:request=>{
+      if(request.taskId!==taskId||!frozen.some(tool=>tool.name===request.toolName&&tool.version===request.toolVersion))
+        throw new ProtocolError('UNAUTHORIZED','Tool is outside original workflow scope');return this.tools!.invoke(request);}};
+    const execution=this.runtime.runTask(taskId,worker=>this.runDefaultSubagentWorker(definition,worker,tools),
+      {deadline:binding.parentDeadline,sideEffect:'local_write',resume:true}).then(()=>this.refreshSubagentParent(taskId))
+      .finally(()=>this.activeTextTasks.delete(taskId));
+    this.activeTextTasks.set(taskId,execution);void execution.catch(()=>{});
   }
 
   private resumeCodingRepairTask(taskId:string,observeUnknown=false):void {
@@ -4009,9 +4152,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private readonly coordinationWorkers:CoordinationWorkerCapabilityPort={
-    accepts:proposal=>!!this.codingWorker?.accepts(proposal)||!!this.developerWorker?.accepts(proposal)||(proposal.toolName===CLOUD_SKILL_TOOL_NAME && proposal.toolVersion===CLOUD_SKILL_TOOL_VERSION),
+    accepts:proposal=>!!this.codingWorker?.accepts(proposal)||!!this.ownedWorkflowWorker?.accepts(proposal)||!!this.f09WorkflowWorker?.accepts(proposal)||!!this.developerWorker?.accepts(proposal)||(proposal.toolName===CLOUD_SKILL_TOOL_NAME && proposal.toolVersion===CLOUD_SKILL_TOOL_VERSION),
     dispatch:async(proposal,context)=> {
       if(this.codingWorker?.accepts(proposal))return this.codingWorker.dispatch(proposal,context);
+      if(this.ownedWorkflowWorker?.accepts(proposal))return this.ownedWorkflowWorker.dispatch(proposal,context);
+      if(this.f09WorkflowWorker?.accepts(proposal))return this.f09WorkflowWorker.dispatch(proposal,context);
       if(this.developerWorker?.accepts(proposal))return this.developerWorker.dispatch(proposal,context);
       if(!this.cloudSkill)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Native public Skill selection is unavailable');
       let result:CloudSkillReceipt;
@@ -4030,6 +4175,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     },
     assertReceiptAllowed:(proposal,selection,receipt,context)=> {
       if(this.codingWorker?.accepts(proposal)){this.codingWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
+      if(this.ownedWorkflowWorker?.accepts(proposal)){this.ownedWorkflowWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
+      if(this.f09WorkflowWorker?.accepts(proposal)){this.f09WorkflowWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
       if(this.developerWorker?.accepts(proposal)){this.developerWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
       if(!this.cloudSkill)throw new ProtocolError('UNAUTHORIZED','Skill final guard is unavailable');
       this.cloudSkill.assertReceiptAllowed(selection as CloudSkillSelection,receipt as CloudSkillReceipt,
@@ -4222,6 +4369,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   resumeTask(taskId: string): void {
     this.harnessExperienceRecipes(taskId,{deadline:this.runtime.loadCheckpoint(taskId,'application-deadline') as string,signal:new AbortController().signal});
     this.assertHarnessEventCurrent(taskId);
+    if(this.activeOwnedWorkflowWorker(taskId)) {this.resumeOwnedWorkflowTask(taskId);return;}
     if(this.runtime.loadCheckpoint(taskId,CODING_REPAIR_STATE)!==undefined) {this.resumeCodingRepairTask(taskId);return;}
     if(this.profile==='huawei_ict_agentarts'
       && (this.runtime.loadCheckpoint(taskId,'application-profile')==='huawei_ict_agentarts'

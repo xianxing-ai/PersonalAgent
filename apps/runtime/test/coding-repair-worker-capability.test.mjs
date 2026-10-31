@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash,generateKeyPairSync,sign} from 'node:crypto';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createRuntimeApplication,createDesktopSubagentDispatchTool,CODING_REPAIR_WORKFLOW_TOOL} from '../dist/application.js';
 import {createRuntimeCodingRepairWorkerCapability} from '../dist/application/coding-repair-worker-capability.js';
+import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
+import {createRuntimeCodingRepairSignedReview,codingRepairReviewBytes} from '../dist/application/coding-repair-signed-review.js';
 
 // Synthetic frontier and coding host. The real TaskRuntime/Policy/ToolGateway,
 // host-child identities, approval recovery and source-export checks are exercised.
@@ -22,20 +24,38 @@ function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synt
     outputSchema:{type:'object'},idempotencySupport:false,recoverySupport:false,requiresPresence:false},
     execute:async(args,context)=>{calls.push({name,taskId:context.taskId,runId:context.runId});return execute(args,context);}});
   const sessionSchema={sessionId:{type:'string'}};
+  const patch={path:'app.js',expectedSha256:sha(source),edits:[{oldText:'1',newText:'2'}]};
   const tools=[tool('coding.repair.start','local_write',async(args,context)=>({version:1,
     session:{version:1,sessionId:session,taskId:context.taskId,workspaceId:'synthetic-workspace',mode:args.mode,baselineSnapshotId:'before'},
     initialSnapshot:snapshot(),recipes:[{recipeId:'unit',packageIds:['pkg'],required:true}]}),
     {mode:{type:'string',enum:['main','isolated']},allowedPaths:{type:'array',items:{type:'string'}}},['mode']),
   tool('coding.repair.read','read',async()=>({path:'app.js',sha256:sha(source),content:source}),
     {...sessionSchema,path:{type:'string'}},['sessionId','path']),
+  tool('workspace.coding_snapshot','read',async()=>snapshot(),sessionSchema,['sessionId']),
+  tool('workflow.host.f15_n04','read',async()=>({sessionId:session,approved:true,previewed:true,patches:[{
+    path:'app.js',beforeSha256:sha(source),afterSha256:sha(updated),changed:true}]}),
+    {...sessionSchema,patches:{type:'array',items:{type:'object'}}},['sessionId','patches']),
   tool('workflow.host.f15_n05','local_write',async(_args,context)=>{
     if(unknown)throw new ProtocolError('RESULT_UNKNOWN','Synthetic unknown write');
     return {version:1,sessionId:session,snapshot:snapshot(true),verification:[{version:1,sessionId:session,
       runId:context.runId,recipeId:'unit',packageIds:['pkg'],inputSnapshotId:'after',files:snapshot(true).files,
       exitCode:0,status:'VALID',evidenceRefs:[],diagnostics:[]}]};
-  },sessionSchema,['sessionId']),
+  },{...sessionSchema,patches:{type:'array',items:{type:'object'}},recipeIds:{type:'array',items:{type:'string'}}},['sessionId','patches','recipeIds']),
   tool('workflow.host.f15_n06','local_write',async()=>({version:1,sessionId:session,state:'published',
-    files:[{path:'app.js',beforeSha256:sha(source),afterSha256:sha(updated)}],evidenceRefs:[]}),sessionSchema,['sessionId'])];
+    files:[{path:'app.js',beforeSha256:sha(source),afterSha256:sha(updated)}],evidenceRefs:[]}),
+    {...sessionSchema,version:{const:1},baselineSnapshotId:{type:'string'},snapshotId:{type:'string'},paths:{type:'array',items:{type:'string'}},
+      verificationRunIds:{type:'array',items:{type:'string'}}},['version','sessionId','baselineSnapshotId','snapshotId','paths','verificationRunIds'])];
+  tools.push(createWorkflowDecisionTool({selector:{select:async()=> 'selected'}}));
+  // Synthetic signed reviewer: only the fixture owns this ephemeral key. Every
+  // operation still enters the original Runtime, Policy and ToolGateway.
+  const {publicKey,privateKey}=generateKeyPairSync('ed25519'),reviews=new Map();
+  const review=createRuntimeCodingRepairSignedReview(()=>app,{reviewerId:'synthetic-reviewer',authorId:'synthetic-author',policyId:'fixture-policy',
+    publicKey:publicKey.export({type:'spki',format:'pem'}),assertCurrent:()=>true,read:key=>{
+      const id=JSON.stringify(key);let value=reviews.get(id);if(!value){const signed={version:1,...key,reviewerId:'synthetic-reviewer',
+        authorId:'synthetic-author',policyId:'fixture-policy',decision:'approved',reviewedAt:new Date(Date.now()-1000).toISOString(),
+        expiresAt:new Date(Date.now()+120000).toISOString()};value={review:signed,signature:sign(null,codingRepairReviewBytes(signed),privateKey).toString('base64')};reviews.set(id,value);}
+      return value;}});
+  tools.push(review.tool);
   tools.unshift(createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)}));
   const proposal={kind:'tool_proposal',proposalId:'same-worker-f15',toolName:CODING_REPAIR_WORKFLOW_TOOL,toolVersion:'1.0.0',
@@ -44,16 +64,27 @@ function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synt
     images.push(structuredClone({...request,signal:undefined}));
     const phase=request.checkpoint?Number(request.checkpoint.split('-').at(-1)):0;
     if(phase>0)assert.equal(request.receipts[0].state,'confirmed');
-    const [name,node]=phase===0?['coding.repair.read','F15_N03']:phase===1?['workflow.host.f15_n05','F15_N05']:['workflow.host.f15_n06','F15_N06'];
-    const args={sessionId:session,...(phase===0?{path:'app.js'}:{})};
-    const descriptor=request.availableTools.find(tool=>tool.name===name);
-    const operationId=`synthetic-${request.taskId}-${phase}`;
+    const decision=(nodeId,value)=>({context:JSON.stringify({workflowId:'F15',nodeId,candidateValues:[{id:'selected',value},{id:'review',value:null,abstain:true}]}),
+      candidates:[{id:'selected',description:'Synthetic selection'},{id:'review',description:'Synthetic abstention'}],requestId:`${request.requestId}-${nodeId}`});
+    const check=request.receipts.find(receipt=>receipt.nodeId==='F15_N05')?.result;
+    const specs=phase===0?[
+      ['workspace.coding_snapshot','F15_N01',{sessionId:session}],
+      ['decision.choose_candidate','F15_N02',decision('F15_N02',{scope:['app.js']})],
+      ['coding.repair.read','F15_N03',{sessionId:session,path:'app.js'}],
+      ['decision.choose_candidate','F15_N03',decision('F15_N03',{diagnosis:'Synthetic candidate',patches:[patch]})],
+      ['workflow.host.f15_n04','F15_N04',{sessionId:session,patches:[patch]}]]:
+      phase===1?[['workflow.host.f15_n05','F15_N05',{sessionId:session,patches:[patch],recipeIds:['unit']}]]:
+      phase===2?[['workflow.host.f15_n06','F15_N06',{version:1,sessionId:session,baselineSnapshotId:'before',snapshotId:'after',
+        paths:['app.js'],verificationRunIds:[check?.verification?.[0]?.runId]}]]:[];
+    const proposals=specs.map(([name,node,args],index)=>{const descriptor=request.availableTools.find(tool=>tool.name===name);
+      const operationId=`synthetic-${request.taskId}-${phase}-${index}`;
+      return {kind:'tool_proposal',nodeId:node,operationId,proposalId:operationId,inputDigest:hash(args),originControlRevision:0,
+        toolName:name,toolVersion:'1.0.0',toolSchemaDigest:hash(descriptor.inputSchema),arguments:args,resourceKeys:['synthetic-workspace'],
+        effect:['workflow.host.f15_n05','workflow.host.f15_n06'].includes(name)?'write':'read'};});
     return {workflowVersion:'1.0.0',workflowId:'F15',state:phase===3?'settled':'awaiting_host',verification:'unverified',
       checkpoint:`synthetic-stage-${phase+1}`,codingRepair:{snapshotId:'after'},
-      nodes:{F15_N06:{state:phase===3?'completed':'pending',value:{state:'published'}}},unavailable:[],feedback:[],
-      proposals:phase===3?[]:[{kind:'tool_proposal',nodeId:node,operationId,proposalId:operationId,inputDigest:hash(args),
-        originControlRevision:0,toolName:name,toolVersion:'1.0.0',toolSchemaDigest:hash(descriptor.inputSchema),arguments:args,
-        resourceKeys:['synthetic-workspace'],effect:phase===0?'read':'write'}]};
+      nodes:{...Object.fromEntries(specs.map(([,node])=>[node,{state:'waiting_receipt'}])),
+        ...(phase===3?{F15_N06:{state:'completed',value:{state:'published'}}}:{})},unavailable:[],feedback:[],proposals};
   }};
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',...(delegate?{delegateUserTasks:true}:{}),
     hostUserNamespace:'synthetic-owner',coordinationBinding:'synthetic-fixed-deployment',tools,
@@ -63,7 +94,8 @@ function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synt
       if(delegate&&app.runtime.getTask(request.taskId).conversationId==='user-chat')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
       return structuredClone(proposal);
     }},codingRepair:{image,authorizeMetadata:input=>{if(!metadata)throw new ProtocolError('UNAUTHORIZED','Synthetic metadata denied');exports.push({kind:'metadata',taskId:input.taskId,value:input.value});},
-      projectSource:async input=>{if(!sourceAllowed)throw new ProtocolError('UNAUTHORIZED','Synthetic exact source denied');exports.push({kind:'source',taskId:input.taskId});return input.receipt.result;}},
+      projectSource:async input=>{if(!sourceAllowed)throw new ProtocolError('UNAUTHORIZED','Synthetic exact source denied');exports.push({kind:'source',taskId:input.taskId});return input.receipt.result;},
+      independentReview:review.port,independentReviewProducer:true},
     automaticTools:tools.filter(tool=>tool.descriptor.sideEffect==='read').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0'})),
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),

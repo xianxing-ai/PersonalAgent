@@ -1,11 +1,12 @@
 import {createHash,randomUUID} from 'node:crypto';
 import * as productivity from '@personal-agent/productivity';
 import * as notifications from '@personal-agent/notifications';
+import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import {createEncryptedModuleStorage} from './encrypted-module-storage.js';
 
 /** Compose existing MOD-20/23 implementations. No business rules or task loop here. */
 export function createDesktopTodoHost({userData,safeStorage,namespace,createDeliveryHost,notificationHost,question,
-  now=Date.now,onUpdate=()=>{},onNotification=()=>{}}) {
+  verifyWorkflowReminderBinding,now=Date.now,onUpdate=()=>{},onNotification=()=>{}}) {
   const storage=createEncryptedModuleStorage({userData,safeStorage,filename:'productivity-state.json'});
   const conversationId=`desktop-todo-reminders:${namespace}`;
   const service=new productivity.TodoService(storage,{now,idFactory:randomUUID});
@@ -56,6 +57,30 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
       const checked=original({...entry.scope,signal:context.signal});
       question.currentRequirement({...checked.scope,...context},'todo-session');
     }else if(!current())throw Error('待办会话许可已失效');
+  }
+  // The graph host must prove this id/revision came from the same graph's
+  // confirmed N03 receipt. Without that trusted binding there is no adapter.
+  if(typeof verifyWorkflowReminderBinding==='function') {
+    let adapter;
+    adapter=createOwnedWorkflowAdapter({nodeId:'F06_N04',kind:'host',sideEffect:'read',requiredScopes:['todo:read'],
+      inputSchema:{type:'object',additionalProperties:false,required:['todoId','revision'],properties:{
+        todoId:{type:'string',minLength:1},revision:{type:'integer',minimum:1}}},
+      outputSchema:{type:'object',additionalProperties:false,required:['isTaskAlreadyFinished','shouldFireAlarm'],properties:{
+        isTaskAlreadyFinished:{type:'boolean'},shouldFireAlarm:{type:'boolean'}}},
+      async execute(input,context) {
+        if(await verifyWorkflowReminderBinding({todoId:input.todoId,revision:input.revision,context})!==true)
+          throw Error('待办提醒缺少同一图的原确认回执绑定');
+        // The binding check can be asynchronous; revalidate consent after it.
+        assertAccess(context,input,adapter);
+        const item=service.get(input.todoId);
+        if(item.revision!==input.revision)throw Error('待办提醒版本已变化，请重新读取原操作');
+        if(!item.reminder)throw Error('当前待办没有可核验的提醒');
+        const when=Date.parse(item.reminder.remindAt.utc),currentTime=now();
+        if(!Number.isFinite(when)||!Number.isFinite(currentTime))throw Error('提醒时钟不可用');
+        return {isTaskAlreadyFinished:item.status!=='open',shouldFireAlarm:item.status==='open'
+          && item.reminder.state==='scheduled' && currentTime>=when};
+      }});
+    implementations.push(adapter);
   }
   function bound(taskId,claim=false) {
     if (!application || !taskId) return false;
@@ -137,7 +162,8 @@ export function createDesktopTodoHost({userData,safeStorage,namespace,createDeli
     const result=await executing.execute(input,context);
     // The module mutation is the authoritative receipt; schedule sync failure
     // must not turn a persisted todo.create into a retryable creation.
-    await tick(true);return result;
+    if(tool.descriptor.name!=='workflow.host.f06_n04')await tick(true);
+    return result;
   }}));
   const revoke=()=>{allowed=false;generation=randomUUID();prepared.clear();
     if(question){const previous=question.readResourceGeneration(resource);question.rotateResourceGeneration(resource,previous);}

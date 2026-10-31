@@ -18,6 +18,14 @@ export function mountWorkspaceControls(root, invoke) {
     <p class="notice">选择目录和运行组件只保存配置。读取、写入、受限命令和结果出机的具体范围，会在执行请求的对话提问卡一次确认，无需在设置重复允许。</p>
     <p class="notice">项目构建和测试会运行工作区代码。是否具备隔离能力以可信宿主报告的沙箱为准；组件未就绪不能通过卡片放行，每次执行仍经原 Policy 校验。</p>
     <button class="btn" type="button" data-workspace="revoke">撤销工作区授权</button>
+    <h3>独立补丁审核</h3>
+    <p class="notice">由本机选择独立审核者的公钥与签名目录。确认独立性只表示用户确认，不证明审核者身份；补丁不会自动发送。</p>
+    <p class="notice" data-workspace="review-state"></p>
+    <label>审核者标识 <input data-workspace="reviewer-id" autocomplete="off" maxlength="128"></label>
+    <label>审核策略标识 <input data-workspace="review-policy" autocomplete="off" maxlength="128"></label>
+    <button class="btn" type="button" data-workspace="review-configure">选择公钥与签名目录</button>
+    <button class="btn" type="button" data-workspace="review-revoke">撤销独立审核配置</button>
+    <div data-workspace="review-pending"></div>
     <p class="notice" data-workspace="status" role="status"></p>`;
   root.append(section);
 
@@ -50,6 +58,8 @@ export function mountWorkspaceControls(root, invoke) {
     field('select-file').disabled = busy || !configured;
     field('select-npm').disabled = busy || !configured || state.nodeConfigured !== true;
     field('revoke').disabled = busy || (!configured && state.cloudExportAllowed !== true);
+    field('review-configure').disabled=busy||state.independentReview?.canConfigure!==true;
+    field('review-revoke').disabled=busy||state.independentReview?.configured!==true;
     updateStatus();
   }
 
@@ -73,6 +83,18 @@ export function mountWorkspaceControls(root, invoke) {
     field('project-status').textContent = configured
       ? `npm 文件：${state.npmCliConfigured === true ? '已确定' : '未找到，可手动选择'} · ${projectReady && !projectCommands.length ? '项目命令信息待读回' : `项目${projectDescription || '命令'}：${projectReady ? '可授权' : '暂不可用'}`}${typeof state.projectReason === 'string' && state.projectReason ? ` · ${state.projectReason}` : ''}`
       : '选择工作区后才会检查项目构建和测试是否可用。';
+    const review=state.independentReview??{};
+    field('review-state').textContent=review.installed===true
+      ? `审核者：${review.reviewerId} · 策略：${review.policyId} · 独立性：用户确认 · 签名验证已接入`
+      : review.configured===true?'已配置，但原任务绑定或本机展示尚不可用。':'独立审核尚未配置或当前不可用。';
+    const pending=field('review-pending');pending.replaceChildren();
+    for(const item of Array.isArray(review.pending)?review.pending:[]) {
+      const row=document.createElement('div'),description=document.createElement('p'),button=document.createElement('button');
+      description.className='notice';description.textContent=`待审核任务 ${item.taskId} · 补丁 ${item.patchDigest} · 签名文件 ${item.recordFileName}`;
+      button.className='btn';button.type='button';button.textContent='在本机查看原补丁';button.disabled=busy;
+      button.addEventListener('click',()=>run('coding.review.show',{operationId:item.recordFileName.slice(0,-5)}));
+      row.append(description,button);pending.append(row);
+    }
     updateButtons();
   }
 
@@ -91,8 +113,8 @@ export function mountWorkspaceControls(root, invoke) {
       const result = payload === undefined ? await invoke(action) : await invoke(action, payload);
       if (result && typeof result === 'object' && result.coding && typeof result.coding === 'object'
         && !Array.isArray(result.coding) && typeof result.coding.configured === 'boolean') {
-        feedback = '';
-        render(result);
+        feedback = action==='coding.review.show'?(result.reviewShown===true?'原补丁窗口已关闭；审核结论以独立签名为准。':'未完成本机展示。'):'';
+        render(result,{keepFeedback:!!feedback});
       } else {
         unconfirmed = true;
         feedback = '操作结果未获确认，请检查本机工作区状态后再操作。';
@@ -119,6 +141,9 @@ export function mountWorkspaceControls(root, invoke) {
   field('select-file').addEventListener('click', () => run('coding.selectCheckFile'));
   field('select-npm').addEventListener('click', () => run('coding.selectNpmCli'));
   field('revoke').addEventListener('click', () => run('coding.revoke'));
+  field('review-configure').addEventListener('click',()=>run('coding.review.configure',{
+    reviewerId:field('reviewer-id').value,policyId:field('review-policy').value}));
+  field('review-revoke').addEventListener('click',()=>run('coding.review.revoke'));
 
   render();
   return {render,show:visible=>{section.hidden=!visible;if(!visible) restoreFocus=false;}};

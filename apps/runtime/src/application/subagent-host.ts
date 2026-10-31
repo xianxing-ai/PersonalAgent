@@ -584,40 +584,22 @@ export function createRuntimeSubagentDispatchTool(options: SubagentHostOptions):
         || String(subtask.role);
 
       // 4. 在 TaskRuntime 中创建并追踪真实子任务
-      const existing = runtime.findTaskByIdempotencyKey(idempotencyKey);
-      let taskSnapshot: TaskSnapshot;
-      if (existing) {
-        taskSnapshot = existing;
-        const original=childBinding(runtime,existing.taskId);
-        if(original.parentTaskId!==context.taskId || original.subtaskId!==subtask.subtaskId
-          || original.goal!==subtask.goal || original.role!==subtask.role || original.model!==subtask.model
-          || original.reasoningEffort!==subtask.reasoningEffort
-          || original.thinkingDepth!==subtask.thinkingDepth || original.parentDeadline!==context.deadline
-          || (original.roleLabel?.trim()||DEFAULT_ROLE_LABELS[original.role])!==roleLabel) {
-          throw new ProtocolError('REVISION_CONFLICT','Existing child is bound to a different dispatch');
-        }
-      } else {
-        const subtaskInput: SubmitTaskInput = {
-          conversationId: `desktop-subtask:${context.taskId}`,
-          goal: `[${roleLabel}] ${subtask.goal}`,
-          idempotencyKey,
-        };
-        taskSnapshot = runtime.submitTaskWithCheckpoint(
-          subtaskInput,
-          'subtask-parent',
-          {
-            parentTaskId: context.taskId,
-            subtaskId: subtask.subtaskId,
-            role: subtask.role,
-            roleLabel,
-            goal: subtask.goal,
-            model: subtask.model,
-            ...(subtask.reasoningEffort===undefined?{}:{reasoningEffort:subtask.reasoningEffort}),
-            thinkingDepth: subtask.thinkingDepth,
-            parentDeadline: context.deadline,
-          },
-        );
-      }
+      const subtaskInput: SubmitTaskInput = {
+        conversationId: `desktop-subtask:${context.taskId}`,
+        goal: `[${roleLabel}] ${subtask.goal}`,
+        idempotencyKey,
+      };
+      const taskSnapshot = runtime.submitTaskWithSubagentBinding(subtaskInput,{
+        parentTaskId: context.taskId,
+        subtaskId: subtask.subtaskId,
+        role: subtask.role,
+        roleLabel,
+        goal: subtask.goal,
+        model: subtask.model,
+        ...(subtask.reasoningEffort===undefined?{}:{reasoningEffort:subtask.reasoningEffort}),
+        thinkingDepth: subtask.thinkingDepth,
+        parentDeadline: context.deadline,
+      });
 
       // 如果已在终态，直接读取
       if (['succeeded', 'failed', 'cancelled'].includes(taskSnapshot.state)) {

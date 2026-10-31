@@ -13,6 +13,7 @@ import {createDesktopCodingToolHost} from './coding-tool-host.js';
 import {findWindowsExecutable} from './windows-executable-discovery.js';
 import {codingRepairExportOperation,projectCodingRepairResult} from './coding-repair-result-export.js';
 import {workspaceRepairProjectionSchema,workspaceWorkflowSummaryProjectionSchema} from './workspace-result-projection.js';
+import {createF20CaseConfiguration} from './f20-case-config-host.js';
 
 const codingConsentGroups=Object.freeze([
   {id:'source-review',tools:['coding.repair.start','coding.repair.list','coding.repair.read','coding.repair.snapshot',
@@ -920,6 +921,12 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     return {bindingId,rootPath,metadataExportAllowed:false,available,
       assertCurrent:scope=>{if(!available(scope))throw new ProtocolError('UNAUTHORIZED','原开发工作区许可或配置已变化');},...(command?{command}:{})};
   };
+  const f20Cases=createF20CaseConfiguration({userData,safeStorage,readWorkspace:()=>{
+    const configuration=readDeveloperConfiguration();
+    if(!configuration?.command)return undefined;
+    return {rootPath:configuration.rootPath,bindingId:configuration.bindingId,recipeIds:configuration.command.recipeIds,
+      checkFile:boundCheckFile,available:configuration.available};
+  }});
   function assertHarnessWorkspace(context) {
     if(dependencyPreparation||dependencyPreparationReason)throw new ProtocolError('UNSUPPORTED_CAPABILITY',dependencyPreparationReason??'原锁定依赖正在准备');
     assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal);
@@ -1041,6 +1048,21 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Workspace result export is unavailable');
   }
   return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
+    /** Native review only: require the original consumed workspace-session Policy receipt. */
+    assertF15ReviewWorkspacePermission(input){
+      try {
+        if(!questionReady()||typeof question.assertConsumedResult!=='function'||!input||!taskLive(input.ownerTaskId)
+          ||!selectionsCurrent()||!identityCurrent()||input.runId!=='host-tool-'+input.taskId) return false;
+        const entry=preparedEntry({taskId:input.taskId,runId:input.runId});
+        if(entry.scope.toolName!=='workflow.host.f15_n04'||entry.scope.deadline!==input.deadline
+          ||entry.argumentsDigest!==toolArgumentsDigest(input.arguments))return false;
+        return question.assertConsumedResult(entry.scope,'workspace-session')===true;
+      }catch{return false;}
+    },
+    // Main-only: the caller must obtain an explicit native user selection. This is
+    // configuration only; it does not enable F20 or confer any export authority.
+    setF20CaseFromNativeSelection:value=>f20Cases.setFromNativeSelection(value),
+    readF20CaseConfiguration:()=>f20Cases.snapshot(),resolveF20Case:(inputRef,scope)=>f20Cases.resolveInput(inputRef,scope),
     reconcileHarnessOriginalSession,readHarnessExperienceCurrentSync,
     prepareAuthorization:scope=>prepareQuestion(scope),
     prepareExport(scope) {

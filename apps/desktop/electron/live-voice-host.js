@@ -37,7 +37,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   onTranscript = () => {throw Error('Live 历史保存端口不可用');}, onUpdate = () => {}, onLevel = () => {},
   readConversationId=()=>'desktop-panel',onDiagnostic=()=>{},
   historyStore, historyQueue,
-  readCurrentQuestion = () => null, authorizeTaskRead = () => false,
+  readCurrentQuestion = () => null, authorizeTaskRead = () => false, authorizeFinalRead,
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
   const textOutput=createLiveTextOutput({readSession:()=>active,now,onUpdate:()=>publish()});
@@ -59,6 +59,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return history.snapshot();
   }
   const hasActive = () => enabled || Boolean(active) || releaseUnknown;
+  const questionFor = record => {try {return readCurrentQuestion({conversationId:record.conversationId});}catch{return null;}};
   const snapshot = () => ({...config.snapshot(), active: hasActive(), status: active?.phase ?? (enabled ? 'reconnecting' : lastError ? 'error' : 'idle'),
     workingCount:active?.workingCount??0,
     workRequests:[...(active?.workRequests?.values()??[])].slice(-10).map(item=>({...item})),
@@ -129,7 +130,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     const panel = getPanel();
     if (!panel || panel.isDestroyed() || !panel.isVisible()) throw Error('请先打开 PersonalAgent 面板');
     const controller = new AbortController();
-    const record = {id: randomUUID(), panel, controller,conversationId,startedAt:now(),startupStage:'playback', phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
+    const record = {id: randomUUID(), panel, controller,conversationId,startedAt:now(),audioFrames:0,startupStage:'playback', phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
       workRequests:new Map(),deadline: new Date(now() + SESSION_MS).toISOString()};
     const isCurrent = () => active === record && !controller.signal.aborted && now() < Date.parse(record.deadline);
     const assertCurrent = () => {if (!isCurrent()) throw Error('Live 已停止或到期');};
@@ -155,9 +156,20 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           if (event.type === 'error') {diagnose('cloud','failed','REALTIME_SERVICE_ERROR');fail(event.message); return;}
           if (event.type === 'speech_started') {
             record.userSpeaking = true;
+            record.finalUserAudio=undefined;
+            const question=questionFor(record);
+            record.questionSpeech=typeof event.utteranceId==='string' && /^[\w-]{1,256}$/u.test(event.utteranceId)
+              && question?.state==='pending' && typeof question.questionId==='string' && Number.isSafeInteger(question.revision)
+              && typeof question.taskId==='string' && typeof question.sourceApprovalId==='string' && now()<Date.parse(question.expiresAt)
+              ?{utteranceId:event.utteranceId,questionId:question.questionId,questionRevision:question.revision,
+                sourceTaskId:question.taskId,sourceApprovalId:question.sourceApprovalId,startedAt:new Date(now()).toISOString(),frames:record.audioFrames}
+              :undefined;
           }
           if (event.type === 'speech_stopped') {
             record.userSpeaking = false;
+            if(record.questionSpeech?.utteranceId===event.utteranceId && record.audioFrames>record.questionSpeech.frames)
+              record.questionSpeech.completedAt=new Date(now()).toISOString();
+            else record.questionSpeech=undefined;
           }
           if (event.type === 'audio') {
             record.phase = 'speaking';
@@ -171,6 +183,20 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
             if (!trimmed) return;
             if (typeof event.id !== 'string' || !/^[\w-]{1,256}$/.test(event.id) || !['user','assistant'].includes(event.role)) {
               fail('Live 转写缺少有效消息标识'); return;
+            }
+            const speech=record.questionSpeech,question=questionFor(record);
+            if(speech?.completedAt && trimmed.length<=24000 && event.role==='user' && event.phase==='final' && event.source==='input_audio'
+              && event.utteranceId===speech.utteranceId && question?.state==='pending' && question.questionId===speech.questionId
+              && question.revision===speech.questionRevision && question.taskId===speech.sourceTaskId
+              && question.sourceApprovalId===speech.sourceApprovalId && now()<Date.parse(question.expiresAt)) {
+              // A completed input-audio event is evidence of finality, not proof
+              // of acoustic echo cancellation or of delivered question playback.
+              record.finalUserAudio={sessionId:record.id,utteranceId:speech.utteranceId,conversationId:record.conversationId,
+                questionId:speech.questionId,questionRevision:speech.questionRevision,sourceTaskId:speech.sourceTaskId,
+                sourceApprovalId:speech.sourceApprovalId,text:trimmed,transcriptDigest:createHash('sha256').update(trimmed).digest('hex'),
+                source:'live_input_audio',phase:'final',origin:'user',echo:'unknown',questionPlaybackVerified:false,
+                startedAt:speech.startedAt,completedAt:speech.completedAt,expiresAt:new Date(Math.min(Date.parse(question.expiresAt),Date.parse(record.deadline))).toISOString()};
+              record.questionSpeech=undefined;
             }
             const message = {id: `${record.id}:${createHash('sha256').update(`${event.role}:${event.id}`).digest('hex')}`, sessionId: record.id,
               ...(record.conversationId==='desktop-panel'?{}:{conversationId:record.conversationId}),
@@ -405,7 +431,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       record.subscription = record.source.subscribe({signal: controller.signal, deadline: record.deadline,
         onFrame(frame) {
           if (!isCurrent()) return;
-          try {record.session.sendAudio(frame.data);} catch(error) {
+          try {record.session.sendAudio(frame.data);record.audioFrames++;} catch(error) {
             const failures={'Live 音频帧无效':['PCM_FRAME_INVALID','音频帧格式无效'],
               'Live 连接已关闭':['CONNECTION_CLOSED','连接已关闭'],
               'Live 网络发送阻塞，请重新连接':['SEND_BACKPRESSURE','网络发送阻塞']};
@@ -466,6 +492,25 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return messages;
   }
   return {snapshot, historyMessages, hasActive, start, stop, receive,
+    // Host-only read. An origin-bound policy grant is mandatory; raw text never
+    // enters the Desktop snapshot or an authorization decision through this port.
+    readFinalUserAudio(binding) {
+      const record=active,receipt=record?.finalUserAudio;
+      if(!record||!receipt||record.controller.signal.aborted||now()>=Date.parse(record.deadline)
+        ||!binding||binding.signal?.aborted||!Number.isFinite(Date.parse(binding.deadline))||now()>=Date.parse(binding.deadline)
+        ||binding.sessionId!==undefined&&binding.sessionId!==receipt.sessionId
+        ||binding.utteranceId!==undefined&&binding.utteranceId!==receipt.utteranceId
+        ||binding.questionId!==receipt.questionId||binding.questionRevision!==receipt.questionRevision
+        ||binding.conversationId!==receipt.conversationId||binding.sourceTaskId!==receipt.sourceTaskId
+        ||binding.sourceApprovalId!==receipt.sourceApprovalId||now()>=Date.parse(receipt.expiresAt)
+        ||typeof authorizeFinalRead!=='function')return undefined;
+      const question=questionFor(record);
+      if(question?.state!=='pending'||question.questionId!==receipt.questionId||question.revision!==receipt.questionRevision
+        ||question.taskId!==receipt.sourceTaskId||question.sourceApprovalId!==receipt.sourceApprovalId)return undefined;
+      let permitted;try {permitted=authorizeFinalRead({...binding,sessionId:receipt.sessionId,utteranceId:receipt.utteranceId},structuredClone(receipt));}catch{return undefined;}
+      if(permitted!==true){if(permitted&&typeof permitted.then==='function')void Promise.resolve(permitted).catch(()=>{});return undefined;}
+      return structuredClone(receipt);
+    },
     trackTextTask:task=>task.conversationId===readConversationId()?textOutput.track(task)
       :{state:'unavailable',reason:'当前对话已切换',playbackVerified:false},
     observeTextTask:task=>textOutput.observe(task),

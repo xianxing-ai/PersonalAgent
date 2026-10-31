@@ -28,6 +28,8 @@ export interface WorkflowNodeContext {
   template:OwnedWorkflowTemplate;node:OwnedWorkflowNode;input:unknown;
   predecessorOutputs:Readonly<Record<string,unknown>>;availableTools:readonly CoordinationAvailableTool[];
   predecessorStates:Readonly<Record<string,string>>;
+  /** Correlation only; the local host must independently verify the original operation and authorization. */
+  predecessorOperations?:Readonly<Record<string,{operationId:string;toolName:string;toolVersion:string}>>;
   deadline:string;signal:AbortSignal;requestId:string;mode:OwnedWorkflowMode;namespace:string;
   /** Sealed F15 round plus SHA-bound current sources, never a tool grant. */
   codingRepair?:CodingRepairFrontier;
@@ -325,6 +327,11 @@ export class OwnedWorkflowEngine {
         return [dep.nodeId,value??null];
       }))),
       predecessorStates:Object.fromEntries(node.dependencies.map(dep=>[dep.nodeId,state.nodes[dep.nodeId]!.state])),
+      ...(node.id==='F09_N02'&&state.nodes.F09_N01?.state==='completed'
+        &&state.nodes.F09_N01.proposal?.kind==='tool_proposal'&&state.nodes.F09_N01.proposal.toolName==='feeds.collect'
+        &&!!state.nodes.F09_N01.evidenceRefs?.length?{predecessorOperations:{F09_N01:{
+          operationId:state.nodes.F09_N01.proposal.operationId,toolName:state.nodes.F09_N01.proposal.toolName,
+          toolVersion:state.nodes.F09_N01.proposal.toolVersion}}}:{}),
       availableTools:copy(tools),deadline:request.deadline,signal:request.signal,requestId:request.requestId,
       mode:state.mode,namespace:state.namespace};
   }
@@ -478,6 +485,7 @@ export class OwnedWorkflowEngine {
         ...(context.node.evidenceRequirement?{evidenceRequirement:context.node.evidenceRequirement}:{})},
       ...workflowCandidateMetadata(context.node,context.availableTools),
       ...decisionInput(context),predecessorStates:context.predecessorStates,predecessors:context.predecessorOutputs,
+      ...(context.predecessorOperations?{predecessorOperations:context.predecessorOperations}:{}),
       ...(context.codingRepair?{codingRepair:{round:context.codingRepair.round,scopePaths:context.codingRepair.scopePaths,
         currentSnapshot:context.codingRepair.snapshot,diagnostics:context.codingRepair.diagnostics,
         objective:'Prefer the smallest supported file/line repair among feasible candidates; size is not correctness. Actual current verification is mandatory.',

@@ -25,6 +25,10 @@ import {recordCompetitionCloudAcceptance, recordCompetitionCloudReceipt,
 import {CompetitionCloudStatusReader, recordCompetitionCloudStatusBinding} from './competition-cloud-status.js';
 import type {CompetitionCloudStatusScope, CompetitionCloudStatusObservation} from './competition-cloud-status.js';
 import {
+  runtimeF09WorkflowWorkerConfigured,
+  type RuntimeF09WorkflowWorkerOptions,
+} from './owned-workflow-f09-worker-capability.js';
+import {
   createRuntimeApplication,
   type RuntimeApplication,
   type RuntimeApplicationOptions,
@@ -65,6 +69,12 @@ export interface AgentArtsRuntimeApplicationOptions
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
   /** Explicit host-only key source for an image configured with a receipt-key override. */
   readOwnedWorkflowReceiptSecret?: (signal:AbortSignal)=>Promise<string>;
+  /**
+   * Desktop-trusted F09 ports without image. Composition merges the fixed owned-workflow
+   * AgentArts image when deploymentVersion and goal-with-tools-json are present.
+   * A fully configured `f09WorkflowWorker` on RuntimeApplicationOptions still wins.
+   */
+  f09WorkflowWorkerPorts?: Omit<RuntimeF09WorkflowWorkerOptions,'image'>;
   fetchHandlesHostAuthorization?:true;
   /** Trusted observation read-back authorization; real reads need an AK/SK signer,
    * and an absent provider leaves observation explicitly unavailable. */
@@ -112,6 +122,7 @@ export function createAgentArtsRuntimeApplication(
     onDiagnostic,
     beforeCompetitionSend,
     readOwnedWorkflowReceiptSecret,
+    f09WorkflowWorkerPorts,
     fetchHandlesHostAuthorization,
     observationAuthorization,
     observationFetchImpl,
@@ -197,12 +208,16 @@ export function createAgentArtsRuntimeApplication(
       ...(websocketFactory?{websocketFactory}:{}),...(fetchImpl?{fetchImpl}:{}),...(invokeMode?{invokeMode}:{}),
       ...(workflowGoalInput?{workflowGoalInput}:{}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
       ...(onTransportState?{onTransportState}:{}),...(readOwnedWorkflowReceiptSecret?{readReceiptSecret:readOwnedWorkflowReceiptSecret}:{})}):undefined;
+  const f09FromPorts=ownedImage&&f09WorkflowWorkerPorts
+    ?{...f09WorkflowWorkerPorts,image:ownedImage} satisfies RuntimeF09WorkflowWorkerOptions:undefined;
+  const f09WorkflowWorker=runtimeOptions.f09WorkflowWorker??(runtimeF09WorkflowWorkerConfigured(f09FromPorts)?f09FromPorts:undefined);
   application = createRuntimeApplication({
     ...runtimeOptions,
     retainPriorToolResults:continuationContext==='goal',
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
     ...(runtimeOptions.codingRepair?{}:ownedImage?{codingRepair:{image:ownedImage}}:{}),
+    ...(f09WorkflowWorker?{f09WorkflowWorker}:{}),
     ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.

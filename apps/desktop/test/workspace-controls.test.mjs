@@ -2,19 +2,35 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mountWorkspaceControls} from '../src/app/workspace-controls.js';
 
+function elementStub(extra={}) {
+  const children=[];
+  return {
+    isConnected:true,disabled:false,textContent:'',value:'',className:'',type:'',hidden:false,
+    listeners:new Map(),children,
+    addEventListener(event,handler){this.listeners.set(event,handler);},
+    append(...nodes){children.push(...nodes);},
+    replaceChildren(...nodes){children.length=0;children.push(...nodes);},
+    focus(){globalThis.document.activeElement=this;},
+    getClientRects(){return this.hidden?[]:[{}];},
+    ...extra,
+  };
+}
+
 function harness(t,invoke=async()=>undefined) {
   const previous=Object.getOwnPropertyDescriptor(globalThis,'document');
   t.after(()=>{if(previous)Object.defineProperty(globalThis,'document',previous);else delete globalThis.document;});
   const fields={},documentListeners=new Map(),body={};
-  const section={isConnected:true,hidden:false,getClientRects(){return this.hidden?[]:[{}];},
-    contains:target=>Object.values(fields).includes(target),setAttribute(){},
-    set innerHTML(markup){this.markup=markup;for(const [,name]of markup.matchAll(/data-workspace="([^"]+)"/gu)){
-      fields[name]={isConnected:true,disabled:false,textContent:'',listeners:new Map(),
-        addEventListener(event,handler){this.listeners.set(event,handler);},
-        focus(){globalThis.document.activeElement=this;}};
-    }},
-    querySelector(selector){return fields[/data-workspace="([^"]+)"/u.exec(selector)[1]]??null;}};
-  globalThis.document={body,activeElement:body,createElement:()=>section,
+  const section=elementStub({
+    contains:target=>Object.values(fields).includes(target)||target===section,
+    setAttribute(){},
+    querySelector(selector){return fields[/data-workspace="([^"]+)"/u.exec(selector)?.[1]]??null;},
+  });
+  Object.defineProperty(section,'innerHTML',{set(markup){
+    section.markup=markup;
+    for(const [,name]of markup.matchAll(/data-workspace="([^"]+)"/gu)) fields[name]=elementStub();
+  },configurable:true});
+  globalThis.document={body,activeElement:body,
+    createElement:tag=>String(tag).toLowerCase()==='section'?section:elementStub({tagName:String(tag||'').toUpperCase()}),
     addEventListener:(name,handler)=>documentListeners.set(name,handler),
     removeEventListener:(name,handler)=>{if(documentListeners.get(name)===handler)documentListeners.delete(name);}};
   const controls=mountWorkspaceControls({append(){}},invoke);

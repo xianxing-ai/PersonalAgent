@@ -88,6 +88,27 @@ test('selector receives the current node contract, settled predecessor state and
   assert.deepEqual(firstContext.nodeContract.capabilities,getOwnedWorkflowTemplate('F20').nodes[0].capabilities);
   assert.deepEqual(context.publishedTools,[],'Only the current node precise tool capabilities are supplied');
 });
+
+test('F09 exposes only a verified original source operation as correlation for its next host',async()=>{
+  const seen=[];
+  const available=[{name:'feeds.collect',version:'1.0.0',inputSchema:emptySchema},
+    {name:'workflow.host.f09_n02',version:'1.0.0',inputSchema:{type:'object',properties:{
+      sourceOperationId:{type:'string'}},required:['sourceOperationId'],additionalProperties:false}}];
+  const runtime=engine({externalHost:true,receiptVerifier:proofVerifier,prepareCandidates:async context=>{
+    if(context.node.id==='F09_N02')seen.push(structuredClone(context.predecessorOperations));
+    return [{id:'candidate',description:'bounded operation',value:context.node.id==='F09_N01'
+      ?{toolName:'feeds.collect',toolVersion:'1.0.0',arguments:{}}
+      :{arguments:{sourceOperationId:context.predecessorOperations.F09_N01.operationId}}},
+      {id:'recheck',description:'no operation',value:{},abstain:true}];
+  }});
+  const original=request('F09',{availableTools:available}),first=await runtime.advance(original);
+  const source=first.proposals.find(item=>item.nodeId==='F09_N01');assert.ok(source);
+  const second=await next(runtime,original,first,{receipts:[receipt(source)]});
+  assert.deepEqual(seen,[{F09_N01:{operationId:source.operationId,toolName:'feeds.collect',toolVersion:'1.0.0'}}]);
+  assert.equal(second.proposals.find(item=>item.nodeId==='F09_N02')?.arguments.sourceOperationId,source.operationId);
+  const rejected=engine({externalHost:true,receiptVerifier:{verify:async()=>false}}),initial=await rejected.advance(original);
+  await assert.rejects(next(rejected,original,initial,{receipts:[receipt(initial.proposals[0])]}),{code:'INVALID_ARGUMENT'});
+});
 test('F12 observes both optional delivery and query guards before settling silent or query paths',async()=>{
   const template=getOwnedWorkflowTemplate('F12'),availableTools=template.nodes.flatMap(node=>[
     ...(node.kind==='host'?[{name:'workflow.host.'+node.id.toLowerCase(),version:'1.0.0',inputSchema:{type:'object'}}]:[]),

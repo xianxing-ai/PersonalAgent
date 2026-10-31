@@ -12,6 +12,12 @@ import type {AtomicCoordinationStorePort} from '@personal-agent/goals/store';
 import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
+import {createRuntimeAtomicStatePort} from './atomic-host-state.js';
+import {parseRuntimeWorkflowRolePlan,workflowRoleMatchesChild,RUNTIME_WORKFLOW_ROLE_PLAN_KEY,RUNTIME_WORKFLOW_ROLE_ATTEMPT_KEY} from './workflow-role-plan.js';
+import type {RuntimeWorkflowRolePlan,RuntimeWorkflowRoleIntent} from './workflow-role-plan.js';
+import {DEFAULT_ROLE_LABELS} from '@personal-agent/agents';
+import type {SubtaskRole} from '@personal-agent/agents';
+export type {RuntimeWorkflowRolePlan,RuntimeWorkflowRolePlanEntry,RuntimeWorkflowRoleIntent} from './workflow-role-plan.js';
 export type {TrustedHostStateStore} from './host-state-store.js';
 export {readRuntimeBuildIdentity} from './build-identity.js';
 export {createRuntimeStartupRecovery} from './application/startup-recovery.js';
@@ -331,6 +337,9 @@ export class RuntimeError extends Error {
   }
 }
 
+/** An F28 role-plan validation explicitly failed before the checkpoint write began. */
+export class WorkflowRolePlanNotCommittedError extends RuntimeError {}
+
 class DeadlineExceeded extends Error {}
 
 function canonical(value: unknown): string {
@@ -338,6 +347,27 @@ function canonical(value: unknown): string {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
   const record = value as Record<string, unknown>;
   return '{' + Object.keys(record).sort().map(key => JSON.stringify(key) + ':' + canonical(record[key])).join(',') + '}';
+}
+
+function workflowRoleBindingDigest(binding:Record<string,unknown>):string {
+  const {parentTaskId,parentDeadline,subtaskId,role,roleLabel,goal,model,reasoningEffort,thinkingDepth}=binding;
+  return createHash('sha256').update(canonical({parentTaskId,parentDeadline,subtaskId,role,roleLabel,goal,
+    ...(model===undefined?{}:{model}),...(reasoningEffort===undefined?{}:{reasoningEffort}),
+    ...(thinkingDepth===undefined?{}:{thinkingDepth})})).digest('hex');
+}
+
+function workflowRoleAttempt(plan:RuntimeWorkflowRolePlan,expectedRevision:number,intent:RuntimeWorkflowRoleIntent) {
+  if(!Number.isSafeInteger(expectedRevision)||expectedRevision<1||!intent||typeof intent.operationId!=='string'
+    ||!intent.operationId.trim()||intent.operationId.length>256||typeof intent.requestDigest!=='string'
+    ||!/^[a-f0-9]{64}$/u.test(intent.requestDigest)
+    ||intent.requestDigest!==createHash('sha256').update(canonical({plan,expectedRevision})).digest('hex'))
+    throw new WorkflowRolePlanNotCommittedError('INVALID_ARGUMENT','Original workflow role intent invalid');
+  return {version:1,parentTaskId:plan.parentTaskId,operationId:intent.operationId,requestDigest:intent.requestDigest,
+    planSha256:createHash('sha256').update(canonical(plan)).digest('hex'),subtasks:plan.roles.map(role=>{
+      const d=role.definition;
+      return {subtaskId:d.subtaskId,bindingSha256:workflowRoleBindingDigest({...d,
+        roleLabel:d.roleLabel?.trim()||DEFAULT_ROLE_LABELS[d.role],parentTaskId:plan.parentTaskId,parentDeadline:plan.deadline})};
+    })};
 }
 
 function toolInputDigest(taskId: string, payload: {
@@ -394,6 +424,20 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSnapshot {
 export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   /** Host metadata shares this SQLite; this port is never registered as a wire operation. */
   bindTrustedHostState(namespace:string) {return bindHostStateStore(this.db,namespace);}
+
+  /** Trusted host only. The guard and complete-value CAS share the same SQLite
+   * write transaction as Policy grants and original TaskRuntime checkpoints.
+   * The guard must synchronously read current authorities and must not mutate. */
+  compareAndSetTrustedHostStateGuarded(namespace:string,key:string,expectedRevision:number|undefined,next:unknown,
+    guard:()=>void):boolean {
+    if(typeof guard!=='function')throw new RuntimeError('INVALID_ARGUMENT','Synchronous host authorization guard required');
+    return this.transaction(()=>{
+      const result:unknown=guard();
+      if(result!==undefined){void Promise.resolve(result).catch(()=>undefined);
+        throw new RuntimeError('UNAUTHORIZED','Host authorization guard must be synchronous');}
+      return createRuntimeAtomicStatePort(this,namespace).compareAndSet(key,expectedRevision,next);
+    });
+  }
   readonly policy: AuthorizationPolicy;
   private readonly db: DatabaseSync;
   private readonly competitionLoopReads=new WeakMap<object,CompetitionLoopReadSnapshot>();
@@ -1225,6 +1269,112 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
         throw new RuntimeError('REVISION_CONFLICT', 'Task checkpoint is missing after execution started');
       }
       this.saveCheckpoint(task.taskId, key, JSON.parse(encoded));
+      return task;
+    }));
+  }
+
+  /** Reserve one original host attempt and its child IDs atomically. Existing attempts never replay. */
+  beginWorkflowRolePlanAttempt(input:RuntimeWorkflowRolePlan,expectedRevision:number,intent:RuntimeWorkflowRoleIntent):boolean {
+    const plan=parseRuntimeWorkflowRolePlan(input),attempt=workflowRoleAttempt(plan,expectedRevision,intent);
+    return this.transaction(()=>{
+      const existing=this.loadCheckpoint(plan.parentTaskId,RUNTIME_WORKFLOW_ROLE_ATTEMPT_KEY);
+      if(existing!==undefined) {
+        if(canonical(existing)!==canonical(attempt))throw new WorkflowRolePlanNotCommittedError('REVISION_CONFLICT','Original role-plan attempt changed');
+        return false;
+      }
+      const parent=this.getTask(plan.parentTaskId);
+      if(parent.revision!==expectedRevision||parent.cancelRequested||terminal.has(parent.state)||parent.state==='cancelling'
+        ||Date.parse(plan.deadline)<=this.now().getTime()||this.loadCheckpoint(plan.parentTaskId,'application-deadline')!==plan.deadline
+        ||this.loadCheckpoint(plan.parentTaskId,RUNTIME_WORKFLOW_ROLE_PLAN_KEY)!==undefined)
+        throw new WorkflowRolePlanNotCommittedError('REVISION_CONFLICT','Original parent state or deadline changed');
+      for(const {subtaskId} of attempt.subtasks)if(this.findTaskByIdempotencyKey(`subagent-dispatch-${plan.parentTaskId}-${subtaskId}`))
+        throw new WorkflowRolePlanNotCommittedError('REVISION_CONFLICT','Role attempt must precede child creation');
+      if(Date.parse(plan.deadline)<=this.now().getTime())throw new WorkflowRolePlanNotCommittedError('TIMEOUT','Role attempt expired before persistence');
+      this.saveCheckpoint(plan.parentTaskId,RUNTIME_WORKFLOW_ROLE_ATTEMPT_KEY,attempt);return true;
+    });
+  }
+
+  /** Trusted host only: caller must first authorize the exact plan and current model catalog.
+   * Checking the reserved child IDs and freezing the plan happen in one SQLite transaction. */
+  freezeWorkflowRolePlan(input:RuntimeWorkflowRolePlan,expectedRevision:number,intent:RuntimeWorkflowRoleIntent):RuntimeWorkflowRolePlan {
+    const plan=parseRuntimeWorkflowRolePlan(input);
+    const attempt=workflowRoleAttempt(plan,expectedRevision,intent);
+    return structuredClone(this.transaction(()=>{
+      const parent=this.getTask(plan.parentTaskId),existing=this.loadCheckpoint(plan.parentTaskId,RUNTIME_WORKFLOW_ROLE_PLAN_KEY);
+      if(canonical(this.loadCheckpoint(plan.parentTaskId,RUNTIME_WORKFLOW_ROLE_ATTEMPT_KEY))!==canonical(attempt))
+        throw new WorkflowRolePlanNotCommittedError('REVISION_CONFLICT','Original role-plan attempt is unavailable or changed');
+      if(parent.revision!==expectedRevision||parent.cancelRequested||terminal.has(parent.state)||parent.state==='cancelling'
+        ||Date.parse(plan.deadline)<=this.now().getTime()||this.loadCheckpoint(plan.parentTaskId,'application-deadline')!==plan.deadline)
+        throw new WorkflowRolePlanNotCommittedError('REVISION_CONFLICT','Original parent state or deadline changed');
+      if(existing!==undefined) {
+        if(canonical(existing)!==canonical(plan))throw new WorkflowRolePlanNotCommittedError('REVISION_CONFLICT','Original workflow role plan changed');
+        return parseRuntimeWorkflowRolePlan(existing);
+      }
+      for(const role of plan.roles) {
+        if(this.findTaskByIdempotencyKey(`subagent-dispatch-${plan.parentTaskId}-${role.definition.subtaskId}`))
+          throw new WorkflowRolePlanNotCommittedError('REVISION_CONFLICT','Role plan must precede child creation');
+      }
+      if(Date.parse(plan.deadline)<=this.now().getTime())throw new WorkflowRolePlanNotCommittedError('TIMEOUT','Role plan expired before persistence');
+      this.saveCheckpoint(plan.parentTaskId,RUNTIME_WORKFLOW_ROLE_PLAN_KEY,plan);
+      return plan;
+    }));
+  }
+
+  /** The existing subagent creation path. F28-reserved children fail closed until
+   * the original worker has a real pre-execution authorization and model gate. */
+  submitTaskWithSubagentBinding(input:SubmitTaskInput,binding:unknown):TaskSnapshot {
+    if(!binding||typeof binding!=='object'||Array.isArray(binding))throw new RuntimeError('INVALID_ARGUMENT','Subagent binding required');
+    const encoded=JSON.stringify(binding);
+    if(encoded===undefined)throw new RuntimeError('INVALID_ARGUMENT','Subagent binding must be JSON');
+    const value=JSON.parse(encoded) as Record<string,unknown>;
+    if(typeof value.parentTaskId!=='string'||typeof value.subtaskId!=='string'
+      ||input.idempotencyKey!==`subagent-dispatch-${value.parentTaskId}-${value.subtaskId}`
+      ||input.conversationId!==`desktop-subtask:${value.parentTaskId}`||typeof value.roleLabel!=='string'||typeof value.goal!=='string'
+      ||input.goal!==`[${value.roleLabel}] ${value.goal}`)
+      throw new RuntimeError('INVALID_ARGUMENT','Subagent parent and identity must match');
+    return structuredClone(this.transaction(()=>{
+      const raw=this.loadCheckpoint(value.parentTaskId as string,RUNTIME_WORKFLOW_ROLE_PLAN_KEY);
+      const plan=raw===undefined?undefined:parseRuntimeWorkflowRolePlan(raw);
+      const attempt=this.loadCheckpoint(value.parentTaskId as string,RUNTIME_WORKFLOW_ROLE_ATTEMPT_KEY);
+      if(attempt!==undefined) {
+        if(!attempt||typeof attempt!=='object'||Array.isArray(attempt))
+          throw new RuntimeError('UNSUPPORTED_CAPABILITY','Original role-plan attempt is invalid');
+        const pending=attempt as {version?:unknown;parentTaskId?:unknown;subtasks?:unknown};
+        if(pending.version!==1||pending.parentTaskId!==value.parentTaskId||!Array.isArray(pending.subtasks)
+          ||pending.subtasks.length!==3||pending.subtasks.some(item=>!item||typeof item!=='object'||Array.isArray(item)
+            ||typeof item.subtaskId!=='string'||!item.subtaskId.trim()||typeof item.bindingSha256!=='string'||!/^[a-f0-9]{64}$/u.test(item.bindingSha256))
+          ||new Set(pending.subtasks.map(item=>item.subtaskId)).size!==3)
+          throw new RuntimeError('UNSUPPORTED_CAPABILITY','Original role-plan attempt is invalid');
+        const reserved=pending.subtasks.find(item=>item.subtaskId===value.subtaskId);
+        if(reserved) {
+          if(reserved.bindingSha256!==workflowRoleBindingDigest(value))throw new RuntimeError('REVISION_CONFLICT','Subagent changed its original workflow role');
+          throw new RuntimeError('UNSUPPORTED_CAPABILITY','F28 role dispatch requires a trusted pre-execution model gate');
+        }
+      }
+      const role=plan?.roles.find(item=>item.definition.subtaskId===value.subtaskId);
+      if(role&&(!plan||!workflowRoleMatchesChild(plan,role,value)))
+        throw new RuntimeError('REVISION_CONFLICT','Subagent changed its original workflow role');
+      // The current Competition worker does not yet verify the frozen catalog,
+      // budget and verification policy before its first model call. Fail closed.
+      if(role)throw new RuntimeError('UNSUPPORTED_CAPABILITY','F28 role dispatch requires a trusted pre-execution model gate');
+      const previous=this.findTaskByIdempotencyKey(input.idempotencyKey);
+      // Existing child replay keeps the original subagent behavior: identity is
+      // checked against its launch binding, not against a reconstructed task input
+      // (which may omit historical attachmentRefs).
+      const task=previous??this.submitInTransaction(input),old=this.loadCheckpoint(task.taskId,'subtask-parent');
+      if(previous&&old===undefined)throw new RuntimeError('REVISION_CONFLICT','Existing child has no original subagent binding');
+      if(old!==undefined) {
+        const prior=old as Record<string,unknown>;
+        if(!prior||typeof prior!=='object'||prior.parentTaskId!==value.parentTaskId||prior.subtaskId!==value.subtaskId
+          ||task.conversationId!==input.conversationId||task.goal!==input.goal||!Object.hasOwn(DEFAULT_ROLE_LABELS,String(prior.role))
+          ||prior.parentDeadline!==value.parentDeadline||['role','goal','model','reasoningEffort','thinkingDepth'].some(key=>prior[key]!==value[key])
+          ||(typeof prior.roleLabel==='string'&&prior.roleLabel.trim()?prior.roleLabel.trim():DEFAULT_ROLE_LABELS[prior.role as SubtaskRole])!==value.roleLabel)
+          throw new RuntimeError('REVISION_CONFLICT','Original subagent binding changed');
+      }
+      if(old===undefined) {
+        if(task.state!=='created')throw new RuntimeError('REVISION_CONFLICT','Subagent binding missing after execution started');
+        this.saveCheckpoint(task.taskId,'subtask-parent',value);
+      }
       return task;
     }));
   }
