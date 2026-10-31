@@ -2,7 +2,7 @@
  * Trusted Desktop ports for F28 native config host/guard (Owner/zemeng ModelGateway surface).
  * Lab injects createRuntimeF28NativeConfigHost when ModelGateway declarations are readable.
  */
-export function createF28ModelGraphPorts({getApplication,modelApiHost,authorizeExport,now=()=>new Date()}={}) {
+export function createF28ModelGraphPorts({getApplication,modelApiHost,authorizeExport,resolveOriginalDispatchState,now=()=>new Date()}={}) {
   if(typeof getApplication!=='function'||typeof modelApiHost?.readHarnessConfiguration!=='function'
     ||typeof authorizeExport!=='function')
     return {unavailable:'f28_native_config_desktop_ports_unavailable',ports:undefined};
@@ -28,12 +28,12 @@ export function createF28ModelGraphPorts({getApplication,modelApiHost,authorizeE
   };
 
   const resolveGuardState=async(scope,input)=>{
-    try {
-      const roles=await readNativeConfig(scope,input);
-      if(input.check==='native_roles_declared'&&(roles.research||roles.analysis||roles.coder))return 'selected';
-      if(input.check==='native_roles_declared')return 'skipped';
-      return 'unknown';
-    }catch{return 'unknown';}
+    assertCurrent(scope);
+    // Native model support does not establish the original F28 dispatch condition.
+    if(typeof resolveOriginalDispatchState!=='function')return 'unknown';
+    const state=await resolveOriginalDispatchState(scope,input);
+    assertCurrent(scope);
+    return ['selected','skipped','unknown'].includes(state)?state:'unknown';
   };
 
   return {
@@ -42,7 +42,12 @@ export function createF28ModelGraphPorts({getApplication,modelApiHost,authorizeE
       readNativeConfig,
       resolveGuardState,
       assertCurrent,
-      authorizeExport:async(scope,result)=>authorizeExport({scope,result,now:now()})===true,
+      authorizeExport:async(scope,result)=>{
+        assertCurrent(scope);
+        const allowed=await authorizeExport({scope,result,now:now()});
+        assertCurrent(scope);
+        return allowed===true;
+      },
       now,
     },
   };

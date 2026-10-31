@@ -13,12 +13,12 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 | F05 | N02 可选工厂，默认不注册 | 未完成 | optional-graph-hosts 合成测试核对 scope、网关调用口与缺口；非整图 | 知识检索受信网关调用口、引用验真、其余 host |
 | F06 | N03/N04/N05 可选工厂；Desktop 已注入 `verifyWorkflowReminderBinding`（N04 可注册） | 未完成 | [F06 Evidence](F06_REMINDER_WIRING_20261029.md)；N03 现持久化 `f06:n03-todo:{session}` 含 revision；非整图或实机送达 | N03 生产 `invokeTodoCreate` 网关、N05 真实投递 |
 | F07 | N04/N05 可选工厂，默认不注册 | 未完成 | [F07 Evidence](F07_FRESHNESS_20261029.md)：原图请求、确认回执与版本变化核验；写入权限和网关口合成测试；非整图 | Desktop 缺日历版本口、原读取绑定与 N05 受信网关、账户配置和写入读回 |
-| F08 | N10 Desktop 条件注入（mail 宿主就绪时）；N13 可选；N03/N07/N12 显式 unavailable | 未完成 | [F08 Evidence](F08_MAIL_BOUNDARY_20261029.md)；非整图 | 真正归档与发送、N12 对账、审批及真实 Sent 读回 |
+| F08 | N10 还须精确操作授权检查口，当前 Desktop 不注册；N13 可选；N03/N07/N12 显式 unavailable | 未完成 | [F08 Evidence](F08_MAIL_BOUNDARY_20261029.md)；非整图 | 精确 grant/版本/参数检查、真正归档与发送、N12 对账、审批及真实 Sent 读回 |
 | F09 | Runtime 受限 worker；Desktop N02 + `f09WorkflowWorkerPorts`；AgentArts 在固定部署下合并 ownedImage | 未完成（缺部署时不注入；F10 仍 unavailable） | Desktop F09 定向与 ports 测试通过；Runtime F09 4/4；非整图真实源 | F10 入队宿主、真实订阅会话与云图联跑 |
 | F10 | N05 可选工厂，默认不注册 | 未完成 | [F10 Evidence](F10_SUPPORTED_CLAIMS_20261029.md)：原来源与引用版本、独立审核口的合成测试；非整图 | N02–N04 确认回执、实际来源读回、ModelGateway 审核及出机权限装配 |
 | F11 | N05 仅有独立回执验证器，未注册图工具 | 未完成 | [F11 Evidence](F11_CALENDAR_RECEIPT_GUARD_20261029.md)：已授权更新和提醒失效的合成验证；未执行写入 | 用户原确认、calendar.update 语义映射、真实日历写入/读回与提醒失效 |
 | F12 | N02 Desktop 条件注入（NotificationHost）；N04 仍需投递读回 | 未完成 | optional-graph-hosts；非整图 | N04 真实投递读回及导出授权 |
-| F13 | N02 Desktop 条件注入（system.observe）；云/配额/锁显式拒绝 | 未完成 | optional-graph-hosts；非整图 | 独立 cloud/quota/lock resolver；N04 confirmed_recovery |
+| F13 | N02 须独立 Gateway 调用与可信探测口，当前 Desktop 不注册 | 未完成 | optional-graph-hosts；非整图 | 原任务 Policy/ToolGateway 调用、独立 cloud/quota/lock resolver；N04 confirmed_recovery |
 | F14 | N01 可选工厂，默认不注册 | 未完成 | [F14 Evidence](F14_OBSERVATION_ADAPTER_20261029.md)：原观察与 HostTask 回执合成验证；非实机 | Desktop 受信观察入口、跨节点设备会话绑定、输入锁、确认及效果读回 |
 | F15 | 既有 N04/N05/N06 与 host-only review 桥接；Desktop config/origin/native viewer 已接 main | 独立审查可配置，依赖用户公钥与签名目录 | 完整应用合成 28/28；worker 16/16；Desktop review hosts 12/12、workspace-controls 7/7；非真人审查/云验收 | 真实独立审核者签名、固定部署、Laya、实机 WinForms 目视 |
 | F16 | 未核验新增注册 | 未完成 | 待本轮图路径验证 | 原 CI 失败与验证绑定 |
@@ -49,6 +49,14 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 - `cloudPersistentHost` 未注入：尚无经验证的真实关机后云宿主，不能将本机存储或模拟宿主报为云常驻。
 
 本文件随工作进展更新。未完成 28 图之前不以目录数、合成测试、云端 settled 或此表作为完整验收。
+
+## 2026-10-31 接管复核与修复
+
+- F02/F14/F28 Desktop 出机授权原实现比较 Promise 与 `true`，使异步同意被拒绝；现等待真实结果，并在返回前重验原任务未取消。三个回归先失败，修复后通过。
+- F08_N10/N13、F25_N03、F28_N03 原调用未将实际参数交给原图意图校验，真实非空参数被拒绝，而旧合成夹具用空意图掩盖了问题。现绑定原参数，覆盖更换授权、旧操作、私有标记、检查请求和前驱内容的拒绝路径。
+- F28_N03 guard 接受 Engine 实际发布的 `workflowId/nodeId/input/predecessorOutputs/predecessorStates`，并验证原意图。该适配仍是 provisional；原 `{check}` guard 形状不能匹配真实 Engine。模型支持角色不证明原分派条件成立，缺受信原分派判定时仍返回 unknown。
+- Desktop F08 不再用“存在 mail 工具和任意授权引用”冒充精确操作授权；F13 不再直接执行注册工具绕过 Gateway，也不生成未探测的云/配额/锁事实。缺独立受信提供者时不注册这两个图适配；F12 quiet-hours 保留并重验原父子任务。
+- 当前定向：Runtime 构建通过；`workflow-optional-graph-hosts`、`zemeng-graph-ports` 与 `workflow-graph-composition` 共 22/22 通过，均为本机合成边界验证。真实图、邮件/日历账号、平台评测、物理语音、独立真人签名和关机后云宿主均未据此验收，152 项仍不勾选。
 
 ## 本轮检查记录
 

@@ -39,7 +39,12 @@ export function createF14ObservationGraphPorts({
       browserObserve:browserObserveTool,
       invokeObservation,
       assertCurrent,
-      authorizeExport:async(scope,result)=>authorizeExport({scope,result,now:now()})===true,
+      authorizeExport:async(scope,result)=>{
+        assertCurrent(scope);
+        const allowed=await authorizeExport({scope,result,now:now()});
+        assertCurrent(scope);
+        return allowed===true;
+      },
       now,
     },
   };

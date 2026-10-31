@@ -20,13 +20,13 @@ import {createRuntimeF19IssueSnapshotHost,createRuntimeF19EnqueueRepairHost,crea
 import {createRuntimeF22ShadowObservationHost} from '../dist/application/workflow-f22-shadow-graph-host.js';
 import {createRuntimeF26DeploymentReadbackHost} from '../dist/application/workflow-f26-deployment-graph-host.js';
 
-function hostFixture(workflowId,nodeId,toolName){
+function hostFixture(workflowId,nodeId,toolName,args={}){
   const now=Date.now(),deadline=new Date(now+60_000).toISOString(),signal=new AbortController().signal;
   const map=new Map(),put=(id,key,value)=>map.set(id+'|'+key,value);
   put('child','coding-repair:parent',{taskId:'parent',operationId:'operation'});
-  put('child','host-tool-intent',{commandId:'operation',toolName,arguments:{},deadline});
+  put('child','host-tool-intent',{commandId:'operation',toolName,arguments:args,deadline});
   put('parent','owned-workflow:intent:operation',{taskId:'parent',workflowId,sessionId:'session',deadline,
-    proposal:{nodeId,operationId:'operation',toolName,arguments:{}}});
+    proposal:{nodeId,operationId:'operation',toolName,arguments:args}});
   const runtime={loadCheckpoint:(id,key)=>map.get(id+'|'+key),
     saveCheckpointOnce:(id,key,value)=>{const slot=id+'|'+key;if(map.has(slot))return false;map.set(slot,value);return true;},
     getTask:()=>({state:'running',cancelRequested:false})};
@@ -186,12 +186,14 @@ test('F08 does not substitute mark seen for archive or draft for send',async()=>
   assert.equal(send.unavailable,'f08_mail_send_trusted_ports_unavailable');
   assert.equal(calls,0);
 
-  const scopeFixture=hostFixture('F08','F08_N10','workflow.host.f08_n10');
   const digest=createHash('sha256').update('{}').digest('hex');
+  const scopeArgs={authorizationRef:'grant',toolName:'mail.save_draft',toolVersion:'1.0.0',argumentsDigest:digest};
+  const scopeFixture=hostFixture('F08','F08_N10','workflow.host.f08_n10',scopeArgs);
   const scope=createRuntimeF08OperationScopeHost({...scopeFixture,
     verifyOperationScope:async()=>({ready:false,blockingReason:'needs approval'})});
-  assert.deepEqual(await scope.tools[0].execute({authorizationRef:'grant',toolName:'mail.save_draft',toolVersion:'1.0.0',argumentsDigest:digest},scopeFixture.context),
+  assert.deepEqual(await scope.tools[0].execute(scopeArgs,scopeFixture.context),
     {ready:false,blockingReason:'needs approval'});
+  await assert.rejects(scope.tools[0].execute({...scopeArgs,authorizationRef:'substituted'},scopeFixture.context),{code:'UNAUTHORIZED'});
 });
 
 test('F08 wait reconciliation and versioned replan stay honest',async()=>{
@@ -203,11 +205,13 @@ test('F08 wait reconciliation and versioned replan stay honest',async()=>{
   assert.deepEqual(wait.tools,[]);
   assert.equal(wait.unavailable,'f08_wait_reconciliation_trusted_ports_unavailable');
 
-  const replanFixture=hostFixture('F08','F08_N13','workflow.host.f08_n13');
+  const replanArgs={changeReason:'scope drift',priorOperationId:'prior-op'};
+  const replanFixture=hostFixture('F08','F08_N13','workflow.host.f08_n13',replanArgs);
   const replan=createRuntimeF08VersionedReplanHost({...replanFixture,
     submitVersionedReplan:async(_scope,input)=>({changeReason:input.changeReason,originalEffectChain:['mail.save_draft']})});
-  assert.deepEqual(await replan.tools[0].execute({changeReason:'scope drift',priorOperationId:'prior-op'},replanFixture.context),
+  assert.deepEqual(await replan.tools[0].execute(replanArgs,replanFixture.context),
     {changeReason:'scope drift',originalEffectChain:['mail.save_draft']});
+  await assert.rejects(replan.tools[0].execute({...replanArgs,priorOperationId:'unrelated'},replanFixture.context),{code:'UNAUTHORIZED'});
 });
 
 test('F12 quiet hours and delivery require trusted notification ports',async()=>{
@@ -268,10 +272,11 @@ test('F21 skill manifest and protocol health read injected ports only',async()=>
 });
 
 test('F25 outbound check and F27 model capabilities fail closed on export gates',async()=>{
-  const f25=hostFixture('F25','F25_N03','workflow.host.f25_n03');
+  const f25=hostFixture('F25','F25_N03','workflow.host.f25_n03',{testPayloadContainsPrivate:true});
   const outbound=createRuntimeF25OutboundContextHost({...f25});
   assert.deepEqual(await outbound.tools[0].execute({testPayloadContainsPrivate:true},f25.context),
     {filteredOut:['private_marker'],cleanPayloadReady:false});
+  await assert.rejects(outbound.tools[0].execute({testPayloadContainsPrivate:false},f25.context),{code:'UNAUTHORIZED'});
   const f27=hostFixture('F27','F27_N01','workflow.host.f27_n01');
   const models={revision:'r',models:[{id:'m',verification:'conditional',capabilities:{text:true,streaming:false,toolCalling:true,structuredOutput:false,vision:false}}]};
   const host=createRuntimeF27ModelCapabilitiesHost({...f27,readModels:async()=>models});
@@ -281,15 +286,16 @@ test('F25 outbound check and F27 model capabilities fail closed on export gates'
 });
 
 test('F28 native config host and guard use trusted readbacks',async()=>{
-  const hostFixture28=hostFixture('F28','F28_N03','workflow.host.f28_n03');
+  const hostFixture28=hostFixture('F28','F28_N03','workflow.host.f28_n03',{check:'roles'});
   const config=createRuntimeF28NativeConfigHost({...hostFixture28,
     readNativeConfig:async(_scope,input)=>({check:input.check,research:true,analysis:false,coder:false})});
   assert.deepEqual(await config.tools[0].execute({check:'roles'},hostFixture28.context),
     {check:'roles',research:true,analysis:false,coder:false});
-  const guardFixture=hostFixture('F28','F28_N03','workflow.guard.f28_n03');
-  guardFixture.put('child','host-tool-intent',{commandId:'operation',toolName:'workflow.guard.f28_n03',arguments:{},deadline:guardFixture.context.deadline});
-  guardFixture.put('parent','owned-workflow:intent:operation',{taskId:'parent',workflowId:'F28',sessionId:'session',deadline:guardFixture.context.deadline,
-    proposal:{nodeId:'F28_N03',operationId:'operation',toolName:'workflow.guard.f28_n03',arguments:{}}});
+  await assert.rejects(config.tools[0].execute({check:'changed'},hostFixture28.context),{code:'UNAUTHORIZED'});
+  const guardInput={workflowId:'F28',nodeId:'F28_N03',input:{check:'roles'},
+    predecessorOutputs:{F28_N02:{selectedId:'original'}},predecessorStates:{F28_N02:'completed'}};
+  const guardFixture=hostFixture('F28','F28_N03','workflow.guard.f28_n03',guardInput);
   const guard=createRuntimeF28NativeConfigGuard({...guardFixture,resolveGuardState:async()=>'skipped'});
-  assert.deepEqual(await guard.tools[0].execute({check:'roles'},guardFixture.context),{state:'skipped'});
+  assert.deepEqual(await guard.tools[0].execute(guardInput,guardFixture.context),{state:'skipped'});
+  await assert.rejects(guard.tools[0].execute({...guardInput,predecessorOutputs:{}},guardFixture.context),{code:'UNAUTHORIZED'});
 });

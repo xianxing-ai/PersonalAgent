@@ -20,8 +20,9 @@ export function createRuntimeF25OutboundContextHost(options?:{
     ||typeof options.assertCurrent!=='function'||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
     return {tools:[],unavailable:'f25_outbound_context_trusted_ports_unavailable'};
   const runtime=options.application.runtime,requiredScopes=[...options.requiredScopes];
-  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F25',nodeId:'F25_N03',
-    hostToolName:'workflow.host.f25_n03',assertCurrent:options.assertCurrent,now:options.now});
+  const active=(context:ToolContext,args?:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F25',nodeId:'F25_N03',
+    hostToolName:'workflow.host.f25_n03',proposalArguments:args??(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown})?.arguments,
+    assertCurrent:options.assertCurrent,now:options.now});
   const inspect=(scope:Scope,context:ToolContext,input:{testPayloadContainsPrivate?:boolean})=>{
     const filteredOut:string[]=[];
     if(input.testPayloadContainsPrivate===true)filteredOut.push('private_marker');
@@ -33,7 +34,7 @@ export function createRuntimeF25OutboundContextHost(options?:{
     inputSchema:{type:'object',additionalProperties:false,properties:{testPayloadContainsPrivate:{type:'boolean'}}},
     outputSchema:{type:'object',additionalProperties:false,required:['filteredOut','cleanPayloadReady'],properties:{
       filteredOut:{type:'array',items:{type:'string'}},cleanPayloadReady:{type:'boolean'}}},
-    async execute(input,context){return inspect(active(context),context,input as {testPayloadContainsPrivate?:boolean});}});
+    async execute(input,context){return inspect(active(context,input),context,input as {testPayloadContainsPrivate?:boolean});}});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
     const scope=active(context);
     if(!result||typeof result!=='object'||!Array.isArray((result as {filteredOut?:unknown}).filteredOut)

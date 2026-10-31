@@ -53,19 +53,19 @@ export function createRuntimeF08OperationScopeHost(options?:{
     ||typeof options.verifyOperationScope!=='function'||typeof options.assertCurrent!=='function'||typeof options.now!=='function')
     return {tools:[],unavailable:'f08_operation_scope_trusted_ports_unavailable'};
   const requiredScopes=[...options.requiredScopes];
-  const active=(context:ToolContext)=>{
+  const active=(context:ToolContext,args:unknown)=>{
     const runtime=resolveRuntime();
     if(!runtime)failOwnedHost('UNSUPPORTED_CAPABILITY','F08 operation scope Runtime unavailable');
     return assertOwnedWorkflowHostScope({runtime,context,workflowId:'F08',nodeId:'F08_N10',
-      hostToolName:'workflow.host.f08_n10',assertCurrent:options.assertCurrent,now:options.now});
+      hostToolName:'workflow.host.f08_n10',proposalArguments:args,assertCurrent:options.assertCurrent,now:options.now});
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F08_N10',kind:'host',sideEffect:'read',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,required:['authorizationRef','toolName','toolVersion','argumentsDigest'],properties:{
       authorizationRef:{type:'string'},toolName:{type:'string'},toolVersion:{type:'string'},argumentsDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}}},
     outputSchema:{type:'object',additionalProperties:false,required:['ready'],properties:{ready:{type:'boolean'},blockingReason:{type:'string'}}},
     async execute(input,context){
-      const scope=active(context),payload=input as {authorizationRef:string;toolName:string;toolVersion:string;argumentsDigest:string};
-      const checked=await options.verifyOperationScope(scope,context,payload);active(context);
+      const scope=active(context,input),payload=input as {authorizationRef:string;toolName:string;toolVersion:string;argumentsDigest:string};
+      const checked=await options.verifyOperationScope(scope,context,payload);active(context,input);
       if(!plain(checked)||typeof checked.ready!=='boolean')failOwnedHost('UNSUPPORTED_CAPABILITY','F08 operation scope unavailable');
       return {ready:checked.ready,...(text(checked.blockingReason)?{blockingReason:checked.blockingReason}:{})};
     }});
@@ -102,17 +102,18 @@ export function createRuntimeF08VersionedReplanHost(options?:{
     ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
     return {tools:[],unavailable:'f08_versioned_replan_trusted_ports_unavailable'};
   const runtime=options.application.runtime,requiredScopes=[...options.requiredScopes];
-  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F08',nodeId:'F08_N13',
-    hostToolName:'workflow.host.f08_n13',assertCurrent:options.assertCurrent,now:options.now});
+  const active=(context:ToolContext,args?:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F08',nodeId:'F08_N13',
+    hostToolName:'workflow.host.f08_n13',proposalArguments:args??(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown})?.arguments,
+    assertCurrent:options.assertCurrent,now:options.now});
   const tool=createOwnedWorkflowAdapter({nodeId:'F08_N13',kind:'host',sideEffect:'local_write',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,required:['changeReason','priorOperationId'],properties:{
       changeReason:{type:'string',minLength:1},priorOperationId:{type:'string',minLength:1}}},
     outputSchema:{type:'object',additionalProperties:false,required:['changeReason','originalEffectChain'],properties:{
       changeReason:{type:'string'},originalEffectChain:{}}},
     async execute(input,context){
-      const scope=active(context),payload=input as {changeReason:string;priorOperationId:string};
+      const scope=active(context,input),payload=input as {changeReason:string;priorOperationId:string};
       if(!text(payload.changeReason)||!text(payload.priorOperationId))failOwnedHost('INVALID_ARGUMENT','F08 replan arguments invalid');
-      const result=await options.submitVersionedReplan(scope,payload);active(context);
+      const result=await options.submitVersionedReplan(scope,payload);active(context,input);
       if(!plain(result)||!text(result.changeReason))failOwnedHost('UNSUPPORTED_CAPABILITY','F08 versioned replan unavailable');
       return {changeReason:result.changeReason,originalEffectChain:structuredClone(result.originalEffectChain)};
     }});
