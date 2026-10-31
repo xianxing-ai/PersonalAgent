@@ -112,6 +112,8 @@ import {prepareConfiguredWorkflowDecisionQuestion} from './configured-workflow-d
 import {createF16F17CaseConfiguration} from './f16-f17-case-config-host.js';
 import {createDesktopF16F17WorkflowPorts} from './f16-f17-desktop-ports.js';
 import {createDesktopF24WorkflowWorkerPorts} from './f24-workflow-worker-ports.js';
+import {createF13WorkflowWorkerPorts} from './f13-workflow-worker-ports.js';
+import {createF14WorkflowWorkerPorts} from './f14-workflow-worker-ports.js';
 import {createSystemObservationConversation} from './system-observation-conversation.js';
 import {createDesktopWindowsControlHost} from './windows-control-host.js';
 import {createComputerControlLease} from './computer-control-lease.js';
@@ -359,6 +361,7 @@ let liveVoice;
 let f02Workflow;
 let f16F17Cases,f16F17Workflow;
 let f24Workflow;
+let f14Workflow;
 const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
   F17:f16F17Cases?.snapshot('F17')??{configured:false},unavailable:f16F17Workflow?.unavailable??['fixed_deployment_unavailable']});
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
@@ -2177,6 +2180,7 @@ async function initializeRuntime() {
         }
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
           downloadDirectory:path.join(app.getPath('downloads'),'PersonalAgent'),
+          authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
           authorizePresence:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
@@ -2538,12 +2542,18 @@ async function initializeRuntime() {
       f24Workflow=agentArtsPinned?createDesktopF24WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         getKnowledgeSourceConfig:()=>knowledgeSourceConfig,getKnowledgeTools:()=>knowledgeTools,
         hostUserNamespace:namespace,authorizeExport:authorizeWorkflowExport}):undefined;
+      const f13Workflow=agentArtsPinned?createF13WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        systemObserveTool,authorizeExport:authorizeWorkflowExport}):undefined;
+      f14Workflow=agentArtsPinned?createF14WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        browserHost:browserControlHost,computerControlLease,authorizationQuestions:authorizationQuestionHost,
+        authorizeExport:authorizeWorkflowExport}):undefined;
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...(workflowGraphComposition.tools??[]),
         ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f24Workflow?.tools??[]),
+        ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
@@ -2585,7 +2595,8 @@ async function initializeRuntime() {
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
-          ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[])],
+          ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
         ...(observationOptions?.observationAuthorization
           ? {observationAuthorization: observationOptions.observationAuthorization} : {}),
@@ -5178,6 +5189,7 @@ app.whenReady().then(async () => {
       f02Workflow=undefined;
       f16F17Cases=undefined;f16F17Workflow=undefined;
       f24Workflow=undefined;
+      f14Workflow=undefined;
       void todoHost?.close();
     } catch (error) {
       event.preventDefault();
