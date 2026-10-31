@@ -22,7 +22,9 @@
     "./coding-repair": {"types":"./dist/coding-repair.d.ts","import":"./dist/coding-repair.js"},
     "./harness-candidates": {"types":"./dist/harness-candidates.d.ts","import":"./dist/harness-candidates.js"},
     "./harness-candidates-schema": "./schema/harness-candidates.json",
-    "./wiki-workflow": {"types":"./dist/wiki-workflow.d.ts","import":"./dist/wiki-workflow.js"}
+    "./wiki-workflow": {"types":"./dist/wiki-workflow.d.ts","import":"./dist/wiki-workflow.js"},
+    "./f20-candidate": {"types":"./dist/f20-candidate.d.ts","import":"./dist/f20-candidate.js"},
+    "./f20-candidate-schema": "./schema/f20-candidate.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

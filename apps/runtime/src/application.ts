@@ -199,6 +199,7 @@ export {createRuntimeF22ShadowObservationHost} from './application/workflow-f22-
 export {createRuntimeF26DeploymentReadbackHost} from './application/workflow-f26-deployment-graph-host.js';
 export {verifyF20HarnessCompletion} from './application/f20-verify-completion.js';
 export {assertF20CandidateSelection} from './application/f20-candidate-frontier.js';
+export type {RuntimeF20CandidateExpectation} from './application/f20-verify-completion.js';
 export {createRuntimeF17FailureReportHost} from './application/workflow-f17-failure-report-host.js';
 export type {RuntimeOwnedWorkflowImageOptions} from './application/owned-workflow-image-adapter.js';
 export {createRuntimeProactiveImageAdapter} from './application/proactive-image-adapter.js';

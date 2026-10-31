@@ -2,6 +2,17 @@
 
 目标 profile：`huawei_ict_agentarts`。本记录为源码审查结果，不是图执行或真实服务验收。
 
+## 2026-10-31 接管修复进展
+
+- 新增公开 `@personal-agent/contracts/f20-candidate` v1：只允许有界 `docMarkdown`、`sampleSnippet` 和版本，不接受模型提供路径、recipe、授权或源版本；Schema 与类型由现有生成器生成。
+- F20_N03 与 Runtime 工具目录现在使用现有 `coding.repair.trial`。N02 的原始本地选择回执必须唯一、非 abstain，候选值通过公开 Schema；trial 参数只能创建宿主从原 `codeFile` 派生的隔离样本路径，内容必须逐字等于选中候选，recipe 必须等于原案例配置，禁止额外 patch/来源/父 trial。旧 `workspace.run_allowed_command` 不能充当候选验证。
+- completion 要求原 trial 子任务、候选、隔离 session、两份来源、可信 baseline/recipe fingerprint、完整 artifact 与每项 required verification 的原 run Evidence 一致。新增样本之外的源快照不得改变；比对内容元数据而非会被工具投影移除的明文。`additionalSourceTaskIds` 只允许原先已绑定的读取任务。
+- 初始数据、节点回执、完成结果的出机许可及 frontier 均须明确返回 `true`，异步拒绝不会当作允许。
+- 本地验证使用显式合成镜像、候选和 trial 结果；实际 Runtime、Policy、原 HostBridge 子任务与审批恢复参与执行。它不证明真实 TypeScript 候选检查或真实 AgentArts 服务可用。
+- 本轮构建通过；六个受影响测试文件共 53/53 通过，无跳过，包括替换样本在 trial 前拒绝、出机/frontier 显式拒绝、未知结果不重放、原来源核实后继续及 Schema 边界。完整集成 CI 待接线增量整合后验证。
+
+**仍未完成**：Desktop 的受信候选上下文提供者、针对该隔离样本及选定契约的真实 TypeScript 检查 recipe、当前源/出口许可再核对与完整生产组合、固定 AgentArts 部署整图真实验收。已有 node-check 不能替代 TypeScript 语义检查；在这些条件齐备前不注入 `ownedWorkflowWorker`。下文保留 2026-10-29 审查原记录，工具映射和候选格式的当前进展以本节为准。
+
 ## 现有能力
 
 - `apps/desktop/electron/f20-case-config-host.js` 将用户原生选择的案例加密保存，核对工作区、固定 recipe 和源路径；`resolveInput` 的 `sourceVersion` 绑定配置，并非源文件内容的摘要。

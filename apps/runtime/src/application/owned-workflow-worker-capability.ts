@@ -1,6 +1,9 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {parseHarnessCandidateTrial} from '@personal-agent/contracts/harness-candidates';
+import {parseF20DocumentCandidate} from '@personal-agent/contracts/f20-candidate';
+import type {F20DocumentCandidate} from '@personal-agent/contracts/f20-candidate';
 import type {TaskSnapshot} from '@personal-agent/contracts';
 import type {AgentToolPort} from '@personal-agent/agents';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
@@ -12,6 +15,8 @@ import type {RuntimeApplication,HostToolTaskReadback} from './runtime-applicatio
 import {createRuntimeOwnedWorkflowHost} from './owned-workflow-application.js';
 import {runRuntimeOwnedWorkflowDriver} from './owned-workflow-driver.js';
 import type {RuntimeOwnedWorkflowDriverState} from './owned-workflow-driver.js';
+import {HARNESS_CANDIDATE_TRIAL_TOOL} from './harness-candidates.js';
+import {assertF20CandidateSelection} from './f20-candidate-frontier.js';
 
 export const OWNED_WORKFLOW_WORKER_TOOL='workflow.image.execute';
 export const OWNED_WORKFLOW_WORKER_VERSION='1.0.0';
@@ -39,10 +44,11 @@ export interface RuntimeOwnedWorkflowWorkerOptions {
   resolveInput(inputRef:string,scope:Scope):Promise<RuntimeF20Input|undefined>;
   assertCurrent(scope:Scope):void;
   /** Independently authenticate the image frontier and its model-produced predecessor. */
-  assertFrontier(input:Scope & {input:RuntimeF20Input;proposal:Proposal;state:RuntimeOwnedWorkflowDriverState<RuntimeF20Input>}):void|Promise<void>;
-  authorizeExport(input:Scope & {stage:'initial'|'receipt'|'completion';inputRef:string;value:unknown;localTaskId?:string;operationId?:string}):Promise<void>;
+  assertFrontier(input:Scope & {input:RuntimeF20Input;proposal:Proposal;state:RuntimeOwnedWorkflowDriverState<RuntimeF20Input>}):boolean|Promise<boolean>;
+  authorizeExport(input:Scope & {stage:'initial'|'receipt'|'completion';inputRef:string;value:unknown;localTaskId?:string;operationId?:string}):Promise<boolean>;
   verifyCompletion(input:Scope & {input:RuntimeF20Input;state:RuntimeOwnedWorkflowDriverState<RuntimeF20Input>;
-    read:HostToolTaskReadback;check:HostToolTaskReadback;sourceReads:readonly HostToolTaskReadback[]}):Promise<{additionalSourceTaskIds:readonly string[]}>;
+    read:HostToolTaskReadback;check:HostToolTaskReadback;sourceReads:readonly HostToolTaskReadback[];
+    candidateId:string;candidate:F20DocumentCandidate;samplePath:string}):Promise<{additionalSourceTaskIds:readonly string[]}>;
 }
 interface Binding {version:1;taskId:string;deadline:string;revision:number;bindingId:string;proposalDigest:string;inputRef:string;input:RuntimeF20Input;}
 type Graph=RuntimeOwnedWorkflowDriverState<RuntimeF20Input>;
@@ -123,13 +129,14 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
     application.runtime.saveCheckpointOnce(scope.taskId,bindingKey,bound);
     const tools=getTools(scope.taskId);if(!tools)fail('UNSUPPORTED_CAPABILITY','Original workflow tool scope is unavailable');
     const catalog=parseCoordinationAvailableTools(tools.list().filter(tool=>
-      ['workspace.read_text','workspace.run_allowed_command','decision.choose_candidate'].includes(tool.name))
+      ['workspace.read_text',HARNESS_CANDIDATE_TRIAL_TOOL,'decision.choose_candidate'].includes(tool.name))
       .map(tool=>({name:tool.name,version:tool.version,inputSchema:tool.inputSchema})));
     let state=context.loadCheckpoint(key) as Graph|undefined;
     if(!state){state={version:1,sessionId:randomUUID(),controlRevision:0,bindingId:options.image.bindingId,sequence:0,
       input:structuredClone(input),receipts:[],resolvedValues:{},confirmedHost:{},evidenceRefs:[],timings:[]};context.saveCheckpoint(key,state);}
     if(!isDeepStrictEqual(state.input,input))fail('REVISION_CONFLICT','Original workflow input changed');
-    await options.authorizeExport({...scope,stage:'initial',inputRef,value:structuredClone(input)});active(scope);
+    if(await options.authorizeExport({...scope,stage:'initial',inputRef,value:structuredClone(input)})!==true)
+      fail('UNAUTHORIZED','Exact F20 input export was denied');active(scope);
     const secret=await options.image.receiptSecret(scope.signal);active(scope);
     const host=createRuntimeOwnedWorkflowHost(application,{receiptSecret:secret,parentTaskId:scope.taskId,
       assertActive:(id,revision)=>{active(scope);if(id!==scope.taskId||revision!==state!.controlRevision)fail('REVISION_CONFLICT','Original workflow control changed');}});
@@ -148,6 +155,25 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
         ||!isDeepStrictEqual(observed.confirmed.result,record.result)||!isDeepStrictEqual(receipt.result,record.result))
         fail('UNAUTHORIZED','F20 predecessor readback changed');
       return observed;
+    };
+    const selectedCandidate=(graph:Graph)=>{
+      const selected=originalNodeReceipt(graph,'F20_N02','decision.choose_candidate');
+      const records=Object.values(graph.confirmedOperations??{}).filter(item=>item.nodeId==='F20_N02'&&item.toolName==='decision.choose_candidate');
+      if(records.length!==1||!plain(selected.confirmed?.result)||typeof selected.confirmed.result.selectedId!=='string')
+        fail('UNAUTHORIZED','F20 requires one original document candidate selection');
+      const operationId=records[0]!.operationId;
+      const original=application.runtime.loadCheckpoint(scope.taskId,'owned-workflow:operation:'+operationId) as {proposal?:Proposal}|undefined;
+      let candidateContext:unknown;
+      try{candidateContext=JSON.parse(String(original?.proposal?.arguments.context));}catch{fail('UNAUTHORIZED','F20 candidate context is unavailable');}
+      if(!plain(candidateContext)||!Array.isArray(candidateContext.candidateValues))fail('UNAUTHORIZED','F20 candidate context is unavailable');
+      const candidateId=selected.confirmed.result.selectedId;
+      assertF20CandidateSelection({runtime:application.runtime,parentTaskId:scope.taskId,operationId,
+        candidateValues:candidateContext.candidateValues,selectedId:candidateId});
+      const candidate=candidateContext.candidateValues.find(item=>plain(item)&&item.id===candidateId);
+      if(!plain(candidate))fail('UNAUTHORIZED','F20 selected candidate is unavailable');
+      const value=parseF20DocumentCandidate(candidate.value),samplePath=input.codeFile+'.f20-sample.ts';
+      if([input.schemaFile,input.codeFile,input.targetDoc].includes(samplePath))fail('UNAUTHORIZED','F20 sample overlaps a configured source or document');
+      return {candidateId,candidate:value,samplePath};
     };
     const preflightBinding={version:1,taskId:scope.taskId,deadline:scope.deadline,sessionId:state.sessionId,
       bindingId:options.image.bindingId,proposalDigest:hash(proposal),inputDigest:hash(input),catalogDigest:hash(catalog)};
@@ -202,8 +228,11 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
       if(item.nodeId==='F20_N01'&&item.toolName==='workspace.read_text') {
         if(![input.schemaFile,input.codeFile].includes(String(item.arguments.path))
           ||Object.keys(item.arguments).some(key=>!['path','maxBytes'].includes(key)))fail('UNAUTHORIZED','Workflow source is outside the fixed case');
-      }else if(item.nodeId==='F20_N03'&&item.toolName==='workspace.run_allowed_command') {
-        if(!isDeepStrictEqual(item.arguments,{recipeId:input.recipeId}))fail('UNAUTHORIZED','Workflow command differs from the fixed recipe');
+      }else if(item.nodeId==='F20_N03'&&item.toolName===HARNESS_CANDIDATE_TRIAL_TOOL) {
+        const selected=selectedCandidate(state!);
+        if(!isDeepStrictEqual(item.arguments,{candidateId:selected.candidateId,recipeIds:[input.recipeId],patches:[{
+          path:selected.samplePath,expectedSha256:null,edits:[],createText:selected.candidate.sampleSnippet}]}))
+          fail('UNAUTHORIZED','Workflow trial differs from the selected candidate or fixed isolated sample');
       }else if(['F20_N01','F20_N02','F20_N03','F20_N04'].includes(item.nodeId)&&item.toolName==='decision.choose_candidate') {
         // The existing local selector is advisory; it never grants an operation or scope.
       }else fail('UNAUTHORIZED','Workflow operation is outside the fixed F20 case');
@@ -217,28 +246,34 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
           fail('UNAUTHORIZED','F20 proposal is outside its original node frontier');
         if(['F20_N02','F20_N03','F20_N04'].includes(item.nodeId))originalNodeReceipt(graph,'F20_N01','workspace.read_text');
         if(['F20_N03','F20_N04'].includes(item.nodeId))originalNodeReceipt(graph,'F20_N02','decision.choose_candidate');
-        if(item.nodeId==='F20_N04')originalNodeReceipt(graph,'F20_N03','workspace.run_allowed_command');
-        await options.assertFrontier({...scope,input:structuredClone(input),proposal:structuredClone(item),state:structuredClone(graph)});active(scope);
+        if(item.nodeId==='F20_N04')originalNodeReceipt(graph,'F20_N03',HARNESS_CANDIDATE_TRIAL_TOOL);
+        if(await options.assertFrontier({...scope,input:structuredClone(input),proposal:structuredClone(item),state:structuredClone(graph)})!==true)
+          fail('UNAUTHORIZED','Original F20 frontier was not verified');active(scope);
       },
       authorizeReceipt:async({proposal:item,receipt,localTaskId})=>{
-        await options.authorizeExport({...scope,stage:'receipt',inputRef,value:structuredClone(receipt.result),localTaskId,operationId:item.operationId});active(scope);
+        if(await options.authorizeExport({...scope,stage:'receipt',inputRef,value:structuredClone(receipt.result),localTaskId,operationId:item.operationId})!==true)
+          fail('UNAUTHORIZED','Exact F20 receipt export was denied');active(scope);
       },
       validateSettled:async graph=>{
         if(['F20_N01','F20_N02','F20_N03','F20_N04'].some(id=>graph.result?.nodes[id]?.state!=='completed'))
           fail('UNAUTHORIZED','F20 has no complete original graph');
-        const read=graph.confirmedHost['workspace.read_text'],check=graph.confirmedHost['workspace.run_allowed_command'];
+        const read=graph.confirmedHost['workspace.read_text'],check=graph.confirmedHost[HARNESS_CANDIDATE_TRIAL_TOOL];
         if(!read||!check)fail('UNAUTHORIZED','F20 original local operations are unavailable');
         originalNodeReceipt(graph,'F20_N01','workspace.read_text');
         originalNodeReceipt(graph,'F20_N02','decision.choose_candidate');
-        originalNodeReceipt(graph,'F20_N03','workspace.run_allowed_command');
+        originalNodeReceipt(graph,'F20_N03',HARNESS_CANDIDATE_TRIAL_TOOL);
         originalNodeReceipt(graph,'F20_N04','decision.choose_candidate');
         const readback=application.readHostToolTask(read.localTaskId),checkback=application.readHostToolTask(check.localTaskId);
-        for(const [record,original,name] of [[readback,read,'workspace.read_text'],[checkback,check,'workspace.run_allowed_command']] as const)
+        for(const [record,original,name] of [[readback,read,'workspace.read_text'],[checkback,check,HARNESS_CANDIDATE_TRIAL_TOOL]] as const)
           if(!record.confirmed||record.task.state!=='succeeded'||record.commandId!==original.operationId||record.toolName!==name
             ||!record.confirmed.evidenceRefs.length||!isDeepStrictEqual(record.confirmed.result,original.result))
             fail('UNAUTHORIZED','F20 lacks original confirmed local evidence');
-        if(!plain(checkback.confirmed!.result)||checkback.confirmed!.result.exitCode!==0)
-          fail('UNAUTHORIZED','F20 fixed verification command did not pass');
+        const trial=parseHarnessCandidateTrial(checkback.confirmed!.result);
+        if(trial.binding.taskId!==scope.taskId||trial.binding.trialTaskId!==checkback.task.taskId
+          ||trial.session.taskId!==checkback.task.taskId||trial.session.mode!=='isolated'
+          ||!trial.checkReadback.verification.some(item=>item.recipeId===input.recipeId&&item.status==='VALID'&&item.exitCode===0
+            &&item.evidenceRefs.includes(checkback.confirmed!.runId)))
+          fail('UNAUTHORIZED','F20 original isolated candidate verification did not pass');
         const reads=[...Object.values(graph.confirmedOperations??{}).filter(item=>item.toolName==='workspace.read_text').map(item=>item.localTaskId),
           read.localTaskId];
         const paths=new Set<string>(),sourceRefs:string[]=[],sourceReads:HostToolTaskReadback[]=[];
@@ -257,8 +292,12 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
         }
         if(!paths.has(input.schemaFile)||!paths.has(input.codeFile))
           fail('UNSUPPORTED_CAPABILITY','F20 requires confirmed original reads for both configured sources');
-        const verified=await options.verifyCompletion({...scope,input:structuredClone(input),state:structuredClone(graph),read:readback,check:checkback,sourceReads});active(scope);
-        if(!verified||!Array.isArray(verified.additionalSourceTaskIds)||verified.additionalSourceTaskIds.length!==0)
+        const candidate=selectedCandidate(graph);
+        if(trial.binding.candidateId!==candidate.candidateId)fail('UNAUTHORIZED','F20 trial candidate differs from the original selection');
+        const verified=await options.verifyCompletion({...scope,input:structuredClone(input),state:structuredClone(graph),read:readback,check:checkback,sourceReads,
+          ...candidate});active(scope);
+        if(!verified||!Array.isArray(verified.additionalSourceTaskIds)
+          ||verified.additionalSourceTaskIds.some(id=>!sourceReads.some(item=>item.task.taskId===id)))
           fail('UNAUTHORIZED','F20 completion cannot introduce unbound source tasks');
         return {resultSummary:'F20 candidate verified against the configured local case; not published',
           evidenceRefs:[...new Set([...graph.evidenceRefs,...sourceRefs])]};
@@ -268,7 +307,8 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
       result:null,evidenceRefs:[],selection:bound};
     active(scope);
     const result={workflowId:'F20',state:'settled',published:false};
-    await options.authorizeExport({...scope,stage:'completion',inputRef,value:result});active(scope);
+    if(await options.authorizeExport({...scope,stage:'completion',inputRef,value:result})!==true)
+      fail('UNAUTHORIZED','Exact F20 completion export was denied');active(scope);
     const selection={...bound,resultDigest:hash(result)};context.saveCheckpoint(namespace+':receipt',{selection,result});
     return {state:'confirmed',result,evidenceRefs:outcome.evidenceRefs??[],selection};
   },assertReceiptAllowed:(proposal,selection,result,context)=>{

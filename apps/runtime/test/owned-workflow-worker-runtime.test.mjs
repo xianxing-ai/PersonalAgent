@@ -7,26 +7,41 @@ import {createRuntimeApplication,createDesktopSubagentDispatchTool,OWNED_WORKFLO
 
 // Synthetic image and workspace; Runtime, Policy, Gateway and host children are real.
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-function fixture({configured=true,unknown=false,unknownSource=false}={}) {
+function fixture({configured=true,unknown=false,unknownSource=false,replaceSample=false,denyExport=false,denyFrontier=false}={}) {
   let app;const calls=[],cloud=[],advances=[];
   const caseInput={schemaFile:'schema.json',codeFile:'api.ts',recipeId:'check-api',docTemplate:'template',targetDoc:'docs/api.md',sourceVersion:'fixture-v1'};
+  const candidate={version:1,docMarkdown:'# Fixture API',sampleSnippet:'export const example = true;'};
+  const decisionArgs=nodeId=>({context:JSON.stringify({workflowId:'F20',nodeId,candidateValues:[{id:'synthetic-candidate',value:candidate}]})});
   const tool=(name,sideEffect,properties,required,execute)=>({descriptor:{name,version:'1.0.0',sideEffect,
     requiredScopes:['synthetic:f20'],inputSchema:{type:'object',properties,required,additionalProperties:false},outputSchema:{type:'object'},
     idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async(args,context)=>{
-      calls.push({name,args,taskId:context.taskId,runId:context.runId});return execute(args);}});
+      calls.push({name,args,taskId:context.taskId,runId:context.runId});return execute(args,context);}});
   const tools=[tool('workspace.read_text','read',{path:{type:'string'}},['path'],args=>{
     if(unknownSource&&args.path==='api.ts')throw new ProtocolError('RESULT_UNKNOWN','Synthetic source result is unknown');
     return {path:args.path,content:'synthetic'};}),
-    tool('decision.choose_candidate','read',{},[],()=>({selectedId:'synthetic-candidate'})),
-    tool('workspace.run_allowed_command','local_write',{recipeId:{type:'string'}},['recipeId'],args=>{
-      if(unknown)throw new ProtocolError('RESULT_UNKNOWN','Synthetic command result is unknown');return {recipeId:args.recipeId,exitCode:0};})];
+    tool('decision.choose_candidate','read',{context:{type:'string'}},['context'],()=>({selectedId:'synthetic-candidate'})),
+    tool('coding.repair.trial','local_write',{candidateId:{type:'string'},patches:{type:'array',items:{type:'object'}},
+      recipeIds:{type:'array',items:{type:'string'}}},
+      ['candidateId','patches','recipeIds'],(args,context)=>{
+      if(unknown)throw new ProtocolError('RESULT_UNKNOWN','Synthetic trial result is unknown');
+      const parent=app.runtime.loadCheckpoint(context.taskId,'coding-repair:parent');
+      return {binding:{version:1,taskId:parent.taskId,trialTaskId:context.taskId,candidateId:args.candidateId,artifactId:'fixture-artifact',
+        workspaceId:'fixture-workspace',sessionId:'fixture-session',baselineSnapshotId:'fixture-baseline',inputDigest:hash('source'),
+        configurationDigest:hash('configuration'),workflowVersion:'fixture-v1',runtimeVersion:'fixture-v1',recipeFingerprint:hash('recipe'),
+        artifactDigest:hash('artifact'),parentArtifactDigests:[],executionKind:'synthetic'},
+        session:{version:1,sessionId:'fixture-session',taskId:context.taskId,workspaceId:'fixture-workspace',mode:'isolated',baselineSnapshotId:'fixture-baseline'},
+        checkReadback:{version:1,sessionId:'fixture-session',snapshot:{snapshotId:'fixture-checked',packages:[],files:[]},verification:[{
+          version:1,recipeId:caseInput.recipeId,status:'VALID',exitCode:0,sessionId:'fixture-session',inputSnapshotId:'fixture-checked',
+          runId:'fixture-verify',packageIds:[],files:[],evidenceRefs:[context.runId],diagnostics:[]}]}};})];
   tools.unshift(createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,scoped)=>app.runDefaultSubagentWorker(subtask,worker,scoped)}));
   const image={bindingId:'synthetic-f20-image',receiptSecret:async()=> 'synthetic-receipt-secret-at-least-32-chars',advance:async request=>{
     advances.push(request.requestId);const phase=request.checkpoint?Number(request.checkpoint):0;
     const [name,node,args]=phase===0?['workspace.read_text','F20_N01',{path:'schema.json'}]
-      :phase===1?['decision.choose_candidate','F20_N02',{}]:phase===2?['workspace.run_allowed_command','F20_N03',{recipeId:'check-api'}]
-        :['decision.choose_candidate','F20_N04',{}];
+      :phase===1?['decision.choose_candidate','F20_N02',decisionArgs('F20_N02')]:phase===2?['coding.repair.trial','F20_N03',
+        {candidateId:'synthetic-candidate',patches:[{path:'api.ts.f20-sample.ts',expectedSha256:null,edits:[],
+          createText:replaceSample?'export const substituted = true;':candidate.sampleSnippet}],recipeIds:['check-api']}]
+        :['decision.choose_candidate','F20_N04',decisionArgs('F20_N04')];
     const descriptor=request.availableTools.find(tool=>tool.name===name),operationId=`synthetic-f20-${request.taskId}-${phase}`;
     return {workflowId:'F20',workflowVersion:'1.0.0',checkpoint:String(phase+1),state:phase===4?'settled':'awaiting_host',
       nodes:Object.fromEntries(['F20_N01','F20_N02','F20_N03','F20_N04'].map(id=>[id,{state:id===node&&phase<4?'waiting_receipt':'completed'}])),
@@ -34,7 +49,7 @@ function fixture({configured=true,unknown=false,unknownSource=false}={}) {
         originControlRevision:0,toolName:name,toolVersion:'1.0.0',toolSchemaDigest:hash(descriptor.inputSchema),arguments:args,
         resourceKeys:[],effect:phase===2?'write':'read'}],unavailable:[]};
   }};
-  const ownedWorkflowWorker={image,available:()=>true,assertCurrent:()=>{},assertFrontier:()=>{},authorizeExport:async()=>{},
+  const ownedWorkflowWorker={image,available:()=>true,assertCurrent:()=>{},assertFrontier:()=>!denyFrontier,authorizeExport:async()=>!denyExport,
     resolveInput:async()=>caseInput,
     verifyCompletion:async({sourceReads,read})=>{
       assert.ok(sourceReads.some(item=>item.confirmed.result.path==='schema.json'));
@@ -75,7 +90,7 @@ test('actual Runtime reads both sources and resumes original graph host approval
     const child=await drive(f,client,task.taskId);
     assert.equal(child.state,'succeeded',JSON.stringify(child.error));
     assert.deepEqual(f.calls.map(call=>call.name),['workspace.read_text','workspace.read_text','workspace.read_text',
-      'decision.choose_candidate','workspace.run_allowed_command','decision.choose_candidate']);
+      'decision.choose_candidate','coding.repair.trial','decision.choose_candidate']);
     assert.deepEqual(f.calls.slice(0,2).map(call=>call.args.path),['schema.json','api.ts']);
     assert.ok(f.cloud.some(request=>request.taskId===child.taskId&&request.availableTools?.some(tool=>tool.name===OWNED_WORKFLOW_WORKER_TOOL)));
     assert.ok(f.cloud.some(request=>request.taskId===child.taskId&&request.continuation?.result?.published===false));
@@ -89,12 +104,31 @@ test('missing F20 provider is not advertised in Runtime catalog',async()=>{
     assert.ok(f.cloud.filter(request=>request.taskId===child.taskId).every(request=>!request.availableTools?.some(tool=>tool.name===OWNED_WORKFLOW_WORKER_TOOL)));
   }finally{f.app.close();}
 });
+
+test('a substituted sample never reaches the trial even after the original source and candidate approvals',async()=>{
+  const f=fixture({replaceSample:true}),{client,task}=await submit(f);try{
+    const child=await drive(f,client,task.taskId);
+    assert.equal(child.state,'failed');assert.equal(child.error.code,'UNAUTHORIZED');
+    assert.equal(f.calls.filter(call=>call.name==='coding.repair.trial').length,0);
+  }finally{f.app.close();}
+});
+
+test('explicit export and frontier denials cannot be treated as successful guards',async()=>{
+  for(const options of [{denyExport:true},{denyFrontier:true}]){
+    const f=fixture(options),{client,task}=await submit(f);try{
+      const child=await drive(f,client,task.taskId);
+      assert.equal(child.state,'failed');assert.equal(child.error.code,'UNAUTHORIZED');
+      assert.equal(f.calls.filter(call=>call.name==='coding.repair.trial').length,0);
+      if(options.denyExport)assert.equal(f.advances.length,0);
+    }finally{f.app.close();}
+  }
+});
 test('unknown original F20 command is not replayed',async()=>{
   const f=fixture({unknown:true}),{client,task}=await submit(f);try{
     const child=await drive(f,client,task.taskId);assert.equal(child.state,'waiting_reconciliation');
-    assert.equal(f.calls.filter(call=>call.name==='workspace.run_allowed_command').length,1);
+    assert.equal(f.calls.filter(call=>call.name==='coding.repair.trial').length,1);
     assert.throws(()=>f.app.resumeTask(child.taskId),{code:'RESULT_UNKNOWN'});
-    assert.equal(f.calls.filter(call=>call.name==='workspace.run_allowed_command').length,1);
+    assert.equal(f.calls.filter(call=>call.name==='coding.repair.trial').length,1);
   }finally{f.app.close();}
 });
 test('unknown second source stays on its original HostTask and the image does not advance',async()=>{

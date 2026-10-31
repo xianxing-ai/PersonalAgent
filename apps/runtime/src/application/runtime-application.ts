@@ -1174,7 +1174,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
             const binding=options.ownedWorkflowWorker!,descriptors=this.taskTools(input.taskId)?.list()??[];
             if(!runtimeOwnedWorkflowWorkerConfigured(binding)||!this.ownedWorkflowWorker
-              ||!descriptors.some(tool=>tool.name==='workspace.run_allowed_command'&&tool.version==='1.0.0')
+              ||!descriptors.some(tool=>tool.name==='coding.repair.trial'&&tool.version==='1.0.0')
               ||!await binding.available(input))return undefined;
             binding.assertCurrent(input);return this.ownedWorkflowWorker.describe();
           }}]:[]),...(this.f09WorkflowWorker&&options.f09WorkflowWorker?[{

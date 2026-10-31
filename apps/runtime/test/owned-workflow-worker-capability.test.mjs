@@ -7,7 +7,7 @@ import {createRuntimeOwnedWorkflowWorkerCapability,OWNED_WORKFLOW_WORKER_TOOL} f
 const input={schemaFile:'schema.json',codeFile:'api.ts',recipeId:'check-api',docTemplate:'fixed-template',targetDoc:'docs/api.md',sourceVersion:'fixture-v1'};
 const deadline=()=>new Date(Date.now()+60000).toISOString();
 function setup({result,configured=true,badSource=false}={}) {
-  const registered=['workspace.read_text','workspace.run_allowed_command'].map(name=>({descriptor:{name,version:'1.0.0',
+  const registered=['workspace.read_text','coding.repair.trial'].map(name=>({descriptor:{name,version:'1.0.0',
     sideEffect:name==='workspace.read_text'?'read':'local_write',requiredScopes:['synthetic:f20'],
     inputSchema:{type:'object',properties:name==='workspace.read_text'?{path:{type:'string'}}:{recipeId:{type:'string'}},
       required:name==='workspace.read_text'?['path']:['recipeId'],additionalProperties:false},outputSchema:{type:'object'},
@@ -18,7 +18,7 @@ function setup({result,configured=true,badSource=false}={}) {
   const calls=[];
   const options={image:{bindingId:'synthetic-image',receiptSecret:async()=> 'synthetic-receipt-secret-at-least-32-chars',
     advance:async()=>{calls.push('advance');return result;}},
-    available:()=>true,resolveInput:async()=>input,assertCurrent:()=>{},assertFrontier:()=>{},authorizeExport:async()=>{},verifyCompletion:async()=>{calls.push('verify');return {additionalSourceTaskIds:[]};}};
+    available:()=>true,resolveInput:async()=>input,assertCurrent:()=>{},assertFrontier:()=>true,authorizeExport:async()=>true,verifyCompletion:async()=>{calls.push('verify');return {additionalSourceTaskIds:[]};}};
   if(!configured)delete options.verifyCompletion;
   const tools={list:()=>registered.map(tool=>tool.descriptor)};
   const capability=createRuntimeOwnedWorkflowWorkerCapability(app,options,()=>tools);
@@ -51,7 +51,7 @@ test('image cannot submit a source outside the fixed case',async()=>{
 });
 test('a settled image cannot submit a command',async()=>{
   const f=setup({result:{workflowId:'F20',workflowVersion:'1.0.0',state:'settled',checkpoint:'synthetic',nodes:{},
-    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'workspace.run_allowed_command',toolVersion:'1.0.0',
+    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'coding.repair.trial',toolVersion:'1.0.0',
       arguments:{recipeId:'check-api'}}]}});
   try{const task=await f.run();assert.equal(task.state,'failed');assert.equal(task.error.code,'PROTOCOL_MISMATCH');
     assert.equal(f.app.runtime.listTasks({limit:20}).items.length,3);
@@ -60,7 +60,7 @@ test('a settled image cannot submit a command',async()=>{
 test('a command frontier without the original N01 graph receipt fails before submit',async()=>{
   const f=setup({result:{workflowId:'F20',workflowVersion:'1.0.0',state:'awaiting_host',checkpoint:'synthetic',
     nodes:{F20_N01:{state:'completed'},F20_N02:{state:'completed'},F20_N03:{state:'waiting_receipt'}},
-    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'workspace.run_allowed_command',toolVersion:'1.0.0',
+    proposals:[{kind:'tool_proposal',nodeId:'F20_N03',operationId:'forged',toolName:'coding.repair.trial',toolVersion:'1.0.0',
       arguments:{recipeId:'check-api'}}]}});
   try{const task=await f.run();assert.equal(task.state,'failed');assert.equal(task.error.code,'UNAUTHORIZED');
     assert.match(task.error.message,/predecessor/);assert.equal(f.app.runtime.listTasks({limit:20}).items.length,3);
