@@ -4,7 +4,7 @@
 > 当前设计与协作入口：[当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) · [28项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [历史图文导航](docs/design/README.md) · [具体分工与接线](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [协作与评审规则](CONTRIBUTING.md)。具体模型、部署与调度实验以当前设计及接口目录为依据，不在长期协作规则中固定选型；架构未最终定型。每位 MOD 负责人交付实现、实际调用方接线、测试、Evidence 和文档。常规 PR 首轮须有四位协作者中任意一位非作者的有效批准，批准在后续 CI 修复提交中保留；Owner 可按下文对具体 PR 作有记录的审核例外，技术 CI 仍必须通过。四位协作者长期均衡承担审查与合并。设计不等于已实现；历史验收与作者记录保留。
 
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
-这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
+这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。当前开发分工及临时接管安排以 [MODULE_ASSIGNMENTS](docs/MODULE_ASSIGNMENTS.md) 文首为准；下文长期分区保留为基线。
 
 ## 1. 先确认任务与事实
 

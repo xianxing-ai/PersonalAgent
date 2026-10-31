@@ -2,11 +2,17 @@
 
 平台协作权限仅PersonalAgent AgentArts项目及关联资源的查看/编辑/部署/调用/调试/日志/评估管理，不含全云/IAM/其他项目；授权需求不代表已获访问，项目角色与入驻见 [协作访问记录](competition/AGENTARTS_COLLABORATION_ACCESS.md)。公开材料不写真实hid/秘密。
 
-## 2026-10-31 Owner 责任分区修订（现行）
+## 2026-10-31 临时单人接管
+
+用户在本轮工作中授权：同步最新仓库，修复并合并全部可合并 PR，随后由 Codex 临时接手所有协作者的开发工作；并明确 #531 必须完成全部接线及真实验收后才能合并。当前执行账号为 `goo122`，Codex 统一承担全部模块的实现、实际调用方接线、测试、Evidence、文档和交付协调，不再因下表的原分区等待其他开发者接线。用户同时允许并行子智能体，子任务使用隔离工作树，结果由主智能体集成。
+
+临时安排覆盖下表及各模块页的开发分工，至用户明确恢复协作分工为止；原负责人、作者和历史验收记录继续保留。开发接管不等于模块完成，不改变 Runtime/Policy/ToolGateway 边界、接口冻结条件、真实账号/设备/云验收门槛，也不替代独立非作者批准或 Owner 的具体审核例外。未完成工作继续在现有 [IMAGE28 待办](competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md) 和各 MOD 记录中维护。
+
+## 2026-10-31 Owner 责任分区修订（临时接管前基线）
 
 Owner 明确：**`2511375597-lab` 为前端与前端接线责任分区唯一负责人**，并承接 **MOD-10 参赛研究**。
 
-| 负责人 | 现行责任分区 |
+| 原负责人 | 接管前责任分区 |
 | --- | --- |
 | **2511375597-lab** | **全部前端**（`apps/desktop/src/**` Renderer、设置/工作区/对话 UI、样式与交互）；**全部前端接线**（Desktop 组合：`main.js` 中对话工具/设置 IPC/图 host 条件注入、`workspace-controls`、相关 smoke）；**MOD-10**（`docs/research/agentarts`、`docs/research/model-training`，PA-022/PA-026 参赛研究）；并参与审查与合并 |
 | **zemeng5208** | 核心架构/认知、AgentArts **云与编排**、语音/Windows **原生能力包与设备宿主**、编码工具后端、Competition 平台联跑与整图协调；不再默认承担前端 UI/组合接线与 MOD-10 |

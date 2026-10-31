@@ -1,8 +1,8 @@
 # 前端与前端接线责任分区（2026-10-17 起；2026-10-31 修订）
 
-目标 Profile：`huawei_ict_agentarts`。长期归属以 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 文首 **2026-10-31 Owner 修订** 为准。
+目标 Profile：`huawei_ict_agentarts`。当前执行遵循 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 文首的临时单人接管安排；以下保留接管前的归属与交付边界。
 
-## 现行负责人：`2511375597-lab`
+## 接管前负责人：`2511375597-lab`
 
 Owner 明确：**全部前端与前端接线**、以及 **MOD-10 参赛研究**，均由 `2511375597-lab` 负责。
 

@@ -1,6 +1,6 @@
 # MOD-10：自有镜像能力与剩余证据研究
 
-日期：2026-10-13（UTC+08）；Profile：`huawei_ict_agentarts`；现行负责人：`2511375597-lab`（2026-10-31 Owner 修订；历史作者 zemeng 保留）。
+日期：2026-10-13（UTC+08）；Profile：`huawei_ict_agentarts`；接管前负责人：`2511375597-lab`（2026-10-31 Owner 修订；历史作者 zemeng 保留）。当前执行遵循 [临时单人接管安排](../../MODULE_ASSIGNMENTS.md)。
 本页核对已有仓库证据和官方公开说明，没有登录账号、新建服务、真实模型调用或训练。
 研究范围为 PA-026 参赛研究收口（MOD-10）；MOD-29～32 平台实现与联跑验收仍归 zemeng。[参数训练研究](../model-training/README.md)单独说明 PA-022。
 

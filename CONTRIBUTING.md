@@ -1,5 +1,7 @@
 # 协作开发规范
 
+当前开发分工及临时单人接管安排见 [MODULE_ASSIGNMENTS](docs/MODULE_ASSIGNMENTS.md) 文首；下文长期职责保留为基线，独立审核与技术 CI 门槛继续适用。
+
 ## 当前各 MOD 自主接线交付（2026-10-15）
 
 每个 MOD 的负责人自己完成实现、公开契约、实际调用方接线、必要消费测试、Evidence 和文档，再交付可审查变更。根 composition 负责协调共享配置/依赖/边界，不接收“只有端口，中央统一代接代验”的完成声明。可在协调共享文件后随模块补所需注册、配置、UI及宿主消费；保留单一 Runtime/Policy/ToolGateway/Evidence/Scheduler。
