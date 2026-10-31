@@ -14,10 +14,12 @@ export function createBusinessWorkflowAvailability({namespace,getApplication,tod
         const policy=notificationHost.getInterruptionPolicy({kind:'connector',connectorId:'productivity'});
         return {ready:true,bindingId:hash({namespace,workflowId,policy})};
       }
-      if(workflowId==='F07'){
+      if(workflowId==='F07'||workflowId==='F11'){
         const binding=readCalendarBinding();
         if(!binding||typeof binding.accountRef!=='string'||!binding.accountRef||!binding.calendarUrl
           ||!Number.isSafeInteger(binding.revision))return {ready:false};
+        if(workflowId==='F11'&&todoHost?.competitionToolAvailability?.find(item=>item.toolName==='todo.update')?.available(scope)!==true)
+          return {ready:false};
         return {ready:true,bindingId:hash({namespace,workflowId,binding})};
       }
       return {ready:false};

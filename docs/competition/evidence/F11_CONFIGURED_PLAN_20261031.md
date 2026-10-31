@@ -20,4 +20,6 @@ N05 结果出口与整图完成出口均重读原日历/提醒证据，并在异
 
 验证：AgentArts/Runtime 构建通过；上述 F11 用例与 F06/F07 实际图、工厂、原提醒并发审批及 decision source 边界合计 **50/50**；AgentArts **242/242**；原模板生成器 `check:workflows`、架构门禁及 diff 检查通过。日志在本工作树忽略目录 `.cache/pr531-business/f11-worker-final-tests.log`、`f11-agentarts-tests.log`、`f11-architecture.log`。按集成分工，本增量不独立重复全仓 check，由根集成分支在合入后执行最终全量检查。
 
+主集成的 `createBusinessWorkflowAvailability` 已为 F11 绑定当前 calendar account/URL/revision，并调用原 Todo `todo.update` availability 校验该原任务的宿主 generation；未签发工具权限。日历版本变化或原 Todo 绑定撤销会阻止继续。集成树 AgentArts/Runtime build 与 F11/真实 Todo 并发审批/可用性定向 **14/14** 通过。
+
 本包只交付完整显式方案分支。缺决定时的原语音补问、真实天气来源与行程影响映射、真实 CalDAV、华为 AgentArts 部署/评测、真实模型选择仍未验证或未接通；不得将其写成 F11 全功能完成或 #531 可合并。
