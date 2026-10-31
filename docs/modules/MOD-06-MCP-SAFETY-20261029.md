@@ -10,7 +10,15 @@ Desktop 现在复用原 Runtime 的持久执行记录、输入摘要及调用 ch
 
 新增 `tests/integration/remote-mcp-operation-runtime.test.mjs` 经实际 SQLite、Policy、ToolGateway 和本机合成 HTTP 服务验证：关闭关联检查时断言失败（新 run 返回 `ok`），修复后 1/1 通过；覆盖断连重连、Runtime/配置重建、配置 revision 变化、原 run 参数替换、原回执不变及未分派标记。已确认后的新查询、不同输入及独立任务仍可执行，不进行全局参数去重。历史真实 Cloudflare 未知操作未重试；本轮第三方 MCP/AgentArts 调用为 0。
 
-此修复只完成本地重发边界，不证明未知原操作已经核实，也不替代第三方工具、真人授权、Electron 或 AgentArts 真实验收。下文保留历史测试及当时的限制。
+当前候选代码 `9a656956` 已合入 `origin/main` 的 `e7d7c7e7`。完整 `npm run check`（`.cache/check-pr530-final.log`）退出 1：架构、契约、生成类型及类型检查通过；36 份测试汇总为 6173 通过、1 失败、44 跳过，其中 Runtime 1323/1323，Desktop 2267 通过、1 失败、12 跳过。唯一失败是 `mail-conversation-read.integration.test.mjs` 的 `authorization invalidation does not expose arbitrary private host errors`：首批原任务已成功，第二页未创建；现场的分类正式文件与完整临时文件同时存在。两个文件和 SQLite 原样保留在 `.cache/mail-conversation-read-integration/run-hMIgqP/`，本次未捕获底层文件操作错误，不能宣称根因已确认。原代码、原断言单独复核 3/3 通过（`.cache/test-pr530-mail-isolated.log`），未放宽等待或对存储操作盲重试，整仓结果仍记为失败。
+
+因工作区失败而未串联执行的根集成套件随后单独运行 `npm run test:integration`，退出 0，77 通过、0 失败、0 跳过（`.cache/test-pr530-integration-final.log`），包含本次原操作防重发回归。
+
+先前整仓检查还发现 Testkit 的运行中超时测试仅留 30ms 进入工具，高负载下可能在进入工具前过期；独立提交 `9a656956` 改用受控时钟，仍断言工具恰好进入一次、超时后信号中止及不重试。该测试单独 1/1 及上述完整工作区检查均通过。
+
+实际 Electron 产品烟测 `npm run test:remote-mcp-product-smoke --workspace=@personal-agent/desktop` 退出 0，回执 `.cache/remote-mcp-product/case-Q9g7IA/receipt.json`。实际主进程、管理窗口与原对话卡配合合成对话框及本机 HTTPS 两服务，验证各服务独立审批、一次调用与撤销；证书、主机名、目录、重定向四类负例均无工具调用，`pageErrors=[]`、非 MCP 请求 0。测试使用本树同版本 Electron 44.2.0 的独立 ASCII 路径副本并核对可执行文件 SHA-256，未修改其他工作树依赖；系统信任未变、TLS 验证未关闭、模型及 AgentArts 调用均为 0。最初两次启动失败是所选英文路径不存在，相关失败日志保留。
+
+此修复只完成本地重发边界，不证明未知原操作已经核实，也不替代第三方工具、真人授权或 AgentArts 真实验收。下文保留历史测试及当时的限制。
 
 ## 本次增量
 
