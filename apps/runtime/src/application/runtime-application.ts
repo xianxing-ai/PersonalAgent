@@ -35,7 +35,7 @@ import {createHarnessCandidateTrialTool,createHarnessCandidateAdoptionTool,creat
   HARNESS_TRIAL_TOOL,HARNESS_PREPARE_ADOPTION_TOOL,HARNESS_RECONCILE_TRIAL_TOOL} from '@personal-agent/coding-tools';
 import type {IsolatedCodingRepairHost} from '@personal-agent/coding-tools';
 import type {HarnessCandidateContext,HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
-import {readRuntimeF20Binding,readRuntimeF20TrialBinding,f20ReviewContext} from './f20-trial-binding.js';
+import {readRuntimeF20Binding,readRuntimeF20TrialBinding,readRuntimeF20RecoveryBinding,f20ReviewContext} from './f20-trial-binding.js';
 import type {CodingRepairInput} from '@personal-agent/contracts/coding-repair';
 import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import {parseCodingRepairInput,parseCodingRepairCheckReadback,parseCodingRepairPublishRequest,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
@@ -616,6 +616,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.readDeveloperHarnessConfiguration = options.readDeveloperHarnessConfiguration ?? (()=>fixed);
     }
     if(options.harnessCandidates&&(!this.readDeveloperHarnessConfiguration
+      &&!(options.ownedWorkflowWorker&&typeof options.harnessCandidates.readF20WorkspaceRef==='function'
+        &&this.delegateUserTasks&&options.profile==='huawei_ict_agentarts')
       ||typeof options.harnessCandidates.readContext!=='function'
       ||['start','check','publish','reconcile'].some(key=>typeof options.harnessCandidates!.host?.[key as keyof IsolatedCodingRepairHost]!=='function'))) {
       throw new ProtocolError('INVALID_ARGUMENT','Harness candidates require the original trusted workspace host and user-work composition');
@@ -2786,6 +2788,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private readHarnessCandidateRecoveryOrigin(taskId:string,expectedRevision:number) {
+    const f20=this.readF20RecoveryBinding(taskId,expectedRevision);
+    if(f20)return f20;
     const actual=this.runtime.getTask(taskId),peer=readRuntimeSubagentSibling(this.runtime,taskId);
     const parent=this.runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string;parentDeadline?:string;subtaskId?:string}|undefined;
     const delegation=parent?.parentTaskId?readUserTaskDelegation(this.runtime,parent.parentTaskId):undefined;
@@ -2817,6 +2821,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(task.revision!==expectedRevision||task.state!=='waiting_reconciliation'||this.activeTextTasks.has(taskId)
       ||this.runtime.isTaskActive(taskId))return [];
     if(this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision))return [{taskId,expectedRevision}];
+    const graphChild=this.ownedWorkflowWorker?.pendingHostTask(taskId);
+    if(graphChild&&this.readF20RecoveryBinding(graphChild.taskId,graphChild.revision))
+      return [{taskId:graphChild.taskId,expectedRevision:graphChild.revision}];
     const root=readUserTaskDelegation(this.runtime,taskId);
     if(!root)return [];
     const rootRun=`competition-tool-${taskId}-1`,record=this.runtime.readToolExecutions(taskId).find(item=>item.evidenceId===rootRun);
@@ -2830,8 +2837,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(child.taskId===owner.taskId)return true;
       const marker=readRuntimeSubagentSibling(this.runtime,child.taskId);
       return marker?.binding.ownerTaskId===owner.taskId&&marker.binding.parentTaskId===taskId;
-    }).flatMap(child=>this.readHarnessCandidateRecoveryOrigin(child.taskId,child.revision)
-      ?[{taskId:child.taskId,expectedRevision:child.revision}]:[]);
+    }).flatMap(child=>this.harnessCandidateRecoveryTargets(child.taskId,child.revision));
   }
 
   /** Metadata only. A root resolves its canonical owner/plan executors; users never need task IDs. */
@@ -2924,7 +2930,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(scope.signal.aborted)throw new ProtocolError('CANCELLED','Native candidate observation cancelled');
       if(!Number.isFinite(Date.parse(scope.deadline))||this.now().getTime()>=Date.parse(scope.deadline))
         throw new ProtocolError('TIMEOUT','Native candidate observation expired');
-      this.assertCompetitionTaskConfiguration(taskId);
+      const f20=this.readF20RecoveryBinding(taskId,expectedRevision);
+      this.assertCompetitionTaskConfiguration(f20?.f20.ownerTaskId??taskId);
       if(!isDeepStrictEqual(this.readHarnessCandidateRecoveryOrigin(taskId,expectedRevision),origin))
         throw new ProtocolError('REVISION_CONFLICT','Original unknown session changed during native observation');
     };
@@ -2953,6 +2960,30 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           if(!isDeepStrictEqual(saved,{trialRunId:origin.request.trialRunId,expectedRevision,recovery,evidenceRef}))
             throw new ProtocolError('REVISION_CONFLICT','Original native stopped-session readback changed');
         }});
+      if(recovery.state==='clear'&&'f20' in origin){
+        const ownerId=origin.f20.ownerTaskId,owner=this.runtime.getTask(ownerId);
+        const loop=this.runtime.loadCheckpoint(ownerId,'competition-loop') as {pending?:{proposalId?:string}}|undefined;
+        const graphKey='owned-workflow:f20:'+hashJson(loop?.pending?.proposalId)+':graph';
+        const originalGraph=origin.f20.state;
+        const stopped=()=>{
+          if(this.activeTextTasks.has(ownerId)||this.runtime.isTaskActive(ownerId)
+            ||this.runtime.loadCheckpoint(ownerId,'competition-cloud-inflight')||this.runtime.loadCheckpoint(ownerId,'competition-cloud-unknown')
+            ||!isDeepStrictEqual(this.runtime.loadCheckpoint(ownerId,graphKey),originalGraph)||originalGraph.pendingSend
+            ||this.runtime.readToolExecutions(ownerId).some(record=>record.state!=='confirmed')
+            ||!isTerminalTask(this.runtime.getTask(taskId)))return false;
+          return Object.values(originalGraph.confirmedOperations??{}).every(record=>{
+            const observed=this.readHostToolTask(record.localTaskId);
+            return observed.task.state==='succeeded'&&isDeepStrictEqual(observed.confirmed?.result,record.result);
+          });
+        };
+        if(owner.state==='waiting_reconciliation'&&stopped()){
+          this.runtime.saveCheckpoint(ownerId,'trusted-readback-evidence:'+evidenceRef,
+            this.runtime.loadCheckpoint(taskId,'trusted-readback-evidence:'+evidenceRef));
+          this.runtime.finishNativeReconciliation(ownerId,owner.revision,{terminal:owner.cancelRequested?'cancelled':'failed',evidenceRefs:[evidenceRef],
+            reason:'F20 原隔离试验已停止；原 UNKNOWN 保留，未继续镜像、重做检查或发布候选。',
+            assertUnchangedAndStopped:()=>{if(!stopped())throw new ProtocolError('REVISION_CONFLICT','Original F20 graph changed during native termination');}});
+        }
+      }
       return {task:this.runtime.getTask(taskId),trialRunId:origin.request.trialRunId,recovery,evidenceRef};
     })().finally(()=>this.activeHarnessCandidateRecovery.delete(taskId));
     this.activeHarnessCandidateRecovery.set(taskId,execution);return execution;
@@ -3785,6 +3816,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const parent=this.runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId?:string}|undefined;
     if(!parent?.taskId||!this.ownedWorkflowWorker?.isActive(parent.taskId))return undefined;
     return readRuntimeF20TrialBinding(this,context);
+  }
+
+  /** Native observation only, including after restart and expiry of the execution deadline. */
+  readF20RecoveryBinding(taskId:string,expectedRevision:number) {
+    try {
+      const task=this.runtime.getTask(taskId);
+      if(task.revision!==expectedRevision||task.state!=='waiting_reconciliation'||this.activeTextTasks.has(taskId)
+        ||this.runtime.isTaskActive(taskId)||!this.harnessCandidateBindings||!this.harnessCandidateOptions?.reconcileOriginalSession)return undefined;
+      const f20=readRuntimeF20RecoveryBinding(this,taskId);if(!f20)return undefined;
+      const owner=this.runtime.getTask(f20.ownerTaskId),trialRunId='host-tool-'+taskId;
+      if(this.activeTextTasks.has(owner.taskId)||this.runtime.isTaskActive(owner.taskId))return undefined;
+      const saved=this.runtime.loadCheckpoint(owner.taskId,'harness-candidates:operation:'+trialRunId) as
+        {scope?:RuntimeHarnessScope;toolName?:string;runId?:string}|undefined;
+      if(saved?.toolName!==HARNESS_TRIAL_TOOL||saved.runId!==trialRunId||saved.scope?.ownerTaskId!==owner.taskId
+        ||saved.scope.actualTaskId!==taskId||saved.scope.parentTaskId!==owner.taskId||saved.scope.inputDigest!==f20.sourceDigest
+        ||saved.scope.configurationRef!==f20.sourceDigest||saved.scope.scopeRef!==trialRunId)return undefined;
+      this.assertCompetitionTaskConfiguration(owner.taskId);
+      const request={ownerTaskId:owner.taskId,actualTaskId:taskId,trialRunId,expectedRevision,configurationRef:saved.scope.configurationRef};
+      const session=this.harnessCandidateBindings.readOriginalSessionForRecovery(request);
+      const record=this.runtime.readToolExecutions(taskId).find(item=>item.evidenceId===trialRunId)!;
+      return session?{request,session,record,f20}:undefined;
+    }catch{return undefined;}
   }
 
   readF20HarnessContext(scope:{taskId:string;deadline:string;signal:AbortSignal}):HarnessCandidateContext|undefined {

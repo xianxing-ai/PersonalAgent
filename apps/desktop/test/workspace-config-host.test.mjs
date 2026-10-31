@@ -493,11 +493,16 @@ test('F20 workspace provider runs the exact isolated TypeScript sample and never
   record.encryptedNpmCli=Buffer.from('unavailable-for-this-compiler-only-fixture').toString('base64');
   await writeFile(configuration,JSON.stringify(record));
   // Explicit Runtime/consent/version metadata fixture; the isolated host, files, Node and TS compiler are real.
-  const host=open({findExecutable:name=>name==='pwsh.exe'?node:undefined,createCommandRecipeTool:createWorkspaceCommandRecipeTool,
-    readHarnessVersions:()=>({workflowVersion:'synthetic-image-v1',runtimeVersion:'fixture-runtime',executionKind:'real_host'})});
+  let executions=0,stopState='unknown',origin;
+  const options={findExecutable:name=>name==='pwsh.exe'?node:undefined,createCommandRecipeTool:createWorkspaceCommandRecipeTool,
+    createWorkspaceCommandTool:options=>{const tool=createWorkspaceCommandTool(options);return {...tool,execute:(...args)=>{executions++;return tool.execute(...args);}};},
+    readOriginalCommandStopState:async()=>stopState,
+    readHarnessVersions:()=>({workflowVersion:'synthetic-image-v1',runtimeVersion:'fixture-runtime',executionKind:'real_host'})};
+  let host=open(options);
   const checkpoints=new Map();let f20;
-  host.bindApplication({readToolConversation:()=> 'fixture-conversation',readF20TrialBinding:()=>f20,
-    runtime:{loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}});
+  const application={readToolConversation:()=> 'fixture-conversation',readF20TrialBinding:()=>f20,readF20RecoveryBinding:()=>origin,
+    runtime:{loadCheckpoint:(task,key)=>checkpoints.get(task+key),saveCheckpoint:(task,key,value)=>checkpoints.set(task+key,value)}};
+  host.bindApplication(application);
   await host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true});
   host.setF20CaseFromNativeSelection({inputRef:'typescript-case',schemaFile:'contract.ts',codeFile:'api.ts',recipeId:'f20-typescript-sample',
     docTemplate:'Document only supported fields',targetDoc:'api.md'});
@@ -508,18 +513,29 @@ test('F20 workspace provider runs the exact isolated TypeScript sample and never
   const sha=value=>createHash('sha256').update(value).digest('hex');
   const sourceDigest=sha(JSON.stringify({sourceVersion:input.sourceVersion,schemaFile:input.schemaFile,codeFile:input.codeFile,
     schemaSha256:sha(sources['contract.ts']),codeSha256:sha(sources['api.ts'])}));
-  f20={input,inputRef:'typescript-case',sourceDigest,samplePath:'api.ts.f20-sample.ts',sourceReads:['contract.ts','api.ts'].map(file=>({confirmed:{result:{path:file,content:sources[file]}}}))};
+  f20={ownerTaskId:'f20-owner',input,inputRef:'typescript-case',sourceDigest,samplePath:'api.ts.f20-sample.ts',sourceReads:['contract.ts','api.ts'].map(file=>({confirmed:{result:{path:file,content:sources[file]}}}))};
   const scope={ownerTaskId:'f20-owner',actualTaskId:context.taskId,parentTaskId:'f20-owner',scopeRef:context.runId,
     configurationRef:sourceDigest,inputDigest:sourceDigest,deadline:context.deadline,workspaceRef:host.readDeveloperConfiguration().bindingId};
   const bound=await host.readHarnessCandidateContext(context,scope);assert.ok(bound);
   assert.deepEqual(bound.recipes.map(recipe=>recipe.recipeId),['f20-typescript-sample']);
   const started=await host.harnessRepairHost.start({mode:'isolated',allowedPaths:[f20.samplePath]},context);
   const snippet="import type {Request} from './contract.js'; const sample:Request={name:'checked'};";
+  f20.candidate={version:1,docMarkdown:'Fixture documentation',sampleSnippet:snippet};
   const checked=await host.harnessRepairHost.check(started.session.sessionId,[{path:f20.samplePath,expectedSha256:null,edits:[],createText:snippet}],['f20-typescript-sample'],context);
   assert.equal(checked.verification[0].status,'VALID');assert.equal(checked.verification[0].exitCode,0);
   assert.equal(checked.snapshot.files.find(file=>file.path===f20.samplePath).sha256,sha(snippet));
   await assert.rejects(readFile(path.join(root,f20.samplePath)),{code:'ENOENT'});
   await assert.rejects(host.harnessRepairHost.publish({},context),{code:'UNAUTHORIZED'});
+  origin={f20,session:started,request:{trialRunId:context.runId}};
+  const recovery={session:started,trialRunId:context.runId,expectedRevision:1,deadline:context.deadline,signal:context.signal,assertCurrent(){}};
+  assert.equal((await host.reconcileHarnessOriginalSession(recovery)).state,'unknown','journal VALID does not prove native termination');
+  host.close();host=open(options);host.bindApplication(application);
+  await host.authorize({cloudExportAllowed:true,writeAllowed:true,commandAllowed:true});
+  stopState='stopped';
+  assert.equal((await host.reconcileHarnessOriginalSession(recovery)).state,'clear');
+  assert.equal((await host.reconcileHarnessOriginalSession(recovery)).state,'clear');
+  assert.equal(executions,1,'fresh host recovery never re-compiles or executes the sample');
+  await assert.rejects(host.reconcileHarnessOriginalSession({...recovery,session:{...started,session:{...started.session,sessionId:randomUUID()}}}),{code:'REVISION_CONFLICT'});
   await writeFile(path.join(root,'contract.ts'),'export interface Request {changed:boolean;}');
   assert.equal(await host.readHarnessCandidateContext(context,scope),undefined,'a changed original contract invalidates the trial context');
 });

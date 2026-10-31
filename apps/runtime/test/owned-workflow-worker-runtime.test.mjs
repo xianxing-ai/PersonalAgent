@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -10,7 +15,8 @@ import {createRuntimeApplication,createDesktopSubagentDispatchTool,OWNED_WORKFLO
 
 // Synthetic image and workspace; Runtime, Policy, Gateway and host children are real.
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-function fixture({configured=true,unknown=false,unknownSource=false,replaceSample=false,denyExport=false,denyFrontier=false,typedReview=false,replaceReview=false}={}) {
+function fixture({configured=true,unknown=false,unknownSource=false,replaceSample=false,denyExport=false,denyFrontier=false,typedReview=false,replaceReview=false,
+  databasePath=':memory:',harnessCandidates}={}) {
   let app;const calls=[],cloud=[],advances=[],reviews=[];
   const caseInput={schemaFile:'schema.json',codeFile:'api.ts',recipeId:'check-api',docTemplate:'template',targetDoc:'docs/api.md',sourceVersion:'fixture-v1'};
   const candidate={version:1,docMarkdown:'# Fixture API',sampleSnippet:'export const example = true;'};
@@ -82,16 +88,17 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
       assert.ok(sourceReads.filter(item=>item.confirmed.result.path==='schema.json').some(item=>item.commandId!==read.commandId));
       return {additionalSourceTaskIds:[]};}};
   if(!configured)delete ownedWorkflowWorker.verifyCompletion;
-  app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f20-owner',
-    coordinationBinding:'synthetic-f20-deployment',tools,ownedWorkflowWorker,
+  app=createRuntimeApplication({path:databasePath,profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f20-owner',
+    coordinationBinding:'synthetic-f20-deployment',tools:harnessCandidates?tools.filter(tool=>tool.descriptor.name!=='coding.repair.trial'):tools,
+    ...(harnessCandidates?{harnessCandidates}:{}),ownedWorkflowWorker,
     coordination:{execute:async request=>{cloud.push(request);
       if(app.runtime.getTask(request.taskId).conversationId==='user-chat')return {kind:'text',text:'Synthetic parent',verification:'unverified'};
       if(request.continuation)return {kind:'text',text:'Synthetic F20 continuation',verification:'unverified'};
       return {kind:'tool_proposal',proposalId:'f20-synthetic',toolName:OWNED_WORKFLOW_WORKER_TOOL,toolVersion:'1.0.0',
         arguments:{workflowId:'F20',inputRef:'registered-case'},verification:'unverified'};}},
-    competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
+    competitionToolAvailability:tools.filter(tool=>!harnessCandidates||tool.descriptor.name!=='coding.repair.trial').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
-    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
+    competitionToolExports:tools.filter(tool=>!harnessCandidates||tool.descriptor.name!=='coding.repair.trial').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
   return {app,calls,cloud,advances,caseInput,reviews};
 }
 async function drive(f,client,taskId,{onApproval}={}) {
@@ -110,6 +117,20 @@ async function drive(f,client,taskId,{onApproval}={}) {
 }
 async function submit(f){const client=new Client(f.app);await client.connect();const task=await client.call('task.submit',
   {goal:'Use F20 for the synthetic case',conversationId:'user-chat'},{idempotencyKey:'synthetic-f20-runtime',timeoutMs:60000});return {client,task};}
+function recoveryPorts(){
+  const counts={start:0,check:0,recovery:0};let recoveryState='unknown';
+  const baseline={snapshotId:'synthetic-baseline',files:[],packages:[]},recipes=[{recipeId:'check-api',packageIds:[],required:true}];
+  return {counts,setState:value=>{recoveryState=value;},harnessCandidates:{readF20WorkspaceRef:()=> 'fixture-workspace',
+    readContext:(_context,scope)=>({binding:{version:1,taskId:scope.ownerTaskId,workspaceId:'fixture-workspace',
+      baselineSnapshotId:baseline.snapshotId,inputDigest:scope.inputDigest,configurationDigest:scope.configurationRef,
+      workflowVersion:'synthetic-f20-deployment',runtimeVersion:'test-runtime',executionKind:'synthetic',recipeFingerprint:harnessCandidateRecipeFingerprint(recipes)},
+      baseline,recipes,selectionPolicy:'unique_verified'}),
+    host:{async start(_input,context){counts.start++;return {version:1,session:{version:1,sessionId:'original-session',taskId:context.taskId,
+      workspaceId:'fixture-workspace',mode:'isolated',baselineSnapshotId:baseline.snapshotId},initialSnapshot:baseline,recipes};},
+      async check(){counts.check++;throw new ProtocolError('RESULT_UNKNOWN','Explicit synthetic interrupted trial');},
+      async publish(){throw Error('Recovery cannot publish');},async reconcile(){throw Error('Native recovery cannot create a tool execution');}},
+    async reconcileOriginalSession(input){input.assertCurrent();counts.recovery++;return {state:recoveryState,sessionId:input.session.session.sessionId};}}};
+}
 test('actual Runtime reads both sources and resumes original graph host approvals',async()=>{
   const f=fixture(),{client,task}=await submit(f);try{
     const child=await drive(f,client,task.taskId);
@@ -171,6 +192,45 @@ test('unknown original F20 command is not replayed',async()=>{
     assert.throws(()=>f.app.resumeTask(child.taskId),{code:'RESULT_UNKNOWN'});
     assert.equal(f.calls.filter(call=>call.name==='coding.repair.trial').length,1);
   }finally{f.app.close();}
+});
+
+test('F20 native recovery follows the original SQLite trial across process restart without execution or success promotion',async t=>{
+  let f;
+  const folder=mkdtempSync(path.join(tmpdir(),'f20-recovery-'));t.after(()=>{f?.app.close();rmSync(folder,{recursive:true,force:true});});
+  const databasePath=path.join(folder,'runtime.sqlite'),ports=recoveryPorts();
+  f=fixture({databasePath,harnessCandidates:ports.harnessCandidates});const {client,task}=await submit(f);
+  const owner=await drive(f,client,task.taskId);assert.equal(owner.state,'waiting_reconciliation',JSON.stringify(owner.error));
+  const child=f.app.readPendingOwnedWorkflowHostTask(owner.taskId);assert.ok(child);
+  assert.deepEqual(ports.counts,{start:1,check:1,recovery:0},JSON.stringify({child,executions:f.app.runtime.readToolExecutions(child.taskId),events:f.app.runtime.readEvidence(child.taskId)}));
+  assert.equal(f.app.readHarnessCandidateRecoveryAvailable(owner.taskId),true);
+  const scope={deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+  const first=await f.app.reconcileHarnessCandidateTask(owner.taskId,f.app.runtime.getTask(owner.taskId).revision,scope);
+  assert.equal(first.readbacks[0].recovery.state,'unknown');assert.equal(f.app.runtime.getTask(child.taskId).state,'waiting_reconciliation');
+  f.app.close();
+  const prefix=readFileSync(new URL(import.meta.url),'utf8').split("\ntest(")[0];
+  const script=prefix+`\nconst realNow=Date.now;Date.now=()=>realNow()+120000;
+    const ports=recoveryPorts(),f=fixture({databasePath:process.argv[1],harnessCandidates:ports.harnessCandidates});
+    const owner=f.app.runtime.getTask(process.argv[2]);assert.equal(f.app.readHarnessCandidateRecoveryAvailable(owner.taskId),true);
+    assert.ok(Date.parse(f.app.runtime.loadCheckpoint(owner.taskId,'application-deadline'))<Date.now());
+    const result=await f.app.reconcileHarnessCandidateTask(owner.taskId,owner.revision,{deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal});
+    assert.equal(result.readbacks[0].recovery.state,'unknown');assert.deepEqual(ports.counts,{start:0,check:0,recovery:1});
+    assert.equal(f.advances.length,0);f.app.close();`;
+  const processResult=spawnSync(process.execPath,['--input-type=module','-e',script,databasePath,owner.taskId],
+    {cwd:new URL('.',import.meta.url),encoding:'utf8',timeout:30000});
+  assert.equal(processResult.status,0,processResult.stderr);
+  f=fixture({databasePath,harnessCandidates:ports.harnessCandidates});
+  const runtime=f.app.runtime,operationKey='harness-candidates:session:host-tool-'+child.taskId;
+  const original=runtime.loadCheckpoint(owner.taskId,operationKey);
+  runtime.saveCheckpoint(owner.taskId,operationKey,{...original,input:{...original.input,session:{...original.input.session,taskId:'foreign'}}});
+  assert.equal(f.app.readHarnessCandidateRecoveryAvailable(owner.taskId),false);
+  runtime.saveCheckpoint(owner.taskId,operationKey,original);
+  ports.setState('clear');
+  const last=await f.app.reconcileHarnessCandidateTask(owner.taskId,runtime.getTask(owner.taskId).revision,scope);
+  assert.equal(last.readbacks[0].recovery.state,'clear');assert.equal(runtime.getTask(child.taskId).state,'failed');
+  assert.equal(runtime.getTask(owner.taskId).state,'failed','stopped graph ends without a fresh cloud continuation');
+  assert.equal(runtime.readToolExecutions(child.taskId).find(record=>record.evidenceId==='host-tool-'+child.taskId).state,'unknown');
+  assert.deepEqual(ports.counts,{start:1,check:1,recovery:2});assert.equal(f.advances.length,0);
+  await assert.rejects(f.app.reconcileHarnessCandidateTask(child.taskId,runtime.getTask(child.taskId).revision,scope),{code:'UNAUTHORIZED'});
 });
 test('unknown second source stays on its original HostTask and the image does not advance',async()=>{
   const f=fixture({unknownSource:true}),{client,task}=await submit(f);try{

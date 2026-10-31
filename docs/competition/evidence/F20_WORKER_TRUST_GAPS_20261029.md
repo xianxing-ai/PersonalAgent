@@ -25,7 +25,16 @@
 
 本地证据：124/124 受影响 Runtime/Desktop 回归通过，后续包含镜像发送边界与新提供者的定向集为 114/114；包含旧 driver 的 F20 fixture 迁移且保留原审批等待、unknown 不重放与取消断言。另有真实 Node/TypeScript 隔离样本检查、源字段/类型/any/ts-ignore/伪契约及额外未检查对象拒绝；生产端口与原生路径范围测试 6/6；架构 3/3；新增原出口许可与来源/依赖漂移用例 1/1；最终 N02/N04 改动 Runtime 10/10；设置入口 8/8。实际 Electron `test:workspace-smoke` exit 0（合成应用状态，主题/工作区/窗口及原生截图）。真实 workspace host→隔离创建→编译→verification 读回用例通过，并确认原工作区不存在样本、发布被拒绝。该用例的 Runtime/授权/版本元数据显式合成；原 Runtime 身份及 typed review 则由独立实际 Runtime 用例验证。首次较深测试目录触发 Windows 子进程 `ENOTCONN`，已去掉重复 sourceDigest 目录层（摘要仍进入配置绑定），改用外部独立短 TEMP 后真编译通过，未重放业务调用。最终整合检查由集成工作树执行。
 
-**仍未完成**：固定 AgentArts 部署上的 F20 整图真实调用、该版本下实际本机 Laya 判断与 Windows PSEC 内候选编译的联合验收、真实文档站点/版本差异及写回验收。未知 trial 保留原记录且不重放；现有 H1 原生 reconciliation 固定在其 journal，F20 的专用只读恢复路由仍需后续接线，不能宣称 unknown 已核实或可自动继续。当前只交付验证后未发布的文档候选，不能据此标记 F20 整图或 #531 已完成/可合并。下文保留 2026-10-29 审查原记录，工具映射和候选格式的当前进展以本节为准。
+### 同日原 trial 只读恢复增量
+
+- 原生「核实任务」入口现可沿原 F20 图、N02 选择、N03 HostBridge 子任务、Gateway 参数与 canonical session 定位 `f20-isolation`，不借用 H1 身份。原执行期限过期不妨碍新的限时只读观察；所有执行入口仍要求原执行期限。跨进程读取不恢复旧授权、不自动继续镜像、试验或发布。
+- 修正实际消费方联调发现的期限接线：HostBridge 子任务的期限来自既有 `application-tool-invocation`，不能要求 H1 执行者专用的 `application-deadline`。仅精确 `host-tool-<taskId>` 原调用可采用该期限；原 scope、参数摘要、Gateway allow/started 仍须一致。独立 F20 配置也不再要求无关 H1 配置。
+- 原生 executor 在实际固定 recipe 绑定时持久化原 task/run、候选/来源、目录身份与 sandbox 配置；停止读回只消费其原始、唯一、已停止且强制 Windows PSEC 的结果，不重新探测后端或启动进程。仅比较稳定工作区/Node 身份，新宿主的许可代际不能冒充旧执行许可，也不会让已停止事实因重启丢失。缺原停止回执、污染、重复或目录替换一律保持 unknown。
+- 原隔离日志还须匹配来源 baseline、唯一派生样本与 recipe；日志显示 VALID 不足以确认原进程已停止。确认原操作停止时只结束原子任务及已停止图为 failed/cancelled，原 ToolExecution UNKNOWN 保留；不产生成功、发布或重试回执。没有可信停止证据的历史会话继续 waiting_reconciliation。
+- 本地验证覆盖实际 Runtime/SQLite 与独立 Node 进程重启、旧执行期限过期、原 session 污染、原 native 回执污染/重复及目录替换；真实隔离宿主重建后重复读回同一 journal，真实 TypeScript 检查始终只执行一次。测试的云镜像、原生停止事实与授权元数据明确为合成；它不证明真实 Windows PSEC 中断恢复或真实 AgentArts 联合验收。新增持久记录使用既有 Runtime checkpoint，无数据库迁移；缺少新原生绑定的旧记录不会追认成功。
+- 恢复回归覆盖现有 H1、候选绑定、Runtime 原生终止、桌面提问与核实入口：194 项中 193 通过、0 失败、1 跳过。跳过项为 `authorization-native-execution.integration.test.mjs` 的真实 PSEC 执行，因本次未提供明确可信 `PA_TEST_JOB_HOST_EXE`；不得作为真实通过。后续稳定身份修正及配置/架构定向检查 6/6 通过，最终配置权限边界 1/1、架构 3/3、Runtime 构建和 Main 语法检查通过。实际 Electron `test:runtime-application-smoke` exit 0（本机合成模型，7 次请求、2 次取消），覆盖窗口恢复、正常退出/重启和退出保护；它不等于真实模型或 PSEC 联合验收。最终全仓检查仍由集成工作树承担。
+
+**仍未完成**：固定 AgentArts 部署上的 F20 整图真实调用、该版本下实际本机 Laya 判断与 Windows PSEC 内候选编译/中断恢复的联合验收、真实文档站点/版本差异及写回验收。当前只交付验证后未发布的文档候选，不能据此标记 F20 整图或 #531 已完成/可合并。下文保留 2026-10-29 审查原记录，工具映射和候选格式的当前进展以本节为准。
 
 ## 现有能力
 

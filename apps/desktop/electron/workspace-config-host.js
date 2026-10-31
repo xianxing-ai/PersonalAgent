@@ -109,7 +109,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
   projectScriptEnvSource,createCommandRecipeTool,createWorkspaceCommandTool,createWorkspaceReferenceExport,question,
   readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
-  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions,
+  requestWorkspaceExportPreflight,requestWorkspaceExportExact,readHarnessVersions,readOriginalCommandStopState,
   // Main-only injection supports offline discovery fixtures; never accepted from Renderer.
   findExecutable=findWindowsExecutable}) {
   const file = path.join(userData,'coding-workspace.json');
@@ -288,10 +288,10 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const repairRecipes=()=>[...(repairRecipeIds.has('node-check')?[{recipeId:'node-check',packageIds:[],required:true}]:[]),
     ...(repairRecipeIds.has('npm-build')?[{recipeId:'npm-build',packageIds:[],required:true}]:[]),
     ...(repairRecipeIds.has('npm-test')?[{recipeId:'npm-test',packageIds:[],required:true}]:[])];
-  const getRepairHost=async(harness=false,context)=>{
+  const getRepairHost=async(harness=false,context,recovery)=>{
     if(question&&context)await prepareDependencies(context);
     if(dependencyPreparation)await dependencyPreparation;
-    const f20=harness&&context?application?.readF20TrialBinding?.(context):undefined;
+    const f20=recovery??(harness&&context?application?.readF20TrialBinding?.(context):undefined);
     if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || !f20&&(boundNpmCli&&!boundProjectHelper)
       || !f20&&typeof createCommandRecipeTool!=='function'||!commandFactory)throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
     if(f20&&f20Hosts.has(f20.sourceDigest))return f20Hosts.get(f20.sourceDigest);
@@ -312,6 +312,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs),
         ...(preparedFingerprint?{dependencyFingerprint:preparedFingerprint}:{})})).digest('hex'),
       readVerificationEvidence:async input=>readRuntimeCodingVerificationEvidence(application,input),
+      ...(f20?{readCommandStopState:input=>readOriginalCommandStopState?.(input)??Promise.resolve('unknown')}:{}),
       // Copy only the already prepared, authorized lock-bound bytes. No installer or network fallback.
       prepareWorkspace:input=>preparationReason?Promise.resolve({ready:false,reason:preparationReason})
         :coding.prepareIsolatedCodingDependencies({...input,expectedFingerprint:preparedFingerprint??null}),
@@ -1015,13 +1016,45 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const session=structuredClone(input.session),taskId=session?.session?.taskId,lease=generation,currentApplication=application;
     if(typeof assertCurrent!=='function')throw new ProtocolError('UNAUTHORIZED','缺少原 Runtime 恢复权限检查');
     const controller=new AbortController(),combined=AbortSignal.any([signal,controller.signal]);
-    const check=()=>{assertCurrent();assertHarnessWorkspaceBinding(taskId,deadline,combined);
+    const original=application?.readF20RecoveryBinding?.(taskId,expectedRevision),f20=original?.f20;
+    const check=()=>{assertCurrent();
+      if(f20){
+        if(combined.aborted)throw new ProtocolError('CANCELLED','F20 原会话观察已取消');
+        if(!Number.isFinite(Date.parse(deadline))||Date.now()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','F20 原会话观察已过期');
+        assertHarnessWorkspaceAuthorization(true);
+      }else assertHarnessWorkspaceBinding(taskId,deadline,combined);
+      if(f20){
+        if(!isDeepStrictEqual(application.readF20RecoveryBinding(taskId,expectedRevision),original)
+          ||!isDeepStrictEqual(session,original.session)||trialRunId!==original.request.trialRunId)
+          throw new ProtocolError('REVISION_CONFLICT','F20 原隔离恢复绑定已变化');
+        assertF20Current({taskId:f20.ownerTaskId,deadline,signal:combined},f20);
+      }
       if(lease!==generation||application!==currentApplication)throw new ProtocolError('UNAUTHORIZED','原恢复工作区绑定已变化');};
     check();inflight.add(controller);
     try {
-      const host=await getRepairHost(true);check();
+      if(f20){
+        // Read only: never install/copy dependencies or prepare a new native execution.
+        const fingerprint=await coding.capturePreparedDependencyFingerprint(boundRoot,{deadline,signal:combined});check();
+        if(dependencyFingerprint!==undefined&&dependencyFingerprint!==fingerprint)
+          throw new ProtocolError('REVISION_CONFLICT','F20 原准备依赖已变化');
+        dependencyFingerprint=fingerprint;
+      }
+      const host=await getRepairHost(true,undefined,f20);check();
       if(typeof host.reconcileOriginalSession!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','原会话原生核实尚未接入');
       const result=await host.reconcileOriginalSession({session,trialRunId,expectedRevision,deadline,signal:combined,assertCurrent:check});
+      if(f20&&result.checkReadback){
+        const snapshot=result.checkReadback.snapshot,sample=snapshot.files.find(file=>file.path===f20.samplePath);
+        if(harnessCandidateArtifactDigest({...snapshot,files:snapshot.files.filter(file=>file.path!==f20.samplePath)})
+          !==harnessCandidateArtifactDigest(session.initialSnapshot)
+          ||sample&&sample.sha256!==createHash('sha256').update(f20.candidate.sampleSnippet).digest('hex')
+          ||result.checkReadback.verification.some(value=>value.recipeId!==F20_TYPESCRIPT_RECIPE||value.runId!==trialRunId+'-verify-'+F20_TYPESCRIPT_RECIPE))
+          throw new ProtocolError('REVISION_CONFLICT','F20 原样本、来源或检查日志已变化');
+        if(result.state==='clear'&&(result.checkReadback.verification.length
+          ||application.runtime.loadCheckpoint(taskId,'f20-native-command:v1:'+trialRunId))){
+          const stopped=await readOriginalCommandStopState?.({session:session.session,runId:trialRunId+'-verify-'+F20_TYPESCRIPT_RECIPE});check();
+          if(stopped!=='stopped')result.state='unknown';
+        }
+      }
       check();return result;
     }finally{inflight.delete(controller);}
   }
@@ -1060,13 +1093,13 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       return {binding,baseline,recipes,selectionPolicy:'unique_verified'};
     }catch{return undefined;}
   };
-  function assertF20Current(scope) {
+  function assertF20Current(scope,original) {
     const configuration=readDeveloperConfiguration();
-    if(!configuration?.available(scope)||!questionReady()||typeof question.authorizeConsumedExport!=='function')
+    if(original?!configuration||!readWorkspaceBinding():!configuration?.available(scope)||!questionReady()||typeof question.authorizeConsumedExport!=='function')
       throw new ProtocolError('UNAUTHORIZED','F20 原工作区授权已失效');
-    const saved=application.readF20WorkflowBinding?.(scope);
+    const saved=original??application.readF20WorkflowBinding?.(scope);
     if(saved){
-      if(!isDeepStrictEqual(saved.input,f20Cases.resolveInput(saved.inputRef,scope)))
+      if(!isDeepStrictEqual(saved.input,original?f20Cases.readConfiguredInput(saved.inputRef):f20Cases.resolveInput(saved.inputRef,scope)))
         throw new ProtocolError('REVISION_CONFLICT','F20 固定案例已变化');
       for(const read of saved.sourceReads){
         const value=read.confirmed.result;let file=boundRoot;

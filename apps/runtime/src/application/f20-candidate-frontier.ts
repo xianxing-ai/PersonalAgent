@@ -13,10 +13,13 @@ export function assertF20CandidateSelection(input:{
   operationId:string;
   candidateValues:readonly unknown[];
   selectedId:string;
+  /** Native historical observation only; never accepted by an executing frontier. */
+  readOnlyRecovery?:boolean;
 }):void {
   if(!text(input.parentTaskId)||!text(input.operationId)||!text(input.selectedId))fail('F20 candidate selection binding unavailable');
   const parent=input.runtime.getTask(input.parentTaskId);
-  if(parent.cancelRequested||!['running','waiting_approval'].includes(parent.state))fail('F20 graph is not current');
+  if(input.readOnlyRecovery?parent.state!=='waiting_reconciliation'
+    :parent.cancelRequested||!['running','waiting_approval'].includes(parent.state))fail('F20 graph is not current');
   const binding=input.runtime.loadCheckpoint(input.parentTaskId,'owned-workflow:operation:'+input.operationId) as
     {taskId?:string;sessionId?:string;workflowId?:string;controlRevision?:number;localTaskId?:string;
       proposal?:{nodeId?:string;operationId?:string;toolName?:string;arguments?:unknown}}|undefined;

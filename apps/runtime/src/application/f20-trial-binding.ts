@@ -16,14 +16,17 @@ const denied=():never=>{throw new ProtocolError('UNAUTHORIZED','Original F20 tri
 
 /** Original pending proposal and confirmed HostBridge reads only. No checkpoint enumeration or authority grant. */
 export function readRuntimeF20Binding(application:RuntimeApplication,scope:{taskId:string;deadline:string;signal:AbortSignal}) {
+  return readBinding(application,scope);
+}
+function readBinding(application:RuntimeApplication,scope:{taskId:string;deadline:string;signal:AbortSignal},recovery=false) {
   const runtime=application.runtime,task=runtime.getTask(scope.taskId);
   const loop=runtime.loadCheckpoint(scope.taskId,'competition-loop') as {pending?:{proposalId?:string;toolName?:string;toolVersion?:string};pendingRevision?:number}|undefined;
   if(loop?.pending?.toolName!=='workflow.image.execute'||loop.pending.toolVersion!=='1.0.0'||typeof loop.pending.proposalId!=='string')return undefined;
   const key='owned-workflow:f20:'+hash(loop.pending.proposalId);
   const bound=runtime.loadCheckpoint(scope.taskId,key+':binding') as {version?:number;taskId?:string;deadline?:string;revision?:number;bindingId?:string;proposalDigest?:string;inputRef?:string;input?:RuntimeF20Input}|undefined;
   const state=runtime.loadCheckpoint(scope.taskId,key+':graph') as RuntimeOwnedWorkflowDriverState<RuntimeF20Input>|undefined;
-  if(scope.signal.aborted||task.cancelRequested||!['running','waiting_approval','waiting_reconciliation'].includes(task.state)
-    ||Date.now()>=Date.parse(scope.deadline)||!Number.isFinite(Date.parse(scope.deadline))||runtime.loadCheckpoint(scope.taskId,'application-deadline')!==scope.deadline
+  if(scope.signal.aborted||(recovery?task.state!=='waiting_reconciliation':task.cancelRequested||!['running','waiting_approval','waiting_reconciliation'].includes(task.state)
+    ||Date.now()>=Date.parse(scope.deadline))||!Number.isFinite(Date.parse(scope.deadline))||runtime.loadCheckpoint(scope.taskId,'application-deadline')!==scope.deadline
     ||bound?.version!==1||bound.taskId!==scope.taskId||bound.deadline!==scope.deadline||bound.revision!==loop.pendingRevision
     ||bound.proposalDigest!==hash(loop.pending)||!bound.input||!state||state.bindingId!==bound.bindingId||!isDeepStrictEqual(state.input,bound.input))denied();
   const input=bound!.input!,graph=state!;
@@ -50,10 +53,20 @@ export function readRuntimeF20Binding(application:RuntimeApplication,scope:{task
 
 /** Active N03 ToolGateway invocation only; H1 identities and model assertions cannot satisfy it. */
 export function readRuntimeF20TrialBinding(application:RuntimeApplication,context:ToolContext) {
+  return readTrialBinding(application,context);
+}
+/** Historical facts only. This cannot create an execution ToolContext or reopen the trial. */
+export function readRuntimeF20RecoveryBinding(application:RuntimeApplication,taskId:string) {
+  const runId='host-tool-'+taskId;
+  const deadline=(application.runtime.loadCheckpoint(taskId,'application-tool-invocation:'+runId) as {deadline?:string}|undefined)?.deadline;
+  if(typeof deadline!=='string')return undefined;
+  return readTrialBinding(application,{taskId,runId,authorizationRef:runId,scopes:[],deadline,signal:new AbortController().signal},true);
+}
+function readTrialBinding(application:RuntimeApplication,context:ToolContext,recovery=false) {
   const runtime=application.runtime;
   const parent=runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId?:string;operationId?:string}|undefined;
   if(!parent?.taskId||!parent.operationId)return undefined;
-  const saved=readRuntimeF20Binding(application,{taskId:parent.taskId,deadline:context.deadline,signal:context.signal});
+  const saved=readBinding(application,{taskId:parent.taskId,deadline:context.deadline,signal:context.signal},recovery);
   if(!saved)return undefined;
   const operation=runtime.loadCheckpoint(parent.taskId,'owned-workflow:operation:'+parent.operationId) as {taskId?:string;sessionId?:string;workflowId?:string;localTaskId?:string;proposal?:{nodeId?:string;toolName?:string;arguments?:unknown}}|undefined;
   const linked=runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId) as {localTaskId?:string;request?:{arguments?:unknown}}|undefined;
@@ -64,8 +77,10 @@ export function readRuntimeF20TrialBinding(application:RuntimeApplication,contex
     ||operation.proposal?.nodeId!=='F20_N03'||operation.proposal.toolName!=='coding.repair.trial'||linked?.localTaskId!==context.taskId
     ||!isDeepStrictEqual(linked.request?.arguments,operation.proposal.arguments)||invocation?.toolName!=='coding.repair.trial'
     ||invocation.deadline!==context.deadline||!isDeepStrictEqual(invocation.arguments,operation.proposal.arguments)
-    ||runtime.getTask(context.taskId).state!=='running'||runtime.getTask(context.taskId).cancelRequested
-    ||execution?.state!=='started'||execution.policyDecision!=='allow'||!execution.executionStarted
+    ||(recovery?runtime.getTask(context.taskId).state!=='waiting_reconciliation'
+      ||saved.state.waiting?.localTaskId!==context.taskId||saved.state.waiting.operationId!==parent.operationId
+      :runtime.getTask(context.taskId).state!=='running'||runtime.getTask(context.taskId).cancelRequested)
+    ||execution?.state!==(recovery?'unknown':'started')||execution.policyDecision!=='allow'||!execution.executionStarted
     ||!plain(invocation.arguments)||!runtime.matchesToolExecutionInput(execution,{arguments:invocation.arguments,scopeRef:context.authorizationRef}))denied();
   const choices=Object.values(saved.state.confirmedOperations??{}).filter(item=>item.nodeId==='F20_N02'&&item.toolName==='decision.choose_candidate');
   if(choices.length!==1)denied();
@@ -75,7 +90,8 @@ export function readRuntimeF20TrialBinding(application:RuntimeApplication,contex
   if(!Array.isArray(values)||observed.task.state!=='succeeded'||!observed.confirmed?.evidenceRefs.length
     ||!isDeepStrictEqual(observed.confirmed.result,choice.result)||!plain(choice.result)||typeof choice.result.selectedId!=='string')denied();
   const candidateId=(choice.result as {selectedId:string}).selectedId;
-  assertF20CandidateSelection({runtime,parentTaskId:parent.taskId,operationId:choice.operationId,candidateValues:values as unknown[],selectedId:candidateId});
+  assertF20CandidateSelection({runtime,parentTaskId:parent.taskId,operationId:choice.operationId,candidateValues:values as unknown[],selectedId:candidateId,
+    ...(recovery?{readOnlyRecovery:true}:{})});
   const selected=(values as {id:string;value:unknown}[]).find(value=>value.id===candidateId);
   const candidate=parseF20DocumentCandidate(selected?.value),samplePath=saved.input.codeFile+'.f20-sample.ts';
   const args={candidateId,recipeIds:[saved.input.recipeId],patches:[{path:samplePath,expectedSha256:null,edits:[],createText:candidate.sampleSnippet}]};

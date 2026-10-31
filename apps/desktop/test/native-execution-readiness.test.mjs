@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDesktopNativeExecutionHost} from '../electron/native-execution-host.js';
-import {readFileSync,mkdtempSync,rmSync,mkdirSync,writeFileSync,realpathSync} from 'node:fs';
+import {readFileSync,mkdtempSync,rmSync,mkdirSync,writeFileSync,realpathSync,renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {runInNewContext} from 'node:vm';
@@ -88,5 +88,43 @@ test('a project-only helper recipe can read its exact pinned Node without a node
       'An arbitrary nested target cannot acquire the selected Node root');
     bindingId='changed-workspace-generation';
     assert.throws(()=>command.trustedSandbox.bind(context,scope.deadline),{code:'UNSUPPORTED_CAPABILITY'});
+  }finally{host.close();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('F20 native stop observation survives host restart and rejects foreign receipts or replaced paths without launching',async()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),'f20-native-stop-')),sessionId='11111111-1111-4111-8111-111111111111';
+  const root=path.join(directory,sessionId,'workspace');mkdirSync(root,{recursive:true});
+  const taskId='original-trial',runId='host-tool-'+taskId,argumentsDigest='a'.repeat(64),state=new Map();let probes=0,bindingId='original';
+  const session={sessionId,taskId},f20={sourceDigest:'b'.repeat(64),candidateId:'original-candidate'};
+  const scope={taskId,runId,toolName:'coding.repair.trial',argumentsDigest,authorizationRef:runId,
+    deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+  const app={readAuthorizationQuestionInvocation:()=>({}),readF20TrialBinding:()=>f20,
+    readF20RecoveryBinding:()=>({session:{session},request:{trialRunId:runId},f20}),runtime:{getTask:()=>({state:'running',revision:1}),
+      saveCheckpoint:(task,key,value)=>state.set(task+key,structuredClone(value)),loadCheckpoint:(task,key)=>state.get(task+key),
+      saveCheckpointOnce(task,key,value){if(!state.has(task+key))state.set(task+key,structuredClone(value));}}};
+  app.runtime.saveCheckpoint(taskId,'application-tool-invocation:'+runId,{argumentsDigest});
+  const options={systemRoot:directory,localAppData:directory,probeRootPath:directory,getApplication:()=>app,
+    readConfiguration:()=>({rootPath:directory,nodeExecutable:process.execPath,bindingId}),ensureHelper:async()=>process.execPath,
+    coding:{readWindowsNativeHelperAttestation:helperPath=>({helperPath,helperSha256:'c'.repeat(64)}),
+      verifyWindowsNativeSandbox:async()=>{probes++;return {available:true,enforced:true,helperSha256:'c'.repeat(64)};},
+      createWorkspaceCommandTool:options=>options,createWindowsNativeSandboxExecutor(){throw Error('No execution in stop observation');}},
+    question:{prepare(){},currentRequirement(){},readExecutionPolicy:()=>({ref:'original-sandbox',revision:1,mode:'workspace-write'})}};
+  let host=createDesktopNativeExecutionHost(options);
+  try{
+    await host.prepare(scope);
+    const command=host.createCommandTool({rootPath:root,recipes:[{id:'f20-typescript-sample',executable:process.execPath,args:['fixed-check.cjs']}]});
+    command.trustedSandbox.bind(scope,scope.deadline);
+    command.trustedSandbox.recordResult(scope,{backend:'windows-psec',enforced:true,outcome:'unknown',exitCode:null,executionStarted:true,stopped:true,sideEffects:'unknown'});
+    host.close();bindingId='renewed-after-restart';host=createDesktopNativeExecutionHost(options);
+    const request={session,runId:runId+'-verify-f20-typescript-sample'};
+    assert.equal(await host.readOriginalCommandStopState(request),'stopped');assert.equal(probes,1,'recovery never probes or prepares a fresh executor');
+    const key='native-sandbox-execution:'+runId,original=structuredClone(app.runtime.loadCheckpoint(taskId,key));
+    for(const patch of [{stopped:false},{enforced:false},{runId:'foreign'},{originalBindingDigest:'foreign'},{argumentsDigest:'foreign'}]){
+      app.runtime.saveCheckpoint(taskId,key,[{...original[0],...patch}]);assert.equal(await host.readOriginalCommandStopState(request),'unknown');
+    }
+    app.runtime.saveCheckpoint(taskId,key,[...original,...original]);assert.equal(await host.readOriginalCommandStopState(request),'unknown');
+    app.runtime.saveCheckpoint(taskId,key,original);
+    renameSync(root,root+'-original');mkdirSync(root);
+    assert.equal(await host.readOriginalCommandStopState(request),'unknown');assert.equal(probes,1);
   }finally{host.close();rmSync(directory,{recursive:true,force:true});}
 });

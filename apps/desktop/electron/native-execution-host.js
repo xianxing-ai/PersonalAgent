@@ -103,6 +103,17 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           readRoots:[...new Set([...roots,...(mode==='workspace-write'?[]:[root])])],
           writeRoots:mode==='workspace-write'?[root]:[],executableAllowlist:allowedExecutables,
           network:{mode:mode==='full-access'?'unrestricted':'deny'}};
+        const application=getApplication(),f20=application.readF20TrialBinding?.(context);
+        if(f20){
+          if(fixedRecipes.length!==1||options.recipes[0].id!=='f20-typescript-sample')blocked();
+          const original={version:1,taskId:context.taskId,runId:context.runId,argumentsDigest:context.argumentsDigest,
+              sourceDigest:f20.sourceDigest,candidateId:f20.candidateId,root,rootIdentity,configuration:verified.configuration.identity,
+              workspaceIdentity:digest([identity(verified.configuration.rootPath),identity(verified.configuration.nodeExecutable)]),
+              pins:verified.pins,binding,profile,recipes:fixedRecipes};
+          const key='f20-native-command:v1:'+context.runId;
+          application.runtime.saveCheckpointOnce(context.taskId,key,original);
+          if(digest(application.runtime.loadCheckpoint(context.taskId,key))!==digest(original))blocked();
+        }
         return {...binding,profile};
       },
       recordResult(context,result){
@@ -110,12 +121,36 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
         const runtime=getApplication().runtime;
         const name='native-sandbox-execution:'+context.runId;
         const value={runId:context.runId,argumentsDigest:context.argumentsDigest,backend:result.backend,enforced:result.enforced,
-          outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects};
+          outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects,
+          ...(runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId)?
+            {originalBindingDigest:digest(runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId))}:{})};
         const previous=runtime.loadCheckpoint(context.taskId,name)??[];
         if(!Array.isArray(previous)||previous.length>=256)throw new ProtocolError('RESULT_UNKNOWN','Native execution audit capacity reached');
         runtime.saveCheckpoint(context.taskId,name,[...previous,value]);
       }}});
   }
-  return {prepare,describeExecution,createCommandTool,close(){closed=true;runs.clear();verified=undefined;},
+  /** Consumes only a persisted stopped fact from the original trusted executor. Never probes or launches a process. */
+  async function readOriginalCommandStopState({session,runId}){
+    try{
+      if(closed||runId!=='host-tool-'+session.taskId+'-verify-f20-typescript-sample')return 'unknown';
+      const app=getApplication(),task=app.runtime.getTask(session.taskId),origin=app.readF20RecoveryBinding(session.taskId,task.revision);
+      if(!origin||digest(origin.session.session)!==digest(session))return 'unknown';
+      const original=app.runtime.loadCheckpoint(session.taskId,'f20-native-command:v1:'+origin.request.trialRunId);
+      const results=app.runtime.loadCheckpoint(session.taskId,'native-sandbox-execution:'+origin.request.trialRunId);
+      if(!original||original.version!==1||original.taskId!==session.taskId||original.runId!==origin.request.trialRunId
+        ||original.sourceDigest!==origin.f20.sourceDigest||original.candidateId!==origin.f20.candidateId
+        ||original.argumentsDigest!==app.runtime.loadCheckpoint(session.taskId,'application-tool-invocation:'+original.runId)?.argumentsDigest
+        ||original.workspaceIdentity!==digest([identity(configuration().rootPath),identity(configuration().nodeExecutable)])||path.basename(original.root)!=='workspace'
+        ||path.basename(path.dirname(original.root))!==session.sessionId||digest(identity(original.root))!==digest(original.rootIdentity)
+        ||digest(coding.readWindowsNativeHelperAttestation(original.pins.helperPath))!==digest(original.pins)
+        ||original.profile.backend!=='windows-psec'||original.profile.network.mode!=='deny'
+        ||!Array.isArray(results)||results.length!==1)return 'unknown';
+      const result=results[0];
+      return result.runId===original.runId&&result.argumentsDigest===original.argumentsDigest
+        &&result.originalBindingDigest===digest(original)&&result.backend==='windows-psec'&&result.enforced===true
+        &&result.executionStarted===true&&result.stopped===true?'stopped':'unknown';
+    }catch{return 'unknown';}
+  }
+  return {prepare,describeExecution,createCommandTool,readOriginalCommandStopState,close(){closed=true;runs.clear();verified=undefined;},
     environment:()=>({SystemRoot:systemRoot,LOCALAPPDATA:localAppData})};
 }

@@ -56,6 +56,10 @@ export function createF20CaseConfiguration({userData,safeStorage,readWorkspace})
       checked(saved.case,workspace);return {workspace,configuration:saved.case};
     }catch{return undefined;}
   }
+  const configuredInput=value=>{
+    const {inputRef:_inputRef,...fixed}=value.configuration;
+    return {...structuredClone(fixed),sourceVersion:digest({version:1,workspaceBinding:value.workspace.bindingId,configuration:value.configuration})};
+  };
   return {
     setFromNativeSelection(value) {
       const workspace=readWorkspace();checked(value,workspace);
@@ -66,13 +70,14 @@ export function createF20CaseConfiguration({userData,safeStorage,readWorkspace})
       saved=record;return {configured:true,inputRef:value.inputRef};
     },
     snapshot(){const value=current();return value?{configured:true,inputRef:value.configuration.inputRef}:{configured:false};},
+    /** Main-only metadata for explicit native observation; this grants no task or export permission. */
+    readConfiguredInput(inputRef){const value=current();return value&&inputRef===value.configuration.inputRef?configuredInput(value):undefined;},
     resolveInput(inputRef,scope) {
       const value=current();if(!value||inputRef!==value.configuration.inputRef||!scope?.signal||scope.signal.aborted
         ||!Number.isFinite(Date.parse(scope.deadline))||Date.now()>=Date.parse(scope.deadline)
         ||typeof value.workspace.available!=='function'||!value.workspace.available(scope))return undefined;
-      const {inputRef:_inputRef,...fixed}=value.configuration;
       // This identifies the fixed configuration, not the contents of either source.
-      return {...structuredClone(fixed),sourceVersion:digest({version:1,workspaceBinding:value.workspace.bindingId,configuration:value.configuration})};
+      return configuredInput(value);
     },
   };
 }

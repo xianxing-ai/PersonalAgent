@@ -26,7 +26,10 @@ test('native-selected case is encrypted, bound to its workspace and fixed recipe
     assert.equal(host.resolveInput('api-case',{...scope,deadline:'2000-01-01T00:00:00.000Z'}),undefined);
     assert.deepEqual(open().resolveInput('api-case',scope),selected);
     workspace.available=()=>false;assert.equal(host.resolveInput('api-case',scope),undefined);
+    assert.deepEqual(host.readConfiguredInput('api-case'),selected,'native metadata readback does not revive unavailable execution');
+    assert.equal(host.readConfiguredInput('different'),undefined);
     workspace.available=()=>true;workspace.bindingId='changed';assert.deepEqual(host.snapshot(),{configured:false});
+    assert.equal(host.readConfiguredInput('api-case'),undefined,'metadata remains bound to the original selected workspace');
     workspace.bindingId='synthetic-binding';workspace.checkFile='other.js';assert.deepEqual(host.snapshot(),{configured:false});
     workspace.checkFile='src/api.js';
     assert.throws(()=>host.setFromNativeSelection({...input,schemaFile:'../private'}));

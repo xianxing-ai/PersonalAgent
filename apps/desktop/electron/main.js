@@ -2260,6 +2260,7 @@ async function initializeRuntime() {
         defaultWorkspace:path.join(app.getPath('userData'),'Workspace'),
         question:authorizationQuestionPort,createWorkspaceCommandTool,
         readHarnessVersions:readDesktopHarnessVersions,
+        readOriginalCommandStopState:input=>nativeExecutionHost.readOriginalCommandStopState(input),
         patchHelperScriptPath:process.env.PA_CODING_PATCH_HELPER_SCRIPT,
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
