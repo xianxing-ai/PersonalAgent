@@ -22,3 +22,5 @@ OpenSSL 仅在项目忽略目录生成一天有效的自签名合成证书。测
 ## 实际 Desktop 与默认 TLS 组合
 
 同锁定版本 Electron 安装后运行 `npm run test:remote-mcp-product-smoke --workspace=@personal-agent/desktop`，同样要求 OpenSSL；可用 `PA_MCP_SMOKE_ELECTRON` 指向已安装的同版本二进制。既有产品烟测现在直接连接实际 loopback HTTPS，使用默认 fetch 和实际 safeStorage，不再映射为 HTTP。覆盖完整管理/审批、拒绝、断连、重启与撤销，加四类 TLS/目录/重定向拒绝场景。CA 只传给派生进程，原生对话框回答仍为显式合成；详见[组合记录](../../../docs/modules/MOD-06-PRODUCT-TLS-20261016.md)。回执、截图及合成密钥仅留 `.cache/remote-mcp-product/case-*/`。
+
+2026-10-29 补充：本机 Electron 进程可读取 `NODE_EXTRA_CA_CERTS` 文件但未加载额外证书。仅测试入口 `remote-mcp-product-fixture.mjs` 为指定 loopback 地址注入带合成 CA 的测试 dispatcher，其他请求保留原有信任；原 Node fetch 仍执行请求，未替换目标 URL，生产配置、系统信任库和 TLS 校验不变。不受信 CA 和证书主机名不符仍分别拒绝。脱敏阶段诊断只报告本地操作阶段及固定网络错误类别，不能证明远端收到请求。

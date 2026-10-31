@@ -1,6 +1,6 @@
 import {fileURLToPath} from 'node:url';
 import {readFileSync,statSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import {errorDisplayText} from '../src/shared/error-display.js';
 
@@ -10,27 +10,36 @@ const exact=(value,keys)=>value && typeof value==='object' && !Array.isArray(val
 function reject(){throw Error('远程 MCP 操作被拒绝；请检查配置、原任务与当前会话');}
 
 /** Dedicated trusted window; the regular admin can only open it. One owner per userData. */
-export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,config,host,application,client,namespace,
+export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,config,host,services,application,client,namespace,
   confirmAuthorization=async()=>false,focusAuthorizationQuestion=()=>false,onUpdate=()=>{}}){
   const channel='desktop:remote-mcp';
-  let current,closed=false,busy=false,configurationEpoch=0;
+  let current,closed=false,busy=false,configurationEpoch=0,activeId='legacy',newId;
+  function select(id){const selected=services.get(id);config=selected.config;host=selected.host;activeId=id;newId=undefined;
+    configurationEpoch++;if(current)current.draft=undefined;}
   function readTask(taskId){
     const app=application();
     if(!app || typeof taskId!=='string')reject();
     const selected=app.runtime.loadCheckpoint(taskId,marker),value=app.readHostToolTask(taskId);
     if(!selected || value.toolName!==selected.toolName || value.toolVersion!==selected.toolVersion)reject();
-    const intent=app.runtime.loadCheckpoint(taskId,'host-tool-intent');
     return {taskId,state:value.task.state,toolName:value.toolName,toolVersion:value.toolVersion,
-      arguments:intent.arguments.arguments,approval:value.approval,
-      ...(value.confirmed?{result:value.confirmed.result,evidenceRefs:value.confirmed.evidenceRefs}:{} )};
+      ...(selected.serverId?{serverId:selected.serverId}:{}),
+      approval:value.approval,
+      ...(value.confirmed?{evidenceRefs:value.confirmed.evidenceRefs}:{} )};
   }
   function state(){
-    const saved=config.hostConfiguration(),app=application();
+    const saved=newId?undefined:config.hostConfiguration(),app=application();
+    const display=value=>{if(!value)return value;const {binding,publicExport,...rest}=value;
+      return {...rest,...(publicExport?{publicExport:{sensitivity:publicExport.sensitivity,maxBytes:publicExport.maxBytes,
+        argumentsDigest:createHash('sha256').update(JSON.stringify(publicExport.arguments)).digest('hex')}}:{})};};
     const tasks=app?app.runtime.listTasks({conversationId:`host-tool:${namespace}`,limit:50}).items
-      .filter(task=>app.runtime.loadCheckpoint(task.taskId,marker)).map(task=>({taskId:task.taskId,state:task.state})):[];
-    return {...host.snapshot(),runtimeAvailable:!!app,tasks,
-      ...(saved?{definition:{endpoint:saved.endpoint,server:saved.server,tool:saved.tool,directoryDigest:saved.directoryDigest}}:{}),
-      ...(current?.draft?{draft:current.draft}:{})};
+      .filter(task=>app.runtime.loadCheckpoint(task.taskId,marker)).map(task=>({taskId:task.taskId,state:task.state,
+        ...(services?{serverId:app.runtime.loadCheckpoint(task.taskId,marker).serverId??'legacy'}:{})})):[];
+    const serviceList=services?.list(),selected=serviceList?.find(item=>item.id===activeId);
+    const snapshot=newId?{configured:false,status:'unconfigured',connected:false,toolAvailable:false}
+      :host?.snapshot()??{...config.snapshot(),status:selected?.status??'reassembly_required',requiresReassembly:true};
+    return {...snapshot,runtimeAvailable:!!app,tasks,...(services?{services:serviceList,activeId:newId??activeId}:{}),
+      ...(saved?{definition:display(saved)}:{}),
+      ...(current?.draft?{draft:display(current.draft)}:{})};
   }
   function assertWindow(origin){if(closed || !origin || current!==origin || origin.window.isDestroyed() || origin.signal.aborted)reject();}
   async function confirm(origin,title,message,detail,signal=origin.signal){
@@ -47,13 +56,29 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
     if(!origin || event.sender!==origin.window.webContents || event.senderFrame!==event.sender.mainFrame)reject();
     assertWindow(origin);
     if(name==='state'){if(payload!==undefined)reject();return state();}
+    if(name==='select'){
+      if(!services || busy || !exact(payload,['id']) || typeof payload.id!=='string')reject();
+      select(payload.id);return state();
+    }
+    if(name==='new'){
+      if(!services || busy || !exact(payload,['id']) || typeof payload.id!=='string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(payload.id)
+        || payload.id==='legacy' || services.list().some(item=>item.id===payload.id))reject();
+      newId=payload.id;configurationEpoch++;origin.draft=undefined;return state();
+    }
+    if(name==='migrate'){
+      if(!services || busy || !exact(payload,['id']) || typeof payload.id!=='string')reject();
+      if(!await confirm(origin,'迁移 MCP 配置','复制旧配置到新的服务？','保留旧密文；新服务默认断开，需重启后重新连接和授权。'))return state();
+      services.migrate(payload.id);select(payload.id);onUpdate();return state();
+    }
     if(name==='disconnect' || name==='revoke'){
-      if(payload!==undefined)reject();
+      if(payload!==undefined || newId)reject();
       if(name==='revoke'){
         if(!await confirm(origin,'撤销远程 MCP','撤销本机配置和当前连接？','停止当前连接并清除本应用加密配置。原任务、执行记录与 Evidence 保留；不撤销服务端 token。'))return state();
-        configurationEpoch++;config.revoke();origin.draft=undefined;
+        const targetId=activeId;configurationEpoch++;if(services){await services.revoke(targetId);
+          if(targetId!=='legacy' && activeId===targetId && !newId)select('legacy');}
+        else config.revoke();origin.draft=undefined;
       }
-      await host.disconnect();onUpdate();return state();
+      if(name==='disconnect' && host){if(services)await services.disconnect(activeId);else await host.disconnect();}onUpdate();return state();
     }
     if(busy)reject();busy=true;
     try{
@@ -63,28 +88,37 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
         assertWindow(origin);if(result.canceled)return state();
         if(result.filePaths.length!==1 || !statSync(result.filePaths[0]).isFile() || statSync(result.filePaths[0]).size>256*1024)reject();
         const raw=readFileSync(result.filePaths[0]);if(raw.length>256*1024)reject();const value=JSON.parse(raw.toString('utf8'));
-        if(!exact(value,['endpoint','server','tool','directoryDigest']) || typeof value.endpoint!=='string'
+        if(!value || typeof value!=='object' || Array.isArray(value)
+          || Object.keys(value).some(key=>!['endpoint','server','tool','directoryDigest','allowMissingOutputSchema','publicExport'].includes(key))
+          || !['endpoint','server','tool','directoryDigest'].every(key=>Object.hasOwn(value,key))
+          || (Object.hasOwn(value,'allowMissingOutputSchema') && value.allowMissingOutputSchema!==true) || typeof value.endpoint!=='string'
           || !/^mcp\.remote\.[a-z][a-z0-9_.-]*$/.test(value.tool?.descriptor?.name))reject();
         origin.draft=value;return state();
       }
       if(name==='save'){
         if(!exact(payload,['token','expiresAt']) || typeof payload.token!=='string' || payload.token.length>8192 || typeof payload.expiresAt!=='string')reject();
-        const definition=origin.draft??state().definition,epoch=configurationEpoch;if(!definition)reject();
+        const source=origin.draft??(!newId?config.hostConfiguration():undefined),epoch=configurationEpoch;if(!source)reject();
+        const {binding,...definition}=source;
         const credential=payload.token?{token:payload.token,expiresAt:payload.expiresAt}:undefined;
         if(!await confirm(origin,'保存 MCP 服务定义','保存加密配置并撤销旧连接？',
-          `地址：${definition.endpoint}\n服务：${definition.server?.name} @ ${definition.server?.version}\n工具：${definition.tool?.descriptor?.name} @ ${definition.tool?.descriptor?.version}\n范围：${JSON.stringify(definition.tool?.descriptor?.requiredScopes)}\n目录 SHA256：${definition.directoryDigest}\n保存不联网或授予执行权限；需重启应用重新装配。空 token 表示不使用凭据。`))return state();
-        assertWindow(origin);if(epoch!==configurationEpoch)reject();config.configure({...definition,...(credential?{credential}:{})});configurationEpoch++;origin.draft=undefined;onUpdate();return state();
+          `地址：${definition.endpoint}\n服务：${definition.server?.name} @ ${definition.server?.version}\n工具：${definition.tool?.descriptor?.name} @ ${definition.tool?.descriptor?.version}\n范围：${JSON.stringify(definition.tool?.descriptor?.requiredScopes)}\n目录 SHA256：${definition.directoryDigest}\n${definition.allowMissingOutputSchema===true?'允许服务未声明输出 Schema；使用此配置中的本地 Schema 校验结构化结果。\n':''}${definition.publicExport?`允许固定输入的 PUBLIC text 有界出机；输入 SHA256：${createHash('sha256').update(JSON.stringify(definition.publicExport.arguments)).digest('hex')}，上限 ${definition.publicExport.maxBytes} 字节。仍需原任务审批和出口许可。\n`:''}保存不联网或授予执行权限；需重启应用重新装配。空 token 表示不使用凭据。`))return state();
+        assertWindow(origin);if(epoch!==configurationEpoch)reject();
+        if(newId){const id=newId;services.add(id,{...definition,...(credential?{credential}:{})});select(id);}
+        else {config.configure({...definition,...(credential?{credential}:{})});configurationEpoch++;}
+        origin.draft=undefined;onUpdate();return state();
       }
       if(name==='connect'){
         if(payload!==undefined)reject();
-        await host.connect({signal:origin.signal,deadline:new Date(Date.now()+30000).toISOString()});onUpdate();return state();
+        if(!host || newId)reject();
+        if(services)await services.connect(activeId,{signal:origin.signal,deadline:new Date(Date.now()+30000).toISOString()});
+        else await host.connect({signal:origin.signal,deadline:new Date(Date.now()+30000).toISOString()});onUpdate();return state();
       }
       if(name==='submit'){
-        const app=application(),tool=host.tools[0];if(!app || !tool)reject();
+        const app=application(),tool=host?.tools[0];if(!app || !tool || newId)reject();
         const argumentsValue=host.arguments(payload);
         const result=app.submitHostToolTask({commandId:randomUUID(),toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
           arguments:argumentsValue,deadline:new Date(Date.now()+120000).toISOString()});
-        app.runtime.saveCheckpoint(result.task.taskId,marker,{toolName:tool.descriptor.name,toolVersion:tool.descriptor.version});
+        app.runtime.saveCheckpoint(result.task.taskId,marker,{toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,...(services?{serverId:activeId}:{})});
         return readTask(result.task.taskId);
       }
       if(name==='task'){

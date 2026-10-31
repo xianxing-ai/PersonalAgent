@@ -50,7 +50,7 @@ export function mountModelApiControls(root, invoke) {
     <label>API Key<input data-model-api="key" type="password" maxlength="8192" autocomplete="new-password" placeholder="同一目的地留空保留，修改目的地需重新填写"></label>
     <label><input data-model-api="enabled" type="checkbox" checked>启用</label>
     <label><input data-model-api="default" type="checkbox">设为独立 API 默认选项</label>
-    <fieldset><legend>当前模型支持的 reasoning_effort</legend>
+    <details class="sis-advanced"><summary>高级模型参数（通常无需修改）</summary><fieldset><legend>当前模型支持的 reasoning_effort</legend>
       <p class="notice">请根据供应商文档或已有验证声明；未知模型保持不选。更改供应商、Endpoint 或模型后需重新确认。</p>
       ${['none', 'low', 'medium', 'high'].map(effort => `<label><input data-model-effort="${effort}" type="checkbox">${effort}</label>`).join('')}
       ${['minimal', 'xhigh', 'max'].map(effort => `<label><input data-model-effort="${effort}" type="checkbox">${effort}（需下方原生配置）</label>`).join('')}
@@ -59,7 +59,7 @@ export function mountModelApiControls(root, invoke) {
       <label>输出预算参数<select data-model-api="outputTokenParameter"><option value="max_tokens">max_tokens</option><option value="max_completion_tokens">max_completion_tokens（含思考）</option></select></label>
       <p class="notice">原生配置仅适用于 OpenAI 兼容辅助模型。启用后，任务思考深度只调整步骤预算；关闭思考时不选任何强度。</p>
       <label><input data-model-api="reasoningConfirmed" type="checkbox">确认此目的地与模型支持所选参数</label>
-    </fieldset>
+    </fieldset></details>
     <p data-model-api="capabilities" class="notice"></p>
     <p data-model-api="requestBudget" class="notice" role="status"></p>
     <button data-model-api="save" type="button">保存加密配置</button>

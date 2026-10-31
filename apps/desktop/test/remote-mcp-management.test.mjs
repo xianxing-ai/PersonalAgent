@@ -61,6 +61,39 @@ test('management IPC is limited to its own main frame and keeps credentials out 
   }finally{await s.close();}
 });
 
+test('management task history exposes receipts without raw arguments or tool results',async()=>{
+  const secretArgument='private-argument-fixture',secretResult='private-result-fixture';
+  const app={runtime:{loadCheckpoint(_taskId,key){
+    if(key==='desktop-remote-mcp-v1')return {toolName:'mcp.remote.reference',toolVersion:'1.0.0'};
+    if(key==='host-tool-intent')return {arguments:{arguments:{query:secretArgument}}};
+  }},readHostToolTask:()=>({toolName:'mcp.remote.reference',toolVersion:'1.0.0',task:{state:'succeeded'},
+    confirmed:{result:{text:secretResult},evidenceRefs:['receipt-1']}})};
+  const s=setup({app:()=>app});
+  try{
+    const response=await s.call('task',{taskId:'task-1'});
+    assert.equal(response.ok,true);
+    const result=response.value;
+    assert.equal(result.state,'succeeded');
+    assert.deepEqual(result.evidenceRefs,['receipt-1']);
+    assert.doesNotMatch(JSON.stringify(result),/private-argument-fixture|private-result-fixture/);
+  }finally{await s.close();}
+});
+
+test('explicit PUBLIC export configuration keeps its fixed input out of Renderer state',async()=>{
+  const s=setup();
+  try{
+    s.setFile({...definition(),publicExport:{sensitivity:'PUBLIC',arguments:{key:'synthetic-private-input'},maxBytes:1024}});
+    s.setAnswer(async request=>{assert.doesNotMatch(JSON.stringify(request.payload),/synthetic-private-input/);return {response:1};});
+    const imported=await s.call('import');assert.equal(imported.ok,true);
+    assert.doesNotMatch(JSON.stringify(imported),/synthetic-private-input/);
+    const saved=await s.call('save',{token:'',expiresAt:''});assert.equal(saved.ok,true);
+    assert.doesNotMatch(JSON.stringify(saved),/synthetic-private-input/);
+    assert.deepEqual(s.config.hostConfiguration().publicExport,{sensitivity:'PUBLIC',arguments:{key:'synthetic-private-input'},maxBytes:1024});
+    assert.equal((await s.call('state')).value.definition.publicExport.sensitivity,'PUBLIC');
+    assert.doesNotMatch(JSON.stringify(await s.call('state')),/synthetic-private-input/);
+  }finally{await s.close();}
+});
+
 test('management error codes survive the production Renderer projection without disclosing adapter text',async()=>{
   const s=setup({saved:true,fetch:async()=>{throw Error('SYNTHETIC_PRIVATE_MCP_FAILURE /private/path token=synthetic');}});
   try{

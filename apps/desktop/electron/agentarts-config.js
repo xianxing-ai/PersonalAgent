@@ -79,15 +79,14 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
   }
   const snapshot=()=>{
     let transport,transportFailure='';
-    try {transport=publicTransport(currentTransport());}
+    try {if(runtimeBinding())transport=publicTransport(currentTransport());}
     catch {transportFailure='AgentArts 实时连接配置不完整，请核对 WSS 地址与独立镜像凭据';}
     const preferences=readTransportPreferences();
     return {configured:Boolean(saved)&&!transportFailure,runtimeReady:Boolean(runtimeBinding()),
       gatewayUrl:saved?.gatewayUrl??defaults.gatewayUrl,runtimeName:saved?.runtimeName??defaults.runtimeName,
       appTokenConfigured:Boolean(saved?.appToken||environment.PA_AGENTARTS_APP_TOKEN),deploymentVersion:saved?.deploymentVersion??'',
       deploymentSelection:saved?.deploymentVersion===undefined?'latest':'pinned',canRestoreDefaultConnection:Boolean(saved),
-      ...(transport??{transport:!saved&&!environment.PA_AGENTARTS_TRANSPORT&&!environment.PA_AGENTARTS_AUTHORIZATION?'wss':preferences.transport}),
-      ...(!saved&&!environment.PA_AGENTARTS_TRANSPORT&&!environment.PA_AGENTARTS_AUTHORIZATION?{transport:'wss'}:{}),
+      ...(transport??{transport:preferences.transport}),
       websocketUrl:transport?.transport==='https'?'':transport?.websocketUrl??saved?.websocketUrl??environment.PA_AGENTARTS_WSS_URL??'',
       allowHttpsFallback:transport?.allowHttpsFallback??preferences.allowHttpsFallback,
       effectiveTransport:saved?.transport??environment.PA_AGENTARTS_TRANSPORT??'https',

@@ -4,7 +4,7 @@
 
 ## 设置与下一任务生效
 
-原「模型」设置页挂载 `harness-controls.js` 与 H4 `developer-controls.js`。Harness 配置沿原 `model-api-config.json` safeStorage 信封的可选字段保存；缺省关闭，显式模型版本与预算由用户填写。H4 GitHub/Git/工作流配置沿自己的原加密设置宿主与原 deployment 校验器保存，不读入或迁移旧环境变量凭据。普通对话只消费原安全状态投影，完整管理快照及 configure/toggle IPC 限原 admin/mainFrame。
+原「模型」设置页挂载 `harness-controls.js` 与 H4 `developer-controls.js`。Harness 配置沿原 `model-api-config.json` safeStorage 信封的可选字段保存；缺省关闭，摘要模型版本仍须用户明确选择。2026-10-28 起新配置使用固定默认预算，已保存预算保持原值，详见 [Solid Glass 与普通设置增量](SOLID_GLASS_SETTINGS_20261027.md)。H4 GitHub/Git/工作流配置沿自己的原加密设置宿主与原 deployment 校验器保存，不读入或迁移旧环境变量凭据。普通对话只消费原安全状态投影，完整管理快照及 configure/toggle IPC 限原 admin/mainFrame。
 
 Main 只注册一次 H4 稳定工具代理，使用 `readDeveloperWorkflows(scope)` 同步读取当前任务钉住的原配置；保存不重建 Runtime 或任务库。Harness 使用 `readDeveloperHarnessConfiguration()` 同步绑定原工作区 `bindingId`、原工作区许可 generation、设置 revision 和明确执行总步骤预算；变更使旧任务失效，下一任务使用新配置。设置成功、模型已绑定均不等于工具获权或真实运行成功。
 

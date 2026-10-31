@@ -14,11 +14,11 @@ function harness(t,invoke) {
   const submit=node(),revoke=node(),restore=node(),status=node(),form=node(),tokenHint=node(),buttonGroup=node(),transportState=node();
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke,restore],
-    reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='wss';}});
-  const wss=node();
+    reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='https';}});
+  const wss=node(),advanced=node();
   const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
     querySelector:selector=>({'form':form,'[data-status]':status,'[data-wss]':wss,'[data-token-hint]':tokenHint,
-      '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState}[selector])};
+      '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced}[selector])};
   form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,
@@ -26,7 +26,7 @@ function harness(t,invoke) {
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,restore,status,section,wss,tokenHint,buttonGroup,transportState,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
@@ -34,13 +34,14 @@ function harness(t,invoke) {
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
 
-test('AgentArts new UI offers explicit WSS and clears both secrets after save and failed revoke',async t=>{
+test('AgentArts defaults to HTTPS and retains explicit WSS and secret handling',async t=>{
   let captured,fail=false;
   const ui=harness(t,async(action,input)=>{captured=input?{...input}:undefined;if(fail)throw Error('private');return {configured:true};});
-  assert.equal(ui.fields.transport.value,'wss');assert.equal(ui.wss.hidden,false);
+  assert.equal(ui.fields.transport.value,'https');assert.equal(ui.wss.hidden,true);
   assert.match(ui.section.className,/agentarts-settings/);
-  assert.match(ui.section.innerHTML,/本机加密记录为准/);
+  assert.match(ui.section.innerHTML,/默认使用 HTTPS/);
   assert.equal(ui.fields.allowHttpsFallback.checked,false);
+  ui.edit('transport','wss');assert.equal(ui.advanced.open,true);assert.equal(ui.wss.hidden,false);
   ui.edit('websocketUrl','wss://example.huaweicloud-agentarts.com/runtimes/synthetic-runtime/invocations/ws');
   ui.edit('authorization','Bearer synthetic-outer');ui.edit('appToken','synthetic-inner-at-least-32-characters');
   await ui.save();
@@ -53,6 +54,13 @@ test('AgentArts new UI offers explicit WSS and clears both secrets after save an
   ui.edit('authorization','Bearer private');ui.edit('appToken','private');fail=true;await ui.clear();
   assert.equal(ui.fields.authorization.value,'');assert.equal(ui.fields.appToken.value,'');
   assert.match(ui.status.textContent,/撤销结果未获确认/);
+});
+
+test('a saved WSS route stays intact without reopening advanced settings on every refresh',t=>{
+  const ui=harness(t,()=>assert.fail('rendering must not save'));
+  const saved={configured:true,transport:'wss',websocketUrl:'wss://example.huaweicloud-agentarts.com/runtimes/synthetic-runtime/invocations/ws'};
+  ui.controls.render(saved);assert.equal(ui.fields.transport.value,'wss');assert.equal(ui.fields.websocketUrl.value,saved.websocketUrl);
+  ui.advanced.open=false;ui.controls.render(saved);assert.equal(ui.advanced.open,false);
 });
 
 test('AgentArts settings serialize save/revoke and preserve the pending destination across snapshots',async t=>{

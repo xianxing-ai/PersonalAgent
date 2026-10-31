@@ -16,6 +16,7 @@ import {workspaceRepairProjectionSchema,workspaceWorkflowSummaryProjectionSchema
 import {createF20CaseConfiguration} from './f20-case-config-host.js';
 import {createF20TypeScriptRecipe,F20_TYPESCRIPT_RECIPE} from './f20-typescript-recipe.js';
 import {f20InputProjectionSchema,f20CompletionProjectionSchema,f20TrialProjectionSchema} from './f20-workflow-projection.js';
+import {initializeDefaultWorkspace} from './default-workspace.js';
 
 const codingConsentGroups=Object.freeze([
   {id:'source-review',tools:['coding.repair.start','coding.repair.list','coding.repair.read','coding.repair.snapshot',
@@ -104,7 +105,7 @@ Set-Acl -LiteralPath $target -AclObject $acl`;
 /** Persist only a selected directory. Execution/export consent expires with this process.
  * Registered implementations stay pinned until restart; changing settings revokes them first.
  */
-export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
+export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,defaultWorkspace,
   selectNodeExecutable,selectCheckFile,selectNpmCli,jobHelperExecutable,patchHelperScriptPath,
   projectScriptEnvSource,createCommandRecipeTool,createWorkspaceCommandTool,createWorkspaceReferenceExport,question,
   readWorkspaceExportPreflight,readWorkspaceExportAuthorization,
@@ -130,6 +131,10 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const questionReady=()=>active&&!authorizationFailure&&Boolean(application)&&['prepare','prepareExport','currentRequirement','authorizeExport',
     'readResourceGeneration','rotateResourceGeneration'].every(name=>typeof question?.[name]==='function');
+  if(defaultWorkspace && !existsSync(file)) {
+    try {initializeDefaultWorkspace({userData,workspace:defaultWorkspace,safeStorage});}
+    catch {failure='默认工作文件夹不可用，请在高级设置中选择本机目录';}
+  }
   try {
     if (existsSync(file)) {
       if (!safeStorage.isEncryptionAvailable()) throw Error();
@@ -866,7 +871,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       assertQuestionAccess(context,input,tool.descriptor.name);return result;}
     finally {inflight.delete(controller);}
   }}));
-  const snapshot=() => ({configured:Boolean(savedRoot),displayName:savedRoot?path.basename(savedRoot):'',
+  const snapshot=() => ({configured:Boolean(savedRoot),selectionAvailable:active && typeof selectDirectory==='function',displayName:savedRoot?path.basename(savedRoot):'',
     nodeConfigured:Boolean(savedNode),checkFileConfigured:Boolean(savedCheckFile),npmCliConfigured:Boolean(savedNpmCli),
     checkFileName:savedCheckFile?path.basename(savedCheckFile):'',
     nodeCheckAvailable:tools.some(tool=>tool.descriptor.name==='workspace.node_check' && enabled(tool)),

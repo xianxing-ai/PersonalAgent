@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError,isToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool,ToolContext,ToolHost} from '@personal-agent/contracts';
 import type {SecretStorePort} from '@personal-agent/connector-host';
 import {canonical,createRemoteReadonlyMcpHost} from './remote.js';
@@ -13,6 +13,8 @@ export interface RemoteMcpConfigurationBinding {
   credential?:{secretRef:string;revision:number;resource:string;expiresAt:string};
 }
 export interface BoundRemoteReadonlyMcpOptions extends Omit<RemoteReadonlyMcpOptions,'expectedDirectoryDigest'> {
+  /** Stable identity supplied by a trusted multi-service manager. */
+  serverId?:string;
   binding:RemoteMcpConfigurationBinding;
   readCurrentBinding:()=>RemoteMcpConfigurationBinding|undefined;
   revocationSignal:AbortSignal;
@@ -34,9 +36,12 @@ export function createBoundRemoteReadonlyMcpHost(input?:BoundRemoteReadonlyMcpOp
   try{
     endpoint=new URL(options.endpoint).href;
     validateToolValue(bindingSchema,binding);
+    if(options.serverId!==undefined && (typeof options.serverId!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(options.serverId)))fail('INVALID_ARGUMENT');
     if(binding.credential && (!options.secretStore || binding.credential.resource!==endpoint || !Number.isFinite(Date.parse(binding.credential.expiresAt))))fail('INVALID_ARGUMENT');
   }catch{fail('INVALID_ARGUMENT');}
-  const bindingRef=createHash('sha256').update(canonical({endpoint,server:options.server,tool:options.tool,binding})).digest('hex');
+  const bindingRef=createHash('sha256').update(canonical({endpoint,server:options.server,tool:options.tool,binding,
+    ...(options.serverId!==undefined?{serverId:options.serverId}:{}),
+    ...(options.allowMissingOutputSchema===true?{allowMissingOutputSchema:true}:{})})).digest('hex');
   const lifetime=new AbortController();
   let revokedCode:string|undefined,disposed=false;
   function revoke(code:string){if(revokedCode || disposed)return;revokedCode=code;lifetime.abort();void base.stop();}
@@ -69,6 +74,8 @@ export function createBoundRemoteReadonlyMcpHost(input?:BoundRemoteReadonlyMcpOp
     return value;
   }
   const base=createRemoteReadonlyMcpHost({endpoint:options.endpoint,server:options.server,tool:options.tool,enabled:options.enabled??false,expectedDirectoryDigest:binding.directoryDigest,
+    ...(options.allowMissingOutputSchema!==undefined?{allowMissingOutputSchema:options.allowMissingOutputSchema}:{}),
+    ...(options.onDiagnostic?{onDiagnostic:options.onDiagnostic}:{}),
     ...(options.readRunReceipt?{readRunReceipt:options.readRunReceipt}:{}),fetch:async(url,init)=>{
     if(String(url)!==endpoint)fail('INVALID_ARGUMENT');
     const signal=AbortSignal.any([lifetime.signal,...(init?.signal?[init.signal]:[])]);
@@ -88,6 +95,7 @@ export function createBoundRemoteReadonlyMcpHost(input?:BoundRemoteReadonlyMcpOp
     try{assertCurrent(signal);const result=await action();assertCurrent(signal);return result;}
     catch(error){
       if(base.health().state==='error' && base.health().errorCode==='REVISION_CONFLICT')revoke('REVISION_CONFLICT');
+      if(!revokedCode && !signal.aborted && isToolNotStartedError(error))throw error;
       fail(revokedCode??(signal.aborted?'CANCELLED':error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE'));
     }
   }
@@ -101,6 +109,7 @@ export function createBoundRemoteReadonlyMcpHost(input?:BoundRemoteReadonlyMcpOp
   return {tools:[tool] as readonly RegisteredTool[],currentConfigurationRef,
     health(){currentConfigurationRef();const health=base.health();return revokedCode && !disposed && health.enabled?{...health,state:'error' as const,connected:false,exposedTools:[],errorCode:revokedCode}:health;},
     start:(context:{signal:AbortSignal;deadline:string})=>guarded(context.signal,()=>base.start({...context,signal:AbortSignal.any([context.signal,lifetime.signal])})),
+    verifyDirectory:(context:{signal:AbortSignal;deadline:string})=>guarded(context.signal,()=>base.verifyDirectory({...context,signal:AbortSignal.any([context.signal,lifetime.signal])})),
     stop:()=>base.stop(),
     async setEnabled(enabled:boolean){if(enabled)assertCurrent(lifetime.signal);return base.setEnabled(enabled);},
     register(host:ToolHost){const remove=host.register(tool);const release=()=>{registrations.delete(release);remove();};registrations.add(release);return release;},

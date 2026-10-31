@@ -59,14 +59,15 @@ export function mountWorkspaceControls(root, invoke) {
 
   function updateButtons() {
     const configured = state.configured === true;
-    field('select').disabled = busy;
-    field('select-node').disabled = busy || !configured;
-    field('select-file').disabled = busy || !configured;
-    field('select-npm').disabled = busy || !configured || state.nodeConfigured !== true;
-    field('revoke').disabled = busy || (!configured && state.cloudExportAllowed !== true);
-    field('review-configure').disabled=busy||state.independentReview?.canConfigure!==true;
-    field('review-revoke').disabled=busy||state.independentReview?.configured!==true;
-    field('f20-configure').disabled=busy||!configured||state.nodeConfigured!==true;
+    const unavailable=state.selectionAvailable===false;
+    field('select').disabled = busy || unavailable;
+    field('select-node').disabled = busy || unavailable || !configured;
+    field('select-file').disabled = busy || unavailable || !configured;
+    field('select-npm').disabled = busy || unavailable || !configured || state.nodeConfigured !== true;
+    field('revoke').disabled = busy || unavailable || (!configured && state.cloudExportAllowed !== true);
+    field('review-configure').disabled=busy||unavailable||state.independentReview?.canConfigure!==true;
+    field('review-revoke').disabled=busy||unavailable||state.independentReview?.configured!==true;
+    field('f20-configure').disabled=busy||unavailable||!configured||state.nodeConfigured!==true;
     updateStatus();
   }
 

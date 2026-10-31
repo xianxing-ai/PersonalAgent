@@ -68,6 +68,7 @@ test('automatic context defaults are editable and require explicit model selecti
   f.ui.render({models:[model()]});
   const field=name=>f.root.querySelector(`[data-harness="${name}"]`);
   assert.equal(field('contextEnabled').checked,false);assert.equal(calls.length,0);
+  assert.equal(Number(field('maxExecutorSteps').value),32);
   assert.equal(Number(field('triggerCharacters').value),96000);assert.equal(Number(field('targetCharacters').value),64000);
   field('contextEnabled').checked=true;await field('save').onclick();assert.equal(calls.length,0);
   field('recommend').onclick();assert.equal(calls.length,0);
@@ -80,13 +81,18 @@ test('automatic context defaults are editable and require explicit model selecti
   assert.equal(calls[0].payload.context.policy.retainMessages,8);
 });
 
-test('existing context policy is preserved until the recommendation is explicitly selected',t=>{
-  const f=fixture(t,()=>assert.fail('Rendering must not save'));
+test('saving preserves a custom context limit until the recommendation is explicitly selected',async t=>{
+  const calls=[],f=fixture(t,(operation,payload)=>{calls.push({operation,payload:structuredClone(payload)});return {models:[model()]};});
   f.ui.render({models:[model()],harness:{revision:'existing',enabled:false,context:{enabled:true,modelId:'synthetic',
     configurationRef:'synthetic-ref',maxOutputTokens:500,policy:{triggerCharacters:12000,targetCharacters:9000,
       maxCharacters:16000,retainMessages:2,maxSourceMessages:40,segmentCharacters:7500,maxSummaryCharacters:120}}}});
   const field=name=>f.root.querySelector(`[data-harness="${name}"]`);
   assert.equal(Number(field('triggerCharacters').value),12000);assert.equal(Number(field('maxOutputTokens').value),500);
+  for(const node of f.root.querySelectorAll('input'))if(node.attributes.get('type')==='number')node.value=String(node.value);
+  await field('save').onclick();assert.equal(calls[0].payload.context.policy.maxCharacters,16000);
+  f.ui.render({models:[model()],harness:{revision:'existing',enabled:false,context:{enabled:true,modelId:'synthetic',
+    configurationRef:'synthetic-ref',maxOutputTokens:500,policy:{triggerCharacters:12000,targetCharacters:9000,
+      maxCharacters:16000,retainMessages:2,maxSourceMessages:40,segmentCharacters:7500,maxSummaryCharacters:120}}}});
   field('recommend').onclick();assert.equal(Number(field('triggerCharacters').value),96000);
   assert.equal(field('modelId').value,'synthetic');
 });

@@ -118,8 +118,9 @@ test('admin snapshot delivery rerenders mail baseline when only its stage change
   const {mountAdmin}=await import('../src/features/admin/view.js');
   const element=()=>({dataset:{},textContent:'',innerHTML:'',hidden:false,
     addEventListener(){},setAttribute(){},insertBefore(){},after(){}});
-  const nodes=new Map(['.admin-bar','#admin-close','nav','#admin-search','#page-title',
+  const nodes=new Map(['.admin-bar','#admin-close','nav','#admin-search','.advanced-nav','#page-title',
     '#connection','#content','#error'].map(key=>[key,element()]));
+  nodes.get('#admin-search').value='';nodes.get('.advanced-nav').open=false;
   nodes.set('.main',dom.root);
   const root={innerHTML:'',querySelector:key=>nodes.get(key)??null,querySelectorAll:()=>[]};
   const admin=mountAdmin(root,async()=>{},value=>String(value??''));

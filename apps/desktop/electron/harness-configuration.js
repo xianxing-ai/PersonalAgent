@@ -6,6 +6,12 @@ const text=value=>typeof value==='string'&&value.trim().length>0&&!/[\u0000-\u00
 const positive=value=>Number.isSafeInteger(value)&&value>0;
 const policyKeys=['version','triggerCharacters','targetCharacters','maxCharacters','retainMessages','maxSourceMessages','segmentCharacters','maxSummaryCharacters'];
 
+// Product defaults for new configurations. Existing explicit budgets are retained.
+export const DEFAULT_HARNESS_STEPS=32;
+export const DEFAULT_CONTEXT_OUTPUT_TOKENS=2048;
+export const DEFAULT_CONTEXT_POLICY=Object.freeze({triggerCharacters:96000,targetCharacters:64000,
+  maxCharacters:128000,retainMessages:8,maxSourceMessages:2000,segmentCharacters:32000,maxSummaryCharacters:4000});
+
 /** Shared validation inside the existing encrypted model configuration host. */
 export function validateContextConfiguration(value) {
   if(!keys(value,['enabled','modelId','configurationRef','maxOutputTokens','policy'])||typeof value.enabled!=='boolean')fail();

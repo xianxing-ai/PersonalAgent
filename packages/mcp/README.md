@@ -1,5 +1,7 @@
 # MCP — Competition read-only slice
 
+2026-10-29 受控管理增量：远程 MCP 管理窗口的任务读回仅返回任务状态、工具身份、审批状态及原 Evidence 引用，不向该窗口返回原始参数或 MCP 原始结果；执行记录和结果仍由原 Runtime 保存。公开 Context7 真实握手和 tools/list 成功，其工具未声明 outputSchema；现有 Host 默认仍拒绝该目录。受信定义可显式设置 `allowMissingOutputSchema: true`，必须固定目录摘要、服务身份/版本及本地输出 Schema；只允许远端缺少该声明，存在但不匹配仍拒绝，`structuredContent`、大小和本地输出 Schema 校验不变。该策略参与授权绑定，变化必须重新装配和审批。Context7 未发起 tools/call，不视为真实远程执行或 AgentArts 验收。基线、测试和后续缺口见 [工作记录](../../docs/modules/MOD-06-MCP-SAFETY-20261029.md)。
+
 <!-- architecture-scope-20261013 -->
 ## 当前架构职责
 
@@ -69,11 +71,13 @@ await mcp.dispose();
 
 首包只支持无认证公开服务：URL 禁止用户名/密码、query、fragment；禁重定向、cookies、OAuth 自动发现和自动重试/重连。无配置为 unavailable，默认 disabled；401/403 明确拒绝，不使用环境中的凭据。请求和单条 HTTP 响应流各限 1 MiB，操作最长 30 秒且不超过调用 deadline；同连接串行执行，GET 通知流随 stop/dispose 关闭。目录变化通知立即撤销连接，重新连接需显式 start。
 
-同 task/run 绑定输入，只重放当前会话已确认的结果；失败、取消、断连或换连接后的旧 run 均不自动调用，须由 Runtime 核实或按新 run 提交新任务。会话 map 不替代 Runtime 的持久授权/执行记录。`health()` 仅返回状态、固定工具名、计数、协商版本和脱敏错误码，不暴露 endpoint、session ID 或远端诊断。
+同 task/run 绑定输入，只重放当前会话已确认的结果；失败、取消、断连或换连接后的旧 run 均不自动调用，未知结果须由 Runtime 保留原身份核实，不能通过新 run 重发原操作。会话 map 不替代 Runtime 的持久授权/执行记录。`health()` 仅返回状态、固定工具名、计数、协商版本和脱敏错误码，不暴露 endpoint、session ID 或远端诊断。
 
 单个 host 生命周期最多保留 64 个 run 身份（包含失败/未知结果），每条结果仍受 1 MiB 限制；达到上限时新 run 在网络请求前以 `EXTERNAL_FAILURE` 拒绝，表示本地容量不足，不产生假的未知执行。stop/断线后重连不重置身份配额，stop 释放结果内容并保留输入绑定，旧 run 不重发。恢复服务需受信宿主重新创建 host，并依赖原 Runtime 持久记录防止跨实例重放；普通重连不能绕过上限。
 
 受信 Runtime 消费者可注入同步 `readRunReceipt({taskId,runId,argumentsDigest})`，返回精确原输入摘要及 confirmed/result、failed 或 unknown；查询异常必须拒绝，不能用“查不到”伪造新尝试。新调用仍只能由原 Policy/ToolGateway 的首次执行入口发起。满缓存仅移除已从原 Runtime 读回 confirmed/failed 的本地条目，unknown 不回收；旧 run 每次先读持久回执，故本地条目移除、断连或替换 host 都不会重发。`remoteMcpArgumentsDigest` 仅用于精确输入绑定，不是授权。Desktop 已消费原 Runtime 的回执与当前执行标记，见 [容量修复记录](../../docs/modules/MOD-06-CAPACITY-RECEIPTS-20261016.md)。无读回端口仍保留上述 64 身份限制；64 个未核实 run 全部占满时仍拒绝新调用，需原 Runtime 对账，不自动清理未知记录。
+
+Desktop 的回执消费者还核对同一任务中同名工具的原持久调用：已开始且未确认、未证明未执行的相同业务参数阻止新 run 分派，重连、SQLite 重启、配置或凭据重新装配不清除此约束。新 run 以受信 `ToolNotStartedError` 拒绝，原远端未知记录不变；该本机错误身份穿过 MCP 包装后由 Runtime 记录为未分派。已确认后的重新查询、不同参数以及独立任务仍可经各自 Policy 授权执行；此保护不是跨任务的全局去重，也不授予未知结果重试许可。见 [2026-10-31 修复记录](../../docs/modules/MOD-06-MCP-SAFETY-20261029.md)。
 
 `node --test packages/mcp/test/remote-http.test.mjs` 使用真实本机 HTTP 监听与显式 synthetic MCP fixture，经受信 fetch 端口将固定测试 HTTPS 地址映射到 loopback。覆盖 JSON 与 Streamable HTTP 的 SSE 响应、Policy 一次性授权、身份/schema/目录漂移、认证失败、重定向、大小限制、取消/超时、断连、重连与释放。它不是第三方服务、远程 TLS、OAuth 或真实 Competition/AgentArts 验收。生产 Desktop/Competition composition 尚未注入此 host；持久配置、鉴权引用、写工具及未知写入恢复属 G11/G14。
 
@@ -109,6 +113,10 @@ await mcp.dispose();
 G14 的 [Desktop 增量](../../apps/desktop/README.md) 已提供 safeStorage、会话 nonce、独立管理窗口与 Competition 生产 Runtime 装配；两次实际 Electron 重启、原 Runtime 单次审批/结果读回/旧许可拒绝/撤销通过。对话框响应显式合成、远端为 loopback HTTP fixture，不改变真实平台/OAuth 未验收边界；详见[管理记录](../../docs/modules/MOD-06-MANAGEMENT-20261016.md)及[宿主首片](../../docs/modules/MOD-06-HOST-CONFIG-20261016.md)。
 
 ### 公开参考结果出机
+
+Desktop 远程只读 MCP 的 Competition 出口默认关闭。受信服务定义可显式设置 `publicExport: {sensitivity: 'PUBLIC', arguments: <固定输入对象>, maxBytes: <1..16384>}`；配置须经原对话授权确认，固定输入须符合工具输入 Schema，输出 Schema 须声明字符串 `text`。模型只能提议该固定输入，执行仍经过原 Runtime/Policy/ToolGateway；只允许已确认结果的有界 `text` 投影，并绑定原任务、run、配置、目录、目标与原审批卡。连接前和目录校验失败时不提供可用能力。用户必须只将确认为公开的数据配置为 PUBLIC；此配置不是执行授权。
+
+Desktop 多服务使用独立加密配置，首次添加或迁移后需重启应用重新装配；重启不会自动连接或恢复旧执行许可。旧配置可显式复制迁移且原密文保留；重复内部工具名会使冲突服务不可用，须在受信定义中指定不同的本地工具名。当前合成双服务和 Electron 测试不代替真实 AgentArts 或第三方验收。
 
 `createPublicReferenceExport`（MCP，policy `3.0.0`）与 `createWorkspaceReferenceExport`（workspace，policy `workspace-reference-3.0.0`）复用现有 trusted `CompetitionToolExport.accepts/project`。无配置默认拒绝。保留原 MCP / `WorkspaceReadResult` schema，workspace 支持安全相对 `.js` 等路径和精确 `maxBytes` 参数，不冒 MCP。
 

@@ -44,9 +44,11 @@ test('saved WSS restores both private credentials and overrides stale transport 
   assert.equal(await transport.websocketAuthorizationProvider.read(),`Bearer ${f.input.appToken}-rotated`);
 });
 
-test('new settings offer WSS while legacy disk records require explicit migration',async t=>{
+test('new settings use HTTPS while legacy records and explicit WSS retain their bindings',async t=>{
   const f=wssFixture(t);
-  assert.equal(f.config.snapshot().transport,'wss');
+  assert.equal(f.config.snapshot().transport,'https');
+  assert.equal(f.config.snapshot().effectiveTransport,'https');
+  assert.match(f.config.snapshot().reason,/请配置 AgentArts 网关/);
   const {gatewayUrl,runtimeName,authorization}=f.input;
   f.config.configure({gatewayUrl,runtimeName,authorization});
   let config=createAgentArtsConfig(f.options);

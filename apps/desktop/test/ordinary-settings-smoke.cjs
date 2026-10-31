@@ -1,0 +1,150 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const {_electron}=require('playwright');
+
+// Real Electron/Main/Preload with an empty Competition profile. Draft failure
+// injection uses separate renderer controls and never calls a real service.
+(async()=>{
+  const root=path.resolve(__dirname,'../../..'),output=path.join(__dirname,'../.cache/ordinary-settings');
+  fs.mkdirSync(output,{recursive:true});
+  const env=Object.fromEntries(Object.entries(process.env).filter(([name])=>
+    !/^(PA_|HUAWEI_|AGENTARTS_|OPENAI_|ANTHROPIC_|ELECTRON_RUN_AS_NODE)/i.test(name)));
+  env.PA_RUNTIME_PROFILE='huawei_ict_agentarts';env.PA_USER_DATA_DIR=fs.mkdtempSync(path.join(output,'profile-'));
+  const launch=()=>_electron.launch({executablePath:path.join(root,'node_modules/electron/dist/electron.exe'),args:[path.join(root,'apps/desktop')],env});
+  let app=await launch();
+  const errors=[];const watchErrors=application=>application.on('window',page=>page.on('pageerror',error=>errors.push(error.message)));watchErrors(app);
+  const until=async (predicate,label)=>{for(let i=0;i<200;i++){const value=await predicate();if(value)return value;await new Promise(r=>setTimeout(r,50));}throw Error(label);};
+  try{
+    const orb=await until(()=>app.windows().find(page=>page.url().includes('mode=orb')),'orb not loaded');
+    await orb.waitForSelector('.orb-button');await orb.evaluate(()=>window.desktop.invoke('admin.open',{page:'settings'}));
+    const admin=await until(()=>app.windows().find(page=>page.url().includes('mode=admin')),'settings not loaded');
+    await admin.waitForSelector('.advanced-nav');
+    assert.equal(fs.existsSync(path.join(env.PA_USER_DATA_DIR,'Workspace')),true);
+    assert.equal(fs.existsSync(path.join(env.PA_USER_DATA_DIR,'coding-workspace.json')),true);
+    assert.deepEqual(fs.readdirSync(path.join(env.PA_USER_DATA_DIR,'Workspace')),[]);
+    const startup=await admin.evaluate(()=>window.desktop.invoke('snapshot'));
+    assert.equal(startup.value.coding.configured,true);assert.equal(startup.value.coding.selectionAvailable,false);
+    assert.equal(startup.value.agentArts.transport,'https');assert.equal(startup.value.agentArts.configured,false);
+    await admin.locator('[data-page="settings"]').click();
+    assert.equal(await admin.locator('[data-jump="worktrees"]').isDisabled(),true);
+    assert.equal(await admin.locator('.advanced-nav').evaluate(node=>node.open),false);
+    assert.deepEqual(await admin.locator('.primary-nav [data-page]').evaluateAll(nodes=>nodes.map(node=>node.dataset.page)),['settings','connections','authorizations']);
+    await admin.locator('#admin-search').fill('模型');
+    assert.equal(await admin.locator('.advanced-nav').evaluate(node=>node.open),true);
+    assert.equal(await admin.locator('[data-page="models"]').isVisible(),true);
+    await admin.locator('#admin-search').fill('');
+    assert.equal(await admin.locator('.advanced-nav').evaluate(node=>node.open),false);
+    await admin.evaluate(()=>window.desktop.invoke('admin.open',{page:'models'}));
+    const connection=admin.locator('.agentarts-settings');await connection.waitFor();
+    assert.equal(await connection.locator('[name="transport"]').inputValue(),'https');
+    assert.equal(await connection.locator('[data-connection-advanced]').evaluate(node=>node.open),false);
+    assert.equal(await connection.locator('[data-wss]').isVisible(),false);
+    assert.equal(await admin.locator('.developer-settings > details').evaluate(node=>node.open),false);
+    assert.equal(await admin.locator('[data-developer-form]').isVisible(),false);
+    const harness=admin.locator('.sis-settings').filter({has:admin.locator('summary').filter({hasText:'开发者 Harness'})});
+    await harness.locator('summary').first().click();
+    assert.equal(await harness.locator('[data-harness="maxExecutorSteps"]').inputValue(),'32');
+    assert.equal(await harness.locator('.sis-advanced').first().evaluate(node=>node.open),false);
+    assert.equal(await harness.locator('[data-harness="contextEnabled"]').isChecked(),false);
+    await harness.locator('[data-harness="enabled"]').check();await harness.locator('[data-harness="save"]').click();
+    await until(async()=>{const state=await admin.evaluate(()=>window.desktop.invoke('snapshot'));return state.value.modelApi?.harness?.enabled===true;},'default Harness settings not saved');
+    const configured=await admin.evaluate(()=>window.desktop.invoke('snapshot'));
+    assert.equal(configured.value.modelApi.harness.maxExecutorSteps,32);
+    assert.equal(configured.value.modelApi.harness.context.enabled,false);
+    assert.equal(configured.value.modelApi.harness.events.enabled,false);
+    await admin.evaluate(()=>window.desktop.invoke('admin.open',{page:'settings'}));
+    await until(async()=>await admin.locator('.main').getAttribute('data-section')==='settings','primary settings did not reopen');
+    assert.equal(await admin.locator('.advanced-nav').evaluate(node=>node.open),false);
+    await admin.locator('[data-page="connections"]').click();
+    const goal=admin.locator('[aria-label="主智能体目标管理"]');await goal.waitFor();
+    assert.equal(await goal.locator('[data-goal-cloud="enable"]').count(),0);
+    const denied=await admin.evaluate(()=>window.desktop.invoke('goalCloud.authorize',{goalCloudConsent:true}));
+    assert.equal(denied.ok,false);assert.equal(denied.errorCode,'UNSUPPORTED_CAPABILITY');
+    assert.equal((await orb.evaluate(()=>window.desktop.invoke('conversation.open'))).ok,false);
+    assert.equal((await admin.evaluate(()=>window.desktop.invoke('conversation.open',{}))).ok,false);
+    await goal.locator('[data-goal-cloud="open"]').click();
+    await until(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().some(w=>w.webContents.getURL().includes('mode=panel')&&w.isVisible())),'conversation did not open');
+
+    await admin.evaluate(async()=>{
+      const {mountTodoControls}=await import(new URL('./todo-controls.js',location.href));
+      const {mountFeedsControls}=await import(new URL('./feeds-controls.js',location.href));
+      const {mountCalendarControls}=await import(new URL('./calendar-controls.js',location.href));
+      const check=(condition,message)=>{if(!condition)throw Error(message);};
+      const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+      const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
+      async function exercise(kind,mount,initial,newer){
+        const host=document.createElement('div');document.body.append(host);let reply,calls=[];
+        const controls=mount(host,(name,payload)=>{calls.push({name,payload});return reply.promise;});
+        controls.render(initial);
+        const form=host.querySelector('form'),first=kind==='todo'?form.elements.title:form.elements.url;
+        if(kind==='feeds')form.elements.title.value='Synthetic feed';
+        first.value=kind==='todo'?'First draft':'https://example.invalid/first';first.dispatchEvent(new Event('input',{bubbles:true}));
+        const original=first.value;reply=deferred();form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+        form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await tick();
+        check(calls.length===1,`${kind}: duplicate submission`);check(first.value===original,`${kind}: cleared before confirmation`);
+        first.value=kind==='todo'?'New draft':'https://example.invalid/new';first.dispatchEvent(new Event('input',{bubbles:true}));
+        controls.render(newer);reply.resolve(initial);await tick();
+        check(first.value!==original&&first.value.includes('New')||kind==='feeds'&&first.value.endsWith('/new'),`${kind}: late reply erased new draft`);
+        const list=host.querySelector(kind==='todo'?'[data-todo="items"]':'[data-feeds="list"]');
+        check(list.textContent.includes('Newer'),`${kind}: stale reply replaced newer snapshot`);
+        const oldNode=list.firstChild;controls.render(newer);check(list.firstChild===oldNode,`${kind}: unchanged snapshot rebuilt list`);
+        reply=deferred();form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await tick();
+        reply.reject(Object.assign(Error('synthetic'),{code:'RESULT_UNKNOWN'}));await tick();
+        check(form.querySelector('[type="submit"]').disabled,`${kind}: unknown outcome allowed immediate retry`);
+        check(first.value!=='',`${kind}: unknown outcome erased draft`);
+        check(calls.length===2,`${kind}: unknown outcome retried automatically`);
+        host.querySelector(`[data-${kind}="confirm-check"]`).click();
+        check(!form.querySelector('[type="submit"]').disabled,`${kind}: explicit check did not unlock editing`);
+        reply=deferred();form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await tick();
+        reply.reject(Object.assign(Error('synthetic'),{code:'INVALID_ARGUMENT'}));await tick();
+        check(first.value!=='',`${kind}: failed validation erased draft`);
+        check(!form.querySelector('[type="submit"]').disabled,`${kind}: validation failure blocked correction`);
+        reply=deferred();form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await tick();
+        reply.reject(Object.assign(Error('synthetic'),{code:'CANCELLED'}));await tick();
+        check(form.querySelector('[type="submit"]').disabled,`${kind}: cancellation without readback allowed immediate retry`);
+        check(first.value!=='',`${kind}: cancellation erased draft`);
+        host.querySelector(`[data-${kind}="confirm-check"]`).click();
+        reply=deferred();form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));await tick();
+        reply.resolve(newer);await tick();
+        check(first.value==='',`${kind}: confirmed unchanged draft was not cleared`);
+        if(kind==='feeds')check(form.elements.title.value==='',`${kind}: confirmed name was not cleared`);
+        host.remove();
+      }
+      await exercise('todo',mountTodoControls,{items:[],notifications:[],sessionAllowed:true,reason:'ready'},
+        {items:[{id:'new',title:'Newer task',status:'open'}],notifications:[],sessionAllowed:false,reason:'new'});
+      await exercise('feeds',mountFeedsControls,{subscriptions:[],sessionAllowed:true,reason:'ready'},
+        {subscriptions:[{id:'new',title:'Newer feed',sensitivity:'public'}],sessionAllowed:false,reason:'new'});
+      const calendarRoot=document.createElement('div');document.body.append(calendarRoot);const calendarCalls=[];
+      const calendar=mountCalendarControls(calendarRoot,async(name,payload)=>{
+        calendarCalls.push({name,payload});
+        return name==='calendar.read'?{taskId:'synthetic-task',state:'created'}:{taskId:'synthetic-task',state:'cancelled'};
+      });
+      calendar.render({configured:true,readAvailable:true,reason:'synthetic'});
+      const advanced=calendarRoot.querySelector('[data-calendar="read-controls"]');
+      check(advanced.tagName==='DETAILS'&&!advanced.open,'calendar identifier is not an advanced action');
+      advanced.open=true;calendarRoot.querySelector('[data-calendar="event"]').value='synthetic-event';
+      calendarRoot.querySelector('[data-calendar="read"]').click();await tick();
+      calendarRoot.querySelector('[data-calendar="cancel"]').click();await tick();
+      check(calendarCalls[0]?.name==='calendar.read'&&calendarCalls[0].payload.externalId==='synthetic-event','calendar read route changed');
+      check(calendarCalls[1]?.name==='calendar.cancel','calendar stop route changed');
+      calendar.close();calendarRoot.remove();
+    });
+    const oldConfig=fs.readFileSync(path.join(env.PA_USER_DATA_DIR,'coding-workspace.json'));
+    await app.close();app=await launch();watchErrors(app);
+    const restarted=await until(()=>app.windows().find(page=>page.url().includes('mode=orb')),'restart did not open');
+    await restarted.waitForSelector('.orb-button');
+    await restarted.evaluate(()=>window.desktop.invoke('admin.open',{page:'settings'}));
+    const reopenedAdmin=await until(()=>app.windows().find(page=>page.url().includes('mode=admin')),'settings did not reopen');
+    await reopenedAdmin.waitForSelector('.primary-nav');
+    const restored=await reopenedAdmin.evaluate(()=>window.desktop.invoke('snapshot'));
+    assert.equal(restored.value.coding.configured,true);assert.equal(restored.value.coding.displayName,'Workspace');
+    assert.equal(restored.value.coding.selectionAvailable,false);
+    assert.equal(restored.value.modelApi.harness.enabled,true);assert.equal(restored.value.modelApi.harness.maxExecutorSteps,32);
+    assert.equal(restored.value.modelApi.harness.context.enabled,false);assert.equal(restored.value.modelApi.harness.events.enabled,false);
+    assert.deepEqual(fs.readFileSync(path.join(env.PA_USER_DATA_DIR,'coding-workspace.json')),oldConfig,'restart replaced existing workspace configuration');
+    assert.deepEqual(fs.readdirSync(path.join(env.PA_USER_DATA_DIR,'Workspace')),[]);
+    assert.deepEqual(errors,[]);
+    console.log('普通设置导航、真实 Main 授权路由及延迟/失败输入保留：通过');
+  }finally{await app.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

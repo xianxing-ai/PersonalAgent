@@ -117,15 +117,17 @@ import {prepareNativeDesktopComponent,nativeDesktopExecutable} from './native-de
 import {createWorkspacePatchRecoveryAction} from './workspace-patch-recovery-action.js';
 import {createDesktopReferenceHost} from './reference-tools-host.js';
 import {createInstalledSkillsHost} from './installed-skills-host.js';
-import {createRemoteMcpConfig} from './remote-mcp-config.js';
-import {createDesktopRemoteMcpHost} from './remote-mcp-host.js';
+import {createRemoteMcpCompetitionComposition} from './remote-mcp-competition.js';
 import {createRemoteMcpManagement} from './remote-mcp-management.js';
+import {createRemoteMcpRegistry} from './remote-mcp-registry.js';
+import {createDesktopRemoteMcpServices} from './remote-mcp-services.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createPublicReferenceQuestionConsent} from './public-reference-question.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createF20WorkflowWorkerPorts} from './f20-workflow-worker-ports.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
@@ -311,6 +313,7 @@ let runtimeApplication;
 let referenceApplication;
 let authorizationQuestionHost;
 let nativeExecutionHost,localAuthorizationOnly=false;
+let defaultWorkspaceState={configured:false,selectionAvailable:false,reason:'编程工作区尚未装配'};
 let authorizationIntentHost;
 const authorizationQuestionPort=Object.freeze(Object.fromEntries([
   'prepare','prepareExport','currentRequirement','authorizeExport','authorizeConsumedExport','assertConsumedResult','deriveMailBatch','deriveHostIntent','readResourceGeneration','rotateResourceGeneration',
@@ -328,7 +331,7 @@ let memoryLearningHost,learningApplication,learningStore;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
 let installedSkillsHost;
-let remoteMcpConfig,remoteMcpHost,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
+let remoteMcpConfig,remoteMcpHost,remoteMcpServices,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
 let voiceInput;
@@ -831,7 +834,7 @@ function snapshot(surface) {
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
     computerControl:computerControlSnapshot(surface),
-    coding: {...(codingWorkspace?.snapshot() ?? {configured:false,reason:'编程工作区尚未装配'}),
+    coding: {...(codingWorkspace?.snapshot() ?? defaultWorkspaceState),
       independentReview:f15ReviewSnapshot(),f20:codingWorkspace?.readF20CaseConfiguration?.()??{configured:false}},
     reference:surface ? undefined : referenceHost?.snapshot(),
     agentArts: cloudSettings,
@@ -967,7 +970,6 @@ function windowFor(mode, bounds, options = {}) {
     if (mode === 'orb') placeOrb(win, win.getBounds());
     if (centerOnPresent) win.center();
     if (mode === 'panel') applyShape(win, 40);
-    if (mode === 'workspace') win.maximize();
     if (mode !== 'panel') win.show();
     publish();
   };
@@ -1053,7 +1055,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: false, hasShadow: false, minWidth: 600, minHeight: 400});
+    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
   admin.on('closed', () => { mailMonitorPreparation.cancel(); admin = undefined; });
 }
 
@@ -1263,7 +1265,7 @@ async function openWorkspace() {
     try{weatherCardHost.refresh();}catch{/* Preserve the unavailable state; never substitute a provider. */}
   }
   await hidePanel();
-  if (workspace && !workspace.isDestroyed()) { workspace.maximize(); workspace.show(); workspace.focus(); publish(); return; }
+  if (workspace && !workspace.isDestroyed()) { if(workspace.isMinimized())workspace.restore(); workspace.show(); workspace.focus(); publish(); return; }
   const area = screen.getDisplayMatching(orb.getBounds()).workArea;
   const width = Math.min(1280, area.width - 32), height = Math.min(820, area.height - 32);
   workspace = windowFor('workspace', {width, height, x: area.x + Math.round((area.width-width)/2), y: area.y + Math.round((area.height-height)/2)},
@@ -2252,6 +2254,7 @@ async function initializeRuntime() {
       });
       const commandHelper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
       codingWorkspace = createWorkspaceConfigHost({userData:app.getPath('userData'),safeStorage,
+        defaultWorkspace:path.join(app.getPath('userData'),'Workspace'),
         question:authorizationQuestionPort,createWorkspaceCommandTool,
         readHarnessVersions:readDesktopHarnessVersions,
         patchHelperScriptPath:process.env.PA_CODING_PATCH_HELPER_SCRIPT,
@@ -2495,7 +2498,7 @@ async function initializeRuntime() {
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...(workflowGraphComposition.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
-        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
+        ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2526,6 +2529,8 @@ async function initializeRuntime() {
       // unregistered; engine reports unavailable (no Fake ASR / silent success).
       const voiceFinalTranscript = resolveDesktopVoiceFinalTranscript();
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
+      const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
+        readApplication:()=>runtimeApplication,question:authorizationQuestionPort});
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         wikiImport:wikiImportHost.runtimeOptions,
@@ -2679,11 +2684,13 @@ async function initializeRuntime() {
             .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
+          ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
           ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_|workflow\.host\.f09_)/u.test(scope.toolName),
         prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
+          await remoteMcpCompetition.prepare(scope);
           if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
           if(phase==='preflight'&&(/^computer\.desktop\./u.test(proposal?.toolName??'')||proposal?.toolName==='computer.vision.inspect'))await windowsControlHost?.prepareToolPresence({taskId,deadline,signal});
           await computerVisionHost?.prepareExport(scope);
@@ -2735,8 +2742,8 @@ async function initializeRuntime() {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[])]})),
-          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[])],
+            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability]})),
+          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -3569,6 +3576,10 @@ async function action(event, name, payload) {
       totalFailures: report.totalFailures};
   }
   if (name === 'admin.open') { openAdmin(payload?.page); return; }
+  if (name === 'conversation.open') {
+    if (sender !== admin || payload !== undefined || !panel || panel.isDestroyed()) throw Error('对话面板不可用');
+    openPanel(true); return {opened:true};
+  }
   if (name === 'task.openConversation') {
     if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('任务定位窗口不可信');
     return openTaskConversation({payload,tasks:{get:id=>tasks.get(id)??runtimeApplication?.runtime.getTask(id)},conversations,sourceSurface:taskSurface,openPanel:()=>openPanel(true),openWorkspace,publish});
@@ -4746,6 +4757,15 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  if(competitionMode&&!syntheticMvp) {
+    try {
+      const created=initializeDefaultWorkspace({userData:app.getPath('userData'),
+        workspace:path.join(app.getPath('userData'),'Workspace'),safeStorage});
+      defaultWorkspaceState=created
+        ? {configured:true,selectionAvailable:false,displayName:'Workspace',reason:'默认文件夹已准备；连接 AI 后装配工具，写入仍需原授权'}
+        : readSavedWorkspaceStatus({userData:app.getPath('userData'),safeStorage});
+    } catch {defaultWorkspaceState={configured:false,selectionAvailable:false,reason:'默认工作文件夹不可用；连接 AI 后可选择其他目录'};}
+  }
   agentArtsObservationConfig = createAgentArtsObservationConfig({
     userData: app.getPath('userData'), safeStorage});
   if(competitionMode&&!fakeMode)weatherCardHost=createWeatherCardHost({userData:app.getPath('userData'),getApplication:()=>runtimeApplication,
@@ -4762,12 +4782,14 @@ app.whenReady().then(async () => {
   });
 
   if(competitionMode) {
-    remoteMcpConfig=createRemoteMcpConfig({userData:app.getPath('userData'),safeStorage});
-    remoteMcpHost=createDesktopRemoteMcpHost({config:remoteMcpConfig,readRuntime:()=>runtimeApplication?.runtime,confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    const registry=createRemoteMcpRegistry({userData:app.getPath('userData'),safeStorage});
+    remoteMcpServices=await createDesktopRemoteMcpServices({registry,readRuntime:()=>runtimeApplication?.runtime,
+      confirmConnection:request=>remoteMcpManagement?.confirmConnection(request)??false});
+    ({config:remoteMcpConfig,host:remoteMcpHost}=remoteMcpServices.get('legacy'));
     remoteMcpManagement=createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner:()=>admin,
       confirmAuthorization:request=>confirmApplicationAuthorization('remoteMcp.configure',request.payload,request),
       focusAuthorizationQuestion:focusRemoteMcpAuthorizationQuestion,
-      config:remoteMcpConfig,host:remoteMcpHost,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
+      config:remoteMcpConfig,host:remoteMcpHost,services:remoteMcpServices,application:()=>runtimeStartup.snapshot().state==='ready' && !runtimeClosed?runtimeApplication:undefined,client:()=>client,
       namespace:desktopHost.userNamespace,onUpdate:publish});
   }
   agentArtsModels=createAgentArtsModelSettings({configuration:agentArtsConfig,readCatalog:async({deadline,signal})=>{
@@ -4937,7 +4959,7 @@ app.whenReady().then(async () => {
       event.preventDefault();
       if(!remoteMcpClosing) {
         remoteMcpManagement.close();
-        remoteMcpClosing=remoteMcpHost.dispose().then(()=>{remoteMcpConfig.dispose();remoteMcpClosed=true;app.quit();})
+        remoteMcpClosing=remoteMcpServices.dispose().then(()=>{remoteMcpClosed=true;app.quit();})
           .catch(()=>{remoteMcpClosing=undefined;reportQuitFailure('远程 MCP 关闭未确认，请先断开连接后再退出');});
       }
       return;

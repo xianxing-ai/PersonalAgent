@@ -31,3 +31,10 @@ section h2 {margin:0 0 8px}
   form#settings,section {padding:14px}
   form#settings > button {align-self:stretch}
 }
+
+/* Match the main windows' solid glass hierarchy without changing preference scope. */
+:root {--bg:#e9ebee;--fg:#20242a;--line:rgba(29,35,44,.14);--card:#fafbfc;--rim:rgba(255,255,255,.9)}
+:root[data-theme=dark] {--bg:#111215;--fg:#edf0f5;--line:rgba(255,255,255,.11);--card:#25262b;--rim:rgba(255,255,255,.10)}
+form,section {border-radius:16px;box-shadow:inset 0 1px 0 var(--rim),0 8px 24px -16px rgba(0,0,0,.25)}
+button,select {border-radius:9px;box-shadow:inset 0 1px 0 var(--rim)}
+@media(forced-colors:active) {form,section,button,select {box-shadow:none;border:1px solid CanvasText}}
