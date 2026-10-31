@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import {Client} from '@personal-agent/client';
-import {createRuntimeApplication,createDesktopSubagentDispatchTool,createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured} from '../dist/application.js';
+import {createRuntimeApplication,createDesktopSubagentDispatchTool,createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured,
+  readConfiguredWorkflowBinding} from '../dist/application.js';
 
 // Synthetic F13 probe/image/completion ports. This exercises the actual Runtime,
 // Policy and HostBridge, and does not assert OS, cloud, quota or recovery acceptance.
@@ -113,7 +114,40 @@ for(const [configured,unknown] of [[true,false],[false,false],[true,true]])test(
   const tools=[f.tool,createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,scoped)=>app.runDefaultSubagentWorker(subtask,worker,scoped)})];
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-configured-worker',
-    coordinationBinding:'synthetic-deployment',tools,configuredWorkflowWorkers:[{...f.options,...(!configured?{verifyCompletion:undefined}:{})}],
+    coordinationBinding:'synthetic-deployment',tools,configuredWorkflowWorkers:[{...f.options,verifyCompletion:configured?async input=>{
+      const scope={taskId:input.taskId,workflowId:'F13',sessionId:input.state.sessionId,signal:input.signal};
+      const original=readConfiguredWorkflowBinding(app,scope);assert.deepEqual(original.input,{taskId:'synthetic-target'});
+      assert.equal(original.configurationVersion,'synthetic-v1');assert.equal(original.deadline,input.deadline);
+      assert.equal(original.confirmedOperations.length,1);assert.equal(original.confirmedOperations[0].nodeId,'F13_N02');
+      assert.equal(original.confirmedOperations[0].readback.task.state,'succeeded');
+      assert.ok(Object.isFrozen(original));assert.ok(Object.isFrozen(original.confirmedOperations[0].readback));
+      assert.throws(()=>{original.input.taskId='replaced';},TypeError);
+      assert.equal(readConfiguredWorkflowBinding(app,{...scope,workflowId:'F07'}),undefined);
+      assert.equal(readConfiguredWorkflowBinding(app,{...scope,sessionId:'foreign-session'}),undefined);
+      const aborted=new AbortController();aborted.abort();assert.throws(()=>readConfiguredWorkflowBinding(app,{...scope,signal:aborted.signal}),{code:'CANCELLED'});
+      const loop=app.runtime.loadCheckpoint(scope.taskId,'competition-loop');
+      const namespace='owned-workflow:configured:'+hash([f.options.toolName,loop.pending.proposalId]);
+      const bindingKey=namespace+':binding',graphKey=namespace+':graph';
+      const binding=app.runtime.loadCheckpoint(scope.taskId,bindingKey),graph=app.runtime.loadCheckpoint(scope.taskId,graphKey);
+      for(const changed of [{...binding,configurationVersion:'changed'}, {...binding,descriptors:[]}]){
+        app.runtime.saveCheckpoint(scope.taskId,bindingKey,changed);
+        assert.throws(()=>readConfiguredWorkflowBinding(app,scope),{code:'REVISION_CONFLICT'});
+        app.runtime.saveCheckpoint(scope.taskId,bindingKey,binding);
+      }
+      app.runtime.saveCheckpoint(scope.taskId,graphKey,{...graph,input:{taskId:'replaced'}});
+      assert.throws(()=>readConfiguredWorkflowBinding(app,scope),{code:'REVISION_CONFLICT'});
+      app.runtime.saveCheckpoint(scope.taskId,graphKey,graph);
+      const operation=original.confirmedOperations[0],parentKey='coding-repair:parent';
+      const parent=app.runtime.loadCheckpoint(operation.localTaskId,parentKey);
+      app.runtime.saveCheckpoint(operation.localTaskId,parentKey,{...parent,taskId:'foreign-parent'});
+      assert.throws(()=>readConfiguredWorkflowBinding(app,scope),{code:'UNAUTHORIZED'});
+      app.runtime.saveCheckpoint(operation.localTaskId,parentKey,parent);
+      app.runtime.saveCheckpoint(scope.taskId,'competition-loop',{...loop,pending:{...loop.pending,proposalId:'different-proposal'}});
+      assert.equal(readConfiguredWorkflowBinding(app,scope),undefined);
+      app.runtime.saveCheckpoint(scope.taskId,'competition-loop',loop);
+      assert.deepEqual(readConfiguredWorkflowBinding(app,scope),original);
+      return f.options.verifyCompletion(input);
+    }:undefined}],
     coordination:{execute:async request=>{cloud.push(request);
       if(app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation)
         return {kind:'text',text:'Synthetic configured continuation',verification:'unverified'};

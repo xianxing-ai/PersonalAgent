@@ -42,6 +42,22 @@ export interface RuntimeConfiguredWorkflowCapability extends CoordinationWorkerC
   isActive(taskId:string):boolean;
   pendingHostTask(taskId:string):TaskSnapshot|undefined;
   assertResumeAllowed(taskId:string):void;
+  readBinding(scope:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined;
+}
+export interface RuntimeConfiguredWorkflowBindingScope {taskId:string;workflowId:string;sessionId:string;signal:AbortSignal;}
+export interface RuntimeConfiguredWorkflowBinding {
+  readonly input:unknown;readonly sessionId:string;readonly deadline:string;
+  readonly configurationVersion:string;readonly configurationDigest:string;
+  readonly confirmedOperations:readonly {readonly nodeId:string;readonly operationId:string;readonly localTaskId:string;
+    readonly toolName:string;readonly toolVersion:string;readonly result:unknown;readonly readback:HostToolTaskReadback}[];
+}
+/** Host-only read. Runtime selects the current registered worker from the original pending proposal. */
+export function readConfiguredWorkflowBinding(application:Pick<RuntimeApplication,'readConfiguredWorkflowBinding'>,
+  scope:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined {
+  return application.readConfiguredWorkflowBinding(scope);
+}
+function immutable<T>(value:T):T {
+  if(value&&typeof value==='object'){for(const item of Object.values(value))immutable(item);Object.freeze(value);}return value;
 }
 const strictObject=(schema:unknown)=>plain(schema)&&schema.type==='object'&&schema.additionalProperties===false;
 export function runtimeConfiguredWorkflowConfigured(options:RuntimeConfiguredWorkflowOptions|undefined):options is RuntimeConfiguredWorkflowOptions {
@@ -122,6 +138,48 @@ export function createRuntimeConfiguredWorkflowCapability(application:RuntimeApp
     if(application.runtime.getTask(taskId).cancelRequested||Date.now()>=Date.parse(deadline)||!graph||graph.pendingSend
       ||!host||!['succeeded','failed','cancelled'].includes(host.state))fail('RESULT_UNKNOWN','Original graph operation requires reconciliation');
   }
+  function readBinding(request:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined {
+    if(request.workflowId!==workflowId||!isActive(request.taskId))return;
+    const proposal=pending(request.taskId)!.pending!,namespace=key(proposal);
+    const bound=application.runtime.loadCheckpoint(request.taskId,namespace+':binding') as {
+      workflowId?:string;configurationVersion?:string;deadline:string;input:unknown;descriptors?:ToolDescriptor[]};
+    const graph=application.runtime.loadCheckpoint(request.taskId,namespace+':graph') as Graph|undefined;
+    if(!graph||graph.sessionId!==request.sessionId)return;
+    const scope={taskId:request.taskId,deadline:bound.deadline,signal:request.signal};active(scope);
+    validateToolValue(options.requestSchema,proposal.arguments);validateToolValue(options.inputSchema,bound.input);
+    if(bound.workflowId!==workflowId||bound.configurationVersion!==options.configurationVersion||graph.version!==1
+      ||graph.bindingId!==options.image.bindingId||!isDeepStrictEqual(graph.input,bound.input)
+      ||!isDeepStrictEqual(bound.descriptors,descriptors(scope)))fail('REVISION_CONFLICT','Original configured graph binding changed');
+    const confirmedOperations=Object.values(graph.confirmedOperations??{}).map(record=>{
+      const binding=application.runtime.loadCheckpoint(scope.taskId,'owned-workflow:operation:'+record.operationId) as
+        {taskId?:string;workflowId?:string;sessionId?:string;localTaskId?:string;proposal?:Proposal}|undefined;
+      const parent=application.runtime.loadCheckpoint(record.localTaskId,'coding-repair:parent') as {taskId?:string;operationId?:string}|undefined;
+      const intent=application.runtime.loadCheckpoint(scope.taskId,'coding-repair:host:'+record.operationId) as
+        {localTaskId?:string;request?:{toolName?:string;toolVersion?:string;arguments?:unknown;deadline?:string;commandId?:string}}|undefined;
+      const hostIntent=application.runtime.loadCheckpoint(record.localTaskId,'host-tool-intent') as
+        {toolName?:string;toolVersion?:string;arguments?:unknown;deadline?:string;commandId?:string}|undefined;
+      if(!binding?.proposal||binding.taskId!==scope.taskId||binding.workflowId!==workflowId||binding.sessionId!==graph.sessionId
+        ||binding.localTaskId!==record.localTaskId||binding.proposal.operationId!==record.operationId||binding.proposal.nodeId!==record.nodeId
+        ||binding.proposal.toolName!==record.toolName||!getOwnedWorkflowTemplate(workflowId)!.nodes.some(node=>node.id===record.nodeId)
+        ||parent?.taskId!==scope.taskId||parent.operationId!==record.operationId||intent?.localTaskId!==record.localTaskId)
+        fail('UNAUTHORIZED','Original graph source operation binding changed');
+      for(const original of [intent.request,hostIntent])if(!original||original.commandId!==record.operationId||original.toolName!==record.toolName
+        ||original.toolVersion!==binding.proposal.toolVersion||original.deadline!==scope.deadline
+        ||!isDeepStrictEqual(original.arguments,binding.proposal.arguments))fail('UNAUTHORIZED','Original graph source intent changed');
+      const readback=application.readHostToolTask(record.localTaskId),execution=application.runtime.readToolExecutions(record.localTaskId)
+        .find(item=>item.evidenceId===readback.confirmed?.runId);
+      if(readback.task.state!=='succeeded'||readback.task.cancelRequested||readback.commandId!==record.operationId
+        ||readback.toolName!==record.toolName||readback.toolVersion!==binding.proposal.toolVersion
+        ||!readback.confirmed?.evidenceRefs.includes(readback.confirmed.runId)||!isDeepStrictEqual(readback.confirmed.result,record.result)
+        ||!execution||execution.state!=='confirmed'||execution.policyDecision!=='allow'||!execution.executionStarted
+        ||execution.toolName!==record.toolName||execution.toolVersion!==binding.proposal.toolVersion
+        ||!application.runtime.matchesToolExecutionInput(execution,{arguments:binding.proposal.arguments,scopeRef:execution.evidenceId}))
+        fail('UNAUTHORIZED','Original graph source execution is not confirmed');
+      return {...record,nodeId:record.nodeId!,toolVersion:binding.proposal.toolVersion,readback};
+    });
+    return immutable(structuredClone({input:bound.input,sessionId:graph.sessionId,deadline:scope.deadline,
+      configurationVersion:options.configurationVersion,configurationDigest,confirmedOperations}));
+  }
   const capability:CoordinationWorkerCapabilityPort={accepts,dispatch:async(proposal,context)=>{
     if(!accepts(proposal))fail('UNSUPPORTED_CAPABILITY','Unknown configured graph');
     validateToolValue(options.requestSchema,proposal.arguments);
@@ -131,6 +189,7 @@ export function createRuntimeConfiguredWorkflowCapability(application:RuntimeApp
     const registered=descriptors(scope),catalog=parseCoordinationAvailableTools(registered.map(tool=>({name:tool.name,version:tool.version,inputSchema:tool.inputSchema})));
     const namespace=key(proposal),graphKey=namespace+':graph';
     const bound={version:1,taskId:scope.taskId,deadline:scope.deadline,revision:context.revision,configurationDigest,
+      workflowId,configurationVersion:options.configurationVersion,
       proposalDigest:hash(proposal),input:structuredClone(input),descriptors:registered};
     const prior=context.loadCheckpoint(namespace+':binding');
     if(prior!==undefined&&!isDeepStrictEqual(prior,bound))fail('REVISION_CONFLICT','Original graph configuration or input changed');
@@ -200,5 +259,5 @@ export function createRuntimeConfiguredWorkflowCapability(application:RuntimeApp
       fail('UNAUTHORIZED','Original graph result receipt changed');
   }};
   return {...capability,describe:()=>({name:toolName,version:toolVersion,inputSchema:structuredClone(options.requestSchema)}),
-    available,isActive,pendingHostTask,assertResumeAllowed};
+    available,isActive,pendingHostTask,assertResumeAllowed,readBinding};
 }

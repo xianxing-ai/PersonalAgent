@@ -55,6 +55,9 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 - 新增接线方案（provisional）：除已有 F09/F15/F20 专用 worker 外，组合层可注入固定图白名单配置，由同一 Runtime worker/driver/HostBridge 执行。每项配置必须给出固定图和入口名称、模型请求及可信实际输入 Schema、工具白名单、原输入解析、可用性、当前任务检查、独立前沿验证、精确出机授权和原本地回执完成验证。模型不能提供任意 workflowId、替换工具目录或省略验证回调；未完整配置不注册。保留现有数据库与调度器，新增 checkpoint 命名空间，不修改已有 F09/F15/F20 协议。此配置端口本身不代表某图生产接线或真实验收通过。
 - F13 首条纵向的实际依赖：N02 必须经原 Gateway 调用系统观察，再分别读取真实 cloud/quota/lock 状态；N04 必须依赖宿主生命周期和原执行记录完成受信恢复。当前没有后者的公共消费端口，不能把只读诊断前缀、CPU 观察或返回 false 当整图完成。
 - 上述白名单入口已接入 `RuntimeApplicationOptions.configuredWorkflowWorkers`、原 Competition 目录/派发/审批恢复及原结果出机链。当前无 Desktop 生产配置注入。11 项 Synthetic 验证包含实际 delegated user-work、Policy/HostBridge、原审批恢复、缺提供者不注册、外来节点拒绝、云 settled 无原回执拒绝和 unknown child 禁重放；与 F09/F20/driver/optional-host 回归合计 43/43 通过，Runtime 构建及架构门禁 3/3 通过。
+- 业务宿主读取原图使用公开 `readConfiguredWorkflowBinding(application,{taskId,workflowId,sessionId,signal})`（亦为 RuntimeApplication 方法）。仅沿当前 pending proposal 选择原已配置 worker，不枚举 checkpoint；核对配置版本、输入、目录、deadline/session，并对每个已确认前驱重验原 operation/parent/intent、实际 HostTask、Policy allow 与执行 Evidence，返回深冻结快照。它是宿主只读端口，不是额外授权或出机许可。11 项 worker 测试增加版本/目录/输入/父任务/原 pending 替换、取消及快照不可变断言并通过。
+- F27 原文映射纵向：实际 `executeCoordination` 复用现有 compactor 的原文分段与回执，将原文、结构化摘要、实际选取片段的 hash 映射写入原 `competition-context:v1`；正文和原始消息 ID 不进入该元数据。原文片段、分段边界、摘要内容、receipt 和选取顺序必须吻合，摘要仍为不可信衍生数据；工具 continuation 继续使用独立原 Runtime Evidence 门禁。Desktop 已把现有同步 `readDesktopConversationContext` 接到新增 `readConversationSnapshot`，实际发送（包括凭据读取后）重读来源，编辑、撤回、reader 替换或映射替换拒绝出机。异步旧 hook 保持兼容但不宣称有最后时刻同步来源证明。新 sourceMap 是原 checkpoint 的可选字段，无数据库迁移；原活动任务若新旧映射不一致则保持原效果并拒绝继续，而非覆盖旧版本。
+- F27 当前只完成实际对话来源映射及发送消费者，7/7 本地 Synthetic 测试已通过（包括实际 HTTP adapter 的发送前门禁，网络为明确 Fake）；连同现有上下文/压缩/发送回归 133/133、Desktop 摘要宿主与 Main 组合回归 40/40、Runtime 构建通过。这不证明 F27 N05 责任/事实工具召回、N06 图检索、全图 host/guard 生产注册或真实压缩保真验收。
 
 - F02/F14/F28 Desktop 出机授权原实现比较 Promise 与 `true`，使异步同意被拒绝；现等待真实结果，并在返回前重验原任务未取消。三个回归先失败，修复后通过。
 - F14/F28 Desktop 当前任务检查曾拒绝已成功的 host child，导致实际 receipt 阶段无法出机。现分开检查仍活动的原 graph parent 与已完成的原 host child；取消、失败或待对账 child 不获放行。两项回归先失败再通过；9/9 Desktop port 测试通过，不代表浏览器或模型服务实测。
@@ -64,6 +67,9 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 - 当前定向：Runtime 构建通过；`workflow-optional-graph-hosts`、`zemeng-graph-ports` 与 `workflow-graph-composition` 共 22/22 通过，均为本机合成边界验证。真实图、邮件/日历账号、平台评测、物理语音、独立真人签名和关机后云宿主均未据此验收，152 项仍不勾选。
 
 ## 本轮检查记录
+
+- 2026-10-31 白名单 worker 与 Desktop receipt 修复后启动的第二轮 `npm run check` exit 0，根集成 57/57；期间继续了 F27 定向开发，因此最终组合 HEAD 仍须在集成后稳定运行整仓门禁。
+- `test:runtime-application-smoke` 首次在进程身份核验失败：Windows PowerShell 默认编码损坏中文用户名路径。固定查询的 UTF-8 输出后保留原 PID/exe/startTicks 断言；同时修复启动函数失败发生在 session 返回前时未清理原实例的问题。定向 helper 与实际启动函数 13/13 通过；本次遗留隔离实例只在核对工作树 exe、启动时间、原 runner 祖先链后关闭。重跑实际 Electron + Runtime Application smoke exit 0：7 次本机 Synthetic 模型请求、2 次取消，正常退出/重启、活动任务退出阻止、模型配置与敏感值检查通过。该项是 Local profile 产品回归，不是 AgentArts 或 IMAGE28 真实云验收。
 
 - 2026-10-31 接管修复基线 `49f0467b`（含 main `e7d7c7e7`）：在独立工作树、完整替换短 PATH、OpenSSL/.NET 8/PowerShell 及工作树外 TEMP 环境运行 `npm run check`，exit 0；根集成 57/57。该运行开始于通用白名单 worker 修改前；新增白名单 API 的后续完整 check 仍待集成运行，不能以并行期间的旧构建覆盖新改动。
 

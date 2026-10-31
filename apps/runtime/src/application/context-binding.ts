@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {MAX_COORDINATION_GOAL_CHARACTERS,ProtocolError} from '@personal-agent/contracts';
+import type {bindF27ContextSourceMap} from './f27-context-source-map.js';
 
 export const COMPETITION_CONTEXT_CHECKPOINT = 'competition-context:v1';
 export const COORDINATION_GOAL_CHARACTER_LIMIT = MAX_COORDINATION_GOAL_CHARACTERS;
@@ -24,6 +25,7 @@ export interface CompiledContextInput {
   readonly messages: readonly {id:string;role:string;content:string;taskId?:string}[];
   readonly privateBinding?: unknown;
   readonly compactionReceipt?: unknown;
+  readonly sourceMap?:ReturnType<typeof bindF27ContextSourceMap>;
 }
 
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex');
@@ -74,6 +76,7 @@ export function bindCompiledContext(input: CompiledContextInput, budget?: Coordi
         .map(message=>digest(JSON.stringify([message.id,message.taskId??null])))},
     ...(input.privateBinding === undefined ? {} : {privateBindingDigest:digest(JSON.stringify(input.privateBinding))}),
     ...(input.compactionReceipt === undefined ? {} : {compactionReceiptDigest:digest(JSON.stringify(input.compactionReceipt))}),
+    ...(input.sourceMap===undefined?{}:{sourceMap:structuredClone(input.sourceMap)}),
     budget:measureCompiledGoal(input.compiledGoal,budget)};
 }
 

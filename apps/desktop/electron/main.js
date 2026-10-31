@@ -2557,6 +2557,7 @@ async function initializeRuntime() {
             return (await privateConsumption.prepare({...scope,goal:scope.publicGoal})).goal;
           },
           readConversationContext:readDesktopConversationContext,
+          readConversationSnapshot:readDesktopConversationContext,
           beforeCoordinationSend:(request,scope)=>{
             cloudRequestFailureNotice = '';
             const conversationOrigin=runtimeApplication.readSubagentConversationOrigin?.(request.taskId);

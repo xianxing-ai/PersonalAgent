@@ -17,7 +17,8 @@ import {createRuntimeF09WorkflowWorkerCapability,runtimeF09WorkflowWorkerConfigu
   F09_WORKFLOW_WORKER_TOOL,F09_WORKFLOW_WORKER_VERSION} from './owned-workflow-f09-worker-capability.js';
 import type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability} from './owned-workflow-f09-worker-capability.js';
 import {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured} from './configured-workflow-worker.js';
-import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability} from './configured-workflow-worker.js';
+import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability,RuntimeConfiguredWorkflowBindingScope,
+  RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext} from './capability-context.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
@@ -64,6 +65,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
 import type {CoordinationGoalTokenBudget} from './context-binding.js';
+import {bindF27ContextSourceMap} from './f27-context-source-map.js';
 import {compactConversationContext,CONTEXT_COMPACTION_CHECKPOINT,CONTEXT_COMPACTION_COMMAND,isContextCompactionCommand} from './context-compaction.js';
 import type {RuntimeContextCompactionOptions,ContextCompactionResult,ContextCompactionScope,ContextCompactionCache} from './context-compaction.js';
 import {RuntimeCompetitionToolCatalog} from './tool-catalog.js';
@@ -479,6 +481,8 @@ export interface CoordinationInputHooks {
   goalTokenBudget?: CoordinationGoalTokenBudget;
   prepareCoordinationGoal?: (scope:CoordinationGoalScope)=>Promise<string>;
   readConversationContext?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>Promise<readonly ConversationContextMessage[]>;
+  /** Synchronous source owner, re-read at the actual send after credential awaits. */
+  readConversationSnapshot?: (scope:Omit<CoordinationGoalScope,'publicGoal'>)=>readonly ConversationContextMessage[];
   /** Fresh trusted environment/guidance data, sampled once per conversational cloud exchange.
    * It is not history or a grant; only the existing authorized goal export carries it.
    * Bodies remain transient, outside the stable conversation checkpoint. */
@@ -541,6 +545,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
   private readonly ephemeralContexts = new Map<string,{binding:ReturnType<typeof bindCompiledContext>;historyTaskIds:string[];answerTaskIds:string[];
     assertCompactionCurrent?:()=>void;sendBudget?:ReturnType<typeof measureCompiledGoal>;
+    assertSourceMapCurrent?:()=>void;
     requestContextReader?:CoordinationInputHooks['readRequestContext']}>();
   private readonly teacherRequestScopes=new WeakMap<CoordinationRequest,ProactiveTeacherScope>();
   private readonly teacherLeases=new Map<string,ProactiveTeacherScope>();
@@ -1555,6 +1560,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }catch{return undefined;}
   }
 
+  /** Trusted graph hosts read only the current pending worker's immutable original input and receipts. */
+  readConfiguredWorkflowBinding(scope:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined {
+    return this.configuredWorkflowWorkers.find(worker=>worker.isActive(scope.taskId))?.readBinding(scope);
+  }
+
   /** Read only the original active F15 host child, for task-bound approval discovery. */
   readPendingOwnedWorkflowHostTask(taskId:string):TaskSnapshot|undefined {
     try{return this.codingWorker?.pendingHostTask(taskId)??this.ownedWorkflowWorker?.pendingHostTask(taskId)
@@ -2169,9 +2179,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Conversation compaction requires a synchronous original overlay snapshot');
     const readNative=()=>this.readSubagentConversationContext({...contextScope,...(historyLimit===undefined?{}:{maxMessages:historyLimit})});
     const readCompaction=()=>conversationMessage?readNative():compaction!.readSnapshot!(compactionScope,compaction!.policy.maxSourceMessages);
-    const messages=compaction?readCompaction():conversationMessage?readNative():await hooks.readConversationContext?.(contextScope)??[];
+    const snapshotReader=hooks.readConversationSnapshot;
+    const readSources=compaction?readCompaction:conversationMessage?readNative:snapshotReader?()=>snapshotReader(contextScope):undefined;
+    const messages=readSources?readSources():await hooks.readConversationContext?.(contextScope)??[];
     this.assertInputActive(request);
     const eligible=(messages:readonly ConversationContextMessage[])=>{
+      if(!Array.isArray(messages)){
+        void Promise.resolve(messages).catch(()=>undefined);
+        throw new ProtocolError('INVALID_ARGUMENT','Conversation source snapshot must be a synchronous array');
+      }
       const ids=new Set<string>();
       return messages.filter(message=>{
         if(!nonEmptyText(message.id)||ids.has(message.id)||!['user','assistant'].includes(message.role)
@@ -2231,11 +2247,20 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
       const context=compacted?.messages??sourceContext;
       const goal=this.compileTaskConversationGoal(task.taskId,request.goal,prepared,context);
+      const selected=context.length?JSON.parse(goal).conversationContext.messages:[];
+      const sourceMap=readSources?bindF27ContextSourceMap({source:sourceContext,assembled:context,selected,
+        ...(compacted?.state==='compacted'?{receipt:compacted.receipt}:{})}):undefined;
+      const assertSourceMapCurrent=sourceMap?()=>{
+        if(hooks.readConversationSnapshot!==snapshotReader)throw new ProtocolError('REVISION_CONFLICT','Original context snapshot reader changed');
+        const current=bindF27ContextSourceMap({source:eligible(readSources!()),assembled:context,selected,
+          ...(compacted?.state==='compacted'?{receipt:compacted.receipt}:{})});
+        assertCompiledContextUnchanged(sourceMap,current);
+      }:undefined;
       const binding=bindCompiledContext({taskId:task.taskId,conversationId:task.conversationId ?? '',
         deadline:request.deadline,configurationRef:this.coordinationBinding,publicGoal:request.goal,
         preparedGoal:prepared,compiledGoal:goal,messages:context,
         privateBinding:this.readPrivateTaskBinding(task.taskId),
-        ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{})},hooks.goalTokenBudget);
+        ...(compacted?.state==='compacted'?{compactionReceipt:compacted.receipt}:{}),...(sourceMap?{sourceMap}:{})},hooks.goalTokenBudget);
       const requestContextReader=hooks.readRequestContext;
       // Typed proactive-teacher payloads keep their original parsing contract.
       const hostRequestContext:unknown=teacherScope?undefined:requestContextReader?.(contextScope);
@@ -2265,6 +2290,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.ephemeralContexts.set(leaseKey,{binding,historyTaskIds:sourceContext.flatMap(message=>message.taskId?[message.taskId]:[]),
         answerTaskIds:sourceContext.flatMap(message=>message.role==='assistant'&&message.taskId?[message.taskId]:[]),
         ...(sendBudget===undefined?{}:{sendBudget}),...(requestContextReader?{requestContextReader}:{}),
+        ...(assertSourceMapCurrent?{assertSourceMapCurrent}:{}),
         ...(compacted?.state==='compacted'?{assertCompactionCurrent:compacted.assertCurrent}:{})});
       this.assertCompetitionExportAllowed(effective);
       const result=await port.execute(effective);
@@ -4027,6 +4053,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!lease || lease.historyTaskIds.some(taskId=>this.isHistoryWithheld(taskId))
           ||lease.answerTaskIds.some(taskId=>!this.isConversationAnswerExportable(taskId,request.signal)))throw new Error();
         lease.assertCompactionCurrent?.();
+        lease.assertSourceMapCurrent?.();
         const {binding}=lease;
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(request.taskId,checkpointKey),binding);
         if(lease.requestContextReader!==this.coordinationInput?.readRequestContext)throw new Error();
