@@ -5,6 +5,7 @@ import {getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
 import {createF06TodoWorkflowPorts} from './f06-todo-workflow-ports.js';
 import {createF07CalendarWorkflowPorts} from './f07-calendar-workflow-ports.js';
 import {createF11CalendarWorkflowPorts} from './f11-calendar-workflow-ports.js';
+import {createF12ConfiguredNotificationPorts} from './f12-notification-workflow-ports.js';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 const object=(properties,required=Object.keys(properties))=>({type:'object',additionalProperties:false,properties,required});
@@ -39,7 +40,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
   const application=new Proxy({runtime},{get:(target,key)=>key==='runtime'?target.runtime:methods[key]});
   const descriptor=name=>businessTools.find(tool=>tool.descriptor?.name===name)?.descriptor;
   const operation=(bound,nodeId,toolName)=>bound.confirmedOperations.find(item=>item.nodeId===nodeId&&item.toolName===toolName);
-  const completedNode=(bound,nodeId)=>operation(bound,nodeId,['F06_N02','F07_N03','F11_N03'].includes(nodeId)?'decision.choose_candidate'
+  const completedNode=(bound,nodeId)=>operation(bound,nodeId,['F06_N02','F07_N03','F11_N03','F12_N03'].includes(nodeId)?'decision.choose_candidate'
     :['F07_N02','F11_N02'].includes(nodeId)?'calendar.events':'workflow.host.'+nodeId.toLowerCase());
   const skippedClarification=(workflowId,bound,state,nodeId)=>workflowId==='F11'&&nodeId==='F11_N04'
     &&state.result?.nodes[nodeId]?.state==='skipped'&&operation(bound,nodeId,'workflow.guard.f11_n04')?.result.state==='skipped';
@@ -125,7 +126,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       await exportBusinessResult(receipt.taskId,receipt.result,context);return receipt;
     }};
   }
-  function config(workflowId,requestSchema,requiredNames,resultSchema,frontier,complete,recheckCompletion) {
+  function config(workflowId,requestSchema,requiredNames,resultSchema,frontier,complete,recheckCompletion,prepareInput) {
     const all=[...businessTools,...tools],requiredTools=requiredNames.map(name=>({name,
       version:name==='decision.choose_candidate'?'1.0.0':all.find(tool=>tool.descriptor.name===name)?.descriptor.version}));
     if(requiredTools.some(tool=>!tool.version)){unavailable.push(workflowId.toLowerCase()+'_required_tools_unavailable');return;}
@@ -136,7 +137,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     const inputSchema=object({...requestSchema.properties,businessBindingId:text},[...requestSchema.required,'businessBindingId']);
     const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
       configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':'business-20261031-v1',
-      requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:[],sideEffect:'external_write',
+      requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:workflowId==='F12'?['/trigger']:[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
       async resolveInput(arguments_,scope){
         validateToolValue(requestSchema,arguments_);const businessBindingId=current(workflowId,scope);
@@ -163,6 +164,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
             fail('INVALID_ARGUMENT','F11 explicit update time must ascend');
         }
         runtime.saveCheckpointOnce(scope.taskId,'business-workflow:'+workflowId+':availability',{bindingId:businessBindingId,deadline:scope.deadline});
+        if(prepareInput)await prepareInput(arguments_,scope);
         current(workflowId,scope);
         return {...structuredClone(arguments_),businessBindingId};
       },
@@ -381,5 +383,62 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       });
     unavailable.push('f11_missing_decision_voice_source_unavailable');
   }else unavailable.push('f11_business_dependencies_unavailable');
+  if(['deliverRound','getDigest','getInterruptionPolicy','getLegacyPolicy','drain'].every(name=>typeof notificationHost?.[name]==='function')&&runtimeModule.createRuntimeF12ConfiguredReadHosts
+    &&runtimeModule.createRuntimeF12NotificationDeliverHost){
+    const ports=createF12ConfiguredNotificationPorts({getApplication,notificationHost,now});
+    const hostOptions={...ports,application,assertCurrent:scope=>{binding('F12',scope);ports.source(scope);},now:()=>new Date(now()),
+      authorizeExport:receiptExport('F12')};
+    addHost(runtimeModule.createRuntimeF12ConfiguredReadHosts({...hostOptions,readPolicy:ports.policy,readDigest:ports.digest,resolveAction:ports.action}));
+    const delivery=runtimeModule.createRuntimeF12NotificationDeliverHost({...hostOptions,requiredScopes:['notifications:deliver']});
+    addHost(delivery);
+    const selectedValue=(scope,bound)=>{
+      const selected=operation(bound,'F12_N03','decision.choose_candidate'),intent=selected&&runtime.loadCheckpoint(selected.localTaskId,'host-tool-intent');
+      let context;try{context=JSON.parse(intent?.arguments.context);}catch{fail('UNAUTHORIZED','F12 original decision context unavailable');}
+      const value=context.candidateValues?.find(candidate=>candidate.id===selected.result.selectedId)?.value;
+      if(!isDeepStrictEqual(value,{action:ports.action(scope),roundId:ports.source(scope).roundId}))fail('UNAUTHORIZED','F12 selected action exceeds original feed policy');
+      return value;
+    };
+    const completion=scope=>{
+      const bound=binding('F12',scope),action=ports.action(scope);selectedValue(scope,bound);
+      const expected=action==='deliver'?['selected','skipped']:['skipped','selected'];
+      if(operation(bound,'F12_N04','workflow.guard.f12_n04')?.result.state!==expected[0]
+        ||operation(bound,'F12_N05','workflow.guard.f12_n05')?.result.state!==expected[1])fail('RESULT_UNKNOWN','F12 original condition receipts unavailable');
+      if(action==='deliver'){
+        const result=operation(bound,'F12_N04','workflow.host.f12_n04')?.result;
+        if(!result)fail('RESULT_UNKNOWN','F12 original delivery receipt unavailable');
+        ports.verifyDeliveryResult(scope,result);
+        const round=ports.notificationHost.getInterruptionRound(result.roundId);
+        return {itemId:bound.input.itemId,notificationState:result.delivered?'delivered':round.state==='suppressed'?'feed_only':'failed',delivered:result.delivered};
+      }
+      const result=operation(bound,'F12_N05','workflow.host.f12_n05')?.result;
+      if(!isDeepStrictEqual(result,ports.digest(scope)))fail('REVISION_CONFLICT','F12 original unread digest changed');
+      return {itemId:bound.input.itemId,notificationState:'feed_only',delivered:false};
+    };
+    config('F12',object({itemId:text,trigger:{type:'string',enum:['event','on_demand']}}),
+      ['decision.choose_candidate','workflow.host.f12_n02','workflow.guard.f12_n04','workflow.guard.f12_n05','workflow.host.f12_n04','workflow.host.f12_n05'],
+      object({itemId:text,notificationState:{type:'string',enum:['delivered','failed','feed_only']},delivered:{type:'boolean'}}),
+      async(scope,bound)=>{
+        const originalScope={...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId},proposal=scope.proposal;
+        ports.source(originalScope);
+        if(proposal.nodeId==='F12_N02'&&proposal.toolName==='workflow.host.f12_n02')return isDeepStrictEqual(proposal.arguments,{itemId:bound.input.itemId});
+        const value=selectedValue(originalScope,bound);
+        if(['F12_N04','F12_N05'].includes(proposal.nodeId)&&proposal.toolName==='workflow.guard.'+proposal.nodeId.toLowerCase())
+          return isDeepStrictEqual(proposal.arguments,{workflowId:'F12',nodeId:proposal.nodeId,input:bound.input,
+            predecessorOutputs:{F12_N03:value},predecessorStates:{F12_N03:'completed'}});
+        if(operation(bound,proposal.nodeId,'workflow.guard.'+proposal.nodeId.toLowerCase())?.result.state!=='selected')return false;
+        return proposal.nodeId==='F12_N04'&&proposal.toolName==='workflow.host.f12_n04'
+          ?isDeepStrictEqual(proposal.arguments,ports.deliveryInput(originalScope))
+          :proposal.nodeId==='F12_N05'&&proposal.toolName==='workflow.host.f12_n05'&&isDeepStrictEqual(proposal.arguments,{itemId:bound.input.itemId});
+      },async scope=>{
+        const result=completion({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId});
+        runtime.saveCheckpointOnce(scope.taskId,'business-workflow:F12:completion',{sessionId:scope.state.sessionId,result});
+        return {result,resultSummary:'Original notification feed and durable channel outcome confirmed'};
+      },async scope=>{
+        const saved=runtime.loadCheckpoint(scope.taskId,'business-workflow:F12:completion');
+        if(!saved||!isDeepStrictEqual(saved.result,scope.value)||!isDeepStrictEqual(completion({...scope,parentTaskId:scope.taskId,sessionId:saved.sessionId}),saved.result))
+          fail('REVISION_CONFLICT','F12 completion changed during export');
+      },ports.prepareInput);
+    unavailable.push('f12_user_return_event_source_unavailable','f12_voice_delivery_unavailable');
+  }else unavailable.push('f12_notification_application_host_unavailable');
   return {tools,hosts,configuredWorkflowWorkerPorts,unavailable};
 }

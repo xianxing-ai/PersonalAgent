@@ -60,7 +60,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F10_N02:[tool('research.search')],F10_N03:[tool('research.search')],F10_N04:[tool('knowledge.search')],
   F10_N05:[host('knowledge.check_supported_claims')],F11_N02:[tool('calendar.events')],F11_N04:[host('voice.ask_question')],
   F11_N05:[host('calendar.update_and_invalidate_reminder')],F12_N02:[host('policy.quiet_hours')],
-  F12_N04:[host('notification.deliver')],F12_N05:[host('notification.deliver_when_due')],
+  F12_N04:[host('notification.deliver')],F12_N05:[host('notification.current_feed_digest')],
   F13_N02:[host('system.registered_probe')],F13_N04:[host('runtime.confirmed_recovery')],
   F14_N01:[host('desktop.current_observation')],F14_N02:[host('runtime.desktop_input_lock')],
   F14_N03:[host('desktop.registered_input')],F14_N05:[host('voice.ask_question')],F14_N06:[host('desktop.registered_submit')],
@@ -122,10 +122,10 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       dependencies:dependencies.map(nodeId=>({nodeId,
         required:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F02_N09','F06_N05','F11_N04','F11_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F02_N09','F06_N05','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
-          || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04','F12_N05',
+          || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',
             'F24_N07','F24_N08','F24_N10','F24_N11','F25_N04'].includes(node.id) ? 'write':'read',
       capabilities:mapped.map(item=>({...item})),
       inputFields:[...node.inputFields],outputFields:[...node.outputFields],

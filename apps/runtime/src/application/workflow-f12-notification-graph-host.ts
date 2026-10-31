@@ -61,7 +61,8 @@ export function createRuntimeF12NotificationDeliverHost(options?:{
   requiredScopes:readonly string[];
   verifyDeliveryBinding:(scope:Scope,input:{roundId:string;itemId:string;channel:NotificationChannel})=>Promise<boolean>;
   /** Uses the existing durable device delivery port, then reads the original attempt; unknown must not resend. */
-  resolveDeliveryReceipt:(scope:Scope,input:{roundId:string;itemId:string;channel:NotificationChannel},context:ToolContext)=>Promise<{state:'delivered'|'unknown'|'failed';evidenceRefs:readonly string[]}>;
+  resolveDeliveryReceipt:(scope:Scope,input:{roundId:string;itemId:string;channel:NotificationChannel},context:ToolContext)=>Promise<{state:'delivered'|'unknown'|'failed'|'suppressed';evidenceRefs:readonly string[]}>;
+  verifyDeliveryResult?:(scope:Scope,result:{delivered:boolean;roundId:string})=>unknown;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:{delivered:boolean;roundId:string})=>Promise<boolean>;
   now:()=>Date;
@@ -88,10 +89,11 @@ export function createRuntimeF12NotificationDeliverHost(options?:{
       if(await options.verifyDeliveryBinding(scope,bound)!==true)failOwnedHost('UNAUTHORIZED','F12 delivery lacks original binding');
       active(context,input);
       const receipt=await options.resolveDeliveryReceipt(scope,bound,context);active(context,input);
-      if(!receipt||!['delivered','unknown','failed'].includes(receipt.state)||!Array.isArray(receipt.evidenceRefs))
+      if(!receipt||!['delivered','unknown','failed','suppressed'].includes(receipt.state)||!Array.isArray(receipt.evidenceRefs))
         failOwnedHost('UNSUPPORTED_CAPABILITY','F12 delivery receipt unavailable');
-      const attempt=host.getInterruptionRound(bound.roundId)?.attempts[bound.channel];
-      if(!attempt||attempt.state!==receipt.state||!isDeepStrictEqual(attempt.evidenceRefs,receipt.evidenceRefs))
+      const round=host.getInterruptionRound(bound.roundId),attempt=round?.attempts[bound.channel];
+      if(receipt.state==='suppressed'?(round?.state!=='suppressed'||round.counted||!!attempt||receipt.evidenceRefs.length!==0)
+        :!attempt||attempt.state!==receipt.state||!isDeepStrictEqual(attempt.evidenceRefs,receipt.evidenceRefs))
         failOwnedHost('RESULT_UNKNOWN','F12 original durable device receipt unavailable');
       if(receipt.state==='unknown')failOwnedHost('RESULT_UNKNOWN','F12 original device delivery requires reconciliation');
       active(context,input);
@@ -104,10 +106,50 @@ export function createRuntimeF12NotificationDeliverHost(options?:{
     if(saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f12_n04'||saved.task.state!=='succeeded'
       ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)
       ||!isDeepStrictEqual(saved.confirmed.result,result))failOwnedHost('UNAUTHORIZED','F12 original delivery receipt unavailable');
+    options.verifyDeliveryResult?.(scope,result as {delivered:boolean;roundId:string});
     if(await options.authorizeExport(scope,structuredClone(result) as {delivered:boolean;roundId:string})!==true)
       failOwnedHost('UNAUTHORIZED','F12 delivery export denied');
     active(context);
     const current=options.application.readHostToolTask(context.taskId);
     if(!isDeepStrictEqual(current,saved))failOwnedHost('REVISION_CONFLICT','F12 delivery receipt changed during export');
+    options.verifyDeliveryResult?.(scope,result as {delivered:boolean;roundId:string});
+  }};
+}
+
+/** The F12 read/condition hosts share one exact original graph scope, never a notification send grant. */
+export function createRuntimeF12ConfiguredReadHosts(options?:{
+  application:Pick<RuntimeApplication,'runtime'>;
+  readPolicy:(scope:Scope)=>Record<string,unknown>;readDigest:(scope:Scope)=>Record<string,unknown>;
+  resolveAction:(scope:Scope)=>'deliver'|'feed_only';
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;now:()=>Date;
+}):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
+  if(!options?.application?.runtime||typeof options.readPolicy!=='function'||typeof options.readDigest!=='function'
+    ||typeof options.resolveAction!=='function'||typeof options.assertCurrent!=='function'
+    ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
+    return {tools:[],unavailable:'f12_configured_read_ports_unavailable'};
+  const runtime=options.application.runtime;
+  const specs=[{nodeId:'F12_N02',kind:'host'},{nodeId:'F12_N04',kind:'guard'},{nodeId:'F12_N05',kind:'guard'},{nodeId:'F12_N05',kind:'host'}] as const;
+  const active=(spec:typeof specs[number],context:ToolContext,args:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F12',nodeId:spec.nodeId,
+    hostToolName:'workflow.'+spec.kind+'.'+spec.nodeId.toLowerCase(),proposalArguments:args,assertCurrent:options.assertCurrent,now:options.now});
+  const read=(spec:typeof specs[number],context:ToolContext,args:unknown)=>{
+    const scope=active(spec,context,args);
+    const result=spec.kind==='guard'?{state:(options.resolveAction(scope)==='deliver')===(spec.nodeId==='F12_N04')?'selected':'skipped'}
+      :spec.nodeId==='F12_N02'?options.readPolicy(scope):options.readDigest(scope);
+    active(spec,context,args);return result;
+  };
+  const tools=specs.map(spec=>createOwnedWorkflowAdapter({...spec,sideEffect:'read',requiredScopes:['notifications:read'],
+    inputSchema:spec.kind==='guard'?{type:'object',additionalProperties:false,required:['workflowId','nodeId','input','predecessorOutputs','predecessorStates'],
+      properties:{workflowId:{const:'F12'},nodeId:{const:spec.nodeId},input:{type:'object'},predecessorOutputs:{type:'object'},predecessorStates:{type:'object'}}}
+      :{type:'object',additionalProperties:false,required:['itemId'],properties:{itemId:{type:'string',minLength:1}}},outputSchema:{type:'object'},
+    execute:async(args,context)=>read(spec,context,args)}));
+  return {tools,unavailable:null,authorizeReceipt:async({context,result})=>{
+    const intent=runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {toolName?:string;arguments?:unknown}|undefined;
+    const spec=specs.find(item=>intent?.toolName==='workflow.'+item.kind+'.'+item.nodeId.toLowerCase());
+    if(!spec)failOwnedHost('UNAUTHORIZED','F12 original read intent unavailable');
+    const scope=active(spec,context,intent?.arguments),verified=read(spec,context,intent?.arguments);
+    if(!isDeepStrictEqual(verified,result))failOwnedHost('REVISION_CONFLICT','F12 original policy, condition or feed changed');
+    if(await options.authorizeExport(scope,verified)!==true)failOwnedHost('UNAUTHORIZED','F12 original read export denied');
+    if(!isDeepStrictEqual(read(spec,context,intent?.arguments),result))failOwnedHost('REVISION_CONFLICT','F12 read changed during export');
   }};
 }
