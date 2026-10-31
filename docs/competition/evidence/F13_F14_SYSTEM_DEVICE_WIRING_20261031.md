@@ -33,6 +33,7 @@
 - 覆盖独立批准、原 N05 成功/拒绝/跳过、固定参数替换、错误原 target owner、丢失 reservation、取消、到期、原 host grant 撤销、等待导出期间撤销、出口拒绝、伪 cloud settled，以及原 click unknown 只发生一次。真实 SQLite 重启保留 unknown，原 reservation 不重建，新写仍被持久记录阻止。
 - 浏览器宿主回归使用真实生产 host 配合 Fake Playwright，证明跨 task 回调默认为拒绝、原 target 一次性、并在 attempt 等待后、实际 I/O 前重验当前受信 handoff。若原 attempt 已记而授权随后失效，保守保留未知并阻断，不猜测撤回。
 - 初次浏览器测试因 sandbox 自身 loopback `EACCES` 导致四项失败；获授权后按原代码与断言重跑通过，未放宽网络边界。完整 `npm run check` 另记录；83 项定向不替代全仓检查。
-- 实际 Engine 替换手工推进镜像后，Engine/原卡/浏览器/共享锁定向 78/78；全图包含成功、正式确认拒绝、候选分支试图跳过确认、确认期间字段变化、原参数替换、原 host 导出后的撤销/拒绝及真实 SQLite unknown 重启。后续增加观察授权撤销测试及最终全仓结果另记。
+- 实际 Engine 替换手工推进镜像后，Engine/原卡/浏览器/共享锁定向 78/78；加入原观察授权在 type/click 待批时撤销后，配置测试 22/22。全图包含成功、正式确认拒绝、候选分支试图跳过确认、确认期间字段变化、原参数替换、原 host 导出后的撤销/拒绝及真实 SQLite unknown 重启。
+- 修复提交 `d08ceb009f1872c00a9ec724526b76238af002f8` 冻结全仓检查 exit 1：6686 tests / 6639 pass / 45 skip / 2 fail（`.cache/check-f14-engine-final.log`）。Runtime 1559/1559，F14 新用例均通过。两项失败分别为旧基线 F17 文件 symlink 夹具在 Windows 普通 token 下 `EPERM`（`f16-f17-case-config-host.test.mjs:44`），及目录适配数量 `153 !== 152`（`image-workflow-catalog.test.mjs:19`）。这两处由对应协作者在主集成树修复，本树保留原失败；`&&` 后的根集成测试未执行，不能宣称本轮全绿。
 
 主装配/AgentArts 原部署及 trace、实际页面/设备整链尚未验收。F13 真实远端探针与确认恢复 provider 仍缺失；F14 仅已打开自有页面的固定表单路径，不代表任意 Windows 窗口或所有站点可用。不得据本包宣布 PR #531 已达真实验收合并条件。
