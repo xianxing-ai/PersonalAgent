@@ -132,10 +132,11 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     const panel = getPanel();
     if (!panel || panel.isDestroyed() || !panel.isVisible()) throw Error('请先打开 PersonalAgent 面板');
     const controller = new AbortController();
-    const record = {id: randomUUID(), panel, controller,conversationId,startedAt:now(),audioFrames:0,startupStage:'playback', phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
+    const record = {id: randomUUID(), panel, controller,conversationId,startedAt:now(),audioFrames:0,outputAudioFrames:0,startupStage:'playback', phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
       workRequests:new Map(),deadline: new Date(now() + SESSION_MS).toISOString()};
     const isCurrent = () => active === record && !controller.signal.aborted && now() < Date.parse(record.deadline);
     const assertCurrent = () => {if (!isCurrent()) throw Error('Live 已停止或到期');};
+    const readCapture=()=>microphoneHost.readCaptureReceipt?.({purpose:'live',deadline:record.deadline,signal:controller.signal});
     active = record; enabled = true; lastError = '';audioSendFailure=undefined; publish();
     const calls = new Map(), pendingGoals = new Map();
     try {
@@ -164,22 +165,32 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
               && question?.state==='pending' && typeof question.questionId==='string' && Number.isSafeInteger(question.revision)
               && typeof question.taskId==='string' && typeof question.sourceApprovalId==='string' && now()<Date.parse(question.expiresAt)
               ?{utteranceId:event.utteranceId,questionId:question.questionId,questionRevision:question.revision,
-                sourceTaskId:question.taskId,sourceApprovalId:question.sourceApprovalId,startedAt:new Date(now()).toISOString(),frames:record.audioFrames}
+                sourceTaskId:question.taskId,sourceApprovalId:question.sourceApprovalId,startedAt:new Date(now()).toISOString(),frames:record.audioFrames,
+                captureStart:readCapture()}
               :undefined;
           }
           if (event.type === 'speech_stopped') {
             record.userSpeaking = false;
-            if(record.questionSpeech?.utteranceId===event.utteranceId && record.audioFrames>record.questionSpeech.frames)
-              record.questionSpeech.completedAt=new Date(now()).toISOString();
+            if(record.questionSpeech?.utteranceId===event.utteranceId && record.audioFrames>record.questionSpeech.frames){
+              record.questionSpeech.completedAt=new Date(now()).toISOString();record.questionSpeech.captureEnd=readCapture();
+            }
             else record.questionSpeech=undefined;
           }
           if (event.type === 'audio') {
             record.phase = 'speaking';
+            record.outputAudioFrames++;
             command(record, {type: 'audio', data: event.data});
             try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
           }
           if (event.type === 'interrupted') {textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
-          if (event.type === 'turn_complete') {command(record, {type: 'drain'});textOutput.flush();}
+          if (event.type === 'turn_complete') {
+            const delivery=record.questionDelivery;
+            if(delivery?.state==='queued'&&delivery.textMatched&&record.outputAudioFrames>delivery.audioStart){
+              delivery.drainId=randomUUID();delivery.state='draining';
+              command(record,{type:'drain',drainId:delivery.drainId});
+            }else command(record, {type: 'drain'});
+            textOutput.flush();
+          }
           if (event.type === 'transcript') {
             const trimmed = typeof event.text === 'string' ? event.text.trim() : '';
             if (!trimmed) return;
@@ -187,6 +198,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
               fail('Live 转写缺少有效消息标识'); return;
             }
             const speech=record.questionSpeech,question=questionFor(record);
+            if(event.role==='assistant'&&event.phase==='final'&&record.questionDelivery?.state==='queued')
+              record.questionDelivery.textMatched=trimmed===CARD_ONLY_GUIDANCE;
             if(speech?.completedAt && trimmed.length<=24000 && event.role==='user' && event.phase==='final' && event.source==='input_audio'
               && event.utteranceId===speech.utteranceId && question?.state==='pending' && question.questionId===speech.questionId
               && question.revision===speech.questionRevision && question.taskId===speech.sourceTaskId
@@ -198,6 +211,11 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
                 sourceApprovalId:speech.sourceApprovalId,text:trimmed,transcriptDigest:createHash('sha256').update(trimmed).digest('hex'),
                 source:'live_input_audio',phase:'final',origin:'user',echo:'unknown',questionPlaybackVerified:false,
                 startedAt:speech.startedAt,completedAt:speech.completedAt,expiresAt:new Date(Math.min(Date.parse(question.expiresAt),Date.parse(record.deadline))).toISOString()};
+              const first=speech.captureStart,last=speech.captureEnd,current=readCapture();
+              if(first&&last&&current&&first.captureId===last.captureId&&last.captureId===current.captureId
+                &&first.authorizationId===last.authorizationId&&last.authorizationId===current.authorizationId
+                &&last.frames>first.frames&&last.bytes>first.bytes&&last.nonzeroFrames>first.nonzeroFrames)
+                record.finalUserAudio.capture={start:first,end:last};
               record.questionSpeech=undefined;
             }
             const message = {id: `${record.id}:${createHash('sha256').update(`${event.role}:${event.id}`).digest('hex')}`, sessionId: record.id,
@@ -487,6 +505,11 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
     if (message.type === 'drained') {
+      const delivery=record.questionDelivery;
+      if(delivery?.state==='draining'&&message.drainId===delivery.drainId){
+        delivery.state='delivered';delivery.completedAt=new Date(now()).toISOString();
+        delivery.audioFrames=record.outputAudioFrames-delivery.audioStart;
+      }
       textOutput.drained();
       if (record.phase === 'speaking') {record.phase = record.workingCount ? 'working' : 'listening'; publish();}
       textOutput.flush();
@@ -530,6 +553,14 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
       if(permitted!==true){if(permitted&&typeof permitted.then==='function')void Promise.resolve(permitted).catch(()=>{});return undefined;}
       return structuredClone(receipt);
     },
+    readFinalCaptureEvidence(binding) {
+      const receipt=this.readFinalUserAudio(binding),capture=receipt?.capture;
+      const current=microphoneHost.readCaptureReceipt?.({purpose:'live',deadline:binding?.deadline,signal:binding?.signal});
+      if(!capture||!current||current.captureId!==capture.end.captureId||current.authorizationId!==capture.end.authorizationId
+        ||current.frames<capture.end.frames||current.bytes<capture.end.bytes||current.nonzeroFrames<capture.end.nonzeroFrames)return undefined;
+      return structuredClone({sessionId:receipt.sessionId,utteranceId:receipt.utteranceId,transcriptDigest:receipt.transcriptDigest,
+        questionId:receipt.questionId,questionRevision:receipt.questionRevision,capture});
+    },
     trackTextTask:task=>task.conversationId===readConversationId()?textOutput.track(task)
       :{state:'unavailable',reason:'当前对话已切换',playbackVerified:false},
     observeTextTask:task=>textOutput.observe(task),
@@ -548,9 +579,23 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
         || typeof record.session?.askUserQuestion!=='function') return {state:'unavailable',accepted:false};
       try {
         const result=record.session.askUserQuestion(CARD_ONLY_GUIDANCE);
-        record.questionDelivery={state:result?.accepted===true?'queued':'unavailable',questionId:question.questionId,playbackVerified:false};
+        record.questionDelivery={state:result?.accepted===true?'queued':'unavailable',questionId:question.questionId,
+          questionRevision:question.revision,startedAt:new Date(now()).toISOString(),audioStart:record.outputAudioFrames,
+          textMatched:false,playbackVerified:false};
       } catch {record.questionDelivery={state:'unavailable',questionId:question.questionId,playbackVerified:false};}
       publish();return {...record.questionDelivery};
+    },
+    readQuestionDelivery(binding) {
+      const record=active,delivery=record?.questionDelivery,question=record&&questionFor(record);
+      if(!record||record.controller.signal.aborted||binding?.signal?.aborted||now()>=Date.parse(record.deadline)
+        ||!Number.isFinite(Date.parse(binding?.deadline))||now()>=Date.parse(binding.deadline)
+        ||record.conversationId!==binding.conversationId||delivery?.state!=='delivered'||!delivery.textMatched
+        ||!delivery.audioFrames||question?.state!=='pending'||question.questionId!==binding.questionId
+        ||question.revision!==binding.questionRevision||delivery.questionId!==binding.questionId
+        ||delivery.questionRevision!==binding.questionRevision)return undefined;
+      return Object.freeze({sessionId:record.id,questionId:delivery.questionId,questionRevision:delivery.questionRevision,
+        drainId:delivery.drainId,audioFrames:delivery.audioFrames,startedAt:delivery.startedAt,completedAt:delivery.completedAt,
+        textDigest:createHash('sha256').update(CARD_ONLY_GUIDANCE).digest('hex'),playbackVerified:false});
     },
     flushHistory() {const result = flushHistory(); publish(); return result;},
     interrupt() {

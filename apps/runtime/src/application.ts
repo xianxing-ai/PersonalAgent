@@ -41,6 +41,7 @@ export {createF01QueryBinding} from './application/workflow-f01-query-binding.js
 export {createF02PendingQuestionHost} from './application/workflow-f02-question-host.js';
 export {createF02ConfirmationHost} from './application/workflow-f02-confirmation-host.js';
 export {createF02FinalTranscriptHost} from './application/workflow-f02-transcript-host.js';
+export {createF02ControlHosts} from './application/workflow-f02-control-host.js';
 export type {F02LiveFinalReceipt} from './application/workflow-f02-transcript-host.js';
 export {createRuntimeF24ReconciliationHost} from './application/workflow-f24-reconciliation-host.js';
 export type {F24OriginalEffectBinding,F24ReconciliationResult,F24ReconciliationHostOptions} from './application/workflow-f24-reconciliation-host.js';

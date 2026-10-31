@@ -27,6 +27,8 @@ export function createF02FinalTranscriptHost(options?:{
   application:Application;questions:Pick<AuthorizationQuestions,'snapshot'|'refresh'>;requiredScopes:readonly string[];
   resolveOriginalVoice:(scope:Scope,original:Original)=>VoiceBinding|undefined;
   readFinal:(binding:VoiceBinding & {conversationId:string;deadline:string;signal:AbortSignal})=>F02LiveFinalReceipt|undefined;
+  /** Observe the already authorized original live session; never starts ASR or retries audio. */
+  waitForFinal?:(scope:Scope,context:ToolContext)=>Promise<void>;
   verifyAudioEvidence:(scope:Scope,binding:VoiceBinding,receipt:F02LiveFinalReceipt)=>boolean;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:Result)=>Promise<boolean>;now:()=>Date;
@@ -129,7 +131,7 @@ export function createF02FinalTranscriptHost(options?:{
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
     outputSchema:{type:'object',additionalProperties:false,required:['questionId','questionRevision','sessionId','utteranceId','text','transcriptDigest'],
       properties:{questionId:{type:'string'},questionRevision:{type:'integer'},sessionId:{type:'string'},utteranceId:{type:'string'},text:{type:'string'},transcriptDigest:{type:'string'}}},
-    async execute(_input,context){return read(active(context),context);}});
+    async execute(_input,context){const scope=active(context);await options.waitForFinal?.(scope,context);return read(active(context),context);}});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
     const scope=active(context),saved=application.readHostToolTask(context.taskId);
     if(saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f02_n03'||saved.task.state!=='succeeded'

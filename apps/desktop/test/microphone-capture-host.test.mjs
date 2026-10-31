@@ -20,6 +20,24 @@ function fixture(confirmAuthorization=async()=>true) {
 
 async function tick() { await new Promise(resolve => setImmediate(resolve)); }
 
+test('host-only capture evidence binds the authorized lease, exact track and nonzero frames without keeping PCM',async()=>{
+  const f=fixture(),deadline=new Date(Date.now()+60000).toISOString(),signal=new AbortController().signal;
+  const read=()=>f.host.readCaptureReceipt({purpose:'live',deadline,signal});
+  assert.equal(read(),undefined);await f.host.authorize({purpose:'live',deadline,signal});
+  const start=f.host.binding.start({onFrame(){}}),token=f.commands[0].token;
+  assert.equal(read(),undefined);f.host.receive(f.event,{type:'ready',token,trackLive:true,sampleRate:16000});
+  const sub=await start,before=read();assert.equal(before.frames,0);assert.equal(before.trackLive,true);
+  const pcm=Uint8Array.of(1,2,3,4);f.host.receive(f.event,{type:'frame',token,data:pcm});
+  assert.deepEqual([...pcm],[0,0,0,0]);const after=read();
+  assert.equal(after.captureId,before.captureId);assert.equal(after.authorizationId,before.authorizationId);
+  assert.equal(after.frames,1);assert.equal(after.bytes,4);assert.equal(after.nonzeroFrames,1);
+  assert.equal(Object.hasOwn(after,'data'),false);assert.equal(Object.hasOwn(after,'echo'),false);
+  assert.equal(f.host.readCaptureReceipt({purpose:'wake',deadline,signal}),undefined);
+  assert.equal(f.host.readCaptureReceipt({purpose:'live',deadline,signal:AbortSignal.abort()}),undefined);
+  const closing=sub.release();await tick();assert.equal(read(),undefined);
+  f.host.receive(f.event,{type:'stopped',token,tracksStopped:true});await closing;
+});
+
 for(const mode of ['read-only','workspace-write','full-access'])test(`explicit Live start in ${mode} skips the duplicate card and retains the device gate`,async()=>{
   let cards=0;
   const f=fixture(async request=>{

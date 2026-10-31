@@ -18,7 +18,7 @@ function fail(code:string,message:string):never {throw new ProtocolError(code,me
 /** Read-only observation of an existing explicit decision and already-consumed
  * question requirement. This never consumes, creates, extends or resumes a grant. */
 export function createF02ConfirmationHost(options?:{
-  application:Application;questions:Pick<AuthorizationQuestions,'snapshot'|'assertRequirement'>;
+  application:Application;questions:Pick<AuthorizationQuestions,'snapshot'|'assertRequirement'> & Partial<Pick<AuthorizationQuestions,'assertConsumedResult'>>;
   requiredScopes:readonly string[];
   /** Trusted Desktop original-operation store, never a model/voice interpretation. */
   resolveOriginalConfirmation:(scope:Scope,original:Original)=>OriginalConfirmation|undefined;
@@ -92,7 +92,8 @@ export function createF02ConfirmationHost(options?:{
       ||receipt.revision!==(prior.revision as number)+1)fail('REVISION_CONFLICT','Original F02 question revision changed');
     const question=questions.snapshot(original.conversationId).find(item=>item.questionId===receipt.questionId
       &&item.taskId===request.taskId&&item.sourceApprovalId===request.runId&&item.revision===receipt.revision&&item.state==='allowed');
-    const invocation=application.readAuthorizationQuestionInvocation(request.taskId,request.runId);
+    const invocation=application.readAuthorizationQuestionInvocation(request.taskId,request.runId)
+      ??application.readAuthorizationQuestionInvocation(request.taskId,request.runId,true);
     const owner=application.readAuthorizationQuestionBinding(request);
     let approval:ReturnType<typeof runtime.getApproval>;
     try {approval=runtime.getApproval(request.runId);}catch{return fail('UNSUPPORTED_CAPABILITY','Original F02 approval unavailable');}
@@ -103,11 +104,23 @@ export function createF02ConfirmationHost(options?:{
       ||approval.approvalId!==request.runId||approval.taskId!==request.taskId||approval.toolName!==request.toolName
       ||approval.argumentsDigest!==request.argumentsDigest||approval.state!=='allowed'||approval.revision!==(prior.approvalRevision as number)+1
       ||!grant||grant.authorizationRef!==request.runId||grant.taskId!==request.taskId||grant.toolName!==request.toolName
-      ||grant.argumentsDigest!==request.argumentsDigest||grant.usesRemaining!==1||grant.expiresAt!==approval.expiresAt
+      ||grant.argumentsDigest!==request.argumentsDigest||![0,1].includes(grant.usesRemaining??-1)||grant.expiresAt!==approval.expiresAt
       ||!Number.isFinite(Date.parse(grant.expiresAt))||Date.parse(grant.expiresAt)<=options!.now().getTime()
       ||!isDeepStrictEqual([...grant.scopes].sort(),[...approval.scopes].sort()))
       fail('UNSUPPORTED_CAPABILITY','Original F02 approved operation unavailable');
-    try {questions.assertRequirement(receipt,request,'tool',request.runId+':tool');}
+    try {
+      if(grant.usesRemaining===1)questions.assertRequirement(receipt,request,'tool',request.runId+':tool');
+      else {
+        const task=runtime.getTask(request.taskId),record=runtime.readToolExecutions(request.taskId).find(item=>item.evidenceId===request.runId);
+        if(task.cancelRequested||!['running','succeeded'].includes(task.state)||!record||record.taskId!==request.taskId
+          ||record.toolName!==request.toolName||record.toolVersion!==request.toolVersion||record.state!=='confirmed'
+          ||record.executionStarted!==true||record.policyDecision!=='allow'
+          ||!runtime.matchesToolExecutionInput(record,{arguments:invocation.arguments,scopeRef:request.runId})
+          ||!isDeepStrictEqual([...invocation.scopes].sort(),[...grant.scopes].sort())||typeof questions.assertConsumedResult!=='function')
+          fail('UNAUTHORIZED','Original consumed F02 execution unavailable');
+        questions.assertConsumedResult(receipt,request,'tool',request.runId+':tool');
+      }
+    }
     catch {fail('UNAUTHORIZED','Original F02 confirmation authority unavailable');}
     active(context);
     return {state:'approved',questionId:receipt.questionId,questionRevision:receipt.revision,
