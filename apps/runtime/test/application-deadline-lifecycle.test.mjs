@@ -6,16 +6,17 @@ import {join} from 'node:path';
 import {createRuntimeApplication} from '../dist/application.js';
 import {TaskRuntime} from '../dist/index.js';
 
-const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+const nextTurn = () => new Promise(resolve => setImmediate(resolve));
 async function until(predicate) {
   for (let i = 0; i < 200; i++) {
     if (predicate()) return;
-    await pause(5);
+    await nextTurn();
   }
   assert.fail('Application lifecycle did not settle');
 }
 
-test('production application deadline settles a noncooperative worker, preserves its terminal snapshot and releases close', async () => {
+test('production application deadline settles a noncooperative worker, preserves its terminal snapshot and releases close', async t => {
+  t.mock.timers.enable({apis:['Date','setTimeout'],now:Date.now()});
   const directory = await mkdtemp(join(tmpdir(), 'application-deadline-'));
   const path = join(directory, 'runtime.sqlite');
   let release, workerSignal;
@@ -37,6 +38,7 @@ test('production application deadline settles a noncooperative worker, preserves
     assert.equal(workerSignal.aborted, false);
     assert.equal(app.runtime.loadCheckpoint(id, 'application-deadline'), deadline);
     assert.throws(() => app.close(), {code: 'REVISION_CONFLICT'});
+    t.mock.timers.tick(250);
     await until(() => app.activeTaskCount === 0);
     const snapshot = app.runtime.getTask(id);
     assert.equal(snapshot.state, 'failed');
@@ -44,7 +46,7 @@ test('production application deadline settles a noncooperative worker, preserves
     assert.equal(workerSignal.aborted, true);
     assert.deepEqual(app.runtime.readToolExecutions(id), []);
     release({kind: 'text', text: 'Late synthetic answer', verification: 'mock'});
-    await pause(10);
+    await nextTurn();
     assert.deepEqual(app.runtime.getTask(id), snapshot);
     app.close(); closed = true;
     const reopened = new TaskRuntime(path);

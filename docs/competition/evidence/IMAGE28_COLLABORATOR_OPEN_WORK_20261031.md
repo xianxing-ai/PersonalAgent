@@ -1,5 +1,7 @@
 # IMAGE28 协作者待办清单（2026-10-31）
 
+> **临时接管**：依 [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md) 文首的用户授权，下列所有开发缺口统一由 Codex 接手；原分区用于保留来源和交接上下文。#531 仍须完成全部接线及真实验收才可合并，未满足项不得勾选为完成。
+
 > Profile：`huawei_ict_agentarts`。归属与开放缺口登记（可随分工文档合入 main）。  
 > 接线代码在 [#531](https://github.com/xianxing-ai/PersonalAgent/pull/531) / `codex/image28-full-wiring`，**接线未完成前勿合并该 PR**。  
 > 对照：[28 图工作记录](IMAGE28_FULL_WIRING_20261028.md) · [152 节点清单](IMAGE28_HOST_GUARD_CHECKLIST_20261028.md) · [接线总包](../COLLABORATOR_WIRING_PACKAGE.md) · [MODULE_ASSIGNMENTS](../../MODULE_ASSIGNMENTS.md)。  
@@ -120,7 +122,7 @@
 4. **F15**：真人 Ed25519 签名 + WinForms 目视。
 5. **F18/F19**：真实 GitHub Token 读回与 merge/close（工厂齐，口未接）。
 6. **F20**：按 [F20_WORKER_TRUST_GAPS](F20_WORKER_TRUST_GAPS_20261029.md) 改 N03 候选检查 Schema + Desktop trial 接线后，才允许 lab 注入 worker。
-7. **F22/F26**：真实 shadow / 平台部署读回端口注入。
+7. **F22/F26/F28**：真实 shadow / 平台部署读回端口、模型能力 gate；`cloudPersistent` 须有关机后的云证据，Desktop 组合按公开口接线。
 8. **整图协调**：勾选 152 与矩阵；华为优先验收。
 
 ### 不要做的

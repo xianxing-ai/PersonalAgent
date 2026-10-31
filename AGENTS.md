@@ -4,7 +4,7 @@
 > 当前设计与协作入口：[当前详细设计](docs/design/CURRENT_DESIGN_20261015.md) · [28项状态](docs/design/WORKFLOW_STATUS_20261015.md) · [当前接口目录](docs/interfaces/CURRENT_INTERFACE_CATALOG.md) · [历史图文导航](docs/design/README.md) · [具体分工与接线](docs/competition/COLLABORATOR_WIRING_PACKAGE.md) · [协作与评审规则](CONTRIBUTING.md)。具体模型、部署与调度实验以当前设计及接口目录为依据，不在长期协作规则中固定选型；架构未最终定型。每位 MOD 负责人交付实现、实际调用方接线、测试、Evidence 和文档。常规 PR 首轮须有四位协作者中任意一位非作者的有效批准，批准在后续 CI 修复提交中保留；Owner 可按下文对具体 PR 作有记录的审核例外，技术 CI 仍必须通过。四位协作者长期均衡承担审查与合并。设计不等于已实现；历史验收与作者记录保留。
 
 本文件约束在本仓库工作的开发 Agent，不是产品运行时的 Skill 或授权来源。默认用中文沟通。
-这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。
+这里维护长期有效的工作规则；模块进度、PR 编号和临时开工授权不在此重复维护。当前开发分工及临时接管安排以 [MODULE_ASSIGNMENTS](docs/MODULE_ASSIGNMENTS.md) 文首为准；下文长期分区保留为基线。
 
 ## 1. 先确认任务与事实
 
@@ -36,9 +36,9 @@
 分工概览如下；具体目录及后续调整以 MODULE_ASSIGNMENTS 为准。
 
 - `goo122`：底座、公共协议、根配置和集成，Runtime、ModelGateway/Provider、Policy/工具宿主、本地 MCP/Skills、知识与记忆；DEV-WORKFLOWS 的 MOD-33/36/37。
-- `zemeng`（GitHub：`zemeng5208`）：项目主要负责人，继续负责核心架构、认知/目标/持续决策、AgentArts/Competition、桌面、语音、Windows 与编码工具；具体模块见 MODULE_ASSIGNMENTS；DEV-WORKFLOWS 六项已交由 goo122 与 Potatos498，不承担其日常集中验收。
-- `Potatos498`：独立负责 MOD-20～26 业务连接器、业务消费接线与验证、MOD-34/35/38 的 CI 修复、测试定位和 Issue 修复链；不集中代验另外两人的模块。
-- `2511375597-lab`：仓库协作者，参与审查与合并；具体模块交付范围以 MODULE_ASSIGNMENTS 的后续明确分工为准，不在此代定。
+- `zemeng`（GitHub：`zemeng5208`）：项目主要负责人，继续负责核心架构、认知/目标/持续决策、AgentArts/Competition 云与编排、语音/Windows **原生能力**与编码工具后端；具体模块见 MODULE_ASSIGNMENTS；DEV-WORKFLOWS 六项已交由 goo122 与 Potatos498，不承担其日常集中验收。Desktop **前端与前端接线**、**MOD-10 参赛研究**已划归 `2511375597-lab`。
+- `Potatos498`：独立负责 MOD-20～26 业务连接器后端口与真实来源验收、MOD-34/35/38 的 CI 修复、测试定位和 Issue 修复链；业务设置/结果的 **UI 与 Desktop 消费接线**交 `2511375597-lab`；不集中代验另外模块。
+- `2511375597-lab`：负责**全部前端与前端接线**（Renderer/设置/工作区 UI、Desktop 组合与 IPC 消费接线、相关 smoke），以及 **MOD-10 参赛研究**（`docs/research/agentarts`、`docs/research/model-training`）；并参与审查与合并。Electron 受信设备宿主、Runtime/Policy、业务连接器实现、AgentArts 云端仍归原负责人；细则以 MODULE_ASSIGNMENTS 为准。
 
 工作包应具备唯一负责人、拥有目录、依赖、交付边界和验收方式。PR 审查与合并是四位协作者的共同职责，不因模块分工而集中交给某一人；复用现有任务记录，避免维护相互冲突的进度副本。
 
