@@ -120,7 +120,11 @@ export const SHARED_NODES = [
   {id:'EVENT',label:'外部事件与变化',subtitle:'邮件 · 日程 · 订阅 · CI',kind:'flow'},
   {id:'DECISION',label:'AgentArts Agent/Workflow',subtitle:'Competition主流程由平台构建与编排',kind:'decision'},
   {id:'MODELS',label:'ModelGateway → AA DeepSeek',subtitle:'实际参数 · 范围内工具探索',kind:'flow'},
-  {id:'POLICY',label:'现有授权与参数检查',subtitle:'沿用 Runtime / Policy；不新增限制',kind:'flow'},
+  {id:'POLICY',label:'本地批准与参数检查',subtitle:'模型只提案；禁止项先拦住',kind:'flow'},
+  {id:'CONSTRAINT',label:'不可删约束',subtitle:'否定 · 期限 · 本对话禁止侧边栏',kind:'flow'},
+  {id:'EGRESS',label:'出机闸门',subtitle:'密钥与个人信息不出机；其他隐私先问',kind:'platform'},
+  {id:'CONFLICT',label:'意见相反',subtitle:'先只读核实再问人；旧世代提案丢弃',kind:'evidence'},
+  {id:'IRREVERSIBLE',label:'发信 · 删除 · 发布',subtitle:'先确认内容；失败或未知只停下来问',kind:'flow'},
   {id:'TOOL',label:'ToolGateway',subtitle:'执行 · 稳定操作ID · 取消',kind:'flow'},
   {id:'EVIDENCE',label:'执行证据与外部读回',subtitle:'未知结果先核实',kind:'evidence'},
   {id:'VERIFY',label:'验证与必需分支汇合',subtitle:'完成条件 · 失败修复 · 部分结果',kind:'evidence'},
@@ -132,4 +136,23 @@ for(const feature of currentDesign.workflows)INTERFACE_NOTES[feature.id]=feature
 for(const link of OVERVIEW_LINKS){
  link[2]=link[2].replaceAll('独立分支并行','独立依赖分支；当前Engine串行').replaceAll('按真实依赖并行','按真实依赖；当前Engine串行').replaceAll('平台Target','平台端口（缺配置unavailable）');
 }
-OVERVIEW_LINKS.push(['USER','EVENT','user_instruction / 原话来源','flow'],['F24','EVENT','subtask_feedback / 原Scheduler wake','flow'],['EVENT','F12','durable批次 / 静默feed / 有效摘要','flow']);
+OVERVIEW_LINKS.push(
+  ['USER','EVENT','user_instruction / 原话来源','flow'],
+  ['F24','EVENT','subtask_feedback / 原Scheduler wake','flow'],
+  ['EVENT','F12','durable批次 / 静默feed / 有效摘要','flow'],
+  ['USER','CONSTRAINT','否定与期限整句保留；禁止项只来自侧边栏','flow'],
+  ['CONSTRAINT','POLICY','动作种类相同即拦住，对象含糊也拦住','flow'],
+  ['CONSTRAINT','F27','摘要碰不到否定、期限和禁止项','flow'],
+  ['F27','EGRESS','出机前分类；不确定就询问','platform'],
+  ['EGRESS','DECISION','只交出非隐私，或用户已批准的其他隐私','platform'],
+  ['POLICY','IRREVERSIBLE','发信、删除、发布离开普通执行','flow'],
+  ['IRREVERSIBLE','USER','发信和发布确认正文；大型删除先看只读用途','flow'],
+  ['USER','IRREVERSIBLE','确认绑定这份内容；改一字即失效','flow'],
+  ['IRREVERSIBLE','TOOL','确认后才执行；本轮删除只进回收站或可恢复 git','flow'],
+  ['DECISION','CONFLICT','云端要继续，本地不同意或结果未知','decision'],
+  ['POLICY','CONFLICT','本地拒绝、未知，或内容不能出机','flow'],
+  ['CONFLICT','EVIDENCE','先只读核实，不做发信删除发布','evidence'],
+  ['EVIDENCE','CONFLICT','把读到的事实带去问人','evidence'],
+  ['CONFLICT','USER','问人；沉默不是同意也不是跳过','flow'],
+  ['USER','CONFLICT','明确指向这一次冲突的跳过才跳过，否则停','flow'],
+);
