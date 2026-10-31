@@ -84,7 +84,7 @@ PersonalAgent/
 
 当前 `apps/runtime/` 同时保存 Runtime 核心和少量组合入口。核心文件不能导入具体连接器；具体连接器只允许出现在明确命名的组合文件。等后台生命周期、进程通信和安装方案经过验收后，再决定是否拆为 `packages/runtime-core/` 与 `apps/runtime-host/`，现在不创建空目录。
 
-PR #36/#37 后已有 `packages/coordination/`、`packages/goals/` 和 `packages/cognition/`，分别提供 provisional 文字编排与离线版本图/影响分析。`packages/memory/` 在 MOD-09B 重建分支提供 provisional 查询/变化流端口与进程内 Fake，但没有生产事实库或持久确认；`packages/agentarts/`、`packages/knowledge/`、`packages/mcp/`、`packages/skills/` 仍未实现生产能力。`packages/agents/` 与 `packages/models/` 只作为可选 Local Profile 代码留存，当前不新增、不扩展，也不因参赛改名或删除。
+PR #36/#37 后已有 `packages/coordination/`、`packages/goals/` 和 `packages/cognition/` 的早期增量；Memory 查询/变化流、SQLite 投影和 Knowledge、MCP、Skills 的后续受限实现与消费状态见[当前接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)。这些增量不代表整个模块或真实云端链已验收。`packages/agents/` 与 `packages/models/` 的 Local Profile 代码留存，当前不新增、不扩展独立 Local Profile，也不因参赛改名或删除。
 
 ## 3. 目录职责
 

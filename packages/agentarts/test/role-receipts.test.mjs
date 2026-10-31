@@ -27,6 +27,17 @@ test('failure stage distinguishes provider errors from JSON decoding without res
  }
 });
 
+test('invalid JSON reports only bounded response shape and stop reason without exposing model text',async()=>{
+ for(const [body,shape] of [['private-invalid-json','other'],['{"private":','object'],['```json\nprivate','fenced'],['  [private','array']]){
+  const receipts=[],provider=fixture();
+  provider.complete=async()=>({response:{kind:'final',text:body},deployment:provider.deployment,latencyMs:0,stopReason:'length'});
+  await assert.rejects(agent(provider,receipt=>receipts.push(receipt)).invoke(invocation()));
+  assert.equal(receipts.at(-1).failureStage,'response_json');
+  assert.equal(receipts.at(-1).responseJsonShape,shape);assert.equal(receipts.at(-1).responseJsonChars,body.length);
+  assert.equal(receipts.at(-1).responseStopReason,'length');assert.equal(JSON.stringify(receipts).includes('private'),false);
+ }
+});
+
 test('same-role concurrent requests sharing a requestId retain independent spans on reverse completion',async()=>{
   const provider=fixture(),completions=[],receipts=[];
   const response={response:{kind:'final',text:JSON.stringify({kind:'text',text:'private-model-output'})},

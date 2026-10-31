@@ -23,7 +23,7 @@
 | CW-07 委派/主控升级 | zemeng5208 / 04B、31 | in_progress；下一实际parent-child报告/进度/原授权内teacher建议消费 |
 | CW-08 业务连接器 | Potatos498 / 20–26 | in_progress；下一逐来源真实增量→持久sink→cursor，未选社交平台不自动开工 |
 | CW-09 通知静默频次 | Potatos498 / 23 | in_progress；下一真实渠道投递/ack，fixture静默0send及quota不作实机证明 |
-| CW-10 语音询问确认 | zemeng5208 / 13、14、15 | in_progress；下一当前参数final语音→原approval版本，物理设备和SIS经AA未验 |
+| CW-10 语音输入与控制 | zemeng5208 / 13、14、15 | in_progress；下一步核验当前会话的final输入/控制命令及物理设备；人工业务批准走原对话审批卡，完全访问按既有策略自动同意；语音不直接批准，SIS经AA未验 |
 
 以上输入消费仍由原Runtime/Policy/ToolGateway/Evidence/Scheduler负责权限和事实状态。当前接口保持provisional/unavailable；实际两条公共编码链41条Evidence、本机Laya未达150ms、协调锚点created和远端全链未验等限制见接线包。状态不是整个MOD完成声明；PR/提交由根本轮另行处理。
 
@@ -32,10 +32,10 @@
 
 goo122 具体交付 MOD-08/09 的 Wiki 适配、来源版本、事实/检索投影、受控写回、双向去重和恢复，并随工作包完成必要公共契约/Runtime/Policy 接线。zemeng 负责 MOD-27/28 与 AgentArts 公开端口消费、常驻增量修复及监管产品体验；Potatos498 的业务模块所有权不改变。
 
-独立工作包见 `design/resident-developer-agent-20261008/WIKI-MEMORY-HANDOFF.md`。新设计不等于接入实现；估算基线2026-10-08保留。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前 head 有效批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已解决后正常合并；禁止强推、直接推 main 或绕过技术检查。四人跨 PR 均衡分担审查与合并。开发、使用契约一致 Fake 和提交 PR 可独立推进。
+独立工作包见 `design/resident-developer-agent-20261008/WIKI-MEMORY-HANDOFF.md`。新设计不等于接入实现；估算基线2026-10-08保留。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已解决后正常合并；禁止强推、直接推 main 或绕过技术检查。四人跨 PR 均衡分担审查与合并。开发、使用契约一致 Fake 和提交 PR 可独立推进。
 
 <!-- current-design-20261009 -->
-> 当前协作规则（2026-10-17）：各 MOD 负责人自己接线、测试、交 Evidence；[具体十项接线包](competition/COLLABORATOR_WIRING_PACKAGE.md) · [全 MOD 清单](modules/CURRENT_MOD_WIRING_HANDOFF.md)。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前 head 有效批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已解决后正常合并；禁止强推、直接推 main 或绕过技术检查。四人跨 PR 均衡分担审查与合并。历史验收与作者保留。
+> 当前协作规则（2026-10-17）：各 MOD 负责人自己接线、测试、交 Evidence；[具体十项接线包](competition/COLLABORATOR_WIRING_PACKAGE.md) · [全 MOD 清单](modules/CURRENT_MOD_WIRING_HANDOFF.md)。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已解决后正常合并；禁止强推、直接推 main 或绕过技术检查。四人跨 PR 均衡分担审查与合并。历史验收与作者保留。
 
 版本：1.0 · 日期：2026-10-07 · 状态：只实施 Huawei ICT AgentArts Competition Profile；Local Profile 可选留存
 
@@ -75,7 +75,7 @@ DEV-WORKFLOWS 保留已授权的 Local Profile 增量范围。每个模块由自
 ## 1. 独立推进、评审与集成
 
 1. **自己完成闭环**：每人负责本模块的公开端口、实现、必要消费接线、关键验证、文档和交付。开发、验证、创建交付 PR 不需要先取得另一位协作者的批准。
-2. **独立批准与自动检查**：常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前 head 有效批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已解决后正常合并；禁止强推、直接推 main 或绕过技术检查。四人跨 PR 均衡分担审查与合并。本人阅读与设计评审按工作包需要记录，不额外要求固定两人的共同批准。自审不能代替非作者批准。
+2. **独立批准与自动检查**：常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 对具体 PR 的审核例外须留记录。拥有合并权限者（包括作者）可在最新必需技术 CI、主线同步、无冲突且阻断意见已解决后正常合并；禁止强推、直接推 main 或绕过技术检查。四人跨 PR 均衡分担审查与合并。本人阅读与设计评审按工作包需要记录，不额外要求固定两人的共同批准。自审不能代替非作者批准。
 3. **接口先行，替身可自行提供**：优先使用 main 的公开 exports、Schema 和固定版本契约。上游尚不可用时，使用或自行补齐契约一致的 Fake/Unavailable 与消费测试，独立开发和验证；缺真实服务只阻止相应真实验收结论，不阻止模块实现。
 4. **必要接线随模块交付**：获授权的工作包负责人可在自己的分支完成所需根配置、依赖锁、公开 Schema、迁移、Runtime/桌面注册和组合接线。公共区域由 goo122 长期维护，但不是其独占审批或集成槽；核心认知与 AgentArts 的长期责任仍归 zemeng。
 5. **共享文件用 Git 集成**：每人可自行使用隔离分支/工作树；不在同一物理 checkout 并发编辑。合并前基于最新 main 核对冲突和兼容，保留其他人的有效改动，不靠覆盖、强推或硬重置解决冲突。不再排队等待某位唯一集成人。
@@ -129,9 +129,9 @@ goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私�
 | MOD-19 | 打包与安装验收 | packaging、scripts/release | 已验收模块、MOD-01 | 独立安装、启动、升级、卸载和数据保留；发布授权另行处理 |
 | MOD-27 | 目标、事实与决策图谱 / PA-024 | packages/goals | MOD-02、03、09、04B | 版本化 Goal/Fact/Decision/Plan 依赖图、来源、冲突和回退；不直接读记忆数据库 |
 | MOD-28 | 持续认知与最小计划修复 / PA-025 | packages/cognition | MOD-03、04B、09、27 | 事实变化影响分析；输出 KEEP/RECHECK/REVISE 和最小差异，不直接改 TaskRuntime |
-| MOD-29 | AgentArts 云端基础、身份、MaaS 与部署 / PA-026 | packages/agentarts/src/foundation 与云资源说明 | MOD-02、03、05、16 | 第一优先；CloudAgentPort、项目/Agent/deployment 引用、Fake 和真实 API 读回；凭据不进入云提示或仓库 |
-| MOD-30 | AgentArts Agent/Workflow、知识、MCP/Skill 与工具提案 / PA-026、PA-027 | packages/agentarts/src/workflows | MOD-05、29；本地 MCP/Skills 为可选依赖 | 第一优先；云流程产生受限提案，一条部署 API 经本地 Policy/ToolGateway 和目标系统读回验收 |
-| MOD-31 | AgentArts 多 Agent 与效果评估 / PA-012、PA-027 | packages/agentarts/src/multi-agent、packages/agentarts/src/evaluation | MOD-28～30 | 角色必要性、路由、交接、预算、固定评估集、失败降级和完整 trace；不能提升本地权限 |
+| MOD-29 | AgentArts 云端基础、身份、MaaS 与部署 / PA-026 | packages/agentarts、apps/agentarts-runtime 与云资源说明 | MOD-02、03、05、16 | 第一优先；CloudAgentPort、项目/Agent/deployment 引用、Fake 和真实 API 读回；凭据不进入云提示或仓库 |
+| MOD-30 | AgentArts Agent/Workflow、知识、MCP/Skill 与工具提案 / PA-026、PA-027 | packages/agentarts/src/owned-workflows.ts 及相关 Workflow 文件、apps/agentarts-runtime | MOD-05、29；本地 MCP/Skills 为可选依赖 | 第一优先；云流程产生受限提案，一条部署 API 经本地 Policy/ToolGateway 和目标系统读回验收 |
+| MOD-31 | AgentArts 多 Agent 与效果评估 / PA-012、PA-027 | packages/agentarts、tests/manual/agentarts/evaluation | MOD-28～30 | 角色必要性、路由、交接、预算、固定评估集、失败降级和完整 trace；不能提升本地权限 |
 | MOD-32 | AgentArts 发布、API、观测与 Competition 验收 / PA-027 | packages/agentarts/src/observability、tests/manual/agentarts | MOD-03、05、19、29～31 | 第一优先；版本、部署、API 实调、profile、日志、成本、回滚、Demo 和本地执行读回证据 |
 
 zemeng 必须优先交付 MOD-29/30/32 的 Competition Golden Path，并让模块在没有 goo122 的真实数据库或未合并实现时使用 Fake Memory/Tool/Runtime 独立开发。AgentArts 成功不能直接把本地任务标为完成；Local Agent 新能力当前不作为必交项。
@@ -189,4 +189,4 @@ Windows 安装包与安装流程继续暂停。PA-019 及其他 PRD P2 项是否
 
 每个模块必须交付：目标 profile、公开入口、消费的接口版本、README、Fake/夹具、代表性验证、接入说明、已知限制和真实验证条件。当前新增工作默认以 Competition Profile 验收；只有接口冻结不等于模块完成，只有 Fake 通过也不等于真实服务可用。
 
-模块负责人从最新 main 或明确固定的依赖提交建立分支，独立完成必要集成与自审。合并必须满足任意一位非作者对当前提交的有效批准和对应检查；实际集成且达到工作包验收后才能更新 done。整体 MOD 和真实服务完成度仍按原验收范围判断。
+模块负责人从最新 main 或明确固定的依赖提交建立分支，独立完成必要集成与自审。常规 PR 合并须满足一位合资格非作者的有效批准和对应检查；后续仅修复 CI 的提交保留批准。Owner 对具体 PR 的审核例外按本文件第 1 节及 [CONTRIBUTING](../CONTRIBUTING.md) 留存记录，技术检查仍须满足；实际集成且达到工作包验收后才能更新 done。整体 MOD 和真实服务完成度仍按原验收范围判断。

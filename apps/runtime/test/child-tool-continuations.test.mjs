@@ -56,7 +56,7 @@ test('opted-in ordinary user tasks retain their original directory both within a
   });
 });
 
-async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2},environment=false}={}) {
+async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBeforeEnable=false,rootTool=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2},environment=false}={}) {
   let app,client,rootId,dispatchingTaskId;
   const requests=[],sends=[],executions=[],sockets=[],state={firstAllowed:true,extraReady:false,blockAvailability:false};
   let enteredAvailability;
@@ -80,6 +80,7 @@ async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,a
   app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-child',
     ...(environment?{coordinationInput:{beforeCoordinationSend(){},readRequestContext:()=>'{"environment":true}'}}:{}),
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',...(optIn?{continuationContext:'goal'}:{}),
+    ...(newTasks?{enableNewTaskToolContinuations:true}:{}),
     delegateUserTasks:true,competitionMaxSteps:budget,tools,
     automaticTools:[dispatch.descriptor,second,extra].map(tool=>({toolName:tool.name,toolVersion:tool.version})),
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
@@ -104,12 +105,14 @@ async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,a
     fetchImpl:async(_url,init)=>{assert.equal(transport,'https','WSS does not silently fall back');
       return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify(answer(JSON.parse(JSON.parse(init.body).query))),index:0}}),
         {headers:{'content-type':'application/json'}});}});
+  if(legacyBeforeEnable)app.enableNewTaskToolContinuations=false;
   client=new Client(app);await client.connect();
   t.after(async()=>{await until(()=>app.activeTaskCount===0);app.close();});
   const submitted=await client.call('task.submit',{goal:'Complete two bounded dependent operations, then summarize',conversationId:'original-main'},
     {idempotencyKey:'original-user-work',timeoutMs:60_000});rootId=submitted.taskId;
   await until(()=>app.activeTaskCount===0);
   const [child]=app.readSubagentTasks(rootId);assert.ok(child);
+  if(legacyBeforeEnable)app.enableNewTaskToolContinuations=true;
   assert.equal(app.runtime.getTask(child.taskId).state,'waiting_approval');assert.equal(executions.length,0);
   const originalCatalog=app.runtime.loadCheckpoint(child.taskId,'competition-tool-catalog');
   const approval=app.runtime.getApproval(`competition-tool-${child.taskId}-1`);
@@ -118,6 +121,42 @@ async function fixture(t,{transport='https',optIn=true,rootTool=false,budget=4,a
   return {app,client,rootId,childId:child.taskId,approval,originalCatalog,requests,sends,executions,state,sockets,approve,availabilityEntered,
     settle:()=>until(()=>app.activeTaskCount===0)};
 }
+
+for(const transport of ['https','wss'])test(`new delegated task pins its goal and original catalog across approval (${transport})`,async t=>{
+  const f=await fixture(t,{transport,optIn:false,newTasks:true});
+  assert.equal(f.app.usesGoalContinuation(f.rootId),true);
+  assert.equal(f.app.usesGoalContinuation(f.childId),true);
+  await f.approve();await f.settle();
+  assert.equal(f.app.runtime.getTask(f.rootId).state,'succeeded');
+  assert.equal(f.app.runtime.getTask(f.childId).state,'succeeded');
+  assert.deepEqual(f.executions.map(item=>item.toolName),[first.name,second.name]);
+  const sent=f.sends.filter(item=>item.taskId===f.childId);
+  assert.equal(sent.length,3);
+  for(const item of sent.filter(item=>item.query.continuation)) {
+    assert.equal(item.query.goal,sent[0].query.goal);
+    assert.deepEqual(item.query.availableTools,sent[0].query.availableTools);
+  }
+  assert.equal(f.requests.filter(item=>item.taskId===f.rootId)[0].availableTools,undefined);
+});
+
+test('an existing approval-waiting task keeps its legacy continuation when new-task mode is enabled',async t=>{
+  const f=await fixture(t,{optIn:false,newTasks:true,legacyBeforeEnable:true});
+  assert.equal(f.app.usesGoalContinuation(f.rootId),false);
+  assert.equal(f.app.usesGoalContinuation(f.childId),false);
+  await f.approve();await f.settle();
+  assert.equal(f.app.runtime.getTask(f.childId).state,'succeeded');
+  for(const item of f.sends.filter(item=>item.taskId===f.childId&&item.query.continuation)) {
+    assert.equal(item.query.goal,undefined);assert.equal(item.query.availableTools,undefined);
+  }
+});
+
+test('a changed persisted continuation binding cannot grant a later task a wider catalog',async t=>{
+  const f=await fixture(t,{optIn:false,newTasks:true});
+  const saved=f.app.runtime.loadCheckpoint(f.childId,'competition-continuation-context:v1');
+  f.app.runtime.saveCheckpoint(f.childId,'competition-continuation-context:v1',{...saved,taskId:f.rootId});
+  assert.throws(()=>f.app.usesGoalContinuation(f.childId),{code:'REVISION_CONFLICT'});
+  assert.equal(f.executions.length,0);
+});
 
 for(const transport of ['https','wss'])for(const environment of [false,true])test(`opt-in actual child carries its immutable initial catalog through approval and multiple tools (${transport}, environment=${environment})`,async t=>{
   const f=await fixture(t,{transport,environment});await f.approve();await f.settle();
@@ -240,4 +279,17 @@ test('goal continuation protocol has a distinct deployment binding while the old
       invokeMode:'published',workflowGoalInput:null,responseMode:'tool-proposal-json',initialRequestMode:'goal'})).digest('hex');
     assert.equal(legacy.coordinationConfigurationRef,expected);assert.notEqual(enabled.coordinationConfigurationRef,expected);
   }finally{legacy.close();enabled.close();}
+});
+
+test('new-task continuation keeps the legacy deployment identity and requires the guarded tool catalog',()=>{
+  const options={path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'binding',responseMode:'tool-proposal-json',
+    authorizationProvider:{read:async()=> 'Bearer synthetic'}};
+  assert.throws(()=>createAgentArtsRuntimeApplication({...options,enableNewTaskToolContinuations:true}),{code:'INVALID_ARGUMENT'});
+  const bindings={initialRequestMode:'goal-with-tools-json',tools:[{descriptor:second,execute:async args=>args}],
+    competitionToolAvailability:[{toolName:second.name,toolVersion:second.version,available:()=>true}],
+    competitionToolExports:[{toolName:second.name,toolVersion:second.version,exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}]};
+  const legacy=createAgentArtsRuntimeApplication({...options,...bindings});
+  const enabled=createAgentArtsRuntimeApplication({...options,...bindings,enableNewTaskToolContinuations:true});
+  try {assert.equal(legacy.coordinationConfigurationRef,enabled.coordinationConfigurationRef);}
+  finally {legacy.close();enabled.close();}
 });

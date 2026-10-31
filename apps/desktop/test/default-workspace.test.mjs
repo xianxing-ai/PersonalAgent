@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {existsSync,mkdtempSync,mkdirSync,readFileSync,readdirSync,rmSync,writeFileSync} from 'node:fs';
+import {existsSync,mkdtempSync,mkdirSync,readFileSync,readdirSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from '../electron/default-workspace.js';
@@ -19,7 +19,7 @@ test('new profile receives an app-owned writable folder and the existing host re
   assert.equal(initializeDefaultWorkspace({...f,safeStorage}),true);
   const record=JSON.parse(readFileSync(f.target,'utf8'));
   assert.equal(record.version,1);
-  assert.equal(Buffer.from(record.encrypted,'base64').toString(),f.workspace);
+  assert.equal(Buffer.from(record.encrypted,'base64').toString(),realpathSync.native(f.workspace));
   assert.deepEqual(readdirSync(f.workspace),[]);
   assert.deepEqual(readSavedWorkspaceStatus({...f,safeStorage}),{configured:true,selectionAvailable:false,displayName:'Workspace',
     reason:'已保存；连接 AI 后装配工具，写入仍需原授权'});

@@ -31,6 +31,8 @@ test('actual Main constructs original workflow/event hosts without acquiring or 
     createDesktopProactiveWorkflowApplication(options){workflowOptions=options;
       const host=createDesktopProactiveWorkflowApplication({...options,createAdapter(){descriptions++;assert.fail('No describe at construction');}});
       const acquire=host.acquireMaintenance;host.acquireMaintenance=(...args)=>{acquisitions++;return acquire(...args);};return host;},
+    createDesktopProactiveControllerHost(){return {consume:async()=>assert.fail('No controller consume at construction'),
+      readReceipt:async()=>undefined};},
     createDesktopHarnessEventsHost(options){eventOptions=options;return createDesktopHarnessEventsHost(options);},
     createDesktopProactiveConfirmedSourceRouter(){return {readHarnessSourceOrigin:()=>undefined,readHarnessSourceAuthorization:()=>undefined};},
     readDesktopDeveloperHarnessConfiguration:()=>({workspaceRef:'original',configurationRef:revision}),
