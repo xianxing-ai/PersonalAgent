@@ -20,7 +20,8 @@ function fixture({path=':memory:',unknown=false,waitCommand=false}={}){
     execute:async(args,context)=>{calls.push({name,args,taskId:context.taskId,runId:context.runId});return execute(context);}});
   const read=tool('workspace.read_text','read',{type:'object',properties:{path:{const:'synthetic-contract.json'}},required:['path'],additionalProperties:false},
     ()=>({content:'Synthetic public contract: answer(number)',source:'synthetic'}));
-  const check=tool('workspace.run_allowed_command','local_write',{type:'object',properties:{recipeId:{const:'synthetic-doc-check'}},required:['recipeId'],additionalProperties:false},
+  const check=tool('coding.repair.trial','local_write',{type:'object',properties:{candidateId:{const:'supported'},patches:{type:'array'},
+    recipeIds:{type:'array',items:{const:'synthetic-doc-check'}}},required:['candidateId','patches','recipeIds'],additionalProperties:false},
     async context=>{if(waitCommand)await new Promise((resolve,reject)=>{
       const cancel=()=>reject(new ProtocolError('CANCELLED','Synthetic command received original cancellation'));
       if(context.signal.aborted)cancel();else context.signal.addEventListener('abort',cancel,{once:true});});
@@ -31,8 +32,9 @@ function fixture({path=':memory:',unknown=false,waitCommand=false}={}){
     prepareCandidates:async context=>[
       {id:'supported',description:'Fixed Synthetic supported candidate',value:context.node.id==='F20_N01'
         ?{toolName:read.descriptor.name,toolVersion:'1.0.0',arguments:{path:'synthetic-contract.json'}}:context.node.id==='F20_N03'
-          ?{toolName:check.descriptor.name,toolVersion:'1.0.0',arguments:{recipeId:'synthetic-doc-check'}}
-          :context.node.id==='F20_N02'?{docMarkdown:'Synthetic candidate only'}:{candidate:true,published:false}},
+          ?{toolName:check.descriptor.name,toolVersion:'1.0.0',arguments:{candidateId:'supported',recipeIds:['synthetic-doc-check'],
+            patches:[{path:'synthetic-code.ts.f20-sample.ts',expectedSha256:null,edits:[],createText:'export const sample=1;'}]}}
+          :{version:1,docMarkdown:'Synthetic candidate only',sampleSnippet:'export const sample=1;'}},
       {id:'recheck',description:'Fixed Synthetic abstention',value:{},abstain:true},
     ]});
   const image={bindingId:'synthetic-fixed-image',advance:async request=>{advances.push(request.requestId);return engine.advance(request);}};
@@ -95,7 +97,7 @@ test('unknown second-graph host write stays on its original operation and is nev
     const waiting=f.app.runtime.loadCheckpoint(task.taskId,KEY).waiting,advances=f.advances.length;
     await assert.rejects(f.run(task.taskId,{resume:true}),{code:'REVISION_CONFLICT'});
     assert.deepEqual(f.app.runtime.loadCheckpoint(task.taskId,KEY).waiting,waiting);assert.equal(f.advances.length,advances);
-    assert.equal(f.calls.filter(call=>call.name==='workspace.run_allowed_command').length,1);
+    assert.equal(f.calls.filter(call=>call.name==='coding.repair.trial').length,1);
   }finally{f.app.close();}
 });
 test('changed trusted workflow identity/catalog cannot resume an original driver task',async()=>{
@@ -173,6 +175,6 @@ test('original Runtime worker cancellation reaches only its original running hos
     assert.equal(f.calls.length,2);f.app.runtime.requestCancel(task.taskId,'Synthetic original user cancellation');
     const result=await running;assert.equal(result.state,'cancelled');
     assert.equal(f.app.runtime.getTask(host.task.taskId).cancelRequested,true);
-    assert.equal(f.calls.filter(call=>call.name==='workspace.run_allowed_command').length,1);
+    assert.equal(f.calls.filter(call=>call.name==='coding.repair.trial').length,1);
   }finally{f.app.close();}
 });
