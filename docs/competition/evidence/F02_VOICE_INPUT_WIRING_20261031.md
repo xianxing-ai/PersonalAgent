@@ -29,3 +29,9 @@ Live 构造需要 `authorizeFinalRead: (binding, receipt) => f02Bundle.authorize
 - 新增检查点只保存已验证原问题输入，恢复不会选择另一问题。原卡的进程内已消费绑定或 Live 会话重启丢失时拒绝读回；未知写入保留，不重放。
 
 尚未完成：主装配验收、AgentArts 实际镜像/trace、真实 ASR 与独立回声/播报证明、真实设备上的产品整链和人工听感。当前代码与本地测试不代表 F02 或 PR #531 已完成真实验收。
+
+## 集成分支根接线（2026-10-31）
+
+`main.js` 已将原 authorizationQuestionHost、晚初始化的 Live/麦克风/voiceCommand 实例、统一精确出机许可及同一固定 ownedImage 接入工厂；Live 的最终转写读取使用该工厂的原 N03 授权校验，旧 generic N03 不重复注册。独立声学证明验证器仍缺失，worker 的真实可用性检查继续拒绝，不用管线播放完成或非零录音代替证明。
+
+Runtime 构建与 Main 语法检查通过；整合后的 F02 configured worker、Live 证据及精确出机许可测试 23/23。这些测试中的镜像、设备与声学验证器为显式 Fake，尚不能替代真实 Desktop/AgentArts 语音整链验收。

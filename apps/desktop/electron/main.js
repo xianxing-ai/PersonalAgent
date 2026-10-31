@@ -104,7 +104,8 @@ import {createToolPresenceHost} from './tool-presence-host.js';
 import {createConversationToolSurface} from './conversation-tool-surface.js';
 import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
 import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-host.js';
-import {resolveDesktopVoiceFinalTranscript} from './voice-final-transcript-host.js';
+import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
+import {createWorkflowExportConsent} from './workflow-export-consent.js';
 import {createSystemObservationConversation} from './system-observation-conversation.js';
 import {createDesktopWindowsControlHost} from './windows-control-host.js';
 import {createComputerControlLease} from './computer-control-lease.js';
@@ -349,6 +350,7 @@ const runtimeStartup = createDeferredRuntimeStartup({
   initialize: initializeProductServices,
 });
 let liveVoice;
+let f02Workflow;
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
 let wakeQuitHandled = false;
@@ -2492,11 +2494,25 @@ async function initializeRuntime() {
       const f20WorkflowWorkerPorts=agentArtsPinned&&codingWorkspace?.readF20CaseConfiguration
         ?createF20WorkflowWorkerPorts({getApplication:()=>runtimeApplication,codingWorkspace,runtimeModule,
           readHarnessVersions:()=>readDesktopHarnessVersions(),readReviewerIdentity:()=>localLaya?.readClassifierIdentity?.()}):undefined;
+      const authorizeWorkflowExport=createWorkflowExportConsent({getApplication:()=>runtimeApplication,
+        confirmAuthorization:confirmApplicationAuthorization,readDeploymentBinding:()=>{
+          const selected=agentArtsConfig.snapshot();
+          if(!selected.runtimeReady||selected.deploymentSelection!=='pinned'||!selected.deploymentVersion)return;
+          return createHash('sha256').update(JSON.stringify({binding:agentArtsConfig.binding(),version:selected.deploymentVersion,
+            transport:agentArtsConfig.readTransportPreferences()})).digest('hex');
+        }});
+      f02Workflow=agentArtsPinned?createF02WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        authorizationQuestions:authorizationQuestionHost,authorizeExport:authorizeWorkflowExport,
+        liveVoiceHost:{readFinalUserAudio:(...args)=>liveVoice?.readFinalUserAudio(...args),
+          readFinalCaptureEvidence:(...args)=>liveVoice?.readFinalCaptureEvidence(...args),
+          readQuestionDelivery:(...args)=>liveVoice?.readQuestionDelivery(...args),askCurrentQuestion:()=>liveVoice?.askCurrentQuestion()},
+        microphoneHost:{readCaptureReceipt:(...args)=>microphoneCaptureHost?.readCaptureReceipt(...args)},
+        voiceCommandHost:{prepareApproval:(...args)=>voiceCommandHost?.prepareApproval(...args)}}):undefined;
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
-        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...(workflowGraphComposition.tools??[]),
+        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...(workflowGraphComposition.tools??[]),...(f02Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
@@ -2525,10 +2541,6 @@ async function initializeRuntime() {
       // verifiers via resolveDesktopWorkflowShadowRelease({...}). No production ports yet
       // → undefined → tools stay unregistered; never invent Fake ports here.
       const workflowShadowRelease = resolveDesktopWorkflowShadowRelease();
-      // F02_N03 voice.final_transcript: only when Desktop injects a trusted final-only
-      // receipt port via resolveDesktopVoiceFinalTranscript({port}). Absent → tool stays
-      // unregistered; engine reports unavailable (no Fake ASR / silent success).
-      const voiceFinalTranscript = resolveDesktopVoiceFinalTranscript();
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
       let prepareWorkflowToolExport;
       const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
@@ -2539,8 +2551,8 @@ async function initializeRuntime() {
         delegateUserTasks: true,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
+        configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[])],
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
-        ...(voiceFinalTranscript ? {voiceFinalTranscript} : {}),
         ...(observationOptions?.observationAuthorization
           ? {observationAuthorization: observationOptions.observationAuthorization} : {}),
         ...(observationOptions?.observationApplicationId
@@ -4669,6 +4681,7 @@ async function initializeLiveVoice() {
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
+    authorizeFinalRead:(...args)=>f02Workflow?.authorizeFinalRead?.(...args)===true,
     prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope)??null,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
@@ -5115,6 +5128,7 @@ app.whenReady().then(async () => {
       feedsHost?.close();
       f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
       workflowGraphComposition={tools:[],unavailable:['reset']};
+      f02Workflow=undefined;
       void todoHost?.close();
     } catch (error) {
       event.preventDefault();
