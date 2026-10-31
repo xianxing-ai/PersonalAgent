@@ -10,10 +10,10 @@ WSS 主通道和 HTTPS 备用是同一 CloudAgentPort 的适配，不改变既�
 
 Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身份、source/config revision、引用失效、写后投影和去重契约由 goo122 发布。原始内容权限、索引权限和出机权限分开；断线/未知写入不盲重试，任务终态归 Runtime。
 
-公共变更由本MOD负责人随工作包完成实际调用方接线、消费验证、Evidence和文档，不默认交中央代验。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。
+公共变更由本MOD负责人随工作包完成实际调用方接线、消费验证、Evidence和文档，不默认交中央代验。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。
 
 <!-- current-design-20261009 -->
-> 当前协作规则（2026-10-17）：[模块分工](MODULE_ASSIGNMENTS.md) · [实际接线包](competition/COLLABORATOR_WIRING_PACKAGE.md)。常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任一非作者对当前提交有效批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。历史验收保留；旧两人门槛不再适用。
+> 当前协作规则（2026-10-17）：[模块分工](MODULE_ASSIGNMENTS.md) · [实际接线包](competition/COLLABORATOR_WIRING_PACKAGE.md)。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner zemeng5208 对具体 PR 的审核例外须在该 PR 明确记录，不伪称独立批准。拥有合并权限者（包括作者）可在最新必需技术 CI 通过、严格同步 main、无冲突且阻断意见已处理后合并；四位协作者跨 PR 均衡承担审查与合并，禁止强推、直接推 main 或绕过技术检查。历史验收保留；旧两人门槛不再适用。
 
 > 维护入口（2026-10-07）：项目主要负责人为 zemeng；当前分工以 [模块分工](../docs/MODULE_ASSIGNMENTS.md) 为准，最新状态见 [ROADMAP](../docs/ROADMAP.md)。历史日期、作者和验收结论按原记录保留。
 
@@ -28,7 +28,7 @@ Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身
 - 状态分为 `frozen`、`provisional`、`unavailable`、`deprecated`。接口只有具备单一来源、生产实现、Fake/失败夹具、消费验证、负责人自审和 CI 后才可冻结；外部行为影响语义时还需要真实目标系统闭环。
 - 新增可选字段为兼容扩展；删除字段、修改含义、增加消费者无法处理的必需状态必须升级不兼容版本或协商能力。
 - 握手交换协议版本与能力列表；主版本不一致拒绝连接。新操作必须先通过能力发现，不能只凭次版本猜测支持。
-- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 常规 PR 获四位协作者中任一非作者对当前提交有效批准，或 Owner 对具体 PR 留存审核例外记录；最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理后由有合并权限者合并 → 按实际证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施者；开发可独立推进，合并遵守当前门槛，禁止 UI 和服务端私设临时字段。
+- 变更流程：提出差异和消费者影响 → 更新接口目录为 provisional → 实施者更新单一 Schema/夹具和必要接线 → 消费契约验证 → 自审与 CI → 常规 PR 首轮取得合资格非作者有效批准，或 Owner 对具体 PR 留存审核例外记录；后续仅修复 CI 的提交保留批准。最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理后由有合并权限者合并 → 按实际证据更新为 frozen。goo122 负责公共协议长期维护，不是独占实施者；开发可独立推进，合并遵守当前门槛，禁止 UI 和服务端私设临时字段。
 - Schema 中已知但生产握手未公布的 operation 为 unavailable；消费者不调用，Host 返回 `UNSUPPORTED_CAPABILITY`，UI 明确展示不可用。
 
 ## 2. Profile 与通信分层
@@ -42,7 +42,7 @@ Wiki 复用 KnowledgePort、MemoryQueryPort 和 FactChangeFeed；新增页面身
 - Electron 渲染器只调用 `packages/client/` 公开 API，经 `zemeng` 的 preload 桥接；不访问 Named Pipe、密钥或原生工具。
 - Runtime 与 Windows Host 使用受限 Named Pipe。公共 Schema 与 JSONL 帧由 goo122 长期维护，zemeng 实现 Host 时可一并完成兼容契约变更和消费验证；每帧一行 UTF-8 JSON，字符串内换行转义，最大 1 MiB，超限拒绝。
 - 应用 IPC 封装为同一消息对象，不要求所有传输都采用 JSONL。
-- 大音频、截图、附件使用宿主生成的临时 `artifactRef`，单独分片传输；引用绑定任务/会话、访问主体和到期时间，不能接受外部任意路径作为可信引用。流具有序号、取消和背压。
+- 大音频、截图、附件的目标设计是使用宿主生成的临时 `artifactRef`，单独分片传输；引用须绑定任务/会话、访问主体和到期时间，不能接受外部任意路径作为可信引用。流须具有序号、取消和背压。当前 ArtifactPort 及这些访问、分片和背压语义仍为 unavailable，见下文端口状态及当前接口目录。
 - 时间统一 ISO 8601 UTC；日程额外带 IANA 时区；业务计算不使用界面格式化文本。标识符视为不透明字符串，生产环境由可信组件生成。
 
 ## 3. 请求、响应与事件
@@ -125,21 +125,21 @@ TaskSnapshot 必含 `taskId`、`state`、`revision`、`updatedAt`、`steps`、`e
 状态集合：`created`、`planning`、`running`、`waiting_approval`、`waiting_external`、`waiting_reconciliation`、`verifying`、`cancelling`、`succeeded`、`failed`、`cancelled`。
 
 - 主路径：created → planning → running → verifying → succeeded。
-- planning/running/verifying 可以进入等待或 failed；等待完成回到对应执行步骤。审批拒绝且没有可继续的步骤时进入 cancelled。
+- 当前 Runtime 中 planning/running 可进入 waiting_approval、waiting_external、waiting_reconciliation 或 failed；verifying 可进入 waiting_reconciliation、cancelling、failed 或 succeeded。等待后的恢复走原步骤及其状态守卫，不从终态重开。审批拒绝且没有可继续的步骤时进入 cancelled。
 - 外部写入返回不明时进入 waiting_reconciliation，先读取外部结果，不重发。
 - 取消请求进入 cancelling；执行器确认已停止且副作用状态已知后才能 cancelled。状态未知则 waiting_reconciliation，并保存 `cancelRequested=true`。
 - 取消来得太晚且任务已结束时，返回已有终态和 `cancelAccepted=false`，不能将已成功操作改成未执行。
 - 终态不可直接重开；重试创建新任务并引用原任务。部分成功后失败仍保留已完成步骤和不可逆副作用。
 
-必备事件：`task.created`、`task.state_changed`、`task.progress`、`task.completed`、`task.failed`、`task.cancelled`、`approval.requested`、`tool.completed`、`notification.created`。具体 payload 按事件类型校验。
+Schema 登记事件：`task.created`、`task.state_changed`、`task.progress`、`task.completed`、`task.failed`、`task.cancelled`、`approval.requested`、`tool.completed`、`notification.created`。具体 payload 按事件类型校验；`notification.created` 尚无生产 Core wire 事件公布，Desktop 私有通知不代表该事件可用，逐项状态见当前接口目录。
 
 `task.progress` 提供 `stepId`、`label`、`completedUnits?`、`totalUnits?`；无法计量时不发送百分比。悬浮球状态由任务/语音事件映射，不能用虚假计时模拟实际进展。
 
-事件至少一次交付；消费者按 eventId 去重，按 streamId/sequence 排序。`goo122` 为每个流提供递增序号，重连从已处理序号续订。回放窗口已过返回 `CURSOR_EXPIRED`，客户端获取快照后续订；有限队列满时显式要求重同步，不静默丢状态。
+事件消费按至少一次交付设计：消费者按 eventId 去重，按 streamId/sequence 排序。`goo122` 为每个流提供递增序号，重连从已处理序号续订。当前 Runtime 持久事件不裁剪，`event.subscribe` 配合进程内 `readEvents`，尚无真实窗口过期；未来回放窗口过期须返回 `CURSOR_EXPIRED`，客户端获取快照后续订。有限队列满时显式要求重同步、不静默丢状态是传输目标，不能据此宣称完整跨进程生命周期已实现。
 
 ## 6. 工具、模块与依赖注入
 
-模块导出 `register(host): dispose`。host 提供公共端口；模块通过接口调用，不导入 Runtime 内部实现或其他模块私有存储。
+新注册型模块导出 `register(host): dispose`，既有工厂型模块沿用其公开入口，不为统一形式改造无关模块。host 提供公共端口；模块通过接口调用，不导入 Runtime 内部实现或其他模块私有存储。
 
 目录和依赖遵循 [项目目录规范](PROJECT_STRUCTURE.md)：`apps` 负责进程与装配，`packages` 不反向依赖 `apps`，连接器位于 `packages/connectors/<capability>/`。模块专用端口由消费模块拥有，只有稳定跨进程数据进入 `packages/contracts`。跨包禁止相对路径和未声明的私有深层导入。
 
@@ -203,11 +203,11 @@ Evidence 记录：`evidenceId`、`kind`（observation/source/execution）、`sou
 
 已交付：JSON Schema/生成类型、Client、FakeRuntime 六场景、FakeToolHost/Storage/Connector、任务/会话/审批查询及 Desktop 恢复消费。冻结子集见接口目录。
 
-下一批必须交付：
+后续交付与验收（已存在的端口不重复新建，工作包状态以 ROADMAP 和当前接口目录为准）：
 
-1. `zemeng` 先提供 Competition Coordination、CloudAgent、ToolProposal、Goal/Decision/Plan 语义和消费者测试；`goo122` 提供 Runtime/Memory/Tool/Evidence/Storage 的稳定端口与 Fake。
-2. Runtime 注入 `CoordinationPort`，Competition 实现经 `CloudAgentPort` 调用 AgentArts；不直接依赖 AgentArts DTO、Local Agent 或 ModelGateway 具体实现。
-3. AgentArts Adapter 先以 FakeCloudAgent 离线开发，再分别验收真实项目/Agent/Workflow、deployment、API、trace、usage、失败和本地执行读回。
+1. `zemeng` 维护已有 Competition Coordination、CloudAgent、ToolProposal、Goal/Decision/Plan 语义与消费者测试；`goo122` 维护 Runtime/Memory/Tool/Storage 端口与 Fake，未交付的统一 Evidence/Artifact 端口仍保持 unavailable。已有接口不因列入后续工作自动冻结。
+2. Runtime 已通过注入的 `CoordinationPort` 消费 Competition，后者经 `CloudAgentPort` 调用 AgentArts；继续保持此边界，不直接依赖 AgentArts DTO、Local Agent 或 ModelGateway 具体实现。
+3. AgentArts Adapter 已有 Fake 和固定版本有限真实调用证据；继续分别补齐真实项目/Agent/Workflow、deployment、API、完整 trace/usage、失败和本地执行读回，历史子集证据不证明整链或当前部署全部通过。
 4. 结构化 TaskResult、Evidence/Artifact、真实游标过期恢复、Host 生命周期、SecretStore 管理面和对应失败夹具。
 5. Local ModelPort/Agent 扩展为可选后续工作，不阻塞 Competition Profile；现有实现保持可追溯，不为参赛删除。
 6. 每项记录 profile、版本、提交、状态、消费者验证和真实能力限制。文档或 Fake 存在不能把 unavailable 直接提升为 frozen。

@@ -24,11 +24,12 @@ export function createRuntimeF28NativeConfigHost(options?:{
     ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
     return {tools:[],unavailable:'f28_native_config_trusted_ports_unavailable'};
   const runtime=options.application.runtime,requiredScopes=[...options.requiredScopes];
-  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F28',nodeId:'F28_N03',
-    hostToolName:'workflow.host.f28_n03',assertCurrent:options.assertCurrent,now:options.now});
+  const active=(context:ToolContext,args?:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F28',nodeId:'F28_N03',
+    hostToolName:'workflow.host.f28_n03',proposalArguments:args??(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown})?.arguments,
+    assertCurrent:options.assertCurrent,now:options.now});
   const read=async(scope:Scope,context:ToolContext,input:{check:string})=>{
     if(!text(input.check))failOwnedHost('INVALID_ARGUMENT','F28 native config check invalid');
-    const config=await options.readNativeConfig(scope,input);active(context);
+    const config=await options.readNativeConfig(scope,input);active(context,input);
     if(!plain(config)||config.check!==input.check||typeof config.research!=='boolean'
       ||typeof config.analysis!=='boolean'||typeof config.coder!=='boolean')
       failOwnedHost('UNSUPPORTED_CAPABILITY','F28 native configuration unavailable');
@@ -38,7 +39,7 @@ export function createRuntimeF28NativeConfigHost(options?:{
     inputSchema:{type:'object',additionalProperties:false,required:['check'],properties:{check:{type:'string',minLength:1}}},
     outputSchema:{type:'object',additionalProperties:false,required:['check','research','analysis','coder'],properties:{
       check:{type:'string'},research:{type:'boolean'},analysis:{type:'boolean'},coder:{type:'boolean'}}},
-    async execute(input,context){return read(active(context),context,input as {check:string});}});
+    async execute(input,context){return read(active(context,input),context,input as {check:string});}});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
     const scope=active(context);
     if(!isDeepStrictEqual(result,await read(scope,context,{check:(result as {check?:string}).check??''})))
@@ -52,7 +53,8 @@ export function createRuntimeF28NativeConfigHost(options?:{
 export function createRuntimeF28NativeConfigGuard(options?:{
   application:Pick<RuntimeApplication,'runtime'>;
   requiredScopes:readonly string[];
-  resolveGuardState:(scope:Scope,input:{check:string})=>Promise<'selected'|'skipped'|'unknown'>;
+  resolveGuardState:(scope:Scope,input:{workflowId:string;nodeId:string;input:unknown;
+    predecessorOutputs:Record<string,unknown>;predecessorStates:Record<string,unknown>})=>Promise<'selected'|'skipped'|'unknown'>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   now:()=>Date;
 }):{tools:RegisteredTool[];unavailable:string|null} {
@@ -60,14 +62,14 @@ export function createRuntimeF28NativeConfigGuard(options?:{
     ||typeof options.resolveGuardState!=='function'||typeof options.assertCurrent!=='function'||typeof options.now!=='function')
     return {tools:[],unavailable:'f28_native_config_guard_trusted_ports_unavailable'};
   const runtime=options.application.runtime,requiredScopes=[...options.requiredScopes];
-  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F28',nodeId:'F28_N03',
-    hostToolName:'workflow.guard.f28_n03',proposalArguments:{},hostArguments:{},assertCurrent:options.assertCurrent,now:options.now});
+  const active=(context:ToolContext,args:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F28',nodeId:'F28_N03',
+    hostToolName:'workflow.guard.f28_n03',proposalArguments:args,assertCurrent:options.assertCurrent,now:options.now});
   const tool=createOwnedWorkflowAdapter({nodeId:'F28_N03',kind:'guard',sideEffect:'read',requiredScopes,
-    inputSchema:{type:'object',additionalProperties:false,required:['check'],properties:{check:{type:'string',minLength:1}}},
+    inputSchema:{type:'object',additionalProperties:false,required:['workflowId','nodeId','input','predecessorOutputs','predecessorStates'],properties:{
+      workflowId:{const:'F28'},nodeId:{const:'F28_N03'},input:{},predecessorOutputs:{type:'object'},predecessorStates:{type:'object'}}},
     outputSchema:{type:'object',additionalProperties:false,required:['state'],properties:{state:{type:'string',enum:['selected','skipped','unknown']}}},
     async execute(input,context){
-      if(!text((input as {check?:unknown}).check))failOwnedHost('INVALID_ARGUMENT','F28 native config guard check invalid');
-      const scope=active(context),state=await options.resolveGuardState(scope,input as {check:string});active(context);
+      const scope=active(context,input),state=await options.resolveGuardState(scope,input as Parameters<typeof options.resolveGuardState>[1]);active(context,input);
       if(state!=='selected'&&state!=='skipped'&&state!=='unknown')failOwnedHost('UNSUPPORTED_CAPABILITY','F28 native config guard unavailable');
       return {state};
     }});

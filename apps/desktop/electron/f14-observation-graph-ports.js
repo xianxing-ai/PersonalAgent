@@ -16,9 +16,14 @@ export function createF14ObservationGraphPorts({
   const assertCurrent=(scope)=>{
     const application=getApplication();
     if(!application?.runtime)throw Error('F14 Runtime unavailable');
-    const task=application.runtime.getTask(scope.localTaskId??scope.taskId);
-    if(task.cancelRequested||!['running','waiting_approval','waiting_reconciliation'].includes(task.state))
+    const task=application.runtime.getTask(scope.parentTaskId??scope.taskId);
+    if(task.cancelRequested||!['running','waiting_approval'].includes(task.state))
       throw Error('F14 original task is no longer current');
+    if(scope.localTaskId){
+      const local=application.runtime.getTask(scope.localTaskId);
+      if(local.cancelRequested||!['running','waiting_approval','succeeded'].includes(local.state))
+        throw Error('F14 original host is no longer current');
+    }
     if(computerControlLease&&typeof computerControlLease.assertWritable==='function')
       computerControlLease.assertWritable(scope.localTaskId??scope.taskId);
   };
@@ -39,7 +44,12 @@ export function createF14ObservationGraphPorts({
       browserObserve:browserObserveTool,
       invokeObservation,
       assertCurrent,
-      authorizeExport:async(scope,result)=>authorizeExport({scope,result,now:now()})===true,
+      authorizeExport:async(scope,result)=>{
+        assertCurrent(scope);
+        const allowed=await authorizeExport({scope,result,now:now()});
+        assertCurrent(scope);
+        return allowed===true;
+      },
       now,
     },
   };

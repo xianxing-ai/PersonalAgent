@@ -16,6 +16,8 @@ import type {RuntimeOwnedWorkflowWorkerOptions,RuntimeOwnedWorkflowWorkerCapabil
 import {createRuntimeF09WorkflowWorkerCapability,runtimeF09WorkflowWorkerConfigured,
   F09_WORKFLOW_WORKER_TOOL,F09_WORKFLOW_WORKER_VERSION} from './owned-workflow-f09-worker-capability.js';
 import type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability} from './owned-workflow-f09-worker-capability.js';
+import {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured} from './configured-workflow-worker.js';
+import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability} from './configured-workflow-worker.js';
 import {capabilityContext} from './capability-context.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
@@ -105,7 +107,8 @@ import {createRuntimeProactiveWorkflowHost, createRuntimeProactiveWorkflowTools}
 import type {RuntimeProactiveWorkflowHost, RuntimeProactiveWorkflowHostOptions} from './proactive-workflow-application.js';
 import type {AuthorizationQuestionRequest} from './authorization-question.js';
 import {createRuntimeOwnedWorkflowHost, createRuntimeOwnedWorkflowTools} from './owned-workflow-application.js';
-import type {RuntimeOwnedWorkflowHostOptions, RuntimeWorkflowShadowReleaseOptions} from './owned-workflow-application.js';
+import type {RuntimeOwnedWorkflowHostOptions, RuntimeWorkflowShadowReleaseOptions,
+  RuntimeVoiceFinalTranscriptOptions} from './owned-workflow-application.js';
 import {createRuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import type {RuntimeProactiveTaskDriver} from './proactive-task-driver.js';
 import {createRuntimeProactiveDecisionTools} from './proactive-decision-tools.js';
@@ -379,15 +382,20 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   competitionMessageTimeoutMs?:number;
   mailReview?:RuntimeMailReviewOptions;
   retainPriorToolResults?:boolean;
+  /** Pin guarded goal-carrying continuations for newly dispatched Competition tasks only. */
+  enableNewTaskToolContinuations?:true;
   /** Competition user submissions must execute in a durable child; the root only dispatches and summarizes. */
   delegateUserTasks?: true;
   /** Registers only the scoped host adapters; no source, model or device is enabled by this flag. */
   proactiveWorkflows?: true;
   proactiveDecision?: {localChooser?: Pick<LayaActionChoiceService, 'choose'>};
   workflowShadowRelease?: RuntimeWorkflowShadowReleaseOptions;
+  /** F02_N03 final-only Desktop receipt reader. Absent → tool stays unregistered / unavailable. */
+  voiceFinalTranscript?: RuntimeVoiceFinalTranscriptOptions;
   codingRepair?:RuntimeCodingRepairOptions;
   ownedWorkflowWorker?:RuntimeOwnedWorkflowWorkerOptions;
   f09WorkflowWorker?:RuntimeF09WorkflowWorkerOptions;
+  configuredWorkflowWorkers?:readonly RuntimeConfiguredWorkflowOptions[];
   developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   /** Current trusted product configuration, pinned by its host to the original task revision. */
   readDeveloperWorkflows?:(scope:RuntimeDeveloperWorkflowScope)=>RuntimeDeveloperWorkflowsOptions|undefined;
@@ -512,6 +520,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly codingWorker?:ReturnType<typeof createRuntimeCodingRepairWorkerCapability>;
   private readonly ownedWorkflowWorker?:RuntimeOwnedWorkflowWorkerCapability;
   private readonly f09WorkflowWorker?:RuntimeF09WorkflowWorkerCapability;
+  private readonly configuredWorkflowWorkers:RuntimeConfiguredWorkflowCapability[]=[];
   private readonly developerWorkflows?:RuntimeDeveloperWorkflowsOptions;
   private readonly readDeveloperWorkflows?:RuntimeApplicationOptions['readDeveloperWorkflows'];
   private readonly readDeveloperHarnessConfiguration?:()=>RuntimeDeveloperHarnessOptions|undefined;
@@ -539,6 +548,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly activeWindowsRecovery = new Map<string,Promise<WindowsHostTaskReconciliation>>();
   private readonly competitionToolExports: readonly CompetitionToolExport[];
   private readonly retainPriorToolResults:boolean;
+  private readonly enableNewTaskToolContinuations:boolean;
   private competitionMaxSteps: number;
   private readonly competitionInitialSteps:number;
   private readonly competitionExecution:RuntimeApplicationOptions['competitionExecution'];
@@ -625,7 +635,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT','Required user delegation needs a dispatch and a summary step');
     }
     if (!['local', 'huawei_ict_agentarts'].includes(this.profile)
-      || (this.profile === 'local' && (options.coordination !== undefined || options.competitionToolExports !== undefined || options.competitionToolAvailability !== undefined || options.repairCandidateVersion !== undefined || options.hostUserNamespace !== undefined || options.workflowShadowRelease !== undefined))
+      || (this.profile === 'local' && (options.coordination !== undefined || options.competitionToolExports !== undefined || options.competitionToolAvailability !== undefined || options.repairCandidateVersion !== undefined || options.hostUserNamespace !== undefined || options.workflowShadowRelease !== undefined || options.voiceFinalTranscript !== undefined))
       || (options.repairCandidateVersion !== undefined && options.repairCandidateVersion !== '1.0')
       || (options.localRepair !== undefined && options.repairCandidateVersion !== '1.0')
       || (this.profile === 'huawei_ict_agentarts' && options.text !== undefined)) {
@@ -705,6 +715,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       accepts:()=>true,project:({result}:{result:unknown})=>structuredClone(result),
     }]:[])].map(binding => Object.freeze({...binding}));
     this.retainPriorToolResults=options.retainPriorToolResults===true;
+    this.enableNewTaskToolContinuations=options.enableNewTaskToolContinuations===true;
     if (this.readDeveloperHarnessConfiguration) this.competitionToolExports = [...this.competitionToolExports, {
       toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
       exportPolicyVersion:'developer-harness-runtime-facts-v1',accepts:()=>true,
@@ -758,8 +769,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             if(!this.runtime.saveCheckpointOnce(receipt.taskId,key,receipt)
               &&!isDeepStrictEqual(this.runtime.loadCheckpoint(receipt.taskId,key),receipt))
               throw new ProtocolError('REVISION_CONFLICT','Original local coding decision receipt changed');
-          }})]:[])]:[]), ...createRuntimeOwnedWorkflowTools(
-      options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
+          }})]:[])]:[]), ...createRuntimeOwnedWorkflowTools({
+        ...(options.workflowShadowRelease ? {shadowRelease: options.workflowShadowRelease} : {}),
+        ...(options.voiceFinalTranscript ? {voiceFinalTranscript: options.voiceFinalTranscript} : {}),
+      }),
       ...(options.proactiveWorkflows ? createRuntimeProactiveDecisionTools({
         ...(options.proactiveDecision?.localChooser ? {localChooser: options.proactiveDecision.localChooser} : {}),
         ...(options.coordination ? {teacherExchange:(request:CoordinationRequest,context:ToolContext)=>
@@ -780,7 +793,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             .then(()=>this.refreshSubagentParent(taskId)).catch(()=>{});
         }
       },
-      ...(options.tools || discoveryTool || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
+      ...(options.tools || discoveryTool || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.voiceFinalTranscript || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           this.harnessExperienceRecipes(request.taskId,{
             deadline:this.runtime.loadCheckpoint(request.taskId,'application-deadline') as string,
@@ -1106,7 +1119,19 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           return tools.invoke(request);
         }};
       });
-    if (options.competitionToolAvailability !== undefined||discoveryTool||this.ownedWorkflowWorker||this.f09WorkflowWorker) {
+    const configuredGraphs=this.profile==='huawei_ict_agentarts'&&this.delegateUserTasks
+      ?(options.configuredWorkflowWorkers??[]).filter(runtimeConfiguredWorkflowConfigured):[];
+    if(new Set(configuredGraphs.map(graph=>graph.workflowId)).size!==configuredGraphs.length
+      ||new Set(configuredGraphs.map(graph=>graph.toolName)).size!==configuredGraphs.length
+      ||configuredGraphs.some(graph=>this.tools?.list().some(tool=>tool.name===graph.toolName)))
+      throw new ProtocolError('INVALID_ARGUMENT','Configured workflow entries must be unique');
+    for(const graph of configuredGraphs)this.configuredWorkflowWorkers.push(createRuntimeConfiguredWorkflowCapability(this,graph,taskId=>{
+      const tools=this.taskTools(taskId),frozen=this.runtime.loadCheckpoint(taskId,'subtask-tools-binding') as ToolDescriptor[]|undefined;
+      if(!tools)return undefined;
+      if(frozen!==undefined&&(!Array.isArray(frozen)||frozen.some(descriptor=>!tools.list().some(current=>isDeepStrictEqual(current,descriptor)))))return undefined;
+      return {list:()=>structuredClone(frozen??tools.list()),invoke:request=>tools.invoke(request)};
+    }));
+    if (options.competitionToolAvailability !== undefined||discoveryTool||this.ownedWorkflowWorker||this.f09WorkflowWorker||this.configuredWorkflowWorkers.length) {
       if (!this.tools) throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog needs registered tools');
       this.competitionToolCatalog = new RuntimeCompetitionToolCatalog(
         this.runtime, this.tools, this.competitionToolExports,[...(options.competitionToolAvailability??[]).filter(item=>item.toolName!=='workflow.host.f15_independent_review'),...(discoveryTool?[{
@@ -1155,7 +1180,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
               ||!descriptors.some(tool=>tool.name==='workflow.host.f09_n02'&&tool.version==='1.0.0')
               ||await binding.available(input)!==true)return undefined;
             binding.assertCurrent(input);return this.f09WorkflowWorker.describe();
-          }}]:[]),{
+          }}]:[]),...this.configuredWorkflowWorkers.map((worker,index)=>({
+          toolName:configuredGraphs[index]!.toolName,toolVersion:configuredGraphs[index]!.toolVersion,
+          publicEnumPaths:configuredGraphs[index]!.publicEnumPaths,sideEffect:configuredGraphs[index]!.sideEffect,
+          requiredTool:configuredGraphs[index]!.requiredTools[0]!,describeRegistered:()=>worker.describe(),
+          describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>
+            await worker.available(input)?worker.describe():undefined,
+        })),{
           toolName:CLOUD_SKILL_TOOL_NAME,toolVersion:CLOUD_SKILL_TOOL_VERSION,publicEnumPaths:CLOUD_SKILL_PUBLIC_ENUM_PATHS,
           requiredTool:{name:'mcp.workspace.read_text',version:'1.0.0'},
           describeRegistered:()=>this.cloudSkill?{name:CLOUD_SKILL_TOOL_NAME,version:CLOUD_SKILL_TOOL_VERSION,inputSchema:CLOUD_SKILL_CHOICE_SCHEMA}:undefined,
@@ -1527,7 +1558,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** Read only the original active F15 host child, for task-bound approval discovery. */
   readPendingOwnedWorkflowHostTask(taskId:string):TaskSnapshot|undefined {
     try{return this.codingWorker?.pendingHostTask(taskId)??this.ownedWorkflowWorker?.pendingHostTask(taskId)
-      ??this.f09WorkflowWorker?.pendingHostTask(taskId);}catch{return undefined;}
+      ??this.f09WorkflowWorker?.pendingHostTask(taskId)??this.configuredWorkflowWorkers.find(worker=>worker.isActive(taskId))?.pendingHostTask(taskId);}catch{return undefined;}
   }
 
   private resolveOriginalWorkerApproval(taskId:string,proposal:unknown):{runId:string;toolName:string;arguments:Record<string,unknown>}|undefined {
@@ -1616,6 +1647,29 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     validateContract('tool',binding.tool.descriptor);
     this.codingReviewProvider=binding.tool;
     this.codingRepair.independentReview=binding.port;this.codingRepair.independentReviewProducer=true;
+  }
+
+  /** Trusted transport selection, pinned to the original task and deployment. */
+  usesGoalContinuation(taskId:string):boolean {
+    if(this.retainPriorToolResults)return true;
+    const saved=this.runtime.loadCheckpoint(taskId,'competition-continuation-context:v1');
+    if(saved===undefined)return false;
+    const task=this.runtime.getTask(taskId);
+    const expected={version:'1.0',taskId,configurationRef:this.coordinationBinding,
+      goal:task.goal,deadline:this.runtime.loadCheckpoint(taskId,'application-deadline')};
+    if(!isDeepStrictEqual(saved,expected) || typeof task.goal!=='string'
+      || typeof expected.deadline!=='string' || this.runtime.loadCheckpoint(taskId,'application-goal')!==task.goal) {
+      throw new ProtocolError('REVISION_CONFLICT','Original continuation context binding changed');
+    }
+    return true;
+  }
+
+  private pinGoalContinuation(taskId:string,goal:string,deadline:string):void {
+    const binding={version:'1.0',taskId,configurationRef:this.coordinationBinding,goal,deadline};
+    if(!this.runtime.saveCheckpointOnce(taskId,'competition-continuation-context:v1',binding)
+      && !isDeepStrictEqual(this.runtime.loadCheckpoint(taskId,'competition-continuation-context:v1'),binding)) {
+      throw new ProtocolError('REVISION_CONFLICT','Original continuation context binding changed');
+    }
   }
 
   /** Connect the existing learning lifecycle to canonical original Runtime journals. */
@@ -2592,6 +2646,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       worker.saveCheckpoint('application-profile',this.profile);
       worker.saveCheckpoint('application-goal',child.goal);
       worker.saveCheckpoint('application-deadline',worker.deadline);
+      if(this.usesGoalContinuation(binding.parentTaskId) && !this.retainPriorToolResults)
+        this.pinGoalContinuation(worker.taskId,child.goal,worker.deadline);
       worker.saveCheckpoint('competition-max-steps',maxSteps);
       this.seedExecutionCapacity(worker.taskId,maxSteps,worker.deadline,binding.parentTaskId);
     } else if(worker.loadCheckpoint('application-goal')!==child.goal
@@ -2612,7 +2668,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return runRuntimeCodingRepairWorkflow(this,subtask,worker,tools,this.codingRepair);
     }
     return runCoordinationWorker(this.runtime,this.coordination,tools,worker.taskId,child.goal,worker,
-      {retainPriorToolResults:this.retainPriorToolResults,allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+      {retainPriorToolResults:this.usesGoalContinuation(worker.taskId),allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
   }
@@ -2908,10 +2964,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     });
   }
 
-  private activeOwnedWorkflowWorker(taskId:string):RuntimeOwnedWorkflowWorkerCapability|RuntimeF09WorkflowWorkerCapability|undefined {
+  private activeOwnedWorkflowWorker(taskId:string):RuntimeOwnedWorkflowWorkerCapability|RuntimeF09WorkflowWorkerCapability|RuntimeConfiguredWorkflowCapability|undefined {
     if(this.ownedWorkflowWorker?.isActive(taskId))return this.ownedWorkflowWorker;
     if(this.f09WorkflowWorker?.isActive(taskId))return this.f09WorkflowWorker;
-    return undefined;
+    return this.configuredWorkflowWorkers.find(worker=>worker.isActive(taskId));
   }
   private resumeOwnedWorkflowTask(taskId:string):void {
     if(this.activeTextTasks.has(taskId)||!this.tools)return;
@@ -4152,11 +4208,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private readonly coordinationWorkers:CoordinationWorkerCapabilityPort={
-    accepts:proposal=>!!this.codingWorker?.accepts(proposal)||!!this.ownedWorkflowWorker?.accepts(proposal)||!!this.f09WorkflowWorker?.accepts(proposal)||!!this.developerWorker?.accepts(proposal)||(proposal.toolName===CLOUD_SKILL_TOOL_NAME && proposal.toolVersion===CLOUD_SKILL_TOOL_VERSION),
+    accepts:proposal=>!!this.codingWorker?.accepts(proposal)||!!this.ownedWorkflowWorker?.accepts(proposal)||!!this.f09WorkflowWorker?.accepts(proposal)||this.configuredWorkflowWorkers.some(worker=>worker.accepts(proposal))||!!this.developerWorker?.accepts(proposal)||(proposal.toolName===CLOUD_SKILL_TOOL_NAME && proposal.toolVersion===CLOUD_SKILL_TOOL_VERSION),
     dispatch:async(proposal,context)=> {
       if(this.codingWorker?.accepts(proposal))return this.codingWorker.dispatch(proposal,context);
       if(this.ownedWorkflowWorker?.accepts(proposal))return this.ownedWorkflowWorker.dispatch(proposal,context);
       if(this.f09WorkflowWorker?.accepts(proposal))return this.f09WorkflowWorker.dispatch(proposal,context);
+      const configured=this.configuredWorkflowWorkers.find(worker=>worker.accepts(proposal));
+      if(configured)return configured.dispatch(proposal,context);
       if(this.developerWorker?.accepts(proposal))return this.developerWorker.dispatch(proposal,context);
       if(!this.cloudSkill)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Native public Skill selection is unavailable');
       let result:CloudSkillReceipt;
@@ -4177,6 +4235,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(this.codingWorker?.accepts(proposal)){this.codingWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
       if(this.ownedWorkflowWorker?.accepts(proposal)){this.ownedWorkflowWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
       if(this.f09WorkflowWorker?.accepts(proposal)){this.f09WorkflowWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
+      const configured=this.configuredWorkflowWorkers.find(worker=>worker.accepts(proposal));
+      if(configured){configured.assertReceiptAllowed(proposal,selection,receipt,context);return;}
       if(this.developerWorker?.accepts(proposal)){this.developerWorker.assertReceiptAllowed(proposal,selection,receipt,context);return;}
       if(!this.cloudSkill)throw new ProtocolError('UNAUTHORIZED','Skill final guard is unavailable');
       this.cloudSkill.assertReceiptAllowed(selection as CloudSkillSelection,receipt as CloudSkillReceipt,
@@ -4460,10 +4520,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       const catalog=this.taskCompetitionCatalog(taskId);
       const execution = startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
-        {resume: true,retainPriorToolResults:this.retainPriorToolResults, toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {resume: true,retainPriorToolResults:this.usesGoalContinuation(taskId), toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId),
           ...(this.runtime.loadCheckpoint(taskId,'subtask-coordination-binding')!==undefined
-            ||this.retainPriorToolResults&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
+            ||this.usesGoalContinuation(taskId)&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},
@@ -5051,6 +5111,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.runtime.saveCheckpoint(taskId, 'competition-configuration-binding', this.coordinationBinding);
       this.runtime.saveCheckpoint(taskId, 'application-goal', goal);
       this.runtime.saveCheckpoint(taskId, 'application-deadline', deadline);
+      if(this.enableNewTaskToolContinuations && !this.retainPriorToolResults)
+        this.pinGoalContinuation(taskId,goal,deadline);
       const manualCompaction=this.runtime.loadCheckpoint(taskId,CONTEXT_COMPACTION_COMMAND)===true;
       let preference:ReturnType<NonNullable<RuntimeApplicationOptions['readConversationPreference']>>;
       try {
@@ -5099,9 +5161,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
       },{deadline,sideEffect:'read'}):startCoordinationTask(
         this.runtime, this.taskCoordination(taskId), this.taskTools(taskId), taskId, goal, deadline,
-        {retainPriorToolResults:this.retainPriorToolResults,toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+        {retainPriorToolResults:this.usesGoalContinuation(taskId),toolExports: this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
           assertCompletion:()=>assertUserTaskDelegationComplete(this.runtime,taskId),
-          ...(this.retainPriorToolResults&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
+          ...(this.usesGoalContinuation(taskId)&&!readUserTaskDelegation(this.runtime,taskId)?{allowToolContinuations:true as const}:{}),
           ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
           ...(catalog ? {toolCatalog: catalog} : {}),
           ...(this.repairCandidateVersion ? {repairCandidateVersion: this.repairCandidateVersion} : {})},

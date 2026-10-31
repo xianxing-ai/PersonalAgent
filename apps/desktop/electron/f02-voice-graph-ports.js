@@ -59,7 +59,12 @@ export function createF02VoiceGraphPorts({
       resolveOriginalConfirmation,
       readFinal,
       assertCurrent,
-      authorizeExport:async(scope,result)=>authorizeExport({scope,result,now:now()})===true,
+      authorizeExport:async(scope,result)=>{
+        assertCurrent(scope);
+        const allowed=await authorizeExport({scope,result,now:now()});
+        assertCurrent(scope);
+        return allowed===true;
+      },
       now,
       // Device evidence still incomplete until physical mic/playback verification lands.
       deviceEvidenceReady:()=>false,

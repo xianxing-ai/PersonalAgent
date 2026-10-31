@@ -90,14 +90,15 @@
 .thread,.workspace-stage,.connector-board {scrollbar-width:none}
 .thread::-webkit-scrollbar,.workspace-stage::-webkit-scrollbar,.connector-board::-webkit-scrollbar {display:none;width:0;height:0}
 .conversation-rail {position:absolute;right:6px;top:74px;bottom:130px;width:22px;display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:4;pointer-events:none}
-.panel {grid-template-rows:auto auto minmax(32px,1fr) auto}
+.panel {grid-template-rows:auto auto auto minmax(32px,1fr) auto}
 .panel>header {grid-row:1;grid-column:1}
 .panel>.conversation-session-root {grid-row:2;grid-column:1;min-height:0;max-height:25vh;overflow:auto}
-.panel>.thread {grid-row:3;grid-column:1;box-sizing:border-box}
-.panel>.composer {grid-row:4;grid-column:1;display:flex;flex-direction:column;min-width:0;max-height:45vh;box-sizing:border-box}
+.panel>.task-progress {grid-row:3;grid-column:1;margin:0 18px 6px;max-height:28vh;overflow:auto}
+.panel>.thread {grid-row:4;grid-column:1;box-sizing:border-box}
+.panel>.composer {grid-row:5;grid-column:1;display:flex;flex-direction:column;min-width:0;max-height:45vh;box-sizing:border-box}
 .panel>.composer>.composer-bar {flex:0 0 auto}
 .panel>.composer>.wake-controls {min-height:0;overflow:auto}
-.panel>.conversation-rail {position:static;inset:auto;grid-row:3;grid-column:1;align-self:stretch;justify-self:end;margin:8px 6px}
+.panel>.conversation-rail {position:static;inset:auto;grid-row:4;grid-column:1;align-self:stretch;justify-self:end;margin:8px 6px}
 .conversation-rail button {position:relative;display:flex;align-items:center;justify-content:center;flex:0 1 12px;min-height:3px;width:22px;padding:0;border:0;background:transparent;pointer-events:auto}
 .rail-dash {display:block;width:7px;height:2px;background:var(--fg);opacity:.23;transition:width .15s,opacity .15s}
 .conversation-rail button[aria-current="true"] .rail-dash {width:14px;opacity:.9}

@@ -158,13 +158,16 @@ export type {ConnectorChangeOrigin,ConnectorChangeDecisionTaskOptions} from './a
 export * from './application/notification-host.js';
 export * from './application/proactive-workflow-session.js';
 export {createRuntimeOwnedWorkflowHost,createRuntimeOwnedWorkflowTools} from './application/owned-workflow-application.js';
-export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions} from './application/owned-workflow-application.js';
+export type {RuntimeOwnedWorkflowHostOptions,RuntimeWorkflowShadowReleaseOptions,
+  RuntimeVoiceFinalTranscriptOptions} from './application/owned-workflow-application.js';
 export {createRuntimeOwnedWorkflowWorkerCapability,ownedWorkflowWorkerInputSchema,OWNED_WORKFLOW_WORKER_TOOL,
   OWNED_WORKFLOW_WORKER_VERSION} from './application/owned-workflow-worker-capability.js';
 export type {RuntimeOwnedWorkflowWorkerOptions,RuntimeOwnedWorkflowWorkerCapability,RuntimeF20Input} from './application/owned-workflow-worker-capability.js';
 export {createRuntimeF09WorkflowWorkerCapability,f09WorkflowWorkerInputSchema,F09_WORKFLOW_WORKER_TOOL,
   F09_WORKFLOW_WORKER_VERSION} from './application/owned-workflow-f09-worker-capability.js';
 export type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability,RuntimeF09Input} from './application/owned-workflow-f09-worker-capability.js';
+export {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured} from './application/configured-workflow-worker.js';
+export type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability} from './application/configured-workflow-worker.js';
 export {createRuntimeCodingRepairDispatchTool,runRuntimeCodingRepairWorkflow,readRuntimeCodingVerificationEvidence,
   CODING_REPAIR_WORKFLOW_TOOL,CODING_REPAIR_PARENT,CODING_REPAIR_STATE} from './application/coding-repair-application.js';
 export type {RuntimeCodingRepairOptions,RuntimeCodingRepairImagePort} from './application/coding-repair-application.js';

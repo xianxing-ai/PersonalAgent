@@ -135,7 +135,7 @@ CW-01～CW-10当前均in_progress：01站点资格/时延；02精确云版本实
 | --- | --- | --- |
 | ARM64镜像/SWR与指定云版本目录/关联日志 | 本轮范围已有真实回执；PR集成另记 | 不把目录当平台原生评估或28业务闭环 |
 | Wukong/Pelican公开隔离fixture | 两套主/影子+单CAS通过；41工具Evidence | 保留Pelican首轮partial；分支父成功不冒称协调锚点终态成功 |
-| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | 当前 Competition 不调用 Laya；只有 Local Profile 获得独立实施范围后再安排领域/holdout校准 |
+| 本机Laya原模型/质量资格 | todo，独立 Local Profile 候选；历史6判断182–618ms未达150ms，站点未合格 | Competition 保留邮件/天气提醒选择及默认编码修复的既有有界判断，以及对当前已观察窗口有限控件的建议；独立 Local Profile 的领域/holdout校准仍待其获得实施范围 |
 | 主动责任/ConnectorHost/session/通知原子策略 | provisional，端口与离线组合已有 | 按矩阵各owner完成真实来源/调用方/渠道/恢复消费 |
 | 语音主动询问/确认与上下文记忆 | provisional，百炼既有端口，SIS平台不可用 | 原文、Goal、Memory与真实最终命令串入同一任务，不以握手当完整听说 |
 | 高级影子开关/主任务优先/机会收益资源 | 当前设计，尚未真实机会并行验收 | 并入已有判断；双方案比较等双方，其余可先交已验主结果，未知交DeepSeek |
@@ -194,7 +194,7 @@ goo122 从 #350 `a378c3df` 开始 [F27 上下文工作包](modules/MOD-09-CONTEX
 
 用户本轮明确的执行顺序：**代码实现 → 绝对必要的关键检验 → 修复 → 下一项任务**。CI 在后台运行，不以等待 CI 阻塞下一项开发；不重复全仓测试、安装或构建。授权、写入、恢复和协议边界的受影响行为保留最小必要验证，尚未验证与尚未合并分别标注；这不授权绕过合并保护。
 
-#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：常规 PR 须由 zemeng5208、goo122、Potatos498、2511375597-lab 中任意一位非作者对当前提交有效批准；Owner 对具体 PR 的审核例外须明确记录，不冒充独立批准。合并仍需最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理；不得强推、直接推 main 或绕过技术检查。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
+#317 已于 2026-10-13 合入 main。它证明自有 ARM64 镜像源码已集成及既有固定文件真实 WSS 读取闭环；不证明下表所有模块完成。当前合并规则以 [审查规则](reviews/DESIGN_READING_GATE.md) 和根 AGENTS.md 为准：常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 对具体 PR 的审核例外须明确记录，不冒充独立批准。合并仍需最新必需技术 CI、严格同步 main、无冲突且阻断意见已处理；不得强推、直接推 main 或绕过技术检查。下方旧日期段落中的双人阅读门槛和“尚未集成 #317”是历史状态。
 
 本轮主要工作树为 `.worktrees/zemeng-competition-completion`。两份 Astra Ultra 独立工作包分别在 `.worktrees/zemeng-voice-completion`（MOD-14/15）和 `.worktrees/zemeng-windows-tools-completion`（MOD-16/17/18）；不共享编辑目录或改写他人修改。
 
@@ -230,7 +230,7 @@ goo122 从 main `3275aa91` 开始 [MOD-04A 原生思考配置](modules/MOD-04A-N
 main 已包含 #317 与 #327，基线 dd639d42。Wiki 根包保留投影重验与新的传输配置，
 沿 #320→#321→#322 组合核对；插件/记忆证据与真实云读取单链分别记录，不升级完整 MOD 状态。
 下文“未进入 main”和“双人阅读审批”保留为当时的分支记录；当前合并规则以 AGENTS/
-CONTRIBUTING 的一位已登记非作者对当前 head 的有效批准、检查与冲突门槛为准。
+CONTRIBUTING 的首轮合资格非作者批准、后续仅修复 CI 时保留批准，以及检查与冲突门槛为准。
 
 ## 2026-10-12 ARM64 镜像真实 WSS 读取闭环（分支验收）
 
@@ -378,6 +378,8 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 
 ## 1. 里程碑
 
+本节保留早期里程碑及其当时的状态快照，后续已集成增量和有限真实回执见本页按日期登记；不得将此处“未进入 main”或“unavailable”直接作为当前事实。各项退出条件仍需按对应范围和当前证据验收。
+
 ### COMPETITION-01：华为 ICT AgentArts Competition Profile（2026-09-09）
 
 - 决策：项目参加华为 ICT 大赛创新赛道的 AgentArts 赛题；当前只实施 Competition Profile，通用 Local Profile 可选保留。
@@ -415,6 +417,8 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 
 模块状态以已合并代码和可复现证据为准；PR 合并不自动把整个 MOD 标记为 done。MOD-01/02/03 已完成基础底座，MOD-04/05 与 Competition 工具循环已有离线证据；MOD-20～25 的当前增量均已进入主分支。真实 AgentArts、真实设备、外部账号和写入读回仍分别验收。每行可拆多个子任务，只有全部约定交付通过后模块才为 done。
 
+下表关于 PR #302“尚未合并”的表述为当时的历史快照：当前工作树的 HEAD 历史已包含合并提交 `cc64ebdf`。该提交进入主线不代表相关模块的真实设备、云端或完整验收已完成；各项状态仍须按最新证据分别核对。
+
 | 模块 ID | 计划阶段 | 状态 | 当前执行人 / PR / 证据 |
 | --- | --- | --- | --- |
 | MOD-01 | M1 起步门槛 | done | goo122 / PR #1 / 合并提交 dbbc547 / 构建、迁移和存储测试通过 |
@@ -446,7 +450,7 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 | MOD-26 | M4 起逐平台验收 | todo | `Potatos498` 负责；当前未选定平台工作包，未因分工重置启动 |
 | MOD-27 | M1.6 | review | `zemeng` / main@4b5ec61 已有版本图、SQLite/Fake 原子 `appendBatch`、受控 Goal 工具及公开 Memory 查询/变化流的持久投影与确认消费；真实来源、私人数据授权及删除现场验收未完成，见[当前能力矩阵](modules/MOD-27-28-INTEGRATION-HANDOFF.md#当前源码能力与验收矩阵2026-10-07) |
 | MOD-28 | M1.6 | in_progress | `zemeng` / main@4b5ec61 已有 KEEP/RECHECK/REVISE 回放、事实投影消费、Goal 创建/修订触发及经 Runtime/Policy/CAS 的受控修复；默认 P5 Calendar 尚缺可信来源版本→Fact ref→completed projection 绑定，真实 Laya/AgentArts 与 Evidence 现场闭环未验收，沿 [#212 既有交接](modules/MOD-28-REVIEWED-REPAIR-01.md#默认-p5-会议链与可信来源交接2026-10-07)继续 |
-| MOD-29 | M1.5 第一优先 | in_progress | `zemeng` / AgentArts Runtime 适配与配置入口已有 provisional 实现；真实项目、版本、部署、API 和 trace 读回仍无成功证据 |
+| MOD-29 | M1.5 第一优先 | in_progress | `zemeng` / AgentArts Runtime 适配与配置入口已有 provisional 实现；历史固定版本已取得有限部署、API 和读回证据，不能作为当前 HEAD 或完整远端业务链的验收；平台独立 trace、评估及当前版本端到端读回仍须分别核验，见[接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) |
 | MOD-30 | M1.5 第一优先 | in_progress | `zemeng` / PR #49、#72（Workflow 输入）、#80（载荷边界）均已进入 main（2026-09-30 台账核对），工具提案/审批/continuation 离线链可用；真实 MCP/Skill 与目标系统读回未完成 |
 | MOD-31 | M1.5/M3 | in_progress | `zemeng` / PR #58 的[固定合成分类 runner](../tests/manual/agentarts/support/fixed-synthetic-batch.mjs) 已进入 main；[PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302) 新增三标签配对、固定最小修复及同集配对修复入口，显式端口、1～3 次有界重复，只报告限定评分和实际等待耗时，见[评估记录](modules/MOD-31-FIXED-EVALUATION-01.md)；尚未合并，真实角色协作、平台对照与效果评估仍未完成 |
 | MOD-32 | M1.5/M5 第一优先 | in_progress | `zemeng` / main 已有手动验收脚手架及历史发布/健康/条件关联 trace 记录；[PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302) 新增显式只读 ShowOpsTrace helper 与脱敏消费验证，尚未合并，见[观测边界](modules/MOD-32-AGENTARTS-OBSERVABILITY.md)；实际 SDK 签名 Provider、账号权限读回、当批请求/部署版本精确关联、费用、回滚和端到端证据仍缺，离线 Fake 不算平台验收 |
@@ -460,7 +464,9 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 
 DEV-WORKFLOWS 历史真实验收：MOD-36 已取得只读模型预审回执；MOD-34 已取得 patch/tsc/commit 及人工 push/PR 收尾回执（#291 是不合并产物），证据与结论见 [真实验收记录](modules/DEV-WORKFLOWS-REAL-ACCEPTANCE-20261005.md)（2026-10-05）。
 
-### 2.1 开工顺序与阻塞边界
+### 2.1 早期开工顺序与阻塞边界（历史快照）
+
+以下 PR、堆叠分支与未交付描述为当时状态，当前工作包及后续增量以上方日期记录、模块表和[接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md)为准；保留的权限及禁止盲目回退边界仍适用。
 
 1. Core Runtime Profile 1 已冻结，可供 Competition Profile 复用；事件/Host/Agent/Tool 等未冻结面固定精确提交并保留迁移空间。
 2. main 中的 provisional Coordination/CloudAgent、ToolExecution 与受限工作区列表/读取只作为受控开发面；语音、记忆和认知堆叠分支必须先从最新 main 重建，不能用“已合并到非 main”冒充集成。

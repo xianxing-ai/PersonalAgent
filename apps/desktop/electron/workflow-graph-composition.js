@@ -4,24 +4,27 @@
  */
 export function createDesktopWorkflowGraphComposition({
   runtimeModule,getApplication,feedsHost,todoHost,mailHost,notificationApplicationHost,systemObserveTool,
+  verifyMailOperationScope,invokeSystemObserve,resolveSystemProbeOutcome,
   now=()=>new Date(),
 }={}) {
   if(!runtimeModule||typeof getApplication!=='function')
     return {tools:[],unavailable:['composition_ports_unavailable'],f09WorkerPorts:undefined};
   const unavailable=[],tools=[];
-  const assertCurrent=()=>{};
+  const assertCurrent=scope=>{
+    const runtime=getApplication()?.runtime;
+    if(!runtime)throw Error('Workflow Runtime unavailable');
+    for(const id of [scope.parentTaskId,scope.localTaskId]){
+      const task=runtime.getTask(id);
+      if(task.cancelRequested||!['running','waiting_approval'].includes(task.state))
+        throw Error('Original workflow task is no longer current');
+    }
+  };
 
-  if(mailHost?.tools?.length&&typeof runtimeModule.createRuntimeF08OperationScopeHost==='function'){
+  if(mailHost?.tools?.length&&typeof verifyMailOperationScope==='function'
+    &&typeof runtimeModule.createRuntimeF08OperationScopeHost==='function'){
     const host=runtimeModule.createRuntimeF08OperationScopeHost({
       getApplication,requiredScopes:['mail:read'],assertCurrent,now,
-      verifyOperationScope:async(_scope,context,input)=>{
-        if(!context.authorizationRef||typeof input.toolName!=='string'||!input.toolName.startsWith('mail.'))
-          return {ready:false,blockingReason:'mail_authorization_unavailable'};
-        const names=new Set((mailHost.tools??[]).map(tool=>tool.descriptor?.name).filter(Boolean));
-        if(!names.has(input.toolName))
-          return {ready:false,blockingReason:'mail_tool_unregistered'};
-        return {ready:true};
-      },
+      verifyOperationScope:verifyMailOperationScope,
     });
     if(host.tools?.length)tools.push(...host.tools);else if(host.unavailable)unavailable.push(host.unavailable);
   }else unavailable.push('f08_operation_scope_mail_host_unavailable');
@@ -37,20 +40,13 @@ export function createDesktopWorkflowGraphComposition({
   }else unavailable.push('f12_quiet_hours_notification_host_unavailable');
 
   const observeName=runtimeModule.SYSTEM_OBSERVATION_TOOL_NAME??'computer.system.observe';
-  if(systemObserveTool?.descriptor?.name===observeName&&typeof runtimeModule.createRuntimeF13SystemProbeHost==='function'){
+  if(systemObserveTool?.descriptor?.name===observeName&&typeof invokeSystemObserve==='function'
+    &&typeof resolveSystemProbeOutcome==='function'&&typeof runtimeModule.createRuntimeF13SystemProbeHost==='function'){
     const probe=runtimeModule.createRuntimeF13SystemProbeHost({
       getApplication,systemObserve:systemObserveTool,
       requiredScopes:[...(systemObserveTool.descriptor.requiredScopes??[])],
-      invokeSystemObserve:async context=>systemObserveTool.execute({},context),
-      // Local CPU/memory never proves cloud/quota/lock; refuse those checks explicitly.
-      resolveProbeOutcome:async(_scope,checks)=>{
-        if(checks.some(name=>/cloud|quota|lock/i.test(name))) {
-          const error=new Error('F13 cloud/quota/lock probe is unavailable');
-          error.code='UNSUPPORTED_CAPABILITY';
-          throw error;
-        }
-        return {cloudAlive:false,quotaNormal:false,staleLockFound:false};
-      },
+      invokeSystemObserve,
+      resolveProbeOutcome:resolveSystemProbeOutcome,
       assertCurrent,now,
     });
     if(probe.tools?.length)tools.push(...probe.tools);else if(probe.unavailable)unavailable.push(probe.unavailable);

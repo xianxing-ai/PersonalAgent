@@ -13,12 +13,12 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 | F05 | N02 可选工厂，默认不注册 | 未完成 | optional-graph-hosts 合成测试核对 scope、网关调用口与缺口；非整图 | 知识检索受信网关调用口、引用验真、其余 host |
 | F06 | N03/N04/N05 可选工厂；Desktop 已注入 `verifyWorkflowReminderBinding`（N04 可注册） | 未完成 | [F06 Evidence](F06_REMINDER_WIRING_20261029.md)；N03 现持久化 `f06:n03-todo:{session}` 含 revision；非整图或实机送达 | N03 生产 `invokeTodoCreate` 网关、N05 真实投递 |
 | F07 | N04/N05 可选工厂，默认不注册 | 未完成 | [F07 Evidence](F07_FRESHNESS_20261029.md)：原图请求、确认回执与版本变化核验；写入权限和网关口合成测试；非整图 | Desktop 缺日历版本口、原读取绑定与 N05 受信网关、账户配置和写入读回 |
-| F08 | N10 Desktop 条件注入（mail 宿主就绪时）；N13 可选；N03/N07/N12 显式 unavailable | 未完成 | [F08 Evidence](F08_MAIL_BOUNDARY_20261029.md)；非整图 | 真正归档与发送、N12 对账、审批及真实 Sent 读回 |
+| F08 | N10 还须精确操作授权检查口，当前 Desktop 不注册；N13 可选；N03/N07/N12 显式 unavailable | 未完成 | [F08 Evidence](F08_MAIL_BOUNDARY_20261029.md)；非整图 | 精确 grant/版本/参数检查、真正归档与发送、N12 对账、审批及真实 Sent 读回 |
 | F09 | Runtime 受限 worker；Desktop N02 + `f09WorkflowWorkerPorts`；AgentArts 在固定部署下合并 ownedImage | 未完成（缺部署时不注入；F10 仍 unavailable） | Desktop F09 定向与 ports 测试通过；Runtime F09 4/4；非整图真实源 | F10 入队宿主、真实订阅会话与云图联跑 |
 | F10 | N05 可选工厂，默认不注册 | 未完成 | [F10 Evidence](F10_SUPPORTED_CLAIMS_20261029.md)：原来源与引用版本、独立审核口的合成测试；非整图 | N02–N04 确认回执、实际来源读回、ModelGateway 审核及出机权限装配 |
 | F11 | N05 仅有独立回执验证器，未注册图工具 | 未完成 | [F11 Evidence](F11_CALENDAR_RECEIPT_GUARD_20261029.md)：已授权更新和提醒失效的合成验证；未执行写入 | 用户原确认、calendar.update 语义映射、真实日历写入/读回与提醒失效 |
 | F12 | N02 Desktop 条件注入（NotificationHost）；N04 仍需投递读回 | 未完成 | optional-graph-hosts；非整图 | N04 真实投递读回及导出授权 |
-| F13 | N02 Desktop 条件注入（system.observe）；云/配额/锁显式拒绝 | 未完成 | optional-graph-hosts；非整图 | 独立 cloud/quota/lock resolver；N04 confirmed_recovery |
+| F13 | N02 须独立 Gateway 调用与可信探测口，当前 Desktop 不注册 | 未完成 | optional-graph-hosts；非整图 | 原任务 Policy/ToolGateway 调用、独立 cloud/quota/lock resolver；N04 confirmed_recovery |
 | F14 | N01 可选工厂，默认不注册 | 未完成 | [F14 Evidence](F14_OBSERVATION_ADAPTER_20261029.md)：原观察与 HostTask 回执合成验证；非实机 | Desktop 受信观察入口、跨节点设备会话绑定、输入锁、确认及效果读回 |
 | F15 | 既有 N04/N05/N06 与 host-only review 桥接；Desktop config/origin/native viewer 已接 main | 独立审查可配置，依赖用户公钥与签名目录 | 完整应用合成 28/28；worker 16/16；Desktop review hosts 12/12、workspace-controls 7/7；非真人审查/云验收 | 真实独立审核者签名、固定部署、Laya、实机 WinForms 目视 |
 | F16 | 未核验新增注册 | 未完成 | 待本轮图路径验证 | 原 CI 失败与验证绑定 |
@@ -50,7 +50,22 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 
 本文件随工作进展更新。未完成 28 图之前不以目录数、合成测试、云端 settled 或此表作为完整验收。
 
+## 2026-10-31 接管复核与修复
+
+- 新增接线方案（provisional）：除已有 F09/F15/F20 专用 worker 外，组合层可注入固定图白名单配置，由同一 Runtime worker/driver/HostBridge 执行。每项配置必须给出固定图和入口名称、模型请求及可信实际输入 Schema、工具白名单、原输入解析、可用性、当前任务检查、独立前沿验证、精确出机授权和原本地回执完成验证。模型不能提供任意 workflowId、替换工具目录或省略验证回调；未完整配置不注册。保留现有数据库与调度器，新增 checkpoint 命名空间，不修改已有 F09/F15/F20 协议。此配置端口本身不代表某图生产接线或真实验收通过。
+- F13 首条纵向的实际依赖：N02 必须经原 Gateway 调用系统观察，再分别读取真实 cloud/quota/lock 状态；N04 必须依赖宿主生命周期和原执行记录完成受信恢复。当前没有后者的公共消费端口，不能把只读诊断前缀、CPU 观察或返回 false 当整图完成。
+- 上述白名单入口已接入 `RuntimeApplicationOptions.configuredWorkflowWorkers`、原 Competition 目录/派发/审批恢复及原结果出机链。当前无 Desktop 生产配置注入。11 项 Synthetic 验证包含实际 delegated user-work、Policy/HostBridge、原审批恢复、缺提供者不注册、外来节点拒绝、云 settled 无原回执拒绝和 unknown child 禁重放；与 F09/F20/driver/optional-host 回归合计 43/43 通过，Runtime 构建及架构门禁 3/3 通过。
+
+- F02/F14/F28 Desktop 出机授权原实现比较 Promise 与 `true`，使异步同意被拒绝；现等待真实结果，并在返回前重验原任务未取消。三个回归先失败，修复后通过。
+- F14/F28 Desktop 当前任务检查曾拒绝已成功的 host child，导致实际 receipt 阶段无法出机。现分开检查仍活动的原 graph parent 与已完成的原 host child；取消、失败或待对账 child 不获放行。两项回归先失败再通过；9/9 Desktop port 测试通过，不代表浏览器或模型服务实测。
+- F08_N10/N13、F25_N03、F28_N03 原调用未将实际参数交给原图意图校验，真实非空参数被拒绝，而旧合成夹具用空意图掩盖了问题。现绑定原参数，覆盖更换授权、旧操作、私有标记、检查请求和前驱内容的拒绝路径。
+- F28_N03 guard 接受 Engine 实际发布的 `workflowId/nodeId/input/predecessorOutputs/predecessorStates`，并验证原意图。该适配仍是 provisional；原 `{check}` guard 形状不能匹配真实 Engine。模型支持角色不证明原分派条件成立，缺受信原分派判定时仍返回 unknown。
+- Desktop F08 不再用“存在 mail 工具和任意授权引用”冒充精确操作授权；F13 不再直接执行注册工具绕过 Gateway，也不生成未探测的云/配额/锁事实。缺独立受信提供者时不注册这两个图适配；F12 quiet-hours 保留并重验原父子任务。
+- 当前定向：Runtime 构建通过；`workflow-optional-graph-hosts`、`zemeng-graph-ports` 与 `workflow-graph-composition` 共 22/22 通过，均为本机合成边界验证。真实图、邮件/日历账号、平台评测、物理语音、独立真人签名和关机后云宿主均未据此验收，152 项仍不勾选。
+
 ## 本轮检查记录
+
+- 2026-10-31 接管修复基线 `49f0467b`（含 main `e7d7c7e7`）：在独立工作树、完整替换短 PATH、OpenSSL/.NET 8/PowerShell 及工作树外 TEMP 环境运行 `npm run check`，exit 0；根集成 57/57。该运行开始于通用白名单 worker 修改前；新增白名单 API 的后续完整 check 仍待集成运行，不能以并行期间的旧构建覆盖新改动。
 
 - Node 24.15.0 / npm 11.12.0：`npm run check` 的架构门禁 3/3、契约夹具 4/4 与生成类型检查通过，进入工作区测试后出现 `@personal-agent/coordination` 取消错误码不符（实际 `EXTERNAL_FAILURE`，预期 `CANCELLED`）以及 `packages/knowledge/test/bridge.test.mjs` 的 TLS 用例失败。knowledge 测试阶段长期无新输出，已中断；其后工作区与根集成检查未完成。首次检查使用的受限 PATH 未含 `C:\msys64\ucrt64\bin`，故环境影响待隔离确认；不能据此声称检查通过。
 - 后续以含 OpenSSL 的 PATH 串行运行 `agentarts-proposal-invocations.test.mjs` 和 `agentarts-status-recovery.test.mjs`：54/54 通过；首次全量输出被截断，尚不能确定其失败正属于这两个文件，因此这不消除首错。

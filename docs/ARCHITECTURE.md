@@ -1,5 +1,7 @@
 # 架构设计与技术契约
 
+当前适用边界：以 [Competition Profile](competition/HUAWEI_ICT_AGENTARTS_PROFILE.md) 的后续限定修订为准，AgentArts 负责构建、编排、评估和部署；本机 Laya 在邮件/天气提醒选择及默认编码修复中保留既有有界判断，并可对当前已观察窗口的有限控件提出建议，保留站点资格验证，不授权、不执行工具、不作云失败回退。下方 10-15 部署和模型实验保留历史范围，不恢复全域本机决策。通用目标依赖重规划仍暂停，编码最小修复按 ADR-0033 单独恢复。
+
 > 2026-10-17 编码修复增量见 [F15 V6 接线](competition/CODING_MINIMAL_REPAIR_V6.md) 与 [ADR-0033](adr/0033-coding-minimal-repair-workflow.md)。算法和多轮控制运行于原自有镜像，真实隔离工具、授权及 Evidence 仍归本机原 Runtime；主/影子不共用可写工作区。不是整体架构或模型的重新定案，云发布与分项测试分别登记。
 
 <!-- current-design-alignment-20261015 -->
@@ -190,7 +192,7 @@ Fact、Goal、Decision 和 Plan 使用稳定 ID、revision、来源、有效期�
 
 Coordination 根据事实变化计算影响，只输出 KEEP、RECHECK 或 REVISE、理由和最小 PlanPatch。Runtime 决定何时调度、审批和持久化任务终态；Decision Graph 不能绕过 TaskRuntime。
 
-该架构边界已由 [ADR-0006](adr/0006-coordination-and-agentarts-boundary.md) 接受。CoordinationPort、CloudAgentPort、MemoryQueryPort、FactChangeFeedPort、版本图及 SQLite 存储已有 provisional 实现与受信 Runtime 消费；既有离线影响分析、显式修复预览/提交不等于完整持续认知完成。真实来源、当前主控调用方及恢复分别验收；当前最小修复/依赖重规划算法仍暂停/未定，不由端口存在自动恢复实施或提升冻结状态。
+该架构边界已由 [ADR-0006](adr/0006-coordination-and-agentarts-boundary.md) 接受。CoordinationPort、CloudAgentPort、MemoryQueryPort、FactChangeFeedPort、版本图及 SQLite 存储已有 provisional 实现与受信 Runtime 消费；既有离线影响分析、显式修复预览/提交不等于完整持续认知完成。真实来源、当前主控调用方及恢复分别验收；通用目标依赖重规划仍暂停，编码最小修复按 [ADR-0033](adr/0033-coding-minimal-repair-workflow.md) 单独恢复；端口存在不自动提升冻结状态。
 
 ## 10. 语音与电脑控制
 

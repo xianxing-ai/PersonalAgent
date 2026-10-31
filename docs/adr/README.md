@@ -5,7 +5,7 @@
 > 冲突的部署、默认模型、发布、完成事实及旧协作门槛已由[当前设计](../design/CURRENT_DESIGN_20261015.md)更新（superseded），
 > 不把历史未验状态套到当前，也不把ADR存在当当前验收。[全部设计导航](../design/README.md)；当前接口另见[目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)。
 
-历史ADR保留原日期、内容与状态。后续替代由新ADR说明，不能覆盖旧作者或验收。协作按CONTRIBUTING，一位合资格非作者对当前head有效Approve及检查/冲突/意见门槛，不恢复旧双人本机阅读规则。
+历史ADR保留原日期、内容与状态。后续替代由新ADR说明，不能覆盖旧作者或验收。协作按CONTRIBUTING：常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 对具体 PR 的审核例外须留记录。检查、冲突及意见门槛仍适用，不恢复旧双人本机阅读规则。
 
 - [ADR-0001：采用模块化单体](0001-modular-monolith.md)
 - [ADR-0002：依赖方向与应用装配](0002-dependency-direction.md)
@@ -34,11 +34,17 @@
 - [ADR-0025：Competition 编译上下文版本与预算绑定（proposed）](0025-competition-context-binding.md)
 - [ADR-0026：模型请求预算前端可见性与超限拦截（proposed）](0026-visible-model-request-budget.md)
 - [ADR-0027：模型请求预算展示与监控契约（proposed）](0027-model-budget-display.md)
+- [ADR-0028：在 Provider 内完成可见请求格式转换（proposed）](0028-final-visible-request-body.md)
 - [ADR-0029：远程 MCP 的首个只读传输纵片（proposed）](0029-remote-mcp-readonly-transport.md)
 - [ADR-0030：本机 Laya、镜像串行工作流与外部宿主接口（实验候选，未定稿）](0030-local-laya-serial-image-workflows.md)
 - [ADR-0031：远程 MCP 的加密宿主配置与会话恢复（proposed）](0031-remote-mcp-host-configuration.md)
 - [ADR-0032：远程只读 MCP 的授权绑定与凭据引用（proposed）](0032-remote-mcp-bound-credentials.md)
 - [ADR-0033：镜像内编码最小修复与 F15 多轮工作流（实施中）](0033-coding-minimal-repair-workflow.md)
-- [ADR-0034：统一决策工作流架构与本机 Laya 串行实验（proposed）](0034-unified-decision-workflow-architecture.md)
+- [历史架构方案：统一决策工作流与本机 Laya 串行实验（superseded，原 ADR-0024）](0034-unified-decision-workflow-architecture.md)
 - [ADR-0035：连接器变化触发主对话的本地提醒判断（proposed）](0035-connector-change-triggers.md)
 - [ADR-0036：绑定原目标与初始目录的子任务工具续接（proposed）](0036-goal-bound-tool-continuations.md)
+- [ADR-0037：对话上下文输入上限提高至 128,000 字符（accepted）](0037-conversation-context-128k.md)
+- [ADR-0039：默认原生电脑控制与受控浏览器（implementation）](0039-native-desktop-control.md)
+- [ADR-0040：渐进式云端开发执行与按需工具发现（implementation）](0040-progressive-cloud-development.md)
+- [ADR-0041：Desktop 会话元数据的增量事务持久化（proposed）](0041-desktop-conversation-incremental-persistence.md)
+- [ADR-0042：按任务与沙箱合并核心审批（实施中）](0042-task-scoped-approval-cards.md)
