@@ -17,7 +17,8 @@ import {createRuntimeF09WorkflowWorkerCapability,runtimeF09WorkflowWorkerConfigu
   F09_WORKFLOW_WORKER_TOOL,F09_WORKFLOW_WORKER_VERSION} from './owned-workflow-f09-worker-capability.js';
 import type {RuntimeF09WorkflowWorkerOptions,RuntimeF09WorkflowWorkerCapability} from './owned-workflow-f09-worker-capability.js';
 import {createRuntimeConfiguredWorkflowCapability,runtimeConfiguredWorkflowConfigured} from './configured-workflow-worker.js';
-import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability} from './configured-workflow-worker.js';
+import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowCapability,RuntimeConfiguredWorkflowBindingScope,
+  RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import {capabilityContext} from './capability-context.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
@@ -1553,6 +1554,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return this.runtime.getTask(origin.parentTaskId).conversationId;}
       return typeof task.conversationId==='string'&&task.conversationId?task.conversationId:undefined;
     }catch{return undefined;}
+  }
+
+  /** Trusted graph hosts read only the current pending worker's immutable original input and receipts. */
+  readConfiguredWorkflowBinding(scope:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined {
+    return this.configuredWorkflowWorkers.find(worker=>worker.isActive(scope.taskId))?.readBinding(scope);
   }
 
   /** Read only the original active F15 host child, for task-bound approval discovery. */

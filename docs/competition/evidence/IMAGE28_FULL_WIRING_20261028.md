@@ -55,6 +55,7 @@ Owner 本轮授权代实现其他协作者负责的公共口和业务接线；�
 - 新增接线方案（provisional）：除已有 F09/F15/F20 专用 worker 外，组合层可注入固定图白名单配置，由同一 Runtime worker/driver/HostBridge 执行。每项配置必须给出固定图和入口名称、模型请求及可信实际输入 Schema、工具白名单、原输入解析、可用性、当前任务检查、独立前沿验证、精确出机授权和原本地回执完成验证。模型不能提供任意 workflowId、替换工具目录或省略验证回调；未完整配置不注册。保留现有数据库与调度器，新增 checkpoint 命名空间，不修改已有 F09/F15/F20 协议。此配置端口本身不代表某图生产接线或真实验收通过。
 - F13 首条纵向的实际依赖：N02 必须经原 Gateway 调用系统观察，再分别读取真实 cloud/quota/lock 状态；N04 必须依赖宿主生命周期和原执行记录完成受信恢复。当前没有后者的公共消费端口，不能把只读诊断前缀、CPU 观察或返回 false 当整图完成。
 - 上述白名单入口已接入 `RuntimeApplicationOptions.configuredWorkflowWorkers`、原 Competition 目录/派发/审批恢复及原结果出机链。当前无 Desktop 生产配置注入。11 项 Synthetic 验证包含实际 delegated user-work、Policy/HostBridge、原审批恢复、缺提供者不注册、外来节点拒绝、云 settled 无原回执拒绝和 unknown child 禁重放；与 F09/F20/driver/optional-host 回归合计 43/43 通过，Runtime 构建及架构门禁 3/3 通过。
+- 业务宿主读取原图使用公开 `readConfiguredWorkflowBinding(application,{taskId,workflowId,sessionId,signal})`（亦为 RuntimeApplication 方法）。仅沿当前 pending proposal 选择原已配置 worker，不枚举 checkpoint；核对配置版本、输入、目录、deadline/session，并对每个已确认前驱重验原 operation/parent/intent、实际 HostTask、Policy allow 与执行 Evidence，返回深冻结快照。它是宿主只读端口，不是额外授权或出机许可。11 项 worker 测试增加版本/目录/输入/父任务/原 pending 替换、取消及快照不可变断言并通过。
 
 - F02/F14/F28 Desktop 出机授权原实现比较 Promise 与 `true`，使异步同意被拒绝；现等待真实结果，并在返回前重验原任务未取消。三个回归先失败，修复后通过。
 - F14/F28 Desktop 当前任务检查曾拒绝已成功的 host child，导致实际 receipt 阶段无法出机。现分开检查仍活动的原 graph parent 与已完成的原 host child；取消、失败或待对账 child 不获放行。两项回归先失败再通过；9/9 Desktop port 测试通过，不代表浏览器或模型服务实测。
