@@ -108,6 +108,7 @@ import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
 import {createWorkflowExportConsent} from './workflow-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createBusinessWorkflowAvailability} from './business-workflow-availability.js';
+import {prepareConfiguredWorkflowDecisionQuestion} from './configured-workflow-decision-source.js';
 import {createSystemObservationConversation} from './system-observation-conversation.js';
 import {createDesktopWindowsControlHost} from './windows-control-host.js';
 import {createComputerControlLease} from './computer-control-lease.js';
@@ -2701,7 +2702,8 @@ async function initializeRuntime() {
           calendarMeetingHost?.prepareAuthorization?.(scope);
           mailHost?.prepareAuthorization?.(scope);
           mailAnalysisHost?.prepareAuthorization?.(scope);
-          codingWorkspace?.prepareAuthorization?.(scope);
+          const configuredDecision=prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
+          if(!configuredDecision)codingWorkspace?.prepareAuthorization?.(scope);
           knowledgeSourceConfig?.prepareAuthorization?.(scope);
           notificationApplicationHost?.prepareAuthorization?.(scope);
           connectorWatchHost?.prepareAuthorization?.(scope);
@@ -2712,6 +2714,7 @@ async function initializeRuntime() {
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
+          ||scope.toolName==='decision.choose_candidate'
           ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_|workflow\.host\.f09_)/u.test(scope.toolName),
         prepareCompetitionToolExport:prepareWorkflowToolExport=async ({phase,taskId,runId,proposal,deadline,signal})=>{
@@ -2724,7 +2727,8 @@ async function initializeRuntime() {
           await feedsHost?.prepareExport?.(scope);
           await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
-          await codingWorkspace?.prepareExport?.(scope);
+          const configuredDecision=phase==='preflight'&&prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
+          if(!configuredDecision)await codingWorkspace?.prepareExport?.(scope);
           await goalCloudHost?.prepareExport?.(scope);
           if(['knowledge.search','knowledge.apply_note_patch'].includes(proposal?.toolName)) {
             const binding=knowledgeSourceConfig.snapshot();
