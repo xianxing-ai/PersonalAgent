@@ -227,6 +227,19 @@ test('F08 wait reconciliation and versioned replan stay honest',async()=>{
   await assert.rejects(replan.tools[0].execute({...replanArgs,priorOperationId:'unrelated'},replanFixture.context),{code:'UNAUTHORIZED'});
 });
 
+test('F08 reconciliation only confirms the original send and remains unknown without readback',async()=>{
+  const args={sendOperationId:'original-send'},f=hostFixture('F08','F08_N12','workflow.host.f08_n12',args);
+  const original={taskId:'smtp-child',runId:'host-tool-smtp-child',messageId:'<fixture@example.invalid>',
+    idempotencyKey:'host-tool-smtp-child',operationId:'original-send'};
+  f.application.readHostToolTask=()=>({toolName:'mail.send',task:{state:'succeeded'},confirmed:{runId:original.runId,result:{externalId:original.messageId}}});
+  let state='unknown';
+  const host=createRuntimeF08WaitReconciliationHost({...f,mailReconcile:{descriptor:{name:'mail.reconcile_send'}},
+    resolveOriginalSend:async()=>original,readReconciliation:async()=>({state})});
+  await assert.rejects(host.tools[0].execute(args,f.context),{code:'RESULT_UNKNOWN'});
+  state='confirmed';assert.deepEqual(await host.tools[0].execute(args,f.context),{reconciliationState:'confirmed',originalSendIdentity:original.runId});
+  original.idempotencyKey='another-run';await assert.rejects(host.tools[0].execute(args,f.context),{code:'UNAUTHORIZED'});
+});
+
 test('F12 quiet hours and delivery require trusted notification ports',async()=>{
   const quietFixture=hostFixture('F12','F12_N02','workflow.host.f12_n02');
   const notificationHost={getInterruptionPolicy:()=>({state:'configured',effective:{mode:'quiet',digestMode:'off',allowUrgentBreakthrough:false}})};

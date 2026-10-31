@@ -40,9 +40,9 @@
 
 首轮定向验证 20/20 通过，补充 F07/F11 守卫及工厂回归 10/10，最终 Desktop 端口回归 6/6（含 Runtime 绑定前惰性装配）。覆盖 F06 显式提醒与原绑定、F07 完整窗口版本、F11 原日历与旧提醒读回、F12 本地 SQLite/通知宿主投递和 unknown 不重发。设备事件、账号数据、图输入和 bridge 在这些边界测试中使用明确夹具，不是实际用户账号、实际 OS 通知或华为整图验收。
 
-`npm run check` 已使用 .NET 8、PowerShell 7、OpenSSL 及仓库外 TEMP 启动；本增量首次提交时仍运行 Desktop 深度回归，尚不能声明全量退出码为 0。日志位于本工作树 `.cache/pr531-business/check.log`；结束后补记独立结果。`git -c core.whitespace=cr-at-eol diff --check` 通过：calendar 的既有文件在 Git 中本身采用 CRLF，保留其原行尾，不为本任务整文件格式化。
+`npm run check` 已使用 .NET 8、PowerShell 7、OpenSSL 及仓库外 TEMP 完整退出 0：汇总 6436 项，6392 通过、44 门控跳过、0 失败，包含末尾 integration 57/57。日志位于本工作树 `.cache/pr531-business/check.log`。该检查使用首批 `fd9ad9e0` 的构建产物；后续 F08 邮件增量单独构建与验证，不挪用此结果。`git -c core.whitespace=cr-at-eol diff --check` 通过：calendar 的既有文件在 Git 中本身采用 CRLF，保留其原行尾，不为本任务整文件格式化。
 
-- F08 底层存在 SMTP send/reconcile，但公开 `mail.send`、真实 `mail.archive` 和图节点桥尚未交付；不得用 save_draft/mark_seen 代替。没有向真实收件人发送邮件。
+- F08 在后续独立增量补充真实 `mail.send`、`mail.archive` 及原发送身份桥，见 [F08 增量证据](IMAGE531_F08_MAIL_PORTS_20261031.md)。不得用 save_draft/mark_seen 代替；没有向真实收件人发送邮件。
 - F06 真正到时的既有提醒 tick、F07 真实 CalDAV 账号、F11 原日历与交通提醒映射、F12 实际设备事件仍须由集成环境验收。
 - 窗口摘要不是整个账号的版本，也不是跨读写的原子锁；CalDAV 更新继续以原强 ETag 防覆盖，不能从摘要推断创建操作具有原子冲突排除。
 - 尚未声明任一相关整图 done；#531 必须继续完成生产装配和用户要求的真实验收后才能合并。

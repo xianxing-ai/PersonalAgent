@@ -1,5 +1,7 @@
 # @personal-agent/mail
 
+F08 增量公开 `mail.send`（`mail:send`）与 `mail.archive`（`mail:archive`）两项真实写工具，均以实际 ToolContext.runId 绑定幂等身份，不声明自动恢复或跨重启重发安全。SMTP 取消/超时保留原 Message-ID 和 unknown；核实继续使用 `mail.reconcile_send`。归档要求原 folder/UID/UIDVALIDITY/Message-ID，QQ 提供者仅在服务端有独立 Archive 文件夹且宣告原生 MOVE + UIDPLUS 时执行；拒绝 imapflow 的 COPY+EXPUNGE 回退。确认必须读回源 UID 不存在、目标 UID 世代及 Message-ID 一致；缺映射或断线保留 unknown，不再次移动。当前验证为离线协议夹具和真实本地 Runtime/SQLite/Policy，未执行真实账号发送或归档，未提高接口冻结等级。详见 [F08 证据](../../../docs/competition/evidence/IMAGE531_F08_MAIL_PORTS_20261031.md)。
+
 <!-- current-design-20261009 -->
 > 当前设计与协作入口（2026-10-17）：[当前详细设计](../../../docs/design/CURRENT_DESIGN_20261015.md) · [逐图状态](../../../docs/design/WORKFLOW_STATUS_20261015.md) · [历史设计导航](../../../docs/design/README.md)。当前协作者为 zemeng5208、goo122、Potatos498、2511375597-lab；审查及合并规则以 [CONTRIBUTING](../../../CONTRIBUTING.md) 和 [AGENTS](../../../AGENTS.md) 为准，模块/文件所有权以 [MODULE_ASSIGNMENTS](../../../docs/MODULE_ASSIGNMENTS.md) 为准。常规 PR 首轮须有合资格非作者有效批准，后续仅修复 CI 的提交保留批准；Owner 仅可对具体 PR 作有记录的审核例外，必需技术 CI 不豁免。有权限者（包括作者）在严格主线更新、无冲突及阻断问题解决后可正常合并。各负责人完成本工作包的实现、必要接线、验证、Evidence 和文档；历史作者、审批与验收按原日期和范围保留，旧两人本机阅读门槛不作为现行要求。
 <!-- architecture-scope-20261013 -->
