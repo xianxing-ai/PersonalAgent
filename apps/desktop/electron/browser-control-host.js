@@ -162,7 +162,8 @@ export async function createBrowserEgressProxy({dnsLookup=lookup,testOnlyAllowed
 /** One library driver behind the original Runtime/Policy/Gateway. No agent loop, JS tool,
  * CDP endpoint, imported browser profile, or second task/authorization store. */
 export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,authorizePresence,attempts,onUpdate=()=>{},now=Date.now,
-  playwright:injectedPlaywright,dnsLookup=lookup,testOnlyAllowedOrigins=[],downloadDirectory,maxDownloadBytes=10_485_760}={}) {
+  playwright:injectedPlaywright,dnsLookup=lookup,testOnlyAllowedOrigins=[],downloadDirectory,maxDownloadBytes=10_485_760,
+  authorizeWorkflowTarget}={}) {
   if(typeof userDataPath!=='string'||!path.isAbsolute(userDataPath)||typeof authorizePresence!=='function'
     ||testOnlyAllowedOrigins.length&&!injectedPlaywright)fail('INVALID_ARGUMENT','浏览器需要可信宿主路径、权限端口及明确测试配置');
   const downloadRoot=downloadDirectory??path.join(userDataPath,'downloads');
@@ -389,12 +390,18 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
       expiresAt:new Date(expiresAt).toISOString(),url:safeUrl.href,...data,
       controls:data.controls.map(({downloadUrl,...control})=>({...control,...(downloadUrl?{downloadable:/^https?:/.test(downloadUrl)}:{})})),goalVerified:false};
   }
+  function currentTarget(scope,args,toolName) {
+    const value=targets.get(args.targetRef);
+    if(!value||value.expiresAt<=now()||value.page!==page||value.url!==page.url()||value.generation!==generation)
+      fail('UNAUTHORIZED','页面或观察已变化，请重新观察');
+    if(value.taskId!==scope.taskId&&authorizeWorkflowTarget?.({scope,args:structuredClone(args),toolName,
+      sourceTaskId:value.taskId,targetRef:args.targetRef,url:value.url,expiresAt:new Date(value.expiresAt).toISOString()})!==true)
+      fail('UNAUTHORIZED','原浏览器观察不属于当前精确工作流操作');
+    return value;
+  }
   async function target(scope,args,toolName) {
     await currentPage(scope,args,toolName);
-    const value=targets.get(args.targetRef);
-    if(!value||value.taskId!==scope.taskId||value.expiresAt<=now()||value.page!==page||value.url!==page.url()||value.generation!==generation)
-      fail('UNAUTHORIZED','页面或观察已变化，请重新观察');
-    return value;
+    return currentTarget(scope,args,toolName);
   }
   async function control(value,selected) {
     const expected=value.controls.find(item=>item.ref===selected);if(!expected)fail('INVALID_ARGUMENT','控件引用不属于原观察');
@@ -498,7 +505,9 @@ export function createBrowserControlHost({userDataPath,isFullAccess=()=>false,au
               origin:new URL(page.url()).origin,expiresAt:Math.min(now()+300_000,Date.parse(scope.deadline))});
             return {...await observe(scope,args,toolName),artifact};
           }
-          await recordAttempt(scope,args,toolName,()=>{recorded=true;});targets.delete(args.targetRef);dispatched=true;
+          await recordAttempt(scope,args,toolName,()=>{recorded=true;});
+          if(seen.taskId!==scope.taskId)currentTarget(scope,args,toolName);
+          targets.delete(args.targetRef);dispatched=true;
           const timeout=Math.max(1,Date.parse(scope.deadline)-now());
           if(name==='click')await selected.locator.click({timeout});
           else if(name==='type') {if(args.clear!==false)await selected.locator.fill(args.text,{timeout});else await selected.locator.pressSequentially(args.text,{timeout});}

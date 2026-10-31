@@ -52,6 +52,8 @@ export {createRuntimeF08MailArchiveHost,createRuntimeF08MailSendHost,createRunti
   createRuntimeF08WaitReconciliationHost,createRuntimeF08VersionedReplanHost} from './application/workflow-f08-mail-graph-host.js';
 export {createRuntimeF12QuietHoursHost,createRuntimeF12NotificationDeliverHost} from './application/workflow-f12-notification-graph-host.js';
 export {createRuntimeF13SystemProbeHost} from './application/workflow-f13-probe-graph-host.js';
+export {createRuntimeF13DiagnosticControlHost} from './application/workflow-f13-diagnostic-control-host.js';
+export {createRuntimeF14DeviceControlHost} from './application/workflow-f14-device-control-host.js';
 export {createRuntimeF10SupportedClaimsHost} from './application/workflow-f10-supported-claims-host.js';
 export type {F10BoundFinding,F10ClaimReview,F10SupportedClaimsOptions} from './application/workflow-f10-supported-claims-host.js';
 export {createRuntimeF03ReconciliationHost} from './application/workflow-f03-reconciliation-host.js';
