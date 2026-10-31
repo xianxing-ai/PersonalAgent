@@ -76,24 +76,38 @@ test('F07 freshness compares the complete original window to a separately author
 });
 
 test('F11 uses the original calendar child then clears only its bound reminder and verifies cancellation',async()=>{
-  const remindUtc='2026-11-01T08:00:00.000Z',reminder={todoId:'todo-1',revision:1,scheduleId:'todo-reminder:todo-1:'+remindUtc,conversationId:'fixture-todos'};
+  const remindUtc=new Date(Date.now()+120000).toISOString(),reminder={todoId:'todo-1',revision:1,scheduleId:'todo-reminder:todo-1:'+remindUtc,conversationId:'fixture-todos'};
   const f=fixture({update:{uid:'event-1',startUtc:'2026-11-01T09:00:00.000Z',endUtc:'2026-11-01T10:00:00.000Z'},reminder});
-  let todo={id:'todo-1',revision:1,status:'open',reminder:{state:'scheduled',remindAt:{utc:remindUtc}}},schedule={scheduleId:reminder.scheduleId,status:'pending'};
+  let todo={id:'todo-1',title:'Original',createdAt:new Date(f.now()-1000).toISOString(),updatedAt:new Date(f.now()-1000).toISOString(),revision:1,
+    status:'open',reminder:{state:'scheduled',missedPolicy:'run_once',remindAt:{utc:remindUtc,timeZone:'UTC'}}};
+  let schedule={...buildReminderTrigger(todo,reminder.conversationId),status:'pending'},cleared;
   const original={taskId:'calendar-child',runId:'host-tool-calendar-child',toolName:'calendar.update',toolVersion:'1',scopeRef:'scope',arguments:f.bound.input.update,
     result:{state:'updated',item:{source:'calendar',externalId:'event-1',validFor:f.bound.input.update.startUtc+'/'+f.bound.input.update.endUtc}}};
-  f.app.readHostToolTask=()=>({task:{state:'succeeded'},toolName:original.toolName,confirmed:{runId:original.runId,result:original.result}});
-  f.app.runtime.listSchedules=()=>[schedule];
+  f.app.readHostToolTask=id=>{const receipt=id==='calendar-child'?original:cleared;return {task:{state:'succeeded'},toolName:receipt.toolName,toolVersion:receipt.toolVersion,
+    confirmed:{runId:receipt.runId,result:receipt.result,evidenceRefs:[receipt.runId]}};};
+  f.app.runtime.readToolExecutions=id=>{const receipt=id==='calendar-child'?original:cleared;return [{toolName:receipt.toolName,toolVersion:receipt.toolVersion,
+    evidenceId:receipt.runId,policyDecision:'allow',executionStarted:true,state:'confirmed',arguments:receipt.arguments,scopeRef:receipt.scopeRef}];};
+  f.app.runtime.matchesToolExecutionInput=(record,input)=>JSON.stringify(record.arguments)===JSON.stringify(input.arguments)&&record.scopeRef===input.scopeRef;
+  f.app.runtime.getSchedule=()=>schedule;
   const ports=createF11CalendarWorkflowPorts({...f,todoHost:{snapshot:()=>({items:[todo]})},bridge:{async invoke(request){
     f.calls.push(request);if(request.actionKey==='f11.calendar.update')return original;
-    todo={id:'todo-1',revision:2,status:'open'};schedule={...schedule,status:'cancelled'};
-    return {toolName:'todo.update',arguments:request.input,result:{item:todo,reminderTrigger:null}};
+    todo={...todo,revision:2,updatedAt:new Date(f.now()).toISOString()};delete todo.reminder;schedule={...schedule,status:'cancelled'};
+    cleared={taskId:'todo-child',runId:'host-tool-todo-child',toolName:'todo.update',toolVersion:'1',scopeRef:'clear-scope',arguments:request.input,
+      result:{item:todo,reminderTrigger:null}};return cleared;
   }}});
   assert.equal(await ports.verifyPlan(f.scope,f.bound.input),true);
   const receipt={...await ports.invokeCalendarUpdate(f.scope,f.bound.input.update,{}),reminderId:reminder.scheduleId};
   assert.equal(await ports.verifyUpdatedEvent(f.scope,receipt),true);
+  const before=todo;todo={...todo,title:'User changed while calendar completed',revision:2};
+  await assert.rejects(ports.invalidateReminder(f.scope,reminder,{}),{code:'REVISION_CONFLICT'});
+  assert.equal(f.calls.length,1,'changed original reminder is rejected before dispatching a clear child');todo=before;
   await ports.invalidateReminder(f.scope,reminder,{});
   assert.equal(await ports.verifyOriginalPlan(f.scope,receipt),true);assert.equal(await ports.verifyReminderInvalidated(f.scope,receipt),true);
-  assert.deepEqual(f.calls[1],{actionKey:'f11.reminder.clear',input:{id:'todo-1',clearReminder:true}});
+  assert.deepEqual(f.calls[1],{actionKey:'f11.reminder.clear',input:{id:'todo-1',expectedRevision:1,clearReminder:true}});
+  await ports.invalidateReminder(f.scope,reminder,{});assert.equal(f.calls.length,2,'confirmed original clear is read back without redispatch');
+  todo={...todo,title:'User later edit',revision:3};assert.equal(await ports.verifyReminderInvalidated(f.scope,receipt),false);
+  await assert.rejects(ports.invalidateReminder(f.scope,reminder,{}),{code:'RESULT_UNKNOWN'});
+  todo=cleared.result.item;
   schedule={...schedule,status:'fired'};assert.equal(await ports.verifyReminderInvalidated(f.scope,receipt),false);
   await assert.rejects(ports.invalidateReminder(f.scope,{...reminder,todoId:'other'},{}),{code:'UNAUTHORIZED'});
 });

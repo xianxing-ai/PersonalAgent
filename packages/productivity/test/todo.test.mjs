@@ -124,6 +124,33 @@ test('终态不可再变：done → open 与 cancelled → done 都拒绝', () =
   assert.throws(() => service.update(b.id, {status: 'done'}), /Terminal status/);
 });
 
+test('expectedRevision protects the original reminder while preserving unconditional update compatibility', () => {
+  const {service,storage}=makeService();
+  const original=service.create({title:'Original',reminder:{remindAt:{utc:'2026-09-15T08:00:00.000Z'}}});
+  for(const revision of [0,-1,1.5,'1',null])assert.throws(()=>service.update(original.id,{expectedRevision:revision,clearReminder:true}),{code:'INVALID_ARGUMENT'});
+  const edited=service.update(original.id,{title:'User edit',reminder:{remindAt:{utc:'2026-09-16T08:00:00.000Z'}}});
+  const persisted=structuredClone(storage.get('todo:state'));
+  assert.throws(()=>service.update(original.id,{expectedRevision:original.revision,clearReminder:true}),{code:'REVISION_CONFLICT'});
+  assert.deepEqual(storage.get('todo:state'),persisted);assert.deepEqual(service.get(original.id),edited);
+  const cleared=service.update(original.id,{expectedRevision:edited.revision,clearReminder:true});
+  assert.equal(cleared.revision,edited.revision+1);assert.equal(cleared.reminder,undefined);assert.equal(cleared.title,'User edit');
+  assert.throws(()=>service.update(original.id,{expectedRevision:edited.revision,clearReminder:true}),{code:'REVISION_CONFLICT'});
+  assert.deepEqual(service.update(original.id,{clearReminder:true}),cleared,'legacy no-op updates retain their existing idempotency');
+});
+
+test('published todo.update accepts expectedRevision and rejects a stale clear without changing trigger',async()=>{
+  const host=new FakeToolHost(()=>NOW),storage=new FakeStorage().namespace('revision');
+  const release=register(host,{storage,conversationId:'revision',now:()=>NOW,idFactory:()=> 'original'});
+  const context={taskId:'task',runId:'revision',signal:new AbortController().signal,deadline:'2026-09-07T01:00:00.000Z',authorizationRef:'test',scopes:['todo:read','todo:write']};
+  try{
+    const original=await host.invoke('todo.create',{title:'Original',remindUtc:'2026-09-15T08:00:00.000Z'},context);
+    const changed=await host.invoke('todo.update',{id:original.item.id,expectedRevision:1,remindUtc:'2026-09-16T08:00:00.000Z'},context);
+    await assert.rejects(host.invoke('todo.update',{id:original.item.id,expectedRevision:1,clearReminder:true},context),{code:'REVISION_CONFLICT'});
+    const current=(await host.invoke('todo.list',{},context)).items[0];
+    assert.deepEqual(current,changed.item);assert.deepEqual(buildReminderTrigger(current,'revision'),changed.reminderTrigger);
+  }finally{release();}
+});
+
 test('提醒不能晚于 due；时间输入必须二选一；时区必须合法', () => {
   const {service} = makeService();
   assert.throws(() => service.create({

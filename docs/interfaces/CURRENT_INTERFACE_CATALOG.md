@@ -678,6 +678,10 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 截至 2026-09-27，**冻结范围仍只有 Core Runtime Profile 1 的消息、任务、会话与审批只读查询子集；不冻结整套协议、外部模型工具调用或 AgentArts 编排。** main 中已有 Competition 的离线 Coordination/审批工具循环、版本图、原子存储、显式修复预览/提交、受限工作区读取、公开演示知识检索，以及 provisional 的 SQLite 事实查询/变化流、可恢复投影和受信 Fact host 工厂；编码工具的补丁候选与独占 apply 也已合入 package，但尚未生产注册。生产事实自动消费、Runtime Memory capability、真实工作区写入与语音消费仍未完成验收。
 
 在上述 2026-09-27 历史快照中，真实 AgentArts deployment/API/trace、目标系统工具读回、完整 Evidence、真实语音设备和外部事实提供者仍 `unavailable`。Fake、合成评估、HTTP 200、配置成功或平台截图都不能提升这些状态；正式比赛路径不得静默回退 Local。该历史状态不覆盖本页后续登记的固定版本有限真实云调用、工具闭环与语音端口证据；未验的完整 Trace、实体设备和全业务范围仍按各自缺口登记。
+## 2026-10-31 F11 原提醒条件更新（provisional）
+
+公开 `TodoUpdateInput` 与 `todo.update` 描述符增加可选 `expectedRevision` 正整数；现有同步服务在修改前核对，冲突返回 `REVISION_CONFLICT`，不清除当前原/新提醒。省略参数的旧请求保持原行为，无 Core wire 或数据库迁移；Schema/类型源位于 productivity workspace，使用原 TypeScript build 生成声明。F11 只按原 revision 清除，并要求完整原条目/trigger/pending schedule、精确清除后 revision+1、原 Policy 子任务结果和原 schedule cancelled 的读回。详见 [F11 原提醒保护](../competition/evidence/F11_REMINDER_REVISION_20261031.md)。此处不表示 F11 条件补问、整图或真实日历服务已完成验收。
+
 ## 2026-10-31 F06 未来提醒原调度读回（provisional）
 
 `workflow.business.f06` 的本机配置版本 `business-20261031-f06-v2` 使用原 `todo.create` 子任务和 Scheduler，输入仍为 `todoTitle`、显式 `remindUtc` 与可选 `due`。完成结果为 `{todoId, reminderState: "scheduled" | "delivered", delivered: boolean}`：未来原条目与 pending schedule 的精确读回返回 `scheduled/false`；只有原持久设备投递证据返回 `delivered/true`。两者不可互换。
