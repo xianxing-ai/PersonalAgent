@@ -322,7 +322,8 @@ test('F21 skill manifest and protocol health read injected ports only',async()=>
 
 test('F25 outbound check and F27 model capabilities fail closed on export gates',async()=>{
   const f25=hostFixture('F25','F25_N03','workflow.host.f25_n03',{testPayloadContainsPrivate:true});
-  const outbound=createRuntimeF25OutboundContextHost({...f25});
+  const outbound=createRuntimeF25OutboundContextHost({...f25,readOutboundContext:()=>({sourceId:'public-fixture',revision:1,
+    dataLevel:'public',cloudExportAllowed:true,payload:{text:'public fixture'}})});
   assert.deepEqual(await outbound.tools[0].execute({testPayloadContainsPrivate:true},f25.context),
     {filteredOut:['private_marker'],cleanPayloadReady:false});
   await assert.rejects(outbound.tools[0].execute({testPayloadContainsPrivate:false},f25.context),{code:'UNAUTHORIZED'});
@@ -332,6 +333,22 @@ test('F25 outbound check and F27 model capabilities fail closed on export gates'
   const result=await host.tools[0].execute({},f27.context);
   assert.equal(result.models[0].id,'m');
   f27.denyExport();await assert.rejects(host.authorizeReceipt({context:f27.context,result}),{code:'UNAUTHORIZED'});
+});
+
+test('F25 checks original private payload and refuses source changes across export approval',async()=>{
+  const f=hostFixture('F25','F25_N03','workflow.host.f25_n03',{testPayloadContainsPrivate:false});
+  assert.equal(createRuntimeF25OutboundContextHost({...f}).tools.length,0);
+  let source={sourceId:'original',revision:1,dataLevel:'private',cloudExportAllowed:false,payload:{text:'known-secret-fixture'}};
+  let mutate=false;
+  const host=createRuntimeF25OutboundContextHost({...f,readOutboundContext:()=>source,
+    containsCredential:value=>value.includes('known-secret-fixture'),
+    authorizeExport:async()=>{if(mutate)source={...source,revision:2};return true;}});
+  const result=await host.tools[0].execute({testPayloadContainsPrivate:false},f.context);
+  assert.deepEqual(result,{filteredOut:['private_source','export_not_authorized','credential_pattern'],cleanPayloadReady:false});
+  assert.equal(JSON.stringify(f.application.runtime.loadCheckpoint('child','f25:outbound-source')).includes('known-secret-fixture'),false);
+  await host.authorizeReceipt({context:f.context,result});
+  mutate=true;
+  await assert.rejects(host.authorizeReceipt({context:f.context,result}),{code:'REVISION_CONFLICT'});
 });
 
 test('F28 native config host and guard use trusted readbacks',async()=>{
