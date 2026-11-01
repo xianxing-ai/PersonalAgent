@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 7769e1634c031466d8040a1a611830dc027d96928d4a7625aef2fbc582715c27
+// Source projection sha256: 98b262fbbe49052f7c52e6e8297ae20601a667849ddd60c6ddadca2c4fb21d5f
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -2262,7 +2262,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     "nodes": [
       {
         "id": "F11_N01",
-        "label": "接收气象与交通警报",
+        "label": "绑定原天气预报来源；气象与交通警报仍需独立来源",
         "kind": "input",
         "dependencies": [],
         "required": true,
@@ -2271,11 +2271,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "effectType": "读取",
         "inputFields": [
-          "alertLevel",
-          "timeRange"
+          "weather",
+          "eventId"
         ],
         "outputFields": [
-          "severeWeather"
+          "sourceKind",
+          "weather"
         ],
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
@@ -2304,7 +2305,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "label": "决策模型 评估冲击并拟定改线方案",
         "kind": "semantic_decision",
         "dependencies": [
-          "F11_N02"
+          "F11_N02",
+          "F11_N01"
         ],
         "required": true,
         "resourceKeys": [
@@ -2382,6 +2384,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "source": "F11_N02",
+        "target": "F11_N03",
+        "required": true
+      },
+      {
+        "source": "F11_N01",
         "target": "F11_N03",
         "required": true
       },

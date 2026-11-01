@@ -2423,7 +2423,7 @@
     "nodes": [
       {
         "id": "F11_N01",
-        "label": "接收气象与交通警报",
+        "label": "绑定原天气预报来源；气象与交通警报仍需独立来源",
         "kind": "input",
         "dependencies": [],
         "required": true,
@@ -2432,11 +2432,12 @@
         ],
         "effectType": "读取",
         "inputFields": [
-          "alertLevel",
-          "timeRange"
+          "weather",
+          "eventId"
         ],
         "outputFields": [
-          "severeWeather"
+          "sourceKind",
+          "weather"
         ],
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
@@ -2465,7 +2466,8 @@
         "label": "决策模型 评估冲击并拟定改线方案",
         "kind": "semantic_decision",
         "dependencies": [
-          "F11_N02"
+          "F11_N02",
+          "F11_N01"
         ],
         "required": true,
         "resourceKeys": [
@@ -2548,6 +2550,13 @@
         "target": "F11_N03",
         "required": true,
         "branchLabel": "冲击研判"
+      },
+      {
+        "id": "F11_WEATHER_SOURCE",
+        "source": "F11_N01",
+        "target": "F11_N03",
+        "required": true,
+        "branchLabel": "原天气来源或明确无天气输入"
       },
       {
         "id": "F11_E03",

@@ -1,4 +1,4 @@
-import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
+import type {RegisteredTool,ToolContext,ToolDescriptor} from '@personal-agent/contracts';
 import {isDeepStrictEqual} from 'node:util';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
@@ -9,6 +9,38 @@ type Scope=OwnedWorkflowHostScope;
 type Reminder={todoId:string;revision:number;scheduleId:string;conversationId:string};
 type Input={update:Record<string,unknown>;reminder:Reminder};
 type GuardOptions=NonNullable<Parameters<typeof verifyF11ConfirmedCalendarAndReminder>[0]>;
+
+/** The existing F11 input node binds a published forecast or an explicit plan without weather. */
+export function createRuntimeF11WeatherSourceHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;inputSchema:ToolDescriptor['inputSchema'];
+  readSource:(scope:Scope,input:Record<string,unknown>,context:ToolContext)=>Promise<Record<string,unknown>>;
+  verifySource:(scope:Scope,result:unknown,context:ToolContext)=>Promise<void>;
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;now:()=>Date;
+}):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
+  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'||!options.inputSchema
+    ||typeof options.readSource!=='function'||typeof options.verifySource!=='function'||typeof options.assertCurrent!=='function'
+    ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')return {tools:[],unavailable:'f11_weather_source_ports_unavailable'};
+  const runtime=options.application.runtime;
+  const active=(context:ToolContext,args:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F11',nodeId:'F11_N01',
+    hostToolName:'workflow.host.f11_n01',proposalArguments:args,assertCurrent:options.assertCurrent,now:options.now});
+  const tool=createOwnedWorkflowAdapter({nodeId:'F11_N01',kind:'host',sideEffect:'read',requiredScopes:['weather:read'],
+    inputSchema:structuredClone(options.inputSchema),outputSchema:{oneOf:[
+      {type:'object',additionalProperties:false,required:['sourceKind'],properties:{sourceKind:{const:'explicit_plan'}}},
+      {type:'object',additionalProperties:false,required:['sourceKind','weather'],properties:{sourceKind:{const:'forecast'},weather:{type:'object'}}}]},
+    async execute(input,context){const scope=active(context,input),result=await options.readSource(scope,input as Record<string,unknown>,context);
+      active(context,input);return result;}});
+  return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
+    const args=(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown}|undefined)?.arguments;
+    const scope=active(context,args),saved=options.application.readHostToolTask(context.taskId);
+    if(saved.task.state!=='succeeded'||saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f11_n01'
+      ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)||!isDeepStrictEqual(saved.confirmed.result,result))
+      failOwnedHost('UNAUTHORIZED','F11 original source receipt unavailable');
+    await options.verifySource(scope,result,context);active(context,args);
+    if(await options.authorizeExport(scope,result)!==true)failOwnedHost('UNAUTHORIZED','F11 source export denied');
+    await options.verifySource(scope,result,context);active(context,args);
+  }};
+}
 
 /** One original calendar.update child followed by the original reminder's todo.update child.
  * Each child crosses Policy separately. A partial/unknown write remains reconcilable, never replayed here. */
