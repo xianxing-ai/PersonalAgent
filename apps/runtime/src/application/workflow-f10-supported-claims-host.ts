@@ -1,6 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
-import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
+import {ProtocolError,type RegisteredTool,type ToolContext} from '@personal-agent/contracts';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
 import {assertOwnedWorkflowHostScope,failOwnedHost,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
@@ -14,7 +14,7 @@ export interface F10SupportedClaimsOptions {
   now:()=>Date;
   /** Validate actual current frontier and grant; never infer authority from the proposal. */
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  /** Resolve findings exclusively from confirmed N02/N03/N04 predecessor receipts. */
+  /** Bind the original selected claims exclusively to confirmed N02/N03/N04 source receipts. */
   resolveBoundFindings:(scope:Scope)=>Promise<readonly F10BoundFinding[]>;
   /** Read through the authorized, revision-aware source port, not model-provided text. */
   readCitation:(scope:Scope,sourceRef:string,revision:string)=>Promise<{revision:string;text:string}>;
@@ -31,14 +31,16 @@ const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof va
  * independent reviewer, current frontier and exact export permission. */
 export function createRuntimeF10SupportedClaimsHost(options?:F10SupportedClaimsOptions):{tools:RegisteredTool[];
   authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
-  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'||!Array.isArray(options.requiredScopes)||!options.requiredScopes.length
+  if(!options?.application||!('runtime' in options.application)||typeof options.application.readHostToolTask!=='function'||!Array.isArray(options.requiredScopes)||!options.requiredScopes.length
     ||!options.requiredScopes.every(value=>text(value,256))||typeof options.now!=='function'
     ||typeof options.assertCurrent!=='function'||typeof options.resolveBoundFindings!=='function'
     ||typeof options.readCitation!=='function'||typeof options.authorizeReview!=='function'
     ||typeof options.reviewClaim!=='function'||typeof options.authorizeExport!=='function')
     return {tools:[],unavailable:'f10_supported_claims_trusted_ports_unavailable'};
-  const requiredScopes=[...options.requiredScopes],runtime=options.application.runtime;
+  const requiredScopes=[...options.requiredScopes];
   const active=(context:ToolContext)=>{
+    const runtime=options.application.runtime;
+    if(!runtime)failOwnedHost('UNSUPPORTED_CAPABILITY','F10 runtime unavailable');
     if(!requiredScopes.every(scope=>context.scopes.includes(scope)))failOwnedHost('SCOPE_DENIED','F10 review scope required');
     return assertOwnedWorkflowHostScope({runtime,context,workflowId:'F10',nodeId:'F10_N05',
       hostToolName:'workflow.host.f10_n05',assertCurrent:options.assertCurrent,now:options.now});
@@ -72,10 +74,14 @@ export function createRuntimeF10SupportedClaimsHost(options?:F10SupportedClaimsO
         verdict=saved.state;
       }else{
         let allowed:boolean;
-        try {allowed=await options.authorizeReview(scope,structuredClone(bound),source.text);}catch {return failOwnedHost('UNAUTHORIZED','F10 model review export denied');}
+        try {allowed=await options.authorizeReview(scope,structuredClone(bound),source.text);}catch(error) {
+          if(error instanceof ProtocolError&&error.code==='RESULT_UNKNOWN')throw error;
+          return failOwnedHost('UNAUTHORIZED','F10 model review export denied');}
         if(allowed!==true)failOwnedHost('UNAUTHORIZED','F10 model review export denied');
         active(context);
-        try {verdict=await options.reviewClaim(scope,bound,source.text);}catch {return failOwnedHost('UNSUPPORTED_CAPABILITY','F10 independent review unavailable');}
+        try {verdict=await options.reviewClaim(scope,bound,source.text);}catch(error) {
+          if(error instanceof ProtocolError&&error.code==='RESULT_UNKNOWN')throw error;
+          return failOwnedHost('UNSUPPORTED_CAPABILITY','F10 independent review unavailable');}
       }
       active(context);
       if(!['supported','contradicted','unknown'].includes(verdict))failOwnedHost('UNSUPPORTED_CAPABILITY','F10 independent review unavailable');

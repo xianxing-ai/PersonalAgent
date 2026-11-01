@@ -57,7 +57,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F08_N10:[host('mail.prepared_plan_check')],F08_N06:[host('question.original_mail_decision')],F08_N07:[host('mail.registered_send')],
   F08_N11:[tool('mail.reconcile_send')],F08_N12:[host('runtime.wait_reconciliation')],F08_N13:[host('runtime.versioned_replan')],
   F09_N01:[tool('feeds.collect')],F09_N02:[host('feeds.validate_and_deduplicate')],F09_N04:[host('runtime.enqueue_research')],
-  F10_N02:[tool('research.search')],F10_N03:[tool('research.search')],F10_N04:[tool('knowledge.search')],
+  F10_N02:[host('research.original_primary_sources')],F10_N03:[host('research.original_alternative_sources')],F10_N04:[host('knowledge.original_research_context')],
   F10_N05:[host('knowledge.check_supported_claims')],F11_N01:[host('weather.original_forecast_source')],F11_N02:[tool('calendar.events')],F11_N04:[host('question.original_plan_decision')],
   F11_N05:[host('calendar.update_and_invalidate_reminder')],F12_N02:[host('policy.quiet_hours')],
   F12_N04:[host('notification.deliver')],F12_N05:[host('notification.current_feed_digest')],

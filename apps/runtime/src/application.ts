@@ -77,6 +77,7 @@ export {createRuntimeF13SystemProbeHost} from './application/workflow-f13-probe-
 export {createRuntimeF13DiagnosticControlHost} from './application/workflow-f13-diagnostic-control-host.js';
 export {createRuntimeF14DeviceControlHost} from './application/workflow-f14-device-control-host.js';
 export {createRuntimeF10SupportedClaimsHost} from './application/workflow-f10-supported-claims-host.js';
+export {createF10WorkflowWorkerPorts,type F10WorkflowOptions,type F10WorkflowConfiguration} from './application/workflow-f10-worker.js';
 export type {F10BoundFinding,F10ClaimReview,F10SupportedClaimsOptions} from './application/workflow-f10-supported-claims-host.js';
 export {createRuntimeF03ReconciliationHost} from './application/workflow-f03-reconciliation-host.js';
 export {createF24KnowledgeReconciliationPorts} from './application/workflow-f24-knowledge-ports.js';
