@@ -6,6 +6,7 @@ if (process.platform !== 'win32') throw Error('Windows Host requires Windows and
 // Distributable component is a distinct explicit command; normal dev builds stay incremental.
 if (process.argv.includes('--publish-native-desktop')) {
   const {publishNativeDesktop,verifyNativeDesktopIdentity} = await import('./publish-native-desktop.mjs');
+  const {publishNativeJob} = await import('./publish-native-job.mjs');
   const {writeFile} = await import('node:fs/promises');
   const controller = new AbortController(), abort = () => controller.abort();
   process.once('SIGINT',abort); process.once('SIGTERM',abort);
@@ -13,7 +14,8 @@ if (process.argv.includes('--publish-native-desktop')) {
     const result = await publishNativeDesktop({signal:controller.signal});
     const identity = await verifyNativeDesktopIdentity(result.bundle,{signal:controller.signal});
     await writeFile(path.join(result.outputRoot,'identity-receipt.json'),JSON.stringify(identity,null,2)+'\n',{flag:'wx'});
-    console.log(JSON.stringify({bundle:result.bundle,manifestSha256:result.manifestSha256,identity},null,2));
+    const job = await publishNativeJob({root:path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),outputRoot:result.outputRoot,signal:controller.signal});
+    console.log(JSON.stringify({bundle:result.bundle,manifestSha256:result.manifestSha256,identity,job},null,2));
   } finally { process.removeListener('SIGINT',abort); process.removeListener('SIGTERM',abort); }
 } else {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');

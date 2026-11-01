@@ -39,3 +39,11 @@
 - 本工作包代码、真实 Job 探针和定向测试已交付；整仓 `npm run check` 由集成分支统一执行，此处不声称全仓通过。
 - Desktop Main 既有开发调用默认仍是 FDD。根接线负责人将首次发布指向新的空外部 SC 目录，随后只复核不可变包；不得覆盖旧非空缓存或只传三个 pins。安装包的 Job 资源仍须独立登记，不复用 Desktop component 身份。
 - Windows Host / PipeBridge / Notepad 是独立 FDD 产物，尚未在本包证明自包含交付或真实 Notepad 写后读回；桌面 UI 由根串行验收。当前工作不等于 #531 全部设备链完成。
+
+## 后续正式 Job resources 发布接线
+
+已把 Job 包加入原 `node apps/desktop/scripts/build-windows-host.mjs --publish-native-desktop` 入口，保留 Desktop 原 `identity-receipt.json`；新增独立 `resources/native-tools/workspace-command` 和 `job-identity-receipt.json`。通过 public native-helper CLI 在新的外部目录构建，沿原有有界、可取消的发布进程执行，再完整复制并逐项核对全部 pins；未放宽原 buildNativeHelper 仓库外门禁。新 `readPackagedNativeJobHelper(resourcesPath)` 仅读取该正式位置和原完整 attestation，拒绝 FDD、缺失/变化文件；Main 消费由集成负责人接线。
+
+实际原发布命令 exit 0，正式 output root：本工作树 `.cache/native-desktop-publish/0a8c7a43-b3d8-46d8-9623-db2f1aca45b5`。设备包 initialize/EOF 仍在禁用外部 .NET 的环境通过；Job 包 manifest `5c893625153841a60671ba22caf5596aead81297e6284a765fd94451bd5aa804`，apphost `99683f88698a5ed03f17c0dcae7aaec9f12b1a15d4150329abbabe0b3e5cdad1`，191 companion files。此包源码摘要与此前 UTF-8 包一致，独立记录实际新产物身份，不能按 exe 名称推断同一个包。
+
+对这个正式 resources 内的 Job exe 重新运行原 PSEC 测试及发布负例：12 项，11 通过、1 平台跳过、0 失败。包括真实普通 token、Unicode 参数/路径/文件读回、原完整 PSEC 探针、取消/超时，以及 Synthetic 发布不覆盖旧组件、Desktop/Job 清单独立和包文件变化拒绝。日志 `.cache/publish-desktop-and-job.log`、`.cache/test-job-formal-package.log`；没有真实桌面输入或 Notepad 写操作。
