@@ -20,7 +20,7 @@ function fixture(t,overrides={}) {
     const original=cp.writes[method];cp.writes[method]=(...args)=>{calls.push(name);return original(...args);};
   }
   const host=createConnectorConversationTools({mail:{current:()=>mail},calendar:{binding:()=>calendar,readAuthorization:()=> 'Basic c3ludGhldGljOnBhc3N3b3Jk'},
-    getApplication:()=>({runtime:{getTask:()=>({state:'running',cancelRequested:false})}}),resolveConversation:()=> 'synthetic-conversation',
+    getApplication:()=>({runtime:{getTask:()=>({state:'running',cancelRequested:false}),loadCheckpoint:()=>undefined}}),resolveConversation:()=> 'synthetic-conversation',
     createMailProvider:()=>{calls.push('mail-provider');return provider;},createCalendarProvider:()=>cp,
     confirmExport:async request=>{consents.push(request.kind);return true;},...overrides});
   t.after(()=>host.close());

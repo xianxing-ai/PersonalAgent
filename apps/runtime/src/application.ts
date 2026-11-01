@@ -26,8 +26,9 @@ export type {RuntimeDeveloperWorkflowsOptions,RuntimeDeveloperWorkflowScope,Deve
 export {DEVELOPER_HARNESS_TOOL_NAME,DEVELOPER_HARNESS_TOOL_VERSION} from './application/developer-harness.js';
 export type {RuntimeDeveloperHarnessOptions,DeveloperHarnessResult} from './application/developer-harness.js';
 export {createAgentArtsRuntimeApplication} from './application/agentarts.js';
-export {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity} from './application/mail-send-recovery.js';
-export type {OriginalMailSendBinding,OriginalMailSendIdentity} from './application/mail-send-recovery.js';
+export {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity,prepareOriginalMailSendReconciliation,
+  readOriginalMailSendReconciliation,assertOriginalMailSendReconciliation} from './application/mail-send-recovery.js';
+export type {OriginalMailSendBinding,OriginalMailSendIdentity,OriginalMailSendReconciliation} from './application/mail-send-recovery.js';
 export {createRuntimeWorkflowShadowConfigurationPort} from './application/workflow-shadow-configuration.js';
 export type {RuntimeWorkflowShadowConfigurationOptions} from './application/workflow-shadow-configuration.js';
 export {createRuntimeWorkflowShadowBranchVerifiers} from './application/workflow-shadow-verifiers.js';

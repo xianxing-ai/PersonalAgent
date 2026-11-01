@@ -2,7 +2,8 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
-import {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity} from '@personal-agent/runtime/application';
+import {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity,prepareOriginalMailSendReconciliation,
+  readOriginalMailSendReconciliation,assertOriginalMailSendReconciliation} from '@personal-agent/runtime/application';
 import * as mailModule from '@personal-agent/mail';
 import * as calendarModule from '@personal-agent/calendar';
 import {attachExactExports} from './developer-deployment-config.js';
@@ -25,6 +26,37 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
   const configuration=kind=>kind==='mail'?mail?.current():calendar?.binding();
   const identity=kind=>{const value=configuration(kind);return value?digest(value):undefined;};
   const resource=kind=>digest({kind,configuration:identity(kind)});
+  const mailConfigurationRef=()=>digest({identity:identity('mail'),resourceGeneration:question?question.readResourceGeneration(resource('mail')):null});
+  const originalSendBinding=source=>{
+    if(closed||!identity('mail')||!resolveConversation(source.taskId))denied();
+    if(source.arguments===undefined){
+      const application=getApplication(),runtime=application.runtime,records=[],queue=[source.taskId],seen=new Set();
+      while(queue.length){
+        const taskId=queue.shift();if(seen.has(taskId))continue;if(seen.size>=128)denied();seen.add(taskId);
+        if(runtime.loadCheckpoint(taskId,'private-copy-erasure')!==undefined)denied();
+        records.push(...runtime.readToolExecutions(taskId).filter(record=>record.toolName==='mail.send'
+          &&(!source.runId||record.evidenceId===source.runId)&&runtime.loadCheckpoint(taskId,'mail-send-identity:'+record.evidenceId)!==undefined));
+        for(const child of application.readSubagentTasks(taskId))queue.push(child.taskId);
+        for(const key of runtime.listCheckpointKeys(taskId).filter(key=>key.startsWith('coding-repair:host:'))){
+          const edge=runtime.loadCheckpoint(taskId,key),operationId=key.slice('coding-repair:host:'.length);
+          if(!edge?.localTaskId||!edge.request||edge.request.commandId!==operationId)denied();
+          if(edge.request.toolName==='mail.reconcile_send'
+            &&runtime.loadCheckpoint(edge.localTaskId,'mail-send-reconciliation:original')?.taskId===taskId)continue;
+          const intent=runtime.loadCheckpoint(edge.localTaskId,'host-tool-intent');
+          if(!intent||!isDeepStrictEqual(runtime.loadCheckpoint(edge.localTaskId,'coding-repair:parent'),{taskId,operationId})
+            ||!isDeepStrictEqual(edge.request,{commandId:intent.commandId,toolName:intent.toolName,toolVersion:intent.toolVersion,
+              arguments:intent.arguments,deadline:intent.deadline})||application.readHostToolTask(edge.localTaskId).commandId!==operationId)denied();
+          queue.push(edge.localTaskId);
+        }
+      }
+      if(records.length!==1)denied();
+      const record=records[0],invocation=runtime.loadCheckpoint(record.taskId,'application-tool-invocation:'+record.evidenceId)
+        ??(record.evidenceId==='host-tool-'+record.taskId?runtime.loadCheckpoint(record.taskId,'host-tool-intent'):undefined);
+      if(!invocation||invocation.toolName!=='mail.send'||invocation.toolVersion!==record.toolVersion)denied();
+      source={taskId:record.taskId,runId:record.evidenceId,toolVersion:record.toolVersion,arguments:invocation.arguments,scopeRef:record.evidenceId};
+    }
+    return {...source,accountRef:MAIL_ACCOUNT,configurationRef:mailConfigurationRef()};
+  };
   const preparationKey=scope=>JSON.stringify([scope.taskId,scope.proposalId??scope.proposal?.proposalId]);
   const questionReady=()=>['prepare','prepareExport','currentRequirement','authorizeExport','readResourceGeneration','rotateResourceGeneration']
     .every(name=>typeof question?.[name]==='function');
@@ -77,6 +109,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
         context={...entry.scope,...context};
       }
       context={...context,kind,...(question?{questionExecution:true}:{})};assertCurrent(context);
+      if(tool.descriptor.name==='mail.reconcile_send')assertOriginalMailSendReconciliation(getApplication().runtime,context.taskId,mailConfigurationRef(),input,context,now);
       if(tool.descriptor.name==='mail.send')input=structuredClone(input);
       if(!context.authorizationRef||!tool.descriptor.requiredScopes.every(scope=>context.scopes?.includes(scope)))denied();
       const selected=bindings.get(bindingKey(context.taskId,kind));
@@ -129,6 +162,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
           assertCurrent(scope);identityPrepared=true;return state;
         }}:{};
         const result=await execution.run(scope,()=>tool.execute(input,{...context,signal,...sendContext}));assertCurrent(scope);
+        if(tool.descriptor.name==='mail.reconcile_send')assertOriginalMailSendReconciliation(getApplication().runtime,context.taskId,mailConfigurationRef(),input,{...context,signal},now);
         if(tool.descriptor.name==='mail.send'&&provider.sendIdentitySupport==='before-send-v1'&&!identityPrepared)
           throw new ProtocolError('UNSUPPORTED_CAPABILITY','Mail provider omitted the original send identity hook');
         return result;
@@ -197,11 +231,26 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
     }}));
   return {...exports.host,...(question?{competitionToolExports:questionExports}:{}),
     // Main-only private identity read: no new grant, provider connection, or task transition.
+    readOriginalSendRecoveryAvailable(taskId){
+      try{return !!readOriginalMailSendIdentity(getApplication().runtime,originalSendBinding({taskId}));}catch{return false;}
+    },
     readOriginalSendIdentity({taskId,runId,toolVersion,arguments:args,scopeRef}){
-      if(closed||!identity('mail')||!resolveConversation(taskId))denied();
-      return readOriginalMailSendIdentity(getApplication().runtime,{taskId,runId,toolVersion,arguments:args,scopeRef,
-        accountRef:MAIL_ACCOUNT,configurationRef:digest({identity:identity('mail'),
-          resourceGeneration:question?question.readResourceGeneration(resource('mail')):null})});
+      return readOriginalMailSendIdentity(getApplication().runtime,originalSendBinding({taskId,runId,toolVersion,arguments:args,scopeRef}));
+    },prepareOriginalSendReconciliation(source,scope){
+      return prepareOriginalMailSendReconciliation(getApplication(),originalSendBinding(source),scope,now);
+    },readOriginalSendReconciliation(source){
+      return readOriginalMailSendReconciliation(getApplication(),originalSendBinding(source));
+    },applyOriginalSendReconciliation(source){
+      return readOriginalMailSendReconciliation(getApplication(),originalSendBinding(source),true);
+    },async prepareOriginalSendReconciliationAuthorization(scope){
+      const application=getApplication();
+      if(application.runtime.loadCheckpoint(scope.taskId,'mail-send-reconciliation:original')===undefined)return false;
+      const pending=application.readPendingToolInvocation(scope.taskId,scope.runId),host=application.readHostToolTask(scope.taskId);
+      if(!pending||pending.toolName!=='mail.reconcile_send'||pending.argumentsDigest!==scope.argumentsDigest
+        ||pending.toolVersion!==scope.toolVersion||pending.deadline!==scope.deadline)denied();
+      const current=()=>assertOriginalMailSendReconciliation(application.runtime,scope.taskId,mailConfigurationRef(),pending.arguments,scope,now);
+      current();await this.prepareExport({phase:'preflight',taskId:scope.taskId,runId:scope.runId,deadline:scope.deadline,signal:scope.signal,
+        proposal:{kind:'tool_proposal',proposalId:host.commandId,toolName:pending.toolName,toolVersion:pending.toolVersion,arguments:pending.arguments}});current();return true;
     },async prepareExport(scope){
     if(!tools.some(tool=>tool.descriptor.name===scope.proposal?.toolName))return;
     if(scope.phase==='preflight'){
