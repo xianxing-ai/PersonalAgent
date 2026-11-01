@@ -145,10 +145,10 @@ test('F06 semantic candidates cannot skip the local reminder guard',async()=>{
 test('research branches run serially and the next branch waits for the original tool receipt',async()=>{
   let arrivals=0,active=0;
   const seen=[];
-  const runtime=engine({prepareCandidates:async context=>{
+  const runtime=engine({externalHost:true,prepareCandidates:async context=>{
     assert.equal(active++,0);seen.push(context.node.id);arrivals++;await new Promise(resolve=>setImmediate(resolve));active--;return candidates(context);
   },receiptVerifier:proofVerifier});
-  const original=request('F10',{availableTools:tools(['research.search','knowledge.search'])});
+  const original=request('F10',{availableTools:tools(['workflow.host.f10_n02','workflow.host.f10_n03','workflow.host.f10_n04','workflow.host.f10_n05'])});
   const first=await runtime.advance(original);assert.equal(first.nodes.F10_N01.state,'completed');assert.deepEqual(seen,[]);
   const second=await next(runtime,original,first);
   assert.deepEqual(seen,['F10_N02']);assert.equal(second.proposals.length,1);assert.equal(second.nodes.F10_N05.state,'pending');
