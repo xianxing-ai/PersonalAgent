@@ -136,7 +136,20 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
       await notificationHost.deliverRound({roundId:saved.roundId,channel:'banner',title:'PersonalAgent 通知',
         body:saved.entries.length===1?'来源 '+saved.entries[0].source+' 有一条更新，请查看通知列表。'
           :'有 '+saved.entries.length+' 条更新，请查看通知列表。',source:saved.entries.length===1?saved.entries[0].source:'notifications'});
-      round=readRound(scope,input);const attempt=round.attempts.banner;
+      // Electron show is asynchronous. Only observe the original durable round;
+      // a pending/unknown native attempt never calls deliverRound a second time.
+      const waitUntil=Math.min(Date.parse(scope.deadline),now()+5000);
+      for(;;){
+        notificationHost.reconcileDelivery?.(saved.roundId);
+        round=readRound(scope,input);
+        if(!['sending','unknown'].includes(round.attempts.banner?.state)||now()>=waitUntil)break;
+        await new Promise(resolve=>{
+          const done=()=>{clearTimeout(timer);scope.signal.removeEventListener('abort',done);resolve();};
+          const timer=setTimeout(done,Math.min(25,waitUntil-now()));
+          scope.signal.addEventListener('abort',done,{once:true});if(scope.signal.aborted)done();
+        });
+      }
+      const attempt=round.attempts.banner;
       if(!attempt){if(round.state==='suppressed'&&!round.counted)return {state:'suppressed',evidenceRefs:[]};
         fail('RESULT_UNKNOWN','F12 original device attempt unavailable');}
       if(attempt.state==='sending')fail('RESULT_UNKNOWN','F12 original device attempt is unresolved');

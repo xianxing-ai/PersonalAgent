@@ -16,6 +16,14 @@ Runtime 构建通过。实际 F06/F07/F08/F11/F12 图引擎、工厂及 F12 原�
 
 ## 真实设备接续入口
 
-原实际图 fixture 抽取为 `apps/desktop/test/fixtures/f12-runtime-scenario.mjs` 的 `scenario(t,options)`。`t.after(fn)` 收集清理函数，`options.multi:true` 选择两条公开合成通知；注入 `options.createChannel({getApplication,userData})` 返回现有真实 Electron 设备通道即可，不另造 Runtime、审批、队列或投递路径。返回值含原 application、notification host、sent 参数、原任务状态与隔离 SQLite 位置；调用方须在读取原 round/evidence 后执行收集的清理函数。
+原实际图 fixture 抽取为 `apps/desktop/test/fixtures/f12-runtime-scenario.mjs` 的 `scenario(t,options)`。`t.after(fn)` 收集清理函数，`options.multi:true` 选择两条公开合成通知；注入 `options.createChannel({getApplication,getNotificationHost,userData})` 返回现有真实 Electron 设备通道即可，不另造 Runtime、审批、队列或投递路径。`getNotificationHost` 为惰性入口，可把原设备 `onOutcome` 接到 `getNotificationHost().receipt(outcome)`，与 Main 一致。返回值含原 application、notification host、sent 参数、原任务状态与隔离 SQLite 位置；调用方须在读取原 round/evidence 后执行收集的清理函数。
 
 没有注入时仅使用测试 Fake；明确传入却缺少原 `sendAdvisoryNotification/readDeliveryOutcome` 方法时拒绝，不回落为 Fake。注入实际设备仍只改变设备证据：候选、selector、云传输与外层出机许可依旧为 Fixture，原问题卡由夹具逐卡回应，不能表述为真实模型/云整图或真实用户手动批准。Main 无新增回调，重建 Runtime 后原工厂即可公开新 Schema；真实设备运行由根集成串行执行，当前增量未额外弹出通知。
+
+## 异步原生回执修复
+
+使用真正 `createDesktopNotificationPort`（SQLite/Runtime/应用宿主仍为原生产模块，只替换底层 OS notifier）复现：`show()` 返回后尚无 `show` 事件，原轮次先持久为 unknown，F12 曾立即抛 RESULT_UNKNOWN；40ms 后真实路径 `onOutcome → receipt` 已确认设备结果，原图仍停 waiting_reconciliation。首轮环境超时发生在初始 settings 卡提交前，未触达设备；随后独立复现日志明确记录原图等待核实而设备原回执确认。
+
+F12 现在只调用一次 `deliverRound`，随后最多等候 5 秒且不越过原 deadline，期间复用 `reconcileDelivery` 与原持久 round 读取。每轮仍校验原 signal、feed、策略、期限和精确 item 集；取消/撤回不等待成功出口，之后到达的真实设备回执只保留历史效果。期限内无确证仍 RESULT_UNKNOWN，不重开任务、不重发、不把 pending 当 delivered。该等待不是调度器或重试写入。
+
+修复后 F12 实际图、原应用宿主、原端口和真实桌面端口模块测试 **50/50**：包括异步 show→持久 delivered、异步 failed、等待期间取消/第二项撤回后保留迟到设备效果，以及原 unknown 跨图零重发。日志 `f12-async-final.log`；修复前确定性失败保留于 `f12-async-reproduction-confirmed.log`，单例修复通过为 `f12-async-fixed.log`。此处 notifier 明确是异步 Fake；真实 Electron 仍由根集成串行验收。

@@ -23,7 +23,7 @@ export async function scenario(t,options={}){
   const fixtureChannel={async sendAdvisoryNotification(input){if(!options.unknown)outcomes.set(input.id,{id:input.id,roundId:input.roundId,
     deliveryState:options.failed?'failed':'delivered',observedAt:new Date().toISOString(),evidenceRefs:['fixture-native-'+sends]});},
     readDeliveryOutcome:id=>outcomes.get(id),dispose(){}};
-  const channel=options.createChannel?options.createChannel({getApplication:()=>app,userData}):fixtureChannel;
+  const channel=options.createChannel?options.createChannel({getApplication:()=>app,getNotificationHost:()=>host,userData}):fixtureChannel;
   if(typeof channel?.sendAdvisoryNotification!=='function'||typeof channel?.readDeliveryOutcome!=='function')throw Error('Explicit F12 device channel is unavailable');
   const host=createDesktopNotificationApplicationHost({namespace:'f12',channel:{...channel,async sendAdvisoryNotification(input){
     sends++;sent.push(input);return channel.sendAdvisoryNotification(input);}},question});

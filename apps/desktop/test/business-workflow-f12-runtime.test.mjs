@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import {validateToolValue} from '@personal-agent/contracts';
 import * as runtimeModule from '@personal-agent/runtime/application';
 import {createBusinessWorkflowWorkerPorts} from '../electron/business-workflow-worker-ports.js';
 import {scenario} from './fixtures/f12-runtime-scenario.mjs';
+import {createDesktopNotificationPort} from '../electron/desktop-notification-port.js';
 
 // Actual Engine/SQLite/notification CAS feed/question/Policy. OS channel, candidate
 // preparation/selection, cloud transport and graph export consent are explicit fixtures.
@@ -78,4 +80,47 @@ test('F12 reading the second original item during final export rejects the multi
 test('F12 multi-item unknown preserves the original round across a second graph without resending',async t=>{
   const f=await scenario(t,{multi:true,unknown:true,repeat:true});assert.notEqual(f.child.state,'succeeded');assert.notEqual(f.repeated.state,'succeeded');assert.equal(f.sends,1);
   assert.deepEqual([...f.host.runtimeHost.getInterruptionRound(f.sent[0].roundId).itemIds].sort(),['item','item-2']);
+});
+
+test('F12 waits for an asynchronous original show receipt without another device send',async t=>{
+  let port,beforeShow,onShown;const shown=new Promise(resolve=>{onShown=resolve;});
+  const f=await scenario(t,{multi:true,createChannel:({getNotificationHost,userData})=>{
+    port=createDesktopNotificationPort({storageDir:path.join(userData,'device'),onOutcome:outcome=>getNotificationHost().receipt(outcome),
+      notifier:{isSupported:async()=>true,async show(input,callbacks){
+        const timer=setTimeout(()=>{const receipt=port.readDeliveryOutcome(input.id);
+          beforeShow=getNotificationHost().runtimeHost.getInterruptionRound(receipt.roundId).attempts.banner.state;callbacks.onShow();onShown();},40);
+        return {close:()=>clearTimeout(timer)};
+      }}});return port;
+  }});
+  await shown;assert.equal(beforeShow,'unknown');assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));assert.equal(f.sends,1);
+  const receipt=port.readDeliveryOutcome(f.sent[0].id),round=f.host.runtimeHost.getInterruptionRound(f.sent[0].roundId);
+  assert.equal(receipt.deliveryState,'delivered');assert.deepEqual(round.attempts.banner.evidenceRefs,receipt.evidenceRefs);
+  assert.equal(round.attempts.banner.state,'delivered');
+});
+
+for(const action of ['failed','cancel','withdraw'])test('F12 asynchronous native '+action+' preserves the original effect without replay',async t=>{
+  let port,resolveOutcome;const outcome=new Promise(resolve=>{resolveOutcome=resolve;});
+  const f=await scenario(t,{multi:true,createChannel:({getApplication,getNotificationHost,userData})=>{
+    port=createDesktopNotificationPort({storageDir:path.join(userData,'device'),onOutcome:receipt=>getNotificationHost().receipt(receipt),
+      notifier:{isSupported:async()=>true,async show(_input,callbacks){
+        const change=setTimeout(()=>{
+          if(action==='withdraw')getNotificationHost().runtimeHost.withdrawNotifications({operationId:'native-pending-withdraw',itemIds:['item-2']});
+          if(action==='cancel'){
+            const app=getApplication(),original=app.runtime.listTasks({limit:100}).items.find(task=>task.state==='running'
+              &&app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='workflow.host.f12_n04');
+            assert.ok(original);app.runtime.requestCancel(original.taskId);
+          }
+        },10);
+        const receipt=setTimeout(()=>{action==='failed'?callbacks.onFailed():callbacks.onShow();resolveOutcome();},40);
+        return {close(){clearTimeout(change);clearTimeout(receipt);}};
+      }}});return port;
+  }});
+  await outcome;assert.equal(f.sends,1);assert.equal(port.readDeliveryOutcome(f.sent[0].id).deliveryState,action==='failed'?'failed':'delivered');
+  if(action==='failed'){
+    assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));
+    assert.ok(f.cloud.some(request=>request.continuation?.result?.notificationState==='failed'&&request.continuation.result.delivered===false));
+  }else{
+    assert.notEqual(f.child.state,'succeeded');assert.equal(f.cloud.some(request=>request.continuation?.result?.notificationState!==undefined),false);
+    assert.equal(f.host.runtimeHost.getInterruptionRound(f.sent[0].roundId).attempts.banner.state,'delivered');
+  }
 });
