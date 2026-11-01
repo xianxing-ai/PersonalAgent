@@ -20,7 +20,7 @@ test('Main requires original decision before F16/F18/F19 presence, and a failed 
   for(const decision of ['deny','cancel','allow_once'])for(const failure of [undefined,'f18','f19']){
     const events=[],scope={toolName:'github.registered_merge',taskId:'original-task',runId:'original-run'};
     const record=name=>value=>{assert.equal(value,scope);events.push(name);};
-    const context=vm.createContext({runtimeApplication:{},prepareWorkflowToolExport:undefined,
+    const context=vm.createContext({runtimeApplication:{},prepareWorkflowToolExport:undefined,connectorConversationTools:undefined,
       prepareWorkflowHostPreflight:async value=>{assert.equal(value.scope,scope);events.push('preflight');},
       f16F17Workflow:{preparePublicationQuestion:record('f16.prepare'),confirmPublicationPresence:record('f16.presence')},
       f18Workflow:{prepareMergeQuestion:record('f18.prepare'),confirmMergePresence:async value=>{

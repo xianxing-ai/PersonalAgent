@@ -2,6 +2,14 @@
 
 目标 profile 为 `huawei_ict_agentarts`。本工作包从 `d9209664` 的独立 `pr531-f01` 工作树推进；不替换原责任库、TaskRuntime、调度或 Policy。
 
+## 当前整体接线
+
+已交付 `createConfiguredDesktopF01WorkflowPorts` 并接入 Main：原公开 Fact 精确选择、原责任会话、真实 AgentArts 目录声明、统一 worker、原 `subagent.dispatch`、原知识检索、补问卡与生命周期权威。最多派发 3 个独立子任务，派生任务不能递归开启 F01；补问与扩充返回 `awaiting_replan`，不猜测新计划。
+
+实际 Engine 派发关键检查 1/1、原补问 CAS/跨会话检查 1/1、Renderer 原回答检查 1/1。责任状态比较只保留生命周期元数据与摘要，不复制私有正文。可选分支、原生交互及真实云整图仍待验。
+
+## 原 N09 增量记录
+
 N09 的生命周期目标只能来自原 F01 配置输入，来源指令只能来自该图的原用户父任务。原 host 的 descriptor、参数、Policy allow、executionStarted、任务/会话/期限与配置必须一致，才能调用现有 `recordResponsibilityLifecycle`。`explicit_instruction`、候选文字和来源引用本身不授予激活权限。Desktop 仅代理同一原用户会话中的既有 proactive session；不自动创建 session 或扫描任意历史。
 
 原生命周期 CAS 与 commandId 保持不变。增加只读原命令结果和原责任快照；重复请求与未知结果重开只读原 commandId/digest 的记录，不重新 commit。当前责任被撤销/更新不会擦除旧命令已发生的证据。缺少原操作记录时保持 unknown，不能由当前状态反推原操作成功。

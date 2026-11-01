@@ -44,3 +44,7 @@ Main imports、设置 UI/IPC、公开注册表只读方法由根工作包整合�
 - 首次沙箱 token 在测试临时目录原子 rename 报 `EPERM`，尚未进入 Runtime。原断言在明确外部 TEMP、普通 token 下通过；未放宽配置原子写断言。日志保留 `.cache/test-f22.log`、`.cache/test-f22-normal.log`、`.cache/test-f22-final.log`、`.cache/test-f22-cloud-compat.log`。
 
 原服务写入、候选/选择器、用户批准及出机响应是明确 Fixture。没有真实账号写入、真实模型或 AgentArts 部署/API/评测验收，不把本地 replay 当 F22 全模式或 #531 完成。
+
+Main 已注入原 Runtime 注册表、配置、工具与唯一 worker；AgentArts 设置增加默认关闭的历史回放入口。
+启用须原 admin 确认，保存前复核同一配置 revision；不允许活动任务期间改变。新增 Main 授权/竞态与 UI 参数检查各 1/1，退出生命周期既有定向检查通过。
+原工具正文、参数和错误正文只在本机冻结与回放，初始/节点/完成出口只含白名单元数据；原关键用例已验证所有 image 请求均不含秘密夹具正文。

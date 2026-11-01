@@ -3621,12 +3621,6 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return bindingId;
   }
 
-  /** Host-only registry observation; reading a descriptor grants no execution authority. */
-  readRegisteredToolDescriptor(name:string,version:string):ToolDescriptor|undefined {
-    const descriptor=this.tools?.list().find(tool=>tool.name===name&&tool.version===version);
-    return descriptor?structuredClone(descriptor):undefined;
-  }
-
   private hostToolDescriptor(name: string, version: string): ToolDescriptor {
     const descriptor = this.tools?.list().find(tool => tool.name === name && tool.version === version);
     if (!descriptor) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Host tool is not registered at this version');

@@ -112,6 +112,8 @@ import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
 import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-host.js';
 import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
 import {createWorkflowExportConsent} from './workflow-export-consent.js';
+import {createConfiguredDesktopF01WorkflowPorts} from './f01-workflow-worker-ports.js';
+import {createDesktopF22TraceReplayConfiguration,createDesktopF22WorkflowWorkerPorts} from './f22-trace-replay-host.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF11LocationQuestionHost,createF11DecisionQuestionHost} from './f11-location-question-host.js';
@@ -380,6 +382,9 @@ let f19IssueCases,f19Workflow,f19ActiveRevision;
 let f12ExplicitReturnSource,f12ReturnDigest;
 let f24Workflow;
 let f04Workflow;
+let f01Workflow;
+let f22Configuration,f22Workflow;
+let reconcileOriginalMailWorkflow;
 let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
 let f14Workflow;
 const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
@@ -764,6 +769,7 @@ function agentArtsSnapshot() {
   const failure=cloudRequestFailureNotice || cloudTransportNotice;
   const observation = agentArtsObservationConfig?.snapshot();
   return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason,
+    traceReplay:f22Configuration?{...f22Configuration.snapshot(),available:!!f22Workflow}:undefined,
     ...(observation ? {observation} : {})};
 }
 
@@ -800,7 +806,7 @@ function conversationProjection(surface) {
     conversation: surface ?? 'all',
     authorizationQuestions,
     workflowQuestions:!runtimeClosed&&surface?readBusinessWorkflowQuestions({application:runtimeApplication,
-      hosts:[f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
+      hosts:[f01Workflow?.questions,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
     authorizationSandbox:runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined,
     approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
       &&!authorizationQuestionHost?.hasPending(approval.approvalId)
@@ -1888,6 +1894,7 @@ function readProactiveWorkflowConfiguration() {
 function initializeHarnessEventPorts(runtimeModule) {
   if(!competitionMode||!runtimeApplication?.startProactiveTask||proactiveWorkflowApplication)return;
   proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
+    responsibilityLifecycleAuthority:()=>f01Workflow?.authority,
     resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
     readPersistedSession:(taskId,sessionId)=>runtimeModule.readPersistedRuntimeProactiveWorkflow(runtimeApplication.runtime,taskId,sessionId),
     notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
@@ -2590,6 +2597,7 @@ async function initializeRuntime() {
           readMailBinding:()=>({configurationRef:mailConfig?.reviewConfigurationRef('workflow.business.f08')}),
           readKnowledgeBinding:()=>knowledgeSourceConfig?.snapshot(),
           deviceAvailable:()=>!app.isQuitting&&Notification.isSupported()})}):undefined;
+      reconcileOriginalMailWorkflow=businessWorkflow?.reconcileOriginalMailWorkflow;
       f16F17Cases=createF16F17CaseConfiguration({userData:app.getPath('userData'),safeStorage,
         readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),selectFile:async workflowId=>{
           const selected=await dialog.showOpenDialog(admin,{title:`选择 ${workflowId} 工作区案例`,properties:['openFile'],
@@ -2644,14 +2652,25 @@ async function initializeRuntime() {
       f14Workflow=agentArtsPinned?createF14WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         browserHost:browserControlHost,computerControlLease,authorizationQuestions:authorizationQuestionHost,
         authorizeExport:authorizeWorkflowExport}):undefined;
-      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
+      f01Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF01WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
+        getProactiveHost:()=>proactiveWorkflowApplication,getAuthorizationIntentHost:()=>authorizationIntentHost,
+        models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,getKnowledgeSourceConfig:()=>knowledgeSourceConfig,
+        toolExports:[...(knowledgeTools?.competitionToolExports??[]),...(subagentExport?[subagentExport]:[])],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,onUpdate:publish}):undefined;
+      f22Configuration?.close();f22Configuration=createDesktopF22TraceReplayConfiguration({userData:app.getPath('userData')});
+      f22Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF22WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        configuration:f22Configuration,hostUserNamespace:namespace,
+        getToolDescriptor:(name,version)=>runtimeApplication?.runtime.readToolDescriptors().find(tool=>tool.name===name&&tool.version===version),
+        authorizeExport:authorizeWorkflowExport}):undefined;
+      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
-        ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
+        ...(f01Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
@@ -2704,6 +2723,8 @@ async function initializeRuntime() {
         ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
         ...(f04Workflow?.recovery?{f04Recovery:f04Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f01Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f22Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
@@ -2844,7 +2865,8 @@ async function initializeRuntime() {
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
         requestToolAuthorization:async scope=>{
-          await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
+          const mailReconciliation=await connectorConversationTools?.prepareOriginalSendReconciliationAuthorization?.(scope);
+          if(!mailReconciliation)await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
           f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
           f18Workflow?.prepareMergeQuestion?.(scope,authorizationQuestionHost);
           f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
@@ -2875,7 +2897,9 @@ async function initializeRuntime() {
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
+          ||scope.toolName==='mail.reconcile_send'
           ||scope.toolName==='decision.choose_candidate'
+          ||scope.toolName==='workflow.host.f01_n09'
           ||scope.toolName==='workflow.host.f16_n05'
           ||scope.toolName==='github.registered_merge'||/^workflow\.host\.f18_/u.test(scope.toolName)
           ||scope.toolName==='github.pr.create'||scope.toolName==='github.registered_close_issue'||/^workflow\.host\.f19_/u.test(scope.toolName)
@@ -3633,8 +3657,8 @@ async function action(event, name, payload) {
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
     const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
   }
-  if(['workflow.f11.location.respond','workflow.f11.decision.respond','workflow.f08.decision.respond'].includes(name)){
-    const host=name==='workflow.f11.location.respond'?f11LocationQuestion:name==='workflow.f11.decision.respond'?f11DecisionQuestion:f08DecisionQuestion;
+  if(['workflow.f11.location.respond','workflow.f11.decision.respond','workflow.f08.decision.respond','workflow.f01.clarification.respond'].includes(name)){
+    const host=name==='workflow.f01.clarification.respond'?f01Workflow?.questions:name==='workflow.f11.location.respond'?f11LocationQuestion:name==='workflow.f11.decision.respond'?f11DecisionQuestion:f08DecisionQuestion;
     if(sender!==panel&&sender!==workspace||!host)throw Error('请在原对话中补充任务信息');
     const conversationId=conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!conversationId)throw Error('当前对话不可用');
@@ -3991,6 +4015,23 @@ async function action(event, name, payload) {
     if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 PR 审核配置');
     await f18ReviewCases.selectFromNativeDialog();publish();
     return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='workflow.traceReplay.configure'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f22Configuration||!f22Workflow)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先在正式应用设置固定 AgentArts 部署');
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).sort().join(',')!=='enabled,expectedRevision'
+      ||typeof payload.enabled!=='boolean'||!Number.isSafeInteger(payload.expectedRevision))
+      throw new ProtocolError('INVALID_ARGUMENT','历史回放设置已变化，请刷新');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改历史回放设置');
+    const owner=admin,configuration=f22Configuration;
+    const current=()=>owner===admin&&!owner.isDestroyed()&&configuration===f22Configuration
+      &&configuration.snapshot().revision===payload.expectedRevision;
+    if(!current())throw new ProtocolError('REVISION_CONFLICT','历史回放设置已变化，请刷新');
+    if(payload.enabled&&!await confirmApplicationAuthorization('workflow.enable',{workflowId:'F22',mode:'trace_replay',...payload},
+      {scope:{workflowId:'F22',revision:payload.expectedRevision},summary:'启用原任务历史回放；只读取同一对话的原执行记录，不重新执行工具。读取与发送结果仍分别确认。',isCurrent:current}))
+      throw new ProtocolError('UNAUTHORIZED','未确认开启历史回放');
+    if(!current()||runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','原设置或任务状态已变化');
+    configuration.configure(payload);publish();return agentArtsSnapshot();
   }
   if(name==='coding.f19.select'){
     if(sender!==admin||!competitionMode||syntheticMvp||!f19IssueCases||!codingWorkspace||!f19Snapshot().selectionAvailable)
@@ -4698,8 +4739,12 @@ async function action(event, name, payload) {
     } finally { conversationDelivery.finish(deliveryRequest); }
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
-    application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
-    reportNative:result=>['f04_knowledge','f24_knowledge'].includes(result.kind)?dialog.showMessageBox(sender,{type:'info',
+    application:runtimeApplication,mailRecovery:connectorConversationTools,resumeMailWorkflow:reconcileOriginalMailWorkflow,
+    refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
+    reportNative:result=>result.kind==='mail_send'?dialog.showMessageBox(sender,{type:'info',
+      message:result.state==='confirmed'?'已核实原邮件发送结果':result.state==='pending'?'正在等待原邮箱核实':'原邮件发送结果仍待核实',
+      detail:result.state==='pending'?'请在原对话中完成邮箱读取授权，随后再次核实。':result.state==='confirmed'?'本次只读回原发送结果，没有重新发送邮件。原任务的其他步骤仍须完成。':'本次没有重新发送邮件，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
+      :['f04_knowledge','f24_knowledge'].includes(result.kind)?dialog.showMessageBox(sender,{type:'info',
       message:result.state==='confirmed'?'已核实原结果，正在继续原任务':'原写入结果仍待核实',
       detail:result.state==='confirmed'?'原写入没有重发。任务完成前，仍需审批的操作会另行询问。':'本次没有重发写入，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
       :dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
@@ -5387,6 +5432,9 @@ app.whenReady().then(async () => {
       f12ReturnDigest=undefined;f12ExplicitReturnSource=undefined;
       f24Workflow=undefined;
       f04Workflow=undefined;
+      f01Workflow=undefined;
+      f22Configuration?.close();f22Configuration=undefined;f22Workflow=undefined;
+      reconcileOriginalMailWorkflow=undefined;
       f11LocationQuestion=undefined;
       f11DecisionQuestion=undefined;
       f08DecisionQuestion=undefined;

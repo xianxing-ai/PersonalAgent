@@ -15,10 +15,11 @@ function harness(t,invoke) {
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke,restore],
     reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='https';}});
-  const wss=node(),advanced=node();
+  const wss=node(),advanced=node(),traceReplay=node(),traceReplayState=node();
   const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
     querySelector:selector=>({'form':form,'[data-status]':status,'[data-wss]':wss,'[data-token-hint]':tokenHint,
-      '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced}[selector])};
+      '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced,
+      '[data-trace-replay]':traceReplay,'[data-trace-replay-state]':traceReplayState}[selector])};
   form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,
@@ -26,13 +27,23 @@ function harness(t,invoke) {
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,traceReplay,traceReplayState,save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
     recover:()=>restore.listeners.get('click')(),
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
+
+test('F22 replay settings submit the original revision independently of connection credentials',async t=>{
+  const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {traceReplay:{enabled:true,revision:3,available:true}};});
+  assert.equal(ui.traceReplay.disabled,true);
+  ui.fields.authorization.value='unsaved-secret-fixture';
+  ui.controls.render({traceReplay:{enabled:false,revision:2,available:true}});
+  await ui.traceReplay.listeners.get('click')();
+  assert.deepEqual(calls,[{action:'workflow.traceReplay.configure',payload:{enabled:true,expectedRevision:2}}]);
+  assert.equal(ui.fields.authorization.value,'unsaved-secret-fixture');assert.equal(ui.traceReplay.textContent,'关闭历史回放');
+});
 
 test('AgentArts defaults to HTTPS and retains explicit WSS and secret handling',async t=>{
   let captured,fail=false;

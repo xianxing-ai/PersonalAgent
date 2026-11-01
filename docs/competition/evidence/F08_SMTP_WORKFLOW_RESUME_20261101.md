@@ -7,3 +7,5 @@
 实际恢复用例还发现 MailService 在核实前重 await 原 rejected send Promise，导致永远无法进入 Sent 查询；修复为保留原稳定 provider identity 核验，原 Promise 拒绝不阻断独立只读核实，缺 provider identity 仍拒绝。
 
 Mail 构建通过；只运行新增 `interrupted SMTP resumes` 一项：实际 Engine/Runtime/SQLite/原 Policy/出口消费，SMTP 抛错后原 readback 另批，原 N07 和 configured graph 最终 succeeded，SMTP=1、archive=1，原 cloud continuation 收到 sendConfirmed。云、邮箱、selector、审批回应仍为明确 Fixture，非真实账号/AgentArts 整图验收。不重复整组测试。
+
+Main 已接原任务核实按钮、原 mailbox 读取授权和 `reconcileOriginalMailWorkflow`；首次只创建一条核实子任务，后续点击读取同一结果，确认后继续原 F08。新增按钮续行定向检查 1/1；没有发送重试循环。

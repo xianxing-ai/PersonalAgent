@@ -5,6 +5,14 @@ export function mountAgentArtsControls(root,invoke) {
   section.querySelector('[data-status]').insertAdjacentHTML('beforebegin','<p class="notice">恢复默认连接只使用当前已保存的实例，保留本机凭据，不保存表单草稿、不重放原任务。Latest 表示未钉版，实际版本以服务读回为准。Live 实时音频仍需支持原生实时协议的固定版本 WSS，HTTPS 不能代替。</p>');
   root.append(section);const form=section.querySelector('form'),status=section.querySelector('[data-status]'),revokeBtn=section.querySelector('[data-revoke]'),restoreBtn=section.querySelector('[data-restore-default]');let dirty=false,busy=false,canRestoreDefault=false,feedbackKind='host',lastHostReason='',feedbackMessage='';
   let savedBinding;
+  form.insertAdjacentHTML('afterend','<details class="connection-advanced"><summary>历史任务回放</summary><p class="notice">仅查看同一对话中已经结束的原执行记录，不重新调用模型或执行工具。其他任务执行期间暂停回放；发送回放结果仍需单独确认。</p><button type="button" class="btn" data-trace-replay>开启历史回放</button><p class="notice" role="status" data-trace-replay-state></p></details>');
+  const traceReplayButton=section.querySelector('[data-trace-replay]'),traceReplayState=section.querySelector('[data-trace-replay-state]');
+  let traceReplay;
+  function renderTraceReplay(){
+    traceReplayButton.disabled=busy||traceReplay?.available!==true||!Number.isSafeInteger(traceReplay?.revision);
+    traceReplayButton.textContent=traceReplay?.enabled?'关闭历史回放':'开启历史回放';
+    traceReplayState.textContent=traceReplay?.available!==true?'配置固定 AgentArts 部署后可用。':traceReplay.enabled?'已开启；每次只读原记录。':'当前关闭。';
+  }
   let originatingFocus,restoreFocus=false;
   const tokenHint=section.querySelector('[data-token-hint]');
   const updateTransport=()=>{const wss=form.elements.transport.value==='wss';
@@ -30,6 +38,7 @@ export function mountAgentArtsControls(root,invoke) {
     busy=value;form.setAttribute('aria-busy',String(value));
     form.querySelectorAll('input,select,button').forEach(control=>{control.disabled=value;});
     restoreBtn.disabled=value||!canRestoreDefault;
+    renderTraceReplay();
     if(!value) {
       document.removeEventListener('focusin',trackFocus,true);
       if(restoreFocus && document.activeElement===document.body && section.isConnected && !section.hidden
@@ -91,7 +100,19 @@ export function mountAgentArtsControls(root,invoke) {
     }catch{feedback('恢复结果未获确认，请检查当前已保存配置后再操作。',true);}
     finally{setBusy(false);}
   });
+  traceReplayButton.addEventListener('click',async()=>{
+    if(busy||traceReplayButton.disabled)return;
+    const original=traceReplay,enabled=!original.enabled;let message;
+    setBusy(true);
+    try{
+      const result=await invoke('workflow.traceReplay.configure',{enabled,expectedRevision:original.revision});
+      if(result?.traceReplay?.enabled!==enabled||result.traceReplay.revision!==original.revision+1)throw Error();
+      traceReplay=result.traceReplay;message=enabled?'历史回放已开启。':'历史回放已关闭。';
+    }catch{message='设置变更尚未确认，请查看最新状态后再操作。';}
+    finally{setBusy(false);traceReplayState.textContent=message;}
+  });
   return {show:value=>{section.hidden=!value;if(!value) restoreFocus=false;},render(value={}){
+    traceReplay=value.traceReplay;renderTraceReplay();
     canRestoreDefault=(value.canRestoreDefaultConnection??value.configured)===true;
     savedBinding={gatewayUrl:value.gatewayUrl,runtimeName:value.runtimeName};restoreBtn.disabled=busy||!canRestoreDefault;
     if (!dirty && !busy) {form.elements.gatewayUrl.value=value.gatewayUrl??'';form.elements.runtimeName.value=value.runtimeName??'';

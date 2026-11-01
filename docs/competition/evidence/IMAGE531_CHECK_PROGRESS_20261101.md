@@ -2,6 +2,14 @@
 
 目标 `huawei_ict_agentarts`，集成树 `.worktrees/pr531-integration`。本文保留未通过/中断与定向复验，不作为全仓最终通过证明。
 
+## F01 / F19 / F22 / SMTP 接线批次
+
+在 `.worktrees/pr531-clarification-ui` 汇入上述生产实现及 Main/UI 后，统一 `npm run build` 已通过；日志 `.cache/wiring-batch-build-20261101-fixed-path.log`。首次启动因继承 PATH 的命令查找问题未进入编译，改用已验证的精简进程 PATH 后完成；没有改系统环境变量。
+
+按用户要求只做新增或受影响检查：F01 回答卡与原补问各 1/1；F22 Main 配置授权/竞态、设置 UI 各 1/1；SMTP 原按钮续行 1/1；F25 实际载荷边界 2/2。受影响 UI/授权/恢复组首轮 16 通过、1 个新增测试的事件夹具缺 `type`，修正该夹具后只复验该项通过；退出资源夹具随新增宿主更新，原定向检查通过。未重复本地全仓测试。
+
+F19 原正向整链 60 秒超时仍未通过。上述局部结果不代替最新提交必需 CI、所有接线、真实账号/云/设备验收；#531 仍为 Draft。
+
 ## 497945ec 本地全量检查
 
 固定干净提交 `497945ec` 的 `npm run check` 已完整运行到 integration 阶段，汇总 **7055 项：7008 通过、46 跳过、1 失败，0 取消**。架构、契约夹具、生成检查、构建/类型检查及工作区测试完成；Desktop 2668 项无失败，Runtime 1605 项全通过。唯一 integration 失败与下文 `fa4fc200` 远端 CI 相同，为恢复测试误用写入前哈希；未忽略该失败，原执行退出码 1。日志 `.cache/integration-full-check-497945ec.log`。

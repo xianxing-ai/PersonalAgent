@@ -1,11 +1,11 @@
 import {escapeAuthorizationText as escape,ensureAuthorizationStyles} from './authorization-question-card.js';
 
 const fields=new Map([['weather.location','workflow.f11.location.respond'],['plan.decision','workflow.f11.decision.respond'],
-  ['mail.decision','workflow.f08.decision.respond']]);
+  ['mail.decision','workflow.f08.decision.respond'],['responsibility.clarification','workflow.f01.clarification.respond']]);
 const active=(q,now)=>q&&fields.has(q.field)&&q.state==='pending'&&q.revision===1
   &&['questionId','taskId','sourceTaskId','conversationId'].every(key=>typeof q[key]==='string'&&q[key])
   &&Number.isFinite(Date.parse(q.deadline))&&Date.parse(q.deadline)>now;
-const answerField=q=>q.field==='weather.location'?'location':'decision';
+const answerField=q=>q.field==='weather.location'?'location':q.field==='responsibility.clarification'?'answer':'decision';
 const planMarkup=plan=>{
   const labels={externalId:'日历条目',uid:'日历标识',summary:'标题',startUtc:'开始时间',endUtc:'结束时间',location:'地点',notes:'备注'};
   return `<dl>${Object.entries(plan?.update??{}).map(([key,value])=>`<dt>${escape(labels[key]??key)}</dt><dd>${escape(value)}</dd>`).join('')}</dl>
@@ -19,18 +19,20 @@ const mailMarkup=question=>`<dl>${[['发件账号',question.draft?.account],['�
 
 export function workflowQuestionReply(question,answer,commandId,now=Date.now()) {
   if(!active(question,now)||typeof commandId!=='string'||!commandId)throw Error('问题已变化，请查看最新状态');
-  const field=answerField(question),value=field==='location'?String(answer??'').trim():answer;
-  if(field==='location'? !value||value.length>512||/[\u0000-\u001f\u007f]/u.test(value):!['accept','decline'].includes(value))
-    throw Error(field==='location'?'请输入明确的城市或地点':'请选择是否采用原方案');
+  const field=answerField(question),value=field!=='decision'?String(answer??'').trim():answer;
+  if(field!=='decision'? !value||value.length>(field==='answer'?2048:512)||/[\u0000-\u001f\u007f]/u.test(value):!['accept','decline'].includes(value))
+    throw Error(field==='location'?'请输入明确的城市或地点':field==='answer'?'请填写原问题的回答':'请选择是否采用原方案');
   return {taskId:question.taskId,sourceTaskId:question.sourceTaskId,questionId:question.questionId,
     expectedRevision:question.revision,commandId,[field]:value};
 }
 
 export function workflowQuestionMarkup(question,{now=Date.now(),draft='',submission}={}) {
   if(!fields.has(question?.field)||question.state!=='pending')return '';
-  const location=question.field==='weather.location',disabled=!active(question,now)||!!submission;
+  const location=question.field==='weather.location',clarification=question.field==='responsibility.clarification',disabled=!active(question,now)||!!submission;
   const field=location?`<label>城市或地点<input name="location" maxlength="512" autocomplete="off" value="${escape(draft)}" ${disabled?'disabled':''}></label>
     <button type="submit" ${disabled?'disabled':''}>提交地点</button>`
+    :clarification?`<label>补充说明<input name="answer" maxlength="2048" autocomplete="off" value="${escape(draft)}" ${disabled?'disabled':''}></label>
+      <button type="submit" ${disabled?'disabled':''}>提交回答</button>`
     :`${question.field==='mail.decision'?mailMarkup(question):planMarkup(question.plan)}
       <button type="button" data-workflow-answer="accept" ${disabled?'disabled':''}>${question.field==='mail.decision'?'采用这封草稿':'采用原方案'}</button>
       <button type="button" data-workflow-answer="decline" ${disabled?'disabled':''}>不采用</button>`;
@@ -57,7 +59,7 @@ export function mountWorkflowQuestionCards(root,{invoke,onChanged=()=>{},now=Dat
     renderedAt=now();const next=markup(renderedAt);
     if(next!==html){root.innerHTML=next;html=next;
       if(identity){const target=[...root.querySelectorAll('[data-workflow-question-id]')].find(node=>node.dataset.workflowQuestionId===identity.id);
-        const input=target?.querySelector('[name="location"]'),button=[...(target?.querySelectorAll('[data-workflow-answer]')??[])].find(node=>node.dataset.workflowAnswer===identity.answer);
+        const input=target?.querySelector('[name="location"],[name="answer"]'),button=[...(target?.querySelectorAll('[data-workflow-answer]')??[])].find(node=>node.dataset.workflowAnswer===identity.answer);
         const restored=identity.input&&input&&!input.disabled?input:button&&!button.disabled?button:target?.querySelector('.workflow-question-title');
         restored?.focus({preventScroll:true});if(restored===input&&Number.isInteger(identity.start))input.setSelectionRange?.(identity.start,identity.end);
       }}
@@ -78,7 +80,7 @@ export function mountWorkflowQuestionCards(root,{invoke,onChanged=()=>{},now=Dat
     if(!q||!active(q,now())||submissions.get(id)?.inFlight)return;
     let submission=submissions.get(id);
     if(!submission){
-      try{submission={body:workflowQuestionReply(q,q.field==='weather.location'?control.querySelector('[name="location"]')?.value:control.dataset.workflowAnswer,commandId(),now())};}
+      try{submission={body:workflowQuestionReply(q,answerField(q)!=='decision'?control.querySelector('[name="location"],[name="answer"]')?.value:control.dataset.workflowAnswer,commandId(),now())};}
       catch(error){control.closest('[data-workflow-question-id]').querySelector('[role="status"]').textContent=error.message;return;}
       submissions.set(id,submission);
     }
