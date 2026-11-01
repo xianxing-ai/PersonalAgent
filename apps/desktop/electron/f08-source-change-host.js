@@ -21,6 +21,7 @@ export function createF08SourceChangeHost({getApplication,memoryPath,graphNamesp
     readSource:scope=>ensure().readSource(scope),
     rememberSource:(scope,input)=>ensure().rememberSource(scope,input,confirmSource),
     recordChange:(scope,receipt)=>ensure().recordChange(scope,receipt),
+    readReviewSource:(reference,scope,atGraphRevision)=>ensure().readReviewSource(reference,scope,atGraphRevision),
     listSources:scope=>ensure().listSources(scope),
     withdrawSource:(request,control)=>ensure().withdrawSource(request,(fact,scope)=>confirmWithdraw?.(fact,{...scope,...(control?{control}:{} )})),
     eraseSource:(request,control)=>ensure().eraseSource(request,(fact,scope)=>confirmErase?.(fact,{...scope,...(control?{control}:{} )})),

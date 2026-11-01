@@ -31,7 +31,12 @@ export {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity,prepareOrig
   recordOriginalMailArchiveMove,prepareOriginalMailArchiveReconciliation,readOriginalMailArchiveReconciliation} from './application/mail-send-recovery.js';
 export type {OriginalMailSendBinding,OriginalMailSendIdentity,OriginalMailSendReconciliation,OriginalMailArchiveIdentity,OriginalMailArchiveMove} from './application/mail-send-recovery.js';
 export {readOriginalF08MailSource,recordOriginalF08MailChange,createCompetitionMailSourceChanges} from './application/mail-source-changes.js';
-export type {OriginalMailSourceScope,CompetitionMailSourceChangesOptions} from './application/mail-source-changes.js';
+export type {OriginalMailSourceScope,OriginalMailReviewReference,CompetitionMailSourceChangesOptions} from './application/mail-source-changes.js';
+export {readF03CompetitionReview,assertF03CompetitionReviewEvidence} from './application/f03-competition-review.js';
+export type {F03CompetitionReviewScope,F03CompetitionReviewSource,F03CompetitionReviewInput} from './application/f03-competition-review.js';
+export {readCompetitionWorkflowRepairReceipt} from './application/local-repair.js';
+export type {CompetitionWorkflowRepairRequest} from './application/local-repair.js';
+export {assertOwnedWorkflowHostScope} from './application/workflow-owned-host-scope.js';
 export {createRuntimeWorkflowShadowConfigurationPort,readRuntimeWorkflowShadowConfiguration} from './application/workflow-shadow-configuration.js';
 export {createCompetitionDecisionConfigurationConsumer} from './application/competition-decision-configuration.js';
 export type {CompetitionDecisionConfigurationBinding} from './application/competition-decision-configuration.js';

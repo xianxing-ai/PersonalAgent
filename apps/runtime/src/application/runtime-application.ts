@@ -745,7 +745,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         && typeof this.localRepair.memory?.listCurrent === 'function';
       if (!this.localRepair.graphNamespace?.trim() || !this.localRepair.bindingVersion?.trim()
         || typeof this.localRepair.withSourceLock !== 'function'
-        || (!factSource && typeof reviewedSource?.resolve !== 'function')) {
+        || (!factSource && typeof reviewedSource?.resolve !== 'function' && typeof this.localRepair.competitionSource?.resolve !== 'function')) {
         throw new ProtocolError('INVALID_ARGUMENT', 'Invalid local repair host configuration');
       }
     }
@@ -4410,7 +4410,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** An explicit trusted-host action creates a separate local task; never a cloud callback. */
   submitLocalRepair(request: SubmitLocalRepairRequest): TaskSnapshot {
     if (!this.localRepair || !this.tools) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Local repair is not configured');
-    if (!this.readRepairCandidate(request.sourceTaskId)) throw new ProtocolError('NOT_FOUND', 'No completed repair candidate');
+    if (!('sourceOperationId' in request) && !this.readRepairCandidate(request.sourceTaskId)) throw new ProtocolError('NOT_FOUND', 'No completed repair candidate');
     const task = prepareLocalRepair(this.runtime, this.localRepair, request);
     if (task.state === 'created') this.dispatchLocalRepair(task.taskId);
     else if (['planning', 'running', 'verifying'].includes(task.state) && !this.activeTextTasks.has(task.taskId)) {

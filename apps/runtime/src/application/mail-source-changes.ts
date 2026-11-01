@@ -7,11 +7,17 @@ import type {RuntimeApplication} from './runtime-application.js';
 import {readWorkflowBusinessToolSource,type WorkflowBusinessToolSourceReference} from './workflow-business-tool-bridge.js';
 import {readPlanExecutionIntent} from './plan-execution-source.js';
 import {createMemoryProjectionApplication,createPendingImpactApplication} from './memory.js';
+import {analyzeImpact,buildMinimalRepairCandidate} from '@personal-agent/cognition';
+import {currentNodes,isEffective} from '@personal-agent/goals';
+import type {F03CompetitionReviewInput} from './f03-competition-review.js';
 
 export interface OriginalMailSourceScope extends MemoryReadContext {parentTaskId:string;sessionId:string;
   control?:Readonly<{boundUserTaskId:string;conversationId:string;commandId:string;sourceDigest:string}>}
 type SourceConfirmationScope=MemoryReadContext&{assertCurrent:()=>void;control?:OriginalMailSourceScope['control']};
 type Inbox={account:string;folder:string;nextCursor:string;hasMore:false;items:Record<string,unknown>[]};
+export interface OriginalMailReviewReference {graphTaskId:string;readRunId:string}
+type MailReviewMarker={version:1;deadline:string;sessionId:string;reference:WorkflowBusinessToolSourceReference;
+  changeDigest:string;factId:string;invalidatedRevision:number;batchToken:string};
 const fail=(code:string,message:string):never=>{throw new ProtocolError(code,message);};
 const same=(a:{id:string;revision:number},b:{id:string;revision:number})=>a.id===b.id&&a.revision===b.revision;
 const stable=(items:Record<string,unknown>[])=>items.map(({fetchedAt,...item})=>item)
@@ -156,7 +162,54 @@ export function createCompetitionMailSourceChanges(options:CompetitionMailSource
       const receipt=projection.listImpactReceipts({consumerKey,memoryNamespace,afterGraphRevision:original.source.graphRevision,limit:100})
         .find(item=>item.projection.links.some(link=>same(link.fact,fact.ref)));
       if(!receipt?.completed)return {...requiresReview('original_fact_projection_pending'),fact};
-      return {...requiresReview('competition_mail_review_required'),fact,projection:receipt.projection,impact:receipt.completed};
+      const review:MailReviewMarker={version:1,deadline:scope.deadline,sessionId:scope.sessionId,reference:structuredClone(reference),
+        changeDigest:toolArgumentsDigest(change),factId:fact.ref.id,invalidatedRevision:fact.ref.revision,batchToken:receipt.projection.batchToken};
+      const reviewKey='f08:mail-review:'+change.readRunId;
+      if(!application.runtime.saveCheckpointOnce(scope.parentTaskId,reviewKey,review)
+        &&!isDeepStrictEqual(application.runtime.loadCheckpoint(scope.parentTaskId,reviewKey),review))fail('REVISION_CONFLICT','Original mail review source changed');
+      return {...requiresReview('competition_mail_review_required'),fact,projection:receipt.projection,impact:receipt.completed,
+        reviewReference:{graphTaskId:scope.parentTaskId,readRunId:change.readRunId}};
+    },
+    /** Original private source for Competition F03; reading never exports or chooses a Plan. */
+    readReviewSource(reference:OriginalMailReviewReference,context:MemoryReadContext,atGraphRevision?:number){
+      erasureContext(context);assertCurrent();
+      const {runtime}=application,marker=runtime.loadCheckpoint(reference.graphTaskId,'f08:mail-review:'+reference.readRunId) as MailReviewMarker|undefined;
+      const change=runtime.loadCheckpoint(reference.graphTaskId,'f08:mail-source-change:'+reference.readRunId) as ReturnType<typeof recordOriginalF08MailChange>;
+      if(!marker||marker.version!==1||!change||marker.changeDigest!==toolArgumentsDigest(change)
+        ||change.readRunId!==reference.readRunId||change.graphTaskId!==reference.graphTaskId
+        ||marker.sessionId!==change.sessionId||Date.parse(context.deadline)>Date.parse(marker.deadline)
+        ||runtime.getTask(reference.graphTaskId).cancelRequested||runtime.loadCheckpoint(reference.graphTaskId,'private-copy-erasure')!==undefined)
+        return fail('UNAUTHORIZED','Original mailbox review source is unavailable');
+      const proof=readWorkflowBusinessToolSource(application,{parentTaskId:reference.graphTaskId,sessionId:marker.sessionId,deadline:marker.deadline},marker.reference,'mail.inbox');
+      if(!isDeepStrictEqual(snapshot(proof.receipt.result),change.current)||!isDeepStrictEqual(proof.planSource,change.planSource))
+        fail('UNAUTHORIZED','Original mailbox change proof changed');
+      const plan=change.planSource&&readPlanExecutionIntent(runtime,change.planSource.rootTaskId);
+      if(!plan||plan.sourceDigest!==change.planSource?.sourceDigest||plan.source.graphNamespace!==graphNamespace)
+        return fail('UNAUTHORIZED','Original selected Plan source is unavailable');
+      if(runtime.getTask(change.planSource!.rootTaskId).cancelRequested||runtime.loadCheckpoint(change.planSource!.rootTaskId,'private-copy-erasure')!==undefined)
+        fail('UNAUTHORIZED','Original Plan source was cancelled or erased');
+      const fact=memory.readUserFactHead(memoryNamespace,marker.factId);
+      // A later user correction needs a new explicit review source; never silently retarget a pending F03.
+      if(!fact||fact.ref.revision!==marker.invalidatedRevision||fact.state!=='withdrawn'||fact.confirmation!=='external_observation'
+        ||fact.sourceRef!==change.sourceRef||fact.observedAt!==change.observedAt)
+        return fail('REVISION_CONFLICT','Original private Fact revision changed or was erased');
+      const impact=projection.readCompletedImpact({consumerKey,memoryNamespace,batchToken:marker.batchToken});
+      if(!impact||!impact.report.items.some(item=>item.action==='RECHECK'&&same(item.node,plan.source.plan)))
+        return fail('UNAUTHORIZED','Original Plan has no confirmed affected-source receipt');
+      const graph=runtime.bindCoordinationStore(graphNamespace).read(atGraphRevision),evaluatedAt=impact.report.evaluatedAt;
+      const report=analyzeImpact(graph,evaluatedAt),heads=currentNodes(graph);
+      const affected=report.items.filter(item=>item.action==='RECHECK'&&plan.source.nodes.some(node=>same(node.ref,item.node))).map(item=>item.node);
+      if(!affected.some(node=>same(node,plan.source.plan)))fail('REVISION_CONFLICT','Original affected Plan was already changed');
+      const allowedDependencies=heads.filter(node=>isEffective(node,evaluatedAt)&&plan.source.nodes.some(original=>original.ref.id===node.id))
+        .map(node=>({id:node.id,revision:node.revision}));
+      const minimal=buildMinimalRepairCandidate(graph,evaluatedAt,{expectedGraphRevision:graph.revision,targets:affected});
+      const review:F03CompetitionReviewInput={sourceDigest:toolArgumentsDigest({marker,planSource:change.planSource,fact,impact,graphRevision:graph.revision}),
+        graphNamespace,graphRevision:graph.revision,evaluatedAt,affected,allowedDependencies,
+        ...(minimal.kind==='candidate'?{candidate:minimal.request}:{})};
+      return structuredClone({reference,review,plan:plan.source.plan,conversationId:runtime.getTask(change.planSource!.rootTaskId).conversationId,
+        effects:change.effects,privateContext:heads.filter(node=>plan.source.nodes.some(original=>original.ref.id===node.id))
+          .map(({id,revision,kind,state,dependencies,validFrom,validUntil})=>({id,revision,kind,state,dependencies,validFrom,validUntil})),
+        originalDeadline:marker.deadline,requiresReview:minimal.kind!=='candidate'});
     },
     listSources(context:MemoryReadContext){erasureContext(context);return memory.listUserFactHeads(memoryNamespace,{at:new Date().toISOString(),limit:100,...context});},
     async withdrawSource(request:MemoryReadContext&{factId:string;expectedRevision:number;operationId:string},
