@@ -116,6 +116,10 @@ import {createConfiguredDesktopF01WorkflowPorts} from './f01-workflow-worker-por
 import {createDesktopF22TraceReplayConfiguration,createDesktopF22WorkflowWorkerPorts} from './f22-trace-replay-host.js';
 import {createDesktopF25Configuration,createDesktopF25WorkflowWorkerPorts} from './f25-configuration-host.js';
 import {createDesktopF27WorkflowWorkerPorts} from './f27-context-workflow-ports.js';
+import {createConfiguredDesktopF21WorkflowPorts} from './f21-workflow-worker-ports.js';
+import {createDesktopF28WorkflowWorkerPorts} from './f28-model-workflow-ports.js';
+import {createF08SourceChangeHost} from './f08-source-change-host.js';
+import {createF08SourceActions} from './f08-source-actions.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF11LocationQuestionHost,createF11DecisionQuestionHost} from './f11-location-question-host.js';
@@ -387,6 +391,7 @@ let f04Workflow;
 let f01Workflow;
 let f22Configuration,f22Workflow;
 let f25Configuration,f25Workflow;
+let f08SourceChanges,f08SourceActions;
 let reconcileOriginalMailWorkflow;
 let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
 let f14Workflow;
@@ -2097,6 +2102,7 @@ async function initializeRuntime() {
       }
       const {createGoalHost} = await import('./goal-host.js');
       const codingModule=await import('@personal-agent/coding-tools');
+      const mcpModule=await import('@personal-agent/mcp');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
       let developmentJobHelper;
@@ -2588,8 +2594,29 @@ async function initializeRuntime() {
       f11LocationQuestion=agentArtsPinned?createF11LocationQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
       f11DecisionQuestion=agentArtsPinned?createF11DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
       f08DecisionQuestion=agentArtsPinned?createF08DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
+      f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
+      if(!syntheticMvp&&agentArtsPinned){
+        const originalMailConfig=mailConfig;let originalMailBinding;
+        const confirmSource=(action,summary)=>(value,control)=>{
+          const owner=admin,host=f08SourceChanges;if(!owner||owner.isDestroyed())return false;
+          const digest=createHash('sha256').update(JSON.stringify(value)).digest('hex');
+          return confirmApplicationAuthorization(action,{digest},{deadline:control.deadline,signal:control.signal,
+            scope:{namespace:host.memoryNamespace,...control.control},summary,isCurrent:()=>{
+              control.assertCurrent();return admin===owner&&!owner.isDestroyed()&&f08SourceChanges===host;
+            }});
+        };
+        f08SourceChanges=createF08SourceChangeHost({getApplication:()=>runtimeApplication,memoryPath:dataPaths.privateMemory,graphNamespace:namespace,
+          assertCurrent:()=>{
+            const current=mailConfig?.reviewConfigurationRef('workflow.business.f08');
+            if(mailConfig!==originalMailConfig||!current||(originalMailBinding&&originalMailBinding!==current))throw Error('原邮件配置已改变，请重新启动应用');
+            originalMailBinding??=current;
+          },confirmSource:confirmSource('memory.save','保存刚选定的邮件来源摘要及有效期；仅此版本，不授予云端使用权限'),
+          confirmWithdraw:confirmSource('memory.withdraw','撤回所选邮件来源记忆版本，停止后续消费'),
+          confirmErase:confirmSource('memory.erase','删除所选邮件来源记忆的全部版本及绑定图副本；历史邮箱记录与备份不属于此次删除范围')});
+        f08SourceActions=createF08SourceActions({getApplication:()=>runtimeApplication,sourceHost:f08SourceChanges});
+      }
       const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
-        f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,
+        f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,f08SourceChanges,
         explicitReturnSource:f12ExplicitReturnSource,
         businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[]),
           ...productTools.tools.filter(tool=>tool.descriptor.name==='weather.forecast')],todoHost,notificationHost:notificationApplicationHost,
@@ -2673,6 +2700,17 @@ async function initializeRuntime() {
         configuration:f25Configuration,authorizeExport:authorizeWorkflowExport}):undefined;
       const f27Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF27WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,authorizeExport:authorizeWorkflowExport}):undefined;
+      const f21Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF21WorkflowPorts({runtimeModule,mcpModule,codingModule,
+        getApplication:()=>runtimeApplication,getReferenceHost:()=>referenceHost,nativeExecutionHost,
+        getAuthorizationIntentHost:()=>authorizationIntentHost,probeRoot:path.join(app.getPath('userData'),'f21-probe'),authorizeExport:authorizeWorkflowExport}):undefined;
+      const f28Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF28WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        modelApiHost:{snapshot:()=>modelApiHost?.snapshot()??{models:[]},getModelGateway:(...args)=>modelApiHost?.getModelGateway(...args),
+          getGuardedModelGateway:(...args)=>modelApiHost?.getGuardedModelGateway(...args)},authorizeExport:authorizeWorkflowExport,
+        confirmModelExport:request=>confirmApplicationAuthorization('developer.export',request.payload,{
+          scope:{taskId:request.taskId,nodeId:request.nodeId,destination:request.payload.destination},
+          operation:{taskId:request.taskId,digest:createHash('sha256').update(JSON.stringify(request.payload)).digest('hex')},
+          summary:`F28 仅本次候选请求发送给所选辅助模型 ${request.payload.destination.model}；不代表结果或工具能力已验证`,
+          deadline:request.deadline,signal:request.signal,isCurrent:()=>{request.assertCurrent();return true;}})}):undefined;
       const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
@@ -2680,7 +2718,7 @@ async function initializeRuntime() {
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
-        ...(f01Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
+        ...(f01Workflow?.tools??[]),...(f21Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f28Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
@@ -2734,17 +2772,25 @@ async function initializeRuntime() {
         ...(f04Workflow?.recovery?{f04Recovery:f04Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
           ...(f01Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f21Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f22Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f25Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f27Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f28Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f18Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f19Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
-        planExecution:{readCurrentFact:createPlanExecutionFactReader(()=>proactiveHost?
-          [{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}]:[])},
+        planExecution:{readCurrentFact:(input,context)=>{
+          if(f08SourceChanges&&input.memoryNamespace===f08SourceChanges.memoryNamespace){
+            if(context.signal.aborted||Date.now()>=Date.parse(context.deadline))throw Error('原计划 Fact 读取已过期');
+            return f08SourceChanges.readCurrentFact(input);
+          }
+          return createPlanExecutionFactReader(()=>proactiveHost?
+            [{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}]:[])(input,context);
+        }},
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
         ...(observationOptions?.observationAuthorization
           ? {observationAuthorization: observationOptions.observationAuthorization} : {}),
@@ -3075,7 +3121,8 @@ async function initializeRuntime() {
             summary:'删除所选学习流程全部版本并停止其未完成任务；保留工作区原文件，原存储核实规则仍生效'});
         }});
       privateConsumption?.close();
-      privateBackups=createPrivateMemoryBackupHost({userData:app.getPath('userData'),privateMemory:privateMemoryController()});
+      privateBackups=createPrivateMemoryBackupHost({userData:app.getPath('userData'),privateMemory:privateMemoryController(),
+        assertCoverage:scope=>f08SourceChanges?.assertLegacyPrivacyCoverage(scope)});
       privateConsumption=createPrivateMemoryConsumptionHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
         readTask:taskId=>runtimeApplication.runtime.getTask(taskId),
         readTaskBinding:taskId=>runtimeApplication.readPrivateTaskBinding(taskId),
@@ -4562,6 +4609,25 @@ async function action(event, name, payload) {
     if (sender !== admin || !competitionMode || !runtimeApplication) {
       throw Error('私人记忆仅在 Competition 管理后台可用');
     }
+    if(name.startsWith('memory.mail.')){
+      if(!f08SourceActions)throw Error('原邮件来源管理尚未接通');
+      const action=name.slice('memory.mail.'.length);
+      if(!['readSource','remember','listSources','withdraw','erase'].includes(action))throw Error('不支持的邮件来源操作');
+      if(action==='listSources'&&payload!==undefined)throw Error('来源列表不接受额外参数');
+      if(action==='readSource'&&(!payload||Object.keys(payload).join(',')!=='taskId'))throw Error('请选择原邮件任务');
+      if(['withdraw','erase'].includes(action)&&(!payload||Object.keys(payload).sort().join(',')!=='expectedRevision,factId,operationId'))throw Error('请选择原记忆版本');
+      const controller=new AbortController(),owner=admin,onClose=()=>controller.abort();owner.once('closed',onClose);
+      const context={signal:controller.signal,deadline:new Date(Date.now()+180000).toISOString()};
+      try{
+        if(action==='readSource'||action==='remember'){
+          const task=runtimeApplication.runtime.getTask(payload.taskId);
+          if(!conversations?.turns.has(task.taskId)||!conversations.containsConversation(task.conversationId))throw Error('原邮件对话不可用');
+          context.conversationId=task.conversationId;
+        }
+        const result=action==='listSources'?await f08SourceActions.listSources(context):await f08SourceActions[action](payload,context);
+        publish();return result;
+      }finally{owner.removeListener('closed',onClose);controller.abort();}
+    }
     if (name === 'memory.selectVault') {
       if (!knowledgeSourceConfig) throw Error(knowledgeSourceNotReadyMessage);
       obsidianPairing?.useFilesystem();
@@ -5453,6 +5519,7 @@ app.whenReady().then(async () => {
       f01Workflow=undefined;
       f22Configuration?.close();f22Configuration=undefined;f22Workflow=undefined;
       f25Configuration?.close();f25Configuration=undefined;f25Workflow=undefined;
+      f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
       reconcileOriginalMailWorkflow=undefined;
       f11LocationQuestion=undefined;
       f11DecisionQuestion=undefined;
