@@ -68,6 +68,8 @@ import {PLAN_EXECUTION_SOURCE,preparePlanExecutionSource,assertPlanExecutionFact
 import type {PlanExecutionOptions,PlanExecutionSelection,PlanExecutionIntent} from './plan-execution-source.js';
 import {F12_NATIVE_RETURN,prepareF12ReturnDigest,f12ReturnDigestPort,f12ReturnTaskKey,f12ReturnGoal} from './f12-native-admission.js';
 import type {F12ReturnDigestRequest,F12ReturnDigestIntent} from './f12-native-admission.js';
+import {F03_NATIVE_MAIL_REVIEW,prepareF03MailReview,f03MailReviewPort,f03MailReviewTaskKey,f03MailReviewGoal} from './f03-native-admission.js';
+import type {F03MailReviewRequest,F03MailReviewIntent} from './f03-native-admission.js';
 import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
@@ -2811,7 +2813,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(nativeF12)this.assertCompetitionTaskConfiguration(worker.taskId,true);
     if(!f12Entry&&this.runtime.loadCheckpoint(binding.parentTaskId,F12_NATIVE_RETURN)!==undefined)
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original native F12 entry is unavailable');
-    return runCoordinationWorker(this.runtime,nativeF12??this.coordination,tools,worker.taskId,child.goal,worker,
+    const f03Entry=this.configuredWorkflowWorkers.find(entry=>entry.describe().name==='workflow.business.f03');
+    const nativeF03=f03Entry?f03MailReviewPort(this.runtime,this.coordination!,worker.taskId,
+      this.coordinationBinding,f03Entry,()=>this.now().getTime()):undefined;
+    if(nativeF03)this.assertCompetitionTaskConfiguration(worker.taskId,true);
+    if(!f03Entry&&this.runtime.loadCheckpoint(binding.parentTaskId,F03_NATIVE_MAIL_REVIEW)!==undefined)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original native F03 entry is unavailable');
+    return runCoordinationWorker(this.runtime,nativeF03??nativeF12??this.coordination,tools,worker.taskId,child.goal,worker,
       {retainPriorToolResults:this.usesGoalContinuation(worker.taskId),allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
@@ -4342,6 +4350,34 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
     const task=this.runtime.submitTaskWithCheckpoint({goal:f12ReturnGoal(),conversationId:intent.conversationId,
       idempotencyKey:key,attachmentRefs:[F12_NATIVE_RETURN+':'+toolArgumentsDigest(intent)]},F12_NATIVE_RETURN,intent);
+    this.dispatchAcceptedTextTask(task.taskId,task.goal!,intent.conversationId,intent.deadline);
+    return this.runtime.getTask(task.taskId);
+  }
+
+  readF03MailReviewTask(idempotencyKey:string):TaskSnapshot|undefined {
+    if(!nonEmptyText(idempotencyKey))throw new ProtocolError('INVALID_ARGUMENT','Invalid native F03 task key');
+    const task=this.runtime.findTaskByIdempotencyKey(f03MailReviewTaskKey(idempotencyKey));if(!task)return;
+    const intent=this.runtime.loadCheckpoint(task.taskId,F03_NATIVE_MAIL_REVIEW) as F03MailReviewIntent|undefined;
+    if(intent?.version!==1||intent.idempotencyKey!==idempotencyKey||task.goal!==f03MailReviewGoal()
+      ||task.conversationId!==intent.conversationId)throw new ProtocolError('UNAUTHORIZED','Original native F03 task binding changed');
+    return task;
+  }
+
+  submitF03MailReviewTask(request:F03MailReviewRequest,context:{signal:AbortSignal}):TaskSnapshot {
+    if(context.signal.aborted)throw new ProtocolError('CANCELLED','Original F03 admission cancelled');
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks||!this.coordination)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Native F03 requires the original Competition delegation');
+    const entry=this.configuredWorkflowWorkers.find(worker=>worker.describe().name==='workflow.business.f03');
+    if(!entry)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original F03 entry is unavailable');
+    const intent=prepareF03MailReview(request,entry,this.coordinationBinding,this.now().getTime());
+    const key=f03MailReviewTaskKey(intent.idempotencyKey),prior=this.runtime.findTaskByIdempotencyKey(key);
+    if(prior){
+      if(!isDeepStrictEqual(this.runtime.loadCheckpoint(prior.taskId,F03_NATIVE_MAIL_REVIEW),intent))
+        throw new ProtocolError('REVISION_CONFLICT','Native F03 request already has another original binding');
+      return prior;
+    }
+    const task=this.runtime.submitTaskWithCheckpoint({goal:f03MailReviewGoal(),conversationId:intent.conversationId,
+      idempotencyKey:key,attachmentRefs:[F03_NATIVE_MAIL_REVIEW+':'+toolArgumentsDigest(intent)]},F03_NATIVE_MAIL_REVIEW,intent);
     this.dispatchAcceptedTextTask(task.taskId,task.goal!,intent.conversationId,intent.deadline);
     return this.runtime.getTask(task.taskId);
   }

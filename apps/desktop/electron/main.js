@@ -120,6 +120,7 @@ import {createConfiguredDesktopF21WorkflowPorts} from './f21-workflow-worker-por
 import {createDesktopF28WorkflowWorkerPorts} from './f28-model-workflow-ports.js';
 import {createF08SourceChangeHost} from './f08-source-change-host.js';
 import {createF08SourceActions} from './f08-source-actions.js';
+import {createF03MailReviewWorkflowPorts} from './f03-mail-review-workflow-ports.js';
 import {createDesktopF23DecisionConfiguration,F23_INITIALIZE_TOOL} from './f23-decision-configuration.js';
 import {createConfiguredDesktopF10WorkflowPorts} from './f10-workflow-worker-ports.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
@@ -2705,6 +2706,12 @@ async function initializeRuntime() {
         models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,authorizeExport:authorizeWorkflowExport}):undefined;
       f23DecisionConfiguration=!syntheticMvp&&agentArtsPinned?createDesktopF23DecisionConfiguration({runtimeModule,
         getApplication:()=>runtimeApplication,models:agentArtsModels,namespace,onUpdate:publish}):undefined;
+      const f03DeploymentBinding=readWorkflowDeploymentBinding();
+      const f03Workflow=f08SourceChanges&&f03DeploymentBinding?createF03MailReviewWorkflowPorts({
+        getApplication:()=>runtimeApplication,sourceChanges:f08SourceChanges,authorizeExport:authorizeWorkflowExport,
+        assertCurrent:()=>{if(readWorkflowDeploymentBinding()!==f03DeploymentBinding)throw Error('原 F03 固定部署已改变');},
+        readDecisionConfiguration:()=>f23DecisionConfiguration?.readDecisionConfiguration(),
+        assertDecisionConfiguration:binding=>f23DecisionConfiguration.assertDecisionConfiguration(binding)}):undefined;
       const f21Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF21WorkflowPorts({runtimeModule,mcpModule:publicReferenceModule,codingModule,
         getApplication:()=>runtimeApplication,getReferenceHost:()=>referenceHost,nativeExecutionHost,
         getAuthorizationIntentHost:()=>authorizationIntentHost,probeRoot:path.join(app.getPath('userData'),'f21-probe'),authorizeExport:authorizeWorkflowExport}):undefined;
@@ -2716,7 +2723,7 @@ async function initializeRuntime() {
           operation:{taskId:request.taskId,digest:createHash('sha256').update(JSON.stringify(request.payload)).digest('hex')},
           summary:`F28 仅本次候选请求发送给所选辅助模型 ${request.payload.destination.model}；不代表结果或工具能力已验证`,
           deadline:request.deadline,signal:request.signal,isCurrent:()=>{request.assertCurrent();return true;}})}):undefined;
-      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
+      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f03Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
       const f10Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF10WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
         getKnowledgeSourceConfig:()=>knowledgeSourceConfig,modelApiHost:{snapshot:()=>modelApiHost?.snapshot()??{models:[]},
           getGuardedModelGateway:(...args)=>modelApiHost?.getGuardedModelGateway(...args)},
@@ -2730,6 +2737,7 @@ async function initializeRuntime() {
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(f10Workflow?.tools??[]),
+        ...(f03Workflow?.tools??[]),
         ...(f23DecisionConfiguration?[f23DecisionConfiguration.tool]:[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
@@ -2788,6 +2796,7 @@ async function initializeRuntime() {
         ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
         ...(f04Workflow?.recovery?{f04Recovery:f04Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f03Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f01Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f10Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f21Workflow?.configuredWorkflowWorkerPorts??[]),
@@ -3021,6 +3030,7 @@ async function initializeRuntime() {
         ...(codingWorkspace.patchReconciliation ? {workspacePatchReconciliation: codingWorkspace.patchReconciliation} : {}),
         localRepair: syntheticMvp ? syntheticRepairHost.localRepair : {
           graphNamespace: namespace, bindingVersion:'desktop-reviewed-execution-v1',
+          ...(f03Workflow?.competitionSource?{competitionSource:f03Workflow.competitionSource}:{}),
           withSourceLock:withReviewedRepairLock,
           reviewedSource:{resolve({sourceTaskId,reviewTaskId}) {
             const value = proactiveHost?.readPreparedRepair?.(sourceTaskId);
