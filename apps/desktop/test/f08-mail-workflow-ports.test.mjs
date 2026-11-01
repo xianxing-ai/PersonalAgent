@@ -27,3 +27,14 @@ test('F08 archive binds original account/UID epoch/Message-ID and reconciliation
   checkpoints.set('reconcilehost-tool-intent',{arguments:{account:'other',messageId:original.messageId,idempotencyKey:original.idempotencyKey}});
   await assert.rejects(ports.readReconciliation(scope,original),{code:'UNAUTHORIZED'});
 });
+
+test('F08 a confirmed-looking provider action cannot claim another original child identity',async()=>{
+  const now=Date.now(),deadline=new Date(now+60000).toISOString(),send={to:'recipient@example.invalid',subject:'Fixture',text:'Fixture'};
+  let saved=false;
+  const app={runtime:{saveCheckpointOnce(){saved=true;}},readConfiguredWorkflowBinding:()=>({deadline,input:{send}})};
+  const ports=createF08MailWorkflowPorts({getApplication:()=>app,authorizeExport:async()=>true,now:()=>now,
+    bridge:{invoke:async()=>({taskId:'original',runId:'host-tool-original',toolName:'mail.send',arguments:send,
+      result:{state:'confirmed',actionId:'mail-send:another-run',externalId:'<fixture@example.invalid>',evidenceRefs:['fixture']}})}});
+  await assert.rejects(ports.invokeSend({parentTaskId:'parent',sessionId:'session',deadline,signal:new AbortController().signal},send,{}),{code:'RESULT_UNKNOWN'});
+  assert.equal(saved,false);
+});

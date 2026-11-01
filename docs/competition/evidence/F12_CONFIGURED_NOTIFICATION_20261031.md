@@ -18,7 +18,9 @@ Main 已注入原 NotificationApplicationHost 单例和真实用户/设备 avail
 
 实际 Engine、Runtime、SQLite、原 NotificationHost、AuthorizationQuestions 和 Policy 验证已覆盖正常 banner、静默、显式查询、额度耗尽、legacy pause、未知设备结果、审批前撤回、原审批拒绝、审批期间策略改变、取消、完成出口期间已读、出口拒绝及第二图不能替换旧未知轮次。OS 适配器及其回执、候选与 selector、云传输、外层出机许可为明确 Fixture；这是本机真实生产组件组合，不能算真实 OS/华为 AgentArts/模型验收。
 
-未完成项：真实用户归来事件生产来源、通知语音渠道、多条合并 batch 的领域内容/逐项绑定、真实 Windows banner、真实云整图及评测。缺归来事件时不把 on_return 方法存在当作来源证明；on_return/scheduled 不在本 worker 请求 Schema 中，条件能力保持 unavailable。单条 ready batch 不存在时保持 unavailable，不绕过原 digest/pause 队列。独立 read ack 仍归既有 UI 原操作，查询不代替它。
+未完成项：真实用户归来事件生产来源、通知语音渠道、多条合并 batch 的领域内容/逐项绑定、实际 F12 的 Windows banner 整图、真实云整图及评测。缺归来事件时不把 on_return 方法存在当作来源证明；on_return/scheduled 不在本 worker 请求 Schema 中，条件能力保持 unavailable。单条 ready batch 不存在时保持 unavailable，不绕过原 digest/pause 队列。独立 read ack 仍归既有 UI 原操作，查询不代替它。
+
+后续独立设备证据：根集成分支调用原 `p5-device-native-receipt.mjs`，case `p5-native-case-pr531-20261031`，实际 Electron show 回调 `delivered:true,persisted:true`，本代理已读回其 `.cache/pr531-native-notification/receipt.json` 对应字段。内容和存储为公开 Synthetic 夹具；该设备事实不能替代本 F12 Runtime/云整图验收，也不意味着已验证用户已读。
 
 本地验证：F12 实际组合 **14/14**；含 F06/F07/F11 真实引擎及工厂回归 **40/40**；既有通知应用/SQLite/原端口组 **30/30**（其中包括本增量首轮 10 项）；AgentArts **242/242**；AgentArts/Runtime 构建、架构门禁 **3/3** 和 diff 检查通过。日志在本工作树忽略目录 `.cache/pr531-business/f12-business-regression.log`、`f12-runtime-boundaries.log`、`f12-agentarts-tests.log`、`f12-architecture.log`。根集成分支承担最终全仓 check。本记录不表示 F12 全完成或 #531 已可合并。
 

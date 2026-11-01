@@ -6,6 +6,7 @@ import {createF06TodoWorkflowPorts} from './f06-todo-workflow-ports.js';
 import {createF07CalendarWorkflowPorts} from './f07-calendar-workflow-ports.js';
 import {createF11CalendarWorkflowPorts} from './f11-calendar-workflow-ports.js';
 import {createF12ConfiguredNotificationPorts} from './f12-notification-workflow-ports.js';
+import {createF08MailWorkflowPorts} from './f08-mail-workflow-ports.js';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 const object=(properties,required=Object.keys(properties))=>({type:'object',additionalProperties:false,properties,required});
@@ -40,10 +41,11 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
   const application=new Proxy({runtime},{get:(target,key)=>key==='runtime'?target.runtime:methods[key]});
   const descriptor=name=>businessTools.find(tool=>tool.descriptor?.name===name)?.descriptor;
   const operation=(bound,nodeId,toolName)=>bound.confirmedOperations.find(item=>item.nodeId===nodeId&&item.toolName===toolName);
-  const completedNode=(bound,nodeId)=>operation(bound,nodeId,['F06_N02','F07_N03','F11_N03','F12_N03'].includes(nodeId)?'decision.choose_candidate'
-    :['F07_N02','F11_N02'].includes(nodeId)?'calendar.events':'workflow.host.'+nodeId.toLowerCase());
-  const skippedClarification=(workflowId,bound,state,nodeId)=>workflowId==='F11'&&nodeId==='F11_N04'
-    &&state.result?.nodes[nodeId]?.state==='skipped'&&operation(bound,nodeId,'workflow.guard.f11_n04')?.result.state==='skipped';
+  const completedNode=(bound,nodeId)=>operation(bound,nodeId,['F06_N02','F07_N03','F08_N02','F08_N04','F08_N05','F11_N03','F12_N03'].includes(nodeId)?'decision.choose_candidate'
+    :['F07_N02','F11_N02'].includes(nodeId)?'calendar.events':nodeId==='F08_N01'?'mail.inbox':nodeId==='F08_N09'?'knowledge.search'
+      :nodeId==='F08_N11'?'mail.reconcile_send':'workflow.host.'+nodeId.toLowerCase());
+  const skippedClarification=(workflowId,bound,state,nodeId)=>(workflowId==='F11'&&nodeId==='F11_N04'||workflowId==='F08'&&nodeId==='F08_N06')
+    &&state.result?.nodes[nodeId]?.state==='skipped'&&operation(bound,nodeId,'workflow.guard.'+nodeId.toLowerCase())?.result.state==='skipped';
   const graphScope=scope=>({taskId:scope.parentTaskId??scope.taskId,deadline:scope.deadline,signal:scope.signal});
   function current(workflowId,scope,input) {
     const own=graphScope(scope);
@@ -115,9 +117,9 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       resolveTool(request,scope){
         const bound=binding(workflowId,scope),mapping=mappings[request.actionKey];
         if(!mapping)fail('UNAUTHORIZED','Business action is not host configured');
-        const [nodeId,toolName,arguments_]=mapping(bound.input),tool=descriptor(toolName);
+        const [nodeId,toolName,arguments_,hostToolName='workflow.host.'+nodeId.toLowerCase()]=mapping(bound.input),tool=descriptor(toolName);
         if(!tool||!isDeepStrictEqual(request.input,arguments_))fail('UNAUTHORIZED','Business child descriptor or arguments changed');
-        return {workflowId,nodeId,hostToolName:'workflow.host.'+nodeId.toLowerCase(),toolName,
+        return {workflowId,nodeId,hostToolName,toolName,
           toolVersion:tool.version,arguments:structuredClone(arguments_)};
       }});return bridge;
     };
@@ -440,5 +442,140 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       },ports.prepareInput);
     unavailable.push('f12_user_return_event_source_unavailable','f12_voice_delivery_unavailable');
   }else unavailable.push('f12_notification_application_host_unavailable');
+  if(['mail.inbox','mail.archive','mail.send','mail.reconcile_send','knowledge.search'].every(name=>descriptor(name))
+    &&runtimeModule.createRuntimeF08PreparedPlanHosts&&runtimeModule.createRuntimeF08MailArchiveHost&&runtimeModule.createRuntimeF08MailSendHost){
+    const f08Schema=object({inbox:object({account:text,folder:text,limit:{type:'integer',const:100}}),
+      knowledge:structuredClone(descriptor('knowledge.search').inputSchema),
+      archive:{...structuredClone(descriptor('mail.archive').inputSchema),required:[...new Set([...descriptor('mail.archive').inputSchema.required,'account'])]},
+      send:{...structuredClone(descriptor('mail.send').inputSchema),required:[...new Set([...descriptor('mail.send').inputSchema.required,'account'])]},
+      knowledgeSources:{type:'array',minItems:1,maxItems:20,items:object({vaultId:text,path:text,line:{type:'integer',minimum:1},revision:{type:'string',pattern:'^[0-9a-f]{64}$'}})}});
+    const selected=(bound,nodeId)=>{
+      const op=operation(bound,nodeId,'decision.choose_candidate'),intent=op&&runtime.loadCheckpoint(op.localTaskId,'host-tool-intent');
+      let context;try{context=JSON.parse(intent?.arguments.context);}catch{fail('UNAUTHORIZED','F08 original selected candidate unavailable');}
+      return context.candidateValues?.find(candidate=>candidate.id===op.result.selectedId)?.value;
+    };
+    const mailSource=bound=>{
+      const op=operation(bound,'F08_N01','mail.inbox'),result=op?.result,input=bound.input;
+      if(!op||!isDeepStrictEqual(runtime.loadCheckpoint(op.localTaskId,'host-tool-intent')?.arguments,input.inbox)
+        ||result.hasMore!==false||result.account!==input.inbox.account||result.folder!==input.inbox.folder
+        ||!result.nextCursor.startsWith(input.archive.uidValidity+':')||input.archive.account!==input.inbox.account
+        ||input.send.account!==input.inbox.account||input.archive.folder!==input.inbox.folder)
+        fail('UNAUTHORIZED','F08 original complete inbox source unavailable');
+      return result;
+    };
+    const verifyKnowledge=(bound,result)=>{
+      if(result?.truncated!==false||!Array.isArray(result.hits)||bound.input.knowledgeSources.some(source=>!result.hits.some(hit=>isDeepStrictEqual(hit.source,source))))
+        fail('REVISION_CONFLICT','F08 original knowledge source revisions unavailable');
+    };
+    const prepared=bound=>{
+      mailSource(bound);
+      const search=operation(bound,'F08_N09','knowledge.search');
+      if(!search||!isDeepStrictEqual(runtime.loadCheckpoint(search.localTaskId,'host-tool-intent')?.arguments,bound.input.knowledge))
+        fail('UNAUTHORIZED','F08 original knowledge read unavailable');
+      verifyKnowledge(bound,search.result);
+      if(!isDeepStrictEqual(selected(bound,'F08_N04'),bound.input.send)
+        ||!isDeepStrictEqual(selected(bound,'F08_N05'),{send:bound.input.send,knowledgeSources:bound.input.knowledgeSources,requiresDecision:false}))
+        fail('UNSUPPORTED_CAPABILITY','F08 missing decisions require the original F02 question source');
+    };
+    const bridge=child('F08',{
+      'f08.mail.archive':input=>['F08_N03','mail.archive',input.archive],
+      'f08.mail.send':input=>['F08_N07','mail.send',input.send],
+      'f08.mail.plan-check':input=>['F08_N10','mail.inbox',input.inbox],
+      'f08.mail.send-check':input=>['F08_N07','mail.inbox',input.inbox],
+      'f08.mail.receipt-check':input=>['F08_N07','mail.inbox',input.inbox],
+      'f08.mail.change-check':input=>['F08_N13','mail.inbox',input.inbox,'workflow.guard.f08_n13'],
+      'f08.knowledge.send-check':input=>['F08_N07','knowledge.search',input.knowledge],
+      'f08.knowledge.receipt-check':input=>['F08_N07','knowledge.search',input.knowledge],
+    });
+    const compareMail=(scope,bound,result)=>{
+      const original=mailSource(bound),archive=ports.readOriginalWrite(scope,'archive');
+      const stable=items=>items.map(({fetchedAt,...item})=>item).sort((a,b)=>a.dedupeKey.localeCompare(b.dedupeKey));
+      const expected=archive?.state==='confirmed'?original.items.filter(item=>item.externalId!==bound.input.archive.folder+':'+bound.input.archive.uid):original.items;
+      return result?.hasMore===false&&result.account===original.account&&result.folder===original.folder
+        &&result.nextCursor.startsWith(bound.input.archive.uidValidity+':')&&isDeepStrictEqual(stable(result.items),stable(expected));
+    };
+    const fresh=async(scope,context,phase)=>{
+      const bound=binding('F08',scope),mail=await bridge.invoke({actionKey:'f08.mail.'+phase+'-check',input:bound.input.inbox},context);
+      if(!compareMail(scope,bound,mail.result))fail('REVISION_CONFLICT','F08 original inbox changed; retain prior effects for versioned replan');
+      if(phase!=='plan'){
+        const knowledge=await bridge.invoke({actionKey:'f08.knowledge.'+phase+'-check',input:bound.input.knowledge},context);
+        verifyKnowledge(bound,knowledge.result);
+      }
+      binding('F08',scope);
+    };
+    const ports=createF08MailWorkflowPorts({getApplication,bridge,now,authorizeExport:async(scope,result)=>{
+      const kind=result.sendOperationId?'send':'archive',original=ports.readOriginalWrite(scope,kind);
+      if(!original||result.toolState!==original.state)fail('UNAUTHORIZED','F08 original write result changed');
+      if(kind==='send')await fresh(scope,originalReceipt(scope.localTaskId,scope,result).context,'receipt');
+      return receiptExport('F08')(scope,result);
+    }});
+    const hostOptions={...ports,application,assertCurrent:scope=>{binding('F08',scope);},now:()=>new Date(now())};
+    addHost(runtimeModule.createRuntimeF08MailArchiveHost({...hostOptions,mailArchive:businessTools.find(tool=>tool.descriptor.name==='mail.archive'),
+      requiredScopes:descriptor('mail.archive').requiredScopes,async verifyArchiveBinding(scope,input){const bound=binding('F08',scope);mailSource(bound);
+        return isDeepStrictEqual(selected(bound,'F08_N02'),{archive:bound.input.archive})&&ports.verifyArchiveBinding(scope,input);}}));
+    addHost(runtimeModule.createRuntimeF08MailSendHost({...hostOptions,mailSend:businessTools.find(tool=>tool.descriptor.name==='mail.send'),
+      requiredScopes:descriptor('mail.send').requiredScopes,async invokeSend(scope,input,context){prepared(binding('F08',scope));await fresh(scope,context,'send');return ports.invokeSend(scope,input,context);}}));
+    addHost(runtimeModule.createRuntimeF08PreparedPlanHosts({...hostOptions,sendInputSchema:descriptor('mail.send').inputSchema,
+      authorizeExport:receiptExport('F08'),async verifyPreparedPlan(scope,input,context){const bound=binding('F08',scope);prepared(bound);
+        if(!isDeepStrictEqual(input,{send:bound.input.send}))return false;await fresh(scope,context,'plan');return true;},
+      async resolveCondition(scope,nodeId,context){
+        const bound=binding('F08',scope);
+        if(nodeId==='F08_N13'){
+          mailSource(bound);const read=await bridge.invoke({actionKey:'f08.mail.change-check',input:bound.input.inbox},context);
+          return compareMail(scope,bound,read.result)?'skipped':'selected';
+        }
+        if(nodeId==='F08_N12'){
+          const original=await ports.resolveOriginalSend(scope),read=original&&await ports.readReconciliation(scope,original);
+          if(!read)fail('RESULT_UNKNOWN','F08 original send reconciliation unavailable');return read.state==='confirmed'?'skipped':'selected';
+        }
+        prepared(bound);
+        if(operation(bound,'F08_N10','workflow.host.f08_n10')?.result.planReady!==true)fail('UNAUTHORIZED','F08 original prepared plan receipt unavailable');
+        if(nodeId==='F08_N06')return 'skipped';
+        if(operation(bound,'F08_N06','workflow.guard.f08_n06')?.result.state!=='skipped')fail('UNAUTHORIZED','F08 original clarification condition missing');
+        return 'selected';
+      }}));
+    addHost(runtimeModule.createRuntimeF08WaitReconciliationHost({...hostOptions,mailReconcile:businessTools.find(tool=>tool.descriptor.name==='mail.reconcile_send'),
+      requiredScopes:descriptor('mail.reconcile_send').requiredScopes,authorizeExport:receiptExport('F08')}));
+    const resultFor=async scope=>{
+      const bound=binding('F08',scope);prepared(bound);
+      if(operation(bound,'F08_N03','workflow.host.f08_n03')?.result.toolState!=='confirmed'||ports.readOriginalWrite(scope,'archive')?.state!=='confirmed')
+        fail('RESULT_UNKNOWN','F08 original archive still requires reconciliation');
+      const send=ports.readOriginalWrite(scope,'send'),original=await ports.resolveOriginalSend(scope),read=original&&await ports.readReconciliation(scope,original);
+      if(!send||!original||read?.state!=='confirmed'||operation(bound,'F08_N13','workflow.guard.f08_n13')?.result.state!=='skipped'
+        ||operation(bound,'F08_N12','workflow.guard.f08_n12')?.result.state!=='skipped')fail('RESULT_UNKNOWN','F08 original send or source change remains unresolved');
+      return {archiveConfirmed:true,sendConfirmed:true,messageId:original.messageId};
+    };
+    config('F08',f08Schema,['decision.choose_candidate','mail.inbox','mail.archive','mail.send','mail.reconcile_send','knowledge.search',
+      'workflow.host.f08_n03','workflow.host.f08_n07','workflow.host.f08_n10','workflow.host.f08_n12',
+      'workflow.guard.f08_n06','workflow.guard.f08_n07','workflow.guard.f08_n12','workflow.guard.f08_n13'],
+      object({archiveConfirmed:{const:true},sendConfirmed:{const:true},messageId:text}),async(scope,bound)=>{
+        const {proposal}=scope,own={...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId};
+        if(proposal.nodeId==='F08_N01'&&proposal.toolName==='mail.inbox')return isDeepStrictEqual(proposal.arguments,bound.input.inbox);
+        if(proposal.nodeId==='F08_N09'&&proposal.toolName==='knowledge.search')return isDeepStrictEqual(proposal.arguments,bound.input.knowledge);
+        mailSource(bound);
+        if(proposal.toolName==='workflow.guard.'+proposal.nodeId.toLowerCase()){
+          const args=proposal.arguments;if(!isDeepStrictEqual(args.input,bound.input)||args.workflowId!=='F08'||args.nodeId!==proposal.nodeId)return false;
+          const node=getOwnedWorkflowTemplate('F08').nodes.find(item=>item.id===proposal.nodeId);
+          const values={},states={};for(const edge of node.dependencies){const item=scope.state.result?.nodes[edge.nodeId];states[edge.nodeId]=item?.state;
+            values[edge.nodeId]=item?.state==='skipped'?null:['F08_N02','F08_N04','F08_N05'].includes(edge.nodeId)?selected(bound,edge.nodeId):completedNode(bound,edge.nodeId)?.result;}
+          return isDeepStrictEqual(args.predecessorOutputs,values)&&isDeepStrictEqual(args.predecessorStates,states);
+        }
+        if(proposal.nodeId==='F08_N03'&&proposal.toolName==='workflow.host.f08_n03')return isDeepStrictEqual(proposal.arguments,bound.input.archive);
+        if(proposal.nodeId==='F08_N10'&&proposal.toolName==='workflow.host.f08_n10')return isDeepStrictEqual(proposal.arguments,{send:bound.input.send});
+        if(proposal.nodeId==='F08_N07'&&proposal.toolName==='workflow.host.f08_n07')return operation(bound,'F08_N07','workflow.guard.f08_n07')?.result.state==='selected'
+          &&isDeepStrictEqual(proposal.arguments,bound.input.send);
+        const original=await ports.resolveOriginalSend(own);
+        if(proposal.nodeId==='F08_N11'&&proposal.toolName==='mail.reconcile_send')return !!original&&isDeepStrictEqual(proposal.arguments,
+          {account:bound.input.send.account,messageId:original.messageId,idempotencyKey:original.idempotencyKey});
+        return proposal.nodeId==='F08_N12'&&proposal.toolName==='workflow.host.f08_n12'&&!!original
+          &&isDeepStrictEqual(proposal.arguments,{messageId:original.messageId,idempotencyKey:original.idempotencyKey});
+      },async scope=>{const result=await resultFor({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId});
+        runtime.saveCheckpointOnce(scope.taskId,'business-workflow:F08:completion',{sessionId:scope.state.sessionId,result});
+        return {result,resultSummary:'Original archive and independently reconciled send confirmed'};
+      },async scope=>{const saved=runtime.loadCheckpoint(scope.taskId,'business-workflow:F08:completion');
+        if(!saved||!isDeepStrictEqual(saved.result,scope.value)||!isDeepStrictEqual(await resultFor({...scope,parentTaskId:scope.taskId,sessionId:saved.sessionId}),saved.result))
+          fail('REVISION_CONFLICT','F08 original completion changed');});
+    unavailable.push('f08_missing_decision_question_source_unavailable','f08_changed_source_replan_unavailable');
+  }else unavailable.push('f08_mail_and_knowledge_dependencies_unavailable');
   return {tools,hosts,configuredWorkflowWorkerPorts,unavailable};
 }

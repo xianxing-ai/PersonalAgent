@@ -54,7 +54,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F06_N03:[host('todo.registered_write')],F06_N04:[host('reminder.current_clock_and_revision')],F06_N05:[host('notification.deliver')],
   F07_N02:[tool('calendar.events')],F07_N04:[host('calendar.freshness_check')],F07_N05:[host('calendar.registered_write')],
   F08_N01:[tool('mail.inbox')],F08_N09:[tool('knowledge.search')],F08_N03:[host('mail.registered_archive')],
-  F08_N10:[host('policy.operation_scope_check')],F08_N06:[host('voice.ask_question')],F08_N07:[host('mail.registered_send')],
+  F08_N10:[host('mail.prepared_plan_check')],F08_N06:[host('voice.ask_question')],F08_N07:[host('mail.registered_send')],
   F08_N11:[tool('mail.reconcile_send')],F08_N12:[host('runtime.wait_reconciliation')],F08_N13:[host('runtime.versioned_replan')],
   F09_N01:[tool('feeds.collect')],F09_N02:[host('feeds.validate_and_deduplicate')],F09_N04:[host('runtime.enqueue_research')],
   F10_N02:[tool('research.search')],F10_N03:[tool('research.search')],F10_N04:[tool('knowledge.search')],
@@ -122,7 +122,7 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       dependencies:dependencies.map(nodeId=>({nodeId,
         required:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F02_N09','F06_N05','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F02_N09','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
           || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',

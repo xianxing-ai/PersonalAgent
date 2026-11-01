@@ -13,11 +13,15 @@ export function createF08MailWorkflowPorts({getApplication,bridge,authorizeExpor
     if(!bound||bound.deadline!==scope.deadline)fail('UNAUTHORIZED','F08 original workflow binding unavailable');return {app,bound};
   };
   const key=scope=>'f08:original-send:'+scope.sessionId;
+  const receiptKey=(scope,kind)=>'f08:original-child:'+kind+':'+scope.sessionId;
   const invoke=async(scope,input,context,kind)=>{
     const {app,bound}=binding(scope);
     if(!isDeepStrictEqual(input,bound.input[kind]))fail('UNAUTHORIZED','F08 mail action differs from the original plan');
     const receipt=await bridge.invoke({actionKey:'f08.mail.'+kind,input:structuredClone(input)},context);binding(scope);
     if(receipt.toolName!=='mail.'+kind||!isDeepStrictEqual(receipt.arguments,input))fail('UNAUTHORIZED','F08 original child receipt changed');
+    if(receipt.result?.actionId!=='mail-'+kind+':'+receipt.runId)fail('RESULT_UNKNOWN','F08 domain action does not match the original child run');
+    app.runtime.saveCheckpointOnce(scope.parentTaskId,receiptKey(scope,kind),receipt);
+    if(!isDeepStrictEqual(app.runtime.loadCheckpoint(scope.parentTaskId,receiptKey(scope,kind)),receipt))fail('REVISION_CONFLICT','F08 original child changed');
     if(kind==='send'){
       const original={taskId:receipt.taskId,runId:receipt.runId,messageId:receipt.result?.externalId,idempotencyKey:receipt.runId,operationId:scope.operationId};
       if(typeof original.messageId!=='string')fail('RESULT_UNKNOWN','F08 original Message-ID unavailable');
@@ -29,6 +33,20 @@ export function createF08MailWorkflowPorts({getApplication,bridge,authorizeExpor
   };
   return {
     assertCurrent:scope=>{binding(scope);},
+    readOriginalWrite(scope,kind){
+      if(!['archive','send'].includes(kind))fail('INVALID_ARGUMENT','F08 unknown write kind');
+      const {app,bound}=binding(scope),receipt=app.runtime.loadCheckpoint(scope.parentTaskId,receiptKey(scope,kind));
+      if(!receipt)return;
+      const host=app.readHostToolTask(receipt.taskId),execution=app.runtime.readToolExecutions(receipt.taskId).find(item=>item.evidenceId===receipt.runId);
+      if(receipt.toolName!=='mail.'+kind||!isDeepStrictEqual(receipt.arguments,bound.input[kind])||host.task.state!=='succeeded'
+        ||host.toolName!==receipt.toolName||host.toolVersion!==receipt.toolVersion||host.confirmed?.runId!==receipt.runId
+        ||!host.confirmed.evidenceRefs.includes(receipt.runId)||!isDeepStrictEqual(host.confirmed.result,receipt.result)
+        ||!execution||execution.toolName!==receipt.toolName||execution.toolVersion!==receipt.toolVersion||execution.policyDecision!=='allow'
+        ||execution.state!=='confirmed'||!execution.executionStarted
+        ||!app.runtime.matchesToolExecutionInput(execution,{arguments:receipt.arguments,scopeRef:receipt.scopeRef}))
+        fail('UNAUTHORIZED','F08 original child Policy execution evidence unavailable');
+      return structuredClone(receipt.result);
+    },
     async verifyArchiveBinding(scope,input){
       const {bound}=binding(scope);if(!isDeepStrictEqual(input,bound.input.archive))return false;
       const source=bound.confirmedOperations.find(op=>op.nodeId==='F08_N01'&&op.toolName==='mail.inbox');

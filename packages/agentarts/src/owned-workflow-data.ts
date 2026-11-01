@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 48122a34f089c5c75b0022748eb864dc3e561dafbc38a8b061d9898743247756
+// Source projection sha256: 7769e1634c031466d8040a1a611830dc027d96928d4a7625aef2fbc582715c27
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -1696,7 +1696,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N10",
-        "label": "宿主核对具体参数、revision与现有授权",
+        "label": "宿主核对原来源与完整显式参数；准备进入原Policy",
         "kind": "deterministic_check",
         "dependencies": [
           "F08_N05"
@@ -1706,7 +1706,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "effectType": "读取",
         "inputFields": [],
         "outputFields": [
-          "可直接执行或待决问题"
+          "planReady / requiresDecision；不表示未来发送已获批准"
         ],
         "evidenceRequirement": "有金额或商业内容不自动新增审批；按现有授权范围决定。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
@@ -1724,7 +1724,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "当前问题及revision的回答"
         ],
-        "condition": "现有授权未覆盖或关键条件不明确",
+        "condition": "关键决定缺失或条件不明确时补问；完整显式回复仍逐项经过原Policy审批",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
@@ -1743,7 +1743,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原发送operation/effect ID",
           "工具实际状态"
         ],
-        "condition": "已有授权直接通过，或待决问题得到有效决定",
+        "condition": "完整显式回复或补问有效决定已绑定原来源；发送另经独立原Policy审批",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "joinMode": "selected"
       },

@@ -49,7 +49,7 @@ export {createRuntimeF03MemoryQueryHost,createRuntimeF04MemoryQueryHost,createRu
 export {createRuntimeF06TodoWriteHost,createRuntimeF06NotificationDeliverHost,createRuntimeF06ReminderGuard} from './application/workflow-f06-todo-graph-host.js';
 export {createRuntimeF07CalendarFreshnessHost,createRuntimeF07CalendarWriteHost} from './application/workflow-f07-calendar-graph-host.js';
 export {createRuntimeF08MailArchiveHost,createRuntimeF08MailSendHost,createRuntimeF08OperationScopeHost,
-  createRuntimeF08WaitReconciliationHost,createRuntimeF08VersionedReplanHost} from './application/workflow-f08-mail-graph-host.js';
+  createRuntimeF08WaitReconciliationHost,createRuntimeF08VersionedReplanHost,createRuntimeF08PreparedPlanHosts} from './application/workflow-f08-mail-graph-host.js';
 export {createRuntimeF12QuietHoursHost,createRuntimeF12NotificationDeliverHost,createRuntimeF12ConfiguredReadHosts} from './application/workflow-f12-notification-graph-host.js';
 export {createRuntimeF13SystemProbeHost} from './application/workflow-f13-probe-graph-host.js';
 export {createRuntimeF13DiagnosticControlHost} from './application/workflow-f13-diagnostic-control-host.js';

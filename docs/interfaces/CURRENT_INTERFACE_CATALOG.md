@@ -692,6 +692,10 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 
 `workflow.business.f12` 绑定原有效未读 feed、层级/legacy 策略与原子轮次，只接 `event` / `on_demand`；公开 `createRuntimeF12ConfiguredReadHosts` 提供原策略、条件与有效摘要读取。N05 capability 与当前设计对齐为 `notification.current_feed_digest`、副作用 read；原投递工厂兼容增加确证 suppressed 的 false 结果及可选结果复核。无 wire、迁移或新调度，旧模板摘要拒绝恢复。真实用户归来来源、voice、多条合并 batch 与真实设备/云验收仍缺；本机实际组件和 Fixture 边界见 [F12 接线记录](../competition/evidence/F12_CONFIGURED_NOTIFICATION_20261031.md)。
 
+## 2026-10-31 F08 原邮件显式方案（provisional）
+
+`workflow.business.f08` 绑定原完整 inbox、UID epoch/Message-ID、显式回复与知识 source revision，archive/send 独立 child Policy，reconcile 只读原发送。新公开 `createRuntimeF08PreparedPlanHosts` 的 N10 返回 planReady/requiresDecision，不能充当未来 send 的授权；N06/N07 条件、N10 capability 与本机 guards 同步澄清。原 N12 兼容增加 messageId+idempotencyKey 成对身份，旧 sendOperationId 仍接受，混用/替换拒绝；模板/configuration 摘要变化拒绝旧图恢复，无 wire 或迁移。缺 F02 决定来源、F03 修订方、真实邮箱/知识源/云验收仍 unavailable 或未验证，见 [F08 实际组件与 Fixture 证据](../competition/evidence/F08_CONFIGURED_MAIL_20261031.md)。
+
 ## 2026-10-22 对话输入预算扩容（provisional）
 
 按用户选择将 Competition 任务与历史合并输入扩大为 128,000 UTF-16 单元；contracts 公布统一字符预算及 1,100,000 字节初始查询预算，Runtime、Coordination、自有 AgentArts 输入和 Desktop 预检同步消费。不新增 wire 字段或数据库迁移；输出/工具结果/业务投影/帧预算、权限及已配置的模型 token 计量不变。旧检查点预算漂移继续拒绝恢复。远端旧镜像、原生模型窗口和真实长上下文验收不因本机修改自动通过。见 [ADR-0037](../adr/0037-conversation-context-128k.md)。
