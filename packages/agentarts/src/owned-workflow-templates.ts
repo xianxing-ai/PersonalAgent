@@ -128,7 +128,7 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       dependencies:dependencies.map(nodeId=>({nodeId,
         required:node.id==='F01_N06'&&['F01_N07','F01_N08','F01_N09'].includes(nodeId)||node.id==='F05_N04'&&nodeId==='F05_N06'?false:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F01_N07','F01_N08','F01_N09','F02_N09','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F01_N07','F01_N08','F01_N09','F02_N09','F03_N07','F03_N08','F03_N09','F03_N10','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
           || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',

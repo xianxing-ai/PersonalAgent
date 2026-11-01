@@ -15,3 +15,11 @@ F08 原变化、用户曾明确选择的 Plan、私密 Fact 的失效版本和�
 稳定接口：`sourceChanges.readReviewSource({graphTaskId,readRunId},context,atGraphRevision?)` 仅返回原私密来源的可核查投影；`readF03CompetitionReview(application,scope,source)` 从原 N02 回执产生 Competition 修复来源；`localRepair.competitionSource.resolve` 是同步写前源门；`readCompetitionWorkflowRepairReceipt(runtime,{taskId,sourceTaskId,sourceOperationId})` 只读原 CAS。未知结果不自动执行第二次，仍须后续原恢复入口核实。
 
 F03 图工厂、原请求受理和 F08 N13 生产组合继续单独增量，不把本段 CAS 验证称为全部接线完成。缺有效替代 Fact 时仅能保留 `requires_review`，不删除原依赖。
+
+## 原配置图工厂增量
+
+`createF03MailReviewWorkflowPorts` 返回原 `configuredWorkflowWorkerPorts`、真实 host/guard 工具与 `competitionSource`；Main 追加 pinned image 并把后者注入原 localRepair。F03_N07～N10 使用原条件 guard，未提出补偿时不得擅自发送补偿动作。N03 的实际 CAS 与 N04 按新 Plan 版本受理依然是原 Runtime 路径，`scheduled` 仅表示受理，不表示后续计划完成。
+
+可选 `readDecisionConfiguration(scope)` / `assertDecisionConfiguration(binding,scope)` 消费原 F23 配置，版本和顶层 `executionModel` 一次固定；未启用时沿用原模型入口，不造版本。新增 `f03-native-admission.ts` 复用原用户委派和 configured graph：只固定来源引用，之后必须得到原图确认回执才可总结，不许在总结阶段另发工具。RuntimeApplication 的 native 方法及 Main 注入由根集成。
+
+新增 `apps/desktop/test/f03-mail-review-workflow.test.mjs` 单例通过：actual Engine/Runtime/SQLite/AuthorizationQuestions/Policy，N05/N02/N03/N06/N04 原回执及 N07/N08 条件读回，保留原效果并明确 `requires_review`；无 CAS、无邮件重发。初始、回执、完成出口分别消费；原配置随图输入固定。私密来源、候选选择、云、用户答卡响应为 Fixture。`npm run build --workspace=@personal-agent/agentarts` 通过。没有重跑已过矩阵或声称实机 AgentArts 验收。
