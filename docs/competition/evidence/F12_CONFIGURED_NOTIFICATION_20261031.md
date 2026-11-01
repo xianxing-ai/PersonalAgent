@@ -22,6 +22,8 @@ Main 已注入原 NotificationApplicationHost 单例和真实用户/设备 avail
 
 后续独立设备证据：根集成分支调用原 `p5-device-native-receipt.mjs`，case `p5-native-case-pr531-20261031`，实际 Electron show 回调 `delivered:true,persisted:true`，本代理已读回其 `.cache/pr531-native-notification/receipt.json` 对应字段。内容和存储为公开 Synthetic 夹具；该设备事实不能替代本 F12 Runtime/云整图验收，也不意味着已验证用户已读。
 
+2026-11-01 续增量以 [显式多项批次记录](F12_EXPLICIT_BATCH_20261101.md) 补齐上述单条限制；本文件保留首批实现及当时验收范围。
+
 本地验证：F12 实际组合 **14/14**；含 F06/F07/F11 真实引擎及工厂回归 **40/40**；既有通知应用/SQLite/原端口组 **30/30**（其中包括本增量首轮 10 项）；AgentArts **242/242**；AgentArts/Runtime 构建、架构门禁 **3/3** 和 diff 检查通过。日志在本工作树忽略目录 `.cache/pr531-business/f12-business-regression.log`、`f12-runtime-boundaries.log`、`f12-agentarts-tests.log`、`f12-architecture.log`。根集成分支承担最终全仓 check。本记录不表示 F12 全完成或 #531 已可合并。
 
 根集成工作树 `.worktrees/pr531-integration` 的 AgentArts/Runtime 构建与 F12/F14/真实 availability 定向 **37/37** 通过（`.cache/integration-f12-targeted.log`），包含原设备缺失时 digest 可读、宿主关闭及设备绑定变化检查。OS 和云端仍是上文列出的未验收项。

@@ -136,9 +136,9 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       &&!competitionToolExports.some(item=>item.toolName===tool.name&&item.toolVersion===tool.version))){
       unavailable.push(workflowId.toLowerCase()+'_business_export_policy_unavailable');return;
     }
-    const inputSchema=object({...requestSchema.properties,businessBindingId:text},[...requestSchema.required,'businessBindingId']);
+    const inputSchema={...requestSchema,properties:{...requestSchema.properties,businessBindingId:text},required:[...requestSchema.required,'businessBindingId']};
     const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
-      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':'business-20261031-v1',
+      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v2':'business-20261031-v1',
       requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:workflowId==='F12'?['/trigger']:[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
       async resolveInput(arguments_,scope){
@@ -388,6 +388,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
   if(['deliverRound','getDigest','getInterruptionPolicy','getLegacyPolicy','drain'].every(name=>typeof notificationHost?.[name]==='function')&&runtimeModule.createRuntimeF12ConfiguredReadHosts
     &&runtimeModule.createRuntimeF12NotificationDeliverHost){
     const ports=createF12ConfiguredNotificationPorts({getApplication,notificationHost,now});
+    const selectionSchema={...object({itemId:text,itemIds:{type:'array',minItems:1,uniqueItems:true,items:text}},[]),
+      oneOf:[{required:['itemId'],not:{required:['itemIds']}},{required:['itemIds'],not:{required:['itemId']}}]};
     const hostOptions={...ports,application,assertCurrent:scope=>{binding('F12',scope);ports.source(scope);},now:()=>new Date(now()),
       authorizeExport:receiptExport('F12')};
     addHost(runtimeModule.createRuntimeF12ConfiguredReadHosts({...hostOptions,readPolicy:ports.policy,readDigest:ports.digest,resolveAction:ports.action}));
@@ -410,19 +412,19 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         if(!result)fail('RESULT_UNKNOWN','F12 original delivery receipt unavailable');
         ports.verifyDeliveryResult(scope,result);
         const round=ports.notificationHost.getInterruptionRound(result.roundId);
-        return {itemId:bound.input.itemId,notificationState:result.delivered?'delivered':round.state==='suppressed'?'feed_only':'failed',delivered:result.delivered};
+        return {...ports.selection(scope),notificationState:result.delivered?'delivered':round.state==='suppressed'?'feed_only':'failed',delivered:result.delivered};
       }
       const result=operation(bound,'F12_N05','workflow.host.f12_n05')?.result;
       if(!isDeepStrictEqual(result,ports.digest(scope)))fail('REVISION_CONFLICT','F12 original unread digest changed');
-      return {itemId:bound.input.itemId,notificationState:'feed_only',delivered:false};
+      return {...ports.selection(scope),notificationState:'feed_only',delivered:false};
     };
-    config('F12',object({itemId:text,trigger:{type:'string',enum:['event','on_demand']}}),
+    config('F12',{...selectionSchema,properties:{...selectionSchema.properties,trigger:{type:'string',enum:['event','on_demand']}},required:['trigger']},
       ['decision.choose_candidate','workflow.host.f12_n02','workflow.guard.f12_n04','workflow.guard.f12_n05','workflow.host.f12_n04','workflow.host.f12_n05'],
-      object({itemId:text,notificationState:{type:'string',enum:['delivered','failed','feed_only']},delivered:{type:'boolean'}}),
+      {...selectionSchema,properties:{...selectionSchema.properties,notificationState:{type:'string',enum:['delivered','failed','feed_only']},delivered:{type:'boolean'}},required:['notificationState','delivered']},
       async(scope,bound)=>{
         const originalScope={...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId},proposal=scope.proposal;
         ports.source(originalScope);
-        if(proposal.nodeId==='F12_N02'&&proposal.toolName==='workflow.host.f12_n02')return isDeepStrictEqual(proposal.arguments,{itemId:bound.input.itemId});
+        if(proposal.nodeId==='F12_N02'&&proposal.toolName==='workflow.host.f12_n02')return isDeepStrictEqual(proposal.arguments,ports.selection(originalScope));
         const value=selectedValue(originalScope,bound);
         if(['F12_N04','F12_N05'].includes(proposal.nodeId)&&proposal.toolName==='workflow.guard.'+proposal.nodeId.toLowerCase())
           return isDeepStrictEqual(proposal.arguments,{workflowId:'F12',nodeId:proposal.nodeId,input:bound.input,
@@ -430,7 +432,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         if(operation(bound,proposal.nodeId,'workflow.guard.'+proposal.nodeId.toLowerCase())?.result.state!=='selected')return false;
         return proposal.nodeId==='F12_N04'&&proposal.toolName==='workflow.host.f12_n04'
           ?isDeepStrictEqual(proposal.arguments,ports.deliveryInput(originalScope))
-          :proposal.nodeId==='F12_N05'&&proposal.toolName==='workflow.host.f12_n05'&&isDeepStrictEqual(proposal.arguments,{itemId:bound.input.itemId});
+          :proposal.nodeId==='F12_N05'&&proposal.toolName==='workflow.host.f12_n05'&&isDeepStrictEqual(proposal.arguments,ports.selection(originalScope));
       },async scope=>{
         const result=completion({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId});
         runtime.saveCheckpointOnce(scope.taskId,'business-workflow:F12:completion',{sessionId:scope.state.sessionId,result});

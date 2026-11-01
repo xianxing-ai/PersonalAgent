@@ -10,6 +10,16 @@ type Scope=OwnedWorkflowHostScope;
 const plain=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0;
 const channel=(v:unknown):v is NotificationChannel=>v==='banner'||v==='voice';
+type Selection={itemId:string}|{itemIds:string[]};
+type DeliveryInput=Selection&{roundId:string;channel:NotificationChannel};
+const selectionProperties={itemId:{type:'string',minLength:1},itemIds:{type:'array',minItems:1,uniqueItems:true,items:{type:'string',minLength:1}}};
+const selectionRequired=[{required:['itemId'],not:{required:['itemIds']}},{required:['itemIds'],not:{required:['itemId']}}];
+const selection=(input:Record<string,unknown>):Selection=>{
+  if(text(input.itemId)&&input.itemIds===undefined)return {itemId:input.itemId};
+  if(input.itemId===undefined&&Array.isArray(input.itemIds)&&input.itemIds.length&&input.itemIds.every(text)
+    &&new Set(input.itemIds).size===input.itemIds.length)return {itemIds:[...input.itemIds]};
+  return failOwnedHost('INVALID_ARGUMENT','F12 requires an explicit unique item selection');
+};
 
 /** F12_N02: reads effective quiet-hours/interruption policy from Runtime NotificationHost. */
 export function createRuntimeF12QuietHoursHost(options?:{
@@ -59,9 +69,9 @@ export function createRuntimeF12NotificationDeliverHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
   notificationHost:Pick<RuntimeNotificationHost,'getInterruptionRound'>;
   requiredScopes:readonly string[];
-  verifyDeliveryBinding:(scope:Scope,input:{roundId:string;itemId:string;channel:NotificationChannel})=>Promise<boolean>;
+  verifyDeliveryBinding:(scope:Scope,input:DeliveryInput)=>Promise<boolean>;
   /** Uses the existing durable device delivery port, then reads the original attempt; unknown must not resend. */
-  resolveDeliveryReceipt:(scope:Scope,input:{roundId:string;itemId:string;channel:NotificationChannel},context:ToolContext)=>Promise<{state:'delivered'|'unknown'|'failed'|'suppressed';evidenceRefs:readonly string[]}>;
+  resolveDeliveryReceipt:(scope:Scope,input:DeliveryInput,context:ToolContext)=>Promise<{state:'delivered'|'unknown'|'failed'|'suppressed';evidenceRefs:readonly string[]}>;
   verifyDeliveryResult?:(scope:Scope,result:{delivered:boolean;roundId:string})=>unknown;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:{delivered:boolean;roundId:string})=>Promise<boolean>;
@@ -78,14 +88,14 @@ export function createRuntimeF12NotificationDeliverHost(options?:{
     hostToolName:'workflow.host.f12_n04',proposalArguments:args??(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown}|undefined)?.arguments,
     assertCurrent:options.assertCurrent,now:options.now});
   const tool=createOwnedWorkflowAdapter({nodeId:'F12_N04',kind:'host',sideEffect:'external_write',requiredScopes,
-    inputSchema:{type:'object',additionalProperties:false,required:['roundId','itemId','channel'],properties:{
-      roundId:{type:'string'},itemId:{type:'string'},channel:{type:'string',enum:['banner','voice']},policyRevision:{type:'integer'}}},
+    inputSchema:{type:'object',additionalProperties:false,required:['roundId','channel'],oneOf:selectionRequired,properties:{
+      ...selectionProperties,roundId:{type:'string'},channel:{type:'string',enum:['banner','voice']},policyRevision:{type:'integer'}}},
     outputSchema:{type:'object',additionalProperties:false,required:['delivered','roundId'],properties:{
       delivered:{type:'boolean'},roundId:{type:'string'}}},
     async execute(input,context){
-      const scope=active(context,input),payload=input as {roundId:string;itemId:string;channel:string};
-      if(!text(payload.roundId)||!text(payload.itemId)||!channel(payload.channel))failOwnedHost('INVALID_ARGUMENT','F12 delivery arguments invalid');
-      const bound={roundId:payload.roundId,itemId:payload.itemId,channel:payload.channel};
+      const scope=active(context,input),payload=input as Record<string,unknown>;
+      if(!text(payload.roundId)||!channel(payload.channel))failOwnedHost('INVALID_ARGUMENT','F12 delivery arguments invalid');
+      const bound={...selection(payload),roundId:payload.roundId,channel:payload.channel};
       if(await options.verifyDeliveryBinding(scope,bound)!==true)failOwnedHost('UNAUTHORIZED','F12 delivery lacks original binding');
       active(context,input);
       const receipt=await options.resolveDeliveryReceipt(scope,bound,context);active(context,input);
@@ -141,7 +151,7 @@ export function createRuntimeF12ConfiguredReadHosts(options?:{
   const tools=specs.map(spec=>createOwnedWorkflowAdapter({...spec,sideEffect:'read',requiredScopes:['notifications:read'],
     inputSchema:spec.kind==='guard'?{type:'object',additionalProperties:false,required:['workflowId','nodeId','input','predecessorOutputs','predecessorStates'],
       properties:{workflowId:{const:'F12'},nodeId:{const:spec.nodeId},input:{type:'object'},predecessorOutputs:{type:'object'},predecessorStates:{type:'object'}}}
-      :{type:'object',additionalProperties:false,required:['itemId'],properties:{itemId:{type:'string',minLength:1}}},outputSchema:{type:'object'},
+      :{type:'object',additionalProperties:false,oneOf:selectionRequired,properties:selectionProperties},outputSchema:{type:'object'},
     execute:async(args,context)=>read(spec,context,args)}));
   return {tools,unavailable:null,authorizeReceipt:async({context,result})=>{
     const intent=runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {toolName?:string;arguments?:unknown}|undefined;

@@ -690,7 +690,7 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 
 ## 2026-10-31 F12 原通知 configured worker（provisional）
 
-`workflow.business.f12` 绑定原有效未读 feed、层级/legacy 策略与原子轮次，只接 `event` / `on_demand`；公开 `createRuntimeF12ConfiguredReadHosts` 提供原策略、条件与有效摘要读取。N05 capability 与当前设计对齐为 `notification.current_feed_digest`、副作用 read；原投递工厂兼容增加确证 suppressed 的 false 结果及可选结果复核。无 wire、迁移或新调度，旧模板摘要拒绝恢复。真实用户归来来源、voice、多条合并 batch 与真实设备/云验收仍缺；本机实际组件和 Fixture 边界见 [F12 接线记录](../competition/evidence/F12_CONFIGURED_NOTIFICATION_20261031.md)。
+`workflow.business.f12` 绑定原有效未读 feed、层级/legacy 策略与原子轮次，只接 `event` / `on_demand`；公开 `createRuntimeF12ConfiguredReadHosts` 提供原策略、条件与有效摘要读取。N05 capability 与当前设计对齐为 `notification.current_feed_digest`、副作用 read；原投递工厂兼容增加确证 suppressed 的 false 结果及可选结果复核。2026-11-01 保留 `{itemId,trigger}`，增加互斥 `{itemIds,trigger}`；原 N02/N04/N05 同步支持精确多项选择，原 ready batches 完整并集须等于已批准 ID 集，原 CAS 一个轮次投递一条本机摘要，逐项核对来源/已读/撤回/期限。配置版本为 `business-20261101-f12-v2`，无 wire、迁移或新调度，旧配置摘要拒绝恢复。真实用户归来来源、voice 与实际 F12 设备/云整图验收仍缺；本机实际组件和 Fixture 边界见 [F12 接线记录](../competition/evidence/F12_CONFIGURED_NOTIFICATION_20261031.md) 与 [显式多项批次](../competition/evidence/F12_EXPLICIT_BATCH_20261101.md)。
 
 ## 2026-10-31 F08 原邮件显式方案（provisional）
 
