@@ -66,6 +66,7 @@ async function fixture(t,{disposition='compatible',revokeProjection=false,longEx
     bundle.configuredWorkflowWorkerPorts[0].assertCurrent({taskId:request.taskId,deadline:request.taskDeadline??request.deadline,signal:request.signal});
     images.push(JSON.stringify({input:request.input,receipts:request.receipts,resolvedValues:request.resolvedValues}));return engine.advance(request);}};
   const appOptions={path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f04',tools,
+    f04Recovery:bundle.recovery,
     knowledgeWriteReconciliation:{reconcile:async(...args)=>{reconciles++;return unknownWrite==='not_applied'
       ?{state:'not_applied',operationId:sha(args[0].taskId+'\n'+args[0].runId),backupId:'synthetic-negative-readback',lockRetained:false,currentSha256:sha(content)}:writer.reconcile(...args);},
       finalize:unknownWrite==='not_applied'?async accepted=>({state:'finalized',operationId:accepted.operationId,outcome:accepted.outcome,currentSha256:accepted.currentSha256}):writer.finalize},
@@ -166,16 +167,20 @@ test('F04 confirmed source write remains preserved when original projection outc
   await assert.rejects(async()=>f.bundle.recovery.reconcileOriginalReadback(scope));assert.deepEqual(f.counts(),before);
 });
 test('F04 incomplete original impact stays unknown and readback performs zero writes or feed work',{skip:!powerShellPath},async t=>{
-  const f=await fixture(t,{projectionFailure:'before'}),{child}=await f.run();assert.equal(child.state,'waiting_reconciliation',JSON.stringify(f.diagnostics()));
+  const f=await fixture(t,{projectionFailure:'before'}),{parent,child}=await f.run();assert.equal(child.state,'waiting_reconciliation',JSON.stringify(f.diagnostics()));
   await f.reopen();const scope={taskId:child.taskId,deadline:f.app.runtime.loadCheckpoint(child.taskId,'application-deadline'),signal:new AbortController().signal},before=f.counts();
   for(let count=0;count<2;count++)assert.equal((await f.bundle.recovery.reconcileOriginalReadback(scope)).state,'unknown');
   assert.deepEqual(f.counts(),before);assert.equal(f.facts.readCurrentPublicFact({id:'original-fact',revision:2}).summary,replacement);
   const cancelled=new AbortController();cancelled.abort();assert.equal(f.bundle.recovery.readAvailable({...scope,signal:cancelled.signal}),false);
   await assert.rejects(async()=>f.bundle.recovery.reconcileOriginalReadback({...scope,signal:cancelled.signal}),{code:'CANCELLED'});
   assert.equal(f.bundle.recovery.readAvailable({...scope,deadline:'2000-01-01T00:00:00.000Z'}),false);assert.deepEqual(f.counts(),before);
+  const original=f.app.runtime.getTask(parent.taskId);assert.equal(f.app.readF04RecoveryStatus(parent.taskId).phase,'waiting_readback');
+  const native=await f.app.reconcileF04WorkflowTask(parent.taskId,original.revision,{deadline:scope.deadline,signal:scope.signal});
+  assert.equal(native.kind,'f04_knowledge');assert.equal(native.state,'unknown');assert.equal(native.resumed,false);assert.equal(native.task.state,'waiting_reconciliation');
+  assert.deepEqual(f.counts(),before);
 });
 test('F04 original unknown source write reads its real journal, exports an observation and resumes without replay',{skip:!powerShellPath},async t=>{
-  const f=await fixture(t,{unknownWrite:true}),{child}=await f.run();assert.equal(child.state,'waiting_reconciliation',JSON.stringify(f.diagnostics()));
+  const f=await fixture(t,{unknownWrite:true}),{parent,child}=await f.run();assert.equal(child.state,'waiting_reconciliation',JSON.stringify(f.diagnostics()));
   assert.equal(await readFile(join(f.root,'source.md'),'utf8'),replacement+'\n');assert.equal(f.counts().writes,1);
   const independent=await independentReadback(f,child.taskId);assert.equal(independent.result.state,'confirmed');assert.equal(independent.reconciles,1);
   assert.deepEqual(independent.counts,{writes:0,appends:0,drains:0,impacts:0,clears:0});
@@ -202,7 +207,19 @@ test('F04 original unknown source write reads its real journal, exports an obser
   assert.throws(()=>policy.project({taskId:source.reference.taskId,proposalId:readback.commandId,result:readback.confirmed.result,signal:scope.signal}),{code:'UNAUTHORIZED'});
   f.app.runtime.saveCheckpoint(source.reference.taskId,'knowledge-write-readback',originalObservation);
   assert.equal((await f.bundle.recovery.reconcileOriginalReadback(scope)).state,'confirmed');assert.equal(f.reconciles(),0);
-  f.app.resumeTask(child.taskId);const resumed=await f.run();assert.equal(resumed.child.state,'succeeded',JSON.stringify(f.diagnostics()));
+  assert.equal(f.app.readF04RecoveryStatus(parent.taskId).phase,'ready_to_resume');assert.equal(f.app.readF04RecoveryAvailable(child.taskId),true);
+  assert.equal(f.app.readF24RecoveryAvailable(parent.taskId),false);
+  const parentRevision=f.app.runtime.getTask(parent.taskId).revision,observer={deadline:scope.deadline,signal:scope.signal};
+  await assert.rejects(()=>f.app.reconcileF04WorkflowTask(parent.taskId,parentRevision-1,observer),{code:'UNAUTHORIZED'});
+  await assert.rejects(()=>f.app.reconcileF04WorkflowTask(parent.taskId,parentRevision,{...observer,deadline:'2000-01-01T00:00:00.000Z'}),{code:'TIMEOUT'});
+  const delegation=f.app.runtime.loadCheckpoint(child.taskId,'subtask-parent');
+  f.app.runtime.saveCheckpoint(child.taskId,'subtask-parent',{...delegation,parentTaskId:'foreign-user-parent'});
+  assert.equal(f.app.readF04RecoveryAvailable(parent.taskId),false);f.app.runtime.saveCheckpoint(child.taskId,'subtask-parent',delegation);
+  const configuration=f.app.runtime.loadCheckpoint(child.taskId,'competition-configuration-binding');
+  f.app.runtime.saveCheckpoint(child.taskId,'competition-configuration-binding','foreign-deployment');
+  assert.equal(f.app.readF04RecoveryAvailable(parent.taskId),false);f.app.runtime.saveCheckpoint(child.taskId,'competition-configuration-binding',configuration);
+  const native=await f.app.reconcileF04WorkflowTask(parent.taskId,parentRevision,observer);assert.equal(native.kind,'f04_knowledge');assert.equal(native.resumed,true);
+  const resumed=await f.run();assert.equal(resumed.child.state,'succeeded',JSON.stringify(f.diagnostics()));
   assert.equal(f.counts().writes,1);assert.equal(f.counts().appends,1);assert.equal(f.counts().drains,1);assert.equal(f.counts().impacts,1);
   assert.equal(f.facts.readCurrentPublicFact({id:'original-fact',revision:2}).summary,replacement);
   f.revoke();assert.throws(()=>policy.project({taskId:source.reference.taskId,proposalId:readback.commandId,

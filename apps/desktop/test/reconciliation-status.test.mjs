@@ -111,3 +111,9 @@ test('execution record read failures preserve only an honest attempt, never a fa
     assert.match(status.notice,/暂时无法读取/);assert.doesNotMatch(JSON.stringify(status),/private receipt token/);
   }
 });
+for(const kind of ['f04','f24'])test(kind+' original recovery displays readback and continuation without claiming completion',()=>{
+  const {application}=fixture({'application-deadline':deadline});
+  application['read'+kind.toUpperCase()+'RecoveryStatus']=()=>({kind:kind+'_knowledge',phase:'waiting_readback',deadline});
+  const status=readReconciliationStatus(application,task,now);assert.equal(status.actionLabel,'核实原结果并继续');
+  assert.match(status.notice,/仍需审批/);assert.equal(status.blockedReason,undefined);
+});

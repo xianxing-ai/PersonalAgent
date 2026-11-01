@@ -46,6 +46,12 @@ F04 配置摘要升级为 `f04-public-source-v2`，最终结果可明确 `not_ap
 
 仍可推进项：Main 恢复精确出机确认、F04 recovery 原用户父任务 UI/公开调用桥（下一包）、私人 Wiki/私人 Memory、跨作用域迁移与彻底遗忘。现私人消费只允许用户明确选择的已确认 Fact 摘要经原生确认出机，Knowledge private 原读写出口仍拒绝；public 工厂不能借此读取或写入任意私人来源。不得以本包提升 F04 或 #531 总体验收状态。
 
+### 原用户任务恢复调用方
+
+Runtime 新增 `f04Recovery` 受信选项及 `readF04RecoveryStatus/readF04RecoveryAvailable/reconcileF04WorkflowTask`，与原 F24 共用父任务→唯一原委派子图→当前待核实 host 的资格/核实/原 resume 实现。旧 F24 方法与 kind 保持兼容，F04 kind 是 `f04_knowledge`；新观察期限不能延长原任务期限，旧 revision、变更的委派父边/部署、取消和其他图均拒绝。Desktop 原 `task.reconcile.finish` 消费 F04/F24 自有资格；按钮说明核实后继续且后续独立审批仍保留，不改变任务终态。
+
+Runtime build、Desktop 入口与状态 20/20、F04/F24 原父任务消费定向 6/6 通过，后者包括实际 F24 Windows writer 恢复（前述未设 helper 的 skip 已补验）。F04 public 方法实际定位原 user parent、保持未完成 impact unknown，已核实 N03 后调用原 graph resume；源写入仍为一次。Desktop sender/surface/observer 是显式 Fixture，此处不宣称 Electron 目视已验。Main `f04Recovery` 注入及最终 UI/精确出机重新确认由集成树接线，尚不能宣称完整产品恢复已验收。
+
 ## 后续验证
 
 实际 Engine/Runtime/Policy/ToolGateway、受控文件写入和原 journal、独立 Memory SQLite：相容更新前后版本/旧来源保留；冲突隔离零事实写入；未授权/跨作用域/版本变化/候选改参拒绝；原工具投影及异步撤销；未知写入跨重启零重放；已知写入后投影中断保留原效果；Fact Feed 与原依赖失效读回。模型/网络/原生确认的 Synthetic 部分独立标注。
