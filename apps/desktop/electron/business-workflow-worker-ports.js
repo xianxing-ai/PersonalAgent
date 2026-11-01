@@ -667,7 +667,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       return receiptExport('F08')(scope,result);
     }});
     reconcileOriginalMailWorkflow=createF08MailRecovery({getApplication,now,restoreWrite:ports.restoreOriginalWrite,
-      exportResult:exportBusinessResult,assertCurrent:scope=>{binding('F08',scope);acceptedDecision(scope);}});
+      exportResult:exportBusinessResult,assertCurrent:(scope,kind)=>{binding('F08',scope);if(kind==='send')acceptedDecision(scope);}});
     const hostOptions={...ports,application,assertCurrent:scope=>{binding('F08',scope);},now:()=>new Date(now())};
     if(decisionEnabled)addHost(runtimeModule.createRuntimeF08DecisionQuestionHost({...hostOptions,
       inputSchema:object({send:f08Schema.properties.send,knowledgeSources:f08Schema.properties.knowledgeSources}),readDecision,authorizeExport:receiptExport('F08'),

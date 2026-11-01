@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import {readWorkflowBusinessToolSource} from '@personal-agent/runtime/application';
 
-/** Restore only the original F08 host receipt from its independently reconciled business child. Never invokes mail.send. */
+/** Restore only the original F08 host receipt from its independently reconciled business child. Never invokes mail writes. */
 export function createF08MailRecovery({getApplication,restoreWrite,exportResult,assertCurrent,now=Date.now}) {
   return async({taskId,deadline,signal})=>{
     const app=getApplication(),runtime=app.runtime,write=runtime.getTask(taskId),runId='host-tool-'+taskId;
@@ -11,9 +11,10 @@ export function createF08MailRecovery({getApplication,restoreWrite,exportResult,
     const child=runtime.loadCheckpoint(taskId,'host-tool-intent');
     const intent=source&&runtime.loadCheckpoint(source.sourceTaskId,'workflow-business-tool:'+source.commandId);
     const record=runtime.readToolExecutions(taskId).find(item=>item.evidenceId===runId);
+    const kind=child?.toolName==='mail.archive'?'archive':'send',nodeId=kind==='archive'?'F08_N03':'F08_N07';
     const denied=()=>{throw new ProtocolError('UNAUTHORIZED','Original F08 mail recovery source is unavailable');};
-    if(!source||!child||intent?.workflowId!=='F08'||intent.nodeId!=='F08_N07'||intent.actionKey!=='f08.mail.send'
-      ||child.toolName!=='mail.send'||write.cancelRequested||!['waiting_reconciliation','succeeded'].includes(write.state)
+    if(!source||!child||intent?.workflowId!=='F08'||intent.nodeId!==nodeId||intent.actionKey!=='f08.mail.'+kind
+      ||child.toolName!=='mail.'+kind||write.cancelRequested||!['waiting_reconciliation','succeeded'].includes(write.state)
       ||!record||record.state!=='confirmed'||record.reconciliationOutcome!=='applied'||record.policyDecision!=='allow'||!record.executionStarted
       ||!runtime.matchesToolExecutionInput(record,{arguments:child.arguments,scopeRef:runId}))denied();
     const scope={parentTaskId:intent.parentTaskId,localTaskId:source.sourceTaskId,operationId:intent.operationId,
@@ -23,24 +24,25 @@ export function createF08MailRecovery({getApplication,restoreWrite,exportResult,
       if(!isDeepStrictEqual(source,runtime.loadCheckpoint(taskId,'workflow-business-tool:source'))
         ||!isDeepStrictEqual(child,runtime.loadCheckpoint(taskId,'host-tool-intent'))
         ||!isDeepStrictEqual(intent,runtime.loadCheckpoint(source.sourceTaskId,'workflow-business-tool:'+source.commandId)))denied();
-      assertCurrent(scope);
+      assertCurrent(scope,kind);
     };
     current();
     // The existing Runtime reconciliation API requires every original execution to be confirmed.
     // Only this exact single-tool host is completed; the graph/root remains Runtime-owned.
     if(write.state==='waiting_reconciliation')runtime.reconcileTask(taskId,'confirmed');
-    const proof=readWorkflowBusinessToolSource(app,scope,{taskId,runId,scopeRef:runId,toolVersion:child.toolVersion,arguments:child.arguments},'mail.send');
-    if(proof.graph.workflowId!=='F08'||proof.graph.nodeId!=='F08_N07'||proof.sourceHost.taskId!==scope.localTaskId
+    const proof=readWorkflowBusinessToolSource(app,scope,{taskId,runId,scopeRef:runId,toolVersion:child.toolVersion,arguments:child.arguments},'mail.'+kind);
+    if(proof.graph.workflowId!=='F08'||proof.graph.nodeId!==nodeId||proof.sourceHost.taskId!==scope.localTaskId
       ||proof.receipt.result?.state!=='confirmed')denied();
     await exportResult(taskId,proof.receipt.result,scope);current();
-    restoreWrite(scope,'send',proof.receipt);
+    restoreWrite(scope,kind,proof.receipt);
     const host=app.readHostToolTask(scope.localTaskId),hostRun='host-tool-'+scope.localTaskId;
-    const result={sendOperationId:scope.operationId,toolState:'confirmed',messageId:proof.receipt.result.externalId,idempotencyKey:runId};
+    const result=kind==='send'?{sendOperationId:scope.operationId,toolState:'confirmed',messageId:proof.receipt.result.externalId,idempotencyKey:runId}
+      :{archiveOperationId:scope.operationId,toolState:'confirmed'};
     if(host.task.cancelRequested)denied();
     if(host.task.state==='waiting_reconciliation'){
       const evidenceId='f08-mail-readback-'+createHash('sha256').update(JSON.stringify([taskId,runId,scope.localTaskId,result])).digest('hex');
-      runtime.saveCheckpointOnce(scope.localTaskId,'trusted-readback-evidence:'+evidenceId,{evidenceId,kind:'observation',sourceRef:'mail.reconcile_send',
-        capturedAt:record.finishedAt,summary:'Original F08 send host recovered from the independently verified original mail child',verification:'verified',sensitivity:'private'});
+      runtime.saveCheckpointOnce(scope.localTaskId,'trusted-readback-evidence:'+evidenceId,{evidenceId,kind:'observation',sourceRef:'mail.reconcile_'+kind,
+        capturedAt:record.finishedAt,summary:'Original F08 mail host recovered from the independently verified original mail child',verification:'verified',sensitivity:'private'});
       current();runtime.reconcileToolExecution(scope.localTaskId,hostRun,'applied',result,[evidenceId]);
     }else if(host.task.state!=='succeeded'||!isDeepStrictEqual(host.confirmed?.result,result))denied();
     current();app.resumeTask(scope.parentTaskId);

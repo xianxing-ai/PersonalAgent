@@ -16,7 +16,7 @@ export { MailAccountRegistry, RegistryMailProvider } from './registry.js';
 export type { BoundMailAccount } from './registry.js';
 export { decodeMailCursor, encodeMailCursor } from './provider.js';
 export type {
-  MailCursor, MailFetchInput, MailFolder, MailMarkSeenInput, MailArchiveInput, MailMessage, MailOperationContext, MailPage,
+  MailCursor, MailFetchInput, MailFolder, MailMarkSeenInput, MailArchiveInput, MailArchiveMove, MailMessage, MailOperationContext, MailPage,
   MailProvider, MailSendInput, MailSendResult,
 } from './provider.js';
 

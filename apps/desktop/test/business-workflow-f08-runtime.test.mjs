@@ -5,7 +5,7 @@ import path from 'node:path';
 import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier,createWorkflowDecisionTool} from '@personal-agent/agentarts';
-import {FakeMailProvider} from '@personal-agent/mail';
+import {FakeMailProvider,QQMailProvider} from '@personal-agent/mail';
 import * as runtimeModule from '@personal-agent/runtime/application';
 import {createBusinessWorkflowWorkerPorts} from '../electron/business-workflow-worker-ports.js';
 import {createConnectorConversationTools} from '../electron/connector-conversation-tools.js';
@@ -29,7 +29,21 @@ async function scenario(t,options={}){
   const fetchPage=provider.fetchPage.bind(provider);
   provider.fetchPage=(account,input)=>{reads++;const page=fetchPage(account,input);if(moved)page.messages=[];
     if(options.changedInbox&&reads>=2||inboxChanged)page.uidValidity=20;return page;};
-  provider.archive=async(account,input)=>{assert.equal(account,'desktop-qq-inbox');assert.equal(input.uidValidity,19);assert.equal(input.messageId,'<original@example.invalid>');
+  const archiveProvider=options.interruptedArchive?new QQMailProvider({user:'fixture@qq.com',authCode:'offline-unused'}):undefined;
+  let archiveReads=false,archiveFolder='INBOX';
+  if(archiveProvider){const client={usable:true,capabilities:new Map([['MOVE',true],['UIDPLUS',true]]),mailbox:{uidValidity:19n},
+    list:async()=>[{path:'Archive',specialUse:'\\Archive'}],getMailboxLock:async folder=>{archiveFolder=folder;client.mailbox={uidValidity:folder==='INBOX'?19n:20n};return {release(){}};},
+    fetchOne:async uid=>{if(archiveFolder==='INBOX'){if(moved&&!archiveReads)throw Error('Fixture interrupted after UIDPLUS receipt');
+      return moved?false:{uid:3,envelope:{messageId:'<original@example.invalid>'}};}
+      return Number(uid)===41?{uid:41,envelope:{messageId:'<original@example.invalid>'}}:false;},
+    messageMove:async()=>{assert.equal(moved,false,'MOVE cannot replay');moved=true;return {destination:'Archive',uidValidity:20n,uidMap:new Map([[3,41]])};},close(){}};
+    archiveProvider.client=client;
+    provider.reconcileArchive=async(account,input,context)=>{archiveReads=true;
+      const fresh=new QQMailProvider({user:'fixture@qq.com',authCode:'offline-unused'});fresh.client=client;
+      return fresh.reconcileArchive(account,input,context);};
+  }
+  provider.archive=async(account,input,context)=>{assert.equal(account,'desktop-qq-inbox');assert.equal(input.uidValidity,19);assert.equal(input.messageId,'<original@example.invalid>');
+    if(archiveProvider){archives++;await archiveProvider.archive(account,input,context);throw new ProtocolError('RESULT_UNKNOWN','Fixture interrupted archive result');}
     archives++;if(!options.unknownArchive)moved=true;return {actionId:'mail-archive:'+input.idempotencyKey,state:options.unknownArchive?'unknown':'confirmed',
       externalId:input.messageId,evidenceRefs:options.unknownArchive?[]:['fixture-archive-readback']};};
   provider.send=async(account,input,context)=>{sends++;const result={state:options.unknownSend?'unknown':'confirmed',messageId:'<sent-'+sends+'@example.invalid>'};
@@ -141,14 +155,15 @@ async function scenario(t,options={}){
       catch(error){if(!options.revokeSend)throw error;assert.match(error.message,/失效|revok|changed|expired|authoriz/i);}
     }
     [child]=app.readSubagentTasks(root.taskId);
-    if(options.interruptedSend&&!recovered&&child?.state==='waiting_reconciliation'&&app.activeTaskCount===0){
+    if((options.interruptedSend||options.interruptedArchive)&&!recovered&&child?.state==='waiting_reconciliation'&&app.activeTaskCount===0){
       const source={taskId:root.taskId},scope={deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal};
-      assert.equal(connector.readOriginalSendRecoveryAvailable(root.taskId),true);
-      const read=connector.readOriginalSendReconciliation(source);
-      if(read.state==='unavailable'){connector.prepareOriginalSendReconciliation(source,scope);await pause();continue;}
+      const kind=options.interruptedArchive?'Archive':'Send';
+      assert.equal(connector['readOriginal'+kind+'RecoveryAvailable'](root.taskId),true);
+      const read=connector['readOriginal'+kind+'Reconciliation'](source);
+      if(read.state==='unavailable'){connector['prepareOriginal'+kind+'Reconciliation'](source,scope);await pause();continue;}
       if(read.state==='pending'){await pause();continue;}
       assert.equal(read.state,'confirmed',JSON.stringify(read));
-      const applied=connector.applyOriginalSendReconciliation(source);
+      const applied=connector['applyOriginal'+kind+'Reconciliation'](source);
       await composition.reconcileOriginalMailWorkflow({taskId:applied.task.taskId,...scope});recovered=true;await pause();continue;
     }
     if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;await pause();
@@ -184,6 +199,13 @@ test('F08 independently reconciles the original unknown send without a second SM
 test('F08 interrupted SMTP resumes the original confirmed host and configured graph without sending twice',async t=>{
   const f=await scenario(t,{interruptedSend:true});assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));
   assert.equal(f.sends,1);assert.equal(f.archives,1);assert.ok(f.cloud.some(request=>request.continuation?.result?.sendConfirmed===true));
+});
+test('F08 interrupted UIDPLUS archive reads the durable original mapping and resumes without another MOVE',async t=>{
+  const f=await scenario(t,{interruptedArchive:true});assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));
+  assert.equal(f.archives,1);assert.equal(f.sends,1);assert.ok(f.approvals.includes('mail.reconcile_archive'));
+  const saved=f.app.runtime.listTasks({limit:100}).items.flatMap(task=>f.app.runtime.listCheckpointKeys(task.taskId)
+    .filter(key=>key.startsWith('mail-archive-move:')).map(key=>f.app.runtime.loadCheckpoint(task.taskId,key)));
+  assert.deepEqual(saved,[{destinationFolder:'Archive',destinationUid:41,destinationUidValidity:20}]);
 });
 
 test('F08 consumes the original 200-character knowledge projection without exporting the raw tail',async t=>{

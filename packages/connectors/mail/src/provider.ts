@@ -69,6 +69,7 @@ export interface MailArchiveInput extends MailMarkSeenInput {
   uidValidity:number;
   messageId:string;
 }
+export interface MailArchiveMove {destinationFolder:string;destinationUidValidity:number;destinationUid:number}
 
 /** Trusted execution context; kept separate from mail content and idempotency fingerprints. */
 export interface MailOperationContext {
@@ -77,6 +78,11 @@ export interface MailOperationContext {
   now?: () => number;
   /** Trusted host only. Persist the original identity before SMTP; existing intent never permits another send. */
   beforeSend?: (identity:Readonly<{idempotencyKey:string;messageId:string}>) => 'persisted'|'existing'|Promise<'persisted'|'existing'>;
+  beforeArchive?: (identity:Readonly<MailArchiveInput&{destinationFolder:string}>) => 'persisted'|'existing'|Promise<'persisted'|'existing'>;
+  /** Synchronous recording of the actual UIDPLUS response, even if cancellation raced with MOVE. No new permission. */
+  archiveMoved?: (mapping:Readonly<MailArchiveMove>) => void;
+  /** Host-resolved original durable MOVE proof; never accepted from model tool arguments. */
+  archiveReadBinding?: Readonly<MailArchiveInput&MailArchiveMove&{accountRef:string}>;
   /** Synchronous source/permit fence, including after an asynchronous beforeSend hook. */
   assertCurrent?: () => void;
 }
@@ -95,12 +101,14 @@ export interface MailProvider {
   /** 提供商标识（进 manifest.accountTypes），Fake 为 'fixture'，QQ 为 'qq'。 */
   readonly providerKind: string;
   readonly sendIdentitySupport?: 'before-send-v1';
+  readonly archiveIdentitySupport?: 'before-archive-v1';
   listFolders(accountRef: string): MailFolder[] | Promise<MailFolder[]>;
   fetchPage(accountRef: string, input: MailFetchInput): MailPage | Promise<MailPage>;
   getMessage(accountRef: string, folder: string, uid: number): MailMessage | undefined | Promise<MailMessage | undefined>;
   markSeen(accountRef: string, input: MailMarkSeenInput, context?: MailOperationContext): {uid: number; seen: boolean} | Promise<{uid: number; seen: boolean}>;
   send(accountRef: string, input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): MailSendResult | Promise<MailSendResult>;
   archive?(accountRef:string,input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']>;
+  reconcileArchive?(accountRef:string,input:MailArchiveInput&MailArchiveMove,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']>;
   /** Optional real draft capability; absent providers remain unsupported. No SMTP delivery. */
   saveDraft?(accountRef: string, input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): Promise<ProtocolContracts['connectorAction']>;
   /** Synchronous trusted binding check, needed when the service has no original send record. */

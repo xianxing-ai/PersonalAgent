@@ -1,5 +1,6 @@
 import type {ToolHost} from '@personal-agent/contracts';
-import type {MailProvider,MailArchiveInput} from './provider.js';
+import {ProtocolError} from '@personal-agent/contracts';
+import type {MailProvider,MailArchiveInput,MailArchiveMove,MailOperationContext} from './provider.js';
 import {guardMailWrite} from './provider.js';
 import type {MailService} from './service.js';
 import {MAIL_CONNECTOR_VERSION} from './connector.js';
@@ -23,5 +24,18 @@ export function registerMailWriteTools(host:ToolHost,provider:MailProvider,servi
     async execute(raw,context){guardMailWrite(context);const input=raw as Omit<MailArchiveInput,'idempotencyKey'>&{account?:string};
       return provider.archive!(resolveAccount(input),{folder:input.folder,uid:input.uid,uidValidity:input.uidValidity,
         messageId:input.messageId,idempotencyKey:context.runId},context);}}));
+  if(provider.reconcileArchive)unregister.push(host.register({descriptor:{name:'mail.reconcile_archive',version:MAIL_CONNECTOR_VERSION,
+    inputSchema:{type:'object',additionalProperties:false,
+      required:['folder','uid','uidValidity','messageId','idempotencyKey','destinationFolder','destinationUid','destinationUidValidity'],properties:{
+        account:{type:'string',minLength:1},folder:{type:'string',minLength:1},uid:{type:'integer',minimum:1},uidValidity:{type:'integer',minimum:1},
+        messageId:{type:'string',minLength:3},idempotencyKey:{type:'string',minLength:1},destinationFolder:{type:'string',minLength:1},
+        destinationUid:{type:'integer',minimum:1},destinationUidValidity:{type:'integer',minimum:1}}},
+    outputSchema,sideEffect:'read',requiredScopes:['mail:read'],idempotencySupport:true,recoverySupport:true,requiresPresence:false},
+    async execute(raw,context){guardMailWrite(context);const input=raw as MailArchiveInput&MailArchiveMove&{account?:string};
+      const account=resolveAccount(input),bound=(context as MailOperationContext).archiveReadBinding;
+      if(!bound||bound.accountRef!==account||['folder','uid','uidValidity','messageId','idempotencyKey','destinationFolder','destinationUid','destinationUidValidity']
+        .some(key=>bound[key as keyof typeof bound]!==input[key as keyof typeof input]))
+        throw new ProtocolError('UNAUTHORIZED','Archive readback requires the host-bound original UIDPLUS receipt');
+      return provider.reconcileArchive!(account,input,context);}}));
   return ()=>unregister.forEach(release=>release());
 }

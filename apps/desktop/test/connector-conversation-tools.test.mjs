@@ -40,7 +40,7 @@ async function project(policy,s,result){return policy.project({taskId:s.taskId,p
 
 test('registers only existing supplemental tools; missing configuration and absent native consent stay closed',async t=>{
   const f=fixture(t,{mail:{current:()=>undefined},calendar:{binding:()=>undefined}});
-  assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.send','mail.archive','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
+  assert.deepEqual(f.host.tools.map(t=>t.descriptor.name),['mail.inbox','mail.accounts','mail.send','mail.archive','mail.reconcile_archive','mail.mark_seen','mail.save_draft','mail.reconcile_send','calendar.create','calendar.update','calendar.cancel','calendar.events']);
   for(const tool of f.host.tools){const s=scope(tool);assert.equal(await f.host.competitionToolAvailability.find(x=>x.toolName===tool.descriptor.name).available(s),false);
     await assert.rejects(f.host.prepareExport({...s,phase:'preflight'}),{code:'UNAUTHORIZED'});}
   assert.deepEqual(f.calls,[]);

@@ -7,6 +7,7 @@ import type { ProtocolContracts } from '@personal-agent/contracts';
 import type {
   MailFetchInput,
   MailArchiveInput,
+  MailArchiveMove,
   MailFolder,
   MailMarkSeenInput,
   MailMessage,
@@ -65,6 +66,7 @@ export class QQMailProvider implements MailProvider {
   private readonly archiveInflight=new Map<string,{fingerprint:string;result:Promise<ProtocolContracts['connectorAction']>}>();
   readonly providerKind = 'qq';
   readonly sendIdentitySupport = 'before-send-v1' as const;
+  readonly archiveIdentitySupport = 'before-archive-v1' as const;
   readonly verification = 'conditional' as const;
   private readonly options: Required<Pick<QQMailOptions, 'imapHost' | 'imapPort' | 'smtpHost' | 'smtpPort'>> & QQMailOptions;
   private client: ImapFlow | null = null;
@@ -281,6 +283,7 @@ export class QQMailProvider implements MailProvider {
   }
 
   async archive(_accountRef:string,input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
+    input={...input};
     guardMailWrite(context);
     if(!input.idempotencyKey||!input.folder||!Number.isSafeInteger(input.uid)||input.uid<1
       ||!Number.isSafeInteger(input.uidValidity)||input.uidValidity<1||!/^<[^<>\s]+>$/u.test(input.messageId))
@@ -305,12 +308,20 @@ export class QQMailProvider implements MailProvider {
         throw new ProtocolError('CURSOR_EXPIRED','Original mail UID epoch changed');
       const original=await client.fetchOne(String(input.uid),{envelope:true},{uid:true});guardMailWrite(context);
       if(!original||original.envelope?.messageId!==input.messageId)throw new ProtocolError('REVISION_CONFLICT','Original message identity changed');
+      if(context?.beforeArchive){
+        const prepared=await context.beforeArchive(Object.freeze({...input,destinationFolder:folder.path}));guardMailWrite(context);
+        if(prepared==='existing')return unknown();
+        if(prepared!=='persisted')throw new ProtocolError('UNAUTHORIZED','Original archive identity was not persisted');
+      }
       started=true;
       const moved=await client.messageMove(String(input.uid),folder.path,{uid:true});
-      guardMailWrite(context);
       const destinationUid=moved&&moved.uidMap?.get(input.uid);
       // The move may already have taken effect. Never repeat it or invent a receipt when UIDPLUS/readback is absent.
       if(!destinationUid||!moved||moved.destination!==folder.path||moved.uidValidity===undefined)return unknown();
+      const mapping={destinationFolder:folder.path,destinationUidValidity:Number(moved.uidValidity),destinationUid};
+      if(!Number.isSafeInteger(mapping.destinationUidValidity)||mapping.destinationUidValidity<1
+        ||!Number.isSafeInteger(destinationUid)||destinationUid<1)return unknown();
+      context?.archiveMoved?.(Object.freeze(mapping));guardMailWrite(context);
       const remaining=await client.fetchOne(String(input.uid),{uid:true},{uid:true});
       if(remaining)return unknown();
       lock.release();lock=undefined;lock=await client.getMailboxLock(folder.path);guardMailWrite(context);
@@ -320,6 +331,26 @@ export class QQMailProvider implements MailProvider {
       return {actionId,state:'confirmed',externalId:folder.path+':'+destinationUid,evidenceRefs:[]};
     }catch(error){if(started)return unknown();if(error instanceof ProtocolError)throw error;throw mapImapError(error);}
     finally {lock?.release();}
+  }
+
+  /** Read only the original UIDPLUS destination. The trusted host must bind this mapping to the original MOVE. */
+  async reconcileArchive(_accountRef:string,input:MailArchiveInput&MailArchiveMove,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
+    input={...input};guardMailWrite(context);
+    if(!input.idempotencyKey||!input.folder||!input.destinationFolder||input.folder===input.destinationFolder
+      ||![input.uid,input.uidValidity,input.destinationUid,input.destinationUidValidity].every(value=>Number.isSafeInteger(value)&&value>0)
+      ||!/^<[^<>\s]+>$/u.test(input.messageId))throw new ProtocolError('INVALID_ARGUMENT','Original MOVE identity and UIDPLUS mapping required');
+    const unknown=():ProtocolContracts['connectorAction']=>({actionId:'mail-archive:'+input.idempotencyKey,state:'unknown',externalId:input.messageId,evidenceRefs:[]});
+    const client=await this.connect();guardMailWrite(context);let lock:{release():void}|undefined;
+    try{
+      lock=await client.getMailboxLock(input.folder);guardMailWrite(context);
+      if(!client.mailbox||Number(client.mailbox.uidValidity)!==input.uidValidity)return unknown();
+      const original=await client.fetchOne(String(input.uid),{uid:true},{uid:true});guardMailWrite(context);if(original)return unknown();
+      lock.release();lock=undefined;lock=await client.getMailboxLock(input.destinationFolder);guardMailWrite(context);
+      if(!client.mailbox||Number(client.mailbox.uidValidity)!==input.destinationUidValidity)return unknown();
+      const archived=await client.fetchOne(String(input.destinationUid),{envelope:true},{uid:true});guardMailWrite(context);
+      if(!archived||archived.envelope?.messageId!==input.messageId)return unknown();
+      return {actionId:'mail-archive:'+input.idempotencyKey,state:'confirmed',externalId:input.destinationFolder+':'+input.destinationUid,evidenceRefs:[]};
+    }finally{lock?.release();}
   }
 
   private operationMessageId(kind: string, key: string): string {
