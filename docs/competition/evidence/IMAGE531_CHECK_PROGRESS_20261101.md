@@ -25,3 +25,9 @@ F19 第一段首轮两例在原 F15_N05 报 `ENOENT`，日志 `.cache/integratio
 根重新构建 Runtime 后，退出、子任务绑定/父恢复、Plan 来源与新增伪造拒绝共 59/59 通过，零跳过；日志 `.cache/integration-ci-parent-quit-fixed.log`。新 Local 测试首轮误用仅 Competition 提供的 automaticTools 配置被正确拒绝，已改回 Local 原手动授权配置，未放宽产品策略。直接 workspace npm 构建首轮因 shell 找不到 `tsc` 失败，随后运行仓库安装的同版 TypeScript 编译器成功；不将首轮计作通过。
 
 远端另 4 个原生 bundle/旧模拟进程测试由 native 工作包修复中。最新代码还需完整 check 和新提交 CI。
+
+## Windows CI fa4fc200
+
+[Foundation run 41281897096](https://github.com/xianxing-ai/PersonalAgent/actions/runs/41281897096) 的 Windows job `124775388732` 于 07:18:04 UTC 完成检查并失败，Linux image 通过。先前子任务、退出和原生修复的对应工作区已通过；Windows 本轮仅 1 个 integration 用例失败：`wiki-write-recovery.test.mjs` 在成功写入并恢复后又向 `revalidateSource` 传入写入前的 `expectedSha256`，收到“原写入来源已变化，不能归因于该操作”。这是新的精确来源门禁正确拒绝旧参数。
+
+修复保留该旧哈希拒绝断言，重复投影验证改用实际生产 `revalidate` 回调传出的原写入后参数，并独立核对它与实际文件哈希相等。产品来源校验不变；原正文仅写一次、无关事实不变和重复恢复无额外 revision 的断言全部保留。独立 UI 集成树全量构建通过；原 Windows 文件写入/重启恢复、private Memory 来源、F04 新出机许可/Main、F11/F08 原会话卡联合 31/31 通过、零跳过，日志 `.cache/ui-full-build.log`、`.cache/ui-ci-knowledge-recovery.log`。原失败已复验通过，整套新提交 CI 仍须重跑。
