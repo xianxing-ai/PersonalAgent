@@ -15,13 +15,14 @@ function harness(t,invoke) {
   Object.assign(form,{elements:fields,querySelector:()=>submit,
     querySelectorAll:()=>[...Object.values(fields),submit,revoke,restore],
     reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='https';}});
-  const wss=node(),advanced=node(),traceReplay=node(),traceReplayState=node();
+  const wss=node(),advanced=node(),traceReplay=node(),traceReplayState=node(),decisionButton=node(),decisionState=node();
   const scopeFields=Object.fromEntries(['dataLevel','cloudExportAllowed','publicQueries'].map(key=>[key,node()])),scopeForm=node(),scopeState=node(),scopeSubmit=node();
   Object.assign(scopeForm,{elements:scopeFields,querySelectorAll:()=>[...Object.values(scopeFields),scopeSubmit]});
   const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
     querySelector:selector=>({'form':form,'[data-status]':status,'[data-wss]':wss,'[data-token-hint]':tokenHint,
       '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced,
-      '[data-trace-replay]':traceReplay,'[data-trace-replay-state]':traceReplayState,'[data-data-scope]':scopeForm,'[data-data-scope-state]':scopeState}[selector])};
+      '[data-trace-replay]':traceReplay,'[data-trace-replay-state]':traceReplayState,'[data-data-scope]':scopeForm,'[data-data-scope-state]':scopeState,
+      '[data-decision-initialize]':decisionButton,'[data-decision-state]':decisionState}[selector])};
   form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,
@@ -29,7 +30,7 @@ function harness(t,invoke) {
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,traceReplay,traceReplayState,scopeFields,scopeState,scopeSubmit,
+  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,traceReplay,traceReplayState,scopeFields,scopeState,scopeSubmit,decisionButton,decisionState,
     saveScope:()=>scopeForm.listeners.get('submit')({preventDefault(){}}),save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
@@ -37,6 +38,19 @@ function harness(t,invoke) {
     recover:()=>restore.listeners.get('click')(),
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
+
+test('F23 baseline UI sends only the current catalog reference and preserves pending or unknown initialization',async t=>{
+  const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {taskId:'original-initialization',state:'created'};});
+  const invoke=()=>ui.decisionButton.listeners.get('click')();assert.equal(ui.decisionButton.disabled,true);await invoke();assert.equal(calls.length,0);
+  const state={available:true,initialized:false,catalogRevision:'a'.repeat(64)};
+  ui.controls.render({decisionConfiguration:state});ui.fields.authorization.value='private-connection-draft';await invoke();
+  assert.equal(calls[0].action,'workflow.decisionConfiguration.initialize');
+  assert.deepEqual(Object.keys(calls[0].payload).sort(),['catalogRevision','commandId']);assert.equal(calls[0].payload.catalogRevision,state.catalogRevision);
+  ui.controls.render({decisionConfiguration:{...state,initialization:{state:'waiting_reconciliation'}}});await invoke();assert.equal(calls.length,1);
+  ui.controls.render({decisionConfiguration:{...state,initialized:true,binding:{configuration:{revision:1},executionModel:{modelId:'original'}},initialization:{state:'succeeded'}}});
+  assert.equal(ui.decisionButton.disabled,true);assert.match(ui.decisionState.textContent,/已读回基线版本 1.*original.*评测尚未通过/);
+  assert.equal(ui.fields.authorization.value,'private-connection-draft');
+});
 
 test('F25 stages only the original data scope proposal and does not claim connectivity or apply permissions',async t=>{
   const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {dataScope:{configured:true,stage:'selected',revision:4,
