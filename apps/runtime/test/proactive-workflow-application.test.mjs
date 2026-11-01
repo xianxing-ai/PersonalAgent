@@ -146,6 +146,12 @@ test('responsibility revocation is atomic, checks the execution gate and does no
     assert.deepEqual(f.host.readResponsibilityLifecycle(ref, f.context), {state: 'unavailable', reason: 'responsibility_revoked'});
     f.host.registerResponsibility({id, revision: 2, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
     assert.equal(f.host.readResponsibilityLifecycle({...ref, responsibilityRevision: 2}, f.context).reason, 'responsibility_revision_changed');
+    assert.deepEqual(f.host.readResponsibilityLifecycleOperation(activation,f.context),{state:'recorded',revision:1},
+      'revocation and a later responsibility version do not erase the original activation');
+    assert.deepEqual(f.host.readResponsibilityLifecycleOperation({...activation,commandId:'not-executed'},f.context),{state:'unknown'});
+    assert.throws(()=>f.host.readResponsibilityLifecycleOperation({...activation,validUntil:'2099-01-01T00:00:00.000Z'},f.context),{code:'REVISION_CONFLICT'});
+    const snapshot=f.host.readResponsibility({...ref,responsibilityRevision:2},f.context);snapshot.sourceQuotes.length=0;
+    assert.equal(f.host.readResponsibility({...ref,responsibilityRevision:2},f.context).sourceQuotes.length,1);
   } finally {await f.close();}
 });
 

@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-01 F01 原责任生命周期（provisional）
+
+`createRuntimeF01LifecycleHost` 与 Desktop `createF01WorkflowLifecyclePorts` 将原 N09 host 的任务、配置输入、Policy allow/started/exact args 绑定到既有 proactive lifecycle CAS；来源指令从原用户父任务派生，不由模型选取。原库新增精确 command digest 的只读 outcome 与责任快照，unknown/重复只读，不再 commit。Desktop 同原会话/部署/期限/取消/来源撤销守卫贯穿 CAS；无新责任库、wire 或迁移，旧 proactive 调用保持兼容。首包只交 N09，完整配置 worker/其余节点/Main 与真实云/真人仍待接线验收，不提升 frozen；[范围及实际验证](../competition/evidence/F01_RESPONSIBILITY_WIRING_20261101.md)。
+
 ## 2026-11-01 F05 原来源问答接线（provisional，待真实验收）
 
 `workflow.memory.answer@1.0.0` 经 Runtime 原配置图、Policy 和 ToolGateway 接入 Desktop Main，使用原公共 Memory/Fact、受控 Knowledge 文件及其出口投影。新增 F05 answer v1 Schema 约束引用和来源版本；Knowledge 的 `assertCitationCurrent` 同步复核原文件身份、内容版本及引用范围，用于凭据读取后的最后发送门禁。未知查询不重放，来源变化或配置撤销拒绝继续。实际文件、SQLite、原图与 Main 定向已通过；模型、原生确认和云为显式 Fixture，固定 AgentArts 部署整图及来源支持真实审查尚未验证，不提升 frozen。详见 [F05 证据](../competition/evidence/F05_SOURCED_ANSWER_WIRING_20261101.md)。

@@ -35,6 +35,8 @@ export type {RuntimeWorkflowShadowAcceptanceOptions} from './application/workflo
 export {createRuntimeWorkflowShadowAuthorization} from './application/workflow-shadow-authorization.js';
 export type {RuntimeWorkflowShadowAuthorizationOptions,RuntimeWorkflowShadowOriginalIntent} from './application/workflow-shadow-authorization.js';
 export {createRuntimeF01ContextHost} from './application/workflow-f01-context-host.js';
+export {createRuntimeF01LifecycleHost,readF01LifecycleInvocation,F01_LIFECYCLE_SCHEMA} from './application/workflow-f01-lifecycle-host.js';
+export type {F01ResponsibilityTarget,F01LifecycleSelection,F01LifecycleInvocation} from './application/workflow-f01-lifecycle-host.js';
 export type {F01ContextHostOptions,F01ContextResult,F01ModelSnapshot,F01ResponsibilitySnapshot} from './application/workflow-f01-context-host.js';
 export {createF01ResponsibilitySource,createF01ModelGatewaySource} from './application/workflow-f01-context-sources.js';
 export {createF01QueryBinding} from './application/workflow-f01-query-binding.js';

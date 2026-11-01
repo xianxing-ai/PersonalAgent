@@ -9,7 +9,7 @@ const text=value=>typeof value==='string'&&!!value.trim();
 /** Desktop binds trusted configuration and user commands. The original Runtime owns its worker. */
 export function createDesktopProactiveWorkflowApplication({application,readConfiguration,notificationHost,
   context,bindings,controller,cloudPersistentHost,localDeviceAvailable,resolveUserConversation,onSession=()=>{},
-  readPersistedSession,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter}) {
+  readPersistedSession,responsibilityLifecycleAuthority,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter}) {
   const sessions=new Map(),controls=new Map();
   const publish=()=>{try{onUpdate();}catch{}};
   function configuration() {
@@ -60,8 +60,41 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
       ...(controller?{controller}:{}),
       ...(cloudPersistentHost?{cloudPersistentHost}:{}),
       verifyControlCommand:command=>controls.get(command.commandId)===digest(command),
+      ...(responsibilityLifecycleAuthority?{
+        verifyResponsibilityLifecycle:(command,source,scope)=>{
+          assertResponsibilitySession({taskId,sessionId:binding.sessionId},source.taskId,scope);
+          return responsibilityLifecycleAuthority()?.verify({taskId,sessionId:binding.sessionId},command,source,scope)===true;
+        },
+        assertResponsibilityLifecycleCurrent:(command,source,scope)=>{
+          assertResponsibilitySession({taskId,sessionId:binding.sessionId},source.taskId,scope);
+          const authority=responsibilityLifecycleAuthority();if(!authority)throw Error('原责任生命周期许可不可用');
+          return authority.assertCurrent({taskId,sessionId:binding.sessionId},command,source,scope);
+        },
+      }:{}),
       resumeWorker:()=>application.resumeProactiveTask(taskId)});
     sessions.set(taskId,{binding,host});host.subscribe(publish);onSession(sessions.get(taskId));return sessions.get(taskId);
+  }
+  function assertResponsibilitySession(target,sourceTaskId,request,writable=true) {
+    if(!target||Object.keys(target).sort().join(',')!=='sessionId,taskId'||!text(target.taskId)||!text(target.sessionId)||!text(sourceTaskId))
+      throw Error('请选择原责任会话和原用户指令');
+    const stored=application.runtime.loadCheckpoint(target.taskId,KEY);
+    if(stored?.version!==1||stored.taskId!==target.taskId||stored.sessionId!==target.sessionId)throw Error('原责任会话已改变');
+    if(stored.imageBinding!==imageBinding(configuration()))throw Error('原责任部署已改变');
+    const task=application.runtime.getTask(target.taskId);
+    if(writable&&(task.cancelRequested||['succeeded','failed','cancelled','cancelling'].includes(task.state)))throw Error('原责任会话已停止');
+    const source=application.runtime.getTask(sourceTaskId),origin=application.runtime.getTask(stored.sourceTaskId);
+    const conversation=resolveUserConversation?resolveUserConversation(sourceTaskId):source.conversationId;
+    if(!text(conversation)||conversation!==(resolveUserConversation?resolveUserConversation(stored.sourceTaskId):origin.conversationId)
+      ||!text(source.goal)||!text(origin.goal)||source.cancelRequested
+      ||[sourceTaskId,stored.sourceTaskId].some(id=>application.runtime.loadCheckpoint(id,'private-copy-erasure')!==undefined
+        ||application.runtime.loadCheckpoint(id,'private-copy-erasure-binding')!==undefined))throw Error('原责任来源不属于当前用户会话');
+    if(Date.parse(request.deadline)>Date.parse(stored.taskDeadline))throw Error('责任操作不能延长原会话期限');
+  }
+  async function responsibilitySession(target,sourceTaskId,request,writable=false) {
+    assertResponsibilitySession(target,sourceTaskId,request,writable);
+    const session=await bind(target.taskId,request);
+    assertResponsibilitySession(target,sourceTaskId,request,writable);
+    if(session.binding.sessionId!==target.sessionId)throw Error('原责任会话已改变');return session;
   }
   function summary(session) {
     const {binding,host}=session,result=host.inspect().application.state.lastResult;
@@ -144,6 +177,19 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     },
     async instruction(taskId,sourceTaskId,request) {const session=await bind(taskId,request);
       return session.host.ingestUserInstruction({sourceTaskId},lifetime(session.binding,request));},
+    async readResponsibility(target,reference,sourceTaskId,request) {
+      const session=await responsibilitySession(target,sourceTaskId,request);
+      return {responsibility:session.host.readResponsibility(reference,request),lifecycle:session.host.readResponsibilityLifecycle(reference,request)};
+    },
+    async recordResponsibilityLifecycle(target,command,request) {
+      const session=await responsibilitySession(target,command.sourceTaskId,request,true);
+      const prior=session.host.readResponsibilityLifecycleOperation(command,request);
+      if(prior.state==='recorded')return prior;
+      const result=await session.host.recordResponsibilityLifecycle(command,request);publish();return result;
+    },
+    async readResponsibilityLifecycleOperation(target,command,request) {
+      return (await responsibilitySession(target,command.sourceTaskId,request)).host.readResponsibilityLifecycleOperation(command,request);
+    },
     async wake(taskId,scheduleId,request) {const session=await bind(taskId,request);
       return session.host.ingestWake(scheduleId,lifetime(session.binding,request));},
     async eventSink(taskId,request) {return (await bind(taskId,request)).host.eventSink;},

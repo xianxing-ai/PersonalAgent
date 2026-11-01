@@ -203,7 +203,7 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       if(digest(quote(lifecycleSource(source.messageId)))!==digest(source))fail('REVISION_CONFLICT','Original responsibility source changed');
     return responsibility;
   }
-  async function recordResponsibilityLifecycle(raw:RuntimeResponsibilityLifecycleCommand,context:Context) {
+  function lifecycleCommand(raw:RuntimeResponsibilityLifecycleCommand):RuntimeResponsibilityLifecycleCommand {
     if(!raw||typeof raw!=='object'||Array.isArray(raw)
       ||Object.keys(raw).some(key=>!['commandId','responsibilityId','responsibilityRevision','expectedLifecycleRevision','action','sourceTaskId','validUntil'].includes(key))
       ||typeof raw.commandId!=='string'||!/^[A-Za-z0-9._:-]{1,128}$/.test(raw.commandId)
@@ -215,7 +215,10 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       ||raw.action==='activate'&&(typeof raw.validUntil!=='string'||!Number.isFinite(Date.parse(raw.validUntil)))
       ||raw.action==='revoke'&&raw.validUntil!==undefined)
       return fail('INVALID_ARGUMENT','Invalid responsibility lifecycle command');
-    const command=structuredClone(raw);active(context);
+    return structuredClone(raw);
+  }
+  async function recordResponsibilityLifecycle(raw:RuntimeResponsibilityLifecycleCommand,context:Context) {
+    const command=lifecycleCommand(raw);active(context);
     if(!options.verifyResponsibilityLifecycle||!options.assertResponsibilityLifecycleCurrent)
       return fail('UNSUPPORTED_CAPABILITY','Trusted responsibility lifecycle authorization unavailable');
     const verifyLifecycle=options.verifyResponsibilityLifecycle,assertLifecycle=options.assertResponsibilityLifecycleCurrent;
@@ -279,6 +282,22 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
     if(record.state==='revoked')return {state:'unavailable' as const,reason:'responsibility_revoked'};
     if(Date.parse(record.validUntil)<=now())return {state:'unavailable' as const,reason:'responsibility_expired'};
     return {state:'current' as const,revision:record.revision,validUntil:record.validUntil};
+  }
+  function readResponsibility(input:{responsibilityId:string;responsibilityRevision:number},context:Context) {
+    active(context,true);
+    if(!input||!text(input.responsibilityId)||!Number.isSafeInteger(input.responsibilityRevision)||input.responsibilityRevision<1)
+      fail('INVALID_ARGUMENT','Invalid responsibility reference');
+    return structuredClone(lifecycleResponsibility(read(),input.responsibilityId,input.responsibilityRevision));
+  }
+  /** Exact historical command evidence, not a grant or an inference from current state. */
+  function readResponsibilityLifecycleOperation(raw:RuntimeResponsibilityLifecycleCommand,context:Context) {
+    const command=lifecycleCommand(raw);active(context,true);lifecycleSource(command.sourceTaskId);
+    const operations=read().state.responsibilityLifecycleOperations??{};
+    const prior=Object.hasOwn(operations,command.commandId)?operations[command.commandId]:undefined;
+    if(!prior)return {state:'unknown' as const};
+    if(prior.digest!==digest(command)||prior.responsibilityId!==command.responsibilityId
+      ||!Number.isSafeInteger(prior.revision)||prior.revision<1)fail('REVISION_CONFLICT','Original lifecycle command changed');
+    return {state:'recorded' as const,revision:prior.revision};
   }
   function appendEntry(state: ApplicationState, entry: Entry) {
     const old = state.entries[entry.event.eventId];
@@ -551,7 +570,7 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
     save(snapshot); return result;
   }
   const host = {
-    recordResponsibilityLifecycle,readResponsibilityLifecycle,
+    recordResponsibilityLifecycle,readResponsibilityLifecycle,readResponsibility,readResponsibilityLifecycleOperation,
     taskId: options.taskId, sessionId: options.sessionId,
     get binding() {return structuredClone(binding());},
     eventSink: {async persist(batch: ProactiveBatch, context: ProactiveContext) {
