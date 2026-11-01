@@ -15,6 +15,7 @@ import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-
 import {prepareWorkflowHostPreflight} from '../electron/workflow-host-preflight.js';
 import {prepareConfiguredWorkflowDecisionQuestion} from '../electron/configured-workflow-decision-source.js';
 import {createPublicConnectorHost} from '../electron/public-connector-host.js';
+import {createF11LocationQuestionHost} from '../electron/f11-location-question-host.js';
 
 // Actual Engine/Runtime/SQLite/Todo/scheduler/question/Policy composition. Calendar,
 // candidate preparation/selection, remote transport and graph export consent are fixtures.
@@ -22,7 +23,8 @@ const pause=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function scenario(t,options={}){
   const cache=new URL('../../../.cache/business-f11-runtime/',import.meta.url);mkdirSync(cache,{recursive:true});
   const userData=mkdtempSync(new URL('case-',cache)),cloud=[],approvals=[],proposals=[],decisions=[];
-  let app,input,todo,changed=false,reads=0,writes=0,weatherReads=0;
+  let app,input,todo,changed=false,reads=0,writes=0,weatherReads=0,locationReply,locationReplied=false,locationClock=0;
+  const locationQuestion=createF11LocationQuestionHost({getApplication:()=>app,now:()=>Date.now()+locationClock});
   const provider=new FakeCalendarProvider([defaultCalendarFixtures[0]]),write=provider.writes.updateEvent.bind(provider.writes),read=provider.fetchWindow.bind(provider);
   provider.fetchWindow=async(...args)=>{reads++;if(reads===2&&options.changedCalendar)await write({uid:'evt-standup',summary:'Another client changed it'});return read(...args);};
   provider.writes.updateEvent=async(...args)=>{writes++;if(options.unknownUpdate)throw new ProtocolError('RESULT_UNKNOWN','Fixture update outcome unknown');return write(...args);};
@@ -52,6 +54,7 @@ async function scenario(t,options={}){
   if(options.denyWeatherExport){const index=policies.findIndex(policy=>policy.toolName==='weather.forecast');policies[index]={...policies[index],accepts:()=>false};}
   const prepareExport=async scope=>{await connector.prepareExport(scope);await todoHost.prepareExport(scope);};
   const composition=createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>app,businessTools,todoHost,competitionToolExports:policies,
+    ...(options.missingLocation?{f11LocationQuestion:locationQuestion}:{}),
     prepareCompetitionToolExport:prepareExport,readBusinessAvailability:()=>({ready:true,bindingId:'fixture-calendar-and-todo'}),
     authorizeExport:async request=>{if(request.stage==='completion'&&options.changeAtCompletion)await todoHost.update({id:todo.id,title:'User edited after clear'});
       return !(request.stage==='completion'&&options.denyCompletion);}});
@@ -86,12 +89,39 @@ async function scenario(t,options={}){
   input={calendarReadArguments:{fromUtc:'2026-09-07T00:00:00.000Z',toUtc:'2026-09-08T00:00:00.000Z'},
     update:{externalId:'evt-standup',location:'online'},reminder:{todoId:todo.id,revision:todo.revision,scheduleId:schedule.scheduleId,conversationId:schedule.conversationId}};
   if(options.weather)input.weather={eventId:options.wrongWeatherEvent?'another-event':'evt-standup',query:{location:'Beijing',date:'2026-09-07',units:'metric'}};
+  if(options.missingLocation)delete input.weather.query.location;
   t.after(async()=>{for(const task of app.runtime.listTasks({limit:100}).items)if(!['succeeded','failed','cancelled'].includes(task.state))app.runtime.requestCancel(task.taskId);
     question.close();await todoHost.close();for(let i=0;i<300&&app.activeTaskCount;i++)await pause();await connector.close();publicHost?.close();app.close();});
   const client=new Client(app);await client.connect();
   const root=await client.call('task.submit',{goal:'Fixture explicit F11 calendar change',conversationId:'fixture-chat'},{idempotencyKey:'fixture-f11',timeoutMs:60000});
   let child;
   for(let i=0;i<2000;i++){
+    if(options.missingLocation&&!locationReplied){
+      const pending=locationQuestion.readQuestion({taskId:root.taskId,conversationId:'fixture-chat'});
+      if(pending){
+        assert.equal(pending.state,'pending');assert.equal(pending.sourceTaskId,root.taskId);
+        assert.equal(locationQuestion.readQuestion({taskId:root.taskId,conversationId:'foreign'}),undefined);
+        locationReplied=true;
+        if(options.cancelLocation){app.runtime.requestCancel(pending.graphTaskId);}
+        else {
+          locationReply={taskId:pending.taskId,questionId:pending.questionId,expectedRevision:pending.revision,
+            sourceTaskId:root.taskId,commandId:'fixture-explicit-location-message',location:'Beijing'};
+          assert.throws(()=>locationQuestion.submitReply({...locationReply,expectedRevision:0},{conversationId:'fixture-chat'}),/target changed/);
+          assert.throws(()=>locationQuestion.submitReply(locationReply,{conversationId:'foreign'}),/target changed/);
+          if(options.revokeLocation||options.eraseLocation||options.expireLocation){
+            if(options.revokeLocation)app.runtime.policy.revoke('host-tool-'+pending.taskId);
+            else if(options.eraseLocation)app.runtime.saveCheckpoint(root.taskId,'private-copy-erasure',{state:'withheld'});
+            else locationClock=60001; // Explicit clock fixture for the question deadline boundary only.
+            assert.throws(()=>locationQuestion.submitReply(locationReply,{conversationId:'fixture-chat'}),/unavailable|changed/);
+            app.runtime.requestCancel(pending.graphTaskId);continue;
+          }
+          const answered=locationQuestion.submitReply(locationReply,{conversationId:'fixture-chat'});
+          assert.equal(answered.state,'answered');assert.equal(answered.revision,2);
+          assert.deepEqual(locationQuestion.submitReply(locationReply,{conversationId:'fixture-chat'}),answered);
+          assert.throws(()=>locationQuestion.submitReply({...locationReply,location:'Shanghai'},{conversationId:'fixture-chat'}),/another explicit reply/);
+        }
+      }
+    }
     for(const card of question.snapshot().filter(item=>item.state==='pending')){
       approvals.push(card.toolName);
       if(card.toolName==='weather.forecast'&&options.cancelWeather){app.runtime.requestCancel(app.readSubagentTasks(root.taskId)[0].taskId);continue;}
@@ -101,7 +131,7 @@ async function scenario(t,options={}){
     [child]=app.readSubagentTasks(root.taskId);if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;
     await pause();
   }
-  assert.ok(child);return {app,child,todoHost,todo,schedule,reads,writes,weatherReads,decisions,cloud,approvals,proposals,
+  assert.ok(child);return {app,userData,child,todoHost,todo,schedule,reads,writes,weatherReads,decisions,cloud,approvals,proposals,locationReply,locationReplied,locationQuestion,
     diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,error:task.error,tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
 }
 
@@ -143,4 +173,31 @@ for(const option of ['staleWeather','expiredWeather','outsideCoverage','wrongWea
   });
 test('F11 denying the independent weather child never reaches calendar or reminder writes',async t=>{
   const f=await scenario(t,{weather:true,denyTool:'weather.forecast'});assert.notEqual(f.child.state,'succeeded');assert.equal(f.weatherReads,0);assert.equal(f.writes,0);
+});
+
+test('F11 missing location waits on original N01, then an exact explicit text answer reaches separately approved weather and writes',async t=>{
+  const f=await scenario(t,{weather:true,missingLocation:true});
+  assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));assert.equal(f.locationReplied,true);assert.equal(f.weatherReads,2);assert.equal(f.writes,1);
+  assert.equal(f.approvals.filter(name=>name==='weather.forecast').length,2);
+  assert.equal(f.decisions.find(item=>item.node.id==='F11_N03').predecessorOutputs.F11_N01.weather.forecast.location,'Beijing');
+  assert.equal(f.app.runtime.loadCheckpoint(f.locationReply.taskId,'business-workflow:F11:location-question:reply').origin,'desktop_explicit_text');
+});
+
+for(const options of [{cancelLocation:true},{denyTool:'weather.forecast'},{revokeLocation:true},{eraseLocation:true},{expireLocation:true}])test('F11 location answer grants no weather or write authority '+JSON.stringify(options),async t=>{
+  const f=await scenario(t,{weather:true,missingLocation:true,...options});assert.equal(f.locationReplied,true);
+  assert.equal(f.weatherReads,0);assert.equal(f.writes,0);assert.notEqual(f.child.state,'succeeded');assert.deepEqual(f.todoHost.snapshot().items[0],f.todo);
+});
+
+test('F11 location answer persists across SQLite reopen without replaying an unknown original weather result',async t=>{
+  const f=await scenario(t,{weather:true,missingLocation:true,unknownWeather:true});assert.equal(f.weatherReads,1);assert.equal(f.writes,0);
+  assert.notEqual(f.child.state,'succeeded');const key='business-workflow:F11:location-question:reply',reply=f.app.runtime.loadCheckpoint(f.locationReply.taskId,key);
+  assert.equal(reply.location,'Beijing');assert.equal(reply.origin,'desktop_explicit_text');
+  assert.throws(()=>f.locationQuestion.submitReply(f.locationReply,{conversationId:'fixture-chat'}),/unavailable|changed/);
+  const restored=runtimeModule.createRuntimeApplication({path:path.join(f.userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'f11'});
+  try {assert.deepEqual(restored.runtime.loadCheckpoint(f.locationReply.taskId,key),reply);
+    const reader=createF11LocationQuestionHost({getApplication:()=>restored});
+    assert.equal(reader.readQuestion({taskId:f.locationReply.sourceTaskId,conversationId:'fixture-chat'}),undefined);
+    assert.throws(()=>reader.submitReply(f.locationReply,{conversationId:'fixture-chat'}),/unavailable|changed/);
+  }finally{restored.close();}
+  assert.equal(f.weatherReads,1);assert.deepEqual(f.todoHost.snapshot().items[0],f.todo);
 });

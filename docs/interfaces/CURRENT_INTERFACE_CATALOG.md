@@ -739,3 +739,7 @@ Runtime 在原 `goal` / `readRequestContext` 文本内临时附加有界 `capabi
 ## 2026-11-01 F12 原 Live 语音通知关联（provisional）
 
 Realtime `speakText` 兼容新增可选 renditionId；原 audio、assistant final transcript、turn_complete 带原 response/rendition 关联。Desktop 原 F12_N04 独立 Policy 执行消费原 NotificationService round 与固定提示，通过已有 Live 会话保存分级回执到原 Runtime checkpoint。Renderer 完成排空仍为 `playbackVerified:false`，voice attempt 保持 unknown，不重播、不标记 feed 已读、不报告硬件已送达。原普通聊天、Question 和 banner 兼容；F12 工厂配置版本为 `business-20261101-f12-v4`，旧配置摘要不可恢复为新图，无新节点、wire 或数据库迁移。Main 惰性注入原 getVoiceHost；实际百炼和物理播放、云整图尚未验证，详见 [F12 语音关联边界与证据](../competition/evidence/F12_VOICE_RENDITION_20261101.md)。
+
+## 2026-11-01 F11 原任务地点补问（provisional）
+
+Desktop `createF11LocationQuestionHost` 在原 N01 TaskRuntime 生命周期中等同一对话的明确文字地点；`readQuestion` 按原 root/graph/host 关系发现，Main 的 `submitReply` 绑定原用户任务上下文、消息 commandId、原参数摘要/期限/revision，以原 checkpoint 原子单次保存。答复不是批准，原天气及写入 child 仍独立 Policy，取消/撤销/过期/来源擦除/替换拒绝，unknown 不重提。F11 配置为 `business-20261101-f11-v3`，完整显式输入兼容，无新节点、wire 或迁移。Main 文字入口与真实语音/云验收尚需分别完成；缺其他决定仍不可用。见 [方案、接口及证据](../competition/evidence/F11_LOCATION_CLARIFICATION_20261101.md)。
