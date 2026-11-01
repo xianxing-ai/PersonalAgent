@@ -747,3 +747,7 @@ Realtime `speakText` 兼容新增可选 renditionId；原 audio、assistant fina
 ## 2026-11-01 F11 原任务地点补问（provisional）
 
 Desktop `createF11LocationQuestionHost` 在原 N01 TaskRuntime 生命周期中等同一对话的明确文字地点；`readQuestion` 按原 root/graph/host 关系发现，Main 的 `submitReply` 绑定原用户任务上下文、消息 commandId、原参数摘要/期限/revision，以原 checkpoint 原子单次保存。答复不是批准，原天气及写入 child 仍独立 Policy，取消/撤销/过期/来源擦除/替换拒绝，unknown 不重提。F11 配置为 `business-20261101-f11-v3`，完整显式输入兼容，无新节点、wire 或迁移。Main 文字入口与真实语音/云验收尚需分别完成；缺其他决定仍不可用。见 [方案、接口及证据](../competition/evidence/F11_LOCATION_CLARIFICATION_20261101.md)。
+
+## 2026-11-01 F11 原方案明确采用或拒绝（provisional）
+
+新增 Desktop `createF11DecisionQuestionHost` / 注入 `f11DecisionQuestion`，复用原问题检查点和单次文字事件绑定；地点 API 兼容。Runtime `createRuntimeF11DecisionQuestionHost` 在原 N04 等同一对话对完整原方案的 `accept/decline`，图只收到 `{decision}`。采用仍由 N05 分别请求原日历/提醒 Policy；拒绝跳过写入，completion 新增明确 `decision:'declined'` 分支。原答案在子工具执行前重新核对，卡待批时撤销/擦除阻止后续写入，已发生的效果保留。F11 配置为 `business-20261101-f11-v4`，无新节点、wire、数据库迁移或授权层。真实 UI/语音/云及日历整图未由本地 Fixture 证明；见 [接口与行为证据](../competition/evidence/F11_PLAN_DECISION_20261101.md)。

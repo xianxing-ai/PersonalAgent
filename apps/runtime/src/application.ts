@@ -64,7 +64,7 @@ export type {F10BoundFinding,F10ClaimReview,F10SupportedClaimsOptions} from './a
 export {createRuntimeF03ReconciliationHost} from './application/workflow-f03-reconciliation-host.js';
 export {createF24KnowledgeReconciliationPorts} from './application/workflow-f24-knowledge-ports.js';
 export {verifyF11ConfirmedCalendarAndReminder} from './application/workflow-f11-calendar-receipt-guard.js';
-export {createRuntimeF11CalendarChangeHost,createRuntimeF11PlanGuards,createRuntimeF11WeatherSourceHost} from './application/workflow-f11-calendar-graph-host.js';
+export {createRuntimeF11CalendarChangeHost,createRuntimeF11PlanGuards,createRuntimeF11WeatherSourceHost,createRuntimeF11DecisionQuestionHost} from './application/workflow-f11-calendar-graph-host.js';
 export type {F11CalendarChangeBinding,F11CalendarChangeGuardOptions} from './application/workflow-f11-calendar-receipt-guard.js';
 export {createRuntimeF21SourceManifestHost,createRuntimeF21ProtocolHealthHost} from './application/workflow-f21-skill-graph-host.js';
 export {createRuntimeF25OutboundContextHost} from './application/workflow-f25-outbound-graph-host.js';

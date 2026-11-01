@@ -10,6 +10,37 @@ type Reminder={todoId:string;revision:number;scheduleId:string;conversationId:st
 type Input={update:Record<string,unknown>;reminder:Reminder};
 type GuardOptions=NonNullable<Parameters<typeof verifyF11ConfirmedCalendarAndReminder>[0]>;
 
+/** N04 reads an explicit business decision. Accept does not grant either subsequent write. */
+export function createRuntimeF11DecisionQuestionHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;inputSchema:ToolDescriptor['inputSchema'];
+  requestDecision:(scope:Scope,context:ToolContext)=>Promise<{decision:'accept'|'decline'}>;
+  readDecision:(scope:Scope)=>{decision:'accept'|'decline'};
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;now:()=>Date;
+}):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
+  if(!options?.application?.runtime||!options.inputSchema||typeof options.requestDecision!=='function'||typeof options.readDecision!=='function'
+    ||typeof options.assertCurrent!=='function'||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
+    return {tools:[],unavailable:'f11_original_decision_question_unavailable'};
+  const runtime=options.application.runtime;
+  const active=(context:ToolContext,args:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F11',nodeId:'F11_N04',
+    hostToolName:'workflow.host.f11_n04',proposalArguments:args,assertCurrent:options.assertCurrent,now:options.now});
+  const tool=createOwnedWorkflowAdapter({nodeId:'F11_N04',kind:'host',sideEffect:'read',requiredScopes:['calendar:read','todo:read'],
+    inputSchema:structuredClone(options.inputSchema),outputSchema:{type:'object',additionalProperties:false,required:['decision'],
+      properties:{decision:{type:'string',enum:['accept','decline']}}},
+    async execute(args,context){const scope=active(context,args),result=await options.requestDecision(scope,context);active(context,args);
+      if(!isDeepStrictEqual(result,options.readDecision(scope)))failOwnedHost('UNAUTHORIZED','F11 original business answer changed');return result;}});
+  return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
+    const args=(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown}|undefined)?.arguments;
+    const scope=active(context,args),saved=options.application.readHostToolTask(context.taskId);
+    if(saved.task.state!=='succeeded'||saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f11_n04'
+      ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)
+      ||!isDeepStrictEqual(saved.confirmed.result,result)||!isDeepStrictEqual(options.readDecision(scope),result))
+      failOwnedHost('UNAUTHORIZED','F11 original decision receipt unavailable');
+    if(await options.authorizeExport(scope,result)!==true)failOwnedHost('UNAUTHORIZED','F11 decision export denied');
+    active(context,args);if(!isDeepStrictEqual(options.readDecision(scope),result))failOwnedHost('REVISION_CONFLICT','F11 decision changed during export');
+  }};
+}
+
 /** The existing F11 input node binds a published forecast or an explicit plan without weather. */
 export function createRuntimeF11WeatherSourceHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;inputSchema:ToolDescriptor['inputSchema'];

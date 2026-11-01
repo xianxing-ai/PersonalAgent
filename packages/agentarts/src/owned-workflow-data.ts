@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: efa523adae64de6fff0fd5d6fc4fc0487308ab85ae88103a6bea8d6b57a4c211
+// Source projection sha256: bdbe80816dfbcce223717c1f35d9c40ec2bd84f4323165d876bd7821d925dc3a
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -2332,7 +2332,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F11_N04",
-        "label": "仅真正缺决定时主动语音补问",
+        "label": "仅真正缺决定时主动语音或文字补问",
         "kind": "wait_user",
         "dependencies": [
           "F11_N03"
@@ -2346,9 +2346,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "question"
         ],
         "outputFields": [
-          "userConfirmed"
+          "decision"
         ],
-        "condition": "关键决定缺失或条件不明确时补问；完整显式方案无需重复问决定，写入仍逐项经过原Policy审批",
+        "condition": "关键决定缺失时绑定原方案明确采用或拒绝；完整显式方案无需重复问决定，答复不签发工具授权",
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
@@ -2372,7 +2372,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "calendarUpdated",
           "oldTrafficAlarmVoided"
         ],
-        "condition": "完整显式方案或补问有效回答已绑定原事件与提醒；进入原Policy逐项审批，不由条件守卫签发授权",
+        "condition": "完整显式方案或补问明确采用已绑定原事件与提醒；拒绝则跳过写入，采用仍进入原Policy逐项审批",
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "joinMode": "selected"
       }

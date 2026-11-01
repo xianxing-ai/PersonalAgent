@@ -27,7 +27,7 @@ const canonicalInstant=value=>{
 
 /** Fixed business graph composition. The caller supplies the pinned image separately.
  * This facade resolves the real application only at execution, before any Runtime exists at startup. */
-export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,
+export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,
   competitionToolExports=[],prepareCompetitionToolExport,authorizeExport,readBusinessAvailability,now=Date.now}={}) {
   const tools=[],hosts=[],configuredWorkflowWorkerPorts=[],unavailable=[];
   if(!runtimeModule||typeof getApplication!=='function'||typeof authorizeExport!=='function'
@@ -117,14 +117,14 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       fail('UNAUTHORIZED','Business graph result exceeds the original export projection');
     return projection;
   }
-  function child(workflowId,mappings,projectedActions=[]) {
+  function child(workflowId,mappings,projectedActions=[],assertSource) {
     let bridge,originalApplication;
     const getBridge=()=>{
       if(originalApplication&&originalApplication!==getApplication())fail('REVISION_CONFLICT','Original business Runtime changed');
       if(bridge)return bridge;
       originalApplication=getApplication();
       bridge=runtimeModule.createWorkflowBusinessToolBridge({application:originalApplication,now:()=>new Date(now()),
-      assertCurrent:scope=>{binding(workflowId,scope);},
+      assertCurrent:scope=>{binding(workflowId,scope);assertSource?.(scope);},
       resolveTool(request,scope){
         const bound=binding(workflowId,scope),mapping=mappings[request.actionKey];
         if(!mapping)fail('UNAUTHORIZED','Business action is not host configured');
@@ -150,7 +150,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     }
     const inputSchema={...requestSchema,properties:{...requestSchema.properties,businessBindingId:text},required:[...requestSchema.required,'businessBindingId']};
     const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
-      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v4':workflowId==='F11'?'business-20261101-f11-v3':workflowId==='F08'?'business-20261101-f08-v2':'business-20261031-v1',
+      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v4':workflowId==='F11'?'business-20261101-f11-v4':workflowId==='F08'?'business-20261101-f08-v2':'business-20261031-v1',
       requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:workflowId==='F12'?['/trigger']:workflowId==='F11'&&requestSchema.properties.weather?['/weather/query/units']
         :workflowId==='F08'?['sourceId','configRevision','query'].filter(key=>Array.isArray(requestSchema.properties.knowledge?.properties?.[key]?.enum)).map(key=>'/knowledge/'+key):[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
@@ -221,6 +221,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         if(!isDeepStrictEqual(bound.input,scope.input)||getOwnedWorkflowTemplate(workflowId).nodes.some(node=>node.required
           &&!(workflowId==='F06'&&node.id==='F06_N05'&&scope.state.result?.nodes[node.id]?.state==='skipped'
             &&operation(bound,node.id,'workflow.guard.f06_n05')?.result.state==='skipped')
+          &&!(workflowId==='F11'&&node.id==='F11_N05'&&scope.state.result?.nodes[node.id]?.state==='skipped'
+            &&operation(bound,node.id,'workflow.guard.f11_n05')?.result.state==='skipped')
           &&(scope.state.result?.nodes[node.id]?.state!=='completed'||!['input','assemble'].includes(node.kind)&&!completedNode(bound,node.id))))
           fail('RESULT_UNKNOWN','Business workflow required nodes are incomplete');
         const result=await complete(scope,bound);current(workflowId,scope,scope.input);return result;
@@ -319,6 +321,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     &&runtimeModule.createRuntimeF11CalendarChangeHost&&runtimeModule.createRuntimeF11PlanGuards&&runtimeModule.createRuntimeF11WeatherSourceHost){
     const weatherTool=descriptor('weather.forecast'),weatherEnabled=!!weatherTool&&competitionToolExports.some(policy=>policy.toolName===weatherTool.name&&policy.toolVersion===weatherTool.version);
     const locationEnabled=typeof f11LocationQuestion?.requestLocation==='function'&&typeof f11LocationQuestion?.readResolvedQuery==='function';
+    const decisionEnabled=typeof f11DecisionQuestion?.requestDecision==='function'&&typeof f11DecisionQuestion?.readDecision==='function'
+      &&typeof runtimeModule.createRuntimeF11DecisionQuestionHost==='function';
     const f11Schema=object({calendarReadArguments:structuredClone(f07Schema.properties.calendarReadArguments),
       update:{...structuredClone(descriptor('calendar.update').inputSchema),minProperties:2},
       reminder:object({todoId:text,revision:{type:'integer',minimum:1},scheduleId:text,conversationId:text}),
@@ -357,8 +361,9 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         ||!isDeepStrictEqual(context.predecessors?.F11_N02,operation(bound,'F11_N02','calendar.events')?.result))
         fail('UNAUTHORIZED','F11 decision did not consume the original weather and calendar sources');
       const value=context.candidateValues?.find(candidate=>candidate.id===selected.result.selectedId)?.value;
-      if(!value||value.requiresVoiceConfirm!==false||!isDeepStrictEqual(value.recommendedAlternative,{update:bound.input.update,reminder:bound.input.reminder}))
-        fail('UNSUPPORTED_CAPABILITY','F11 missing decisions require an original voice clarification source');
+      if(!value||typeof value.requiresVoiceConfirm!=='boolean'||value.requiresVoiceConfirm&&!decisionEnabled
+        ||!isDeepStrictEqual(value.recommendedAlternative,{update:bound.input.update,reminder:bound.input.reminder}))
+        fail('UNSUPPORTED_CAPABILITY','F11 missing decisions require an original explicit clarification source');
       return value;
     };
     const sourcePlan=(bound,scope)=>{
@@ -378,13 +383,25 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       }
       selectedValue(bound);return result.sourceVersion;
     };
+    const readDecision=scope=>({decision:f11DecisionQuestion.readDecision({parentTaskId:scope.parentTaskId??scope.taskId,
+      sessionId:scope.sessionId??scope.state?.sessionId,deadline:scope.deadline,signal:scope.signal}).decision});
+    const confirmedDecision=(scope,bound)=>{
+      const op=operation(bound,'F11_N04','workflow.host.f11_n04'),result=readDecision(scope);
+      if(!op||!isDeepStrictEqual(op.result,result)||!isDeepStrictEqual(runtime.loadCheckpoint(op.localTaskId,'host-tool-intent')?.arguments,
+        {update:bound.input.update,reminder:bound.input.reminder}))fail('UNAUTHORIZED','F11 original business decision receipt unavailable');
+      return result.decision;
+    };
+    const acceptedDecision=scope=>{const bound=binding('F11',scope);
+      if(selectedValue(bound).requiresVoiceConfirm&&confirmedDecision(scope,bound)!=='accept')fail('UNAUTHORIZED','F11 original plan was not accepted');};
     const bridge=child('F11',{
       'f11.calendar.recheck':input=>['F11_N05','calendar.events',input.calendarReadArguments],
       'f11.calendar.update':input=>['F11_N05','calendar.update',input.update],
       'f11.reminder.clear':input=>['F11_N05','todo.update',{id:input.reminder.todoId,expectedRevision:input.reminder.revision,clearReminder:true}],
       'f11.weather.source':(input,scope)=>['F11_N01','weather.forecast',weatherQuery(input,scope)],
       'f11.weather.recheck':(input,scope)=>['F11_N05','weather.forecast',weatherQuery(input,scope)],
-    },['f11.weather.source','f11.weather.recheck']);
+    },['f11.weather.source','f11.weather.recheck'],scope=>{
+      if(runtime.loadCheckpoint(scope.localTaskId,'host-tool-intent')?.toolName==='workflow.host.f11_n05')acceptedDecision(scope);
+    });
     const ports=createF11CalendarWorkflowPorts({getApplication,bridge,todoHost,authorizeExport:receiptExport('F11'),now});
     const hostOptions={...ports,application,assertCurrent:scope=>{binding('F11',scope);},now:()=>new Date(now())};
     addHost(runtimeModule.createRuntimeF11WeatherSourceHost({...hostOptions,inputSchema:object(weatherEnabled?{weather:f11Schema.properties.weather}:{},[]),
@@ -402,15 +419,27 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         verifyForecast(binding('F11',scope),receipt.result,scope);
         if(!isDeepStrictEqual(result,{sourceKind:'forecast',weather:projection}))fail('UNAUTHORIZED','F11 weather result exceeds the original public projection');
       }}));
+    if(decisionEnabled)addHost(runtimeModule.createRuntimeF11DecisionQuestionHost({...hostOptions,
+      inputSchema:object({update:f11Schema.properties.update,reminder:f11Schema.properties.reminder}),authorizeExport:receiptExport('F11'),readDecision,
+      async requestDecision(scope,context){
+        let bound=binding('F11',scope);sourcePlan(bound,scope);
+        if(!selectedValue(bound).requiresVoiceConfirm||operation(bound,'F11_N04','workflow.guard.f11_n04')?.result.state!=='selected')
+          fail('UNAUTHORIZED','F11 original plan does not request a decision');
+        await f11DecisionQuestion.requestDecision(scope,context);bound=binding('F11',scope);sourcePlan(bound,scope);
+        if(!await ports.verifyPlan(scope,{update:bound.input.update,reminder:bound.input.reminder}))fail('REVISION_CONFLICT','F11 original plan changed during question');
+        return readDecision(scope);
+      }}));
     addHost(runtimeModule.createRuntimeF11PlanGuards({...hostOptions,requiredScopes:['calendar:read','todo:read'],
       async resolvePlanGuard(scope,nodeId){
         const bound=binding('F11',scope);sourcePlan(bound,scope);
         if(!await ports.verifyPlan(scope,{update:bound.input.update,reminder:bound.input.reminder}))fail('REVISION_CONFLICT','F11 original reminder plan changed');
-        if(nodeId==='F11_N04')return 'skipped';
-        if(operation(bound,'F11_N04','workflow.guard.f11_n04')?.result.state!=='skipped')fail('UNAUTHORIZED','F11 original clarification condition missing');
-        return 'selected';
+        const needed=selectedValue(bound).requiresVoiceConfirm;
+        if(nodeId==='F11_N04')return needed?'selected':'skipped';
+        if(operation(bound,'F11_N04','workflow.guard.f11_n04')?.result.state!==(needed?'selected':'skipped'))fail('UNAUTHORIZED','F11 original clarification condition missing');
+        return !needed||confirmedDecision(scope,bound)==='accept'?'selected':'skipped';
       }}));
     addHost(runtimeModule.createRuntimeF11CalendarChangeHost({...hostOptions,
+      assertCurrent:scope=>{binding('F11',scope);acceptedDecision(scope);},
       calendarUpdate:businessTools.find(tool=>tool.descriptor.name==='calendar.update'),
       requiredScopes:[...new Set([...descriptor('calendar.update').requiredScopes,...descriptor('todo.update').requiredScopes])],
       async verifyPlan(scope,input){sourcePlan(binding('F11',scope),scope);return ports.verifyPlan(scope,input);},
@@ -435,21 +464,35 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       return runtimeModule.verifyF11ConfirmedCalendarAndReminder({application,...ports},scope,original);
     };
     config('F11',f11Schema,['decision.choose_candidate','calendar.events','calendar.update','todo.update',...(weatherEnabled?['weather.forecast']:[]),
-      'workflow.host.f11_n01','workflow.guard.f11_n04','workflow.guard.f11_n05','workflow.host.f11_n05'],object({eventId:text,calendarUpdated:{const:true},oldTrafficAlarmVoided:{const:true}}),
+      'workflow.host.f11_n01',...(decisionEnabled?['workflow.host.f11_n04']:[]),'workflow.guard.f11_n04','workflow.guard.f11_n05','workflow.host.f11_n05'],
+      {...object({eventId:text,calendarUpdated:{type:'boolean'},oldTrafficAlarmVoided:{type:'boolean'},...(decisionEnabled?{decision:{const:'declined'}}:{})},
+        ['eventId','calendarUpdated','oldTrafficAlarmVoided']),oneOf:[object({eventId:text,calendarUpdated:{const:true},oldTrafficAlarmVoided:{const:true}}),
+        ...(decisionEnabled?[object({eventId:text,calendarUpdated:{const:false},oldTrafficAlarmVoided:{const:false},decision:{const:'declined'}})]:[])]},
       async(scope,bound)=>{
         const {proposal}=scope;
         if(proposal.nodeId==='F11_N01'&&proposal.toolName==='workflow.host.f11_n01')return isDeepStrictEqual(proposal.arguments,sourceInput(bound));
         if(proposal.nodeId==='F11_N02'&&proposal.toolName==='calendar.events')return isDeepStrictEqual(proposal.arguments,bound.input.calendarReadArguments);
         sourcePlan(bound,scope);
         if(['F11_N04','F11_N05'].includes(proposal.nodeId)&&proposal.toolName==='workflow.guard.'+proposal.nodeId.toLowerCase()){
-          const predecessors=proposal.nodeId==='F11_N04'?{F11_N03:selectedValue(bound)}:{F11_N03:selectedValue(bound),F11_N04:null};
-          const states=proposal.nodeId==='F11_N04'?{F11_N03:'completed'}:{F11_N03:'completed',F11_N04:'skipped'};
+          const needs=selectedValue(bound).requiresVoiceConfirm;
+          const predecessors=proposal.nodeId==='F11_N04'?{F11_N03:selectedValue(bound)}:{F11_N03:selectedValue(bound),F11_N04:needs?readDecision(scope):null};
+          const states=proposal.nodeId==='F11_N04'?{F11_N03:'completed'}:{F11_N03:'completed',F11_N04:needs?'completed':'skipped'};
           return isDeepStrictEqual(proposal.arguments,{workflowId:'F11',nodeId:proposal.nodeId,input:bound.input,predecessorOutputs:predecessors,predecessorStates:states});
         }
+        if(proposal.nodeId==='F11_N04'&&proposal.toolName==='workflow.host.f11_n04')return decisionEnabled
+          &&operation(bound,'F11_N04','workflow.guard.f11_n04')?.result.state==='selected'
+          &&isDeepStrictEqual(proposal.arguments,{update:bound.input.update,reminder:bound.input.reminder});
         return proposal.nodeId==='F11_N05'&&proposal.toolName==='workflow.host.f11_n05'
           &&operation(bound,'F11_N05','workflow.guard.f11_n05')?.result.state==='selected'
           &&isDeepStrictEqual(proposal.arguments,{update:bound.input.update,reminder:bound.input.reminder});
       },async(scope,bound)=>{
+        if(selectedValue(bound).requiresVoiceConfirm&&confirmedDecision(scope,bound)==='decline'){
+          if(operation(bound,'F11_N05','workflow.guard.f11_n05')?.result.state!=='skipped'||operation(bound,'F11_N05','workflow.host.f11_n05'))
+            fail('UNAUTHORIZED','F11 declined plan has an unexpected write');
+          const result={eventId:bound.input.update.externalId??bound.input.update.uid,calendarUpdated:false,oldTrafficAlarmVoided:false,decision:'declined'};
+          runtime.saveCheckpointOnce(scope.taskId,'business-workflow:F11:completion',{sessionId:scope.state.sessionId,result});
+          return {result,resultSummary:'Original business plan declined; no calendar or reminder write'};
+        }
         const result=operation(bound,'F11_N05','workflow.host.f11_n05')?.result;
         if(result?.calendarUpdated!==true||result.oldTrafficAlarmVoided!==true)fail('RESULT_UNKNOWN','F11 original change receipt unavailable');
         await verifyChange({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId});
@@ -459,6 +502,13 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       },async scope=>{
         const original=runtime.loadCheckpoint(scope.taskId,'business-workflow:F11:completion');
         if(!original||!isDeepStrictEqual(original.result,scope.value))fail('UNAUTHORIZED','F11 original completion changed');
+        if(original.result.decision==='declined'){
+          const own={...scope,parentTaskId:scope.taskId,sessionId:original.sessionId},bound=binding('F11',own);sourcePlan(bound,own);
+          if(confirmedDecision(own,bound)!=='decline'||operation(bound,'F11_N05','workflow.guard.f11_n05')?.result.state!=='skipped'
+            ||operation(bound,'F11_N05','workflow.host.f11_n05')||!await ports.verifyPlan(own,{update:bound.input.update,reminder:bound.input.reminder}))
+            fail('REVISION_CONFLICT','F11 declined plan or original reminder changed');return;
+        }
+        acceptedDecision({...scope,parentTaskId:scope.taskId,sessionId:original.sessionId});
         await verifyChange({...scope,parentTaskId:scope.taskId,sessionId:original.sessionId});
       });
     unavailable.push('f11_missing_decision_voice_source_unavailable');
