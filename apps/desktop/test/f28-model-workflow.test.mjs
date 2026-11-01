@@ -14,7 +14,7 @@ test('F28 actual graph uses original guarded ModelGateway calls and retains unve
   // safeStorage, HTTP, candidate selection and human responses are explicit Fixtures.
   const directory=await mkdtemp(join(tmpdir(),'pa-f28-'));let app,returned;
   const privateGoal='Synthetic private original F28 goal',privateCandidate='Synthetic private model candidate';
-  const sent=[],modelApprovals=[],exports=[],imageRequests=[],proposals=[];
+  const sent=[],modelApprovals=[],exports=[],imageRequests=[],proposals=[],n12Tools=[];let leafCalls=0;
   const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:buffer=>Buffer.from(buffer).reverse().toString()};
   const fetchImpl=async(_url,options)=>{
     const payload=JSON.parse(options.body);sent.push(payload);
@@ -40,14 +40,26 @@ test('F28 actual graph uses original guarded ModelGateway calls and retains unve
   const image={bindingId:'synthetic-f28-actual-engine',receiptSecret:async()=>secret,advance:async request=>{
     imageRequests.push(structuredClone({...request,signal:undefined}));const result=await engine.advance(request);proposals.push(...result.proposals);return result;}};
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
+    getToolsForSubtask:(subtask,worker)=>factory.getToolsForSubtask(subtask,worker,app.tools),
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
-  const tools=[dispatch,createWorkflowDecisionTool({selector:{select:async()=> 'supported'}}),...factory.tools];
+  const leaf={descriptor:{name:'synthetic.f28.read',version:'1.0.0',inputSchema:{type:'object',additionalProperties:false,properties:{},required:[]},
+    outputSchema:{type:'object',additionalProperties:false,properties:{observed:{type:'boolean'}},required:['observed']},sideEffect:'read',requiredScopes:['synthetic:read'],
+    idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async()=>{leafCalls++;return {observed:true};}};
+  const excluded={...leaf,descriptor:{...leaf.descriptor,name:'synthetic.f28.other'},execute:async()=>assert.fail('unbound sibling tool must not run')};
+  const tools=[dispatch,createWorkflowDecisionTool({selector:{select:async()=> 'supported'}}),leaf,excluded,...factory.tools];
   app=createRuntimeApplication({path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-f28',delegateUserTasks:true,
-    coordinationBinding:'synthetic-f28-deployment',tools,configuredWorkflowWorkers:factory.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),
+    coordinationBinding:'synthetic-f28-deployment',tools,getToolsForSubtask:factory.getToolsForSubtask,
+    configuredWorkflowWorkers:factory.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),
     automaticTools:[{toolName:dispatch.descriptor.name,toolVersion:'1.0.0'}],coordination:{execute:async request=>{
+      if(app.runtime.loadCheckpoint(request.taskId,'f28:tool-scope-origin')){
+        n12Tools.push((request.availableTools??[]).map(tool=>tool.name));
+        return request.continuation?{kind:'text',text:'Synthetic original read observed',verification:'mock'}
+          :{kind:'tool_proposal',proposalId:'synthetic-f28-original-read',toolName:leaf.descriptor.name,toolVersion:'1.0.0',arguments:{},verification:'mock'};
+      }
       if(request.continuation){if(request.continuation.result?.state==='candidate_only')returned=request.continuation.result;
         return {kind:'text',text:'Synthetic local candidate references',verification:'mock'};}
-      return {kind:'tool_proposal',proposalId:'synthetic-f28-candidates',toolName:'workflow.f28.model_candidates',toolVersion:'1.0.0',arguments:{},verification:'mock'};
+      return {kind:'tool_proposal',proposalId:'synthetic-f28-candidates',toolName:'workflow.f28.model_candidates',toolVersion:'1.0.0',
+        arguments:{toolExecution:{tools:[{name:leaf.descriptor.name,version:'1.0.0'}],maxSteps:4}},verification:'mock'};
     }},competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
@@ -66,7 +78,16 @@ test('F28 actual graph uses original guarded ModelGateway calls and retains unve
   assert.equal(sent.length,3);assert.equal(modelApprovals.length,3);
   assert.equal(JSON.stringify(sent).includes(privateGoal),true);assert.equal(JSON.stringify(sent[2]).includes(privateCandidate),true);
   assert.equal(returned.sourcesSupported,'unverified');assert.equal(returned.tests,'not_run');assert.equal(returned.nativeCapabilityVerification,'unverified');
-  assert.deepEqual(proposals.filter(p=>p.toolName.startsWith('workflow.host.')).map(p=>p.nodeId),['F28_N03','F28_N06','F28_N07','F28_N08','F28_N10','F28_N11']);
+  const hostOrder=proposals.filter(p=>p.toolName.startsWith('workflow.host.')).map(p=>p.nodeId);
+  assert.deepEqual([...hostOrder].sort(),['F28_N03','F28_N06','F28_N07','F28_N08','F28_N10','F28_N11','F28_N12'].sort());
+  assert.equal(hostOrder.indexOf('F28_N12')<hostOrder.indexOf('F28_N10'),true);
+  assert.equal(leafCalls,1);assert.equal(returned.toolExecution.state,'completed');assert.equal(returned.toolExecution.actualToolCalls,1);
+  assert.deepEqual(n12Tools[0],['synthetic.f28.read']);assert.ok(n12Tools.every(names=>names.every(name=>name==='synthetic.f28.read')));
+  const toolChild=returned.toolExecution.taskId;assert.equal(app.readToolConversation(toolChild),'f28-chat');
+  assert.equal(app.runtime.readToolExecutions(toolChild)[0].policyDecision,'allow');
+  const expectedRevision=app.runtime.getTask(child.taskId).revision;
+  assert.equal(factory.readLocalCandidates({taskId:child.taskId,conversationId:'f28-chat',expectedRevision}).candidates.length,3);
+  assert.throws(()=>factory.readLocalCandidates({taskId:child.taskId,conversationId:'other-chat',expectedRevision}),{code:'UNAUTHORIZED'});
   assert.equal(JSON.stringify({exports,imageRequests}).includes(privateGoal),false);
   assert.equal(JSON.stringify({exports,imageRequests}).includes(privateCandidate),false);
   for(const node of ['F28_N06','F28_N07','F28_N08']){

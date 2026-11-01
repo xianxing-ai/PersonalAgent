@@ -1,6 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
-import {createF28ModelCandidateWorkflowPorts} from '@personal-agent/runtime/application';
+import {createF28ModelCandidateWorkflowPorts,readF28LocalModelCandidates,restrictF28SubagentTools} from '@personal-agent/runtime/application';
 
 /** Original saved model settings select endpoints; saving never verifies support. */
 export function createDesktopF28WorkflowWorkerPorts({getApplication,modelApiHost,authorizeExport,confirmModelExport}={}) {
@@ -18,7 +18,7 @@ export function createDesktopF28WorkflowWorkerPorts({getApplication,modelApiHost
     return {id:entry.id,configurationRef:entry.configurationRef,destination:{provider:entry.provider,baseUrl:entry.baseUrl,model:entry.model,
       modelId:entry.id,configurationRef:entry.configurationRef},deployment:structuredClone(gateway.deployment)};
   };
-  return createF28ModelCandidateWorkflowPorts({application,authorizeExport,confirmModelExport,
+  const ports=createF28ModelCandidateWorkflowPorts({application,getApplication,authorizeExport,confirmModelExport,
     readModels(selection={}){const defaultId=modelApiHost.snapshot().defaultId;
       return Object.fromEntries(['research','analysis','coder'].map(role=>[role,readModel(selection[role]??defaultId)]));},
     async complete(model,request,beforeSend){
@@ -28,4 +28,6 @@ export function createDesktopF28WorkflowWorkerPorts({getApplication,modelApiHost
       if(!gateway)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original guarded ModelGateway unavailable');
       const result=await gateway.complete(request);current();return result;
     }});
+  return {...ports,getToolsForSubtask:(subtask,worker,tools)=>restrictF28SubagentTools(application,subtask,worker,tools),
+    readLocalCandidates:request=>readF28LocalModelCandidates(application,request)};
 }

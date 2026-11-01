@@ -122,11 +122,14 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       &&feature.edges.some(edge=>edge.source==='F24_N11'&&edge.target===node.id))dependencies.push('F24_N11');
     // Optional expansion evidence must be settled before F05 can draft an answer.
     if(node.id==='F05_N04'&&!dependencies.includes('F05_N06'))dependencies.push('F05_N06');
+    // Optional original tool exploration must settle before F28 completion checks.
+    if(node.id==='F28_N10'&&!dependencies.includes('F28_N12'))dependencies.push('F28_N12');
     // Optional F01 outcomes must settle before publishing the original plan outcome.
     if(node.id==='F01_N06')for(const id of ['F01_N07','F01_N08','F01_N09'])if(!dependencies.includes(id))dependencies.push(id);
     return {id:node.id,label:node.label,designKind:node.kind,kind,
       dependencies:dependencies.map(nodeId=>({nodeId,
-        required:node.id==='F01_N06'&&['F01_N07','F01_N08','F01_N09'].includes(nodeId)||node.id==='F05_N04'&&nodeId==='F05_N06'?false:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
+        required:node.id==='F01_N06'&&['F01_N07','F01_N08','F01_N09'].includes(nodeId)||node.id==='F05_N04'&&nodeId==='F05_N06'
+          ||node.id==='F28_N10'&&nodeId==='F28_N12'?false:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
       ...(['F01_N07','F01_N08','F01_N09','F02_N09','F03_N07','F03_N08','F03_N09','F03_N10','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'

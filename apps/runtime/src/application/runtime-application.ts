@@ -3,6 +3,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
 import {assertWorkflowBusinessToolInvocation} from './workflow-business-tool-bridge.js';
+import {assertF28SubagentToolInvocation} from './workflow-f28-tool-scope.js';
 import {createRuntimeCodingDecisionTool} from './coding-decision-tool.js';
 import type {AgentToolPort} from '@personal-agent/agents';
 import type {SubtaskDefinition} from '@personal-agent/agents';
@@ -883,6 +884,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return {list:()=>gateway!.list(),invoke:invocation=>{
           this.assertPlanExecutionCurrent(invocation.taskId,invocation);
           assertWorkflowBusinessToolInvocation(this,invocation);
+          assertF28SubagentToolInvocation(this,invocation);
           let userPresent=false;try{userPresent=options.isUserPresent?.(invocation.taskId)===true;}catch{/* Missing presence is never inferred. */}
           return gateway!.invoke({...invocation,userPresent});
         }};
@@ -4940,7 +4942,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
     if (this.runtime.loadCheckpoint(taskId, HOST_TOOL_CHECKPOINT) !== undefined) {
       const runId = `host-tool-${taskId}`;
-      if (this.runtime.getApproval(runId).state !== 'allowed') throw new ProtocolError('UNAUTHORIZED', 'Host tool is not approved');
+      if (!this.confirmedSubagentWait(taskId) && this.runtime.getApproval(runId).state !== 'allowed')
+        throw new ProtocolError('UNAUTHORIZED', 'Host tool is not approved');
       this.dispatchHostToolTask(taskId, true);
       return;
     }
@@ -5056,7 +5059,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return;
     }
     if(this.confirmedSubagentWait(binding.parentTaskId)) {
-      if(this.runtime.getTask(binding.parentTaskId).state==='waiting_reconciliation')this.resumeConfirmedTask(binding.parentTaskId);
+      if(this.runtime.getTask(binding.parentTaskId).state==='waiting_reconciliation'
+        &&this.runtime.loadCheckpoint(binding.parentTaskId,HOST_TOOL_CHECKPOINT)===undefined)this.resumeConfirmedTask(binding.parentTaskId);
       else if(this.runtime.getTask(binding.parentTaskId).state==='waiting_approval')this.resumeTask(binding.parentTaskId);
     }
   }
@@ -5226,16 +5230,21 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (!wait || typeof wait.runId !== 'string') return false;
     const loop = this.runtime.loadCheckpoint(taskId, 'competition-loop') as
       {step?: number; pending?: {toolName?: string; toolVersion?: string; arguments?: Record<string, unknown>}} | undefined;
-    if (wait.runId !== `competition-tool-${taskId}-${loop?.step}`
-      || !loop?.pending?.toolName || !isRuntimeDispatchTool(loop.pending.toolName) || loop.pending.toolVersion !== wait.toolVersion
-      || !loop.pending.arguments || toolArgumentsDigest(loop.pending.arguments) !== wait.argumentsDigest) return false;
+    const host=this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT) as HostToolIntent|undefined;
+    const pending=host??loop?.pending;
+    // A trusted host dispatch resumes the same confirmed invocation after its
+    // original children finish; the cached dispatch is never executed twice.
+    if(host&&(host.namespace!==this.hostUserNamespace||host.argumentsDigest!==toolArgumentsDigest(host.arguments)))return false;
+    if (wait.runId !== (host?`host-tool-${taskId}`:`competition-tool-${taskId}-${loop?.step}`)
+      || !pending?.toolName || !isRuntimeDispatchTool(pending.toolName) || pending.toolVersion !== wait.toolVersion
+      || !pending.arguments || toolArgumentsDigest(pending.arguments) !== wait.argumentsDigest) return false;
     const record = this.runtime.readToolExecutions(taskId).find(item => item.evidenceId === wait.runId);
     if (!record || record.state !== 'confirmed' || !record.executionStarted || record.policyDecision !== 'allow'
-      || record.toolName !== loop.pending.toolName || record.toolVersion !== wait.toolVersion
-      || !this.runtime.matchesToolExecutionInput(record, {arguments: loop.pending.arguments, scopeRef: wait.runId})) return false;
+      || record.toolName !== pending.toolName || record.toolVersion !== wait.toolVersion
+      || !this.runtime.matchesToolExecutionInput(record, {arguments: pending.arguments, scopeRef: wait.runId})) return false;
     const children=this.subagentTaskSnapshots(taskId)
       .filter(child=>readRuntimeSubagentSibling(this.runtime,child.taskId)===undefined);
-    const subtasks=loop.pending.arguments.subtasks;
+    const subtasks=pending.arguments.subtasks;
     return Array.isArray(subtasks) && subtasks.length>0 && children.length===subtasks.length
       && children.every(child=> {
         const binding=this.runtime.loadCheckpoint(child.taskId,'subtask-parent') as {subtaskId?:string;parentTaskId?:string;goal?:string}|undefined;
