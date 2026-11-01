@@ -16,7 +16,7 @@ const schema=object({selection:object({repo:{type:'string',pattern:'^[A-Za-z0-9]
 
 /** Main-only native preference source. Configuration contains no result,
  * approval, credential or task/run identity and grants no permission. */
-export function createF18ReviewConfiguration({userData,safeStorage,readRepositoryBinding}={}){
+export function createF18ReviewConfiguration({userData,safeStorage,readRepositoryBinding,selectFile}={}){
   if(!path.isAbsolute(userData??'')||typeof safeStorage?.isEncryptionAvailable!=='function'
     ||typeof safeStorage.encryptString!=='function'||typeof safeStorage.decryptString!=='function'||typeof readRepositoryBinding!=='function')fail();
   const file=path.join(userData,'f18-review-selection.json');let saved,closed=false;
@@ -60,6 +60,25 @@ export function createF18ReviewConfiguration({userData,safeStorage,readRepositor
   }catch{saved=undefined;}
   const current=()=>{if(closed||!safeStorage.isEncryptionAvailable())fail();assertDirectory();return valid(saved);};
   const host={
+    async selectFromNativeDialog(){
+      if(closed||typeof selectFile!=='function')fail();
+      const binding=repositoryBinding(),revision=saved?.revision,selected=await selectFile();
+      if(!selected)return {cancelled:true};
+      if(closed||revision!==saved?.revision||typeof selected!=='string'||!path.isAbsolute(selected)||!isDeepStrictEqual(binding,repositoryBinding()))fail();
+      const entry=lstatSync(selected);if(!entry.isFile()||entry.isSymbolicLink())fail();
+      const fd=openSync(selected,constants.O_RDONLY|(constants.O_NOFOLLOW??0));let configuration;
+      try{
+        const stat=fstatSync(fd);if(!stat.isFile()||stat.nlink!==1||stat.size>65536||stat.dev!==entry.dev||stat.ino!==entry.ino)fail();
+        const bytes=Buffer.alloc(65537);let size=0,count;
+        while(size<bytes.length&&(count=readSync(fd,bytes,size,bytes.length-size,null))>0)size+=count;
+        const after=fstatSync(fd),current=lstatSync(selected);
+        if(size>65536||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs||after.ctimeMs!==stat.ctimeMs
+          ||current.isSymbolicLink()||current.dev!==after.dev||current.ino!==after.ino)fail();
+        configuration=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes.subarray(0,size)));
+      }finally{closeSync(fd);}
+      if(!isDeepStrictEqual(binding,repositoryBinding()))fail();
+      return host.configureFromNativeSelection(configuration);
+    },
     configureFromNativeSelection(configuration){
       if(closed||!safeStorage.isEncryptionAvailable())fail();validateToolValue(schema,configuration);
       const next=valid({version:1,revision:randomUUID(),repositoryBinding:repositoryBinding(),configuration:structuredClone(configuration)});

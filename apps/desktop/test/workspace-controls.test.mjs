@@ -94,6 +94,18 @@ test('case selection keeps the original host snapshot when native selection fail
   assert.match(ui.fields['f17-state'].textContent,/original/);assert.match(ui.fields.status.textContent,/未完成/);
 });
 
+test('PR settings request native selection without renderer parameters and distinguish configuration from merge permission',async t=>{
+  const calls=[],ui=harness(t,async(action,input)=>{calls.push({action,input});return {coding:{configured:true,f18:{configured:true,
+    selectionAvailable:true,requiresRestart:true,repo:'<synthetic/repository>',prNumber:42}}};});
+  ui.render();assert.equal(ui.fields['f18-select'].disabled,true);
+  ui.render({f18:{selectionAvailable:true}});await ui.click('f18-select');
+  assert.deepEqual(calls,[{action:'coding.f18.select',input:undefined}]);
+  assert.match(ui.fields['f18-state'].textContent,/<synthetic\/repository> #42.*请重启/);
+  ui.render({f18:{configured:true,selectionAvailable:true,repo:'synthetic/repository',prNumber:42,requiresRestart:false}});
+  assert.match(ui.fields['f18-state'].textContent,/尚未授予合并许可/);assert.doesNotMatch(ui.fields['f18-state'].textContent,/合并成功|审核通过/);
+  ui.render({configured:false,f18:{selectionAvailable:true}});assert.equal(ui.fields['f18-select'].disabled,true);
+});
+
 test('workspace settled actions restore keyboard position only while origin remains valid and undisturbed',async t=>{
   let resolve,reject;const calls=[],ui=harness(t,action=>{calls.push(action);return new Promise((yes,no)=>{resolve=yes;reject=no;});});
   for(const name of ['select','revoke'])for(const outcome of ['success','failure','invalid']){

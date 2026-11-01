@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdir,mkdtemp,readFile,rm,symlink} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,rm,symlink,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createF18ReviewConfiguration} from '../electron/f18-review-config-host.js';
 import {createGitHubF18F19Tools} from '@personal-agent/github';
@@ -41,4 +41,31 @@ test('F18 native configuration pins repository, exact PR revision, CI and review
   const viaLink=createF18ReviewConfiguration({...options,userData:linked});assert.deepEqual(viaLink.snapshot(),{configured:false});
   assert.throws(()=>viaLink.configureFromNativeSelection(configuration),{code:'UNAUTHORIZED'});
   host.close();assert.deepEqual(host.snapshot(),{configured:false});
+});
+
+test('F18 native picker rejects oversized, injected or stale selections without replacing the original preference',async t=>{
+  const cache=resolve('.cache/f18-config');await mkdir(cache,{recursive:true});const userData=await mkdtemp(join(cache,'picker-'));
+  t.after(()=>rm(userData,{recursive:true,force:true}));let bindingId='original',selected,resolvePicker;
+  const host=createF18ReviewConfiguration({userData,
+    safeStorage:{isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()},
+    readRepositoryBinding:()=>({repository:'synthetic/repository',bindingId}),selectFile:()=>selected});
+  t.after(()=>host.close());
+  const configuration={selection:{repo:'synthetic/repository',prNumber:42,headSha:'a'.repeat(40),baseSha:'b'.repeat(40),mergeMethod:'merge'},
+    requiredChecks:['technical-ci'],eligibleReviewers:['reviewer']};
+  selected=join(userData,'selected.json');await writeFile(selected,JSON.stringify(configuration));
+  const saved=await host.selectFromNativeDialog();assert.equal(saved.configured,true);
+  assert.equal(saved.prNumber,42);assert.equal('selection' in saved,false,'paths, policy details and authorization are not renderer state');
+  for(const bytes of [' '.repeat(65537),JSON.stringify({...configuration,approved:true}),Buffer.from([0xff])]){
+    await writeFile(selected,bytes);await assert.rejects(host.selectFromNativeDialog());assert.deepEqual(host.snapshot(),saved);
+  }
+  await writeFile(selected,JSON.stringify(configuration));const file=selected;
+  selected=undefined;assert.deepEqual(await host.selectFromNativeDialog(),{cancelled:true});assert.deepEqual(host.snapshot(),saved);
+  selected='relative.json';await assert.rejects(host.selectFromNativeDialog(),{code:'UNAUTHORIZED'});
+  selected=new Promise(resolve=>{resolvePicker=resolve;});const changedBinding=host.selectFromNativeDialog();
+  bindingId='replacement';resolvePicker(file);await assert.rejects(changedBinding,{code:'UNAUTHORIZED'});bindingId='original';
+  selected=new Promise(resolve=>{resolvePicker=resolve;});const stale=host.selectFromNativeDialog();
+  const replacement=host.configureFromNativeSelection({...configuration,requiredChecks:['replacement-ci']});
+  resolvePicker(file);await assert.rejects(stale,{code:'UNAUTHORIZED'});assert.deepEqual(host.snapshot(),replacement);
+  selected=new Promise(resolve=>{resolvePicker=resolve;});const closed=host.selectFromNativeDialog();
+  host.close();resolvePicker(file);await assert.rejects(closed,{code:'UNAUTHORIZED'});
 });

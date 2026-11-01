@@ -14,6 +14,17 @@
 
 产品 Live/SIS 真实识别、同一问题回合的播放/最终转写、WinForms 目视与独立真人签名仍未验收。
 
+2026-11-01 04:43–04:55 UTC，另核查原 F15 WinForms viewer：默认
+`C:\Program Files\PowerShell\7\pwsh.exe` 不存在；现有 Codex runtime 的 `pwsh.exe`
+Authenticode 为 Valid / Microsoft Corporation，SHA256 为
+`362a356ce7f0940ec74f73a8fc2c990a2cc24a38a11c90bbd8eca947110ad139`。
+Main 复用已有受限 PATH 发现逻辑补该缺省位置，仍排除工作区/userData 并保留原微软签名检查。
+只用公开合成源码调用原 viewer，收到 `SHOWN` 协议，但 CUA 桌面窗口清单未观察到该窗口；
+改为可见进程启动的诊断也未改变结果，故未保留该参数变更。原期限到达后子进程终止，最终
+为 `unavailable/deadline_expired`，末次 04:55:02 UTC。不能把 `SHOWN` 当作目视验收通过，
+未生成独立审核签名、未操作真实源码或调用云。诊断在集成树
+`.cache/integration-f15-native-view-diagnostic.log`、`.cache/integration-f15-native-view-fixed.log`。
+
 2026-10-31 12:59:30 UTC，另通过仓库 `p5-device-native-receipt.mjs` 的一次性验收入口，调用真实 Electron Notification 发送公开合成提醒。`Notification.isSupported()` 为 true，原生 `show` 事件得到 `delivered=true`，原回执已保存；case 为 `p5-native-case-pr531-20261031`，未重复发送。该探针使用隔离 userData 和本地夹具存储，不调用账号/云；`userRead=unobserved`、`runtimeToolEvidenceVerified=false`，不视作 F12 原图投递或用户已读。入口准备期间的启动顺序与夹具接口错误发生于投递前，修正后仅产生一次设备投递。回执在集成树 `.cache/pr531-native-notification/receipt.json`。
 
 ## 真实 Edge 与原执行链

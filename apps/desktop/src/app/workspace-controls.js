@@ -24,6 +24,10 @@ export function mountWorkspaceControls(root, invoke) {
     <button class="btn" type="button" data-workspace="f16-select">选择 CI 修复案例</button>
     <p class="notice" data-workspace="f17-state"></p>
     <button class="btn" type="button" data-workspace="f17-select">选择测试定位案例</button>
+    <h3>PR 审核与合并</h3>
+    <p class="notice">选择包含目标 PR、原提交版本、必需检查和合资格审核者的配置。运行时仍会重新核对独立批准、技术检查和当前提交，并逐项请求操作许可。</p>
+    <p class="notice" data-workspace="f18-state"></p>
+    <button class="btn" type="button" data-workspace="f18-select">选择 PR 审核配置</button>
     <h3>API 文档检查</h3>
     <p class="notice">选择 TypeScript 契约、实现和目标文档。示例在隔离目录进行类型检查，结果为待审文档候选；每次读取、执行与发送仍在原任务确认。</p>
     <p class="notice" data-workspace="f20-state"></p>
@@ -76,6 +80,7 @@ export function mountWorkspaceControls(root, invoke) {
     field('f20-configure').disabled=busy||unavailable||!configured||state.nodeConfigured!==true;
     for(const workflow of ['F16','F17'])field(workflow.toLowerCase()+'-select').disabled=
       busy||unavailable||!configured||!state.f16f17;
+    field('f18-select').disabled=busy||unavailable||!configured||state.f18?.selectionAvailable!==true;
     updateStatus();
   }
 
@@ -110,6 +115,9 @@ export function mountWorkspaceControls(root, invoke) {
       field(workflow.toLowerCase()+'-state').textContent=`${workflow}：${selected?`案例 ${value.selectionRef}；执行时核对原失败来源与许可`:'尚未配置案例'}${reasons.length?` · 宿主报告不可用：${reasons.join('；')}`:''}`;
     }
     field('f20-state').textContent=state.f20?.configured===true?`已配置案例：${state.f20.inputRef}；运行条件会在任务执行时核对。`:'文档检查案例尚未配置。';
+    field('f18-state').textContent=state.f18?.configured===true?
+      `已选择 ${state.f18.repo} #${state.f18.prNumber}；${state.f18.requiresRestart?'请重启应用以加载此次审核配置。':'尚未授予合并许可；运行时核对原提交与审核条件。'}`:
+      '尚未选择 PR 审核配置；请先配置开发者仓库。';
     field('review-state').textContent=review.installed===true
       ? `审核者：${review.reviewerId} · 策略：${review.policyId} · 独立性：用户确认 · 签名验证已接入`
       : review.configured===true?'已配置，但原任务绑定或本机展示尚不可用。':'独立审核尚未配置或当前不可用。';
@@ -169,6 +177,7 @@ export function mountWorkspaceControls(root, invoke) {
   field('revoke').addEventListener('click', () => run('coding.revoke'));
   for(const workflowId of ['F16','F17'])field(workflowId.toLowerCase()+'-select')
     .addEventListener('click',()=>run('coding.f16f17.select',{workflowId}));
+  field('f18-select').addEventListener('click',()=>run('coding.f18.select'));
   field('review-configure').addEventListener('click',()=>run('coding.review.configure',{
     reviewerId:field('reviewer-id').value,policyId:field('review-policy').value}));
   field('review-revoke').addEventListener('click',()=>run('coding.review.revoke'));
