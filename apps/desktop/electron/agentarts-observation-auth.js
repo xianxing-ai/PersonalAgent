@@ -55,7 +55,16 @@ export function createAgentArtsDeploymentRequestAuth(credentials,{runtimeId,endp
   return createReadRequestAuth(credentials,{now,allows:target=>paths.has(target.pathname+target.search)});
 }
 
-function createReadRequestAuth({accessKey,secretKey,securityToken},{now,allows}) {
+/** Fixed result-page POST only; no task creation, dataset mutation or arbitrary body. */
+export function createAgentArtsEvaluationRequestAuth(credentials,{taskIds,now=Date.now}={}) {
+  if(!Array.isArray(taskIds)||!taskIds.length||taskIds.length>2||taskIds.some(id=>typeof id!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(id)))
+    throw Error('Fixed evaluation task identities required');
+  const paths=new Set(taskIds.map(id=>'/v1/ops/evaluation-tasks/'+id+'/results'));
+  return createReadRequestAuth(credentials,{now,method:'POST',body:JSON.stringify({offset:0,limit:100}),
+    allows:target=>!target.search&&paths.has(target.pathname)});
+}
+
+function createReadRequestAuth({accessKey,secretKey,securityToken},{now,allows,method='GET',body=''}) {
   if (!ACCESS_KEY.test(accessKey) || !SECRET(secretKey)
     || (securityToken !== undefined && !TOKEN(securityToken))) {
     throw Error('AgentArts observation signing configuration is invalid');
@@ -69,7 +78,7 @@ function createReadRequestAuth({accessKey,secretKey,securityToken},{now,allows})
       if (!Number.isFinite(Date.parse(request.deadline)) || Date.parse(request.deadline) <= timestamp) {
         throw Error('AgentArts observation signing request expired');
       }
-      if (!request || request.method !== 'GET' || request.body !== ''
+      if (!request || request.method !== method || request.body !== body
         || typeof request.url !== 'string') {
         throw Error('AgentArts observation signing request is outside the configured scope');
       }
@@ -96,12 +105,12 @@ function createReadRequestAuth({accessKey,secretKey,securityToken},{now,allows})
       const canonicalHeaders = signedNames.map(name => `${name}:${headerMap[name]}\n`).join('');
       // Official CanonicalURI may add a trailing slash for signing only.
       const canonical = [
-        'GET',
+        method,
         `${target.pathname}/`,
         canonicalQuery(target.searchParams),
         canonicalHeaders,
         signedHeaders,
-        hash(''),
+        hash(body),
       ].join('\n');
       const signature = createHmac('sha256', secretKey)
         .update(`SDK-HMAC-SHA256\n${date}\n${hash(canonical)}`).digest('hex');

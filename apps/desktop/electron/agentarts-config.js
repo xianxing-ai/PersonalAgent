@@ -26,13 +26,16 @@ function validatePreferences(value){ if(!value||Object.keys(value).some(k=>!['ca
 
 function validateReleaseBinding(value,version) {
   const uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(v);
-  if(!value||Object.keys(value).sort().join(',')!=='endpointId,endpointName,imageReference,runtimeId'
+  const repository=value?.registryRepository??(typeof value?.imageReference==='string'?value.imageReference.split('@')[0]:undefined);
+  if(!value||Object.keys(value).some(key=>!['runtimeId','endpointId','endpointName','imageReference','registryRepository'].includes(key))
     ||!uuid(value.runtimeId)||!uuid(value.endpointId)||typeof value.endpointName!=='string'
     ||!/^[A-Za-z][A-Za-z0-9-]{0,46}[A-Za-z0-9]$/u.test(value.endpointName)||/^(latest|current|default)$/iu.test(value.endpointName)
     ||typeof version!=='string'||!/^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$/u.test(version)||/^(latest|current|default)$/iu.test(version)
-    ||typeof value.imageReference!=='string'||!/^swr\.cn-southwest-2\.myhuaweicloud\.com\/[a-z0-9._-]+\/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$/u.test(value.imageReference))
+    ||typeof repository!=='string'||!/^swr\.cn-southwest-2\.myhuaweicloud\.com\/[a-z0-9._-]+\/[a-z0-9._/-]+$/u.test(repository)
+    ||value.imageReference!==undefined&&(typeof value.imageReference!=='string'||!value.imageReference.startsWith(repository+'@')
+      ||!/@sha256:[a-f0-9]{64}$/u.test(value.imageReference)))
     throw Error('发布绑定必须来自当前固定版本、运行时、端点和 SWR 镜像摘要');
-  return structuredClone(value);
+  return {...structuredClone(value),registryRepository:repository};
 }
 /** Reads `?endpoint=<version>` from a pasted pinned address without normalizing the URL. */
 function pinFromUrl(value) {

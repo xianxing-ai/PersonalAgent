@@ -18,11 +18,16 @@ function harness(t,invoke) {
   const wss=node(),advanced=node(),traceReplay=node(),traceReplayState=node(),decisionButton=node(),decisionState=node();
   const scopeFields=Object.fromEntries(['dataLevel','cloudExportAllowed','publicQueries'].map(key=>[key,node()])),scopeForm=node(),scopeState=node(),scopeSubmit=node();
   Object.assign(scopeForm,{elements:scopeFields,querySelectorAll:()=>[...Object.values(scopeFields),scopeSubmit]});
-  const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
+  const evaluationStatus=node(),mainRows=node(),shadowRows=node(),evaluationRelease=node();
+  const experimentForm=Object.assign(node(),{elements:{experiment:node(),publicData:node()},querySelector:()=>node()});
+  const evaluationForm=Object.assign(node(),{elements:{binding:node()},querySelector:()=>node()});
+  const section={append(){},isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
     querySelector:selector=>({'form':form,'[data-status]':status,'[data-wss]':wss,'[data-token-hint]':tokenHint,
       '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced,
       '[data-trace-replay]':traceReplay,'[data-trace-replay-state]':traceReplayState,'[data-data-scope]':scopeForm,'[data-data-scope-state]':scopeState,
-      '[data-decision-initialize]':decisionButton,'[data-decision-state]':decisionState}[selector])};
+      '[data-decision-initialize]':decisionButton,'[data-decision-state]':decisionState,
+      '[data-experiment]':experimentForm,'[data-evaluation-binding]':evaluationForm,'[data-evaluation-status]':evaluationStatus,
+      '[data-main]':mainRows,'[data-shadow]':shadowRows,'[data-evaluation-release]':evaluationRelease}[selector])};
   form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,

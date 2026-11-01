@@ -10,11 +10,11 @@ import {createWorkflowBusinessToolBridge,readWorkflowBusinessToolSource,readWork
 
 type Worker=Omit<RuntimeConfiguredWorkflowOptions,'image'>;type Scope={taskId:string;deadline:string;signal:AbortSignal};type Graph=RuntimeConfiguredWorkflowBinding;
 export interface F26ReleaseConfiguration {configurationDigest:string;sourceRevision:string;sourceDigest:string;scriptDigest:string;imageTag:string;
-  registryReference:string;imageReference:string;runtimeId:string;runtimeName:string;endpointId:string;endpointName:string;version:string;model:Record<string,unknown>;}
+  registryReference:string;imageReference?:string;runtimeId:string;runtimeName:string;endpointId:string;endpointName:string;version:string;model:Record<string,unknown>;}
 export interface F26WorkflowOptions {
   getApplication:()=>RuntimeApplication;sourceConfiguration:()=>F26ReleaseConfiguration|undefined;
   verifyBuild:(receipt:WorkflowBusinessToolReceipt,scope:OwnedWorkflowHostScope)=>Record<string,unknown>;
-  readDeployment:(scope:OwnedWorkflowHostScope)=>Promise<Record<string,unknown>>;
+  readDeployment:(scope:OwnedWorkflowHostScope,build:Record<string,unknown>)=>Promise<Record<string,unknown>>;
   toolExports:readonly CompetitionToolExport[];prepareCompetitionToolExport:PrepareCompetitionToolExport;
   authorizeExport:(request:Parameters<Worker['authorizeExport']>[0]&{workflowId:'F26'})=>Promise<boolean>;
 }
@@ -73,9 +73,9 @@ export function createF26WorkflowWorkerPorts(options:F26WorkflowOptions){
       hostToolName:'workflow.host.'+nodeId.toLowerCase(),proposalArguments:args,assertCurrent:scope=>current(lifetime(scope))}),value=graph(lifetime(scope),scope.sessionId);
       if(nodeId==='F26_N02'){const receipt=await business().invoke({actionKey:'f26.build',input:{recipeId}},context),verified=options.verifyBuild(receipt,scope);current(lifetime(scope));
         return {build:verified,original:{taskId:receipt.taskId,runId:receipt.runId,scopeRef:receipt.scopeRef,toolVersion:receipt.toolVersion,arguments:receipt.arguments}};}
-      build(value,scope);
-      if(nodeId==='F26_N03'){const result=await options.readDeployment(scope);current(lifetime(scope));
-        if(result.podRunning!==true||result.readinessProbe!==true||result.imageReference!==options.sourceConfiguration()!.imageReference)fail('UNSUPPORTED_CAPABILITY','F26 selected image is not ready');return result;}
+      const built=build(value,scope);
+      if(nodeId==='F26_N03'){const result=await options.readDeployment(scope,built);current(lifetime(scope));
+        if(result.podRunning!==true||result.readinessProbe!==true||result.imageReference!==built.imageReference)fail('UNSUPPORTED_CAPABILITY','F26 selected image is not ready');return result;}
       const ready=operation(value,'F26_N03').result as Record<string,unknown>;if(ready.podRunning!==true||ready.readinessProbe!==true)fail('UNAUTHORIZED','F26 original readiness missing');
       if(nodeId==='F26_N04'){const selected=selection(value,nodeId),proof=app().runtime.loadCheckpoint(scope.parentTaskId,'f26:cloud-proposal:'+selected.original.operationId);
         if(!isDeepStrictEqual(selected.value,{arguments:{},proposal:research})||!proof)fail('UNAUTHORIZED','F26 exact original cloud proposal unavailable');
@@ -86,15 +86,18 @@ export function createF26WorkflowWorkerPorts(options:F26WorkflowOptions){
           evidenceRefs:[receipt.runId],coverage:'single_public_research_metadata_read',result:projected,original:{taskId:receipt.taskId,runId:receipt.runId,scopeRef:receipt.scopeRef,toolVersion:receipt.toolVersion,arguments:receipt.arguments}};}
       const semantic=operation(value,'F26_N04').result as Record<string,unknown>;
       const result={activeServiceVersion:options.sourceConfiguration()!.version,status:'selected_release_case_verified',coverage:'single_public_research_metadata_read',
-        sourceRevision:options.sourceConfiguration()!.sourceRevision,imageReference:options.sourceConfiguration()!.imageReference,evidenceDigest:hash({ready,semantic}),
+        sourceRevision:options.sourceConfiguration()!.sourceRevision,imageReference:built.imageReference,evidenceDigest:hash({ready,semantic}),
         remaining:['all_28_workflows','platform_evaluation','independent_human_review'],routingChanged:false};
       app().runtime.saveCheckpointOnce(scope.parentTaskId,'f26:coverage',result);
       if(!isDeepStrictEqual(app().runtime.loadCheckpoint(scope.parentTaskId,'f26:coverage'),result))fail('REVISION_CONFLICT','F26 original coverage changed');return result;
     }}));
   const worker:Worker={workflowId,toolName:'workflow.release.verify',toolVersion:'1.0.0',configurationVersion:'f26-selected-release-v1',requestSchema,
-    inputSchema:object({...requestSchema.properties,configuration:{type:'object'}}),resultSchema:{type:'object'},sideEffect:'external_write',publicEnumPaths:['/operation'],
+    inputSchema:object({...requestSchema.properties,configuration:{type:'object'}}),
+    resultSchema:object({activeServiceVersion:{type:'string'},status:{const:'selected_release_case_verified'},coverage:{const:'single_public_research_metadata_read'},
+      sourceRevision:{type:'string'},imageReference:{type:'string'},evidenceDigest:{type:'string'},remaining:{type:'array',items:{type:'string'}},routingChanged:{const:false}}),
+    sideEffect:'external_write',publicEnumPaths:['/operation'],
     requiredTools:[...tools.map(tool=>({name:tool.descriptor.name,version:tool.descriptor.version})),{name:'decision.choose_candidate',version:'1.0.0'}],assertCurrent:current,
-    available:scope=>{try{current(scope);sourcePolicy();return !!app().readRegisteredToolDescriptor(commandName,'1.0.0');}catch{return false;}},
+    available:()=>{try{sourcePolicy();return !!options.sourceConfiguration()&&app().runtime.readToolDescriptors().some(tool=>tool.name===commandName&&tool.version==='1.0.0');}catch{return false;}},
     async resolveInput(args,scope){validateToolValue(requestSchema,args);current(scope);const configuration=options.sourceConfiguration()!;app().runtime.saveCheckpointOnce(scope.taskId,configurationKey,configuration);return {...args,configuration};},
     assertFrontier(request){current(request);const value=graph(request,request.state.sessionId),proposal=request.proposal,proof=imageProof(request);
       if(proposal.toolName==='decision.choose_candidate'){let parsed;try{parsed=JSON.parse(String(proposal.arguments.context));}catch{return false;}

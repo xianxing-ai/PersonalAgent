@@ -122,6 +122,7 @@ import {createF08SourceChangeHost} from './f08-source-change-host.js';
 import {createF08SourceActions} from './f08-source-actions.js';
 import {createF03MailReviewWorkflowPorts} from './f03-mail-review-workflow-ports.js';
 import {createDesktopF23DecisionConfiguration,F23_INITIALIZE_TOOL} from './f23-decision-configuration.js';
+import {createDesktopF23WorkflowPorts,F23_PREPARE_TOOL,F23_BIND_TOOL} from './f23-workflow-worker-ports.js';
 import {createConfiguredDesktopF10WorkflowPorts} from './f10-workflow-worker-ports.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
@@ -165,7 +166,8 @@ import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsM
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
-import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
+import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
+import {createConfiguredDesktopF26WorkflowPorts} from './f26-workflow-worker-ports.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
 import {agentArtsFailureNotice} from './agentarts-failure-notice.js';
@@ -395,7 +397,7 @@ let f01Workflow;
 let f22Configuration,f22Workflow;
 let f25Configuration,f25Workflow;
 let f08SourceChanges,f08SourceActions;
-let f23DecisionConfiguration,f28Workflow;
+let f23DecisionConfiguration,f23Workflow,f28Workflow;
 let reconcileOriginalMailWorkflow;
 let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
 let f14Workflow;
@@ -784,6 +786,7 @@ function agentArtsSnapshot() {
     traceReplay:f22Configuration?{...f22Configuration.snapshot(),available:!!f22Workflow}:undefined,
     dataScope:f25Configuration?{...f25Configuration.snapshot(),available:!!f25Workflow&&knowledgeSourceConfig?.snapshot().available===true}:undefined,
     decisionConfiguration:f23DecisionConfiguration?{...f23DecisionConfiguration.snapshot(),catalogRevision:agentArtsModels?.snapshot().catalog?.revision}:undefined,
+    evaluation:f23Workflow?.snapshot(),
     ...(observation ? {observation} : {})};
 }
 
@@ -2719,8 +2722,29 @@ async function initializeRuntime() {
         models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,authorizeExport:authorizeWorkflowExport,
         getKnowledgeSourceConfig:()=>knowledgeSourceConfig,knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
         prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope)}):undefined;
+      const releaseSource=app.isPackaged?undefined:path.resolve(dir,'../../..');
+      const releaseDiscovery={excludedDirectories:[app.getPath('userData'),...(releaseSource?[releaseSource]:[])]};
+      const releaseNode=codingWorkspace.readWorkspaceBinding?.()?.nodeExecutable??findWindowsExecutable('node.exe',releaseDiscovery);
+      const f26Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingModule,
+        getApplication:()=>runtimeApplication,agentArtsConfig,getAgentArtsModels:()=>agentArtsModels,nativeExecutionHost,
+        repositoryRoot:releaseSource,nodeExecutable:releaseNode,
+        powerShellPath:findWindowsExecutable('pwsh.exe',releaseDiscovery),gitPath:findWindowsExecutable('git.exe',releaseDiscovery),
+        dockerPath:findWindowsExecutable('docker.exe',releaseDiscovery),
+        npmCli:releaseNode?path.join(path.dirname(releaseNode),'node_modules','npm','bin','npm-cli.js'):undefined,
+        authorizeDeployment:request=>{
+          const binding=agentArtsConfig.readReleaseBinding(),credentials=agentArtsObservationConfig?.readCredentials();
+          if(!binding||!credentials)throw Error('固定部署读回需要已配置的控制面凭据');
+          return createAgentArtsDeploymentRequestAuth(credentials,binding).authorize(request);
+        },toolExports:productTools.competitionToolExports,
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport}):undefined;
       f23DecisionConfiguration=!syntheticMvp&&agentArtsPinned?createDesktopF23DecisionConfiguration({runtimeModule,
         getApplication:()=>runtimeApplication,models:agentArtsModels,namespace,onUpdate:publish}):undefined;
+      f23Workflow=f23DecisionConfiguration?createDesktopF23WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        models:agentArtsModels,configuration:agentArtsConfig,decisionConfiguration:f23DecisionConfiguration,namespace,
+        authorizeEvaluation:(request,taskIds)=>{
+          const credentials=agentArtsObservationConfig?.readCredentials();if(!credentials)throw Error('平台评估读回需要已配置的控制面凭据');
+          return createAgentArtsEvaluationRequestAuth(credentials,{taskIds}).authorize(request);
+        },authorizeExport:authorizeWorkflowExport,onUpdate:publish}):undefined;
       const f03DeploymentBinding=readWorkflowDeploymentBinding();
       f03Workflow=f08SourceChanges&&f03DeploymentBinding?createF03MailReviewWorkflowPorts({
         getApplication:()=>runtimeApplication,sourceChanges:f08SourceChanges,authorizeExport:authorizeWorkflowExport,
@@ -2752,8 +2776,10 @@ async function initializeRuntime() {
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(f10Workflow?.tools??[]),
+        ...(f26Workflow?.tools??[]),
         ...(f03Workflow?.tools??[]),
         ...(f23DecisionConfiguration?[f23DecisionConfiguration.tool]:[]),
+        ...(f23Workflow?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
@@ -2818,6 +2844,8 @@ async function initializeRuntime() {
           ...(f21Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f22Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f25Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f26Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f23Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f27Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f28Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
@@ -2964,7 +2992,7 @@ async function initializeRuntime() {
         },
         tools: conversationTools,
         competitionToolDiscovery:true,
-        hostOnlyTools:[AUTHORIZATION_INTENT_TOOL,...(f23DecisionConfiguration?[F23_INITIALIZE_TOOL]:[])],
+        hostOnlyTools:[AUTHORIZATION_INTENT_TOOL,...(f23DecisionConfiguration?[F23_INITIALIZE_TOOL]:[]),...(f23Workflow?.hostOnlyTools??[])],
         requestToolAuthorization:async scope=>{
           const mailReconciliation=await connectorConversationTools?.prepareOriginalSendReconciliationAuthorization?.(scope);
           if(!mailReconciliation)await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
@@ -4142,6 +4170,12 @@ async function action(event, name, payload) {
     if(sender!==admin||!competitionMode||syntheticMvp||!f23DecisionConfiguration)throw Error('请从正式管理后台初始化决策基线');
     const result=f23DecisionConfiguration.initialize(payload,{deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
     publish();return result;
+  }
+  if(name==='workflow.evaluation.prepare'||name==='workflow.evaluation.bind'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f23Workflow)throw Error('请从正式管理后台提交决策评估');
+    const {commandId,...args}=payload??{};
+    const result=f23Workflow.submit(name==='workflow.evaluation.prepare'?F23_PREPARE_TOOL:F23_BIND_TOOL,args,
+      {commandId,deadline:new Date(Date.now()+1800000).toISOString()});publish();return {taskId:result.taskId,state:result.state};
   }
   if(name==='workflow.dataScope.configure'){
     if(sender!==admin||!competitionMode||syntheticMvp||!f25Configuration||!f25Workflow)
@@ -5588,7 +5622,7 @@ app.whenReady().then(async () => {
       f22Configuration?.close();f22Configuration=undefined;f22Workflow=undefined;
       f25Configuration?.close();f25Configuration=undefined;f25Workflow=undefined;
       f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
-      f23DecisionConfiguration=undefined;f28Workflow=undefined;
+      f23DecisionConfiguration=undefined;f23Workflow=undefined;f28Workflow=undefined;
       reconcileOriginalMailWorkflow=undefined;
       f11LocationQuestion=undefined;
       f11DecisionQuestion=undefined;

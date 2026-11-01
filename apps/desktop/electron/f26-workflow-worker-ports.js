@@ -36,9 +36,9 @@ export function createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingMod
     const sourceRevision=git(['rev-parse','HEAD']);if(!/^[a-f0-9]{40}$/.test(sourceRevision)||git(['status','--porcelain','--untracked-files=all','--',...sourcePaths]))fail('REVISION_CONFLICT','F26 构建源码必须为当前未改动提交');
     const scriptDigest=bytes(readFileSync(script)),sourceDigest=hash({sourceRevision,tree:git(['ls-tree','-r','HEAD','--',...sourcePaths]),scriptDigest,
       lock:bytes(readFileSync(path.join(root,'package-lock.json'))),executables});
-    const repository=release.imageReference.slice(0,release.imageReference.indexOf('@')),
+    const repository=release.registryRepository,
       registryReference=repository+':f26-'+sourceRevision.slice(0,16),imageTag='personal-agent:f26-'+sourceRevision.slice(0,16);
-    const configuration={sourceRevision,sourceDigest,scriptDigest,imageTag,registryReference,imageReference:release.imageReference,runtimeId:release.runtimeId,
+    const configuration={sourceRevision,sourceDigest,scriptDigest,imageTag,registryReference,...(release.imageReference?{imageReference:release.imageReference}:{}),runtimeId:release.runtimeId,
       runtimeName:release.runtimeName,endpointId:release.endpointId,endpointName:release.endpointName,version:release.version,model};
     return {release,configuration:{...configuration,configurationDigest:hash({configuration,configurationRef:release.configurationRef,gatewayUrl:release.gatewayUrl})}};
   }
@@ -57,22 +57,23 @@ export function createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingMod
     let release;try{release=JSON.parse(content.toString('utf8').replace(/^\uFEFF/,''));}catch{fail('PROTOCOL_MISMATCH');}
     if(release.schemaVersion!==1||release.image!==current.configuration.imageTag||release.sourceRevision!==current.configuration.sourceRevision
       ||release.architecture!=='arm64'||release.built!==true||release.published!==true||release.remoteReadbackVerified!==true
-      ||release.registryReference!==current.configuration.registryReference||!current.configuration.imageReference.endsWith('@'+release.registryManifestDigest)
+      ||release.registryReference!==current.configuration.registryReference||!/^sha256:[a-f0-9]{64}$/.test(release.registryManifestDigest)
+      ||current.configuration.imageReference!==undefined&&current.configuration.imageReference!==current.release.registryRepository+'@'+release.registryManifestDigest
       ||!Number.isFinite(release.imageSizeBytes)||release.imageSizeBytes<=0||!Array.isArray(release.stages)
       ||['build','tag','push','remote-inspect'].some(stage=>release.stages.filter(item=>item.stage===stage&&item.exitCode===0).length!==1))fail('REVISION_CONFLICT','F26 原构建/SWR摘要未匹配所选部署');
-    return {sourceRevision:release.sourceRevision,imageId:release.imageId,imageReference:current.configuration.imageReference,imageSizeMb:release.imageSizeBytes/1048576,
+    return {sourceRevision:release.sourceRevision,imageId:release.imageId,imageReference:current.release.registryRepository+'@'+release.registryManifestDigest,imageSizeMb:release.imageSizeBytes/1048576,
       buildDurationSeconds:release.stages.find(stage=>stage.stage==='build').wallMs/1000,architecture:'arm64',published:true,remoteReadbackVerified:true,
       nativeMode:'full-access',auditDigest:audit.auditDigest,releaseDigest:bytes(content)};
   }
-  async function readDeployment(scope){const expected=bound(scope),assertCurrent=()=>{if(!isDeepStrictEqual(bound(scope),expected))fail();};
-    const args={...expected.release,deadline:scope.deadline,signal:scope.signal,authorize:authorizeDeployment,assertCurrent};
+  async function readDeployment(scope,build){const expected=bound(scope),assertCurrent=()=>{if(!isDeepStrictEqual(bound(scope),expected))fail();};
+    const args={...expected.release,imageReference:build.imageReference,deadline:scope.deadline,signal:scope.signal,authorize:authorizeDeployment,assertCurrent};
     const control=await readAgentArtsDeployment(args);assertCurrent();if(!control.runtimeReady)fail('UNSUPPORTED_CAPABILITY');
     // This is an actual authenticated invocation on the same pinned transport, not a cached catalog or Kubernetes claim.
     const result=await getAgentArtsModels().refresh({deadline:scope.deadline,signal:scope.signal});assertCurrent();
     if(result.catalog?.revision!==expected.configuration.model.catalogRevision)fail('REVISION_CONFLICT');
     if(!isDeepStrictEqual(control,await readAgentArtsDeployment(args)))fail('REVISION_CONFLICT');assertCurrent();
     return {podRunning:true,readinessProbe:true,readinessKind:'authenticated_model_catalog_invocation',kubernetesPodInspection:'unverified',
-      controlDigest:control.digest,modelCatalogRevision:result.catalog.revision,imageReference:expected.release.imageReference,version:expected.release.version};
+      controlDigest:control.digest,modelCatalogRevision:result.catalog.revision,imageReference:build.imageReference,version:expected.release.version};
   }
   ports=runtimeModule.createF26WorkflowWorkerPorts({getApplication,sourceConfiguration,verifyBuild,readDeployment,toolExports,prepareCompetitionToolExport,authorizeExport});
   const command={descriptor:{name:commandName,version:'1.0.0',inputSchema:{type:'object',additionalProperties:false,required:['recipeId'],properties:{recipeId:{const:recipeId}}},

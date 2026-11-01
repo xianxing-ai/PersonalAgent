@@ -43,7 +43,7 @@ export type {CompetitionDecisionConfigurationBinding} from './application/compet
 export type {RuntimeWorkflowShadowConfigurationOptions} from './application/workflow-shadow-configuration.js';
 export {createRuntimeWorkflowShadowBranchVerifiers} from './application/workflow-shadow-verifiers.js';
 export type {RuntimeWorkflowShadowBranchVerifierOptions} from './application/workflow-shadow-verifiers.js';
-export {createRuntimeWorkflowShadowAcceptanceHost} from './application/workflow-shadow-acceptance.js';
+export {createRuntimeWorkflowShadowAcceptanceHost,readRuntimeWorkflowShadowAcceptanceCurrent} from './application/workflow-shadow-acceptance.js';
 export type {RuntimeWorkflowShadowAcceptanceOptions} from './application/workflow-shadow-acceptance.js';
 export {createRuntimeWorkflowShadowAuthorization} from './application/workflow-shadow-authorization.js';
 export type {RuntimeWorkflowShadowAuthorizationOptions,RuntimeWorkflowShadowOriginalIntent} from './application/workflow-shadow-authorization.js';
