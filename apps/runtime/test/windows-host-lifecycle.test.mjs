@@ -141,7 +141,7 @@ test('returned target data cannot mutate the privately bound observation', async
 });
 
 // These tests mock the child process and platform, not a real Windows Pipe peer.
-function fakeNative(t, {confirmsClose = true, writeFails = false} = {}) {
+function fakeNative(t, {confirmsClose = true, writeFails = false, acceptsBundle = true} = {}) {
   const descriptor = Object.getOwnPropertyDescriptor(process, 'platform');
   Object.defineProperty(process, 'platform', {...descriptor, value: 'win32'});
   const child = new EventEmitter();
@@ -172,10 +172,22 @@ function fakeNative(t, {confirmsClose = true, writeFails = false} = {}) {
     spawn.mock.restore(); syncBuiltinESMExports();
     Object.defineProperty(process, 'platform', descriptor);
   });
-  const transport = createWindowsHostBridgeTransport({bridgePath: '/synthetic/WindowsHost.PipeBridge.exe',
-    hostPath: '/synthetic/WindowsHost.Host.exe', timeoutMs: 100});
+  const identity = {bridgePath: '/synthetic/WindowsHost.PipeBridge.exe',
+    hostPath: '/synthetic/WindowsHost.Host.exe'};
+  // The process is Fake, so its identity provider is explicitly Fake too. The
+  // production transport still checks this exact identity before any spawn/frame.
+  const transport = createWindowsHostBridgeTransport({...identity, timeoutMs: 100,
+    assertCurrentBundle(value) {assert.deepEqual(value, identity); return acceptsBundle;}});
   return {transport, get kills() {return kills;}, get spawns() {return spawns;}};
 }
+
+test('rejected native bundle identity cannot spawn even a Fake process', async t => {
+  const f = fakeNative(t, {acceptsBundle: false});
+  await assert.rejects(f.transport.openVerifiedConnection(), {code: 'UNAUTHORIZED'});
+  assert.equal(f.spawns, 0);
+  assert.equal(f.kills, 0);
+  await f.transport.close();
+});
 
 test('native close timeout rejects rather than falsely confirming process release', async t => {
   const f = fakeNative(t, {confirmsClose: false});

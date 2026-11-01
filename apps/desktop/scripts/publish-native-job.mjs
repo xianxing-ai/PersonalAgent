@@ -15,7 +15,7 @@ export async function publishNativeJob({root,outputRoot,signal=new AbortControll
   if(!relative||relative.startsWith('..')||path.isAbsolute(relative))throw Error('Job package output must belong to the Desktop publication cache');
   const resources=path.join(output,'resources'),bundle=path.join(resources,'native-tools','workspace-command');
   await mkdir(bundle); // Exclusive: never replace an existing published component.
-  const targetDir=await mkdtemp(path.join(tmpdir(),'pa-job-publish-'));
+  const targetDir=await realpath(await mkdtemp(path.join(tmpdir(),'pa-job-publish-')));
   await run(process.execPath,[fileURLToPath(import.meta.resolve('@personal-agent/coding-tools/native-helper')),
     '--target-dir',targetDir,'--self-contained'],{cwd:root,signal,deadline});
   const published=readWindowsNativeHelperAttestation(path.join(targetDir,'WindowsJobProcessHost.exe'));
