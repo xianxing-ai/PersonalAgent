@@ -2,7 +2,9 @@
 
 ## 2026-11-01 F01 原上下文与原生来源选择（provisional）
 
-`readF01ContextBinding` 只读原配置图/用户父任务/模型选择/目的地；Desktop `createF01ContextSelectionHost` 用原 `reference.source` 决定记录绑定单一公开 Fact 版本、精确 query 与既有责任会话，再进入原 `createF01QueryBinding`。`createF01WorkflowContextPorts` 消费原 Memory/proactive/AgentArts 目录，并提供同步来源最终检查；新 `agentarts_catalog` 保留 conditional，旧模型目录形状兼容。缺配置、撤销、过期或原决定不匹配均拒绝，不增加授权层/数据库迁移。唯一完整 F01 worker 尚待组合，不作为整图或真实验收；[当前证据](../competition/evidence/F01_RESPONSIBILITY_WIRING_20261101.md)。
+唯一 `createF01WorkflowWorkerPorts` 与 Desktop `createConfiguredDesktopF01WorkflowPorts` 已提供实际 N02/N04/N05/N06/N07/N08/N09 消费口，复用同一 configured driver、原 Policy 和业务桥；补问公开 `responsibility.clarification` / `workflow.f01.clarification.respond`，回答不代替权限。N06 仅支持至多三个独立原子任务；检索/补问后明确 awaiting_replan，不自动补造新计划。模板摘要随可选 guard/收束依赖变更；原声明目录兼容，不新增 wire/数据库迁移。Main 与真实部署验收按证据跟进。
+
+`readF01ContextBinding` 只读原配置图/用户父任务/模型选择/目的地；Desktop `createF01ContextSelectionHost` 用原 `reference.source` 决定记录绑定单一公开 Fact 版本、精确 query 与既有责任会话，再进入原 `createF01QueryBinding`。`createF01WorkflowContextPorts` 消费原 Memory/proactive/AgentArts 目录，并提供同步来源最终检查；新 `agentarts_catalog` 保留 conditional，旧模型目录形状兼容。缺配置、撤销、过期或原决定不匹配均拒绝，不增加授权层/数据库迁移。代码工厂不作为真实整图验收；[当前证据](../competition/evidence/F01_RESPONSIBILITY_WIRING_20261101.md)。
 
 ## 2026-11-01 原生授权决定的精确只读引用（provisional）
 

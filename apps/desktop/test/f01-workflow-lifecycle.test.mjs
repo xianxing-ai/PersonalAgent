@@ -152,7 +152,7 @@ test('F01 original context reads actual AgentArts catalog declarations and refus
   const saved=f.app.runtime.loadCheckpoint(child.taskId,'execution-model');
   f.app.runtime.saveCheckpoint(child.taskId,'execution-model',{...saved,modelId:'foreign'});assert.throws(()=>f.app.readF01ContextBinding(request));
   f.app.runtime.saveCheckpoint(child.taskId,'execution-model',saved);
-  deployment={...deployment,deploymentVersion:'changed'};await assert.rejects(read(scope));
+  deployment={...deployment,deploymentVersion:'changed'};assert.throws(()=>read(scope));
   f.app.runtime.requestCancel(f.user.taskId,'Synthetic cancellation');
   assert.equal(f.app.readF01ContextBinding({...request,signal:AbortSignal.abort()}),undefined);
   assert.equal(f.app.readF01ContextBinding(request),undefined);

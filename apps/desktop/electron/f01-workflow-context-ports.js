@@ -1,5 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
+import {proactiveWorkflowDigest} from '@personal-agent/agentarts';
 import {ProtocolError} from '@personal-agent/contracts';
 import {createRuntimeF01ContextHost,readPersistedRuntimeProactiveWorkflow} from '@personal-agent/runtime/application';
 import {createF01ContextSelectionHost} from './f01-context-selection-host.js';
@@ -29,6 +30,7 @@ export function createF01WorkflowContextPorts({getApplication,getPublicFactHost,
     }
     const current=source(scope);
     if(host!==getProactiveHost()||original.app!==current.app||!isDeepStrictEqual(original.persisted.application,current.persisted.application))return unavailable();
+    original.app.runtime.saveCheckpointOnce(scope.parentTaskId,'f01:responsibility-snapshot',original.persisted.application.state);
     return {revision:String(current.persisted.application.revision),items};
   }
   const memory=Object.fromEntries(['listCurrent','getVersion'].map(name=>[name,async request=>{
@@ -40,15 +42,37 @@ export function createF01WorkflowContextPorts({getApplication,getPublicFactHost,
     readResponsibilities:responsibilities,readModels:async scope=>modelSource(scope),
     resolveQuery:async scope=>{if(await selection.prepare(scope)!==true)throw new ProtocolError('UNAUTHORIZED','F01 原来源选择未确认');return selection.resolveQuery(scope);},
     authorizeExport});
-  return {...host,selection,
+  return {...host,selection,available(){const memory=getPublicFactHost(),proactive=getProactiveHost(),intent=getAuthorizationIntentHost();
+      return !!memory?.memoryNamespace&&typeof memory.facts?.readCurrentPublicFact==='function'
+        &&['listCurrent','getVersion'].every(name=>typeof memory.facts?.publicMemory?.[name]==='function')
+        &&typeof proactive?.readResponsibility==='function'&&typeof intent?.request==='function'&&models.snapshot().available===true
+        &&typeof readDeploymentBinding()==='string'&&!!readDeploymentBinding();},
     /** Synchronous final-send guard; never caches validity across credentials or an await. */
-    assertSourcesCurrent(scope,result){
+    assertSourcesCurrent(scope,result,ownLifecycle){
       selection.assertCurrent(scope);const current=source(scope),memory=getPublicFactHost();
-      if(!isDeepStrictEqual(result.models,modelSource(scope))||result.responsibilities.revision!==String(current.persisted.application.revision)
+      let ownChange=false;
+      if(ownLifecycle){const {command,selection:change}=ownLifecycle,record=current.persisted.application.state.responsibilityLifecycleOperations?.[command.commandId];
+        if(record){
+          const original=current.app.runtime.loadCheckpoint(scope.parentTaskId,'f01:responsibility-snapshot'),actual=current.persisted.application.state;
+          const withoutOwn=value=>{const copy=structuredClone(value);copy.responsibilityLifecycles??={};copy.responsibilityLifecycleOperations??={};
+            delete copy.responsibilityLifecycles[change.responsibilityId];delete copy.responsibilityLifecycleOperations[command.commandId];return copy;};
+          const sourceTask=current.app.runtime.getTask(command.sourceTaskId),quote={conversationId:sourceTask.conversationId,messageId:sourceTask.taskId,
+            quoteRef:'runtime:task:'+sourceTask.taskId+':goal',sha256:createHash('sha256').update(sourceTask.goal).digest('hex')};
+          const previous=original?.responsibilityLifecycles?.[change.responsibilityId],expected=command.action==='activate'
+            ?{revision:(command.expectedLifecycleRevision??0)+1,responsibilityRevision:command.responsibilityRevision,state:'active',validUntil:command.validUntil,activationQuote:quote}
+            :{...previous,revision:(command.expectedLifecycleRevision??0)+1,state:'revoked',revocationQuote:quote};
+          if(!original||record.digest!==proactiveWorkflowDigest(command)||record.responsibilityId!==change.responsibilityId
+            ||actual.responsibilityLifecycles?.[change.responsibilityId]?.revision!==record.revision
+            ||!isDeepStrictEqual(actual.responsibilityLifecycles[change.responsibilityId],expected)
+            ||!isDeepStrictEqual(withoutOwn(original),withoutOwn(actual)))return unavailable();ownChange=true;
+        }
+      }
+      if(!isDeepStrictEqual(result.models,modelSource(scope))||!ownChange&&result.responsibilities.revision!==String(current.persisted.application.revision)
         ||result.memory.facts.some(fact=>!isDeepStrictEqual(memory.facts.readCurrentPublicFact(fact.ref),fact)))return unavailable();
       for(const item of result.responsibilities.items){
         const lifecycle=current.persisted.application.state.responsibilityLifecycles?.[item.id];
-        if(lifecycle?.state!=='active'||lifecycle.responsibilityRevision!==item.revision||Date.parse(lifecycle.validUntil)<=Date.now())return unavailable();
+        if(!(ownChange&&ownLifecycle.selection.responsibilityId===item.id)
+          &&(lifecycle?.state!=='active'||lifecycle.responsibilityRevision!==item.revision||Date.parse(lifecycle.validUntil)<=Date.now()))return unavailable();
         for(const quote of [...item.sourceQuotes,lifecycle.activationQuote]){
           const task=current.app.runtime.getTask(quote.messageId);
           if(current.app.runtime.loadCheckpoint(task.taskId,'private-copy-erasure')!==undefined||current.app.runtime.loadCheckpoint(task.taskId,'private-copy-erasure-binding')!==undefined

@@ -43,6 +43,8 @@ export type {F01ResponsibilityTarget,F01LifecycleSelection,F01LifecycleInvocatio
 export type {F01ContextHostOptions,F01ContextResult,F01ModelSnapshot,F01GatewayModelSnapshot,F01AgentArtsCatalogSnapshot,F01ResponsibilitySnapshot} from './application/workflow-f01-context-host.js';
 export {createF01ResponsibilitySource,createF01ModelGatewaySource} from './application/workflow-f01-context-sources.js';
 export {createF01QueryBinding} from './application/workflow-f01-query-binding.js';
+export {createF01WorkflowWorkerPorts} from './application/workflow-f01-worker.js';
+export type {F01WorkflowOptions} from './application/workflow-f01-worker.js';
 export {createF02PendingQuestionHost} from './application/workflow-f02-question-host.js';
 export {createF02ConfirmationHost} from './application/workflow-f02-confirmation-host.js';
 export {createF02FinalTranscriptHost} from './application/workflow-f02-transcript-host.js';

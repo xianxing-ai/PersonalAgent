@@ -39,7 +39,7 @@ const tool = (name: string): WorkflowCapability => ({kind:'tool',name,boundary:'
 const capabilities: Record<string, WorkflowCapability[]> = {
   F01_N02:[host('memory.query'),host('responsibility.snapshot'),host('model.capabilities')],
   F01_N04:[host('policy.scope_check')],F01_N05:[host('model.native_config_check')],F01_N06:[host('runtime.commit_task_graph')],
-  F01_N07:[tool('knowledge.search')],F01_N08:[host('voice.ask_question')],F01_N09:[host('runtime.commit_responsibility')],
+  F01_N07:[host('knowledge.original_public_source')],F01_N08:[host('voice.ask_question')],F01_N09:[host('runtime.commit_responsibility')],
   F02_N01:[host('policy.pending_question')],F02_N02:[host('voice.speak_question')],F02_N03:[host('voice.final_transcript')],
   F02_N05:[host('policy.confirmation_check')],F02_N06:[host('policy.resume_original_operation')],
   F02_N07:[host('runtime.invalidate_question')],F02_N08:[host('runtime.reject_operation')],F02_N09:[host('runtime.local_stop_observation')],
@@ -120,11 +120,13 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       &&feature.edges.some(edge=>edge.source==='F24_N11'&&edge.target===node.id))dependencies.push('F24_N11');
     // Optional expansion evidence must be settled before F05 can draft an answer.
     if(node.id==='F05_N04'&&!dependencies.includes('F05_N06'))dependencies.push('F05_N06');
+    // Optional F01 outcomes must settle before publishing the original plan outcome.
+    if(node.id==='F01_N06')for(const id of ['F01_N07','F01_N08','F01_N09'])if(!dependencies.includes(id))dependencies.push(id);
     return {id:node.id,label:node.label,designKind:node.kind,kind,
       dependencies:dependencies.map(nodeId=>({nodeId,
-        required:node.id==='F05_N04'&&nodeId==='F05_N06'?false:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
+        required:node.id==='F01_N06'&&['F01_N07','F01_N08','F01_N09'].includes(nodeId)||node.id==='F05_N04'&&nodeId==='F05_N06'?false:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F02_N09','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F01_N07','F01_N08','F01_N09','F02_N09','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
           || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',
