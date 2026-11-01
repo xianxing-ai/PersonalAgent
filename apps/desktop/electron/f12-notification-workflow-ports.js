@@ -44,7 +44,7 @@ export function createF12NotificationWorkflowPorts({getApplication,notificationH
 }
 
 /** Binds a published feed item, not a model-authored notification or return event. */
-export function createF12ConfiguredNotificationPorts({getApplication,notificationHost,now=Date.now}={}) {
+export function createF12ConfiguredNotificationPorts({getApplication,notificationHost,explicitReturnSource,now=Date.now}={}) {
   if(typeof getApplication!=='function'||['getDigest','deliverRound','getInterruptionPolicy','getLegacyPolicy','drain'].some(name=>typeof notificationHost?.[name]!=='function'))
     throw Error('F12 requires the original notification application host');
   const key='business-workflow:F12:source';
@@ -62,6 +62,9 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
     const bound=app.readConfiguredWorkflowBinding({taskId,workflowId:'F12',sessionId:scope.sessionId,signal:scope.signal});
     if(!saved||!bound||bound.deadline!==scope.deadline||!isDeepStrictEqual(selection(bound.input),saved.selection)||bound.input.trigger!==saved.trigger)
       fail('UNAUTHORIZED','F12 original feed binding unavailable');
+    if(saved.trigger==='on_return'&&(!isDeepStrictEqual(bound.input.returnSource,saved.returnProof?.source)
+      ||!isDeepStrictEqual(explicitReturnSource?.read(bound.input.returnSource,scope),saved.returnProof)))
+      fail('UNAUTHORIZED','F12 original explicit return source changed');
     const entries=saved.entries.map(original=>feed(original.id)),policy=policyValue(notificationHost.getInterruptionPolicy(saved.scope));
     if(!isDeepStrictEqual(policy,saved.policy)||!isDeepStrictEqual(legacy(saved.scope),saved.legacy))fail('REVISION_CONFLICT','F12 original policy changed');
     for(let index=0;index<entries.length;index++){
@@ -77,7 +80,7 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
     return {...saved,entries};
   };
   const action=saved=>{
-    if(saved.trigger==='on_demand')return 'feed_only';
+    if(saved.trigger==='on_demand'||saved.trigger==='on_return')return 'feed_only';
     const legacyBlocked=saved.legacy.some(({policy})=>policy&&(policy.pauseUntilUtc&&Date.parse(policy.pauseUntilUtc)>now()
       ||policy.quietHours&&quietHoursActive(policy.quietHours,now())));
     const blocked=legacyBlocked||saved.policy.constraints.some(({policy})=>(policy.mode==='silent'&&policy.silentUntilUtc===null
@@ -108,7 +111,15 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
       const policy=policyValue(notificationHost.getInterruptionPolicy(entryScope));
       if(policy.state!=='configured'||!policy.effective)fail('UNSUPPORTED_CAPABILITY','F12 current notification policy unavailable');
       if(input.trigger==='event'&&policy.effective.preferredChannel==='voice')fail('UNSUPPORTED_CAPABILITY','F12 original voice channel unavailable');
-      const value={entries,selection:chosen,scope:entryScope,policy,legacy:legacy(entryScope),trigger:input.trigger,roundId:'workflow-f12-'+notificationDigest(scope.taskId)};
+      let returnProof;
+      if(input.trigger==='on_return'){
+        if(typeof explicitReturnSource?.read!=='function')fail('UNSUPPORTED_CAPABILITY','F12 explicit user return source unavailable');
+        returnProof=explicitReturnSource.read(input.returnSource,scope);
+        const digest=notificationHost.getDigest({trigger:'on_return',scope:entryScope});
+        if(itemIds.some(id=>!digest.items.some(item=>item.id===id)))fail('UNAUTHORIZED','F12 selected items are not in the original return digest');
+      }
+      const value={entries,selection:chosen,scope:entryScope,policy,legacy:legacy(entryScope),trigger:input.trigger,roundId:'workflow-f12-'+notificationDigest(scope.taskId),
+        ...(returnProof?{returnProof}: {})};
       const prior=app.runtime.loadCheckpoint(scope.taskId,key);
       if(prior&&!isDeepStrictEqual(prior,value))fail('REVISION_CONFLICT','F12 input already bound to another feed snapshot');
       app.runtime.saveCheckpointOnce(scope.taskId,key,value);
@@ -165,8 +176,8 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
     },
     digest(scope){
       const saved=source(scope);
-      // The explicit read has its own Policy approval. No on_return event or read acknowledgement is inferred.
-      const current=notificationHost.getDigest({trigger:'on_demand',scope:saved.scope}),items=ids(saved.selection).map(id=>current.items.find(item=>item.id===id));
+      // The explicit read has its own Policy approval. Return needs its original UI control marker; neither path acknowledges read.
+      const current=notificationHost.getDigest({trigger:saved.trigger==='on_return'?'on_return':'on_demand',scope:saved.scope}),items=ids(saved.selection).map(id=>current.items.find(item=>item.id===id));
       if(items.some(item=>!item||item.validity!=='active'||!item.unread))fail('REVISION_CONFLICT','F12 original changes are no longer in the active unread digest');
       source(scope);const projected=items.map(item=>({itemId:item.id,unread:item.unread,validity:item.validity,source:item.source,contentRef:item.contentRef,
         ...(item.deliveredAt?{deliveredAt:item.deliveredAt}:{})}));

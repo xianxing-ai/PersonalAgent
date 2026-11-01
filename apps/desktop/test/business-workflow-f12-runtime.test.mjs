@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {validateToolValue} from '@personal-agent/contracts';
+import {notificationDigest} from '@personal-agent/notifications';
 import * as runtimeModule from '@personal-agent/runtime/application';
 import {createBusinessWorkflowWorkerPorts} from '../electron/business-workflow-worker-ports.js';
 import {scenario} from './fixtures/f12-runtime-scenario.mjs';
@@ -22,6 +23,20 @@ test('F12 request, bound input and original hosts require one explicit unique se
       assert.throws(()=>validateToolValue(tool.descriptor.inputSchema,{...selected,...(nodeId==='f12_n04'?{roundId:'original',channel:'banner'}:{})}));
     }
   }
+});
+
+test('F12 publishes return input only with a source reader and requires its exact reference',()=>{
+  const compose=explicitReturnSource=>createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>undefined,explicitReturnSource,
+    notificationHost:{getDigest(){},deliverRound(){},getInterruptionPolicy(){},getLegacyPolicy(){},drain(){}},
+    prepareCompetitionToolExport:async()=>{},readBusinessAvailability:()=>({ready:true,bindingId:'fixture'}),authorizeExport:async()=>true})
+    .configuredWorkflowWorkerPorts.find(worker=>worker.workflowId==='F12');
+  const source={taskId:'original',sourceTaskId:'user',sessionId:'session',commandId:'return',controlRevision:1};
+  assert.throws(()=>validateToolValue(compose().requestSchema,{itemId:'item',trigger:'on_return',returnSource:source}));
+  const schema=compose({read(){throw Error('schema only');}}).requestSchema;
+  validateToolValue(schema,{itemId:'item',trigger:'on_return',returnSource:source});
+  for(const request of [{itemId:'item',trigger:'on_return'},{itemId:'item',trigger:'event',returnSource:source},
+    {itemId:'item',trigger:'on_return',returnSource:{...source,controlRevision:0}},{itemId:'item',trigger:'on_return',returnSource:{...source,approved:true}}])
+    assert.throws(()=>validateToolValue(schema,request));
 });
 test('F12 actual configured graph consumes current policy and durable original banner receipt',async t=>{
   const f=await scenario(t);assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));assert.equal(f.sends,1);
@@ -123,4 +138,27 @@ for(const action of ['failed','cancel','withdraw'])test('F12 asynchronous native
     assert.notEqual(f.child.state,'succeeded');assert.equal(f.cloud.some(request=>request.continuation?.result?.notificationState!==undefined),false);
     assert.equal(f.host.runtimeHost.getInterruptionRound(f.sent[0].roundId).attempts.banner.state,'delivered');
   }
+});
+
+test('F12 original explicit return reads the current digest with no send, read acknowledgement or interruption',async t=>{
+  const f=await scenario(t,{returning:true,multi:true,repeat:true});
+  assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));assert.equal(f.repeated.state,'succeeded',JSON.stringify(f.diagnostics));
+  assert.equal(f.sends,0);assert.ok(f.approvals.includes('workflow.host.f12_n05'));assert.equal(f.approvals.includes('workflow.host.f12_n04'),false);
+  assert.equal(f.host.runtimeHost.getInterruptionRound('workflow-f12-'+notificationDigest(f.child.taskId)),undefined);
+  const digest=f.host.getDigest({trigger:'on_return'});assert.equal(digest.interruptionCount,0);
+  assert.deepEqual(digest.items.map(item=>({id:item.id,unread:item.unread})),[{id:'item',unread:true},{id:'item-2',unread:true}]);
+  assert.ok(f.cloud.some(request=>request.continuation?.result?.notificationState==='feed_only'));
+});
+
+for(const option of ['unrecordedReturn','foreignReturn','cancelReturn','eraseReturn','changeReturnDuringInitial','changeReturnDuringCompletion'])
+  test('F12 '+option+' refuses return digest completion without modifying feed',async t=>{
+    const f=await scenario(t,{returning:true,[option]:true});assert.notEqual(f.child.state,'succeeded');assert.equal(f.sends,0);
+    assert.equal(f.cloud.some(request=>request.continuation?.result?.notificationState==='feed_only'),false);
+    assert.equal(f.host.runtimeHost.notificationFeed().items.find(item=>item.id==='item').unread,true);
+    if(option==='changeReturnDuringInitial')assert.equal(f.proposals.length,0);
+  });
+
+test('F12 return source does not replace the original digest child Policy approval',async t=>{
+  const f=await scenario(t,{returning:true,denyTool:'workflow.host.f12_n05'});assert.notEqual(f.child.state,'succeeded');assert.equal(f.sends,0);
+  assert.equal(f.cloud.some(request=>request.continuation?.result?.notificationState==='feed_only'),false);
 });

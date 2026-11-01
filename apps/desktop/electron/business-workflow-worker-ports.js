@@ -6,6 +6,7 @@ import {createF06TodoWorkflowPorts} from './f06-todo-workflow-ports.js';
 import {createF07CalendarWorkflowPorts} from './f07-calendar-workflow-ports.js';
 import {createF11CalendarWorkflowPorts} from './f11-calendar-workflow-ports.js';
 import {createF12ConfiguredNotificationPorts} from './f12-notification-workflow-ports.js';
+import {F12_EXPLICIT_RETURN_SOURCE_SCHEMA} from './f12-explicit-return-source.js';
 import {createF08MailWorkflowPorts} from './f08-mail-workflow-ports.js';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
@@ -26,7 +27,7 @@ const canonicalInstant=value=>{
 
 /** Fixed business graph composition. The caller supplies the pinned image separately.
  * This facade resolves the real application only at execution, before any Runtime exists at startup. */
-export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,
+export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,
   competitionToolExports=[],prepareCompetitionToolExport,authorizeExport,readBusinessAvailability,now=Date.now}={}) {
   const tools=[],hosts=[],configuredWorkflowWorkerPorts=[],unavailable=[];
   if(!runtimeModule||typeof getApplication!=='function'||typeof authorizeExport!=='function'
@@ -61,6 +62,15 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     if(saved&&(saved.bindingId!==availability.bindingId||saved.deadline!==own.deadline))
       fail('REVISION_CONFLICT','Original business availability binding changed');
     if(input&&availability.bindingId!==input.businessBindingId)fail('REVISION_CONFLICT','Business account or device binding changed');
+    if(workflowId==='F12'){
+      const original=runtime.loadCheckpoint(own.taskId,'business-workflow:F12:source');
+      const returnRef=input?.trigger==='on_return'?input.returnSource:original?.returnProof?.source;
+      if(returnRef){
+        if(typeof explicitReturnSource?.read!=='function')fail('UNSUPPORTED_CAPABILITY','F12 explicit return reader unavailable');
+        const proof=explicitReturnSource.read(returnRef,own);
+        if(original?.returnProof&&!isDeepStrictEqual(original.returnProof,proof))fail('REVISION_CONFLICT','F12 original return source changed');
+      }
+    }
     return availability.bindingId;
   }
   function binding(workflowId,scope) {
@@ -140,7 +150,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     }
     const inputSchema={...requestSchema,properties:{...requestSchema.properties,businessBindingId:text},required:[...requestSchema.required,'businessBindingId']};
     const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
-      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v2':workflowId==='F11'?'business-20261101-f11-v2':workflowId==='F08'?'business-20261101-f08-v2':'business-20261031-v1',
+      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v3':workflowId==='F11'?'business-20261101-f11-v2':workflowId==='F08'?'business-20261101-f08-v2':'business-20261031-v1',
       requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:workflowId==='F12'?['/trigger']:workflowId==='F11'&&requestSchema.properties.weather?['/weather/query/units']
         :workflowId==='F08'?['sourceId','configRevision','query'].filter(key=>Array.isArray(requestSchema.properties.knowledge?.properties?.[key]?.enum)).map(key=>'/knowledge/'+key):[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
@@ -451,7 +461,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
   }else unavailable.push('f11_business_dependencies_unavailable');
   if(['deliverRound','getDigest','getInterruptionPolicy','getLegacyPolicy','drain'].every(name=>typeof notificationHost?.[name]==='function')&&runtimeModule.createRuntimeF12ConfiguredReadHosts
     &&runtimeModule.createRuntimeF12NotificationDeliverHost){
-    const ports=createF12ConfiguredNotificationPorts({getApplication,notificationHost,now});
+    const returnEnabled=typeof explicitReturnSource?.read==='function';
+    const ports=createF12ConfiguredNotificationPorts({getApplication,notificationHost,explicitReturnSource,now});
     const selectionSchema={...object({itemId:text,itemIds:{type:'array',minItems:1,uniqueItems:true,items:text}},[]),
       oneOf:[{required:['itemId'],not:{required:['itemIds']}},{required:['itemIds'],not:{required:['itemId']}}]};
     const hostOptions={...ports,application,assertCurrent:scope=>{binding('F12',scope);ports.source(scope);},now:()=>new Date(now()),
@@ -482,7 +493,9 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       if(!isDeepStrictEqual(result,ports.digest(scope)))fail('REVISION_CONFLICT','F12 original unread digest changed');
       return {...ports.selection(scope),notificationState:'feed_only',delivered:false};
     };
-    config('F12',{...selectionSchema,properties:{...selectionSchema.properties,trigger:{type:'string',enum:['event','on_demand']}},required:['trigger']},
+    config('F12',{...selectionSchema,properties:{...selectionSchema.properties,trigger:{type:'string',enum:['event','on_demand',...(returnEnabled?['on_return']:[])]},
+      ...(returnEnabled?{returnSource:structuredClone(F12_EXPLICIT_RETURN_SOURCE_SCHEMA)}:{})},required:['trigger'],
+      ...(returnEnabled?{allOf:[{if:{properties:{trigger:{const:'on_return'}}},then:{required:['returnSource']},else:{not:{required:['returnSource']}}}]}:{})},
       ['decision.choose_candidate','workflow.host.f12_n02','workflow.guard.f12_n04','workflow.guard.f12_n05','workflow.host.f12_n04','workflow.host.f12_n05'],
       {...selectionSchema,properties:{...selectionSchema.properties,notificationState:{type:'string',enum:['delivered','failed','feed_only']},delivered:{type:'boolean'}},required:['notificationState','delivered']},
       async(scope,bound)=>{
@@ -506,7 +519,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         if(!saved||!isDeepStrictEqual(saved.result,scope.value)||!isDeepStrictEqual(completion({...scope,parentTaskId:scope.taskId,sessionId:saved.sessionId}),saved.result))
           fail('REVISION_CONFLICT','F12 completion changed during export');
       },ports.prepareInput);
-    unavailable.push('f12_user_return_event_source_unavailable','f12_voice_delivery_unavailable');
+    if(!returnEnabled)unavailable.push('f12_user_return_event_source_unavailable');
+    unavailable.push('f12_voice_delivery_unavailable');
   }else unavailable.push('f12_notification_application_host_unavailable');
   if(['mail.inbox','mail.archive','mail.send','mail.reconcile_send','knowledge.search'].every(name=>descriptor(name))
     &&runtimeModule.createRuntimeF08PreparedPlanHosts&&runtimeModule.createRuntimeF08MailArchiveHost&&runtimeModule.createRuntimeF08MailSendHost&&runtimeModule.createRuntimeF08KnowledgeSourceHost){
