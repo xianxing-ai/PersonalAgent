@@ -144,6 +144,26 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     root.querySelector('#conversation-inspector').dataset.taskId=task.taskId;
     syncAuxiliaryPanels();
     root.querySelector('#inspector-content').innerHTML=`<h3>你的消息</h3><p>${escape(task.userMessage||'历史对话')}</p><h3>回答</h3><p>${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state])}</p>${task.resultMetadata?`<h3>模型与验证</h3><p>${escape(task.resultMetadata.profile)} · ${escape(task.resultMetadata.verification)}</p>`:'' }<h3>执行状态</h3><p>${escape(stateNames[task.state]||task.state)}</p>${(task.steps||[]).map(step=>`<p class="inspector-step">${escape(step.label)} · ${escape(step.state)}</p>`).join('')}`;
+    const candidateButton=document.createElement('button'),candidateBody=document.createElement('div');
+    candidateButton.type='button';candidateButton.textContent='查看候选答案';
+    candidateButton.onclick=async()=>{
+      if(candidateButton.disabled)return;candidateButton.disabled=true;
+      try{
+        const value=await invoke('workflow.modelCandidates.read',{taskId:task.taskId});
+        if(inspected!==task.taskId||!root.contains(candidateBody))return;
+        candidateBody.replaceChildren();
+        const note=document.createElement('p');note.textContent='以下为模型候选，尚未核实。';candidateBody.append(note);
+        const candidates=value.results.flatMap(result=>result.candidates);
+        if(!candidates.length)note.textContent='这轮对话暂无已完成的候选答案。';
+        for(const candidate of candidates){
+          const heading=document.createElement('h3'),body=document.createElement('p');
+          heading.textContent=candidate.modelId;body.textContent=candidate.text;body.style.whiteSpace='pre-wrap';
+          candidateBody.append(heading,body);
+        }
+      }catch(error){if(inspected===task.taskId&&root.contains(candidateBody))candidateBody.textContent=errorDisplayText(error);}
+      finally{candidateButton.disabled=false;}
+    };
+    root.querySelector('#inspector-content').append(candidateButton,candidateBody);
   }
   function update(data){
     updateRevision++;

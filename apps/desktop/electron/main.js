@@ -395,7 +395,7 @@ let f01Workflow;
 let f22Configuration,f22Workflow;
 let f25Configuration,f25Workflow;
 let f08SourceChanges,f08SourceActions;
-let f23DecisionConfiguration;
+let f23DecisionConfiguration,f28Workflow;
 let reconcileOriginalMailWorkflow;
 let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
 let f14Workflow;
@@ -2468,6 +2468,7 @@ async function initializeRuntime() {
         competitionOnly:true,
         getRuntime: () => runtimeApplication.runtime,
         getTools: () => runtimeApplication.tools,
+        getToolsForSubtask:(subtask,worker)=>f28Workflow?.getToolsForSubtask(subtask,worker,runtimeApplication.tools)??runtimeApplication.tools,
         runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools),
         fakeModelMode,
       });
@@ -2475,6 +2476,7 @@ async function initializeRuntime() {
         const taskThinking = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-thinking');
         const boundTool=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>runtimeApplication.runtime,
           getTools:()=>runtimeApplication.tools,fakeModelMode,
+          getToolsForSubtask:(subtask,worker)=>f28Workflow?.getToolsForSubtask(subtask,worker,runtimeApplication.tools)??runtimeApplication.tools,
           runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)});
         return boundTool.execute({...input,subtasks:input.subtasks.map(subtask=>({...subtask,
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
@@ -2715,7 +2717,7 @@ async function initializeRuntime() {
       const f21Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF21WorkflowPorts({runtimeModule,mcpModule:publicReferenceModule,codingModule,
         getApplication:()=>runtimeApplication,getReferenceHost:()=>referenceHost,nativeExecutionHost,
         getAuthorizationIntentHost:()=>authorizationIntentHost,probeRoot:path.join(app.getPath('userData'),'f21-probe'),authorizeExport:authorizeWorkflowExport}):undefined;
-      const f28Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF28WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+      f28Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF28WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         modelApiHost:{snapshot:()=>modelApiHost?.snapshot()??{models:[]},getModelGateway:(...args)=>modelApiHost?.getModelGateway(...args),
           getGuardedModelGateway:(...args)=>modelApiHost?.getGuardedModelGateway(...args)},authorizeExport:authorizeWorkflowExport,
         confirmModelExport:request=>confirmApplicationAuthorization('developer.export',request.payload,{
@@ -2791,6 +2793,7 @@ async function initializeRuntime() {
         path: dbPath,
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
+        getToolsForSubtask:(subtask,worker,tools)=>f28Workflow?.getToolsForSubtask(subtask,worker,tools)??tools,
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
@@ -4103,6 +4106,24 @@ async function action(event, name, payload) {
     if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 PR 审核配置');
     await f18ReviewCases.selectFromNativeDialog();publish();
     return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='workflow.modelCandidates.read'){
+    const surface=sender===workspace?'workspace':sender===panel?'panel':undefined;
+    if(!competitionMode||syntheticMvp||!f28Workflow||!runtimeApplication||!['panel','workspace'].includes(surface)
+      ||!payload||Object.keys(payload).join(',')!=='taskId'||typeof payload.taskId!=='string')
+      throw Error('请从原对话查看候选答案');
+    const task=runtimeApplication.runtime.getTask(payload.taskId),conversationId=conversations.activeConversationId(surface);
+    if(!visibleConversationTask(task,surface)||!conversationToolAccess.authorizeTaskRead({taskId:task.taskId,conversationId}))
+      throw Error('原对话不可用');
+    const ids=[task.taskId,...runtimeApplication.readSubagentTasks(task.taskId).map(child=>child.taskId)];
+    const results=[];
+    for(const taskId of ids){
+      if(!conversationToolAccess.authorizeTaskRead({taskId,conversationId}))continue;
+      if(runtimeApplication.runtime.loadCheckpoint(taskId,'f28:original-model-candidates')===undefined)continue;
+      const original=runtimeApplication.runtime.getTask(taskId);
+      results.push(f28Workflow.readLocalCandidates({taskId,conversationId,expectedRevision:original.revision}));
+    }
+    return {results};
   }
   if(name==='workflow.decisionConfiguration.initialize'){
     if(sender!==admin||!competitionMode||syntheticMvp||!f23DecisionConfiguration)throw Error('请从正式管理后台初始化决策基线');
@@ -5554,7 +5575,7 @@ app.whenReady().then(async () => {
       f22Configuration?.close();f22Configuration=undefined;f22Workflow=undefined;
       f25Configuration?.close();f25Configuration=undefined;f25Workflow=undefined;
       f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
-      f23DecisionConfiguration=undefined;
+      f23DecisionConfiguration=undefined;f28Workflow=undefined;
       reconcileOriginalMailWorkflow=undefined;
       f11LocationQuestion=undefined;
       f11DecisionQuestion=undefined;
