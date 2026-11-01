@@ -15,6 +15,7 @@ import {prepareWorkflowHostPreflight} from '../electron/workflow-host-preflight.
 import {prepareConfiguredWorkflowDecisionQuestion} from '../electron/configured-workflow-decision-source.js';
 import {createF08DecisionQuestionHost} from '../electron/business-workflow-question-host.js';
 import {createF08SourceChangeHost} from '../electron/f08-source-change-host.js';
+import {createF08SourceActions} from '../electron/f08-source-actions.js';
 
 // Real Engine, Runtime, SQLite, connector host, public mail/knowledge tools and
 // AuthorizationQuestions/Policy and original private/public knowledge export policy.
@@ -24,9 +25,13 @@ async function scenario(t,options={}){
   const cache=new URL('../../../.cache/business-f08-runtime/',import.meta.url);mkdirSync(cache,{recursive:true});
   const userData=mkdtempSync(new URL('case-',cache)),approvals=[],cloud=[],proposals=[],decisions=[],imageRequests=[],sent=new Map();
   let app,archives=0,sends=0,reads=0,knowledgeReads=0,moved=false,changed=false,decisionReply,decisionReplied=false,businessRevision=1,inboxChanged=false;
-  let mailSourceHost,memory,remembered=false;const mailChanges=[];
+  let mailSourceHost,sourceActions,sourceFact,memory,remembered=false;const mailChanges=[];
   if(options.mailSourceChanges)mailSourceHost=createF08SourceChangeHost({getApplication:()=>app,memoryPath:path.join(userData,'private-mail.sqlite'),
-    graphNamespace:'mail-plans',assertCurrent:()=>{assert.equal(businessRevision,1);},confirmSource:async()=>true,confirmErase:async()=>true});
+    graphNamespace:'mail-plans',assertCurrent:()=>{assert.equal(businessRevision,1);},confirmSource:async(_details,scope)=>{
+      assert.ok(scope.signal instanceof AbortSignal);assert.ok(Date.parse(scope.deadline)>Date.now());scope.assertCurrent();
+      assert.equal(scope.control.commandId,'fixture-confirmed-mail-source');return true;
+    },confirmErase:async(_fact,scope)=>{scope.assertCurrent();assert.ok(scope.signal instanceof AbortSignal);return true;}});
+  if(mailSourceHost)sourceActions=createF08SourceActions({getApplication:()=>app,sourceHost:mailSourceHost});
   const decisionQuestion=createF08DecisionQuestionHost({getApplication:()=>app});
   const source={vaultId:'fixture-vault',path:'source.md',line:1,revision:'a'.repeat(64)};
   const provider=new FakeMailProvider({inbox:[{uid:3,folder:'INBOX',from:'sender@example.invalid',to:'fixture@qq.com',subject:'Fixture original',
@@ -154,12 +159,12 @@ async function scenario(t,options={}){
     }
     for(const card of question.snapshot().filter(item=>item.state==='pending')){approvals.push(card.toolName);
       if(options.mailSourceChanges&&!remembered&&card.toolName==='mail.archive'){
-        const marker=app.runtime.loadCheckpoint(card.taskId,'workflow-business-tool:source');
-        const intent=app.runtime.loadCheckpoint(marker.sourceTaskId,'workflow-business-tool:'+marker.commandId);
-        const scope={parentTaskId:intent.parentTaskId,sessionId:intent.sessionId,deadline:intent.request.deadline,signal:new AbortController().signal};
-        const original=await mailSourceHost.rememberSource(scope,{factId:'explicit-mail-snapshot',operationId:'fixture-confirmed-mail-source',
-          summary:'Fixture user-confirmed private mailbox snapshot',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z'});
-        assert.equal(original.fact.sensitivity,'private');remembered=true;
+        const scope={conversationId:'fixture-chat',signal:new AbortController().signal};
+        assert.throws(()=>sourceActions.readSource({taskId:root.taskId},{...scope,conversationId:'foreign'}),{code:'UNAUTHORIZED'});
+        const view=sourceActions.readSource({taskId:root.taskId},scope);
+        const original=await sourceActions.remember({taskId:root.taskId,sourceId:view.sourceId,commandId:'fixture-confirmed-mail-source',
+          summary:'Fixture user-confirmed private mailbox snapshot',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z'},scope);
+        assert.equal(original.fact.sensitivity,'private');sourceFact=original.fact.ref;remembered=true;
       }
       if(card.toolName==='mail.send'&&options.revokeSend&&!changed){await connector.invalidate('mail');changed=true;}
       if(card.toolName==='mail.send'&&options.cancelSend){const graph=app.readSubagentTasks(root.taskId)[0];if(graph)app.runtime.requestCancel(graph.taskId);continue;}
@@ -185,7 +190,7 @@ async function scenario(t,options={}){
     }
     if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;await pause();
   }
-  assert.ok(child);return {app,userData,child,archives,sends,reads,knowledgeReads,approvals,cloud,proposals,decisions,imageRequests,decisionReply,decisionReplied,decisionQuestion,memory,mailChanges,mailSourceHost,
+  assert.ok(child);return {app,userData,child,archives,sends,reads,knowledgeReads,approvals,cloud,proposals,decisions,imageRequests,decisionReply,decisionReplied,decisionQuestion,memory,mailChanges,mailSourceHost,sourceFact,
     diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,error:task.error,tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
 }
 
@@ -234,7 +239,7 @@ test('F08 source change preserves original effects and private Fact but cannot i
   const keys=f.app.runtime.listCheckpointKeys(f.child.taskId).filter(key=>key.startsWith('f08:mail-source-change:'));
   assert.equal(keys.length,1);assert.deepEqual(f.app.runtime.loadCheckpoint(f.child.taskId,keys[0]),receipt.change);
   const namespace=f.mailSourceHost.memoryNamespace;
-  const fact=f.memory.readUserFactHead(namespace,'explicit-mail-snapshot');assert.equal(fact.state,'active');assert.equal(fact.ref.revision,1);
+  const fact=f.memory.readUserFactHead(namespace,f.sourceFact.id);assert.equal(fact.state,'active');assert.equal(fact.ref.revision,1);
   const publicFeed=await f.memory.bindFeed(namespace,{consumerId:'fixture-public',allowedSensitivities:['public']})
     .read({limit:10,deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
   assert.equal(publicFeed.entries.length,0);assert.equal(JSON.stringify(f.cloud).includes('Fixture user-confirmed private mailbox snapshot'),false);

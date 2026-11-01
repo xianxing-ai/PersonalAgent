@@ -22,8 +22,8 @@ export function createF08SourceChangeHost({getApplication,memoryPath,graphNamesp
     rememberSource:(scope,input)=>ensure().rememberSource(scope,input,confirmSource),
     recordChange:(scope,receipt)=>ensure().recordChange(scope,receipt),
     listSources:scope=>ensure().listSources(scope),
-    withdrawSource:request=>ensure().withdrawSource(request,confirmWithdraw),
-    eraseSource:request=>ensure().eraseSource(request,confirmErase),
+    withdrawSource:(request,control)=>ensure().withdrawSource(request,(fact,scope)=>confirmWithdraw?.(fact,{...scope,...(control?{control}:{} )})),
+    eraseSource:(request,control)=>ensure().eraseSource(request,(fact,scope)=>confirmErase?.(fact,{...scope,...(control?{control}:{} )})),
     readCurrentFact(input){ensure();assertCurrent();if(input.memoryNamespace!==memoryNamespace)return;
       const value=memory.readUserFactHead(memoryNamespace,input.fact.id);
       return value?.ref.revision===input.fact.revision&&value.state==='active'&&value.confirmation==='user_confirmed'?value:undefined;},

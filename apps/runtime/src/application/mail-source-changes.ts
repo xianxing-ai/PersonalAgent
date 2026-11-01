@@ -8,7 +8,9 @@ import {readWorkflowBusinessToolSource,type WorkflowBusinessToolSourceReference}
 import {readPlanExecutionIntent} from './plan-execution-source.js';
 import {createMemoryProjectionApplication,createPendingImpactApplication} from './memory.js';
 
-export interface OriginalMailSourceScope extends MemoryReadContext {parentTaskId:string;sessionId:string}
+export interface OriginalMailSourceScope extends MemoryReadContext {parentTaskId:string;sessionId:string;
+  control?:Readonly<{boundUserTaskId:string;conversationId:string;commandId:string;sourceDigest:string}>}
+type SourceConfirmationScope=MemoryReadContext&{assertCurrent:()=>void;control?:OriginalMailSourceScope['control']};
 type Inbox={account:string;folder:string;nextCursor:string;hasMore:false;items:Record<string,unknown>[]};
 const fail=(code:string,message:string):never=>{throw new ProtocolError(code,message);};
 const same=(a:{id:string;revision:number},b:{id:string;revision:number})=>a.id===b.id&&a.revision===b.revision;
@@ -102,13 +104,16 @@ export function createCompetitionMailSourceChanges(options:CompetitionMailSource
     readSource(scope:OriginalMailSourceScope){check(scope);return readOriginalF08MailSource(application,scope);},
     /** Existing explicit private Fact creation, never a model approval or inferred summary. */
     async rememberSource(scope:OriginalMailSourceScope,input:{factId:string;operationId:string;summary:string;validFrom:string;validUntil:string},
-      confirm:(request:Readonly<{source:ReturnType<typeof readOriginalF08MailSource>;input:typeof input}>)=>Promise<boolean>){
+      confirm:(request:Readonly<{source:ReturnType<typeof readOriginalF08MailSource>;input:typeof input}>,scope:SourceConfirmationScope)=>Promise<boolean>){
       check(scope);const source=readOriginalF08MailSource(application,scope),request=structuredClone({source,input});
       const key='f08:mail-fact-confirmation:'+toolArgumentsDigest(input.operationId);
       const requestDigest=toolArgumentsDigest(request);
       const existing=application.runtime.loadCheckpoint(scope.parentTaskId,key) as {requestDigest:string;observedAt:string}|undefined;
       if(existing&&existing.requestDigest!==requestDigest)fail('REVISION_CONFLICT','Original private Fact confirmation changed');
-      if(!existing&&(typeof confirm!=='function'||await confirm(structuredClone(request))!==true))return;
+      const assertSource=()=>{check(scope);if(!isDeepStrictEqual(readOriginalF08MailSource(application,scope),source))
+        fail('REVISION_CONFLICT','Original mailbox source changed during confirmation');};
+      if(!existing&&(typeof confirm!=='function'||await confirm(structuredClone(request),{deadline:scope.deadline,signal:scope.signal,
+        ...(scope.control?{control:scope.control}:{}),assertCurrent:assertSource})!==true))return;
       check(scope);if(!isDeepStrictEqual(readOriginalF08MailSource(application,scope),source))fail('REVISION_CONFLICT','Mailbox changed during private Fact confirmation');
       const intent=existing??{requestDigest,observedAt:new Date().toISOString()};
       if(!existing&&!application.runtime.saveCheckpointOnce(scope.parentTaskId,key,intent))fail('REVISION_CONFLICT','Private Fact confirmation is already recorded');
@@ -155,10 +160,12 @@ export function createCompetitionMailSourceChanges(options:CompetitionMailSource
     },
     listSources(context:MemoryReadContext){erasureContext(context);return memory.listUserFactHeads(memoryNamespace,{at:new Date().toISOString(),limit:100,...context});},
     async withdrawSource(request:MemoryReadContext&{factId:string;expectedRevision:number;operationId:string},
-      confirm:(fact:NonNullable<ReturnType<SqliteMemoryHost['readUserFactHead']>>)=>Promise<boolean>){
+      confirm:(fact:NonNullable<ReturnType<SqliteMemoryHost['readUserFactHead']>>,scope:SourceConfirmationScope)=>Promise<boolean>){
       erasureContext(request);const current=memory.readUserFactHead(memoryNamespace,request.factId);
       if(!current||current.ref.revision!==request.expectedRevision)fail('REVISION_CONFLICT','Private mail Fact head changed');
-      if(typeof confirm!=='function'||await confirm(current!)!==true)return {state:'declined' as const};
+      if(typeof confirm!=='function'||await confirm(current!,{deadline:request.deadline,signal:request.signal,assertCurrent:()=>{
+        erasureContext(request);if(!isDeepStrictEqual(memory.readUserFactHead(memoryNamespace,request.factId),current))fail('REVISION_CONFLICT','Original private Fact changed');
+      }})!==true)return {state:'declined' as const};
       erasureContext(request);
       const result=memory.reviseUserFact(memoryNamespace,{...request,summary:current!.summary,sourceRef:current!.sourceRef,
         observedAt:new Date().toISOString(),validFrom:current!.validFrom,validUntil:current!.validUntil,sensitivity:'private',state:'withdrawn'});
@@ -167,14 +174,16 @@ export function createCompetitionMailSourceChanges(options:CompetitionMailSource
     },
     /** Independent native erasure intent. Original mailbox tool history is not a copy created from this Fact. */
     async eraseSource(request:MemoryReadContext&{factId:string;expectedRevision:number;operationId:string},
-      confirm:(fact:NonNullable<ReturnType<SqliteMemoryHost['readUserFactHead']>>)=>Promise<boolean>){
+      confirm:(fact:NonNullable<ReturnType<SqliteMemoryHost['readUserFactHead']>>,scope:SourceConfirmationScope)=>Promise<boolean>){
       erasureContext(request);
       const markers=memory.listFactErasures(memoryNamespace,{limit:100,deadline:request.deadline,signal:request.signal}),existing=markers.find(item=>item.factId===request.factId);
       if(existing&&(existing.operationId!==request.operationId||existing.expectedRevision!==request.expectedRevision))
         fail('REVISION_CONFLICT','Original private mail erasure changed');
       if(!existing){const current=memory.readUserFactHead(memoryNamespace,request.factId);
         if(!current||current.ref.revision!==request.expectedRevision)fail('REVISION_CONFLICT','Private mail Fact head changed');
-        if(typeof confirm!=='function'||await confirm(current!)!==true)return {state:'declined' as const};
+        if(typeof confirm!=='function'||await confirm(current!,{deadline:request.deadline,signal:request.signal,assertCurrent:()=>{
+          erasureContext(request);if(!isDeepStrictEqual(memory.readUserFactHead(memoryNamespace,request.factId),current))fail('REVISION_CONFLICT','Original private Fact changed');
+        }})!==true)return {state:'declined' as const};
         erasureContext(request);memory.beginFactErasure(memoryNamespace,request);
       }
       if(existing?.phase!=='completed'){
