@@ -2,6 +2,12 @@
 
 目标 `huawei_ict_agentarts`，集成树 `.worktrees/pr531-integration`。本文保留未通过/中断与定向复验，不作为全仓最终通过证明。
 
+## 497945ec 本地全量检查
+
+固定干净提交 `497945ec` 的 `npm run check` 已完整运行到 integration 阶段，汇总 **7055 项：7008 通过、46 跳过、1 失败，0 取消**。架构、契约夹具、生成检查、构建/类型检查及工作区测试完成；Desktop 2668 项无失败，Runtime 1605 项全通过。唯一 integration 失败与下文 `fa4fc200` 远端 CI 相同，为恢复测试误用写入前哈希；未忽略该失败，原执行退出码 1。日志 `.cache/integration-full-check-497945ec.log`。
+
+运行期间后续 F04/F11/F08/F19 增量在独立 `.worktrees/pr531-clarification-ui` 集成，没有改动该检查树。旧哈希测试修复已用真实 Windows 文件/SQLite 恢复联合 31/31、零跳过复验；新树完整构建与 F08 模板/Runtime 后续构建通过，但这些新增提交仍须最终集成 check/CI。跳过项不作为真实服务、设备或云验收。
+
 ## 8007e03f 全仓运行
 
 原 `npm run check` 完成架构、生成检查、构建及类型检查后，在编码工具工作区出现 7 个失败，均约 459～463 秒：原 Git 结果未知、命令期限/停止未知、patch helper 超时及 Node 子进程超时。只读 Windows System 事件确认本机 `2026-11-01T13:29:51.9146883+08:00` Kernel-Power 42，随后 `13:37:33.2902019+08:00` Power-Troubleshooter 1；该睡眠/恢复时间与长暂停相符。未修改系统电源设置、产品 deadline、失败断言或未知结果处理。
