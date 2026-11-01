@@ -1629,6 +1629,53 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       destination:this.readAuthorizationQuestionDestination(scope.taskId)});
   }
 
+  /** Metadata-only readback of the original compiler, sources and model selection. */
+  readF27ContextBinding(scope:{taskId:string;deadline:string;signal:AbortSignal}) {
+    const task=this.runtime.getTask(scope.taskId),user=this.readDelegatedUserTaskParent(scope.taskId);
+    if(this.profile!=='huawei_ict_agentarts'||scope.signal.aborted||task.cancelRequested||!user||user.deadline!==scope.deadline
+      ||Date.now()>=Date.parse(scope.deadline)||!['running','waiting_approval'].includes(task.state)
+      ||this.runtime.loadCheckpoint(scope.taskId,'application-deadline')!==scope.deadline)
+      throw new ProtocolError('UNAUTHORIZED','Original F27 context owner unavailable');
+    this.assertCompetitionTaskConfiguration(user.taskId);this.assertCompetitionTaskConfiguration(scope.taskId);
+    this.assertContextHooksAvailable(scope.taskId);
+    const binding=this.runtime.loadCheckpoint(scope.taskId,COMPETITION_CONTEXT_CHECKPOINT) as ReturnType<typeof bindCompiledContext>|undefined;
+    const hooks=this.coordinationInput,compaction=hooks?.contextCompaction;
+    if(!binding?.sourceMap||binding.taskId!==scope.taskId||binding.deadline!==scope.deadline||binding.configurationRef!==this.coordinationBinding)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original compiled F27 source mapping unavailable');
+    const budget=hooks?.goalTokenBudget,tokens=binding.budget.tokens;
+    if(tokens.state==='unmeasured'?budget!==undefined:!budget||tokens.tokenizerRef!==budget.tokenizerRef
+      ||tokens.contextTokens!==budget.contextTokens||tokens.reservedOutputTokens!==budget.reservedOutputTokens)
+      throw new ProtocolError('REVISION_CONFLICT','Original F27 token budget changed');
+    const contextScope={...scope,conversationId:task.conversationId??''},compactionScope={...contextScope,cutoff:scope.taskId};
+    const native=readSubagentConversationMessage(this.runtime,scope.taskId);
+    const messages=native?this.readSubagentConversationContext({...contextScope,
+      ...(compaction?{maxMessages:compaction.policy.maxSourceMessages}:{})}):compaction
+      ?compaction.readSnapshot?.(compactionScope,compaction.policy.maxSourceMessages):hooks?.readConversationSnapshot?.(contextScope);
+    if(!Array.isArray(messages))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original synchronous F27 sources unavailable');
+    const source=messages.filter(message=>!message.withheld&&(!message.taskId||!this.isHistoryWithheld(message.taskId)));
+    const current=bindF27ContextSourceMap({source,assembled:source,selected:source});
+    if(!isDeepStrictEqual(current.sources,binding.sourceMap.sources)||current.sourceDigest!==binding.sourceMap.sourceDigest)
+      throw new ProtocolError('REVISION_CONFLICT','Original F27 context source mapping changed');
+    if(compaction){const checked:unknown=compaction.assertCurrent(compactionScope);
+      if(checked!==undefined){void Promise.resolve(checked).catch(()=>undefined);throw new ProtocolError('UNAUTHORIZED','F27 compaction guard must be synchronous');}}
+    if(binding.compactionReceiptDigest){
+      const receipt=this.runtime.loadCheckpoint(scope.taskId,COMPETITION_CONTEXT_CHECKPOINT+':'+CONTEXT_COMPACTION_CHECKPOINT) as
+        {modelConfigurationRef?:string;policy?:unknown;configurationRef?:string;sourceDigest?:string}|undefined;
+      if(!receipt||!compaction||receipt.modelConfigurationRef!==compaction.modelConfigurationRef
+        ||receipt.configurationRef!==this.coordinationBinding||receipt.sourceDigest!==current.sourceDigest
+        ||!isDeepStrictEqual(receipt.policy,compaction.policy)
+        ||createHash('sha256').update(JSON.stringify(receipt)).digest('hex')!==binding.compactionReceiptDigest)
+        throw new ProtocolError('REVISION_CONFLICT','Original F27 summary receipt changed');
+    }
+    const privateBinding=this.readPrivateTaskBinding(scope.taskId);
+    if(binding.privateBindingDigest!==(privateBinding===undefined?undefined:createHash('sha256').update(JSON.stringify(privateBinding)).digest('hex')))
+      throw new ProtocolError('REVISION_CONFLICT','Original F27 private context authority changed');
+    const raw=this.runtime.loadCheckpoint(scope.taskId,'execution-model'),selection=raw===undefined?undefined:parseExecutionModelSelection(raw);
+    if(!selection||!isDeepStrictEqual(this.resolveExecutionModel?.(selection),selection))
+      throw new ProtocolError('REVISION_CONFLICT','Original F27 execution model catalog changed');
+    return Object.freeze(structuredClone({user,selection,destination:this.readAuthorizationQuestionDestination(scope.taskId),binding}));
+  }
+
   /** Read only the original active F15 host child, for task-bound approval discovery. */
   readPendingOwnedWorkflowHostTask(taskId:string):TaskSnapshot|undefined {
     try{return this.codingWorker?.pendingHostTask(taskId)??this.ownedWorkflowWorker?.pendingHostTask(taskId)

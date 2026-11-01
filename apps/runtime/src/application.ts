@@ -79,6 +79,8 @@ export {createRuntimeF25OutboundContextHost} from './application/workflow-f25-ou
 export {createF25ConfigurationWorkflowPorts} from './application/workflow-f25-configuration.js';
 export type {F25ConfigurationWorkflowOptions} from './application/workflow-f25-configuration.js';
 export {createRuntimeF27ModelCapabilitiesHost} from './application/workflow-f27-model-graph-host.js';
+export {createF27ContextWorkflowPorts} from './application/workflow-f27-context.js';
+export type {F27ContextWorkflowOptions} from './application/workflow-f27-context.js';
 export {createRuntimeF28NativeConfigHost,createRuntimeF28NativeConfigGuard} from './application/workflow-f28-model-native-host.js';
 export type {F28NativeConfigRoles} from './application/workflow-f28-model-native-host.js';
 export {createRuntimeCodingRepairSignedReview,codingRepairReviewBytes} from './application/coding-repair-signed-review.js';
