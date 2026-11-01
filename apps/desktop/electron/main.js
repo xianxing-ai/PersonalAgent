@@ -114,6 +114,7 @@ import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
 import {createWorkflowExportConsent} from './workflow-export-consent.js';
 import {createConfiguredDesktopF01WorkflowPorts} from './f01-workflow-worker-ports.js';
 import {createDesktopF22TraceReplayConfiguration,createDesktopF22WorkflowWorkerPorts} from './f22-trace-replay-host.js';
+import {createDesktopF25Configuration,createDesktopF25WorkflowWorkerPorts} from './f25-configuration-host.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF11LocationQuestionHost,createF11DecisionQuestionHost} from './f11-location-question-host.js';
@@ -384,6 +385,7 @@ let f24Workflow;
 let f04Workflow;
 let f01Workflow;
 let f22Configuration,f22Workflow;
+let f25Configuration,f25Workflow;
 let reconcileOriginalMailWorkflow;
 let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
 let f14Workflow;
@@ -770,6 +772,7 @@ function agentArtsSnapshot() {
   const observation = agentArtsObservationConfig?.snapshot();
   return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason,
     traceReplay:f22Configuration?{...f22Configuration.snapshot(),available:!!f22Workflow}:undefined,
+    dataScope:f25Configuration?{...f25Configuration.snapshot(),available:!!f25Workflow&&knowledgeSourceConfig?.snapshot().available===true}:undefined,
     ...(observation ? {observation} : {})};
 }
 
@@ -2502,10 +2505,10 @@ async function initializeRuntime() {
           const choice=await dialog.showOpenDialog(admin,{title:'选择允许整理的知识笔记',defaultPath:root,
             properties:['openFile','multiSelections'],filters:[{name:'Markdown',extensions:['md']}]});
           return choice.canceled?undefined:choice.filePaths;
-        },confirmPermissions:async details=>{
+        },confirmPermissions:async (details,control={})=>{
           const {isCurrent,...payload}=details;
           return confirmApplicationAuthorization('knowledge.configure',payload,{scope:{sourceId:details.sourceId,configRevision:details.configRevision},
-            summary:`配置知识源 ${details.displayName}：${details.writeAllowed?'可整理选定笔记；':''}${details.cloudExportAllowed?'向本任务模型公布选定PUBLIC查询与笔记目录；':''}具体内容操作在任务卡片确认。`.slice(0,512),isCurrent});
+            summary:`配置知识源 ${details.displayName}：${details.writeAllowed?'可整理选定笔记；':''}${details.cloudExportAllowed?'向本任务模型公布选定PUBLIC查询与笔记目录；':''}具体内容操作在任务卡片确认。`.slice(0,512),isCurrent,...control});
         }});
       obsidianPairing=createDesktopObsidianPairing({source:knowledgeSourceConfig,
         userData:app.getPath('userData'),
@@ -2663,6 +2666,10 @@ async function initializeRuntime() {
         configuration:f22Configuration,hostUserNamespace:namespace,
         getToolDescriptor:(name,version)=>runtimeApplication?.runtime.readToolDescriptors().find(tool=>tool.name===name&&tool.version===version),
         authorizeExport:authorizeWorkflowExport}):undefined;
+      f25Configuration?.close();f25Configuration=createDesktopF25Configuration({userData:app.getPath('userData'),safeStorage,
+        getAgentArtsConfig:()=>agentArtsConfig,getKnowledgeSourceConfig:()=>knowledgeSourceConfig});
+      f25Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF25WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        configuration:f25Configuration,authorizeExport:authorizeWorkflowExport}):undefined;
       const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
@@ -2670,7 +2677,7 @@ async function initializeRuntime() {
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
-        ...(f01Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
+        ...(f01Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
@@ -2725,6 +2732,7 @@ async function initializeRuntime() {
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
           ...(f01Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f22Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f25Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
@@ -4015,6 +4023,12 @@ async function action(event, name, payload) {
     if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 PR 审核配置');
     await f18ReviewCases.selectFromNativeDialog();publish();
     return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='workflow.dataScope.configure'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f25Configuration||!f25Workflow)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先设置固定 AgentArts 部署与知识源');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改数据范围');
+    f25Configuration.configure(payload);publish();return agentArtsSnapshot();
   }
   if(name==='workflow.traceReplay.configure'){
     if(sender!==admin||!competitionMode||syntheticMvp||!f22Configuration||!f22Workflow)
@@ -5434,6 +5448,7 @@ app.whenReady().then(async () => {
       f04Workflow=undefined;
       f01Workflow=undefined;
       f22Configuration?.close();f22Configuration=undefined;f22Workflow=undefined;
+      f25Configuration?.close();f25Configuration=undefined;f25Workflow=undefined;
       reconcileOriginalMailWorkflow=undefined;
       f11LocationQuestion=undefined;
       f11DecisionQuestion=undefined;

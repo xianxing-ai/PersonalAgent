@@ -55,4 +55,6 @@ AgentArtsConfig 的 `readCredentialReference()` 返回随机不透明引用，�
 
 `node --test apps/desktop/test/f25-configuration-workflow.test.mjs`：1/1 通过、0 跳过，核心用例 1395ms。真实文件/知识源、AgentArts 配置宿主、Engine、原 Intent/Question、Runtime、Policy、SQLite。验证设置暂存不改变源；实际图经过 N03/N04；原独立知识范围 Intent 收到相同期限/取消信号；源 revision 只增加一次；实际保存仍不把账号状态标为已测；所有导出及镜像请求不含私有文件名、查询词和账户凭据；N03 checkpoint 不含载荷正文。日志 `.cache/build-f25.log`、`.cache/test-f25.log`。
 
-safeStorage 加密、账户凭据、候选/选择器、用户批准和出口确认均明确 Fixture；未做网络请求或真实人类批准。本包不修改 Main/UI；组合、实际 UI 与真实平台验收由根工作包继续，不据此将 #531 标为完成。
+safeStorage 加密、账户凭据、候选/选择器、用户批准和出口确认均明确 Fixture；未做网络请求或真实人类批准，不据此将 #531 标为完成。
+
+根工作包已将 2 tools / 1 worker 接入 Main 的同一固定部署，并将期限/取消传入原知识范围确认。设置页新增独立范围提案表单，使用原 revision，只在 admin 且没有活动任务时暂存；不携带 AgentArts 凭据草稿，不直接修改 Knowledge 权限。新增 UI/实际 Main handler 两个关键检查 2/2 通过，覆盖非管理窗口、活动任务、过期 revision 拒绝及暂存不冒充已应用。Main 语法与 diff 检查通过；真实窗口操作与平台验收仍待完成。

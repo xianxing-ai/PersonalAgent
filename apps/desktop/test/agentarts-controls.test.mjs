@@ -16,10 +16,12 @@ function harness(t,invoke) {
     querySelectorAll:()=>[...Object.values(fields),submit,revoke,restore],
     reset(){Object.values(fields).forEach(field=>{field.value='';field.checked=false;});fields.transport.value='https';}});
   const wss=node(),advanced=node(),traceReplay=node(),traceReplayState=node();
+  const scopeFields=Object.fromEntries(['dataLevel','cloudExportAllowed','publicQueries'].map(key=>[key,node()])),scopeForm=node(),scopeState=node(),scopeSubmit=node();
+  Object.assign(scopeForm,{elements:scopeFields,querySelectorAll:()=>[...Object.values(scopeFields),scopeSubmit]});
   const section={isConnected:true,hidden:false,getClientRects:()=>section.hidden?[]:[{}],
     querySelector:selector=>({'form':form,'[data-status]':status,'[data-wss]':wss,'[data-token-hint]':tokenHint,
       '[data-revoke]':revoke,'[data-restore-default]':restore,'.btn-group':buttonGroup,'[data-transport-state]':transportState,'[data-connection-advanced]':advanced,
-      '[data-trace-replay]':traceReplay,'[data-trace-replay-state]':traceReplayState}[selector])};
+      '[data-trace-replay]':traceReplay,'[data-trace-replay-state]':traceReplayState,'[data-data-scope]':scopeForm,'[data-data-scope-state]':scopeState}[selector])};
   form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
   globalThis.document={body,activeElement:body,createElement:()=>section,
@@ -27,13 +29,26 @@ function harness(t,invoke) {
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
   controls.render({gatewayUrl:'https://example.huaweicloud-agentarts.com',runtimeName:'synthetic-runtime'});
-  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,traceReplay,traceReplayState,save:()=>form.listeners.get('submit')({preventDefault(){}}),
+  return {controls,fields,submit,revoke,restore,status,section,wss,advanced,tokenHint,buttonGroup,transportState,traceReplay,traceReplayState,scopeFields,scopeState,scopeSubmit,
+    saveScope:()=>scopeForm.listeners.get('submit')({preventDefault(){}}),save:()=>form.listeners.get('submit')({preventDefault(){}}),
     blur:()=>{globalThis.document.activeElement=body;},
     focusElsewhere:()=>{const target={};globalThis.document.activeElement=target;documentListeners.get('focusin')?.({target});},
     clear:()=>revoke.listeners.get('click')(),
     recover:()=>restore.listeners.get('click')(),
     edit:(key,value)=>{fields[key].value=value;form.listeners.get('input')({target:fields[key]});}};
 }
+
+test('F25 stages only the original data scope proposal and does not claim connectivity or apply permissions',async t=>{
+  const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {dataScope:{configured:true,stage:'selected',revision:4,
+    dataLevel:'public',cloudExportAllowed:true,available:true,accountConfigured:true}};});
+  assert.equal(ui.scopeSubmit.disabled,true);await ui.saveScope();assert.equal(calls.length,0);
+  ui.controls.render({dataScope:{configured:false,revision:3,available:true,accountConfigured:true}});
+  ui.fields.authorization.value='connection-draft-secret';ui.scopeFields.dataLevel.value='public';
+  ui.scopeFields.cloudExportAllowed.checked=true;ui.scopeFields.publicQueries.value='公开资料\n公开说明';
+  await ui.saveScope();assert.deepEqual(calls,[{action:'workflow.dataScope.configure',payload:{expectedRevision:3,dataLevel:'public',cloudExportAllowed:true,publicQueries:['公开资料','公开说明']}}]);
+  assert.equal(ui.fields.authorization.value,'connection-draft-secret');assert.equal(ui.scopeFields.publicQueries.value,'');
+  assert.match(ui.scopeState.textContent,/提案已暂存.*实际修改仍需确认/);assert.doesNotMatch(ui.scopeState.textContent,/已连接|已应用/);
+});
 
 test('F22 replay settings submit the original revision independently of connection credentials',async t=>{
   const calls=[],ui=harness(t,async(action,payload)=>{calls.push({action,payload});return {traceReplay:{enabled:true,revision:3,available:true}};});

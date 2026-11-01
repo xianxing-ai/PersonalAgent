@@ -13,6 +13,15 @@ export function mountAgentArtsControls(root,invoke) {
     traceReplayButton.textContent=traceReplay?.enabled?'关闭历史回放':'开启历史回放';
     traceReplayState.textContent=traceReplay?.available!==true?'配置固定 AgentArts 部署后可用。':traceReplay.enabled?'已开启；每次只读原记录。':'当前关闭。';
   }
+  form.insertAdjacentHTML('afterend','<details class="connection-advanced"><summary>知识数据范围</summary><p class="notice">暂存当前知识源的范围提案，再在对话中请求应用数据范围。实际修改前会单独确认；保存配置不表示服务已连通。</p><form data-data-scope class="settings-form"><label>数据分类<select name="dataLevel"><option value="private">私密</option><option value="public">公开</option></select></label><label><input name="cloudExportAllowed" type="checkbox">允许选定公开查询用于云任务</label><label>公开查询（每行一条，最多 16 条）<textarea name="publicQueries" rows="3" maxlength="2063" autocomplete="off" placeholder="仅填写明确可以公开的查询"></textarea></label><button type="submit" class="btn">暂存范围提案</button><p class="notice" role="status" data-data-scope-state></p></form></details>');
+  const scopeForm=section.querySelector('[data-data-scope]'),scopeState=section.querySelector('[data-data-scope-state]');
+  let dataScope,scopeDirty=false;
+  function renderDataScope(){
+    scopeForm.querySelectorAll('input,select,textarea,button').forEach(control=>{control.disabled=busy||dataScope?.available!==true||dataScope?.accountConfigured!==true;});
+    if(!scopeDirty&&!busy){scopeForm.elements.dataLevel.value=dataScope?.dataLevel??'private';scopeForm.elements.cloudExportAllowed.checked=dataScope?.cloudExportAllowed===true;}
+    scopeState.textContent=dataScope?.available!==true?'请先配置固定 AgentArts 部署与知识源。':dataScope.accountConfigured!==true?'请先保存 AgentArts 账户配置。':
+      dataScope.configured?(dataScope.stage==='saved'?'范围已保存并读回；':'提案已暂存，尚未应用；')+'服务连通性与模型能力尚未验证。':'尚未暂存范围提案。';
+  }
   let originatingFocus,restoreFocus=false;
   const tokenHint=section.querySelector('[data-token-hint]');
   const updateTransport=()=>{const wss=form.elements.transport.value==='wss';
@@ -39,6 +48,7 @@ export function mountAgentArtsControls(root,invoke) {
     form.querySelectorAll('input,select,button').forEach(control=>{control.disabled=value;});
     restoreBtn.disabled=value||!canRestoreDefault;
     renderTraceReplay();
+    renderDataScope();
     if(!value) {
       document.removeEventListener('focusin',trackFocus,true);
       if(restoreFocus && document.activeElement===document.body && section.isConnected && !section.hidden
@@ -111,8 +121,24 @@ export function mountAgentArtsControls(root,invoke) {
     }catch{message='设置变更尚未确认，请查看最新状态后再操作。';}
     finally{setBusy(false);traceReplayState.textContent=message;}
   });
+  scopeForm.addEventListener('input',()=>{scopeDirty=true;});
+  scopeForm.addEventListener('submit',async event=>{
+    event.preventDefault();if(busy||dataScope?.available!==true||dataScope?.accountConfigured!==true)return;
+    const original=dataScope,input={expectedRevision:original.revision,dataLevel:scopeForm.elements.dataLevel.value,
+      cloudExportAllowed:scopeForm.elements.cloudExportAllowed.checked,
+      publicQueries:scopeForm.elements.publicQueries.value.split(/\r?\n/u).map(value=>value.trim()).filter(Boolean)};
+    let message;setBusy(true);
+    try{
+      const result=await invoke('workflow.dataScope.configure',input),saved=result?.dataScope;
+      if(saved?.configured!==true||saved.stage!=='selected'||saved.revision!==original.revision+1
+        ||saved.dataLevel!==input.dataLevel||saved.cloudExportAllowed!==input.cloudExportAllowed)throw Error();
+      dataScope=saved;scopeDirty=false;scopeForm.elements.publicQueries.value='';message='提案已暂存。请在对话中请求应用数据范围；实际修改仍需确认。';
+    }catch{message='范围提案未获确认，请检查当前账户、知识源及公开查询后再操作。';}
+    finally{setBusy(false);scopeState.textContent=message;}
+  });
   return {show:value=>{section.hidden=!value;if(!value) restoreFocus=false;},render(value={}){
     traceReplay=value.traceReplay;renderTraceReplay();
+    dataScope=value.dataScope;renderDataScope();
     canRestoreDefault=(value.canRestoreDefaultConnection??value.configured)===true;
     savedBinding={gatewayUrl:value.gatewayUrl,runtimeName:value.runtimeName};restoreBtn.disabled=busy||!canRestoreDefault;
     if (!dirty && !busy) {form.elements.gatewayUrl.value=value.gatewayUrl??'';form.elements.runtimeName.value=value.runtimeName??'';
