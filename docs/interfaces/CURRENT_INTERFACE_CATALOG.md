@@ -733,3 +733,7 @@ Runtime 在原 `goal` / `readRequestContext` 文本内临时附加有界 `capabi
 `@personal-agent/coordination` 兼容导出 `formatAgentArtsFailureDetail`，可选输出从可信错误类型及白名单字段生成的安全原因；HTTP/WSS 诊断不透传任意外部 reason、响应正文或凭据。原 `ProtocolError.code`、未发送/终态/结果未知分类及 unknown 不盲重放语义不变，不新增公开错误码或恢复执行入口。
 
 本轮无 Core wire/Schema 版本或数据库迁移，不提升冻结等级。ARM64 本地容器协议验证与本机夹具/consumer验证分别记录，不等于真实 AgentArts 云部署或 Windows 实体验收；本轮未执行后两项，历史云验收仍只覆盖其原版本范围。逐项命令、结果与未验证边界见[本轮总矩阵](../competition/evidence/IMAGE_RELIABILITY_MATRIX_20261023.md)，不据源码或本地通过宣称镜像已发布、部署已完成或全功能可用。
+
+## 2026-11-01 F12 原 Live 语音通知关联（provisional）
+
+Realtime `speakText` 兼容新增可选 renditionId；原 audio、assistant final transcript、turn_complete 带原 response/rendition 关联。Desktop 原 F12_N04 独立 Policy 执行消费原 NotificationService round 与固定提示，通过已有 Live 会话保存分级回执到原 Runtime checkpoint。Renderer 完成排空仍为 `playbackVerified:false`，voice attempt 保持 unknown，不重播、不标记 feed 已读、不报告硬件已送达。原普通聊天、Question 和 banner 兼容；F12 工厂配置版本为 `business-20261101-f12-v4`，旧配置摘要不可恢复为新图，无新节点、wire 或数据库迁移。Main 惰性注入原 getVoiceHost；实际百炼和物理播放、云整图尚未验证，详见 [F12 语音关联边界与证据](../competition/evidence/F12_VOICE_RENDITION_20261101.md)。

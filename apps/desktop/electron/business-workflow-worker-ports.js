@@ -150,7 +150,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     }
     const inputSchema={...requestSchema,properties:{...requestSchema.properties,businessBindingId:text},required:[...requestSchema.required,'businessBindingId']};
     const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
-      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v3':workflowId==='F11'?'business-20261101-f11-v2':workflowId==='F08'?'business-20261101-f08-v2':'business-20261031-v1',
+      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v4':workflowId==='F11'?'business-20261101-f11-v2':workflowId==='F08'?'business-20261101-f08-v2':'business-20261031-v1',
       requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:workflowId==='F12'?['/trigger']:workflowId==='F11'&&requestSchema.properties.weather?['/weather/query/units']
         :workflowId==='F08'?['sourceId','configRevision','query'].filter(key=>Array.isArray(requestSchema.properties.knowledge?.properties?.[key]?.enum)).map(key=>'/knowledge/'+key):[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
@@ -520,7 +520,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
           fail('REVISION_CONFLICT','F12 completion changed during export');
       },ports.prepareInput);
     if(!returnEnabled)unavailable.push('f12_user_return_event_source_unavailable');
-    unavailable.push('f12_voice_delivery_unavailable');
+    unavailable.push('f12_voice_hardware_receipt_unavailable');
   }else unavailable.push('f12_notification_application_host_unavailable');
   if(['mail.inbox','mail.archive','mail.send','mail.reconcile_send','knowledge.search'].every(name=>descriptor(name))
     &&runtimeModule.createRuntimeF08PreparedPlanHosts&&runtimeModule.createRuntimeF08MailArchiveHost&&runtimeModule.createRuntimeF08MailSendHost&&runtimeModule.createRuntimeF08KnowledgeSourceHost){

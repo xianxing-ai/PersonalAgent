@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {pcmLevel} from './audio-level.js';
 import {createLiveVoiceHistory} from './live-voice-history.js';
 import {createLiveTextOutput} from './live-text-output.js';
+import {createLiveNotificationOutput} from './live-notification-output.js';
 
 const SESSION_MS = 120 * 60_000;
 const CARD_ONLY_GUIDANCE = '请在当前对话的原授权卡中决定；语音回答不会批准。';
@@ -43,6 +44,10 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
   const textOutput=createLiveTextOutput({readSession:()=>active,now,onUpdate:()=>publish()});
+  const notificationOutput=createLiveNotificationOutput({readSession:()=>active,now,
+    canSpeak:record=>!!record&&record.phase==='listening'&&!record.userSpeaking&&!record.workingCount
+      &&questionFor(record)?.state!=='pending'&&textOutput.snapshot().state!=='accepted',
+    interrupt:record=>{if(active===record&&!record.controller.signal.aborted){record.session?.interrupt();command(record,{type:'clear'});}}});
   let lastDiagnostic={stage:'idle',status:'idle'},audioSendFailure;
   const diagnose=(stage,status,code,metadata={})=>{
     lastDiagnostic={stage,status,...(code?{code}:{}),...metadata,elapsedMs:active?Math.max(0,now()-active.startedAt):0};
@@ -84,6 +89,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   };
   async function releaseActive() {
     textOutput.clear();
+    notificationOutput.invalidate('session_closed');
     const record = active;
     if (!record) return snapshot();
     if (record.stopping) return record.stopping;
@@ -156,6 +162,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
         instructions: INSTRUCTIONS + historyContext, tools: TOOLS,
         onEvent(event) {
           if (!isCurrent()) return;
+          const notificationEvent=notificationOutput.event(event);
+          if(notificationEvent?.dropAudio)return;
           if (event.type === 'error') {diagnose('cloud','failed','REALTIME_SERVICE_ERROR');fail(event.message); return;}
           if (event.type === 'speech_started') {
             record.userSpeaking = true;
@@ -185,7 +193,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           if (event.type === 'interrupted') {textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
           if (event.type === 'turn_complete') {
             const delivery=record.questionDelivery;
-            if(delivery?.state==='queued'&&delivery.textMatched&&record.outputAudioFrames>delivery.audioStart){
+            if(notificationEvent?.drainId)command(record,{type:'drain',drainId:notificationEvent.drainId});
+            else if(delivery?.state==='queued'&&delivery.textMatched&&record.outputAudioFrames>delivery.audioStart){
               delivery.drainId=randomUUID();delivery.state='draining';
               command(record,{type:'drain',drainId:delivery.drainId});
             }else command(record, {type: 'drain'});
@@ -505,6 +514,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
     if (message.type === 'drained') {
+      if(notificationOutput.pending()&&!notificationOutput.drained(message))return true;
       const delivery=record.questionDelivery;
       if(delivery?.state==='draining'&&message.drainId===delivery.drainId){
         delivery.state='delivered';delivery.completedAt=new Date(now()).toISOString();
@@ -534,6 +544,10 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return messages;
   }
   return {snapshot, historyMessages, hasActive, start, stop, receive,
+    // Host-only: caller binds the original approved notification round and persists each receipt.
+    speakNotification:(binding,ports)=>notificationOutput.speak(binding,ports),
+    readNotificationDelivery:binding=>notificationOutput.read(binding),
+    canSpeakNotification:conversationId=>notificationOutput.available(conversationId),
     // Host-only read. An origin-bound policy grant is mandatory; raw text never
     // enters the Desktop snapshot or an authorization decision through this port.
     readFinalUserAudio(binding) {
@@ -600,6 +614,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     flushHistory() {const result = flushHistory(); publish(); return result;},
     interrupt() {
       textOutput.clear();
+      notificationOutput.invalidate('interrupted');
       if (releaseUnknown) throw Error(lastError);
       if (active?.session && !active.controller.signal.aborted && now() < Date.parse(active.deadline)) active.session.interrupt();
     },

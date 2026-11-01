@@ -29,7 +29,8 @@ export async function scenario(t,options={}){
     readDeliveryOutcome:id=>outcomes.get(id),dispose(){}};
   const channel=options.createChannel?options.createChannel({getApplication:()=>app,getNotificationHost:()=>host,userData}):fixtureChannel;
   if(typeof channel?.sendAdvisoryNotification!=='function'||typeof channel?.readDeliveryOutcome!=='function')throw Error('Explicit F12 device channel is unavailable');
-  const host=createDesktopNotificationApplicationHost({namespace:'f12',channel:{...channel,async sendAdvisoryNotification(input){
+  const voice=options.createVoiceHost?await options.createVoiceHost({getApplication:()=>app,getNotificationHost:()=>host,userData}):undefined;
+  const host=createDesktopNotificationApplicationHost({namespace:'f12',getVoiceHost:()=>voice,channel:{...channel,async sendAdvisoryNotification(input){
     sends++;sent.push(input);return channel.sendAdvisoryNotification(input);}},question});
   const composition=createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>app,notificationHost:host,explicitReturnSource,
     prepareCompetitionToolExport:async()=>{},readBusinessAvailability:()=>({ready:true,bindingId:'fixture-notification-device'}),
@@ -51,7 +52,7 @@ export async function scenario(t,options={}){
       let value={arguments:selection};
       if(context.node.id==='F12_N03')value={action:options.silent||options.query||options.legacyPause||options.returning?'feed_only':'deliver',roundId:context.predecessorOutputs.F12_N02.roundId};
       if(context.node.id==='F12_N04')value={arguments:{roundId:context.predecessorOutputs.F12_N03.roundId,
-        ...(options.replaceSelection?{itemIds:['item','unapproved']}:selection),channel:'banner'}};
+        ...(options.replaceSelection?{itemIds:['item','unapproved']}:selection),channel:options.voice?'voice':'banner'}};
       return [{id:'supported',description:'Original fixture notification action',value},{id:'review',description:'Fixture abstention',value:null,abstain:true}];
     }});
   app=runtimeModule.createRuntimeApplication({path:path.join(userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'f12',proactiveWorkflows:!!options.returning,
@@ -89,7 +90,7 @@ export async function scenario(t,options={}){
   }}
   let configured=false;
   const settings=host.configureSettings({operationId:'initial-policy',expectedRevision:0,scope:{kind:'global'},patch:{mode:options.silent?'silent':'normal',
-    maxInterruptions:options.quotaZero?0:null,windowMinutes:17,silentUntilUtc:null,preferredChannel:'banner',allowUrgentBreakthrough:false,digestMode:'on_return',quietHours:null}})
+    maxInterruptions:options.quotaZero?0:null,windowMinutes:17,silentUntilUtc:null,preferredChannel:options.voice?'voice':'banner',allowUrgentBreakthrough:false,digestMode:'on_return',quietHours:null}})
     .then(()=>{configured=true;});
   for(let i=0;i<2000&&!configured;i++){respond();await pause();}await settings;
   if(options.legacyPause)host.runtimeHost.importLegacyPolicy({kind:'connector',connectorId:'mail'},{pauseUntilUtc:new Date(Date.now()+60000).toISOString()});
@@ -118,7 +119,7 @@ export async function scenario(t,options={}){
     assert.ok(child);return child;
   }
   const child=await run('fixture-f12'),repeated=options.repeat?await run('fixture-f12-repeat'):undefined;
-  return {app,host,userData,root,nativeRequest,child,repeated,sends,sent,approvals,cloud,proposals,returned,explicitReturnSource,diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,
+  return {app,host,voice,userData,root,nativeRequest,child,repeated,sends,sent,approvals,cloud,proposals,returned,explicitReturnSource,diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,
     error:task.error,coordinationFailure:app.runtime.loadCheckpoint(task.taskId,'competition-coordination-failure'),
     tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
 }

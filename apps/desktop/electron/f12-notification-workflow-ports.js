@@ -52,6 +52,7 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
   const ids=input=>input.itemIds??[input.itemId];
   const sameIds=(left,right)=>isDeepStrictEqual([...left].sort(),[...right].sort());
   const policyValue=policy=>({state:policy.state,scope:policy.scope,revision:policy.revision,effective:policy.effective,constraints:policy.constraints});
+  const selectedChannel=saved=>saved.policy.effective.preferredChannel==='voice'?'voice':'banner';
   const legacy=scope=>[...new Map([{kind:'global'},...('connectorId' in scope&&scope.connectorId?[{kind:'connector',connectorId:scope.connectorId}]:[]),scope]
     .map(item=>[notificationDigest(item),item])).values()].map(item=>notificationHost.getLegacyPolicy(item));
   const feed=itemId=>notificationHost.runtimeHost.notificationFeed().items.find(item=>item.id===itemId);
@@ -73,7 +74,7 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
       if(!isDeepStrictEqual(entry,original))fail('REVISION_CONFLICT','F12 original feed changed');
       if(currentDelivery!==priorDelivery){
         const round=notificationHost.runtimeHost.getInterruptionRound(saved.roundId);
-        if(!round||round.attempts.banner?.state!=='delivered'||!sameIds(round.itemIds,ids(saved.selection))||!round.attempts.banner.evidenceRefs.length)
+        if(!round||round.attempts[selectedChannel(saved)]?.state!=='delivered'||!sameIds(round.itemIds,ids(saved.selection))||!round.attempts[selectedChannel(saved)].evidenceRefs.length)
           fail('REVISION_CONFLICT','F12 delivery timestamp lacks original round evidence');
       }
     }
@@ -90,14 +91,14 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
   };
   const delivery=(scope,input)=>{
     const saved=source(scope);
-    if(!isDeepStrictEqual(input,{roundId:saved.roundId,...saved.selection,channel:'banner'})||action(saved)!=='deliver')
+    if(!isDeepStrictEqual(input,{roundId:saved.roundId,...saved.selection,channel:selectedChannel(saved)})||action(saved)!=='deliver')
       fail('UNAUTHORIZED','F12 delivery differs from original feed and current policy');
     return saved;
   };
   const readRound=(scope,input)=>{
     const saved=delivery(scope,input),round=notificationHost.runtimeHost.getInterruptionRound(saved.roundId);
     if(!round||!sameIds(round.itemIds,ids(saved.selection))||!isDeepStrictEqual(round.scope,saved.scope)
-      ||round.expiresAt!==scope.deadline||!isDeepStrictEqual(round.channels,['banner'])
+      ||round.expiresAt!==scope.deadline||!isDeepStrictEqual(round.channels,[selectedChannel(saved)])
       ||round.policyRevisionDigest!==notificationDigest(saved.policy.constraints))fail('RESULT_UNKNOWN','F12 original round binding unavailable');
     return round;
   };
@@ -110,7 +111,9 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
       if(entries.some(entry=>!isDeepStrictEqual(entry.scope,entryScope)))fail('UNAUTHORIZED','F12 one round requires the same original notification scope');
       const policy=policyValue(notificationHost.getInterruptionPolicy(entryScope));
       if(policy.state!=='configured'||!policy.effective)fail('UNSUPPORTED_CAPABILITY','F12 current notification policy unavailable');
-      if(input.trigger==='event'&&policy.effective.preferredChannel==='voice')fail('UNSUPPORTED_CAPABILITY','F12 original voice channel unavailable');
+      if(input.trigger==='event'&&policy.effective.preferredChannel==='voice'
+        &&notificationHost.hasVoicePort?.(app.readToolConversation(scope.taskId)??app.runtime.getTask(scope.taskId).conversationId)!==true)
+        fail('UNSUPPORTED_CAPABILITY','F12 original voice channel unavailable');
       let returnProof;
       if(input.trigger==='on_return'){
         if(typeof explicitReturnSource?.read!=='function')fail('UNSUPPORTED_CAPABILITY','F12 explicit user return source unavailable');
@@ -126,11 +129,11 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
     },
     source,action:scope=>action(source(scope)),selection:scope=>structuredClone(source(scope).selection),
     policy(scope){const saved=source(scope);return {...structuredClone(saved.policy.effective),roundId:saved.roundId,...saved.selection};},
-    deliveryInput(scope){const saved=source(scope);return {roundId:saved.roundId,...saved.selection,channel:'banner'};},
+    deliveryInput(scope){const saved=source(scope);return {roundId:saved.roundId,...saved.selection,channel:selectedChannel(saved)};},
     async verifyDeliveryBinding(scope,input){delivery(scope,input);return true;},
     notificationHost:{getInterruptionRound:roundId=>notificationHost.runtimeHost.getInterruptionRound(roundId)},
-    async resolveDeliveryReceipt(scope,input){
-      const saved=delivery(scope,input),host=notificationHost.runtimeHost;
+    async resolveDeliveryReceipt(scope,input,context){
+      const saved=delivery(scope,input),host=notificationHost.runtimeHost,channel=selectedChannel(saved);
       let round=host.getInterruptionRound(saved.roundId);
       if(!round){
         // This mutation runs only inside the approved external-write host. It uses the original queue and CAS budget.
@@ -138,36 +141,38 @@ export function createF12ConfiguredNotificationPorts({getApplication,notificatio
         if(!batches.length||!sameIds(batches.flatMap(batch=>batch.itemRefs),itemIds))
           fail('UNSUPPORTED_CAPABILITY','F12 complete original ready batches do not match the explicit item selection');
         delivery(scope,input);
-        round=host.reserveInterruption({roundId:saved.roundId,batchIds:batches.map(batch=>batch.id),scope:saved.scope,channels:['banner'],
+        round=host.reserveInterruption({roundId:saved.roundId,batchIds:batches.map(batch=>batch.id),scope:saved.scope,channels:[channel],
           expiresAt:scope.deadline,urgent:saved.entries.every(entry=>entry.urgent)});
       }
       readRound(scope,input);
       if(round.reason==='original_round_requires_readback_or_is_terminal')fail('RESULT_UNKNOWN','F12 original notification round requires independent readback');
-      if(round.state==='suppressed'&&!round.counted&&!round.attempts.banner)return {state:'suppressed',evidenceRefs:[]};
-      await notificationHost.deliverRound({roundId:saved.roundId,channel:'banner',title:'PersonalAgent 通知',
+      if(round.state==='suppressed'&&!round.counted&&!round.attempts[channel])return {state:'suppressed',evidenceRefs:[]};
+      await notificationHost.deliverRound({roundId:saved.roundId,channel,title:'PersonalAgent 通知',
         body:saved.entries.length===1?'来源 '+saved.entries[0].source+' 有一条更新，请查看通知列表。'
-          :'有 '+saved.entries.length+' 条更新，请查看通知列表。',source:saved.entries.length===1?saved.entries[0].source:'notifications'});
+          :'有 '+saved.entries.length+' 条更新，请查看通知列表。',source:saved.entries.length===1?saved.entries[0].source:'notifications',
+        ...(channel==='voice'?{authority:{context,assertCurrent:()=>{delivery(scope,input);}}}: {})});
       // Electron show is asynchronous. Only observe the original durable round;
       // a pending/unknown native attempt never calls deliverRound a second time.
       const waitUntil=Math.min(Date.parse(scope.deadline),now()+5000);
       for(;;){
         notificationHost.reconcileDelivery?.(saved.roundId);
         round=readRound(scope,input);
-        if(!['sending','unknown'].includes(round.attempts.banner?.state)||now()>=waitUntil)break;
+        const voice=channel==='voice'?notificationHost.readVoiceDelivery({roundId:saved.roundId,taskId:context.taskId}):undefined;
+        if(voice&&['renderer_completed','unknown'].includes(voice.state)||!['sending','unknown'].includes(round.attempts[channel]?.state)||now()>=waitUntil)break;
         await new Promise(resolve=>{
           const done=()=>{clearTimeout(timer);scope.signal.removeEventListener('abort',done);resolve();};
           const timer=setTimeout(done,Math.min(25,waitUntil-now()));
           scope.signal.addEventListener('abort',done,{once:true});if(scope.signal.aborted)done();
         });
       }
-      const attempt=round.attempts.banner;
+      const attempt=round.attempts[channel];
       if(!attempt){if(round.state==='suppressed'&&!round.counted)return {state:'suppressed',evidenceRefs:[]};
         fail('RESULT_UNKNOWN','F12 original device attempt unavailable');}
       if(attempt.state==='sending')fail('RESULT_UNKNOWN','F12 original device attempt is unresolved');
       return {state:attempt.state,evidenceRefs:structuredClone(attempt.evidenceRefs)};
     },
     verifyDeliveryResult(scope,result){
-      const saved=source(scope),round=readRound(scope,{roundId:saved.roundId,...saved.selection,channel:'banner'}),attempt=round.attempts.banner;
+      const saved=source(scope),channel=selectedChannel(saved),round=readRound(scope,{roundId:saved.roundId,...saved.selection,channel}),attempt=round.attempts[channel];
       if(result.roundId!==round.roundId||typeof result.delivered!=='boolean'
         ||(result.delivered?!(attempt?.state==='delivered'&&attempt.evidenceRefs.length)
           :!(attempt?.state==='failed'||round.state==='suppressed'&&!round.counted&&!attempt)))
