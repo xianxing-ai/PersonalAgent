@@ -28,6 +28,10 @@ export function mountWorkspaceControls(root, invoke) {
     <p class="notice">选择包含目标 PR、原提交版本、必需检查和合资格审核者的配置。运行时仍会重新核对独立批准、技术检查和当前提交，并逐项请求操作许可。</p>
     <p class="notice" data-workspace="f18-state"></p>
     <button class="btn" type="button" data-workspace="f18-select">选择 PR 审核配置</button>
+    <h3>Issue 修复与独立回归</h3>
+    <p class="notice">选择原 Issue、修复范围与独立回归目录的配置。发布修复、运行回归和关闭 Issue 仍须分别确认；原 PR 独立审核并合并、实际回归通过后才能关闭。</p>
+    <p class="notice" data-workspace="f19-state"></p>
+    <button class="btn" type="button" data-workspace="f19-select">选择 Issue 修复配置</button>
     <h3>API 文档检查</h3>
     <p class="notice">选择 TypeScript 契约、实现和目标文档。示例在隔离目录进行类型检查，结果为待审文档候选；每次读取、执行与发送仍在原任务确认。</p>
     <p class="notice" data-workspace="f20-state"></p>
@@ -81,6 +85,7 @@ export function mountWorkspaceControls(root, invoke) {
     for(const workflow of ['F16','F17'])field(workflow.toLowerCase()+'-select').disabled=
       busy||unavailable||!configured||!state.f16f17;
     field('f18-select').disabled=busy||unavailable||!configured||state.f18?.selectionAvailable!==true;
+    field('f19-select').disabled=busy||unavailable||!configured||state.f19?.selectionAvailable!==true;
     updateStatus();
   }
 
@@ -118,6 +123,9 @@ export function mountWorkspaceControls(root, invoke) {
     field('f18-state').textContent=state.f18?.configured===true?
       `已选择 ${state.f18.repo} #${state.f18.prNumber}；${state.f18.requiresRestart?'请重启应用以加载此次审核配置。':'尚未授予合并许可；运行时核对原提交与审核条件。'}`:
       '尚未选择 PR 审核配置；请先配置开发者仓库。';
+    field('f19-state').textContent=state.f19?.configured===true?
+      `已选择 ${state.f19.repo} #${state.f19.issueId}；${state.f19.requiresRestart?'请重启应用以加载此次修复配置。':'尚未授予发布、回归或关闭许可；执行时核对原版本与回归证据。'}`:
+      '尚未选择 Issue 修复配置；请先配置开发者仓库、工作区与 Node。';
     field('review-state').textContent=review.installed===true
       ? `审核者：${review.reviewerId} · 策略：${review.policyId} · 独立性：用户确认 · 签名验证已接入`
       : review.configured===true?'已配置，但原任务绑定或本机展示尚不可用。':'独立审核尚未配置或当前不可用。';
@@ -178,6 +186,7 @@ export function mountWorkspaceControls(root, invoke) {
   for(const workflowId of ['F16','F17'])field(workflowId.toLowerCase()+'-select')
     .addEventListener('click',()=>run('coding.f16f17.select',{workflowId}));
   field('f18-select').addEventListener('click',()=>run('coding.f18.select'));
+  field('f19-select').addEventListener('click',()=>run('coding.f19.select'));
   field('review-configure').addEventListener('click',()=>run('coding.review.configure',{
     reviewerId:field('reviewer-id').value,policyId:field('review-policy').value}));
   field('review-revoke').addEventListener('click',()=>run('coding.review.revoke'));

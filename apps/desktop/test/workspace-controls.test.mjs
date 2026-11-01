@@ -106,6 +106,19 @@ test('PR settings request native selection without renderer parameters and disti
   ui.render({configured:false,f18:{selectionAvailable:true}});assert.equal(ui.fields['f18-select'].disabled,true);
 });
 
+test('Issue repair settings request native selection without paths, results or execution permission',async t=>{
+  const calls=[],ui=harness(t,async(action,input)=>{calls.push({action,input});return {coding:{configured:true,f19:{configured:true,
+    selectionAvailable:true,requiresRestart:true,repo:'<original/repository>',issueId:19}}};});
+  ui.render();assert.equal(ui.fields['f19-select'].disabled,true);
+  ui.render({f19:{selectionAvailable:true}});await ui.click('f19-select');
+  assert.deepEqual(calls,[{action:'coding.f19.select',input:undefined}]);
+  assert.match(ui.fields['f19-state'].textContent,/<original\/repository> #19.*请重启/);
+  ui.render({f19:{configured:true,selectionAvailable:true,repo:'original/repository',issueId:19}});
+  assert.match(ui.fields['f19-state'].textContent,/尚未授予发布、回归或关闭许可/);
+  assert.doesNotMatch(ui.fields['f19-state'].textContent,/回归通过|关闭成功|已授权/);
+  ui.render({configured:false,f19:{selectionAvailable:true}});assert.equal(ui.fields['f19-select'].disabled,true);
+});
+
 test('workspace settled actions restore keyboard position only while origin remains valid and undisturbed',async t=>{
   let resolve,reject;const calls=[],ui=harness(t,action=>{calls.push(action);return new Promise((yes,no)=>{resolve=yes;reject=no;});});
   for(const name of ['select','revoke'])for(const outcome of ['success','failure','invalid']){

@@ -12,6 +12,7 @@ import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
+import {isDeepStrictEqual} from 'node:util';
 import {computerControlFailure} from './computer-control-errors.js';
 import {createComputerControlLaya} from './computer-control-laya.js';
 import {createOpenCliBrowserHost} from './opencli-browser-host.js';
@@ -124,6 +125,7 @@ import {prepareConfiguredWorkflowDecisionQuestion} from './configured-workflow-d
 import {createF16F17CaseConfiguration} from './f16-f17-case-config-host.js';
 import {createDesktopF16F17WorkflowPorts} from './f16-f17-desktop-ports.js';
 import {createF18ReviewConfiguration,createConfiguredDesktopF18F19WorkflowPorts} from './f18-review-config-host.js';
+import {createF19IssueConfiguration,createConfiguredDesktopF19IssueRepairPorts} from './f19-issue-config-host.js';
 import {createDesktopF24WorkflowWorkerPorts} from './f24-workflow-worker-ports.js';
 import {createF13WorkflowWorkerPorts} from './f13-workflow-worker-ports.js';
 import {createF14WorkflowWorkerPorts} from './f14-workflow-worker-ports.js';
@@ -374,6 +376,7 @@ let liveVoice;
 let f02Workflow;
 let f16F17Cases,f16F17Workflow;
 let f18ReviewCases,f18Workflow,f18ActiveRevision;
+let f19IssueCases,f19Workflow,f19ActiveRevision;
 let f12ExplicitReturnSource,f12ReturnDigest;
 let f24Workflow;
 let f04Workflow;
@@ -384,9 +387,12 @@ const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
 const f18Snapshot=()=>{const selected=f18ReviewCases?.snapshot()??{configured:false};return {...selected,
   selectionAvailable:Boolean(f18ReviewCases&&developerDeployment?.snapshot().configured),
   requiresRestart:selected.configured&&selected.revision!==f18ActiveRevision};};
+const f19Snapshot=()=>{const selected=f19IssueCases?.snapshot()??{configured:false};return {...selected,
+  selectionAvailable:Boolean(f19IssueCases&&developerDeployment?.snapshot().configured&&codingWorkspace?.readWorkspaceBinding()?.nodeExecutable),
+  requiresRestart:selected.configured&&selected.revision!==f19ActiveRevision};};
 const codingSettingsSnapshot=()=>({...(codingWorkspace?.snapshot()??defaultWorkspaceState),
   independentReview:f15ReviewSnapshot(),f20:codingWorkspace?.readF20CaseConfiguration?.()??{configured:false},
-  f16f17:f16F17Snapshot(),f18:f18Snapshot()});
+  f16f17:f16F17Snapshot(),f18:f18Snapshot(),f19:f19Snapshot()});
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
 let wakeQuitHandled = false;
@@ -2606,6 +2612,20 @@ async function initializeRuntime() {
         codingWorkspace,developerDeployment,reviewConfiguration:f18ReviewCases,authorizeExport:authorizeWorkflowExport,
         requestPresence:scope=>toolPresenceHost.requestPresence(scope)}):undefined;
       f18ActiveRevision=f18ReviewCases.snapshot().revision;
+      f19IssueCases?.close();
+      f19IssueCases=createF19IssueConfiguration({userData:app.getPath('userData'),safeStorage,
+        readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),
+        readRepositoryBinding:()=>{const workspace=codingWorkspace.readDeveloperConfiguration(),deployment=developerDeployment?.snapshot();
+          return workspace?.bindingId&&deployment?.configured&&deployment.repository?
+            {repository:deployment.repository,bindingId:workspace.bindingId}:undefined;},
+        selectFile:async()=>{const owner=admin;if(!owner||owner.isDestroyed())throw Error('原设置窗口不可用');
+          const selected=await dialog.showOpenDialog(owner,{title:'选择 Issue 修复配置',properties:['openFile'],filters:[{name:'JSON',extensions:['json']}]});
+          if(admin!==owner||owner.isDestroyed()||runtimeApplication?.activeTaskCount)throw Error('原设置窗口或任务状态已变化');
+          return selected.canceled?undefined:selected.filePaths[0];}});
+      f19Workflow=agentArtsPinned?createConfiguredDesktopF19IssueRepairPorts({getApplication:()=>runtimeApplication,
+        codingWorkspace,developerDeployment,issueConfiguration:f19IssueCases,nativeExecutionHost,authorizeExport:authorizeWorkflowExport,
+        requestPresence:scope=>toolPresenceHost.requestPresence(scope)}):undefined;
+      f19ActiveRevision=f19IssueCases.snapshot().revision;
       f24Workflow=agentArtsPinned?createDesktopF24WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         getKnowledgeSourceConfig:()=>knowledgeSourceConfig,getKnowledgeTools:()=>knowledgeTools,
         hostUserNamespace:namespace,authorizeExport:authorizeWorkflowExport}):undefined;
@@ -2640,6 +2660,13 @@ async function initializeRuntime() {
         tool.descriptor.name==='workspace.run_allowed_command'?f16F17Workflow.commandTool:tool);
       conversationTools.push(...(f16F17Workflow?.tools??[]));
       conversationTools.push(...(f18Workflow?.tools??[]));
+      const sharedF19Reads=new Set(['github.issue_snapshot','github.merged_pr_readback','github.issue_close_readback']);
+      for(const tool of f19Workflow?.tools??[]){
+        const original=sharedF19Reads.has(tool.descriptor.name)?f18Workflow?.tools.find(value=>value.descriptor.name===tool.descriptor.name):undefined;
+        if(original){
+          if(!isDeepStrictEqual(original.descriptor,tool.descriptor))throw Error('F18/F19 原部署只读工具描述不一致');
+        }else conversationTools.push(tool);
+      }
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2681,6 +2708,7 @@ async function initializeRuntime() {
           ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f18Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f19Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
         planExecution:{readCurrentFact:createPlanExecutionFactReader(()=>proactiveHost?
           [{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}]:[])},
@@ -2819,6 +2847,9 @@ async function initializeRuntime() {
           await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
           f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
           f18Workflow?.prepareMergeQuestion?.(scope,authorizationQuestionHost);
+          f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
+          f19Workflow?.prepareRegressionQuestion?.(scope,authorizationQuestionHost);
+          f19Workflow?.prepareCloseQuestion?.(scope,authorizationQuestionHost);
           if(/^(?:computer\.desktop\.|computer\.request_access$|computer\.vision\.|browser\.)/.test(scope.toolName))computerTasks.add(scope.taskId);
           authorizationIntentHost.prepareQuestion(scope);
           calendarMeetingHost?.prepareAuthorization?.(scope);
@@ -2835,6 +2866,9 @@ async function initializeRuntime() {
           if(decision==='allow_once'){
             await f16F17Workflow?.confirmPublicationPresence?.(scope);
             await f18Workflow?.confirmMergePresence?.(scope);
+            await f19Workflow?.confirmPublicationPresence?.(scope);
+            await f19Workflow?.confirmRegressionPresence?.(scope);
+            await f19Workflow?.confirmClosePresence?.(scope);
           }
           return decision;
         },
@@ -2844,6 +2878,7 @@ async function initializeRuntime() {
           ||scope.toolName==='decision.choose_candidate'
           ||scope.toolName==='workflow.host.f16_n05'
           ||scope.toolName==='github.registered_merge'||/^workflow\.host\.f18_/u.test(scope.toolName)
+          ||scope.toolName==='github.pr.create'||scope.toolName==='github.registered_close_issue'||/^workflow\.host\.f19_/u.test(scope.toolName)
           ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
           ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_|workflow\.host\.f09_)/u.test(scope.toolName),
         prepareCompetitionToolExport:prepareWorkflowToolExport=async ({phase,taskId,runId,proposal,deadline,signal})=>{
@@ -3955,6 +3990,14 @@ async function action(event, name, payload) {
     if(payload!==undefined)throw new ProtocolError('INVALID_ARGUMENT','PR 审核配置仅由本机文件选择器提供');
     if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 PR 审核配置');
     await f18ReviewCases.selectFromNativeDialog();publish();
+    return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='coding.f19.select'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f19IssueCases||!codingWorkspace||!f19Snapshot().selectionAvailable)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先在正式应用设置配置 GitHub 仓库、工作区与 Node');
+    if(payload!==undefined)throw new ProtocolError('INVALID_ARGUMENT','Issue 修复配置仅由本机文件选择器提供');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 Issue 修复配置');
+    await f19IssueCases.selectFromNativeDialog();publish();
     return {coding:codingSettingsSnapshot()};
   }
   if(name==='coding.f20.configure'){
@@ -5340,6 +5383,7 @@ app.whenReady().then(async () => {
       f02Workflow=undefined;
       f16F17Cases=undefined;f16F17Workflow=undefined;
       f18ReviewCases?.close();f18ReviewCases=undefined;f18Workflow=undefined;f18ActiveRevision=undefined;
+      f19IssueCases?.close();f19IssueCases=undefined;f19Workflow=undefined;f19ActiveRevision=undefined;
       f12ReturnDigest=undefined;f12ExplicitReturnSource=undefined;
       f24Workflow=undefined;
       f04Workflow=undefined;

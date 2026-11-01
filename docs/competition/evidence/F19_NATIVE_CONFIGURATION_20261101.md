@@ -126,3 +126,15 @@ checker，N04 确认中换回归 root，关闭确认中换配置 revision；各�
 和 SQLite；GitHub/Git 网络、模型、safeStorage、同意/在场、临时 reviewer 和 native isolation
 facts 在测试中明确 Fixture。没有真实账号写入、真实签名、F19 PSEC 或 AgentArts 验收；
 这些与 Main 实际接线全部完成前不能据此合并 #531。
+
+## 同日 Main/UI 集成
+
+在 `.worktrees/pr531-clarification-ui` 的 `d9ce948e` 基线上接入原工厂、F19 worker 与工具、
+原 publication/regression/close 三组 prepare/confirm、原 nativeExecutionHost 和生命周期清理。
+设置页的 `coding.f19.select` 只允许空闲原 admin 的本机 JSON 选择；Renderer 无路径/命令参数，
+选择后显示重启加载提示，不授予发布、回归或关闭许可。三种共有 read 仅在原 F18/F19 descriptor
+完全一致时去重，两个写工具及其 beforeWrite 保留；不一致直接拒绝装配。
+
+Main 语法检查通过。16 个轻量接线/界面行为已通过：首轮 15/16，唯一失败为新增测试重复使用
+同一 VM 的 const 重声明；修正测试上下文后该文件 3/3。没有重跑全套或实际 Electron/云/账号
+操作；上文 F19 完整图原 60 秒未通过和真实服务/设备边界保持，留根统一验收。
