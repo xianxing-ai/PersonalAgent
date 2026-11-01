@@ -120,6 +120,7 @@ import {createConfiguredDesktopF21WorkflowPorts} from './f21-workflow-worker-por
 import {createDesktopF28WorkflowWorkerPorts} from './f28-model-workflow-ports.js';
 import {createF08SourceChangeHost} from './f08-source-change-host.js';
 import {createF08SourceActions} from './f08-source-actions.js';
+import {createDesktopF23DecisionConfiguration,F23_INITIALIZE_TOOL} from './f23-decision-configuration.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF11LocationQuestionHost,createF11DecisionQuestionHost} from './f11-location-question-host.js';
@@ -392,6 +393,7 @@ let f01Workflow;
 let f22Configuration,f22Workflow;
 let f25Configuration,f25Workflow;
 let f08SourceChanges,f08SourceActions;
+let f23DecisionConfiguration;
 let reconcileOriginalMailWorkflow;
 let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
 let f14Workflow;
@@ -779,6 +781,7 @@ function agentArtsSnapshot() {
   return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason,
     traceReplay:f22Configuration?{...f22Configuration.snapshot(),available:!!f22Workflow}:undefined,
     dataScope:f25Configuration?{...f25Configuration.snapshot(),available:!!f25Workflow&&knowledgeSourceConfig?.snapshot().available===true}:undefined,
+    decisionConfiguration:f23DecisionConfiguration?{...f23DecisionConfiguration.snapshot(),catalogRevision:agentArtsModels?.snapshot().catalog?.revision}:undefined,
     ...(observation ? {observation} : {})};
 }
 
@@ -2102,7 +2105,6 @@ async function initializeRuntime() {
       }
       const {createGoalHost} = await import('./goal-host.js');
       const codingModule=await import('@personal-agent/coding-tools');
-      const mcpModule=await import('@personal-agent/mcp');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
       let developmentJobHelper;
@@ -2700,7 +2702,9 @@ async function initializeRuntime() {
         configuration:f25Configuration,authorizeExport:authorizeWorkflowExport}):undefined;
       const f27Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF27WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,authorizeExport:authorizeWorkflowExport}):undefined;
-      const f21Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF21WorkflowPorts({runtimeModule,mcpModule,codingModule,
+      f23DecisionConfiguration=!syntheticMvp&&agentArtsPinned?createDesktopF23DecisionConfiguration({runtimeModule,
+        getApplication:()=>runtimeApplication,models:agentArtsModels,namespace,onUpdate:publish}):undefined;
+      const f21Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF21WorkflowPorts({runtimeModule,mcpModule:publicReferenceModule,codingModule,
         getApplication:()=>runtimeApplication,getReferenceHost:()=>referenceHost,nativeExecutionHost,
         getAuthorizationIntentHost:()=>authorizationIntentHost,probeRoot:path.join(app.getPath('userData'),'f21-probe'),authorizeExport:authorizeWorkflowExport}):undefined;
       const f28Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF28WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
@@ -2714,6 +2718,7 @@ async function initializeRuntime() {
       const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
+        ...(f23DecisionConfiguration?[f23DecisionConfiguration.tool]:[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
@@ -2921,7 +2926,7 @@ async function initializeRuntime() {
         },
         tools: conversationTools,
         competitionToolDiscovery:true,
-        hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
+        hostOnlyTools:[AUTHORIZATION_INTENT_TOOL,...(f23DecisionConfiguration?[F23_INITIALIZE_TOOL]:[])],
         requestToolAuthorization:async scope=>{
           const mailReconciliation=await connectorConversationTools?.prepareOriginalSendReconciliationAuthorization?.(scope);
           if(!mailReconciliation)await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
@@ -2958,6 +2963,7 @@ async function initializeRuntime() {
           ||scope.toolName==='mail.reconcile_send'||scope.toolName==='mail.reconcile_archive'
           ||scope.toolName==='decision.choose_candidate'
           ||scope.toolName==='workflow.host.f01_n09'
+          ||scope.toolName===F23_INITIALIZE_TOOL
           ||scope.toolName==='workflow.host.f16_n05'
           ||scope.toolName==='github.registered_merge'||/^workflow\.host\.f18_/u.test(scope.toolName)
           ||scope.toolName==='github.pr.create'||scope.toolName==='github.registered_close_issue'||/^workflow\.host\.f19_/u.test(scope.toolName)
@@ -4074,6 +4080,11 @@ async function action(event, name, payload) {
     if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 PR 审核配置');
     await f18ReviewCases.selectFromNativeDialog();publish();
     return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='workflow.decisionConfiguration.initialize'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f23DecisionConfiguration)throw Error('请从正式管理后台初始化决策基线');
+    const result=f23DecisionConfiguration.initialize(payload,{deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
+    publish();return result;
   }
   if(name==='workflow.dataScope.configure'){
     if(sender!==admin||!competitionMode||syntheticMvp||!f25Configuration||!f25Workflow)
@@ -5520,6 +5531,7 @@ app.whenReady().then(async () => {
       f22Configuration?.close();f22Configuration=undefined;f22Workflow=undefined;
       f25Configuration?.close();f25Configuration=undefined;f25Workflow=undefined;
       f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
+      f23DecisionConfiguration=undefined;
       reconcileOriginalMailWorkflow=undefined;
       f11LocationQuestion=undefined;
       f11DecisionQuestion=undefined;

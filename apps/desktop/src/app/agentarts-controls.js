@@ -23,6 +23,22 @@ export function mountAgentArtsControls(root,invoke) {
       dataScope.configured?(dataScope.stage==='saved'?'范围已保存并读回；':'提案已暂存，尚未应用；')+'服务连通性与模型能力尚未验证。':'尚未暂存范围提案。';
   }
   let originatingFocus,restoreFocus=false;
+  form.insertAdjacentHTML('afterend','<details class="connection-advanced"><summary>决策评估基线</summary><p class="notice">将已保存的当前主模型作为后续重新规划的评估基线。初始化需要单独确认，后续候选须通过评测才能晋升。</p><button type="button" class="btn" data-decision-initialize>初始化当前模型基线</button><p class="notice" role="status" data-decision-state></p></details>');
+  const decisionButton=section.querySelector('[data-decision-initialize]'),decisionState=section.querySelector('[data-decision-state]');
+  let decisionConfiguration,decisionPending=false;
+  function renderDecision(){
+    if(decisionConfiguration?.initialization)decisionPending=!['succeeded','failed','cancelled'].includes(decisionConfiguration.initialization.state);
+    decisionButton.disabled=busy||decisionPending||decisionConfiguration?.available!==true||decisionConfiguration?.initialized===true;
+    if(decisionConfiguration?.initialized)decisionState.textContent=`已读回基线版本 ${decisionConfiguration.binding.configuration.revision}，模型 ${decisionConfiguration.binding.executionModel.modelId}；评测尚未通过。`;
+    else if(!decisionPending)decisionState.textContent=decisionConfiguration?.available?'尚未初始化。':'请先配置固定部署并读取模型目录。';
+  }
+  decisionButton.addEventListener('click',async()=>{
+    if(decisionButton.disabled)return;decisionPending=true;setBusy(true);decisionState.textContent='正在提交原确认请求…';
+    try{const result=await invoke('workflow.decisionConfiguration.initialize',{commandId:crypto.randomUUID(),catalogRevision:decisionConfiguration.catalogRevision});
+      decisionState.textContent=result?.taskId?'已受理，请处理原任务授权卡；受理不表示基线已保存。':'结果尚未确认，请查看原任务。';}
+    catch{decisionState.textContent='结果尚未确认，请查看原任务及已保存基线。';}
+    finally{setBusy(false);}
+  });
   const tokenHint=section.querySelector('[data-token-hint]');
   const updateTransport=()=>{const wss=form.elements.transport.value==='wss';
     section.querySelector('[data-wss]').hidden=!wss;form.elements.websocketUrl.required=wss;
@@ -49,6 +65,7 @@ export function mountAgentArtsControls(root,invoke) {
     restoreBtn.disabled=value||!canRestoreDefault;
     renderTraceReplay();
     renderDataScope();
+    renderDecision();
     if(!value) {
       document.removeEventListener('focusin',trackFocus,true);
       if(restoreFocus && document.activeElement===document.body && section.isConnected && !section.hidden
@@ -139,6 +156,7 @@ export function mountAgentArtsControls(root,invoke) {
   return {show:value=>{section.hidden=!value;if(!value) restoreFocus=false;},render(value={}){
     traceReplay=value.traceReplay;renderTraceReplay();
     dataScope=value.dataScope;renderDataScope();
+    decisionConfiguration=value.decisionConfiguration;renderDecision();
     canRestoreDefault=(value.canRestoreDefaultConnection??value.configured)===true;
     savedBinding={gatewayUrl:value.gatewayUrl,runtimeName:value.runtimeName};restoreBtn.disabled=busy||!canRestoreDefault;
     if (!dirty && !busy) {form.elements.gatewayUrl.value=value.gatewayUrl??'';form.elements.runtimeName.value=value.runtimeName??'';
