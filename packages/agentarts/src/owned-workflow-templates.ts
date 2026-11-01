@@ -85,7 +85,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F25_N03:[host('policy.outbound_context_check')],F25_N04:[host('configuration.save_credential_reference')],
   F26_N02:[host('deployment.build_arm64_image','platform')],F26_N03:[host('deployment.runtime_readback','platform')],
   F26_N04:[host('deployment.real_tool_evidence','platform')],F26_N05:[host('deployment.publish_verified_coverage','platform')],
-  F27_N01:[host('model.capabilities')],F27_N05:[host('memory.query')],F27_N06:[tool('knowledge.search')],
+  F27_N01:[host('model.capabilities')],F27_N05:[host('memory.query')],F27_N03:[host('model.original_compaction_receipt')],F27_N06:[host('knowledge.original_context_expansion')],
   F27_N04:[host('model.context_source_map_check')],F27_N07:[host('runtime.invalidate_context_mapping')],
   F28_N03:[host('model.native_config_check')],F28_N06:[host('model.original_research_candidate')],
   F28_N07:[host('model.original_analysis_candidate')],F28_N08:[host('model.original_coder_candidate')],
@@ -124,6 +124,7 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
     if(node.id==='F05_N04'&&!dependencies.includes('F05_N06'))dependencies.push('F05_N06');
     // Optional original tool exploration must settle before F28 completion checks.
     if(node.id==='F28_N10'&&!dependencies.includes('F28_N12'))dependencies.push('F28_N12');
+    if(node.id==='F27_N04'&&!dependencies.includes('F27_N06'))dependencies.push('F27_N06');
     // Optional F01 outcomes must settle before publishing the original plan outcome.
     if(node.id==='F01_N06')for(const id of ['F01_N07','F01_N08','F01_N09'])if(!dependencies.includes(id))dependencies.push(id);
     return {id:node.id,label:node.label,designKind:node.kind,kind,
