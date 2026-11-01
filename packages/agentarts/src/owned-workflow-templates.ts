@@ -47,7 +47,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F03_N05:[host('memory.query')],F03_N03:[host('runtime.invalidate_affected_subgraph')],F03_N06:[host('runtime.original_effect_binding')],
   F03_N07:[host('runtime.reconcile_original_effect')],F03_N08:[host('policy.compensation_check')],
   F03_N09:[host('runtime.submit_bound_compensation')],F03_N10:[host('voice.ask_question')],F03_N04:[host('runtime.schedule_graph')],
-  F04_N05:[host('memory.query')],F04_N06:[host('knowledge.source_and_write_check')],F04_N03:[tool('knowledge.apply_note_patch')],
+  F04_N05:[host('memory.query')],F04_N06:[host('knowledge.source_and_write_check')],F04_N03:[host('knowledge.original_public_patch')],
   F04_N07:[host('memory.quarantine_candidate')],F04_N04:[host('memory.invalidate_projection')],
   F05_N02:[tool('knowledge.search'),host('memory.query')],F05_N06:[host('knowledge.original_public_source')],
   F05_N05:[host('knowledge.citation_revision_check')],F05_N07:[host('runtime.publish_sourced_answer')],
@@ -124,7 +124,7 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       dependencies:dependencies.map(nodeId=>({nodeId,
         required:node.id==='F05_N04'&&nodeId==='F05_N06'?false:feature.edges.find(edge=>edge.source===nodeId&&edge.target===node.id)?.required??true})),
       required:node.required,...(condition?{condition}:{}),
-      ...(['F02_N09','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
+      ...(['F02_N09','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
           || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',
