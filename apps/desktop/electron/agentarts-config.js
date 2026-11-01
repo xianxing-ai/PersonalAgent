@@ -23,6 +23,17 @@ function validateBinding(value) {
 }
 function validatePreferences(value){ if(!value||Object.keys(value).some(k=>!['catalogRevision','defaultModelId','defaultSubmodelId','reasoningEffort','submodelReasoningEffort'].includes(k))||!/^[a-f0-9]{64}$/.test(value.catalogRevision)||['defaultModelId','defaultSubmodelId'].some(k=>typeof value[k]!=='string'||!value[k]||value[k].length>200)||['reasoningEffort','submodelReasoningEffort'].some(k=>value[k]!==undefined&&(typeof value[k]!=='string'||value[k].length>30)))throw Error('模型偏好格式无效');return structuredClone(value);
 }
+
+function validateReleaseBinding(value,version) {
+  const uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(v);
+  if(!value||Object.keys(value).sort().join(',')!=='endpointId,endpointName,imageReference,runtimeId'
+    ||!uuid(value.runtimeId)||!uuid(value.endpointId)||typeof value.endpointName!=='string'
+    ||!/^[A-Za-z][A-Za-z0-9-]{0,46}[A-Za-z0-9]$/u.test(value.endpointName)||/^(latest|current|default)$/iu.test(value.endpointName)
+    ||typeof version!=='string'||!/^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$/u.test(version)||/^(latest|current|default)$/iu.test(version)
+    ||typeof value.imageReference!=='string'||!/^swr\.cn-southwest-2\.myhuaweicloud\.com\/[a-z0-9._-]+\/[a-z0-9._/-]+@sha256:[a-f0-9]{64}$/u.test(value.imageReference))
+    throw Error('发布绑定必须来自当前固定版本、运行时、端点和 SWR 镜像摘要');
+  return structuredClone(value);
+}
 /** Reads `?endpoint=<version>` from a pasted pinned address without normalizing the URL. */
 function pinFromUrl(value) {
   const query = value.indexOf('?');
@@ -43,6 +54,7 @@ function validate(value) {
     ...(value.appToken===undefined?{}:{appToken:value.appToken}),
     ...(value.deploymentVersion===undefined?{}:{deploymentVersion:value.deploymentVersion}),
     ...(value.modelPreferences===undefined?{}:{modelPreferences:validatePreferences(value.modelPreferences)}),
+    ...(value.releaseBinding===undefined?{}:{releaseBinding:validateReleaseBinding(value.releaseBinding,value.deploymentVersion)}),
     ...(value.transport===undefined?{}:{transport:value.transport}),
     ...(value.websocketUrl===undefined?{}:{websocketUrl:value.websocketUrl}),
     ...(value.allowHttpsFallback===undefined?{}:{allowHttpsFallback:value.allowHttpsFallback})};
@@ -87,6 +99,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
     return {configured:Boolean(saved)&&!transportFailure,runtimeReady:Boolean(runtimeBinding()),
       gatewayUrl:saved?.gatewayUrl??defaults.gatewayUrl,runtimeName:saved?.runtimeName??defaults.runtimeName,
       appTokenConfigured:Boolean(saved?.appToken||environment.PA_AGENTARTS_APP_TOKEN),deploymentVersion:saved?.deploymentVersion??'',
+      releaseBinding:saved?.releaseBinding?structuredClone(saved.releaseBinding):null,
       deploymentSelection:saved?.deploymentVersion===undefined?'latest':'pinned',canRestoreDefaultConnection:Boolean(saved),
       ...(transport??{transport:preferences.transport}),
       websocketUrl:transport?.transport==='https'?'':transport?.websocketUrl??saved?.websocketUrl??environment.PA_AGENTARTS_WSS_URL??'',
@@ -98,6 +111,8 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
   const config={snapshot,runtimeBinding,isTransportCurrent,
     // Opaque identity only; consumers cannot obtain a credential or an execution grant.
     readCredentialReference(){return saved?'agentarts:'+configurationRef:undefined;},
+    readReleaseBinding(){return saved?.releaseBinding?Object.freeze({...structuredClone(saved.releaseBinding),
+      gatewayUrl:saved.gatewayUrl,runtimeName:saved.runtimeName,version:saved.deploymentVersion,configurationRef}):undefined;},
     transportConfig(binding) {
       const initial=currentTransport();
       // Keep the HTTPS destination guard even without WSS options.
@@ -121,7 +136,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
         appToken:saved.appToken,deploymentVersion:'',transport:'https',websocketUrl:'',allowHttpsFallback:false});
     },
     configure(input) {
-      if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization','appToken','deploymentVersion','transport','websocketUrl','allowHttpsFallback'].includes(key))) throw Error('AgentArts 配置格式无效');
+      if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization','appToken','deploymentVersion','transport','websocketUrl','allowHttpsFallback','releaseBinding'].includes(key))) throw Error('AgentArts 配置格式无效');
       if(input.transport!==undefined&&!['wss','https'].includes(input.transport)||input.allowHttpsFallback!==undefined&&typeof input.allowHttpsFallback!=='boolean'||input.websocketUrl!==undefined&&typeof input.websocketUrl!=='string')throw Error('AgentArts 传输配置无效');
       // A credential may be retained only for the same exact destination and deployment.
       const binding=validateBinding(input);
@@ -145,6 +160,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       if(transport==='wss'&&appToken===undefined)throw Error('首次配置 WSS 主通道必须填写“独立镜像访问令牌”（至少 32 位可见字符）');
       const allowHttpsFallback=input.allowHttpsFallback??(sameDeployment?saved?.allowHttpsFallback:undefined);
       const value=validate({...binding,authorization,appToken,deploymentVersion,transport,
+        releaseBinding:input.releaseBinding===null?undefined:input.releaseBinding??(sameDeployment?saved?.releaseBinding:undefined),
         websocketUrl:transport==='https'?undefined:websocketUrl,
         allowHttpsFallback:transport==='https'?false:allowHttpsFallback,
         ...(sameDestination&&deploymentVersion===saved?.deploymentVersion&&saved?.modelPreferences?{modelPreferences:saved.modelPreferences}:{})});

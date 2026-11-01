@@ -220,6 +220,10 @@ export function createAgentArtsRuntimeApplication(
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
     ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,
+      onInvocationReadback:receipt=>{if(receipt.workflowId!=='F26')return;
+        const key='f26:image-readback:'+receipt.requestId,previous=application.runtime.loadCheckpoint(receipt.taskId,key);
+        if(previous!==undefined&&JSON.stringify(previous)!==JSON.stringify(receipt))throw new ProtocolError('REVISION_CONFLICT','Original F26 image receipt changed');
+        application.runtime.saveCheckpointOnce(receipt.taskId,key,receipt);application.runtime.saveCheckpoint(receipt.taskId,'f26:image-last',receipt.requestId);},
       ...((f20WorkflowWorkerPorts||configuredWorkflowWorkerPorts?.length)?{
         assertWorkflowCurrent:(request:import('@personal-agent/agentarts').OwnedWorkflowAdvanceRequest)=>{
           const configured=(configuredWorkflowWorkerPorts??[]).filter(ports=>ports.workflowId===request.workflowId);

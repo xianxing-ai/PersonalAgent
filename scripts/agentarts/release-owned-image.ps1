@@ -4,6 +4,7 @@ param(
   [string]$Image='personal-agent:test-v3-final-local-laya',
   [string]$RegistryReference='',
   [string]$ExpectedImageId='',
+  [string]$ExpectedSourceRevision='',
   [switch]$Build,[switch]$Push,
   [string]$DockerPath='docker',[string]$NodePath='node',
   [string]$OutputDirectory='.cache/owned-image-release'
@@ -13,6 +14,10 @@ $paRoot=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 Set-Location -LiteralPath $paRoot
 $paDocker=(Get-Command $DockerPath -ErrorAction Stop).Source
 $paNode=(Get-Command $NodePath -ErrorAction Stop).Source
+function Assert-PaReleaseSource {
+  if($ExpectedSourceRevision -and ((& git rev-parse HEAD) -ne $ExpectedSourceRevision -or (& git status --porcelain --untracked-files=all -- package.json package-lock.json packages/contracts packages/coordination packages/models packages/agentarts apps/agentarts-runtime scripts/agentarts/release-owned-image.ps1))){throw 'Original release source changed'}
+}
+Assert-PaReleaseSource
 $paOutput=[IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $paOutput -Force|Out-Null
 $paStages=[Collections.Generic.List[object]]::new()
@@ -35,6 +40,7 @@ if($Build){
   $paExport=& $paNode apps/agentarts-runtime/scripts/image-context.mjs
   if($LASTEXITCODE){throw 'Context export failed'}
   $paContext=($paExport|Select-Object -Last 1|ConvertFrom-Json).context
+  Assert-PaReleaseSource
   $null=Invoke-PaReleaseDocker 'build' @('build','--platform','linux/arm64','--tag',$Image,$paContext)
 }
 $paInspect=(& $paDocker image inspect $Image|ConvertFrom-Json)
@@ -43,6 +49,7 @@ $paImageId=$paInspect[0].Id
 if($ExpectedImageId -and $ExpectedImageId -ne $paImageId){throw 'Image identity mismatch'}
 $paRegistryDigest=$null
 if($Push){
+  Assert-PaReleaseSource
   if(-not $RegistryReference -or $RegistryReference -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._:/-]+$'){throw 'Explicit registry reference required'}
   # Authenticate with docker login beforehand; credentials never enter this script.
   $null=Invoke-PaReleaseDocker 'tag' @('tag',$Image,$RegistryReference)
@@ -55,6 +62,7 @@ if($Push){
   # Compare remote manifest identity with Docker's actual push result, not Id.
   if($paRemote -notmatch [regex]::Escape($paRegistryDigest) -or $paRemote -notmatch 'linux/arm64'){throw 'Remote image identity or architecture mismatch'}
 }
-$paReceipt=@{schemaVersion=1;image=$Image;imageId=$paImageId;architecture='arm64';sourceRevision=(& git rev-parse HEAD);sourceDirty=[bool](& git status --porcelain);built=$Build.IsPresent;context=$paContext;published=$Push.IsPresent;registryReference=$RegistryReference;registryManifestDigest=$paRegistryDigest;remoteReadbackVerified=$Push.IsPresent;runtimeDeploymentVerified=$false;stages=$paStages;recordedAtUtc=[DateTime]::UtcNow.ToString('o')}
+Assert-PaReleaseSource
+$paReceipt=@{schemaVersion=1;image=$Image;imageId=$paImageId;imageSizeBytes=$paInspect[0].Size;architecture='arm64';sourceRevision=(& git rev-parse HEAD);sourceDirty=[bool](& git status --porcelain);built=$Build.IsPresent;context=$paContext;published=$Push.IsPresent;registryReference=$RegistryReference;registryManifestDigest=$paRegistryDigest;remoteReadbackVerified=$Push.IsPresent;runtimeDeploymentVerified=$false;stages=$paStages;recordedAtUtc=[DateTime]::UtcNow.ToString('o')}
 $paReceipt|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $paOutput 'release.json') -Encoding utf8
 $paReceipt|Select-Object image,imageId,architecture,built,published,remoteReadbackVerified,runtimeDeploymentVerified|ConvertTo-Json

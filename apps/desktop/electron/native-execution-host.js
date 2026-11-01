@@ -6,7 +6,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const blocked=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前外部进程隔离后端或原授权不可用，未降级为普通进程');};
 const external=name=>['workspace.run_allowed_command','workspace.node_check','workspace.npm_build','workspace.npm_test',
-  'workspace.git_diff_check','workspace.f19_regression_command','workspace.f21_mcp_probe','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
+  'workspace.git_diff_check','workspace.f19_regression_command','workspace.f21_mcp_probe','workspace.f26_release','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
 const identity=value=>{const target=realpathSync.native(value),stat=statSync(target,{bigint:true});
   return [target,String(stat.dev),String(stat.ino),String(stat.birthtimeNs)];};
 
@@ -47,6 +47,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       bindingDigest:digest([scope.taskId,scope.runId,scope.argumentsDigest,verified.bindingDigest]),
       ruleBindingDigest:digest(['native-execution',verified.bindingDigest,scope.toolName]),
       summary:scope.toolName==='workspace.f21_mcp_probe'?'固定 MCP 公开样本探测；请选择只读隔离，禁止网络与文件写入'
+        :scope.toolName==='workspace.f26_release'?'固定 ARM64 镜像构建与 SWR 发布；需要明确完整权限，Docker daemon 与网络不受文件隔离限制'
         :'外部命令在已验证 Windows 进程边界内执行；仅选定工作区与固定工具路径，默认禁止网络'}],assertCurrent:()=>current()});
   }
   function describeExecution(request,profile){
@@ -70,11 +71,12 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   function createCommandTool(options){
     const root=realpathSync.native(options.rootPath),rootIdentity=identity(root);
     // Main may add immutable compiler/support directories; tool input cannot supply them.
-    const {trustedReadRoots=[],readF19Binding,readF21Binding,beforeF21Probe,...commandOptions}=options;
+    const {trustedReadRoots=[],readF19Binding,readF21Binding,beforeF21Probe,readF26Binding,beforeF26Release,...commandOptions}=options;
     if(readF19Binding!==undefined&&typeof readF19Binding!=='function')blocked();
     if(readF21Binding!==undefined&&(typeof readF21Binding!=='function'||readF19Binding!==undefined))blocked();
     if(beforeF21Probe!==undefined&&(!readF21Binding||typeof beforeF21Probe!=='function'))blocked();
-    const readFixedBinding=readF19Binding??readF21Binding,journal=readF21Binding?'f21-native-command:v1:':'f19-native-command:v1:';
+    if(readF26Binding!==undefined&&(typeof readF26Binding!=='function'||readF19Binding||readF21Binding||typeof beforeF26Release!=='function'))blocked();
+    const readFixedBinding=readF19Binding??readF21Binding??readF26Binding,journal=readF26Binding?'f26-native-command:v1:':readF21Binding?'f21-native-command:v1:':'f19-native-command:v1:';
     if(!Array.isArray(trustedReadRoots)||trustedReadRoots.length>4)blocked();
     const supportRoots=trustedReadRoots.map(value=>{const target=realpathSync.native(value),relative=path.relative(root,target);
       if(!statSync(target).isDirectory()||path.dirname(target)===target||relative!== '..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))blocked();
@@ -128,10 +130,11 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
         }
         if(readFixedBinding){
           const source=readFixedBinding(context);
-          if(f20||fixedRecipes.length!==1||mode!=='read-only'||!source||source.root!==root
+          if(f20||fixedRecipes.length!==1||mode!==(readF26Binding?'full-access':'read-only')||!source||source.root!==root
             ||source.recipeId!==options.recipes[0].id||source.taskId!==context.taskId||source.runId!==context.runId
-            ||source.argumentsDigest!==context.argumentsDigest||readF21Binding&&source.recipeId!=='f21-filesystem-protocol')blocked();
+            ||source.argumentsDigest!==context.argumentsDigest||readF21Binding&&source.recipeId!=='f21-filesystem-protocol'||readF26Binding&&source.recipeId!=='f26-owned-image-release')blocked();
           if(beforeF21Probe){const result=beforeF21Probe(context);if(result!==undefined){void Promise.resolve(result).catch(()=>{});blocked();}}
+          if(beforeF26Release){const result=beforeF26Release(context);if(result!==undefined){void Promise.resolve(result).catch(()=>{});blocked();}}
           const original={version:1,taskId:context.taskId,runId:context.runId,argumentsDigest:context.argumentsDigest,
             source:structuredClone(source),root,rootIdentity,pins:verified.pins,binding,profile,recipes:fixedRecipes,
             ...(readF21Binding?{configuration:verified.configuration.identity}:{})};
@@ -147,7 +150,8 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
         const name='native-sandbox-execution:'+context.runId;
         const original=runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId)
           ??runtime.loadCheckpoint(context.taskId,'f19-native-command:v1:'+context.runId)
-          ??runtime.loadCheckpoint(context.taskId,'f21-native-command:v1:'+context.runId);
+          ??runtime.loadCheckpoint(context.taskId,'f21-native-command:v1:'+context.runId)
+          ??runtime.loadCheckpoint(context.taskId,'f26-native-command:v1:'+context.runId);
         const value={runId:context.runId,argumentsDigest:context.argumentsDigest,backend:result.backend,enforced:result.enforced,
           outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects,
           ...(original?{originalBindingDigest:digest(original)}:{})};
@@ -188,6 +192,16 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       return Object.freeze({taskId,runId,sourceDigest,backend:'windows-psec',enforced:true,stopped:true,exitCode:record.exitCode,auditDigest:digest(record)});
     }catch{return undefined;}
   }
-  return {prepare,describeExecution,createCommandTool,readOriginalCommandStopState,readOriginalF21Probe,close(){closed=true;runs.clear();verified=undefined;},
+  function readOriginalF26Release({taskId,runId,sourceDigest}){
+    try{const runtime=getApplication().runtime,original=runtime.loadCheckpoint(taskId,'f26-native-command:v1:'+runId),records=runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId);
+      if(!original||original.taskId!==taskId||original.runId!==runId||digest(original.source)!==sourceDigest||digest(identity(original.root))!==digest(original.rootIdentity)
+        ||digest(coding.readWindowsNativeHelperAttestation(original.pins.helperPath))!==digest(original.pins)||original.profile.mode!=='full-access'
+        ||original.profile.backend!=='none'||!Array.isArray(records)||records.length!==1)return;
+      const record=records[0];if(record.runId!==runId||record.originalBindingDigest!==digest(original)||record.argumentsDigest!==original.argumentsDigest
+        ||record.backend!=='none'||record.enforced!==false||record.executionStarted!==true||record.stopped!==true||record.outcome!=='exited')return;
+      return Object.freeze({taskId,runId,sourceDigest,backend:'none',enforced:false,stopped:true,exitCode:record.exitCode,auditDigest:digest(record)});
+    }catch{return undefined;}
+  }
+  return {prepare,describeExecution,createCommandTool,readOriginalCommandStopState,readOriginalF21Probe,readOriginalF26Release,close(){closed=true;runs.clear();verified=undefined;},
     environment:()=>({SystemRoot:systemRoot,LOCALAPPDATA:localAppData})};
 }
