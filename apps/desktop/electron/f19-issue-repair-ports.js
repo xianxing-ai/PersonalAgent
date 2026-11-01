@@ -96,7 +96,7 @@ export function createDesktopF19IssueRepairPorts({getApplication,github,selectio
   if(publication)publisher=createF19PublicationHost({getApplication:app,runtimeModule,binding,repairSource,bridge,
     configuration:publication,authorizeExport,now});
   if(regression&&publisher)regressionHost=createF19RegressionHost({getApplication:app,runtimeModule,binding,bridge,publisher,publication,configuration:regression});
-  if(closeIssue&&regressionHost)closer=createF19CloseHost({getApplication:app,binding,bridge,publisher,regression:regressionHost,publication,authorizeExport});
+  if(closeIssue&&regressionHost)closer=createF19CloseHost({getApplication:app,binding,bridge,regression:regressionHost,publication,authorizeExport});
   const common={application,now,requiredScopes:['github:read'],assertCurrent:scope=>{binding(scope);},
     async authorizeExport(scope,value){binding(scope);const allowed=await authorizeExport({workflowId:'F19',taskId:scope.parentTaskId,
       localTaskId:scope.localTaskId,stage:'receipt',value,deadline:scope.deadline,signal:scope.signal});binding(scope);return allowed===true;}};
@@ -118,7 +118,7 @@ export function createDesktopF19IssueRepairPorts({getApplication,github,selectio
     resolveCloseIssue:(scope,context)=>closer.close(scope,context)}):{tools:[]};
   const businessNames=['github.issue_snapshot',...(regressionHost?['github.merged_pr_readback']:[]),
     ...(closer?['github.registered_close_issue','github.issue_close_readback']:[])];
-  const business=github.createTools(closer?{enableIssueClose:true,beforeWrite:closer.beforeWrite}:{}).filter(tool=>businessNames.includes(tool.descriptor.name));
+  const business=github.createTools(closer?{issueRepairOnly:true,enableIssueClose:true,beforeWrite:closer.beforeWrite}:{}).filter(tool=>businessNames.includes(tool.descriptor.name));
   if(business.length!==businessNames.length||business.some(tool=>tool.descriptor.version!==GITHUB_CONNECTOR_VERSION))
     return {tools:[],configuredWorkflowWorkerPorts:[],unavailable:[...unavailable,'f19_issue_snapshot_tool_unavailable']};
   const tools=[...business,...snapshot.tools,...enqueue.tools,...merged.tools,...closed.tools,...(regressionHost?.tools??[])];

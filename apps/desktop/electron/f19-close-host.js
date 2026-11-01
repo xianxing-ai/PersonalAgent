@@ -9,9 +9,9 @@ const fail=message=>{throw new ProtocolError('UNAUTHORIZED',message);};
 const hostName='workflow.host.f19_n05',key='f19:original-close-attempt:v1';
 const ref=value=>({taskId:value.taskId,runId:value.runId,scopeRef:value.scopeRef,toolVersion:value.toolVersion,arguments:value.arguments});
 
-export function createF19CloseHost({getApplication:app,binding,bridge,publisher,regression,publication,authorizeExport}) {
+export function createF19CloseHost({getApplication:app,binding,bridge,regression,publication,authorizeExport}) {
   function expected(scope){
-    const bound=binding(scope),published=publisher.original(scope).value,verified=regression.original(scope);
+    const bound=binding(scope),verified=regression.original(scope),published=verified.publication;
     const snapshots=bound.confirmedOperations.filter(value=>value.nodeId==='F19_N01'&&value.toolName==='workflow.host.f19_n01');
     if(snapshots.length!==1||snapshots[0].result.issueId!==published.issueId||verified.proof.source.headSha!==published.headSha)
       fail('Original F19 close source changed');

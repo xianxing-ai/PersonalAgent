@@ -62,6 +62,21 @@ test('Local/Synthetic absent configuration is explicit unavailable with no ambie
   assert.ok(deployment.host.unavailable.some(item=>item.capability==='github'));deployment.close();
 });
 
+test('actual developer deployment forwards explicit F19 issue-only and close options while F18 gates remain required',async t=>{
+  const f=fixture(t),deployment=await createDesktopDeveloperDeployment({...f.options,confirmExport:async()=>false});
+  t.after(()=>deployment.close());const beforeWrite=()=>{assert.fail('No write in configuration test');};
+  assert.throws(()=>deployment.host.createF18F19Tools({beforeWrite}),{code:'INVALID_ARGUMENT'});
+  const defaults=deployment.host.createF18F19Tools({requiredChecks:['technical-ci'],eligibleReviewers:['reviewer'],beforeWrite});
+  assert.equal(defaults.length,6);assert.equal(defaults.some(tool=>tool.descriptor.name==='github.registered_close_issue'),false);
+  const reads=deployment.host.createF18F19Tools({issueRepairOnly:true,beforeWrite});
+  assert.deepEqual(reads.map(tool=>tool.descriptor.name).sort(),['github.issue_close_readback','github.issue_snapshot','github.merged_pr_readback']);
+  const complete=deployment.host.createF18F19Tools({issueRepairOnly:true,enableIssueClose:true,beforeWrite});
+  assert.equal(complete.length,4);const close=complete.find(tool=>tool.descriptor.name==='github.registered_close_issue');
+  assert.equal(close.descriptor.requiresPresence,true);assert.deepEqual(close.descriptor.requiredScopes,['github:write']);
+  assert.equal(complete.some(tool=>tool.descriptor.name==='github.registered_merge'||tool.descriptor.name==='github.current_head_merge_gate'),false);
+  assert.equal(f.transport.calls,0);
+});
+
 test('trusted GitHub repair links require a separate boolean opt-in and retain exact export policies',async t=>{
   for(const enabled of [false,true])await t.test(String(enabled),async t=>{
     const f=fixture(t);f.config.github.repairLinks=enabled;f.rewrite();

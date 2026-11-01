@@ -60,3 +60,13 @@ test('F19 original write recorder rejection prevents the only PATCH',async()=>{
   const f=fixture({beforeWrite(){throw Error('Original attempt already exists');}});
   await assert.rejects(f.run());assert.equal(f.recorded,1);assert.equal(f.calls.some(value=>value.method==='PATCH'),false);
 });
+
+test('F19 issue-only registration never borrows fake F18 gates or enables close implicitly',()=>{
+  const options={runner:{run(){assert.fail('No request during registration');}},readToken:async()=> 'synthetic-only',
+    repositories:['synthetic/f19'],beforeWrite(){assert.fail('No write during registration');}};
+  assert.throws(()=>createGitHubF18F19Tools(options),{code:'INVALID_ARGUMENT'});
+  const names=extra=>createGitHubF18F19Tools({...options,issueRepairOnly:true,...extra}).map(tool=>tool.descriptor.name).sort();
+  assert.deepEqual(names({}),['github.issue_close_readback','github.issue_snapshot','github.merged_pr_readback']);
+  assert.deepEqual(names({enableIssueClose:true}),['github.issue_close_readback','github.issue_snapshot','github.merged_pr_readback','github.registered_close_issue']);
+  assert.throws(()=>createGitHubF18F19Tools({...options,issueRepairOnly:true,requiredChecks:42}),{code:'INVALID_ARGUMENT'});
+});

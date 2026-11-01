@@ -275,11 +275,11 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
     host={...originalHost,
       readF16PublicationConfiguration(scope){const value=originalHost.readF16PublicationConfiguration?.(scope);
         return value?{...value,configurationRef:hash(raw)}:undefined;},
-      createF18F19Tools({requiredChecks,eligibleReviewers,beforeWrite}){
+      createF18F19Tools({requiredChecks,eligibleReviewers,beforeWrite,enableIssueClose=false,issueRepairOnly=false}){
         if(!active||typeof githubModule.createGitHubF18F19Tools!=='function')return undefined;
         // The runner and token adapter remain inside the original trusted deployment.
         // Caller supplies only explicit gates and an original Runtime write journal.
-        return githubModule.createGitHubF18F19Tools({...providerOptions,requiredChecks,eligibleReviewers,beforeWrite}).map(tool=>({
+        return githubModule.createGitHubF18F19Tools({...providerOptions,requiredChecks,eligibleReviewers,beforeWrite,enableIssueClose,issueRepairOnly}).map(tool=>({
           ...tool,execute:async(input,scope)=>{
             if(!await ready(tool.descriptor.name,scope))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original GitHub deployment is unavailable');
             assertCurrent(scope);const result=await tool.execute(input,scope);assertCurrent(scope);return result;

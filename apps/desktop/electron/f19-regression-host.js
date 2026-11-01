@@ -133,15 +133,15 @@ export function createF19RegressionHost({getApplication:app,runtimeModule:r,bind
     const invocation=app().runtime.loadCheckpoint(regressionRead.taskId,'application-tool-invocation:'+regressionRead.runId);
     const source=commandSource({...context,taskId:regressionRead.taskId,runId:regressionRead.runId,authorizationRef:regressionRead.runId,
       argumentsDigest:invocation?.argumentsDigest});
-    return {repo:value.repo,issueId:value.issueId,mergeRead:saved(scope,'merge').reference,regressionRead,source};
+    return {publication:value,proof:{repo:value.repo,issueId:value.issueId,mergeRead:saved(scope,'merge').reference,regressionRead,source}};
   }
   return {tools,resolveTool,
     original(scope){
       const bound=current(scope),hosts=bound.confirmedOperations.filter(value=>value.nodeId==='F19_N04'&&value.toolName===hostName);
       if(hosts.length!==1||hosts[0].result.verified!==true)fail('Original F19 regression frontier unavailable');
       const sourceScope={...scope,localTaskId:hosts[0].localTaskId,operationId:hosts[0].operationId};
-      const proof=read(sourceScope,{deadline:scope.deadline,signal:scope.signal,scopes:['github:read']});
-      r.readRuntimeF19NativeRegression(app(),sourceScope,proof);return {scope:sourceScope,proof};
+      const {proof,publication}=read(sourceScope,{deadline:scope.deadline,signal:scope.signal,scopes:['github:read']});
+      r.readRuntimeF19NativeRegression(app(),sourceScope,proof);return {scope:sourceScope,proof,publication};
     },
     prepareQuestion(scope,question){
       const proof=pending(scope);if(!proof)return;
@@ -159,6 +159,6 @@ export function createF19RegressionHost({getApplication:app,runtimeModule:r,bind
         app().runtime.saveCheckpointOnce(scope.localTaskId,prefix+kind,reference);
         if(!isDeepStrictEqual(reference,app().runtime.loadCheckpoint(scope.localTaskId,prefix+kind)))fail('Original F19 regression receipt changed');
       }
-      return read(scope,context);
+      return read(scope,context).proof;
     }};
 }

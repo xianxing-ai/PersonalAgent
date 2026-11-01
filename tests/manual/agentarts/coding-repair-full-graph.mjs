@@ -43,7 +43,7 @@ function localFailure(error) {
   return {code,message:'Host operation failed (details withheld)'};
 }
 const until=async(predicate,timeout=60000)=>{const end=Date.now()+timeout;while(Date.now()<end){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Original Runtime graph did not reach the expected state');};
-export function createExplicitFakeCodingRepairImage(target,observed=[]) {
+export function createExplicitFakeCodingRepairImage(target,observed=[],{firstAttemptSuccess=false}={}) {
   const engine=new OwnedWorkflowEngine({checkpointSecret:'explicit-fake-cloud-checkpoint-secret-32',externalHost:true,allowIsolatedProposals:true,
     decisionTool:{name:'decision.choose_candidate',version:'1.0.0'},receiptVerifier:createOwnedWorkflowReceiptVerifier({secret:key}),
     prepareCandidates:async context=>{
@@ -54,8 +54,8 @@ export function createExplicitFakeCodingRepairImage(target,observed=[]) {
       else if(context.node.id==='F15_N02')value={scope:[target],forbiddenActions:['unrelated file changes','verification removal']};
       else if(context.node.id==='F15_N03') {
         const source=c.snapshot.files.find(file=>file.path===target),number=c.round?2:1;
-        value={diagnosis:c.round?'Actual node:test expected 3; repair only the return expression':'First incremental candidate, requiring actual verification',
-          patches:[{path:target,expectedSha256:source.sha256,edits:[{oldText:'()=>'+number,newText:'()=>'+(number+1)}]}]};
+        value={diagnosis:c.round||firstAttemptSuccess?'Actual node:test expected 3; repair only the return expression':'First incremental candidate, requiring actual verification',
+          patches:[{path:target,expectedSha256:source.sha256,edits:[{oldText:'()=>'+number,newText:'()=>'+(firstAttemptSuccess?3:number+1)}]}]};
       }else if(context.node.id==='F15_N04')value={arguments:{sessionId,patches:c.pendingPatch.patches}};
       else if(context.node.id==='F15_N05')value={arguments:{sessionId,patches:c.pendingPatch.patches,recipeIds:['unit']}};
       else if(context.node.id==='F15_N06') {
@@ -66,7 +66,7 @@ export function createExplicitFakeCodingRepairImage(target,observed=[]) {
       }else throw Error('Unexpected F15 node '+context.node.id);
       return [{id:'candidate',description:'Explicit Fake externally generated candidate',value},{id:'review',description:'No supported candidate',value:null,abstain:true}];
     }});
-  return {bindingId:sha('explicit-fake-fixed-image-v1'),receiptSecret:async()=>key,advance:async request=>{
+  return {bindingId:sha('explicit-fake-fixed-image-v1'+(firstAttemptSuccess?':first-attempt-success':'')),receiptSecret:async()=>key,advance:async request=>{
     const begin=Date.now();const result=await engine.advance(request);observed.push({requestId:request.requestId,state:result.state,round:result.codingRepair?.round,
       catalogCount:request.availableTools.length,catalogBytes:Buffer.byteLength(JSON.stringify(request.availableTools)),
       nodes:Object.fromEntries(Object.entries(result.nodes).map(([id,value])=>[id,value.state])),elapsedMs:Date.now()-begin});return result;}};
@@ -139,7 +139,7 @@ export async function runCodingRepairFullGraphFixture(options={}) {
     coordinationBinding:sha('explicit-fake-original-fixed-deployment'),tools,
     automaticTools:[...tools.filter(tool=>!options.manualApprovalTools?.includes(tool.descriptor.name)).map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),{toolName:CODING_REPAIR_WORKFLOW_TOOL,toolVersion:'1.0.0'}],
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true})),
-    codingRepair:{image:options.image??createExplicitFakeCodingRepairImage(target,observed),authorizeMetadata:()=>{},projectSource:async input=>input.receipt.result,
+    codingRepair:{image:options.image??createExplicitFakeCodingRepairImage(target,observed,{firstAttemptSuccess:options.fakeModel===true&&options.firstAttemptSuccess===true}),authorizeMetadata:()=>{},projectSource:async input=>input.receipt.result,
       ...(signedReview?{independentReview:signedReview.port,independentReviewProducer:true}:{})},
     ...(options.applicationOptions??{})};
   const createApplication=options.createApplication??createRuntimeApplication;

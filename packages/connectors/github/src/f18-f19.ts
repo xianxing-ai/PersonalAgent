@@ -24,12 +24,14 @@ const connection = (value:unknown):Record<string,any>[] => {
 };
 export interface GitHubF18F19Options extends GhProviderOptions {
   /** Trusted repository policy. Empty lists cannot authorize a merge. */
-  requiredChecks:readonly string[];
-  eligibleReviewers:readonly string[];
+  requiredChecks?:readonly string[];
+  eligibleReviewers?:readonly string[];
   /** Persist the original write attempt in the existing Runtime before dispatch. */
   beforeWrite:(operation:string,input:Record<string,unknown>,context:ToolContext)=>void;
   /** Explicit F19 consumer only; existing F18 registrations remain read/merge-only. */
   enableIssueClose?:boolean;
+  /** F19 never executes a PR merge; omit the F18 merge/gate tools entirely. */
+  issueRepairOnly?:boolean;
 }
 
 const gateQuery=`query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){nameWithOwner
@@ -45,15 +47,18 @@ const gateQuery=`query($owner:String!,$name:String!,$number:Int!){repository(own
 /** Explicit opt-in tools. Uses the existing restricted gh runner/token port;
  * no executor, credential store, authorization decision or retry loop is added. */
 export function createGitHubF18F19Tools(options:GitHubF18F19Options):RegisteredTool[] {
+  const issueOnly=options?.issueRepairOnly===true;
+  const requiredChecks=Object.freeze(Array.isArray(options?.requiredChecks)?[...options.requiredChecks]:[]);
+  const eligibleReviewers=Object.freeze(Array.isArray(options?.eligibleReviewers)?[...options.eligibleReviewers]:[]);
   if(!options?.runner||typeof options.runner.run!=='function'||typeof options.readToken!=='function'
     ||!Array.isArray(options.repositories)||!options.repositories.length
     ||options.repositories.some(repo=>typeof repo!=='string'||!/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(repo))
-    ||!Array.isArray(options.requiredChecks)||!options.requiredChecks.length||!Array.isArray(options.eligibleReviewers)
-    ||!options.eligibleReviewers.length||typeof options.beforeWrite!=='function'
-    ||[...options.requiredChecks,...options.eligibleReviewers].some(v=>typeof v!=='string'||!v.trim()||v.length>256))
+    ||options.requiredChecks!==undefined&&!Array.isArray(options.requiredChecks)||options.eligibleReviewers!==undefined&&!Array.isArray(options.eligibleReviewers)
+    ||!issueOnly&&(!requiredChecks.length||!eligibleReviewers.length)||typeof options.beforeWrite!=='function'
+    ||[...requiredChecks,...eligibleReviewers].some(v=>typeof v!=='string'||!v.trim()||v.length>256))
     fail('INVALID_ARGUMENT','Explicit GitHub workflow policy and original write recorder required');
   options=Object.freeze({...options,repositories:Object.freeze([...options.repositories]),
-    requiredChecks:Object.freeze([...options.requiredChecks]),eligibleReviewers:Object.freeze([...options.eligibleReviewers])});
+    requiredChecks,eligibleReviewers});
   const runner=options.runner;
   const run=async(operation:string,input:Record<string,any>,context:ToolContext):Promise<unknown>=>{
     checkContext(context);
@@ -109,12 +114,12 @@ export function createGitHubF18F19Tools(options:GitHubF18F19Options):RegisteredT
         ?check.checkSuite?.commit?.oid===input.headSha&&check.status==='COMPLETED'&&check.conclusion==='SUCCESS'
         :check.__typename==='StatusContext'&&check.commit?.oid===input.headSha&&check.state==='SUCCESS';
       const approved=reviews.some(review=>review.state==='APPROVED'&&review.author?.__typename==='User'
-        &&review.author.login!==pr.author?.login&&options.eligibleReviewers.includes(review.author.login)&&review.commit?.oid===input.headSha);
+        &&review.author.login!==pr.author?.login&&eligibleReviewers.includes(review.author.login)&&review.commit?.oid===input.headSha);
       const passed=pr.state==='OPEN'&&pr.isDraft===false&&pr.mergeable==='MERGEABLE'&&pr.mergeStateStatus==='CLEAN'
         &&typeof pr.author?.login==='string'&&pr.author.login.length>0
         &&pr.reviewDecision==='APPROVED'&&approved&&!reviews.some(review=>review.state==='CHANGES_REQUESTED')
         &&threads.every(thread=>thread.isResolved===true)&&commit.statusCheckRollup.state==='SUCCESS'&&checks.length>0
-        &&checks.every(successful)&&options.requiredChecks.length>0&&options.requiredChecks.every(name=>checks.some(check=>(check.name??check.context)===name&&successful(check)));
+        &&checks.every(successful)&&requiredChecks.length>0&&requiredChecks.every(name=>checks.some(check=>(check.name??check.context)===name&&successful(check)));
       return {headSha:input.headSha,mergeRequirementsSatisfied:passed};
     };
     try{
@@ -209,7 +214,8 @@ export function createGitHubF18F19Tools(options:GitHubF18F19Options):RegisteredT
         snapshotDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}}),
       object({issueId:integer,closed:{const:true},updatedAt:{type:'string',format:'date-time'},mergedSha:sha})] as const]:[]),
   ];
-  return specifications.map(([operation,inputSchema,outputSchema])=>{
+  return specifications.filter(([operation])=>!issueOnly||['issue_snapshot','merged_pr_readback','issue_close_readback','registered_close_issue'].includes(operation))
+    .map(([operation,inputSchema,outputSchema])=>{
     const write=operation==='registered_merge'||operation==='registered_close_issue',scope=write?'github:write':'github:read';
     return {descriptor:{name:'github.'+operation,version:GITHUB_CONNECTOR_VERSION,inputSchema,outputSchema,
       sideEffect:write?'external_write':'read',requiredScopes:[scope],idempotencySupport:!write,recoverySupport:!write,requiresPresence:write},
