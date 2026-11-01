@@ -52,6 +52,16 @@ Runtime 新增 `f04Recovery` 受信选项及 `readF04RecoveryStatus/readF04Recov
 
 Runtime build、Desktop 入口与状态 20/20、F04/F24 原父任务消费定向 6/6 通过，后者包括实际 F24 Windows writer 恢复（前述未设 helper 的 skip 已补验）。F04 public 方法实际定位原 user parent、保持未完成 impact unknown，已核实 N03 后调用原 graph resume；源写入仍为一次。Desktop sender/surface/observer 是显式 Fixture，此处不宣称 Electron 目视已验。Main `f04Recovery` 注入及最终 UI/精确出机重新确认由集成树接线，尚不能宣称完整产品恢复已验收。
 
+### 原观察的单次精确原生出机确认
+
+`readF04RecoveredWriteExport` 仅为原用户父任务的当前 F04 pending N03 读取已接受的原知识 observation；原 graph/host/business child、参数、配置、操作、会话、父任务 revision、原期限与当前部署仍须匹配。未核实、其他任务/图/运行、取消、过期或污染的 observation 不产生出口绑定。返回最小 `{state:applied|not_applied,changed}` 和本机身份摘要，不包含正文、路径、备份或日志。
+
+Desktop `createF04RecoveryExportConsent(...).prepare(scope)` 在知识写结果 projection 阶段调用此公开读口，再沿既有 `confirmApplicationAuthorization('workflow.export', value, {scope,deadline,signal,isCurrent})` 产生一次新的精确确认；不恢复旧内存许可，不放宽 `currentRequirement`，不授予业务执行权限。确认前后复核原来源/观察/父任务 revision/配置/部署/原 proposal/最小 payload，异步变更后已记录的同意不再放行。普通知识读写和 preflight 返回原路径。此 helper 和公开口无需数据库迁移，F24 原接口不变。
+
+实际 AuthorizationIntentHost、AuthorizationQuestionHost、Runtime/Policy 的 10 项定向测试通过，确认后的来源、观察、部署、目的、父任务 revision、payload 和取消变化均拒绝。原受控 writer/journal、SQLite 重开、公开父任务 recovery→新原生 intent→原图 resume 的 applied/not_applied 两条链通过；等待确认时不执行写入/CAS/Feed/impact，恢复后原写入调用总数仍为一。真实原 observation 被污染时，实际公开绑定和确认有效性立即拒绝。模型/云传输/人类点击是 Synthetic；负效果用例的 journal/finalizer 也是显式 Synthetic，不能代替真实失败前持久恢复证据。
+
+最终 Runtime build、F04/桌面来源/精确授权/旧 F24 恢复与桌面核实入口联合 46/46 通过（无 skip）。这解决前述旧卡不能恢复的实现缺口；Main 的 helper 构造及知识 projection 分支消费由集成树接入，尚未在本树宣称真实 Electron 操作或 AgentArts 出机完成。私人 Wiki/Memory、跨作用域迁移与彻底遗忘仍属于 F04 后续范围，不提升整体完成或 frozen 状态。
+
 ## 后续验证
 
 实际 Engine/Runtime/Policy/ToolGateway、受控文件写入和原 journal、独立 Memory SQLite：相容更新前后版本/旧来源保留；冲突隔离零事实写入；未授权/跨作用域/版本变化/候选改参拒绝；原工具投影及异步撤销；未知写入跨重启零重放；已知写入后投影中断保留原效果；Fact Feed 与原依赖失效读回。模型/网络/原生确认的 Synthetic 部分独立标注。

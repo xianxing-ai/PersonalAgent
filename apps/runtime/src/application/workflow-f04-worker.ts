@@ -32,6 +32,12 @@ type Written=Omit<KnowledgeWriteReceipt,'state'|'backupId'>&{state:'verified'|'a
 export interface F04RecoveryPort {
   readAvailable(scope:F04Scope):boolean;
   reconcileOriginalReadback(scope:F04Scope):Promise<{state:'unknown'|'confirmed';localTaskId:string}>;
+  readExportBinding?(scope:F04Scope&{sourceTaskId:string;sourceRunId:string}):F04RecoveredWriteExportBinding|undefined;
+}
+export interface F04RecoveredWriteExportBinding {
+  workflowId:'F04';taskId:string;localTaskId:string;sourceTaskId:string;sourceRunId:string;sessionId:string;operationId:string;
+  proposalId:string;argumentsDigest:string;configurationDigest:string;sourceConfigurationDigest:string;deadline:string;
+  observationDigest:string;observationEvidenceId:string;projection:{state:'applied'|'not_applied';changed:boolean};
 }
 
 export interface F04WorkflowOptions {
@@ -481,7 +487,19 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
         'Original source hash, public Fact revision and completed impact read back; no write or projection repeated',verification:'verified',sensitivity:'internal'});
     current(scope);app().runtime.reconcileToolExecution(localTaskId,runId,'applied',result,[evidenceId]);return {state:'confirmed',localTaskId};
   }
-  const recovery:F04RecoveryPort={readAvailable(scope){try{const {read,record}=recoveryBinding(scope);
+  const recovery:F04RecoveryPort={readExportBinding(scope){
+    const bound=recoveryBinding(scope);if(bound.nodeId!=='F04_N03')return;
+    const {origin,result,effect}=observedWrite(scope),ref=origin.reference;
+    if(ref.taskId!==scope.sourceTaskId||ref.runId!==scope.sourceRunId||origin.sourceHost.taskId!==bound.localTaskId)
+      fail('UNAUTHORIZED','F04 export does not belong to its original recovery');
+    const value=graph(scope,origin.graph.sessionId);
+    return {workflowId,taskId:scope.taskId,localTaskId:bound.localTaskId,sourceTaskId:ref.taskId,sourceRunId:ref.runId,
+      sessionId:origin.graph.sessionId,operationId:origin.graph.operationId,proposalId:origin.request.commandId,
+      argumentsDigest:toolArgumentsDigest(origin.request.arguments),configurationDigest:value.configurationDigest,
+      sourceConfigurationDigest:toolArgumentsDigest(input(value).configuration),deadline:scope.deadline,
+      observationDigest:toolArgumentsDigest(result),observationEvidenceId:effect.readbackEvidenceId,
+      projection:{state:result.state,changed:result.state==='applied'&&result.currentSha256!==origin.request.arguments.expectedSha256}};
+  },readAvailable(scope){try{const {read,record}=recoveryBinding(scope);
     return read.task.state==='succeeded'&&record.state==='confirmed'||read.task.state==='waiting_reconciliation'&&record.state==='unknown'&&!app().runtime.isToolExecutionActive(record);
   }catch{return false;}},reconcileOriginalReadback(scope){
     // Concurrent callers observe the one original operation; this never resumes the graph.

@@ -17,6 +17,8 @@ import {createF04WorkflowWorkerPorts} from '../dist/application/workflow-f04-wor
 import {createDesktopF04WorkflowWorkerPorts} from '../../desktop/electron/f04-workflow-worker-ports.js';
 import {createDesktopAuthorizationQuestionHost} from '../../desktop/electron/authorization-question-host.js';
 import {AuthorizationQuestions} from '../dist/application/authorization-question.js';
+import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from '../../desktop/electron/authorization-intent-host.js';
+import {createF04RecoveryExportConsent} from '../../desktop/electron/f04-recovery-export-consent.js';
 
 const object=properties=>({type:'object',additionalProperties:false,required:Object.keys(properties),properties});
 const original='Mercury is a planet.';
@@ -25,7 +27,7 @@ const sha=value=>createHash('sha256').update(value).digest('hex');
 const powerShellPath=process.env.PA_TEST_PWSH;
 // Real files, controlled writer, SQLite, Runtime, Policy, Engine and source export policy.
 // Candidate judgments, approval clicks, source configuration and cloud transport are Synthetic.
-async function fixture(t,{disposition='compatible',revokeProjection=false,longExcerpt=false,onExport,projectionFailure=false,unknownWrite=false,resumeDirectory}={}){
+async function fixture(t,{disposition='compatible',revokeProjection=false,longExcerpt=false,onExport,projectionFailure=false,unknownWrite=false,resumeDirectory,nativeRecoveryExport=false}={}){
   const directory=resumeDirectory??await mkdtemp(join(tmpdir(),'pa-f04-')),root=join(directory,'vault'),recovery=join(directory,'recovery');
   const content=original+(longExcerpt?' '+'.'.repeat(190)+'PRIVATE_TAIL_DO_NOT_EXPORT':'')+'\n';
   if(!resumeDirectory){await mkdir(root);await mkdir(recovery);await writeFile(join(root,'source.md'),content);}
@@ -42,6 +44,12 @@ async function fixture(t,{disposition='compatible',revokeProjection=false,longEx
         const result=await writer.apply(...args);
         if(unknownWrite)throw new ProtocolError('RESULT_UNKNOWN','Synthetic lost reply after the real source write');return result;}},reconcileWrite:writer.reconcile,finalizeWrite:writer.finalize};}};
   const knowledge=createTrustedKnowledgeTools(source),exports=[],images=[],cloud=[];
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,
+    namespace:'synthetic-f04',resolveConversation:()=> 'synthetic-chat',available:()=>true,
+    profiles:[{ref:'synthetic',label:'Synthetic native approval profile',mode:'workspace-write',revision:1,available:true}],defaultProfileRef:'synthetic'});
+  const intent=createDesktopAuthorizationIntentHost({getApplication:()=>app,question,openConversation(){}}),nativeExports=[];
+  const recoveryExport=createF04RecoveryExportConsent({getApplication:()=>app,readDeploymentBinding:()=> 'synthetic-f04-fixed-deployment',
+    confirmAuthorization:async(action,payload,options)=>{nativeExports.push({action,payload,options});return intent.request({action,payload,...options});}});
   if(revokeProjection){const policy=knowledge.competitionToolExports[0],project=policy.project;policy.project=async args=>{const result=project(args);await Promise.resolve();privateSource=true;return result;};}
   const factPort={publicMemory:{listCurrent:request=>facts.publicMemory.listCurrent(request),listHistory:request=>facts.publicMemory.listHistory(request)},
     readCurrentPublicFact:ref=>facts.readCurrentPublicFact(ref),readPublicSourceHead:key=>facts.readPublicSourceHead(key),
@@ -51,11 +59,13 @@ async function fixture(t,{disposition='compatible',revokeProjection=false,longEx
     listImpactReceipts:request=>facts.listImpactReceipts(request),readCompletedImpact:key=>facts.readCompletedImpact(key)};
   const bundle=createDesktopF04WorkflowWorkerPorts({runtimeModule:{createF04WorkflowWorkerPorts},getApplication:()=>app,getKnowledgeSourceConfig:()=>source,
     getPublicFactHost:()=>({memoryNamespace:config.memoryNamespace,facts:factPort}),knowledgeToolExports:knowledge.competitionToolExports,
-    prepareCompetitionToolExport:async()=>{},authorizeExport:async request=>{exports.push(request);await onExport?.({request,app,facts,config,root});return true;}});
+    prepareCompetitionToolExport:async request=>{if(nativeRecoveryExport&&request.proposal.toolName==='knowledge.apply_note_patch'){
+      if(await recoveryExport.prepare(request))return;question.currentRequirement(request,'knowledge-export');}},
+    authorizeExport:async request=>{exports.push(request);await onExport?.({request,app,facts,config,root});return true;}});
   const choice={descriptor:{name:'decision.choose_candidate',version:'1.0.0',inputSchema:object({context:{type:'string'},
     candidates:{type:'array',items:object({id:{type:'string'},description:{type:'string'}})},requestId:{type:'string'}}),outputSchema:object({selectedId:{type:'string'}}),
     sideEffect:'read',requiredScopes:['decision:choose'],idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute:async args=>({selectedId:args.candidates[0].id})};
-  const tools=[...knowledge.tools,choice,...bundle.tools,createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
+  const tools=[...knowledge.tools,choice,...bundle.tools,...(nativeRecoveryExport?[intent.tool]:[]),createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,scope)=>app.runDefaultSubagentWorker(subtask,worker,scope)})];
   const secret='synthetic-f04-original-receipt-secret-longer-than-32';
   const engine=new OwnedWorkflowEngine({externalHost:true,checkpointSecret:'synthetic-f04-original-checkpoint-secret-longer-than-32',
@@ -67,6 +77,8 @@ async function fixture(t,{disposition='compatible',revokeProjection=false,longEx
     images.push(JSON.stringify({input:request.input,receipts:request.receipts,resolvedValues:request.resolvedValues}));return engine.advance(request);}};
   const appOptions={path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f04',tools,
     f04Recovery:bundle.recovery,
+    ...(nativeRecoveryExport?{hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],requiresToolAuthorization:()=>true,
+      requestToolAuthorization:scope=>{if(scope.toolName===AUTHORIZATION_INTENT_TOOL)intent.prepareQuestion(scope);return question.requestToolAuthorization(scope);}}:{}),
     knowledgeWriteReconciliation:{reconcile:async(...args)=>{reconciles++;return unknownWrite==='not_applied'
       ?{state:'not_applied',operationId:sha(args[0].taskId+'\n'+args[0].runId),backupId:'synthetic-negative-readback',lockRetained:false,currentSha256:sha(content)}:writer.reconcile(...args);},
       finalize:unknownWrite==='not_applied'?async accepted=>({state:'finalized',operationId:accepted.operationId,outcome:accepted.outcome,currentSha256:accepted.currentSha256}):writer.finalize},
@@ -87,13 +99,15 @@ async function fixture(t,{disposition='compatible',revokeProjection=false,longEx
     {deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal});
   let client=new Client(app);await client.connect();
   const close=()=>{if(opened){facts.close();app.close();opened=false;}};
-  t.after(async()=>{close();if(!resumeDirectory)await rm(directory,{recursive:true,force:true});});
+  t.after(async()=>{intent.close();question.close();close();if(!resumeDirectory)await rm(directory,{recursive:true,force:true});});
   async function run(){
     const parent=await client.call('task.submit',{goal:'Update the selected original public Fact source',conversationId:'synthetic-chat'},
       {idempotencyKey:'synthetic-f04-user',timeoutMs:120000});const end=Date.now()+60000;
     while(Date.now()<end){
-      for(const approval of app.runtime.listApprovals({state:'pending',limit:100}).items)
-        await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+      if(nativeRecoveryExport){for(const card of question.snapshot().filter(item=>item.state==='pending'))
+        question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_once'},card.conversationId);
+      }else for(const approval of app.runtime.listApprovals({state:'pending',limit:100}).items)
+          await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
       const [child]=app.readSubagentTasks(parent.taskId);
       if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))return {parent,child};
       if(revokeProjection&&child?.state==='waiting_approval'&&app.activeTaskCount===0&&app.runtime.listTasks({limit:100}).items.some(task=>task.state==='failed'))return {parent,child};
@@ -104,7 +118,7 @@ async function fixture(t,{disposition='compatible',revokeProjection=false,longEx
   function diagnostics(){return app.runtime.listTasks({limit:100}).items.map(task=>({id:task.taskId,state:task.state,error:task.error,
     tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName,runs:app.runtime.readToolExecutions(task.taskId)}));}
   return {get app(){return app;},get facts(){return facts;},bundle,run,exports,images,cloud,root,recovery,diagnostics,
-    counts:()=>({writes,appends,drains,impacts,clears}),reconciles:()=>reconciles,knowledge,revoke:()=>{privateSource=true;},
+    counts:()=>({writes,appends,drains,impacts,clears}),reconciles:()=>reconciles,knowledge,question,nativeExports,revoke:()=>{privateSource=true;},
     close,directory,async reopen(){close();app=createRuntimeApplication(appOptions);knowledge.bindApplication(app);facts=app.createCompetitionFactHost(factOptions);opened=true;client=new Client(app);await client.connect();}};
 }
 
@@ -240,4 +254,33 @@ test('F04 Synthetic finalized not_applied observation stays explicit and cannot 
   f.app.resumeTask(child.taskId);const final=await f.run();assert.equal(final.child.state,'succeeded',JSON.stringify(f.diagnostics()));
   assert.equal(f.cloud.find(request=>request.taskId===child.taskId&&request.continuation).continuation.result.state,'not_applied');
   assert.equal(await readFile(join(f.root,'source.md'),'utf8'),original+'\n');assert.equal(f.counts().writes,1);assert.equal(f.counts().appends,0);
+});
+for(const outcome of ['applied','not_applied'])test('F04 '+outcome+' original observation opens a fresh actual native intent and exports only its minimal outcome',{skip:!powerShellPath},async t=>{
+  const f=await fixture(t,{unknownWrite:outcome==='applied'?true:'not_applied',nativeRecoveryExport:true}),{parent,child}=await f.run();assert.equal(child.state,'waiting_reconciliation');
+  await f.reopen();const before=f.counts(),revision=f.app.runtime.getTask(parent.taskId).revision;
+  const work=f.app.reconcileF04WorkflowTask(parent.taskId,revision,{deadline:f.app.runtime.loadCheckpoint(child.taskId,'application-deadline'),signal:new AbortController().signal});
+  // Native intent, question, Runtime/Policy and original graph/source binding
+  // are actual; human/model/transport are Synthetic, as is the negative journal.
+  let card;const end=Date.now()+10000;
+  while(Date.now()<end&&!card){card=f.question.snapshot().find(item=>item.state==='pending');if(!card)await new Promise(resolve=>setTimeout(resolve,5));}
+  assert.ok(card);assert.equal(f.nativeExports.length,1);assert.equal(f.nativeExports[0].action,'workflow.export');
+  assert.deepEqual(f.nativeExports[0].payload,{state:outcome,changed:outcome==='applied'});assert.equal(f.nativeExports[0].options.scope.rootTaskId,parent.taskId);
+  assert.equal(f.nativeExports[0].options.scope.taskId,child.taskId);assert.equal(f.nativeExports[0].options.isCurrent(),true);
+  const captured=f.nativeExports[0].options.scope,request={sourceTaskId:captured.sourceTaskId,sourceRunId:captured.sourceRunId,
+    deadline:captured.deadline,signal:new AbortController().signal};
+  assert.equal(f.app.readF04RecoveredWriteExport(request).rootTaskId,parent.taskId);
+  assert.equal(f.app.readF04RecoveredWriteExport({...request,sourceRunId:'foreign-run'}),undefined);
+  assert.equal(f.app.readF04RecoveredWriteExport({...request,deadline:new Date(Date.parse(request.deadline)+1).toISOString()}),undefined);
+  assert.equal(f.app.readF04RecoveredWriteExport({...request,signal:AbortSignal.abort()}),undefined);
+  const observation=f.app.runtime.loadCheckpoint(captured.sourceTaskId,'knowledge-write-readback');
+  f.app.runtime.saveCheckpoint(captured.sourceTaskId,'knowledge-write-readback',{
+    ...observation,evidence:{...observation.evidence,evidenceId:'foreign-observation'}});
+  assert.equal(f.nativeExports[0].options.isCurrent(),false,'the actual original observation must still match');
+  f.app.runtime.saveCheckpoint(captured.sourceTaskId,'knowledge-write-readback',observation);
+  assert.equal(f.nativeExports[0].options.isCurrent(),true);
+  assert.deepEqual(f.counts(),before);assert.equal(f.app.runtime.getTask(child.taskId).state,'waiting_reconciliation');
+  f.question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:'allow_once'},card.conversationId);
+  const result=await work;assert.equal(result.resumed,true);assert.equal(result.state,'confirmed');
+  const final=await f.run();assert.equal(final.child.state,'succeeded',JSON.stringify(f.diagnostics()));assert.equal(f.counts().writes,1);
+  assert.deepEqual(f.app.readHostToolTask(card.taskId).confirmed.result,{decisionRecorded:true});
 });

@@ -2926,6 +2926,22 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   readF04RecoveryStatus(taskId:string){const status=this.readKnowledgeRecoveryStatus('f04',taskId);return status?{kind:'f04_knowledge' as const,...status}:undefined;}
   readF04RecoveryAvailable(taskId:string):boolean {return this.readF04RecoveryStatus(taskId)!==undefined;}
 
+  /** Trusted export preparation for the exact accepted observation of an existing
+   * F04 business child. No arbitrary historical target selection or new grant. */
+  readF04RecoveredWriteExport(request:{sourceTaskId:string;sourceRunId:string;deadline:string;signal:AbortSignal}){
+    if(this.profile!=='huawei_ict_agentarts'||!this.f04Recovery?.readExportBinding||request.signal.aborted
+      ||Date.parse(request.deadline)<=this.now().getTime()||!Number.isFinite(Date.parse(request.deadline))
+      ||request.sourceRunId!=='host-tool-'+request.sourceTaskId)return;
+    const rootTaskId=this.readBoundToolRootTask(request.sourceTaskId,new Set());if(!rootTaskId)return;
+    const root=this.runtime.getTask(rootTaskId),target=this.knowledgeRecoveryTarget('f04',rootTaskId,root.revision);
+    if(!target||target.deadline!==request.deadline)return;
+    const binding=this.f04Recovery.readExportBinding({...request,taskId:target.graphTaskId});
+    if(!binding||binding.taskId!==target.graphTaskId||binding.localTaskId!==target.localTaskId
+      ||binding.sourceTaskId!==request.sourceTaskId||binding.sourceRunId!==request.sourceRunId||binding.deadline!==target.deadline)return;
+    return structuredClone({...binding,rootTaskId,rootRevision:root.revision,conversationId:root.conversationId,
+      destination:this.readAuthorizationQuestionDestination(target.graphTaskId)});
+  }
+
   /** Native original-result readback, then existing graph continuation. Never
    * discovers arbitrary history, extends the original deadline, or retries a write. */
   private async reconcileKnowledgeWorkflowTask(kind:'f04'|'f24',taskId:string,expectedRevision:number,scope:{deadline:string;signal:AbortSignal}):Promise<{

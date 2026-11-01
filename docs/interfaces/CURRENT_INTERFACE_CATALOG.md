@@ -4,6 +4,10 @@
 
 `workflow.memory.answer@1.0.0` 经 Runtime 原配置图、Policy 和 ToolGateway 接入 Desktop Main，使用原公共 Memory/Fact、受控 Knowledge 文件及其出口投影。新增 F05 answer v1 Schema 约束引用和来源版本；Knowledge 的 `assertCitationCurrent` 同步复核原文件身份、内容版本及引用范围，用于凭据读取后的最后发送门禁。未知查询不重放，来源变化或配置撤销拒绝继续。实际文件、SQLite、原图与 Main 定向已通过；模型、原生确认和云为显式 Fixture，固定 AgentArts 部署整图及来源支持真实审查尚未验证，不提升 frozen。详见 [F05 证据](../competition/evidence/F05_SOURCED_ANSWER_WIRING_20261101.md)。
 
+## 2026-11-01 F04 原观察的精确恢复出口（provisional）
+
+Runtime `readF04RecoveredWriteExport` 只读限定原用户任务当前 F04 pending N03 的原业务 child、已接受 observation、原参数/配置/会话/期限/父 revision/部署；不选择任意历史操作。Desktop `createF04RecoveryExportConsent().prepare` 通过既有原生 `workflow.export` 单次确认最小 `{state,changed}`，确认前后重验绑定，不恢复旧许可或再次执行写入。普通知识出口与 F24 保持原行为，无 wire/数据库迁移。实际 Runtime/Policy/原生授权宿主及本机文件恢复已定向覆盖，Main 接线、真实 UI/云出机仍由组合验收确认；模型/人类点击和负效果 journal 的 Synthetic 边界见 [F04 接线记录](../competition/evidence/F04_SCOPED_WIKI_WIRING_20261101.md)，不提升 frozen。
+
 ## 2026-11-01 原工作流业务操作身份读回（provisional）
 
 `readWorkflowBusinessToolOrigin` 只读证明原图→原 host→原业务 child 的持久父边、intent 摘要、描述符、参数/期限、原 Policy allow 和 executionStarted，返回不可变 origin/reference/record，不返回成功 receipt。unknown 可读原身份而不能继续执行；未授权/未开始/伪造边拒绝。原 `readWorkflowBusinessToolSource` 复用此校验并继续要求 confirmed、原 tool-result 与原输出 Schema，已核实的 reconciliation observation 不冒充原 writer 结果。Runtime 构建及业务桥 35/35 通过，含 SQLite 重开、未知零重放、参数/会话/任务/期限替换与审批拒绝；真实服务与 frozen 状态不变。公开 application 出口由组合树接入。
