@@ -28,7 +28,7 @@ const canonicalInstant=value=>{
 
 /** Fixed business graph composition. The caller supplies the pinned image separately.
  * This facade resolves the real application only at execution, before any Runtime exists at startup. */
-export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,
+export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,f08SourceChanges,
   competitionToolExports=[],prepareCompetitionToolExport,authorizeExport,readBusinessAvailability,now=Date.now}={}) {
   const tools=[],hosts=[],configuredWorkflowWorkerPorts=[],unavailable=[];
   let reconcileOriginalMailWorkflow;
@@ -653,7 +653,11 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     };
     const fresh=async(scope,context,phase)=>{
       const bound=binding('F08',scope),mail=await bridge.invoke({actionKey:'f08.mail.'+phase+'-check',input:bound.input.inbox},context);
-      if(!compareMail(scope,bound,mail.result))fail('REVISION_CONFLICT','F08 original inbox changed; retain prior effects for versioned replan');
+      if(!compareMail(scope,bound,mail.result)){
+        if(f08SourceChanges)await f08SourceChanges.recordChange(scope,mail);
+        else runtimeModule.recordOriginalF08MailChange(getApplication(),scope,mail);
+        fail('REVISION_CONFLICT','F08 original inbox changed; retain prior effects for versioned replan');
+      }
       if(phase!=='plan'){
         const knowledge=await bridge.invoke({actionKey:'f08.knowledge.'+phase+'-check',input:bound.input.knowledge},context);
         verifyKnowledge(bound,knowledge.result);
@@ -702,7 +706,10 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         const bound=binding('F08',scope);
         if(nodeId==='F08_N13'){
           mailSource(bound);const read=await bridge.invoke({actionKey:'f08.mail.change-check',input:bound.input.inbox},context);
-          return compareMail(scope,bound,read.result)?'skipped':'selected';
+          if(compareMail(scope,bound,read.result))return 'skipped';
+          if(f08SourceChanges)await f08SourceChanges.recordChange(scope,read);
+          else runtimeModule.recordOriginalF08MailChange(getApplication(),scope,read);
+          return 'selected';
         }
         if(nodeId==='F08_N12'){
           const original=await ports.resolveOriginalSend(scope),read=original&&await ports.readReconciliation(scope,original);

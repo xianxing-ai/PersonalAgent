@@ -6,6 +6,7 @@ import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier,createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import {FakeMailProvider,QQMailProvider} from '@personal-agent/mail';
+import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import * as runtimeModule from '@personal-agent/runtime/application';
 import {createBusinessWorkflowWorkerPorts} from '../electron/business-workflow-worker-ports.js';
 import {createConnectorConversationTools} from '../electron/connector-conversation-tools.js';
@@ -13,6 +14,7 @@ import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-
 import {prepareWorkflowHostPreflight} from '../electron/workflow-host-preflight.js';
 import {prepareConfiguredWorkflowDecisionQuestion} from '../electron/configured-workflow-decision-source.js';
 import {createF08DecisionQuestionHost} from '../electron/business-workflow-question-host.js';
+import {createF08SourceChangeHost} from '../electron/f08-source-change-host.js';
 
 // Real Engine, Runtime, SQLite, connector host, public mail/knowledge tools and
 // AuthorizationQuestions/Policy and original private/public knowledge export policy.
@@ -22,12 +24,16 @@ async function scenario(t,options={}){
   const cache=new URL('../../../.cache/business-f08-runtime/',import.meta.url);mkdirSync(cache,{recursive:true});
   const userData=mkdtempSync(new URL('case-',cache)),approvals=[],cloud=[],proposals=[],decisions=[],imageRequests=[],sent=new Map();
   let app,archives=0,sends=0,reads=0,knowledgeReads=0,moved=false,changed=false,decisionReply,decisionReplied=false,businessRevision=1,inboxChanged=false;
+  let mailSourceHost,memory,remembered=false;const mailChanges=[];
+  if(options.mailSourceChanges)mailSourceHost=createF08SourceChangeHost({getApplication:()=>app,memoryPath:path.join(userData,'private-mail.sqlite'),
+    graphNamespace:'mail-plans',assertCurrent:()=>{assert.equal(businessRevision,1);},confirmSource:async()=>true,confirmErase:async()=>true});
   const decisionQuestion=createF08DecisionQuestionHost({getApplication:()=>app});
   const source={vaultId:'fixture-vault',path:'source.md',line:1,revision:'a'.repeat(64)};
   const provider=new FakeMailProvider({inbox:[{uid:3,folder:'INBOX',from:'sender@example.invalid',to:'fixture@qq.com',subject:'Fixture original',
     sentAt:'2026-10-31T00:00:00.000Z',messageId:'<original@example.invalid>',seen:false}],sent:[]},{inboxUidValidity:19,pageSize:100});
   const fetchPage=provider.fetchPage.bind(provider);
   provider.fetchPage=(account,input)=>{reads++;const page=fetchPage(account,input);if(moved)page.messages=[];
+    if(options.sourceChange&&reads>=2){page.uidValidity=20;page.nextCursor.uidValidity=20;}
     if(options.changedInbox&&reads>=2||inboxChanged)page.uidValidity=20;return page;};
   const archiveProvider=options.interruptedArchive?new QQMailProvider({user:'fixture@qq.com',authCode:'offline-unused'}):undefined;
   let archiveReads=false,archiveFolder='INBOX';
@@ -70,6 +76,8 @@ async function scenario(t,options={}){
   const policies=[...connector.competitionToolExports,...knowledge.competitionToolExports];
   const composition=createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>app,businessTools,competitionToolExports:policies,
     ...(options.answerDecision?{f08DecisionQuestion:decisionQuestion}:{}),
+    ...(options.mailSourceChanges?{f08SourceChanges:{async recordChange(scope,receipt){
+      const result=await mailSourceHost.recordChange(scope,receipt);mailChanges.push(result);return result;}}}:{}),
     prepareCompetitionToolExport:scope=>connector.prepareExport(scope),readBusinessAvailability:()=>({ready:true,bindingId:'fixture-mail-and-knowledge-'+businessRevision}),
     authorizeExport:async request=>{if(options.revokeKnowledgeExport&&request.stage==='receipt'&&request.value?.hits)knowledgeBinding={...knowledgeBinding,cloudExportAllowed:false};
       return !(options.denyCompletion&&request.stage==='completion');}});
@@ -117,8 +125,9 @@ async function scenario(t,options={}){
     competitionToolExports:tools.map(tool=>policies.find(policy=>policy.toolName===tool.descriptor.name)??{toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
       exportPolicyVersion:'fixture-graph',accepts:()=>true,project:({result})=>result})});
   knowledge.bindApplication(app);
+  if(options.mailSourceChanges)memory=openSqliteMemoryHost(path.join(userData,'private-mail.sqlite'));
   t.after(async()=>{for(const task of app.runtime.listTasks({limit:100}).items)if(!['succeeded','failed','cancelled'].includes(task.state))app.runtime.requestCancel(task.taskId);
-    question.close();for(let i=0;i<300&&app.activeTaskCount;i++)await pause();await connector.close();app.close();});
+    question.close();for(let i=0;i<300&&app.activeTaskCount;i++)await pause();await connector.close();mailSourceHost?.close();app.close();memory?.close();});
   const client=new Client(app);await client.connect();
   const root=await client.call('task.submit',{goal:'Fixture explicit F08 mail reply',conversationId:'fixture-chat'},{idempotencyKey:'fixture-f08',timeoutMs:60000});
   let child;
@@ -144,6 +153,14 @@ async function scenario(t,options={}){
       }
     }
     for(const card of question.snapshot().filter(item=>item.state==='pending')){approvals.push(card.toolName);
+      if(options.mailSourceChanges&&!remembered&&card.toolName==='mail.archive'){
+        const marker=app.runtime.loadCheckpoint(card.taskId,'workflow-business-tool:source');
+        const intent=app.runtime.loadCheckpoint(marker.sourceTaskId,'workflow-business-tool:'+marker.commandId);
+        const scope={parentTaskId:intent.parentTaskId,sessionId:intent.sessionId,deadline:intent.request.deadline,signal:new AbortController().signal};
+        const original=await mailSourceHost.rememberSource(scope,{factId:'explicit-mail-snapshot',operationId:'fixture-confirmed-mail-source',
+          summary:'Fixture user-confirmed private mailbox snapshot',validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z'});
+        assert.equal(original.fact.sensitivity,'private');remembered=true;
+      }
       if(card.toolName==='mail.send'&&options.revokeSend&&!changed){await connector.invalidate('mail');changed=true;}
       if(card.toolName==='mail.send'&&options.cancelSend){const graph=app.readSubagentTasks(root.taskId)[0];if(graph)app.runtime.requestCancel(graph.taskId);continue;}
       if(card.toolName==='mail.send'&&options.revokeDecisionBeforeSend)app.runtime.policy.revoke('host-tool-'+decisionReply.taskId);
@@ -168,7 +185,7 @@ async function scenario(t,options={}){
     }
     if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;await pause();
   }
-  assert.ok(child);return {app,userData,child,archives,sends,reads,knowledgeReads,approvals,cloud,proposals,decisions,imageRequests,decisionReply,decisionReplied,decisionQuestion,
+  assert.ok(child);return {app,userData,child,archives,sends,reads,knowledgeReads,approvals,cloud,proposals,decisions,imageRequests,decisionReply,decisionReplied,decisionQuestion,memory,mailChanges,mailSourceHost,
     diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,error:task.error,tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
 }
 
@@ -206,6 +223,27 @@ test('F08 interrupted UIDPLUS archive reads the durable original mapping and res
   const saved=f.app.runtime.listTasks({limit:100}).items.flatMap(task=>f.app.runtime.listCheckpointKeys(task.taskId)
     .filter(key=>key.startsWith('mail-archive-move:')).map(key=>f.app.runtime.loadCheckpoint(task.taskId,key)));
   assert.deepEqual(saved,[{destinationFolder:'Archive',destinationUid:41,destinationUidValidity:20}]);
+});
+test('F08 source change preserves original effects and private Fact but cannot invent an unselected Plan',async t=>{
+  const f=await scenario(t,{sourceChange:true,mailSourceChanges:true});
+  assert.notEqual(f.child.state,'succeeded',JSON.stringify(f.diagnostics));assert.equal(f.archives,1);assert.equal(f.sends,0);
+  assert.ok(f.mailChanges.length>=1,JSON.stringify(f.diagnostics));const receipt=f.mailChanges[0];
+  assert.ok(f.mailChanges.every(value=>JSON.stringify(value)===JSON.stringify(receipt)),'repeated source checks read the same original change');
+  assert.equal(receipt.state,'requires_review');assert.equal(receipt.reason,'original_plan_source_missing');
+  assert.deepEqual(receipt.change.effects.map(effect=>[effect.toolName,effect.result.state]),[['mail.archive','confirmed']]);
+  const keys=f.app.runtime.listCheckpointKeys(f.child.taskId).filter(key=>key.startsWith('f08:mail-source-change:'));
+  assert.equal(keys.length,1);assert.deepEqual(f.app.runtime.loadCheckpoint(f.child.taskId,keys[0]),receipt.change);
+  const namespace=f.mailSourceHost.memoryNamespace;
+  const fact=f.memory.readUserFactHead(namespace,'explicit-mail-snapshot');assert.equal(fact.state,'active');assert.equal(fact.ref.revision,1);
+  const publicFeed=await f.memory.bindFeed(namespace,{consumerId:'fixture-public',allowedSensitivities:['public']})
+    .read({limit:10,deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal});
+  assert.equal(publicFeed.entries.length,0);assert.equal(JSON.stringify(f.cloud).includes('Fixture user-confirmed private mailbox snapshot'),false);
+  const scope={deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal};
+  await assert.rejects(f.mailSourceHost.assertLegacyPrivacyCoverage(scope),/不覆盖/);
+  assert.equal((await f.mailSourceHost.eraseSource({factId:fact.ref.id,expectedRevision:fact.ref.revision,operationId:'fixture-erase-mail',...scope})).state,'deleted');
+  assert.equal((await f.memory.bind(namespace,{allowedSensitivities:['private']}).listHistory({factId:fact.ref.id,limit:1,...scope})).facts.length,0);
+  assert.equal(JSON.stringify(f.app.runtime.bindCoordinationStore('mail-plans').read()).includes('Fixture user-confirmed private mailbox snapshot'),false);
+  await assert.rejects(f.mailSourceHost.assertLegacyPrivacyCoverage(scope),/不覆盖/,'old backup restore must still consume the new authoritative deletion markers');
 });
 
 test('F08 consumes the original 200-character knowledge projection without exporting the raw tail',async t=>{

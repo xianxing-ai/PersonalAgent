@@ -30,6 +30,8 @@ export {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity,prepareOrig
   readOriginalMailSendReconciliation,assertOriginalMailSendReconciliation,prepareOriginalMailArchiveIdentity,readOriginalMailArchiveIdentity,
   recordOriginalMailArchiveMove,prepareOriginalMailArchiveReconciliation,readOriginalMailArchiveReconciliation} from './application/mail-send-recovery.js';
 export type {OriginalMailSendBinding,OriginalMailSendIdentity,OriginalMailSendReconciliation,OriginalMailArchiveIdentity,OriginalMailArchiveMove} from './application/mail-send-recovery.js';
+export {readOriginalF08MailSource,recordOriginalF08MailChange,createCompetitionMailSourceChanges} from './application/mail-source-changes.js';
+export type {OriginalMailSourceScope,CompetitionMailSourceChangesOptions} from './application/mail-source-changes.js';
 export {createRuntimeWorkflowShadowConfigurationPort} from './application/workflow-shadow-configuration.js';
 export type {RuntimeWorkflowShadowConfigurationOptions} from './application/workflow-shadow-configuration.js';
 export {createRuntimeWorkflowShadowBranchVerifiers} from './application/workflow-shadow-verifiers.js';
