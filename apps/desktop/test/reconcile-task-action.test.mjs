@@ -1,16 +1,17 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {reconcileTaskFromSurface} from '../electron/reconcile-task-action.js';
 function fixture(){const panel={},workspace={},calls=[];const task={taskId:'original',state:'waiting_reconciliation',surface:'panel'};return {task,calls,args:{taskId:'original',sender:panel,panel,workspace,tasks:new Map([['original',task]]),taskSurface:t=>t.surface,application:{async reconcileConfirmedSubagentTermination(id){calls.push(['reconcile',id]);}},async refresh(id){calls.push(['refresh',id]);return {...task,state:'cancelled'};},publish(){calls.push(['publish']);}}};}
-test('mail reconciliation requests one original read child and later applies its confirmed result',async()=>{
+for(const operation of ['Send','Archive'])test('mail '+operation+' reconciliation requests one original read child and later applies its confirmed result',async()=>{
  const {args,task}=fixture();task.revision=3;const effects=[];let state='unavailable';
  args.application.runtime={getTask:()=>task,loadCheckpoint:()=>({sourceTaskId:'original-f08-host'})};
  args.observe=operation=>operation({deadline:'2030-01-01T00:00:00Z',signal:new AbortController().signal});
  args.resumeMailWorkflow=async({taskId})=>{effects.push(['resume',taskId]);return {resumed:true};};
- args.mailRecovery={readOriginalSendRecoveryAvailable:id=>id===task.taskId,
-  readOriginalSendReconciliation:()=>({state}),prepareOriginalSendReconciliation:({taskId})=>{effects.push(['read-child',taskId]);state='pending';},
-  applyOriginalSendReconciliation:({taskId})=>{effects.push(['apply',taskId]);return {state:'confirmed',task};}};
+ args.mailRecovery={['readOriginal'+operation+'RecoveryAvailable']:id=>id===task.taskId,
+  ['readOriginal'+operation+'Reconciliation']:()=>({state}),['prepareOriginal'+operation+'Reconciliation']:({taskId})=>{effects.push(['read-child',taskId]);state='pending';},
+  ['applyOriginal'+operation+'Reconciliation']:({taskId})=>{effects.push(['apply',taskId]);return {state:'confirmed',task};}};
  args.reportNative=result=>effects.push(['report',result.kind,result.state]);
  await reconcileTaskFromSurface(args);await reconcileTaskFromSurface(args);state='confirmed';await reconcileTaskFromSurface(args);
- assert.deepEqual(effects,[['read-child','original'],['report','mail_send','pending'],['report','mail_send','pending'],['apply','original'],['resume','original'],['report','mail_send','confirmed']]);
+ const kind=operation==='Send'?'mail_send':'mail_archive';
+ assert.deepEqual(effects,[['read-child','original'],['report',kind,'pending'],['report',kind,'pending'],['apply','original'],['resume','original'],['report',kind,'confirmed']]);
  assert.equal(task.state,'waiting_reconciliation');
 });
 test('trusted current surface reconciles original id then returns actual refreshed state',async()=>{const {args,calls}=fixture();const value=await reconcileTaskFromSurface(args);assert.equal(value.state,'cancelled');assert.deepEqual(calls,[['reconcile','original'],['refresh','original'],['publish']]);assert.equal(args.tasks.get('original').state,'waiting_reconciliation','Desktop does not invent a terminal transition');});

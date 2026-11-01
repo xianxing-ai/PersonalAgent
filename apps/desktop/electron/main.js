@@ -2897,7 +2897,7 @@ async function initializeRuntime() {
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
-          ||scope.toolName==='mail.reconcile_send'
+          ||scope.toolName==='mail.reconcile_send'||scope.toolName==='mail.reconcile_archive'
           ||scope.toolName==='decision.choose_candidate'
           ||scope.toolName==='workflow.host.f01_n09'
           ||scope.toolName==='workflow.host.f16_n05'
@@ -4741,9 +4741,9 @@ async function action(event, name, payload) {
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,mailRecovery:connectorConversationTools,resumeMailWorkflow:reconcileOriginalMailWorkflow,
     refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
-    reportNative:result=>result.kind==='mail_send'?dialog.showMessageBox(sender,{type:'info',
-      message:result.state==='confirmed'?'已核实原邮件发送结果':result.state==='pending'?'正在等待原邮箱核实':'原邮件发送结果仍待核实',
-      detail:result.state==='pending'?'请在原对话中完成邮箱读取授权，随后再次核实。':result.state==='confirmed'?'本次只读回原发送结果，没有重新发送邮件。原任务的其他步骤仍须完成。':'本次没有重新发送邮件，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
+    reportNative:result=>['mail_send','mail_archive'].includes(result.kind)?dialog.showMessageBox(sender,{type:'info',
+      message:result.state==='confirmed'?'已核实原邮件'+(result.kind==='mail_archive'?'归档':'发送')+'结果':result.state==='pending'?'正在等待原邮箱核实':'原邮件结果仍待核实',
+      detail:result.state==='pending'?'请在原对话中完成邮箱读取授权，随后再次核实。':result.state==='confirmed'?'本次只读回原结果，没有重复操作邮件。原任务的其他步骤仍须完成。':'本次没有重复操作邮件，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
       :['f04_knowledge','f24_knowledge'].includes(result.kind)?dialog.showMessageBox(sender,{type:'info',
       message:result.state==='confirmed'?'已核实原结果，正在继续原任务':'原写入结果仍待核实',
       detail:result.state==='confirmed'?'原写入没有重发。任务完成前，仍需审批的操作会另行询问。':'本次没有重发写入，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})

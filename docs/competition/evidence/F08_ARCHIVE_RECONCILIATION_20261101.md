@@ -11,3 +11,5 @@ Main 使用 `connector.readOriginalArchiveRecoveryAvailable(taskId)` 和 `prepar
 当 apply 返回 confirmed，且原写未取消、仍属 F08 business source 时，沿既有 `composition.reconcileOriginalMailWorkflow({taskId: applied.task.taskId,deadline,signal})` 完成原已核实单 Host，重新经过原业务结果 prepare/project/final accepts，恢复原 N03 receipt，调用原 `resumeTask` 续行 configured worker。不会直接将 root 标成功；后续发送仍有独立决定与 Policy。
 
 最小检查：Mail、Runtime 构建通过；只运行 `interrupted UIDPLUS archive` 一项，实际 QQ 协议实现、Runtime/SQLite/Policy、业务出口与 Engine，模拟 UIDPLUS 后传输中断，通过新 provider 实例读取持久原映射，原 N03/图最终 succeeded，MOVE=1、SMTP=1，出现独立 `mail.reconcile_archive` 审批。IMAP 传输、SMTP、云、selector 和审批响应为明确 Fixture；未读取真实凭据或发送邮件，未宣称真实邮箱/AgentArts 整图验收。缺少服务端 UIDPLUS 映射的崩溃继续 unknown。
+
+Desktop 已将归档与发送接到同一原任务核实按钮；原 `mail.reconcile_archive` 必须展示独立邮箱读取问题卡，确认后沿上述原 N03 恢复入口继续。Main 语法检查与新增归档按钮检查 1/1 通过；只读子任务仅创建一次，pending 不继续、confirmed 才应用原结果，不新增邮件写入。
