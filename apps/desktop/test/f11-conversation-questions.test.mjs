@@ -63,13 +63,16 @@ test('F11 decision controls preserve the original candidate and never appear out
 });
 
 test('actual Main F11 reply uses the trusted active conversation and rejects the admin surface',async()=>{
-  const main=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8'),start=main.indexOf("if(name==='workflow.f11.location.respond')"),end=main.indexOf("if(['authorization.sandbox.read'",start);
+  const main=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8'),start=main.indexOf("if(['workflow.f11.location.respond'"),end=main.indexOf("if(['authorization.sandbox.read'",start);
   assert.ok(start>=0&&end>start);const calls=[],panel={},workspace={},admin={},payload={location:'Beijing'};
   const scope={name:'workflow.f11.location.respond',payload,panel,workspace,admin,sender:panel,
     conversations:{activeConversationId:surface=>surface+'-current'},publish(){},
-    f11LocationQuestion:{submitReply:(body,context)=>{calls.push({body,context});return {state:'answered'};}}};
+    f11LocationQuestion:{submitReply:(body,context)=>{calls.push({body,context});return {state:'answered'};}},
+    f11DecisionQuestion:{submitReply:(body,context)=>{calls.push({body,context,decision:true});return {state:'answered'};}}};
   const run=()=>runInNewContext('(async()=>{'+main.slice(start,end)+'})()',scope);
   await run();assert.equal(calls[0].body,payload);assert.equal(calls[0].context.conversationId,'panel-current');
   scope.sender=workspace;await run();assert.equal(calls[1].context.conversationId,'workspace-current');
   scope.sender=admin;await assert.rejects(run(),/原对话/);assert.equal(calls.length,2);
+  scope.name='workflow.f11.decision.respond';await assert.rejects(run(),/原对话/);scope.sender=panel;await run();
+  assert.equal(calls[2].decision,true);assert.equal(calls[2].context.conversationId,'panel-current');
 });
