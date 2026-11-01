@@ -48,6 +48,8 @@ export type {F24OriginalEffectBinding,F24ReconciliationResult,F24ReconciliationH
 export {createRuntimeF03MemoryQueryHost,createRuntimeF04MemoryQueryHost,createRuntimeF05JointRecallHost} from './application/workflow-f04-f05-recall-host.js';
 export {createF05WorkflowWorkerPorts} from './application/workflow-f05-worker.js';
 export type {F05WorkflowOptions,F05SourceConfiguration} from './application/workflow-f05-worker.js';
+export {createF04WorkflowWorkerPorts} from './application/workflow-f04-worker.js';
+export type {F04WorkflowOptions,F04RecoveryPort} from './application/workflow-f04-worker.js';
 export type {F12ReturnDigestRequest} from './application/f12-native-admission.js';
 export {createRuntimeF06TodoWriteHost,createRuntimeF06NotificationDeliverHost,createRuntimeF06ReminderGuard} from './application/workflow-f06-todo-graph-host.js';
 export {createRuntimeF07CalendarFreshnessHost,createRuntimeF07CalendarWriteHost} from './application/workflow-f07-calendar-graph-host.js';
@@ -224,10 +226,10 @@ export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,R
   RUNTIME_PROACTIVE_TOOL_VERSION,readPersistedRuntimeProactiveWorkflow} from './application/proactive-workflow-application.js';
 export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
   RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';
-export {createWorkflowBusinessToolBridge,readWorkflowBusinessToolSource} from './application/workflow-business-tool-bridge.js';
+export {createWorkflowBusinessToolBridge,readWorkflowBusinessToolSource,readWorkflowBusinessToolOrigin} from './application/workflow-business-tool-bridge.js';
 export {readRuntimeCodingRepairDispatchChild,readRuntimeCodingRepairPublishedSource} from './application/coding-repair-dispatch-source.js';
 export {createF24RecoveryWorkflowPorts} from './application/workflow-f24-worker.js';
 export type {F24RecoveryWorkflowOptions,RuntimeF24RecoveryPort} from './application/workflow-f24-worker.js';
 export type {PlanExecutionOptions,PlanExecutionSelection,PlanExecutionSource} from './application/plan-execution-source.js';
 export type {WorkflowBusinessToolRequest,WorkflowBusinessToolResolution,WorkflowBusinessToolReceipt,
-  WorkflowBusinessToolReadback,WorkflowBusinessToolSourceReference,WorkflowBusinessToolSourceProof} from './application/workflow-business-tool-bridge.js';
+  WorkflowBusinessToolReadback,WorkflowBusinessToolSourceReference,WorkflowBusinessToolSourceProof,WorkflowBusinessToolOriginProof} from './application/workflow-business-tool-bridge.js';

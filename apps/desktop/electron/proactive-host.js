@@ -112,6 +112,12 @@ export function createDesktopProactiveHost({application, client, userData, names
     /** Host-only fixed public namespace; never exported through Renderer snapshots. */
     get publicMemory() {return factHost.publicMemory;},
     readCurrentPublicFact:ref=>factHost.readCurrentPublicFact(ref),
+    readPublicSourceHead:ref=>factHost.readPublicSourceHead(ref),
+    recordPublicSource:(source,context)=>factHost.recordPublicSource(source,context),
+    drain:request=>factHost.drain(request),
+    processImpacts:request=>factHost.processImpacts(request),
+    listImpactReceipts:request=>factHost.listImpactReceipts(request),
+    readCompletedImpact:request=>factHost.readCompletedImpact(request),
     createPublicFactErasureApplication: options=>factHost.createPublicFactErasureApplication(options),
     readRepairBinding: taskId=>cognition?.readRepairBinding(taskId),
     readPreparedRepair: taskId=>cognition?.readPreparedRepair(taskId),

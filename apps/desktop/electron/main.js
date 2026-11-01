@@ -114,6 +114,7 @@ import {createWorkflowExportConsent} from './workflow-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF12ExplicitReturnSource} from './f12-explicit-return-source.js';
 import {createF12ReturnDigestController} from './f12-return-digest-controller.js';
+import {createDesktopF04WorkflowWorkerPorts} from './f04-workflow-worker-ports.js';
 import {createBusinessWorkflowAvailability} from './business-workflow-availability.js';
 import {prepareConfiguredWorkflowDecisionQuestion} from './configured-workflow-decision-source.js';
 import {createF16F17CaseConfiguration} from './f16-f17-case-config-host.js';
@@ -371,6 +372,7 @@ let f16F17Cases,f16F17Workflow;
 let f18ReviewCases,f18Workflow,f18ActiveRevision;
 let f12ExplicitReturnSource,f12ReturnDigest;
 let f24Workflow;
+let f04Workflow;
 let f14Workflow;
 const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
   F17:f16F17Cases?.snapshot('F17')??{configured:false},unavailable:f16F17Workflow?.unavailable??['fixed_deployment_unavailable']});
@@ -2091,7 +2093,8 @@ async function initializeRuntime() {
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
-        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
+        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,
+          getVoiceHost:()=>liveVoice,onUpdate: publish});
       }
       goalHost = createGoalHost(namespace);
       if (!syntheticMvp && calendarConfig) {
@@ -2592,6 +2595,11 @@ async function initializeRuntime() {
       f24Workflow=agentArtsPinned?createDesktopF24WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         getKnowledgeSourceConfig:()=>knowledgeSourceConfig,getKnowledgeTools:()=>knowledgeTools,
         hostUserNamespace:namespace,authorizeExport:authorizeWorkflowExport}):undefined;
+      f04Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF04WorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        getKnowledgeSourceConfig:()=>knowledgeSourceConfig,
+        getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
+        knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport}):undefined;
       const f05Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF05WorkflowWorkerPorts({runtimeModule,
         getApplication:()=>runtimeApplication,getKnowledgeSourceConfig:()=>knowledgeSourceConfig,
         getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
@@ -2602,14 +2610,14 @@ async function initializeRuntime() {
       f14Workflow=agentArtsPinned?createF14WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         browserHost:browserControlHost,computerControlLease,authorizationQuestions:authorizationQuestionHost,
         authorizeExport:authorizeWorkflowExport}):undefined;
-      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
+      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
-        ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
+        ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
@@ -2654,6 +2662,7 @@ async function initializeRuntime() {
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f18Workflow?.configuredWorkflowWorkerPorts??[]),
@@ -5311,6 +5320,7 @@ app.whenReady().then(async () => {
       f18ReviewCases?.close();f18ReviewCases=undefined;f18Workflow=undefined;f18ActiveRevision=undefined;
       f12ReturnDigest=undefined;f12ExplicitReturnSource=undefined;
       f24Workflow=undefined;
+      f04Workflow=undefined;
       f14Workflow=undefined;
       void todoHost?.close();
     } catch (error) {

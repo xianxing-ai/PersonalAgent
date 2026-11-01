@@ -1,5 +1,7 @@
 # F04 Wiki 与作用域记忆接线（2026-11-01）
 
+根整合追加：Main 已消费公开 `createF04WorkflowWorkerPorts`，复用同一 Knowledge config/export 和 `proactiveHost` 的原 Fact namespace；后者只代理原公共 source/Feed/impact 方法，`recordPublicSource` 的原 read context 完整传递。重复可选 host 不覆盖已配置 F04。F04/Main、F12 Live/归来及模型关联联合定向 95/95、零跳过，全量构建通过，日志 `.cache/integration-f04-voice-build.log`、`.cache/integration-f04-live-composition-tests.log`。F04 恢复 UI、N03 重启后精确再出机许可与真实平台验收仍在继续。
+
 Competition Profile，基线 `df3f6c48`；工作树 `.worktrees/pr531-f04`。已实现下列公开来源纵向路径及 N04 原投影只读恢复；F04 整体和真实 AgentArts 验收尚未完成。设计节点、现有模块和真实配置分别判断。
 
 ## 最小纵向范围

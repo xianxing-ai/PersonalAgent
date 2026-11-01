@@ -12,7 +12,7 @@
 
 原 `beginDelivery` 先落库，再调用 Live；`desktop-notification:voice:<round digest>` 在原 N04 任务保存本机 binding 和分级 receipt。`accepted`、`draining`、`renderer_completed` 均保持 `playbackVerified:false`，原 voice attempt 一律 `unknown`，原工具/图进入 reconciliation，feed 保持 unread。Renderer 报告排空并不证明 DAC/扬声器输出或人已听到；本包没有构造硬件回执入口。重提图、旧 drain、重开数据库均不重播。结果摘要与云出口不会收到本机原始播报文本、音频或私有回执。
 
-Main 注入：在原 `createDesktopNotificationApplicationHost` 构造中追加 `getVoiceHost:()=>liveVoice`（惰性读取已存在的原 host）；不另建连接，不改 Renderer 协议。原 F12 工厂按已绑定 `preferredChannel` 选择 N04 声道，配置摘要升级 `business-20261101-f12-v4`，节点仍为原 185 个。旧配置图拒绝新摘要。统一 Main 尚由根代理集成，真实百炼凭据/音频、物理设备和云整图尚待验；`f12_voice_hardware_receipt_unavailable` 明确保留，不能据本地排空通过认定 F12 全完成。
+Main 已在原 `createDesktopNotificationApplicationHost` 构造中注入 `getVoiceHost:()=>liveVoice`（惰性读取已存在的原 host）；不另建连接，不改 Renderer 协议。原 F12 工厂按已绑定 `preferredChannel` 选择 N04 声道，配置摘要升级 `business-20261101-f12-v4`，节点仍为原 185 个。旧配置图拒绝新摘要。根全量构建与 F04/Main、F12 voice/Live/固定归来及模型关联联合 95/95 通过，零跳过；真实百炼凭据/音频、物理设备和云整图尚待验。`f12_voice_hardware_receipt_unavailable` 明确保留，不能据本地排空通过认定 F12 全完成。
 
 宿主验证：原 `business-workflow-f12-runtime`、新 voice 实际 Runtime 场景、F12 ports、Notification Application、Live Notification/Voice/Text/Playback 共 118/118。新场景以原 Engine、SQLite、Policy、AuthorizationQuestions、NotificationService 和 Live host 串联，仅云、selector、问题卡回答和 Renderer 事件是显式 Fixture：双项单轮一次朗读、Renderer 排空后仍 unknown/unread；重提图与 SQLite 重开保留原回执且零重播；拒批、写前取消/撤销、播报期间 grant 撤销、文本替换和错误会话拒绝。另有排空边界前撤销/取消专用断言。没有测试使用真实账号、支付云调用或声卡硬件。
 
