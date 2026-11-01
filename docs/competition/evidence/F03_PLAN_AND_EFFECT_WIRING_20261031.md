@@ -51,3 +51,18 @@ Main 最小接线：向 Competition Application 注入 `planExecution:{readCurre
 验证使用实际 SQLite、Runtime、ToolGateway、Policy、Fact 投影与 AgentArts 适配器；模型、凭据、原生确认和网络均显式 Synthetic。最终发送回归在 `authorizationProvider.read` 内更新真实 Fact 当前头，随后原 beforeSend 拒绝且 HTTP/工具执行均为 0。覆盖未 drain 的 Fact 更新、Plan/部署漂移、取消、并发受理、未知结果重启零重放、原身份污染、独立工具审批与缺映射拒绝。F24 原未知受控文件读回单独回归；不声称已完成真实 AgentArts、真人确认、完整 F03 原因果/补偿或整图验收。
 
 本地结果：Memory / Runtime workspace build、两个 Desktop 修改模块的语法检查及 `npm run check:architecture`（3/3）通过；Plan / 原任务委派 / business bridge / Fact projection / public Fact host / Memory SQLite / AgentArts / Goal UI / F24 共 283/283 定向回归通过、0 跳过。F24 文件案例使用已有 PowerShell 宿主和独立临时目录，实际读取受控文件 journal，丢失确认仍为显式 Synthetic。最终整仓 `npm run check` 和 Main 原生窗口 smoke 由集成树在公共出口/IPC 接线后执行。
+
+### B2 根 Main 消费（2026-11-01）
+
+根接入实际 proactive host 的固定 `${namespace}:proactive-public` Fact 只读口，公开
+PlanExecutionOptions/Selection/Source 类型；没有为私人来源补替身。既有 `desktop.invoke`
+路由中的 `goal.plan.execute` 仅允许正式 Competition 的原 panel/workspace 窗口，绑定原对话、
+应用实例和执行期限。原生确认展示摘要、Plan 版本、固定 Runtime/deployment/gateway、来源摘要
+和依赖数量；取消、窗口关闭、切换对话或部署变化都拒绝新受理，后续仍走原 privateConsumption
+和 prepare/send。已有原任务只返回读回，不重新确认、dispatch 或移到新对话。
+
+根 build 通过；Plan source/实际原生授权消费组 20 项中 19 通过，唯一失败为 Main 测试夹具未提供
+新增 developmentJobHelper 绑定；更新夹具后 Main/Plan 定向 7/7 通过。没有放宽产品断言；普通
+沙箱的 F20 rename EPERM 在授权环境原测试通过。日志 `.cache/integration-plan-native-caller.log`
+与 `.cache/integration-plan-native-main-tests-authorized.log`。实际窗口确认仍未目视验收，不能把
+执行 Main 回调的 Fake dialog 当作真人批准或云整图证据。

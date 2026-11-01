@@ -52,6 +52,14 @@ Main 复用已有受限 PATH 发现逻辑补该缺省位置，仍排除工作区
 
 构建、只读诊断及强制测试日志在集成树 `.cache/pr531-native-*`。同一集成提交另已通过实际 Electron **Local Profile** Runtime Application smoke（7 次本地 Synthetic 模型请求、2 次取消）；该结果不代替原生隔离、真实 AgentArts 或完整 28 图验收。
 
+2026-11-01 已补独立 Job 自包含正式包与严格 UTF-8 协议，固定 .NET 8.0.30、全量 191 个
+companion pins；没有修改全局运行时。子树实际 PSEC/Unicode 31 通过、1 平台条件跳过；根
+进一步通过原 Desktop 授权消费链真实 PSEC 命令，审批前零执行、原一次效果、重复/替换/不可用
+回退均为零。Main 正式资源读取及开发首次空目录 SC 发布已接，旧失败记录保留，不再把旧 FDD
+缺 .NET 的结果描述为修复后 Job 宿主仍不可用。完整边界见
+[Job 自包含与原调用链证据](WINDOWS_JOB_SELF_CONTAINED_20261031.md)。Windows Host/Notepad、
+WinForms 目视、真人签名及本轮云整图仍另验。
+
 ## 尚需完成
 
 需要可用的固定 IMAGE28 部署与独立入站令牌、原平台 trace/评估读回，以及明确授权的邮箱、日历、feeds 和受限 GitHub 工作区。独立真人审核签名与电脑关闭后云端持续运行证据尚无。本次未关闭用户电脑，也未把本机运行替代关机后验收。

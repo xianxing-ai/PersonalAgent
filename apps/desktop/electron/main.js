@@ -33,7 +33,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {freemem,totalmem,availableParallelism} from 'node:os';
-import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
@@ -80,6 +80,8 @@ import {createConversationToolAccess,projectComputerConversationStatus} from './
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
 import {createDesktopNativeExecutionHost} from './native-execution-host.js';
+import {readPackagedNativeJobHelper} from './native-job-component.js';
+import {createPlanExecutionFactReader} from './goal-host-core.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
@@ -2066,15 +2068,17 @@ async function initializeRuntime() {
       const codingModule=await import('@personal-agent/coding-tools');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
+      let developmentJobHelper;
       nativeExecutionHost=createDesktopNativeExecutionHost({coding:codingModule,question:authorizationQuestionHost,getApplication:()=>runtimeApplication,
         readConfiguration:()=>codingWorkspace?.readWorkspaceBinding(),probeRootPath:path.join(app.getPath('userData'),'native-probes'),
         systemRoot:process.env.SystemRoot,localAppData:app.getPath('userData'),onUpdate:publish,
         ensureHelper:async()=>{
-          const helper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
-          if(existsSync(helper))return helper;
-          if(app.isPackaged)throw new ProtocolError('UNSUPPORTED_CAPABILITY','安装包缺少已发布的原生进程隔离组件');
+          if(app.isPackaged)return readPackagedNativeJobHelper(process.resourcesPath).helperPath;
+          if(developmentJobHelper){codingModule.readWindowsNativeHelperAttestation(developmentJobHelper);return developmentJobHelper;}
+          const directory=path.join(app.getPath('userData'),'native-tools');mkdirSync(directory,{recursive:true});
           const {buildNativeHelper}=await import('@personal-agent/coding-tools/native-helper');
-          return buildNativeHelper({targetDir:path.dirname(helper)}).helperPath;
+          developmentJobHelper=buildNativeHelper({targetDir:mkdtempSync(path.join(directory,'workspace-command-sc-')),selfContained:true}).helperPath;
+          return developmentJobHelper;
         }});
       const createWorkspaceCommandTool=options=>nativeExecutionHost.createCommandTool(options);
       const {createDesktopCompetitionToolCatalog} = await import('./competition-tool-catalog.js');
@@ -2627,6 +2631,8 @@ async function initializeRuntime() {
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f18Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
+        planExecution:{readCurrentFact:createPlanExecutionFactReader(()=>proactiveHost?
+          [{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}]:[])},
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
         ...(observationOptions?.observationAuthorization
           ? {observationAuthorization: observationOptions.observationAuthorization} : {}),
@@ -4488,6 +4494,35 @@ async function action(event, name, payload) {
     if (name === 'goal.revise') return goalHost.revise(payload);
     if (name === 'goal.readTask') return goalHost.readTask(payload);
     if (name === 'goal.listTasks') return goalHost.listTasks();
+    if (name === 'goal.plan.execute') {
+      if(!competitionMode||syntheticMvp)throw new ProtocolError('UNSUPPORTED_CAPABILITY','计划执行需要正式 Competition 配置');
+      const owner=sender,surface=sender===workspace?'workspace':'panel',conversationId=conversations.activeConversationId(surface);
+      const application=runtimeApplication,host=goalHost,controller=new AbortController(),onClose=()=>controller.abort();
+      const deadline=new Date(Date.now()+readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
+      const current=()=>!controller.signal.aborted&&!owner.isDestroyed()&&sender===owner
+        &&(surface==='workspace'?workspace:panel)===owner&&runtimeApplication===application&&goalHost===host
+        &&conversations.activeConversationId(surface)===conversationId&&Date.now()<Date.parse(deadline);
+      owner.once('closed',onClose);
+      try {
+        const result=await host.executePlan(payload,{conversationId,deadline,signal:controller.signal,confirm:async preview=>{
+          const selected=agentArtsConfig.snapshot();
+          if(!current()||!selected.runtimeReady||selected.deploymentSelection!=='pinned'
+            ||!selected.deploymentVersion||application.coordinationConfigurationRef!==preview.configurationRef)return false;
+          const destination=JSON.stringify([selected.gatewayUrl,selected.runtimeName,selected.deploymentVersion]);
+          const answer=await dialog.showMessageBox(owner,{type:'question',title:'执行所选计划',message:'确认将此计划交由当前 AgentArts 部署执行？',
+            detail:`${preview.summary}\n\n计划：${preview.plan.id} / ${preview.plan.revision}\n部署：${selected.runtimeName} / ${selected.deploymentVersion}\n网关：${selected.gatewayUrl}\n来源摘要：${preview.sourceDigest}\n依赖：${preview.dependencyCount} 项（公开 Fact ${preview.factCount} 项）\n只提交本计划摘要；后续工具、内容出机和写入仍逐项确认。`,
+            buttons:['取消','执行计划'],defaultId:0,cancelId:0,noLink:true});
+          const latest=agentArtsConfig.snapshot();
+          return answer.response===1&&current()&&latest.runtimeReady&&latest.deploymentSelection==='pinned'
+            &&JSON.stringify([latest.gatewayUrl,latest.runtimeName,latest.deploymentVersion])===destination
+            &&application.coordinationConfigurationRef===preview.configurationRef;
+        }});
+        if(result.state==='submitted'&&result.task.conversationId===conversationId&&!conversations.turns.has(result.task.taskId)){
+          conversations.add(result.task.taskId,surface,result.task.goal,conversationId);rememberTaskGoal(result.task.taskId,result.task.goal);
+        }
+        publish();return result;
+      }finally{owner.removeListener('closed',onClose);controller.abort();}
+    }
     if (name === 'goal.cancel') {
       goalHost.readTask(payload);
       const result = await client.call('task.cancel', {taskId: payload, reason: '用户取消 Goal 任务'});

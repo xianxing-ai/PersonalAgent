@@ -40,6 +40,20 @@
 - Desktop Main 既有开发调用默认仍是 FDD。根接线负责人将首次发布指向新的空外部 SC 目录，随后只复核不可变包；不得覆盖旧非空缓存或只传三个 pins。安装包的 Job 资源仍须独立登记，不复用 Desktop component 身份。
 - Windows Host / PipeBridge / Notepad 是独立 FDD 产物，尚未在本包证明自包含交付或真实 Notepad 写后读回；桌面 UI 由根串行验收。当前工作不等于 #531 全部设备链完成。
 
+## 根 Main 与原授权消费者（2026-11-01）
+
+Main packaged 路径现消费 `readPackagedNativeJobHelper(process.resourcesPath)`，只接受上述独立
+Job 自包含清单。开发入口首次在 userData/native-tools 下创建新的空外部目录、显式 SC 发布，
+同一应用实例复用并复核该 helper；保留旧 FDD 缓存，不覆盖或静默选择旧非空目录。
+
+集成树使用正式 resources 中 Job 组件运行原 `authorization-native-execution.integration`：
+普通用户 token、原 Runtime/SQLite/AuthorizationQuestions/Policy/ToolGateway/Desktop host/PSEC
+成功。任务 `08ffe6a7-182a-407f-bfff-b6dee4bbdd6c` 实际写后读回一次、exit 0、enforced/stopped true，
+审批前执行 0、重复执行 0、替换参数执行 0、不可用后普通进程回退 0、原许可剩余 0。
+内容和问题卡回应为明确合成夹具，模型/账号调用均 0；此证据超出独立 helper 探针，仍不等于
+真人审批或 AgentArts/F20 全图验收。回执 `.cache/authorization-native-integration/case-lyc5iZ/receipt.json`，
+日志 `.cache/integration-plan-native-caller.log`。Main 开发/正式路径绑定夹具和 Plan 回调 7/7 复验通过。
+
 ## 后续正式 Job resources 发布接线
 
 已把 Job 包加入原 `node apps/desktop/scripts/build-windows-host.mjs --publish-native-desktop` 入口，保留 Desktop 原 `identity-receipt.json`；新增独立 `resources/native-tools/workspace-command` 和 `job-identity-receipt.json`。通过 public native-helper CLI 在新的外部目录构建，沿原有有界、可取消的发布进程执行，再完整复制并逐项核对全部 pins；未放宽原 buildNativeHelper 仓库外门禁。新 `readPackagedNativeJobHelper(resourcesPath)` 仅读取该正式位置和原完整 attestation，拒绝 FDD、缺失/变化文件；Main 消费由集成负责人接线。

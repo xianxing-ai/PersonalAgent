@@ -38,12 +38,17 @@ test('production Main supplies the pinned workspace and Node binding to native c
     authorizationQuestionHost:{prepare:(_scope,input)=>{prepared++;assert.equal(input.assertCurrent(),true);}},
     runtimeApplication:{readAuthorizationQuestionInvocation:()=>({})},codingWorkspace:{readWorkspaceBinding:()=>binding,
       readDeveloperConfiguration:()=>{throw Error('developer metadata is not a native process binding');}},
-    app:{getPath:()=>root,isPackaged:false},path,process,publish(){},existsSync:()=>true};
+    app:{getPath:()=>root,isPackaged:false},path,process,publish(){},developmentJobHelper:process.execPath,
+    readPackagedNativeJobHelper:resources=>{assert.equal(resources,process.resourcesPath);return {helperPath:process.execPath};}};
   try {
-    runInNewContext(source.slice(begin,end),context);
-    await host.prepare(scope);
-    assert.equal(probeNode,process.execPath);assert.equal(prepared,1);
-    assert.equal(host.describeExecution({toolName:scope.toolName,requirements:[]},{mode:'workspace-write'}).available,true);
+    for(const isPackaged of [false,true]){
+      host?.close();context.app.isPackaged=isPackaged;
+      runInNewContext(source.slice(begin,end),context);
+      await host.prepare(scope);
+      assert.equal(probeNode,process.execPath);
+      assert.equal(host.describeExecution({toolName:scope.toolName,requirements:[]},{mode:'workspace-write'}).available,true);
+    }
+    assert.equal(prepared,2);
   }finally{host?.close();rmSync(root,{recursive:true,force:true});}
 });
 

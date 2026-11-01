@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | 共用调用链 | 原图 host/business child 的精确预检、统一出机卡、configured decision 来源验证已接 Main | 固定本轮镜像的真实整链 |
 | F02 | Live/capture/原问题卡的工厂已接同一 Runtime/image | 真实声学证据、ASR 与同一回合设备验收 |
-| F03 | 原计划修复只读回执已由 Goal 消费；原知识写入 SHA 与实际 Fact 观察版本进入原 checkpoint，根定向 23/23 通过 | 实际 Plan 执行来源、完整因果/补偿与云整图 |
+| F03 | 原知识写入 SHA/Fact 回执、用户明确 Plan 版本执行、同步当前公开 Fact 最终 guard、Main 原生确认与原任务幂等读回已接 | 原生确认目视、完整因果/补偿与云整图 |
 | F06/F07 | 实际图引擎、原待办调度/投递与原日历读写工厂已接 Main；未来提醒和重启去重已验证 | 原账号/云/Windows 通知联合验收 |
 | F08 | 完整显式方案 configured worker、原归档/发送/知识工具、来源 guard 和 Main 已接，根定向 89/89 | 缺决定的 F02、来源变化 F03、未来 unknown 恢复、真实邮箱/知识与云整图 |
 | F12 | 原 feed/策略、单条通知投递和显式 digest 的 configured worker 已接 Main，真实 availability 与原 N02 唯一注册已验证 | 真实归来事件、语音、多条 batch、Windows banner 与云整图 |

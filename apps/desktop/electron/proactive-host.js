@@ -111,6 +111,7 @@ export function createDesktopProactiveHost({application, client, userData, names
   return {snapshot, configure, analyze, tick, stop,
     /** Host-only fixed public namespace; never exported through Renderer snapshots. */
     get publicMemory() {return factHost.publicMemory;},
+    readCurrentPublicFact:ref=>factHost.readCurrentPublicFact(ref),
     createPublicFactErasureApplication: options=>factHost.createPublicFactErasureApplication(options),
     readRepairBinding: taskId=>cognition?.readRepairBinding(taskId),
     readPreparedRepair: taskId=>cognition?.readPreparedRepair(taskId),
