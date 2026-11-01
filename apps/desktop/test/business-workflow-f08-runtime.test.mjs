@@ -12,6 +12,7 @@ import {createConnectorConversationTools} from '../electron/connector-conversati
 import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 import {prepareWorkflowHostPreflight} from '../electron/workflow-host-preflight.js';
 import {prepareConfiguredWorkflowDecisionQuestion} from '../electron/configured-workflow-decision-source.js';
+import {createF08DecisionQuestionHost} from '../electron/business-workflow-question-host.js';
 
 // Real Engine, Runtime, SQLite, connector host, public mail/knowledge tools and
 // AuthorizationQuestions/Policy and original private/public knowledge export policy.
@@ -20,13 +21,14 @@ const pause=()=>new Promise(resolve=>setTimeout(resolve,5));
 async function scenario(t,options={}){
   const cache=new URL('../../../.cache/business-f08-runtime/',import.meta.url);mkdirSync(cache,{recursive:true});
   const userData=mkdtempSync(new URL('case-',cache)),approvals=[],cloud=[],proposals=[],decisions=[],imageRequests=[],sent=new Map();
-  let app,archives=0,sends=0,reads=0,knowledgeReads=0,moved=false,changed=false;
+  let app,archives=0,sends=0,reads=0,knowledgeReads=0,moved=false,changed=false,decisionReply,decisionReplied=false,businessRevision=1,inboxChanged=false;
+  const decisionQuestion=createF08DecisionQuestionHost({getApplication:()=>app});
   const source={vaultId:'fixture-vault',path:'source.md',line:1,revision:'a'.repeat(64)};
   const provider=new FakeMailProvider({inbox:[{uid:3,folder:'INBOX',from:'sender@example.invalid',to:'fixture@qq.com',subject:'Fixture original',
     sentAt:'2026-10-31T00:00:00.000Z',messageId:'<original@example.invalid>',seen:false}],sent:[]},{inboxUidValidity:19,pageSize:100});
   const fetchPage=provider.fetchPage.bind(provider);
   provider.fetchPage=(account,input)=>{reads++;const page=fetchPage(account,input);if(moved)page.messages=[];
-    if(options.changedInbox&&reads>=2)page.uidValidity=20;return page;};
+    if(options.changedInbox&&reads>=2||inboxChanged)page.uidValidity=20;return page;};
   provider.archive=async(account,input)=>{assert.equal(account,'desktop-qq-inbox');assert.equal(input.uidValidity,19);assert.equal(input.messageId,'<original@example.invalid>');
     archives++;if(!options.unknownArchive)moved=true;return {actionId:'mail-archive:'+input.idempotencyKey,state:options.unknownArchive?'unknown':'confirmed',
       externalId:input.messageId,evidenceRefs:options.unknownArchive?[]:['fixture-archive-readback']};};
@@ -52,7 +54,8 @@ async function scenario(t,options={}){
   const businessTools=[...connector.tools.filter(tool=>tool.descriptor.name.startsWith('mail.')),knowledge.tools.find(tool=>tool.descriptor.name==='knowledge.search')];
   const policies=[...connector.competitionToolExports,...knowledge.competitionToolExports];
   const composition=createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>app,businessTools,competitionToolExports:policies,
-    prepareCompetitionToolExport:scope=>connector.prepareExport(scope),readBusinessAvailability:()=>({ready:true,bindingId:'fixture-mail-and-knowledge'}),
+    ...(options.answerDecision?{f08DecisionQuestion:decisionQuestion}:{}),
+    prepareCompetitionToolExport:scope=>connector.prepareExport(scope),readBusinessAvailability:()=>({ready:true,bindingId:'fixture-mail-and-knowledge-'+businessRevision}),
     authorizeExport:async request=>{if(options.revokeKnowledgeExport&&request.stage==='receipt'&&request.value?.hits)knowledgeBinding={...knowledgeBinding,cloudExportAllowed:false};
       return !(options.denyCompletion&&request.stage==='completion');}});
   const worker=composition.configuredWorkflowWorkerPorts.find(item=>item.workflowId==='F08');assert.ok(worker);
@@ -76,6 +79,7 @@ async function scenario(t,options={}){
         case 'F08_N04':value=input.send;break;
         case 'F08_N05':value={send:input.send,knowledgeSources:input.knowledgeSources,requiresDecision:options.needsDecision===true};break;
         case 'F08_N10':value={arguments:{send:input.send}};break;
+        case 'F08_N06':value={arguments:{send:input.send,knowledgeSources:input.knowledgeSources}};break;
         case 'F08_N07':value={arguments:input.send};break;
         case 'F08_N11':value=tool('mail.reconcile_send',{account:input.send.account,messageId:p.F08_N07.messageId,idempotencyKey:p.F08_N07.idempotencyKey});break;
         case 'F08_N12':value={arguments:{messageId:p.F08_N11.externalId,idempotencyKey:p.F08_N11.actionId.slice('mail-send:'.length)}};break;
@@ -103,15 +107,39 @@ async function scenario(t,options={}){
   const root=await client.call('task.submit',{goal:'Fixture explicit F08 mail reply',conversationId:'fixture-chat'},{idempotencyKey:'fixture-f08',timeoutMs:60000});
   let child;
   for(let i=0;i<4000;i++){
+    if(options.answerDecision&&!decisionReplied){const pending=decisionQuestion.readQuestion({taskId:root.taskId,conversationId:'fixture-chat'});
+      if(pending){decisionReplied=true;assert.equal(pending.field,'mail.decision');assert.deepEqual(pending.draft,input.send);assert.deepEqual(pending.references,input.knowledgeSources);
+        decisionReply={taskId:pending.taskId,questionId:pending.questionId,expectedRevision:pending.revision,sourceTaskId:root.taskId,
+          commandId:'fixture-explicit-draft-message',decision:options.answerDecision};
+        if(options.cancelDecision)app.runtime.requestCancel(pending.graphTaskId);
+        else if(options.revokeDecision){app.runtime.policy.revoke('host-tool-'+pending.taskId);
+          assert.throws(()=>decisionQuestion.submitReply(decisionReply,{conversationId:'fixture-chat'}),/unavailable|changed/);app.runtime.requestCancel(pending.graphTaskId);}
+        else {
+          assert.throws(()=>decisionQuestion.submitReply({...decisionReply,decision:'allow_once'},{conversationId:'fixture-chat'}),/invalid/);
+          assert.throws(()=>decisionQuestion.submitReply({...decisionReply,expectedRevision:0},{conversationId:'fixture-chat'}),/target changed/);
+          assert.throws(()=>decisionQuestion.submitReply(decisionReply,{conversationId:'foreign'}),/target changed/);
+          const answered=decisionQuestion.submitReply(decisionReply,{conversationId:'fixture-chat'});assert.equal(answered.state,'answered');
+          assert.deepEqual(decisionQuestion.submitReply(decisionReply,{conversationId:'fixture-chat'}),answered);
+          assert.throws(()=>decisionQuestion.submitReply({...decisionReply,decision:options.answerDecision==='accept'?'decline':'accept'},
+            {conversationId:'fixture-chat'}),/another explicit reply/);
+          if(options.changeInboxAfterDecision)inboxChanged=true;
+        }
+      }
+    }
     for(const card of question.snapshot().filter(item=>item.state==='pending')){approvals.push(card.toolName);
       if(card.toolName==='mail.send'&&options.revokeSend&&!changed){await connector.invalidate('mail');changed=true;}
       if(card.toolName==='mail.send'&&options.cancelSend){const graph=app.readSubagentTasks(root.taskId)[0];if(graph)app.runtime.requestCancel(graph.taskId);continue;}
+      if(card.toolName==='mail.send'&&options.revokeDecisionBeforeSend)app.runtime.policy.revoke('host-tool-'+decisionReply.taskId);
+      if(card.toolName==='mail.send'&&options.eraseDecisionBeforeSend)app.runtime.saveCheckpoint(root.taskId,'private-copy-erasure',{state:'withheld'});
+      if(card.toolName==='mail.send'&&options.changeBindingBeforeSend)businessRevision++;
+      if(card.toolName==='mail.send'&&options.replaceAnswerBeforeSend){const key='business-workflow:F08:mail-question:reply';
+        app.runtime.saveCheckpoint(decisionReply.taskId,key,{...app.runtime.loadCheckpoint(decisionReply.taskId,key),decision:'decline'});}
       try{question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:card.toolName===options.denyTool?'deny':'allow_once'},card.conversationId);}
       catch(error){if(!options.revokeSend)throw error;assert.match(error.message,/失效|revok|changed|expired|authoriz/i);}
     }
     [child]=app.readSubagentTasks(root.taskId);if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;await pause();
   }
-  assert.ok(child);return {child,archives,sends,reads,knowledgeReads,approvals,cloud,proposals,decisions,imageRequests,
+  assert.ok(child);return {app,userData,child,archives,sends,reads,knowledgeReads,approvals,cloud,proposals,decisions,imageRequests,decisionReply,decisionReplied,decisionQuestion,
     diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,error:task.error,tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
 }
 
@@ -155,4 +183,31 @@ for(const option of ['privateKnowledge','revokeKnowledgeExport'])test('F08 '+opt
 });
 test('F08 knowledge child denial preserves prior effects without SMTP or borrowed authority',async t=>{
   const f=await scenario(t,{denyTool:'knowledge.search'});assert.notEqual(f.child.state,'succeeded');assert.equal(f.sends,0);assert.equal(f.knowledgeReads,0);
+});
+
+test('F08 original draft accept retains separate send Policy and exports only the business answer',async t=>{
+  const f=await scenario(t,{needsDecision:true,answerDecision:'accept'});assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));
+  assert.equal(f.archives,1);assert.equal(f.sends,1);assert.ok(f.approvals.includes('workflow.host.f08_n06'));
+  assert.equal(f.approvals.filter(name=>name==='mail.send').length,1);assert.deepEqual(f.app.readHostToolTask(f.decisionReply.taskId).confirmed.result,{decision:'accept'});
+});
+test('F08 original draft decline preserves the confirmed archive without sending or fabricating a send identity',async t=>{
+  const f=await scenario(t,{needsDecision:true,answerDecision:'decline'});assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));
+  assert.equal(f.archives,1);assert.equal(f.sends,0);assert.equal(f.approvals.includes('mail.send'),false);assert.equal(f.approvals.includes('mail.reconcile_send'),false);
+  assert.ok(f.cloud.some(request=>JSON.stringify(request.continuation?.result)===JSON.stringify({archiveConfirmed:true,sendConfirmed:false,decision:'declined'})));
+});
+for(const options of [{denyTool:'mail.send'},{cancelDecision:true},{revokeDecision:true},{revokeDecisionBeforeSend:true},
+  {eraseDecisionBeforeSend:true},{changeBindingBeforeSend:true},{replaceAnswerBeforeSend:true},{changeInboxAfterDecision:true},{changedKnowledge:true}])
+  test('F08 original draft answer cannot authorize SMTP after refusal or source replacement '+JSON.stringify(options),async t=>{
+    const f=await scenario(t,{needsDecision:true,answerDecision:'accept',...options});assert.equal(f.decisionReplied,true);
+    assert.notEqual(f.child.state,'succeeded');assert.equal(f.sends,0);assert.equal(f.archives,1);
+  });
+test('F08 original draft answer persists without replaying an unknown SMTP outcome after SQLite reopen',async t=>{
+  const f=await scenario(t,{needsDecision:true,answerDecision:'accept',unknownSend:true});assert.notEqual(f.child.state,'succeeded');assert.equal(f.sends,1);
+  const key='business-workflow:F08:mail-question:reply',reply=f.app.runtime.loadCheckpoint(f.decisionReply.taskId,key);
+  assert.equal(reply.decision,'accept');assert.equal(reply.origin,'desktop_explicit_text');
+  const restored=runtimeModule.createRuntimeApplication({path:path.join(f.userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'f08'});
+  try {assert.deepEqual(restored.runtime.loadCheckpoint(f.decisionReply.taskId,key),reply);const reader=createF08DecisionQuestionHost({getApplication:()=>restored});
+    assert.equal(reader.readQuestion({taskId:f.decisionReply.sourceTaskId,conversationId:'fixture-chat'}),undefined);
+    assert.throws(()=>reader.submitReply(f.decisionReply,{conversationId:'fixture-chat'}),/unavailable|changed/);
+  }finally{restored.close();}assert.equal(f.sends,1);
 });

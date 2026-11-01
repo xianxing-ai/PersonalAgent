@@ -27,7 +27,7 @@ const canonicalInstant=value=>{
 
 /** Fixed business graph composition. The caller supplies the pinned image separately.
  * This facade resolves the real application only at execution, before any Runtime exists at startup. */
-export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,
+export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,
   competitionToolExports=[],prepareCompetitionToolExport,authorizeExport,readBusinessAvailability,now=Date.now}={}) {
   const tools=[],hosts=[],configuredWorkflowWorkerPorts=[],unavailable=[];
   if(!runtimeModule||typeof getApplication!=='function'||typeof authorizeExport!=='function'
@@ -150,7 +150,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     }
     const inputSchema={...requestSchema,properties:{...requestSchema.properties,businessBindingId:text},required:[...requestSchema.required,'businessBindingId']};
     const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
-      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v4':workflowId==='F11'?'business-20261101-f11-v4':workflowId==='F08'?'business-20261101-f08-v2':'business-20261031-v1',
+      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v4':workflowId==='F11'?'business-20261101-f11-v4':workflowId==='F08'?'business-20261101-f08-v3':'business-20261031-v1',
       requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:workflowId==='F12'?['/trigger']:workflowId==='F11'&&requestSchema.properties.weather?['/weather/query/units']
         :workflowId==='F08'?['sourceId','configRevision','query'].filter(key=>Array.isArray(requestSchema.properties.knowledge?.properties?.[key]?.enum)).map(key=>'/knowledge/'+key):[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
@@ -223,6 +223,9 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
             &&operation(bound,node.id,'workflow.guard.f06_n05')?.result.state==='skipped')
           &&!(workflowId==='F11'&&node.id==='F11_N05'&&scope.state.result?.nodes[node.id]?.state==='skipped'
             &&operation(bound,node.id,'workflow.guard.f11_n05')?.result.state==='skipped')
+          &&!(workflowId==='F08'&&['F08_N07','F08_N11'].includes(node.id)&&scope.state.result?.nodes[node.id]?.state==='skipped'
+            &&operation(bound,'F08_N07','workflow.guard.f08_n07')?.result.state==='skipped'
+            &&operation(bound,'F08_N06','workflow.host.f08_n06')?.result.decision==='decline')
           &&(scope.state.result?.nodes[node.id]?.state!=='completed'||!['input','assemble'].includes(node.kind)&&!completedNode(bound,node.id))))
           fail('RESULT_UNKNOWN','Business workflow required nodes are incomplete');
         const result=await complete(scope,bound);current(workflowId,scope,scope.input);return result;
@@ -579,6 +582,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
   }else unavailable.push('f12_notification_application_host_unavailable');
   if(['mail.inbox','mail.archive','mail.send','mail.reconcile_send','knowledge.search'].every(name=>descriptor(name))
     &&runtimeModule.createRuntimeF08PreparedPlanHosts&&runtimeModule.createRuntimeF08MailArchiveHost&&runtimeModule.createRuntimeF08MailSendHost&&runtimeModule.createRuntimeF08KnowledgeSourceHost){
+    const decisionEnabled=typeof f08DecisionQuestion?.requestDecision==='function'&&typeof f08DecisionQuestion?.readDecision==='function'
+      &&typeof runtimeModule.createRuntimeF08DecisionQuestionHost==='function';
     const f08Schema=object({inbox:object({account:text,folder:text,limit:{type:'integer',const:100}}),
       knowledge:structuredClone(descriptor('knowledge.search').inputSchema),
       archive:{...structuredClone(descriptor('mail.archive').inputSchema),required:[...new Set([...descriptor('mail.archive').inputSchema.required,'account'])]},
@@ -608,10 +613,22 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       if(!search||!isDeepStrictEqual(runtime.loadCheckpoint(search.localTaskId,'host-tool-intent')?.arguments,bound.input.knowledge))
         fail('UNAUTHORIZED','F08 original knowledge read unavailable');
       verifyKnowledge(bound,search.result);
-      if(!isDeepStrictEqual(selected(bound,'F08_N04'),bound.input.send)
-        ||!isDeepStrictEqual(selected(bound,'F08_N05'),{send:bound.input.send,knowledgeSources:bound.input.knowledgeSources,requiresDecision:false}))
-        fail('UNSUPPORTED_CAPABILITY','F08 missing decisions require the original F02 question source');
+      const value=selected(bound,'F08_N05');
+      if(typeof value?.requiresDecision!=='boolean'||value.requiresDecision&&!decisionEnabled||!isDeepStrictEqual(selected(bound,'F08_N04'),bound.input.send)
+        ||!isDeepStrictEqual(value,{send:bound.input.send,knowledgeSources:bound.input.knowledgeSources,requiresDecision:value.requiresDecision}))
+        fail('UNSUPPORTED_CAPABILITY','F08 missing decisions require an original explicit question source');
+      return value.requiresDecision;
     };
+    const decisionInput=bound=>({send:bound.input.send,knowledgeSources:bound.input.knowledgeSources});
+    const readDecision=scope=>({decision:f08DecisionQuestion.readDecision({parentTaskId:scope.parentTaskId??scope.taskId,
+      sessionId:scope.sessionId??scope.state?.sessionId,deadline:scope.deadline,signal:scope.signal}).decision});
+    const confirmedDecision=(scope,bound)=>{
+      const op=operation(bound,'F08_N06','workflow.host.f08_n06'),result=readDecision(scope);
+      if(!op||!isDeepStrictEqual(op.result,result)||!isDeepStrictEqual(runtime.loadCheckpoint(op.localTaskId,'host-tool-intent')?.arguments,decisionInput(bound)))
+        fail('UNAUTHORIZED','F08 original draft decision receipt unavailable');return result.decision;
+    };
+    const acceptedDecision=scope=>{const bound=binding('F08',scope);
+      if(prepared(bound)&&confirmedDecision(scope,bound)!=='accept')fail('UNAUTHORIZED','F08 original draft was not accepted');};
     const bridge=child('F08',{
       'f08.mail.archive':input=>['F08_N03','mail.archive',input.archive],
       'f08.mail.send':input=>['F08_N07','mail.send',input.send],
@@ -622,7 +639,9 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       'f08.knowledge.source':input=>['F08_N09','knowledge.search',input.knowledge],
       'f08.knowledge.send-check':input=>['F08_N07','knowledge.search',input.knowledge],
       'f08.knowledge.receipt-check':input=>['F08_N07','knowledge.search',input.knowledge],
-    },['f08.knowledge.source','f08.knowledge.send-check','f08.knowledge.receipt-check']);
+    },['f08.knowledge.source','f08.knowledge.send-check','f08.knowledge.receipt-check'],scope=>{
+      if(runtime.loadCheckpoint(scope.localTaskId,'host-tool-intent')?.toolName==='workflow.host.f08_n07')acceptedDecision(scope);
+    });
     const compareMail=(scope,bound,result)=>{
       const original=mailSource(bound),archive=ports.readOriginalWrite(scope,'archive');
       const stable=items=>items.map(({fetchedAt,...item})=>item).sort((a,b)=>a.dedupeKey.localeCompare(b.dedupeKey));
@@ -646,6 +665,13 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       return receiptExport('F08')(scope,result);
     }});
     const hostOptions={...ports,application,assertCurrent:scope=>{binding('F08',scope);},now:()=>new Date(now())};
+    if(decisionEnabled)addHost(runtimeModule.createRuntimeF08DecisionQuestionHost({...hostOptions,
+      inputSchema:object({send:f08Schema.properties.send,knowledgeSources:f08Schema.properties.knowledgeSources}),readDecision,authorizeExport:receiptExport('F08'),
+      async requestDecision(scope,context){const bound=binding('F08',scope);
+        if(!prepared(bound)||operation(bound,'F08_N06','workflow.guard.f08_n06')?.result.state!=='selected')
+          fail('UNAUTHORIZED','F08 original draft does not request a decision');
+        await f08DecisionQuestion.requestDecision(scope,context);prepared(binding('F08',scope));return readDecision(scope);
+      }}));
     addHost(runtimeModule.createRuntimeF08KnowledgeSourceHost({...hostOptions,
       knowledgeSearch:businessTools.find(tool=>tool.descriptor.name==='knowledge.search'),authorizeExport:receiptExport('F08'),
       async readKnowledge(scope,input,context){const bound=binding('F08',scope);
@@ -663,10 +689,11 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       requiredScopes:descriptor('mail.archive').requiredScopes,async verifyArchiveBinding(scope,input){const bound=binding('F08',scope);mailSource(bound);
         return isDeepStrictEqual(selected(bound,'F08_N02'),{archive:bound.input.archive})&&ports.verifyArchiveBinding(scope,input);}}));
     addHost(runtimeModule.createRuntimeF08MailSendHost({...hostOptions,mailSend:businessTools.find(tool=>tool.descriptor.name==='mail.send'),
-      requiredScopes:descriptor('mail.send').requiredScopes,async invokeSend(scope,input,context){prepared(binding('F08',scope));await fresh(scope,context,'send');return ports.invokeSend(scope,input,context);}}));
+      assertCurrent:scope=>{binding('F08',scope);acceptedDecision(scope);},
+      requiredScopes:descriptor('mail.send').requiredScopes,async invokeSend(scope,input,context){acceptedDecision(scope);await fresh(scope,context,'send');return ports.invokeSend(scope,input,context);}}));
     addHost(runtimeModule.createRuntimeF08PreparedPlanHosts({...hostOptions,sendInputSchema:descriptor('mail.send').inputSchema,
-      authorizeExport:receiptExport('F08'),async verifyPreparedPlan(scope,input,context){const bound=binding('F08',scope);prepared(bound);
-        if(!isDeepStrictEqual(input,{send:bound.input.send}))return false;await fresh(scope,context,'plan');return true;},
+      authorizeExport:receiptExport('F08'),async verifyPreparedPlan(scope,input,context){const bound=binding('F08',scope),requiresDecision=prepared(bound);
+        if(!isDeepStrictEqual(input,{send:bound.input.send}))return false;await fresh(scope,context,'plan');return {requiresDecision};},
       async resolveCondition(scope,nodeId,context){
         const bound=binding('F08',scope);
         if(nodeId==='F08_N13'){
@@ -677,11 +704,12 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
           const original=await ports.resolveOriginalSend(scope),read=original&&await ports.readReconciliation(scope,original);
           if(!read)fail('RESULT_UNKNOWN','F08 original send reconciliation unavailable');return read.state==='confirmed'?'skipped':'selected';
         }
-        prepared(bound);
-        if(operation(bound,'F08_N10','workflow.host.f08_n10')?.result.planReady!==true)fail('UNAUTHORIZED','F08 original prepared plan receipt unavailable');
-        if(nodeId==='F08_N06')return 'skipped';
-        if(operation(bound,'F08_N06','workflow.guard.f08_n06')?.result.state!=='skipped')fail('UNAUTHORIZED','F08 original clarification condition missing');
-        return 'selected';
+        const needed=prepared(bound);
+        if(!isDeepStrictEqual(operation(bound,'F08_N10','workflow.host.f08_n10')?.result,{planReady:true,requiresDecision:needed}))
+          fail('UNAUTHORIZED','F08 original prepared plan receipt unavailable');
+        if(nodeId==='F08_N06')return needed?'selected':'skipped';
+        if(operation(bound,'F08_N06','workflow.guard.f08_n06')?.result.state!==(needed?'selected':'skipped'))fail('UNAUTHORIZED','F08 original clarification condition missing');
+        return !needed||confirmedDecision(scope,bound)==='accept'?'selected':'skipped';
       }}));
     addHost(runtimeModule.createRuntimeF08WaitReconciliationHost({...hostOptions,mailReconcile:businessTools.find(tool=>tool.descriptor.name==='mail.reconcile_send'),
       requiredScopes:descriptor('mail.reconcile_send').requiredScopes,authorizeExport:receiptExport('F08')}));
@@ -689,6 +717,12 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       const bound=binding('F08',scope);prepared(bound);
       if(operation(bound,'F08_N03','workflow.host.f08_n03')?.result.toolState!=='confirmed'||ports.readOriginalWrite(scope,'archive')?.state!=='confirmed')
         fail('RESULT_UNKNOWN','F08 original archive still requires reconciliation');
+      if(prepared(bound)&&confirmedDecision(scope,bound)==='decline'){
+        if(operation(bound,'F08_N07','workflow.guard.f08_n07')?.result.state!=='skipped'||operation(bound,'F08_N07','workflow.host.f08_n07')
+          ||operation(bound,'F08_N11','mail.reconcile_send')||ports.readOriginalWrite(scope,'send')
+          ||operation(bound,'F08_N13','workflow.guard.f08_n13')?.result.state!=='skipped')fail('UNAUTHORIZED','F08 declined draft has an unexpected send or source change');
+        return {archiveConfirmed:true,sendConfirmed:false,decision:'declined'};
+      }
       const send=ports.readOriginalWrite(scope,'send'),original=await ports.resolveOriginalSend(scope),read=original&&await ports.readReconciliation(scope,original);
       if(!send||!original||read?.state!=='confirmed'||operation(bound,'F08_N13','workflow.guard.f08_n13')?.result.state!=='skipped'
         ||operation(bound,'F08_N12','workflow.guard.f08_n12')?.result.state!=='skipped')fail('RESULT_UNKNOWN','F08 original send or source change remains unresolved');
@@ -696,8 +730,11 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     };
     config('F08',f08Schema,['decision.choose_candidate','mail.inbox','mail.archive','mail.send','mail.reconcile_send','knowledge.search',
       'workflow.host.f08_n03','workflow.host.f08_n07','workflow.host.f08_n09','workflow.host.f08_n10','workflow.host.f08_n12',
+      ...(decisionEnabled?['workflow.host.f08_n06']:[]),
       'workflow.guard.f08_n06','workflow.guard.f08_n07','workflow.guard.f08_n12','workflow.guard.f08_n13'],
-      object({archiveConfirmed:{const:true},sendConfirmed:{const:true},messageId:text}),async(scope,bound)=>{
+      {...object({archiveConfirmed:{const:true},sendConfirmed:{type:'boolean'},messageId:text,...(decisionEnabled?{decision:{const:'declined'}}:{})},['archiveConfirmed','sendConfirmed']),
+        oneOf:[object({archiveConfirmed:{const:true},sendConfirmed:{const:true},messageId:text}),
+          ...(decisionEnabled?[object({archiveConfirmed:{const:true},sendConfirmed:{const:false},decision:{const:'declined'}})]:[])]},async(scope,bound)=>{
         const {proposal}=scope,own={...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId};
         if(proposal.nodeId==='F08_N01'&&proposal.toolName==='mail.inbox')return isDeepStrictEqual(proposal.arguments,bound.input.inbox);
         if(proposal.nodeId==='F08_N09'&&proposal.toolName==='workflow.host.f08_n09')return isDeepStrictEqual(proposal.arguments,bound.input.knowledge);
@@ -711,6 +748,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         }
         if(proposal.nodeId==='F08_N03'&&proposal.toolName==='workflow.host.f08_n03')return isDeepStrictEqual(proposal.arguments,bound.input.archive);
         if(proposal.nodeId==='F08_N10'&&proposal.toolName==='workflow.host.f08_n10')return isDeepStrictEqual(proposal.arguments,{send:bound.input.send});
+        if(proposal.nodeId==='F08_N06'&&proposal.toolName==='workflow.host.f08_n06')return decisionEnabled
+          &&operation(bound,'F08_N06','workflow.guard.f08_n06')?.result.state==='selected'&&isDeepStrictEqual(proposal.arguments,decisionInput(bound));
         if(proposal.nodeId==='F08_N07'&&proposal.toolName==='workflow.host.f08_n07')return operation(bound,'F08_N07','workflow.guard.f08_n07')?.result.state==='selected'
           &&isDeepStrictEqual(proposal.arguments,bound.input.send);
         const original=await ports.resolveOriginalSend(own);
@@ -720,11 +759,12 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
           &&isDeepStrictEqual(proposal.arguments,{messageId:original.messageId,idempotencyKey:original.idempotencyKey});
       },async scope=>{const result=await resultFor({...scope,parentTaskId:scope.taskId,sessionId:scope.state.sessionId});
         runtime.saveCheckpointOnce(scope.taskId,'business-workflow:F08:completion',{sessionId:scope.state.sessionId,result});
-        return {result,resultSummary:'Original archive and independently reconciled send confirmed'};
+        return {result,resultSummary:result.decision==='declined'?'Original draft declined; confirmed archive retained without sending':'Original archive and independently reconciled send confirmed'};
       },async scope=>{const saved=runtime.loadCheckpoint(scope.taskId,'business-workflow:F08:completion');
         if(!saved||!isDeepStrictEqual(saved.result,scope.value)||!isDeepStrictEqual(await resultFor({...scope,parentTaskId:scope.taskId,sessionId:saved.sessionId}),saved.result))
           fail('REVISION_CONFLICT','F08 original completion changed');});
-    unavailable.push('f08_missing_decision_question_source_unavailable','f08_changed_source_replan_unavailable');
+    if(!decisionEnabled)unavailable.push('f08_missing_decision_question_source_unavailable');
+    unavailable.push('f08_voice_decision_source_unavailable','f08_changed_source_replan_unavailable');
   }else unavailable.push('f08_mail_and_knowledge_dependencies_unavailable');
   return {tools,hosts,configuredWorkflowWorkerPorts,unavailable};
 }

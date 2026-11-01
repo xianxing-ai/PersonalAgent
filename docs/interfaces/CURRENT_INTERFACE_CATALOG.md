@@ -751,3 +751,7 @@ Desktop `createF11LocationQuestionHost` 在原 N01 TaskRuntime 生命周期中�
 ## 2026-11-01 F11 原方案明确采用或拒绝（provisional）
 
 新增 Desktop `createF11DecisionQuestionHost` / 注入 `f11DecisionQuestion`，复用原问题检查点和单次文字事件绑定；地点 API 兼容。Runtime `createRuntimeF11DecisionQuestionHost` 在原 N04 等同一对话对完整原方案的 `accept/decline`，图只收到 `{decision}`。采用仍由 N05 分别请求原日历/提醒 Policy；拒绝跳过写入，completion 新增明确 `decision:'declined'` 分支。原答案在子工具执行前重新核对，卡待批时撤销/擦除阻止后续写入，已发生的效果保留。F11 配置为 `business-20261101-f11-v4`，无新节点、wire、数据库迁移或授权层。真实 UI/语音/云及日历整图未由本地 Fixture 证明；见 [接口与行为证据](../competition/evidence/F11_PLAN_DECISION_20261101.md)。
+
+## 2026-11-01 F08 原草稿明确采用或拒绝（provisional）
+
+Desktop `createF08DecisionQuestionHost` / 注入 `f08DecisionQuestion` 消费原 N06 问题生命周期，固定 `mail.decision`、完整原 draft/references 和 `accept/decline`；共用检查只覆盖原任务绑定与单次回答，F11 导出兼容。Runtime 新公开 `createRuntimeF08DecisionQuestionHost`；原 N10 校验端口兼容 boolean 并可返回 `{requiresDecision:boolean}`。采用另经独立 mail.send Policy，拒绝完成明确未发送分支且保留已确认归档；执行前重核原来源，unknown 不重放。配置 `business-20261101-f08-v3`，节点数不变，无新 wire/迁移。文字 Fixture 不代表 F02 真实语音、实际邮箱/AgentArts 或 F03 重规划验收，见 [接口及行为证据](../competition/evidence/F08_EXPLICIT_DECISION_20261101.md)。

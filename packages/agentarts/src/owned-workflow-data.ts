@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: bdbe80816dfbcce223717c1f35d9c40ec2bd84f4323165d876bd7821d925dc3a
+// Source projection sha256: 061b30fd197338f25c21bc5dd77e68b1e9e508055e25c0ea3d31696c899d2ec9
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -1713,7 +1713,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N06",
-        "label": "仅缺决定：调用F02主动语音/文字补问",
+        "label": "仅缺决定：原文字补问草稿或F02语音来源",
         "kind": "wait_user",
         "dependencies": [
           "F08_N10"
@@ -1725,7 +1725,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "当前问题及revision的回答"
         ],
-        "condition": "关键决定缺失或条件不明确时补问；完整显式回复仍逐项经过原Policy审批",
+        "condition": "完整原草稿缺采用决定时明确采用或拒绝；答复不签发发送授权，F02语音来源独立核验",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
@@ -1744,7 +1744,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原发送operation/effect ID",
           "工具实际状态"
         ],
-        "condition": "完整显式回复或补问有效决定已绑定原来源；发送另经独立原Policy审批",
+        "condition": "完整显式回复或补问明确采用已绑定原来源；拒绝跳过发送并保留归档，采用仍经独立原Policy审批",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "joinMode": "selected"
       },

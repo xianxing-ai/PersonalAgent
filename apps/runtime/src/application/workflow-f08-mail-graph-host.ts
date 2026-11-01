@@ -1,4 +1,4 @@
-import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
+import type {RegisteredTool,ToolContext,ToolDescriptor} from '@personal-agent/contracts';
 import {isDeepStrictEqual} from 'node:util';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
@@ -8,6 +8,37 @@ type Scope=OwnedWorkflowHostScope;
 const plain=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0;
 // mail.archive and mail.send must be separate original Policy children, never direct tool.execute calls.
+
+/** N06 binds an explicit draft decision; accepting it never authorizes mail.send. */
+export function createRuntimeF08DecisionQuestionHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;inputSchema:ToolDescriptor['inputSchema'];
+  requestDecision:(scope:Scope,context:ToolContext)=>Promise<{decision:'accept'|'decline'}>;
+  readDecision:(scope:Scope)=>{decision:'accept'|'decline'};
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;now:()=>Date;
+}):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
+  if(!options?.application?.runtime||!options.inputSchema||typeof options.requestDecision!=='function'||typeof options.readDecision!=='function'
+    ||typeof options.assertCurrent!=='function'||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
+    return {tools:[],unavailable:'f08_original_decision_question_unavailable'};
+  const runtime=options.application.runtime;
+  const active=(context:ToolContext,args:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F08',nodeId:'F08_N06',
+    hostToolName:'workflow.host.f08_n06',proposalArguments:args,assertCurrent:options.assertCurrent,now:options.now});
+  const tool=createOwnedWorkflowAdapter({nodeId:'F08_N06',kind:'host',sideEffect:'read',requiredScopes:['mail:read','knowledge:read'],
+    inputSchema:structuredClone(options.inputSchema),outputSchema:{type:'object',additionalProperties:false,required:['decision'],
+      properties:{decision:{type:'string',enum:['accept','decline']}}},
+    async execute(args,context){const scope=active(context,args),result=await options.requestDecision(scope,context);active(context,args);
+      if(!isDeepStrictEqual(result,options.readDecision(scope)))failOwnedHost('UNAUTHORIZED','F08 original business answer changed');return result;}});
+  return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
+    const args=(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown}|undefined)?.arguments;
+    const scope=active(context,args),saved=options.application.readHostToolTask(context.taskId);
+    if(saved.task.state!=='succeeded'||saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f08_n06'
+      ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)
+      ||!isDeepStrictEqual(saved.confirmed.result,result)||!isDeepStrictEqual(options.readDecision(scope),result))
+      failOwnedHost('UNAUTHORIZED','F08 original decision receipt unavailable');
+    if(await options.authorizeExport(scope,result)!==true)failOwnedHost('UNAUTHORIZED','F08 decision export denied');
+    active(context,args);if(!isDeepStrictEqual(options.readDecision(scope),result))failOwnedHost('REVISION_CONFLICT','F08 decision changed during export');
+  }};
+}
 
 /** F08_N09 exports only the original knowledge tool's approved public projection. */
 export function createRuntimeF08KnowledgeSourceHost(options?:{
@@ -222,7 +253,7 @@ export function createRuntimeF08VersionedReplanHost(options?:{
 /** Prepared parameters admit the original child Policy path. They never assert a future send grant. */
 export function createRuntimeF08PreparedPlanHosts(options?:{
   application:Pick<RuntimeApplication,'runtime'>;sendInputSchema:RegisteredTool['descriptor']['inputSchema'];
-  verifyPreparedPlan:(scope:Scope,input:Record<string,unknown>,context:ToolContext)=>Promise<boolean>;
+  verifyPreparedPlan:(scope:Scope,input:Record<string,unknown>,context:ToolContext)=>Promise<boolean|{requiresDecision:boolean}>;
   resolveCondition:(scope:Scope,nodeId:'F08_N06'|'F08_N07'|'F08_N12'|'F08_N13',context:ToolContext)=>Promise<'selected'|'skipped'>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;now:()=>Date;
 }):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
@@ -237,8 +268,11 @@ export function createRuntimeF08PreparedPlanHosts(options?:{
   const read=async(spec:typeof specs[number],context:ToolContext,args:unknown)=>{
     const scope=active(spec,context,args);
     if(spec.kind==='host'){
-      if(!plain(args)||await options.verifyPreparedPlan(scope,args,context)!==true)failOwnedHost('UNAUTHORIZED','F08 original explicit mail plan unavailable');
-      active(spec,context,args);return {planReady:true,requiresDecision:false};
+      if(!plain(args))failOwnedHost('UNAUTHORIZED','F08 original explicit mail plan unavailable');
+      const verified=await options.verifyPreparedPlan(scope,args,context);
+      if(verified!==true&&(!plain(verified)||Object.keys(verified).length!==1||typeof verified.requiresDecision!=='boolean'))
+        failOwnedHost('UNAUTHORIZED','F08 original explicit mail plan unavailable');
+      active(spec,context,args);return {planReady:true,requiresDecision:verified===true?false:(verified as {requiresDecision:boolean}).requiresDecision};
     }
     const state=await options.resolveCondition(scope,spec.nodeId,context);active(spec,context,args);
     if(state!=='selected'&&state!=='skipped')failOwnedHost('RESULT_UNKNOWN','F08 original condition unavailable');
@@ -249,7 +283,7 @@ export function createRuntimeF08PreparedPlanHosts(options?:{
       :{type:'object',additionalProperties:false,required:['workflowId','nodeId','input','predecessorOutputs','predecessorStates'],
         properties:{workflowId:{const:'F08'},nodeId:{const:spec.nodeId},input:{type:'object'},predecessorOutputs:{type:'object'},predecessorStates:{type:'object'}}},
     outputSchema:spec.kind==='host'?{type:'object',additionalProperties:false,required:['planReady','requiresDecision'],
-      properties:{planReady:{const:true},requiresDecision:{const:false}}}:{type:'object',additionalProperties:false,required:['state'],properties:{state:{enum:['selected','skipped']}}},
+      properties:{planReady:{const:true},requiresDecision:{type:'boolean'}}}:{type:'object',additionalProperties:false,required:['state'],properties:{state:{enum:['selected','skipped']}}},
     execute:(args,context)=>read(spec,context,args)}));
   return {tools,unavailable:null,authorizeReceipt:async({context,result})=>{
     const intent=runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {toolName?:string;arguments?:unknown}|undefined;
