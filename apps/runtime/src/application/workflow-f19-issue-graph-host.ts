@@ -1,8 +1,10 @@
 import {isDeepStrictEqual} from 'node:util';
+import {createHash} from 'node:crypto';
 import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {createOwnedWorkflowAdapter} from '@personal-agent/agentarts';
 import type {RuntimeApplication} from './runtime-application.js';
 import {readWorkflowBusinessToolSource} from './workflow-business-tool-bridge.js';
+import {readRuntimeCodingRepairDispatchChild} from './coding-repair-dispatch-source.js';
 import {assertOwnedWorkflowHostScope,failOwnedHost,type OwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 
 type Scope=OwnedWorkflowHostScope;
@@ -49,7 +51,7 @@ export function createRuntimeF19IssueSnapshotHost(options?:{
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   resolveIssueSnapshot:(scope:Scope,context:ToolContext)=>Promise<{repo:string;snapshotRead:OriginalRead}|undefined>;
-  authorizeExport:(scope:Scope,result:{count:number})=>Promise<boolean>;
+  authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
   if(!ports||typeof options?.resolveIssueSnapshot!=='function')return {tools:[],unavailable:'f19_issue_snapshot_trusted_ports_unavailable'};
@@ -64,13 +66,17 @@ export function createRuntimeF19IssueSnapshotHost(options?:{
     const args=binding.snapshotRead?.arguments;
     if(!object(args)||args.repo!==binding.repo)failOwnedHost('UNAUTHORIZED','F19 issue snapshot identity changed');
     const snapshot=cacheOriginal(options.application,scope,binding.snapshotRead,'github.issue_snapshot');
-    if(!object(snapshot)||!Number.isSafeInteger(snapshot.count)||(snapshot.count as number)<0)
+    if(!object(snapshot)||snapshot.count!==1||snapshot.issueId!==args.issueId||snapshot.updatedAt!==args.expectedUpdatedAt
+      ||!text(snapshot.title,1024)||typeof snapshot.body!=='string'||snapshot.body.length>32768)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue snapshot evidence unavailable');
-    return {count:snapshot.count as number};
+    const issue={repo:binding.repo,issueId:snapshot.issueId,updatedAt:snapshot.updatedAt,title:snapshot.title,body:snapshot.body};
+    return {count:1,...issue,snapshotDigest:createHash('sha256').update(JSON.stringify(issue)).digest('hex')};
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F19_N01',kind:'host',sideEffect:'read',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
-    outputSchema:{type:'object',additionalProperties:false,required:['count'],properties:{count:{type:'integer',minimum:0}}},
+    outputSchema:{type:'object',additionalProperties:false,required:['count','repo','issueId','updatedAt','title','body','snapshotDigest'],properties:{
+      count:{const:1},repo:{type:'string'},issueId:{type:'integer',minimum:1},updatedAt:{type:'string'},title:{type:'string'},body:{type:'string'},
+      snapshotDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}}},
     async execute(_input,context){const result=await read(context);active(context);
       if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F19 issue snapshot export denied');
       return result;}});
@@ -82,26 +88,22 @@ export function createRuntimeF19EnqueueRepairHost(options?:{
   requiredScopes:readonly string[];
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  verifyEnqueueBinding:(scope:Scope)=>Promise<boolean>;
-  enqueueIssueRepair:(scope:Scope)=>Promise<{repairTaskId:string;issueId:number}>;
+  resolveEnqueue:(scope:Scope,context:ToolContext)=>Promise<{issueId:number;dispatchRead:OriginalRead}>;
   authorizeExport:(scope:Scope,result:{repairTaskId:string;issueId:number})=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
-  if(!ports||typeof options?.verifyEnqueueBinding!=='function'||typeof options?.enqueueIssueRepair!=='function')
+  if(!ports||typeof options?.resolveEnqueue!=='function')
     return {tools:[],unavailable:'f19_enqueue_repair_trusted_ports_unavailable'};
   const {runtime,requiredScopes}=ports;
   const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F19',nodeId:'F19_N03',
     hostToolName:'workflow.host.f19_n03',assertCurrent:ports.assertCurrent,now:ports.now});
   const read=async(context:ToolContext)=>{
-    const scope=active(context);let allowed:boolean;
-    try {allowed=await options.verifyEnqueueBinding(scope);}catch{return failOwnedHost('UNAUTHORIZED','F19 enqueue binding unavailable');}
-    active(context);if(allowed!==true)failOwnedHost('UNAUTHORIZED','F19 enqueue binding unavailable');
-    let result:{repairTaskId:string;issueId:number};
-    try {result=await options.enqueueIssueRepair(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue repair enqueue unavailable');}
-    active(context);
-    if(!text(result.repairTaskId,256)||!Number.isSafeInteger(result.issueId)||result.issueId<=0)
+    const scope=active(context),binding=await options.resolveEnqueue(scope,context);active(context);
+    if(!binding||!Number.isSafeInteger(binding.issueId)||binding.issueId<=0)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 issue repair enqueue unavailable');
-    return result;
+    cacheOriginal(options.application,scope,binding.dispatchRead,'coding.repair.workflow');
+    const child=readRuntimeCodingRepairDispatchChild(options.application,binding.dispatchRead);
+    return {repairTaskId:child.taskId,issueId:binding.issueId};
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F19_N03',kind:'host',sideEffect:'local_write',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
