@@ -48,6 +48,7 @@ export type {F24OriginalEffectBinding,F24ReconciliationResult,F24ReconciliationH
 export {createRuntimeF03MemoryQueryHost,createRuntimeF04MemoryQueryHost,createRuntimeF05JointRecallHost} from './application/workflow-f04-f05-recall-host.js';
 export {createF05WorkflowWorkerPorts} from './application/workflow-f05-worker.js';
 export type {F05WorkflowOptions,F05SourceConfiguration} from './application/workflow-f05-worker.js';
+export type {F12ReturnDigestRequest} from './application/f12-native-admission.js';
 export {createRuntimeF06TodoWriteHost,createRuntimeF06NotificationDeliverHost,createRuntimeF06ReminderGuard} from './application/workflow-f06-todo-graph-host.js';
 export {createRuntimeF07CalendarFreshnessHost,createRuntimeF07CalendarWriteHost} from './application/workflow-f07-calendar-graph-host.js';
 export {createRuntimeF08MailArchiveHost,createRuntimeF08MailSendHost,createRuntimeF08OperationScopeHost,

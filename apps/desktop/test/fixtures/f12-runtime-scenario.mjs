@@ -58,6 +58,9 @@ export async function scenario(t,options={}){
     coordinationBinding:'fixture-deployment',tools,configuredWorkflowWorkers:[{...worker,image:{bindingId:'fixture-f12-image',receiptSecret:async()=>secret,
       advance:async request=>{const result=await engine.advance(request);proposals.push(...result.proposals);return result;}}}],
     coordination:{execute:async request=>{cloud.push(request);
+      if(options.nativeReturn&&request.continuation===undefined)throw Error('Native F12 must select its original graph before cloud summary');
+      if(options.nativeFinalTool&&request.continuation)return {kind:'tool_proposal',proposalId:'replacement',toolName:worker.toolName,
+        toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};
       if(app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation)return {kind:'text',text:'Fixture result',verification:'unverified'};
       return {kind:'tool_proposal',proposalId:'original-f12',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};}},
     requiresToolAuthorization:()=>true,requestToolAuthorization:async scope=>{
@@ -103,14 +106,19 @@ export async function scenario(t,options={}){
     if(options.cancelReturn)app.runtime.requestCancel(returned.task.taskId);
     if(options.eraseReturn)app.runtime.saveCheckpoint(returned.user.taskId,'private-copy-erasure',{state:'withheld'});
   }
+  let nativeRequest;
   async function run(id){
-    root=await client.call('task.submit',{goal:'Fixture F12 current notification',conversationId:'fixture-chat'},{idempotencyKey:id,timeoutMs:60000});
+    nativeRequest=options.nativeReturn?{conversationId:'fixture-chat',deadline:returned.host.binding.taskDeadline,
+      idempotencyKey:id,arguments:structuredClone(input)}:undefined;
+    root=options.nativeReturn?app.submitF12ReturnDigestTask(nativeRequest):await client.call('task.submit',
+      {goal:'Fixture F12 current notification',conversationId:'fixture-chat'},{idempotencyKey:id,timeoutMs:60000});
     let child;
     for(let i=0;i<2500;i++){respond();[child]=app.readSubagentTasks(root.taskId);
       if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;await pause();}
     assert.ok(child);return child;
   }
   const child=await run('fixture-f12'),repeated=options.repeat?await run('fixture-f12-repeat'):undefined;
-  return {app,host,userData,child,repeated,sends,sent,approvals,cloud,proposals,returned,explicitReturnSource,diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,
-    error:task.error,tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
+  return {app,host,userData,root,nativeRequest,child,repeated,sends,sent,approvals,cloud,proposals,returned,explicitReturnSource,diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,
+    error:task.error,coordinationFailure:app.runtime.loadCheckpoint(task.taskId,'competition-coordination-failure'),
+    tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
 }

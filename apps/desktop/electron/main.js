@@ -112,6 +112,8 @@ import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-hos
 import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
 import {createWorkflowExportConsent} from './workflow-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
+import {createF12ExplicitReturnSource} from './f12-explicit-return-source.js';
+import {createF12ReturnDigestController} from './f12-return-digest-controller.js';
 import {createBusinessWorkflowAvailability} from './business-workflow-availability.js';
 import {prepareConfiguredWorkflowDecisionQuestion} from './configured-workflow-decision-source.js';
 import {createF16F17CaseConfiguration} from './f16-f17-case-config-host.js';
@@ -367,6 +369,7 @@ let liveVoice;
 let f02Workflow;
 let f16F17Cases,f16F17Workflow;
 let f18ReviewCases,f18Workflow,f18ActiveRevision;
+let f12ExplicitReturnSource,f12ReturnDigest;
 let f24Workflow;
 let f14Workflow;
 const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
@@ -2545,7 +2548,15 @@ async function initializeRuntime() {
           readQuestionDelivery:(...args)=>liveVoice?.readQuestionDelivery(...args),askCurrentQuestion:()=>liveVoice?.askCurrentQuestion()},
         microphoneHost:{readCaptureReceipt:(...args)=>microphoneCaptureHost?.readCaptureReceipt(...args)},
         voiceCommandHost:{prepareApproval:(...args)=>voiceCommandHost?.prepareApproval(...args)}}):undefined;
+      f12ExplicitReturnSource=agentArtsPinned?createF12ExplicitReturnSource({getApplication:()=>runtimeApplication,
+        readPersistedWorkflow:runtimeModule.readPersistedRuntimeProactiveWorkflow}):undefined;
+      f12ReturnDigest=f12ExplicitReturnSource&&notificationApplicationHost?createF12ReturnDigestController({
+        getApplication:()=>runtimeApplication,explicitReturnSource:f12ExplicitReturnSource,notificationHost:notificationApplicationHost,
+        readTimeoutMs:()=>readCompetitionExecutionPolicy().taskTimeoutMs,onTask:task=>{
+          if(!conversations.turns.has(task.taskId)){conversations.add(task.taskId,'panel',task.goal,task.conversationId);rememberTaskGoal(task.taskId,task.goal);}
+        }}):undefined;
       const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        explicitReturnSource:f12ExplicitReturnSource,
         businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[]),
           ...productTools.tools.filter(tool=>tool.descriptor.name==='weather.forecast')],todoHost,notificationHost:notificationApplicationHost,
         competitionToolExports:[...(todoHost?.competitionToolExports??[]),...(connectorConversationTools?.competitionToolExports??[]),
@@ -4173,7 +4184,18 @@ async function action(event, name, payload) {
     if ((sender!==panel&&sender!==admin)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
     if(name==='proactive.workflow.status')return proactiveWorkflowApplication.snapshot();
     if(name==='proactive.workflow.start')return proactiveWorkflowApplication.start(payload);
-    if(name==='proactive.workflow.control')return proactiveWorkflowApplication.control(payload);
+    if(name==='proactive.workflow.control'){
+      const result=await proactiveWorkflowApplication.control(payload);
+      if(payload.action!=='return')return result;
+      let notificationDigest;
+      try {
+        if(!f12ReturnDigest)throw Error('归来摘要尚未配置');
+        const {binding}=proactiveWorkflowApplication.read(payload.taskId);
+        notificationDigest=f12ReturnDigest.submit({taskId:payload.taskId,sessionId:binding.sessionId,
+          sourceTaskId:payload.sourceTaskId,commandId:payload.commandId,controlRevision:binding.controlRevision});
+      }catch{notificationDigest={state:'unconfirmed',tasks:[]};}
+      publish();return {...result,notificationDigest};
+    }
     if(!payload||Object.keys(payload).some(key=>key!=='taskId')||typeof payload.taskId!=='string')throw Error('原持续工作流任务标识无效');
     if(name==='proactive.workflow.resume')return proactiveWorkflowApplication.resume(payload.taskId);
     if(name==='proactive.workflow.read')return proactiveWorkflowApplication.read(payload.taskId);
@@ -5287,6 +5309,7 @@ app.whenReady().then(async () => {
       f02Workflow=undefined;
       f16F17Cases=undefined;f16F17Workflow=undefined;
       f18ReviewCases?.close();f18ReviewCases=undefined;f18Workflow=undefined;f18ActiveRevision=undefined;
+      f12ReturnDigest=undefined;f12ExplicitReturnSource=undefined;
       f24Workflow=undefined;
       f14Workflow=undefined;
       void todoHost?.close();

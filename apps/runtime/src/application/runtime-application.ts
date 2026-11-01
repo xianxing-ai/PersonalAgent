@@ -66,6 +66,8 @@ import type {LocalRepairHostOptions, SubmitLocalRepairRequest, ReviewedLocalRepa
 import {PLAN_EXECUTION_SOURCE,preparePlanExecutionSource,assertPlanExecutionFacts,
   readPlanExecutionIntent,planExecutionGoal,planExecutionCommandId} from './plan-execution-source.js';
 import type {PlanExecutionOptions,PlanExecutionSelection,PlanExecutionIntent} from './plan-execution-source.js';
+import {F12_NATIVE_RETURN,prepareF12ReturnDigest,f12ReturnDigestPort,f12ReturnTaskKey,f12ReturnGoal} from './f12-native-admission.js';
+import type {F12ReturnDigestRequest,F12ReturnDigestIntent} from './f12-native-admission.js';
 import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
@@ -2731,7 +2733,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       this.assertCompetitionTaskConfiguration(worker.taskId,true);
       return runRuntimeCodingRepairWorkflow(this,subtask,worker,tools,this.codingRepair);
     }
-    return runCoordinationWorker(this.runtime,this.coordination,tools,worker.taskId,child.goal,worker,
+    const f12Entry=this.configuredWorkflowWorkers.find(entry=>entry.describe().name==='workflow.business.f12');
+    const nativeF12=f12Entry?f12ReturnDigestPort(this.runtime,this.coordination!,worker.taskId,
+      this.coordinationBinding,f12Entry,()=>this.now().getTime()):undefined;
+    if(nativeF12)this.assertCompetitionTaskConfiguration(worker.taskId,true);
+    if(!f12Entry&&this.runtime.loadCheckpoint(binding.parentTaskId,F12_NATIVE_RETURN)!==undefined)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original native F12 entry is unavailable');
+    return runCoordinationWorker(this.runtime,nativeF12??this.coordination,tools,worker.taskId,child.goal,worker,
       {retainPriorToolResults:this.usesGoalContinuation(worker.taskId),allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
         ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),...(catalog?{toolCatalog:catalog}:{}),
         ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
@@ -4209,6 +4217,34 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(!intent||intent.source.graphNamespace!==selection.graphNamespace||!isDeepStrictEqual(intent.source.plan,selection.plan))
       throw new ProtocolError('REVISION_CONFLICT','Original Plan request identity changed');
     return task;
+  }
+
+  /** Trusted Main only. Exact graph admission still uses the original delegated Competition worker. */
+  readF12ReturnDigestTask(idempotencyKey:string):TaskSnapshot|undefined {
+    if(!nonEmptyText(idempotencyKey))throw new ProtocolError('INVALID_ARGUMENT','Invalid native F12 task key');
+    const task=this.runtime.findTaskByIdempotencyKey(f12ReturnTaskKey(idempotencyKey));if(!task)return;
+    const intent=this.runtime.loadCheckpoint(task.taskId,F12_NATIVE_RETURN) as F12ReturnDigestIntent|undefined;
+    if(intent?.version!==1||intent.idempotencyKey!==idempotencyKey||task.goal!==f12ReturnGoal()
+      ||task.conversationId!==intent.conversationId)throw new ProtocolError('UNAUTHORIZED','Original native F12 task binding changed');
+    return task;
+  }
+
+  submitF12ReturnDigestTask(request:F12ReturnDigestRequest):TaskSnapshot {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks||!this.coordination)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Native F12 requires the original Competition delegation');
+    const entry=this.configuredWorkflowWorkers.find(worker=>worker.describe().name==='workflow.business.f12');
+    if(!entry)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original F12 entry is unavailable');
+    const intent=prepareF12ReturnDigest(request,entry,this.coordinationBinding,this.now().getTime());
+    const key=f12ReturnTaskKey(intent.idempotencyKey),prior=this.runtime.findTaskByIdempotencyKey(key);
+    if(prior){
+      const saved=this.runtime.loadCheckpoint(prior.taskId,F12_NATIVE_RETURN) as F12ReturnDigestIntent|undefined;
+      if(!isDeepStrictEqual(saved,intent))throw new ProtocolError('REVISION_CONFLICT','Native F12 request already has another original binding');
+      return prior;
+    }
+    const task=this.runtime.submitTaskWithCheckpoint({goal:f12ReturnGoal(),conversationId:intent.conversationId,
+      idempotencyKey:key,attachmentRefs:[F12_NATIVE_RETURN+':'+toolArgumentsDigest(intent)]},F12_NATIVE_RETURN,intent);
+    this.dispatchAcceptedTextTask(task.taskId,task.goal!,intent.conversationId,intent.deadline);
+    return this.runtime.getTask(task.taskId);
   }
 
   async submitPlanExecutionTask(input:PlanExecutionSelection&{sourceDigest:string;conversationId:string;deadline:string},

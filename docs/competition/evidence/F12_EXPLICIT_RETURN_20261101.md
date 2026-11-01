@@ -14,4 +14,4 @@ F12 在原输入、初始出口许可后、frontier/子宿主/回执和完成出
 
 已覆盖原显式归来多项摘要及重复只读、缺标记、异会话、取消、擦除、初始/完成出口期间后续 pause、原 N05 子卡拒绝、未知控制结果、resume/enter_unattended 不冒充 return、期限/参数替换及 SQLite 重启读回。F12/业务工厂/专用来源/通知端口回归 50/50，补充 request Schema、期限与重启的定向测试 14/14，原 Proactive Application/Session 与 NotificationApplicationHost 43/43，架构门禁 3/3 通过；日志在 `.cache/pr531-business/f12-return-{final,boundaries,dependencies,architecture}.log`。仅 JS 消费和文档变化，无生成文件；最终全仓 check 由根集成负责。
 
-归来链不发送设备通知，原 feed 保持未读，未预占轮次。真实按钮到 Main 的当前集成由根代理接入并单独验收；本机 Fixture 不代表真人操作或 OS presence。通知 voice 仍不可用，现有百炼 speakText 的 accepted 和通用 Renderer drained 不能充当通知轮次的真实播放完成回执。
+归来链不发送设备通知，原 feed 保持未读，未预占轮次。根已补原 Main 按钮→Runtime 精确 F12 准入，并通过实际组件及原 Main 回调验证，详见 [可信归来入口](F12_NATIVE_RETURN_ADMISSION_20261101.md)；自然语言 `task.submit` 不能替代精确准入。本机 Fixture 不代表真人操作或 OS presence。百炼 speakText 的 accepted 和通用 Renderer drained 不能充当通知轮次的真实播放完成回执。
