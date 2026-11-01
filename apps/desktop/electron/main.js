@@ -2600,6 +2600,16 @@ async function initializeRuntime() {
       f11LocationQuestion=agentArtsPinned?createF11LocationQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
       f11DecisionQuestion=agentArtsPinned?createF11DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
       f08DecisionQuestion=agentArtsPinned?createF08DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
+      let f03Workflow;
+      const f03MailReview={async submitChange(...args){
+        if(!f03Workflow)throw Error('原邮件审查尚未接通');
+        const result=await f03Workflow.submitChange(...args);
+        if(result.taskId&&!conversations.turns.has(result.taskId)){
+          const task=runtimeApplication.runtime.getTask(result.taskId);
+          conversations.add(task.taskId,'panel',task.goal,task.conversationId);rememberTaskGoal(task.taskId,task.goal);
+        }
+        publish();return result;
+      }};
       f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
       if(!syntheticMvp&&agentArtsPinned){
         const originalMailConfig=mailConfig;let originalMailBinding;
@@ -2619,10 +2629,11 @@ async function initializeRuntime() {
           },confirmSource:confirmSource('memory.save','保存刚选定的邮件来源摘要及有效期；仅此版本，不授予云端使用权限'),
           confirmWithdraw:confirmSource('memory.withdraw','撤回所选邮件来源记忆版本，停止后续消费'),
           confirmErase:confirmSource('memory.erase','删除所选邮件来源记忆的全部版本及绑定图副本；历史邮箱记录与备份不属于此次删除范围')});
-        f08SourceActions=createF08SourceActions({getApplication:()=>runtimeApplication,sourceHost:f08SourceChanges});
+        f08SourceActions=createF08SourceActions({getApplication:()=>runtimeApplication,sourceHost:f08SourceChanges,f03MailReview,
+          confirmReview:confirmSource('workflow.enable','审查原邮件变化对所选计划的影响，保留已发生的效果；具体云端发送与修改仍须分别授权')});
       }
       const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
-        f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,f08SourceChanges,
+        f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,f08SourceChanges,f03MailReview,
         explicitReturnSource:f12ExplicitReturnSource,
         businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[]),
           ...productTools.tools.filter(tool=>tool.descriptor.name==='weather.forecast')],todoHost,notificationHost:notificationApplicationHost,
@@ -2709,7 +2720,7 @@ async function initializeRuntime() {
       f23DecisionConfiguration=!syntheticMvp&&agentArtsPinned?createDesktopF23DecisionConfiguration({runtimeModule,
         getApplication:()=>runtimeApplication,models:agentArtsModels,namespace,onUpdate:publish}):undefined;
       const f03DeploymentBinding=readWorkflowDeploymentBinding();
-      const f03Workflow=f08SourceChanges&&f03DeploymentBinding?createF03MailReviewWorkflowPorts({
+      f03Workflow=f08SourceChanges&&f03DeploymentBinding?createF03MailReviewWorkflowPorts({
         getApplication:()=>runtimeApplication,sourceChanges:f08SourceChanges,authorizeExport:authorizeWorkflowExport,
         assertCurrent:()=>{if(readWorkflowDeploymentBinding()!==f03DeploymentBinding)throw Error('原 F03 固定部署已改变');},
         readDecisionConfiguration:()=>f23DecisionConfiguration?.readDecisionConfiguration(),
@@ -4667,14 +4678,14 @@ async function action(event, name, payload) {
     if(name.startsWith('memory.mail.')){
       if(!f08SourceActions)throw Error('原邮件来源管理尚未接通');
       const action=name.slice('memory.mail.'.length);
-      if(!['readSource','remember','listSources','withdraw','erase'].includes(action))throw Error('不支持的邮件来源操作');
+      if(!['readSource','remember','listSources','withdraw','erase','readReview','submitReview'].includes(action))throw Error('不支持的邮件来源操作');
       if(action==='listSources'&&payload!==undefined)throw Error('来源列表不接受额外参数');
-      if(action==='readSource'&&(!payload||Object.keys(payload).join(',')!=='taskId'))throw Error('请选择原邮件任务');
+      if(['readSource','readReview'].includes(action)&&(!payload||Object.keys(payload).join(',')!=='taskId'))throw Error('请选择原邮件任务');
       if(['withdraw','erase'].includes(action)&&(!payload||Object.keys(payload).sort().join(',')!=='expectedRevision,factId,operationId'))throw Error('请选择原记忆版本');
       const controller=new AbortController(),owner=admin,onClose=()=>controller.abort();owner.once('closed',onClose);
       const context={signal:controller.signal,deadline:new Date(Date.now()+180000).toISOString()};
       try{
-        if(action==='readSource'||action==='remember'){
+        if(['readSource','remember','readReview','submitReview'].includes(action)){
           const task=runtimeApplication.runtime.getTask(payload.taskId);
           if(!conversations?.turns.has(task.taskId)||!conversations.containsConversation(task.conversationId))throw Error('原邮件对话不可用');
           context.conversationId=task.conversationId;
