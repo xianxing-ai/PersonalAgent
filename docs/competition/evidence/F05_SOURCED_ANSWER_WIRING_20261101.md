@@ -36,4 +36,6 @@ N05 的支持性判断仍是原模型的 advisory 输出；宿主只证明引用
 
 F05 验证使用实际 Engine、Runtime、SQLite、Policy、ToolGateway、Knowledge 文件宿主和真实 `createTrustedKnowledgeTools` 出口，模型候选/选择、原生确认及网络为显式 Synthetic。覆盖无补充/补充后新引用、不可用或重复查询、伪造引用、Fact/文件变更、配置撤销与取消、未知不重发、长原片段仅投影 200 字、确认前及异步 projection 后转私有、真实编译后 Competition 组合在凭据读取后文件变化时 HTTP 计数为零。未向外部服务发送真实数据。
 
-仍需 Main 整合与最终 `npm run check`、本机实际原生授权/展示 smoke、固定 AgentArts deployment/template 读回、真实模型来源支持审查与平台整图 trace/评估、独立非作者审核。此包不满足 #531 的真实验收合并门槛，保持未合并。
+Main 已通过 Runtime 公开出口装配本工厂：Knowledge 使用原受信工具的出口与投影；Memory 和 Fact 读取同一个 `proactiveHost` 的原公共来源；发送前仍复核当前配置和原来源。已配置的 F05 host 替换重复可选注册，未创建第二套工具或来源存储。根工作树全量构建通过，Main/工厂/Runtime/原知识文件/来源 guard/最终 continuation/Schema 定向共 42/42 通过，日志 `.cache/integration-f05-main-build.log`、`.cache/integration-f05-main-chain.log`。
+
+仍需最新整合版本的完整 `npm run check`、本机实际原生授权/展示 smoke、固定 AgentArts deployment/template 读回、真实模型来源支持审查与平台整图 trace/评估、独立非作者审核。此包不满足 #531 的真实验收合并门槛，保持未合并。

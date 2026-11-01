@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-01 F05 原来源问答接线（provisional，待真实验收）
+
+`workflow.memory.answer@1.0.0` 经 Runtime 原配置图、Policy 和 ToolGateway 接入 Desktop Main，使用原公共 Memory/Fact、受控 Knowledge 文件及其出口投影。新增 F05 answer v1 Schema 约束引用和来源版本；Knowledge 的 `assertCitationCurrent` 同步复核原文件身份、内容版本及引用范围，用于凭据读取后的最后发送门禁。未知查询不重放，来源变化或配置撤销拒绝继续。实际文件、SQLite、原图与 Main 定向已通过；模型、原生确认和云为显式 Fixture，固定 AgentArts 部署整图及来源支持真实审查尚未验证，不提升 frozen。详见 [F05 证据](../competition/evidence/F05_SOURCED_ANSWER_WIRING_20261101.md)。
+
 ## 2026-10-29 MCP 管理任务读回（provisional）
 
 Desktop 远程 MCP 管理窗口的任务读回只显示原任务状态、工具身份、审批状态和 Evidence 引用，不向 Renderer 返回原始参数或工具结果；原 Runtime 持久记录和原对话审批卡保留。受信配置可显式允许缺少远端 outputSchema，仍固定服务/目录并用本地 Schema 校验 structuredContent；默认严格匹配不变，策略纳入任务授权绑定。真实 Context7 仅完成握手及目录读取，未发起工具调用，不证明其结果兼容；不提升接口冻结或真实验收状态。测试及缺口见 [MOD-06 工作记录](../modules/MOD-06-MCP-SAFETY-20261029.md)。

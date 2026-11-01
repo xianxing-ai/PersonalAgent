@@ -83,6 +83,7 @@ import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {readPackagedNativeJobHelper} from './native-job-component.js';
 import {readWindowsHostComponent} from './native-windows-host-component.js';
 import {createPlanExecutionFactReader} from './goal-host-core.js';
+import {createDesktopF05WorkflowWorkerPorts} from './f05-workflow-worker-ports.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
@@ -2580,19 +2581,24 @@ async function initializeRuntime() {
       f24Workflow=agentArtsPinned?createDesktopF24WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         getKnowledgeSourceConfig:()=>knowledgeSourceConfig,getKnowledgeTools:()=>knowledgeTools,
         hostUserNamespace:namespace,authorizeExport:authorizeWorkflowExport}):undefined;
+      const f05Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF05WorkflowWorkerPorts({runtimeModule,
+        getApplication:()=>runtimeApplication,getKnowledgeSourceConfig:()=>knowledgeSourceConfig,
+        getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
+        knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport}):undefined;
       const f13Workflow=agentArtsPinned?createF13WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         systemObserveTool,authorizeExport:authorizeWorkflowExport}):undefined;
       f14Workflow=agentArtsPinned?createF14WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         browserHost:browserControlHost,computerControlLease,authorizationQuestions:authorizationQuestionHost,
         authorizeExport:authorizeWorkflowExport}):undefined;
-      const businessHostNames=new Set((businessWorkflow?.tools??[]).map(tool=>tool.descriptor.name));
-      const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!businessHostNames.has(tool.descriptor.name));
+      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
+      const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
-        ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f24Workflow?.tools??[]),
+        ...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
@@ -2637,6 +2643,7 @@ async function initializeRuntime() {
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f18Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
