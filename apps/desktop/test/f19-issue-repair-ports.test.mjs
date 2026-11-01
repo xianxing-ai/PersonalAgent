@@ -1,12 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {join} from 'node:path';
-import {createGitHubF18F19Tools} from '@personal-agent/github';
+import {join,dirname} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import childProcess from 'node:child_process';
+import {syncBuiltinESMExports} from 'node:module';
+import {EventEmitter} from 'node:events';
+import {PassThrough} from 'node:stream';
+import {writeFileSync} from 'node:fs';
+import {createGitHubF18F19Tools,GhCliProvider,register as registerGitHub} from '@personal-agent/github';
+import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier} from '@personal-agent/agentarts';
 import {ProtocolError} from '@personal-agent/contracts';
 import * as r from '@personal-agent/runtime/application';
 import {createDesktopF19IssueRepairPorts} from '../electron/f19-issue-repair-ports.js';
+import {createDesktopDeveloperToolsHost} from '../electron/developer-tools-host.js';
 import {runCodingRepairFullGraphFixture} from '../../../tests/manual/agentarts/coding-repair-full-graph.mjs';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -18,8 +26,24 @@ const secret='synthetic-f19-receipt-secret-at-least-32-characters';
 // original F15 dispatcher -> actual F15 Engine/isolated filesystem/CAS. Model,
 // GitHub transport, consent and ephemeral independent signature are explicit
 // fixture boundaries. This is not a real human signature or GitHub acceptance.
-async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=false,revokeDuringExport=false}={}) {
-  let app,ports,revoked=false,closedEvidence,dispatchApprovals=0;const requests=[],exports=[],nodes=[];
+async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=false,revokeDuringExport=false,
+  publish=false,testContext,denyPublication,unknownPr=false,replacePublishedBytes=false,revokePresence=false,foreignRemote=false}={}) {
+  let app,ports,developerHost,revoked=false,closedEvidence,dispatchApprovals=0,nativeSelection=selection,remoteHead,pushes=0,presence=0;
+  const requests=[],exports=[],nodes=[],failures=[];
+  if(publish){
+    const originalSpawn=childProcess.spawn;
+    testContext.mock.method(childProcess,'spawn',(file,args,options)=>{
+      if(file!=='git'||!args.some(value=>['ls-remote','push'].includes(value))){
+        const child=originalSpawn(file,args,options);
+        if(file==='git'){let stderr='';child.stderr?.on('data',value=>{stderr+=value;});child.on('close',code=>{
+          if(code!==0)failures.push({tool:'git',args,stderr});});}return child;
+      }
+      assert.ok(args.includes('https://github.com/synthetic/f19.git'));
+      const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.stdin=new PassThrough();child.kill=()=>true;
+      queueMicrotask(()=>{if(args.includes('push')){pushes++;remoteHead=args.at(-1).split(':')[0];}
+        else if(remoteHead)child.stdout.write(remoteHead+'\trefs/heads/codex/f19-fixture\n');child.emit('close',0);});return child;
+    });syncBuiltinESMExports();testContext.after(()=>{testContext.mock.restoreAll();syncBuiltinESMExports();});
+  }
   const current=()=>{if(revoked)throw new ProtocolError('UNAUTHORIZED','Synthetic original selection revoked');};
   const engine=new OwnedWorkflowEngine({checkpointSecret:secret,externalHost:true,
     decisionTool:{name:'decision.choose_candidate',version:'1.0.0'},receiptVerifier:createOwnedWorkflowReceiptVerifier({secret}),
@@ -30,11 +54,37 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
   const image={bindingId:'synthetic-f19-engine',advance:request=>engine.advance(request),receiptSecret:async()=>secret};
   const report=await runCodingRepairFullGraphFixture({fakeModel:true,targetPath:'feature.cjs',
     artifactRoot:'.cache/f19-original-repair',createApplication(config){
-      ports=createDesktopF19IssueRepairPorts({getApplication:()=>app,selection:{configurationRef:'a'.repeat(64),assertCurrent:current,readSelection:async()=>selection},
-        github:{assertCurrent:current,createTools:()=>createGitHubF18F19Tools({runner:{async run(request){
-          assert.equal(request.args[4],'GET');assert.equal(request.args[5],'repos/synthetic/f19/issues/19');requests.push(request.args[5]);
-          return {exitCode:0,stderr:'',stdout:JSON.stringify({number:19,updated_at:issue.updatedAt,title:issue.title,body:issue.body,
-            state:'open',html_url:'https://github.com/synthetic/f19/issues/19'})};}},readToken:async()=> 'synthetic-only-token',
+      const runner={async run(request){
+        const endpoint=request.args[5];requests.push({endpoint,method:request.args[4]});let result;
+        if(endpoint==='repos/synthetic/f19/issues/19'){
+          assert.equal(request.args[4],'GET');result={number:19,updated_at:issue.updatedAt,title:issue.title,body:issue.body,
+            state:'open',html_url:'https://github.com/synthetic/f19/issues/19'};
+        }else if(endpoint==='repos/synthetic/f19/git/ref/heads/codex/f19-fixture'){
+          assert.equal(request.args[4],'GET');result={object:{sha:remoteHead}};
+        }else if(endpoint==='repos/synthetic/f19/pulls'){
+          assert.equal(request.args[4],'POST');const input=JSON.parse(request.stdin);assert.equal(input.draft,true);
+          assert.doesNotMatch(input.body,/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#/i);
+          if(unknownPr)throw Error('Synthetic original PR created but response lost');
+          result={number:93,html_url:'https://github.com/synthetic/f19/pull/93',head:{sha:remoteHead}};
+        }else assert.fail('Unexpected synthetic endpoint '+endpoint);
+        return {exitCode:0,stderr:'',stdout:JSON.stringify(result)};
+      }};
+      if(publish){
+        const root=join(dirname(config.path),'user'),git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+        git('init','-b','codex/f19-fixture');git('config','user.name','Synthetic');git('config','user.email','fixture@example.invalid');
+        git('add','.');git('commit','-qm','Original public issue fixture');git('remote','add','origin','https://github.com/synthetic/f19.git');
+        nativeSelection={...selection,headSha:git('rev-parse','HEAD'),verificationRecipeId:'publication-check',publication:{branch:'codex/f19-fixture',base:'main'}};
+        developerHost=createDesktopDeveloperToolsHost({githubModule:{register:registerGitHub},
+          github:{provider:new GhCliProvider({runner,readToken:async()=> 'synthetic-only-token',repositories:[issue.repo]}),available:async()=>true},
+          git:{options:{repository:issue.repo,rootPath:root,sourceBranch:'codex/f19-fixture',remoteName:'origin',remoteUrl:'https://github.com/synthetic/f19.git',
+            allowedPaths:['feature.cjs'],authorName:'Synthetic',authorEmail:'fixture@example.invalid',getCredentials:async()=>({token:'synthetic-only-token'})},available:async()=>true},
+          command:{tool:createWorkspaceCommandTool({rootPath:root,recipes:[{id:'publication-check',executable:process.execPath,args:['--test','checks/actual-check.cjs']}]}),rootPath:root,available:async()=>true}});
+      }
+      ports=createDesktopF19IssueRepairPorts({getApplication:()=>app,selection:{configurationRef:'a'.repeat(64),assertCurrent:current,readSelection:async()=>nativeSelection},
+        ...(publish?{publication:{configurationRef:'b'.repeat(64),assertCurrent:current,
+          readConfiguration:()=>({...developerHost.readF16PublicationConfiguration(),...(foreignRemote?{remoteUrl:'https://github.com/synthetic/foreign.git'}:{})}),
+          requestPresence:async()=>{presence++;if(revokePresence)revoked=true;}}}:{}),
+        github:{assertCurrent:current,createTools:()=>createGitHubF18F19Tools({runner,readToken:async()=> 'synthetic-only-token',
           repositories:[issue.repo],requiredChecks:['unused-read-fixture'],eligibleReviewers:['unused-read-fixture'],beforeWrite(){assert.fail('No GitHub write permitted');}})},
         authorizeExport:async value=>{exports.push(value);if(revokeDuringExport&&value.value?.repairTaskId)revoked=true;return true;}});
       assert.equal(ports.configuredWorkflowWorkerPorts[0].available(),false);
@@ -43,18 +93,31 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
       const missing=['f19_n04','f19_n05'].map(name=>({descriptor:{name:'workflow.host.'+name,version:'1.0.0',
         inputSchema:{type:'object',additionalProperties:false,properties:{}},outputSchema:{},sideEffect:'read',requiredScopes:['github:read'],
         idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute(){throw new ProtocolError('UNSUPPORTED_CAPABILITY','Explicit fixture: original publication/regression absent');}}));
-      const tools=[...config.tools,...ports.tools,...missing,r.createDesktopSubagentDispatchTool({competitionOnly:true,
+      const observed=(developerHost?.tools??[]).map(tool=>({...tool,async execute(...args){try{
+        if(replacePublishedBytes&&tool.descriptor.name==='workspace.run_allowed_command')
+          writeFileSync(join(dirname(config.path),'user','feature.cjs'),'// Unreviewed replacement still passes the checker\nmodule.exports=()=>3;\n');
+        return await tool.execute(...args);}
+        catch(error){failures.push({tool:tool.descriptor.name,message:error.message,stack:error.stack});throw error;}}}));
+      const tools=[...config.tools,...ports.tools,...observed,...missing,r.createDesktopSubagentDispatchTool({competitionOnly:true,
         getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scope)=>app.runDefaultSubagentWorker(task,worker,scope)})];
-      app=r.createRuntimeApplication({...config,tools,delegateUserTasks:true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,available:()=>true})),
+      app=r.createRuntimeApplication({...config,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,available:()=>true})),
         automaticTools:config.automaticTools.filter(tool=>tool.toolName!=='coding.repair.workflow'),
-        requestToolAuthorization:async scope=>{if(scope.toolName==='coding.repair.workflow'){
+        requestToolAuthorization:async scope=>{
+          const proof=ports.preparePublicationQuestion?.(scope,{prepare:(_scope,fence)=>assert.equal(fence.assertCurrent(),true)});
+          if(proof){
+            assert.throws(()=>ports.preparePublicationQuestion({...scope,argumentsDigest:'f'.repeat(64)},{prepare(){}}),{code:'UNAUTHORIZED'});
+            if(denyPublication===scope.toolName)return 'deny';
+            await ports.confirmPublicationPresence(scope);
+          }
+          if(scope.toolName==='coding.repair.workflow'){
           dispatchApprovals++;if(cancelDispatch)app.runtime.requestCancel(scope.taskId,'Synthetic original dispatch cancellation');
           return denyDispatch?'deny':'allow_once';}return 'allow_once';},
         competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true})),
         competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
           exportPolicyVersion:'explicit-f19-fixture-consent',accepts:()=>true,project:({result})=>result})),
         coordination:{execute:async request=>request.continuation||app.runtime.getTask(request.taskId).conversationId==='synthetic-f15'?{kind:'text',text:'Synthetic stopped workflow',verification:'mock'}:
-          {kind:'tool_proposal',proposalId:'original-f19',toolName:'workflow.f19.issue_repair',toolVersion:'1.0.0',arguments:selection,verification:'mock'}}});
+          {kind:'tool_proposal',proposalId:'original-f19',toolName:'workflow.f19.issue_repair',toolVersion:'1.0.0',arguments:nativeSelection,verification:'mock'}}});
+      if(developerHost){developerHost.bind(app);developerHost.configureF19Publication(ports.publication);}
       const originalClose=app.close.bind(app);app.close=()=>{
         const tasks=app.runtime.listTasks({limit:100}).items;
         const hosts=tasks.filter(task=>app.runtime.loadCheckpoint(task.taskId,'host-tool-intent'));
@@ -86,10 +149,21 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
           assert.equal(original.snapshot.snapshotDigest,digest(issue));assert.equal(original.snapshot.issueId,19);
           closedEvidence.original=original;
         }
-        originalClose();
+        closedEvidence.pushes=pushes;closedEvidence.presence=presence;
+        if(publish&&closedEvidence.proof){
+          const source=app.runtime.loadCheckpoint(closedEvidence.proof.dispatchTaskId,'coding-repair:parent');
+          const parent=app.runtime.loadCheckpoint(source.taskId,'coding-repair:parent');
+          const owner=app.runtime.loadCheckpoint(parent.taskId,'owned-workflow:intent:'+parent.operationId);
+          closedEvidence.publicationRecords=['command','commit','push','pr'].map(kind=>({kind,reference:app.runtime.loadCheckpoint(source.taskId,'f19:publication:'+kind)}));
+          closedEvidence.scope={parentTaskId:parent.taskId,localTaskId:source.taskId,operationId:parent.operationId,sessionId:owner.sessionId,
+            deadline:owner.deadline,signal:new AbortController().signal};
+          // N04 is unavailable by design in this phase, so its graph has already
+          // stopped. Inspect original persisted records rather than reauthorizing export.
+        }
+        originalClose();developerHost?.close();
       };return app;
     }});
-  return {report,evidence:closedEvidence,requests,exports,nodes};
+  return {report,evidence:closedEvidence,requests,exports,nodes,failures};
 }
 
 test('F19 original issue and selected candidate create exactly one real F15 child; unsupported close stays unavailable',async()=>{
@@ -124,4 +198,41 @@ test('F19 export revocation preserves the original completed child and refuses t
 
 test('F19 missing trusted providers exposes no tools or worker',()=>{
   const ports=createDesktopF19IssueRepairPorts();assert.deepEqual(ports.tools,[]);assert.deepEqual(ports.configuredWorkflowWorkerPorts,[]);
+});
+
+test('F19 original F15 publication uses real Git commit and command plus explicit fake remote/PR transport once',async t=>{
+  const f=await fixture({publish:true,testContext:t}),host=f.evidence.hosts.find(value=>value.toolName==='workflow.host.f19_n03');
+  assert.equal(host.task.state,'succeeded',JSON.stringify({failures:f.failures,hosts:f.evidence.hosts.map(value=>({tool:value.toolName,state:value.task.state,error:value.task.error}))}));
+  assert.equal(f.evidence.pushes,1);assert.equal(f.requests.filter(value=>value.method==='POST').length,1);assert.equal(f.evidence.presence,3);
+  assert.ok(f.evidence.publicationRecords.every(value=>value.reference));assert.equal(f.evidence.children.length,1);
+  const pr=f.evidence.hosts.find(value=>value.toolName==='github.pr.create');assert.equal(pr.confirmed.result.externalId,'93');
+  assert.equal(f.evidence.hosts.some(value=>value.toolName==='workflow.host.f19_n05'),false);
+});
+
+for(const tool of ['workspace.git.commit','workspace.git.push','github.pr.create'])
+test('F19 independent '+tool+' denial never advances publication',async t=>{
+  const f=await fixture({publish:true,testContext:t,denyPublication:tool});
+  assert.notEqual(f.evidence.hosts.find(value=>value.toolName==='workflow.host.f19_n03').task.state,'succeeded');
+  assert.equal(f.requests.filter(value=>value.method==='POST').length,0);assert.equal(f.evidence.children.length,1);
+  assert.equal(f.evidence.pushes,tool==='github.pr.create'?1:0);
+});
+
+test('F19 unknown original PR write retains the same child and never closes the issue',async t=>{
+  const f=await fixture({publish:true,testContext:t,unknownPr:true});
+  assert.equal(f.evidence.pushes,1);assert.equal(f.requests.filter(value=>value.method==='POST').length,1);
+  const pr=f.evidence.hosts.find(value=>value.toolName==='github.pr.create');assert.equal(pr.task.state,'waiting_reconciliation');
+  assert.ok(f.evidence.publicationRecords.find(value=>value.kind==='pr').reference);
+  const reopened=r.createRuntimeApplication({path:join(f.report.directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-f15-host'});
+  try{assert.equal(reopened.readHostToolTask(pr.task.taskId).task.state,'waiting_reconciliation');assert.equal(f.evidence.pushes,1);
+    assert.equal(f.requests.filter(value=>value.method==='POST').length,1);}finally{reopened.close();}
+});
+
+for(const [name,options] of [['changed published bytes with a passing checker',{replacePublishedBytes:true}],
+  ['revocation during native presence',{revokePresence:true}],['a different Git remote under the same repository label',{foreignRemote:true}]])
+test('F19 refuses '+name+' before publishing a PR',async t=>{
+  const f=await fixture({publish:true,testContext:t,...options});assert.equal(f.evidence.children.length,1);
+  assert.notEqual(f.evidence.hosts.find(value=>value.toolName==='workflow.host.f19_n03').task.state,'succeeded');
+  assert.equal(f.evidence.pushes,0);assert.equal(f.requests.filter(value=>value.method==='POST').length,0);
+  if(options.replacePublishedBytes)assert.equal(f.evidence.hosts.find(value=>value.toolName==='workspace.run_allowed_command').confirmed.result.exitCode,0);
+  if(options.revokePresence)assert.equal(f.evidence.presence,1);
 });

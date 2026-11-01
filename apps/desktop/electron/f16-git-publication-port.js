@@ -3,8 +3,6 @@ import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const key=runId=>'f16:git-publication:'+runId;
-const seal=runId=>'f16:git-publication-seal:'+runId;
 const fail=()=>{throw new ProtocolError('UNAUTHORIZED','Original F16 Git publication proof changed');};
 
 /** Read started/unknown original host invocations too. The question API deliberately
@@ -22,6 +20,15 @@ export function readF16OriginalInvocation(application,taskId,runId,scope){
 /** Trusted adapter over the original child SQLite records. resolve is supplied by
  * the F16 host and proves the exact graph → N05 → business edges, never ancestry. */
 export function createF16GitPublicationPort({getApplication,resolve,now=()=>new Date()}) {
+  return createWorkflowGitPublicationPort({getApplication,resolve,now,workflowId:'F16'});
+}
+
+/** Both workflows use the same Git publication contract and original Runtime
+ * storage; their exact graph resolvers and checkpoint namespaces stay separate. */
+export function createWorkflowGitPublicationPort({getApplication,resolve,now=()=>new Date(),workflowId}) {
+  if(!['F16','F19'].includes(workflowId))throw new ProtocolError('INVALID_ARGUMENT','Unsupported original Git publication workflow');
+  const key=runId=>workflowId.toLowerCase()+':git-publication:'+runId;
+  const seal=runId=>workflowId.toLowerCase()+':git-publication-seal:'+runId;
   function original(context,target={taskId:context.taskId,runId:context.runId}) {
     const application=getApplication(),runtime=application.runtime;
     if(context.signal.aborted||Date.parse(context.deadline)<=now().getTime())fail();
@@ -74,7 +81,7 @@ export function createF16GitPublicationPort({getApplication,resolve,now=()=>new 
       const evidenceId='f16-git-readback-'+hash({taskId:context.taskId,runId:context.runId,intent});
       runtime.saveCheckpoint(intent.taskId,'trusted-readback-evidence:'+evidenceId,{evidenceId,kind:'observation',
         sourceRef:context.taskId+':'+context.runId,capturedAt:now().toISOString(),
-        summary:'Original F16 Git intent exact HEAD read back; no write retried',verification:'verified',sensitivity:'internal'});
+        summary:'Original '+workflowId+' Git intent exact HEAD read back; no write retried',verification:'verified',sensitivity:'internal'});
       runtime.reconcileToolExecution(intent.taskId,intent.runId,'applied',intent.expected,[evidenceId]);
     },
   };

@@ -87,6 +87,7 @@ export function createRuntimeF19EnqueueRepairHost(options?:{
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
   requiredScopes:readonly string[];
   now:()=>Date;
+  publishesPullRequest?:true;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   resolveEnqueue:(scope:Scope,context:ToolContext)=>Promise<{issueId:number;dispatchRead:OriginalRead}>;
   authorizeExport:(scope:Scope,result:{repairTaskId:string;issueId:number})=>Promise<boolean>;
@@ -105,7 +106,7 @@ export function createRuntimeF19EnqueueRepairHost(options?:{
     const child=readRuntimeCodingRepairDispatchChild(options.application,binding.dispatchRead);
     return {repairTaskId:child.taskId,issueId:binding.issueId};
   };
-  const tool=createOwnedWorkflowAdapter({nodeId:'F19_N03',kind:'host',sideEffect:'local_write',requiredScopes,
+  const tool=createOwnedWorkflowAdapter({nodeId:'F19_N03',kind:'host',sideEffect:options.publishesPullRequest?'external_write':'local_write',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
     outputSchema:{type:'object',additionalProperties:false,required:['repairTaskId','issueId'],
       properties:{repairTaskId:{type:'string'},issueId:{type:'integer',minimum:1}}},

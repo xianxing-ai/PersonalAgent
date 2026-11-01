@@ -50,3 +50,6 @@ F15 目前只 CAS 发布本地文件，不自动建立 PR。后续沿原 N03 及
 Git publication port 并保留 F16 的约束。N04 要求原关联 PR 实际 merge 读回、精确 merged checkout
 SHA、固定独立 bug 回归 recipe 和完整原 native sandbox 证据。缺真人签名、受限包、账号或配置时
 仍 unavailable；N05 在这些原证明和独立 Policy 全部通过后才可关闭原 Issue 并精确读回。
+
+第二段已补原 commit/push/PR 创建及持久关联，见 [原 PR 发布增量](F19_ORIGINAL_PR_PUBLICATION_20261101.md)。
+独立 merged checkout bug 回归与 close 仍未完成；本段首次增量和真实/Fake 证据边界保留。

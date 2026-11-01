@@ -224,7 +224,7 @@ export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,R
 export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
   RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';
 export {createWorkflowBusinessToolBridge,readWorkflowBusinessToolSource} from './application/workflow-business-tool-bridge.js';
-export {readRuntimeCodingRepairDispatchChild} from './application/coding-repair-dispatch-source.js';
+export {readRuntimeCodingRepairDispatchChild,readRuntimeCodingRepairPublishedSource} from './application/coding-repair-dispatch-source.js';
 export {createF24RecoveryWorkflowPorts} from './application/workflow-f24-worker.js';
 export type {F24RecoveryWorkflowOptions,RuntimeF24RecoveryPort} from './application/workflow-f24-worker.js';
 export type {PlanExecutionOptions,PlanExecutionSelection,PlanExecutionSource} from './application/plan-execution-source.js';
