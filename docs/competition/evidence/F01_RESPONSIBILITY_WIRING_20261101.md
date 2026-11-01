@@ -8,6 +8,12 @@ N09 的生命周期目标只能来自原 F01 配置输入，来源指令只能�
 
 新端口为 host-only provisional，无 wire、数据库或配置迁移。N09 先独立验证，N02 来源及完整九节点工厂随后推进；未具备节点仍 unavailable。实际 Runtime/Policy/SQLite 与 Synthetic 模型/用户点击/云传输分别记录，代码、构建与本机测试不替代真实平台、真人或整图验收。
 
+N02 增量：`readF01ContextBinding` 只读原配置图、用户父任务、执行模型选择与非秘密出机目的地；原 root/graph 配置、模型替换、取消均失效。Desktop `createF01ContextSelectionHost` 从原输入 `context={fact:{id,revision},responsibilitySession:{taskId,sessionId}}` 读取唯一公开 Fact 和同会话既有责任会话，经 `reference.source` 原生精确卡留下原 Runtime decisionRecorded 记录，再写既有 `createF01QueryBinding`。重复准备只读原选择，缺/未知/撤销不重发。正文 export 仍单独确认。
+
+`createF01WorkflowContextPorts` 消费原 publicMemory、同步公开 Fact head、proactive readResponsibility 及当前 `agentArtsModels`；无 lifecycle 的责任不伪装 active。原模型目录新增可辨别 `agentarts_catalog` 形状，仅声明已选模型的 profile/effort/route，始终 conditional，旧 gateway 形状兼容。最终同步检查核对 Fact、责任 lifecycle/原引用与当前模型，不跨 await 缓存有效性。N02 提供者尚须由唯一 F01 worker 组合，不能单独登记为整图完成。
+
+N02 必要验证：模型/配置与旧 F01 定向 20/20 已通过；新增精确原生选择检查 1/1（实际 Runtime/Intent/Policy/SQLite/proactive 存储，Synthetic Fact/图绑定/点击），覆盖重复不新增授权任务和撤回后拒绝。无真实云或真人验收结论。
+
 ## N09 首包与组合入口
 
 `createRuntimeF01LifecycleHost` 读取原 configured graph 的 `input.lifecycle`，只接受与该输入相同的 N09 host 参数；当前 descriptor 由原 configured binding 复核，原运行还须 Policy allow、executionStarted 和完整输入匹配。工具参数的 `expectedLifecycleRevision:0` 表示尚无记录，进入原 CAS 时映射为 `null`，避免扩大现有公开工具目录的 Schema 类型。原 task→原用户父任务决定 `sourceTaskId`，模型不能替换。write 与 CAS 后的 guard 均复核；后置校验失败保留 RESULT_UNKNOWN。

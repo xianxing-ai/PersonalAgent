@@ -40,6 +40,13 @@ test('F01 context is unavailable when any real composition port is missing',()=>
     const options={...f.options};delete options[key];assert.deepEqual(createRuntimeF01ContextHost(options).tools,[]);
   }
 });
+test('F01 distinguishes AgentArts catalog declarations from native gateway capabilities',async()=>{
+  const f=fixture(),catalog={kind:'agentarts_catalog',revision:'original-catalog',models:[{id:'original-text',verification:'conditional',
+    type:'text',availability:'unverified',requestProfile:'standard',reasoningEfforts:['high'],selectedReasoningEffort:'high',route:'agentarts-proxy'}]};
+  f.options.readModels=async()=>catalog;
+  const value=await f.tool.execute({},f.context);assert.deepEqual(value.models,catalog);
+  catalog.models[0].capabilities={toolCalling:true};await assert.rejects(f.tool.execute({},f.context),{code:'EXTERNAL_FAILURE'});
+});
 test('F01 reads only the bound original HostTask and exports only its confirmed result',async()=>{
   const f=fixture(),value=await f.tool.execute({},f.context);f.setResult(value);
   assert.equal(value.memory.facts[0].ref.id,'synthetic-fact');assert.equal(value.models.models[0].verification,'conditional');

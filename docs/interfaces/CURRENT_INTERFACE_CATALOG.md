@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-01 F01 原上下文与原生来源选择（provisional）
+
+`readF01ContextBinding` 只读原配置图/用户父任务/模型选择/目的地；Desktop `createF01ContextSelectionHost` 用原 `reference.source` 决定记录绑定单一公开 Fact 版本、精确 query 与既有责任会话，再进入原 `createF01QueryBinding`。`createF01WorkflowContextPorts` 消费原 Memory/proactive/AgentArts 目录，并提供同步来源最终检查；新 `agentarts_catalog` 保留 conditional，旧模型目录形状兼容。缺配置、撤销、过期或原决定不匹配均拒绝，不增加授权层/数据库迁移。唯一完整 F01 worker 尚待组合，不作为整图或真实验收；[当前证据](../competition/evidence/F01_RESPONSIBILITY_WIRING_20261101.md)。
+
 ## 2026-11-01 原生授权决定的精确只读引用（provisional）
 
 Desktop `AuthorizationIntentHost.request` 可选 `onConfirmed` 只在原任务成功、原 `decisionRecorded` 与 Policy/started/exact args 回执全部匹配后接收冻结引用 `{taskId,runId,commandId,action,payloadDigest,scopeDigest,deadline}`；旧 bool 返回和调用兼容。`readConfirmedDecision(reference)` 重新核实同一原 Runtime，SQLite 重开和重复读回不创建任务、不消费第二次 grant；字段替换、原结果污染、过期/失效均拒绝。该引用是历史决定证据，不是新权限；消费方须单独核对当前来源/目的/部署与精确 payload，正文出口不继承来源选择许可。实际原生 Intent/Question/Runtime/Policy 加旧授权与 F04 恢复回归 19/19 通过；点击与来源为 Synthetic，无真实云或真人验收提升。

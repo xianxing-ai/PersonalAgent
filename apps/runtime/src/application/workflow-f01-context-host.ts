@@ -9,8 +9,11 @@ type Scope={parentTaskId:string;localTaskId:string;operationId:string;sessionId:
 type Quote={conversationId:string;messageId:string;quoteRef:string;sha256:string};
 export interface F01ResponsibilitySnapshot {revision:string;items:{id:string;revision:number;
   authority:'explicit_instruction'|'inferred_interest';sourceQuotes:Quote[]}[]}
-export interface F01ModelSnapshot {revision:string;models:{id:string;verification:'conditional'|'verified';
+export interface F01GatewayModelSnapshot {revision:string;models:{id:string;verification:'conditional'|'verified';
   capabilities:{text:boolean;streaming:boolean;toolCalling:boolean;structuredOutput:boolean;vision:boolean}}[]}
+export interface F01AgentArtsCatalogSnapshot {kind:'agentarts_catalog';revision:string;models:{id:string;verification:'conditional';
+  type:'text';availability:'available'|'unverified';requestProfile:string;reasoningEfforts:string[];selectedReasoningEffort?:string;route?:'agentarts-proxy'|'runtime-bailian'}[]}
+export type F01ModelSnapshot=F01GatewayModelSnapshot|F01AgentArtsCatalogSnapshot;
 export interface F01ContextHostOptions {
   application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
   /** Public-scoped real MemoryQueryPort. It owns namespace, withdrawal and erasure checks. */
@@ -48,6 +51,18 @@ function validateResponsibilities(value:unknown):asserts value is F01Responsibil
   }
 }
 function validateModels(value:unknown):asserts value is F01ModelSnapshot {
+  if(plain(value)&&value.kind==='agentarts_catalog'){
+    if(Object.keys(value).sort().join(',')!=='kind,models,revision'||!text(value.revision)||!Array.isArray(value.models)||value.models.length!==1)
+      fail('EXTERNAL_FAILURE','Invalid original AgentArts model catalog');
+    for(const model of value.models)if(!plain(model)||Object.keys(model).some(key=>!['id','verification','type','availability','requestProfile','reasoningEfforts','selectedReasoningEffort','route'].includes(key))
+      ||!text(model.id)||model.verification!=='conditional'||model.type!=='text'||!['available','unverified'].includes(String(model.availability))
+      ||!['standard','deepseek-native-v1','bailian-deepseek-v1','huawei-openai-v1'].includes(String(model.requestProfile))
+      ||!Array.isArray(model.reasoningEfforts)||model.reasoningEfforts.length>32||model.reasoningEfforts.some(e=>typeof e!=='string'||!e||e.length>30)
+      ||model.selectedReasoningEffort!==undefined&&!model.reasoningEfforts.includes(model.selectedReasoningEffort)
+      ||model.route!==undefined&&!['agentarts-proxy','runtime-bailian'].includes(String(model.route)))
+      fail('EXTERNAL_FAILURE','Invalid original AgentArts model declaration');
+    return;
+  }
   if(!plain(value)||Object.keys(value).sort().join(',')!=='models,revision'||!text(value.revision)
     ||!Array.isArray(value.models)||!value.models.length||value.models.length>100)fail('UNSUPPORTED_CAPABILITY','Trusted model catalog unavailable');
   for(const model of value.models){

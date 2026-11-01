@@ -1612,6 +1612,23 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return matches[0];
   }
 
+  /** Original F01 source/model context for trusted native selection and export. */
+  readF01ContextBinding(scope:{taskId:string;sessionId:string;signal:AbortSignal}) {
+    if(this.profile!=='huawei_ict_agentarts'||scope.signal.aborted)return;
+    const binding=this.readConfiguredWorkflowBinding({...scope,workflowId:'F01'}),user=this.readDelegatedUserTaskParent(scope.taskId);
+    if(!binding||!user||binding.deadline!==user.deadline)return;
+    this.assertCompetitionTaskConfiguration(user.taskId);this.assertCompetitionTaskConfiguration(scope.taskId);
+    const source=this.runtime.getTask(user.taskId);
+    if(source.cancelRequested||source.conversationId!==user.conversationId||!source.goal
+      ||this.runtime.loadCheckpoint(source.taskId,'private-copy-erasure')!==undefined
+      ||this.runtime.loadCheckpoint(source.taskId,'private-copy-erasure-binding')!==undefined)return;
+    const raw=this.runtime.loadCheckpoint(scope.taskId,'execution-model'),selection=raw===undefined?undefined:parseExecutionModelSelection(raw);
+    if(selection&&!isDeepStrictEqual(this.resolveExecutionModel?.(selection),selection))
+      throw new ProtocolError('REVISION_CONFLICT','Original F01 execution model catalog changed');
+    return Object.freeze({binding,user:Object.freeze({...user}),selection:selection?Object.freeze({...selection}):undefined,
+      destination:this.readAuthorizationQuestionDestination(scope.taskId)});
+  }
+
   /** Read only the original active F15 host child, for task-bound approval discovery. */
   readPendingOwnedWorkflowHostTask(taskId:string):TaskSnapshot|undefined {
     try{return this.codingWorker?.pendingHostTask(taskId)??this.ownedWorkflowWorker?.pendingHostTask(taskId)
