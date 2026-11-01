@@ -117,24 +117,12 @@ export function createRuntimeF19EnqueueRepairHost(options?:{
   return {tools:[tool],unavailable:null};
 }
 
-export function createRuntimeF19MergedRepairReadbackHost(options?:{
-  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
-  requiredScopes:readonly string[];
-  now:()=>Date;
-  assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  resolveMergedReadback:(scope:Scope,context:ToolContext)=>Promise<{repo:string;issueId:number;mergeRead:OriginalRead;
-    regressionRead:OriginalRead;source:Record<string,unknown>}|undefined>;
-  authorizeExport:(scope:Scope,result:{verified:boolean;issueId:number})=>Promise<boolean>;
-}):HostBundle {
-  const ports=basePorts(options as Parameters<typeof basePorts>[0]);
-  if(!ports||typeof options?.resolveMergedReadback!=='function')return {tools:[],unavailable:'f19_merged_repair_readback_trusted_ports_unavailable'};
-  const {runtime,requiredScopes}=ports;
-  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F19',nodeId:'F19_N04',
-    hostToolName:'workflow.host.f19_n04',assertCurrent:ports.assertCurrent,now:ports.now});
-  const read=async(context:ToolContext)=>{
-    const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveMergedReadback']>>;
-    binding=await options.resolveMergedReadback(scope,context);
-    active(context);
+export type F19NativeRegressionBinding={repo:string;issueId:number;mergeRead:OriginalRead;
+  regressionRead:OriginalRead;source:Record<string,unknown>};
+/** Read-only original evidence proof, also consumed before the independently approved Issue close. */
+export function readRuntimeF19NativeRegression(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>,
+  scope:Scope,binding:F19NativeRegressionBinding|undefined):{verified:true;issueId:number} {
+    const {runtime}=application;
     if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.issueId)||binding.issueId<=0)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 merged repair readback unavailable');
     const args=binding.mergeRead?.arguments,source=binding.source;
@@ -142,10 +130,10 @@ export function createRuntimeF19MergedRepairReadbackHost(options?:{
       ||source.parentTaskId!==scope.parentTaskId||source.sessionId!==scope.sessionId||source.hostTaskId!==scope.localTaskId
       ||source.prNumber!==args.prNumber||source.headSha!==args.headSha)
       failOwnedHost('UNAUTHORIZED','F19 merged readback identity changed');
-    const merge=cacheOriginal(options.application,scope,binding.mergeRead,'github.merged_pr_readback');
+    const merge=cacheOriginal(application,scope,binding.mergeRead,'github.merged_pr_readback');
     if(!object(merge)||merge.merged!==true||merge.headSha!==args.headSha||merge.mergedSha!==source.mergedSha)
       failOwnedHost('UNSUPPORTED_CAPABILITY','Original F19 PR is not confirmed merged');
-    const result=cacheOriginal(options.application,scope,binding.regressionRead,'workspace.f19_regression_command');
+    const result=cacheOriginal(application,scope,binding.regressionRead,'workspace.f19_regression_command');
     const original=runtime.loadCheckpoint(binding.regressionRead.taskId,'f19-native-command:v1:'+binding.regressionRead.runId);
     const results=runtime.loadCheckpoint(binding.regressionRead.taskId,'native-sandbox-execution:'+binding.regressionRead.runId);
     const invocation=runtime.loadCheckpoint(binding.regressionRead.taskId,'application-tool-invocation:'+binding.regressionRead.runId);
@@ -165,6 +153,24 @@ export function createRuntimeF19MergedRepairReadbackHost(options?:{
       ||receipt.executionStarted!==true||receipt.stopped!==true)
       failOwnedHost('UNAUTHORIZED','Original F19 native regression did not finish successfully');
     return {verified:true,issueId:binding.issueId};
+}
+
+export function createRuntimeF19MergedRepairReadbackHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;
+  requiredScopes:readonly string[];
+  now:()=>Date;
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;
+  resolveMergedReadback:(scope:Scope,context:ToolContext)=>Promise<F19NativeRegressionBinding|undefined>;
+  authorizeExport:(scope:Scope,result:{verified:boolean;issueId:number})=>Promise<boolean>;
+}):HostBundle {
+  const ports=basePorts(options as Parameters<typeof basePorts>[0]);
+  if(!ports||typeof options?.resolveMergedReadback!=='function')return {tools:[],unavailable:'f19_merged_repair_readback_trusted_ports_unavailable'};
+  const {runtime,requiredScopes}=ports;
+  const active=(context:ToolContext)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F19',nodeId:'F19_N04',
+    hostToolName:'workflow.host.f19_n04',assertCurrent:ports.assertCurrent,now:ports.now});
+  const read=async(context:ToolContext)=>{
+    const scope=active(context),binding=await options.resolveMergedReadback(scope,context);active(context);
+    return readRuntimeF19NativeRegression(options.application,scope,binding);
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F19_N04',kind:'host',sideEffect:'read',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
@@ -182,7 +188,7 @@ export function createRuntimeF19CloseIssueHost(options?:{
   requiredScopes:readonly string[];
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  resolveCloseIssue:(scope:Scope)=>Promise<{repo:string;issueId:number;closeRead:OriginalRead}|undefined>;
+  resolveCloseIssue:(scope:Scope,context:ToolContext)=>Promise<{repo:string;issueId:number;closeRead:OriginalRead}|undefined>;
   authorizeExport:(scope:Scope,result:{issueId:number;closed:boolean})=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
@@ -192,7 +198,7 @@ export function createRuntimeF19CloseIssueHost(options?:{
     hostToolName:'workflow.host.f19_n05',assertCurrent:ports.assertCurrent,now:ports.now});
   const read=async(context:ToolContext)=>{
     const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveCloseIssue']>>;
-    try {binding=await options.resolveCloseIssue(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F19 close issue unavailable');}
+    binding=await options.resolveCloseIssue(scope,context);
     active(context);
     if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.issueId)||binding.issueId<=0)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 close issue unavailable');
@@ -209,6 +215,7 @@ export function createRuntimeF19CloseIssueHost(options?:{
       properties:{issueId:{type:'integer',minimum:1},closed:{const:true}}},
     async execute(_input,context){const result=await read(context);active(context);
       if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F19 close issue export denied');
+      active(context);if(!isDeepStrictEqual(result,await read(context)))failOwnedHost('REVISION_CONFLICT','F19 close evidence changed during export');
       return result;}});
   return {tools:[tool],unavailable:null};
 }

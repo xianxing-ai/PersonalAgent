@@ -205,7 +205,7 @@ export {readF16Source,awaitF16Port} from './application/f16-source-receipts.js';
 export type {F16CiFailureOptions,F16FailureBinding,F16FailureResult} from './application/workflow-f16-ci-failure-host.js';
 export {createRuntimeF18BoundPrDiffHost,createRuntimeF18MergeGateHost,createRuntimeF18RegisteredMergeHost} from './application/workflow-f18-pr-graph-host.js';
 export {createRuntimeF19IssueSnapshotHost,createRuntimeF19EnqueueRepairHost,createRuntimeF19MergedRepairReadbackHost,
-  createRuntimeF19CloseIssueHost} from './application/workflow-f19-issue-graph-host.js';
+  createRuntimeF19CloseIssueHost,readRuntimeF19NativeRegression} from './application/workflow-f19-issue-graph-host.js';
 export {createRuntimeF22ShadowObservationHost} from './application/workflow-f22-shadow-graph-host.js';
 export {createRuntimeF26DeploymentReadbackHost} from './application/workflow-f26-deployment-graph-host.js';
 export {verifyF20HarnessCompletion} from './application/f20-verify-completion.js';

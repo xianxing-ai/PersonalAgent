@@ -210,3 +210,11 @@ npm run check
 
 真实验收另行授权：白名单仓库 run/job 列表、失败日志、两端 SHA diff；写验收通过
 Runtime 审批对测试 issue/PR 操作并读回，覆盖 unknown/reconciliation，不自动 merge。
+
+F18/F19 显式图工具使用 `createGitHubF18F19Tools`。默认集合保持原 PR/Issue 读取与受控合并；
+只有受信 F19 消费方设置 `enableIssueClose:true` 才增加 `github.registered_close_issue`。
+该工具要求原 PR/head/merged SHA、原 Issue 版本和内容摘要，并在原 Runtime `beforeWrite`
+记录后一次 PATCH、精确 GET 读回；不声称 GitHub Issue PATCH 支持原子 CAS，unknown 不重试。
+完整原任务/独立 native 回归与关闭 Policy 由 Runtime/Desktop 核验，配置不授予写许可。
+当前 [F19 闭环证据](../../../docs/competition/evidence/F19_ORIGINAL_ISSUE_CLOSE_20261101.md)
+明确区分本地实际执行与外部服务/隔离 Fixture，接口仍 provisional。

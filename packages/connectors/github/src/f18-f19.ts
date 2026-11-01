@@ -28,6 +28,8 @@ export interface GitHubF18F19Options extends GhProviderOptions {
   eligibleReviewers:readonly string[];
   /** Persist the original write attempt in the existing Runtime before dispatch. */
   beforeWrite:(operation:string,input:Record<string,unknown>,context:ToolContext)=>void;
+  /** Explicit F19 consumer only; existing F18 registrations remain read/merge-only. */
+  enableIssueClose?:boolean;
 }
 
 const gateQuery=`query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){nameWithOwner
@@ -159,6 +161,33 @@ export function createGitHubF18F19Tools(options:GitHubF18F19Options):RegisteredT
           fail('REVISION_CONFLICT','Original Issue identity changed');
         return {issueId:input.issueId,closed:issue.state==='closed',updatedAt:issue.updated_at};
       }
+      if(operation==='registered_close_issue'&&options.enableIssueClose===true){
+        const original=await pull(true);
+        if(original.merged!==true||original.state!=='closed'||original.merge_commit_sha!==input.mergedSha)
+          fail('REVISION_CONFLICT','Original repair PR merge changed');
+        const checkIssue=(value:unknown)=>{
+          const issue=record(value);
+          if(issue.number!==input.issueId||issue.pull_request||issue.html_url!==`https://github.com/${input.repo}/issues/${input.issueId}`
+            ||typeof issue.updated_at!=='string'||!Number.isFinite(Date.parse(issue.updated_at))
+            ||typeof issue.title!=='string'||typeof issue.body!=='string'&&issue.body!==null)
+            fail('REVISION_CONFLICT','Original close Issue identity changed');
+          const snapshot={repo:input.repo,issueId:input.issueId,updatedAt:input.expectedUpdatedAt,
+            title:redactGitHubText(issue.title,[token]),body:redactGitHubText(issue.body??'',[token])};
+          if(createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')!==input.snapshotDigest)
+            fail('REVISION_CONFLICT','Original close Issue content changed');
+          return issue;
+        };
+        const before=checkIssue(await request(`${root}/issues/${input.issueId}`));
+        if(before.updated_at!==input.expectedUpdatedAt||before.state!=='open')fail('REVISION_CONFLICT','Original close Issue revision changed');
+        // GitHub PATCH is not an atomic If-Match/CAS. One original write, then
+        // exact response/readback; any observed race or ambiguity remains unknown.
+        const closed=checkIssue(await request(`${root}/issues/${input.issueId}`,'PATCH',{state:'closed',state_reason:'completed'}));
+        if(closed.state!=='closed'||closed.state_reason!=='completed')fail('RESULT_UNKNOWN','Original Issue close unconfirmed');
+        const after=checkIssue(await request(`${root}/issues/${input.issueId}`));
+        if(after.state!=='closed'||after.state_reason!=='completed'||after.updated_at!==closed.updated_at)
+          fail('RESULT_UNKNOWN','Original Issue close readback changed');
+        return {issueId:input.issueId,closed:true,updatedAt:after.updated_at,mergedSha:input.mergedSha};
+      }
       return fail('UNSUPPORTED_CAPABILITY','GitHub workflow operation unavailable');
     }catch(error){
       if(dispatched)fail('RESULT_UNKNOWN','Original GitHub write requires read-only reconciliation');
@@ -166,7 +195,7 @@ export function createGitHubF18F19Tools(options:GitHubF18F19Options):RegisteredT
       return fail('EXTERNAL_FAILURE','GitHub workflow operation failed');
     }
   };
-  const specifications=[
+  const specifications:readonly (readonly [string,Record<string,unknown>,Record<string,unknown>])[]=[
     ['bound_pr_diff',object(identity),object({headSha:sha,filesChanged:{type:'integer',minimum:0},additions:{type:'integer',minimum:0},
       deletions:{type:'integer',minimum:0},diff:{type:'string',maxLength:65536},diffDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}})],
     ['current_head_merge_gate',object(identity),object({headSha:sha,mergeRequirementsSatisfied:{type:'boolean'}})],
@@ -175,9 +204,13 @@ export function createGitHubF18F19Tools(options:GitHubF18F19Options):RegisteredT
     ['issue_snapshot',object({repo:repository,issueId:integer,expectedUpdatedAt:{type:'string',format:'date-time'}}),
       object({count:{const:1},issueId:integer,updatedAt:{type:'string',format:'date-time'},title:{type:'string',maxLength:1024},body:{type:'string',maxLength:32768}})],
     ['issue_close_readback',object({repo:repository,issueId:integer}),object({issueId:integer,closed:{type:'boolean'},updatedAt:{type:'string',format:'date-time'}})],
-  ] as const;
+    ...(options.enableIssueClose===true?[
+      ['registered_close_issue',object({...identity,issueId:integer,mergedSha:sha,expectedUpdatedAt:{type:'string',format:'date-time'},
+        snapshotDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}}),
+      object({issueId:integer,closed:{const:true},updatedAt:{type:'string',format:'date-time'},mergedSha:sha})] as const]:[]),
+  ];
   return specifications.map(([operation,inputSchema,outputSchema])=>{
-    const write=operation==='registered_merge',scope=write?'github:write':'github:read';
+    const write=operation==='registered_merge'||operation==='registered_close_issue',scope=write?'github:write':'github:read';
     return {descriptor:{name:'github.'+operation,version:GITHUB_CONNECTOR_VERSION,inputSchema,outputSchema,
       sideEffect:write?'external_write':'read',requiredScopes:[scope],idempotencySupport:!write,recoverySupport:!write,requiresPresence:write},
     execute:async(input,context)=>{

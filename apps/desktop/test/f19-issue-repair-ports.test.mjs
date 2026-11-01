@@ -31,10 +31,10 @@ const secret='synthetic-f19-receipt-secret-at-least-32-characters';
 async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=false,revokeDuringExport=false,
   publish=false,testContext,denyPublication,unknownPr=false,replacePublishedBytes=false,revokePresence=false,foreignRemote=false,
   regression=false,unmerged=false,wrongCheckout=false,changedChecker=false,regressionFails=false,unknownRegression=false,
-  denyRegression=false,cancelRegression=false}={}) {
+  denyRegression=false,cancelRegression=false,fullClose=false,denyClose=false,unknownClose=false,changedCloseIssue=false,postCloseChanged=false}={}) {
   let app,ports,developerHost,revoked=false,closedEvidence,dispatchApprovals=0,nativeSelection=selection,remoteHead,pushes=0,presence=0;
   const requests=[],exports=[],nodes=[],failures=[];
-  let native,regressionOptions,prepareMergedCheckout,nativeExecutions=0,regressionApprovals=0,mergeReady=false;
+  let native,regressionOptions,prepareMergedCheckout,nativeExecutions=0,regressionApprovals=0,mergeReady=false,issueClosed=false,closeApprovals=0;
   if(publish){
     const originalSpawn=childProcess.spawn;
     testContext.mock.method(childProcess,'spawn',(file,args,options)=>{
@@ -62,8 +62,15 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
       const runner={async run(request){
         const endpoint=request.args[5];requests.push({endpoint,method:request.args[4]});let result;
         if(endpoint==='repos/synthetic/f19/issues/19'){
-          assert.equal(request.args[4],'GET');result={number:19,updated_at:issue.updatedAt,title:issue.title,body:issue.body,
-            state:'open',html_url:'https://github.com/synthetic/f19/issues/19'};
+          if(request.args[4]==='PATCH'){
+            assert.equal(fullClose,true);assert.equal(closeApprovals,1);
+            assert.deepEqual(JSON.parse(request.stdin),{state:'closed',state_reason:'completed'});issueClosed=true;
+            if(unknownClose)throw Error('Synthetic original close sent, response lost');
+          }else assert.equal(request.args[4],'GET');
+          result={number:19,updated_at:issueClosed?'2026-11-01T01:00:00Z':mergeReady&&changedCloseIssue?'2026-11-01T00:01:00Z':issue.updatedAt,
+            title:issue.title,body:issue.body,state:issueClosed?'closed':'open',state_reason:issueClosed?'completed':null,
+            html_url:'https://github.com/synthetic/f19/issues/19'};
+          if(issueClosed&&request.args[4]==='GET'&&postCloseChanged)result.updated_at='2026-11-01T02:00:00Z';
         }else if(endpoint==='repos/synthetic/f19/git/ref/heads/codex/f19-fixture'){
           assert.equal(request.args[4],'GET');result={object:{sha:remoteHead}};
         }else if(endpoint==='repos/synthetic/f19/pulls'){
@@ -124,14 +131,14 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
         ...(publish?{publication:{configurationRef:'b'.repeat(64),assertCurrent:current,
           readConfiguration:()=>({...developerHost.readF16PublicationConfiguration(),...(foreignRemote?{remoteUrl:'https://github.com/synthetic/foreign.git'}:{})}),
           requestPresence:async()=>{presence++;if(revokePresence)revoked=true;}}}:{}),
-        ...(regressionOptions?{regression:regressionOptions}:{}),
-        github:{assertCurrent:current,createTools:()=>createGitHubF18F19Tools({runner,readToken:async()=> 'synthetic-only-token',
-          repositories:[issue.repo],requiredChecks:['unused-read-fixture'],eligibleReviewers:['unused-read-fixture'],beforeWrite(){assert.fail('No GitHub write permitted');}})},
+        ...(regressionOptions?{regression:regressionOptions}:{}),closeIssue:fullClose,
+        github:{assertCurrent:current,createTools:(options={})=>createGitHubF18F19Tools({runner,readToken:async()=> 'synthetic-only-token',
+          repositories:[issue.repo],requiredChecks:['unused-read-fixture'],eligibleReviewers:['unused-read-fixture'],beforeWrite(){assert.fail('No GitHub write permitted');},...options})},
         authorizeExport:async value=>{exports.push(value);if(revokeDuringExport&&value.value?.repairTaskId)revoked=true;return true;}});
-      assert.equal(ports.configuredWorkflowWorkerPorts[0].available(),false);
+      assert.equal(ports.configuredWorkflowWorkerPorts[0].available(),fullClose);
       // Stage-one boundary only: explicitly let this fixture reach N03. The
       // production worker stays unavailable and the fixture N04 rejects all completion.
-      const missing=[...(regression?[]:['f19_n04']),'f19_n05'].map(name=>({descriptor:{name:'workflow.host.'+name,version:'1.0.0',
+      const missing=[...(regression?[]:['f19_n04']),...(fullClose?[]:['f19_n05'])].map(name=>({descriptor:{name:'workflow.host.'+name,version:'1.0.0',
         inputSchema:{type:'object',additionalProperties:false,properties:{}},outputSchema:{},sideEffect:'read',requiredScopes:['github:read'],
         idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute(){throw new ProtocolError('UNSUPPORTED_CAPABILITY','Explicit fixture: original publication/regression absent');}}));
       const observed=(developerHost?.tools??[]).map(tool=>({...tool,async execute(...args){try{
@@ -143,9 +150,13 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
         catch(error){failures.push({tool:tool.descriptor.name,message:error.message,stack:error.stack});throw error;}}}));
       const tools=[...config.tools,...hostTools,...observed,...missing,r.createDesktopSubagentDispatchTool({competitionOnly:true,
         getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scope)=>app.runDefaultSubagentWorker(task,worker,scope)})];
-      app=r.createRuntimeApplication({...config,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,available:()=>true})),
+      app=r.createRuntimeApplication({...config,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,...(fullClose?{}:{available:()=>true})})),
         automaticTools:config.automaticTools.filter(tool=>tool.toolName!=='coding.repair.workflow'),
         requestToolAuthorization:async scope=>{
+          const closeProof=ports.prepareCloseQuestion?.(scope,{prepare(_scope,fence){assert.equal(fence.assertCurrent(),true);}});
+          if(closeProof){
+            closeApprovals++;if(denyClose)return 'deny';await ports.confirmClosePresence(scope);
+          }
           const regressionProof=ports.prepareRegressionQuestion?.(scope,{prepare(_scope,fence){
             assert.equal(fence.assertCurrent(),true);assert.match(fence.requirements[0].summary,/原 PR 已独立审核并合并/);}});
           if(regressionProof){
@@ -204,6 +215,31 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
           closedEvidence.original=original;
         }
         closedEvidence.pushes=pushes;closedEvidence.presence=presence;closedEvidence.nativeExecutions=nativeExecutions;closedEvidence.regressionApprovals=regressionApprovals;
+        closedEvidence.closeApprovals=closeApprovals;
+        if(fullClose&&hosts.some(task=>app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='workflow.host.f19_n05'&&task.state==='succeeded')){
+          // Audit the persisted proof after the timed product flow has ended.
+          // These negative reads must not spend the original task's 60s budget.
+          const nativeTask=hosts.find(task=>app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='workspace.f19_regression_command');
+          const runId='host-tool-'+nativeTask.taskId,key='native-sandbox-execution:'+runId,original=app.runtime.loadCheckpoint(nativeTask.taskId,key);
+          const bindingKey='f19-native-command:v1:'+runId,bound=app.runtime.loadCheckpoint(nativeTask.taskId,bindingKey);
+          const parent=app.runtime.loadCheckpoint(nativeTask.taskId,'coding-repair:parent'),owner=app.runtime.loadCheckpoint(parent.taskId,'coding-repair:parent');
+          const intent=app.runtime.loadCheckpoint(owner.taskId,'owned-workflow:intent:'+owner.operationId);
+          const scope={parentTaskId:owner.taskId,localTaskId:parent.taskId,operationId:owner.operationId,sessionId:intent.sessionId,
+            deadline:intent.deadline,signal:new AbortController().signal};
+          const binding={repo:issue.repo,issueId:19,source:bound.source,mergeRead:app.runtime.loadCheckpoint(parent.taskId,'f19:regression:merge'),
+            regressionRead:app.runtime.loadCheckpoint(parent.taskId,'f19:regression:command')};
+          assert.deepEqual(r.readRuntimeF19NativeRegression(app,scope,binding),{verified:true,issueId:19});
+          for(const patch of [{enforced:false},{stopped:false},{executionStarted:false},{argumentsDigest:'foreign'},{originalBindingDigest:'foreign'}]){
+            app.runtime.saveCheckpoint(nativeTask.taskId,key,[{...original[0],...patch}]);
+            assert.throws(()=>r.readRuntimeF19NativeRegression(app,scope,binding),{code:'UNAUTHORIZED'});
+          }
+          app.runtime.saveCheckpoint(nativeTask.taskId,key,original);
+          for(const patch of [{root:'foreign'},{source:{...bound.source,mergedSha:'f'.repeat(40)}},{recipes:[{executable:'foreign',args:[]}]}]){
+            app.runtime.saveCheckpoint(nativeTask.taskId,bindingKey,{...bound,...patch});
+            assert.throws(()=>r.readRuntimeF19NativeRegression(app,scope,binding),{code:'UNAUTHORIZED'});
+          }
+          app.runtime.saveCheckpoint(nativeTask.taskId,bindingKey,bound);closedEvidence.regressionProofChecked=true;
+        }
         if(publish&&closedEvidence.proof){
           const source=app.runtime.loadCheckpoint(closedEvidence.proof.dispatchTaskId,'coding-repair:parent');
           const parent=app.runtime.loadCheckpoint(source.taskId,'coding-repair:parent');
@@ -262,6 +298,30 @@ test('F19 original merged PR runs an independent fixed checker through its nativ
   assert.equal(f.evidence.regressionApprovals,1);
   assert.equal(f.requests.filter(value=>value.endpoint.endsWith('/pulls/93')).length,1);
   assert.equal(f.requests.some(value=>value.method==='PATCH'),false);
+});
+
+test('F19 complete configured worker closes only its original Issue after native regression and exact readback',async t=>{
+  const f=await fixture({publish:true,regression:true,fullClose:true,testContext:t});
+  const host=f.evidence.hosts.find(value=>value.toolName==='workflow.host.f19_n05');
+  assert.equal(host?.task.state,'succeeded',JSON.stringify({failures:f.failures,hosts:f.evidence.hosts.map(value=>({tool:value.toolName,state:value.task.state,error:value.task.error}))}));
+  assert.deepEqual(host.confirmed.result,{issueId:19,closed:true});assert.equal(f.evidence.closeApprovals,1);
+  assert.equal(f.evidence.regressionProofChecked,true);
+  assert.equal(f.evidence.nativeExecutions,1);assert.equal(f.requests.filter(value=>value.method==='PATCH').length,1);
+  assert.equal(f.evidence.tasks.find(value=>value.taskId===f.evidence.scope.parentTaskId).state,'succeeded');
+});
+
+for(const [name,options,patches] of [['denied original close',{denyClose:true},0],['changed original Issue revision',{changedCloseIssue:true},0],
+  ['unknown original close',{unknownClose:true},1],['changed close response readback',{postCloseChanged:true},1]])
+test('F19 '+name+' cannot claim full completion or resend close',async t=>{
+  const f=await fixture({publish:true,regression:true,fullClose:true,testContext:t,...options});
+  assert.notEqual(f.evidence.tasks.find(value=>value.taskId===f.evidence.scope.parentTaskId).state,'succeeded');
+  assert.equal(f.requests.filter(value=>value.method==='PATCH').length,patches);
+  if(patches){
+    const child=f.evidence.hosts.find(value=>value.toolName==='github.registered_close_issue');assert.equal(child.task.state,'waiting_reconciliation');
+    const reopened=r.createRuntimeApplication({path:join(f.report.directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-f15-host'});
+    try{assert.equal(reopened.readHostToolTask(child.task.taskId).task.state,'waiting_reconciliation');assert.equal(f.requests.filter(value=>value.method==='PATCH').length,1);}
+    finally{reopened.close();}
+  }
 });
 
 for(const [name,options,executions] of [['unmerged original PR',{unmerged:true},0],['different independent checkout SHA',{wrongCheckout:true},0],

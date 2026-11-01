@@ -58,3 +58,5 @@ publication 的受信在场回调。Main 应在原卡准备/确认链消费；N0
 
 首轮成功路径因合成 clone 的默认 CRLF 转换未通过精确字节门禁；夹具改为在 clone 时明确
 `core.autocrlf=false`，未放宽产品哈希检查。原失败日志保留。
+
+后续 N05 与完整 configured worker 见 [原 Issue 关闭增量](F19_ORIGINAL_ISSUE_CLOSE_20261101.md)。
