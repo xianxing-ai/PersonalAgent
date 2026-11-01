@@ -2,6 +2,14 @@
 
 目标为 `huawei_ict_agentarts`。本记录仅证明所列探针实际观察，不将环境可用性、Synthetic 测试或历史配置视作 28 图验收。#531 仍须全部接线及真实验收后才能合并。
 
+## 2026-11-01 原配置复查
+
+07:07:29.044 UTC，调用实际 `createAgentArtsConfig` / `createLiveVoiceConfig` 只读检查默认 Desktop userData。AgentArts 从现有环境配置可读，传输为 HTTPS，选择仍是 **Latest**；没有固定版本或 appToken。默认目录不存在 `agentarts-config.json`、`live-voice-config.json`、`mail-config.json`、`calendar-config.json`。Live 为未配置，音频许可为 false。全程无网络请求、无解密调用、无配置变更或凭据输出。
+
+本轮脱敏回执保存在集成树 `.cache/availability-20261101.json`，SHA256 `0210df09ad5691a7d85da498ca3adc917cb5937aa13f7531ca618004b2cdfec8`。`runtimeReady:true` 只表示配置读取条件满足，不能代替固定 IMAGE28 部署、真实 API、trace 或评估验收。早先 `wiki-int` 的 401 记录仍为历史探针，不作为本次固定版本的服务结果。
+
+本轮 AgentArts 控制台界面复核因自动化工具无法判定浏览器当前 URL 而被拒绝，已停止该界面路径。当前没有通过界面补齐固定部署或真实账号配置。
+
 ## 当前设备探针
 
 2026-10-31 09:50:42 UTC，用 Windows `winmm.dll` 的默认设备进行一次有界采样和播放。未保存录音、未发送音频到网络，未改变设备或系统权限设置。

@@ -19,6 +19,8 @@ test('F11 projection discovers each original graph question and excludes unrelat
   assert.deepEqual(readF11ConversationQuestions({application,hosts:[host,host],tasks,conversationId:'original-conversation'}),[question()]);
   assert.ok(reads.every(scope=>scope.conversationId==='original-conversation'));
   assert.deepEqual(readF11ConversationQuestions({application,hosts:[host],tasks}),[]);
+  assert.deepEqual(readF11ConversationQuestions({application:{},hosts:[undefined],tasks,conversationId:'original-conversation'}),[],
+    'unconfigured and Fake Main snapshots do not require a real Runtime question port');
 });
 
 test('F11 reply contains exact original question identity and only the requested field',()=>{
