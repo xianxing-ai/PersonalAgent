@@ -1,5 +1,6 @@
 import {existsSync,mkdirSync,readFileSync,renameSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {createAgentArtsTransportConfig} from './agentarts-transport-config.js';
 
 const transportEnvironment=value=>({PA_AGENTARTS_TRANSPORT:value.transport,
@@ -50,12 +51,13 @@ function validate(value) {
 /** Host-only storage; snapshots never return either credential value. */
 export function createAgentArtsConfig({userData,safeStorage,environment=process.env,fetchImpl=globalThis.fetch}) {
   const file=path.join(userData,'agentarts-config.json');
-  let saved,failure='';
+  let saved,failure='',configurationRef=randomUUID();
   const defaults={gatewayUrl:environment.PA_AGENTARTS_GATEWAY_URL??'',runtimeName:environment.PA_AGENTARTS_RUNTIME_NAME??''};
   try {
     if (existsSync(file)) {
       const data=JSON.parse(readFileSync(file,'utf8'));
       if (data.version!==1 || !safeStorage.isEncryptionAvailable() || typeof data.encrypted!=='string') throw Error();
+      if(data.reference!==undefined){if(typeof data.reference!=='string'||!/^[a-f0-9-]{36}$/u.test(data.reference))throw Error();configurationRef=data.reference;}
       saved=validate(JSON.parse(safeStorage.decryptString(Buffer.from(data.encrypted,'base64'))));
     } else if (environment.PA_AGENTARTS_AUTHORIZATION) saved=validate({...defaults,authorization:environment.PA_AGENTARTS_AUTHORIZATION});
   } catch {failure='AgentArts 配置不可用，请在设置中重新保存';}
@@ -94,6 +96,8 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       reason:failure||transportFailure||(saved?'已配置；真实连通以任务结果为准':'请配置 AgentArts 网关、运行时名称和 Authorization')};
   };
   const config={snapshot,runtimeBinding,isTransportCurrent,
+    // Opaque identity only; consumers cannot obtain a credential or an execution grant.
+    readCredentialReference(){return saved?'agentarts:'+configurationRef:undefined;},
     transportConfig(binding) {
       const initial=currentTransport();
       // Keep the HTTPS destination guard even without WSS options.
@@ -105,7 +109,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
     },
     readTransportPreferences,
     readModelPreferences(){return saved?.modelPreferences?structuredClone(saved.modelPreferences):undefined;},
-    saveModelPreferences(value){value=validatePreferences(value);if(!safeStorage.isEncryptionAvailable())throw Error('本机安全存储不可用');if(!saved)throw Error(snapshot().reason);const next={...saved,modelPreferences:structuredClone(value)};const encrypted=safeStorage.encryptString(JSON.stringify(next)).toString('base64');mkdirSync(userData,{recursive:true});writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted}),'utf8');renameSync(file+'.tmp',file);saved=next;},
+    saveModelPreferences(value){value=validatePreferences(value);if(!safeStorage.isEncryptionAvailable())throw Error('本机安全存储不可用');if(!saved)throw Error(snapshot().reason);const next={...saved,modelPreferences:structuredClone(value)};const encrypted=safeStorage.encryptString(JSON.stringify(next)).toString('base64');mkdirSync(userData,{recursive:true});writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted,reference:configurationRef}),'utf8');renameSync(file+'.tmp',file);saved=next;},
     binding(){if (!saved) throw Error(snapshot().reason);return {gatewayUrl:saved.gatewayUrl,runtimeName:saved.runtimeName};},
     readAuthorization(binding,transport) {assertBinding(binding,transport);return saved.authorization;},
     readTransportOptions,
@@ -146,9 +150,10 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
         ...(sameDestination&&deploymentVersion===saved?.deploymentVersion&&saved?.modelPreferences?{modelPreferences:saved.modelPreferences}:{})});
       if (!safeStorage.isEncryptionAvailable()) throw Error('本机安全存储不可用，未保存');
       const encrypted=safeStorage.encryptString(JSON.stringify(value)).toString('base64');
+      const reference=randomUUID();
       mkdirSync(userData,{recursive:true});
-      writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted}),'utf8');renameSync(file+'.tmp',file);
-      saved=value;failure='';return snapshot();
+      writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted,reference}),'utf8');renameSync(file+'.tmp',file);
+      saved=value;configurationRef=reference;failure='';return snapshot();
     },
     revoke() {
       saved=undefined;failure='';

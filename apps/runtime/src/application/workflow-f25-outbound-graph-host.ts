@@ -19,7 +19,8 @@ export function createRuntimeF25OutboundContextHost(options?:{
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:{filteredOut:string[];cleanPayloadReady:boolean})=>Promise<boolean>;
   now:()=>Date;
-}):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
+}):{tools:RegisteredTool[];assertReceiptCurrent?:(input:{context:ToolContext;result:unknown})=>void;
+  authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
   if(!options?.application?.runtime||!Array.isArray(options.requiredScopes)||!options.requiredScopes.length
     ||typeof options.readOutboundContext!=='function'||typeof options.assertCurrent!=='function'
     ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')
@@ -59,19 +60,19 @@ export function createRuntimeF25OutboundContextHost(options?:{
         failOwnedHost('REVISION_CONFLICT','F25 original outbound source changed');
       return inspected.result;
     }});
-  return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
+  const assertReceiptCurrent=({context,result}:{context:ToolContext;result:unknown})=>{
     const scope=active(context);
     if(!result||typeof result!=='object'||!Array.isArray((result as {filteredOut?:unknown}).filteredOut)
       ||typeof (result as {cleanPayloadReady?:unknown}).cleanPayloadReady!=='boolean')failOwnedHost('UNAUTHORIZED','F25 outbound receipt unavailable');
     const args=(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:{testPayloadContainsPrivate?:boolean}})?.arguments;
     const original=runtime.loadCheckpoint(context.taskId,'f25:outbound-source') as ReturnType<typeof inspect>|undefined;
-    const assertSource=()=>{
-      if(!original||!isDeepStrictEqual(result,original.result)||!isDeepStrictEqual(original,inspect(scope,context,args??{})))
-        failOwnedHost('REVISION_CONFLICT','F25 original outbound source changed');
-    };
-    assertSource();
+    if(!original||!isDeepStrictEqual(result,original.result)||!isDeepStrictEqual(original,inspect(scope,context,args??{})))
+      failOwnedHost('REVISION_CONFLICT','F25 original outbound source changed');
+  };
+  return {tools:[tool],unavailable:null,assertReceiptCurrent,authorizeReceipt:async({context,result})=>{
+    const scope=active(context);assertReceiptCurrent({context,result});
     if(await options.authorizeExport(scope,structuredClone(result) as {filteredOut:string[];cleanPayloadReady:boolean})!==true)
       failOwnedHost('UNAUTHORIZED','F25 outbound export denied');
-    active(context);assertSource();
+    active(context);assertReceiptCurrent({context,result});
   }};
 }

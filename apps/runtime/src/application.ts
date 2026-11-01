@@ -76,6 +76,8 @@ export {createRuntimeF11CalendarChangeHost,createRuntimeF11PlanGuards,createRunt
 export type {F11CalendarChangeBinding,F11CalendarChangeGuardOptions} from './application/workflow-f11-calendar-receipt-guard.js';
 export {createRuntimeF21SourceManifestHost,createRuntimeF21ProtocolHealthHost} from './application/workflow-f21-skill-graph-host.js';
 export {createRuntimeF25OutboundContextHost} from './application/workflow-f25-outbound-graph-host.js';
+export {createF25ConfigurationWorkflowPorts} from './application/workflow-f25-configuration.js';
+export type {F25ConfigurationWorkflowOptions} from './application/workflow-f25-configuration.js';
 export {createRuntimeF27ModelCapabilitiesHost} from './application/workflow-f27-model-graph-host.js';
 export {createRuntimeF28NativeConfigHost,createRuntimeF28NativeConfigGuard} from './application/workflow-f28-model-native-host.js';
 export type {F28NativeConfigRoles} from './application/workflow-f28-model-native-host.js';
