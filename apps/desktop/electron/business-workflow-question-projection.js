@@ -1,5 +1,5 @@
 /** Read only original, host-validated questions in the visible user conversation. */
-export function readF11ConversationQuestions({application,hosts,tasks,conversationId}) {
+export function readBusinessWorkflowQuestions({application,hosts,tasks,conversationId}) {
   if(!application||!conversationId)return [];
   const readers=hosts.filter(host=>typeof host?.readQuestion==='function');
   if(!readers.length)return [];

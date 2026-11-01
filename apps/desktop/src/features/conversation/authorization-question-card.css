@@ -26,6 +26,7 @@
 .workflow-question-card label{display:grid;gap:6px;flex:1;min-width:140px}
 .workflow-question-card input,.workflow-question-card button{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;min-height:36px;padding:6px 10px;max-width:100%;box-sizing:border-box}
 .workflow-question-card dl{flex-basis:100%;margin:0;overflow-wrap:anywhere}.workflow-question-card dt{font-weight:600}.workflow-question-card dd{margin:2px 0 10px}
+.workflow-question-draft{flex-basis:100%;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;font:inherit}
 .workflow-question-card :is(input,button):focus-visible{outline:2px solid #3b82f6;outline-offset:3px}
 .workflow-question-card :disabled{opacity:.5;cursor:default}
 .authorization-sandbox-panel{margin:0 0 18px}

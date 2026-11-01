@@ -114,7 +114,8 @@ import {createWorkflowExportConsent} from './workflow-export-consent.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF11LocationQuestionHost,createF11DecisionQuestionHost} from './f11-location-question-host.js';
-import {readF11ConversationQuestions} from './f11-conversation-questions.js';
+import {createF08DecisionQuestionHost} from './business-workflow-question-host.js';
+import {readBusinessWorkflowQuestions} from './business-workflow-question-projection.js';
 import {createF12ExplicitReturnSource} from './f12-explicit-return-source.js';
 import {createF12ReturnDigestController} from './f12-return-digest-controller.js';
 import {createDesktopF04WorkflowWorkerPorts} from './f04-workflow-worker-ports.js';
@@ -376,7 +377,7 @@ let f18ReviewCases,f18Workflow,f18ActiveRevision;
 let f12ExplicitReturnSource,f12ReturnDigest;
 let f24Workflow;
 let f04Workflow;
-let f11LocationQuestion,f11DecisionQuestion;
+let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
 let f14Workflow;
 const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
   F17:f16F17Cases?.snapshot('F17')??{configured:false},unavailable:f16F17Workflow?.unavailable??['fixed_deployment_unavailable']});
@@ -792,8 +793,8 @@ function conversationProjection(surface) {
     surfaceBusy:surface?active.length>0:false,
     conversation: surface ?? 'all',
     authorizationQuestions,
-    workflowQuestions:!runtimeClosed&&surface?readF11ConversationQuestions({application:runtimeApplication,
-      hosts:[f11LocationQuestion,f11DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
+    workflowQuestions:!runtimeClosed&&surface?readBusinessWorkflowQuestions({application:runtimeApplication,
+      hosts:[f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
     authorizationSandbox:runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined,
     approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
       &&!authorizationQuestionHost?.hasPending(approval.approvalId)
@@ -2569,8 +2570,9 @@ async function initializeRuntime() {
         }}):undefined;
       f11LocationQuestion=agentArtsPinned?createF11LocationQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
       f11DecisionQuestion=agentArtsPinned?createF11DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
+      f08DecisionQuestion=agentArtsPinned?createF08DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
       const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
-        f11LocationQuestion,f11DecisionQuestion,
+        f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,
         explicitReturnSource:f12ExplicitReturnSource,
         businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[]),
           ...productTools.tools.filter(tool=>tool.descriptor.name==='weather.forecast')],todoHost,notificationHost:notificationApplicationHost,
@@ -3596,8 +3598,8 @@ async function action(event, name, payload) {
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
     const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
   }
-  if(['workflow.f11.location.respond','workflow.f11.decision.respond'].includes(name)){
-    const host=name==='workflow.f11.location.respond'?f11LocationQuestion:f11DecisionQuestion;
+  if(['workflow.f11.location.respond','workflow.f11.decision.respond','workflow.f08.decision.respond'].includes(name)){
+    const host=name==='workflow.f11.location.respond'?f11LocationQuestion:name==='workflow.f11.decision.respond'?f11DecisionQuestion:f08DecisionQuestion;
     if(sender!==panel&&sender!==workspace||!host)throw Error('请在原对话中补充任务信息');
     const conversationId=conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!conversationId)throw Error('当前对话不可用');
@@ -5343,6 +5345,7 @@ app.whenReady().then(async () => {
       f04Workflow=undefined;
       f11LocationQuestion=undefined;
       f11DecisionQuestion=undefined;
+      f08DecisionQuestion=undefined;
       f14Workflow=undefined;
       void todoHost?.close();
     } catch (error) {

@@ -1,5 +1,7 @@
 # F08 完整原草稿的明确决定接线方案
 
+根组合追加：Main 已创建同一 `f08DecisionQuestion` 供业务 worker、原会话快照与受信窗口 IPC 消费；Panel/Workspace 显示原收件人、主题、完整纯文本草稿及资料引用，答复仅发送原问题身份与 accept/decline，不携带新草稿、grant 或新的 task.submit。原会话卡/F11 兼容及 F04 Main 合并定向 9/9 通过，包含其他窗口拒绝、原会话绑定、外部文字转义和明确拒绝。此处为 Main 实际代码 + DOM Fixture，真实邮箱/语音/云及最终 Desktop 集成仍另验。
+
 只接完整原 send / knowledgeSources 草稿缺 adopt/decline 决定的分支，不猜收件人或正文。N10 从原 N05 候选读回 requiresDecision，N06 在原任务等同会话显式回答；accept 只令 N07 进入独立原 mail.send Policy，decline 跳过发送及其读回，保留原已确认归档。既有节点数量不变，原 N11/N12 由原引擎跳过未选择的发送分支。结果明确 sendConfirmed=false / decision=declined，不伪称发送或撤销归档。
 
 共享 helper 只收敛原 TaskRuntime 绑定、deadline、单次回答和 revision 检查；F11 地点/方案、F08 草稿三种字段固定，不能注入任意图/节点/参数。F11 旧文件导出兼容，公开 F08 createF08DecisionQuestionHost / f08DecisionQuestion，view 字段 mail.decision、完整 draft 和 references；答复仍为固定 accept/decline。F02 的 approval 语义不变，真实语音仍独立缺项。

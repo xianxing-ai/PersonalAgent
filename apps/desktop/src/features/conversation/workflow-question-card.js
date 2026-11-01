@@ -1,6 +1,7 @@
 import {escapeAuthorizationText as escape,ensureAuthorizationStyles} from './authorization-question-card.js';
 
-const fields=new Set(['weather.location','plan.decision']);
+const fields=new Map([['weather.location','workflow.f11.location.respond'],['plan.decision','workflow.f11.decision.respond'],
+  ['mail.decision','workflow.f08.decision.respond']]);
 const active=(q,now)=>q&&fields.has(q.field)&&q.state==='pending'&&q.revision===1
   &&['questionId','taskId','sourceTaskId','conversationId'].every(key=>typeof q[key]==='string'&&q[key])
   &&Number.isFinite(Date.parse(q.deadline))&&Date.parse(q.deadline)>now;
@@ -10,6 +11,11 @@ const planMarkup=plan=>{
   return `<dl>${Object.entries(plan?.update??{}).map(([key,value])=>`<dt>${escape(labels[key]??key)}</dt><dd>${escape(value)}</dd>`).join('')}</dl>
     ${plan?.reminder?'<p>原日历条目对应的旧提醒将失效。</p>':''}`;
 };
+const mailMarkup=question=>`<dl>${[['发件账号',question.draft?.account],['收件人',question.draft?.to],['主题',question.draft?.subject]]
+  .filter(([,value])=>value!==undefined).map(([label,value])=>`<dt>${label}</dt><dd>${escape(value)}</dd>`).join('')}</dl>
+  <pre class="workflow-question-draft">${escape(question.draft?.text)}</pre>
+  ${question.references?.length?`<details><summary>草稿引用的资料</summary><ul>${question.references.map(source=>
+    `<li>${escape(source.path)} · 第 ${escape(source.line)} 行</li>`).join('')}</ul></details>`:''}`;
 
 export function workflowQuestionReply(question,answer,commandId,now=Date.now()) {
   if(!active(question,now)||typeof commandId!=='string'||!commandId)throw Error('问题已变化，请查看最新状态');
@@ -25,8 +31,8 @@ export function workflowQuestionMarkup(question,{now=Date.now(),draft='',submiss
   const location=question.field==='weather.location',disabled=!active(question,now)||!!submission;
   const field=location?`<label>城市或地点<input name="location" maxlength="512" autocomplete="off" value="${escape(draft)}" ${disabled?'disabled':''}></label>
     <button type="submit" ${disabled?'disabled':''}>提交地点</button>`
-    :`${planMarkup(question.plan)}
-      <button type="button" data-workflow-answer="accept" ${disabled?'disabled':''}>采用原方案</button>
+    :`${question.field==='mail.decision'?mailMarkup(question):planMarkup(question.plan)}
+      <button type="button" data-workflow-answer="accept" ${disabled?'disabled':''}>${question.field==='mail.decision'?'采用这封草稿':'采用原方案'}</button>
       <button type="button" data-workflow-answer="decline" ${disabled?'disabled':''}>不采用</button>`;
   return `<section class="authorization-question-card workflow-question-card" data-workflow-question-id="${escape(question.questionId)}" role="group" aria-label="补充任务信息">
     <h3 class="workflow-question-title" tabindex="-1">${escape(question.prompt)}</h3>
@@ -78,7 +84,7 @@ export function mountWorkflowQuestionCards(root,{invoke,onChanged=()=>{},now=Dat
     }
     submission.inFlight=true;submission.feedback='正在提交…';paint();
     try{
-      const result=await invoke(q.field==='weather.location'?'workflow.f11.location.respond':'workflow.f11.decision.respond',submission.body);
+      const result=await invoke(fields.get(q.field),submission.body);
       const field=answerField(q);
       if(result?.state==='answered'&&result.questionId===id&&result.taskId===q.taskId&&result.sourceTaskId===q.sourceTaskId
         &&result.revision===q.revision+1&&result[field]===submission.body[field]){

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
-import {readF11ConversationQuestions} from '../electron/f11-conversation-questions.js';
+import {readBusinessWorkflowQuestions} from '../electron/business-workflow-question-projection.js';
 import {workflowQuestionReply,workflowQuestionMarkup,mountWorkflowQuestionCards} from '../src/features/conversation/workflow-question-card.js';
 import {taskProgress} from '../src/features/conversation/task-progress.js';
 import {authorizationDom} from '../test-support/authorization-dom.mjs';
@@ -16,10 +16,10 @@ test('F11 projection discovers each original graph question and excludes unrelat
   const reads=[],application={readSubagentTasks:id=>{assert.equal(id,'original-user');return [{taskId:'graph-a'},{taskId:'graph-b'}];}};
   const host={readQuestion:scope=>{reads.push(scope);return scope.taskId==='graph-a'?question():scope.taskId==='graph-b'?question({questionId:'another',conversationId:'other'}):undefined;}};
   const tasks=[{taskId:'original-user',state:'running'},{taskId:'private',state:'running',bodyWithheld:true},{taskId:'finished',state:'succeeded'}];
-  assert.deepEqual(readF11ConversationQuestions({application,hosts:[host,host],tasks,conversationId:'original-conversation'}),[question()]);
+  assert.deepEqual(readBusinessWorkflowQuestions({application,hosts:[host,host],tasks,conversationId:'original-conversation'}),[question()]);
   assert.ok(reads.every(scope=>scope.conversationId==='original-conversation'));
-  assert.deepEqual(readF11ConversationQuestions({application,hosts:[host],tasks}),[]);
-  assert.deepEqual(readF11ConversationQuestions({application:{},hosts:[undefined],tasks,conversationId:'original-conversation'}),[],
+  assert.deepEqual(readBusinessWorkflowQuestions({application,hosts:[host],tasks}),[]);
+  assert.deepEqual(readBusinessWorkflowQuestions({application:{},hosts:[undefined],tasks,conversationId:'original-conversation'}),[],
     'unconfigured and Fake Main snapshots do not require a real Runtime question port');
 });
 
