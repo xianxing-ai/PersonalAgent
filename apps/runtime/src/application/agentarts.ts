@@ -220,8 +220,15 @@ export function createAgentArtsRuntimeApplication(
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
     ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,
-      ...(f20WorkflowWorkerPorts?{assertWorkflowCurrent:(request:import('@personal-agent/agentarts').OwnedWorkflowAdvanceRequest)=>{
-        if(request.workflowId==='F20')f20WorkflowWorkerPorts.assertCurrent({taskId:request.taskId,deadline:request.taskDeadline??request.deadline,signal:request.signal});}}:{}),
+      ...((f20WorkflowWorkerPorts||configuredWorkflowWorkerPorts?.length)?{
+        assertWorkflowCurrent:(request:import('@personal-agent/agentarts').OwnedWorkflowAdvanceRequest)=>{
+          const configured=(configuredWorkflowWorkerPorts??[]).filter(ports=>ports.workflowId===request.workflowId);
+          if(configured.length>1)throw new ProtocolError('UNAUTHORIZED','Original graph has ambiguous source guards');
+          const ports=request.workflowId==='F20'?f20WorkflowWorkerPorts:configured[0];
+          const result=ports?.assertCurrent({taskId:request.taskId,deadline:request.taskDeadline??request.deadline,signal:request.signal});
+          if(result!==undefined){void Promise.resolve(result).catch(()=>undefined);
+            throw new ProtocolError('UNAUTHORIZED','Graph current guard must be synchronous');}
+        }}:{}),
       ...(fetchHandlesHostAuthorization?{fetchHandlesHostAuthorization}:{}),
       ...(transport===undefined?{}:{transport}),...(websocketUrl===undefined?{}:{websocketUrl}),
       ...(allowHttpsFallback===undefined?{}:{allowHttpsFallback}),...(websocketAuthorizationProvider?{websocketAuthorizationProvider}:{}),
