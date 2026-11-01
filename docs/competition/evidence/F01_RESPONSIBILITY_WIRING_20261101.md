@@ -18,6 +18,8 @@ N02 必要验证：模型/配置与旧 F01 定向 20/20 已通过；新增精确
 
 模板维持 28 图/185 节点，N07 改为原来源 host，三个可选节点均加原 guard，N06 等待其实际回执/跳过；旧模板摘要部署须更新。无新任务库/调度/授权/数据库迁移。AgentArts/Runtime 必要编译通过，唯一 Engine 主路径检查 1/1（实际 SQLite/Policy/子任务创建与派生 F01 拒绝）；主线程补问关键检查 1/1（精确回答 CAS/跨会话/失效拒绝）。来源/模型/点击为 Synthetic；各可选分支和 Main/云整图仍须实际组合验收，尚不提升整图完成或 frozen。
 
+本图自身 lifecycle CAS 的比较仅保存原 lifecycle 引用元数据和其余 application state/operation 摘要，不复制责任 session 的 entry 私有正文。缺少此新摘要格式的旧未完图须保持 unavailable，不能自动重做原写入。
+
 ## N09 首包与组合入口
 
 `createRuntimeF01LifecycleHost` 读取原 configured graph 的 `input.lifecycle`，只接受与该输入相同的 N09 host 参数；当前 descriptor 由原 configured binding 复核，原运行还须 Policy allow、executionStarted 和完整输入匹配。工具参数的 `expectedLifecycleRevision:0` 表示尚无记录，进入原 CAS 时映射为 `null`，避免扩大现有公开工具目录的 Schema 类型。原 task→原用户父任务决定 `sourceTaskId`，模型不能替换。write 与 CAS 后的 guard 均复核；后置校验失败保留 RESULT_UNKNOWN。

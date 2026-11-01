@@ -14,6 +14,8 @@ export function createF01WorkflowContextPorts({getApplication,getPublicFactHost,
   const application={runtime,readHostToolTask:(...args)=>getApplication().readHostToolTask(...args)};
   const selection=createF01ContextSelectionHost({getApplication,getPublicFactHost,getAuthorizationIntentHost,readDeploymentBinding});
   const modelSource=createF01ModelCatalogSource({getApplication,models,readDeploymentBinding,assertCurrent});
+  const unchangedDigest=(value,id)=>{const copy=structuredClone(value);copy.responsibilityLifecycles??={};delete copy.responsibilityLifecycles[id];
+    delete copy.responsibilityLifecycleOperations;return proactiveWorkflowDigest(copy);};
   function source(scope){
     assertCurrent(scope);const app=getApplication(),bound=app.readF01ContextBinding({taskId:scope.parentTaskId,sessionId:scope.sessionId,signal:scope.signal});
     if(!bound||bound.binding.deadline!==scope.deadline)return unavailable();
@@ -30,7 +32,10 @@ export function createF01WorkflowContextPorts({getApplication,getPublicFactHost,
     }
     const current=source(scope);
     if(host!==getProactiveHost()||original.app!==current.app||!isDeepStrictEqual(original.persisted.application,current.persisted.application))return unavailable();
-    original.app.runtime.saveCheckpointOnce(scope.parentTaskId,'f01:responsibility-snapshot',original.persisted.application.state);
+    const state=original.persisted.application.state,lifecycleId=original.bound.binding.input.lifecycle?.responsibilityId??null;
+    original.app.runtime.saveCheckpointOnce(scope.parentTaskId,'f01:responsibility-snapshot',{lifecycleId,
+      unchangedDigest:unchangedDigest(state,lifecycleId),operationsDigest:proactiveWorkflowDigest(state.responsibilityLifecycleOperations??{}),
+      lifecycle:state.responsibilityLifecycles?.[lifecycleId]??null});
     return {revision:String(current.persisted.application.revision),items};
   }
   const memory=Object.fromEntries(['listCurrent','getVersion'].map(name=>[name,async request=>{
@@ -54,17 +59,17 @@ export function createF01WorkflowContextPorts({getApplication,getPublicFactHost,
       if(ownLifecycle){const {command,selection:change}=ownLifecycle,record=current.persisted.application.state.responsibilityLifecycleOperations?.[command.commandId];
         if(record){
           const original=current.app.runtime.loadCheckpoint(scope.parentTaskId,'f01:responsibility-snapshot'),actual=current.persisted.application.state;
-          const withoutOwn=value=>{const copy=structuredClone(value);copy.responsibilityLifecycles??={};copy.responsibilityLifecycleOperations??={};
-            delete copy.responsibilityLifecycles[change.responsibilityId];delete copy.responsibilityLifecycleOperations[command.commandId];return copy;};
+          const otherOperations={...actual.responsibilityLifecycleOperations};delete otherOperations[command.commandId];
           const sourceTask=current.app.runtime.getTask(command.sourceTaskId),quote={conversationId:sourceTask.conversationId,messageId:sourceTask.taskId,
             quoteRef:'runtime:task:'+sourceTask.taskId+':goal',sha256:createHash('sha256').update(sourceTask.goal).digest('hex')};
-          const previous=original?.responsibilityLifecycles?.[change.responsibilityId],expected=command.action==='activate'
+          const previous=original?.lifecycle,expected=command.action==='activate'
             ?{revision:(command.expectedLifecycleRevision??0)+1,responsibilityRevision:command.responsibilityRevision,state:'active',validUntil:command.validUntil,activationQuote:quote}
             :{...previous,revision:(command.expectedLifecycleRevision??0)+1,state:'revoked',revocationQuote:quote};
-          if(!original||record.digest!==proactiveWorkflowDigest(command)||record.responsibilityId!==change.responsibilityId
+          if(!original||original.lifecycleId!==change.responsibilityId||record.digest!==proactiveWorkflowDigest(command)||record.responsibilityId!==change.responsibilityId
             ||actual.responsibilityLifecycles?.[change.responsibilityId]?.revision!==record.revision
             ||!isDeepStrictEqual(actual.responsibilityLifecycles[change.responsibilityId],expected)
-            ||!isDeepStrictEqual(withoutOwn(original),withoutOwn(actual)))return unavailable();ownChange=true;
+            ||original.unchangedDigest!==unchangedDigest(actual,change.responsibilityId)
+            ||original.operationsDigest!==proactiveWorkflowDigest(otherOperations))return unavailable();ownChange=true;
         }
       }
       if(!isDeepStrictEqual(result.models,modelSource(scope))||!ownChange&&result.responsibilities.revision!==String(current.persisted.application.revision)
