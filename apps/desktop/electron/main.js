@@ -111,6 +111,7 @@ import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
 import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-host.js';
 import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
 import {createWorkflowExportConsent} from './workflow-export-consent.js';
+import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF11LocationQuestionHost} from './f11-location-question-host.js';
 import {readF11ConversationQuestions} from './f11-conversation-questions.js';
@@ -2542,13 +2543,16 @@ async function initializeRuntime() {
         ?createF20WorkflowWorkerPorts({getApplication:()=>runtimeApplication,codingWorkspace,runtimeModule,
           readHarnessVersions:()=>readDesktopHarnessVersions(),readReviewerIdentity:()=>localLaya?.readClassifierIdentity?.()}):undefined;
       let prepareWorkflowToolExport;
+      const readWorkflowDeploymentBinding=()=>{
+        const selected=agentArtsConfig.snapshot();
+        if(!selected.runtimeReady||selected.deploymentSelection!=='pinned'||!selected.deploymentVersion)return;
+        return createHash('sha256').update(JSON.stringify({binding:agentArtsConfig.binding(),version:selected.deploymentVersion,
+          transport:agentArtsConfig.readTransportPreferences()})).digest('hex');
+      };
       const authorizeWorkflowExport=createWorkflowExportConsent({getApplication:()=>runtimeApplication,
-        confirmAuthorization:confirmApplicationAuthorization,readDeploymentBinding:()=>{
-          const selected=agentArtsConfig.snapshot();
-          if(!selected.runtimeReady||selected.deploymentSelection!=='pinned'||!selected.deploymentVersion)return;
-          return createHash('sha256').update(JSON.stringify({binding:agentArtsConfig.binding(),version:selected.deploymentVersion,
-            transport:agentArtsConfig.readTransportPreferences()})).digest('hex');
-        }});
+        confirmAuthorization:confirmApplicationAuthorization,readDeploymentBinding:readWorkflowDeploymentBinding});
+      const f04RecoveryExport=createF04RecoveryExportConsent({getApplication:()=>runtimeApplication,
+        confirmAuthorization:confirmApplicationAuthorization,readDeploymentBinding:readWorkflowDeploymentBinding});
       f02Workflow=agentArtsPinned?createF02WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         authorizationQuestions:authorizationQuestionHost,authorizeExport:authorizeWorkflowExport,
         liveVoiceHost:{readFinalUserAudio:(...args)=>liveVoice?.readFinalUserAudio(...args),
@@ -2861,7 +2865,7 @@ async function initializeRuntime() {
               ruleBindingDigest:createHash('sha256').update(JSON.stringify({sourceId:binding.sourceId,configRevision:binding.configRevision,
                 publicQueries:binding.publicQueries,allowedNotePaths:binding.allowedNotePaths,projection:'knowledge-public-summary-v1'})).digest('hex'),
               summary:'把PUBLIC查询的有界摘要或整理结果用于本次对话。',assertCurrent:isCurrent});
-            else authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
+            else if(!await f04RecoveryExport.prepare(scope))authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
             return;
           }
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;

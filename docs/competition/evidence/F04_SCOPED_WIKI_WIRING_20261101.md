@@ -1,6 +1,8 @@
 # F04 Wiki 与作用域记忆接线（2026-11-01）
 
-根整合追加：Main 已消费公开 `createF04WorkflowWorkerPorts`，复用同一 Knowledge config/export 和 `proactiveHost` 的原 Fact namespace；后者只代理原公共 source/Feed/impact 方法，`recordPublicSource` 的原 read context 完整传递。重复可选 host 不覆盖已配置 F04。F04/Main、F12 Live/归来及模型关联联合定向 95/95、零跳过，全量构建通过，日志 `.cache/integration-f04-voice-build.log`、`.cache/integration-f04-live-composition-tests.log`。F04 恢复 UI、N03 重启后精确再出机许可与真实平台验收仍在继续。
+根整合追加：Main 已消费公开 `createF04WorkflowWorkerPorts`，复用同一 Knowledge config/export 和 `proactiveHost` 的原 Fact namespace；后者只代理原公共 source/Feed/impact 方法，`recordPublicSource` 的原 read context 完整传递。重复可选 host 不覆盖已配置 F04。F04/Main、F12 Live/归来及模型关联联合定向 95/95、零跳过，全量构建通过，日志 `.cache/integration-f04-voice-build.log`、`.cache/integration-f04-live-composition-tests.log`。
+
+后续组合已将 `f04Recovery` 注入原 Runtime，并接同一对话核实按钮。Main 知识出口在原 projection 阶段消费 `createF04RecoveryExportConsent.prepare`，与普通 workflow 出口共用当前固定部署绑定；普通知识结果仍使用原 requirement，恢复确认失败直接拒绝。`f04-recovery-main.test.mjs` 实际 Main 回调 2/2 通过，涵盖 preflight、普通出口、新恢复确认及拒绝路径；首次测试源代码提取遇到 Windows CRLF，修正测试读取后通过，未修改产品门禁。真实原生点击、固定部署云出机及这些追加提交的最终组合检查仍待验。
 
 Competition Profile，基线 `df3f6c48`；工作树 `.worktrees/pr531-f04`。已实现下列公开来源纵向路径及 N04 原投影只读恢复；F04 整体和真实 AgentArts 验收尚未完成。设计节点、现有模块和真实配置分别判断。
 
