@@ -34,7 +34,22 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
       {ownerTaskId:entry.operation.taskId,operationDigest:entry.operation.digest,deadline:entry.deadline});
     return entry;
   }
+  /** A confirmed decision reference is evidence only, never a fresh permission. */
+  function readConfirmedDecision(reference){
+    try{
+      if(closed||!reference||Object.keys(reference).sort().join(',')!=='action,commandId,deadline,payloadDigest,runId,scopeDigest,taskId')return;
+      const application=getApplication(),read=application?.readHostToolTask(reference.taskId);
+      const invocation=application?.readAuthorizationQuestionInvocation(reference.taskId,reference.runId,true);
+      if(!read||read.commandId!==reference.commandId||read.toolName!==descriptor.name||read.toolVersion!==descriptor.version
+        ||read.task.state!=='succeeded'||read.confirmed?.runId!==reference.runId
+        ||digest(read.confirmed.result)!==digest({decisionRecorded:true})||!read.confirmed.evidenceRefs.includes(reference.runId)
+        ||!invocation||invocation.toolName!==descriptor.name||invocation.toolVersion!==descriptor.version||invocation.deadline!==reference.deadline
+        ||digest(invocation.arguments)!==digest({action:reference.action,payloadDigest:reference.payloadDigest,scopeDigest:reference.scopeDigest}))return;
+      return Object.freeze(structuredClone(reference));
+    }catch{return undefined;}
+  }
   return {
+    readConfirmedDecision,
     tool:{descriptor,async execute(input,context){
       const entry=original(context);
       if(digest(input)!==digest(entry.arguments)||entry.executed)denied();
@@ -50,7 +65,7 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
         ...(entry.decisionDeadline?{decisionDeadline:entry.decisionDeadline}:{}),assertCurrent:()=>entry.current()});
       if(entry.parent)question.deriveHostIntent(entry.parent,scope,{operationDigest:entry.operation.digest,assertCurrent:()=>entry.current()});
     },
-    async request({action,payload,scope,summary,deadline=new Date(now()+180000).toISOString(),signal=new AbortController().signal,isCurrent,operation,onError}){
+    async request({action,payload,scope,summary,deadline=new Date(now()+180000).toISOString(),signal=new AbortController().signal,isCurrent,operation,onError,onConfirmed}){
       if(closed||!AUTHORIZATION_INTENT_ACTIONS.includes(action)||typeof isCurrent!=='function'||!isCurrent()
         ||signal.aborted||!Number.isFinite(Date.parse(deadline))||now()>=Date.parse(deadline)||typeof summary!=='string'||summary.length>512)return false;
       const application=getApplication();if(!application?.submitHostToolTask)return false;
@@ -77,6 +92,12 @@ export function createDesktopAuthorizationIntentHost({getApplication,question,op
         if(!allowed&&result.task.error)onError?.(result.task.error);
         if(allowed&&operationKey)application.runtime.saveCheckpoint(operation.taskId,operationKey,
           {taskId:entry.taskId,runId:'host-tool-'+entry.taskId,deadline,signal:undefined});
+        if(allowed&&onConfirmed){
+          const reference={taskId:entry.taskId,runId:'host-tool-'+entry.taskId,commandId,action,payloadDigest,scopeDigest,deadline};
+          const confirmed=readConfirmedDecision(reference);if(!confirmed)return false;
+          await onConfirmed(confirmed);
+          if(!current()||!readConfirmedDecision(reference))return false;
+        }
         return allowed;
       }catch(error){onError?.(error);return false;}finally{pending.delete(commandId);}
     },
