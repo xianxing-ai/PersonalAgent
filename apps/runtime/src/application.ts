@@ -86,6 +86,8 @@ export {createF27ContextWorkflowPorts} from './application/workflow-f27-context.
 export type {F27ContextWorkflowOptions} from './application/workflow-f27-context.js';
 export {createRuntimeF28NativeConfigHost,createRuntimeF28NativeConfigGuard} from './application/workflow-f28-model-native-host.js';
 export type {F28NativeConfigRoles} from './application/workflow-f28-model-native-host.js';
+export {createF28ModelCandidateWorkflowPorts} from './application/workflow-f28-model-candidates.js';
+export type {F28ModelCandidateOptions,F28SelectedModel} from './application/workflow-f28-model-candidates.js';
 export {createRuntimeCodingRepairSignedReview,codingRepairReviewBytes} from './application/coding-repair-signed-review.js';
 export type {CodingRepairSignedReview,CodingRepairSignedReviewEnvelope,CodingRepairSignedReviewOptions} from './application/coding-repair-signed-review.js';
 export {createRuntimeWikiImportHost,WIKI_IMPORT_TOOL,WIKI_IMPORT_VERSION} from './application/wiki-import.js';

@@ -87,7 +87,9 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F26_N04:[host('deployment.real_tool_evidence','platform')],F26_N05:[host('deployment.publish_verified_coverage','platform')],
   F27_N01:[host('model.capabilities')],F27_N05:[host('memory.query')],F27_N06:[tool('knowledge.search')],
   F27_N04:[host('model.context_source_map_check')],F27_N07:[host('runtime.invalidate_context_mapping')],
-  F28_N03:[host('model.native_config_check')],F28_N10:[host('workspace.source_and_test_check')],
+  F28_N03:[host('model.native_config_check')],F28_N06:[host('model.original_research_candidate')],
+  F28_N07:[host('model.original_analysis_candidate')],F28_N08:[host('model.original_coder_candidate')],
+  F28_N10:[host('workspace.source_and_test_check')],
   F28_N11:[host('runtime.completion_check')],F28_N12:[host('executor.scoped_tool_loop')],
 };
 
