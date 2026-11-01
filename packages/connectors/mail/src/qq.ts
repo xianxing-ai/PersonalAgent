@@ -64,6 +64,7 @@ export function messageFromImap(uid: number, folder: string, envelope: ImapEnvel
 export class QQMailProvider implements MailProvider {
   private readonly archiveInflight=new Map<string,{fingerprint:string;result:Promise<ProtocolContracts['connectorAction']>}>();
   readonly providerKind = 'qq';
+  readonly sendIdentitySupport = 'before-send-v1' as const;
   readonly verification = 'conditional' as const;
   private readonly options: Required<Pick<QQMailOptions, 'imapHost' | 'imapPort' | 'smtpHost' | 'smtpPort'>> & QQMailOptions;
   private client: ImapFlow | null = null;
@@ -220,6 +221,7 @@ export class QQMailProvider implements MailProvider {
   }
 
   async send(_accountRef: string, input: MailSendInput & {idempotencyKey: string},context?:MailOperationContext): Promise<MailSendResult> {
+    input={...input};
     guardMailWrite(context);
     if (input.idempotencyKey.length === 0) throw new ProtocolError('INVALID_ARGUMENT', 'idempotencyKey is required');
     // Provider 层同样单飞 + 输入绑定（goo122 2026-09-13 复审 P1）：在途 Promise 先登记再 await，
@@ -243,6 +245,12 @@ export class QQMailProvider implements MailProvider {
   private async sendViaTransporter(input: MailSendInput & {idempotencyKey: string},context?:MailOperationContext): Promise<MailSendResult> {
     guardMailWrite(context);
     const messageId = this.operationMessageId('send', input.idempotencyKey);
+    if(context?.beforeSend){
+      const prepared=await context.beforeSend(Object.freeze({idempotencyKey:input.idempotencyKey,messageId}));
+      guardMailWrite(context);
+      if(prepared==='existing')return {state:'unknown',messageId,reason:'Original SMTP intent exists; reconcile without sending again'};
+      if(prepared!=='persisted')throw new ProtocolError('UNAUTHORIZED','Original SMTP identity was not persisted');
+    }
     if (this.transporter === null) {
       this.transporter = nodemailer.createTransport({
         host: this.options.smtpHost,
@@ -252,6 +260,7 @@ export class QQMailProvider implements MailProvider {
         socketTimeout: Math.max(input.timeoutMs, 1_000),
       });
     }
+    guardMailWrite(context);
     let result: MailSendResult;
     let abort:()=>void=()=>{};
     const cancelled=new Promise<never>((_resolve,reject)=>{abort=()=>reject(new Error('SMTP result unknown after cancellation'));

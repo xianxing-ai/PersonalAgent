@@ -62,3 +62,29 @@ test('public send/archive descriptors require their own scopes and bind idempote
     {...context,signal:AbortSignal.abort()}),{code:'CANCELLED'});
   release();assert.equal(tools.size,0);
 });
+
+test('SMTP identity hook precedes dispatch and snapshots the original content across its await',async()=>{
+  const f=fixture(),calls=[],input={to:'recipient@example.invalid',subject:'Original',text:'Original',timeoutMs:100,idempotencyKey:'snapshot'};
+  let prepared;
+  f.provider.transporter={sendMail(value){calls.push('smtp');assert.equal(value.messageId,prepared.messageId);
+    assert.equal(value.subject,'Original');assert.equal(value.text,'Original');return Promise.resolve({messageId:value.messageId});},close(){}};
+  const sent=await f.provider.send('fixture',input,{beforeSend:async identity=>{calls.push('persist');prepared=identity;
+    assert.ok(Object.isFrozen(identity));input.subject='Replaced';input.text='Replaced';await Promise.resolve();return 'persisted';},
+    assertCurrent(){calls.push('guard');}});
+  assert.equal(sent.state,'confirmed');assert.equal(calls.filter(value=>value==='smtp').length,1);
+  assert.ok(calls.indexOf('persist')<calls.lastIndexOf('guard'));assert.equal(calls.at(-1),'smtp');
+});
+
+test('SMTP never dispatches when identity persistence fails, an existing intent is read, or the final source fence changes',async t=>{
+  for(const mode of ['throw','existing','cancel','deadline','source','invalid'])await t.test(mode,async()=>{
+    const f=fixture(),controller=new AbortController();let sends=0,current=true,now=1000;
+    f.provider.transporter={sendMail(){sends++;return Promise.resolve({});},close(){}};
+    const result=f.provider.send('fixture',{to:'recipient@example.invalid',subject:'Fixture',text:'Fixture',timeoutMs:100,idempotencyKey:mode},
+      {signal:controller.signal,deadline:new Date(2000).toISOString(),now:()=>now,assertCurrent(){if(!current)throw Error('source revoked');},
+        beforeSend:async()=>{await Promise.resolve();if(mode==='throw')throw Error('disk failed');
+          if(mode==='cancel')controller.abort();if(mode==='deadline')now=2000;if(mode==='source')current=false;
+          return mode==='existing'?'existing':mode==='invalid'?'confirmed':'persisted';}});
+    if(mode==='existing')assert.equal((await result).state,'unknown');else await assert.rejects(result);
+    assert.equal(sends,0);
+  });
+});

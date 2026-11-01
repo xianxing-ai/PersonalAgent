@@ -2,6 +2,7 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
+import {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity} from '@personal-agent/runtime/application';
 import * as mailModule from '@personal-agent/mail';
 import * as calendarModule from '@personal-agent/calendar';
 import {attachExactExports} from './developer-deployment-config.js';
@@ -76,6 +77,7 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
         context={...entry.scope,...context};
       }
       context={...context,kind,...(question?{questionExecution:true}:{})};assertCurrent(context);
+      if(tool.descriptor.name==='mail.send')input=structuredClone(input);
       if(!context.authorizationRef||!tool.descriptor.requiredScopes.every(scope=>context.scopes?.includes(scope)))denied();
       const selected=bindings.get(bindingKey(context.taskId,kind));
       if(kind==='mail'&&input?.account!==undefined&&input.account!==MAIL_ACCOUNT)denied();
@@ -118,7 +120,18 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
           providers.set(controller,{kind,provider,dispose});assertCurrent(activeContext);
         }
         const scope={...context,signal,kind,provider};assertCurrent(scope);
-        const result=await execution.run(scope,()=>tool.execute(input,{...context,signal}));assertCurrent(scope);return result;
+        let identityPrepared=false;
+        const sendContext=tool.descriptor.name==='mail.send'?{now,assertCurrent:()=>assertCurrent(scope),beforeSend:identity=>{
+          assertCurrent(scope);
+          const state=prepareOriginalMailSendIdentity(getApplication().runtime,{taskId:context.taskId,runId:context.runId,
+            toolVersion:tool.descriptor.version,arguments:input,scopeRef:context.authorizationRef,accountRef:MAIL_ACCOUNT,
+            configurationRef:digest({identity:selected.identity,resourceGeneration:selected.resourceGeneration??null})},identity,{...context,signal},now);
+          assertCurrent(scope);identityPrepared=true;return state;
+        }}:{};
+        const result=await execution.run(scope,()=>tool.execute(input,{...context,signal,...sendContext}));assertCurrent(scope);
+        if(tool.descriptor.name==='mail.send'&&provider.sendIdentitySupport==='before-send-v1'&&!identityPrepared)
+          throw new ProtocolError('UNSUPPORTED_CAPABILITY','Mail provider omitted the original send identity hook');
+        return result;
         })();
         return await Promise.race([operation,interrupted]);
       }catch(error){
@@ -182,7 +195,14 @@ export function createConnectorConversationTools({mail,calendar,localInbox,getAp
       }
       entry.resultDigest=digest(scope.result);return structuredClone(scope.result);
     }}));
-  return {...exports.host,...(question?{competitionToolExports:questionExports}:{}),async prepareExport(scope){
+  return {...exports.host,...(question?{competitionToolExports:questionExports}:{}),
+    // Main-only private identity read: no new grant, provider connection, or task transition.
+    readOriginalSendIdentity({taskId,runId,toolVersion,arguments:args,scopeRef}){
+      if(closed||!identity('mail')||!resolveConversation(taskId))denied();
+      return readOriginalMailSendIdentity(getApplication().runtime,{taskId,runId,toolVersion,arguments:args,scopeRef,
+        accountRef:MAIL_ACCOUNT,configurationRef:digest({identity:identity('mail'),
+          resourceGeneration:question?question.readResourceGeneration(resource('mail')):null})});
+    },async prepareExport(scope){
     if(!tools.some(tool=>tool.descriptor.name===scope.proposal?.toolName))return;
     if(scope.phase==='preflight'){
       const kind=family(scope.proposal.toolName),binding=identity(kind),conversationId=resolveConversation(scope.taskId);

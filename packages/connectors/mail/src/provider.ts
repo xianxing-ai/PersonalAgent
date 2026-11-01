@@ -75,6 +75,10 @@ export interface MailOperationContext {
   signal?: AbortSignal;
   deadline?: string;
   now?: () => number;
+  /** Trusted host only. Persist the original identity before SMTP; existing intent never permits another send. */
+  beforeSend?: (identity:Readonly<{idempotencyKey:string;messageId:string}>) => 'persisted'|'existing'|Promise<'persisted'|'existing'>;
+  /** Synchronous source/permit fence, including after an asynchronous beforeSend hook. */
+  assertCurrent?: () => void;
 }
 
 export function guardMailWrite(context?: MailOperationContext): void {
@@ -84,11 +88,13 @@ export function guardMailWrite(context?: MailOperationContext): void {
     if (!Number.isFinite(deadline)) throw new ProtocolError('INVALID_ARGUMENT', 'Invalid mail write deadline');
     if ((context.now ?? Date.now)() >= deadline) throw new ProtocolError('TIMEOUT', 'Mail write deadline expired before execution', false);
   }
+  context?.assertCurrent?.();
 }
 
 export interface MailProvider {
   /** 提供商标识（进 manifest.accountTypes），Fake 为 'fixture'，QQ 为 'qq'。 */
   readonly providerKind: string;
+  readonly sendIdentitySupport?: 'before-send-v1';
   listFolders(accountRef: string): MailFolder[] | Promise<MailFolder[]>;
   fetchPage(accountRef: string, input: MailFetchInput): MailPage | Promise<MailPage>;
   getMessage(accountRef: string, folder: string, uid: number): MailMessage | undefined | Promise<MailMessage | undefined>;
