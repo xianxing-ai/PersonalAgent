@@ -121,6 +121,7 @@ import {createDesktopF28WorkflowWorkerPorts} from './f28-model-workflow-ports.js
 import {createF08SourceChangeHost} from './f08-source-change-host.js';
 import {createF08SourceActions} from './f08-source-actions.js';
 import {createDesktopF23DecisionConfiguration,F23_INITIALIZE_TOOL} from './f23-decision-configuration.js';
+import {createConfiguredDesktopF10WorkflowPorts} from './f10-workflow-worker-ports.js';
 import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
 import {createF11LocationQuestionHost,createF11DecisionQuestionHost} from './f11-location-question-host.js';
@@ -2716,8 +2717,19 @@ async function initializeRuntime() {
           summary:`F28 仅本次候选请求发送给所选辅助模型 ${request.payload.destination.model}；不代表结果或工具能力已验证`,
           deadline:request.deadline,signal:request.signal,isCurrent:()=>{request.assertCurrent();return true;}})}):undefined;
       const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
+      const f10Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF10WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        getKnowledgeSourceConfig:()=>knowledgeSourceConfig,modelApiHost:{snapshot:()=>modelApiHost?.snapshot()??{models:[]},
+          getGuardedModelGateway:(...args)=>modelApiHost?.getGuardedModelGateway(...args)},
+        toolExports:[...(knowledgeTools?.competitionToolExports??[]),...productTools.competitionToolExports.filter(binding=>binding.toolName==='research.search')],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,
+        confirmModelExport:request=>confirmApplicationAuthorization('developer.export',{payload:request.payload,destination:request.model.baseUrl},{
+          scope:{...request.scope,model:request.model},operation:{taskId:request.scope.taskId,
+            digest:createHash('sha256').update(JSON.stringify({payload:request.payload,destination:request.model.baseUrl})).digest('hex')},
+          summary:`仅本次原引用发送给独立辅助审查模型 ${request.model.model}（${new URL(request.model.baseUrl).hostname}）；不是 AgentArts 主模型验收`,
+          deadline:request.deadline,signal:request.signal,isCurrent:request.isCurrent})}):undefined;
       const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
+        ...(f10Workflow?.tools??[]),
         ...(f23DecisionConfiguration?[f23DecisionConfiguration.tool]:[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
@@ -2777,6 +2789,7 @@ async function initializeRuntime() {
         ...(f04Workflow?.recovery?{f04Recovery:f04Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
           ...(f01Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f10Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f21Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f22Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f25Workflow?.configuredWorkflowWorkerPorts??[]),
