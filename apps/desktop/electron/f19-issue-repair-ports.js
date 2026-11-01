@@ -5,6 +5,7 @@ import {getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
 import {GITHUB_CONNECTOR_VERSION} from '@personal-agent/github';
 import * as runtimeModule from '@personal-agent/runtime/application';
 import {createF19PublicationHost,F19_PUBLICATION_INPUT} from './f19-publication-host.js';
+import {createF19RegressionHost} from './f19-regression-host.js';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -22,7 +23,7 @@ const sourceKey='f19:original-issue-repair:v1';
 /** Original graph -> host -> separately approved coding dispatcher -> original
  * F15 worker. This staged producer does not advertise a complete F19 capability:
  * merged publication and independent native regression remain unavailable. */
-export function createDesktopF19IssueRepairPorts({getApplication,github,selection,publication,authorizeExport,now=()=>new Date()}={}) {
+export function createDesktopF19IssueRepairPorts({getApplication,github,selection,publication,regression,authorizeExport,now=()=>new Date()}={}) {
   const unavailable=['f19_original_published_pr_and_independent_native_regression_unavailable'];
   if(typeof getApplication!=='function'||typeof github?.createTools!=='function'||typeof github.assertCurrent!=='function'
     ||typeof selection?.readSelection!=='function'||typeof selection.assertCurrent!=='function'
@@ -36,7 +37,8 @@ export function createDesktopF19IssueRepairPorts({getApplication,github,selectio
     return {tools:[],configuredWorkflowWorkerPorts:[],unavailable:[...unavailable,'f19_original_publication_configuration_unavailable']};
   const requestSchema=publication?object({...selectionSchema.properties,...F19_PUBLICATION_INPUT}):selectionSchema;
   const inputSchema=object({...requestSchema.properties,triageRequirements:{const:triageRequirements}});
-  const configurationVersion='f19-original-issue-v1:'+selection.configurationRef+(publication?':publication:'+publication.configurationRef:'');
+  const configurationVersion='f19-original-issue-v1:'+selection.configurationRef+(publication?':publication:'+publication.configurationRef:'')
+    +(regression?':regression:'+regression.configurationRef:'');
   const current=scope=>{
     if(scope.signal.aborted)fail('CANCELLED','Original issue workflow cancelled');
     if(!Number.isFinite(Date.parse(scope.deadline))||Date.parse(scope.deadline)<=now().getTime())fail('TIMEOUT','Original issue workflow expired');
@@ -73,11 +75,12 @@ export function createDesktopF19IssueRepairPorts({getApplication,github,selectio
       codingRepair:{mode:'main',allowedPaths:[...bound.input.allowedPaths]}};
     return {source,args};
   };
-  const bridges=new WeakMap();let publisher;
+  const bridges=new WeakMap();let publisher,regressionHost;
   const bridge=()=>{
     let value=bridges.get(app());if(!value){value=runtimeModule.createWorkflowBusinessToolBridge({application:app(),now,assertCurrent:scope=>{binding(scope);},
       resolveTool(request,scope){
         if(request.actionKey.startsWith('f19.publish.'))return publisher?.resolveTool(request,scope);
+        if(request.actionKey.startsWith('f19.regression.'))return regressionHost?.resolveTool(request,scope);
         const bound=binding(scope);let nodeId,toolName,toolVersion,args;
         if(request.actionKey==='f19.issue.snapshot'){nodeId='F19_N01';toolName='github.issue_snapshot';toolVersion=GITHUB_CONNECTOR_VERSION;args=issueInput(bound.input);}
         else if(request.actionKey==='f19.repair.enqueue'){
@@ -91,6 +94,7 @@ export function createDesktopF19IssueRepairPorts({getApplication,github,selectio
   };
   if(publication)publisher=createF19PublicationHost({getApplication:app,runtimeModule,binding,repairSource,bridge,
     configuration:publication,authorizeExport,now});
+  if(regression&&publisher)regressionHost=createF19RegressionHost({getApplication:app,runtimeModule,binding,bridge,publisher,publication,configuration:regression});
   const common={application,now,requiredScopes:['github:read'],assertCurrent:scope=>{binding(scope);},
     async authorizeExport(scope,value){binding(scope);const allowed=await authorizeExport({workflowId:'F19',taskId:scope.parentTaskId,
       localTaskId:scope.localTaskId,stage:'receipt',value,deadline:scope.deadline,signal:scope.signal});binding(scope);return allowed===true;}};
@@ -106,12 +110,16 @@ export function createDesktopF19IssueRepairPorts({getApplication,github,selectio
     if(publisher)await publisher.publish(scope,ctx,receipt);
     return {issueId:source.snapshot.issueId,dispatchRead:reference(receipt)};
   }});
-  const business=github.createTools().filter(tool=>tool.descriptor.name==='github.issue_snapshot');
-  if(business.length!==1||business[0].descriptor.version!==GITHUB_CONNECTOR_VERSION)
+  const merged=regressionHost?runtimeModule.createRuntimeF19MergedRepairReadbackHost({...common,
+    resolveMergedReadback:(scope,context)=>regressionHost.verify(scope,context)}):{tools:[]};
+  const businessNames=['github.issue_snapshot',...(regressionHost?['github.merged_pr_readback']:[])];
+  const business=github.createTools().filter(tool=>businessNames.includes(tool.descriptor.name));
+  if(business.length!==businessNames.length||business.some(tool=>tool.descriptor.version!==GITHUB_CONNECTOR_VERSION))
     return {tools:[],configuredWorkflowWorkerPorts:[],unavailable:[...unavailable,'f19_issue_snapshot_tool_unavailable']};
-  const tools=[...business,...snapshot.tools,...enqueue.tools];
+  const tools=[...business,...snapshot.tools,...enqueue.tools,...merged.tools,...(regressionHost?.tools??[])];
   const requiredTools=[...new Set([...Object.values(names),'github.issue_snapshot','coding.repair.workflow',
-    ...(publisher?['workspace.git.head','workspace.run_allowed_command','workspace.git.commit','workspace.git.push','github.pr.create']:[])])]
+    ...(publisher?['workspace.git.head','workspace.run_allowed_command','workspace.git.commit','workspace.git.push','github.pr.create']:[]),
+    ...(regressionHost?['github.merged_pr_readback','workspace.f19_regression_head','workspace.f19_regression_command']:[])])]
     .map(name=>({name,version:name.startsWith('github.')?GITHUB_CONNECTOR_VERSION:'1.0.0'}));
   const worker={workflowId:'F19',toolName:'workflow.f19.issue_repair',toolVersion:'1.0.0',configurationVersion,
     requestSchema,inputSchema,resultSchema:object({issueId:{type:'integer',minimum:1},closed:{const:true}}),
@@ -136,6 +144,7 @@ export function createDesktopF19IssueRepairPorts({getApplication,github,selectio
     async authorizeExport(value){current(value);const allowed=await authorizeExport({...value,workflowId:'F19'});current(value);return allowed===true;},
     async verifyCompletion(){fail('UNSUPPORTED_CAPABILITY','Original F19 publication and independent native regression are unavailable');}};
   return {tools,configuredWorkflowWorkerPorts:[worker],unavailable,
+    ...(regressionHost?{prepareRegressionQuestion:regressionHost.prepareQuestion,confirmRegressionPresence:regressionHost.confirmPresence}:{}),
     ...(publisher?{publication:publisher.gitPort,preparePublicationQuestion:publisher.prepareQuestion,
       confirmPublicationPresence:publisher.confirmPresence,readOriginalPublication:publisher.read}:{} )};
 }

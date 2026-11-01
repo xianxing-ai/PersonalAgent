@@ -125,6 +125,12 @@ export function createF19PublicationHost({getApplication:app,runtimeModule:r,bin
       parentTaskId:original.scope.parentTaskId,sessionId:original.scope.sessionId,publication:original.publication};
   }
   return {gitPort,resolveTool,
+    original(scope){
+      const bound=current(scope),hosts=bound.confirmedOperations.filter(value=>value.nodeId==='F19_N03'&&value.toolName===hostName);
+      if(hosts.length!==1)fail('Original F19 publishing frontier unavailable');
+      const sourceScope={...scope,localTaskId:hosts[0].localTaskId,operationId:hosts[0].operationId};
+      return {scope:sourceScope,value:this.read(sourceScope)};
+    },
     async publish(scope,ctx,dispatchReceipt){
       current(scope);const repair=ref(dispatchReceipt);app().runtime.saveCheckpointOnce(scope.localTaskId,prefix+'repair',repair);
       if(!isDeepStrictEqual(repair,app().runtime.loadCheckpoint(scope.localTaskId,prefix+'repair')))fail('Original F19 repair receipt changed');

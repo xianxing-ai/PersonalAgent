@@ -67,3 +67,6 @@ N04 尚须原 PR 的实际 merged SHA 读回与独立 bug 回归。已选定预�
 不触碰开发工作区。N05 必须再走独立 Policy 和精确 Issue 读回。没有这些证据不能 close。
 本段的 baseSha 是原 commit 的 base，不是已验证的当前远端合并结果；任何后续验收必须读取
 原 PR 的真实 merge 数据。真签名、受限原生包、账号和用户授权缺失时继续 unavailable。
+
+后续 N04 接线及其独立验证见 [合并后原生回归增量](F19_MERGED_NATIVE_REGRESSION_20261101.md)，
+不改变本段交付时的证据范围。

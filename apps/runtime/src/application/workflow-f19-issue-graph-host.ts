@@ -122,7 +122,8 @@ export function createRuntimeF19MergedRepairReadbackHost(options?:{
   requiredScopes:readonly string[];
   now:()=>Date;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
-  resolveMergedReadback:(scope:Scope)=>Promise<{repo:string;issueId:number;readback:OriginalRead}|undefined>;
+  resolveMergedReadback:(scope:Scope,context:ToolContext)=>Promise<{repo:string;issueId:number;mergeRead:OriginalRead;
+    regressionRead:OriginalRead;source:Record<string,unknown>}|undefined>;
   authorizeExport:(scope:Scope,result:{verified:boolean;issueId:number})=>Promise<boolean>;
 }):HostBundle {
   const ports=basePorts(options as Parameters<typeof basePorts>[0]);
@@ -132,16 +133,38 @@ export function createRuntimeF19MergedRepairReadbackHost(options?:{
     hostToolName:'workflow.host.f19_n04',assertCurrent:ports.assertCurrent,now:ports.now});
   const read=async(context:ToolContext)=>{
     const scope=active(context);let binding:Awaited<ReturnType<NonNullable<typeof options>['resolveMergedReadback']>>;
-    try {binding=await options.resolveMergedReadback(scope);}catch{return failOwnedHost('UNSUPPORTED_CAPABILITY','F19 merged repair readback unavailable');}
+    binding=await options.resolveMergedReadback(scope,context);
     active(context);
     if(!binding||!repo(binding.repo)||!Number.isSafeInteger(binding.issueId)||binding.issueId<=0)
       failOwnedHost('UNSUPPORTED_CAPABILITY','F19 merged repair readback unavailable');
-    const args=binding.readback?.arguments;
-    if(!object(args)||args.repo!==binding.repo||args.issueId!==binding.issueId)failOwnedHost('UNAUTHORIZED','F19 merged readback identity changed');
-    const readback=cacheOriginal(options.application,scope,binding.readback,'github.merged_repair_readback');
-    if(!object(readback)||readback.issueId!==binding.issueId||typeof readback.verified!=='boolean')
-      failOwnedHost('UNSUPPORTED_CAPABILITY','F19 merged repair evidence unavailable');
-    return {verified:readback.verified as boolean,issueId:binding.issueId};
+    const args=binding.mergeRead?.arguments,source=binding.source;
+    if(!object(args)||args.repo!==binding.repo||!object(source)||source.repo!==binding.repo||source.issueId!==binding.issueId
+      ||source.parentTaskId!==scope.parentTaskId||source.sessionId!==scope.sessionId||source.hostTaskId!==scope.localTaskId
+      ||source.prNumber!==args.prNumber||source.headSha!==args.headSha)
+      failOwnedHost('UNAUTHORIZED','F19 merged readback identity changed');
+    const merge=cacheOriginal(options.application,scope,binding.mergeRead,'github.merged_pr_readback');
+    if(!object(merge)||merge.merged!==true||merge.headSha!==args.headSha||merge.mergedSha!==source.mergedSha)
+      failOwnedHost('UNSUPPORTED_CAPABILITY','Original F19 PR is not confirmed merged');
+    const result=cacheOriginal(options.application,scope,binding.regressionRead,'workspace.f19_regression_command');
+    const original=runtime.loadCheckpoint(binding.regressionRead.taskId,'f19-native-command:v1:'+binding.regressionRead.runId);
+    const results=runtime.loadCheckpoint(binding.regressionRead.taskId,'native-sandbox-execution:'+binding.regressionRead.runId);
+    const invocation=runtime.loadCheckpoint(binding.regressionRead.taskId,'application-tool-invocation:'+binding.regressionRead.runId);
+    if(!object(result)||result.exitCode!==0||result.recipeId!==source.recipeId||!object(original)||original.version!==1
+      ||original.taskId!==binding.regressionRead.taskId||original.runId!==binding.regressionRead.runId
+      ||!object(invocation)||original.argumentsDigest!==invocation.argumentsDigest||!isDeepStrictEqual(original.source,source)
+      ||source.taskId!==original.taskId||source.runId!==original.runId||source.argumentsDigest!==original.argumentsDigest
+      ||original.root!==source.root||!object(original.profile)||original.profile.mode!=='read-only'
+      ||original.profile.backend!=='windows-psec'||!object(original.profile.network)||original.profile.network.mode!=='deny'
+      ||!Array.isArray(original.profile.writeRoots)||original.profile.writeRoots.length!==0
+      ||!Array.isArray(original.recipes)||original.recipes.length!==1||!Array.isArray(results)||results.length!==1)
+      failOwnedHost('UNAUTHORIZED','Original F19 native regression binding unavailable');
+    const receipt=results[0];
+    if(!object(receipt)||receipt.runId!==original.runId||receipt.argumentsDigest!==original.argumentsDigest
+      ||receipt.originalBindingDigest!==createHash('sha256').update(JSON.stringify(original)).digest('hex')
+      ||receipt.backend!=='windows-psec'||receipt.enforced!==true||receipt.outcome!=='exited'||receipt.exitCode!==0
+      ||receipt.executionStarted!==true||receipt.stopped!==true)
+      failOwnedHost('UNAUTHORIZED','Original F19 native regression did not finish successfully');
+    return {verified:true,issueId:binding.issueId};
   };
   const tool=createOwnedWorkflowAdapter({nodeId:'F19_N04',kind:'host',sideEffect:'read',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
@@ -149,8 +172,9 @@ export function createRuntimeF19MergedRepairReadbackHost(options?:{
       properties:{verified:{type:'boolean'},issueId:{type:'integer',minimum:1}}},
     async execute(_input,context){const result=await read(context);active(context);
       if(await ports.authorizeExport(active(context),structuredClone(result))!==true)failOwnedHost('UNAUTHORIZED','F19 merged readback export denied');
+      active(context);if(!isDeepStrictEqual(result,await read(context)))failOwnedHost('REVISION_CONFLICT','F19 regression changed during export');
       return result;}});
-  return {tools:[tool],unavailable:null};
+  return {tools:[{...tool,descriptor:{...tool.descriptor,requiresPresence:true}}],unavailable:null};
 }
 
 export function createRuntimeF19CloseIssueHost(options?:{

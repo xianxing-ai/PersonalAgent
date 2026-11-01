@@ -7,14 +7,16 @@ import childProcess from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,mkdirSync,readFileSync,realpathSync} from 'node:fs';
 import {createGitHubF18F19Tools,GhCliProvider,register as registerGitHub} from '@personal-agent/github';
 import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
+import * as coding from '@personal-agent/coding-tools';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier} from '@personal-agent/agentarts';
 import {ProtocolError} from '@personal-agent/contracts';
 import * as r from '@personal-agent/runtime/application';
 import {createDesktopF19IssueRepairPorts} from '../electron/f19-issue-repair-ports.js';
 import {createDesktopDeveloperToolsHost} from '../electron/developer-tools-host.js';
+import {createDesktopNativeExecutionHost} from '../electron/native-execution-host.js';
 import {runCodingRepairFullGraphFixture} from '../../../tests/manual/agentarts/coding-repair-full-graph.mjs';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -27,9 +29,12 @@ const secret='synthetic-f19-receipt-secret-at-least-32-characters';
 // GitHub transport, consent and ephemeral independent signature are explicit
 // fixture boundaries. This is not a real human signature or GitHub acceptance.
 async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=false,revokeDuringExport=false,
-  publish=false,testContext,denyPublication,unknownPr=false,replacePublishedBytes=false,revokePresence=false,foreignRemote=false}={}) {
+  publish=false,testContext,denyPublication,unknownPr=false,replacePublishedBytes=false,revokePresence=false,foreignRemote=false,
+  regression=false,unmerged=false,wrongCheckout=false,changedChecker=false,regressionFails=false,unknownRegression=false,
+  denyRegression=false,cancelRegression=false}={}) {
   let app,ports,developerHost,revoked=false,closedEvidence,dispatchApprovals=0,nativeSelection=selection,remoteHead,pushes=0,presence=0;
   const requests=[],exports=[],nodes=[],failures=[];
+  let native,regressionOptions,prepareMergedCheckout,nativeExecutions=0,regressionApprovals=0,mergeReady=false;
   if(publish){
     const originalSpawn=childProcess.spawn;
     testContext.mock.method(childProcess,'spawn',(file,args,options)=>{
@@ -66,6 +71,10 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
           assert.doesNotMatch(input.body,/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#/i);
           if(unknownPr)throw Error('Synthetic original PR created but response lost');
           result={number:93,html_url:'https://github.com/synthetic/f19/pull/93',head:{sha:remoteHead}};
+        }else if(endpoint==='repos/synthetic/f19/pulls/93'){
+          assert.equal(request.args[4],'GET');assert.equal(regressionApprovals,1);
+          result={number:93,state:mergeReady?'closed':'open',merged:mergeReady,
+            merge_commit_sha:remoteHead,base:{repo:{full_name:issue.repo},sha:nativeSelection.headSha},head:{repo:{full_name:issue.repo},sha:remoteHead}};
         }else assert.fail('Unexpected synthetic endpoint '+endpoint);
         return {exitCode:0,stderr:'',stdout:JSON.stringify(result)};
       }};
@@ -79,18 +88,50 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
           git:{options:{repository:issue.repo,rootPath:root,sourceBranch:'codex/f19-fixture',remoteName:'origin',remoteUrl:'https://github.com/synthetic/f19.git',
             allowedPaths:['feature.cjs'],authorName:'Synthetic',authorEmail:'fixture@example.invalid',getCredentials:async()=>({token:'synthetic-only-token'})},available:async()=>true},
           command:{tool:createWorkspaceCommandTool({rootPath:root,recipes:[{id:'publication-check',executable:process.execPath,args:['--test','checks/actual-check.cjs']}]}),rootPath:root,available:async()=>true}});
+        if(regression){
+          const checkout=join(dirname(config.path),'independent-checkout'),checkers=join(dirname(config.path),'independent-checkers');mkdirSync(checkers);
+          execFileSync('git',['-c','core.autocrlf=false','clone','--no-hardlinks',root,checkout],{stdio:['ignore','pipe','pipe']});
+          const regressionGit=(...args)=>{try{return execFileSync('git',args,{cwd:checkout,stdio:['ignore','pipe','pipe']});}
+            catch(error){failures.push({tool:'fixture regression Git',args,stderr:String(error.stderr)});throw error;}};
+          regressionGit('config','core.autocrlf','false');
+          regressionGit('checkout','-b','f19-regression');regressionGit('remote','set-url','origin','https://github.com/synthetic/f19.git');
+          const checker=join(checkers,'original-bug.cjs');writeFileSync(checker,"const assert=require('node:assert/strict'); assert.equal(require(process.argv[2]+'/feature.cjs')(),"+(regressionFails?'999':'3')+");\n");
+          // Explicit fixture transport: executes the fixed Node checker for real,
+          // but reports synthetic native isolation facts. This is NOT real PSEC.
+          native=createDesktopNativeExecutionHost({coding:{...coding,
+            readWindowsNativeHelperAttestation:helperPath=>({helperPath,helperSha256:'f'.repeat(64)}),
+            verifyWindowsNativeSandbox:async()=>({available:true,enforced:true,helperSha256:'f'.repeat(64)}),
+            createWindowsNativeSandboxExecutor:({assertCurrent})=>({async execute(request){
+              assertCurrent(request);nativeExecutions++;
+              if(unknownRegression)return {backend:'windows-psec',enforced:true,outcome:'unknown',exitCode:null,executionStarted:true,stopped:false,sideEffects:'unknown',stdout:'',stderr:''};
+              let exitCode=0;try{execFileSync(request.executable,request.argv,{cwd:request.cwd,env:request.env,stdio:['ignore','pipe','pipe']});}catch(error){exitCode=error.status??1;}
+              return {backend:'windows-psec',enforced:true,outcome:'exited',exitCode,executionStarted:true,stopped:true,sideEffects:'none',stdout:'',stderr:''};
+            }})},question:{prepare(_scope,value){assert.equal(value.assertCurrent(),true);},currentRequirement:()=>({}),
+              readExecutionPolicy:()=>({ref:'synthetic-regression-sandbox',revision:1,mode:'read-only'})},
+            getApplication:()=>app,readConfiguration:()=>({rootPath:root,nodeExecutable:process.execPath,bindingId:'synthetic-f19-native'}),
+            ensureHelper:async()=>process.execPath,probeRootPath:dirname(config.path),systemRoot:process.env.SystemRoot,localAppData:dirname(config.path)});
+          regressionOptions={configurationRef:'c'.repeat(64),assertCurrent:current,native,rootPath:realpathSync.native(checkout),
+            nodeExecutable:process.execPath,sourceBranch:'f19-regression',checkerPath:checker,
+            checkerSha256:createHash('sha256').update(readFileSync(checker)).digest('hex')};
+          prepareMergedCheckout=()=>{
+            if(!wrongCheckout){regressionGit('fetch',root,remoteHead);regressionGit('checkout','-B','f19-regression','FETCH_HEAD');}
+            if(changedChecker)writeFileSync(checker,'process.exit(0);\n');
+            mergeReady=!unmerged;
+          };
+        }
       }
       ports=createDesktopF19IssueRepairPorts({getApplication:()=>app,selection:{configurationRef:'a'.repeat(64),assertCurrent:current,readSelection:async()=>nativeSelection},
         ...(publish?{publication:{configurationRef:'b'.repeat(64),assertCurrent:current,
           readConfiguration:()=>({...developerHost.readF16PublicationConfiguration(),...(foreignRemote?{remoteUrl:'https://github.com/synthetic/foreign.git'}:{})}),
           requestPresence:async()=>{presence++;if(revokePresence)revoked=true;}}}:{}),
+        ...(regressionOptions?{regression:regressionOptions}:{}),
         github:{assertCurrent:current,createTools:()=>createGitHubF18F19Tools({runner,readToken:async()=> 'synthetic-only-token',
           repositories:[issue.repo],requiredChecks:['unused-read-fixture'],eligibleReviewers:['unused-read-fixture'],beforeWrite(){assert.fail('No GitHub write permitted');}})},
         authorizeExport:async value=>{exports.push(value);if(revokeDuringExport&&value.value?.repairTaskId)revoked=true;return true;}});
       assert.equal(ports.configuredWorkflowWorkerPorts[0].available(),false);
       // Stage-one boundary only: explicitly let this fixture reach N03. The
       // production worker stays unavailable and the fixture N04 rejects all completion.
-      const missing=['f19_n04','f19_n05'].map(name=>({descriptor:{name:'workflow.host.'+name,version:'1.0.0',
+      const missing=[...(regression?[]:['f19_n04']),'f19_n05'].map(name=>({descriptor:{name:'workflow.host.'+name,version:'1.0.0',
         inputSchema:{type:'object',additionalProperties:false,properties:{}},outputSchema:{},sideEffect:'read',requiredScopes:['github:read'],
         idempotencySupport:false,recoverySupport:false,requiresPresence:false},execute(){throw new ProtocolError('UNSUPPORTED_CAPABILITY','Explicit fixture: original publication/regression absent');}}));
       const observed=(developerHost?.tools??[]).map(tool=>({...tool,async execute(...args){try{
@@ -98,11 +139,24 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
           writeFileSync(join(dirname(config.path),'user','feature.cjs'),'// Unreviewed replacement still passes the checker\nmodule.exports=()=>3;\n');
         return await tool.execute(...args);}
         catch(error){failures.push({tool:tool.descriptor.name,message:error.message,stack:error.stack});throw error;}}}));
-      const tools=[...config.tools,...ports.tools,...observed,...missing,r.createDesktopSubagentDispatchTool({competitionOnly:true,
+      const hostTools=ports.tools.map(tool=>({...tool,async execute(...args){try{return await tool.execute(...args);}
+        catch(error){failures.push({tool:tool.descriptor.name,message:error.message,stack:error.stack});throw error;}}}));
+      const tools=[...config.tools,...hostTools,...observed,...missing,r.createDesktopSubagentDispatchTool({competitionOnly:true,
         getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scope)=>app.runDefaultSubagentWorker(task,worker,scope)})];
       app=r.createRuntimeApplication({...config,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,available:()=>true})),
         automaticTools:config.automaticTools.filter(tool=>tool.toolName!=='coding.repair.workflow'),
         requestToolAuthorization:async scope=>{
+          const regressionProof=ports.prepareRegressionQuestion?.(scope,{prepare(_scope,fence){
+            assert.equal(fence.assertCurrent(),true);assert.match(fence.requirements[0].summary,/原 PR 已独立审核并合并/);}});
+          if(regressionProof){
+            regressionApprovals++;
+            assert.throws(()=>ports.prepareRegressionQuestion({...scope,argumentsDigest:'f'.repeat(64)},{prepare(){}}),{code:'UNAUTHORIZED'});
+            assert.equal(requests.some(value=>value.endpoint.endsWith('/pulls/93')),false,'No merge read occurs before original approval');
+            if(denyRegression)return 'deny';
+            if(cancelRegression)app.runtime.requestCancel(scope.taskId,'Synthetic cancellation while awaiting regression approval');
+            prepareMergedCheckout();await ports.confirmRegressionPresence(scope);
+          }
+          if(scope.toolName==='workspace.f19_regression_command')await native.prepare(scope);
           const proof=ports.preparePublicationQuestion?.(scope,{prepare:(_scope,fence)=>assert.equal(fence.assertCurrent(),true)});
           if(proof){
             assert.throws(()=>ports.preparePublicationQuestion({...scope,argumentsDigest:'f'.repeat(64)},{prepare(){}}),{code:'UNAUTHORIZED'});
@@ -149,7 +203,7 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
           assert.equal(original.snapshot.snapshotDigest,digest(issue));assert.equal(original.snapshot.issueId,19);
           closedEvidence.original=original;
         }
-        closedEvidence.pushes=pushes;closedEvidence.presence=presence;
+        closedEvidence.pushes=pushes;closedEvidence.presence=presence;closedEvidence.nativeExecutions=nativeExecutions;closedEvidence.regressionApprovals=regressionApprovals;
         if(publish&&closedEvidence.proof){
           const source=app.runtime.loadCheckpoint(closedEvidence.proof.dispatchTaskId,'coding-repair:parent');
           const parent=app.runtime.loadCheckpoint(source.taskId,'coding-repair:parent');
@@ -160,7 +214,7 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
           // N04 is unavailable by design in this phase, so its graph has already
           // stopped. Inspect original persisted records rather than reauthorizing export.
         }
-        originalClose();developerHost?.close();
+        originalClose();developerHost?.close();native?.close();
       };return app;
     }});
   return {report,evidence:closedEvidence,requests,exports,nodes,failures};
@@ -198,6 +252,33 @@ test('F19 export revocation preserves the original completed child and refuses t
 
 test('F19 missing trusted providers exposes no tools or worker',()=>{
   const ports=createDesktopF19IssueRepairPorts();assert.deepEqual(ports.tools,[]);assert.deepEqual(ports.configuredWorkflowWorkerPorts,[]);
+});
+
+test('F19 original merged PR runs an independent fixed checker through its native child exactly once',async t=>{
+  const f=await fixture({publish:true,regression:true,testContext:t});
+  const host=f.evidence.hosts.find(value=>value.toolName==='workflow.host.f19_n04');
+  assert.equal(host?.task.state,'succeeded',JSON.stringify({failures:f.failures,hosts:f.evidence.hosts.map(value=>({tool:value.toolName,state:value.task.state,error:value.task.error}))}));
+  assert.deepEqual(host.confirmed.result,{issueId:19,verified:true});assert.equal(f.evidence.nativeExecutions,1);
+  assert.equal(f.evidence.regressionApprovals,1);
+  assert.equal(f.requests.filter(value=>value.endpoint.endsWith('/pulls/93')).length,1);
+  assert.equal(f.requests.some(value=>value.method==='PATCH'),false);
+});
+
+for(const [name,options,executions] of [['unmerged original PR',{unmerged:true},0],['different independent checkout SHA',{wrongCheckout:true},0],
+  ['changed independent checker',{changedChecker:true},0],['failing independent bug regression',{regressionFails:true},1],
+  ['unknown original native result',{unknownRegression:true},1],['denied original regression approval',{denyRegression:true},0],
+  ['cancelled original regression approval',{cancelRegression:true},0]])
+test('F19 '+name+' never certifies regression or closes the issue',async t=>{
+  const f=await fixture({publish:true,regression:true,testContext:t,...options});
+  assert.notEqual(f.evidence.hosts.find(value=>value.toolName==='workflow.host.f19_n04')?.task.state,'succeeded');
+  assert.equal(f.evidence.nativeExecutions,executions);assert.equal(f.requests.some(value=>value.method==='PATCH'),false);
+  if(options.unknownRegression){
+    const child=f.evidence.hosts.find(value=>value.toolName==='workspace.f19_regression_command');
+    assert.equal(child.task.state,'waiting_reconciliation');
+    const reopened=r.createRuntimeApplication({path:join(f.report.directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-f15-host'});
+    try{assert.equal(reopened.readHostToolTask(child.task.taskId).task.state,'waiting_reconciliation');assert.equal(f.evidence.nativeExecutions,1);}
+    finally{reopened.close();}
+  }
 });
 
 test('F19 original F15 publication uses real Git commit and command plus explicit fake remote/PR transport once',async t=>{

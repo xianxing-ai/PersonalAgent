@@ -6,7 +6,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const blocked=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前外部进程隔离后端或原授权不可用，未降级为普通进程');};
 const external=name=>['workspace.run_allowed_command','workspace.node_check','workspace.npm_build','workspace.npm_test',
-  'workspace.git_diff_check','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
+  'workspace.git_diff_check','workspace.f19_regression_command','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
 const identity=value=>{const target=realpathSync.native(value),stat=statSync(target,{bigint:true});
   return [target,String(stat.dev),String(stat.ino),String(stat.birthtimeNs)];};
 
@@ -69,16 +69,24 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   function createCommandTool(options){
     const root=realpathSync.native(options.rootPath),rootIdentity=identity(root);
     // Main may add immutable compiler/support directories; tool input cannot supply them.
-    const {trustedReadRoots=[],...commandOptions}=options;
+    const {trustedReadRoots=[],readF19Binding,...commandOptions}=options;
+    if(readF19Binding!==undefined&&typeof readF19Binding!=='function')blocked();
     if(!Array.isArray(trustedReadRoots)||trustedReadRoots.length>4)blocked();
     const supportRoots=trustedReadRoots.map(value=>{const target=realpathSync.native(value),relative=path.relative(root,target);
       if(!statSync(target).isDirectory()||path.dirname(target)===target||relative!== '..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))blocked();
       return {path:target,identity:digest(identity(target))};});
     const fixedRecipes=options.recipes.map(recipe=>({executable:realpathSync.native(recipe.executable),args:[...(recipe.args??[])]}));
     const executables=[...new Set(fixedRecipes.map(recipe=>recipe.executable))];
-    const executor={async execute(request){
+    const assertCommand=request=>{
       assertBinding(request);
-      const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertBinding});
+      if(readF19Binding){
+        const original=getApplication().runtime.loadCheckpoint(request.taskId,'f19-native-command:v1:'+request.runId);
+        if(!original||digest(original.source)!==digest(readF19Binding(request))||digest(identity(root))!==digest(rootIdentity))blocked();
+      }
+    };
+    const executor={async execute(request){
+      assertCommand(request);
+      const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertCommand});
       return actual.execute(request);
     }};
     return coding.createWorkspaceCommandTool({...commandOptions,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
@@ -114,16 +122,28 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           application.runtime.saveCheckpointOnce(context.taskId,key,original);
           if(digest(application.runtime.loadCheckpoint(context.taskId,key))!==digest(original))blocked();
         }
+        if(readF19Binding){
+          const source=readF19Binding(context);
+          if(f20||fixedRecipes.length!==1||mode!=='read-only'||!source||source.root!==root
+            ||source.recipeId!==options.recipes[0].id||source.taskId!==context.taskId||source.runId!==context.runId
+            ||source.argumentsDigest!==context.argumentsDigest)blocked();
+          const original={version:1,taskId:context.taskId,runId:context.runId,argumentsDigest:context.argumentsDigest,
+            source:structuredClone(source),root,rootIdentity,pins:verified.pins,binding,profile,recipes:fixedRecipes};
+          const key='f19-native-command:v1:'+context.runId;
+          application.runtime.saveCheckpointOnce(context.taskId,key,original);
+          if(digest(application.runtime.loadCheckpoint(context.taskId,key))!==digest(original))blocked();
+        }
         return {...binding,profile};
       },
       recordResult(context,result){
         // Trusted executor facts only. Never persist command stdout/stderr or target-asserted evidence.
         const runtime=getApplication().runtime;
         const name='native-sandbox-execution:'+context.runId;
+        const original=runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId)
+          ??runtime.loadCheckpoint(context.taskId,'f19-native-command:v1:'+context.runId);
         const value={runId:context.runId,argumentsDigest:context.argumentsDigest,backend:result.backend,enforced:result.enforced,
           outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects,
-          ...(runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId)?
-            {originalBindingDigest:digest(runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId))}:{})};
+          ...(original?{originalBindingDigest:digest(original)}:{})};
         const previous=runtime.loadCheckpoint(context.taskId,name)??[];
         if(!Array.isArray(previous)||previous.length>=256)throw new ProtocolError('RESULT_UNKNOWN','Native execution audit capacity reached');
         runtime.saveCheckpoint(context.taskId,name,[...previous,value]);
