@@ -81,6 +81,7 @@ import {createDesktopAuthorizationQuestionHost} from './authorization-question-h
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
 import {createDesktopNativeExecutionHost} from './native-execution-host.js';
 import {readPackagedNativeJobHelper} from './native-job-component.js';
+import {readWindowsHostComponent} from './native-windows-host-component.js';
 import {createPlanExecutionFactReader} from './goal-host-core.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
@@ -2219,14 +2220,21 @@ async function initializeRuntime() {
       }
       const hostPath = path.resolve(dir, '../../windows-host/host/bin/Release/net8.0-windows/WindowsHost.Host.exe');
       const bridgePath = path.resolve(dir, '../../windows-host/host/bridge/bin/Release/net8.0-windows/WindowsHost.PipeBridge.exe');
-      if (!syntheticMvp && process.platform === 'win32' && existsSync(hostPath) && existsSync(bridgePath)) {
+      let windowsHostComponent;
+      if(!syntheticMvp&&process.platform==='win32'){
+        try{windowsHostComponent=app.isPackaged?readWindowsHostComponent(process.resourcesPath):
+          existsSync(hostPath)&&existsSync(bridgePath)?{hostPath,bridgePath}:undefined;}
+        catch{console.warn('Windows Host 发布组件不可用，记事本操作保持未接通');}
+      }
+      if (windowsHostComponent) {
         notepadHost = createDesktopNotepadHost({
           isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
             return selected?JSON.stringify([selected.mode,selected.revision]):undefined;},
           createAdapter:runtimeModule.createWindowsHostNotepadAdapter,
           createAttempts:runtimeModule.createRuntimeWindowsHostAttemptStore,
-          transport:runtimeModule.createWindowsHostBridgeTransport({hostPath,bridgePath}),
+          transport:runtimeModule.createWindowsHostBridgeTransport({...windowsHostComponent,
+            journalDirectory:path.join(app.getPath('userData'),'native-tools','windows-host-journal')}),
           registerConfirmation:handler=>toolPresenceHost?.registerConfirmation(handler),
           openNotepad:() => new Promise((resolve,reject) => {
             const child=spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows','System32','notepad.exe'),[],

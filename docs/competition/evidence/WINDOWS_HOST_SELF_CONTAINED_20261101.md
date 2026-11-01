@@ -24,4 +24,8 @@
 
 ## 继续入口
 
-根 Main 选择上述正式 resources 后，使用同一 `readWindowsHostComponent` 结果建立原 transport；仍通过现有 `createDesktopNotepadHost` 和原卡/Policy 执行。没有新增真实 UI、自动批准或输入脚本。本包未验证真实 Notepad 写后读回、用户接管或安装/卸载；这些不能以 hello 成功替代。集成分支统一运行全仓 `npm run check`，本包不声称全仓通过。
+集成分支 Main 已按 `app.isPackaged` 从正式 `process.resourcesPath` 读取 `readWindowsHostComponent`，将原 manifest 和 `assertCurrentBundle` 直接传给原 transport，并使用当前 userData 下独立 journal。发布包校验失败保持未接通，不回退开发目录。开发模式保留原显式 FDD 路径；本机缺少可被净化环境找到的全局 .NET 8 时，开发 Notepad 仍不可用。
+
+`node --test apps/desktop/test/native-windows-host-main.test.mjs` 3/3 通过：执行实际 Main 装配片段，验证完整性回调透传、无效发布包禁止回退，以及开发/非 Windows/合成模式边界。Runtime build exit 0。此测试使用显式组件 Fake，不增加真实窗口证据。
+
+仍通过现有 `createDesktopNotepadHost` 和原卡/Policy 执行。没有新增真实 UI、自动批准或输入脚本。本包未验证真实 Notepad 写后读回、用户接管或安装/卸载；这些不能以 hello 成功替代。集成分支统一运行全仓 `npm run check`，本包不声称全仓通过。
