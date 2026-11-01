@@ -88,15 +88,30 @@ export function createF22TraceReplayWorkflowPorts(options?:F22TraceReplayOptions
     if(!isDeepStrictEqual(saved,observed))fail('REVISION_CONFLICT','Original replay source or configuration changed');
     return observed;
   }
+  // Historical tool bodies keep their original tool's export restrictions. A
+  // workflow confirmation only permits this metadata projection, never the body.
+  function publicInput(input:ReturnType<typeof source>) {
+    return {mode:input.mode,sourceTaskId:input.sourceTaskId,sourceRunId:input.sourceRunId,conversationId:input.conversationId,
+      admissionRevision:input.admissionRevision,snapshotAsOf:input.frozenSnapshot.asOf,sourceVersions:input.frozenSnapshot.sourceVersions,
+      snapshotDigest:workflowTraceDigest(input.frozenSnapshot),decisionOutputs:decisions,branches};
+  }
   const replay=(scope:Scope)=>{
     const input=original(scope),result=replayFrozenWorkflowTrace({snapshot:input.frozenSnapshot,requestedActions:input.requestedActions},scope);
-    return {...result,mode:'trace_replay' as const,provenance:'runtime_original_execution_not_new_execution' as const,
-      sourceTaskId:input.sourceTaskId,sourceRunId:input.sourceRunId};
+    const recordKeys=['recordId','kind','observedAt','sourceVersions','state','resultDigest','evidenceRefs','effect','toolName','toolVersion','argumentsDigest'];
+    const actionKeys=['actionId','originalRecordIds','evidenceRefs','actualExecutionVerified','counterfactualExecutionVerified',
+      'state','comparability','reason','historicalState','resultDigest'];
+    const pick=(value:Record<string,unknown>,keys:string[])=>Object.fromEntries(keys.filter(key=>Object.hasOwn(value,key)).map(key=>[key,value[key]]));
+    return {mode:'trace_replay' as const,provenance:'runtime_original_execution_not_new_execution' as const,
+      sourceTaskId:input.sourceTaskId,sourceRunId:input.sourceRunId,snapshotAsOf:result.snapshotAsOf,sourceVersions:result.sourceVersions,
+      snapshotDigest:result.snapshotDigest,timeline:result.timeline.map(item=>({record:pick(item.record as Record<string,unknown>,recordKeys),
+        evidenceStatus:item.evidenceStatus,toolEvidence:item.toolEvidence,executedDuringReplay:false})),
+      actions:result.actions.map(item=>pick(item,actionKeys)),actualToolCalls:0,actualModelCalls:0,authority:result.authority,
+      currentResultValidity:result.currentResultValidity,counterfactualComparison:result.counterfactualComparison,trainingPerformed:false};
   };
   function hostValue(nodeId:string,scope:Scope) {
     const input=original(scope);
     if(nodeId==='F22_N09')return {eligible:true,mode:input.mode,admissionRevision:input.admissionRevision};
-    if(nodeId==='F22_N01')return {frozenComparisonInput:input};
+    if(nodeId==='F22_N01')return {frozenComparisonInput:publicInput(input)};
     if(nodeId==='F22_N06')return {mode:input.mode,counterfactualComparison:'unknown',actualToolCalls:0,actualModelCalls:0,trainingPerformed:false};
     return replay(scope);
   }
@@ -112,7 +127,7 @@ export function createF22TraceReplayWorkflowPorts(options?:F22TraceReplayOptions
       const owner={taskId:scope.parentTaskId,deadline:scope.deadline,signal:scope.signal},input=original(owner);
       const binding=app.readConfiguredWorkflowBinding({taskId:owner.taskId,workflowId:'F22',sessionId:scope.sessionId,signal:scope.signal});
       const run=app.runtime.readToolExecutions(context.taskId).find(item=>item.evidenceId===context.runId),grant=app.runtime.policy.get(context.authorizationRef!);
-      if(!binding||binding.deadline!==scope.deadline||!isDeepStrictEqual(binding.input,input)||!run||run.state!=='started'
+      if(!binding||binding.deadline!==scope.deadline||!isDeepStrictEqual(binding.input,publicInput(input))||!run||run.state!=='started'
         ||run.policyDecision!=='allow'||!run.executionStarted||!app.runtime.isToolExecutionActive(run)||context.authorizationRef!==context.runId
         ||run.toolName!=='workflow.host.'+nodeId.toLowerCase()||run.toolVersion!=='1.0.0'
         ||!app.runtime.matchesToolExecutionInput(run,{arguments:args as Record<string,unknown>,scopeRef:context.runId})
@@ -123,7 +138,7 @@ export function createF22TraceReplayWorkflowPorts(options?:F22TraceReplayOptions
     }}));
   function exportCurrent(request:Parameters<Worker['authorizeExport']>[0]) {
     const input=original(request);
-    if(request.stage==='initial'){if(!isDeepStrictEqual(request.value,input))fail('UNAUTHORIZED','Original replay input changed');return;}
+    if(request.stage==='initial'){if(!isDeepStrictEqual(request.value,publicInput(input)))fail('UNAUTHORIZED','Original replay input changed');return;}
     if(request.stage==='completion'){if(!isDeepStrictEqual(request.value,replay(request)))fail('UNAUTHORIZED','Original replay result changed');return;}
     const p=request.proposal,read=request.localTaskId&&app.readHostToolTask(request.localTaskId);
     if(!p||!read||read.commandId!==p.operationId||read.toolName!==p.toolName||!read.confirmed
@@ -133,7 +148,8 @@ export function createF22TraceReplayWorkflowPorts(options?:F22TraceReplayOptions
   }
   const worker:Worker={workflowId:'F22',toolName:'workflow.f22.trace_replay',toolVersion:'1.0.0',configurationVersion:'f22-original-trace-v1',
     requestSchema:object({sourceTaskId:text}),inputSchema:object({mode:{const:'trace_replay'},sourceTaskId:text,sourceRunId:text,conversationId:text,
-      admissionRevision:{type:'integer',minimum:1},frozenSnapshot:{type:'object'},requestedActions:{type:'array'},decisionOutputs:{const:decisions},branches:{const:branches}}),
+      admissionRevision:{type:'integer',minimum:1},snapshotAsOf:text,sourceVersions:{type:'object'},snapshotDigest:text,
+      decisionOutputs:{const:decisions},branches:{const:branches}}),
     resultSchema,publicEnumPaths:[],sideEffect:'read',requiredTools:[...tools.map(tool=>({name:tool.descriptor.name,version:tool.descriptor.version})),
       {name:'decision.choose_candidate',version:'1.0.0'}],
     available(scope){try{current(scope);return true;}catch{return false;}},assertCurrent(scope){current(scope);},
@@ -141,10 +157,10 @@ export function createF22TraceReplayWorkflowPorts(options?:F22TraceReplayOptions
       const input=source(scope,args.sourceTaskId as string),saved=app.runtime.loadCheckpoint(scope.taskId,key);
       if(saved!==undefined&&!isDeepStrictEqual(saved,input)||saved===undefined&&!app.runtime.saveCheckpointOnce(scope.taskId,key,input))
         fail('REVISION_CONFLICT','Original replay source changed');
-      return original(scope);
+      return publicInput(original(scope));
     },
     assertFrontier(request){
-      const input=original(request),p=request.proposal;
+      const input=publicInput(original(request)),p=request.proposal;
       if(!isDeepStrictEqual(request.input,input)||p.toolVersion!=='1.0.0')return false;
       if(p.toolName!=='decision.choose_candidate')return hostIds.includes(p.nodeId)&&p.toolName==='workflow.host.'+p.nodeId.toLowerCase()
         &&isDeepStrictEqual(p.arguments,{});

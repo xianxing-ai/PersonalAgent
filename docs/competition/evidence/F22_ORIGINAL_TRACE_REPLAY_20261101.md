@@ -14,6 +14,8 @@
 
 ## Main 接线
 
+自审修复：首个提交 `1c2711fd` 的初始/N01/回放结果曾包含原工具正文，不能仅凭 `workflow.export` 确认跨过原工具出口政策。后续修复将完整 snapshot、arguments 和 result 只保留在本机原 Runtime checkpoint/回放函数。云输入仅原 IDs、版本/digest 与固定决策契约；所有 host/完成回执仅白名单 record/action 元数据，不含原参数、结果或错误正文。没有使用凭据 regex 冒充完整出机许可。唯一整图用例增加秘密参数，逐一断言各导出阶段、镜像请求及 resolved values 均不含该参数，原本机记录仍完整保留。
+
 `apps/desktop/electron/f22-trace-replay-host.js`：
 
 ```js
