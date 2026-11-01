@@ -80,6 +80,21 @@ function validWrite(request:WorkflowShadowConfigurationWrite):void {
   if(workflowShadowReleaseDigest(body)!==request.requestDigest)fail('Workflow configuration request digest mismatch');
 }
 
+/** Trusted consumer read, not a tool grant. Historical revisions remain pinned for
+ * already admitted decisions; publishing a new revision affects new decisions only. */
+export function readRuntimeWorkflowShadowConfiguration(runtime:TaskRuntime,namespace:string,stateKey:string,
+  configurationId:string,revision?:number):WorkflowShadowConfigurationSnapshot|undefined {
+  if(!text(namespace)||!text(stateKey)||!text(configurationId)||revision!==undefined&&(!Number.isSafeInteger(revision)||revision<1))
+    fail('Exact configuration consumer binding required');
+  const entry=createRuntimeAtomicStatePort(runtime,namespace).read(stateKey);if(!entry)return undefined;
+  const ledger=validatedLedger(entry.value),current=ledger.configurations.find(value=>value.configurationId===configurationId);
+  if(revision===undefined)return current;
+  const versions=[...(current?[current]:[]),...ledger.operations.flatMap(operation=>operation.state==='applied'
+    &&operation.request.configurationId===configurationId?[operation.before,operation.after]:[])].filter(value=>value.revision===revision);
+  if(versions.some(value=>!same(value,versions[0])))throw new ProtocolError('PROTOCOL_MISMATCH','Configuration consumer history disagrees');
+  return versions[0];
+}
+
 /** Trusted host implementation, not a parallel scheduler or an authorization source.
  * The owner must make this same ledger the configuration consumer's authority before
  * injecting it into F23. Initialization is a separately authorized one-time migration,

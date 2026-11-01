@@ -32,7 +32,9 @@ export {prepareOriginalMailSendIdentity,readOriginalMailSendIdentity,prepareOrig
 export type {OriginalMailSendBinding,OriginalMailSendIdentity,OriginalMailSendReconciliation,OriginalMailArchiveIdentity,OriginalMailArchiveMove} from './application/mail-send-recovery.js';
 export {readOriginalF08MailSource,recordOriginalF08MailChange,createCompetitionMailSourceChanges} from './application/mail-source-changes.js';
 export type {OriginalMailSourceScope,CompetitionMailSourceChangesOptions} from './application/mail-source-changes.js';
-export {createRuntimeWorkflowShadowConfigurationPort} from './application/workflow-shadow-configuration.js';
+export {createRuntimeWorkflowShadowConfigurationPort,readRuntimeWorkflowShadowConfiguration} from './application/workflow-shadow-configuration.js';
+export {createCompetitionDecisionConfigurationConsumer} from './application/competition-decision-configuration.js';
+export type {CompetitionDecisionConfigurationBinding} from './application/competition-decision-configuration.js';
 export type {RuntimeWorkflowShadowConfigurationOptions} from './application/workflow-shadow-configuration.js';
 export {createRuntimeWorkflowShadowBranchVerifiers} from './application/workflow-shadow-verifiers.js';
 export type {RuntimeWorkflowShadowBranchVerifierOptions} from './application/workflow-shadow-verifiers.js';

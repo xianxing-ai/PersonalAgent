@@ -6,6 +6,7 @@ import {workflowShadowReleaseDigest as digest} from '@personal-agent/agentarts';
 import {TaskRuntime} from '../dist/index.js';
 import {createRuntimeWorkflowShadowConfigurationPort} from '../dist/application/workflow-shadow-configuration.js';
 import {createRuntimeWorkflowShadowAcceptanceHost} from '../dist/application/workflow-shadow-acceptance.js';
+import {createCompetitionDecisionConfigurationConsumer} from '../dist/application/competition-decision-configuration.js';
 
 // Real Runtime SQLite and CAS. Authorization inputs and configuration values are synthetic.
 const context=()=>({taskId:'synthetic-task',runId:'synthetic-run',authorizationRef:'synthetic-policy-grant',
@@ -35,6 +36,22 @@ function fixture() {
   const root=join(process.cwd(),'.cache','shadow-configuration');mkdirSync(root,{recursive:true});
   return join(mkdtempSync(join(root,'run-')),'runtime.sqlite');
 }
+
+test('decision consumer reads the real CAS authority and retains admitted revisions without inventing model availability',async()=>{
+  const runtime=new TaskRuntime(fixture());let available=true;
+  try {
+    const consumer=createCompetitionDecisionConfigurationConsumer({runtime,namespace:'shadow',stateKey:'configuration-ledger',configurationId:'config-a',
+      resolveExecutionModel:selection=>{if(!available)throw Error('catalog revoked');return structuredClone(selection);}});
+    assert.equal(consumer.read(),undefined);
+    const port=createRuntimeWorkflowShadowConfigurationPort(opts(runtime));await setupAcceptance(runtime);
+    const old=snapshot('config-a','v1',{catalogRevision:'a'.repeat(64),modelId:'original'}),next=snapshot('config-a','v2',{catalogRevision:'a'.repeat(64),modelId:'candidate'});
+    await port.initialize([old],context());const admitted=consumer.read();assert.equal(admitted.executionModel.modelId,'original');
+    const operation=await port.compareAndSet(write('consumer-promotion',old,next),context());assert.equal(operation.state,'applied');
+    assert.equal(consumer.read().executionModel.modelId,'candidate');assert.doesNotThrow(()=>consumer.assertCurrent(admitted));
+    assert.throws(()=>consumer.assertCurrent({...admitted,executionModel:{...admitted.executionModel,modelId:'forged'}}),{code:'REVISION_CONFLICT'});
+    available=false;assert.throws(()=>consumer.assertCurrent(admitted),/catalog revoked/);
+  } finally {runtime.close();}
+});
 test('SQLite CAS persists configuration and original operations across competing writers and restart',async()=>{
   const file=fixture();let a=new TaskRuntime(file),b=new TaskRuntime(file);
   const old=snapshot('config-a','v1',{threshold:1}),next=snapshot('config-a','v2',{threshold:2});
