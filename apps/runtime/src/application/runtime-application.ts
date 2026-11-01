@@ -86,7 +86,7 @@ import type {StartSystemObservationSessionRequest, SystemObservationSession} fro
 import {MailReadSessions, MAIL_READ_SESSION_CHECKPOINT, MAIL_READ_TOOL, MAIL_READ_VERSION} from './mail-read-session.js';
 import type {StartMailReadSessionRequest, MailReadSession} from './mail-read-session.js';
 import {createRuntimeSubagentDispatchTool, resumeRuntimeSubagentTask, readRuntimeSubagentSummary,
-  SUBAGENT_DISPATCH_TOOL_NAME, readRuntimeSubagentSibling} from './subagent-host.js';
+  SUBAGENT_DISPATCH_TOOL_NAME, readRuntimeSubagentBinding, readRuntimeSubagentSibling} from './subagent-host.js';
 import {USER_TASK_DELEGATION, readUserTaskDelegation, assertUserTaskDelegationInvocation,assertUserTaskDelegationComplete,
   userTaskDelegationPort} from './user-task-delegation.js';
 import {SUBAGENT_CONVERSATION_MESSAGE,assertConversationScope,readSubagentConversationOrigin,
@@ -1586,10 +1586,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       }
       if(this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT)!==undefined)return undefined;
       const binding=this.runtime.loadCheckpoint(taskId,'subtask-parent');
-      if(binding!==undefined){if(!plainObject(binding)||typeof binding.parentTaskId!=='string')return undefined;
-        const origin=this.subagentConversationOrigin({parentTaskId:binding.parentTaskId,taskId});
-        return origin.parentTaskId;}
-      return typeof task.conversationId==='string'&&task.conversationId?task.taskId:undefined;
+      if(binding!==undefined){
+        const original=readRuntimeSubagentBinding(this.runtime,taskId);
+        readRuntimeSubagentSibling(this.runtime,taskId);
+        return this.readBoundToolRootTask(original.parentTaskId,seen);}
+      return typeof task.conversationId==='string'&&task.conversationId
+        &&!task.conversationId.startsWith('desktop-subtask:')?task.taskId:undefined;
     }catch{return undefined;}
   }
 

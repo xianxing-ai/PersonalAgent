@@ -139,6 +139,7 @@ export interface SubagentHostOptions {
 }
 
 type ChildBinding = SubtaskDefinition & {parentTaskId: string; parentDeadline: string};
+export {childBinding as readRuntimeSubagentBinding};
 function childBinding(runtime: TaskRuntime, taskId: string): ChildBinding {
   const binding = runtime.loadCheckpoint(taskId, 'subtask-parent') as ChildBinding | undefined;
   if (!binding || typeof binding.parentTaskId !== 'string' || !binding.parentTaskId.trim()

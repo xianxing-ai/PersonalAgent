@@ -17,3 +17,11 @@ F11 原天气/Main、实际原图发送前 guard、HTTPS/WSS adapter、业务目
 F19 第一段首轮两例在原 F15_N05 报 `ENOENT`，日志 `.cache/integration-f19-continuation-tests.log`。原因是根运行命令的短 PATH 未包含 PowerShell，且未显式设置本机测试 `PA_TEST_PWSH`；保留原未知结果与失败。设置已确认的本机 `pwsh.exe` 后，新独立 Fixture 的 F08 原知识投影、F19→F15、Main 与最终 continuation 共 35/35，日志 `.cache/integration-f08-f19-configured-tests.log`；未修改产品或断言来绕过缺失的执行器。
 
 最新集成版本的完整 check 与远端技术 CI 仍需完成。独立审核及完整真实验收也仍是合并前提。
+
+## Windows CI 8007e03f 失败修复
+
+远端 Foundation run `41277858423` 的 Windows job `124763639702` 失败；Linux image job 通过，不能据此宣称整套 CI 通过。退出夹具遗漏新增的 F18 配置资源，导致 18 个正常退出断言失败；已给原 Main 回调的显式夹具补资源声明。另 11 个普通子任务/审批恢复失败为真实兼容回归：Plan 发送前来源门禁错误地用 Competition 对话的完整配置校验读取普通子任务的结构身份。现复用原子任务身份校验（父子键、角色/目标、期限）及原 sibling 校验，递归查原根任务，未绑定 `desktop-subtask:`、替换父任务/子 ID/目标和无效期限仍拒绝。
+
+根重新构建 Runtime 后，退出、子任务绑定/父恢复、Plan 来源与新增伪造拒绝共 59/59 通过，零跳过；日志 `.cache/integration-ci-parent-quit-fixed.log`。新 Local 测试首轮误用仅 Competition 提供的 automaticTools 配置被正确拒绝，已改回 Local 原手动授权配置，未放宽产品策略。直接 workspace npm 构建首轮因 shell 找不到 `tsc` 失败，随后运行仓库安装的同版 TypeScript 编译器成功；不将首轮计作通过。
+
+远端另 4 个原生 bundle/旧模拟进程测试由 native 工作包修复中。最新代码还需完整 check 和新提交 CI。
