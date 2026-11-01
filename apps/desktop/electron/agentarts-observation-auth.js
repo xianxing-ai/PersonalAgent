@@ -38,9 +38,24 @@ function canonicalQuery(searchParams) {
  * https://support.huaweicloud.com/devg-apisign/api-sign-algorithm-001.html
  */
 export function createAgentArtsObservationRequestAuth(
-  {accessKey, secretKey, securityToken} = {},
+  credentials = {},
   {now = Date.now} = {},
 ) {
+  return createReadRequestAuth(credentials,{now,allows:target=>
+    (TRACE.test(target.pathname)&&!target.search)||RUN_LOG.test(target.pathname)});
+}
+
+/** Separate, pinned control-plane scope. Observation signing cannot use this scope. */
+export function createAgentArtsDeploymentRequestAuth(credentials,{runtimeId,endpointId,version,now=Date.now}={}) {
+  const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(value);
+  if(!uuid(runtimeId)||!uuid(endpointId)||typeof version!=='string'||!/^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$/u.test(version)
+    ||['latest','current','default'].includes(version))throw Error('AgentArts pinned deployment identity is invalid');
+  const paths=new Set([`/v1/core/runtimes/${runtimeId}?version=${encodeURIComponent(version)}`,
+    `/v1/core/runtimes/${runtimeId}/endpoints/${endpointId}`]);
+  return createReadRequestAuth(credentials,{now,allows:target=>paths.has(target.pathname+target.search)});
+}
+
+function createReadRequestAuth({accessKey,secretKey,securityToken},{now,allows}) {
   if (!ACCESS_KEY.test(accessKey) || !SECRET(secretKey)
     || (securityToken !== undefined && !TOKEN(securityToken))) {
     throw Error('AgentArts observation signing configuration is invalid');
@@ -63,8 +78,7 @@ export function createAgentArtsObservationRequestAuth(
         throw Error('AgentArts observation signing request is outside the configured scope');
       }
       if (target.origin !== ORIGIN || target.username || target.password || target.hash
-        || !(TRACE.test(target.pathname) || RUN_LOG.test(target.pathname))
-        || (TRACE.test(target.pathname) && target.search)
+        || !allows(target)
         || Object.entries(UNSIGNED).some(([name, value]) => request.headers?.[name] !== value)
         || Object.keys(request.headers ?? {}).length !== 3) {
         throw Error('AgentArts observation signing request is outside the configured scope');
