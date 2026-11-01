@@ -212,6 +212,8 @@ export {createRuntimeF18BoundPrDiffHost,createRuntimeF18MergeGateHost,createRunt
 export {createRuntimeF19IssueSnapshotHost,createRuntimeF19EnqueueRepairHost,createRuntimeF19MergedRepairReadbackHost,
   createRuntimeF19CloseIssueHost,readRuntimeF19NativeRegression} from './application/workflow-f19-issue-graph-host.js';
 export {createRuntimeF22ShadowObservationHost} from './application/workflow-f22-shadow-graph-host.js';
+export {createF22TraceReplayWorkflowPorts} from './application/workflow-f22-trace-replay.js';
+export type {F22TraceReplayOptions,F22TraceReplayAdmission} from './application/workflow-f22-trace-replay.js';
 export {createRuntimeF26DeploymentReadbackHost} from './application/workflow-f26-deployment-graph-host.js';
 export {verifyF20HarnessCompletion} from './application/f20-verify-completion.js';
 export {assertF20CandidateSelection} from './application/f20-candidate-frontier.js';
