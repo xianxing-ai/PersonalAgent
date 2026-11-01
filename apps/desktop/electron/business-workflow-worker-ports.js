@@ -28,7 +28,7 @@ const canonicalInstant=value=>{
 
 /** Fixed business graph composition. The caller supplies the pinned image separately.
  * This facade resolves the real application only at execution, before any Runtime exists at startup. */
-export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,f08SourceChanges,
+export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,f08SourceChanges,f03MailReview,
   competitionToolExports=[],prepareCompetitionToolExport,authorizeExport,readBusinessAvailability,now=Date.now}={}) {
   const tools=[],hosts=[],configuredWorkflowWorkerPorts=[],unavailable=[];
   let reconcileOriginalMailWorkflow;
@@ -152,7 +152,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     }
     const inputSchema={...requestSchema,properties:{...requestSchema.properties,businessBindingId:text},required:[...requestSchema.required,'businessBindingId']};
     const worker={workflowId,toolName:'workflow.business.'+workflowId.toLowerCase(),toolVersion:'1.0.0',
-      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v4':workflowId==='F11'?'business-20261101-f11-v4':workflowId==='F08'?'business-20261101-f08-v3':'business-20261031-v1',
+      configurationVersion:workflowId==='F06'?'business-20261031-f06-v2':workflowId==='F12'?'business-20261101-f12-v4':workflowId==='F11'?'business-20261101-f11-v4':workflowId==='F08'?'business-20261101-f08-v4':'business-20261031-v1',
       requestSchema,inputSchema,resultSchema,requiredTools,publicEnumPaths:workflowId==='F12'?['/trigger']:workflowId==='F11'&&requestSchema.properties.weather?['/weather/query/units']
         :workflowId==='F08'?['sourceId','configRevision','query'].filter(key=>Array.isArray(requestSchema.properties.knowledge?.properties?.[key]?.enum)).map(key=>'/knowledge/'+key):[],sideEffect:'external_write',
       available(scope){try{current(workflowId,scope);return true;}catch{return false;}},
@@ -651,11 +651,22 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       return result?.hasMore===false&&result.account===original.account&&result.folder===original.folder
         &&result.nextCursor.startsWith(bound.input.archive.uidValidity+':')&&isDeepStrictEqual(stable(result.items),stable(expected));
     };
+    const captureChange=async(scope,receipt)=>{
+      const result=f08SourceChanges?await f08SourceChanges.recordChange(scope,receipt):
+        {state:'requires_review',reason:'original_private_fact_source_unavailable',change:runtimeModule.recordOriginalF08MailChange(getApplication(),scope,receipt)};
+      if(!result?.change)fail('REVISION_CONFLICT','Original mailbox change proof unavailable');
+      const captured={changeReason:'original_mail_source_changed',priorOperationId:result.change.readRunId,
+        reason:result.reason,...(result.reviewReference?{reviewReference:result.reviewReference}:{})};
+      const key='f08:pending-replan:'+scope.sessionId;
+      if(!runtime.saveCheckpointOnce(scope.parentTaskId,key,captured)&&!isDeepStrictEqual(runtime.loadCheckpoint(scope.parentTaskId,key),captured))
+        fail('REVISION_CONFLICT','Original F08 change source already differs');
+      if(f03MailReview?.submitChange)await f03MailReview.submitChange(scope,result);
+      return result;
+    };
     const fresh=async(scope,context,phase)=>{
       const bound=binding('F08',scope),mail=await bridge.invoke({actionKey:'f08.mail.'+phase+'-check',input:bound.input.inbox},context);
       if(!compareMail(scope,bound,mail.result)){
-        if(f08SourceChanges)await f08SourceChanges.recordChange(scope,mail);
-        else runtimeModule.recordOriginalF08MailChange(getApplication(),scope,mail);
+        await captureChange(scope,mail);
         fail('REVISION_CONFLICT','F08 original inbox changed; retain prior effects for versioned replan');
       }
       if(phase!=='plan'){
@@ -707,8 +718,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         if(nodeId==='F08_N13'){
           mailSource(bound);const read=await bridge.invoke({actionKey:'f08.mail.change-check',input:bound.input.inbox},context);
           if(compareMail(scope,bound,read.result))return 'skipped';
-          if(f08SourceChanges)await f08SourceChanges.recordChange(scope,read);
-          else runtimeModule.recordOriginalF08MailChange(getApplication(),scope,read);
+          await captureChange(scope,read);
           return 'selected';
         }
         if(nodeId==='F08_N12'){
@@ -724,6 +734,18 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       }}));
     addHost(runtimeModule.createRuntimeF08WaitReconciliationHost({...hostOptions,mailReconcile:businessTools.find(tool=>tool.descriptor.name==='mail.reconcile_send'),
       requiredScopes:descriptor('mail.reconcile_send').requiredScopes,authorizeExport:receiptExport('F08')}));
+    if(f03MailReview?.submitChange)addHost(runtimeModule.createRuntimeF08VersionedReplanHost({...hostOptions,requiredScopes:['cognition:repair'],
+      resolveChange(scope){const source=runtime.loadCheckpoint(scope.parentTaskId,'f08:pending-replan:'+scope.sessionId);
+        if(!source)fail('UNAUTHORIZED','Original F08 change source unavailable');
+        return {changeReason:source.changeReason,priorOperationId:source.priorOperationId};},
+      authorizeExport:receiptExport('F08'),async submitVersionedReplan(scope,input){
+        const captured=runtime.loadCheckpoint(scope.parentTaskId,'f08:pending-replan:'+scope.sessionId);
+        if(!captured||input.changeReason!==captured.changeReason||input.priorOperationId!==captured.priorOperationId)
+          fail('UNAUTHORIZED','Original F08 change source was replaced');
+        const change=runtime.loadCheckpoint(scope.parentTaskId,'f08:mail-source-change:'+captured.priorOperationId);
+        const result=await f03MailReview.submitChange(scope,{...captured,change});
+        return {changeReason:captured.changeReason,originalEffectChain:{...result,effects:change.effects}};
+      }}));
     const resultFor=async scope=>{
       const bound=binding('F08',scope);prepared(bound);
       if(operation(bound,'F08_N03','workflow.host.f08_n03')?.result.toolState!=='confirmed'||ports.readOriginalWrite(scope,'archive')?.state!=='confirmed')
@@ -742,6 +764,7 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     config('F08',f08Schema,['decision.choose_candidate','mail.inbox','mail.archive','mail.send','mail.reconcile_send','knowledge.search',
       'workflow.host.f08_n03','workflow.host.f08_n07','workflow.host.f08_n09','workflow.host.f08_n10','workflow.host.f08_n12',
       ...(decisionEnabled?['workflow.host.f08_n06']:[]),
+      ...(f03MailReview?.submitChange?['workflow.host.f08_n13']:[]),
       'workflow.guard.f08_n06','workflow.guard.f08_n07','workflow.guard.f08_n12','workflow.guard.f08_n13'],
       {...object({archiveConfirmed:{const:true},sendConfirmed:{type:'boolean'},messageId:text,...(decisionEnabled?{decision:{const:'declined'}}:{})},['archiveConfirmed','sendConfirmed']),
         oneOf:[object({archiveConfirmed:{const:true},sendConfirmed:{const:true},messageId:text}),
@@ -763,6 +786,11 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
           &&operation(bound,'F08_N06','workflow.guard.f08_n06')?.result.state==='selected'&&isDeepStrictEqual(proposal.arguments,decisionInput(bound));
         if(proposal.nodeId==='F08_N07'&&proposal.toolName==='workflow.host.f08_n07')return operation(bound,'F08_N07','workflow.guard.f08_n07')?.result.state==='selected'
           &&isDeepStrictEqual(proposal.arguments,bound.input.send);
+        if(proposal.nodeId==='F08_N13'&&proposal.toolName==='workflow.host.f08_n13'){
+          const original=runtime.loadCheckpoint(scope.taskId,'f08:pending-replan:'+scope.state.sessionId);
+          return !!f03MailReview?.submitChange&&!!original&&operation(bound,'F08_N13','workflow.guard.f08_n13')?.result.state==='selected'
+            &&isDeepStrictEqual(proposal.arguments,{});
+        }
         const original=await ports.resolveOriginalSend(own);
         if(proposal.nodeId==='F08_N11'&&proposal.toolName==='mail.reconcile_send')return !!original&&isDeepStrictEqual(proposal.arguments,
           {account:bound.input.send.account,messageId:original.messageId,idempotencyKey:original.idempotencyKey});
@@ -775,7 +803,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
         if(!saved||!isDeepStrictEqual(saved.result,scope.value)||!isDeepStrictEqual(await resultFor({...scope,parentTaskId:scope.taskId,sessionId:saved.sessionId}),saved.result))
           fail('REVISION_CONFLICT','F08 original completion changed');});
     if(!decisionEnabled)unavailable.push('f08_missing_decision_question_source_unavailable');
-    unavailable.push('f08_voice_decision_source_unavailable','f08_changed_source_replan_unavailable');
+    unavailable.push('f08_voice_decision_source_unavailable');
+    if(!f03MailReview?.submitChange)unavailable.push('f08_changed_source_replan_unavailable');
   }else unavailable.push('f08_mail_and_knowledge_dependencies_unavailable');
   return {tools,hosts,configuredWorkflowWorkerPorts,unavailable,reconcileOriginalMailWorkflow};
 }

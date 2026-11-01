@@ -172,7 +172,27 @@ export function createF03MailReviewWorkflowPorts({getApplication,sourceChanges,a
       return {result:{...final,sourceDigest:state.saved.review.sourceDigest,effectsPreserved:true},
         resultSummary:final.state==='scheduled'?'原计划修复已核实并受理新版本；既有邮件效果保留。':'原来源变化已核实；缺有效替代事实，计划仍需审查，既有邮件效果保留。'};
     }};
-  return {tools,configuredWorkflowWorkerPorts:[worker],unavailable:[],competitionSource:{resolve({sourceTaskId,sourceOperationId}){
+  async function submitChange(scope,change){
+    if(!change?.reviewReference)return {state:'requires_review',reason:change?.reason??'original_plan_source_missing'};
+    const own=scopeOf(scope),reference=change.reviewReference,original=sourceChanges.readReviewSource(reference,own);
+    if(reference.graphTaskId!==own.taskId||reference.readRunId!==change.change?.readRunId)
+      fail('UNAUTHORIZED','F03 admission does not match the original mailbox change');
+    const request={conversationId:original.conversationId,deadline:scope.deadline,
+      idempotencyKey:'f08-source-review-'+toolArgumentsDigest(reference),arguments:{source:reference}};
+    const key='f08:competition-review:'+reference.readRunId,intent={request,sourceDigest:original.review.sourceDigest};
+    const prior=runtime().loadCheckpoint(own.taskId,key);
+    if(prior&&!isDeepStrictEqual(prior,intent))fail('REVISION_CONFLICT','Original F03 admission source changed');
+    if(typeof app().readF03MailReviewTask!=='function'||typeof app().submitF03MailReviewTask!=='function')
+      fail('UNSUPPORTED_CAPABILITY','Original native F03 admission is unavailable');
+    let task=app().readF03MailReviewTask(request.idempotencyKey);
+    if(!task){
+      if(prior||!runtime().saveCheckpointOnce(own.taskId,key,intent))fail('RESULT_UNKNOWN','Original F03 admission needs readback');
+      task=await app().submitF03MailReviewTask(request,{signal:scope.signal});
+    }
+    if(!task||task.conversationId!==request.conversationId)fail('UNAUTHORIZED','Original F03 admission identity changed');
+    return {state:'review_submitted',taskId:task.taskId,reviewState:task.state,sourceDigest:intent.sourceDigest};
+  }
+  return {tools,configuredWorkflowWorkerPorts:[worker],unavailable:[],submitChange,competitionSource:{resolve({sourceTaskId,sourceOperationId}){
     const saved=runtime().loadCheckpoint(sourceTaskId,originalKey);if(!saved)return;
     const intent=runtime().loadCheckpoint(sourceTaskId,'owned-workflow:intent:'+sourceOperationId);if(!intent)return;
     const scope={taskId:sourceTaskId,sessionId:intent.sessionId,operationId:sourceOperationId,deadline:saved.deadline,signal:new AbortController().signal};

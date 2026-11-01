@@ -23,3 +23,13 @@ F03 图工厂、原请求受理和 F08 N13 生产组合继续单独增量，不�
 可选 `readDecisionConfiguration(scope)` / `assertDecisionConfiguration(binding,scope)` 消费原 F23 配置，版本和顶层 `executionModel` 一次固定；未启用时沿用原模型入口，不造版本。新增 `f03-native-admission.ts` 复用原用户委派和 configured graph：只固定来源引用，之后必须得到原图确认回执才可总结，不许在总结阶段另发工具。RuntimeApplication 的 native 方法及 Main 注入由根集成。
 
 新增 `apps/desktop/test/f03-mail-review-workflow.test.mjs` 单例通过：actual Engine/Runtime/SQLite/AuthorizationQuestions/Policy，N05/N02/N03/N06/N04 原回执及 N07/N08 条件读回，保留原效果并明确 `requires_review`；无 CAS、无邮件重发。初始、回执、完成出口分别消费；原配置随图输入固定。私密来源、候选选择、云、用户答卡响应为 Fixture。`npm run build --workspace=@personal-agent/agentarts` 通过。没有重跑已过矩阵或声称实机 AgentArts 验收。
+
+## F08 消费与原受理恢复
+
+`createBusinessWorkflowWorkerPorts` 新增 `f03MailReview` 注入。原 N10/N07/N13 的真实来源变化先保存既有变化/Fact/impact，再调用 `f03MailReview.submitChange(scope,result)`；只对实际 `reviewReference` 受理原 F03。没有原 Plan/Fact 映射时返回明确 `requires_review`，不自动选计划，不因已受理 F03 就把原 F08 未完成写入标成功。
+
+N13 生产入参为 `{}`，可选 `resolveChange(scope)` 从原 Runtime 检查点提供 `changeReason/priorOperationId`，旧显式参数合同保留兼容。该变化使用 F08 配置 `business-20261101-f08-v4`，拒绝旧摘要。N13 仍沿独立 Policy 和原回执出口；后续发生变化的旧 F08 可以停止，同时保留真实副作用及独立 F03 审查任务。
+
+会话控制补 `sourceActions.readReview({taskId},context)` 与 `submitReview({taskId,reviewId,commandId},context)`。前者仅沿原会话任务发现源，后者原 native 确认后复核版本；Renderer 不填内部 graph/session/操作引用。缺映射时 `canSubmit:false`、原原因明确，提示现有计划入口，不产生任意 Plan。Main 需注入 `f03MailReview` 与 `confirmReview(details,scope)`，scope 含原 deadline/signal/assertCurrent/control。
+
+新增 `apps/desktop/test/f03-native-admission.test.mjs` 单例通过：使用根 `7cce7cd3` 的实际 Runtime native 入口（本隔离树依赖同步为 `3f5efdea`），模拟首次已受理后的回执丢失；同源重试只读原任务，同 key 替换 source 拒绝；原委派固定 source，原图仅一次请求；取消后 SQLite 重开仍读原状态，不重新提交。私密来源与 image transport 故障是 Fixture，真实邮箱/云未验。只运行此新增关键检查和必要 Runtime build，没有重跑旧图/全仓矩阵。

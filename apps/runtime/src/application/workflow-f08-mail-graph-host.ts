@@ -217,6 +217,8 @@ export function createRuntimeF08WaitReconciliationHost(options?:{
 export function createRuntimeF08VersionedReplanHost(options?:{
   application:Pick<RuntimeApplication,'runtime'>;
   requiredScopes:readonly string[];
+  /** Native source references stay in the original Runtime checkpoint, never guessed by the graph/model. */
+  resolveChange?:(scope:Scope)=>{changeReason:string;priorOperationId:string};
   submitVersionedReplan:(scope:Scope,input:{changeReason:string;priorOperationId:string})=>Promise<{changeReason:string;originalEffectChain:unknown}>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:{changeReason:string;originalEffectChain:unknown})=>Promise<boolean>;
@@ -231,12 +233,12 @@ export function createRuntimeF08VersionedReplanHost(options?:{
     hostToolName:'workflow.host.f08_n13',proposalArguments:args??(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown})?.arguments,
     assertCurrent:options.assertCurrent,now:options.now});
   const tool=createOwnedWorkflowAdapter({nodeId:'F08_N13',kind:'host',sideEffect:'local_write',requiredScopes,
-    inputSchema:{type:'object',additionalProperties:false,required:['changeReason','priorOperationId'],properties:{
+    inputSchema:options.resolveChange?{type:'object',additionalProperties:false,properties:{}}:{type:'object',additionalProperties:false,required:['changeReason','priorOperationId'],properties:{
       changeReason:{type:'string',minLength:1},priorOperationId:{type:'string',minLength:1}}},
     outputSchema:{type:'object',additionalProperties:false,required:['changeReason','originalEffectChain'],properties:{
       changeReason:{type:'string'},originalEffectChain:{}}},
     async execute(input,context){
-      const scope=active(context,input),payload=input as {changeReason:string;priorOperationId:string};
+      const scope=active(context,input),payload=options.resolveChange?options.resolveChange(scope):input as {changeReason:string;priorOperationId:string};
       if(!text(payload.changeReason)||!text(payload.priorOperationId))failOwnedHost('INVALID_ARGUMENT','F08 replan arguments invalid');
       const result=await options.submitVersionedReplan(scope,payload);active(context,input);
       if(!plain(result)||!text(result.changeReason))failOwnedHost('UNSUPPORTED_CAPABILITY','F08 versioned replan unavailable');
