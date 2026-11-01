@@ -15,6 +15,10 @@ const hints = {
 export function taskProgress(tasks, computer, authorization = {}) {
   const task = currentTask(Array.isArray(tasks) ? tasks : []);
   if (!task) return null;
+  if(['running','planning','waiting_external','waiting_approval'].includes(task.state)&&authorization.conversationId
+    &&authorization.workflowQuestions?.some(question=>question.conversationId===authorization.conversationId
+      &&question.state==='pending'&&Date.parse(question.deadline)>(authorization.now??Date.now())))
+    return {state:task.state,label:'等待补充信息',detail:'请回答下方问题，原任务会继续使用这条回答。'};
   if (['running','planning','waiting_approval'].includes(task.state) && authorization.conversationId
     && authorization.questions?.some(question=>question.conversationId===authorization.conversationId
       && question.state==='pending' && Date.parse(question.expiresAt)>(authorization.now??Date.now()))) {

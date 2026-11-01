@@ -156,7 +156,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     if(document.hidden)orb.stop();
     composer.update(data);
     updateProgress(data.tasks,data.computerControl,
-      {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
+      {questions:data.authorizationQuestions,workflowQuestions:data.workflowQuestions,conversationId:data.conversationState?.activeId});
     root.querySelector('#workspace-greeting').hidden=current.tasks.length>0;root.querySelector('#workspace-intro').hidden=current.tasks.length>0;root.querySelector('#workspace-welcome').classList.toggle('compact',current.tasks.length>0);
     const signature=JSON.stringify(data.tasks);
     if(signature!==lastSignature){

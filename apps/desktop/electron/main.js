@@ -112,6 +112,8 @@ import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-hos
 import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
 import {createWorkflowExportConsent} from './workflow-export-consent.js';
 import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
+import {createF11LocationQuestionHost} from './f11-location-question-host.js';
+import {readF11ConversationQuestions} from './f11-conversation-questions.js';
 import {createF12ExplicitReturnSource} from './f12-explicit-return-source.js';
 import {createF12ReturnDigestController} from './f12-return-digest-controller.js';
 import {createDesktopF04WorkflowWorkerPorts} from './f04-workflow-worker-ports.js';
@@ -373,6 +375,7 @@ let f18ReviewCases,f18Workflow,f18ActiveRevision;
 let f12ExplicitReturnSource,f12ReturnDigest;
 let f24Workflow;
 let f04Workflow;
+let f11LocationQuestion;
 let f14Workflow;
 const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
   F17:f16F17Cases?.snapshot('F17')??{configured:false},unavailable:f16F17Workflow?.unavailable??['fixed_deployment_unavailable']});
@@ -788,6 +791,8 @@ function conversationProjection(surface) {
     surfaceBusy:surface?active.length>0:false,
     conversation: surface ?? 'all',
     authorizationQuestions,
+    workflowQuestions:!runtimeClosed&&surface?readF11ConversationQuestions({application:runtimeApplication,
+      hosts:[f11LocationQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
     authorizationSandbox:runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined,
     approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
       &&!authorizationQuestionHost?.hasPending(approval.approvalId)
@@ -2558,7 +2563,9 @@ async function initializeRuntime() {
         readTimeoutMs:()=>readCompetitionExecutionPolicy().taskTimeoutMs,onTask:task=>{
           if(!conversations.turns.has(task.taskId)){conversations.add(task.taskId,'panel',task.goal,task.conversationId);rememberTaskGoal(task.taskId,task.goal);}
         }}):undefined;
+      f11LocationQuestion=agentArtsPinned?createF11LocationQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
       const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        f11LocationQuestion,
         explicitReturnSource:f12ExplicitReturnSource,
         businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[]),
           ...productTools.tools.filter(tool=>tool.descriptor.name==='weather.forecast')],todoHost,notificationHost:notificationApplicationHost,
@@ -2661,6 +2668,7 @@ async function initializeRuntime() {
         ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
         ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
+        ...(f04Workflow?.recovery?{f04Recovery:f04Workflow.recovery}:{}),
         configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
           ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
           ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
@@ -3582,6 +3590,12 @@ async function action(event, name, payload) {
     const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
     const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
+  }
+  if(name==='workflow.f11.location.respond'){
+    if(sender!==panel&&sender!==workspace||!f11LocationQuestion)throw Error('请在原对话中回答地点问题');
+    const conversationId=conversations?.activeConversationId(sender===workspace?'workspace':'panel');
+    if(!conversationId)throw Error('当前对话不可用');
+    const result=f11LocationQuestion.submitReply(payload,{conversationId});publish();return result;
   }
   if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
     if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
@@ -4634,7 +4648,7 @@ async function action(event, name, payload) {
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
-    reportNative:result=>result.kind==='f24_knowledge'?dialog.showMessageBox(sender,{type:'info',
+    reportNative:result=>['f04_knowledge','f24_knowledge'].includes(result.kind)?dialog.showMessageBox(sender,{type:'info',
       message:result.state==='confirmed'?'已核实原结果，正在继续原任务':'原写入结果仍待核实',
       detail:result.state==='confirmed'?'原写入没有重发。任务完成前，仍需审批的操作会另行询问。':'本次没有重发写入，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
       :dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
@@ -5321,6 +5335,7 @@ app.whenReady().then(async () => {
       f12ReturnDigest=undefined;f12ExplicitReturnSource=undefined;
       f24Workflow=undefined;
       f04Workflow=undefined;
+      f11LocationQuestion=undefined;
       f14Workflow=undefined;
       void todoHost?.close();
     } catch (error) {
