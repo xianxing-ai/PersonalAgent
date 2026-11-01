@@ -9,6 +9,7 @@ import {Client} from '@personal-agent/client';
 import {ProtocolError} from '@personal-agent/contracts';
 import {createRuntimeApplication,createRuntimeOwnedWorkflowHost,createWorkflowBusinessToolBridge,
   readWorkflowBusinessToolSource} from '../dist/application.js';
+import {readWorkflowBusinessToolOrigin} from '../dist/application/workflow-business-tool-bridge.js';
 
 // Actual SQLite, Runtime, Policy, ToolGateway and HostBridge; only the business
 // service and graph proposal are Synthetic. No platform or account acceptance.
@@ -102,6 +103,27 @@ test('denying the independent business approval never executes it or confirms th
   const f=await setup(t),child=await f.begin();await f.decide(child.taskId,'deny');
   const result=await f.settle();assert.notEqual(result.task.state,'succeeded');assert.equal(result.confirmed,undefined);
   assert.equal(f.calls,0);assert.equal(f.app.runtime.readToolExecutions(child.taskId)[0].executionStarted,false);
+  assert.throws(()=>readWorkflowBusinessToolOrigin(f.app,{parentTaskId:f.parent.taskId,sessionId:'synthetic-session',deadline:f.context.deadline},
+    {taskId:child.taskId,runId:child.runId,scopeRef:child.runId,toolVersion:'1.0.0',arguments:f.request.input},'todo.create'),{code:'UNAUTHORIZED'});
+});
+
+test('original business origin remains read-only and does not claim unknown execution succeeded across SQLite reopen',async t=>{
+  const f=await setup(t,{unknown:true}),child=await f.begin();await f.decide(child.taskId);await f.settle();
+  const scope={parentTaskId:f.parent.taskId,sessionId:'synthetic-session',deadline:f.context.deadline},
+    ref={taskId:child.taskId,runId:child.runId,scopeRef:child.runId,toolVersion:'1.0.0',arguments:f.request.input};
+  const read=()=>readWorkflowBusinessToolOrigin(f.app,scope,ref,'todo.create'),proof=read();
+  assert.equal(proof.record.state,'unknown');assert.equal(Object.hasOwn(proof,'receipt'),false);assert.equal(f.calls,1);
+  assert.throws(()=>{proof.reference.arguments.title='substituted';},TypeError);
+  assert.throws(()=>readWorkflowBusinessToolSource(f.app,scope,ref,'todo.create'),{code:'UNAUTHORIZED'});
+  await f.reopen();assert.deepEqual(read(),proof);assert.equal(f.calls,1);
+  for(const changed of [{...ref,arguments:{title:'replacement'}},{...ref,taskId:f.parent.taskId},{...ref,runId:'foreign'},
+    {...ref,scopeRef:'foreign'},{...ref,toolVersion:'foreign'}])assert.throws(()=>readWorkflowBusinessToolOrigin(f.app,scope,changed,'todo.create'),{code:'UNAUTHORIZED'});
+  for(const changed of [{...scope,parentTaskId:child.taskId},{...scope,sessionId:'foreign'},{...scope,deadline:'2099-01-01T00:00:00.000Z'}])
+    assert.throws(()=>readWorkflowBusinessToolOrigin(f.app,changed,ref,'todo.create'),{code:'UNAUTHORIZED'});
+  const marker=f.app.runtime.loadCheckpoint(child.taskId,'workflow-business-tool:source');
+  f.app.runtime.saveCheckpoint(child.taskId,'workflow-business-tool:source',{...marker,intentDigest:'0'.repeat(64)});
+  assert.throws(read,{code:'UNAUTHORIZED'});f.app.runtime.saveCheckpoint(child.taskId,'workflow-business-tool:source',marker);
+  assert.deepEqual(read(),proof);assert.equal(f.calls,1);
 });
 
 test('the public source proof reads only the exact confirmed graph-host-business lineage and returns an immutable copy',async t=>{

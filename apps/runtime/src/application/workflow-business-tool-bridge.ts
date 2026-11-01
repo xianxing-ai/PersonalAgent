@@ -30,6 +30,9 @@ export interface WorkflowBusinessToolSourceProof {
   readonly receipt:Readonly<WorkflowBusinessToolReceipt>;
   readonly planSource?:ReturnType<RuntimeApplication['readPlanExecutionBinding']>;
 }
+export interface WorkflowBusinessToolOriginProof extends Omit<WorkflowBusinessToolSourceProof,'receipt'> {
+  readonly reference:Readonly<WorkflowBusinessToolSourceReference>;
+}
 type Application=RuntimeApplication;
 type Invocation={taskId:string;runId:string;toolName:string;toolVersion:string;arguments:unknown;deadline:string};
 const childSourceKey='workflow-business-tool:source';
@@ -43,11 +46,11 @@ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).d
 const plain=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value:unknown):value is string=>typeof value==='string'&&value.length>0&&value.length<=2048;
 
-/** Exact graph -> host -> business receipt proof, not an authority to dispatch
- * or export. Direct graph tools retain their separate original proof path. */
-export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>&Partial<Pick<RuntimeApplication,'readPlanExecutionBinding'>>,
+/** Exact original graph -> authorized host -> authorized business execution.
+ * This immutable lineage is not a success receipt, current grant or replay right. */
+export function readWorkflowBusinessToolOrigin(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>&Partial<Pick<RuntimeApplication,'readPlanExecutionBinding'>>,
   scope:Pick<OwnedWorkflowHostScope,'parentTaskId'|'sessionId'|'deadline'>,
-  ref:WorkflowBusinessToolSourceReference,toolName:string):WorkflowBusinessToolSourceProof {
+  ref:WorkflowBusinessToolSourceReference,toolName:string):WorkflowBusinessToolOriginProof {
   const {runtime}=application;
   if(!ref||![ref.taskId,ref.runId,ref.scopeRef,ref.toolVersion,toolName,scope.parentTaskId,scope.sessionId,scope.deadline].every(text)
     ||ref.runId!=='host-tool-'+ref.taskId||ref.scopeRef!==ref.runId||!plain(ref.arguments))fail('UNAUTHORIZED','Original business source reference is invalid');
@@ -94,27 +97,37 @@ export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplicati
     fail('UNAUTHORIZED','Original source host execution is unavailable');
   const childIntent=runtime.loadCheckpoint(ref.taskId,'host-tool-intent'),read=application.readHostToolTask(ref.taskId);
   const record=runtime.readToolExecutions(ref.taskId).find(item=>item.evidenceId===ref.runId);
-  const saved=runtime.loadCheckpoint(ref.taskId,'tool-result-'+ref.runId);
   if(!plain(childIntent)||childIntent.namespace!==intent.namespace||childIntent.commandId!==intent.request.commandId
     ||childIntent.toolName!==toolName||childIntent.toolVersion!==ref.toolVersion||childIntent.deadline!==scope.deadline
     ||childIntent.argumentsDigest!==toolArgumentsDigest(ref.arguments)||!isDeepStrictEqual(childIntent.arguments,ref.arguments)
-    ||read.task.state!=='succeeded'||read.task.cancelRequested||read.commandId!==intent.request.commandId
-    ||read.toolName!==toolName||read.toolVersion!==ref.toolVersion||read.confirmed?.runId!==ref.runId
-    ||!read.confirmed.evidenceRefs.includes(ref.runId)||!read.task.evidenceRefs.includes(ref.runId)
-    ||!record||record.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'
+    ||read.commandId!==intent.request.commandId||read.toolName!==toolName||read.toolVersion!==ref.toolVersion
+    ||!record||!record.executionStarted||record.policyDecision!=='allow'
     ||record.toolName!==toolName||record.toolVersion!==ref.toolVersion
-    ||!runtime.matchesToolExecutionInput(record,{arguments:ref.arguments,scopeRef:ref.scopeRef})
-    ||!plain(saved)||!Object.hasOwn(saved,'result')||!isDeepStrictEqual(saved.result,read.confirmed.result))
-    fail('UNAUTHORIZED','Original business source is not confirmed');
-  validateToolValue(intent.descriptor.outputSchema,saved.result);
+    ||!runtime.matchesToolExecutionInput(record,{arguments:ref.arguments,scopeRef:ref.scopeRef}))
+    fail('UNAUTHORIZED','Original business execution was not authorized');
   const proof=structuredClone({graph:{taskId:intent.parentTaskId,sessionId:intent.sessionId,workflowId:intent.workflowId,
     nodeId:intent.nodeId,operationId:intent.operationId},sourceHost:{taskId:intent.sourceTaskId,runId:intent.sourceRunId,
     toolName:intent.sourceToolName,toolVersion:intent.sourceToolVersion},actionKey:intent.actionKey,descriptor:intent.descriptor,
-    request:intent.request,record,...(intent.planSource?{planSource:intent.planSource}:{}),receipt:{taskId:ref.taskId,runId:ref.runId,scopeRef:ref.scopeRef,toolName,toolVersion:ref.toolVersion,
-      arguments:ref.arguments,evidenceRefs:read.confirmed.evidenceRefs,result:saved.result}});
-  const freeze=(value:unknown):void=>{if(value&&typeof value==='object'){
-    for(const item of Object.values(value))freeze(item);Object.freeze(value);
-  }};
+    request:intent.request,record,...(intent.planSource?{planSource:intent.planSource}:{}),reference:ref});
+  freeze(proof);return proof;
+}
+function freeze(value:unknown):void {
+  if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}
+}
+
+/** A confirmed original tool result additionally needs its original result
+ * checkpoint and Schema. A reconciled observation never masquerades as one. */
+export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>&Partial<Pick<RuntimeApplication,'readPlanExecutionBinding'>>,
+  scope:Pick<OwnedWorkflowHostScope,'parentTaskId'|'sessionId'|'deadline'>,
+  ref:WorkflowBusinessToolSourceReference,toolName:string):WorkflowBusinessToolSourceProof {
+  const {reference,...origin}=readWorkflowBusinessToolOrigin(application,scope,ref,toolName),{runtime}=application;
+  const read=application.readHostToolTask(reference.taskId),saved=runtime.loadCheckpoint(reference.taskId,'tool-result-'+reference.runId);
+  if(read.task.state!=='succeeded'||read.task.cancelRequested||read.confirmed?.runId!==reference.runId
+    ||!read.confirmed.evidenceRefs.includes(reference.runId)||!read.task.evidenceRefs.includes(reference.runId)||origin.record.state!=='confirmed'
+    ||!plain(saved)||!Object.hasOwn(saved,'result')||!isDeepStrictEqual(saved.result,read.confirmed.result))fail('UNAUTHORIZED','Original business source is not confirmed');
+  validateToolValue(origin.descriptor.outputSchema,saved.result);
+  const proof=structuredClone({...origin,receipt:{taskId:ref.taskId,runId:ref.runId,scopeRef:ref.scopeRef,toolName,toolVersion:ref.toolVersion,
+    arguments:ref.arguments,evidenceRefs:read.confirmed.evidenceRefs,result:saved.result}});
   freeze(proof);return proof;
 }
 
