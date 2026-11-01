@@ -1593,9 +1593,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }catch{return undefined;}
   }
 
-  /** Trusted graph hosts read only the current pending worker's immutable original input and receipts. */
+  /** Trusted graph hosts read only the original pending graph or its current confirmed continuation. */
   readConfiguredWorkflowBinding(scope:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined {
-    return this.configuredWorkflowWorkers.find(worker=>worker.isActive(scope.taskId))?.readBinding(scope);
+    const matches=this.configuredWorkflowWorkers.map(worker=>worker.readBinding(scope)).filter(binding=>binding!==undefined);
+    if(matches.length>1)throw new ProtocolError('UNAUTHORIZED','Configured graph binding is ambiguous');
+    return matches[0];
   }
 
   /** Read only the original active F15 host child, for task-bound approval discovery. */

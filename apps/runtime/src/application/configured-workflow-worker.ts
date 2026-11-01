@@ -4,7 +4,7 @@ import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {TaskSnapshot,ToolDescriptor} from '@personal-agent/contracts';
 import type {AgentToolPort} from '@personal-agent/agents';
 import {parseCoordinationAvailableTools} from '@personal-agent/coordination';
-import type {CoordinationToolProposalResult} from '@personal-agent/coordination';
+import type {CoordinationToolProposalResult,CoordinationContinuation} from '@personal-agent/coordination';
 import {getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
 import type {OwnedWorkflowAdvanceRequest,OwnedWorkflowAdvanceResult} from '@personal-agent/agentarts';
 import type {CoordinationWorkerCapabilityPort} from './coordination.js';
@@ -51,7 +51,7 @@ export interface RuntimeConfiguredWorkflowBinding {
   readonly confirmedOperations:readonly {readonly nodeId:string;readonly operationId:string;readonly localTaskId:string;
     readonly toolName:string;readonly toolVersion:string;readonly result:unknown;readonly readback:HostToolTaskReadback}[];
 }
-/** Host-only read. Runtime selects the current registered worker from the original pending proposal. */
+/** Host-only read of the original pending graph or its current confirmed continuation. */
 export function readConfiguredWorkflowBinding(application:Pick<RuntimeApplication,'readConfiguredWorkflowBinding'>,
   scope:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined {
   return application.readConfiguredWorkflowBinding(scope);
@@ -88,7 +88,9 @@ export function createRuntimeConfiguredWorkflowCapability(application:RuntimeApp
   const configurationDigest=hash({...options,image:{bindingId:options.image.bindingId}});
   const accepts=(proposal:CoordinationToolProposalResult)=>proposal.toolName===toolName&&proposal.toolVersion===toolVersion;
   const key=(proposal:CoordinationToolProposalResult)=>'owned-workflow:configured:'+hash([toolName,proposal.proposalId]);
-  const pending=(taskId:string)=>application.runtime.loadCheckpoint(taskId,'competition-loop') as {pending?:CoordinationToolProposalResult;pendingRevision?:number}|undefined;
+  const pending=(taskId:string)=>application.runtime.loadCheckpoint(taskId,'competition-loop') as {
+    pending?:CoordinationToolProposalResult;pendingRevision?:number;continuation?:CoordinationContinuation;
+    receipts?:{proposal:CoordinationToolProposalResult;continuation:CoordinationContinuation;workerSelection?:unknown;workerRevision?:number}[]}|undefined;
   function active(scope:Scope):void {
     const task=application.runtime.getTask(scope.taskId);
     if(scope.signal.aborted||task.cancelRequested)fail('CANCELLED','Original graph was cancelled');
@@ -139,13 +141,33 @@ export function createRuntimeConfiguredWorkflowCapability(application:RuntimeApp
       ||!host||!['succeeded','failed','cancelled'].includes(host.state))fail('RESULT_UNKNOWN','Original graph operation requires reconciliation');
   }
   function readBinding(request:RuntimeConfiguredWorkflowBindingScope):RuntimeConfiguredWorkflowBinding|undefined {
-    if(request.workflowId!==workflowId||!isActive(request.taskId))return;
-    const proposal=pending(request.taskId)!.pending!,namespace=key(proposal);
+    if(request.workflowId!==workflowId)return;
+    const loop=pending(request.taskId);
+    let proposal=loop?.pending,continuationReceipt:NonNullable<NonNullable<typeof loop>['receipts']>[number]|undefined;
+    if(proposal){if(!isActive(request.taskId))return;}
+    else{
+      const current=loop?.continuation;if(current?.state!=='confirmed'||!Array.isArray(loop?.receipts))return;
+      const matches=loop.receipts.filter(item=>item.proposal.proposalId===current.proposalId);
+      if(matches.length!==1||matches[0]!==loop.receipts.at(-1))return;
+      continuationReceipt=matches[0]!;proposal=continuationReceipt.proposal;
+      if(!accepts(proposal)||!isDeepStrictEqual(continuationReceipt.continuation,current))return;
+    }
+    const namespace=key(proposal);
     const bound=application.runtime.loadCheckpoint(request.taskId,namespace+':binding') as {
-      workflowId?:string;configurationVersion?:string;deadline:string;input:unknown;descriptors?:ToolDescriptor[]};
+      taskId?:string;proposalDigest?:string;revision?:number;configurationDigest?:string;
+      workflowId?:string;configurationVersion?:string;deadline:string;input:unknown;descriptors?:ToolDescriptor[]}|undefined;
     const graph=application.runtime.loadCheckpoint(request.taskId,namespace+':graph') as Graph|undefined;
-    if(!graph||graph.sessionId!==request.sessionId)return;
+    if(!bound||!graph||graph.sessionId!==request.sessionId)return;
     const scope={taskId:request.taskId,deadline:bound.deadline,signal:request.signal};active(scope);
+    if(continuationReceipt){
+      const saved=application.runtime.loadCheckpoint(scope.taskId,namespace+':receipt') as {selection?:unknown;result?:unknown}|undefined;
+      if(graph.result?.state!=='settled'||bound.taskId!==scope.taskId||bound.proposalDigest!==hash(proposal)
+        ||bound.configurationDigest!==configurationDigest||bound.revision!==continuationReceipt.workerRevision
+        ||!saved||!isDeepStrictEqual(saved.result,continuationReceipt.continuation.result)
+        ||!isDeepStrictEqual(saved.selection,{...bound,resultDigest:hash(saved.result)})
+        ||!isDeepStrictEqual(saved.selection,continuationReceipt.workerSelection))
+        fail('UNAUTHORIZED','Current graph continuation differs from its original receipt');
+    }
     validateToolValue(options.requestSchema,proposal.arguments);validateToolValue(options.inputSchema,bound.input);
     if(bound.workflowId!==workflowId||bound.configurationVersion!==options.configurationVersion||graph.version!==1
       ||graph.bindingId!==options.image.bindingId||!isDeepStrictEqual(graph.input,bound.input)

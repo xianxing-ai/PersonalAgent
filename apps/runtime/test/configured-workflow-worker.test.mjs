@@ -10,7 +10,7 @@ import {createRuntimeApplication,createDesktopSubagentDispatchTool,createRuntime
 // Policy and HostBridge, and does not assert OS, cloud, quota or recovery acceptance.
 const schema=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-function setup({override={},image,unknown=false}={}) {
+function setup({override={},image,unknown=false,afterConfirmed}={}) {
   const calls=[],exports=[],advances=[];
   const tool={descriptor:{name:'computer.system.observe',version:'1.0.0',inputSchema:schema({}),outputSchema:schema({observed:{type:'boolean'}}),
     sideEffect:'read',requiredScopes:['synthetic:probe'],requiresPresence:false,idempotencySupport:false,recoverySupport:false},
@@ -38,7 +38,10 @@ function setup({override={},image,unknown=false}={}) {
   let returned;
   const run=(request=proposal)=>app.runtime.runTask(task.taskId,async context=>{
     returned=await capability.dispatch(request,{...context,revision:0});
-    if(returned.state==='confirmed')capability.assertReceiptAllowed(request,returned.selection,returned.result,{...context,revision:0});
+    if(returned.state==='confirmed'){
+      capability.assertReceiptAllowed(request,returned.selection,returned.result,{...context,revision:0});
+      await afterConfirmed?.({app,capability,proposal:request,returned,context});
+    }
     return {resultSummary:returned.state,evidenceRefs:returned.evidenceRefs};
   },{deadline,sideEffect:'read'});
   return {app,task,proposal,run,calls,exports,advances,options,capability,tool,get returned(){return returned;}};
@@ -107,6 +110,46 @@ test('a changed result cannot reuse the original verified receipt',async()=>{
       deadline:f.app.runtime.loadCheckpoint(f.task.taskId,'application-deadline'),signal:new AbortController().signal,revision:0,
       loadCheckpoint:key=>f.app.runtime.loadCheckpoint(f.task.taskId,key)}),{code:'UNAUTHORIZED'});
   }finally{f.app.close();}
+});
+
+test('read binding permits only the current confirmed continuation and rejects replaced or stale proof',async()=>{
+  let checked=false;
+  const f=setup({afterConfirmed:({app,capability,proposal,returned,context})=>{
+    const namespace='owned-workflow:configured:'+hash([proposal.toolName,proposal.proposalId]);
+    const graph=app.runtime.loadCheckpoint(context.taskId,namespace+':graph');
+    const scope={taskId:context.taskId,workflowId:'F13',sessionId:graph.sessionId,signal:context.signal};
+    const continuation={proposalId:proposal.proposalId,state:'confirmed',result:returned.result};
+    const receipt={proposal,continuation,workerSelection:returned.selection,workerRevision:0};
+    const original={step:2,continuation,receipts:[receipt],evidenceRefs:returned.evidenceRefs};
+    const save=value=>app.runtime.saveCheckpoint(context.taskId,'competition-loop',value);
+    save(original);const binding=capability.readBinding(scope);assert.ok(binding);assert.equal(binding.confirmedOperations.length,1);
+    assert.equal(capability.readBinding({...scope,sessionId:'foreign'}),undefined);
+    assert.equal(capability.readBinding({...scope,workflowId:'F05'}),undefined);
+    assert.equal(capability.readBinding({...scope,taskId:'foreign'}),undefined);
+    for(const changed of [
+      {...original,continuation:{...continuation,result:{diagnosed:false}}},
+      {...original,receipts:[receipt,receipt]},
+      {...original,receipts:[receipt,{...receipt,proposal:{...proposal,proposalId:'newer-original'}}]},
+      {...original,receipts:[{...receipt,proposal:{...proposal,toolName:'workflow.foreign'}}]},
+      {...original,pending:{...proposal,proposalId:'foreign-pending'}},
+    ]){save(changed);assert.equal(capability.readBinding(scope),undefined);}
+    for(const patch of [
+      {workerRevision:1},{workerSelection:{...returned.selection,configurationDigest:'changed'}},
+      {continuation:{...continuation,result:{diagnosed:false}}},
+    ]){
+      const changedReceipt={...receipt,...patch};
+      save({...original,continuation:changedReceipt.continuation,receipts:[changedReceipt]});
+      assert.throws(()=>capability.readBinding(scope),{code:'UNAUTHORIZED'});
+    }
+    save(original);assert.deepEqual(capability.readBinding(scope),binding);
+    assert.throws(()=>capability.readBinding({...scope,signal:AbortSignal.abort()}),{code:'CANCELLED'});
+    app.runtime.saveCheckpoint(scope.taskId,'application-deadline',new Date(0).toISOString());
+    assert.throws(()=>capability.readBinding(scope),{code:'REVISION_CONFLICT'});
+    app.runtime.saveCheckpoint(scope.taskId,'application-deadline',context.deadline);
+    app.runtime.requestCancel(scope.taskId);assert.throws(()=>capability.readBinding(scope),{code:'CANCELLED'});
+    checked=true;
+  }});
+  try{await f.run();assert.equal(checked,true);assert.deepEqual(f.calls,['probe']);}finally{f.app.close();}
 });
 
 for(const [configured,unknown] of [[true,false],[false,false],[true,true]])test(`actual delegated worker ${!configured?'omits incomplete configuration':unknown?'retains unknown original child':'resumes original approval and confirms'}`,async()=>{
