@@ -2716,7 +2716,9 @@ async function initializeRuntime() {
       f25Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF25WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
         configuration:f25Configuration,authorizeExport:authorizeWorkflowExport}):undefined;
       const f27Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF27WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
-        models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,authorizeExport:authorizeWorkflowExport}):undefined;
+        models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,authorizeExport:authorizeWorkflowExport,
+        getKnowledgeSourceConfig:()=>knowledgeSourceConfig,knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope)}):undefined;
       f23DecisionConfiguration=!syntheticMvp&&agentArtsPinned?createDesktopF23DecisionConfiguration({runtimeModule,
         getApplication:()=>runtimeApplication,models:agentArtsModels,namespace,onUpdate:publish}):undefined;
       const f03DeploymentBinding=readWorkflowDeploymentBinding();
