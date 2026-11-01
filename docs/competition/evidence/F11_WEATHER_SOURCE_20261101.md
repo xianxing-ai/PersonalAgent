@@ -23,3 +23,5 @@ Main 需把实际 public connector 的 `weather.forecast` 工具及原 `competit
 上述真实服务探针只验证 Provider 读取，显式记录 `policyGraphVerified:false/calendarAccountVerified:false/cloudGraphVerified:false`。预报读取和原写前复核遵循 Provider 声明的缓存 TTL，不是跨天气/CalDAV 与审批等待的原子事务；后验来源失效保留已发生的日历效果并拒绝成功出口。真实 CalDAV、真实模型/云整图、官方警报、交通来源、缺地点/决定补问仍未验或未接；不能据此宣布 F11 全功能完成。
 
 最终受影响验证：F11 实际图 **19/19**，连同 F06/F07/F08/F12、工厂与原 PublicConnector 出口回归 **80/80**；AgentArts **242/242**；AgentArts/Runtime 构建、原模板生成检查、185 节点计数、架构 **3/3**、diff 检查通过。日志 `.cache/pr531-business/f11-weather-final-business.log`、`f11-weather-agentarts.log`、`f11-weather-build.log`、`f11-weather-templates.log`、`f11-weather-architecture.log`；根统一运行最终全仓 check，本增量未重复全仓。
+
+根 Main 已将原 PublicConnector 的唯一 `weather.forecast` 工具及其原出口 policy 注入业务工厂，保留现有知识/日历/待办接线，未把无关产品工具加入业务图。集成 AgentArts/Runtime 构建通过，实际 Main 装配、F11 图、业务可用性与原 HTTPS/WSS adapter 共 **78/78** 通过（`.cache/integration-f11-source-fence-tests.log`）。共享 ownedImage 现在按唯一 workflowId 同步调用原 configured worker 的 `assertCurrent`，在凭据读取后和发送前继续复核；保留原 F20，重复/异步 guard 拒绝发送。实际生产装配及原 adapter 的来源撤销测试确认零 HTTP 请求；稳定来源仍仅发送一次。此证据使用显式云 Fixture，不增加真实云验收结论。

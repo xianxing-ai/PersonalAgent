@@ -19,9 +19,9 @@
 | F02 | Live/capture/原问题卡的工厂已接同一 Runtime/image | 真实声学证据、ASR 与同一回合设备验收 |
 | F03 | 原知识写入 SHA/Fact 回执、用户明确 Plan 版本执行、同步当前公开 Fact 最终 guard、Main 原生确认与原任务幂等读回已接 | 原生确认目视、完整因果/补偿与云整图 |
 | F06/F07 | 实际图引擎、原待办调度/投递与原日历读写工厂已接 Main；未来提醒和重启去重已验证 | 原账号/云/Windows 通知联合验收 |
-| F08 | 完整显式方案 configured worker、原归档/发送/知识工具、来源 guard 和 Main 已接，根定向 89/89 | 缺决定的 F02、来源变化 F03、未来 unknown 恢复、真实邮箱/知识与云整图 |
-| F12 | 原 feed/策略、单条通知投递和显式 digest 的 configured worker 已接 Main，真实 availability 与原 N02 唯一注册已验证 | 真实归来事件、语音、多条 batch、Windows banner 与云整图 |
-| F11 | 完整显式改期方案已接同一图引擎/Main，日历与原提醒独立审批、原 revision 条件更新 | 缺决定的语音补问、天气来源、真实账号/云验收 |
+| F08 | 显式方案 configured worker、原归档/发送/知识工具、来源 guard 和 Main 已接，根定向 89/89；知识出口真实裁剪差异正修复 | N09 原投影消费、缺决定的 F02、来源变化 F03、未来 unknown 恢复、真实邮箱/知识与云整图 |
+| F12 | 原 feed/策略、显式多项批次共用一个 CAS round 已接 Main；真实 Engine/Runtime/Policy→Windows banner 单次投递及原回执已通过，两项仍未读 | 真实归来事件、语音、真实业务来源及固定云整图 |
+| F11 | 原 N01 天气来源→N03 显式改期→N05 原预报/日历/提醒复核已接 Main；公开测试地点真实天气只读成功 | 缺地点/决定的语音补问、警报/交通来源、真实日历账号与云整图 |
 | F13/F14 | 原系统采样与浏览器设备工厂已接 Main；原卡、同一输入租约、实际引擎和提交前字段竞态拒绝已验证 | F13 云/配额/确认恢复 provider；F14 真实设备整图 |
 | F16/F17 | F17 原失败命令/HEAD 观测、case 原生选择和 Main 已接；F16 原修复字节→独立 commit/push→新 CI 读回与逐项在场确认已接 | 受限真实仓库/云验收；unknown 原子任务与外层图安全继续仍分开核验 |
 | F18/F19 | F18 原生精确 PR/检查/审核者配置、独立 Policy/在场确认、同一开发者 provider、Main 与设置页已接 | F18 真实账号/独立批准/merge 云整图；F19 原 F15 enqueue、独立 bug 回归及安全关闭仍缺 |

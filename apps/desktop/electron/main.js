@@ -2545,9 +2545,10 @@ async function initializeRuntime() {
         microphoneHost:{readCaptureReceipt:(...args)=>microphoneCaptureHost?.readCaptureReceipt(...args)},
         voiceCommandHost:{prepareApproval:(...args)=>voiceCommandHost?.prepareApproval(...args)}}):undefined;
       const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
-        businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[])],todoHost,notificationHost:notificationApplicationHost,
+        businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[]),
+          ...productTools.tools.filter(tool=>tool.descriptor.name==='weather.forecast')],todoHost,notificationHost:notificationApplicationHost,
         competitionToolExports:[...(todoHost?.competitionToolExports??[]),...(connectorConversationTools?.competitionToolExports??[]),
-          ...(knowledgeTools?.competitionToolExports??[])],
+          ...(knowledgeTools?.competitionToolExports??[]),...productTools.competitionToolExports.filter(binding=>binding.toolName==='weather.forecast')],
         prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,
         readBusinessAvailability:createBusinessWorkflowAvailability({namespace,getApplication:()=>runtimeApplication,todoHost,
           notificationHost:notificationApplicationHost,readCalendarBinding:()=>calendarConfig?.binding(),
