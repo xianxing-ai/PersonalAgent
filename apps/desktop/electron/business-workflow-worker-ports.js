@@ -8,6 +8,7 @@ import {createF11CalendarWorkflowPorts} from './f11-calendar-workflow-ports.js';
 import {createF12ConfiguredNotificationPorts} from './f12-notification-workflow-ports.js';
 import {F12_EXPLICIT_RETURN_SOURCE_SCHEMA} from './f12-explicit-return-source.js';
 import {createF08MailWorkflowPorts} from './f08-mail-workflow-ports.js';
+import {createF08MailRecovery} from './f08-mail-recovery.js';
 
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 const object=(properties,required=Object.keys(properties))=>({type:'object',additionalProperties:false,properties,required});
@@ -30,6 +31,7 @@ const canonicalInstant=value=>{
 export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,businessTools=[],todoHost,notificationHost,explicitReturnSource,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,
   competitionToolExports=[],prepareCompetitionToolExport,authorizeExport,readBusinessAvailability,now=Date.now}={}) {
   const tools=[],hosts=[],configuredWorkflowWorkerPorts=[],unavailable=[];
+  let reconcileOriginalMailWorkflow;
   if(!runtimeModule||typeof getApplication!=='function'||typeof authorizeExport!=='function'
     ||typeof readBusinessAvailability!=='function'||typeof prepareCompetitionToolExport!=='function'
     ||typeof runtimeModule.createWorkflowBusinessToolBridge!=='function')
@@ -664,6 +666,8 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
       if(kind==='send')await fresh(scope,originalReceipt(scope.localTaskId,scope,result).context,'receipt');
       return receiptExport('F08')(scope,result);
     }});
+    reconcileOriginalMailWorkflow=createF08MailRecovery({getApplication,now,restoreWrite:ports.restoreOriginalWrite,
+      exportResult:exportBusinessResult,assertCurrent:scope=>{binding('F08',scope);acceptedDecision(scope);}});
     const hostOptions={...ports,application,assertCurrent:scope=>{binding('F08',scope);},now:()=>new Date(now())};
     if(decisionEnabled)addHost(runtimeModule.createRuntimeF08DecisionQuestionHost({...hostOptions,
       inputSchema:object({send:f08Schema.properties.send,knowledgeSources:f08Schema.properties.knowledgeSources}),readDecision,authorizeExport:receiptExport('F08'),
@@ -766,5 +770,5 @@ export function createBusinessWorkflowWorkerPorts({runtimeModule,getApplication,
     if(!decisionEnabled)unavailable.push('f08_missing_decision_question_source_unavailable');
     unavailable.push('f08_voice_decision_source_unavailable','f08_changed_source_replan_unavailable');
   }else unavailable.push('f08_mail_and_knowledge_dependencies_unavailable');
-  return {tools,hosts,configuredWorkflowWorkerPorts,unavailable};
+  return {tools,hosts,configuredWorkflowWorkerPorts,unavailable,reconcileOriginalMailWorkflow};
 }

@@ -14,10 +14,8 @@ export function createF08MailWorkflowPorts({getApplication,bridge,authorizeExpor
   };
   const key=scope=>'f08:original-send:'+scope.sessionId;
   const receiptKey=(scope,kind)=>'f08:original-child:'+kind+':'+scope.sessionId;
-  const invoke=async(scope,input,context,kind)=>{
-    const {app,bound}=binding(scope);
-    if(!isDeepStrictEqual(input,bound.input[kind]))fail('UNAUTHORIZED','F08 mail action differs from the original plan');
-    const receipt=await bridge.invoke({actionKey:'f08.mail.'+kind,input:structuredClone(input)},context);binding(scope);
+  const remember=(scope,kind,receipt)=>{
+    const {app,bound}=binding(scope),input=bound.input[kind];
     if(receipt.toolName!=='mail.'+kind||!isDeepStrictEqual(receipt.arguments,input))fail('UNAUTHORIZED','F08 original child receipt changed');
     if(receipt.result?.actionId!=='mail-'+kind+':'+receipt.runId)fail('RESULT_UNKNOWN','F08 domain action does not match the original child run');
     app.runtime.saveCheckpointOnce(scope.parentTaskId,receiptKey(scope,kind),receipt);
@@ -31,7 +29,13 @@ export function createF08MailWorkflowPorts({getApplication,bridge,authorizeExpor
     }
     return receipt.result;
   };
+  const invoke=async(scope,input,context,kind)=>{
+    const {bound}=binding(scope);
+    if(!isDeepStrictEqual(input,bound.input[kind]))fail('UNAUTHORIZED','F08 mail action differs from the original plan');
+    return remember(scope,kind,await bridge.invoke({actionKey:'f08.mail.'+kind,input:structuredClone(input)},context));
+  };
   return {
+    restoreOriginalWrite:remember,
     assertCurrent:scope=>{binding(scope);},
     readOriginalWrite(scope,kind){
       if(!['archive','send'].includes(kind))fail('INVALID_ARGUMENT','F08 unknown write kind');

@@ -165,12 +165,14 @@ export class MailService {
       throw new ProtocolError('INVALID_ARGUMENT', 'Reconciliation requires an RFC Message-ID and original idempotencyKey');
     }
     const prior = this.sendIdempotency.get(JSON.stringify([accountRef, idempotencyKey]));
-    if (prior !== undefined && (await prior.inflight).messageId !== messageId) {
+    // A thrown original attempt must still reach the provider's stable identity check and read-only reconciliation.
+    const priorResult=prior?await Promise.resolve(prior.inflight).catch(()=>undefined):undefined;
+    if (priorResult !== undefined && priorResult.messageId !== messageId) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Message-ID does not belong to the original send key');
     }
     if (this.provider.assertSendIdentity) {
       this.provider.assertSendIdentity(accountRef, messageId, idempotencyKey);
-    } else if (prior === undefined) {
+    } else if (priorResult === undefined) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Original send identity binding is unavailable');
     }
     const result = await this.provider.reconcileSend(accountRef, messageId, idempotencyKey);

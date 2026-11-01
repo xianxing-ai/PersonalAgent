@@ -32,8 +32,9 @@ async function scenario(t,options={}){
   provider.archive=async(account,input)=>{assert.equal(account,'desktop-qq-inbox');assert.equal(input.uidValidity,19);assert.equal(input.messageId,'<original@example.invalid>');
     archives++;if(!options.unknownArchive)moved=true;return {actionId:'mail-archive:'+input.idempotencyKey,state:options.unknownArchive?'unknown':'confirmed',
       externalId:input.messageId,evidenceRefs:options.unknownArchive?[]:['fixture-archive-readback']};};
-  provider.send=async(account,input)=>{sends++;const result={state:options.unknownSend?'unknown':'confirmed',messageId:'<sent-'+sends+'@example.invalid>'};
-    sent.set(input.idempotencyKey,result);return result;};
+  provider.send=async(account,input,context)=>{sends++;const result={state:options.unknownSend?'unknown':'confirmed',messageId:'<sent-'+sends+'@example.invalid>'};
+    if(options.interruptedSend)await context.beforeSend({idempotencyKey:input.idempotencyKey,messageId:result.messageId});
+    sent.set(input.idempotencyKey,result);if(options.interruptedSend)throw new ProtocolError('RESULT_UNKNOWN','Fixture interrupted after SMTP dispatch');return result;};
   provider.assertSendIdentity=(_account,messageId,key)=>{if(sent.get(key)?.messageId!==messageId)throw new ProtocolError('UNAUTHORIZED','Fixture identity mismatch');};
   provider.reconcileSend=async(account,messageId,key)=>{provider.assertSendIdentity(account,messageId,key);
     return {...sent.get(key),state:options.unknownSend&&!options.reconciled?'unknown':'confirmed'};};
@@ -94,7 +95,8 @@ async function scenario(t,options={}){
       if(app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation)return {kind:'text',text:'Fixture result',verification:'unverified'};
       return {kind:'tool_proposal',proposalId:'original-f08',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};}},
     requiresToolAuthorization:()=>true,requestToolAuthorization:async scope=>{
-      await prepareWorkflowHostPreflight({application:app,scope,prepareExport:scope=>connector.prepareExport(scope)});
+      if(!await connector.prepareOriginalSendReconciliationAuthorization(scope))
+        await prepareWorkflowHostPreflight({application:app,scope,prepareExport:scope=>connector.prepareExport(scope)});
       prepareConfiguredWorkflowDecisionQuestion({application:app,scope,question});return question.requestToolAuthorization(scope);
     },competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
@@ -106,6 +108,7 @@ async function scenario(t,options={}){
   const client=new Client(app);await client.connect();
   const root=await client.call('task.submit',{goal:'Fixture explicit F08 mail reply',conversationId:'fixture-chat'},{idempotencyKey:'fixture-f08',timeoutMs:60000});
   let child;
+  let recovered=false;
   for(let i=0;i<4000;i++){
     if(options.answerDecision&&!decisionReplied){const pending=decisionQuestion.readQuestion({taskId:root.taskId,conversationId:'fixture-chat'});
       if(pending){decisionReplied=true;assert.equal(pending.field,'mail.decision');assert.deepEqual(pending.draft,input.send);assert.deepEqual(pending.references,input.knowledgeSources);
@@ -137,7 +140,18 @@ async function scenario(t,options={}){
       try{question.respond({questionId:card.questionId,expectedRevision:card.revision,decision:card.toolName===options.denyTool?'deny':'allow_once'},card.conversationId);}
       catch(error){if(!options.revokeSend)throw error;assert.match(error.message,/失效|revok|changed|expired|authoriz/i);}
     }
-    [child]=app.readSubagentTasks(root.taskId);if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;await pause();
+    [child]=app.readSubagentTasks(root.taskId);
+    if(options.interruptedSend&&!recovered&&child?.state==='waiting_reconciliation'&&app.activeTaskCount===0){
+      const source={taskId:root.taskId},scope={deadline:new Date(Date.now()+30000).toISOString(),signal:new AbortController().signal};
+      assert.equal(connector.readOriginalSendRecoveryAvailable(root.taskId),true);
+      const read=connector.readOriginalSendReconciliation(source);
+      if(read.state==='unavailable'){connector.prepareOriginalSendReconciliation(source,scope);await pause();continue;}
+      if(read.state==='pending'){await pause();continue;}
+      assert.equal(read.state,'confirmed',JSON.stringify(read));
+      const applied=connector.applyOriginalSendReconciliation(source);
+      await composition.reconcileOriginalMailWorkflow({taskId:applied.task.taskId,...scope});recovered=true;await pause();continue;
+    }
+    if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state))break;await pause();
   }
   assert.ok(child);return {app,userData,child,archives,sends,reads,knowledgeReads,approvals,cloud,proposals,decisions,imageRequests,decisionReply,decisionReplied,decisionQuestion,
     diagnostics:app.runtime.listTasks({limit:100}).items.map(task=>({state:task.state,error:task.error,tool:app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName}))};
@@ -166,6 +180,10 @@ for(const option of ['unknownSend','unknownArchive','denyCompletion'])test('F08 
 test('F08 independently reconciles the original unknown send without a second SMTP call',async t=>{
   const f=await scenario(t,{unknownSend:true,reconciled:true});assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));assert.equal(f.sends,1);
   assert.ok(f.approvals.includes('mail.reconcile_send'));assert.ok(f.cloud.some(request=>request.continuation?.result?.sendConfirmed===true));
+});
+test('F08 interrupted SMTP resumes the original confirmed host and configured graph without sending twice',async t=>{
+  const f=await scenario(t,{interruptedSend:true});assert.equal(f.child.state,'succeeded',JSON.stringify(f.diagnostics));
+  assert.equal(f.sends,1);assert.equal(f.archives,1);assert.ok(f.cloud.some(request=>request.continuation?.result?.sendConfirmed===true));
 });
 
 test('F08 consumes the original 200-character knowledge projection without exporting the raw tail',async t=>{
