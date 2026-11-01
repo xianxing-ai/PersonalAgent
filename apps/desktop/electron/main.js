@@ -2533,11 +2533,14 @@ async function initializeRuntime() {
         microphoneHost:{readCaptureReceipt:(...args)=>microphoneCaptureHost?.readCaptureReceipt(...args)},
         voiceCommandHost:{prepareApproval:(...args)=>voiceCommandHost?.prepareApproval(...args)}}):undefined;
       const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
-        businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[])],todoHost,notificationHost:notificationApplicationHost,
-        competitionToolExports:[...(todoHost?.competitionToolExports??[]),...(connectorConversationTools?.competitionToolExports??[])],
+        businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[])],todoHost,notificationHost:notificationApplicationHost,
+        competitionToolExports:[...(todoHost?.competitionToolExports??[]),...(connectorConversationTools?.competitionToolExports??[]),
+          ...(knowledgeTools?.competitionToolExports??[])],
         prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,
         readBusinessAvailability:createBusinessWorkflowAvailability({namespace,getApplication:()=>runtimeApplication,todoHost,
           notificationHost:notificationApplicationHost,readCalendarBinding:()=>calendarConfig?.binding(),
+          readMailBinding:()=>({configurationRef:mailConfig?.reviewConfigurationRef('workflow.business.f08')}),
+          readKnowledgeBinding:()=>knowledgeSourceConfig?.snapshot(),
           deviceAvailable:()=>!app.isQuitting&&Notification.isSupported()})}):undefined;
       f16F17Cases=createF16F17CaseConfiguration({userData:app.getPath('userData'),safeStorage,
         readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),selectFile:async workflowId=>{

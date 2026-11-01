@@ -25,3 +25,16 @@ Main 需向 businessTools 和 competitionToolExports 注入已注册 knowledge.s
 最终受影响验证：F08 实际图 **12/12**，连同 F06/F07/F11/F12 与工厂回归 **52/52**；AgentArts **242/242**；AgentArts/Runtime 构建、原模板生成检查、架构门禁 **3/3** 和 diff 检查通过。原邮件端口、真实 Gateway 业务测试、optional hosts 与 connector 组合 **86/87** 在普通沙箱通过，唯一 CalDAV 本机 HTTP 夹具被环境阻止；独立最小 fetch 复现 `connect EACCES 127.0.0.1`，授权环境中同一夹具 **1/1** 通过，没有修改断言或产品代码来消除该环境失败。
 
 日志保留在 `.cache/pr531-business/f08-final-business.log`、`f08-ports-regression.log`、`f08-caldav-authorized.log`、`f08-agentarts.log`、`f08-architecture.log`。根集成分支承担最终全仓 check。
+
+## Main 集成（2026-11-01）
+
+在 `bb767770` 接回原 Main，业务工厂现在同时消费原 connector/mail 工具和
+`knowledgeTools.tools/competitionToolExports`，所有具体工具仍走原绑定和内容出机卡。
+availability 读取原 `mailConfig.reviewConfigurationRef` 和知识源 snapshot，要求原已装配邮箱
+及明确允许 PUBLIC 出机的当前知识源，绑定用户 namespace、sourceId、configRevision 与原公开查询集；
+只保存摘要，不向 Renderer 或模型暴露路径/凭据。缺配置、私有来源、取消与版本变化保持不可用。
+原工厂工具名优先过滤旧通用 host，因此 N10/guards 不会被同名孤立工厂覆盖。
+
+根 build 通过；F08 实际图、availability、业务工厂、connector conversation 和工作流目录
+定向 **89/89**，日志 `.cache/integration-f08-build.log`、`.cache/integration-f08-main-tests.log`。
+该组合仍使用上述明确 Fixture，不提升真实邮箱或云整图验收等级。

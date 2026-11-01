@@ -23,3 +23,21 @@ test('business availability binds actual account revision and notification polic
   assert.equal(read('F08',scope).ready,false);assert.equal(read('F06',{...scope,signal:AbortSignal.abort()}).ready,false);
   active=false;assert.equal(read('F06',scope).ready,false);assert.equal(read('F12',scope).ready,false);
 });
+
+test('F08 availability pins the actual mailbox and public knowledge configuration without granting writes or private exports',()=>{
+  let mail={configurationRef:'original-mail-binding'},knowledge={available:true,cloudExportAllowed:true,dataLevel:'public',
+    namespace:'synthetic',sourceId:'original-source',configRevision:1,publicQueries:['explicit-public-query']};
+  const read=createBusinessWorkflowAvailability({namespace:'synthetic',getApplication:()=>({runtime:{}}),
+    readMailBinding:()=>mail,readKnowledgeBinding:()=>knowledge});
+  const scope={taskId:'original-task',signal:new AbortController().signal},original=read('F08',scope);
+  assert.equal(original.ready,true);assert.deepEqual(Object.keys(original).sort(),['bindingId','ready']);
+  for(const patch of [{configRevision:2},{sourceId:'replacement'},{namespace:'replacement'},{publicQueries:['another-query']}]){
+    const saved=knowledge;knowledge={...saved,...patch};assert.notEqual(read('F08',scope).bindingId,original.bindingId);knowledge=saved;
+  }
+  mail={configurationRef:'replacement-mail'};assert.notEqual(read('F08',scope).bindingId,original.bindingId);
+  mail=undefined;assert.deepEqual(read('F08',scope),{ready:false});mail={configurationRef:'original-mail-binding'};
+  for(const patch of [{available:false},{cloudExportAllowed:false},{dataLevel:'private'},{configRevision:0},{publicQueries:undefined}]){
+    const saved=knowledge;knowledge={...saved,...patch};assert.deepEqual(read('F08',scope),{ready:false});knowledge=saved;
+  }
+  assert.deepEqual(read('F08',{...scope,signal:AbortSignal.abort()}),{ready:false});
+});
