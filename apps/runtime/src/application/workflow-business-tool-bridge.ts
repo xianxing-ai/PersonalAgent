@@ -28,6 +28,7 @@ export interface WorkflowBusinessToolSourceProof {
   readonly request:Readonly<SubmitHostToolTaskRequest>;
   readonly record:Readonly<ToolExecutionRecord>;
   readonly receipt:Readonly<WorkflowBusinessToolReceipt>;
+  readonly planSource?:ReturnType<RuntimeApplication['readPlanExecutionBinding']>;
 }
 type Application=RuntimeApplication;
 type Invocation={taskId:string;runId:string;toolName:string;toolVersion:string;arguments:unknown;deadline:string};
@@ -35,7 +36,8 @@ const childSourceKey='workflow-business-tool:source';
 const activeChildren=new WeakMap<Application,Map<string,(invocation:Invocation)=>void>>();
 type Intent={version:2;sourceTaskId:string;sourceRunId:string;parentTaskId:string;operationId:string;sessionId:string;
   workflowId:string;nodeId:string;sourceToolName:string;sourceToolVersion:string;sourceArgumentsDigest:string;
-  namespace:string;actionKey:string;inputDigest:string;descriptor:ToolDescriptor;request:SubmitHostToolTaskRequest};
+  namespace:string;actionKey:string;inputDigest:string;descriptor:ToolDescriptor;request:SubmitHostToolTaskRequest;
+  planSource?:ReturnType<RuntimeApplication['readPlanExecutionBinding']>};
 function fail(code:string,message:string):never {throw new ProtocolError(code,message);}
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const plain=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
@@ -43,7 +45,7 @@ const text=(value:unknown):value is string=>typeof value==='string'&&value.lengt
 
 /** Exact graph -> host -> business receipt proof, not an authority to dispatch
  * or export. Direct graph tools retain their separate original proof path. */
-export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>,
+export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>&Partial<Pick<RuntimeApplication,'readPlanExecutionBinding'>>,
   scope:Pick<OwnedWorkflowHostScope,'parentTaskId'|'sessionId'|'deadline'>,
   ref:WorkflowBusinessToolSourceReference,toolName:string):WorkflowBusinessToolSourceProof {
   const {runtime}=application;
@@ -62,6 +64,8 @@ export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplicati
     ||intent.descriptor.name!==toolName||intent.descriptor.version!==ref.toolVersion
     ||!isDeepStrictEqual(runtime.readToolDescriptors().find(tool=>tool.name===toolName&&tool.version===ref.toolVersion),intent.descriptor))
     fail('UNAUTHORIZED','Original business action, input or descriptor changed');
+  if(!isDeepStrictEqual(intent.planSource,application.readPlanExecutionBinding?.(scope.parentTaskId)))
+    fail('UNAUTHORIZED','Original business Plan source changed');
   if(!isDeepStrictEqual(marker,{sourceTaskId:intent.sourceTaskId,sourceRunId:intent.sourceRunId,
     commandId:intent.request.commandId,intentDigest:toolArgumentsDigest(intent)})
     ||!isDeepStrictEqual(runtime.loadCheckpoint(ref.taskId,'coding-repair:parent'),{taskId:intent.sourceTaskId,operationId:intent.request.commandId})
@@ -106,7 +110,7 @@ export function readWorkflowBusinessToolSource(application:Pick<RuntimeApplicati
   const proof=structuredClone({graph:{taskId:intent.parentTaskId,sessionId:intent.sessionId,workflowId:intent.workflowId,
     nodeId:intent.nodeId,operationId:intent.operationId},sourceHost:{taskId:intent.sourceTaskId,runId:intent.sourceRunId,
     toolName:intent.sourceToolName,toolVersion:intent.sourceToolVersion},actionKey:intent.actionKey,descriptor:intent.descriptor,
-    request:intent.request,record,receipt:{taskId:ref.taskId,runId:ref.runId,scopeRef:ref.scopeRef,toolName,toolVersion:ref.toolVersion,
+    request:intent.request,record,...(intent.planSource?{planSource:intent.planSource}:{}),receipt:{taskId:ref.taskId,runId:ref.runId,scopeRef:ref.scopeRef,toolName,toolVersion:ref.toolVersion,
       arguments:ref.arguments,evidenceRefs:read.confirmed.evidenceRefs,result:saved.result}});
   const freeze=(value:unknown):void=>{if(value&&typeof value==='object'){
     for(const item of Object.values(value))freeze(item);Object.freeze(value);
@@ -167,11 +171,12 @@ export function createWorkflowBusinessToolBridge(options:{
     const args=structuredClone(resolution.arguments);
     if(!isDeepStrictEqual(JSON.parse(JSON.stringify(args)),args))fail('INVALID_ARGUMENT','Business arguments must retain their JSON value');
     const commandId='workflow-business-'+hash([context.taskId,context.runId,request.actionKey]);
+    const planSource=application.readPlanExecutionBinding(scope.parentTaskId);
     const intent:Intent={version:2,sourceTaskId:context.taskId,sourceRunId:context.runId,parentTaskId:scope.parentTaskId,
       operationId:scope.operationId,sessionId:scope.sessionId,namespace:host.namespace,actionKey:request.actionKey,
       workflowId:resolution.workflowId,nodeId:resolution.nodeId,sourceToolName:source.toolName,sourceToolVersion:source.toolVersion,
       sourceArgumentsDigest:toolArgumentsDigest(sourceArguments),
-      inputDigest:toolArgumentsDigest(copied.input),descriptor:structuredClone(descriptor),
+      inputDigest:toolArgumentsDigest(copied.input),descriptor:structuredClone(descriptor),...(planSource?{planSource}:{}),
       request:{commandId,toolName:descriptor.name,toolVersion:descriptor.version,arguments:args,deadline:context.deadline}};
     const key='workflow-business-tool:'+commandId;
     const saved=runtime.loadCheckpoint(context.taskId,key);
@@ -193,6 +198,8 @@ export function createWorkflowBusinessToolBridge(options:{
         fail('REVISION_CONFLICT','Original business tool descriptor changed');
       const latest=runtime.loadCheckpoint(context.taskId,key);
       if(!(unbound&&latest===undefined)&&!isDeepStrictEqual(latest,intent))fail('REVISION_CONFLICT','Original business intent changed');
+      if(!isDeepStrictEqual(application.readPlanExecutionBinding(scope.parentTaskId),intent.planSource))
+        fail('REVISION_CONFLICT','Original business Plan source changed');
     }
     function child() {
       const task=runtime.findTaskByIdempotencyKey('host-tool:'+JSON.stringify([intent.namespace,commandId]));

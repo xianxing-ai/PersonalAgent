@@ -98,6 +98,8 @@ export type StagedFactProjection = Pick<FactProjectionRequest,
   'consumerKey' | 'memoryNamespace' | 'batch' | 'facts'>;
 
 export interface FactProjectionStore {
+  /** Exact existing mapping only. A caller-supplied Fact identity never creates one. */
+  readNodeFact(ref: NodeRef): (FactProjectionLink & {readonly memoryNamespace: string; readonly contentHash: string}) | undefined;
   preflightErasure(request: FactErasurePreflightRequest): Promise<FactErasurePreflight>;
   /** Trusted host only; Runtime-side commit, not Memory finalization or a wire operation. */
   commitErasure(request: FactErasureCommitRequest): Promise<void>;
@@ -332,6 +334,18 @@ interface NewProjection {
 export function bindFactProjectionStore(db: DatabaseSync, graphNamespace: string): FactProjectionStore {
   const namespace = text(graphNamespace);
   const bound: FactProjectionStore = Object.freeze({
+    readNodeFact: (ref: NodeRef) => storage(() => {
+      if(!ref || Object.keys(ref).sort().join(',')!=='id,revision' || typeof ref.id!=='string' || !ref.id
+        || !Number.isSafeInteger(ref.revision) || ref.revision<1) throw new FactProjectionError('INVALID_ARGUMENT');
+      const rows=db.prepare('SELECT * FROM coordination_fact_projections WHERE graph_namespace = ? AND node_id = ? AND node_revision = ?')
+        .all(namespace,ref.id,ref.revision) as Record<string,unknown>[];
+      if(!rows.length)return undefined;
+      const row=rows[0]!,node=loadGraph(db,namespace).history.find(node=>node.id===ref.id&&node.revision===ref.revision);
+      if(rows.length!==1 || !node || node.kind!=='fact' || node.graphRevision!==row.graph_revision
+        || node.id!==nodeId(row.memory_namespace as string,row.fact_id as string)) throw new FactProjectionError('INTEGRITY_CONFLICT');
+      return {memoryNamespace:row.memory_namespace as string,contentHash:row.content_hash as string,eventId:row.event_id as string,
+        fact:{id:row.fact_id as string,revision:row.fact_revision as number},node:{...ref}};
+    }),
     preflightErasure: async (request: FactErasurePreflightRequest): Promise<FactErasurePreflight> => {
       if (!request || typeof request.readDelivery !== 'function'
         || typeof request.readVersion !== 'function' || !request.signal

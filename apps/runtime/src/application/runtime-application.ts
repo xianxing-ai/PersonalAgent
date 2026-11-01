@@ -63,6 +63,9 @@ import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllo
 import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt} from './coordination.js';
 import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, readReviewedLocalRepairReceipt, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
 import type {LocalRepairHostOptions, SubmitLocalRepairRequest, ReviewedLocalRepairReceiptInput} from './local-repair.js';
+import {PLAN_EXECUTION_SOURCE,preparePlanExecutionSource,assertPlanExecutionFacts,
+  readPlanExecutionIntent,planExecutionGoal,planExecutionCommandId} from './plan-execution-source.js';
+import type {PlanExecutionOptions,PlanExecutionSelection,PlanExecutionIntent} from './plan-execution-source.js';
 import {isDeepStrictEqual} from 'node:util';
 import {COMPETITION_CONTEXT_CHECKPOINT,COORDINATION_GOAL_CHARACTER_LIMIT,bindCompiledContext,
   measureCompiledGoal,assertCompiledContextUnchanged} from './context-binding.js';
@@ -418,6 +421,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   onHarnessEventProgress?:(taskId:string)=>void|Promise<void>;
   /** Original native responsibility/lease/control check, including after asynchronous credential/model preparation. */
   assertHarnessEventCurrent?:(rootTaskId:string,origin:HarnessEventOrigin)=>void;
+  /** Explicit native Plan selection only; original Memory readers stay in trusted composition. */
+  planExecution?:PlanExecutionOptions;
   /** Main-process presence source, rechecked by the original Gateway at dispatch time. */
   isUserPresent?:(taskId:string)=>boolean;
   thinking?: ThinkingConfig;
@@ -550,6 +555,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly developerPatchRecovery?:DevWorkflowPatchRecovery;
   private readonly competitionRealtimeModel: RuntimeApplicationOptions['competitionRealtimeModel'];
   private readonly coordinationInput: CoordinationInputHooks | undefined;
+  private readonly planExecution:PlanExecutionOptions|undefined;
   private readonly windowsHostRecovery: RuntimeApplicationOptions['windowsHostRecovery'];
   private readonly ephemeralSends = new Map<string, CoordinationRequest>();
   private readonly ephemeralGoals = new Map<string,{publicGoal:string;preparedGoal:string}>();
@@ -660,6 +666,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('INVALID_ARGUMENT', 'Choose explicit competition coordination or existing local text configuration, not both');
     }
     this.coordinationInput = options.coordinationInput;
+    this.planExecution=options.planExecution;
+    if(this.planExecution&&(this.profile!=='huawei_ict_agentarts'||typeof this.planExecution.readCurrentFact!=='function'))
+      throw new ProtocolError('INVALID_ARGUMENT','Plan execution requires its trusted Competition Fact source reader');
     if (options.competitionRealtimeModel !== undefined
       && (this.profile !== 'huawei_ict_agentarts' || typeof options.competitionRealtimeModel.connect !== 'function')) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Competition realtime needs a trusted AgentArts connection');
@@ -824,6 +833,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             signal:new AbortController().signal});
           this.assertHarnessExperienceToolOpen(request.taskId);
           this.assertHarnessEventCurrent(request.taskId);
+          this.assertPlanExecutionCurrent(request.taskId);
           assertUserTaskDelegationInvocation(this.runtime, request);
           this.assertSubagentConversationInvocation(request.taskId,request.toolName);
           this.assertDeveloperHarnessToolScope(request.taskId,request.toolName);
@@ -859,6 +869,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         if (this.localRepair) gateway.register(createLocalRepairTool(() => this.runtime, this.localRepair));
         return {list:()=>gateway!.list(),invoke:invocation=>{
+          this.assertPlanExecutionCurrent(invocation.taskId,invocation);
           assertWorkflowBusinessToolInvocation(this,invocation);
           let userPresent=false;try{userPresent=options.isUserPresent?.(invocation.taskId)===true;}catch{/* Missing presence is never inferred. */}
           return gateway!.invoke({...invocation,userPresent});
@@ -923,6 +934,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         return current;
       };
       this.tools = {list: currentDescriptors, invoke: async invocation => {
+        this.assertPlanExecutionCurrent(invocation.taskId,invocation);
         this.harnessExperienceRecipes(invocation.taskId,invocation);
         this.assertHarnessExperienceToolOpen(invocation.taskId);
         this.assertHarnessEventCurrent(invocation.taskId);
@@ -1549,17 +1561,18 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
 
   /** Historical structural identity only. Execution/permission/deadline checks remain at their original ports. */
   readToolConversation(taskId:string):string|undefined {
-    return this.readBoundToolConversation(taskId,new Set());
+    const root=this.readBoundToolRootTask(taskId,new Set());
+    return root?this.runtime.getTask(root).conversationId:undefined;
   }
 
-  private readBoundToolConversation(taskId:string,seen:Set<string>):string|undefined {
+  private readBoundToolRootTask(taskId:string,seen:Set<string>):string|undefined {
     if(seen.size>=32||seen.has(taskId))return undefined;
     seen.add(taskId);
     try {
       const task=this.runtime.getTask(taskId),message=readSubagentConversationMessage(this.runtime,taskId);
       if(message){const origin=this.subagentConversationOrigin({parentTaskId:message.parentTaskId,taskId:message.originTaskId});
         readSubagentConversationMessage(this.runtime,taskId,origin);
-        return this.runtime.getTask(origin.parentTaskId).conversationId;}
+        return origin.parentTaskId;}
       const graph=this.runtime.loadCheckpoint(taskId,CODING_REPAIR_PARENT) as {taskId?:string;operationId?:string}|undefined;
       if(graph!==undefined){
         if(typeof graph.taskId!=='string'||graph.taskId===taskId||typeof graph.operationId!=='string')return undefined;
@@ -1569,14 +1582,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           ||intent.commandId!==graph.operationId||!isDeepStrictEqual(original.request,{commandId:intent.commandId,toolName:intent.toolName,
             toolVersion:intent.toolVersion,arguments:intent.arguments,deadline:intent.deadline})
           ||toolArgumentsDigest(intent.arguments)!==intent.argumentsDigest||this.readHostToolTask(taskId).commandId!==graph.operationId)return undefined;
-        return this.readBoundToolConversation(graph.taskId,seen);
+        return this.readBoundToolRootTask(graph.taskId,seen);
       }
       if(this.runtime.loadCheckpoint(taskId,HOST_TOOL_CHECKPOINT)!==undefined)return undefined;
       const binding=this.runtime.loadCheckpoint(taskId,'subtask-parent');
       if(binding!==undefined){if(!plainObject(binding)||typeof binding.parentTaskId!=='string')return undefined;
         const origin=this.subagentConversationOrigin({parentTaskId:binding.parentTaskId,taskId});
-        return this.runtime.getTask(origin.parentTaskId).conversationId;}
-      return typeof task.conversationId==='string'&&task.conversationId?task.conversationId:undefined;
+        return origin.parentTaskId;}
+      return typeof task.conversationId==='string'&&task.conversationId?task.taskId:undefined;
     }catch{return undefined;}
   }
 
@@ -1920,6 +1933,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private assertInputActive(request:CoordinationRequest):void {
     this.harnessExperienceRecipes(request.taskId,request);
     this.assertHarnessEventCurrent(request.taskId);
+    this.assertPlanExecutionCurrent(request.taskId,request);
     this.assertDeveloperHarnessExecutorCurrent(request.taskId);
     const experience=this.experienceSendPolicies.get(request.taskId);
     if(experience) {
@@ -4174,6 +4188,84 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** Host-only original F03 plan proof; reading never authorizes, resumes or executes a repair. */
   readF03PlanRepairReceipt(input: ReviewedLocalRepairReceiptInput) {
     return readReviewedLocalRepairReceipt(this.runtime,input);
+  }
+
+  /** Native preview only: the actual current source and deployment are checked again after confirmation. */
+  previewPlanExecution(selection:PlanExecutionSelection,context:{deadline:string;signal:AbortSignal}) {
+    this.assertPlanExecutionConfigured();
+    const source=preparePlanExecutionSource(this.runtime,structuredClone(selection),this.coordinationBinding,this.planExecution!,context);
+    this.assertPlanExecutionConfigured();
+    return Object.freeze({source,sourceDigest:toolArgumentsDigest(source)});
+  }
+
+  /** Trusted Desktop admission. The ordinary task preparation, delegation and tool approvals remain unchanged. */
+  readPlanExecutionTask(selection:PlanExecutionSelection):TaskSnapshot|undefined {
+    const task=this.runtime.findTaskByIdempotencyKey('plan-execution:'+planExecutionCommandId(selection));if(!task)return;
+    const intent=readPlanExecutionIntent(this.runtime,task.taskId);
+    if(!intent||intent.source.graphNamespace!==selection.graphNamespace||!isDeepStrictEqual(intent.source.plan,selection.plan))
+      throw new ProtocolError('REVISION_CONFLICT','Original Plan request identity changed');
+    return task;
+  }
+
+  async submitPlanExecutionTask(input:PlanExecutionSelection&{sourceDigest:string;conversationId:string;deadline:string},
+    context:{signal:AbortSignal}):Promise<TaskSnapshot> {
+    if(!input||Object.keys(input).sort().join(',')!=='conversationId,deadline,expectedGraphRevision,graphNamespace,plan,sourceDigest'
+      ||!nonEmptyText(input.conversationId)||!sha256(input.sourceDigest))
+      throw new ProtocolError('INVALID_ARGUMENT','Invalid native Plan execution request');
+    const request=structuredClone(input),{sourceDigest,conversationId,deadline,...selection}=request;
+    const prior=this.readPlanExecutionTask(selection);if(prior)return prior;
+    const commandId=planExecutionCommandId(selection);
+    const preview=this.previewPlanExecution(selection,{deadline,signal:context.signal});
+    if(preview.sourceDigest!==sourceDigest)throw new ProtocolError('REVISION_CONFLICT','Confirmed Plan source or deployment changed');
+    const intent:PlanExecutionIntent={source:preview.source,sourceDigest,deadline,commandId,conversationId};
+    const task=this.runtime.submitTaskWithCheckpoint({goal:planExecutionGoal(intent.source),conversationId,
+      idempotencyKey:'plan-execution:'+commandId,attachmentRefs:['plan-execution:'+toolArgumentsDigest(intent)]},PLAN_EXECUTION_SOURCE,intent);
+    this.dispatchAcceptedTextTask(task.taskId,planExecutionGoal(intent.source),conversationId,deadline);
+    return this.runtime.getTask(task.taskId);
+  }
+
+  /** Historical causal identity only. Expired Plan sources never hide already observed effects. */
+  readPlanExecutionBinding(taskId:string) {
+    const rootTaskId=this.readBoundToolRootTask(taskId,new Set());
+    if(!rootTaskId)return undefined;
+    const intent=readPlanExecutionIntent(this.runtime,rootTaskId);
+    return intent?Object.freeze({rootTaskId,sourceDigest:intent.sourceDigest,graphNamespace:intent.source.graphNamespace,
+      graphRevision:intent.source.graphRevision,plan:Object.freeze({...intent.source.plan})}):undefined;
+  }
+
+  private assertPlanExecutionConfigured():void {
+    if(this.profile!=='huawei_ict_agentarts'||!this.delegateUserTasks||!this.coordination||!this.coordinationInput
+      ||typeof this.coordinationInput.prepareCoordinationGoal!=='function'||typeof this.coordinationInput.beforeCoordinationSend!=='function'
+      ||!this.planExecution||typeof this.planExecution.readCurrentFact!=='function'||typeof this.assertCoordinationBinding!=='function')
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Native Plan execution sources or original Competition input hooks are unavailable');
+    const checked:unknown=this.assertCoordinationBinding?.();
+    if(checked!==undefined){void Promise.resolve(checked).catch(()=>{});throw new ProtocolError('UNAUTHORIZED','Plan deployment guard must be synchronous');}
+  }
+
+  private assertPlanExecutionCurrent(taskId:string,context?:{deadline:string;signal:AbortSignal}):PlanExecutionIntent|undefined {
+    const rootTaskId=this.readBoundToolRootTask(taskId,new Set());
+    if(!rootTaskId) {
+      if(this.runtime.loadCheckpoint(taskId,CODING_REPAIR_PARENT)!==undefined
+        ||this.runtime.loadCheckpoint(taskId,'subtask-parent')!==undefined
+        ||this.runtime.getTask(taskId).conversationId?.startsWith('desktop-subtask:'))
+        throw new ProtocolError('UNAUTHORIZED','Original execution parent cannot be verified');
+      return undefined;
+    }
+    const intent=readPlanExecutionIntent(this.runtime,rootTaskId);
+    if(!intent)return undefined;
+    this.assertPlanExecutionConfigured();
+    const root=this.runtime.getTask(rootTaskId);
+    if(root.cancelRequested||['failed','cancelled','succeeded','cancelling'].includes(root.state)
+      ||Date.parse(intent.deadline)<=this.now().getTime()
+      ||this.runtime.loadCheckpoint(rootTaskId,'application-deadline')!==intent.deadline)
+      throw new ProtocolError('UNAUTHORIZED','Original Plan request is no longer active');
+    const scope=context??{deadline:intent.deadline,signal:new AbortController().signal};
+    if(!Number.isFinite(Date.parse(scope.deadline))||Date.parse(scope.deadline)>Date.parse(intent.deadline))
+      throw new ProtocolError('UNAUTHORIZED','Original Plan execution deadline changed');
+    assertPlanExecutionFacts(this.runtime,intent.source,this.coordinationBinding,this.planExecution!,scope);
+    const current=readPlanExecutionIntent(this.runtime,rootTaskId);
+    if(!isDeepStrictEqual(current,intent))throw new ProtocolError('REVISION_CONFLICT','Original Plan source changed during current Fact read');
+    return intent;
   }
 
   /** An explicit trusted-host action creates a separate local task; never a cloud callback. */

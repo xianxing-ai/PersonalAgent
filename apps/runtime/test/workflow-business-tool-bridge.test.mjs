@@ -126,6 +126,20 @@ test('the public source proof reads only the exact confirmed graph-host-business
   f.revoke();assert.deepEqual(read(),proof);assert.equal(f.calls,1);
 });
 
+test('business intent freezes the trusted Plan origin and readback refuses replacing it without execution',async t=>{
+  const f=await setup(t);let binding={rootTaskId:f.parent.taskId,sourceDigest:'a'.repeat(64),graphNamespace:'synthetic-plan',
+    graphRevision:2,plan:{id:'selected-plan',revision:1}};
+  // Only this public origin provider is Synthetic; the original task/run/Policy/SQLite bridge is real.
+  f.app.readPlanExecutionBinding=()=>binding;
+  const child=await f.begin();await f.decide(child.taskId);await f.settle();
+  const scope={parentTaskId:f.parent.taskId,sessionId:'synthetic-session',deadline:f.context.deadline};
+  const ref={taskId:child.taskId,runId:child.runId,scopeRef:child.runId,toolVersion:f.business.descriptor.version,arguments:f.request.input};
+  const read=()=>readWorkflowBusinessToolSource(f.app,scope,ref,f.business.descriptor.name),proof=read();
+  assert.deepEqual(proof.planSource,binding);assert.throws(()=>{proof.planSource.plan.revision=2;},TypeError);
+  binding={...binding,plan:{...binding.plan,revision:2}};assert.throws(read,{code:'UNAUTHORIZED'});
+  assert.equal(f.calls,1);
+});
+
 test('source proof refuses changed edges, marker, action, descriptor, arguments and caller reference without another dispatch',async t=>{
   const f=await setup(t),child=await f.begin();await f.decide(child.taskId);await f.settle();
   const scope={parentTaskId:f.parent.taskId,sessionId:'synthetic-session',deadline:f.context.deadline};

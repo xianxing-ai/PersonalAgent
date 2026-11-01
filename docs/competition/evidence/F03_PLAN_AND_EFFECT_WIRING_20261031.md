@@ -35,3 +35,19 @@ Competition Profile，基线 `d5e67c8a` 加 F24 原知识写入恢复。以下�
 兼容：原 void provider 与旧 checkpoint 可继续恢复，但没有 `factReadback` 时不得声称 Fact 证据已验证；没有数据库时不创建或导入私人 Fact。新数据仅为原 checkpoint 的可选字段，没有数据库迁移、清库、额外写入重试或新的云端字段。
 
 本地验证：Runtime build；13/13 原工具/投影测试（实际 ToolGateway/Policy、显式 Synthetic writer/provider）；27/27 Desktop Wiki 来源与 F24 恢复回归，其中 Wiki 版本测试读取独立临时目录中的实际合成文件及 SQLite，F24 同时回归实际受控文件 journal。无私人知识库、真实模型或云端验收声明。
+
+## 增量 B2：用户选择原 Plan 后的新执行任务（2026-11-01）
+
+在既有持续目标控件列出当前 Plan，用户点击明确版本后由原生确认显示将发送的 Plan 摘要与实际部署；确认不替代后续任何工具卡。Renderer 只提交 Plan ref / expectedGraphRevision。Goal 宿主固定 namespace，Main 固定当前 conversation、点击 command 与部署身份；确认后再次校验来源及部署。原 Plan、传递依赖 NodeRef、现有 Fact 投影映射及实际当前 Fact 版本在 Runtime 受理前冻结；无映射/原来源 reader 时不可用，不读取同会话历史猜测来源。
+
+使用原 `submitTaskWithCheckpoint` 与 `dispatchAcceptedTextTask`，从原 Competition prepare/send 回调进入 AgentArts、私人消费检查与委派。仅 Plan 摘要进入新任务 goal，Fact 正文默认留本机。后续执行与审批恢复沿原 parent 关系核对冻结来源，business bridge 仅从受信 root 读取来源摘要；没有绑定的历史任务不追填。源版本失效、撤回、部署变更或取消阻止新执行；这些检查不加到原 unknown 效果的只读 reconciliation API，不抹除历史效果。新增 FactProjectionStore 只读查询复用原表，不新增数据库或调度器。Main 的 IPC 分支与实际原生确认由集成树串行接入。
+
+已实现 Runtime `previewPlanExecution`、`submitPlanExecutionTask`、`readPlanExecutionTask` 与 `readPlanExecutionBinding`，Goal 宿主 `executePlan` 和既有持续目标控件 `goal.plan.execute` 消费。每个 namespace / Plan id / revision 只绑定一个原任务；并发点击、丢失回执、Renderer 重开和 SQLite 重开都读取同一原任务，不再 dispatch。重新执行必须明确创建新 Plan 版本。已有任务查询不要求仍有效的 Plan、期限或部署；当前状态与原任务 id 在 UI 显示，unknown 明确为等待原结果核实。
+
+公共 Fact 当前头复核复用 `SqliteMemoryHost.readPublicFactHead` 和固定 namespace 的 `CompetitionFactHost.readCurrentPublicFact`。同步读取实际最新头，拒绝 private，遵守原 erasure intent，不能回退到旧 active 版本。`createPlanExecutionFactReader` 只接受本机显式绑定的 `{memoryNamespace,facts}`；未配置/私人来源保持 unavailable。异步 Fact provider 明确拒绝，确保原 `beforeSend` 在凭据读取之后及原 Policy 执行前都能同步复核来源；无额外传输层、授权层、数据库迁移或配置回填。
+
+Main 最小接线：向 Competition Application 注入 `planExecution:{readCurrentFact:createPlanExecutionFactReader(readFixedFactHosts)}`；在既有 Goal IPC 白名单中接 `goal.plan.execute` → `goalHost.executePlan(payload,{conversationId,deadline,signal,confirm})`。`confirm` 的原生窗口必须展示并绑定实际当前部署/版本、将发送的 `summary`、原 Plan ref 与 `sourceDigest`，并复用既有 privateConsumption / source / preparation 回调；不得用恒真确认或新云调用替代。Runtime 受理与工具执行仍走原链。集成树负责公共类型出口及 Main/Preload/实际原生窗口验证。
+
+验证使用实际 SQLite、Runtime、ToolGateway、Policy、Fact 投影与 AgentArts 适配器；模型、凭据、原生确认和网络均显式 Synthetic。最终发送回归在 `authorizationProvider.read` 内更新真实 Fact 当前头，随后原 beforeSend 拒绝且 HTTP/工具执行均为 0。覆盖未 drain 的 Fact 更新、Plan/部署漂移、取消、并发受理、未知结果重启零重放、原身份污染、独立工具审批与缺映射拒绝。F24 原未知受控文件读回单独回归；不声称已完成真实 AgentArts、真人确认、完整 F03 原因果/补偿或整图验收。
+
+本地结果：Memory / Runtime workspace build、两个 Desktop 修改模块的语法检查及 `npm run check:architecture`（3/3）通过；Plan / 原任务委派 / business bridge / Fact projection / public Fact host / Memory SQLite / AgentArts / Goal UI / F24 共 283/283 定向回归通过、0 跳过。F24 文件案例使用已有 PowerShell 宿主和独立临时目录，实际读取受控文件 journal，丢失确认仍为显式 Synthetic。最终整仓 `npm run check` 和 Main 原生窗口 smoke 由集成树在公共出口/IPC 接线后执行。
