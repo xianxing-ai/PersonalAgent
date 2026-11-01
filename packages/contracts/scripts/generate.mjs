@@ -49,3 +49,15 @@ for (const [file, content] of [['f20-candidate.generated.ts', f20Types], ['f20-c
     if (current !== content.replaceAll('\r\n', '\n')) throw new Error('Generated F20 candidate types/schema are stale; run contracts generate');
   } else await writeFile(path, content);
 }
+const f05Schema = JSON.parse(await readFile(new URL('../schema/f05-answer.json', import.meta.url), 'utf8'));
+const f05Types = await compile(f05Schema, 'F05AnswerCandidate', {
+  bannerComment: '// Generated from schema/f05-answer.json. Do not edit.', unknownAny: true, ignoreMinAndMaxItems: true,
+});
+const f05Runtime = '// Generated from schema/f05-answer.json. Do not edit.\nexport default ' + JSON.stringify(f05Schema) + ';\n';
+for (const [file, content] of [['f05-answer.generated.ts', f05Types], ['f05-answer.schema.ts', f05Runtime]]) {
+  const path = new URL('../src/' + file, import.meta.url);
+  if (process.argv.includes('--check')) {
+    const current = (await readFile(path, 'utf8')).replaceAll('\r\n', '\n');
+    if (current !== content.replaceAll('\r\n', '\n')) throw new Error('Generated F05 answer types/schema are stale; run contracts generate');
+  } else await writeFile(path, content);
+}

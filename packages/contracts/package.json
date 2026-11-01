@@ -24,7 +24,9 @@
     "./harness-candidates-schema": "./schema/harness-candidates.json",
     "./wiki-workflow": {"types":"./dist/wiki-workflow.d.ts","import":"./dist/wiki-workflow.js"},
     "./f20-candidate": {"types":"./dist/f20-candidate.d.ts","import":"./dist/f20-candidate.js"},
-    "./f20-candidate-schema": "./schema/f20-candidate.json"
+    "./f20-candidate-schema": "./schema/f20-candidate.json",
+    "./f05-answer": {"types":"./dist/f05-answer.d.ts","import":"./dist/f05-answer.js"},
+    "./f05-answer-schema": "./schema/f05-answer.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
