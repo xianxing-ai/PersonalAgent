@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-01 F21 固定参考能力的隔离验证与启用（provisional）
+
+`createF21WorkflowWorkerPorts` / Desktop `createConfiguredDesktopF21WorkflowPorts` 将五节点接入同一 configured driver、原业务 child/Policy 与原 native command；仅支持既有固定 filesystem MCP 和 reference-summary Skill。新增 `readReadonlyMcpInstallation`、reference 配置读口及 `readOriginalF21Probe` 为只读宿主证据，不能授权或启动进程。启用另经原 `workflow.enable` 精确确认；原 probe/enable 未知以既有 SQLite CAS 固定能力身份阻止新图重放。旧 UI 启停调用保持兼容，无依赖或数据库迁移。真实本机 PSEC/协议检查已通过，固定 AgentArts 整图与真人验收仍待完成，详见 [F21 证据](../competition/evidence/F21_REFERENCE_PROBE_WIRING_20261101.md)。
+
 ## 2026-11-01 F01 原上下文与原生来源选择（provisional）
 
 唯一 `createF01WorkflowWorkerPorts` 与 Desktop `createConfiguredDesktopF01WorkflowPorts` 已提供实际 N02/N04/N05/N06/N07/N08/N09 消费口，复用同一 configured driver、原 Policy 和业务桥；补问公开 `responsibility.clarification` / `workflow.f01.clarification.respond`，回答不代替权限。N06 仅支持至多三个独立原子任务；检索/补问后明确 awaiting_replan，不自动补造新计划。模板摘要随可选 guard/收束依赖变更；原声明目录兼容，不新增 wire/数据库迁移。Main 与真实部署验收按证据跟进。

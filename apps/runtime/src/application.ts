@@ -77,6 +77,7 @@ export {verifyF11ConfirmedCalendarAndReminder} from './application/workflow-f11-
 export {createRuntimeF11CalendarChangeHost,createRuntimeF11PlanGuards,createRuntimeF11WeatherSourceHost,createRuntimeF11DecisionQuestionHost} from './application/workflow-f11-calendar-graph-host.js';
 export type {F11CalendarChangeBinding,F11CalendarChangeGuardOptions} from './application/workflow-f11-calendar-receipt-guard.js';
 export {createRuntimeF21SourceManifestHost,createRuntimeF21ProtocolHealthHost} from './application/workflow-f21-skill-graph-host.js';
+export {createF21WorkflowWorkerPorts,type F21WorkflowOptions,type F21SourceConfiguration} from './application/workflow-f21-worker.js';
 export {createRuntimeF25OutboundContextHost} from './application/workflow-f25-outbound-graph-host.js';
 export {createF25ConfigurationWorkflowPorts} from './application/workflow-f25-configuration.js';
 export type {F25ConfigurationWorkflowOptions} from './application/workflow-f25-configuration.js';
