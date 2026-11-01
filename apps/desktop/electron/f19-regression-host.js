@@ -28,7 +28,7 @@ export function createF19RegressionHost({getApplication:app,runtimeModule:r,bind
     ||!/^[a-f0-9]{64}$/.test(configuration.configurationRef)||typeof configuration.assertCurrent!=='function'
     ||typeof configuration.native?.createCommandTool!=='function'||typeof configuration.sourceBranch!=='string')
     fail('Independent F19 regression configuration unavailable');
-  const recipe={id:recipeId,executable:node,args:[checker,root]};
+  const recipe={id:recipeId,executable:node,args:['--preserve-symlinks','--preserve-symlinks-main',checker,root]};
   function current(scope){
     const bound=binding(scope),value=configuration.assertCurrent(scope);
     if(value!==undefined){void Promise.resolve(value).catch(()=>{});fail('F19 regression guard must be synchronous');}

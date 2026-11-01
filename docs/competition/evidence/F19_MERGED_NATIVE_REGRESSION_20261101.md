@@ -32,7 +32,7 @@ argumentsDigest、graph/session/host、PR/merged SHA、root、recipe、helper pi
 
 - `configurationRef`、同步 `assertCurrent`：原受信配置身份及撤销复核。
 - `rootPath`、`sourceBranch`：已预配独立 checkout；不由工具输入传入。
-- `nodeExecutable`、`checkerPath`、`checkerSha256`：固定独立 bug 回归，argv 固定为 `[checkerPath, rootPath]`。
+- `nodeExecutable`、`checkerPath`、`checkerSha256`：固定独立 bug 回归，argv 固定为 `['--preserve-symlinks', '--preserve-symlinks-main', checkerPath, rootPath]`，与现有原生 Node 命令保持一致，避免受限进程为模块解析探测未授权父目录；不增加读权限。
 - `native`：原 `createDesktopNativeExecutionHost` 实例；不接受普通进程替代隔离。
 
 工厂仍返回 `{tools, configuredWorkflowWorkerPorts, ...}`，增加
