@@ -53,7 +53,7 @@ const capabilities: Record<string, WorkflowCapability[]> = {
   F05_N05:[host('knowledge.citation_revision_check')],F05_N07:[host('runtime.publish_sourced_answer')],
   F06_N03:[host('todo.registered_write')],F06_N04:[host('reminder.current_clock_and_revision')],F06_N05:[host('notification.deliver')],
   F07_N02:[tool('calendar.events')],F07_N04:[host('calendar.freshness_check')],F07_N05:[host('calendar.registered_write')],
-  F08_N01:[tool('mail.inbox')],F08_N09:[tool('knowledge.search')],F08_N03:[host('mail.registered_archive')],
+  F08_N01:[tool('mail.inbox')],F08_N09:[host('knowledge.original_public_source')],F08_N03:[host('mail.registered_archive')],
   F08_N10:[host('mail.prepared_plan_check')],F08_N06:[host('voice.ask_question')],F08_N07:[host('mail.registered_send')],
   F08_N11:[tool('mail.reconcile_send')],F08_N12:[host('runtime.wait_reconciliation')],F08_N13:[host('runtime.versioned_replan')],
   F09_N01:[tool('feeds.collect')],F09_N02:[host('feeds.validate_and_deduplicate')],F09_N04:[host('runtime.enqueue_research')],

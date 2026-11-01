@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: 98b262fbbe49052f7c52e6e8297ae20601a667849ddd60c6ddadca2c4fb21d5f
+// Source projection sha256: efa523adae64de6fff0fd5d6fc4fc0487308ab85ae88103a6bea8d6b57a4c211
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -1616,7 +1616,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N09",
-        "label": "分支B：独立依赖（默认串行）检索上下文与附件依据",
+        "label": "分支B：原知识工具检索上下文与附件依据，仅出口公开投影",
         "kind": "tool_exec",
         "dependencies": [
           "F08_N01"
@@ -1624,11 +1624,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [],
+        "inputFields": [
+          "knowledgeQuery"
+        ],
         "outputFields": [
-          "项目事实",
-          "附件来源",
-          "缺失依据"
+          "hits",
+          "truncated"
         ],
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },

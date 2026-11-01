@@ -38,3 +38,5 @@ availability 读取原 `mailConfig.reviewConfigurationRef` 和知识源 snapshot
 根 build 通过；F08 实际图、availability、业务工厂、connector conversation 和工作流目录
 定向 **89/89**，日志 `.cache/integration-f08-build.log`、`.cache/integration-f08-main-tests.log`。
 该组合仍使用上述明确 Fixture，不提升真实邮箱或云整图验收等级。
+
+2026-11-01 续增量以 [原知识投影接线](F08_KNOWLEDGE_PROJECTION_20261101.md) 替换此首批测试的知识出口 Fixture：现消费实际 `createTrustedKnowledgeTools` 公开/私有与裁剪契约，原 N09 对图只返回允许投影；知识内容和邮箱 Provider 仍为明确 Fixture，真实服务剩余验收边界未因此取消。

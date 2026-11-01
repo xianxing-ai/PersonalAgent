@@ -9,6 +9,35 @@ const plain=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!
 const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0;
 // mail.archive and mail.send must be separate original Policy children, never direct tool.execute calls.
 
+/** F08_N09 exports only the original knowledge tool's approved public projection. */
+export function createRuntimeF08KnowledgeSourceHost(options?:{
+  application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;knowledgeSearch:RegisteredTool;
+  readKnowledge:(scope:Scope,input:Record<string,unknown>,context:ToolContext)=>Promise<unknown>;
+  verifyKnowledgeResult:(scope:Scope,result:unknown,context:ToolContext)=>Promise<void>;
+  assertCurrent:(scope:Scope,context:ToolContext)=>void;authorizeExport:(scope:Scope,result:unknown)=>Promise<boolean>;now:()=>Date;
+}):{tools:RegisteredTool[];authorizeReceipt?:(input:{context:ToolContext;result:unknown})=>Promise<void>;unavailable:string|null} {
+  if(!options?.application?.runtime||typeof options.application.readHostToolTask!=='function'||options.knowledgeSearch?.descriptor.name!=='knowledge.search'
+    ||typeof options.readKnowledge!=='function'||typeof options.verifyKnowledgeResult!=='function'||typeof options.assertCurrent!=='function'
+    ||typeof options.authorizeExport!=='function'||typeof options.now!=='function')return {tools:[],unavailable:'f08_knowledge_source_ports_unavailable'};
+  const runtime=options.application.runtime,descriptor=options.knowledgeSearch.descriptor;
+  const active=(context:ToolContext,args:unknown)=>assertOwnedWorkflowHostScope({runtime,context,workflowId:'F08',nodeId:'F08_N09',
+    hostToolName:'workflow.host.f08_n09',proposalArguments:args,assertCurrent:options.assertCurrent,now:options.now});
+  const tool=createOwnedWorkflowAdapter({nodeId:'F08_N09',kind:'host',sideEffect:'read',requiredScopes:[...descriptor.requiredScopes],
+    inputSchema:structuredClone(descriptor.inputSchema),outputSchema:structuredClone(descriptor.outputSchema),
+    async execute(input,context){const scope=active(context,input),result=await options.readKnowledge(scope,input as Record<string,unknown>,context);
+      active(context,input);return result;}});
+  return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
+    const args=(runtime.loadCheckpoint(context.taskId,'host-tool-intent') as {arguments?:unknown}|undefined)?.arguments;
+    const scope=active(context,args),saved=options.application.readHostToolTask(context.taskId);
+    if(saved.task.state!=='succeeded'||saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f08_n09'
+      ||saved.confirmed?.runId!==context.runId||!saved.confirmed.evidenceRefs.includes(context.runId)||!isDeepStrictEqual(saved.confirmed.result,result))
+      failOwnedHost('UNAUTHORIZED','F08 original knowledge source receipt unavailable');
+    await options.verifyKnowledgeResult(scope,result,context);active(context,args);
+    if(await options.authorizeExport(scope,result)!==true)failOwnedHost('UNAUTHORIZED','F08 knowledge source export denied');
+    await options.verifyKnowledgeResult(scope,result,context);active(context,args);
+  }};
+}
+
 type MailWriteResult={toolState:string;archiveOperationId?:string;sendOperationId?:string;messageId?:string;idempotencyKey?:string};
 type MailWritePorts={application:Pick<RuntimeApplication,'runtime'|'readHostToolTask'>;tool:RegisteredTool;
   requiredScopes:readonly string[];invoke:(scope:Scope,input:Record<string,unknown>,context:ToolContext)=>Promise<unknown>;

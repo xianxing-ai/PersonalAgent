@@ -692,6 +692,10 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 
 公开 `createRuntimeF11WeatherSourceHost` 将既有 N01 装配为受信入口，保持 185 节点；N03 保留 N02 并直接依赖 N01。旧完整显式计划请求兼容，新增可选 `weather:{eventId,query}`，query 显式 location/date/units；独立原 `weather.forecast` 子任务与出口投影供 N03 消费，raw 记录仅在本机验证 cache 时效、原事件覆盖与写前版本，不进入图/模型。固定天气动作允许消费原非等值公开投影，其他业务动作仍保留原等值出口约束。F11 配置版本为 `business-20261101-f11-v2`，旧摘要不可复用，无 wire 或迁移。北京公开地点的真实 OpenMeteo 只读探针通过，但日历/模型/云整图及警报、交通、补问分支仍独立未验，见 [F11 天气来源记录](../competition/evidence/F11_WEATHER_SOURCE_20261101.md)。
 
+## 2026-11-01 F08 原知识出口投影（provisional）
+
+公开 `createRuntimeF08KnowledgeSourceHost` 将原 N09 接为受信来源 host，内部仍用独立 `knowledge.search` child/Policy。仅固定 `f08.knowledge.source/send-check/receipt-check` 消费原 prepare/project/final accepts，完整 raw 留本机，N09 仅返回原公开投影；私有/撤销仍拒绝，未扩大原知识出口。F08 配置为 `business-20261101-f08-v2`，原明确公开的 sourceId/configRevision/query enum 才可公布，目录仍为 185 节点。原邮件写入和 source 版本边界保留，无 wire 或迁移；实际知识出口与 Fixture 来源分层记录见 [F08 知识投影](../competition/evidence/F08_KNOWLEDGE_PROJECTION_20261101.md)。
+
 ## 2026-10-31 F12 原通知 configured worker（provisional）
 
 `workflow.business.f12` 绑定原有效未读 feed、层级/legacy 策略与原子轮次，只接 `event` / `on_demand`；公开 `createRuntimeF12ConfiguredReadHosts` 提供原策略、条件与有效摘要读取。N05 capability 与当前设计对齐为 `notification.current_feed_digest`、副作用 read；原投递工厂兼容增加确证 suppressed 的 false 结果及可选结果复核。2026-11-01 保留 `{itemId,trigger}`，增加互斥 `{itemIds,trigger}`；原 N02/N04/N05 同步支持精确多项选择，原 ready batches 完整并集须等于已批准 ID 集，原 CAS 一个轮次投递一条本机摘要，逐项核对来源/已读/撤回/期限。配置版本为 `business-20261101-f12-v2`，无 wire、迁移或新调度，旧配置摘要拒绝恢复。真实用户归来来源、voice 与实际 F12 设备/云整图验收仍缺；本机实际组件和 Fixture 边界见 [F12 接线记录](../competition/evidence/F12_CONFIGURED_NOTIFICATION_20261031.md) 与 [显式多项批次](../competition/evidence/F12_EXPLICIT_BATCH_20261101.md)。
