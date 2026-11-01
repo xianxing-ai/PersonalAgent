@@ -11,18 +11,13 @@ const plain=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!
 const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0;
 const sha=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/u.test(v);
 
-/** Consumes only an already finalized KnowledgeWriteReconciliationAdapter receipt.
- * Target is fixed by trusted composition, not supplied by a graph or model. */
-export function createF24KnowledgeReconciliationPorts(options?:{
-  runtime:TaskRuntime;namespace:string;target:Target;
-  isOriginalTarget:(scope:Scope,target:Target)=>Promise<boolean>;
-}):{resolveOriginalEffect?:F24ReconciliationHostOptions['resolveOriginalEffect'];
-  verifyReadback?:F24ReconciliationHostOptions['verifyReadback'];unavailable:string|null} {
-  if(!options?.runtime||!text(options.namespace)||!text(options.target?.taskId)||!text(options.target?.runId)
-    ||options.target.runId!=='host-tool-'+options.target.taskId||typeof options.isOriginalTarget!=='function')
-    return {unavailable:'f24_knowledge_original_binding_unavailable'};
-  const {runtime,namespace}=options,target=structuredClone(options.target);
-  const inspect=():F24OriginalEffectBinding|undefined=>{
+/** Shared synchronous readback for final export guards. It proves the accepted
+ * original observation only; callers still prove their target and current grant. */
+export function readFinalizedKnowledgeWriteEffect({runtime,namespace,target}:{
+  runtime:Pick<TaskRuntime,'getTask'|'loadCheckpoint'|'readToolExecutions'|'matchesToolExecutionInput'|'readEvidence'>;
+  namespace:string;target:Target;
+}):F24OriginalEffectBinding|undefined {
+    if(!text(namespace)||!text(target?.taskId)||target.runId!=='host-tool-'+target.taskId)return;
     try {
       const task=runtime.getTask(target.taskId),intent=runtime.loadCheckpoint(target.taskId,'host-tool-intent');
       const receipt=runtime.loadCheckpoint(target.taskId,'knowledge-write-readback');
@@ -50,7 +45,20 @@ export function createF24KnowledgeReconciliationPorts(options?:{
       return {taskId:target.taskId,runId:target.runId,toolName:intent.toolName,toolVersion:intent.toolVersion,
         inputDigest:record.inputDigest,readbackEvidenceId:evidenceId};
     }catch{return undefined;}
-  };
+}
+
+/** Consumes only an already finalized KnowledgeWriteReconciliationAdapter receipt.
+ * Target is fixed by trusted composition, not supplied by a graph or model. */
+export function createF24KnowledgeReconciliationPorts(options?:{
+  runtime:TaskRuntime;namespace:string;target:Target;
+  isOriginalTarget:(scope:Scope,target:Target)=>Promise<boolean>;
+}):{resolveOriginalEffect?:F24ReconciliationHostOptions['resolveOriginalEffect'];
+  verifyReadback?:F24ReconciliationHostOptions['verifyReadback'];unavailable:string|null} {
+  if(!options?.runtime||!text(options.namespace)||!text(options.target?.taskId)||!text(options.target?.runId)
+    ||options.target.runId!=='host-tool-'+options.target.taskId||typeof options.isOriginalTarget!=='function')
+    return {unavailable:'f24_knowledge_original_binding_unavailable'};
+  const {runtime,namespace}=options,target=structuredClone(options.target);
+  const inspect=()=>readFinalizedKnowledgeWriteEffect({runtime,namespace,target});
   const resolve:NonNullable<F24ReconciliationHostOptions['resolveOriginalEffect']>=async scope=>{
     if(scope.signal.aborted||await options.isOriginalTarget(scope,structuredClone(target))!==true||scope.signal.aborted)return;
     const original=inspect();

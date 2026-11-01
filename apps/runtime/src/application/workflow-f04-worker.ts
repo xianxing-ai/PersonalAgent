@@ -9,13 +9,14 @@ import type {KnowledgeWriteReceipt} from '@personal-agent/knowledge/write';
 import type {RuntimeApplication} from './runtime-application.js';
 import type {RuntimeConfiguredWorkflowOptions,RuntimeConfiguredWorkflowBinding} from './configured-workflow-worker.js';
 import type {CompetitionToolExport,PrepareCompetitionToolExport} from './coordination.js';
-import {createWorkflowBusinessToolBridge,readWorkflowBusinessToolSource} from './workflow-business-tool-bridge.js';
+import {createWorkflowBusinessToolBridge,readWorkflowBusinessToolSource,readWorkflowBusinessToolOrigin} from './workflow-business-tool-bridge.js';
 import type {WorkflowBusinessToolReceipt,WorkflowBusinessToolSourceReference} from './workflow-business-tool-bridge.js';
 import {assertOwnedWorkflowHostScope} from './workflow-owned-host-scope.js';
 import {f04RequestSchema,f04CandidateSchema,parseF04Candidate,assertF04Lifetime,assertF04FactSource} from './workflow-f04-candidate.js';
 import type {F04Input,F04Recall,F04Scope,F04SourceConfiguration} from './workflow-f04-candidate.js';
 import {applyF04Projection,readF04ProjectedFact,readF04Projection} from './workflow-f04-projection.js';
 import type {F04FactPort,F04ProjectionIntent} from './workflow-f04-projection.js';
+import {readFinalizedKnowledgeWriteEffect} from './workflow-f24-knowledge-ports.js';
 
 type Worker=Omit<RuntimeConfiguredWorkflowOptions,'image'>;
 type Graph=RuntimeConfiguredWorkflowBinding;
@@ -27,6 +28,7 @@ const object=(properties:Record<string,unknown>)=>({type:'object',additionalProp
 const empty=object({});
 function fail(code:string,message:string):never {throw new ProtocolError(code,message);}
 type SourceReceipt={sessionId:string;hostTaskId:string;reference:WorkflowBusinessToolSourceReference};
+type Written=Omit<KnowledgeWriteReceipt,'state'|'backupId'>&{state:'verified'|'applied'|'not_applied'};
 export interface F04RecoveryPort {
   readAvailable(scope:F04Scope):boolean;
   reconcileOriginalReadback(scope:F04Scope):Promise<{state:'unknown'|'confirmed';localTaskId:string}>;
@@ -55,7 +57,7 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
     ||!['knowledge.search','knowledge.apply_note_patch'].every(name=>options.knowledgeToolExports?.some(policy=>policy.toolName===name
       &&policy.toolVersion==='1.0.0'&&typeof policy.accepts==='function'&&typeof policy.project==='function')))
     return {tools:[],configuredWorkflowWorkerPorts:[],unavailable:'f04_original_public_source_ports_unavailable'};
-  const ports=options,checking=new Set<string>();
+  const ports=options,checking=new Set<string>(),readingUnknown=new Set<string>();
   const app=()=>ports.getApplication();
   function base(scope:Scope){
     assertF04Lifetime(scope);const parent=app().readDelegatedUserTaskParent(scope.taskId),task=app().runtime.getTask(scope.taskId);
@@ -97,6 +99,21 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
     if(proof.graph.workflowId!==workflowId||proof.graph.nodeId!==nodeId||proof.sourceHost.taskId!==saved.hostTaskId)
       fail('UNAUTHORIZED','F04 source child belongs to another original node');return proof;
   }
+  function writeOrigin(scope:Scope){
+    const saved=app().runtime.loadCheckpoint(scope.taskId,'f04:source:F04_N03') as SourceReceipt|undefined;
+    if(!saved||saved.sessionId!==app().runtime.loadCheckpoint(scope.taskId,sessionKey))fail('UNAUTHORIZED','F04 original write identity unavailable');
+    const origin=readWorkflowBusinessToolOrigin(app(),{parentTaskId:scope.taskId,sessionId:saved.sessionId,deadline:scope.deadline},saved.reference,'knowledge.apply_note_patch');
+    if(origin.graph.workflowId!==workflowId||origin.graph.nodeId!=='F04_N03'||origin.sourceHost.taskId!==saved.hostTaskId)
+      fail('UNAUTHORIZED','F04 original write belongs to another node');return origin;
+  }
+  function observedWrite(scope:Scope){
+    const origin=writeOrigin(scope),ref=origin.reference,intent=app().runtime.loadCheckpoint(ref.taskId,'host-tool-intent') as {namespace:string};
+    const effect=readFinalizedKnowledgeWriteEffect({runtime:app().runtime,namespace:intent.namespace,target:{taskId:ref.taskId,runId:ref.runId}});
+    const observed=app().runtime.loadCheckpoint(ref.taskId,'knowledge-write-readback') as
+      {result:{state:'applied'|'not_applied';operationId:string;currentSha256:string}}|undefined;
+    if(!effect||!observed||effect.inputDigest!==origin.record.inputDigest)fail('RESULT_UNKNOWN','F04 original knowledge effect still lacks accepted readback');
+    return {origin,effect,result:observed.result};
+  }
   function recall(value:Graph,scope:Scope):F04Recall {
     const record=operation(value,'F04_N05')!,result=record.result as F04Recall,request=input(value),proof=sourceProof(scope,'F04_N05');
     assertF04FactSource(result,request);
@@ -106,15 +123,24 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
       ||projection.hits.filter(hit=>isDeepStrictEqual(hit.source,result.source)&&hit.excerpt===result.excerpt).length!==1)
       fail('UNAUTHORIZED','F04 recall differs from its original public projection');return result;
   }
-  function write(scope:Scope,original:F04Recall):KnowledgeWriteReceipt|undefined {
+  function write(scope:Scope,original:F04Recall):Written|undefined {
     if(app().runtime.loadCheckpoint(scope.taskId,'f04:source:F04_N03')===undefined)return;
-    const proof=sourceProof(scope,'F04_N03'),result=proof.receipt.result as KnowledgeWriteReceipt;
+    const origin=writeOrigin(scope),args=origin.request.arguments;
     const request=input(graph(scope,String(app().runtime.loadCheckpoint(scope.taskId,sessionKey))));
-    if(!isDeepStrictEqual(proof.request.arguments,{sourceId:request.configuration.sourceId,configRevision:request.configuration.configRevision,
-      path:original.source.path,expectedSha256:original.source.revision,edits:[{oldText:original.excerpt,newText:request.updateText}]})
-      ||result.state!=='verified'||result.beforeSha256!==original.source.revision||result.path!==original.source.path
+    if(!isDeepStrictEqual(args,{sourceId:request.configuration.sourceId,configRevision:request.configuration.configRevision,
+      path:original.source.path,expectedSha256:original.source.revision,edits:[{oldText:original.excerpt,newText:request.updateText}]}))
+      fail('REVISION_CONFLICT','F04 original write parameters changed');
+    if(origin.record.reconciliationOutcome==='applied'||origin.record.reconciliationOutcome==='not_applied'){
+      const {result}=observedWrite(scope);
+      if(result.state==='not_applied'&&result.currentSha256!==original.source.revision)fail('RESULT_UNKNOWN','F04 nonapplied source does not match its original hash');
+      return {sourceId:original.source.vaultId,configRevision:request.configuration.configRevision,path:original.source.path,
+        beforeSha256:original.source.revision,afterSha256:result.currentSha256,operationId:result.operationId,state:result.state,
+        changed:result.state==='applied'&&result.currentSha256!==original.source.revision};
+    }
+    const proof=sourceProof(scope,'F04_N03'),result=proof.receipt.result as KnowledgeWriteReceipt;
+    if(result.state!=='verified'||result.beforeSha256!==original.source.revision||result.path!==original.source.path
       ||result.sourceId!==original.source.vaultId||result.configRevision!==base(scope).configRevision||!result.afterSha256)
-      fail('REVISION_CONFLICT','F04 original note write did not confirm its bound source');return result;
+      fail('REVISION_CONFLICT','F04 original note write did not confirm its bound source');return {...result,state:'verified'};
   }
   function current(scope:Scope):void {
     const configuration=base(scope),sessionId=app().runtime.loadCheckpoint(scope.taskId,sessionKey);
@@ -132,7 +158,15 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
       }
       if(!operation(value,'F04_N05',undefined,true))return;
       const captured=recall(value,scope);
+      if(readingUnknown.has(scope.taskId)&&app().runtime.loadCheckpoint(scope.taskId,'f04:source:F04_N03')!==undefined){
+        const origin=writeOrigin(scope);
+        if(origin.record.state==='unknown'&&!['applied','not_applied'].includes(String(origin.record.reconciliationOutcome))){
+          if(!isDeepStrictEqual(ports.facts.readCurrentPublicFact(captured.fact.ref),captured.fact))fail('REVISION_CONFLICT','F04 original Fact changed during source readback');return;
+        }
+      }
       const written=write(scope,captured),source=written?{...captured.source,revision:written.afterSha256}:captured.source;
+      const confirmedWrite=operation(value,'F04_N03',undefined,true);
+      if(confirmedWrite&&!isDeepStrictEqual(confirmedWrite.result,readWriteProjection(scope)))fail('UNAUTHORIZED','F04 original write projection changed');
       const checked=ports.assertCitationCurrent({source,configuration},scope);
       if(checked!==undefined){void Promise.resolve(checked).catch(()=>{});fail('UNAUTHORIZED','F04 source guard must be synchronous');}
       const intent=projectionIntent(scope,value,captured,written);
@@ -143,8 +177,8 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
   function projectionIntent(scope:Scope,value:Graph,captured:F04Recall,written=write(scope,captured)){
     const intent=app().runtime.loadCheckpoint(scope.taskId,'f04:projection-intent') as F04ProjectionIntent|undefined;if(!intent)return;
     if(!written?.changed)fail('UNAUTHORIZED','F04 projection lacks its original changed source');
-    const proof=sourceProof(scope,'F04_N03'),expected={version:1,source:{...captured.source,revision:written.afterSha256},before:captured.fact,
-      summary:input(value).updateText,observedAt:intent.observedAt,sourceTaskId:proof.receipt.taskId,sourceRunId:proof.receipt.runId,sourceOperationId:written.operationId};
+    const origin=writeOrigin(scope),expected={version:1,source:{...captured.source,revision:written.afterSha256},before:captured.fact,
+      summary:input(value).updateText,observedAt:intent.observedAt,sourceTaskId:origin.reference.taskId,sourceRunId:origin.reference.runId,sourceOperationId:written.operationId};
     if(!Number.isFinite(Date.parse(intent.observedAt))||!isDeepStrictEqual(intent,expected))fail('UNAUTHORIZED','F04 original projection intent changed');return intent;
   }
   function readProjection(proof:ReturnType<typeof sourceProof>,scope:Scope):unknown {
@@ -153,6 +187,34 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
     if(!saved||saved.policyVersion!==policy.exportPolicyVersion||saved.resultDigest!==toolArgumentsDigest(proof.receipt.result)
       ||policy.accepts({taskId:proof.receipt.taskId,proposalId:proof.request.commandId,arguments:structuredClone(proof.request.arguments),
         phase:'final',projection:structuredClone(saved.projection),signal:scope.signal})!==true)fail('UNAUTHORIZED','F04 original source projection was revoked');return saved.projection;
+  }
+  function readWriteProjection(scope:Scope):unknown {
+    const origin=writeOrigin(scope);
+    if(!['applied','not_applied'].includes(String(origin.record.reconciliationOutcome)))return readProjection(sourceProof(scope,'F04_N03'),scope);
+    const {result}=observedWrite(scope),policy=ports.knowledgeToolExports.find(item=>item.toolName==='knowledge.apply_note_patch')!;
+    const saved=app().runtime.loadCheckpoint(origin.reference.taskId,'f04:source-projection') as {policyVersion:string;resultDigest:string;projection:unknown}|undefined;
+    if(!saved||saved.policyVersion!==policy.exportPolicyVersion||saved.resultDigest!==toolArgumentsDigest(result)
+      ||!isDeepStrictEqual(saved.projection,{state:result.state,changed:result.state==='applied'&&result.currentSha256!==origin.request.arguments.expectedSha256})
+      ||policy.accepts({taskId:origin.reference.taskId,proposalId:origin.request.commandId,arguments:structuredClone(origin.request.arguments),
+        phase:'final',projection:structuredClone(saved.projection),signal:scope.signal})!==true)fail('UNAUTHORIZED','F04 original reconciliation projection was revoked');
+    return saved.projection;
+  }
+  async function projectObservedWrite(scope:Scope):Promise<unknown>{
+    const observed=observedWrite(scope),{origin,result}=observed,ref=origin.reference;
+    const policy=ports.knowledgeToolExports.find(item=>item.toolName==='knowledge.apply_note_patch')!;
+    const proposal={kind:'tool_proposal' as const,proposalId:origin.request.commandId,toolName:origin.request.toolName,
+      toolVersion:origin.request.toolVersion,arguments:structuredClone(origin.request.arguments),verification:'unverified' as const};
+    const check=(phase:'preflight'|'final',projection?:unknown)=>{
+      current(scope);
+      if(!isDeepStrictEqual(observedWrite(scope),observed)||policy.accepts({taskId:ref.taskId,proposalId:proposal.proposalId,
+        arguments:structuredClone(origin.request.arguments),phase,projection,signal:scope.signal})!==true)fail('UNAUTHORIZED','F04 reconciliation export changed');
+    };
+    const saved=app().runtime.loadCheckpoint(ref.taskId,'f04:source-projection');
+    if(saved!==undefined)return readWriteProjection(scope);
+    check('preflight');await ports.prepareCompetitionToolExport({phase:'projection',taskId:ref.taskId,runId:ref.runId,proposal,deadline:scope.deadline,signal:scope.signal});
+    check('preflight');const projection=await policy.project({taskId:ref.taskId,proposalId:proposal.proposalId,result:structuredClone(result),signal:scope.signal});
+    check('final',projection);app().runtime.saveCheckpointOnce(ref.taskId,'f04:source-projection',
+      {policyVersion:policy.exportPolicyVersion,resultDigest:toolArgumentsDigest(result),projection:structuredClone(projection)});return projection;
   }
   let application:RuntimeApplication|undefined,bridge:ReturnType<typeof createWorkflowBusinessToolBridge>|undefined;
   function business(){
@@ -175,7 +237,14 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
     return {owned,scope,binding:graph(scope,owned.sessionId)};
   }
   async function invoke(nodeId:string,args:Record<string,unknown>,context:ToolContext,scope:Scope,sessionId:string){
-    const receipt=await business().invoke({actionKey:nodeId,input:args},context);
+    let receipt:WorkflowBusinessToolReceipt;
+    try{receipt=await business().invoke({actionKey:nodeId,input:args},context);}catch(error){
+      if(nodeId==='F04_N03'){
+        const original=business().read({actionKey:nodeId,input:args},context);
+        if(original.taskId&&original.runId)app().runtime.saveCheckpointOnce(scope.taskId,'f04:source:'+nodeId,{sessionId,hostTaskId:context.taskId,
+          reference:{taskId:original.taskId,runId:original.runId,scopeRef:original.runId,toolVersion:'1.0.0',arguments:args}});
+      }throw error;
+    }
     app().runtime.saveCheckpointOnce(scope.taskId,'f04:source:'+nodeId,{sessionId,hostTaskId:context.taskId,
       reference:{taskId:receipt.taskId,runId:receipt.runId,scopeRef:receipt.scopeRef,toolVersion:receipt.toolVersion,arguments:receipt.arguments}});
     return receipt;
@@ -242,13 +311,13 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
         operation(binding,'F04_N07');return {state:'quarantined',fact:captured.fact.ref,sourceRevision:captured.source.revision};
       }
       operation(binding,'F04_N03');const written=write(scope,captured)!;
-      if(!written.changed)return {state:'unchanged',fact:captured.fact.ref,sourceRevision:captured.source.revision};
-      const proof=sourceProof(scope,'F04_N03'),source={...captured.source,revision:written.afterSha256};
+      if(!written.changed)return {state:written.state==='not_applied'?'not_applied':'unchanged',fact:captured.fact.ref,sourceRevision:captured.source.revision};
+      const origin=writeOrigin(scope),source={...captured.source,revision:written.afterSha256};
       const line=await ports.readCitation({source,configuration:request.configuration},scope);current(scope);
       if(line!==request.updateText)fail('REVISION_CONFLICT','F04 written line differs from its original candidate');
       const existing=projectionIntent(scope,binding,captured,written);
       const intent=existing??{version:1 as const,source,before:captured.fact,summary:line,observedAt:new Date().toISOString(),
-        sourceTaskId:proof.receipt.taskId,sourceRunId:proof.receipt.runId,sourceOperationId:written.operationId};
+        sourceTaskId:origin.reference.taskId,sourceRunId:origin.reference.runId,sourceOperationId:written.operationId};
       app().runtime.saveCheckpointOnce(scope.taskId,'f04:projection-intent',intent);
       return applyF04Projection(ports.facts,intent,scope,()=>current(scope));
     }}));
@@ -283,9 +352,9 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
     if(operation(value,candidate.disposition==='compatible'?'F04_N07':'F04_N03',undefined,true))fail('UNAUTHORIZED','F04 executed both exclusive branches');
     if(candidate.disposition==='compatible'){
       const written=write(scope,captured)!;
-      if(!isDeepStrictEqual(operation(value,'F04_N03')!.result,readProjection(sourceProof(scope,'F04_N03'),scope)))fail('UNAUTHORIZED','F04 write receipt export changed');
+      if(!isDeepStrictEqual(operation(value,'F04_N03')!.result,readWriteProjection(scope)))fail('UNAUTHORIZED','F04 write receipt export changed');
       const intent=projectionIntent(scope,value,captured,written),expected=written.changed&&intent?readF04Projection(ports.facts,intent,scope):
-        {state:'unchanged',fact:captured.fact.ref,sourceRevision:captured.source.revision};
+        {state:written.state==='not_applied'?'not_applied':'unchanged',fact:captured.fact.ref,sourceRevision:captured.source.revision};
       if(!expected||!isDeepStrictEqual(result,expected))fail('RESULT_UNKNOWN','F04 original projection lacks its complete readback');
     }else if(!isDeepStrictEqual(result,{state:'quarantined',fact:captured.fact.ref,sourceRevision:captured.source.revision}))fail('UNAUTHORIZED','F04 quarantine result changed');
     return {state:result.state,fact:result.fact,sourceRevision:result.sourceRevision,
@@ -293,9 +362,9 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
   }
   const requiredTools=[...tools.map(tool=>({name:tool.descriptor.name,version:tool.descriptor.version})),
     ...['decision.choose_candidate','knowledge.search','knowledge.apply_note_patch'].map(name=>({name,version:'1.0.0'}))];
-  const worker:Worker={workflowId,toolName:'workflow.wiki.manage',toolVersion:'1.0.0',configurationVersion:'f04-public-source-v1',
+  const worker:Worker={workflowId,toolName:'workflow.wiki.manage',toolVersion:'1.0.0',configurationVersion:'f04-public-source-v2',
     requestSchema:f04RequestSchema,inputSchema:object({...f04RequestSchema.properties,configuration:{type:'object'},candidateContract:{type:'object'}}),
-    resultSchema:object({state:{enum:['updated','unchanged','quarantined']},fact:object({id:text,revision:{type:'integer',minimum:1}}),
+    resultSchema:object({state:{enum:['updated','unchanged','quarantined','not_applied']},fact:object({id:text,revision:{type:'integer',minimum:1}}),
       sourceRevision:{type:'string'},projection:{type:'object'}}),requiredTools,publicEnumPaths:['/candidateKind'],sideEffect:'local_write',assertCurrent:current,
     available:scope=>{try{current(scope);return true;}catch{return false;}},
     resolveInput:async(args,scope)=>{validateToolValue(f04RequestSchema,args);const configuration=base(scope);
@@ -341,9 +410,12 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
         if(request.state.result?.nodes[nodeId]?.state!=='completed')fail('UNAUTHORIZED','F04 original graph has not completed its required nodes');
       const result=completion(binding,request);
       return {result,
-        resultSummary:result.state==='quarantined'?'Candidate quarantined; existing facts were not changed':'Original source and scoped Fact projection read back'};
+        resultSummary:result.state==='quarantined'?'Candidate quarantined; existing facts were not changed':result.state==='not_applied'
+          ?'Original source write was independently read back as not applied':'Original source and scoped Fact projection read back'};
     }};
   function recoveryBinding(scope:Scope){
+    readingUnknown.add(scope.taskId);
+    try{
     current(scope);const sessionId=app().runtime.loadCheckpoint(scope.taskId,sessionKey);
     if(typeof sessionId!=='string')fail('UNAUTHORIZED','F04 original recovery session unavailable');
     const binding=graph(scope,sessionId),pending=app().readPendingOwnedWorkflowHostTask(scope.taskId);
@@ -353,28 +425,48 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
     const intent=app().runtime.loadCheckpoint(localTaskId,'host-tool-intent') as {toolName?:string;toolVersion?:string;arguments?:unknown;deadline?:string}|undefined;
     const original=app().runtime.loadCheckpoint(scope.taskId,'owned-workflow:intent:'+parent?.operationId) as
       {sessionId?:string;workflowId?:string;proposal?:{nodeId?:string;arguments?:unknown}}|undefined;
-    if(parent?.taskId!==scope.taskId||!parent.operationId||intent?.toolName!=='workflow.host.f04_n04'||intent.toolVersion!=='1.0.0'
+    const nodeId=original?.proposal?.nodeId;
+    if(parent?.taskId!==scope.taskId||!parent.operationId||!['F04_N03','F04_N04'].includes(String(nodeId))||intent?.toolName!=='workflow.host.'+nodeId?.toLowerCase()||intent.toolVersion!=='1.0.0'
       ||!isDeepStrictEqual(intent.arguments,{})||intent.deadline!==scope.deadline||original?.workflowId!==workflowId||original.sessionId!==sessionId
-      ||original.proposal?.nodeId!=='F04_N04'||!isDeepStrictEqual(original.proposal.arguments,{}))fail('UNAUTHORIZED','F04 recovery belongs to another original operation');
+      ||!isDeepStrictEqual(original.proposal?.arguments,{}))fail('UNAUTHORIZED','F04 recovery belongs to another original operation');
     const record=app().runtime.readToolExecutions(localTaskId).find(item=>item.evidenceId===runId),read=app().readHostToolTask(localTaskId);
     if(!record||record.toolName!==intent.toolName||record.toolVersion!==intent.toolVersion||record.policyDecision!=='allow'||!record.executionStarted
       ||!app().runtime.matchesToolExecutionInput(record,{arguments:{},scopeRef:runId}))fail('UNAUTHORIZED','F04 recovery lacks its original authorized execution');
-    const index=app().runtime.loadCheckpoint(scope.taskId,'f04:index-invalidated');
-    if(!isDeepStrictEqual(index,{sessionId,hostTaskId:localTaskId}))fail('RESULT_UNKNOWN','F04 original index invalidation is not confirmed');
     const captured=recall(binding,scope),candidate=selection(binding);
     if(candidate.disposition!=='compatible')fail('UNSUPPORTED_CAPABILITY','F04 projection recovery requires its original selected source write');
+    if(nodeId==='F04_N03'){
+      operation(binding,'F04_N06');const origin=writeOrigin(scope),request=input(binding);
+      if(origin.sourceHost.taskId!==localTaskId||origin.sourceHost.runId!==runId||!isDeepStrictEqual(origin.request.arguments,
+        {sourceId:request.configuration.sourceId,configRevision:request.configuration.configRevision,path:captured.source.path,
+          expectedSha256:captured.source.revision,edits:[{oldText:captured.excerpt,newText:request.updateText}]}))fail('UNAUTHORIZED','F04 original write recovery target changed');
+      return {nodeId,localTaskId,runId,record,read,projection:undefined};
+    }
+    const index=app().runtime.loadCheckpoint(scope.taskId,'f04:index-invalidated');
+    if(!isDeepStrictEqual(index,{sessionId,hostTaskId:localTaskId}))fail('RESULT_UNKNOWN','F04 original index invalidation is not confirmed');
     operation(binding,'F04_N03');const written=write(scope,captured)!;
     if(!written.changed)fail('UNSUPPORTED_CAPABILITY','F04 original source was unchanged');
     const projection=projectionIntent(scope,binding,captured,written);
     if(!projection)fail('RESULT_UNKNOWN','F04 original projection intent is unavailable');
-    return {localTaskId,runId,record,read,projection};
+    return {nodeId,localTaskId,runId,record,read,projection};
+    }finally{readingUnknown.delete(scope.taskId);}
   }
   const recoveries=new Map<string,Promise<{state:'unknown'|'confirmed';localTaskId:string}>>();
   async function reconcile(scope:Scope):Promise<{state:'unknown'|'confirmed';localTaskId:string}>{
     const original=recoveryBinding(scope),{localTaskId,runId,record,read,projection}=original;
     if(read.task.state!=='succeeded'&&(read.task.state!=='waiting_reconciliation'||record.state!=='unknown'||app().runtime.isToolExecutionActive(record)))
       fail('RESULT_UNKNOWN','F04 original projection has not stopped');
-    const result=readF04Projection(ports.facts,projection,scope);
+    let result:unknown;
+    if(original.nodeId==='F04_N03'){
+      const origin=writeOrigin(scope);
+      if(origin.record.state==='unknown'){
+        if(app().runtime.isToolExecutionActive(origin.record))return {state:'unknown',localTaskId};
+        await app().reconcileKnowledgeWriteTask(origin.reference.taskId,{deadline:scope.deadline,signal:scope.signal});
+      }
+      recoveryBinding(scope);const afterWrite=writeOrigin(scope);
+      if(afterWrite.record.state==='unknown')return {state:'unknown',localTaskId};
+      result=['applied','not_applied'].includes(String(afterWrite.record.reconciliationOutcome))?await projectObservedWrite(scope):
+        await project(sourceProof(scope,'F04_N03').receipt,scope);
+    }else result=readF04Projection(ports.facts,projection!,scope);
     if(!result)return {state:'unknown',localTaskId};
     const after=recoveryBinding(scope);
     if(!isDeepStrictEqual(original,after))fail('REVISION_CONFLICT','F04 original projection changed during readback');
@@ -385,14 +477,15 @@ export function createF04WorkflowWorkerPorts(options?:F04WorkflowOptions):{
     const evidenceId='f04-projection-readback-'+createHash('sha256').update(JSON.stringify([localTaskId,runId,projection,result])).digest('hex');
     app().runtime.saveCheckpoint(localTaskId,'trusted-readback-evidence:'+evidenceId,{evidenceId,kind:'observation',
       sourceRef:'runtime:f04-original-public-projection',capturedAt:new Date().toISOString(),
-      summary:'Original source hash, public Fact revision and completed impact read back; no write or projection repeated',verification:'verified',sensitivity:'internal'});
+      summary:original.nodeId==='F04_N03'?'Original knowledge outcome and accepted journal readback verified; no source write repeated':
+        'Original source hash, public Fact revision and completed impact read back; no write or projection repeated',verification:'verified',sensitivity:'internal'});
     current(scope);app().runtime.reconcileToolExecution(localTaskId,runId,'applied',result,[evidenceId]);return {state:'confirmed',localTaskId};
   }
   const recovery:F04RecoveryPort={readAvailable(scope){try{const {read,record}=recoveryBinding(scope);
     return read.task.state==='succeeded'&&record.state==='confirmed'||read.task.state==='waiting_reconciliation'&&record.state==='unknown'&&!app().runtime.isToolExecutionActive(record);
   }catch{return false;}},reconcileOriginalReadback(scope){
     // Concurrent callers observe the one original operation; this never resumes the graph.
-    current(scope);const prior=recoveries.get(scope.taskId);if(prior)return prior;
+    base(scope);const prior=recoveries.get(scope.taskId);if(prior)return prior;
     const work=Promise.resolve().then(()=>reconcile(scope)).finally(()=>recoveries.delete(scope.taskId));recoveries.set(scope.taskId,work);return work;
   }};
   return {tools,configuredWorkflowWorkerPorts:[worker],unavailable:null,recovery};

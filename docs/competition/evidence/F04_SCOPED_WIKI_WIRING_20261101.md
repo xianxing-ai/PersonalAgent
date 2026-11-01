@@ -34,7 +34,17 @@ Runtime `createF04WorkflowWorkerPorts` 返回原 7 节点的 configured worker�
 
 本树依赖独立离线安装；初始根 build、修改后 AgentArts/Runtime build、AgentArts 原 Engine 22/22、F04 Runtime+Desktop 10/10 通过。F04 测试实际执行 Windows 受控文件写入/原恢复日志、SQLite Memory、原 Knowledge policy、Runtime/ToolGateway、原 Engine 和 Desktop 来源适配；模型分类、云传输、原生选择/确认与加密存储替身明确 Synthetic。正常更新保留原 Fact 引用并追加 external_observation；冲突/无效候选写入与 CAS/Feed 均为零；原长摘录裁剪后不能写完整行；异步原 policy 撤销不导出。N04 durable impact 已完成但回执丢失可跨 SQLite 重开只读核实；未完成 impact 保持 unknown；重复/并发读回零执行，意图污染、文件替换、取消/过期拒绝。此处不将同进程数据库重开冒充独立 OS 进程重启或真实云验收。
 
-仍可推进项：N03 原 knowledge child 的 unknown 已由原 Runtime 阻止重放，但原知识 reconciliation 结果与原 writer receipt Schema 不同，尚未提供 F04 专用原 edge + 已核实 readback 消费；不得伪造旧 receipt。该部分另包补齐。私人 Wiki/私人 Memory、跨作用域迁移与彻底遗忘仍须原具体授权入口，未由 public 包覆盖；不提升 F04 或 #531 总体验收状态。
+### N03 原知识观察恢复增量
+
+原 business origin 证明单独交付 `c6e57338`；恢复消费沿其 original graph/host/child、原参数/配置/期限/Policy 执行身份，再复用原 F24 完整核实器提取的同步 `readFinalizedKnowledgeWriteEffect`。原 KnowledgeWriteReconciliationAdapter 读取现有 journal，接受已核实 observation 并完成匹配锁的元数据清理；从不再次执行源写入。`applied/not_applied` 保持观察语义，不改写成原 writer 的 `verified`。知识写出口仅此目的升为 `knowledge-explicit-public-write-v2`，原 search 仍 v1、原工具输出 Schema 不变；只有原 task/参数/配置/已接受回执与 verified observation 全部相符才输出 `{state,changed}`，不导出 path/hash/backup/operation/evidence。原 normal verified 路径兼容。
+
+F04 配置摘要升级为 `f04-public-source-v2`，最终结果可明确 `not_applied`；旧配置摘要拒绝，不迁移旧未知操作身份。恢复资格仅原 N03/N04；未完成/文件替换继续 unknown，已核实 N03 最小投影之后再由原 resume 路径继续 N04，副作用各自审批，不自行重放。N03 与 N04 均已在独立新 Node 进程重新装配原 SQLite、来源 writer 与工厂后核实；子进程 source write/CAS/Feed/impact/index 次数全部为零。N03 原 journal读回后父进程续图，源写入仍仅 1 次，Fact CAS/Feed/impact 各 1 次。观察污染、不同结果及私有撤销拒绝。
+
+增量 F04+Desktop 13/13；最终 v2/投影精确性补丁重跑三项恢复 3/3；原 Knowledge/F24 核实器与工具 16/16，F24 worker/native消费 17 pass/1 skip（该命令未设置 Windows helper，跳过的是旧 F24 真实 writer 项；本包 F04 已实测实际 writer）。Runtime build通过。`not_applied` 原运行、Policy 与观察核实是实际代码，但负效果 journal/finalizer 在该单独用例是显式 Synthetic；不冒充测得真实失败前持久恢复。
+
+**实际 Main 恢复出机还未通过**：本包 prepareCompetitionToolExport、模型和原生审批使用 Synthetic。生产 authorization-question-host 的 `operations` 内存授权在新进程不存在，`currentRequirement('knowledge-export')` 不会为已完成/失败旧 child 新发授权；恢复 observation 不能沿旧已失效卡静默出机。已加入实际 question host+原 Runtime 已完成 child 的拒绝断言，并交集成树沿既有 `workflow.export` 原生入口补精确重新确认，必须绑定原 observation/source/config/当前部署。该缺口不影响真实原 journal 核实证据，但阻止宣称完整产品恢复已经可用。
+
+仍可推进项：Main 恢复精确出机确认、F04 recovery 原用户父任务 UI/公开调用桥（下一包）、私人 Wiki/私人 Memory、跨作用域迁移与彻底遗忘。现私人消费只允许用户明确选择的已确认 Fact 摘要经原生确认出机，Knowledge private 原读写出口仍拒绝；public 工厂不能借此读取或写入任意私人来源。不得以本包提升 F04 或 #531 总体验收状态。
 
 ## 后续验证
 

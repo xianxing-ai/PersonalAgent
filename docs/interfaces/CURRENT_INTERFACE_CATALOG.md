@@ -12,6 +12,8 @@
 
 Competition 的 `createF04WorkflowWorkerPorts` 与 Desktop 同名组合工厂消费原 Knowledge search/write、public Fact CAS/Feed/impact。模型只分类原候选；原知识写入与 N04 投影各走既有 Policy。N04 恢复端口只核实原任务/来源/Fact 与已完成影响回执，不重做写入或自行调度。当前公开源单行路径及本地实际文件/SQLite 测试可复现；原知识 unknown 的 F04 接续、私人 scope、Main 实际消费和真实 AgentArts 验收仍待补齐，不提升 frozen。范围与证据见 [F04 接线记录](../competition/evidence/F04_SCOPED_WIKI_WIRING_20261101.md)。
 
+N03 增量：原知识写出口独立升级 `knowledge-explicit-public-write-v2`，只将匹配原 task/input/config、已接受 reconciliation 与 verified observation 的结果投影为 `{state:applied|not_applied,changed}`；保留原 writer verified 输出及 search v1。同步 `readFinalizedKnowledgeWriteEffect` 复用原 F24 核实逻辑，只证明原已接受观察，不提供执行/出机权限。F04 工厂配置 v2 消费原 origin 与该观察，N03/N04 均有新 Node 进程零写恢复测试；Main 新进程原卡失效后重新出机确认及原父任务 UI 消费尚待接线，不能冒充真实产品恢复已通过。
+
 ## 2026-10-29 MCP 管理任务读回（provisional）
 
 Desktop 远程 MCP 管理窗口的任务读回只显示原任务状态、工具身份、审批状态和 Evidence 引用，不向 Renderer 返回原始参数或工具结果；原 Runtime 持久记录和原对话审批卡保留。受信配置可显式允许缺少远端 outputSchema，仍固定服务/目录并用本地 Schema 校验 structuredContent；默认严格匹配不变，策略纳入任务授权绑定。真实 Context7 仅完成握手及目录读取，未发起工具调用，不证明其结果兼容；不提升接口冻结或真实验收状态。测试及缺口见 [MOD-06 工作记录](../modules/MOD-06-MCP-SAFETY-20261029.md)。
