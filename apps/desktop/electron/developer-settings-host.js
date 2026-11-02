@@ -245,6 +245,12 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
         const value=lease?.deployment.host.readF16PublicationConfiguration?.(scope);
         return value?{...value,configurationRef:lease.record.revision}:undefined;
       },
+      async readPublicationPreview(input,scope){
+        const lease=active();if(!lease||!bound(lease,scope,true)||typeof lease.deployment.host.readPublicationPreview!=='function')
+          throw makeProtocolError('UNSUPPORTED_CAPABILITY','原发布完整差异读取不可用');
+        const value=await lease.deployment.host.readPublicationPreview(input,scope);
+        if(active()!==lease||!bound(lease,scope,true))throw makeProtocolError('UNAUTHORIZED','原发布差异配置已改变');return value;
+      },
       bind(value){
         if(application&&application!==value)throw Error('原 Runtime 绑定不可替换');
         if(application===value)return;

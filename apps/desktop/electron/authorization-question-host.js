@@ -106,17 +106,20 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       ||value.deadline!==scope.deadline)denied();
     return {...value,signal:scope.signal};
   }
-  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline}={}) {
+  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline,contentConfirmation}={}) {
     const source=original(scope),identity=key(source),prior=preparations.get(identity);
     if(operations.has(identity))denied();
     const requested=structuredClone(requirements);
     if(prior&&prior.argumentsDigest!==source.argumentsDigest)denied();
     if(prior?.taskConsent&&taskConsent&&!same(prior.taskConsent,taskConsent))denied();
+    if(contentConfirmation&&(typeof contentConfirmation.text!=='string'||!contentConfirmation.text||contentConfirmation.text.length>950_000
+      ||contentConfirmation.digest!==digest(contentConfirmation.text)||prior?.contentConfirmation&&!same(prior.contentConfirmation,contentConfirmation)))denied();
     if(decisionDeadline!==undefined&&(!Number.isFinite(Date.parse(decisionDeadline))||Date.parse(decisionDeadline)>Date.parse(source.deadline)))denied();
     const merged=new Map((prior?.requirements??[]).map(item=>[item.requirementId,item]));
     for(const requirement of requested){const old=merged.get(requirement.requirementId);if(old&&!same(old,requirement))denied();merged.set(requirement.requirementId,requirement);}
     preparations.set(identity,{...requestFields(source),requirements:[...merged.values()],
       ...((taskConsent??prior?.taskConsent)?{taskConsent:structuredClone(taskConsent??prior.taskConsent)}:{}),
+      ...((contentConfirmation??prior?.contentConfirmation)?{contentConfirmation:structuredClone(contentConfirmation??prior.contentConfirmation)}:{}),
       decisionDeadline:new Date(Math.min(Date.parse(source.deadline),Date.parse(decisionDeadline??source.deadline),
         Date.parse(prior?.decisionDeadline??source.deadline))).toISOString(),
       assertCurrent:()=>assertCurrent()&&(prior?.assertCurrent?.()??true)});
@@ -133,10 +136,16 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       ...(prepared?.taskConsent?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
       requirements:[tool,...(prepared?.requirements??[]).filter(item=>item.requirementId!=='tool')]};
   }
+  function withPreparedContent(request,prepared){
+    if(!prepared?.contentConfirmation)return request;
+    const text=[request.contentConfirmation?.text,prepared.contentConfirmation.text].filter(Boolean).join('\n\n');
+    if(text.length>1_000_000)denied();
+    return {...request,contentConfirmation:{digest:digest(text),text}};
+  }
   async function requestToolAuthorization(scope) {
     const owner=getApplication(),source=original(scope);let stage='question-service';
     try{
-      const identity=key(source),prepared=preparations.get(identity),request=buildRequest(source,prepared);
+      const identity=key(source),prepared=preparations.get(identity),request=withPreparedContent(buildRequest(source,prepared),prepared);
       const current=()=>getApplication()===application&&(prepared?.assertCurrent?.()??true);
       const api=service();
       stage='original-binding';

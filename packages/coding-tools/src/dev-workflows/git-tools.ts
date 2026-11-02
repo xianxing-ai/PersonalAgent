@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve, relative, isAbsolute, dirname, basename} from 'node:path';
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolDescriptor, ToolHost} from '@personal-agent/contracts';
-import type {GitToolsOptions, GitCommitInput, GitPushInput, GitFileHash,GitPublicationBinding,GitPublicationIntent} from './git-tools-types.js';
+import type {GitToolsOptions, GitCommitInput, GitPushInput, GitFileHash,GitPublicationBinding,GitPublicationIntent,GitPublicationPreviewInput,GitPublicationPreview} from './git-tools-types.js';
 export type * from './git-tools-types.js';
 
 export const GIT_HEAD_TOOL = 'workspace.git.head';
@@ -37,7 +37,8 @@ export async function readGitWorkspaceFingerprint(rootPath: string, allowedPaths
   return {files,fingerprint:digest(files)};
 }
 
-export function createGitTools(options: GitToolsOptions): {head: RegisteredTool; commit: RegisteredTool; push: RegisteredTool;publicationRead:RegisteredTool} {
+export function createGitToolsWithPublicationPreview(options: GitToolsOptions): {tools:{head: RegisteredTool; commit: RegisteredTool; push: RegisteredTool;publicationRead:RegisteredTool};
+  readPublicationPreview(input:GitPublicationPreviewInput,context:ToolContext):Promise<GitPublicationPreview>} {
   const root = realpathSync.native(options.rootPath);
   const rootIdentity = lstatSync(root, {bigint: true});
   if (!rootIdentity.isDirectory() || rootIdentity.isSymbolicLink()) fail('Git root must be a canonical directory');
@@ -220,7 +221,44 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
   };
   let busy = false;
   const exclusive = async <T>(work:()=>Promise<T>):Promise<T> => {if(busy) fail('Git repository operation already active'); busy=true; try{return await work();} finally{busy=false;}};
-  return {
+  const verifiedTree=async(selected:readonly string[],s:Awaited<ReturnType<typeof state>>,c:ToolContext,scope:string,env:Record<string,string>)=>{
+    await git(['read-tree',s.headSha],c,scope,env);
+    // The preview and commit must use identical verified bytes, without clean filters.
+    for(const p of selected){const bytes=await readFile(resolve(root,p));const hash=createHash('sha256').update(bytes).digest('hex');
+      if(s.files.find(f=>f.path===p)?.sha256!==hash)fail('Verified file changed');
+      const blob=(await git(['hash-object','-w','--stdin'],c,scope,env,bytes)).trim();
+      const tracked=await git(['ls-tree',s.headSha,'--',p],c,scope,env);
+      await git(['update-index','--add','--cacheinfo',tracked.startsWith('100755 ')?'100755':'100644',blob,p],c,scope,env);
+    }
+    return (await git(['write-tree'],c,scope,env)).trim();
+  };
+  const readPublicationPreview=(input:GitPublicationPreviewInput,c:ToolContext):Promise<GitPublicationPreview>=>exclusive(async()=>{
+    if(!input||!new RegExp(shaPattern).test(input.baseHeadSha)||!new RegExp(shaPattern).test(input.expectedHeadSha)
+      ||!['commit','published'].includes(input.stage)||!Array.isArray(input.paths)||!input.paths.length
+      ||input.paths.length>128||new Set(input.paths).size!==input.paths.length||input.paths.some(p=>!paths.includes(p)))fail('Invalid publication preview scope');
+    const s=await state(c,GIT_READ_SCOPE);
+    if(s.headSha!==input.expectedHeadSha||input.stage==='commit'&&(!s.clean||input.baseHeadSha!==s.headSha)
+      ||input.stage==='published'&&!s.workspaceClean)fail('Publication preview baseline or workspace changed');
+    const temp=await mkdtemp(join(tmpdir(),'personal-agent-git-preview-'));
+    try{
+      const env={GIT_INDEX_FILE:join(temp,'index')};
+      const treeSha=input.stage==='commit'?await verifiedTree(input.paths,s,c,GIT_READ_SCOPE,env)
+        :(await git(['rev-parse',`${s.headSha}^{tree}`],c,GIT_READ_SCOPE)).trim();
+      if(input.stage==='published')await git(['merge-base','--is-ancestor',input.baseHeadSha,s.headSha],c,GIT_READ_SCOPE);
+      const changed=(await git(['diff','--no-color','--no-ext-diff','--no-textconv','--name-only','-z',input.baseHeadSha,treeSha,'--'],c,GIT_READ_SCOPE,env)).split('\0').filter(Boolean);
+      if(changed.some(p=>!input.paths.includes(p)))fail('Publication diff contains paths outside the original scope');
+      const diff=await git(['diff','--no-color','--no-ext-diff','--no-textconv','--binary','--full-index',input.baseHeadSha,treeSha,'--'],c,GIT_READ_SCOPE,env);
+      if(!diff||diff.length>900_000)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Complete publication diff is unavailable within the local confirmation limit');
+      const after=await state(c,GIT_READ_SCOPE);
+      if(after.headSha!==s.headSha||after.fingerprint!==s.fingerprint||after.clean!==s.clean||after.workspaceClean!==s.workspaceClean)fail('Publication preview changed while reading');
+      return {baseHeadSha:input.baseHeadSha,headSha:s.headSha,treeSha,fingerprint:s.fingerprint,paths:[...input.paths].sort(),diff,diffDigest:digest(diff)};
+    }catch(error){
+      if(error instanceof ProtocolError&&error.code==='RESULT_UNKNOWN'&&!c.signal.aborted&&Date.parse(c.deadline)>now())
+        throw new ProtocolError('UNSUPPORTED_CAPABILITY','Complete publication diff could not be read without truncation');
+      throw error;
+    }finally{await rm(temp,{recursive:true,force:true});}
+  });
+  const tools:{head:RegisteredTool;commit:RegisteredTool;push:RegisteredTool;publicationRead:RegisteredTool}={
     head:{descriptor:hd,execute:async(input,c)=>{validateToolValue(hd.inputSchema,input); return exclusive(async()=>{const s=await state(c,GIT_READ_SCOPE); return {headSha:s.headSha,clean:s.clean,workspaceClean:s.workspaceClean,fingerprint:s.fingerprint};});}},
     commit:{descriptor:cd,execute:async(input,c)=>{validateToolValue(cd.inputSchema,input); const q=input as GitCommitInput; return exclusive(async()=>{
       await publication(c,q,GIT_COMMIT_SCOPE);
@@ -242,15 +280,9 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
       const temp=await mkdtemp(join(tmpdir(),'personal-agent-git-'));
       try {
         const env={GIT_INDEX_FILE:join(temp,'index'),GIT_AUTHOR_NAME:options.authorName,GIT_AUTHOR_EMAIL:options.authorEmail,GIT_COMMITTER_NAME:options.authorName,GIT_COMMITTER_EMAIL:options.authorEmail};
-        await git(['read-tree',s.headSha],c,GIT_COMMIT_SCOPE,env);
-        // Stage exact verified bytes with hash-object, bypassing arbitrary clean filters.
-        for(const p of q.paths){const bytes=await readFile(resolve(root,p)); const hash=createHash('sha256').update(bytes).digest('hex'); if(s.files.find(f=>f.path===p)?.sha256!==hash) fail('Verified file changed');
-          const blob=(await git(['hash-object','-w','--stdin'],c,GIT_COMMIT_SCOPE,env,bytes)).trim();
-          const tracked=await git(['ls-tree',s.headSha,'--',p],c,GIT_COMMIT_SCOPE,env);
-          const mode=tracked.startsWith('100755 ') ? '100755':'100644';
-          await git(['update-index','--add','--cacheinfo',mode,blob,p],c,GIT_COMMIT_SCOPE,env);
-        }
-        const tree=(await git(['write-tree'],c,GIT_COMMIT_SCOPE,env)).trim();
+        const tree=await verifiedTree(q.paths,s,c,GIT_COMMIT_SCOPE,env);
+        if(q.publication&&options.publication?.assertContent)await hostRead(c,GIT_COMMIT_SCOPE,bounded=>options.publication!.assertContent!(bounded,
+          {baseHeadSha:q.publication!.baseHeadSha,headSha:s.headSha,treeSha:tree,fingerprint:s.fingerprint}));
         if(tree===(await git(['rev-parse',`${s.headSha}^{tree}`],c,GIT_COMMIT_SCOPE)).trim()) fail('No verified changes to commit');
         const next=(await git(['commit-tree',tree,'-p',s.headSha],c,GIT_COMMIT_SCOPE,env,q.message+'\n')).trim();
         // Git's exclusive index.lock makes the comparison and replacement one
@@ -308,6 +340,9 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
       await savePublication(c,q,GIT_PUSH_SCOPE,'push',s.fingerprint,{headSha:s.headSha,pushed:true});
       if(q.publication){const final=await state(c,GIT_PUSH_SCOPE);
         if(!final.workspaceClean||final.headSha!==s.headSha||final.fingerprint!==s.fingerprint)fail('Verified repair changed while sealing push intent');
+        if(options.publication?.assertContent){const treeSha=(await git(['rev-parse',`${s.headSha}^{tree}`],c,GIT_PUSH_SCOPE)).trim();
+          await hostRead(c,GIT_PUSH_SCOPE,bounded=>options.publication!.assertContent!(bounded,
+            {baseHeadSha:q.publication!.baseHeadSha,headSha:s.headSha,treeSha,fingerprint:s.fingerprint}));}
         await exactPublicationTransport(c,GIT_PUSH_SCOPE);}
       // Lease closes the remote read/write race; ancestry above forbids overwriting divergent history.
       await git(['push','--porcelain',...(q.publication?['--no-follow-tags','--recurse-submodules=no']:[]),
@@ -335,7 +370,9 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
         return {state:stateValue,operation:intent.operation,taskId:q.taskId,runId:q.runId,headSha:intent.expected.headSha,branch:q.publication.branch};
       });}},
   };
+  return {tools,readPublicationPreview};
 }
+export function createGitTools(options:GitToolsOptions){return createGitToolsWithPublicationPreview(options).tools;}
 export function registerGitTools(host:ToolHost,options:GitToolsOptions):()=>void {
   const tools=createGitTools(options); const disposers:Array<()=>void>=[];
   try {

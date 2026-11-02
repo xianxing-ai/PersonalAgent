@@ -13,7 +13,7 @@ export const developerTestLocatorDescriptor={name:'workspace.locate_test_failure
 /** Main-only composition of the existing public developer ports. No ambient credentials or network calls. */
 export function createDesktopDeveloperToolsHost({githubModule,github,git,command,testLocate,workflows,
   exports:policies=[],now=Date.now}={}) {
-  let active=true,application,f16Publication,f19Publication;
+  let active=true,application,f16Publication,f19Publication,readPublicationPreview;
   const publicationFor=context=>{
     const parent=application?.runtime.loadCheckpoint(context.taskId,'coding-repair:parent');
     const source=parent&&application.runtime.loadCheckpoint(parent.taskId,'host-tool-intent');
@@ -59,12 +59,13 @@ export function createDesktopDeveloperToolsHost({githubModule,github,git,command
           return publicationFor(context)?.readVerification(context,runId);
         return receipt;
       };
-      const publication=Object.fromEntries(['assertCurrent','load','saveOnce','observed'].map(name=>[name,async(...args)=>{
+      const publication=Object.fromEntries(['assertCurrent','load','saveOnce','observed','assertContent'].map(name=>[name,async(...args)=>{
         const port=publicationFor(args[0]);
-        if(!active||!port)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original publication binding is unavailable');
+        if(!active||typeof port?.[name]!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original publication binding is unavailable');
         return port[name](...args);
       }]));
-      gitTools=coding.createGitTools({...git.options,readVerification,publication});
+      const gitHost=coding.createGitToolsWithPublicationPreview({...git.options,readVerification,publication});
+      gitTools=gitHost.tools;readPublicationPreview=gitHost.readPublicationPreview;
       for(const tool of Object.values(gitTools)){disposers.push(host.register(tool));readiness.set(tool.descriptor.name,
         tool.descriptor.name==='workspace.git.read_publication'?async scope=>Boolean(publicationFor(scope))&&await git.available(scope)===true:git.available);}
     }else missing('workspace.git','trusted_branch_remote_paths_and_verification_required');
@@ -120,6 +121,14 @@ export function createDesktopDeveloperToolsHost({githubModule,github,git,command
       assertCurrent:scope=>{if(!current(scope))throw new ProtocolError('UNAUTHORIZED','Developer workflow lease ended');workflows.assertCurrent(scope);}}:undefined;
     if(!developerWorkflows)missing('developer.workflows','trusted_model_rules_workspace_and_export_ports_required');
     return {tools:registered,competitionToolExports,
+      async readPublicationPreview(input,scope){
+        if(!active||!readPublicationPreview||!scope?.runId||!await git.available(scope))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original publication preview reader unavailable');
+        git.assertCurrent?.(scope);
+        // This Main-only evidence read grants no tool execution or write permission.
+        const value=await readPublicationPreview(input,{...scope,authorizationRef:scope.runId,scopes:[coding.GIT_READ_SCOPE]});
+        if(!active||!await git.available(scope))throw new ProtocolError('UNAUTHORIZED','Original publication preview source changed');
+        git.assertCurrent?.(scope);return value;
+      },
       configureF16Publication(port){
         if(f16Publication&&f16Publication!==port)throw Error('F16 publication port binding is immutable');
         if(['assertCurrent','load','saveOnce','observed','readVerification'].some(name=>typeof port?.[name]!=='function'))

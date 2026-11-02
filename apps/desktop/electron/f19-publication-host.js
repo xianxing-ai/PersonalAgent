@@ -3,6 +3,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import {GITHUB_CONNECTOR_VERSION} from '@personal-agent/github';
 import {createWorkflowGitPublicationPort,readF16OriginalInvocation} from './f16-git-publication-port.js';
+import {createPublicationContentHost} from './publication-content-host.js';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail=message=>{throw new ProtocolError('UNAUTHORIZED',message);};
@@ -124,6 +125,14 @@ export function createF19PublicationHost({getApplication:app,runtimeModule:r,bin
     return {taskId:scope.taskId,runId:scope.runId,argumentsDigest:invocation.argumentsDigest,
       parentTaskId:original.scope.parentTaskId,sessionId:original.scope.sessionId,publication:original.publication};
   }
+  const content=createPublicationContentHost({readPreview:configuration?.readPublicationPreview,readBinding:scope=>{
+    const proof=authorization(scope);if(!proof)return;
+    const original=app().readAuthorizationQuestionInvocation(scope.taskId,scope.runId),resolved=resolveOriginal({...scope,authorizationRef:scope.runId},scope,true);
+    const {input}=current(resolved.scope),files=artifact(resolved.scope).files;
+    return {proof,operation:{toolName:original.toolName,arguments:original.arguments},input:{baseHeadSha:input.headSha,
+      expectedHeadSha:original.arguments.expectedHeadSha,paths:files.map(file=>file.path).sort(),stage:original.toolName==='workspace.git.commit'?'commit':'published'}};
+  }});
+  gitPort.assertContent=async(scope,value)=>content.assertContent(scope,value);
   return {gitPort,resolveTool,
     original(scope){
       const bound=current(scope),hosts=bound.confirmedOperations.filter(value=>value.nodeId==='F19_N03'&&value.toolName===hostName);
@@ -167,10 +176,11 @@ export function createF19PublicationHost({getApplication:app,runtimeModule:r,bin
       return {repair:published,repo:input.repo,issueId:input.issueId,prNumber,headSha:push.result.headSha,baseSha:input.headSha,
         commit:commit.ref,push:push.ref,pr:pr.ref};
     },
-    prepareQuestion(scope,question){const proof=authorization(scope);if(!proof)return;
+    async prepareQuestion(scope,question){const proof=authorization(scope);if(!proof)return;
+      await content.prepare(scope,question);
       question.prepare(scope,{assertCurrent:()=>{try{return isDeepStrictEqual(proof,authorization(scope));}catch{return false;}}});return proof;},
     async confirmPresence(scope){const proof=authorization(scope);if(!proof)return false;
       await configuration.requestPresence(scope);
-      if(!isDeepStrictEqual(proof,authorization(scope)))fail('Original F19 publication changed during presence confirmation');return true;},
+      if(!isDeepStrictEqual(proof,authorization(scope)))fail('Original F19 publication changed during presence confirmation');await content.recheck(scope);return true;},
   };
 }

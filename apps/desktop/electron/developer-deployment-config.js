@@ -275,6 +275,8 @@ export async function createDesktopDeveloperDeployment({configPath,configuration
     host={...originalHost,
       readF16PublicationConfiguration(scope){const value=originalHost.readF16PublicationConfiguration?.(scope);
         return value?{...value,configurationRef:hash(raw)}:undefined;},
+      async readPublicationPreview(input,scope){assertCurrent(scope);
+        const value=await originalHost.readPublicationPreview(input,scope);assertCurrent(scope);return value;},
       createF18F19Tools({requiredChecks,eligibleReviewers,beforeWrite,enableIssueClose=false,issueRepairOnly=false}){
         if(!active||typeof githubModule.createGitHubF18F19Tools!=='function')return undefined;
         // The runner and token adapter remain inside the original trusted deployment.
