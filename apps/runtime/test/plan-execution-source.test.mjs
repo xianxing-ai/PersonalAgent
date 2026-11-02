@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
@@ -38,7 +40,7 @@ async function fixture(t,{unknown=false,withFact=false,changeAtCredentials=false
   const create=()=>{
     if(!changeAtCredentials)return createRuntimeApplication(options);
     const {profile,coordination,...runtimeOptions}=options;
-    return createAgentArtsRuntimeApplication({...runtimeOptions,gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-plan',
+    return createSyntheticAgentArtsRuntimeApplication({...runtimeOptions,gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-plan',
       deploymentVersion:'synthetic-v1',initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',
       authorizationProvider:{read:async()=>{credentialReads++;facts.recordPublicSource(source(2),scope());return 'Bearer synthetic';}},
       fetchImpl:async()=>{fetches++;throw Error('Changed Fact must stop the final original send');}});

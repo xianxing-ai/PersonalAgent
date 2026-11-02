@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,rmSync} from 'node:fs';
@@ -70,7 +72,7 @@ function fixture({unknown=false,mutateConfiguration=false,revokeGrant=false,hold
         const copy={...request,signal:AbortSignal.any([request.signal,new AbortController().signal])};
         app.assertCompetitionExportAllowed(copy);sends++;payloads.push(request.goal);
         throw new ProtocolError('RESULT_UNKNOWN','Synthetic teacher provider requires original readback');
-      }}}):createAgentArtsRuntimeApplication(options);
+      }}}):createSyntheticAgentArtsRuntimeApplication(options);
     task??=app.runtime.submitTask({goal:'Maintain the original public responsibility',conversationId:'desktop-panel',idempotencyKey:'responsibility'});
     host=app.createProactiveWorkflowHost({taskId:task.taskId,sessionId:'synthetic-teacher-session',taskDeadline:deadline,contractRef:contract.id,
       advancePort:async input=>proofs.sign('advance_result',{requestId:input.requestId,...await engine.advance(input)},input),

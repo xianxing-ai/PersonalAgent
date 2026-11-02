@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
 import os from 'node:os';
@@ -90,7 +92,7 @@ test('initial AgentArts tool directory preserves signed numeric bounds and local
   ]) await t.test(label, async () => {
     let executions = 0;
     const requests = [];
-    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+    const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:',
       gatewayUrl: 'https://agentarts.example.test', runtimeName: 'signed-bounds',
       responseMode: 'tool-proposal-json', initialRequestMode: 'goal-with-tools-json',
       authorizationProvider: {read: async () => 'Bearer synthetic'},
@@ -141,7 +143,7 @@ test('provider lifecycle errors exclude only that tool and never enter task snap
     const bodies = [];
     let unhealthyExecutions = 0;
     let healthyExecutions = 0;
-    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+    const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:',
       gatewayUrl: 'https://agentarts.example.test', runtimeName: 'synthetic',
       responseMode: 'tool-proposal-json', initialRequestMode: 'goal-with-tools-json',
       authorizationProvider: {read: async () => 'Bearer synthetic'},
@@ -241,7 +243,7 @@ async function workerFixture(t, describe, respond = query => query.continuation
   const requests = [];
   const diagnostics = [];
   let executions = 0, dispatches = 0;
-  const app = createAgentArtsRuntimeApplication({path: ':memory:',
+  const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:',
     gatewayUrl: 'https://agentarts.example.test', runtimeName: 'worker-catalog',
     responseMode: 'tool-proposal-json', initialRequestMode: 'goal-with-tools-json',
     authorizationProvider: {read: async () => 'Bearer synthetic'},

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {syntheticPublicPayloadGate,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
@@ -104,20 +105,20 @@ test('cancellation during credential wait prevents actual HTTP and result public
 test('production WSS mail composition binds dispatch and preserves unknown sends',async t=>{
   for(const disconnect of [false,true])await t.test(disconnect?'unknown is not retried':'raw review JSON is consumed',async()=>{
     let app,sends=0;
-    app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'mail-wss',
+    app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'mail-wss',preparePayload:syntheticPublicPayloadGate,
       gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',transport:'wss',
       websocketUrl:'wss://agentarts.example.test/runtimes/synthetic/ws',responseMode:'tool-proposal-json',
       authorizationProvider:{read:async()=>'Bearer synthetic-outer'},
       websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'},
       websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
         if(frame.type!=='invoke')return;sends++;
-        const input=parseAgentInput(frame.payload.query);
+        const input=parseAgentInput(syntheticAgentArtsQuery(frame.payload));
         assert.equal(input.kind,'initial');assert.deepEqual(input.availableTools,[]);
         assert.equal(JSON.parse(input.goal).headers.subject,'PUBLIC_HEADER_ONLY');
         const task=app.runtime.listTasks({}).items[0];
         const dispatch=app.runtime.loadCheckpoint(task.taskId,'competition-cloud-dispatch-context');
         assert.equal(dispatch.loop.maxSteps,1);assert.equal(dispatch.catalog,null);
-        socket.accepted(frame);if(disconnect)socket.disconnect();else socket.result(frame,JSON.stringify(answer));
+        socket.accepted(frame);if(disconnect)socket.disconnect();else socket.result(frame,syntheticAgentArtsResult(frame.payload,answer));
       }),fetchImpl:async()=>{throw Error('Unexpected HTTPS');},
       mailReview:{readEnvelope:async original=>({binding:original,labelKeys:['work','newsletter'],headers:{subject:'PUBLIC_HEADER_ONLY'}}),assertExport(){}}});
     try {

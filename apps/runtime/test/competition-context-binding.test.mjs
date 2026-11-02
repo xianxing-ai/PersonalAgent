@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
@@ -48,7 +50,7 @@ test('trusted goal meter counts the final wrapper and reserves output; unavailab
     ['fractional',1.5,false],['async',Promise.resolve(1),false],['missing',undefined,false]]) {
     await t.test(name,async()=>{
       let credentials=0,sends=0,measured;
-      const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
+      const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
         authorizationProvider:{read:async()=>{credentials++;return 'Bearer synthetic';}},
         fetchImpl:async(_url,init)=>{sends++;assert.equal(JSON.parse(init.body).query,measured);
           return new Response(JSON.stringify({event:'message',data:{text:'synthetic answer',index:0}}),
@@ -74,7 +76,7 @@ test('credential await cannot change the meter version, reservation, measurement
   for(const change of ['tokenizer','reserve','count','checkpoint'])await t.test(change,async()=>{
     let count=5,sends=0,app;
     const budget={tokenizerRef:'fixture:v1',contextTokens:100,reservedOutputTokens:10,countTokens:()=>count};
-    app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
+    app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
       authorizationProvider:{read:async()=>{
         if(change==='tokenizer')budget.tokenizerRef='fixture:v2';
         if(change==='reserve')budget.reservedOutputTokens=20;
@@ -156,7 +158,7 @@ test('final export guard rejects existing context checkpoints without hooks, inc
 
 test('history withheld during credential read blocks its old context before HTTP',async t=>{
   let sends=0,earlier,app;
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
     authorizationProvider:{read:async()=>{app.runtime.saveCheckpoint(earlier,'private-derived-output',{withheld:true});
       return 'Bearer synthetic';}},fetchImpl:async()=>{sends++;throw Error('Withheld history must not reach HTTP');},
     coordinationInput:{beforeCoordinationSend(){},readConversationContext:async()=>[

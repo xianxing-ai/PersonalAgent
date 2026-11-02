@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {syntheticPublicPayloadGate,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
@@ -202,7 +203,7 @@ test('an unrelated child cannot promote a waiting parent even when its checkpoin
 });
 
 function cloudOptions(tools,factory) {
-  return {path:':memory:',gatewayUrl:'https://synthetic.invalid',runtimeName:'synthetic',transport:'wss',
+  return {path:':memory:',gatewayUrl:'https://synthetic.invalid',runtimeName:'synthetic',transport:'wss',preparePayload:syntheticPublicPayloadGate,
     websocketUrl:'wss://synthetic.invalid/runtimes/synthetic/ws',allowHttpsFallback:false,
     authorizationProvider:{read:async()=>'Bearer synthetic'},websocketAuthorizationProvider:{read:async()=>'Bearer synthetic'},
     websocketFactory:factory,fetchImpl:async()=>{throw Error('Synthetic test forbids real fetch');},
@@ -233,7 +234,7 @@ for(const sideEffect of ['read','local_write'])test(`typed never-sent continuati
     if(++connections>1)throw Error('Synthetic later connect failure');
     return new SyntheticWebSocket((frame,socket)=>{
       if(frame.type!=='invoke')return;
-      socket.accepted(frame);socket.result(frame,JSON.stringify({kind:'tool_proposal',proposalId:'original-tool',
+      socket.accepted(frame);socket.result(frame,syntheticAgentArtsResult(frame.payload,{kind:'tool_proposal',proposalId:'original-tool',
         toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{}}));
       queueMicrotask(()=>socket.disconnect());
     });

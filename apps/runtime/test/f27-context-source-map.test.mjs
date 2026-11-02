@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -48,7 +50,7 @@ for(const mutation of ['none','edit','withdraw','replace_reader','replace_mappin
   let app,taskId,sends=0;
   let messages=[{id:'private-message-canary',role:'user',content:'private-body-canary'}];
   const hooks={readConversationSnapshot:()=>structuredClone(messages),beforeCoordinationSend(){}};
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
     coordinationInput:hooks,authorizationProvider:{read:async()=>{
       if(mutation==='edit')messages[0].content='changed';
       if(mutation==='withdraw')messages=[];

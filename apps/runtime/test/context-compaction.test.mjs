@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {compactConversationContext,segmentConversationContext} from '../dist/application/context-compaction.js';
@@ -376,7 +378,7 @@ test('Synthetic real transport final guard rejects source withdrawal/config chan
     const source=runtimeSource();let sends=0;
     const compaction={policy:runtimePolicy(),modelConfigurationRef:'synthetic-summary:v1',assertCurrent(){},readSnapshot:()=>source,
       summarize:async input=>{input.assertBeforeSend();return 'Synthetic summary '+input.segment.index;}};
-    const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+    const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
       authorizationProvider:{read:async()=>{
         await Promise.resolve();
         if(mode==='body')source[0].content='Changed while reading credential';
