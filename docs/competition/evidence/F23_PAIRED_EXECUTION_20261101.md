@@ -24,3 +24,11 @@ Desktop 先经原 ToolGateway/Policy 固定样本和版本化 acceptance，再�
 - 本地原始记录保存在被忽略的 `.cache/f23-real-clockfix/`（`prepared.json`、`main.jsonl`、`shadow.jsonl`、原 SQLite）；首次未知任务保留在独立 `.cache/f23-real/`，未覆盖。凭据不属于公开 Evidence。
 
 尚未完成：AgentArts 平台评估分数与原输出逐项绑定、真实 F23 五节点 CAS 晋升及消费者读回。真实配对输出成功不等于 F23 或 PR #531 全部验收通过。
+
+## 平台导入实测（2026-11-02）
+
+平台下载模板要求每行 `{ "turns": [原样本] }`；直接导入样本对象会返回 `'turns' array cannot be empty`。Desktop 原输出展示已按该格式封装，原 input/output/reference 字符串不改写，单次渲染检查与原文件逐项相等检查通过。
+
+两组真实输出已分别导入并提交 `0.0.1`：main 数据集 `5a7648ec-3a73-4dc3-869d-a03343c3dde5`，item IDs `6ae815f85253c8cdaff8c412`、`6ae815f85253c8cdaff8c413`；shadow 数据集 `4c7b9486-7f27-4cc1-ac80-c6cacf788fcf`，item IDs `6ae81667a6ad840f734fab02`、`6ae81667a6ad840f734fab03`。原输出空白差异保留。
+
+平台代码判定显示“即将上新”，因此建立模型判定评估器 `8f00d83e-2adc-4076-bc6b-cdca7c259f0f` / `0.0.1`，只按有效 JSON 对象和参考对象语义等价给出 0/1 分；两组使用相同版本。评估任务 main `d9a31add-6a08-4ffa-8410-ba39d4d6e23e`、shadow `7fe04f66-9549-4fe2-89ef-2371bb0ade96`。main 首次执行在平台失败（2 条失败，0 token），尚无可接受的真实评分；不可把报表占位零分当作评价结果。控制面 AK/SK 在现有 Desktop userData 与当前进程环境均未配置，程序化结果读回仍未验收。

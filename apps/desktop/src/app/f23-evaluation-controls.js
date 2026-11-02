@@ -15,8 +15,8 @@ export function mountF23EvaluationControls(root,invoke){
       finally{busy=false;form.querySelector('button').disabled=false;}
     });
   }
-  return {render(value){section.querySelector('[data-main]').value=value?.mainRows?.map(row=>JSON.stringify(row)).join('\n')??'';
-    section.querySelector('[data-shadow]').value=value?.shadowRows?.map(row=>JSON.stringify(row)).join('\n')??'';
+  return {render(value){section.querySelector('[data-main]').value=value?.mainRows?.map(row=>JSON.stringify({turns:[row]})).join('\n')??'';
+    section.querySelector('[data-shadow]').value=value?.shadowRows?.map(row=>JSON.stringify({turns:[row]})).join('\n')??'';
     section.querySelector('[data-evaluation-release]').textContent=value?.evaluationTaskId?
       '平台结果已绑定至 '+value.evaluationTaskId+'。在对话中请求评估晋升并提供此 ID；原 Policy 单独批准后才会修改后续 F03 模型配置。':
       value?.experimentId?'原实验 '+value.experimentId+' 已保存；尚需平台评估读回。':'先初始化当前模型基线，再提交公开样本配置。';}};
