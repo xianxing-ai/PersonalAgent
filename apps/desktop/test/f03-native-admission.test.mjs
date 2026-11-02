@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -23,7 +24,7 @@ test('F08 lost native admission acknowledgement reads the original F03 task and 
       runDefaultWorker:(subtask,context,scoped)=>app.runDefaultSubagentWorker(subtask,context,scoped)})];
     app=runtimeModule.createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
       hostUserNamespace:'native-f03',coordinationBinding:'synthetic-native-deployment',assertCoordinationBinding:()=>{},tools,
-      coordination:{execute:async request=>{cloudTasks.push(request.taskId);return {kind:'text',text:'Original image result is unknown; no retry.',verification:'unverified'};}},
+      coordination:{execute:syntheticCoordinationExecution(async request=>{cloudTasks.push(request.taskId);return {kind:'text',text:'Original image result is unknown; no retry.',verification:'unverified'};})},
       configuredWorkflowWorkers:[{...worker,image:{bindingId:'synthetic-f03-native-image',receiptSecret:async()=> 'synthetic-original-secret-at-least32',
         advance:async request=>{imageCalls++;assert.deepEqual(request.input.source,source);throw new ProtocolError('RESULT_UNKNOWN','Synthetic image transport lost after original request');}}}],
       competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,

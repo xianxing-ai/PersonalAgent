@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,readFile,rename,rm,writeFile} from 'node:fs/promises';
@@ -208,8 +209,8 @@ async function defaultCodingStartQuestionFixture(t,invalidatePreparation=false) 
   const proposal={kind:'tool_proposal',proposalId:'Synthetic-original-f15',toolName:'coding.repair.workflow',toolVersion:'1.0.0',
     arguments:{subtasks:[{subtaskId:'repair',role:'coder',goal:'Synthetic bounded repair'}],codingRepair:{mode:'main',allowedPaths:['fixture.js']}},verification:'unverified'};
   application=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'Synthetic-default-coding-start',
-    tools:[dispatch,...host.tools],coordinationBinding:'Synthetic-fixed-deployment',coordination:{execute:async request=>request.continuation
-      ?{kind:'text',text:'Synthetic parent summary of the original child outcome',verification:'unverified'}:structuredClone(proposal)},
+    tools:[dispatch,...host.tools],coordinationBinding:'Synthetic-fixed-deployment',coordination:{execute:syntheticCoordinationExecution(async request=>request.continuation
+      ?{kind:'text',text:'Synthetic parent summary of the original child outcome',verification:'unverified'}:structuredClone(proposal))},
     automaticTools:[{toolName:'subagent.dispatch',toolVersion:'1.0.0'}],
     readConversationPreference:()=>({depth:1,fast:false}),
     codingRepair:{image:{bindingId:'Synthetic-image',receiptSecret:async()=> 'Synthetic-only-private-receipt-secret-32-chars',advance:async()=>assert.fail('No image advance before approval')}},

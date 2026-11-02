@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
@@ -58,8 +59,8 @@ test('F10 keeps research metadata distinct, uses the original 200-character know
   app=runtimeModule.createRuntimeApplication({path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'f10-test',delegateUserTasks:true,tools,
     readDefaultExecutionModel:()=>({modelId:'synthetic-executor',catalogRevision:'a'.repeat(64)}),resolveExecutionModel:()=>({modelId:'synthetic-executor',catalogRevision:'a'.repeat(64)}),
     configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),coordinationBinding:'synthetic-f10',
-    coordination:{execute:async request=>request.continuation?{kind:'text',text:'Synthetic completed',verification:'mock'}:{kind:'tool_proposal',proposalId:'f10-original',toolName:'workflow.research.compare',
-      toolVersion:'1.0.0',arguments:{queryA:'agent',queryB:'research',knowledgeQuery:'project',limit:1},verification:'unverified'}},
+    coordination:{execute:syntheticCoordinationExecution(async request=>request.continuation?{kind:'text',text:'Synthetic completed',verification:'mock'}:{kind:'tool_proposal',proposalId:'f10-original',toolName:'workflow.research.compare',
+      toolVersion:'1.0.0',arguments:{queryA:'agent',queryB:'research',knowledgeQuery:'project',limit:1},verification:'unverified'})},
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:[...originalPolicies,...tools.filter(tool=>!originalPolicies.some(policy=>policy.toolName===tool.descriptor.name)).map(tool=>({toolName:tool.descriptor.name,

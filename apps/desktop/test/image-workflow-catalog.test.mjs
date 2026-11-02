@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -58,10 +59,10 @@ test('original user-work child discovers the real read schema, executes through 
     automaticTools:[dispatch,read].map(t=>({toolName:t.descriptor.name,toolVersion:t.descriptor.version})),
     competitionToolAvailability:[...host.competitionToolAvailability,{toolName:'subagent.dispatch',toolVersion:'1.0.0',publicEnumPaths:['/subtasks/*/role'],available:()=>true}],
     competitionToolExports:[...host.competitionToolExports,{toolName:'subagent.dispatch',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-summary',accepts:()=>true,project:({result})=>result}],
-    coordination:{execute:async request=>{requests.push(request);if(app.runtime.getTask(request.taskId).conversationId==='original-ui')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
+    coordination:{execute:syntheticCoordinationExecution(async request=>{requests.push(request);if(app.runtime.getTask(request.taskId).conversationId==='original-ui')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
       if(request.continuation){assert.equal(request.continuation.result.designNodeCount,185);assert.equal(request.continuation.result.workflows[0].workflowId,'F20');assert.equal(request.continuation.result.workflows[0].state,'unavailable');return {kind:'text',text:'F20 design exists; graph entry unavailable',verification:'unverified'};}
       const catalog=request.availableTools.find(t=>t.name===read.descriptor.name);assert.deepEqual(catalog.inputSchema.properties.workflowId.enum,Array.from({length:28},(_,i)=>'F'+String(i+1).padStart(2,'0')));
-      return {kind:'tool_proposal',proposalId:'read-image-design',toolName:read.descriptor.name,toolVersion:read.descriptor.version,arguments:{workflowId:'F20'},verification:'unverified'};}}});
+      return {kind:'tool_proposal',proposalId:'read-image-design',toolName:read.descriptor.name,toolVersion:read.descriptor.version,arguments:{workflowId:'F20'},verification:'unverified'};})}});
   const client=new Client(app);await client.connect();try{const task=await client.call('task.submit',{goal:'Read public F20 design and real graph entry gaps',conversationId:'original-ui'},{idempotencyKey:'image-catalog'});
     for(let i=0;i<500&&!['succeeded','failed'].includes(app.runtime.getTask(task.taskId).state);i++)await new Promise(r=>setTimeout(r,5));
     assert.equal(app.runtime.getTask(task.taskId).state,'succeeded',JSON.stringify(app.runtime.getTask(task.taskId).error));
