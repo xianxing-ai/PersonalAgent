@@ -48,14 +48,18 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,now=Date
       };
       current();
       if(classifyKnownEgressContent(payload)==='forbidden')fail();
-      const scope=Object.freeze({requestId,destination,payload,payloadDigest,deadline,signal,isCurrent:()=>{current();return true;}});
-      const key=JSON.stringify([requestId,destination,payloadDigest,deadline]);
+      const key=JSON.stringify([requestId,destination,deadline]);
       for(const [id,value] of decisions)if(value.signal.aborted||value.expiresAt<=now())decisions.delete(id);
       const previous=decisions.get(key);
+      if(previous&&(previous.signal!==signal||previous.payloadDigest!==payloadDigest))fail();
+      if(previous){previous.guards.add(current);for(const guard of previous.guards)guard();return previous.promise;}
+      if(decisions.size>=256)fail('UNSUPPORTED_CAPABILITY');
+      const guards=new Set([current]),assertCurrent=()=>{for(const guard of guards)guard();};
+      const scope=Object.freeze({requestId,destination,payload,payloadDigest,deadline,signal,isCurrent:()=>{assertCurrent();return true;}});
       const wait=async callback=>{
-        current();if(typeof callback!=='function')fail();
+        assertCurrent();if(typeof callback!=='function')fail();
         let timer,onAbort;
-        try{return await Promise.race([Promise.resolve().then(()=>{current();return callback(scope);}),new Promise((resolve,reject)=>{
+        try{return await Promise.race([Promise.resolve().then(()=>{assertCurrent();return callback(scope);}),new Promise((resolve,reject)=>{
           const rejectWith=code=>reject(Object.assign(new Error('本次本机出机确认已失效'),{code}));
           onAbort=()=>rejectWith('CANCELLED');signal.addEventListener('abort',onAbort,{once:true});
           timer=setTimeout(()=>rejectWith('TIMEOUT'),Math.min(2147483647,Math.max(1,Date.parse(deadline)-now())));
@@ -63,19 +67,20 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,now=Date
         })]);}catch(error){fail(['CANCELLED','TIMEOUT'].includes(error?.code)?error.code:'UNAUTHORIZED');}
         finally{clearTimeout(timer);if(onAbort)signal.removeEventListener('abort',onAbort);}
       };
-      const reused=previous?.signal===signal;
-      const guards=reused?previous.guards:new Set();
-      for(const guard of guards)guard();
-      const classification=reused?previous.classification:await wait(classifyLocally);current();
-      if(!['public','private'].includes(classification))fail();
-      if(!reused&&classification==='private'&&await wait(approvePrivate)!==true)fail();
-      current();
-      if(decisions.size>=256)decisions.delete(decisions.keys().next().value);
-      guards.add(current);decisions.set(key,{signal,classification,guards,expiresAt:Date.parse(deadline)});
-      return Object.freeze({payloadDigest,classification,assertBeforeSend(actual){
-        for(const guard of guards)guard();
-        if(actual?.destination!==destination||actual?.payload!==payload||classifyKnownEgressContent(actual.payload)==='forbidden')fail();
-      }});
+      const entry={signal,payloadDigest,guards,expiresAt:Date.parse(deadline)};decisions.set(key,entry);
+      entry.promise=(async()=>{
+        try{
+          const classification=await wait(classifyLocally);assertCurrent();
+          if(!['public','private'].includes(classification))fail();
+          if(classification==='private'&&await wait(approvePrivate)!==true)fail();
+          assertCurrent();
+          return Object.freeze({payloadDigest,classification,assertBeforeSend(actual){
+            assertCurrent();
+            if(actual?.destination!==destination||actual?.payload!==payload||classifyKnownEgressContent(actual.payload)==='forbidden')fail();
+          }});
+        }catch(error){if(decisions.get(key)===entry)decisions.delete(key);throw error;}
+      })();
+      return entry.promise;
     },
     close(){closed=true;decisions.clear();},
   };

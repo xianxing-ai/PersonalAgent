@@ -27,6 +27,8 @@ export function createDesktopDeveloperToolsHost({githubModule,github,git,command
   const host={register(tool){
     if(tools.some(item=>item.descriptor.name===tool.descriptor.name))throw Error('Duplicate developer tool');
     const guarded={...tool,execute:async(input,context)=>{if(!await ready(tool.descriptor.name,context))throw new ProtocolError('UNSUPPORTED_CAPABILITY','Developer host scope is unavailable');
+      if(tool.descriptor.name==='workspace.git.push'&&!input?.publication)
+        throw new ProtocolError('UNAUTHORIZED','Git publication requires its original complete diff confirmation');
       return tool.execute(input,context);}};
     tools.push(guarded);return ()=>{const index=tools.indexOf(guarded);if(index>=0)tools.splice(index,1);};
   }};

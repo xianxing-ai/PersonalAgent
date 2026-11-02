@@ -56,15 +56,15 @@ test('changed content during local classification cannot reach private approval 
   await assert.rejects(host.prepare(input),denied);assert.equal(approvals,0);
 });
 
-test('the same exact request is classified once across nested adapters, without sharing another signal or destination',async()=>{
+test('the same exact request is classified once across nested adapters, rejects another signal and separates destinations',async()=>{
   let classifications=0,approvals=0;
   const host=createDesktopEgressHost({classifyLocally:()=>{classifications++;return 'private';},approvePrivate:()=>{approvals++;return true;}});
   const input=request();(await host.prepare(input)).assertBeforeSend(input);
   (await host.prepare({...input})).assertBeforeSend(input);
   assert.equal(classifications,1);assert.equal(approvals,1);
-  await host.prepare({...input,signal:new AbortController().signal});
+  await assert.rejects(host.prepare({...input,signal:new AbortController().signal}),denied);
   await host.prepare({...input,destination:'https://other.test/invoke'});
-  assert.equal(classifications,3);assert.equal(approvals,3);
+  assert.equal(classifications,2);assert.equal(approvals,2);
 });
 
 test('a nested adapter cannot replace the original live source check when reusing classification',async()=>{
