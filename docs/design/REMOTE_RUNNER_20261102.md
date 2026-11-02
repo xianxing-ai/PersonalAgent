@@ -23,7 +23,15 @@
 
 本地把任务签成 HMAC，经传输层交给远端。默认传输是 OpenSSH，`StrictHostKeyChecking=yes`，并且只用这次写入的 known_hosts。测试用回环传输，不需要真的 SSH。
 
-远端进程是 `scripts/remote-runner/remote-runner-service.mjs`。标准输入一次一个任务；`--serve` 给 systemd 扫 inbox。同一幂等键的成功回执会原样返回。结果未知的写入不会重做。合并请求直接拒绝。每分钟任务数默认不超过主机上的上限。
+远端进程是 `scripts/remote-runner/remote-runner-service.mjs`（1.1.0）。标准输入一次一个任务；`--serve` 给 systemd 扫 inbox。同一幂等键的成功回执会原样返回。结果未知的写入不会重做。合并请求直接拒绝。每分钟任务数默认不超过主机上的上限。
+
+子任务不会因为主机在线就报成功。执行器只运行主机自己的模型命令，任务里不能另外带命令。配置文件是 `/etc/personal-agent-runner/model-command.json`，安装脚本在文件不存在时写入空命令，不会覆盖已有文件：
+
+```json
+{"command":["/usr/local/bin/your-agent","--once"],"timeoutMs":120000}
+```
+
+`command` 是可执行文件和参数，不用 shell。目标文字从标准输入送进去，最长 8000 字。超时默认 120 秒，范围 1 秒到 10 分钟。进程环境只有 `PATH`、`HOME`、`LANG`、`LC_ALL`、`USER`、`TMPDIR`，不带执行器令牌，也不带 GitHub 凭据。退出码 0 才是成功，摘要是标准输出。非零退出或超时是失败，父任务记下失败，不改到本地再跑一遍。`command` 为空或文件不存在时回执是 `needs-config`，状态是失败，父任务改在本地执行并写明「远端主机没有配置模型命令」。
 
 没有健康主机、心跳过期或传输失败时，`submit` 记 `location: "local"` 和原因。异步子任务这时改走原来的本地 worker，父会话回报里会写「本地执行」和同一原因。值班轮询同样把缺口记成不是“无变化”。机器重新打开后，游标只有在远端声明自己接在本地游标之后才前进；对不上就保持本地游标，避免重复评论。未知写入由 `verifyUnknownWrite` 读回，`redo` 为 false。
 

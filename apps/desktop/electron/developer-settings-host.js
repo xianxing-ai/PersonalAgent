@@ -272,5 +272,8 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
   function close(){if(closed)return;closed=true;clearSlot();bindingRuntime=undefined;startupSequence=undefined;record=undefined;publish();}
   return {snapshot,configure,setEnabled,createDeployment(value){
     creating??=createStableDeployment(value).finally(()=>{creating=undefined;});return creating;
-  },readDeveloperWorkflows,close};
+  },readDeveloperWorkflows,readGitHubToken(){
+    if(closed||record?.enabled!==true||typeof record.token!=='string'||!record.token)return undefined;
+    return record.token;
+  },close};
 }

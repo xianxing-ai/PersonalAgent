@@ -44,6 +44,7 @@ const STEP_KEY = 'async-subagent-step-cap:v1';
 const CONTROL_KEY = 'async-subagent-control:v1';
 const START_ERROR = 'async-subagent-start-error:v1';
 const NOTE_KEY = 'async-subagent-runner-note:v1';
+const PARENT_CONVERSATION_KEY = 'async-subagent-parent-conversation:v1';
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled']);
 const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -54,6 +55,7 @@ export interface AsyncSubagentReport {
   revision: number;
   state: string;
   summary: string;
+  conversationId?: string;
 }
 
 export interface AsyncSubagentHandle {
@@ -202,8 +204,9 @@ export function createAsyncSubagentController(options: {
       try {
         runtime().recordProgress(marker.parentTaskId, {stepId: `async-subagent-${marker.subtaskId}`, label: summary.slice(0, 200)});
       } catch { /* A finished parent keeps the checkpoint; its terminal state is not reopened. */ }
+      const conversation = runtime().loadCheckpoint(child.taskId, PARENT_CONVERSATION_KEY) as {conversationId?: string} | undefined;
       options.onReport?.({parentTaskId: marker.parentTaskId, subtaskId: marker.subtaskId, taskId: child.taskId,
-        revision: child.revision, state: child.state, summary});
+        revision: child.revision, state: child.state, summary, ...(conversation?.conversationId ? {conversationId: conversation.conversationId} : {})});
     }
   };
   const invalidate = (taskId: string, message: string) => {
@@ -431,6 +434,10 @@ export function createAsyncSubagentController(options: {
       if (!saved) {
         if (previous) fail('REVISION_CONFLICT', 'Existing child was not created by asynchronous spawn');
         current.saveCheckpoint(task.taskId, SPAWN_KEY, identity);
+        const parentConversationId = current.getTask(context.taskId).conversationId;
+        if (typeof parentConversationId === 'string' && parentConversationId) {
+          current.saveCheckpoint(task.taskId, PARENT_CONVERSATION_KEY, {conversationId: parentConversationId});
+        }
         if (resolved.type) current.saveCheckpoint(task.taskId, TYPE_KEY, resolved.type);
         if (resolved.type?.maxSteps !== undefined) current.saveCheckpoint(task.taskId, STEP_KEY, {maxSteps: resolved.type.maxSteps});
       }
@@ -476,8 +483,10 @@ export function createAsyncSubagentController(options: {
       role = binding.roleLabel || DEFAULT_ROLE_LABELS[binding.role];
       goal = binding.goal;
     } catch { /* A damaged binding stays visible by id only. */ }
+    const conversation = runtime().loadCheckpoint(task.taskId, PARENT_CONVERSATION_KEY) as {conversationId?: string} | undefined;
     return {parentTaskId: marker?.parentTaskId, taskId: task.taskId, subtaskId: marker?.subtaskId, state: task.state,
       revision: task.revision, role, goal, updatedAt: task.updatedAt, queued: task.state === 'created' && !readSchedule(task.taskId), reported,
+      ...(conversation?.conversationId ? {conversationId: conversation.conversationId} : {}),
       ...(typeof report?.summary === 'string' ? {summary: report.summary} : {}),
       controlRevision: control?.revision ?? 0, ...(marker?.typeName ? {typeName: marker.typeName, typeVersion: marker.typeVersion} : {})};
   });
@@ -543,7 +552,7 @@ export function createAsyncSubagentController(options: {
 /** Dispatch a child to a healthy remote host when one exists; otherwise use the local worker. */
 export function createRemoteAwareSubagentStarter(options: {
   host: SubagentHostOptions;
-  getRemote?: () => {list: () => Array<{enabled: boolean; repos?: string[]}>; submit: (job: {kind: 'async-subagent'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>}) => Promise<{location: string; reason?: string; receipt?: {state?: string; summary?: string}}>} | undefined;
+  getRemote?: () => {list: () => Array<{enabled: boolean; repos?: string[]}>; submit: (job: {kind: 'async-subagent'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>}) => Promise<{location: string; reason?: string; receipt?: {state?: string; summary?: string; error?: string; needsConfig?: boolean; verification?: string}}>} | undefined;
 }): (taskId: string, deadline: string, host: SubagentHostOptions) => Promise<TaskSnapshot> {
   return async (taskId, deadline, host) => {
     const runtime = options.host.getRuntime();
@@ -563,11 +572,15 @@ export function createRemoteAwareSubagentStarter(options: {
             return {resultSummary: 'Remote subagent result is unknown'};
           }, {deadline, sideEffect: 'read'});
         }
-        if (result.location === 'remote' && result.receipt?.state === 'succeeded') {
+        if (result.location === 'remote' && (result.receipt?.needsConfig === true || result.receipt?.verification === 'needs-config')) {
+          note('远端主机没有配置模型命令');
+        } else if (result.location === 'remote' && result.receipt?.state === 'succeeded' && result.receipt.verification === 'executed') {
           const summary = String(result.receipt.summary || '远端执行器已回执');
           return runtime.runTask(taskId, async () => ({resultSummary: `${summary}\n（远端执行）`}), {deadline, sideEffect: 'read'});
-        }
-        note(result.reason || 'no healthy remote host');
+        } else if (result.location === 'remote' && result.receipt?.state === 'failed') {
+          const message = String(result.receipt.summary || result.receipt.error || '远端子任务失败');
+          return runtime.runTask(taskId, async () => { throw new ProtocolError('EXTERNAL_FAILURE', message); }, {deadline, sideEffect: 'read'});
+        } else note(result.reason || 'no healthy remote host');
       } catch (error) {
         if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') throw error;
         note(error instanceof Error ? error.message : 'remote runner failed');

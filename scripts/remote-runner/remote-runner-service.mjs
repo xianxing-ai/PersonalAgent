@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /** Headless executor. One job in, one receipt out. It is not a scheduler. */
 import {createHmac, createHash, timingSafeEqual} from 'node:crypto';
+import {spawn} from 'node:child_process';
 import {mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-export const RUNNER_VERSION = '1.0.0';
+export const RUNNER_VERSION = '1.1.0';
+const MODEL_COMMAND_FILE = process.env.RUNNER_MODEL_COMMAND_FILE || '/etc/personal-agent-runner/model-command.json';
 const KINDS = new Set(['developer-duty', 'async-subagent', 'heartbeat', 'status', 'cancel']);
 const MARKER = '<!-- personal-agent:duty-status -->';
 
@@ -117,11 +119,55 @@ async function fetchEvents(payload, fetchImpl) {
   return {connected: true, gap: false, events, previousDeliveryId: payload.cursor?.deliveryId, next: events.at(-1) ? {deliveryId: events.at(-1).deliveryId} : undefined};
 }
 
-function runSubagent(state, message) {
-  const command = message.payload?.command;
-  if (command) return receipt(message, {state: 'failed', error: 'remote command execution is not enabled in this runner', redo: false});
-  return receipt(message, {state: 'succeeded', executor: 'accepted', verification: 'fixture',
-    summary: '远端执行器已接收子任务。未配置模型命令，因此没有声称模型已经完成。', goal: message.payload?.goal ?? ''});
+export function readModelCommand(file = MODEL_COMMAND_FILE) {
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8'));
+    if (!parsed || !Array.isArray(parsed.command) || parsed.command.length === 0 || parsed.command.length > 16) return undefined;
+    if (!parsed.command.every(part => typeof part === 'string' && part.length > 0 && part.length <= 200 && !/[\r\n\u0000]/.test(part))) return undefined;
+    const timeoutMs = Number.isInteger(parsed.timeoutMs) && parsed.timeoutMs >= 1000 && parsed.timeoutMs <= 600_000 ? parsed.timeoutMs : 120_000;
+    return {command: parsed.command, timeoutMs};
+  } catch { return undefined; }
+}
+
+function runnerEnvironment() {
+  const env = {};
+  for (const key of ['PATH', 'HOME', 'LANG', 'LC_ALL', 'USER', 'TMPDIR']) {
+    if (typeof process.env[key] === 'string') env[key] = process.env[key];
+  }
+  return env;
+}
+
+function runCommand(configured, input, spawnImpl) {
+  const [executable, ...args] = configured.command;
+  if (typeof spawnImpl === 'function') return spawnImpl({command: configured.command, input, timeoutMs: configured.timeoutMs});
+  return new Promise(resolve => {
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const child = spawn(executable, args, {shell: false, env: runnerEnvironment(), stdio: ['pipe', 'pipe', 'pipe']});
+    const finish = result => { if (settled) return; settled = true; clearTimeout(timer); resolve(result); };
+    const timer = setTimeout(() => { child.kill('SIGKILL'); finish({code: null, stdout, stderr, timedOut: true}); }, configured.timeoutMs);
+    child.stdout?.on('data', chunk => { stdout = (stdout + chunk).slice(0, 8000); });
+    child.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(0, 2000); });
+    child.on('error', error => finish({code: 127, stdout, stderr: error instanceof Error ? error.message : 'command failed', timedOut: false}));
+    child.on('close', code => finish({code, stdout, stderr, timedOut: false}));
+    child.stdin?.end(input);
+  });
+}
+
+async function runSubagent(message, options) {
+  if (message.payload?.command) return receipt(message, {state: 'failed', error: 'the job cannot choose its own command', redo: false, needsConfig: false});
+  const configured = options.modelCommand === undefined ? readModelCommand(options.modelCommandFile) : options.modelCommand || undefined;
+  if (!configured?.command?.length) {
+    return receipt(message, {state: 'failed', needsConfig: true, verification: 'needs-config', redo: false,
+      error: 'model command is not configured', summary: '远端主机没有配置模型命令，子任务没有执行。'});
+  }
+  const goal = String(message.payload?.goal ?? '').slice(0, 8000);
+  const result = await runCommand(configured, goal, options.spawnImpl);
+  const summary = String(result.stdout || result.stderr || '').trim().slice(0, 4000);
+  if (result.timedOut) return receipt(message, {state: 'failed', needsConfig: false, verification: 'executed', redo: false, error: 'model command timed out', summary: summary || 'model command timed out'});
+  if (result.code !== 0) return receipt(message, {state: 'failed', needsConfig: false, verification: 'executed', redo: false, error: summary || `model command exited ${result.code}`, summary: summary || `model command exited ${result.code}`});
+  return receipt(message, {state: 'succeeded', needsConfig: false, verification: 'executed', summary: summary || '远端模型命令没有输出'});
 }
 
 export async function handleRunnerJob(state, message, options = {}) {
@@ -151,7 +197,7 @@ export async function handleRunnerJob(state, message, options = {}) {
   state.recent.push(now);
   state.jobs[message.idempotencyKey] = {jobId: message.id, state: 'leased', leaseUntil: now + 60_000, kind: message.kind};
   try {
-    const result = message.kind === 'developer-duty' ? await runDuty(state, message, options.fetchImpl) : runSubagent(state, message);
+    const result = message.kind === 'developer-duty' ? await runDuty(state, message, options.fetchImpl) : await runSubagent(message, options);
     const terminal = result.state === 'unknown' ? 'unknown' : result.state === 'failed' ? 'failed' : 'succeeded';
     state.jobs[message.idempotencyKey] = {jobId: message.id, state: terminal, kind: message.kind, receipt: result};
     return result;
@@ -176,7 +222,7 @@ async function serve(file, token) {
     for (const name of readdirSync(inbox).filter(item => item.endsWith('.json')).sort()) {
       const message = JSON.parse(readFileSync(`${inbox}/${name}`, 'utf8'));
       const state = loadRunnerState(file);
-      const result = await handleRunnerJob(state, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30)});
+      const result = await handleRunnerJob(state, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30), modelCommandFile: MODEL_COMMAND_FILE});
       saveRunnerState(file, state);
       writeFileSync(`${outbox}/${name}`, JSON.stringify(result), {mode: 0o600});
       unlinkSync(`${inbox}/${name}`);
@@ -196,7 +242,7 @@ async function main() {
   const raw = readFileSync(0, 'utf8');
   const message = JSON.parse(raw);
   const state = loadRunnerState(file);
-  const result = await handleRunnerJob(state, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30)});
+  const result = await handleRunnerJob(state, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30), modelCommandFile: MODEL_COMMAND_FILE});
   saveRunnerState(file, state);
   process.stdout.write(JSON.stringify(result));
 }

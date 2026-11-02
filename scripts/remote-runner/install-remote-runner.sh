@@ -2,7 +2,7 @@
 # Idempotent installer for a fresh Ubuntu, Debian or openEuler host.
 # It prepares a headless job executor. It does not open extra inbound ports.
 set -eu
-VERSION=1.0.0
+VERSION=1.1.0
 NODE_VERSION=22.21.0
 PREFIX=/opt/personal-agent-runner
 STATE=/var/lib/personal-agent-runner
@@ -13,6 +13,13 @@ case "$ARCH" in
   x86_64|aarch64|arm64) ;;
   *) echo "unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
+mkdir -p /etc/personal-agent-runner
+if [ ! -f /etc/personal-agent-runner/model-command.json ]; then
+  cat > /etc/personal-agent-runner/model-command.json <<'JSON'
+{"command":[],"timeoutMs":120000}
+JSON
+  chmod 644 /etc/personal-agent-runner/model-command.json
+fi
 if [ -f "$PREFIX/VERSION" ] && [ "$(cat "$PREFIX/VERSION")" = "$VERSION" ] && command -v node >/dev/null 2>&1; then
   node "$PREFIX/remote-runner-service.mjs" --verify
   exit 0
@@ -38,6 +45,12 @@ if ! command -v node >/dev/null 2>&1 || ! node -v | grep -q "v$NODE_VERSION"; th
   rm -rf "$TMP"
 fi
 mkdir -p "$PREFIX" "$STATE" "$(dirname "$ENV_FILE")"
+if [ ! -f /etc/personal-agent-runner/model-command.json ]; then
+  cat > /etc/personal-agent-runner/model-command.json <<'JSON'
+{"command":[],"timeoutMs":120000}
+JSON
+  chmod 644 /etc/personal-agent-runner/model-command.json
+fi
 cp "$SCRIPT_DIR/remote-runner-service.mjs" "$PREFIX/remote-runner-service.mjs"
 chmod 755 "$PREFIX/remote-runner-service.mjs"
 printf '%s\n' "$VERSION" > "$PREFIX/VERSION"

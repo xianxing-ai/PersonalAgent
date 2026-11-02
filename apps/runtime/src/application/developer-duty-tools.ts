@@ -20,6 +20,9 @@ export interface DeveloperDutyToolOptions {
   getRuntime: () => TaskRuntime;
   readPage?: (repo: string, cursor: DutyCursor | undefined) => Promise<DutyPollPage>;
   comments?: DeveloperDutyPorts;
+  /** Real comment port for one repository. Undefined means the credential is not connected. */
+  createComments?: (input: {repo: string; number?: number}) => DeveloperDutyPorts | undefined | Promise<DeveloperDutyPorts | undefined>;
+  readPersonal?: () => Promise<Record<string, unknown>>;
   /** Checkpoint-backed comment port. It does not call GitHub. */
   useFixtureComments?: boolean;
   now?: () => number;
@@ -80,17 +83,24 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
       const page = {...await readPage(repo, cursor), repo};
       const bucket = Math.floor((options.now?.() ?? Date.now()) / 60_000);
       const digest = createHash('sha256').update(JSON.stringify([repo, cursor?.deliveryId ?? '', page.gap, page.connected, page.events.map(event => event.deliveryId)])).digest('hex').slice(0, 16);
-      const statusComment = (page as {statusComment?: {number?: number; body?: string; existing?: unknown; writeState?: string}}).statusComment;
-      const writeComment = async (via: 'remote' | 'local') => {
-        if (!policy.comment || !statusComment?.body || (via === 'local' && !comments)) return;
-        if (via === 'remote' && options.submitRemote) {
+      const statusComment = (page as {statusComment?: {number?: number; body?: string; existing?: unknown; writeState?: string}; reason?: string; evidenceLevel?: string}).statusComment;
+      const evidenceLevel = (page as {evidenceLevel?: string}).evidenceLevel ?? 'fixture';
+      const pageReason = (page as {reason?: string}).reason;
+      const writeComment = async (via: 'remote' | 'local'): Promise<{wrote: boolean; reason?: string}> => {
+        if (!policy.comment || !statusComment?.body) return {wrote: false, reason: policy.comment ? 'no status comment' : 'comment is off'};
+        const ports = await options.createComments?.({repo, ...(Number.isInteger(statusComment.number) ? {number: statusComment.number} : {})}) ?? (via === 'local' ? comments : undefined);
+        if (ports) {
+          await commitDeveloperDutyStatusComment(runtime(), task.taskId, ports, statusComment.body);
+          return {wrote: true};
+        }
+        if (via === 'remote' && options.submitRemote && !options.createComments) {
           await options.submitRemote({kind: 'developer-duty', idempotencyKey: `duty-comment:${repo}:${digest}`, taskId: task.taskId, repo,
             payload: {action: 'comment', repo, number: statusComment.number, body: statusComment.body,
               ...(statusComment.existing === undefined ? {} : {existing: statusComment.existing}),
               ...(statusComment.writeState === undefined ? {} : {writeState: statusComment.writeState})}});
-          return;
+          return {wrote: true};
         }
-        if (comments) await commitDeveloperDutyStatusComment(runtime(), task.taskId, comments, statusComment.body);
+        return {wrote: false, reason: 'not connected'};
       };
       if (options.submitRemote) {
         const remote = await options.submitRemote({kind: 'developer-duty', idempotencyKey: `duty-poll:${repo}:${cursor?.deliveryId ?? 'start'}:${bucket}`, taskId: task.taskId, repo,
@@ -99,20 +109,20 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
           const gap = remote.receipt.gap === true || remote.receipt.connected === false;
           const events = Array.isArray(remote.receipt.events) ? remote.receipt.events : [];
           if (!gap && events.length) notify(task.taskId, `${repo} 有 ${events.length} 条新事件`, `duty:${repo}:${events.map(event => (event as {deliveryId?: string; id?: string}).deliveryId ?? (event as {id?: string}).id).join(',')}`);
-          if (!gap) await writeComment('remote');
-          results.push({repo, location: remote.location, reason: remote.reason, gap, noChange: gap ? false : remote.receipt.noChange === true, evidenceLevel: 'fixture'});
+          const comment = gap ? {wrote: false} : await writeComment('remote');
+          results.push({repo, location: remote.location, reason: pageReason || comment.reason || remote.reason, gap, noChange: gap ? false : remote.receipt.noChange === true, evidenceLevel, ...(comment.wrote ? {comment: true} : {})});
           continue;
         }
         const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
         if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
-        if (!(page.gap || !page.connected)) await writeComment('local');
-        results.push({repo, location: 'local', reason: remote.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel: 'fixture'});
+        const comment = page.gap || !page.connected ? {wrote: false} : await writeComment('local');
+        results.push({repo, location: 'local', reason: pageReason || comment.reason || remote.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel});
         continue;
       }
       const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
       if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
-      if (!(page.gap || !page.connected)) await writeComment('local');
-      results.push({repo, location: 'local', reason: page.gap || !page.connected ? 'gap is not no change' : 'local cursor', gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel: 'fixture'});
+      const comment = page.gap || !page.connected ? {wrote: false} : await writeComment('local');
+      results.push({repo, location: 'local', reason: pageReason || comment.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel});
     }
     return results;
   };
@@ -140,7 +150,7 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
       runtime().saveCheckpoint(owner().taskId, POLICY, {policies: {...policies(), [policy.repo]: policy}});
       return policy;
     }},
-    {descriptor: descriptor(DUTY_PERSONAL_LIST, true, object({}, [])), execute: async () => ({items: buildPersonalView({login: 'fixture', assigned: [], reviewRequested: [], failing: []}), evidenceLevel: 'fixture'})},
+    {descriptor: descriptor(DUTY_PERSONAL_LIST, true, object({}, [])), execute: async () => options.readPersonal ? options.readPersonal() : ({items: buildPersonalView({login: 'fixture', assigned: [], reviewRequested: [], failing: []}), evidenceLevel: 'fixture', reason: 'fixture'})},
     {descriptor: descriptor(DUTY_STATUS, true, object({}, [])), execute: async () => {
       const task = owner();
       return {repos: watches(), policies: policies(), cursor: runtime().loadCheckpoint(task.taskId, 'developer-duty-cursor:v1') ?? null,

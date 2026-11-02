@@ -4,7 +4,7 @@ import test from 'node:test';
 import {createHash} from 'node:crypto';
 import {Conversations} from '../electron/conversations.js';
 import {ADDITIVE_CONVERSATION_TOOL_NAMES, additiveConversationBindings} from '../electron/additive-conversation-tools.js';
-import {createAsyncSubagentHost} from '../electron/async-subagent-host.js';
+import {createAsyncSubagentHost, deliverSubagentReport} from '../electron/async-subagent-host.js';
 import {createConversationToolSurface} from '../electron/conversation-tool-surface.js';
 import {TaskRuntime} from '@personal-agent/runtime';
 import {
@@ -70,42 +70,36 @@ test('a finished remote child is posted into the parent conversation once', asyn
   const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '主对话', idempotencyKey: 'report-parent'});
   const state = {version: 1, jobs: {}, cursors: {}, comments: {}, recent: []};
   const pool = createRemoteRunnerService({getRuntime: () => runtime, secrets: createMemoryRunnerSecrets(),
-    transport: createLoopbackRunnerTransport(async (job, runnerToken) => handleRunnerJob(state, job, {token: runnerToken, now: () => Date.now()})),
+    transport: createLoopbackRunnerTransport(async (job, runnerToken) => handleRunnerJob(state, job, {token: runnerToken, now: () => Date.now(),
+      modelCommand: {command: ['agent'], timeoutMs: 1000}, spawnImpl: async ({input}) => ({code: 0, stdout: `写完了 ${input}`, stderr: ''})})),
     idFactory: (() => {let n = 0; return () => `msg-${++n}`;})(),
     localExecute: async () => ({state: 'failed', error: 'local fallback', verification: 'fixture'})});
   const drafted = await pool.tools.find(tool => tool.descriptor.name === 'runner.host.add').execute({host: hostInput}, context(parent.taskId));
   await pool.tools.find(tool => tool.descriptor.name === 'runner.host.confirm').execute({proposalId: drafted.proposalId, digest: drafted.digest, summary: drafted.summary}, context(parent.taskId));
   const conversations = new Conversations();
+  conversations.create('panel', '另一对话');
   const runtimeModule = await import('@personal-agent/runtime/application');
   const host = createAsyncSubagentHost({runtimeModule, getRuntime: () => runtime,
     getRemoteSubmit: () => pool,
     subagentOptions: {competitionOnly: true, getRuntime: () => runtime,
       getTools: () => ({list: () => [], invoke: async () => ({})}),
       runDefaultWorker: async () => ({resultSummary: '不应走本地'})},
-    deliverReport: report => {
-      const conversationId = conversations.activeConversationId('panel');
-      const session = conversations.session(conversationId, 'panel');
-      conversations.addLiveMessage({id: report.messageId, sessionId: session.id, role: 'assistant', text: String(report.summary || '后台子任务已结束'),
-        createdAt: '2026-11-02T00:00:00.000Z', surface: 'panel', conversationId});
-    }});
+    deliverReport: report => deliverSubagentReport(conversations, report)});
   await host.tools.find(tool => tool.descriptor.name === 'subagent.spawn').execute({subtasks: [{subtaskId: 'notes', role: 'researcher', goal: '写说明'}]}, context(parent.taskId));
   await host.pump();
   await new Promise(resolve => setImmediate(resolve));
   await host.pump();
   const messages = [...conversations.messages.values()];
   assert.equal(messages.length, 1);
-  assert.match(messages[0].text, /远端执行/);
+  assert.equal(messages[0].conversationId, 'desktop-panel');
+  assert.notEqual(conversations.activeConversationId('panel'), 'desktop-panel');
+  assert.match(messages[0].text, /写完了 写说明/);
   assert.match(messages[0].id, /^async-report:[0-9a-f]{40}$/);
   const reopened = new Conversations();
   const again = createAsyncSubagentHost({runtimeModule, getRuntime: () => runtime, getRemoteSubmit: () => pool,
     subagentOptions: {competitionOnly: true, getRuntime: () => runtime, getTools: () => ({list: () => [], invoke: async () => ({})}),
       runDefaultWorker: async () => ({resultSummary: '不应走本地'})},
-    deliverReport: report => {
-      const conversationId = reopened.activeConversationId('panel');
-      const session = reopened.session(conversationId, 'panel');
-      reopened.addLiveMessage({id: report.messageId, sessionId: session.id, role: 'assistant', text: String(report.summary || '后台子任务已结束'),
-        createdAt: '2026-11-02T00:00:00.000Z', surface: 'panel', conversationId});
-    }});
+    deliverReport: report => deliverSubagentReport(reopened, report)});
   await again.pump();
   assert.equal([...reopened.messages.values()].length, 1);
   assert.equal([...reopened.messages.values()][0].id, messages[0].id);

@@ -20,7 +20,9 @@
 
 子任务进入 `succeeded`、`failed` 或 `cancelled` 后，用 `readRuntimeSubagentSummary` 生成回执，并以检查点 `async-subagent-report:${subtaskId}:${revision}` 只写入一次。桌面把这条回执写成父会话的一条 live 消息，标识是 `async-report:` 加稳定摘要；同一标识和同一正文再次投递不会再插一条。进程在检查点写入之后、消息写出之前停掉，下次 `recover` / `pump` 仍会补上这一条，但不会再触发第二次 `onReport`。`waiting_reconciliation` 只记录读回结论，`redo` 固定为 false，不再次 `runTask`。
 
-有已启用的健康远端主机时，`createRemoteAwareSubagentStarter` 把子任务交给 `createRemoteRunnerService.submit`（kind `async-subagent`）。回执成功后才在本地 `runTask` 记下「远端执行」。回执未知时进入 `waiting_reconciliation`，由 `verifyUnknownWrite` 读回，不在本地重跑。没有健康主机、主机心跳过期或传输失败时，仍走原来的本地 worker，并在回报里写明「本地执行」和原因。`developerDutyRemoteRunner()` 不传服务时仍是显式的无主机 stub。
+有已启用的健康远端主机时，`createRemoteAwareSubagentStarter` 把子任务交给 `createRemoteRunnerService.submit`（kind `async-subagent`）。远端只有在主机配置的模型命令以退出码 0 结束时才算成功，父任务记下命令输出和「远端执行」。命令失败或超时时子任务失败，不改到本地重跑。主机没有模型命令时回执是 `needs-config`，父任务改走原来的本地 worker，并写明原因。回执未知时进入 `waiting_reconciliation`，由 `verifyUnknownWrite` 读回，不在本地重跑。没有健康主机、主机心跳过期或传输失败时，仍走原来的本地 worker，并在回报里写明「本地执行」和原因。`developerDutyRemoteRunner()` 不传服务时仍是显式的无主机 stub。
+
+完成回报记在派发时的父任务会话上，检查点是 `async-subagent-parent-conversation:v1`。只有这个会话已经不存在时，才改送到当前主对话，并在正文里说明。同一条消息标识冲突会记到日志和 `async-report-delivery` 检查点。
 
 启动时 `recover()` 重新扫描带 `async-subagent-spawn:v1` 且仍为 `created` 的子任务并入场。已经处于 `running` 的中断任务不在这里重做，仍交给原启动恢复；未知写入不能当成没发生。
 

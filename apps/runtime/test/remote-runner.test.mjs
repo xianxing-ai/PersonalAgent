@@ -111,7 +111,7 @@ test('the headless process returns one receipt and the installer script parses',
   let verified = '';
   verify.stdout.on('data', chunk => {verified += chunk;});
   assert.equal(await new Promise(resolve => verify.on('close', resolve)), 0);
-  assert.match(verified, /personal-agent-runner 1.0.0/);
+  assert.match(verified, /personal-agent-runner 1.1.0/);
   const syntax = spawn('sh', ['-n', fileURLToPath(new URL('../../../scripts/remote-runner/install-remote-runner.sh', import.meta.url))]);
   assert.equal(await new Promise(resolve => syntax.on('close', resolve)), 0);
   saveRunnerState(state, {version: 1, jobs: {}, cursors: {}, comments: {}, recent: []});

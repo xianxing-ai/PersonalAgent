@@ -2491,17 +2491,19 @@ async function initializeRuntime() {
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
         }))},context);
       };
-      const {createAsyncSubagentHost} = await import('./async-subagent-host.js');
+      const {createAsyncSubagentHost, deliverSubagentReport} = await import('./async-subagent-host.js');
       asyncSubagentHost?.stop();
       asyncSubagentHost = createAsyncSubagentHost({runtimeModule, getGrantedTools:()=>runtimeApplication.tools?.list().map(tool=>tool.name)??[],
         getRemoteSubmit:()=>remoteRunnerHost?.service, deliverReport:report=>{
           try {
-            const conversationId=conversations.activeConversationId('panel');
-            const session=conversations.session(conversationId,'panel');
-            conversations.addLiveMessage({id:report.messageId, sessionId:session.id, role:'assistant', text:String(report.summary||'后台子任务已结束'),
-              createdAt:new Date().toISOString(), surface:'panel', conversationId});
+            deliverSubagentReport(conversations, report);
             publish();
-          } catch { /* The runtime checkpoint still records the one report. */ }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'report delivery failed';
+            console.error(`async subagent report ${report.messageId ?? ''} was not added: ${message}`);
+            try { runtimeApplication.runtime.saveCheckpoint(report.parentTaskId, `async-report-delivery:${report.subtaskId}:${report.revision}`, {messageId: report.messageId, error: message, at: new Date().toISOString()}); }
+            catch { console.error('async subagent report delivery could not be recorded'); }
+          }
         },
         subagentOptions:{competitionOnly:true, getRuntime:()=>runtimeApplication.runtime, getTools:()=>runtimeApplication.tools, fakeModelMode,
           getToolsForSubtask:(subtask,worker)=>f28Workflow?.getToolsForSubtask(subtask,worker,runtimeApplication.tools)??runtimeApplication.tools,
@@ -2822,9 +2824,12 @@ async function initializeRuntime() {
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       conversationTools.push(...(asyncSubagentTools??[]));
       conversationTools.push(...remoteRunnerHost.tools);
+      const {readGitHubDutyPage, createGitHubDutyComments, readGitHubPersonalView} = await import('./developer-duty-github.js');
+      const readDutyCredential=()=>developerSettings?.readGitHubToken?.();
       const dutyHost=runtimeModule.createDeveloperDutyTools({getRuntime:()=>runtimeApplication.runtime,
-        useFixtureComments:true,
-        readPage:async repo=>({repo, connected:false, gap:true, events:[]}),
+        readPage:(repo, cursor)=>readGitHubDutyPage({repo, cursor, readCredential:readDutyCredential}),
+        createComments:async ({repo, number})=>readDutyCredential() ? createGitHubDutyComments({repo, number, readCredential:readDutyCredential}) : undefined,
+        readPersonal:()=>readGitHubPersonalView({readCredential:readDutyCredential}),
         submitRemote:job=>remoteRunnerHost.service.submit(job),
         onNotify:notice=>{
           if(!notice?.dedupeKey||notice.duplicate)return;
