@@ -67,10 +67,10 @@ export function recordDeveloperDutyConclusions(runtime: TaskRuntime, taskId: str
 export function queueDeveloperDutyNotification(runtime: TaskRuntime, taskId: string, summary: string, dedupeKey: string) {
   const current = runtime.loadCheckpoint(taskId, NOTICE) as {items?: Array<{dedupeKey: string; summary: string}>} | undefined;
   const items = current?.items ?? [];
-  if (items.some(item => item.dedupeKey === dedupeKey)) return {channel: 'f12' as const, delivered: false, duplicate: true, summary};
+  if (items.some(item => item.dedupeKey === dedupeKey)) return {channel: 'f12' as const, delivered: false, duplicate: true, summary, dedupeKey};
   const next = [...items, {dedupeKey, summary}];
   runtime.saveCheckpoint(taskId, NOTICE, {channel: 'f12', items: next});
-  return {channel: 'f12' as const, delivered: false, duplicate: false, summary};
+  return {channel: 'f12' as const, delivered: false, duplicate: false, summary, dedupeKey};
 }
 
 /** F24 rule: unknown comment writes are read back and never posted again. */
@@ -98,7 +98,15 @@ export function developerDutyCredential(input: {repo: string; credentialRef: str
   return assertDutyCredentialScope(input);
 }
 
-export function developerDutyRemoteRunner() {return createStubRemoteDutyRunner();}
+export function developerDutyRemoteRunner(service?: {submit: (job: {kind: 'developer-duty'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>}) => Promise<{accepted: boolean; location: string; reason: string; receipt: Record<string, unknown>}>}) {
+  if (!service) return createStubRemoteDutyRunner();
+  return {implementation: 'remote' as const, describe: () => ({status: 'wired' as const, runsWhenLocalMachineOff: true, evidenceLevel: 'fixture' as const,
+    note: 'Enabled healthy hosts receive duty jobs. Otherwise the receipt says local.'}),
+  async submit(job: {repo: string; cursor?: {deliveryId?: string}}) {
+    return service.submit({kind: 'developer-duty', idempotencyKey: `duty:${job.repo}:${job.cursor?.deliveryId ?? 'start'}`, taskId: 'developer-duty', repo: job.repo,
+      payload: {action: 'poll', repo: job.repo, ...(job.cursor ? {cursor: job.cursor} : {})}});
+  }};
+}
 
 export function developerDutyPersonalView(input: Parameters<typeof buildPersonalView>[0]) {return buildPersonalView(input);}
 

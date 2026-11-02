@@ -17,10 +17,15 @@
 | 限流与分支保护 | `interpretGitHubRateLimit` / `assessDutyPush` | 传输失败不是“无限额”；保护规则未知时拒绝推送 | Fixture |
 | 离线评估集 | `buildOfflineEvalSet` / `storeDeveloperDutyEvalSet` | F23：`evaluation.dataset_snapshot`，`evidenceLevel: fixture` | Fixture |
 | 评论动作 | `developerDutyToolIntent` | 允许评论时指向现有 `github.pr.comment`；本模块不调用合并 | Fixture |
-| 通知意图 | `queueDeveloperDutyNotification` | F12：只记录意图，`delivered: false`，不声称设备已显示 | Fixture |
+| 通知意图 | `queueDeveloperDutyNotification` | F12：只记录意图，`delivered: false`。主进程把它放进现有通知列表，不声称系统已经弹出 | Fixture |
+| 主对话工具 | `duty.watch` / `duty.unwatch` / `duty.policy.set` / `duty.personal.list` / `duty.status` / `duty.ci.triage` | 与 availability、export 一起进入模型可见目录。合并请求直接 `SCOPE_DENIED`，保存的策略里 `merge` 固定为 false | Fixture |
+| 启动轮询 | Desktop `dutyPoll` | 启动时和之后每分钟调用 `poll()`。游标存在 Runtime 检查点。断线或缺口的 `noChange` 为 false，不前进游标 | Fixture |
+| 状态评论接线 | `useFixtureComments` 或调用方传入的 `comments` | 先读回再写；未知结果不再发第二条。桌面默认用检查点里的 Fixture 评论，不调用 GitHub | Fixture |
 
 夹具：`packages/connectors/github/test/fixtures/developer-duty-github.json`。
 
+主进程的 `readPage` 在没有真实 GitHub 事件源时返回 `connected: false, gap: true`。这不是“没有新事件”。有已启用的健康主机时，`poll()` 把同一页交给远端执行器；否则本地消化，并在结果里写明原因。
+
 ## Stub
 
-`developerDutyRemoteRunner()` 不传参数时仍返回 `createStubRemoteDutyRunner`。已确认的自备服务器走 `createRemoteRunnerService`，说明见 [远端执行器](REMOTE_RUNNER_20261102.md)。真机验收还没有做。
+`developerDutyRemoteRunner()` 不传参数时仍返回 `createStubRemoteDutyRunner`，这是明确的无主机回退。传入 `createRemoteRunnerService` 后，`submit` 才走远端协议。桌面值班和异步子任务直接调用该服务的 `submit`，不经过无参数 stub。真机验收还没有做。

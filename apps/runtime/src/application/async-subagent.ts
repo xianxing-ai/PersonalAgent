@@ -43,6 +43,7 @@ const TYPE_KEY = 'async-subagent-type:v1';
 const STEP_KEY = 'async-subagent-step-cap:v1';
 const CONTROL_KEY = 'async-subagent-control:v1';
 const START_ERROR = 'async-subagent-start-error:v1';
+const NOTE_KEY = 'async-subagent-runner-note:v1';
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled']);
 const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -190,6 +191,11 @@ export function createAsyncSubagentController(options: {
           ...(binding.thinkingDepth === undefined ? {} : {thinkingDepth: binding.thinkingDepth}),
         }]).summary;
       } catch { summary = child.resultSummary ?? child.error?.message ?? child.state; }
+      const note = runtime().loadCheckpoint(child.taskId, NOTE_KEY) as {location?: string; reason?: string} | undefined;
+      if (note?.reason) {
+        const line = `（${note.location === 'remote' ? '远端执行' : '本地执行'}：${note.reason}）`;
+        if (!summary.includes(line)) summary = `${summary}\n${line}`;
+      }
       const key = `async-subagent-report:${marker.subtaskId}:${child.revision}`;
       if (!runtime().saveCheckpointOnce(marker.parentTaskId, key, {subtaskId: marker.subtaskId, taskId: child.taskId,
         revision: child.revision, state: child.state, summary})) continue;
@@ -460,8 +466,9 @@ export function createAsyncSubagentController(options: {
   const list = () => spawned().map(task => {
     const marker = markerOf(task.taskId);
     const control = runtime().loadCheckpoint(task.taskId, CONTROL_KEY) as {revision?: number} | undefined;
-    const reported = marker && TERMINAL.has(task.state)
-      ? runtime().loadCheckpoint(marker.parentTaskId, `async-subagent-report:${marker.subtaskId}:${task.revision}`) !== undefined : false;
+    const report = marker && TERMINAL.has(task.state)
+      ? runtime().loadCheckpoint(marker.parentTaskId, `async-subagent-report:${marker.subtaskId}:${task.revision}`) as {summary?: string} | undefined : undefined;
+    const reported = report !== undefined;
     let role = '';
     let goal = '';
     try {
@@ -470,7 +477,8 @@ export function createAsyncSubagentController(options: {
       goal = binding.goal;
     } catch { /* A damaged binding stays visible by id only. */ }
     return {parentTaskId: marker?.parentTaskId, taskId: task.taskId, subtaskId: marker?.subtaskId, state: task.state,
-      role, goal, updatedAt: task.updatedAt, queued: task.state === 'created' && !readSchedule(task.taskId), reported,
+      revision: task.revision, role, goal, updatedAt: task.updatedAt, queued: task.state === 'created' && !readSchedule(task.taskId), reported,
+      ...(typeof report?.summary === 'string' ? {summary: report.summary} : {}),
       controlRevision: control?.revision ?? 0, ...(marker?.typeName ? {typeName: marker.typeName, typeVersion: marker.typeVersion} : {})};
   });
   const mainOnly = (context: ToolContext) => {
@@ -532,15 +540,54 @@ export function createAsyncSubagentController(options: {
   return {registry, tools, pump, recover() { epoch += 1; return pump(); }, list, instruct, stop};
 }
 
+/** Dispatch a child to a healthy remote host when one exists; otherwise use the local worker. */
+export function createRemoteAwareSubagentStarter(options: {
+  host: SubagentHostOptions;
+  getRemote?: () => {list: () => Array<{enabled: boolean; repos?: string[]}>; submit: (job: {kind: 'async-subagent'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>}) => Promise<{location: string; reason?: string; receipt?: {state?: string; summary?: string}}>} | undefined;
+}): (taskId: string, deadline: string, host: SubagentHostOptions) => Promise<TaskSnapshot> {
+  return async (taskId, deadline, host) => {
+    const runtime = options.host.getRuntime();
+    const remote = options.getRemote?.();
+    const enabled = remote?.list().filter(item => item.enabled) ?? [];
+    const note = (reason: string) => runtime.saveCheckpoint(taskId, NOTE_KEY, {location: 'local', reason});
+    if (remote && enabled.length) {
+      const binding = runtime.loadCheckpoint(taskId, 'subtask-parent') as {goal?: string; subtaskId?: string} | undefined;
+      try {
+        const result = await remote.submit({kind: 'async-subagent', idempotencyKey: `remote-subagent:${taskId}`, taskId,
+          ...(enabled[0]?.repos?.[0] ? {repo: enabled[0].repos[0]} : {}), payload: {goal: binding?.goal ?? '', subtaskId: binding?.subtaskId ?? ''}});
+        if (result.location === 'remote' && result.receipt?.state === 'unknown') {
+          return runtime.runTask(taskId, async () => {
+            if (runtime.getTask(taskId).state === 'running') {
+              runtime.transitionTask(taskId, 'waiting_reconciliation', {error: {code: 'RESULT_UNKNOWN', message: 'Remote subagent result is unknown', retryable: false}});
+            }
+            return {resultSummary: 'Remote subagent result is unknown'};
+          }, {deadline, sideEffect: 'read'});
+        }
+        if (result.location === 'remote' && result.receipt?.state === 'succeeded') {
+          const summary = String(result.receipt.summary || '远端执行器已回执');
+          return runtime.runTask(taskId, async () => ({resultSummary: `${summary}\n（远端执行）`}), {deadline, sideEffect: 'read'});
+        }
+        note(result.reason || 'no healthy remote host');
+      } catch (error) {
+        if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') throw error;
+        note(error instanceof Error ? error.message : 'remote runner failed');
+      }
+    } else if (remote) note('no healthy remote host');
+    return startRuntimeSubagentChild(host, taskId, deadline);
+  };
+}
+
 export function createDesktopAsyncSubagentTools(options: DesktopSubagentDispatchToolOptions & {
   globalCap?: number; perParentCap?: number; onReport?: (report: AsyncSubagentReport) => void;
   verifyUnknownWrite?: (taskId: string) => Promise<'applied' | 'not_applied' | 'unknown'>;
   getGrantedTools?: () => readonly string[];
+  startChild?: (taskId: string, deadline: string, host: SubagentHostOptions) => Promise<TaskSnapshot>;
 }): AsyncSubagentController {
   return createAsyncSubagentController({host: desktopSubagentHostOptions(options),
     ...(options.globalCap === undefined ? {} : {globalCap: options.globalCap}),
     ...(options.perParentCap === undefined ? {} : {perParentCap: options.perParentCap}),
     ...(options.onReport === undefined ? {} : {onReport: options.onReport}),
     ...(options.verifyUnknownWrite === undefined ? {} : {verifyUnknownWrite: options.verifyUnknownWrite}),
-    ...(options.getGrantedTools === undefined ? {} : {getGrantedTools: options.getGrantedTools})});
+    ...(options.getGrantedTools === undefined ? {} : {getGrantedTools: options.getGrantedTools}),
+    ...(options.startChild === undefined ? {} : {startChild: options.startChild})});
 }

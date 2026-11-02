@@ -1,0 +1,152 @@
+import {createHash} from 'node:crypto';
+import {ProtocolError} from '@personal-agent/contracts';
+import type {RegisteredTool} from '@personal-agent/contracts';
+import {buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
+import type {TaskRuntime} from '../index.js';
+import {commitDeveloperDutyStatusComment, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
+
+export const DUTY_WATCH = 'duty.watch';
+export const DUTY_UNWATCH = 'duty.unwatch';
+export const DUTY_POLICY_SET = 'duty.policy.set';
+export const DUTY_PERSONAL_LIST = 'duty.personal.list';
+export const DUTY_STATUS = 'duty.status';
+export const DUTY_CI_TRIAGE = 'duty.ci.triage';
+export const DUTY_TOOL_VERSION = '1.0.0';
+const KEY = 'developer-duty-registry:v1';
+const WATCH = 'developer-duty-watch:v1';
+const POLICY = 'developer-duty-policy:v1';
+
+export interface DeveloperDutyToolOptions {
+  getRuntime: () => TaskRuntime;
+  readPage?: (repo: string, cursor: DutyCursor | undefined) => Promise<DutyPollPage>;
+  comments?: DeveloperDutyPorts;
+  /** Checkpoint-backed comment port. It does not call GitHub. */
+  useFixtureComments?: boolean;
+  now?: () => number;
+  onNotify?: (notice: {channel: 'f12'; delivered: boolean; duplicate: boolean; summary: string; dedupeKey: string}) => void;
+  submitRemote?: (job: {kind: 'developer-duty'; idempotencyKey: string; taskId: string; repo: string; payload: Record<string, unknown>}) => Promise<{location: string; reason: string; receipt: Record<string, unknown>}>;
+}
+
+function fail(code: 'INVALID_ARGUMENT' | 'SCOPE_DENIED', message: string): never {throw new ProtocolError(code, message);}
+const repoOk = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
+
+export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {tools: RegisteredTool[]; poll(): Promise<Array<Record<string, unknown>>>} {
+  const runtime = () => options.getRuntime();
+  const owner = () => runtime().findTaskByIdempotencyKey(KEY) ?? runtime().submitTask({conversationId: 'developer-duty', goal: '开发值班', idempotencyKey: KEY});
+  const watches = (): string[] => (runtime().loadCheckpoint(owner().taskId, WATCH) as {repos?: string[]} | undefined)?.repos ?? [];
+  const policies = (): Record<string, RepoDutyPolicy> => (runtime().loadCheckpoint(owner().taskId, POLICY) as {policies?: Record<string, RepoDutyPolicy>} | undefined)?.policies ?? {};
+  const saveWatches = (repos: string[]) => runtime().saveCheckpoint(owner().taskId, WATCH, {repos});
+  const readPage = options.readPage ?? (async () => ({repo: '', connected: false, gap: true, events: []}));
+  const descriptor = (name: string, read: boolean, input: {[k: string]: unknown}): RegisteredTool['descriptor'] => ({
+    name, version: DUTY_TOOL_VERSION, inputSchema: input, outputSchema: {type: 'object', additionalProperties: true},
+    sideEffect: read ? 'read' : 'local_write', requiredScopes: ['agent:delegate'], idempotencySupport: false, recoverySupport: true, requiresPresence: false});
+  const object = (properties: Record<string, unknown>, required: string[]) => ({type: 'object', additionalProperties: false, properties, required});
+  const commentsFor = (taskId: string): DeveloperDutyPorts | undefined => {
+    if (options.comments) return options.comments;
+    if (!options.useFixtureComments) return undefined;
+    const key = 'developer-duty-fixture-comments:v1';
+    const read = () => (runtime().loadCheckpoint(taskId, key) as {items?: Array<{id: number; body: string}>} | undefined)?.items ?? [];
+    const write = (items: Array<{id: number; body: string}>) => runtime().saveCheckpoint(taskId, key, {items, evidenceLevel: 'fixture'});
+    return {
+      listComments: async () => read().map(item => ({...item})),
+      createComment: async body => {
+        const items = read();
+        const id = (items.at(-1)?.id ?? 0) + 1;
+        write([...items, {id, body}]);
+        return {state: 'confirmed', id};
+      },
+      editComment: async (id, body) => {
+        const items = read();
+        if (!items.some(item => item.id === id)) return {state: 'unknown'};
+        write(items.map(item => item.id === id ? {id, body} : item));
+        return {state: 'confirmed'};
+      },
+    };
+  };
+  const notify = (taskId: string, summary: string, dedupeKey: string) => {
+    const notice = queueDeveloperDutyNotification(runtime(), taskId, summary, dedupeKey);
+    options.onNotify?.(notice);
+    return notice;
+  };
+  const poll = async () => {
+    const task = owner();
+    const results = [];
+    const comments = commentsFor(task.taskId);
+    for (const repo of watches()) {
+      const policy = policies()[repo] ?? defaultRepoDutyPolicy(repo);
+      if (!policy.allowed) {results.push({repo, skipped: 'repository is not allowlisted'}); continue;}
+      const stored = runtime().loadCheckpoint(task.taskId, 'developer-duty-cursor:v1') as DutyCursor | undefined;
+      const cursor = stored?.repo === repo ? stored : undefined;
+      const page = {...await readPage(repo, cursor), repo};
+      const bucket = Math.floor((options.now?.() ?? Date.now()) / 60_000);
+      const digest = createHash('sha256').update(JSON.stringify([repo, cursor?.deliveryId ?? '', page.gap, page.connected, page.events.map(event => event.deliveryId)])).digest('hex').slice(0, 16);
+      const statusComment = (page as {statusComment?: {number?: number; body?: string; existing?: unknown; writeState?: string}}).statusComment;
+      const writeComment = async (via: 'remote' | 'local') => {
+        if (!policy.comment || !statusComment?.body || (via === 'local' && !comments)) return;
+        if (via === 'remote' && options.submitRemote) {
+          await options.submitRemote({kind: 'developer-duty', idempotencyKey: `duty-comment:${repo}:${digest}`, taskId: task.taskId, repo,
+            payload: {action: 'comment', repo, number: statusComment.number, body: statusComment.body,
+              ...(statusComment.existing === undefined ? {} : {existing: statusComment.existing}),
+              ...(statusComment.writeState === undefined ? {} : {writeState: statusComment.writeState})}});
+          return;
+        }
+        if (comments) await commitDeveloperDutyStatusComment(runtime(), task.taskId, comments, statusComment.body);
+      };
+      if (options.submitRemote) {
+        const remote = await options.submitRemote({kind: 'developer-duty', idempotencyKey: `duty-poll:${repo}:${cursor?.deliveryId ?? 'start'}:${bucket}`, taskId: task.taskId, repo,
+          payload: {action: 'poll', repo, page, ...(cursor ? {cursor} : {})}});
+        if (remote.location === 'remote') {
+          const gap = remote.receipt.gap === true || remote.receipt.connected === false;
+          const events = Array.isArray(remote.receipt.events) ? remote.receipt.events : [];
+          if (!gap && events.length) notify(task.taskId, `${repo} 有 ${events.length} 条新事件`, `duty:${repo}:${events.map(event => (event as {deliveryId?: string; id?: string}).deliveryId ?? (event as {id?: string}).id).join(',')}`);
+          if (!gap) await writeComment('remote');
+          results.push({repo, location: remote.location, reason: remote.reason, gap, noChange: gap ? false : remote.receipt.noChange === true, evidenceLevel: 'fixture'});
+          continue;
+        }
+        const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
+        if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
+        if (!(page.gap || !page.connected)) await writeComment('local');
+        results.push({repo, location: 'local', reason: remote.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel: 'fixture'});
+        continue;
+      }
+      const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
+      if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
+      if (!(page.gap || !page.connected)) await writeComment('local');
+      results.push({repo, location: 'local', reason: page.gap || !page.connected ? 'gap is not no change' : 'local cursor', gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel: 'fixture'});
+    }
+    return results;
+  };
+  const tools: RegisteredTool[] = [
+    {descriptor: descriptor(DUTY_WATCH, false, object({repo: {type: 'string'}}, ['repo'])), execute: async (input, context) => {
+      if (runtime().getTask(context.taskId).conversationId?.startsWith('desktop-subtask:')) fail('INVALID_ARGUMENT', 'Duty is controlled from the main conversation');
+      const repo = String((input as {repo?: string}).repo ?? '');
+      if (!repoOk(repo)) fail('INVALID_ARGUMENT', 'Repository name is invalid');
+      const next = [...new Set([...watches(), repo])];
+      saveWatches(next);
+      const current = policies();
+      if (!current[repo]) runtime().saveCheckpoint(owner().taskId, POLICY, {policies: {...current, [repo]: defaultRepoDutyPolicy(repo)}});
+      return {repo, watched: true, merge: false};
+    }},
+    {descriptor: descriptor(DUTY_UNWATCH, false, object({repo: {type: 'string'}}, ['repo'])), execute: async (input) => {
+      const repo = String((input as {repo?: string}).repo ?? '');
+      saveWatches(watches().filter(item => item !== repo));
+      return {repo, watched: false};
+    }},
+    {descriptor: descriptor(DUTY_POLICY_SET, false, object({repo: {type: 'string'}, comment: {type: 'boolean'}, pushBranches: {type: 'array', items: {type: 'string'}}, allowed: {type: 'boolean'}}, ['repo', 'allowed'])), execute: async (input) => {
+      const raw = input as {repo?: string; comment?: boolean; pushBranches?: string[]; allowed?: boolean; merge?: boolean};
+      if (!raw.repo || !repoOk(raw.repo)) fail('INVALID_ARGUMENT', 'Repository name is invalid');
+      if (raw.merge === true) fail('SCOPE_DENIED', 'Merge stays forbidden by default');
+      const policy: RepoDutyPolicy = {repo: raw.repo, allowed: raw.allowed === true, comment: raw.comment === true, pushBranches: Array.isArray(raw.pushBranches) ? raw.pushBranches.filter(branch => typeof branch === 'string') : [], merge: false};
+      runtime().saveCheckpoint(owner().taskId, POLICY, {policies: {...policies(), [policy.repo]: policy}});
+      return policy;
+    }},
+    {descriptor: descriptor(DUTY_PERSONAL_LIST, true, object({}, [])), execute: async () => ({items: buildPersonalView({login: 'fixture', assigned: [], reviewRequested: [], failing: []}), evidenceLevel: 'fixture'})},
+    {descriptor: descriptor(DUTY_STATUS, true, object({}, [])), execute: async () => {
+      const task = owner();
+      return {repos: watches(), policies: policies(), cursor: runtime().loadCheckpoint(task.taskId, 'developer-duty-cursor:v1') ?? null,
+        gap: runtime().loadCheckpoint(task.taskId, 'developer-duty-gap:v1') ?? null, evidenceLevel: 'fixture'};
+    }},
+    {descriptor: descriptor(DUTY_CI_TRIAGE, true, object({logExcerpt: {type: 'string'}}, ['logExcerpt'])), execute: async (input) => ({...classifyCiFailure({logExcerpt: String((input as {logExcerpt?: string}).logExcerpt ?? '')}), evidenceLevel: 'fixture' as const})},
+  ];
+  return {tools, poll};
+}

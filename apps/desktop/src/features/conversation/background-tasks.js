@@ -1,9 +1,14 @@
-import {mountSubagentCompletionNotice} from './subagent-completion-notice.js';
 import {stateNames} from './state.js';
 
-/** Read-only background list. Completion uses the existing subagent notice, and opening uses the same window action. */
+/** Read-only background list. The panel's existing completion notice stays the only one. */
 export function mountBackgroundTasks(root, invoke) {
-  const notice = mountSubagentCompletionNotice(root, invoke);
+  if (!document.querySelector('link[data-background-tasks]')) {
+    const stylesheet = document.createElement('link');
+    stylesheet.rel = 'stylesheet';
+    stylesheet.href = new URL('./background-tasks.css', import.meta.url).href;
+    stylesheet.dataset.backgroundTasks = '';
+    document.head.append(stylesheet);
+  }
   const section = document.createElement('section');
   section.className = 'background-tasks';
   section.setAttribute('aria-label', '后台任务');
@@ -48,7 +53,6 @@ export function mountBackgroundTasks(root, invoke) {
       .then(result => {
         if (closed) return;
         if (!result || !Array.isArray(result.items)) throw Error('Invalid background tasks');
-        notice.update(result.items);
         list.replaceChildren(...result.items.map(row));
         status.textContent = result.items.length ? '' : '没有正在后台运行的子任务';
       })
@@ -56,7 +60,7 @@ export function mountBackgroundTasks(root, invoke) {
       .finally(() => { pending = undefined; });
     return pending;
   }
-  return {refresh, dispose() { closed = true; notice.dispose(); }};
+  return {refresh, dispose() { closed = true; }};
 }
 
 function text(value) {return typeof value === 'string' ? value : '';}

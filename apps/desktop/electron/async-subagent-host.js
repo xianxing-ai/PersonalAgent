@@ -1,18 +1,35 @@
-/** Desktop adapter. Admission and cancellation stay in Runtime; this file does not start tasks itself. */
-export function createAsyncSubagentHost({runtimeModule, getRuntime, subagentOptions, getGrantedTools}) {
+import {createHash} from 'node:crypto';
+
+/** Desktop adapter. Admission and remote dispatch stay in Runtime. */
+export function createAsyncSubagentHost({runtimeModule, getRuntime, subagentOptions, getGrantedTools, getRemoteSubmit, deliverReport}) {
   const controller = runtimeModule.createDesktopAsyncSubagentTools({...subagentOptions, getGrantedTools,
-    onReport: () => { /* The background list reads the same checkpoint on refresh. */ }});
+    verifyUnknownWrite: async taskId => {
+      const runtime = (getRuntime ?? subagentOptions?.getRuntime)?.();
+      const records = runtime?.readToolExecutions?.(taskId) ?? [];
+      if (records.some(record => record.state === 'unknown' || record.reconciliationOutcome === 'unknown')) return 'unknown';
+      return 'not_applied';
+    },
+    startChild: runtimeModule.createRemoteAwareSubagentStarter({host: subagentOptions, getRemote: getRemoteSubmit}),
+    onReport: report => deliver(report)});
+  function deliver(report) {
+    deliverReport?.({...report, messageId: `async-report:${createHash('sha256').update(`${report.parentTaskId}:${report.subtaskId}:${report.revision}`).digest('hex').slice(0, 40)}`});
+  }
+  function deliverReported() {
+    for (const item of controller.list()) {
+      if (item.reported && item.summary) deliver({parentTaskId: item.parentTaskId, subtaskId: item.subtaskId, taskId: item.taskId, revision: item.revision, state: item.state, summary: item.summary});
+    }
+  }
   let timer;
   return {
     tools: controller.tools,
     start() {
       if (timer) return;
-      timer = setInterval(() => {void controller.pump().catch(() => {});}, 1000);
+      timer = setInterval(() => {void controller.pump().then(deliverReported).catch(() => {});}, 1000);
       timer.unref?.();
-      void controller.recover().catch(() => {});
+      void controller.recover().then(deliverReported).catch(() => {});
     },
     stop() { if (timer) clearInterval(timer); timer = undefined; },
-    pump() { return controller.pump(); },
+    pump() { return controller.pump().then(result => {deliverReported(); return result;}); },
     list() { return {items: controller.list()}; },
     instruct(payload) {
       return controller.instruct(payload?.parentTaskId, payload?.subtaskId, payload?.instruction, payload?.expectedControlRevision);

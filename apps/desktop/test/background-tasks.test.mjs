@@ -6,7 +6,7 @@ function fixture(t, handler) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
   t.after(() => {if (original) Object.defineProperty(globalThis, 'document', original); else delete globalThis.document;});
   class Element {
-    constructor(tag) {this.tag = tag; this.children = []; this.hidden = false; this.text = ''; this.style = {};}
+    constructor(tag) {this.tag = tag; this.children = []; this.hidden = false; this.text = ''; this.style = {}; this.dataset = {};}
     set textContent(value) {this.text = String(value); this.children = [];}
     get textContent() {return (this.text || '') + this.children.map(child => child.textContent).join('');}
     set innerHTML(value) {throw Error(`Unexpected HTML interpolation: ${value}`);}
@@ -15,7 +15,7 @@ function fixture(t, handler) {
     setAttribute(name, value) {this.attrs = {...(this.attrs ?? {}), [name]: String(value)};}
     querySelector() {return undefined;}
   }
-  const document = {head: new Element('head'), body: new Element('body'), createElement: tag => new Element(tag)};
+  const document = {head: new Element('head'), body: new Element('body'), createElement: tag => new Element(tag), querySelector: () => undefined};
   globalThis.document = document;
   const root = new Element('main');
   const calls = [];

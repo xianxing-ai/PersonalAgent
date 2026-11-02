@@ -492,6 +492,8 @@ let workflowGraphComposition={tools:[],unavailable:['not_assembled']};
 let todoHost;
 let asyncSubagentHost;
 let remoteRunnerHost;
+let dutyPoll;
+let additiveSurface;
 let todoFailure = '';
 let todoClosing;
 let todoClosed = false;
@@ -2049,6 +2051,8 @@ async function initializeRuntime() {
   if(localAuthorizationOnly){
     if(runtimeApplication.activeTaskCount)throw Error('请先完成或取消当前本机授权卡');
     clearInterval(eventPoll);eventPoll=undefined;
+    if(typeof dutyPoll!=='undefined'&&dutyPoll){clearInterval(dutyPoll);dutyPoll=undefined;}
+    if(typeof asyncSubagentHost!=='undefined')asyncSubagentHost?.stop();
     runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;localAuthorizationOnly=false;
   }
   initializeAuthorizationHosts(runtimeModule);
@@ -2490,6 +2494,15 @@ async function initializeRuntime() {
       const {createAsyncSubagentHost} = await import('./async-subagent-host.js');
       asyncSubagentHost?.stop();
       asyncSubagentHost = createAsyncSubagentHost({runtimeModule, getGrantedTools:()=>runtimeApplication.tools?.list().map(tool=>tool.name)??[],
+        getRemoteSubmit:()=>remoteRunnerHost?.service, deliverReport:report=>{
+          try {
+            const conversationId=conversations.activeConversationId('panel');
+            const session=conversations.session(conversationId,'panel');
+            conversations.addLiveMessage({id:report.messageId, sessionId:session.id, role:'assistant', text:String(report.summary||'后台子任务已结束'),
+              createdAt:new Date().toISOString(), surface:'panel', conversationId});
+            publish();
+          } catch { /* The runtime checkpoint still records the one report. */ }
+        },
         subagentOptions:{competitionOnly:true, getRuntime:()=>runtimeApplication.runtime, getTools:()=>runtimeApplication.tools, fakeModelMode,
           getToolsForSubtask:(subtask,worker)=>f28Workflow?.getToolsForSubtask(subtask,worker,runtimeApplication.tools)??runtimeApplication.tools,
           runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)}});
@@ -2499,6 +2512,9 @@ async function initializeRuntime() {
           return tool.execute({...input, subtasks:input.subtasks.map(subtask=>({...subtask,
             ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {})}))}, context);
         }} : tool);
+      const {createRemoteRunnerDesktopHost} = await import('./remote-runner-host.js');
+      remoteRunnerHost = createRemoteRunnerDesktopHost({runtimeModule, getRuntime:()=>runtimeApplication.runtime,
+        safeStorage, userData:app.getPath('userData')});
       asyncSubagentHost.start();
       const subagentAvailability = {
         toolName: SUBAGENT_DISPATCH_TOOL_NAME,
@@ -2805,10 +2821,25 @@ async function initializeRuntime() {
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       conversationTools.push(...(asyncSubagentTools??[]));
-      const {createRemoteRunnerDesktopHost} = await import('./remote-runner-host.js');
-      remoteRunnerHost = createRemoteRunnerDesktopHost({runtimeModule, getRuntime:()=>runtimeApplication.runtime,
-        safeStorage, userData:app.getPath('userData')});
       conversationTools.push(...remoteRunnerHost.tools);
+      const dutyHost=runtimeModule.createDeveloperDutyTools({getRuntime:()=>runtimeApplication.runtime,
+        useFixtureComments:true,
+        readPage:async repo=>({repo, connected:false, gap:true, events:[]}),
+        submitRemote:job=>remoteRunnerHost.service.submit(job),
+        onNotify:notice=>{
+          if(!notice?.dedupeKey||notice.duplicate)return;
+          const id=`duty-f12:${notice.dedupeKey}`;
+          if(notifications.has(id))return;
+          notifications.set(id,{notificationId:id, summary:notice.summary, occurredAt:new Date().toISOString(), channel:'f12', delivered:false, evidenceLevel:'fixture'});
+          publish();
+        }});
+      conversationTools.push(...dutyHost.tools);
+      if(dutyPoll)clearInterval(dutyPoll);
+      dutyPoll=setInterval(()=>{void dutyHost.poll().catch(()=>{});}, 60_000);
+      dutyPoll.unref?.();
+      void dutyHost.poll().catch(()=>{});
+      const {additiveConversationBindings}=await import('./additive-conversation-tools.js');
+      additiveSurface=additiveConversationBindings([...(asyncSubagentTools??[]), ...remoteRunnerHost.tools, ...dutyHost.tools], ()=>runtimeApplication.runtime);
       if(f16F17Workflow?.commandTool)conversationTools=conversationTools.map(tool=>
         tool.descriptor.name==='workspace.run_allowed_command'?f16F17Workflow.commandTool:tool);
       conversationTools.push(...(f16F17Workflow?.tools??[]));
@@ -3111,8 +3142,8 @@ async function initializeRuntime() {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability]})),
-          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports],
+            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability,...(additiveSurface?.availability??[])]})),
+          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports,...(additiveSurface?.exports??[])],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -5677,6 +5708,8 @@ app.whenReady().then(async () => {
     clearInterval(poll);
     stopOrbDrag();
     clearInterval(eventPoll);
+    if(typeof dutyPoll!=='undefined'&&dutyPoll)clearInterval(dutyPoll);
+    if(typeof asyncSubagentHost!=='undefined')asyncSubagentHost?.stop();
     clearInterval(resourcePoll);
     clearImmediate(eventContinuation);
     snapshotPublisher.close();

@@ -25,7 +25,9 @@
 
 远端进程是 `scripts/remote-runner/remote-runner-service.mjs`。标准输入一次一个任务；`--serve` 给 systemd 扫 inbox。同一幂等键的成功回执会原样返回。结果未知的写入不会重做。合并请求直接拒绝。每分钟任务数默认不超过主机上的上限。
 
-没有健康主机时，本地会明确记 `location: "local"`，不会假装任务已经在云上跑完。机器重新打开后，游标只有在远端声明自己接在本地游标之后才前进；对不上就保持本地游标，避免重复评论。
+没有健康主机、心跳过期或传输失败时，`submit` 记 `location: "local"` 和原因。异步子任务这时改走原来的本地 worker，父会话回报里会写「本地执行」和同一原因。值班轮询同样把缺口记成不是“无变化”。机器重新打开后，游标只有在远端声明自己接在本地游标之后才前进；对不上就保持本地游标，避免重复评论。未知写入由 `verifyUnknownWrite` 读回，`redo` 为 false。
+
+`developerDutyRemoteRunner()` 不传服务时仍是无主机 stub。已经登记并启用的主机存在时，桌面默认使用 `createRemoteRunnerService`，不再停在 stub。
 
 ## 排障
 
