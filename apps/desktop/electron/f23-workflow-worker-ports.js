@@ -69,13 +69,17 @@ export function createDesktopF23WorkflowPorts({runtimeModule,getApplication,mode
       if(!runtime().saveCheckpointOnce(context.taskId,'f23:experiment',saved))fail('RESULT_UNKNOWN');
       await host.configure('f23-acceptance:'+context.taskId,policy,context);current();
       const receipt=await invokePaired({configuration,input,context,assertCurrent:current});current();
+      if(!runtime().saveCheckpointOnce(context.taskId,'f23:received',receipt))fail('RESULT_UNKNOWN');
+      if(!Number.isFinite(Date.parse(receipt.startedAt))||!Number.isFinite(Date.parse(receipt.finishedAt))
+        ||Date.parse(receipt.startedAt)<Date.parse(policy.validFrom)||Date.parse(receipt.finishedAt)<Date.parse(receipt.startedAt)
+        ||Date.parse(receipt.finishedAt)>Date.now()||Date.parse(receipt.finishedAt)>Date.parse(context.deadline))fail('PROTOCOL_MISMATCH');
       for(const branch of ['main','shadow']){
         const rows=receipt?.result?.branches?.[branch];
         if(!Array.isArray(rows)||rows.length!==input.cases.length||rows.some((row,i)=>row.id!==input.cases[i].id
           ||row.inputDigest!==hash(input.cases[i].messages)||typeof row.output!=='string'||!row.output.trim()||row.output.length>64000
           ||!Number.isFinite(row.wallMs)||row.wallMs<0||row.modelCalls!==1||row.deployment?.verification==='mock'
           ||!Number.isFinite(Date.parse(row.startedAt))||!Number.isFinite(Date.parse(row.finishedAt))
-          ||Date.parse(row.startedAt)<Date.parse(policy.validFrom)||Date.parse(row.finishedAt)>Date.now()))fail('PROTOCOL_MISMATCH');
+          ||Date.parse(row.finishedAt)<Date.parse(row.startedAt)))fail('PROTOCOL_MISMATCH');
       }
       if(!runtime().saveCheckpointOnce(context.taskId,'f23:outputs',receipt))fail('RESULT_UNKNOWN');
       state().set('latest',{experimentId:context.taskId});onUpdate();

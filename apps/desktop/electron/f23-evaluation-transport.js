@@ -10,7 +10,7 @@ export async function invokeF23PairedEvaluation({configuration,input,context,ass
   if(!options.deploymentVersion)throw new ProtocolError('UNSUPPORTED_CAPABILITY','F23 requires a fixed deployment');
   const current=()=>{assertCurrent();if(!isDeepStrictEqual(options,configuration.readTransportOptions(binding)))
     throw new ProtocolError('REVISION_CONFLICT','Original F23 transport changed');};
-  current();const requestId=context.runId,sessionId=randomUUID(),body=JSON.stringify({query:JSON.stringify(input)});
+  current();const requestId=context.runId,sessionId=randomUUID(),body=JSON.stringify({query:JSON.stringify(input)}),startedAt=new Date().toISOString();
   const response=await transport.fetchImpl(binding.gatewayUrl+'/runtimes/'+encodeURIComponent(binding.runtimeName)+'/invocations?endpoint='+encodeURIComponent(options.deploymentVersion),{
     method:'POST',redirect:'error',signal:AbortSignal.any([context.signal,AbortSignal.timeout(Math.max(1,Date.parse(context.deadline)-Date.now()))]),
     headers:{Authorization:configuration.readAuthorization(binding,transport),'Content-Type':'application/json','X-Request-Id':requestId,
@@ -20,5 +20,5 @@ export async function invokeF23PairedEvaluation({configuration,input,context,ass
   let result;try{result=JSON.parse(text);}catch{throw new ProtocolError('PROTOCOL_MISMATCH','Invalid F23 result');}current();
   if(result?.evaluationVersion!==1||result.requestId!==requestId||result.sessionId!==sessionId||result.inputDigest!==hash(input))
     throw new ProtocolError('REVISION_CONFLICT','F23 original response binding changed');
-  return {deployment:{...binding,version:options.deploymentVersion},requestId,sessionId,result};
+  return {deployment:{...binding,version:options.deploymentVersion},requestId,sessionId,startedAt,finishedAt:new Date().toISOString(),result};
 }
