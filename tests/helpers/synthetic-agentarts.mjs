@@ -6,16 +6,25 @@ export const syntheticPublicPayloadGate=async scope=>({assertBeforeSend(actual){
   assert.equal(scope.isCurrent(),true);assert.equal(actual.destination,scope.destination);assert.equal(actual.payload,scope.payload);
 }});
 
+function requestEnvelope(payload,{workflowGoalInput:key}={}){
+  const encoded=key===undefined?payload.query:payload.inputs[key],envelope=JSON.parse(encoded);
+  assert.deepEqual(Object.keys(envelope).sort(),['executionEpoch','executionEpochVersion','query']);
+  assert.equal(envelope.executionEpochVersion,1);assert.ok(Number.isSafeInteger(envelope.executionEpoch)&&envelope.executionEpoch>=0);
+  assert.equal(typeof envelope.query,'string');return envelope;
+}
+export const syntheticAgentArtsQuery=(payload,options)=>requestEnvelope(payload,options).query;
+export function syntheticAgentArtsResult(payload,result,options){
+  const {executionEpoch}=requestEnvelope(payload,options);
+  return JSON.stringify({executionEpochVersion:1,executionEpoch,result});
+}
+
 export function syntheticAgentArtsOptions(options){
   assert.equal(typeof options.fetchImpl,'function','Synthetic composition requires its explicit fake fetch');
   const fakeFetch=options.fetchImpl;
   return {...options,preparePayload:options.preparePayload??syntheticPublicPayloadGate,
     fetchImpl:async(url,init)=>{
       const body=JSON.parse(init.body),key=options.workflowGoalInput;
-      const encoded=key===undefined?body.query:body.inputs[key],envelope=JSON.parse(encoded);
-      assert.deepEqual(Object.keys(envelope).sort(),['executionEpoch','executionEpochVersion','query']);
-      assert.equal(envelope.executionEpochVersion,1);assert.ok(Number.isSafeInteger(envelope.executionEpoch)&&envelope.executionEpoch>=0);
-      assert.equal(typeof envelope.query,'string');
+      const envelope=requestEnvelope(body,options);
       const payload=key===undefined?{...body,query:envelope.query}:{...body,inputs:{...body.inputs,[key]:envelope.query}};
       const response=await fakeFetch(url,{...init,body:JSON.stringify(payload)});
       if(!response.ok||!response.headers.get('content-type')?.startsWith('application/json'))return response;
