@@ -45,7 +45,7 @@ export interface RuntimeProactiveControllerReceipt {
 }
 export interface RuntimeProactiveWorkflowHostOptions {
   taskId: string; sessionId: string; taskDeadline: string; contractRef: string;
-  advancePort(input: ProactiveAdvanceRequest): Promise<ProactiveWorkflowResult>;
+  advancePort(input: ProactiveAdvanceRequest, context?: {executionEpoch: number; assertCurrent?: () => void}): Promise<ProactiveWorkflowResult>;
   verifyAdvance(result: ProactiveWorkflowResult, input: ProactiveAdvanceRequest): boolean | Promise<boolean>;
   sign(kind: 'event' | 'responsibility' | 'receipt' | 'control', value: Record<string, unknown>, binding: ProactiveSessionBinding): unknown;
   pureAdvance?: {kind: 'signed_frontier_no_effects'};

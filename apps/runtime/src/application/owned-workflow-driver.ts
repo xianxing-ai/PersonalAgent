@@ -23,7 +23,7 @@ export interface RuntimeOwnedWorkflowDriverState<TInput=unknown> {
  * Workflow identity, catalog and completion evidence are never chosen by model JSON. */
 export interface RuntimeOwnedWorkflowDriverOptions<TInput> {
   workflowId:string;checkpointKey:string;mode:NonNullable<OwnedWorkflowAdvanceRequest['mode']>;
-  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>};
+  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>};
   bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'>;catalog:readonly CoordinationAvailableTool[];
   requestId:(sequence:number)=>string;
   /** Optional trusted local frontier guard, executed before any host submit. */
@@ -131,7 +131,7 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       receipts:state.receipts,resolvedValues:state.resolvedValues};
     const snapshot=options.snapshot?.(state);if(snapshot)envelope.snapshot=snapshot;
     state.pendingSend={requestId:envelope.requestId,digest:hash({...envelope,signal:undefined})};save();
-    const result=await timed('image-advance',()=>options.image.advance(envelope));active();
+    const result=await timed('image-advance',()=>options.image.advance(envelope,{executionEpoch,assertCurrent:active}));active();
     if(result.workflowId!==options.workflowId||result.workflowVersion!=='1.0.0'||!result.checkpoint||!Array.isArray(result.proposals)||!plain(result.nodes))
       throw new ProtocolError('PROTOCOL_MISMATCH','Invalid original image graph result');
     state.result=structuredClone(result);state.checkpoint=result.checkpoint;state.sequence++;delete state.pendingSend;save();

@@ -37,7 +37,10 @@ function fixture({path=':memory:',unknown=false,waitCommand=false}={}){
           :{version:1,docMarkdown:'Synthetic candidate only',sampleSnippet:'export const sample=1;'}},
       {id:'recheck',description:'Fixed Synthetic abstention',value:{},abstain:true},
     ]});
-  const image={bindingId:'synthetic-fixed-image',advance:async request=>{advances.push(request.requestId);return engine.advance(request);}};
+  const image={bindingId:'synthetic-fixed-image',advance:async(request,context)=>{
+    assert.equal(context.executionEpoch,app.runtime.readExecutionEpoch(request.taskId));context.assertCurrent();
+    advances.push(request.requestId);return engine.advance(request);
+  }};
   const open=()=>{app=createRuntimeApplication({path,profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-graph-owner',tools});return app;};open();
   const deadline=new Date(Date.now()+60000).toISOString();
   function create(){const task=app.runtime.submitTask({goal:'Synthetic F20 consumption',conversationId:'synthetic-graph-ui',idempotencyKey:'synthetic-driver'});

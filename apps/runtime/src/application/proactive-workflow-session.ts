@@ -36,7 +36,7 @@ export interface ProactiveWorkflowSessionOptions<I extends ProactiveSessionReque
   assertExecutionEpoch?:(expectedEpoch:number)=>void;
   /** Must read current TaskRuntime cancellation/terminal state and trusted control revision. */
   assertActive(binding:ProactiveSessionBinding):void|Promise<void>;
-  advancePort(input:I & {checkpoint?:string}):Promise<R>;
+  advancePort(input:I & {checkpoint?:string},context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<R>;
   /** Existing image response signature verifier, including request/session binding. */
   verifyAdvance(result:R,input:I & {checkpoint?:string}):boolean|Promise<boolean>;
   /** Trusted startup capability, never request/model data. Port performs signed frontier computation only: no models, tools or external writes. */
@@ -124,7 +124,8 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
   };
   async function computeAndCommit(request:I & {checkpoint?:string},reserved:ReturnType<typeof read>,recovery=false):Promise<R>{
     const prior=reserved.state.requests[request.requestId]!;
-    const result=await bounded(()=>options.advancePort(request),request.signal,request.deadline);
+    const result=await bounded(()=>options.advancePort(request,{executionEpoch:options.executionEpoch??0,
+      assertCurrent:()=>options.assertExecutionEpoch?.(options.executionEpoch??0)}),request.signal,request.deadline);
     if(!await bounded(()=>options.verifyAdvance(result,request),request.signal,request.deadline)||!result.checkpoint||result.taskDeadline!==binding.taskDeadline||!Array.isArray(result.proposals))
       throw new ProtocolError('UNAUTHORIZED','Unverified proactive advance response');
     await active(request.signal,request.deadline);

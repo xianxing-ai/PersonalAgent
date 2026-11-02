@@ -13,6 +13,8 @@ test('execution epoch survives restart, deduplicates controls and retains origin
   const task=runtime.submitTask({goal:'Synthetic epoch persistence',conversationId:'epoch-fixture',idempotencyKey:'epoch'});
   try {
     assert.equal(runtime.readExecutionEpoch(task.taskId),0);
+    assert.throws(()=>runtime.assertExecutionEpoch(task.taskId,-1),{code:'REVISION_CONFLICT'});
+    assert.equal(runtime.loadCheckpoint(task.taskId,'competition-stale-epoch'),undefined);
     assert.equal(runtime.advanceExecutionEpoch(task.taskId,{requestId:'pause',reason:'pause'}),1);
     runtime.saveCheckpoint(task.taskId,'original-unknown-operation',{runId:'original-run',state:'unknown'});
     runtime.close();runtime=new TaskRuntime(path);
@@ -20,9 +22,12 @@ test('execution epoch survives restart, deduplicates controls and retains origin
     assert.equal(runtime.advanceExecutionEpoch(task.taskId,{requestId:'pause',reason:'pause'}),1);
     assert.throws(()=>runtime.advanceExecutionEpoch(task.taskId,{requestId:'pause',reason:'stop'}),{code:'REVISION_CONFLICT'});
     assert.throws(()=>runtime.assertExecutionEpoch(task.taskId,0),{code:'REVISION_CONFLICT'});
+    assert.deepEqual(runtime.loadCheckpoint(task.taskId,'competition-stale-epoch'),{expected:0,current:1});
     assert.equal(runtime.advanceExecutionEpoch(task.taskId,{requestId:'replan',reason:'replan'}),2);
     runtime.requestCancel(task.taskId);
     assert.equal(runtime.readExecutionEpoch(task.taskId),3);
+    assert.throws(()=>runtime.assertExecutionEpoch(task.taskId,2),{code:'REVISION_CONFLICT'});
+    assert.deepEqual(runtime.loadCheckpoint(task.taskId,'competition-stale-epoch'),{expected:0,current:1});
     runtime.requestCancel(task.taskId);
     assert.equal(runtime.readExecutionEpoch(task.taskId),3);
     assert.deepEqual(runtime.loadCheckpoint(task.taskId,'original-unknown-operation'),{runId:'original-run',state:'unknown'});

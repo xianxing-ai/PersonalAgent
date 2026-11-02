@@ -1814,8 +1814,13 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   assertExecutionEpoch(taskId: string, expectedEpoch: number): void {
-    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 0 || this.readExecutionEpoch(taskId) !== expectedEpoch)
+    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 0)
+      throw new RuntimeError('REVISION_CONFLICT', 'Invalid expected execution epoch');
+    const current = this.readExecutionEpoch(taskId);
+    if (current !== expectedEpoch) {
+      this.saveCheckpointOnce(taskId, 'competition-stale-epoch', {expected: expectedEpoch, current});
       throw new RuntimeError('REVISION_CONFLICT', 'Execution epoch is stale');
+    }
   }
 
   saveCheckpoint(taskId: string, key: string, value: unknown): void {
