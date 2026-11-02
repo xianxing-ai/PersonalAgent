@@ -11,13 +11,17 @@ export function classifyKnownEgressContent(payload) {
   const inspect=(value,depth=0)=>{
     if(depth>24)fail('INVALID_ARGUMENT');
     if(typeof value==='string'){
+      if(/data:(?:image|audio|video)\/[a-z0-9.+-]+;base64,/iu.test(value))fail('UNSUPPORTED_CAPABILITY');
       if(forbiddenText.test(value))return true;
       try {const decoded=JSON.parse(value);if(decoded!==value)return inspect(decoded,depth+1);}catch(error){if(error?.code)throw error;}
       return false;
     }
     if(Array.isArray(value))return value.some(item=>inspect(item,depth+1));
-    if(value&&typeof value==='object')return Object.entries(value).some(([key,item])=>
-      (forbiddenField.test(key)&&item!==null&&typeof item!=='object'&&String(item).trim()!=='')||inspect(item,depth+1));
+    if(value&&typeof value==='object')return Object.entries(value).some(([key,item])=>{
+      if((['dataBase64','audio','image_url'].includes(key)&&typeof item==='string'&&item)
+        ||key==='image_url'&&item&&typeof item.url==='string')fail('UNSUPPORTED_CAPABILITY');
+      return (forbiddenField.test(key)&&item!==null&&typeof item!=='object'&&String(item).trim()!=='')||inspect(item,depth+1);
+    });
     return false;
   };
   return inspect(payload)?'forbidden':'unknown';

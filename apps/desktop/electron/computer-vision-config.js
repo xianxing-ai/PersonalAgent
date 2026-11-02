@@ -41,7 +41,7 @@ const parseJson=(text,label)=>{try{return JSON.parse(text);}catch{fail('PROTOCOL
 /** Main-only encrypted optional vision configuration. Saving never contacts a model. */
 export function createComputerVisionConfig({userData,safeStorage,createGateway,fetchImpl=globalThis.fetch,onUpdate=()=>{},profile='huawei_ict_agentarts'}){
   const file=path.join(userData,'computer-vision-config.json'),pending=new Set(),calls=new AsyncLocalStorage();
-  let value={version:1,revision:randomUUID(),enabled:false,source:'agentarts-proxy',baseUrl:'',model:'',apiKey:''},disposed=false,failure;
+  let value={version:1,revision:randomUUID(),enabled:false,source:'agentarts-proxy',baseUrl:'',model:'',apiKey:''},disposed=false,failure,egressHost;
   const diagnostic=(error,stage,secrets=[])=>{
     const safe=computerControlFailure(error,stage);
     for(const secret of secrets)if(secret)safe.message=safe.message.replaceAll(secret,'[凭据已遮蔽]');
@@ -82,6 +82,7 @@ export function createComputerVisionConfig({userData,safeStorage,createGateway,f
     if(Date.parse(context.deadline)<=Date.now())fail('TIMEOUT','视觉分析超过原任务期限');
   };
   return Object.freeze({snapshot,isCurrent,
+    setEgressHost(host){if(typeof host?.prepare!=='function')fail('UNSUPPORTED_CAPABILITY','视觉本机出机门禁不可用');egressHost=host;},
     configure(input){
       if(disposed)fail('CANCELLED','视觉配置宿主已释放');
       if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['expectedRevision','enabled','source','baseUrl','model','apiKey'].includes(key))
@@ -119,9 +120,13 @@ export function createComputerVisionConfig({userData,safeStorage,createGateway,f
           // Keep the exact measured immutable body across the asynchronous export guard.
           const transport={...init,redirect:'error'};
           if(selected.source==='agentarts-proxy')assertAgentArtsRequestBody(transport.body);
+          const host=egressHost;if(!host)fail('UNSUPPORTED_CAPABILITY','视觉本机内容分类尚未装配');
+          const destination=String(url),lease=await host.prepare({requestId:context.requestId,destination,payload:transport.body,
+            deadline:context.deadline,signal:context.signal,isCurrent:()=>{assertCall(context);return egressHost===host;}});
           await beforeSend({binding:{...selected},signal:context.signal,deadline:context.deadline});
           assertCall(context);
           if(transport.signal?.aborted)fail('CANCELLED','视觉传输已取消');
+          lease.assertBeforeSend({destination,payload:transport.body});
           return fetchImpl(url,transport);
         }});
       if(!gateway||typeof gateway.complete!=='function')fail('UNSUPPORTED_CAPABILITY','受信视觉网关不可用');
@@ -130,7 +135,7 @@ export function createComputerVisionConfig({userData,safeStorage,createGateway,f
         if(!request||!(request.signal instanceof AbortSignal)||!Number.isFinite(Date.parse(request.deadline)))fail('INVALID_ARGUMENT','视觉请求期限或取消信号无效');
         const sourceSignal=request.signal,controller=new AbortController(),abort=()=>controller.abort(sourceSignal.reason);
         sourceSignal.addEventListener('abort',abort,{once:true});if(sourceSignal.aborted)abort();pending.add(controller);
-        const context={binding:selected,signal:controller.signal,deadline:request.deadline};
+        const context={binding:selected,signal:controller.signal,deadline:request.deadline,requestId:randomUUID()};
         const remaining=Date.parse(context.deadline)-Date.now();
         let removeAbort=()=>{},timer;
         try{

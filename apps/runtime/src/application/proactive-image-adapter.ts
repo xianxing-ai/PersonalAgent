@@ -1,7 +1,7 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {createProactiveHostProofs,proactiveWorkflowDigest} from '@personal-agent/agentarts';
 import type {ProactiveAdvanceRequest,ProactiveWorkflowResult} from '@personal-agent/agentarts';
-import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsResponse} from '@personal-agent/coordination';
+import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsResponse,AgentArtsPayloadPreparer} from '@personal-agent/coordination';
 
 export interface RuntimeProactiveImageAdapterOptions {
   /** Original trusted AgentArts transport configuration; never read from a model/event/Renderer request. */
@@ -13,6 +13,7 @@ export interface RuntimeProactiveImageAdapterOptions {
   authorizationProvider:AgentArtsAuthorizationProvider;
   hostAuthorizationProvider?:AgentArtsAuthorizationProvider;
   receiptSecret:string;invokeMode?:'debug'|'published';workflowGoalInput?:string;fetchImpl?:AgentArtsFetch;
+  preparePayload?:AgentArtsPayloadPreparer;
 }
 export type RuntimeProactiveImageResult=ProactiveWorkflowResult&{proactiveVersion:1;requestId:string;proof:string};
 export type RuntimeProactiveImageContext=Pick<ProactiveAdvanceRequest,'taskId'|'sessionId'|'controlRevision'|'taskDeadline'|'requestId'|'deadline'|'signal'>;
@@ -200,7 +201,9 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
           hostAvailability:request.hostAvailability,availableCapabilities:request.availableCapabilities},input)};
       proactiveWorkflowDigest(value);const query=JSON.stringify(value),payload=workflowGoalInput===undefined?{query}:{inputs:{[workflowGoalInput]:query}};
       const body=JSON.stringify(payload);if(Buffer.byteLength(body)>MAX_BYTES)fail('INVALID_ARGUMENT','Proactive image request exceeds existing transport limit');
-      response=await bounded(()=>{assertBinding();return fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
+      const lease=options.preparePayload?await bounded(()=>options.preparePayload!({requestId:input.requestId,destination:endpoint,payload:body,
+        deadline:new Date(limit).toISOString(),signal,isCurrent:()=>{active();assertBinding();return true;}})):undefined;
+      response=await bounded(()=>{assertBinding();lease?.assertBeforeSend({destination:endpoint,payload:body});return fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
         'x-hw-agentarts-session-id':input.sessionId,'X-Request-Id':input.requestId,'X-Invoke-Mode':invokeMode,'X-PA-Deadline':new Date(limit).toISOString(),
         ...(hostAuth===undefined?{}:{'X-PA-Agent-Token':hostAuth})},body,signal,redirect:'error'});});
       if(response.status!==200)fail(response.status===401||response.status===403?'UNAUTHORIZED':'EXTERNAL_FAILURE','Proactive image invocation rejected; no automatic retry');

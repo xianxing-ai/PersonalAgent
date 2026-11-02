@@ -25,6 +25,13 @@ test('arbitrary names and addresses remain unknown; absence of a pattern never g
   await assert.rejects(createDesktopEgressHost().prepare(request({payload})),denied);
 });
 
+test('opaque image and audio content cannot be approved by a text classification prompt',async()=>{
+  let called=false;const host=createDesktopEgressHost({classifyLocally:()=>{called=true;return 'public';}});
+  for(const payload of [JSON.stringify({image_url:{url:'data:image/png;base64,cHVibGlj'}}),JSON.stringify({audio:'cHVibGlj'}),
+    JSON.stringify({image_url:'https://example.test/image.png'})])await assert.rejects(host.prepare(request({payload})),error=>error.code==='UNSUPPORTED_CAPABILITY');
+  assert.equal(called,false);
+});
+
 test('private content requires a separate exact approval while public content does not request it',async()=>{
   let approvals=0;
   const host=createDesktopEgressHost({classifyLocally:()=> 'private',approvePrivate:scope=>{approvals++;assert.equal(scope.payload,request().payload);return true;}});
