@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,readFile,rm} from 'node:fs/promises';
@@ -32,7 +33,7 @@ async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCred
   const root=fileURLToPath(new URL('../../../.cache/desktop-goal-cognition/',import.meta.url));
   await mkdir(root,{recursive:true});const directory=await mkdtemp(path.join(root,'case-'));
   let host,layaCalls=0,goalWrites=0,updateCalls=0,releaseFetch,time=Date.now(),unavailable=unavailableInitially;const sent=[],announced=[];
-  const application=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+  const application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
     ...(controlledRepair?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json',localRepair:{graphNamespace:namespace,bindingVersion:'desktop-reviewed-execution-v1',
       withSourceLock:async work=>work(),reviewedSource:{resolve:input=>{
@@ -54,7 +55,7 @@ async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCred
           summary:item.summary,reason:'Synthetic semantic review of selected dependency change',dependencies:item.requestedDependencies}))}}):'合成规划已接收';
       return new Response(JSON.stringify({event:'message',data:{text,index:0}}),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   const store=application.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],'PRIVATE_SOURCE_SENTINEL','private'));
   store.append(1,node('goal','goal',[ref('private-source')],'原目标','private'));
@@ -122,13 +123,13 @@ async function savedGoalCards(t) {
       [key,key===selected?0.98:0.02/(keys.length-1)])),answer_confidence:0.98,confidence:0.5}}};
   }});
   async function open() {
-    application=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
       gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
       beforeCompetitionSend:request=>host.assertCloudSend(request),
       authorizationProvider:{read:async()=> 'Bearer synthetic-not-a-key'},
       fetchImpl:async(_url,input)=>{sent.push(JSON.parse(input.body));return new Response(
         JSON.stringify({event:'message',data:{text:'Synthetic saved planning receipt',index:0}}),
-        {headers:{'content-type':'application/json'}});}});
+        {headers:{'content-type':'application/json'}});}}));
     application.runtime.provisionCoordinationStore(namespace);
     facts=application.createCompetitionFactHost({memoryPath:path.join(directory,'memory.sqlite'),
       memoryNamespace:'synthetic-public-memory',graphNamespace:namespace,consumerKey:'saved-cards'});

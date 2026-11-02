@@ -2741,8 +2741,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   isDefaultSubagentAvailable(): boolean {return this.profile==='huawei_ict_agentarts' && this.coordination!==undefined;}
 
   /** Public host metadata only; private bodies and credentials must stay in their original stores. */
-  createHostStateStore(domain:'device-notifications'|'proactive-receipts'|'knowledge-tracking') {
-    if(!this.hostUserNamespace || !['device-notifications','proactive-receipts','knowledge-tracking'].includes(domain)) {
+  createHostStateStore(domain:'device-notifications'|'proactive-receipts'|'knowledge-tracking'|'deletion-confirmation'|'human-turns') {
+    if(!this.hostUserNamespace || !['device-notifications','proactive-receipts','knowledge-tracking','deletion-confirmation','human-turns'].includes(domain)) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Host state store is not bound');
     }
     const namespace=createHash('sha256').update(JSON.stringify([this.hostUserNamespace,domain])).digest('hex');

@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -266,7 +267,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
         accepts:()=>true,project:({result})=>result}))};
     if(ownedComposition){
       const {configuredWorkflowWorkers:_workers,coordination,profile:_profile,...shared}=options;let originalRequest;
-      app=publicRuntime.createAgentArtsRuntimeApplication({...shared,configuredWorkflowWorkerPorts:ports.configuredWorkflowWorkerPorts,
+      app=publicRuntime.createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({...shared,configuredWorkflowWorkerPorts:ports.configuredWorkflowWorkerPorts,
         gatewayUrl:'https://synthetic.agentarts.invalid',runtimeName:'f17-runtime',deploymentVersion:'fixed-f17-fixture',
         initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',
         authorizationProvider:{read:async()=> 'Bearer synthetic-invoke-credential'},
@@ -281,7 +282,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
           const {verification:_verification,...response}=value;
           return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(response),index:0}},
             {event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});
-        }});
+        }}));
     }else app=publicRuntime.createRuntimeApplication(options);
     if(productionSources)codingWorkspace.bindApplication(app);developerHost?.bind(app);
     if(productionSources&&publish)presenceHost=createToolPresenceHost({

@@ -28,11 +28,15 @@ function harness({respond = answer, autoReady = true, config: overrides = {}, be
 
 test('content approval binds the actual WSS destination and separately gates an HTTPS fallback',async()=>{
   const destinations=[];
-  const h=harness({autoReady:false,config:{allowHttpsFallback:true},preparePayload:async scope=>{
+  const preparePayload=async scope=>{
     destinations.push(scope.destination);
     if(scope.destination.startsWith('https:'))throw Object.assign(Error('Synthetic fallback export denied'),{code:'UNAUTHORIZED'});
     return {assertBeforeSend(actual){assert.equal(actual.destination,scope.destination);assert.equal(actual.payload,scope.payload);}};
-  }});
+  };
+  const ready=harness({preparePayload});
+  try{await ready.port.invoke(request());assert.equal(ready.sockets[0].sent.filter(frame=>frame.type==='invoke').length,1);}
+  finally{ready.port.close();}
+  const h=harness({autoReady:false,config:{allowHttpsFallback:true},preparePayload});
   try{
     const pending=h.port.invoke(request());const rejected=assert.rejects(pending);
     while(h.sockets.length===0)await new Promise(resolve=>setImmediate(resolve));

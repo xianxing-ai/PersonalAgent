@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {pathToFileURL} from 'node:url';
 import {createAgentArtsRuntimeApplication,AuthorizationQuestions} from '@personal-agent/runtime/application';
@@ -34,7 +35,7 @@ export async function mailSendIdentityScenario({path=':memory:',mode='success',r
       if(mode==='legacy-provider'){delete provider.sendIdentitySupport;provider.send=async()=>({state:'unknown',messageId:'<legacy@example.invalid>'});}
       return provider;
     }});
-  application=createAgentArtsRuntimeApplication({path,gatewayUrl:'https://agentarts.example.invalid',runtimeName:'smtp-identity-fixture',
+  application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path,gatewayUrl:'https://agentarts.example.invalid',runtimeName:'smtp-identity-fixture',
     ...(reconcile?{hostUserNamespace:'smtp-identity',requiresToolAuthorization:()=>true,requestToolAuthorization:async scope=>{
       await host.prepareOriginalSendReconciliationAuthorization(scope);return question.requestToolAuthorization(scope);}}:{}),
     initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
@@ -42,7 +43,7 @@ export async function mailSendIdentityScenario({path=':memory:',mode='success',r
     prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
     fetchImpl:async()=>{cloudCalls++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(cloudCalls===1
       ?{kind:'tool_proposal',proposalId:'mail-send-identity',toolName:'mail.send',toolVersion:'0.1.0-alpha.1',arguments:mailArguments}
-      :{kind:'text',text:'Synthetic transport response; no actual email sent.'})}}),{headers:{'content-type':'application/json'}});}});
+      :{kind:'text',text:'Synthetic transport response; no actual email sent.'})}}),{headers:{'content-type':'application/json'}});}}));
   const client=new Client(application);await client.connect();
   const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}
     throw Error('Timed out: '+JSON.stringify(application.runtime.listTasks().items));};

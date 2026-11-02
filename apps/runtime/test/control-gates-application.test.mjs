@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
 import {createRuntimeApplication} from '../dist/application.js';
+import {TaskRuntime} from '../dist/index.js';
+import {runCoordinationWorker} from '../dist/application/coordination.js';
 
 const descriptor={name:'fixture.publish',version:'1.0.0',sideEffect:'external_write',requiredScopes:['fixture:publish'],
   inputSchema:{type:'object',properties:{body:{type:'string'}},required:['body'],additionalProperties:false},
@@ -34,4 +36,20 @@ test('Desktop history overlay cannot erase original pending task metadata before
       signal:new AbortController().signal,historyMessages:[{id:task.taskId+':user',role:'user',content:task.goal}]});
     assert.equal(messages.find(message=>message.id===task.taskId+':user').taskState,'running');
   }finally{app.close();}
+});
+
+test('cloud final cannot hide an incomplete required local execution and records one exact conflict',async()=>{
+  const runtime=new TaskRuntime(':memory:');let sends=0;
+  const task=runtime.submitTask({goal:'Synthetic completion conflict',conversationId:'conflict-fixture',idempotencyKey:'conflict'});
+  runtime.transitionTask(task.taskId,'planning');runtime.transitionTask(task.taskId,'running');
+  const context={deadline:new Date(Date.now()+10000).toISOString(),signal:new AbortController().signal,reportProgress:()=>{},
+    loadCheckpoint:key=>runtime.loadCheckpoint(task.taskId,key),saveCheckpoint:(key,value)=>runtime.saveCheckpoint(task.taskId,key,value)};
+  try{
+    await assert.rejects(runCoordinationWorker(runtime,{execute:async()=>{sends++;return {kind:'text',text:'Synthetic cloud final',verification:'mock'};}},
+      undefined,task.taskId,task.goal,context,{assertCompletion:()=>{throw new ProtocolError('UNAUTHORIZED','Synthetic required child incomplete');}}),{code:'UNAUTHORIZED'});
+    const conflict=runtime.loadCheckpoint(task.taskId,'competition-completion-conflict');
+    assert.equal(conflict.executionEpoch,0);assert.equal(conflict.localVerdict,'required_delegation_incomplete');
+    assert.match(conflict.cloudResultDigest,/^[a-f0-9]{64}$/);assert.equal(JSON.stringify(conflict).includes('Synthetic cloud final'),false);
+    assert.equal(sends,1);assert.equal(runtime.getTask(task.taskId).state,'running');
+  }finally{runtime.close();}
 });

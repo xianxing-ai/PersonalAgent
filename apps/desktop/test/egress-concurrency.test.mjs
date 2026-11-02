@@ -9,7 +9,7 @@ function fixture(transport){
   let release,entered,calls=0,sends=0;
   const ready=new Promise(resolve=>{entered=resolve;}),waiting=new Promise(resolve=>{release=resolve;});
   const prepare=async()=>{calls++;entered();await waiting;};
-  const host=transport?createAgentArtsTransportConfig({binding:{gatewayUrl:'https://example.test',runtimeName:'fixture'},environment:{},
+  const host=transport?createAgentArtsTransportConfig({binding:{gatewayUrl:'https://example.test',runtimeName:'fixture'},environment:{},configurationProvider:{read:()=>({})},
     preparePayload:async scope=>{await prepare();return {assertBeforeSend(){if(!scope.isCurrent())throw Object.assign(Error('changed'),{code:'UNAUTHORIZED'});}};},
     fetchImpl:async()=>{sends++;return {status:200};}}):createDesktopEgressHost({classifyLocally:async()=>{await prepare();return 'public';}});
   const input={requestId:'concurrent-fixture',destination,payload:'{"query":"public fixture"}',

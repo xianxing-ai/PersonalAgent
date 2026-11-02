@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -27,7 +28,7 @@ test('Synthetic public conversation -> original Policy -> signed local mirror st
   const resolveUserConversation=id=>app.runtime.getTask(id).conversationId;
   const adapter=createDesktopProactiveConversationTools({getApplication:()=>app,getHost:()=>host,
     isConversationAllowed:id=>id===conversationId,resolveUserConversation});
-  app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'synthetic-core',proactiveWorkflows:true,
+  app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',hostUserNamespace:'synthetic-core',proactiveWorkflows:true,
     gatewayUrl:'https://synthetic-agentarts.invalid',runtimeName:'synthetic-no-external-cloud',
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',competitionMaxSteps:8,
     tools:adapter.tools,competitionToolAvailability:adapter.competitionToolAvailability,competitionToolExports:adapter.competitionToolExports,
@@ -41,7 +42,7 @@ test('Synthetic public conversation -> original Policy -> signed local mirror st
         :{kind:'text',text:'Synthetic responsibility accepted and paused; completion has not been claimed'};
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   host=createDesktopProactiveWorkflowApplication({application:app,localDeviceAvailable:()=>true,resolveUserConversation,
     readConfiguration:()=>({contractRef:contract.id,adapter:{endpoint:'http://127.0.0.1:'+server.address().port+'/invocations',
       receiptSecret:secret,authorizationProvider:{read:async()=>'Bearer synthetic-outer'},

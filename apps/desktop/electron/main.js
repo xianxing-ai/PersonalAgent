@@ -10,7 +10,8 @@ import {readReconciliationStatus} from './reconciliation-status.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
-import {reconcileTaskFromSurface} from './reconcile-task-action.js';
+import {reconcileTaskFromSurface,skipReconciliationConflictFromSurface} from './reconcile-task-action.js';
+import {readReconciliationConflict,inspectReconciliationConflictOnce,recordUnavailableConflictNotification,assertNoUnresolvedWriteReplay} from './reconciliation-conflict.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {isDeepStrictEqual} from 'node:util';
@@ -52,6 +53,7 @@ import {projectDesktopApproval} from './approval-projection.js';
 import {createPrivateMemoryController} from './private-memory.js';
 import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
+import {createDeletionConfirmationGate,assertDeletionOperationSupported} from './deletion-operation-policy.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
@@ -380,6 +382,17 @@ let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
 let egressHost;
+const deletionGate=createDeletionConfirmationGate({
+  getStore:()=>runtimeApplication.createHostStateStore('deletion-confirmation'),
+  readUserTurn:()=>runtimeApplication.createHostStateStore('human-turns').get('latest'),
+});
+function recordExplicitUserTurn(taskId,conversationId) {
+  if(!competitionMode||!runtimeApplication)return;
+  const store=runtimeApplication.createHostStateStore('human-turns'),prior=store.get('latest');
+  const task=runtimeApplication.runtime.getTask(taskId);
+  if(task.conversationId!==conversationId)throw new ProtocolError('UNAUTHORIZED','原用户回合不属于此对话');
+  store.compareAndSet('latest',prior,{conversationId,turnId:taskId,createdAt:task.createdAt});
+}
 let agentArtsObservationConfig;
 let agentArtsModels;
 let activeCloudBinding;
@@ -1532,7 +1545,20 @@ function clearInactiveTaskExitWarning() {
   }
 }
 
+function observeTaskConflict(task) {
+  if(competitionMode&&runtimeApplication&&['failed','waiting_reconciliation'].includes(task.state)){
+    recordUnavailableConflictNotification(runtimeApplication,task.taskId);
+    const readOriginal=connectorConversationTools?.readOriginalSendRecoveryAvailable?.(task.taskId)
+      ?()=>connectorConversationTools.readOriginalSendReconciliation({taskId:task.taskId})
+      :connectorConversationTools?.readOriginalArchiveRecoveryAvailable?.(task.taskId)
+        ?()=>connectorConversationTools.readOriginalArchiveReconciliation({taskId:task.taskId}):undefined;
+    void inspectReconciliationConflictOnce({application:runtimeApplication,taskId:task.taskId,readOriginal,
+      deadline:new Date(Date.now()+5000).toISOString(),signal:new AbortController().signal}).then(()=>publish(['tasks']))
+      .catch(()=>{});
+  }
+}
 function observeTextTaskOutput(task) {
+  observeTaskConflict(task);
   if (conversationDelivery.stopped(task)) return;
   liveVoice?.observeTextTask({...task,resultSummary:resultText(task.resultSummary,taskResultMetadata(task))});
 }
@@ -1732,6 +1758,7 @@ async function syncRuntimeSnapshots() {
     if(beforeRowId)await new Promise(resolve=>setImmediate(resolve));
   } while(beforeRowId);
   if(fakeMode){const recent=await client.call('task.list',{limit:100});for(const task of recent.items)tasks.set(task.taskId,task);}
+  for(const task of tasks.values())observeTaskConflict(task);
   for(const surface of ['panel','workspace',undefined])historyPages.load(surface);
   eventCursor.reset(snapshotSequence ?? 0);
   eventThroughSequence = undefined;
@@ -1811,6 +1838,12 @@ function readDesktopConversationContext(scope,maxMessages) {
     if(Date.parse(original.createdAt)>Date.parse(cutoff))continue;
     context.push({id:`pending-confirmation:${question.questionId}:${question.revision}`,role:'assistant',
       content:question.description,taskState:'waiting_approval',preserveVerbatim:true});
+  }
+  for(const task of tasks.values()){
+    if(task.conversationId!==scope.conversationId||Date.parse(task.createdAt)>Date.parse(cutoff))continue;
+    const conflict=readReconciliationConflict(runtimeApplication,task);
+    if(conflict)context.push({id:`execution-conflict:${conflict.conflictId}:${conflict.skipped}`,role:'assistant',
+      content:conflict.notice,taskState:task.state,preserveVerbatim:true});
   }
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
     .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
@@ -3037,6 +3070,8 @@ async function initializeRuntime() {
           return decision;
         },
         assertToolAllowed:scope=>{
+          assertDeletionOperationSupported(scope);
+          assertNoUnresolvedWriteReplay({application:runtimeApplication,...scope});
           const conversationId=runtimeApplication.readToolConversation(scope.taskId);
           if(conversationId&&conversations.containsConversation(conversationId))
             assertConversationProhibitions({...scope,rules:conversations.prohibitions(conversationId)});
@@ -3220,12 +3255,12 @@ async function initializeRuntime() {
         writeTaskBinding:(taskId,binding)=>runtimeApplication.writePrivateTaskBinding(taskId,binding),
         readConfigurationRef:()=>runtimeApplication.coordinationConfigurationRef,
         assertCopyManagement:()=>privateErasure.assertReady(privateBackups.inventory())});
-      privateErasure=createPrivateMemoryErasureHost({privateMemory:privateMemoryController(),consumptionHost:privateConsumption,
+      privateErasure=createPrivateMemoryErasureHost({privateMemory:privateMemoryController(),consumptionHost:privateConsumption,deletionGate,
         listBindings:input=>runtimeApplication.listBindings(input),
         cancelTask:taskId=>runtimeApplication.runtime.requestCancel(taskId,'私人记忆使用已撤回'),
         eraseTaskCopies:scope=>runtimeApplication.eraseTaskCopies(scope),
         readCopyErasureReceipt:taskId=>runtimeApplication.readCopyErasureReceipt(taskId),backups:privateBackups});
-      memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
+      memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),deletionGate,
         learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
       await memoryLearningHost.recover();
       wikiSourceMonitor?.close();
@@ -3356,7 +3391,7 @@ async function initializeRuntime() {
       return confirmApplicationAuthorization('facts.erase',ref,{scope:{id:ref.id,revision:ref.revision},
         summary:'删除所选公共事实及其绑定版本/投影；已有依赖或未核实状态仍拒绝删除，原擦除审计继续核实'});
     }});
-    memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
+    memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),deletionGate,
       learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
     await memoryLearningHost.recover();
   }
@@ -4926,6 +4961,7 @@ async function action(event, name, payload) {
     deliveryRequest.taskId=result.taskId;
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
+    if(!skillRun)recordExplicitUserTurn(result.taskId,conversationId);
     if (!skillRun && !deliveryRequest.interrupted) liveVoice?.trackTextTask({taskId:result.taskId,conversationId});
     rememberTaskGoal(result.taskId, userGoal);
     const stopAcceptedTask=async()=>{
@@ -4942,6 +4978,8 @@ async function action(event, name, payload) {
     return task;
     } finally { conversationDelivery.finish(deliveryRequest); }
   }
+  if(name==='task.reconcile.skip')return skipReconciliationConflictFromSurface({payload,sender,panel,workspace,tasks,taskSurface,
+    conversations,application:runtimeApplication,refresh,publish});
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,mailRecovery:connectorConversationTools,resumeMailWorkflow:reconcileOriginalMailWorkflow,
     refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
@@ -5057,6 +5095,7 @@ async function initializeSisVoice() {
       onTaskSubmitted: ({taskId, goal}) => {
         rememberTaskGoal(taskId, goal);
         conversations.add(taskId, 'panel', goal);
+        recordExplicitUserTurn(taskId,conversations.turns.get(taskId).conversationId);
       }});
     const wake = createDesktopWakeVoiceHost({getPanel: () => panel, microphoneHost: microphoneCaptureHost,
       voiceInput:input, onUpdate: publish, isBusy: () => Boolean(liveVoice?.hasActive() || voiceConfigurationPending || panelHiding)});
@@ -5188,7 +5227,8 @@ async function initializeLiveVoice() {
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
     authorizeFinalRead:(...args)=>f02Workflow?.authorizeFinalRead?.(...args)===true,
     prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope)??null,
-    onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
+    onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);
+      recordExplicitUserTurn(taskId,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       contextMessages:readDesktopConversationContext({conversationId,deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal}),
       currentUserQuestion:voiceQuestionForConversation(conversationId),

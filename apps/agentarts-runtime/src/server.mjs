@@ -101,14 +101,15 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     if (binding && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Owned binding credential required');
     if (serviceValue && !bindingAuthorized) throw new ProtocolError('UNAUTHORIZED','Service host credential required');
     if (serviceValue && !serviceControllers[serviceName]) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Service controller unavailable');
+    const wrapResult=result=>executionEpoch===undefined?result:{executionEpochVersion:1,executionEpoch,result};
     const invocation = {query,deadline,signal,sessionId,requestId,
-      ...(binding?.workflow&&channel==='websocket'?{resultFits:result=>Buffer.byteLength(JSON.stringify(resultEvents(result)))<=MAX_AGENTARTS_RESULT_BYTES}:{})};
+      ...(binding?.workflow&&channel==='websocket'?{resultFits:result=>Buffer.byteLength(JSON.stringify(resultEvents(wrapResult(result))))<=MAX_AGENTARTS_RESULT_BYTES}:{})};
     const result = serviceValue ? await serviceControllers[serviceName]({...invocation,value:serviceValue})
       : testValue ? await testVersionController({...invocation,value:testValue})
       : binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
     signal.throwIfAborted();
     if (Date.now() >= Date.parse(deadline)) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
-    const response=executionEpoch===undefined?result:{executionEpochVersion:1,executionEpoch,result};
+    const response=wrapResult(result);
     const text = JSON.stringify(response);
     const outputLimit = (binding?.workflow || serviceValue) && channel==='http' ? 1_100_000 : 64_000;
     const events=resultEvents(response);

@@ -5,6 +5,7 @@ import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminal
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
 import {isDeepStrictEqual} from 'node:util';
+import {createHash} from 'node:crypto';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -535,7 +536,15 @@ export async function runCoordinationWorker(
         continuation?priorReceipts.map(item=>item.continuation):undefined);
       runtime.assertExecutionEpoch(taskId,executionEpoch);
       if (result.kind === 'text') {
-        const completion:unknown=options.assertCompletion?.();
+        let completion:unknown;
+        try {completion=options.assertCompletion?.();}
+        catch(error){
+          runtime.assertExecutionEpoch(taskId,executionEpoch);
+          context.saveCheckpoint('competition-completion-conflict',{version:1,executionEpoch,
+            cloudResultDigest:createHash('sha256').update(JSON.stringify(result)).digest('hex'),
+            localVerdict:'required_delegation_incomplete'});
+          throw error;
+        }
         if(completion!==undefined){void Promise.resolve(completion).catch(()=>undefined);
           throw new ProtocolError('INVALID_ARGUMENT','Competition completion check must be synchronous');}
         return {resultSummary: summary(result.text, result.verification), evidenceRefs};

@@ -1414,19 +1414,22 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           if(this.closed||currentAbortError(combined))return false;
           try{return this.beforeSend?.(sendRequest)===undefined;}catch{return false;}
         }}),combined);
-      let payloadLease=await preparePayload();
+      let payloadLease:Awaited<ReturnType<typeof preparePayload>>;
 
       // WSS rechecks after its asynchronous Upgrade/ready handshake, immediately
       // before exporting a catalog or continuation. HTTPS fallback rechecks too.
       const guards: AgentArtsSendGuards = {
-      ...(availableTools === undefined ? {} : {beforeCatalog: async () => {
-        stage = 'catalog_guard';
-        try {
-          await callWithAbort(() => this.beforeInitialToolCatalogSend!(sendRequest), combined);
-        } catch {
-          throw currentAbortError(combined) ?? new ProtocolError('UNAUTHORIZED', 'AgentArts tool catalog export denied');
+      beforeCatalog: async () => {
+        if(availableTools!==undefined){
+          stage = 'catalog_guard';
+          try {
+            await callWithAbort(() => this.beforeInitialToolCatalogSend!(sendRequest), combined);
+          } catch {
+            throw currentAbortError(combined) ?? new ProtocolError('UNAUTHORIZED', 'AgentArts tool catalog export denied');
+          }
         }
-      }}),
+        payloadLease=await preparePayload();
+      },
       beforeSend: receipt => {
       payloadLease?.assertBeforeSend({destination:payloadDestination,payload:init.body});
       if (this.beforeSend !== undefined) {
@@ -1470,7 +1473,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       }};
 
       const sendHttps = async (fallback = false): Promise<AgentArtsResponse> => {
-        if(payloadDestination!==url){payloadDestination=url;payloadLease=await preparePayload();}
+        if(payloadDestination!==url){payloadDestination=url;payloadLease=undefined;}
         await guards.beforeCatalog?.();
         const receipt = fallback ? createAgentArtsUnknownReceipt(init) : undefined;
         guards.beforeSend(receipt);
@@ -1576,7 +1579,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
           if(!envelope||Object.keys(envelope).sort().join(',')!=='executionEpoch,executionEpochVersion,result'
             ||envelope.executionEpochVersion!==1||envelope.executionEpoch!==executionEpoch)
             throw new ProtocolError('REVISION_CONFLICT','Cloud execution epoch is missing or stale');
-          text=JSON.stringify(envelope.result);
+          text=this.responseMode==='text'&&typeof envelope.result==='string'?envelope.result:JSON.stringify(envelope.result);
         }
         const result = this.responseMode === 'tool-proposal-json'
           ? textOnly ? parseTextOnlyApplicationResult(text,this.repairCandidateVersion) : parseApplicationResult(text, this.repairCandidateVersion)

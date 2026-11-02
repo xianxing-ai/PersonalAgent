@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -163,13 +164,13 @@ test('Synthetic explicit context config rejects missing budgets, unselected vers
 
 test('Synthetic full Desktop host to Runtime caller summarizes a long overlay and emits only bounded goal data to cloud',async t=>{
   const f=fixture(t);let cloud=0;
-  const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+  const app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
     authorizationProvider:{read:async()=> 'Bearer synthetic'},fetchImpl:async(_url,init)=>{
       cloud++;const query=JSON.parse(JSON.parse(init.body).query);assert.equal(query.publicGoal,'Current developer request');
       assert.deepEqual(query.conversationContext.messages.slice(-2),f.messages.slice(-2));
       assert.ok(init.body.length<16000);
       return new Response(JSON.stringify({event:'message',data:{text:'Synthetic cloud answer',index:0}}),{headers:{'content-type':'application/json'}});},
-    coordinationInput:{beforeCoordinationSend(){},contextCompaction:f.host.runtimeHooks}});
+    coordinationInput:{beforeCoordinationSend(){},contextCompaction:f.host.runtimeHooks}}));
   f.setApplication(app);t.after(()=>app.close());
   const client=new Client(app);await client.connect();const task=await client.call('task.submit',
     {goal:'Current developer request',conversationId:'owned-conversation'},{idempotencyKey:'full-host',timeoutMs:60000});
