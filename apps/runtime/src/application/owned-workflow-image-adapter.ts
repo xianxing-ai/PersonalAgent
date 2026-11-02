@@ -3,7 +3,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 import type {OwnedWorkflowAdvanceRequest,OwnedWorkflowAdvanceResult} from '@personal-agent/agentarts';
 import {AgentArtsWebSocketTransport,parseAgentArtsResponseText} from '@personal-agent/coordination';
-import type {AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsWebSocketFactory,AgentArtsTransportState} from '@personal-agent/coordination';
+import type {AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsWebSocketFactory,AgentArtsTransportState,AgentArtsPayloadPreparer} from '@personal-agent/coordination';
 import type {RuntimeCodingRepairImagePort} from './coding-repair-application.js';
 export interface RuntimeOwnedWorkflowImageOptions {
   gatewayUrl:string;runtimeName:string;deploymentVersion?:string;transport?:'https'|'wss';websocketUrl?:string;
@@ -14,6 +14,7 @@ export interface RuntimeOwnedWorkflowImageOptions {
   assertDeploymentBinding?:()=>void;onTransportState?:(state:AgentArtsTransportState)=>void;
   /** Synchronous trusted source/configuration fence, including after credential awaits and before WSS sends. */
   assertWorkflowCurrent?:(request:OwnedWorkflowAdvanceRequest)=>void;
+  preparePayload?:AgentArtsPayloadPreparer;
   /** Host-only compatibility for a deployed explicit key override. No Renderer configuration. */
   readReceiptSecret?:(signal:AbortSignal)=>Promise<string>;
   /** Original parsed transport response metadata only; not domain completion evidence. */
@@ -67,16 +68,21 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
     const httpInit=options.fetchHandlesHostAuthorization?{...init,headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
       'x-hw-agentarts-session-id':request.sessionId,'X-Request-Id':request.requestId,'X-PA-Deadline':request.deadline,'X-Invoke-Mode':options.invokeMode??'published'}}:init;
     let response,usedTransport: 'https'|'wss'=options.transport??'https';
+    const prepare=async(destination:string)=>options.preparePayload?.({requestId:request.requestId,destination,payload:body,
+      deadline:request.deadline,signal:request.signal,isCurrent:()=>{active(request);return true;}});
     if(options.transport==='wss') {
       if(!ws)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original owned-workflow WSS endpoint unavailable');
-      try {response=await ws.invoke(init,{beforeSend:()=>active(request),afterAccepted:()=>{},afterTerminal:()=>{}});}
+      const destination=options.websocketUrl!,lease=await prepare(destination);active(request);
+      try {response=await ws.invoke(init,{beforeSend:()=>{active(request);lease?.assertBeforeSend({destination,payload:body});},afterAccepted:()=>{},afterTerminal:()=>{}});}
       catch(error) {
         if(!options.allowHttpsFallback||!ws.canFallback(error))throw error;
         active(request);ws.reportFallback(request.sessionId,request.requestId);
         usedTransport='https';
+        const httpLease=await prepare(endpoint);active(request);httpLease?.assertBeforeSend({destination:endpoint,payload:body});
         response=await (options.fetchImpl??fetch)(endpoint,httpInit);
       }
-    }else response=await (options.fetchImpl??fetch)(endpoint,httpInit);
+    }else {const lease=await prepare(endpoint);active(request);lease?.assertBeforeSend({destination:endpoint,payload:body});
+      response=await (options.fetchImpl??fetch)(endpoint,httpInit);}
     active(request);
     if(response.status!==200)throw new ProtocolError(response.status===401||response.status===403?'UNAUTHORIZED':'EXTERNAL_FAILURE','Owned-workflow AgentArts invocation rejected');
     const text=await parseAgentArtsResponseText(response,{signal:request.signal,deadline:request.deadline,strictCompletion:true,

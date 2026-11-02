@@ -67,7 +67,7 @@ function validate(value) {
 /** Host-only storage; snapshots never return either credential value. */
 export function createAgentArtsConfig({userData,safeStorage,environment=process.env,fetchImpl=globalThis.fetch}) {
   const file=path.join(userData,'agentarts-config.json');
-  let saved,failure='',configurationRef=randomUUID();
+  let saved,failure='',configurationRef=randomUUID(),egressHost;
   const defaults={gatewayUrl:environment.PA_AGENTARTS_GATEWAY_URL??'',runtimeName:environment.PA_AGENTARTS_RUNTIME_NAME??''};
   try {
     if (existsSync(file)) {
@@ -113,6 +113,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       reason:failure||transportFailure||(saved?'已配置；真实连通以任务结果为准':'请配置 AgentArts 网关、运行时名称和 Authorization')};
   };
   const config={snapshot,runtimeBinding,isTransportCurrent,
+    setEgressHost(host){if(typeof host?.prepare!=='function')throw Error('本机出机门禁不可用');egressHost=host;},
     // Opaque identity only; consumers cannot obtain a credential or an execution grant.
     readCredentialReference(){return saved?'agentarts:'+configurationRef:undefined;},
     readReleaseBinding(){return saved?.releaseBinding?Object.freeze({...structuredClone(saved.releaseBinding),
@@ -121,6 +122,11 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       const initial=currentTransport();
       // Keep the HTTPS destination guard even without WSS options.
       return createAgentArtsTransportConfig({binding,fetchImpl,environment:effectiveEnvironment(),transportPreferences:readTransportPreferences(),
+        preparePayload:async scope=>{
+          const host=egressHost,reference=configurationRef;
+          if(!host)throw Object.assign(Error('本机出机门禁尚未装配'),{code:'UNSUPPORTED_CAPABILITY'});
+          return host.prepare({...scope,isCurrent:()=>egressHost===host&&configurationRef===reference&&isTransportCurrent(initial)&&scope.isCurrent()});
+        },
         configurationProvider:{read:()=>readTransportOptions(binding)},readAppToken:()=>{
           assertBinding(binding,initial);
           return readTransportOptions(binding).appToken??effectiveEnvironment().PA_AGENTARTS_APP_TOKEN;

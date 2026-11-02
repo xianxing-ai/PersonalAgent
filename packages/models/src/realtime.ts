@@ -30,10 +30,14 @@ export interface RealtimeRequest {
 export type RealtimeSocket = Pick<WebSocket,
   'readyState' | 'bufferedAmount' | 'on' | 'send' | 'close' | 'terminate'>;
 export type RealtimeSocketConstructor = typeof WebSocket;
+export type RealtimePayloadPreparer=(scope:{requestId:string;destination:string;payload:string;deadline:string;
+  signal:AbortSignal;isCurrent:()=>boolean})=>Promise<{assertBeforeSend(actual:{destination:string;payload:string}):void}>;
 export interface RealtimePreparedConnection {
   /** Synchronous creation keeps open/message listeners in the same turn. */
   createSocket(): RealtimeSocket;
   readonly failureMessage?: string;
+  /** Local preparation only; the returned assertion runs immediately before socket.send. */
+  prepareSend?:(payload:string)=>Promise<()=>void>;
 }
 /** Trusted host transport only; no model- or renderer-supplied endpoint/credentials. */
 export interface RealtimeConnectionPort {
@@ -108,11 +112,20 @@ export class QwenRealtimeModelGateway {
     let resolveClosed!: () => void;
     const closed = new Promise<void>(resolve => {resolveClosed = resolve;});
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    let pendingSend=Promise.resolve(),queuedSends=0;
     const emit = (event: RealtimeEvent): void => {if (!closing) request.onEvent(event);};
     const send = (message: object): void => {
       if (closing || socket.readyState !== WebSocket.OPEN || request.signal.aborted) throw Error('Live 连接已关闭');
       if (socket.bufferedAmount > 128_000) throw Error('Live 网络发送阻塞，请重新连接');
-      socket.send(JSON.stringify({event_id: `event_${randomUUID()}`, ...message}));
+      const payload=JSON.stringify({event_id: `event_${randomUUID()}`, ...message});
+      if(!prepared.prepareSend){socket.send(payload);return;}
+      if(++queuedSends>32){queuedSends--;throw Error('Live 本机出机确认仍在等待');}
+      pendingSend=pendingSend.then(async()=>{
+        if(closing||request.signal.aborted||Date.now()>=Date.parse(request.deadline))throw Error('Live 连接已关闭');
+        const assertSend=await prepared.prepareSend!(payload);
+        if(closing||request.signal.aborted||socket.readyState!==WebSocket.OPEN||Date.now()>=Date.parse(request.deadline))throw Error('Live 连接已关闭');
+        assertSend();socket.send(payload);
+      }).catch(()=>{fail('Live 本机出机分类或批准未通过');}).finally(()=>{queuedSends--;});
     };
     const close = (): Promise<void> => {
       if (!closing) {
@@ -298,6 +311,7 @@ export class QwenRealtimeModelGateway {
     return {
       sendAudio(pcm) {
         if (!ready || closing) return;
+        if(prepared.prepareSend)throw Object.assign(Error('原始音频缺少本机内容分类，当前不能送云'),{code:'UNSUPPORTED_CAPABILITY'});
         if (!(pcm instanceof Uint8Array) || !pcm.length || pcm.length > 3200 || pcm.length % 2) throw Error('Live 音频帧无效');
         send({type: 'input_audio_buffer.append', audio: Buffer.from(pcm).toString('base64')});
       },

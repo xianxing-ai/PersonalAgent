@@ -1,7 +1,7 @@
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 
 /** Trusted main-process options. Neither credentials nor this provider enter Renderer snapshots. */
-export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={},readAppToken}) {
+export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={},readAppToken,preparePayload:prepareEgressPayload}) {
   const transport=environment.PA_AGENTARTS_TRANSPORT??transportPreferences.transport??'https';
   const fallback=environment.PA_AGENTARTS_HTTPS_FALLBACK??(transportPreferences.allowHttpsFallback===true?'1':'0');
   if (!['https','wss'].includes(transport) || !['0','1'].includes(fallback)) {
@@ -28,6 +28,31 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     ...(boundDeploymentVersion===undefined?{}:{deploymentVersion:boundDeploymentVersion}),
     assertDeploymentBinding:()=>{currentOptions();},
   }:{};
+  let websocketDestination;const preparedPayloads=new Map();
+  const payloadDestination=value=>{
+    const target=new URL(binding.gatewayUrl+'/runtimes/'+encodeURIComponent(binding.runtimeName)+'/invocations');
+    const base=target.href,options=currentOptions();if(options.deploymentVersion!==undefined)target.searchParams.set('endpoint',options.deploymentVersion);
+    if(value===base||value===target.href)return target.href;
+    if(websocketDestination&&value===websocketDestination)return value;
+    throw Error('出机内容必须绑定原运行时与固定部署');
+  };
+  const preparePayload=prepareEgressPayload===undefined?undefined:async scope=>{
+    const destination=payloadDestination(scope.destination),key=JSON.stringify([scope.requestId,destination,scope.deadline]);
+    for(const [id,entry] of preparedPayloads)if(entry.signal.aborted||Date.parse(entry.deadline)<=Date.now())preparedPayloads.delete(id);
+    const previous=preparedPayloads.get(key);
+    if(previous){
+      if(previous.payload!==scope.payload||previous.signal!==scope.signal)throw Error('原出机请求内容或取消范围已改变');
+      previous.lease.assertBeforeSend({destination,payload:scope.payload});return previous.lease;
+    }
+    const lease=await prepareEgressPayload({...scope,destination});
+    const guarded=Object.freeze({assertBeforeSend(actual){
+      lease.assertBeforeSend({destination:payloadDestination(actual.destination),payload:actual.payload});
+    }});
+    guarded.assertBeforeSend({destination,payload:scope.payload});
+    if(preparedPayloads.size>=256)preparedPayloads.delete(preparedPayloads.keys().next().value);
+    preparedPayloads.set(key,{payload:scope.payload,signal:scope.signal,deadline:scope.deadline,lease:guarded});return guarded;
+  };
+  const payloadOptions=preparePayload===undefined?{}:{preparePayload};
   // Only the existing Runtime HTTP port consumes this closure. No credentials are serializable options.
   const httpsOptions=()=>{
     if (!configurationProvider) return {};
@@ -62,14 +87,22 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
         headers.set('X-PA-Agent-Token',`Bearer ${appToken}`);
       }
       if (options.deploymentVersion!==undefined) target.searchParams.set('endpoint',options.deploymentVersion);
-      return fetchImpl(target.href,{...init,headers:Object.fromEntries(headers),redirect:'error'});
+      const finalInit={...init,headers:Object.fromEntries(headers),redirect:'error'};
+      if(!preparePayload)return fetchImpl(target.href,finalInit);
+      const scope={requestId:headers.get('X-Request-Id'),destination:target.href,payload:finalInit.body,
+        deadline:headers.get('X-PA-Deadline'),signal:finalInit.signal,
+        isCurrent:()=>!finalInit.signal?.aborted&&JSON.stringify(currentOptions())===JSON.stringify(options)};
+      return Promise.resolve(preparePayload(scope)).then(lease=>{
+        lease.assertBeforeSend({destination:target.href,payload:finalInit.body});
+        return fetchImpl(target.href,finalInit);
+      });
     }};
   };
   if (transport==='https') {
     if (fallback==='1' || environment.PA_AGENTARTS_WSS_URL!==undefined) {
       throw Error('AgentArts WSS 地址与 HTTPS 备用开关需要启用 wss 主通道');
     }
-    return {transport,...deploymentBinding,...httpsOptions()};
+    return {transport,...deploymentBinding,...payloadOptions,...httpsOptions()};
   }
   const supplied=environment.PA_AGENTARTS_WSS_URL??transportPreferences.websocketUrl;
   if (typeof supplied!=='string' || !supplied) {
@@ -103,6 +136,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       + (boundDeploymentVersion===undefined ? '；当前尚未填写固定部署版本' : `（当前：${boundDeploymentVersion}）`));
   }
   if (boundDeploymentVersion!==undefined) address.searchParams.set('endpoint',boundDeploymentVersion);
+  websocketDestination=address.href;
   const readToken=()=>{
     const token=readAppToken?readAppToken():currentOptions().appToken??environment.PA_AGENTARTS_APP_TOKEN;
     if (typeof token!=='string' || !/^[\x21-\x7e]{32,4096}$/.test(token)) {
@@ -111,7 +145,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     return `Bearer ${token}`;
   };
   readToken();
-  return {transport,...deploymentBinding,websocketUrl:address.href,allowHttpsFallback:fallback==='1',...httpsOptions(),
+  return {transport,...deploymentBinding,...payloadOptions,websocketUrl:address.href,allowHttpsFallback:fallback==='1',...httpsOptions(),
     websocketAuthorizationProvider:{read:async()=>readToken()}};
 }
 
