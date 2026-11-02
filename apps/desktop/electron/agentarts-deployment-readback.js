@@ -9,7 +9,7 @@ const fail=code=>{throw new ProtocolError(code,'AgentArts 原固定部署读回�
 /** Official ShowCoreRuntime + ShowCoreRuntimeEndpoint. The raw body may contain
  * environment credentials: only the explicit deployment projection leaves this reader. */
 export async function readAgentArtsDeployment({runtimeId,runtimeName,endpointId,endpointName,version,imageReference,deadline,signal,
-  authorize,assertCurrent,fetchImpl=fetch}={}) {
+  authorize,assertCurrent,resolveImageReference,fetchImpl=fetch}={}) {
   if(!uuid(runtimeId)||!uuid(endpointId)||typeof runtimeName!=='string'||!/^[a-z][a-z0-9-]{0,46}[a-z0-9]$/u.test(runtimeName)
     ||typeof endpointName!=='string'||!/^[A-Za-z][A-Za-z0-9-]{0,46}[A-Za-z0-9]$/u.test(endpointName)||/^(latest|current|default)$/iu.test(endpointName)
     ||typeof version!=='string'||!/^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$/u.test(version)
@@ -40,12 +40,20 @@ export async function readAgentArtsDeployment({runtimeId,runtimeName,endpointId,
     }catch(error){if(error instanceof ProtocolError)throw error;active();fail('PROTOCOL_MISMATCH');}finally{reader.releaseLock();}
   }
   const runtimePath=`/v1/core/runtimes/${runtimeId}?version=${encodeURIComponent(version)}`;
-  function runtimeProjection(value){
+  async function runtimeProjection(value){
     if(value?.id!==runtimeId||value.name!==runtimeName||!['READY','DELETING'].includes(value.status)||value.arch!=='arm64'
-      ||value.version_detail?.version!==version||value.version_detail.artifact_source?.url!==imageReference)fail('REVISION_CONFLICT');
-    return {runtimeId,runtimeName:value.name,version,architecture:value.arch,imageReference,runtimeReady:value.status==='READY'};
+      ||value.version_detail?.version!==version)fail('REVISION_CONFLICT');
+    const artifactReference=value.version_detail.artifact_source?.url,repository=imageReference.split('@')[0];
+    if(artifactReference!==imageReference){
+      if(typeof artifactReference!=='string'||!artifactReference.startsWith(repository+':')
+        ||!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u.test(artifactReference.slice(repository.length+1))
+        ||typeof resolveImageReference!=='function')fail('REVISION_CONFLICT');
+      active();const resolved=await resolveImageReference({imageReference:artifactReference,deadline,signal});active();
+      if(resolved!==imageReference)fail('REVISION_CONFLICT');
+    }
+    return {runtimeId,runtimeName:value.name,version,architecture:value.arch,imageReference,artifactReference,runtimeReady:value.status==='READY'};
   }
-  const runtime=runtimeProjection(await get(runtimePath));
+  const runtime=await runtimeProjection(await get(runtimePath));
   function endpointProjection(endpoint){const weights=endpoint?.routing_config?.version_weights;
   if(endpoint?.runtime_id!==runtimeId||endpoint.id!==endpointId||endpoint.name!==endpointName||endpoint.target_version_name!==version
     ||weights!==undefined&&(!Array.isArray(weights)||!weights.length||new Set(weights.map(item=>item?.version_name)).size!==weights.length
@@ -54,7 +62,7 @@ export async function readAgentArtsDeployment({runtimeId,runtimeName,endpointId,
     return {endpointId,endpointName,version,weights};
   }
   const endpointPath=`/v1/core/runtimes/${runtimeId}/endpoints/${endpointId}`,endpoint=endpointProjection(await get(endpointPath));
-  if(!isDeepStrictEqual(runtime,runtimeProjection(await get(runtimePath))))fail('REVISION_CONFLICT');active();
+  if(!isDeepStrictEqual(runtime,await runtimeProjection(await get(runtimePath))))fail('REVISION_CONFLICT');active();
   if(!isDeepStrictEqual(endpoint,endpointProjection(await get(endpointPath))))fail('REVISION_CONFLICT');active();
   const result={...runtime,endpointId,endpointName,pinnedRouting:true,
     containerExecution:'unverified',readinessProbe:'unverified'};

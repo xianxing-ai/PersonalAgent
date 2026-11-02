@@ -35,4 +35,6 @@ Desktop 先经原 ToolGateway/Policy 固定样本和版本化 acceptance，再�
 
 两组平台任务最终均为 2 条失败、0 token。main 详情的明确错误为 `ERR_PROVIDER_AUTH`、HTTP 401、`ModelArts.81003 / Invalid authorization header`；评分器模型选择只有 `deepseek-v4-flash`。未重新执行、未人工改分；平台鉴权修复前不能产出有效评分。平台结果行 ID 与评测集草稿行 ID 不同（main 结果行是 `6ae815f85253c8cdaff8c410`、`6ae815f85253c8cdaff8c411`）；绑定时须从完成任务原结果读取，不得复制草稿 ID。当前界面只展示评分器使用的 output/reference，完整 API `item_data` 仍待凭据可用后核对。
 
-已定位现有模型提供商 `personal-agent-platform-deepseek`，Base URL 为 `https://api.modelarts-maas.com/openai/v1`，出站 API Key 凭据提供者 `personal-agent-platform-deepseek-key`；凭据更新需用户在平台内完成，不在 Evidence 保存密钥。结果绑定复用已有 canonical digest，忽略 JSON 对象键的序列化顺序，保留所有实际值与数组顺序；单条读回测试覆盖字段重排通过、输出替换拒绝，通过 1/1。没有再次运行云模型或平台评估任务。
+结果绑定复用已有 canonical digest，忽略 JSON 对象键的序列化顺序，保留所有实际值与数组顺序；单条读回测试覆盖字段重排通过、输出替换拒绝，通过 1/1。没有再次运行云模型或平台评估任务。
+
+纠正最初的凭据定位：`personal-agent-platform-deepseek` / `personal-agent-platform-deepseek-key` 是运行时模型代理的出站配置，不能据评分器 401 推定该凭据失效。当前 runtime 使用此代理的 `deepseek-v4.1-flash` 已有真实调用成功记录；评分器仅支持预置 `deepseek-v4-flash`，按[官方评估器文档](https://support.huaweicloud.com/ops-agentarts/agentarts_14_0035.html)使用独立的[预置模型鉴权配置](https://support.huaweicloud.com/lowcode-agentarts/agentarts_05_0185.html)。已打开“授权管理 → 模型 → 鉴权管理”，界面存在已保存的遮蔽 API Key；尚未更改。下一步应修复该入口的 MaaS 鉴权，保留运行时代理凭据，不在 Evidence 保存密钥。
