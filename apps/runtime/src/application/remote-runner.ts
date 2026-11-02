@@ -45,7 +45,7 @@ export interface RunnerSecretPort {
   get(ref: string): string | undefined;
   delete(ref: string): void;
 }
-export interface RemoteRunnerSession {exec(job: Record<string, unknown>): Promise<Record<string, unknown>>; close(): void}
+export interface RemoteRunnerSession {exec(job: Record<string, unknown>, control?: {signal?: AbortSignal; deadline: string}): Promise<Record<string, unknown>>; close(): void}
 export interface RemoteRunnerTransport {
   connect(host: RemoteHostRecord, auth: {privateKey: string; runnerToken: string; hostKey: string}): Promise<RemoteRunnerSession>;
 }
@@ -55,6 +55,8 @@ export interface RemoteJobRequest {
   taskId: string;
   payload: Record<string, unknown>;
   repo?: string;
+  signal?: AbortSignal;
+  deadline?: string;
 }
 export interface RemoteJobResult {
   accepted: boolean;
@@ -254,40 +256,60 @@ export function createRemoteRunnerService(options: {
     if (createHash('sha256').update(hostKey).digest('hex') !== host.hostKeyFingerprint) fail('UNAUTHORIZED', 'Pinned host key is unavailable');
     return {token: runnerToken, session: await options.transport.connect(host, {privateKey, runnerToken, hostKey})};
   };
-  const send = async (host: RemoteHostRecord, job: Record<string, unknown>) => {
-    let last: unknown;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const {token, session} = await connect(host);
-        try {
-          const signed = {...job, signature: signRunnerJob(job, token)};
-          const response = await session.exec(signed);
-          if (!verifyRunnerJob({...response, signature: response.signature as string}, token) && response.state !== 'rejected') {
-            /* Worker receipts are not re-signed; signature rejection is only for inbound jobs. */
-          }
-          return response;
-        } finally {session.close();}
-      } catch (error) {
-        last = error;
-        await new Promise(resolve => setTimeout(resolve, 10 * (2 ** attempt)));
-      }
-    }
-    throw last instanceof Error ? last : new ProtocolError('EXTERNAL_FAILURE', 'Remote runner is unreachable');
-  };
   const submit = async (job: RemoteJobRequest): Promise<RemoteJobResult> => {
     if (job.kind !== 'developer-duty' && job.kind !== 'async-subagent') fail('INVALID_ARGUMENT', 'Job kind is not allowlisted');
     if (job.payload.action === 'merge') fail('SCOPE_DENIED', 'Merge stays forbidden');
-    const saved = runtime().loadCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey) as RemoteJobResult | undefined;
-    if (saved?.receipt && (saved.receipt.state === 'unknown' || saved.receipt.state === 'succeeded')) return {...saved, redo: false};
+    if (!job.idempotencyKey || !job.taskId) fail('INVALID_ARGUMENT', 'Job identity is required');
+    const requestDigest = createHash('sha256').update(canonical({kind: job.kind, taskId: job.taskId, repo: job.repo ?? null, payload: job.payload})).digest('hex');
+    const saved = runtime().loadCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey) as (RemoteJobResult & {requestDigest?: string}) | undefined;
+    if (saved) {
+      if (saved.requestDigest !== requestDigest) fail('REVISION_CONFLICT', 'Remote job input changed or its original binding is unavailable');
+      return {...saved, redo: false};
+    }
+    const deadlineMs = job.deadline === undefined ? now() + 60_000 : Math.min(Date.parse(job.deadline), now() + 60_000);
+    if (!Number.isFinite(deadlineMs)) fail('INVALID_ARGUMENT', 'Job deadline is invalid');
+    const assertActive = () => {
+      if (job.signal?.aborted) throw new ProtocolError('CANCELLED', 'Remote job was cancelled before dispatch');
+      if (now() >= deadlineMs) throw new ProtocolError('TIMEOUT', 'Remote job deadline elapsed');
+    };
+    assertActive();
     const eligible = hosts().filter(host => host.enabled && (!job.repo || host.repos.includes(job.repo)));
-    const message = {v: 1, id: ids(), idempotencyKey: job.idempotencyKey, kind: job.kind, deadline: new Date(now() + 60_000).toISOString(),
+    const message = {v: 1, id: ids(), idempotencyKey: job.idempotencyKey, kind: job.kind, deadline: new Date(deadlineMs).toISOString(),
       payload: job.payload, sentAt: new Date(now()).toISOString()};
+    const persist = (result: RemoteJobResult) => {
+      runtime().saveCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey, {...result, requestDigest});
+      return result;
+    };
+    const pending: RemoteJobResult = {accepted: true, location: 'remote', reason: 'dispatch result is unknown',
+      receipt: {v: 1, jobId: message.id, idempotencyKey: message.idempotencyKey, kind: message.kind, state: 'unknown', redo: false}, redo: false};
+    // Reserve before the first await. A concurrent call or restart may read, never replay, this operation.
+    if (!runtime().saveCheckpointOnce(owner().taskId, JOB_PREFIX + job.idempotencyKey, {...pending, requestDigest})) {
+      const original = runtime().loadCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey) as RemoteJobResult & {requestDigest?: string};
+      if (original.requestDigest !== requestDigest) fail('REVISION_CONFLICT', 'Remote job input changed');
+      return {...original, redo: false};
+    }
     let reason = 'no healthy remote host';
     for (const host of eligible) {
       const health = runtime().loadCheckpoint(owner().taskId, `remote-runner-health:${host.id}`) as {at?: number} | undefined;
       if (health?.at && now() - health.at > 120_000) {reason = `${host.name} heartbeat is stale`; continue;}
+      let connected: Awaited<ReturnType<typeof connect>>;
+      try { connected = await connect(host); }
+      catch {
+        reason = `${host.name} connection could not be prepared`;
+        runtime().saveCheckpoint(owner().taskId, `remote-runner-health:${host.id}`, {at: now(), state: 'down'});
+        continue;
+      }
+      let dispatched = false;
       try {
-        const response = await send(host, message);
+        assertActive();
+        persist({...pending, hostId: host.id});
+        dispatched = true;
+        const response = await connected.session.exec({...message, signature: signRunnerJob(message, connected.token)},
+          {deadline: message.deadline, ...(job.signal ? {signal: job.signal} : {})});
+        if (response?.v !== 1 || response.jobId !== message.id || response.idempotencyKey !== message.idempotencyKey
+          || response.kind !== message.kind || !['succeeded', 'failed', 'unknown', 'rejected'].includes(String(response.state))) {
+          throw new ProtocolError('RESULT_UNKNOWN', 'Remote receipt did not match the original job');
+        }
         runtime().saveCheckpoint(owner().taskId, `remote-runner-health:${host.id}`, {at: now(), state: 'ok'});
         const cursor = response.cursor as {repo?: string; deliveryId?: string; basedOnDeliveryId?: string} | undefined;
         const reconciled = reconcileDutyCursor(runtime().loadCheckpoint(job.taskId, 'developer-duty-cursor:v1') as DutyCursor | undefined, cursor);
@@ -295,27 +317,35 @@ export function createRemoteRunnerService(options: {
         if (response.comment && typeof response.comment === 'object') runtime().saveCheckpoint(job.taskId, 'developer-duty-comment:v1', response.comment);
         const result: RemoteJobResult = {accepted: true, location: 'remote', hostId: host.id, reason: reconciled.conflict ? 'cursor conflict kept the local cursor' : 'remote receipt',
           receipt: response, redo: false};
-        runtime().saveCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey, result);
+        persist(result);
         audit({action: 'job', hostId: host.id, idempotencyKey: job.idempotencyKey, state: response.state, location: 'remote'});
         return result;
       } catch (error) {
+        if (!dispatched) throw error;
         reason = redactRunnerText(error instanceof Error ? error.message : 'remote failed',
           [options.secrets.get(host.tokenRef), options.secrets.get(host.keyRef)].filter((item): item is string => typeof item === 'string'));
         runtime().saveCheckpoint(owner().taskId, `remote-runner-health:${host.id}`, {at: now(), state: 'down'});
-      }
+        return persist({...pending, hostId: host.id, reason});
+      } finally {connected.session.close();}
     }
-    const localReceipt = options.localExecute ? await options.localExecute(job) : {state: 'failed', error: reason, verification: 'fixture'};
+    assertActive();
+    persist({...pending, location: 'local', reason});
+    let localReceipt: Record<string, unknown>;
+    try {localReceipt = options.localExecute ? await options.localExecute(job) : {state: 'failed', error: reason, verification: 'fixture'};}
+    catch {return persist({...pending, location: 'local', reason: 'local execution result is unknown'});}
     const result: RemoteJobResult = {accepted: true, location: 'local', reason, receipt: localReceipt, redo: false};
-    runtime().saveCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey, result);
+    persist(result);
     audit({action: 'job', idempotencyKey: job.idempotencyKey, state: localReceipt.state, location: 'local', reason});
     return result;
   };
   const test = async (hostId: string) => {
     const host = readHost(hostId);
     if (!host) fail('NOT_FOUND', 'Remote host does not exist');
-    const {token} = await connect(host);
+    const {token, session} = await connect(host);
     const message = {v: 1, id: ids(), idempotencyKey: `heartbeat-${host.id}-${now()}`, kind: 'heartbeat', payload: {}, sentAt: new Date(now()).toISOString()};
-    const response = await send(host, {...message, signature: signRunnerJob(message, token)});
+    let response: Record<string, unknown>;
+    try {response = await session.exec({...message, signature: signRunnerJob(message, token)}, {deadline: new Date(now() + 60_000).toISOString()});}
+    finally {session.close();}
     runtime().saveCheckpoint(owner().taskId, `remote-runner-health:${host.id}`, {at: now(), state: response.state === 'succeeded' ? 'ok' : 'down'});
     audit({action: 'test', hostId, state: response.state});
     return {hostId, state: response.state, heartbeatAt: response.heartbeatAt};

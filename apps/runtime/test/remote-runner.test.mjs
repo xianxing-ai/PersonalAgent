@@ -62,21 +62,23 @@ test('confirmed host heartbeats, polls without treating a gap as no change, and 
   assert.equal(gap.receipt.gap, true);
   assert.equal(gap.receipt.noChange, false);
   assert.equal(runtime.loadCheckpoint(task.taskId, 'developer-duty-cursor:v1'), undefined);
-  const poll = await pool.submit({kind: 'developer-duty', idempotencyKey: 'poll-1', taskId: task.taskId, repo: 'octo/repo',
-    payload: {action: 'poll', repo: 'octo/repo', page: {connected: true, gap: false, events: [{id: 'd2', deliveryId: 'd2'}], next: {deliveryId: 'd2'}}}});
+  const pollJob = {kind: 'developer-duty', idempotencyKey: 'poll-1', taskId: task.taskId, repo: 'octo/repo',
+    payload: {action: 'poll', repo: 'octo/repo', page: {connected: true, gap: false, events: [{id: 'd2', deliveryId: 'd2'}], next: {deliveryId: 'd2'}}}};
+  const poll = await pool.submit(pollJob);
   assert.equal(runtime.loadCheckpoint(task.taskId, 'developer-duty-cursor:v1').deliveryId, 'd2');
-  const again = await pool.submit({kind: 'developer-duty', idempotencyKey: 'poll-1', taskId: task.taskId, repo: 'octo/repo', payload: {action: 'poll', repo: 'octo/repo'}});
+  const again = await pool.submit(pollJob);
   assert.equal(again.receipt.state, poll.receipt.state);
   assert.equal(again.receipt.cursor.deliveryId, 'd2');
   assert.equal(again.redo, false);
-  const unknown = await pool.submit({kind: 'developer-duty', idempotencyKey: 'comment-1', taskId: task.taskId, repo: 'octo/repo',
-    payload: {action: 'comment', repo: 'octo/repo', number: 4, body: 'CI red', existing: [], writeState: 'unknown'}});
+  const unknownJob = {kind: 'developer-duty', idempotencyKey: 'comment-1', taskId: task.taskId, repo: 'octo/repo',
+    payload: {action: 'comment', repo: 'octo/repo', number: 4, body: 'CI red', existing: [], writeState: 'unknown'}};
+  const unknown = await pool.submit(unknownJob);
   assert.equal(unknown.receipt.state, 'unknown');
-  const reread = await pool.submit({kind: 'developer-duty', idempotencyKey: 'comment-1', taskId: task.taskId, repo: 'octo/repo',
-    payload: {action: 'comment', repo: 'octo/repo', number: 4, body: 'CI red again', existing: []}});
+  const reread = await pool.submit(unknownJob);
   assert.equal(reread.redo, false);
   assert.equal(reread.receipt.state, 'unknown');
   assert.equal(state.comments['octo/repo#4'].outcome, 'unknown');
+  await assert.rejects(pool.submit({...unknownJob, payload: {...unknownJob.payload, body: 'replacement'}}), {code: 'REVISION_CONFLICT'});
   assert.equal(reconcileDutyCursor({repo: 'octo/repo', deliveryId: 'd2'}, {repo: 'octo/repo', deliveryId: 'd9', basedOnDeliveryId: 'other'}).conflict, true);
 });
 
@@ -84,13 +86,63 @@ test('an unhealthy host falls back locally and merge stays forbidden', async () 
   const runtime = new TaskRuntime(':memory:');
   const task = parent(runtime);
   const secrets = createMemoryRunnerSecrets();
-  const transport = createLoopbackRunnerTransport(async () => {throw new Error('ssh down token '+token);});
+  const transport = {connect: async () => {throw new Error('connection preparation failed '+token);}};
   const pool = createRemoteRunnerService({getRuntime: () => runtime, secrets, transport, localExecute: async () => ({state: 'failed', error: 'local fallback', verification: 'fixture'})});
   await addHost(pool, task.taskId);
   const result = await pool.submit({kind: 'developer-duty', idempotencyKey: 'down', taskId: task.taskId, repo: 'octo/repo', payload: {action: 'poll', repo: 'octo/repo'}});
   assert.equal(result.location, 'local');
   assert.equal(JSON.stringify(result).includes(token), false);
   await assert.rejects(pool.submit({kind: 'developer-duty', idempotencyKey: 'merge', taskId: task.taskId, repo: 'octo/repo', payload: {action: 'merge', repo: 'octo/repo'}}), {code: 'SCOPE_DENIED'});
+});
+
+test('a dispatched job is reserved across concurrency and restart and never retries or falls back', async () => {
+  const runtime = new TaskRuntime(':memory:');
+  const task = parent(runtime);
+  const secrets = createMemoryRunnerSecrets();
+  let executions = 0;
+  let localRuns = 0;
+  let release;
+  let entered;
+  const started = new Promise(resolve => {entered = resolve;});
+  const transport = createLoopbackRunnerTransport(async () => {
+    executions += 1; entered();
+    await new Promise(resolve => {release = resolve;});
+    throw new Error('receipt lost after side effect');
+  });
+  const makePool = () => createRemoteRunnerService({getRuntime: () => runtime, secrets, transport,
+    localExecute: async () => {localRuns += 1; return {state: 'succeeded'};}});
+  const pool = makePool();
+  await addHost(pool, task.taskId);
+  await addHost(pool, task.taskId, {...hostInput, name: 'ecs-2'});
+  const job = {kind: 'async-subagent', idempotencyKey: 'at-most-once', taskId: task.taskId, payload: {goal: 'write'}};
+  const first = pool.submit(job);
+  await started;
+  assert.equal((await makePool().submit(job)).receipt.state, 'unknown');
+  release();
+  assert.equal((await first).receipt.state, 'unknown');
+  assert.equal((await makePool().submit(job)).receipt.state, 'unknown');
+  await assert.rejects(pool.submit({...job, taskId: 'another-task'}), {code: 'REVISION_CONFLICT'});
+  assert.equal(executions, 1);
+  assert.equal(localRuns, 0);
+});
+
+test('a receipt for another job cannot advance the original task cursor or cause local replay', async () => {
+  const runtime = new TaskRuntime(':memory:');
+  const task = parent(runtime);
+  let executions = 0;
+  let localRuns = 0;
+  const pool = createRemoteRunnerService({getRuntime: () => runtime, secrets: createMemoryRunnerSecrets(),
+    transport: createLoopbackRunnerTransport(async job => {
+      executions += 1;
+      return {v: 1, jobId: 'other-job', kind: job.kind, idempotencyKey: job.idempotencyKey, state: 'succeeded', cursor: {repo: 'octo/repo', deliveryId: 'wrong'}};
+    }), localExecute: async () => {localRuns += 1; return {state: 'succeeded'};}});
+  await addHost(pool, task.taskId);
+  const job = {kind: 'developer-duty', idempotencyKey: 'wrong-receipt', taskId: task.taskId, repo: 'octo/repo', payload: {action: 'poll'}};
+  assert.equal((await pool.submit(job)).receipt.state, 'unknown');
+  assert.equal((await pool.submit(job)).receipt.state, 'unknown');
+  assert.equal(runtime.loadCheckpoint(task.taskId, 'developer-duty-cursor:v1'), undefined);
+  assert.equal(executions, 1);
+  assert.equal(localRuns, 0);
 });
 
 test('the headless process returns one receipt and the installer script parses', async () => {

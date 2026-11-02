@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /** Headless executor. One job in, one receipt out. It is not a scheduler. */
-import {createHmac, createHash, timingSafeEqual} from 'node:crypto';
+import {createHmac, createHash, randomUUID, timingSafeEqual} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync} from 'node:fs';
+import {mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -59,13 +59,26 @@ export function redact(value, secrets = []) {
 function emptyState() {return {version: 1, jobs: {}, cursors: {}, comments: {}, recent: []};}
 
 export function loadRunnerState(file) {
-  try {return {...emptyState(), ...JSON.parse(readFileSync(file, 'utf8'))};}
-  catch {return emptyState();}
+  try {
+    const state = JSON.parse(readFileSync(file, 'utf8'));
+    if (state?.version !== 1 || !state.jobs || typeof state.jobs !== 'object' || Array.isArray(state.jobs)
+      || !state.cursors || !state.comments || !Array.isArray(state.recent)) throw new Error('Invalid runner state');
+    return state;
+  } catch (error) {if (error.code === 'ENOENT') return emptyState(); throw error;}
 }
 
 export function saveRunnerState(file, state) {
   mkdirSync(dirname(file), {recursive: true});
-  writeFileSync(file, JSON.stringify(redact(state)), {mode: 0o600});
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  const fd = openSync(temporary, 'wx', 0o600);
+  try {writeFileSync(fd, JSON.stringify(redact(state))); fsyncSync(fd);}
+  finally {closeSync(fd);}
+  renameSync(temporary, file);
+  // The service runs on Linux; persist the rename as well as the file contents.
+  if (process.platform !== 'win32') {
+    const directory = openSync(dirname(file), 'r');
+    try {fsyncSync(directory);} finally {closeSync(directory);}
+  }
 }
 
 function receipt(message, extra) {
@@ -163,9 +176,11 @@ async function runSubagent(message, options) {
       error: 'model command is not configured', summary: '远端主机没有配置模型命令，子任务没有执行。'});
   }
   const goal = String(message.payload?.goal ?? '').slice(0, 8000);
-  const result = await runCommand(configured, goal, options.spawnImpl);
+  const remaining = message.deadline === undefined ? configured.timeoutMs : Date.parse(message.deadline) - Date.now();
+  if (remaining <= 0) return receipt(message, {state: 'rejected', error: 'deadline', redo: false});
+  const result = await runCommand({...configured, timeoutMs: Math.min(configured.timeoutMs, remaining)}, goal, options.spawnImpl);
   const summary = String(result.stdout || result.stderr || '').trim().slice(0, 4000);
-  if (result.timedOut) return receipt(message, {state: 'failed', needsConfig: false, verification: 'executed', redo: false, error: 'model command timed out', summary: summary || 'model command timed out'});
+  if (result.timedOut) return receipt(message, {state: 'unknown', needsConfig: false, verification: 'executed', redo: false, error: 'model command timed out', summary: summary || 'model command timed out'});
   if (result.code !== 0) return receipt(message, {state: 'failed', needsConfig: false, verification: 'executed', redo: false, error: summary || `model command exited ${result.code}`, summary: summary || `model command exited ${result.code}`});
   return receipt(message, {state: 'succeeded', needsConfig: false, verification: 'executed', summary: summary || '远端模型命令没有输出'});
 }
@@ -186,26 +201,61 @@ export async function handleRunnerJob(state, message, options = {}) {
   if (message.kind === 'heartbeat') return receipt(message, {state: 'succeeded', heartbeatAt: new Date(now).toISOString()});
   const saved = state.jobs[message.idempotencyKey];
   if (message.kind === 'status' || message.kind === 'cancel') {
-    if (message.kind === 'cancel' && saved && saved.state === 'leased') saved.state = 'cancelled';
-    return receipt(message, {state: saved?.state ?? 'absent', prior: saved?.receipt});
+    // A cancellation request cannot prove that an already dispatched command stopped.
+    return receipt(message, {state: saved?.state === 'leased' ? 'unknown' : saved?.state ?? 'absent', prior: saved?.receipt, redo: false});
   }
-  if (saved?.state === 'succeeded' || saved?.state === 'failed' || saved?.state === 'cancelled') return saved.receipt;
-  if (saved?.state === 'unknown') return {...saved.receipt, redo: false};
-  if (saved?.state === 'leased' && saved.leaseUntil > now && saved.jobId !== message.id) {
-    return receipt(message, {state: 'leased', error: 'job already running', redo: false});
+  const requestDigest = createHash('sha256').update(canonical({kind: message.kind, payload: message.payload})).digest('hex');
+  if (saved) {
+    if (saved.requestDigest !== requestDigest) return receipt(message, {state: 'rejected', error: 'original job binding differs or is unavailable', redo: false});
+    return saved.receipt ?? receipt(message, {state: 'unknown', error: 'original job has no terminal receipt', redo: false});
+  }
+  if (message.deadline !== undefined && (!Number.isFinite(Date.parse(message.deadline)) || now >= Date.parse(message.deadline))) {
+    return receipt(message, {state: 'rejected', error: 'deadline', redo: false});
   }
   state.recent.push(now);
-  state.jobs[message.idempotencyKey] = {jobId: message.id, state: 'leased', leaseUntil: now + 60_000, kind: message.kind};
+  state.jobs[message.idempotencyKey] = {jobId: message.id, requestDigest, state: 'unknown', kind: message.kind,
+    receipt: receipt(message, {state: 'unknown', error: 'job has been admitted; execution result is unknown', redo: false})};
+  // The production file host persists this reservation before any external operation.
+  options.persist?.(state);
   try {
     const result = message.kind === 'developer-duty' ? await runDuty(state, message, options.fetchImpl) : await runSubagent(message, options);
-    const terminal = result.state === 'unknown' ? 'unknown' : result.state === 'failed' ? 'failed' : 'succeeded';
-    state.jobs[message.idempotencyKey] = {jobId: message.id, state: terminal, kind: message.kind, receipt: result};
+    const terminal = result.state;
+    state.jobs[message.idempotencyKey] = {jobId: message.id, requestDigest, state: terminal, kind: message.kind, receipt: result};
+    options.persist?.(state);
     return result;
   } catch (error) {
     const failed = receipt(message, {state: 'unknown', error: 'runner exception', redo: false});
-    state.jobs[message.idempotencyKey] = {jobId: message.id, state: 'unknown', kind: message.kind, receipt: failed};
+    state.jobs[message.idempotencyKey] = {jobId: message.id, requestDigest, state: 'unknown', kind: message.kind, receipt: failed};
+    options.persist?.(state);
     return failed;
   }
+}
+
+/** One file owner at a time, including independent SSH processes. Never expire a crashed writer's lock. */
+export async function handleRunnerFileJob(file, message, options = {}) {
+  if (!verifyJob(message, options.token ?? '')) return {v: 1, state: 'rejected', error: 'signature', jobId: message?.id};
+  mkdirSync(dirname(file), {recursive: true});
+  const lock = `${file}.lock`;
+  let fd;
+  try {fd = openSync(lock, 'wx', 0o600);}
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const saved = loadRunnerState(file).jobs[message.idempotencyKey];
+    // Read-only status remains available. An unowned/stale lock is never permission to execute.
+    if (message.kind === 'status' || message.kind === 'cancel') {
+      return receipt(message, {state: saved?.state === 'leased' ? 'unknown' : saved?.state ?? 'absent', prior: saved?.receipt, redo: false});
+    }
+    if (saved) {
+      const digest = createHash('sha256').update(canonical({kind: message.kind, payload: message.payload})).digest('hex');
+      if (saved.requestDigest !== digest) return receipt(message, {state: 'rejected', error: 'original job binding differs or is unavailable', redo: false});
+      return saved.receipt ?? receipt(message, {state: 'unknown', error: 'original job has no terminal receipt', redo: false});
+    }
+    return receipt(message, {state: 'rejected', error: 'runner state is locked; this job was not dispatched', redo: false});
+  }
+  try {
+    const state = loadRunnerState(file);
+    return await handleRunnerJob(state, message, {...options, persist: next => saveRunnerState(file, next)});
+  } finally {closeSync(fd); unlinkSync(lock);}
 }
 
 export function fingerprintHostKey(hostKey) {
@@ -221,9 +271,7 @@ async function serve(file, token) {
   for (;;) {
     for (const name of readdirSync(inbox).filter(item => item.endsWith('.json')).sort()) {
       const message = JSON.parse(readFileSync(`${inbox}/${name}`, 'utf8'));
-      const state = loadRunnerState(file);
-      const result = await handleRunnerJob(state, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30), modelCommandFile: MODEL_COMMAND_FILE});
-      saveRunnerState(file, state);
+      const result = await handleRunnerFileJob(file, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30), modelCommandFile: MODEL_COMMAND_FILE});
       writeFileSync(`${outbox}/${name}`, JSON.stringify(result), {mode: 0o600});
       unlinkSync(`${inbox}/${name}`);
     }
@@ -241,9 +289,7 @@ async function main() {
   if (process.argv.includes('--serve')) return serve(file, token);
   const raw = readFileSync(0, 'utf8');
   const message = JSON.parse(raw);
-  const state = loadRunnerState(file);
-  const result = await handleRunnerJob(state, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30), modelCommandFile: MODEL_COMMAND_FILE});
-  saveRunnerState(file, state);
+  const result = await handleRunnerFileJob(file, message, {token, maxJobsPerMinute: Number(process.env.RUNNER_MAX_PER_MINUTE || 30), modelCommandFile: MODEL_COMMAND_FILE});
   process.stdout.write(JSON.stringify(result));
 }
 
