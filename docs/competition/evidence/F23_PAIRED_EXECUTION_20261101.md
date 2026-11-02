@@ -38,3 +38,9 @@ Desktop 先经原 ToolGateway/Policy 固定样本和版本化 acceptance，再�
 结果绑定复用已有 canonical digest，忽略 JSON 对象键的序列化顺序，保留所有实际值与数组顺序；单条读回测试覆盖字段重排通过、输出替换拒绝，通过 1/1。没有再次运行云模型或平台评估任务。
 
 纠正最初的凭据定位：`personal-agent-platform-deepseek` / `personal-agent-platform-deepseek-key` 是运行时模型代理的出站配置，不能据评分器 401 推定该凭据失效。当前 runtime 使用此代理的 `deepseek-v4.1-flash` 已有真实调用成功记录；评分器仅支持预置 `deepseek-v4-flash`，按[官方评估器文档](https://support.huaweicloud.com/ops-agentarts/agentarts_14_0035.html)使用独立的[预置模型鉴权配置](https://support.huaweicloud.com/lowcode-agentarts/agentarts_05_0185.html)。已打开“授权管理 → 模型 → 鉴权管理”，界面存在已保存的遮蔽 API Key；尚未更改。下一步应修复该入口的 MaaS 鉴权，保留运行时代理凭据，不在 Evidence 保存密钥。
+
+## 更换预置模型鉴权后的实际结果（2026-11-02 17:43 +08:00）
+
+用户已在平台本人完成新 MaaS API Key 的粘贴，随后鉴权弹窗读回存在已保存的遮蔽值。只克隆原 main 评估一次，保持原数据集和评估器 `0.0.1`、两条原输出，最大并发数设为 1；新任务 `53a923c0-cef6-4bda-84b3-9c283243c1a1` 在 17:43:30–17:43:44 失败，2 条失败、0 token。原任务保留，未执行 shadow 新评估。
+
+新错误发生在平台构造评估任务、获取模型服务详情时：HTTP 403 / `AgentArts.00051014`，提示用户无权操作模型服务，应检查 projectId、workspaceId 及权限；所引用服务为 `maas-fbc69924-8bb7-4c80-b68d-5c03dc5da924`。这与先前 MaaS HTTP 401 不同，不能据此断言新 Key 无效或有效。授权管理中 `DeepSeek-V4-Flash` 仍显示“已开通”，但其服务详情为空，模型调测列表精确搜索 `DeepSeek-V4-Flash` 显示“暂无模型”；列表可见 V4.1 型号，不能擅自替换原评估器模型或把本地评分当平台评分。当前平台模型服务访问与评估可用性仍待恢复；真实 F23 晋升和完整验收保持未完成。
