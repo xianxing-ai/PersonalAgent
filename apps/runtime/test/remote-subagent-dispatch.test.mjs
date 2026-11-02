@@ -7,8 +7,8 @@ import {
   createLoopbackRunnerTransport,
   createMemoryRunnerSecrets,
   createRemoteAwareSubagentStarter,
-  createRemoteRunnerService,
 } from '../dist/application.js';
+import {createSyntheticRemoteRunnerService as createRemoteRunnerService} from '../../../tests/helpers/synthetic-remote-runner.mjs';
 import {handleRunnerJob} from '../../../scripts/remote-runner/remote-runner-service.mjs';
 
 const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nfixture-key\n-----END OPENSSH PRIVATE KEY-----';
@@ -95,6 +95,24 @@ test('an unknown remote receipt is read back and is not run locally', async () =
   await controller.pump();
   assert.equal(reads, 1);
   assert.equal(runtime.getTask(child.taskId).state, 'waiting_reconciliation');
+});
+
+test('contradictory needs-config receipts never authorize a local replay',async()=>{
+  for(const receipt of [{state:'failed',needsConfig:true},{state:'failed',verification:'needs-config'},
+    {state:'succeeded',verification:'executed',needsConfig:true}]){
+    const runtime=new TaskRuntime(':memory:');
+    const parent=runtime.submitTask({conversationId:'desktop-panel',goal:'original',idempotencyKey:'contradictory'});
+    const {pool}=poolFor(runtime,async job=>({v:1,jobId:job.id,idempotencyKey:job.idempotencyKey,kind:job.kind,...receipt}));
+    await addHost(pool,parent.taskId);let localRuns=0;
+    const host=hostOptions(runtime,{runDefaultWorker:async()=>{localRuns++;return {resultSummary:'must not run'};}});
+    const controller=createDesktopAsyncSubagentTools({...host,startChild:createRemoteAwareSubagentStarter({host,getRemote:()=>pool})});
+    await controller.tools.find(tool=>tool.descriptor.name==='subagent.spawn').execute({subtasks:[{subtaskId:'child',role:'coder',goal:'original'}]},context(parent.taskId));
+    await controller.pump();await new Promise(resolve=>setImmediate(resolve));
+    const child=runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-child`);
+    assert.equal(child.state,'waiting_reconciliation');assert.equal(localRuns,0);
+    await controller.pump();assert.equal(runtime.getTask(child.taskId).state,'waiting_reconciliation');assert.equal(localRuns,0);
+    runtime.close();
+  }
 });
 
 test('a host without a model command falls back locally and does not report remote success', async () => {

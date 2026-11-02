@@ -209,7 +209,7 @@ export {
   developerDutyToolIntent, storeDeveloperDutyEvalSet, developerDutyCredential, developerDutyRemoteRunner, developerDutyPersonalView,
   developerDutyCiClass,
 } from './application/developer-duty.js';
-export {createDeveloperDutyTools, DUTY_WATCH, DUTY_UNWATCH, DUTY_POLICY_SET, DUTY_PERSONAL_LIST, DUTY_STATUS, DUTY_CI_TRIAGE} from './application/developer-duty-tools.js';
+export {createDeveloperDutyTools, DUTY_WATCH, DUTY_UNWATCH, DUTY_POLICY_SET, DUTY_PERSONAL_LIST, DUTY_STATUS, DUTY_CI_TRIAGE, DUTY_COMMENT_PUBLISH} from './application/developer-duty-tools.js';
 export {LOCAL_REPAIR_TOOL} from './application/local-repair.js';
 export {createKnowledgeFeedReceipt,createKnowledgeFeedReceiptFromCollectResult,createKnowledgeFeedReceiptFromConfirmedExecution, parseKnowledgeFeedReceipt, verifyKnowledgeFeedReceiptBinding,
   knowledgeFeedReceiptItems} from './application/knowledge-feed-receipt.js';

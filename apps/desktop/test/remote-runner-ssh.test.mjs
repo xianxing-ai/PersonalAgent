@@ -44,12 +44,25 @@ test('SSH cancellation kills only the local transport and reports an unknown rem
   const transport = createSshTransport({spawn(_file, _args, options) {assert.equal(options.windowsHide, true); return child;}});
   const session = await transport.connect({port: 22, user: 'runner', address: '10.0.0.8'}, {privateKey: 'fixture', hostKey: 'fixture'});
   const abort = new AbortController();
-  const result = session.exec({id: 'original'}, {signal: abort.signal, deadline: new Date(Date.now() + 10000).toISOString()});
+  const result = session.exec({id: 'original'}, {signal: abort.signal, deadline: new Date(Date.now() + 10000).toISOString(),assertBeforeSend(){}});
   abort.abort();
   await assert.rejects(result, {code: 'RESULT_UNKNOWN'});
   session.close();
   assert.equal(killed, 1);
   assert.equal(existsSync(dirname(session.args[1])), false);
+});
+
+test('SSH rejects missing or asynchronous final guards before writing any payload',async()=>{
+  for(const guard of [undefined,async()=>{}]){
+    let bytes=0;const child=new EventEmitter();child.stdout=new PassThrough();child.stderr=new PassThrough();child.stdin=new PassThrough();child.kill=()=>{};
+    child.stdin.on('data',chunk=>{bytes+=chunk.length;});
+    const session=await createSshTransport({spawn:()=>child}).connect({port:22,user:'runner',address:'runner.example'},
+      {privateKey:'fixture',hostKey:'fixture'});
+    try{await assert.rejects(session.exec({kind:'async-subagent',payload:{goal:'fixture'}},
+      {signal:new AbortController().signal,deadline:new Date(Date.now()+10000).toISOString(),assertBeforeSend:guard}),{code:'UNAUTHORIZED'});
+      assert.equal(bytes,0);
+    }finally{session.close();}
+  }
 });
 
 test('remote runner panel lists hosts without rendering secrets', async t => {

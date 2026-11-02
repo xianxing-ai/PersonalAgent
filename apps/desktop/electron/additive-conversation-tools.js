@@ -7,7 +7,7 @@ export const ADDITIVE_CONVERSATION_TOOL_NAMES = [
   'subagent.type.disable', 'subagent.type.delete', 'subagent.type.confirm', 'subagent.type.import',
   'runner.host.add', 'runner.host.update', 'runner.host.remove', 'runner.host.enable', 'runner.host.disable',
   'runner.host.confirm', 'runner.host.list', 'runner.host.test', 'runner.host.jobs',
-  'duty.watch', 'duty.unwatch', 'duty.policy.set', 'duty.personal.list', 'duty.status', 'duty.ci.triage',
+  'duty.watch', 'duty.unwatch', 'duty.policy.set', 'duty.personal.list', 'duty.status', 'duty.ci.triage', 'duty.comment.publish',
 ];
 
 export function additiveConversationBindings(tools, getRuntime) {

@@ -1,5 +1,6 @@
 import {DUTY_STATUS_MARKER, buildPersonalView, interpretGitHubRateLimit} from '@personal-agent/github';
 import {ProtocolError} from '@personal-agent/contracts';
+import {isDeepStrictEqual} from 'node:util';
 
 const API = 'https://api.github.com';
 
@@ -163,6 +164,43 @@ export function createGitHubDutyComments({repo, number, readCredential, fetchImp
       } catch { return {state: 'unknown'}; }
     },
   };
+}
+
+/** Main-only composition of the original user tool approval and exact egress lease. */
+export async function createAuthorizedGitHubDutyComments({repo, number, context, assertCurrent, getApplication, questions, egressHost, readCredential, fetchImpl}) {
+  const readonly = () => createGitHubDutyComments({repo, number, readCredential, fetchImpl});
+  if (!context) return readonly();
+  const denied = () => {throw new ProtocolError('UNAUTHORIZED', 'Original duty comment authorization is unavailable');};
+  const application = getApplication?.(), original = application?.readAuthorizationQuestionInvocation(context.taskId, context.runId);
+  const args = original?.arguments;
+  if (!original || original.toolName !== 'duty.comment.publish' || original.toolVersion !== '1.0.0'
+    || original.taskId !== context.taskId || original.runId !== context.runId || original.deadline !== context.deadline
+    || original.sideEffect !== 'external_write' || !original.scopes?.includes('github:write')
+    || context.authorizationRef !== context.runId || !context.scopes?.includes('github:write')
+    || !args || args.repo !== repo || args.number !== number || typeof args.body !== 'string'
+    || !['create', 'edit'].includes(args.action) || Object.keys(args).some(key => !['repo', 'number', 'action', 'body', 'commentId'].includes(key))
+    || (args.action === 'edit' ? !Number.isInteger(args.commentId) || args.commentId < 1 : args.commentId !== undefined)
+    || typeof assertCurrent !== 'function' || typeof questions?.currentRequirement !== 'function'
+    || typeof egressHost?.prepare !== 'function') denied();
+  const isCurrent = () => {
+    if (context.signal?.aborted || !(Date.parse(context.deadline) > Date.now()) || getApplication() !== application
+      || !isDeepStrictEqual(application.readAuthorizationQuestionInvocation(context.taskId, context.runId), original)) denied();
+    assertCurrent();
+    if (questions.currentRequirement(context, 'tool') !== true) denied();
+    return true;
+  };
+  isCurrent();
+  const destination = args.action === 'edit' ? `${API}/repos/${repo}/issues/comments/${args.commentId}` : `${API}/repos/${repo}/issues/${number}/comments`;
+  const payload = JSON.stringify({body: args.body});
+  const lease = await egressHost.prepare({requestId: `duty-comment:${context.taskId}:${context.runId}`, destination, payload,
+    signal: context.signal, deadline: context.deadline, isCurrent});
+  isCurrent();
+  if (typeof lease?.assertBeforeSend !== 'function') denied();
+  return createGitHubDutyComments({repo, number, readCredential, fetchImpl, assertWriteAuthorized: intent => {
+    isCurrent();
+    if (!isDeepStrictEqual(intent, args)) denied();
+    lease.assertBeforeSend({destination, payload: JSON.stringify({body: intent.body})});
+  }});
 }
 
 export async function readGitHubPersonalView({readCredential, fetchImpl = globalThis.fetch}) {

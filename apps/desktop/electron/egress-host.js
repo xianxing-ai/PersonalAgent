@@ -35,7 +35,8 @@ export function createDesktopEgressHost({classifyLocally,approvePrivate,now=Date
       const {requestId,destination,payload,deadline,signal,isCurrent}=input??{};
       let url;try{url=new URL(destination);}catch{fail('INVALID_ARGUMENT');}
       if(typeof requestId!=='string'||!requestId||requestId.length>512||typeof destination!=='string'
-        ||!['https:','wss:'].includes(url.protocol)||url.username||url.password||url.hash
+        ||!['https:','wss:','ssh:'].includes(url.protocol)||url.password||url.hash
+        ||(url.protocol==='ssh:'?!url.username||url.pathname!=='/'&&url.pathname!==''||Boolean(url.search):Boolean(url.username))
         ||typeof payload!=='string'||typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||!signal
         ||typeof signal.addEventListener!=='function'||typeof isCurrent!=='function')fail('INVALID_ARGUMENT');
       const payloadDigest=digest(payload),current=()=>{

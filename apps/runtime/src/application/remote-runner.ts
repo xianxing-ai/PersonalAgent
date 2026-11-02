@@ -45,7 +45,7 @@ export interface RunnerSecretPort {
   get(ref: string): string | undefined;
   delete(ref: string): void;
 }
-export interface RemoteRunnerSession {exec(job: Record<string, unknown>, control?: {signal?: AbortSignal; deadline: string}): Promise<Record<string, unknown>>; close(): void}
+export interface RemoteRunnerSession {exec(job: Record<string, unknown>, control?: {signal?: AbortSignal; deadline: string; assertBeforeSend?: (job: Record<string, unknown>) => void}): Promise<Record<string, unknown>>; close(): void}
 export interface RemoteRunnerTransport {
   connect(host: RemoteHostRecord, auth: {privateKey: string; runnerToken: string; hostKey: string}): Promise<RemoteRunnerSession>;
 }
@@ -57,6 +57,8 @@ export interface RemoteJobRequest {
   repo?: string;
   signal?: AbortSignal;
   deadline?: string;
+  /** Original Runtime caller guard, never supplied by model arguments. */
+  assertCurrent?: () => void;
 }
 export interface RemoteJobResult {
   accepted: boolean;
@@ -149,6 +151,8 @@ export function createRemoteRunnerService(options: {
   getRuntime: () => TaskRuntime;
   secrets: RunnerSecretPort;
   transport: RemoteRunnerTransport;
+  prepareDispatch?: (scope: {host: RemoteHostRecord; taskId: string; message: Record<string, unknown>; signal: AbortSignal;
+    deadline: string; assertCurrent: () => void}) => Promise<{assertBeforeSend(): void}>;
   now?: () => number;
   localExecute?: (job: RemoteJobRequest) => Promise<Record<string, unknown>>;
   idFactory?: () => string;
@@ -274,8 +278,10 @@ export function createRemoteRunnerService(options: {
     };
     assertActive();
     const eligible = hosts().filter(host => host.enabled && (!job.repo || host.repos.includes(job.repo)));
+    if (eligible.length && (!options.prepareDispatch || !job.assertCurrent || !job.signal))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Remote dispatch requires original source and exact payload authorization');
     const message = {v: 1, id: ids(), idempotencyKey: job.idempotencyKey, kind: job.kind, deadline: new Date(deadlineMs).toISOString(),
-      payload: job.payload, sentAt: new Date(now()).toISOString()};
+      payload: structuredClone(job.payload), sentAt: new Date(now()).toISOString()};
     const persist = (result: RemoteJobResult) => {
       runtime().saveCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey, {...result, requestDigest});
       return result;
@@ -301,11 +307,37 @@ export function createRemoteRunnerService(options: {
       }
       let dispatched = false;
       try {
-        assertActive();
+        const originalHost = canonical(host), originalSignal = job.signal, originalDeadline = job.deadline, originalGuard = job.assertCurrent;
+        const assertCurrent = () => {
+          assertActive();
+          if (canonical(hosts().find(value => value.id === host.id)) !== originalHost || job.signal !== originalSignal
+            || job.deadline !== originalDeadline || job.assertCurrent !== originalGuard
+            || createHash('sha256').update(canonical({kind: job.kind, taskId: job.taskId, repo: job.repo ?? null, payload: job.payload})).digest('hex') !== requestDigest)
+            fail('UNAUTHORIZED', 'Original remote dispatch binding changed');
+          const result: unknown = originalGuard!();
+          if (result !== undefined) {
+            if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => {});
+            fail('UNAUTHORIZED', 'Remote source guard must be a synchronous trusted assertion');
+          }
+        };
+        assertCurrent();
+        const lease = await options.prepareDispatch!({host: structuredClone(host), taskId: job.taskId, message: structuredClone(message),
+          signal: originalSignal!, deadline: message.deadline, assertCurrent});
+        const signed = {...message, signature: signRunnerJob(message, connected.token)}, sealed = canonical(signed);
+        const assertBeforeSend = (actual: Record<string, unknown>) => {
+          assertCurrent();
+          if (canonical(actual) !== sealed) fail('UNAUTHORIZED', 'Remote payload changed after authorization');
+          const result: unknown = lease.assertBeforeSend();
+          if (result !== undefined) {
+            void Promise.resolve(result).catch(() => {});
+            fail('UNAUTHORIZED', 'Remote payload guard must be a synchronous trusted assertion');
+          }
+        };
+        assertBeforeSend(signed);
         persist({...pending, hostId: host.id});
         dispatched = true;
-        const response = await connected.session.exec({...message, signature: signRunnerJob(message, connected.token)},
-          {deadline: message.deadline, ...(job.signal ? {signal: job.signal} : {})});
+        const response = await connected.session.exec(signed,
+          {deadline: message.deadline, signal: originalSignal!, assertBeforeSend});
         if (response?.v !== 1 || response.jobId !== message.id || response.idempotencyKey !== message.idempotencyKey
           || response.kind !== message.kind || !['succeeded', 'failed', 'unknown', 'rejected'].includes(String(response.state))) {
           throw new ProtocolError('RESULT_UNKNOWN', 'Remote receipt did not match the original job');
@@ -321,7 +353,8 @@ export function createRemoteRunnerService(options: {
         audit({action: 'job', hostId: host.id, idempotencyKey: job.idempotencyKey, state: response.state, location: 'remote'});
         return result;
       } catch (error) {
-        if (!dispatched) throw error;
+        if (!dispatched) return persist({accepted:false,location:'remote',hostId:host.id,reason:'Remote dispatch was not authorized; no payload was sent',
+          receipt:{v:1,jobId:message.id,idempotencyKey:message.idempotencyKey,kind:message.kind,state:'rejected',verification:'not-sent'},redo:false});
         reason = redactRunnerText(error instanceof Error ? error.message : 'remote failed',
           [options.secrets.get(host.tokenRef), options.secrets.get(host.keyRef)].filter((item): item is string => typeof item === 'string'));
         runtime().saveCheckpoint(owner().taskId, `remote-runner-health:${host.id}`, {at: now(), state: 'down'});

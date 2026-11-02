@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
 import {TaskRuntime} from '../dist/index.js';
-import {createDeveloperDutyTools, createLoopbackRunnerTransport, createMemoryRunnerSecrets, createRemoteRunnerService, developerDutyRemoteRunner} from '../dist/application.js';
+import {createDeveloperDutyTools, createLoopbackRunnerTransport, createMemoryRunnerSecrets, developerDutyRemoteRunner} from '../dist/application.js';
+import {createSyntheticRemoteRunnerService as createRemoteRunnerService} from '../../../tests/helpers/synthetic-remote-runner.mjs';
 import {DUTY_STATUS_MARKER} from '@personal-agent/github';
 import {handleRunnerJob} from '../../../scripts/remote-runner/remote-runner-service.mjs';
 
@@ -96,11 +97,14 @@ test('fixture comments are edited in place and a local gap is not no change', as
   const runtime = new TaskRuntime(':memory:');
   const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '主对话', idempotencyKey: 'duty-fixture-parent'});
   const duty = createDeveloperDutyTools({getRuntime: () => runtime, useFixtureComments: true,
-    readPage: async repo => ({repo, connected: true, gap: false, events: [], statusComment: {body: '排队中'}})});
+    readPage: async repo => ({repo, connected: true, gap: false, events: [], statusComment: {number: 4, body: '排队中'}})});
   const tool = name => duty.tools.find(item => item.descriptor.name === name);
   await tool('duty.watch').execute({repo: 'octo/repo'}, context(parent.taskId));
   await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context(parent.taskId));
   await duty.poll();
+  const pending = (await tool('duty.status').execute({}, context(parent.taskId))).pendingComments[0];
+  assert.deepEqual(pending, {repo: 'octo/repo', number: 4, body: `${DUTY_STATUS_MARKER}\n排队中`, action: 'create'});
+  await tool('duty.comment.publish').execute(pending, {...context(parent.taskId), scopes: ['github:write']});
   await duty.poll();
   const owner = runtime.findTaskByIdempotencyKey('developer-duty-registry:v1');
   const stored = runtime.loadCheckpoint(owner.taskId, 'developer-duty-fixture-comments:v1');
@@ -132,8 +136,50 @@ test('duty policy cannot replace the original content authorization and poll ret
   assert.match(result[0].reason, /content authorization/);
   const owner = runtime.findTaskByIdempotencyKey('developer-duty-registry:v1');
   assert.deepEqual(runtime.loadCheckpoint(owner.taskId, 'developer-duty-comment-intent:v1:octo/repo#4'), {
-    repo: 'octo/repo', number: 4, body: `${DUTY_STATUS_MARKER}\n原完整正文`, state: 'requires_authorization',
+    repo: 'octo/repo', number: 4, body: `${DUTY_STATUS_MARKER}\n原完整正文`, action: 'create', state: 'requires_authorization',
   });
   assert.equal(runtime.loadCheckpoint(owner.taskId, 'developer-duty-comment:v1'), undefined);
   assert.equal(writes, 0);
+});
+
+test('publish binds the original pending target and unknown writes only read back', async t => {
+  const runtime = new TaskRuntime(':memory:');
+  t.after(() => runtime.close());
+  const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '值班', idempotencyKey: 'publish-original'});
+  let body = 'original', creates = 0, edits = 0, visible = [];
+  const duty = createDeveloperDutyTools({getRuntime: () => runtime,
+    readPage: async repo => ({repo, connected: true, gap: false, events: [], statusComment: {number: 4, body}}),
+    createComments: ({context: scope, assertCurrent}) => ({writeAvailable: Boolean(scope), listComments: async () => visible,
+      createComment: async () => {assertCurrent(); creates += 1; return {state: 'unknown'};},
+      editComment: async (id, body) => {assertCurrent(); edits += 1; visible = [{id, body}]; return {state: 'confirmed'};}})});
+  const tool = name => duty.tools.find(item => item.descriptor.name === name);
+  const scope = {...context(parent.taskId), scopes: ['github:write']};
+  await tool('duty.watch').execute({repo: 'octo/repo'}, context(parent.taskId));
+  await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context(parent.taskId));
+  await duty.poll();
+  const pending = (await tool('duty.status').execute({}, scope)).pendingComments[0];
+  await assert.rejects(tool('duty.comment.publish').execute({...pending, body: pending.body + ' changed'}, scope), {code: 'REVISION_CONFLICT'});
+  await assert.rejects(tool('duty.comment.publish').execute(pending, context(parent.taskId)), {code: 'UNAUTHORIZED'});
+  const owner = runtime.findTaskByIdempotencyKey('developer-duty-registry:v1');
+  await assert.rejects(tool('duty.comment.publish').execute(pending, {...scope, taskId: owner.taskId}), {code: 'UNAUTHORIZED'});
+  visible = [{id: 8, body: `${DUTY_STATUS_MARKER}\nexternal change`}];
+  await assert.rejects(tool('duty.comment.publish').execute(pending, scope), {code: 'REVISION_CONFLICT'});
+  assert.equal(runtime.loadCheckpoint(owner.taskId, 'developer-duty-comment:v1'), undefined, 'target changes fail before persisting a dispatched write');
+  visible = [];
+  await assert.rejects(tool('duty.comment.publish').execute(pending, scope), {code: 'RESULT_UNKNOWN'});
+  await duty.poll();
+  await assert.rejects(tool('duty.comment.publish').execute(pending, scope), {code: 'RESULT_UNKNOWN'});
+  assert.equal(creates, 1);
+  visible = [{id: 7, body: pending.body}];
+  await duty.poll();
+  assert.deepEqual((await tool('duty.status').execute({}, scope)).pendingComments, []);
+  body = 'updated';
+  await duty.poll();
+  const update = (await tool('duty.status').execute({}, scope)).pendingComments[0];
+  assert.equal(update.action, 'edit');
+  assert.equal(update.commentId, 7);
+  await assert.rejects(tool('duty.comment.publish').execute({...update, commentId: 8}, scope), {code: 'REVISION_CONFLICT'});
+  await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: false}, context(parent.taskId));
+  await assert.rejects(tool('duty.comment.publish').execute(update, scope), {code: 'REVISION_CONFLICT'});
+  assert.equal(edits, 0);
 });

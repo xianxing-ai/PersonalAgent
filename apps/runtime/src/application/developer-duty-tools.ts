@@ -1,8 +1,9 @@
-import {createHash} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
-import type {RegisteredTool} from '@personal-agent/contracts';
-import {DUTY_STATUS_MARKER, buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
+import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
+import {DUTY_STATUS_MARKER, buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, planStatusComment, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
 import type {TaskRuntime} from '../index.js';
+import {readCanonicalUserWorkParent} from './user-task-delegation.js';
 import {commitDeveloperDutyStatusComment, commitPullRequestDutyComment, dutyPullCommentBody, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
 
 export const DUTY_WATCH = 'duty.watch';
@@ -11,17 +12,25 @@ export const DUTY_POLICY_SET = 'duty.policy.set';
 export const DUTY_PERSONAL_LIST = 'duty.personal.list';
 export const DUTY_STATUS = 'duty.status';
 export const DUTY_CI_TRIAGE = 'duty.ci.triage';
+export const DUTY_COMMENT_PUBLISH = 'duty.comment.publish';
 export const DUTY_TOOL_VERSION = '1.0.0';
 const KEY = 'developer-duty-registry:v1';
 const WATCH = 'developer-duty-watch:v1';
 const POLICY = 'developer-duty-policy:v1';
+const INTENTS = 'developer-duty-comment-intent-index:v1';
+type CommentArguments = {repo: string; number: number; body: string; action: 'create' | 'edit'; commentId?: number};
+type CommentIntent = CommentArguments & {state: 'requires_authorization' | 'confirmed' | 'unknown';
+  source?: {repo: string; number: number; headSha: string; ci: string; conclusion: string}};
+const intentKey = (repo: string, number: number) => `developer-duty-comment-intent:v1:${repo}#${number}`;
+const commentArguments = ({repo, number, body, action, commentId}: CommentIntent): CommentArguments =>
+  ({repo, number, body, action, ...(commentId === undefined ? {} : {commentId})});
 
 export interface DeveloperDutyToolOptions {
   getRuntime: () => TaskRuntime;
   readPage?: (repo: string, cursor: DutyCursor | undefined) => Promise<DutyPollPage>;
   comments?: DeveloperDutyPorts;
   /** Real comment port for one repository. Undefined means the credential is not connected. */
-  createComments?: (input: {repo: string; number?: number}) => DeveloperDutyPorts | undefined | Promise<DeveloperDutyPorts | undefined>;
+  createComments?: (input: {repo: string; number?: number; context?: ToolContext; assertCurrent?: () => void}) => DeveloperDutyPorts | undefined | Promise<DeveloperDutyPorts | undefined>;
   readPersonal?: () => Promise<Record<string, unknown>>;
   /** Checkpoint-backed comment port. It does not call GitHub. */
   useFixtureComments?: boolean;
@@ -30,15 +39,32 @@ export interface DeveloperDutyToolOptions {
   submitRemote?: (job: {kind: 'developer-duty'; idempotencyKey: string; taskId: string; repo: string; payload: Record<string, unknown>}) => Promise<{location: string; reason: string; receipt: Record<string, unknown>}>;
 }
 
-function fail(code: 'INVALID_ARGUMENT' | 'SCOPE_DENIED', message: string): never {throw new ProtocolError(code, message);}
+function fail(code: 'INVALID_ARGUMENT' | 'SCOPE_DENIED' | 'UNAUTHORIZED' | 'REVISION_CONFLICT' | 'UNSUPPORTED_CAPABILITY', message: string): never {throw new ProtocolError(code, message);}
 const repoOk = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
 
 export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {tools: RegisteredTool[]; poll(): Promise<Array<Record<string, unknown>>>} {
   const runtime = () => options.getRuntime();
+  const assertUserWorker = (taskId: string) => {
+    if (runtime().getTask(taskId).conversationId?.startsWith('desktop-subtask:')
+      && readCanonicalUserWorkParent(runtime(), taskId) === undefined)
+      fail('UNAUTHORIZED', 'Duty is controlled by the original user task or its bound user worker');
+  };
   const owner = () => runtime().findTaskByIdempotencyKey(KEY) ?? runtime().submitTask({conversationId: 'developer-duty', goal: '开发值班', idempotencyKey: KEY});
   const watches = (): string[] => (runtime().loadCheckpoint(owner().taskId, WATCH) as {repos?: string[]} | undefined)?.repos ?? [];
   const policies = (): Record<string, RepoDutyPolicy> => (runtime().loadCheckpoint(owner().taskId, POLICY) as {policies?: Record<string, RepoDutyPolicy>} | undefined)?.policies ?? {};
   const saveWatches = (repos: string[]) => runtime().saveCheckpoint(owner().taskId, WATCH, {repos});
+  const saveIntent = (intent: CommentIntent) => {
+    const taskId = owner().taskId, key = intentKey(intent.repo, intent.number);
+    runtime().saveCheckpoint(taskId, key, intent);
+    const keys = runtime().loadCheckpoint(taskId, INTENTS) as string[] | undefined ?? [];
+    if (!keys.includes(key)) runtime().saveCheckpoint(taskId, INTENTS, [...keys, key]);
+  };
+  const pendingComments = () => (runtime().loadCheckpoint(owner().taskId, INTENTS) as string[] | undefined ?? [])
+    .map(key => runtime().loadCheckpoint(owner().taskId, key) as CommentIntent)
+    .filter(intent => intent?.state === 'requires_authorization' && watches().includes(intent.repo)).map(commentArguments);
+  const commitIntent = (intent: CommentIntent, ports: DeveloperDutyPorts) => intent.source
+    ? commitPullRequestDutyComment(runtime(), owner().taskId, ports, intent.source)
+    : commitDeveloperDutyStatusComment(runtime(), owner().taskId, ports, intent.body.slice(DUTY_STATUS_MARKER.length + 1)).then(attempt => ({wrote: true, attempt}));
   const readPage = options.readPage ?? (async () => ({repo: '', connected: false, gap: true, events: []}));
   const descriptor = (name: string, read: boolean, input: {[k: string]: unknown}): RegisteredTool['descriptor'] => ({
     name, version: DUTY_TOOL_VERSION, inputSchema: input, outputSchema: {type: 'object', additionalProperties: true},
@@ -82,7 +108,6 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
       const cursor = stored?.repo === repo ? stored : undefined;
       const page = {...await readPage(repo, cursor), repo};
       const bucket = Math.floor((options.now?.() ?? Date.now()) / 60_000);
-      const digest = createHash('sha256').update(JSON.stringify([repo, cursor?.deliveryId ?? '', page.gap, page.connected, page.events.map(event => event.deliveryId)])).digest('hex').slice(0, 16);
       const statusComment = (page as {statusComment?: {number?: number; body?: string; existing?: unknown; writeState?: string}; reason?: string; evidenceLevel?: string}).statusComment;
       const pullRequests = (page as {pullRequests?: Array<{number?: number; headSha?: string; ci?: string; conclusion?: string}>}).pullRequests;
       const evidenceLevel = (page as {evidenceLevel?: string}).evidenceLevel ?? 'fixture';
@@ -91,14 +116,22 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
       const writeComment = async (via: 'remote' | 'local'): Promise<{wrote: boolean; reason?: string}> => {
         if (blocked) return {wrote: false, reason: (page as {rateLimited?: boolean}).rateLimited ? 'rate limited' : 'gap is not a comment'};
         if (!policy.comment) return {wrote: false, reason: 'comment is off'};
-        const attemptComment = async (write: () => Promise<{wrote: boolean}>, body: string, number?: number) => {
-          try {return await write();} catch (error) {
+        const attemptComment = async (ports: DeveloperDutyPorts, body: string, number: number, source?: CommentIntent['source']) => {
+          const existing = await ports.listComments();
+          const plan = planStatusComment({desiredBody: body, existing});
+          const intent: CommentIntent = {repo, number, body: `${DUTY_STATUS_MARKER}\n${body.trim()}`,
+            action: plan.action === 'edit' ? 'edit' : 'create', ...(plan.commentId === undefined ? {} : {commentId: plan.commentId}),
+            state: 'requires_authorization', ...(source ? {source} : {})};
+          try {
+            await commitIntent(intent, {...ports, writeAvailable: false, listComments: async () => existing});
+            saveIntent({...intent, state: 'confirmed'});
+          } catch (error) {
+            if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') return {wrote: false, reason: 'comment result requires readback'};
             if (!(error instanceof ProtocolError) || error.code !== 'UNSUPPORTED_CAPABILITY') throw error;
-            runtime().saveCheckpoint(task.taskId, `developer-duty-comment-intent:v1:${repo}#${number ?? 'status'}`, {
-              repo, ...(number === undefined ? {} : {number}), body: `${DUTY_STATUS_MARKER}\n${body.trim()}`, state: 'requires_authorization',
-            });
+            saveIntent(intent);
             return {wrote: false, reason: 'comment requires ToolGateway content authorization'};
           }
+          return {wrote: false};
         };
         if (Array.isArray(pullRequests)) {
           let wrote = false;
@@ -108,24 +141,16 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
             const ports = await options.createComments?.({repo, number: pull.number}) ?? (via === 'local' ? comments : undefined);
             if (!ports) return {wrote, reason: 'not connected'};
             const input = {repo, number: pull.number, headSha: pull.headSha, ci: pull.ci, conclusion: pull.conclusion};
-            const result = await attemptComment(() => commitPullRequestDutyComment(runtime(), task.taskId, ports, input), dutyPullCommentBody(input), pull.number);
+            const result = await attemptComment(ports, dutyPullCommentBody(input), pull.number, input);
             wrote = wrote || result.wrote;
             if ('reason' in result) reason = result.reason;
           }
           return {wrote, ...(reason ? {reason} : {})};
         }
-        if (!statusComment?.body) return {wrote: false, reason: 'no status comment'};
+        if (!statusComment?.body || !Number.isInteger(statusComment.number) || statusComment.number! < 1) return {wrote: false, reason: 'no exact comment target'};
         const ports = await options.createComments?.({repo, ...(Number.isInteger(statusComment.number) ? {number: statusComment.number} : {})}) ?? (via === 'local' ? comments : undefined);
         if (ports) {
-          const body = statusComment.body;
-          return attemptComment(async () => {await commitDeveloperDutyStatusComment(runtime(), task.taskId, ports, body); return {wrote: true};}, body, statusComment.number);
-        }
-        if (via === 'remote' && options.submitRemote && !options.createComments) {
-          await options.submitRemote({kind: 'developer-duty', idempotencyKey: `duty-comment:${repo}:${digest}`, taskId: task.taskId, repo,
-            payload: {action: 'comment', repo, number: statusComment.number, body: statusComment.body,
-              ...(statusComment.existing === undefined ? {} : {existing: statusComment.existing}),
-              ...(statusComment.writeState === undefined ? {} : {writeState: statusComment.writeState})}});
-          return {wrote: true};
+          return attemptComment(ports, statusComment.body, statusComment.number!);
         }
         return {wrote: false, reason: 'not connected'};
       };
@@ -155,7 +180,7 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
   };
   const tools: RegisteredTool[] = [
     {descriptor: descriptor(DUTY_WATCH, false, object({repo: {type: 'string'}}, ['repo'])), execute: async (input, context) => {
-      if (runtime().getTask(context.taskId).conversationId?.startsWith('desktop-subtask:')) fail('INVALID_ARGUMENT', 'Duty is controlled from the main conversation');
+      assertUserWorker(context.taskId);
       const repo = String((input as {repo?: string}).repo ?? '');
       if (!repoOk(repo)) fail('INVALID_ARGUMENT', 'Repository name is invalid');
       const next = [...new Set([...watches(), repo])];
@@ -178,9 +203,48 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
       return policy;
     }},
     {descriptor: descriptor(DUTY_PERSONAL_LIST, true, object({}, [])), execute: async () => options.readPersonal ? options.readPersonal() : ({items: buildPersonalView({login: 'fixture', assigned: [], reviewRequested: [], failing: []}), evidenceLevel: 'fixture', reason: 'fixture'})},
+    {descriptor: {...descriptor(DUTY_COMMENT_PUBLISH, false, object({repo: {type: 'string'}, number: {type: 'integer', minimum: 1},
+      body: {type: 'string', minLength: 1}, action: {enum: ['create', 'edit']}, commentId: {type: 'integer', minimum: 1}}, ['repo', 'number', 'body', 'action'])),
+      sideEffect: 'external_write', requiredScopes: ['github:write'], requiresPresence: true}, execute: async (input, context) => {
+      assertUserWorker(context.taskId);
+      const args = input as CommentArguments;
+      if (!args || !repoOk(args.repo) || !Number.isInteger(args.number) || args.number < 1 || typeof args.body !== 'string'
+        || !['create', 'edit'].includes(args.action) || Object.keys(args).some(key => !['repo', 'number', 'body', 'action', 'commentId'].includes(key))
+        || (args.action === 'edit' ? !Number.isInteger(args.commentId) || args.commentId! < 1 : args.commentId !== undefined)) fail('INVALID_ARGUMENT', 'Invalid exact duty comment intent');
+      const taskId = owner().taskId, intent = runtime().loadCheckpoint(taskId, intentKey(args.repo, args.number)) as CommentIntent | undefined;
+      if (!intent || intent.state !== 'requires_authorization' || !isDeepStrictEqual(commentArguments(intent), args)) fail('REVISION_CONFLICT', 'Original duty comment intent changed');
+      const assertCurrent = () => {
+        const policy = policies()[args.repo];
+        if (!context?.authorizationRef || !context.scopes?.includes('github:write') || context.taskId === taskId
+          || context.signal?.aborted || !(Date.parse(context.deadline) > Date.now())) fail('UNAUTHORIZED', 'Duty comment requires original user tool authorization');
+        if (!watches().includes(args.repo) || !policy?.allowed || !policy.comment
+          || !isDeepStrictEqual(runtime().loadCheckpoint(taskId, intentKey(args.repo, args.number)), intent)) fail('REVISION_CONFLICT', 'Original duty comment intent changed');
+      };
+      assertCurrent();
+      const ports = await options.createComments?.({repo: args.repo, number: args.number, context, assertCurrent}) ?? commentsFor(taskId);
+      if (!ports) fail('UNSUPPORTED_CAPABILITY', 'Duty comment host is unavailable');
+      assertCurrent();
+      const exact = (action: string, body: string, commentId?: number) => {
+        assertCurrent();
+        if (action !== args.action || body !== args.body || commentId !== args.commentId) fail('REVISION_CONFLICT', 'Approved duty comment target changed');
+      };
+      const result = await commitIntent(intent, {...ports,
+        listComments: async () => {
+          const existing = await ports.listComments();
+          const plan = planStatusComment({desiredBody: args.body.slice(DUTY_STATUS_MARKER.length + 1), existing});
+          if (plan.action === 'create' || plan.action === 'edit') exact(plan.action, plan.body, plan.commentId);
+          else if (plan.action === 'read_back' && args.action === 'edit' && plan.commentId !== undefined && plan.commentId !== args.commentId)
+            fail('REVISION_CONFLICT', 'Approved duty comment target changed');
+          return existing;
+        },
+        createComment: body => {exact('create', body); return ports.createComment(body);},
+        editComment: (id, body) => {exact('edit', body, id); return ports.editComment(id, body);}});
+      saveIntent({...intent, state: 'confirmed'});
+      return {state: 'confirmed', commentId: result.attempt?.commentId, wrote: result.wrote};
+    }},
     {descriptor: descriptor(DUTY_STATUS, true, object({}, [])), execute: async () => {
       const task = owner();
-      return {repos: watches(), policies: policies(), cursor: runtime().loadCheckpoint(task.taskId, 'developer-duty-cursor:v1') ?? null,
+      return {repos: watches(), policies: policies(), pendingComments: pendingComments(), cursor: runtime().loadCheckpoint(task.taskId, 'developer-duty-cursor:v1') ?? null,
         gap: runtime().loadCheckpoint(task.taskId, 'developer-duty-gap:v1') ?? null, evidenceLevel: 'fixture'};
     }},
     {descriptor: descriptor(DUTY_CI_TRIAGE, true, object({logExcerpt: {type: 'string'}}, ['logExcerpt'])), execute: async (input) => ({...classifyCiFailure({logExcerpt: String((input as {logExcerpt?: string}).logExcerpt ?? '')}), evidenceLevel: 'fixture' as const})},

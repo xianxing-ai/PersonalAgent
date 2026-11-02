@@ -4,6 +4,12 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 
+function synchronousGuard(result){
+  if(result===undefined)return;
+  void Promise.resolve(result).catch(()=>{});
+  throw Object.assign(new Error('Remote send guard must be synchronous'),{code:'UNAUTHORIZED'});
+}
+
 /** Encrypted secret map. The host record stores only credential refs. */
 export function createRunnerSecretFile({userData, safeStorage}) {
   if (!userData || typeof safeStorage?.encryptString !== 'function' || typeof safeStorage.decryptString !== 'function') {
@@ -90,15 +96,31 @@ export function createSshTransport({spawn = defaultSpawn, writeFile = writeFileS
           }
         });
         if (control.signal?.aborted) abort();
-        else child.stdin?.end(JSON.stringify(job));
+        else {
+          try {
+            if(job.kind!=='heartbeat'&&typeof control.assertBeforeSend!=='function')throw Object.assign(new Error('Original remote payload authorization is unavailable'),{code:'UNAUTHORIZED'});
+            synchronousGuard(control.assertBeforeSend?.(job));
+            child.stdin?.end(JSON.stringify(job));
+          } catch(error) {finish(error);}
+        }
       });
     }, close() {if (closed) return; closed = true; active?.kill(); remove(directory);}};
   }};
 }
 
-export function createRemoteRunnerDesktopHost({runtimeModule, getRuntime, safeStorage, userData, spawn}) {
+export function createRemoteRunnerDesktopHost({runtimeModule, getRuntime, safeStorage, userData, spawn, egressHost}) {
   const secrets = createRunnerSecretFile({userData, safeStorage});
   const service = runtimeModule.createRemoteRunnerService({getRuntime, secrets, transport: createSshTransport({spawn}),
+    async prepareDispatch({host,taskId,message,signal,deadline,assertCurrent}) {
+      if(!egressHost)throw Object.assign(new Error('Original remote egress host is unavailable'),{code:'UNSUPPORTED_CAPABILITY'});
+      const runtime=getRuntime(),epoch=runtime.readExecutionEpoch(taskId);
+      const address=host.address.includes(':')?`[${host.address}]`:host.address;
+      const destination=`ssh://${encodeURIComponent(host.user)}@${address}:${host.port}/`,payload=JSON.stringify(message);
+      const isCurrent=()=>{assertCurrent();runtime.assertExecutionEpoch(taskId,epoch);return getRuntime()===runtime;};
+      const lease=await egressHost.prepare({requestId:'remote-runner:'+message.id,destination,payload,signal,deadline,isCurrent});
+      return {assertBeforeSend(){if(!isCurrent())throw Object.assign(new Error('Original Runtime changed'),{code:'UNAUTHORIZED'});
+        synchronousGuard(lease.assertBeforeSend({destination,payload}));}};
+    },
     localExecute: async () => ({state: 'failed', error: '没有健康的远端执行器，已改为本地记录', verification: 'fixture', location: 'local'})});
   return {tools: service.tools, service};
 }

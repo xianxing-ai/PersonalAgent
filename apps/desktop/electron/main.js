@@ -2566,7 +2566,7 @@ async function initializeRuntime() {
         }} : tool);
       const {createRemoteRunnerDesktopHost} = await import('./remote-runner-host.js');
       remoteRunnerHost = createRemoteRunnerDesktopHost({runtimeModule, getRuntime:()=>runtimeApplication.runtime,
-        safeStorage, userData:app.getPath('userData')});
+        safeStorage, userData:app.getPath('userData'),egressHost});
       asyncSubagentHost.start();
       const subagentAvailability = {
         toolName: SUBAGENT_DISPATCH_TOOL_NAME,
@@ -2874,13 +2874,13 @@ async function initializeRuntime() {
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       conversationTools.push(...(asyncSubagentTools??[]));
       conversationTools.push(...remoteRunnerHost.tools);
-      const {readGitHubDutyPage, createGitHubDutyComments, readGitHubPersonalView} = await import('./developer-duty-github.js');
+      const {readGitHubDutyPage, createAuthorizedGitHubDutyComments, readGitHubPersonalView} = await import('./developer-duty-github.js');
       const readDutyCredential=()=>developerSettings?.readGitHubToken?.();
       const dutyHost=runtimeModule.createDeveloperDutyTools({getRuntime:()=>runtimeApplication.runtime,
         readPage:(repo, cursor)=>readGitHubDutyPage({repo, cursor, readCredential:readDutyCredential}),
-        createComments:async ({repo, number})=>readDutyCredential() ? createGitHubDutyComments({repo, number, readCredential:readDutyCredential}) : undefined,
+        createComments:async scope=>readDutyCredential() ? createAuthorizedGitHubDutyComments({...scope,
+          getApplication:()=>runtimeApplication,questions:authorizationQuestionHost,egressHost,readCredential:readDutyCredential}) : undefined,
         readPersonal:()=>readGitHubPersonalView({readCredential:readDutyCredential}),
-        submitRemote:job=>remoteRunnerHost.service.submit(job),
         onNotify:notice=>{
           if(!notice?.dedupeKey||notice.duplicate)return;
           const id=`duty-f12:${notice.dedupeKey}`;
@@ -3121,6 +3121,10 @@ async function initializeRuntime() {
           await nativeExecutionHost.prepare(scope,{forTaskConsent:authorizationQuestionHost.requiresNativeForAuthorization(scope)});
           const decision=await authorizationQuestionHost.requestToolAuthorization(scope);
           if(decision==='allow_once'){
+            if(scope.toolName==='duty.comment.publish'){
+              if(!toolPresenceHost)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original duty comment presence host is unavailable');
+              await toolPresenceHost.requestPresence(scope);
+            }
             await f16F17Workflow?.confirmPublicationPresence?.(scope);
             await f18Workflow?.confirmMergePresence?.(scope);
             await f19Workflow?.confirmPublicationPresence?.(scope);

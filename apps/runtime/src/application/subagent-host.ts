@@ -168,10 +168,15 @@ function childBinding(runtime: TaskRuntime, taskId: string): ChildBinding {
 /** A completed user turn does not revoke an already confirmed asynchronous spawn. */
 export function readRuntimeAsyncSubagentScope(runtime:TaskRuntime,taskId:string) {
   const marker=runtime.loadCheckpoint(taskId,'async-subagent-spawn:v1') as {version?:number;parentTaskId?:string;subtaskId?:string;
-    deadline?:string;maxSteps?:number;sourceTaskId?:string;sourceRunId?:string;sourceInputDigest?:string;typeName?:string;typeVersion?:number;typeDigest?:string}|undefined;
+    deadline?:string;maxSteps?:number;sourceTaskId?:string;sourceRunId?:string;sourceInputDigest?:string;typeName?:string;typeVersion?:number;typeDigest?:string;
+    parentExecutionEpoch?:number;sourceExecutionEpoch?:number}|undefined;
   if(!marker)return undefined;
   const binding=childBinding(runtime,taskId),parent=runtime.getTask(binding.parentTaskId);
   const source=runtime.getTask(marker.sourceTaskId??binding.parentTaskId);
+  runtime.assertExecutionEpoch(parent.taskId,marker.parentExecutionEpoch??0);
+  runtime.assertExecutionEpoch(source.taskId,marker.sourceExecutionEpoch??0);
+  if(marker.sourceRunId)runtime.assertExecutionEpoch(source.taskId,
+    runtime.loadCheckpoint(source.taskId,'execution-epoch:run:'+marker.sourceRunId) as number??0);
   const fail=()=>{throw new ProtocolError('UNAUTHORIZED','Original asynchronous subagent binding changed');};
   const maxSteps=binding.thinkingDepth===undefined?6:Math.max(2,(binding.thinkingDepth+1)*2);
   if(marker.version!==1||marker.parentTaskId!==binding.parentTaskId||marker.subtaskId!==binding.subtaskId

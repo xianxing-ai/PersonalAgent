@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {ProtocolError} from '@personal-agent/contracts';
 import {DUTY_STATUS_MARKER, executeStatusComment} from '@personal-agent/github';
-import {createGitHubDutyComments, readGitHubDutyPage, readGitHubPersonalView} from '../electron/developer-duty-github.js';
+import {createAuthorizedGitHubDutyComments, createGitHubDutyComments, readGitHubDutyPage, readGitHubPersonalView} from '../electron/developer-duty-github.js';
 import {TaskRuntime} from '@personal-agent/runtime';
-import {commitDeveloperDutyStatusComment, createDeveloperDutyTools} from '@personal-agent/runtime/application';
+import {AuthorizationQuestions, commitDeveloperDutyStatusComment, createDeveloperDutyTools, createRuntimeApplication} from '@personal-agent/runtime/application';
+import {createDesktopAuthorizationQuestionHost} from '../electron/authorization-question-host.js';
 
 // Explicit Fake for injected transports only; this is not a real ToolGateway approval.
 const fixtureWriteAuthorization = intent => {
@@ -13,10 +14,76 @@ const fixtureWriteAuthorization = intent => {
   assert.ok(intent.body.startsWith(DUTY_STATUS_MARKER));
   if (intent.action === 'edit') assert.ok(Number.isInteger(intent.commentId));
 };
+const publishPending = async (duty, context) => {
+  const status = await duty.tools.find(item => item.descriptor.name === 'duty.status').execute({}, context);
+  for (const pending of status.pendingComments) await duty.tools.find(item => item.descriptor.name === 'duty.comment.publish')
+    .execute(pending, {...context, scopes: ['github:write']});
+};
 
 function response(status, body, headers = {}) {
   return {ok: status >= 200 && status < 300, status, headers: {get: name => headers[name.toLowerCase()]}, json: async () => body};
 }
+
+test('duty publish uses the original content question even in full-access before sending', async t => {
+  let application, questions, authorizedPort;
+  const comments = [], writes = [], egress = [];
+  const waitFor = async predicate => {
+    const until = Date.now() + 5000;
+    while (Date.now() < until) {const value = predicate(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 5));}
+    assert.fail('original duty tool did not reach its expected state');
+  };
+  const fetchImpl = async (_url, init = {}) => {
+    if (!init.method) return response(200, comments.slice());
+    writes.push(init.method);
+    const body = JSON.parse(init.body).body;
+    comments.push({id: 7, body});
+    return response(201, {id: 7});
+  };
+  const duty = createDeveloperDutyTools({getRuntime: () => application.runtime,
+    readPage: async repo => ({repo, connected: true, gap: false, events: [], statusComment: {number: 4, body: 'complete reviewed body'}}),
+    createComments: async input => {
+      const port = await createAuthorizedGitHubDutyComments({...input, getApplication: () => application, questions,
+        readCredential: () => 'github-token-fixture', fetchImpl,
+        egressHost: {prepare: async scope => {
+          assert.equal(scope.isCurrent(), true);
+          egress.push({destination: scope.destination, payload: scope.payload});
+          return {assertBeforeSend(actual) {assert.equal(scope.isCurrent(), true); assert.deepEqual(actual, egress.at(-1));}};
+        }}});
+      if (input.context) authorizedPort = port;
+      return port;
+    }});
+  application = createRuntimeApplication({path: ':memory:', profile: 'huawei_ict_agentarts', hostUserNamespace: 'synthetic-duty',
+    tools: duty.tools, isUserPresent: () => true, // Explicit Fake presence; original Policy and content questions remain real.
+    requiresToolAuthorization: () => true, requestToolAuthorization: scope => questions.requestToolAuthorization(scope)});
+  questions = createDesktopAuthorizationQuestionHost({createQuestions: options => new AuthorizationQuestions(options),
+    getApplication: () => application, namespace: 'synthetic-duty', resolveConversation: () => 'synthetic-original-user-conversation', available: () => true,
+    profiles: [{ref: 'full', label: 'Synthetic full-access', mode: 'full-access', revision: 1, available: true}], defaultProfileRef: 'full'});
+  t.after(async () => {questions.close(); await waitFor(() => application.activeTaskCount === 0); application.close();});
+  const source = application.runtime.submitTask({conversationId: 'synthetic-original-user-conversation', goal: 'watch', idempotencyKey: 'duty-content-source'});
+  const tool = name => duty.tools.find(item => item.descriptor.name === name);
+  await tool('duty.watch').execute({repo: 'octo/repo'}, {taskId: source.taskId});
+  await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, {taskId: source.taskId});
+  await duty.poll();
+  const pending = (await tool('duty.status').execute({})).pendingComments[0];
+  assert.equal(questions.automaticallyApproves(), true);
+  const submitted = application.submitHostToolTask({commandId: 'duty-content-publish', toolName: 'duty.comment.publish', toolVersion: '1.0.0',
+    arguments: pending, deadline: new Date(Date.now() + 60_000).toISOString()});
+  const card = await waitFor(() => questions.snapshot().find(item => item.state === 'pending'));
+  assert.match(card.description, /complete reviewed body/);
+  assert.match(card.description, /"action": "create"/);
+  assert.equal(card.canAlways, false);
+  assert.equal(writes.length, 0);
+  assert.equal(egress.length, 0);
+  assert.throws(() => questions.respond({questionId: card.questionId, expectedRevision: card.revision, decision: 'allow_once'}, 'another-conversation'), {code: 'UNAUTHORIZED'});
+  questions.respond({questionId: card.questionId, expectedRevision: card.revision, decision: 'allow_once'}, card.conversationId);
+  await waitFor(() => application.activeTaskCount === 0);
+  const readback = application.readHostToolTask(submitted.task.taskId);
+  assert.equal(readback.task.state, 'succeeded', JSON.stringify(readback));
+  assert.deepEqual(writes, ['POST']);
+  assert.deepEqual(egress, [{destination: 'https://api.github.com/repos/octo/repo/issues/4/comments', payload: JSON.stringify({body: pending.body})}]);
+  await assert.rejects(authorizedPort.createComment(pending.body), {code: 'UNAUTHORIZED'});
+  assert.equal(writes.length, 1, 'a completed original user invocation cannot authorize another write');
+});
 
 test('missing trusted content authorization leaves real comments read-only and records an intent', async t => {
   const runtime = new TaskRuntime(':memory:');
@@ -161,6 +228,8 @@ test('injected fetch reads events, writes one marked comment, and names the real
   await assert.rejects(tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true, merge: true}, context), {code: 'SCOPE_DENIED'});
   await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context);
   await duty.poll();
+  assert.equal(store.length, 0, 'poll only prepares a complete comment intent');
+  await publishPending(duty, context);
   assert.equal(store.length, 1);
   assert.match(store[0].body, new RegExp(`^${DUTY_STATUS_MARKER}`));
   await duty.poll();
@@ -227,6 +296,8 @@ test('each open pull request gets its own comment and an unchanged head is not w
   await tool('duty.watch').execute({repo: 'octo/repo'}, context);
   await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context);
   await duty.poll();
+  assert.equal(writes.length, 0);
+  await publishPending(duty, context);
   assert.deepEqual(writes.map(item => [item.method, item.number]), [['POST', 4], ['POST', 9]]);
   assert.match(threads.get(4)[0].body, new RegExp(`${DUTY_STATUS_MARKER}\\n[\\s\\S]*pull: 4\\nhead: ${sha4}\\nci: failure`));
   assert.match(threads.get(9)[0].body, new RegExp(`pull: 9\\nhead: ${sha9}\\nci: success`));
@@ -237,6 +308,8 @@ test('each open pull request gets its own comment and an unchanged head is not w
   head4 = next4;
   ci4 = 'success';
   await duty.poll();
+  assert.equal(writes.length, 2);
+  await publishPending(duty, context);
   assert.equal(writes.length, 3);
   assert.equal(writes[2].method, 'PATCH');
   assert.equal(writes[2].number, 4);

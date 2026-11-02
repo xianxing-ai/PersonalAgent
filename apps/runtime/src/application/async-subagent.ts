@@ -83,6 +83,8 @@ interface SpawnMarker {
   sourceTaskId?: string;
   sourceRunId?: string;
   sourceInputDigest?: string;
+  parentExecutionEpoch?: number;
+  sourceExecutionEpoch?: number;
   typeName?: string;
   typeVersion?: number;
   typeDigest?: string;
@@ -269,7 +271,17 @@ export function createAsyncSubagentController(options: {
     const schedule = readSchedule(taskId);
     const wakeId = schedule?.taskId;
     const wake = wakeId ? runtime().getTask(wakeId) : undefined;
-    const execute = () => startChild(taskId, deadlineFor(taskId), narrow(taskId));
+    const execute = async () => {
+      try {return await startChild(taskId, deadlineFor(taskId), narrow(taskId));}
+      catch(error) {
+        // A rejected original authority is terminal even when the admission wake owns the outer worker.
+        // No child operation started, so use Runtime's normal failure transition without a retry.
+        if((error instanceof ProtocolError||error instanceof RuntimeError)&&['UNAUTHORIZED','REVISION_CONFLICT','CANCELLED'].includes(error.code)
+          &&runtime().getTask(taskId).state==='created'&&!runtime().isTaskActive(taskId))
+          return runtime().runTask(taskId,async()=>{throw error;},{deadline:deadlineFor(taskId),sideEffect:'read'});
+        throw error;
+      }
+    };
     if (wake && wake.state === 'created' && !runtime().isTaskActive(wake.taskId)) {
       await runtime().runTask(wake.taskId, async () => {
         await execute();
@@ -432,7 +444,8 @@ export function createAsyncSubagentController(options: {
         &&current.matchesToolExecutionInput(record,{arguments:raw as Record<string,unknown>,scopeRef:context.authorizationRef}));
       const identity: SpawnMarker = {version: 1, parentTaskId: parent.taskId, subtaskId: resolved.definition.subtaskId,
         enqueuedAt: new Date(now()).toISOString(), usesLaya: /laya/i.test(resolved.definition.model ?? ''), maxSteps: resolved.maxSteps,
-        modelConfigurationRef,deadline,sourceTaskId:context.taskId,...(source?{sourceRunId:context.runId,sourceInputDigest:source.inputDigest}:{}),
+        modelConfigurationRef,deadline,sourceTaskId:context.taskId,parentExecutionEpoch:current.readExecutionEpoch(parent.taskId),
+        sourceExecutionEpoch:current.readExecutionEpoch(context.taskId),...(source?{sourceRunId:context.runId,sourceInputDigest:source.inputDigest}:{}),
         ...(resolved.type ? {typeName: resolved.type.name, typeVersion: resolved.type.version, typeDigest: resolved.type.digest} : {})};
       const task = current.submitTaskWithSubagentBinding({conversationId: `desktop-subtask:${parent.taskId}`,
         goal: `[${roleLabel}] ${resolved.definition.goal}`, idempotencyKey}, {
@@ -442,7 +455,8 @@ export function createAsyncSubagentController(options: {
         ...(resolved.definition.thinkingDepth === undefined ? {} : {thinkingDepth: resolved.definition.thinkingDepth}),
         parentDeadline: context.deadline});
       const saved = current.loadCheckpoint(task.taskId, SPAWN_KEY) as SpawnMarker | undefined;
-      const comparable = (value: SpawnMarker) => ({...value, enqueuedAt: ''});
+      const comparable = (value: SpawnMarker) => ({...value,parentExecutionEpoch:value.parentExecutionEpoch??0,
+        sourceExecutionEpoch:value.sourceExecutionEpoch??0,enqueuedAt: ''});
       if (saved && !isDeepStrictEqual(comparable(saved), comparable(identity))) fail('REVISION_CONFLICT', 'Async subagent input changed');
       if (!saved) {
         if (previous) fail('REVISION_CONFLICT', 'Existing child was not created by asynchronous spawn');
@@ -565,7 +579,7 @@ export function createAsyncSubagentController(options: {
 /** Dispatch a child to a healthy remote host when one exists; otherwise use the local worker. */
 export function createRemoteAwareSubagentStarter(options: {
   host: SubagentHostOptions;
-  getRemote?: () => {list: () => Array<{enabled: boolean; repos?: string[]}>; submit: (job: {kind: 'async-subagent'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>;signal:AbortSignal;deadline:string}) => Promise<{location: string; reason?: string; receipt?: {state?: string; summary?: string; error?: string; needsConfig?: boolean; verification?: string}}>} | undefined;
+  getRemote?: () => {list: () => Array<{enabled: boolean; repos?: string[]}>; submit: (job: {kind: 'async-subagent'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>;signal:AbortSignal;deadline:string;assertCurrent:()=>void}) => Promise<{location: string; reason?: string; receipt?: {state?: string; summary?: string; error?: string; needsConfig?: boolean; verification?: string}}>} | undefined;
 }): (taskId: string, deadline: string, host: SubagentHostOptions) => Promise<TaskSnapshot> {
   return async (taskId, deadline, host) => {
     const runtime = options.host.getRuntime();
@@ -582,6 +596,7 @@ export function createRemoteAwareSubagentStarter(options: {
     if(child.state==='waiting_reconciliation'||child.error?.code==='RESULT_UNKNOWN')throw new ProtocolError('RESULT_UNKNOWN','Original remote child must not be replayed');
     if(child.state!=='created'||child.cancelRequested)throw new ProtocolError('REVISION_CONFLICT','Original remote child is not waiting for admission');
     if(deadline!==(asyncScope?.deadline??binding.parentDeadline))throw new ProtocolError('UNAUTHORIZED','Original remote child deadline changed');
+    const executionEpoch=runtime.readExecutionEpoch(taskId),parentEpoch=runtime.readExecutionEpoch(binding.parentTaskId);
     return runtime.runTask(taskId,async worker=>{
       let submitted=false;
       const unknown=()=>{
@@ -599,19 +614,31 @@ export function createRemoteAwareSubagentStarter(options: {
         submitted=true;
         const result=await remote.submit({kind:'async-subagent',idempotencyKey:`remote-subagent:${taskId}`,taskId,
           ...(enabled[0]?.repos?.[0]?{repo:enabled[0].repos[0]}:{}),payload:{goal:binding.goal,subtaskId:binding.subtaskId},
-          signal:worker.signal,deadline:worker.deadline});
+          signal:worker.signal,deadline:worker.deadline,assertCurrent:()=>{
+            runtime.assertExecutionEpoch(taskId,executionEpoch);runtime.assertExecutionEpoch(binding.parentTaskId,parentEpoch);
+            const current=runtime.getTask(taskId);
+            if(!asyncScope?.confirmedSpawn||worker.signal.aborted||current.cancelRequested||current.state!=='running'
+              ||!isDeepStrictEqual(readRuntimeSubagentBinding(runtime,taskId),binding)
+              ||!isDeepStrictEqual(readRuntimeAsyncSubagentScope(runtime,taskId),asyncScope))
+              throw new ProtocolError('UNAUTHORIZED','Original remote subagent scope changed');
+          }});
         if(worker.signal.aborted||result.location==='remote'&&result.receipt?.state==='unknown'){
           unknown();return {resultSummary:'Remote subagent result requires reconciliation'};
         }
-        if(result.location==='remote'&&result.receipt?.state==='succeeded'&&result.receipt.verification==='executed'){
+        if(result.location==='remote'&&result.receipt?.state==='succeeded'&&result.receipt.verification==='executed'&&result.receipt.needsConfig!==true){
           worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'confirmed',redo:false});
           return {resultSummary:`${String(result.receipt.summary||'远端执行器已回执')}\n（远端执行）`};
+        }
+        if(result.location==='remote'&&result.receipt?.state==='rejected'&&result.receipt.verification==='not-sent'){
+          submitted=false;worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'not_sent',redo:false});
+          throw new ProtocolError('UNAUTHORIZED','Remote dispatch was not authorized; no payload was sent');
         }
         if(result.location==='remote'&&result.receipt?.state==='failed'&&result.receipt.needsConfig!==true&&result.receipt.verification!=='needs-config'){
           worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'failed',redo:false});
           submitted=false;throw new ProtocolError('EXTERNAL_FAILURE',String(result.receipt.summary||result.receipt.error||'远端子任务失败'));
         }
-        if(result.location!=='local'&&result.receipt?.needsConfig!==true&&result.receipt?.verification!=='needs-config'){
+        const needsConfiguration=result.receipt?.state==='failed'&&result.receipt.needsConfig===true&&result.receipt.verification==='needs-config';
+        if(result.location!=='local'&&!needsConfiguration){
           unknown();return {resultSummary:'Remote subagent receipt is not conclusive'};
         }
         submitted=false;

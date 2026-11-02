@@ -7,7 +7,8 @@ import {fileURLToPath} from 'node:url';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
 import {TaskRuntime} from '../dist/index.js';
-import {createLoopbackRunnerTransport, createMemoryRunnerSecrets, createRemoteRunnerService, reconcileDutyCursor, signRunnerJob} from '../dist/application.js';
+import {createLoopbackRunnerTransport, createMemoryRunnerSecrets, reconcileDutyCursor, signRunnerJob} from '../dist/application.js';
+import {createSyntheticRemoteRunnerService as createRemoteRunnerService} from '../../../tests/helpers/synthetic-remote-runner.mjs';
 import {handleRunnerJob, loadRunnerState, saveRunnerState, signJob} from '../../../scripts/remote-runner/remote-runner-service.mjs';
 
 const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nfixture-key\n-----END OPENSSH PRIVATE KEY-----';
