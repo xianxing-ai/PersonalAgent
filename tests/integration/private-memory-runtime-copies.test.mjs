@@ -79,6 +79,12 @@ async function fixture(t, asynchronousGate = false, delegation = false) {
       readConfigurationRef: () => app.coordinationConfigurationRef,
       assertCopyManagement: () => asynchronousGate ? Promise.resolve() : erasure.assertReady([])});
     erasure = createPrivateMemoryErasureHost({privateMemory: memory, consumptionHost: consumption,
+      // Explicit approved Fake: these cases verify original copy cleanup and restart, not user-turn confirmation.
+      deletionGate: {run: async (operation, _target, perform, assertCurrent) => {
+        assert.equal(operation, 'memory.erase');
+        assertCurrent();
+        return perform();
+      }},
       listBindings: input => app.listBindings(input), cancelTask: taskId => app.runtime.requestCancel(taskId),
       eraseTaskCopies: scope => app.eraseTaskCopies(scope), readCopyErasureReceipt: taskId => app.readCopyErasureReceipt(taskId)});
     client = new Client(app, Date.now);

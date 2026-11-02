@@ -149,10 +149,10 @@ test('unverified proposal cannot read or export synthetic knowledge', async t =>
     reads++;
     return vault.search(request);
   }});
-  const port = new FakeCoordinationPort(() => ({
+  const port = new FakeCoordinationPort(request => ({
     kind: 'tool_proposal', proposalId: 'unverified-knowledge-proposal',
     toolName: KNOWLEDGE_SEARCH_TOOL_NAME, toolVersion: KNOWLEDGE_SEARCH_TOOL_VERSION,
-    arguments: {query: 'knowledge', limit: 1}, verification: 'unverified',
+    arguments: {query: 'knowledge', limit: 1}, verification: 'unverified', executionEpoch: request.executionEpoch,
   }));
   const app = createRuntimeApplication({
     path: database, profile: 'huawei_ict_agentarts', coordination: port, tools: [knowledge],
@@ -183,10 +183,10 @@ test('explicit public-demo export lets an unverified proposal read only after ap
     return vault.search(request);
   }});
   const port = new FakeCoordinationPort(request => request.continuation
-    ? {kind: 'text', text: 'Public demo source found', verification: 'unverified'}
+    ? {kind: 'text', text: 'Public demo source found', verification: 'unverified', executionEpoch: request.executionEpoch}
     : {kind: 'tool_proposal', proposalId: publicProposalId,
       toolName: KNOWLEDGE_SEARCH_TOOL_NAME, toolVersion: KNOWLEDGE_SEARCH_TOOL_VERSION,
-      arguments: {query: publicQuery, limit: 1}, verification: 'unverified'});
+      arguments: {query: publicQuery, limit: 1}, verification: 'unverified', executionEpoch: request.executionEpoch});
   const app = createRuntimeApplication({path: join(base, 'runtime.sqlite'),
     profile: 'huawei_ict_agentarts', coordination: port, tools: [knowledge],
     competitionToolExports: [publicDemoExport()]});
@@ -225,9 +225,9 @@ test('public-demo export rejects a different query before approval or Vault read
     reads++;
     return vault.search(request);
   }});
-  const port = new FakeCoordinationPort(() => ({kind: 'tool_proposal', proposalId: publicProposalId,
+  const port = new FakeCoordinationPort(request => ({kind: 'tool_proposal', proposalId: publicProposalId,
     toolName: KNOWLEDGE_SEARCH_TOOL_NAME, toolVersion: KNOWLEDGE_SEARCH_TOOL_VERSION,
-    arguments: {query: '私人笔记', limit: 1}, verification: 'unverified'}));
+    arguments: {query: '私人笔记', limit: 1}, verification: 'unverified', executionEpoch: request.executionEpoch}));
   const app = createRuntimeApplication({path: join(base, 'runtime.sqlite'),
     profile: 'huawei_ict_agentarts', coordination: port, tools: [knowledge],
     competitionToolExports: [publicDemoExport()]});
