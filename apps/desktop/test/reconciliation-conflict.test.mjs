@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readReconciliationConflict,recordReconciliationConflictSkip,recordUnavailableConflictNotification,
  assertNoUnresolvedWriteReplay,inspectReconciliationConflictOnce} from '../electron/reconciliation-conflict.js';
-import {readReconciliationStatus} from '../electron/reconciliation-status.js';
+import {readReconciliationStatus,readConversationConflictTasks} from '../electron/reconciliation-status.js';
 import {skipReconciliationConflictFromSurface} from '../electron/reconcile-task-action.js';
 import {conflictDecisionMarkup,conflictDecisionPayload} from '../src/features/conversation/conflict-decision.js';
+import {conversationTimeline} from '../src/features/conversation/timeline.js';
 
 function fixture(state='waiting_reconciliation'){
  const task={taskId:'original',state,revision:4,surface:'panel'},checkpoints=new Map();
@@ -66,7 +67,7 @@ test('cloud completion disagreement binds only the current epoch and exact recei
 test('surface skip rejects a different window/conversation or revision and never calls execution/resume',async()=>{
  for(const invalid of ['sender','surface','conversation','revision',null]){
   const f=fixture(),panel={},workspace={},calls=[],binding=readReconciliationConflict(f.application,f.task);
-  const args={payload:{taskId:f.task.taskId,conflictId:binding.conflictId,expectedRevision:binding.expectedRevision},
+  const args={payload:{taskId:f.task.taskId,conflictId:binding.conflictId,expectedRevision:binding.expectedRevision,conversationId:'conversation'},
    sender:panel,panel,workspace,tasks:new Map([[f.task.taskId,f.task]]),taskSurface:task=>task.surface,
    conversations:{conversationIdForTask:()=> 'conversation',activeConversationId:()=>invalid==='conversation'?'other':'conversation'},
    application:f.application,refresh:async()=>{calls.push('refresh');return f.task;},publish:()=>calls.push('publish')};
@@ -74,6 +75,38 @@ test('surface skip rejects a different window/conversation or revision and never
   if(invalid){await assert.rejects(skipReconciliationConflictFromSurface(args));assert.deepEqual(calls,[]);assert.equal(f.checkpoints.size,0);}
   else{assert.equal((await skipReconciliationConflictFromSurface(args)).state,'waiting_reconciliation');assert.deepEqual(calls,['refresh','publish']);}
  }
+});
+
+test('trusted child conflict reaches its owner conversation and exact skip never changes the parent or original operation',async()=>{
+ const parent={taskId:'parent',state:'succeeded',revision:9,surface:'panel',conversationId:'owner'},
+   child={taskId:'child',state:'waiting_reconciliation',revision:4,conversationId:'desktop-subtask:parent'},
+   forged={...child,taskId:'forged'},all=new Map([parent,child,forged].map(task=>[task.taskId,task])),checkpoints=new Map();
+ const records=[{evidenceId:'child-write',inputDigest:'a'.repeat(64),toolName:'mail.send',toolVersion:'1.0',policyDecision:'allow',executionStarted:true,state:'unknown'}];
+ const original=structuredClone({parent,child,records}),runtime={getTask:id=>all.get(id),readExecutionEpoch:()=>0,
+   readToolExecutions:id=>id===child.taskId?records:[],loadCheckpoint:(id,key)=>structuredClone(checkpoints.get(id+':'+key)),
+   saveCheckpointOnce(id,key,value){const name=id+':'+key;if(checkpoints.has(name))return false;checkpoints.set(name,structuredClone(value));return true;}};
+ let active='owner',bound=true;
+ const application={runtime,readToolConversation:id=>bound&&id===child.taskId?'owner':undefined,
+   readSubagentTasks:id=>id===parent.taskId?[{parentTaskId:id,taskId:child.taskId}]:[]};
+ const conversations={sessions:new Map([['owner',{surface:'panel'}],['other',{surface:'panel'}],['workspace',{surface:'workspace'}]]),
+   activeConversationId:surface=>surface==='panel'?active:'workspace',conversationIdForTask:task=>task.conversationId};
+ const taskSurface=task=>task.surface,scope={application,tasks:[parent,forged],parents:[parent],surface:'panel',taskSurface,conversations};
+ const projected=readConversationConflictTasks(scope);assert.deepEqual(projected,[child]);
+ assert.equal(conversationTimeline(projected)[0].value.taskId,child.taskId,'synthetic child conversation is not filtered by the renderer timeline');
+ const task={...projected[0],conflictOnly:true,reconciliationStatus:{...readReconciliationStatus(application,child),conversationId:'owner'}};
+ const payload=conflictDecisionPayload(task);assert.equal(payload.taskId,child.taskId);assert.equal(payload.expectedRevision,child.revision);
+ assert.match(conflictDecisionMarkup(task,escape),/data-id="child"/);assert.match(conflictDecisionMarkup(task,escape,true),/data-skip-conflict="child"/);
+ const panel={},workspace={},calls=[],args={payload,sender:panel,panel,workspace,tasks:new Map([[parent.taskId,parent]]),taskSurface,
+   conversations,application,refresh:async id=>{calls.push(id);return runtime.getTask(id);},publish:()=>calls.push('publish')};
+ for(const change of [{expectedRevision:3},{conflictId:'f'.repeat(64)},{conversationId:'other'},{taskId:parent.taskId}])
+   await assert.rejects(skipReconciliationConflictFromSurface({...args,payload:{...payload,...change}}));
+ await assert.rejects(skipReconciliationConflictFromSurface({...args,sender:workspace}));
+ active='other';assert.deepEqual(readConversationConflictTasks(scope),[]);await assert.rejects(skipReconciliationConflictFromSurface(args));active='owner';
+ bound=false;assert.deepEqual(readConversationConflictTasks(scope),[]);await assert.rejects(skipReconciliationConflictFromSurface(args));bound=true;
+ assert.equal(checkpoints.size,0);assert.deepEqual(calls,[]);
+ assert.equal((await skipReconciliationConflictFromSurface(args)).taskId,child.taskId);assert.deepEqual(calls,['child','publish']);
+ assert.deepEqual({parent,child,records},original);assert.equal(readReconciliationConflict(application,child).skipped,true);
+ assert.ok([...checkpoints.keys()].every(key=>key.startsWith('child:reconciliation-conflict-decision:')));
 });
 
 test('only the conflicted original write is held; reads and independently scheduled tasks remain available',()=>{
@@ -115,7 +148,7 @@ test('readback deadline bounds an uncooperative original port without reopening 
 
 test('failure cards and both actual renderer consumers offer exact skip without implying success',()=>{
  for(const state of ['waiting_reconciliation','failed']){
-  const f=fixture(state),status=readReconciliationStatus(f.application,f.task),task={...f.task,reconciliationStatus:status};
+  const f=fixture(state),status=readReconciliationStatus(f.application,f.task),task={...f.task,reconciliationStatus:{...status,conversationId:'conversation'}};
   assert.match(status.conflictId,/^[a-f0-9]{64}$/);assert.equal(conflictDecisionPayload(task).expectedRevision,4);
   assert.match(conflictDecisionMarkup(task,escape),/task.reconcile.skip/);assert.match(conflictDecisionMarkup(task,escape,true),/data-skip-conflict/);
   assert.match(conflictDecisionMarkup(task,escape),/不代表成功/);

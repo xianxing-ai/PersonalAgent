@@ -1,10 +1,12 @@
 import {readReconciliationConflict,recordReconciliationConflictSkip} from './reconciliation-conflict.js';
+import {reconciliationBelongsToConversation} from './reconciliation-status.js';
 
 /** The explicit button names this exact conflict; it records no success or replay permission. */
 export async function skipReconciliationConflictFromSurface({payload,sender,panel,workspace,tasks,taskSurface,conversations,application,refresh,publish}) {
- if(sender!==panel&&sender!==workspace||!payload||Object.keys(payload).some(key=>!['taskId','conflictId','expectedRevision'].includes(key)))throw Error('请从原对话明确处理这次冲突');
- const surface=sender===workspace?'workspace':'panel',task=tasks.get(payload.taskId);
- if(!task||taskSurface(task)!==surface||conversations.conversationIdForTask(task)!==conversations.activeConversationId(surface))throw Error('这次冲突不属于当前对话');
+ if(sender!==panel&&sender!==workspace||!payload||Object.keys(payload).some(key=>!['taskId','conflictId','expectedRevision','conversationId'].includes(key)))throw Error('请从原对话明确处理这次冲突');
+ const surface=sender===workspace?'workspace':'panel',task=application?.runtime.getTask(payload.taskId)??tasks.get(payload.taskId);
+ if(typeof payload.conversationId!=='string'||payload.conversationId!==conversations.activeConversationId(surface)
+   ||!reconciliationBelongsToConversation({application,task,surface,taskSurface,conversations}))throw Error('这次冲突不属于当前对话');
  recordReconciliationConflictSkip(application,task,payload);const result=await refresh(task.taskId);publish();return result;
 }
 /** Trusted Desktop action: original-task verification only; Runtime owns terminal state. */

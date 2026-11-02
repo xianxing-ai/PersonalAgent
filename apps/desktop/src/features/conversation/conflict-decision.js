@@ -7,6 +7,6 @@ export function conflictDecisionMarkup(task,escape,workspace=false) {
 }
 export function conflictDecisionPayload(task) {
   if(!['waiting_reconciliation','failed'].includes(task?.state)||!Number.isSafeInteger(task.revision)||task.reconciliationStatus?.conflictSkipped
-    ||!/^[a-f0-9]{64}$/u.test(task.reconciliationStatus?.conflictId??''))throw Error('这次冲突已变化，请刷新');
-  return {taskId:task.taskId,conflictId:task.reconciliationStatus.conflictId,expectedRevision:task.revision};
+    ||!/^[a-f0-9]{64}$/u.test(task.reconciliationStatus?.conflictId??'')||!task.reconciliationStatus.conversationId)throw Error('这次冲突已变化，请刷新');
+  return {taskId:task.taskId,conflictId:task.reconciliationStatus.conflictId,expectedRevision:task.revision,conversationId:task.reconciliationStatus.conversationId};
 }

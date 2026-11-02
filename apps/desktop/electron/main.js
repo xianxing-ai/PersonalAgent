@@ -6,7 +6,7 @@ import {handleConversationAction} from './conversation-actions.js';
 import {assertConversationProhibitions} from './conversation-prohibitions.js';
 import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {createConversationDelivery} from './conversation-delivery.js';
-import {readReconciliationStatus} from './reconciliation-status.js';
+import {readReconciliationStatus,readConversationConflictTasks} from './reconciliation-status.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
@@ -816,6 +816,9 @@ function conversationProjection(surface) {
   const active=scoped.filter(task=>!terminalTaskStates.has(task.state));
   const liveIds=new Set(active.slice(-8).map(task=>task.taskId));
   const projectedTasks=scoped.filter(task=>pageTasks.has(task.taskId)||liveIds.has(task.taskId));
+  const projectedIds=new Set(projectedTasks.map(task=>task.taskId));
+  const childConflicts=fakeMode||runtimeClosed?[]:readConversationConflictTasks({application:runtimeApplication,tasks:ordered,
+    parents:projectedTasks,surface,taskSurface,conversations}).filter(task=>!projectedIds.has(task.taskId)&&taskSurface(task)===undefined);
   const workspaceChildren=surface==='workspace'&&!fakeMode?scopeSubagentConversations(runtimeApplication?.listSubagentConversations({limit:100,
     parentTaskIds:[...new Set(projectedTasks.map(task=>task.taskId))]}).items??[],
     taskId=>runtimeApplication.runtime.getTask(taskId),parent=>visibleConversationTask(parent,'workspace')):[];
@@ -823,13 +826,14 @@ function conversationProjection(surface) {
     subagentTasks:fakeMode?[]:(surface==='workspace'?workspaceChildren:projectSubagentActivity({tasks:projectedTasks,surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
-    tasks: projectedTasks.map(original => {const task=readSafeTaskProjection(original,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,
+    tasks: [...projectedTasks,...childConflicts].map(original => {const conflictOnly=!projectedIds.has(original.taskId),task=readSafeTaskProjection(original,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,
       delivery:conversationDelivery,cache:tasks,goals:taskGoals});return ({...structuredClone(task),
       ...(task.error?{error:{...task.error,...errorDisplay(task.error,'task')}}:{}),
-      reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
+      reconciliationStatus:{...readReconciliationStatus(runtimeApplication,task),...(surface?{conversationId:conversations.activeConversationId(surface)}:{})},
+      ...(conflictOnly?{conflictOnly:true}:{}),
       resultMetadata:taskResultMetadata(task),
       createdAt: task.createdAt ?? conversations?.turns.get(task.taskId)?.createdAt ?? task.updatedAt,
-      userMessage: task.bodyWithheld?task.goal:taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId) ?? task.goal,
+      userMessage: conflictOnly?undefined:task.bodyWithheld?task.goal:taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId) ?? task.goal,
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
       ...(notepadHost?.projectTask(task) ?? {})});}),
     messages: page.entries.filter(entry=>entry.kind==='message').map(entry=>conversations?.messages.get(entry.id)).filter(Boolean).map(message=>({...message})),

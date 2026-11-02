@@ -1,5 +1,29 @@
 import {readReconciliationConflict} from './reconciliation-conflict.js';
 
+/** Child display/action ownership comes from the original Runtime binding, never its synthetic conversation ID. */
+export function reconciliationBelongsToConversation({application,task,surface,taskSurface,conversations}) {
+  if(!task||!['panel','workspace'].includes(surface))return false;
+  const conversationId=conversations.activeConversationId(surface),directSurface=taskSurface(task);
+  if(directSurface!==undefined)return directSurface===surface&&conversations.conversationIdForTask(task)===conversationId;
+  return application?.readToolConversation?.(task.taskId)===conversationId
+    &&conversations.sessions?.get(conversationId)?.surface===surface;
+}
+
+/** Include unresolved original children even when their terminal cache entries were evicted. */
+export function readConversationConflictTasks({application,tasks,parents,surface,taskSurface,conversations}) {
+  if(!application||!surface)return [];
+  const candidates=new Map(tasks.map(task=>[task.taskId,task])),visited=new Set(),queue=[...parents];
+  for(const parent of queue) {
+    if(visited.has(parent.taskId))continue;visited.add(parent.taskId);
+    if(!reconciliationBelongsToConversation({application,task:parent,surface,taskSurface,conversations}))continue;
+    for(const child of application.readSubagentTasks?.(parent.taskId)??[]) {
+      const task=application.runtime.getTask(child.taskId);candidates.set(task.taskId,task);queue.push(task);
+    }
+  }
+  return [...candidates.values()].filter(task=>reconciliationBelongsToConversation({application,task,surface,taskSurface,conversations})
+    &&readReconciliationStatus(application,task).conflictId);
+}
+
 /** Read-only UI metadata. Runtime alone decides whether a task can finish reconciliation. */
 export function readReconciliationStatus(application,task,now=Date.now) {
   if(!['waiting_reconciliation','failed'].includes(task?.state))return {};
