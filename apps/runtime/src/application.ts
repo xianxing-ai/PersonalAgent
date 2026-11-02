@@ -167,6 +167,34 @@ export {
   SUBAGENT_DISPATCH_TOOL_VERSION,
 } from './application/subagent-host.js';
 export type {SubagentHostOptions, DesktopSubagentDispatchToolOptions,ConfiguredSubagentModelOptions} from './application/subagent-host.js';
+export {desktopSubagentHostOptions, startRuntimeSubagentChild} from './application/subagent-host.js';
+export {
+  createAsyncSubagentController,
+  createDesktopAsyncSubagentTools,
+  SUBAGENT_SPAWN_TOOL_NAME,
+  SUBAGENT_INSTRUCT_TOOL_NAME,
+  SUBAGENT_STOP_TOOL_NAME,
+  SUBAGENT_TYPE_LIST_TOOL_NAME,
+  SUBAGENT_TYPE_CREATE_TOOL_NAME,
+  SUBAGENT_TYPE_UPDATE_TOOL_NAME,
+  SUBAGENT_TYPE_DISABLE_TOOL_NAME,
+  SUBAGENT_TYPE_ENABLE_TOOL_NAME,
+  SUBAGENT_TYPE_DELETE_TOOL_NAME,
+  SUBAGENT_TYPE_CONFIRM_TOOL_NAME,
+  SUBAGENT_TYPE_IMPORT_TOOL_NAME,
+  ASYNC_SUBAGENT_TOOL_VERSION,
+  ASYNC_SUBAGENT_ADMISSION_CONVERSATION,
+} from './application/async-subagent.js';
+export type {AsyncSubagentController, AsyncSubagentReport, AsyncSubagentHandle} from './application/async-subagent.js';
+export {
+  createSubagentTypeRegistry,
+  validateSubagentTypeDefinition,
+  parseSubagentTypeConfig,
+  subagentTypeChangeSummary,
+  subagentTypeDigest,
+  BUILTIN_SUBAGENT_ROLES,
+} from './application/subagent-type-registry.js';
+export type {SubagentTypeDefinition, SubagentTypeRecord, SubagentTypeProposal, SubagentTypeRegistry} from './application/subagent-type-registry.js';
 export {LOCAL_REPAIR_TOOL} from './application/local-repair.js';
 export {createKnowledgeFeedReceipt,createKnowledgeFeedReceiptFromCollectResult,createKnowledgeFeedReceiptFromConfirmedExecution, parseKnowledgeFeedReceipt, verifyKnowledgeFeedReceiptBinding,
   knowledgeFeedReceiptItems} from './application/knowledge-feed-receipt.js';

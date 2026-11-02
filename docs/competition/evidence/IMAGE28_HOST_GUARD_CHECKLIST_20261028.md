@@ -241,3 +241,13 @@ F20 无 host / guard 要求（0 / 0）；这不代表可信输入、调用入口
 - [ ] `workflow.host.f28_n12` — 执行者在派定范围内自主选工具与探索；节点能力：`executor.scoped_tool_loop`
 - [ ] `workflow.guard.f28_n12` — 执行者在派定范围内自主选工具与探索；节点能力：`executor.scoped_tool_loop`
 
+## 增量（2026-11-02，异步子智能体；不改变上面的原有项）
+
+以下为新增项，不替代、不勾选上面的原有 host/guard。当前只完成 Fixture 级测试；未做真实模型或桌面人工验收。
+
+- [ ] `subagent.spawn` — 异步创建子任务并立即返回；复用 `subagent-dispatch-${parent}-${subtask}`；一层深度；默认全局/每父各 3；Laya 仍串行
+- [ ] `subagent.instruct` / `subagent.stop` — controlRevision 追加指示；停止走现有 `requestCancel`
+- [ ] `async-subagent-report` — 终态回执按 parentTask、subtaskId、revision 只报告一次，重启不重复
+- [ ] `async-subagent-recovery` — 启动重入仍为 created 的子任务；`waiting_reconciliation` 只读回，不重做
+- [ ] `subagent.type.*` — 主对话起草自定义类型；确认前不生效；不能与五种内置角色重名；工具不得超出已授予范围；定义变更作废旧版本待执行提案
+

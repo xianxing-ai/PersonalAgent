@@ -490,6 +490,7 @@ let feedsHost;
 let f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
 let workflowGraphComposition={tools:[],unavailable:['not_assembled']};
 let todoHost;
+let asyncSubagentHost;
 let todoFailure = '';
 let todoClosing;
 let todoClosed = false;
@@ -2485,6 +2486,19 @@ async function initializeRuntime() {
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
         }))},context);
       };
+      const {createAsyncSubagentHost} = await import('./async-subagent-host.js');
+      asyncSubagentHost?.stop();
+      asyncSubagentHost = createAsyncSubagentHost({runtimeModule, getGrantedTools:()=>runtimeApplication.tools?.list().map(tool=>tool.name)??[],
+        subagentOptions:{competitionOnly:true, getRuntime:()=>runtimeApplication.runtime, getTools:()=>runtimeApplication.tools, fakeModelMode,
+          getToolsForSubtask:(subtask,worker)=>f28Workflow?.getToolsForSubtask(subtask,worker,runtimeApplication.tools)??runtimeApplication.tools,
+          runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)}});
+      const asyncSubagentTools = asyncSubagentHost.tools.map(tool=>tool.descriptor.name==='subagent.spawn'
+        ? {...tool, execute:(input,context)=>{
+          const taskThinking = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-thinking');
+          return tool.execute({...input, subtasks:input.subtasks.map(subtask=>({...subtask,
+            ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {})}))}, context);
+        }} : tool);
+      asyncSubagentHost.start();
       const subagentAvailability = {
         toolName: SUBAGENT_DISPATCH_TOOL_NAME,
         toolVersion: SUBAGENT_DISPATCH_TOOL_VERSION,
@@ -2787,7 +2801,7 @@ async function initializeRuntime() {
         ...(f01Workflow?.tools??[]),...(f21Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f28Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
-        ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
+        ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(asyncSubagentTools??[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(f16F17Workflow?.commandTool)conversationTools=conversationTools.map(tool=>
         tool.descriptor.name==='workspace.run_allowed_command'?f16F17Workflow.commandTool:tool);
@@ -3951,6 +3965,13 @@ async function action(event, name, payload) {
   if(name==='task.openSubagentConversation'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
     return openSubagentConversation(payload);
+  }
+  if(name==='asyncSubagents.list'||name==='asyncSubagents.instruct'||name==='asyncSubagents.stop'){
+    if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话查看后台任务');
+    if(!asyncSubagentHost)throw Error('后台子任务尚未装配');
+    if(name==='asyncSubagents.list')return asyncSubagentHost.list();
+    if(name==='asyncSubagents.instruct')return asyncSubagentHost.instruct(payload);
+    return asyncSubagentHost.stopChild(payload);
   }
   if(name==='subagentConversations.openAll'){
     if(sender!==workspace||payload!==undefined)throw Error('请从工作区打开全部子智能体');

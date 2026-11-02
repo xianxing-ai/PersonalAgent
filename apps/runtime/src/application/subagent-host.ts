@@ -216,7 +216,10 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
     }
     return sourceTools.invoke({...request, signal: childWorker.signal});
   }};
-  const maxSteps = subtask.thinkingDepth !== undefined ? Math.max(2, (subtask.thinkingDepth + 1) * 2) : 6;
+  const computedSteps = subtask.thinkingDepth !== undefined ? Math.max(2, (subtask.thinkingDepth + 1) * 2) : 6;
+  const stepCap = childWorker.loadCheckpoint('async-subagent-step-cap:v1') as {maxSteps?: unknown} | undefined;
+  const maxSteps = stepCap && Number.isInteger(stepCap.maxSteps) && (stepCap.maxSteps as number) >= 1
+    && (stepCap.maxSteps as number) <= computedSteps ? stepCap.maxSteps as number : computedSteps;
   if (kind === 'competition') {
     childWorker.saveCheckpoint('subtask-thinking-binding', {depth: subtask.thinkingDepth ?? null,
       stepBudget: {maxSteps}, modelReasoning: {requestedEffort: null, effort: null, supported: false,
@@ -264,9 +267,18 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
       reason: identity.nativeReasoning !== undefined ? 'Version-bound native configuration is independent of the step budget'
         : reasoningEffort !== undefined ? 'Trusted host explicitly configured this reasoning_effort'
         : requestedEffort === undefined ? 'No native reasoning effort selected' : 'Selected effort is not configured for this model'}});
+  const typePrompt = childWorker.loadCheckpoint('async-subagent-type:v1') as {instructions?: unknown; version?: unknown} | undefined;
+  const typeInstructions = typePrompt && typeof typePrompt.instructions === 'string' ? typePrompt.instructions.trim() : '';
   const rolePrompt: ModelMessage = {role: 'system',
-    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。`};
-  const outcome = await runAgent(childWorker, {goal: subtask.goal, initialMessages: [rolePrompt], model,
+    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。`
+      + (typeInstructions ? `\n\n自定义类型指示（version ${typeof typePrompt?.version === 'number' ? typePrompt.version : 0}）：\n${typeInstructions}` : '')};
+  const followUp = childWorker.loadCheckpoint('async-subagent-control:v1') as {revision?: unknown; instructions?: unknown} | undefined;
+  const appended = followUp && Array.isArray(followUp.instructions)
+    ? followUp.instructions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const goal = appended.length === 0 ? subtask.goal
+    : `${subtask.goal}\n\n后续指示（revision ${typeof followUp?.revision === 'number' ? followUp.revision : 0}）：\n${appended.join('\n')}`;
+  const outcome = await runAgent(childWorker, {goal, initialMessages: [rolePrompt], model,
     tools,
     maxSteps,
     ...(reasoningEffort === undefined ? {} : {reasoningEffort}),
@@ -704,9 +716,10 @@ export interface DesktopSubagentDispatchToolOptions {
   maxRecursionDepth?: number | undefined;
 }
 
-export function createDesktopSubagentDispatchTool(options: DesktopSubagentDispatchToolOptions): RegisteredTool {
+/** Same host options the synchronous Desktop dispatch tool already uses. */
+export function desktopSubagentHostOptions(options: DesktopSubagentDispatchToolOptions): SubagentHostOptions {
   const {getRuntime, getTools, fakeModelMode, modelConfig, modelRegistry, now, maxRecursionDepth} = options;
-  return createRuntimeSubagentDispatchTool({
+  return {
     ...(options.competitionOnly?{competitionOnly:true as const}:{}),
     getRuntime,
     getTools,
@@ -752,5 +765,32 @@ export function createDesktopSubagentDispatchTool(options: DesktopSubagentDispat
       }
       return undefined;
     },
+  };
+}
+
+export function createDesktopSubagentDispatchTool(options: DesktopSubagentDispatchToolOptions): RegisteredTool {
+  return createRuntimeSubagentDispatchTool(desktopSubagentHostOptions(options));
+}
+
+/** Start one already-bound child outside the synchronous dispatch turn.
+ * Unknown reconciliation states are not re-run. */
+export async function startRuntimeSubagentChild(options: SubagentHostOptions, childTaskId: string,
+  deadline?: string): Promise<TaskSnapshot> {
+  const runtime = options.getRuntime();
+  const binding = childBinding(runtime, childTaskId);
+  const child = runtime.getTask(childTaskId);
+  if (['succeeded', 'failed', 'cancelled'].includes(child.state)) return child;
+  if (child.state === 'waiting_reconciliation' || child.error?.code === 'RESULT_UNKNOWN') {
+    throw new ProtocolError('RESULT_UNKNOWN', 'Subagent write outcome is unknown; read it back before any retry');
+  }
+  if (child.state !== 'created' || child.cancelRequested) {
+    throw new ProtocolError('REVISION_CONFLICT', 'Subagent is not waiting for asynchronous admission');
+  }
+  const parentDeadline = Date.parse(binding.parentDeadline);
+  const requested = deadline === undefined ? parentDeadline : Date.parse(deadline);
+  const limit = Number.isFinite(requested) && requested < parentDeadline ? new Date(requested).toISOString() : binding.parentDeadline;
+  return runtime.runTask(childTaskId, worker => runSubagentWorker(options, binding, worker), {
+    deadline: limit,
+    sideEffect: subagentSideEffect(options, runtime, childTaskId),
   });
 }
