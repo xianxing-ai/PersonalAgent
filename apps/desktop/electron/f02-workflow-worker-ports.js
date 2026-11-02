@@ -8,8 +8,8 @@ const object=properties=>({type:'object',additionalProperties:false,required:Obj
 const text={type:'string',minLength:1,maxLength:2048};
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 
-/** Fixed original-question F02. No microphone start, ASR fallback, card decision,
- * new business task or grant is synthesized by this composition. */
+/** Fixed original-question F02. Verified final audio can answer the same pending
+ * card through its existing CAS; no new business task or grant is synthesized. */
 export function createF02WorkflowWorkerPorts({getApplication,authorizationQuestions,liveVoiceHost,microphoneHost,
   voiceCommandHost,verifyAudioEvidence,authorizeExport,now=Date.now}={}) {
   const current=()=>{const app=getApplication?.();if(!app?.runtime)fail('UNSUPPORTED_CAPABILITY','F02 Runtime unavailable');return app;};
@@ -31,7 +31,8 @@ export function createF02WorkflowWorkerPorts({getApplication,authorizationQuesti
     }});
   if(!bundle.ports||typeof authorizeExport!=='function')return {tools:[],configuredWorkflowWorkerPorts:[],unavailable:bundle.unavailable};
   const ports=bundle.ports,base={application,...ports,requiredScopes:['workflow:voice']};
-  const hosts=[createF02PendingQuestionHost(base),createF02FinalTranscriptHost(base),createF02ConfirmationHost(base)];
+  const hosts=[createF02PendingQuestionHost(base),createF02FinalTranscriptHost(base),createF02ConfirmationHost({...base,
+    confirmOriginalQuestion:scope=>answerOriginalQuestion(scope,'allow_once')})];
   async function wait(scope,read){
     for(;;){ports.assertCurrent(scope);const value=read();if(value!==undefined)return value;
       await new Promise(resolve=>setTimeout(resolve,25));}
@@ -54,16 +55,54 @@ export function createF02WorkflowWorkerPorts({getApplication,authorizationQuesti
       deadline:selected.sourceDeadline,signal:scope.signal});
     return value;
   };
+  const readOriginalAnswer=scope=>{
+    const {binding,selected,item}=ports.question(scope),app=current();
+    if(item.state!=='pending')return;
+    const operation=binding.confirmedOperations.find(value=>value.nodeId==='F02_N03'&&value.toolName==='workflow.host.f02_n03');
+    const read=operation&&app.readHostToolTask(operation.localTaskId),final=read?.confirmed?.result;
+    if(!operation||read.task.state!=='succeeded'||read.commandId!==operation.operationId
+      ||read.toolName!=='workflow.host.f02_n03'||!isDeepStrictEqual(final,operation.result)
+      ||final.questionId!==selected.questionId||final.questionRevision!==selected.questionRevision
+      ||item.revision!==selected.questionRevision||typeof final.text!=='string')
+      fail('UNAUTHORIZED','F02 verified original final transcript is unavailable');
+    const invocation=app.readPendingToolInvocation(selected.sourceTaskId,selected.sourceApprovalId);
+    if(!invocation||invocation.argumentsDigest!==selected.argumentsDigest||invocation.toolName!==selected.toolName
+      ||invocation.toolVersion!==selected.toolVersion)
+      fail('REVISION_CONFLICT','F02 original operation arguments changed');
+    const transcriptScope={...scope,localTaskId:operation.localTaskId,operationId:operation.operationId};
+    const voice=ports.resolveOriginalVoice(transcriptScope);
+    const receipt=voice&&ports.readFinal({...voice,conversationId:selected.conversationId,deadline:scope.deadline,signal:scope.signal});
+    if(!receipt||receipt.source!=='live_input_audio'||receipt.phase!=='final'||receipt.origin!=='user'
+      ||receipt.text!==final.text||receipt.transcriptDigest!==final.transcriptDigest||receipt.sessionId!==final.sessionId
+      ||receipt.utteranceId!==final.utteranceId||!Number.isFinite(Date.parse(receipt.expiresAt))||Date.parse(receipt.expiresAt)<=now()
+      ||ports.verifyAudioEvidence(transcriptScope,voice,receipt)!==true)
+      fail('UNAUTHORIZED','F02 original final audio is no longer valid');
+    // Match the entire answer. Negation, conditions, questions and other modifiers
+    // are never stripped or passed to a model as authority to consume the card.
+    const answer=final.text.trim().replace(/[。.!！]$/u,'');
+    return ['同意','我同意','确认','确认执行','允许','允许执行'].includes(answer)?'allow_once'
+      :['拒绝','不同意','我不同意','不允许','不确认','不要执行'].includes(answer)?'deny':undefined;
+  };
+  const answerOriginalQuestion=async(scope,decision)=>{
+    const {selected,item,app}=original(scope);
+    if(item.state==='pending'){
+      if(readOriginalAnswer(scope)!==decision)fail('UNAUTHORIZED','F02 final audio does not explicitly answer this question');
+      authorizationQuestions.respond({questionId:selected.questionId,expectedRevision:selected.questionRevision,decision},selected.conversationId);
+    }
+    await wait(scope,()=>app.runtime.getApproval(selected.sourceApprovalId).state==='pending'?undefined:true);
+  };
   const control=createF02ControlHosts({application,assertCurrent:ports.assertCurrent,now:ports.now,
     async guard(nodeId,scope){
-      const value=nodeId==='F02_N05'?await wait(scope,()=>{
+      const decision=nodeId==='F02_N05'?readOriginalAnswer(scope):undefined;
+      const value=nodeId==='F02_N05'&&!decision?await wait(scope,()=>{
         const next=original(scope);return next.item.state==='pending'?undefined:next;
       }):original(scope);
       if(nodeId==='F02_N01')return value.item.state==='pending'&&value.item.revision===value.selected.questionRevision?'selected':'skipped';
-      if(nodeId==='F02_N05')return value.item.state==='allowed'?'selected':'skipped';
+      if(nodeId==='F02_N05')return value.item.state==='allowed'||decision==='allow_once'?'selected':'skipped';
       return value.task.cancelRequested?'selected':'skipped';
     },
     async observe(nodeId,scope){
+      if(nodeId==='F02_N08')await answerOriginalQuestion(scope,'deny');
       const value=original(scope),{selected,item,task,record,app}=value;
       const result={questionId:selected.questionId,questionRevision:item.revision,sourceTaskId:selected.sourceTaskId,sourceRunId:selected.sourceApprovalId};
       if(nodeId==='F02_N02'){
