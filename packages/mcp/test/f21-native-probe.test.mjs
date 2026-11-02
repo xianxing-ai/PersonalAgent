@@ -5,14 +5,21 @@ import {realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname,resolve} from 'node:path';
 import {readReadonlyMcpInstallation} from '../dist/index.js';
-import {readWindowsNativeHelperAttestation,createWindowsNativeSandboxExecutor} from '@personal-agent/coding-tools';
+import {readWindowsNativeHelperAttestation,createWindowsNativeSandboxExecutor,verifyWindowsNativeSandbox} from '@personal-agent/coding-tools';
+import {unsupportedPsec} from '../../coding-tools/test/native-sandbox-fixture.mjs';
+
+const required=process.env.PA_TEST_NATIVE_SANDBOX_REQUIRED==='1';
 
 test('fixed F21 probe uses the actual MCP protocol only inside enforced Windows PSEC',
-  {skip:!process.env.PA_TEST_JOB_HOST_EXE&&'Explicit current native helper not configured'},async t=>{
+  {skip:!process.env.PA_TEST_JOB_HOST_EXE&&!required&&'Explicit current native helper not configured'},async t=>{
+    assert.ok(process.env.PA_TEST_JOB_HOST_EXE,'Required F21 native probe needs the explicit current helper');
     const installation=readReadonlyMcpInstallation(),pins=readWindowsNativeHelperAttestation(process.env.PA_TEST_JOB_HOST_EXE);
     const base=realpathSync.native(await mkdtemp(join(tmpdir(),'pa-f21-protocol-'))),root=join(base,'workspace'),outside=join(base,'outside.txt');await mkdir(root);
     await writeFile(join(root,'reference.txt'),'PersonalAgent F21 bounded MCP protocol probe.\n');await writeFile(outside,'Controlled outside canary');
     const node=realpathSync.native(process.execPath),systemRoot=realpathSync.native(process.env.SystemRoot);
+    const capabilities=await verifyWindowsNativeSandbox(pins,{probeRootPath:base,nodeExecutable:node,systemRoot,signal:new AbortController().signal});
+    if(unsupportedPsec(capabilities)&&!required){t.skip('Actual baseline passed; PSEC API unavailable: '+JSON.stringify(capabilities.results));return;}
+    assert.equal(capabilities.available,true,JSON.stringify(capabilities));
     const result=await createWindowsNativeSandboxExecutor({...pins,assertCurrent(){}}).execute({sandboxRef:'f21-test',revision:1,taskId:'f21-test',runId:'f21-test',
       authorizationRef:'f21-test',argumentsDigest:'a'.repeat(64),deadline:new Date(Date.now()+20000).toISOString(),signal:new AbortController().signal,maxOutputBytes:65536,
       profile:{sandboxRef:'f21-test',revision:1,mode:'read-only',backend:'windows-psec',readRoots:[root,systemRoot,dirname(node),dirname(pins.helperPath),
