@@ -6,7 +6,8 @@ import {AGENTARTS_TRANSPORT_VERSION} from '@personal-agent/contracts/agentarts-t
 import {createAgentArtsTransportConfig} from '../../desktop/electron/agentarts-transport-config.js';
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 const result={workflowVersion:'1.0.0',workflowId:'F15',state:'progress',verification:'unverified',checkpoint:'synthetic-seal',nodes:{},proposals:[],unavailable:[],feedback:[]};
-const response=()=>new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});
+const execution={executionEpoch:7};
+const response=(value={executionEpochVersion:1,executionEpoch:execution.executionEpoch,result})=>new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(value)}},{event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});
 const original={gatewayUrl:'https://fixture.invalid',runtimeName:'fixture-runtime',deploymentVersion:'v-fixed',
   authorizationProvider:{read:async()=> 'Bearer synthetic-platform-key'},websocketAuthorizationProvider:{read:async()=> 'Bearer synthetic-app-key-with-more-than-32-characters'}};
 const request=()=>({workflowId:'F15',taskId:'fixture-task',sessionId:'fixture-session',controlRevision:1,requestId:'fixture-request',input:{goal:'Public synthetic fixture'},availableTools:[],
@@ -16,8 +17,22 @@ test('a trusted graph source fence runs again after credential resolution and st
   let current=true,sends=0;
   const adapter=createRuntimeOwnedWorkflowImageAdapter({...original,authorizationProvider:{read:async()=>{current=false;return 'Bearer synthetic';}},
     assertWorkflowCurrent:()=>{if(!current)throw Error('Original graph source changed');},fetchImpl:async()=>{sends++;return response();}});
-  try{await assert.rejects(adapter.advance({...request(),workflowId:'F20'}),/Original graph source changed/);assert.equal(sends,0);}
+  try{await assert.rejects(adapter.advance({...request(),workflowId:'F20'},execution),/Original graph source changed/);assert.equal(sends,0);}
   finally{adapter.close();}
+});
+
+test('owned transport requires a fixed epoch and rejects missing or stale response envelopes',async()=>{
+  let reads=0;
+  const missing=createRuntimeOwnedWorkflowImageAdapter({...original,authorizationProvider:{read:async()=>{reads++;return 'Bearer synthetic';}},fetchImpl:async()=>response()});
+  try{await assert.rejects(missing.advance(request()),{code:'INVALID_ARGUMENT'});assert.equal(reads,0);}finally{missing.close();}
+  for(const value of [result,{executionEpochVersion:1,executionEpoch:6,result},{executionEpochVersion:2,executionEpoch:7,result}]){
+    const adapter=createRuntimeOwnedWorkflowImageAdapter({...original,fetchImpl:async()=>response(value)});
+    try{await assert.rejects(adapter.advance(request(),execution),{code:'REVISION_CONFLICT'});}finally{adapter.close();}
+  }
+  let epoch=7,sends=0;
+  const stale=createRuntimeOwnedWorkflowImageAdapter({...original,authorizationProvider:{read:async()=>{epoch++;return 'Bearer synthetic';}},fetchImpl:async()=>{sends++;return response();}});
+  try{await assert.rejects(stale.advance(request(),{executionEpoch:7,assertCurrent:()=>assert.equal(epoch,7)}));assert.equal(sends,0);}
+  finally{stale.close();}
 });
 
 test('actual Desktop HTTPS configuration supplies host-only receipt identity before isolation start',async()=>{
@@ -31,7 +46,7 @@ test('actual Desktop HTTPS configuration supplies host-only receipt identity bef
   try {
     const secret=await adapter.receiptSecret(new AbortController().signal);
     assert.equal(secret,deriveOwnedWorkflowKeys({transportToken:token}).receiptSecret);
-    assert.deepEqual(await adapter.advance(request()),result);assert.equal(calls.length,1);
+    assert.deepEqual(await adapter.advance(request(),execution),result);assert.equal(calls.length,1);
     assert.equal(calls[0].init.headers['x-pa-agent-token'],'Bearer '+token);
     assert.ok(!calls[0].init.body.includes(token));assert.ok(!calls[0].init.body.includes(secret));
     assert.ok(!JSON.stringify(desktop).includes(token));assert.ok(!JSON.stringify(desktop).includes(secret));
@@ -44,10 +59,11 @@ test('owned HTTP invocation independently pins the exact deployment and only tru
   for(const marker of [undefined,true]){
     const calls=[];const adapter=createRuntimeOwnedWorkflowImageAdapter({...original,fetchHandlesHostAuthorization:marker,
       fetchImpl:async(url,init)=>{calls.push({url,init});return response();}});
-    try{assert.deepEqual(await adapter.advance(request()),result);
+    try{assert.deepEqual(await adapter.advance(request(),execution),result);
       assert.equal(calls[0].url,'https://fixture.invalid/runtimes/fixture-runtime/invocations?endpoint=v-fixed');
       assert.equal(calls[0].init.headers['X-PA-Agent-Token'],marker?undefined:await original.websocketAuthorizationProvider.read());
-      const query=JSON.parse(JSON.parse(calls[0].init.body).query);assert.equal(query.workflowVersion,'1.0.0');assert.equal(query.operation,'advance');
+      const envelope=JSON.parse(JSON.parse(calls[0].init.body).query);assert.equal(envelope.executionEpochVersion,1);assert.equal(envelope.executionEpoch,7);
+      const query=JSON.parse(envelope.query);assert.equal(query.workflowVersion,'1.0.0');assert.equal(query.operation,'advance');
       assert.equal(Object.hasOwn(query,'signal'),false);assert.equal(Object.hasOwn(query,'requestId'),false);
     }finally{adapter.close();}
   }
@@ -63,7 +79,7 @@ test('owned WSS pre-send fallback preserves exact fixed HTTP version and origina
   let calls=0;const adapter=createRuntimeOwnedWorkflowImageAdapter({...original,transport:'wss',websocketUrl:'wss://fixture.invalid/runtimes/fixture-runtime/ws?endpoint=v-fixed',
     allowHttpsFallback:true,fetchHandlesHostAuthorization:true,websocketFactory:()=>{throw Error('Explicit Fake never-connected socket');},
     fetchImpl:async(url,init)=>{calls++;assert.equal(url,'https://fixture.invalid/runtimes/fixture-runtime/invocations?endpoint=v-fixed');assert.equal(init.headers['X-PA-Agent-Token'],undefined);return response();}});
-  try{assert.deepEqual(await adapter.advance(request()),result);assert.equal(calls,1);}finally{adapter.close();}
+  try{assert.deepEqual(await adapter.advance(request(),execution),result);assert.equal(calls,1);}finally{adapter.close();}
 });
 class AcceptedThenLost extends EventEmitter {
   readyState=0;
@@ -78,5 +94,5 @@ class AcceptedThenLost extends EventEmitter {
 test('an accepted owned WSS invocation with a lost result is unknown and is never resent via HTTP',async()=>{
   let calls=0;const adapter=createRuntimeOwnedWorkflowImageAdapter({...original,transport:'wss',websocketUrl:'wss://fixture.invalid/runtimes/fixture-runtime/ws?endpoint=v-fixed',
     allowHttpsFallback:true,websocketFactory:()=>new AcceptedThenLost(),fetchImpl:async()=>{calls++;return response();}});
-  try{await assert.rejects(adapter.advance(request()),error=>error.receipt?.accepted===true);assert.equal(calls,0);}finally{adapter.close();}
+  try{await assert.rejects(adapter.advance(request(),execution),error=>error.receipt?.accepted===true);assert.equal(calls,0);}finally{adapter.close();}
 });

@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
@@ -32,7 +33,7 @@ async function fixture(t) {
       if(!allowed || input.sourceTaskId!==sourceId || input.reviewTaskId!==review?.taskId)return;
       return prepareReviewedRepair(app.runtime.bindCoordinationStore(namespace).read(),new Date().toISOString(),review);
     }}};
-  const port=new FakeCoordinationPort(()=>candidate);
+  const port=new FakeCoordinationPort(syntheticCoordinationExecution(()=>candidate));
   const create=()=>createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',
     coordination:port,repairCandidateVersion:'1.0',localRepair:options});
   app=create();const store=app.runtime.provisionCoordinationStore(namespace);

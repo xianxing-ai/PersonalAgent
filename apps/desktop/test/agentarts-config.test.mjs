@@ -9,6 +9,7 @@ import {createDeferredRuntimeStartup} from '../electron/runtime-startup.js';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
 import {Client} from '@personal-agent/client';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
+import {syntheticPublicPayloadGate,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 
 function wssFixture(t,environment={}) {
   const userData=mkdtempSync(path.join(os.tmpdir(),'pa-cloud-wss-'));
@@ -21,6 +22,20 @@ function wssFixture(t,environment={}) {
     appToken:'synthetic-inner-no-real-secret-at-least-32',allowHttpsFallback:false};
   return {options,input,file:path.join(userData,'agentarts-config.json'),config:createAgentArtsConfig(options)};
 }
+
+test('release readback cannot select a different endpoint from the pinned invocation',t=>{
+  const f=wssFixture(t),releaseBinding={runtimeId:'11111111-1111-4111-8111-111111111111',
+    endpointId:'22222222-2222-4222-8222-222222222222',endpointName:'release-v1',
+    registryRepository:'swr.cn-southwest-2.myhuaweicloud.com/fixture/owned'};
+  const input={gatewayUrl:f.input.gatewayUrl,runtimeName:f.input.runtimeName,authorization:f.input.authorization,
+    transport:'https',deploymentVersion:'release-v1',releaseBinding};
+  f.config.configure(input);
+  const before=readFileSync(f.file,'utf8'),binding=f.config.readReleaseBinding();
+  assert.equal(binding.endpointName,f.config.readTransportOptions(f.config.binding()).deploymentVersion);
+  assert.throws(()=>f.config.configure({...input,releaseBinding:{...releaseBinding,endpointName:'release-v2'}}),/发布绑定/);
+  assert.equal(readFileSync(f.file,'utf8'),before,'rejected endpoint changes never replace the saved configuration');
+  assert.deepEqual(f.config.readReleaseBinding(),binding);
+});
 
 test('saved WSS restores both private credentials and overrides stale transport environment',async t=>{
   const f=wssFixture(t,{PA_AGENTARTS_TRANSPORT:'https'});
@@ -96,13 +111,15 @@ test('an explicit recovery toggle preserves the configured pin, destination and 
   // The user may opt in using the existing settings path, without copying private values through UI.
   f.config.configure({gatewayUrl:f.input.gatewayUrl,runtimeName:f.input.runtimeName,allowHttpsFallback:true});
   const config=createAgentArtsConfig(f.options),binding=config.binding(),options=config.transportConfig(binding);
+  config.setEgressHost({prepare:syntheticPublicPayloadGate});
   assert.equal(config.snapshot().allowHttpsFallback,true);assert.equal(options.allowHttpsFallback,true);
   assert.equal(options.websocketUrl,f.input.websocketUrl+'?endpoint='+version);
   assert.equal(config.snapshot().deploymentVersion,version);assert.equal(config.readAuthorization(binding,options),f.input.authorization);
   assert.equal(await options.websocketAuthorizationProvider.read(),'Bearer '+f.input.appToken);
   await assert.rejects(old.websocketAuthorizationProvider.read(),/已改变/);
   await options.fetchImpl(binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations?endpoint='+version,
-    {method:'POST',redirect:'error',headers:{Authorization:f.input.authorization,'X-PA-Agent-Token':'Bearer '+f.input.appToken},
+    {method:'POST',redirect:'error',headers:{Authorization:f.input.authorization,'X-PA-Agent-Token':'Bearer '+f.input.appToken,
+      'X-Request-Id':'synthetic-recovery','X-PA-Deadline':new Date(Date.now()+60_000).toISOString()},
       signal:new AbortController().signal,body:'{"query":"public fixture"}'});
   assert.equal(calls.length,1);assert.equal(calls[0].url,binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations?endpoint='+version);
   assert.equal(new Headers(calls[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+f.input.appToken);
@@ -125,12 +142,14 @@ test('explicit restore selects same-runtime unpinned HTTPS, preserves encrypted 
   assert.deepEqual(config.binding(),binding);assert.equal(config.readModelPreferences(),undefined,'old pinned catalog preferences need refresh');
   assert.throws(()=>config.readAuthorization(binding,old),/已改变/);await assert.rejects(old.websocketAuthorizationProvider.read(),/已改变/);
   const reloaded=createAgentArtsConfig(f.options),options=reloaded.transportConfig(binding);
+  reloaded.setEgressHost({prepare:syntheticPublicPayloadGate});
   assert.equal(reloaded.snapshot().websocketUrl,'','stale launcher WSS cannot leak back into saved HTTPS snapshots');
   assert.equal(options.websocketUrl,undefined);assert.equal(options.deploymentVersion,undefined);
   assert.equal(reloaded.readAuthorization(binding,options),f.input.authorization);
   assert.deepEqual(reloaded.readTransportOptions(binding),{appToken:f.input.appToken});
   const url=binding.gatewayUrl+'/runtimes/'+binding.runtimeName+'/invocations';
-  await options.fetchImpl(url,{method:'POST',redirect:'error',headers:{Authorization:f.input.authorization},
+  await options.fetchImpl(url,{method:'POST',redirect:'error',headers:{Authorization:f.input.authorization,
+    'X-Request-Id':'synthetic-restored','X-PA-Deadline':new Date(Date.now()+60_000).toISOString()},
     signal:new AbortController().signal,body:'{"query":"public fixture"}'});
   assert.equal(calls.length,1);assert.equal(calls[0].url,url);assert.equal(new URL(calls[0].url).search,'');
   assert.equal(new Headers(calls[0].init.headers).get('X-PA-Agent-Token'),'Bearer '+f.input.appToken);
@@ -179,6 +198,7 @@ test('failed WSS encryption or persistence preserves the previously usable confi
 test('restored Desktop WSS configuration drives the real Runtime factory with distinct headers and zero HTTP calls',async t=>{
   const f=wssFixture(t);f.config.configure(f.input);
   const config=createAgentArtsConfig(f.options),binding=config.binding(),transport=config.transportConfig(binding);
+  config.setEgressHost({prepare:syntheticPublicPayloadGate});
   let sockets=0,http=0;
   const app=createAgentArtsRuntimeApplication({...binding,...transport,path:':memory:',
     authorizationProvider:{read:async()=>config.readAuthorization(binding,transport)},
@@ -186,7 +206,8 @@ test('restored Desktop WSS configuration drives the real Runtime factory with di
       sockets++;assert.equal(url,f.input.websocketUrl);
       assert.equal(init.headers.Authorization,f.input.authorization);
       assert.equal(init.headers['X-PA-Agent-Token'],`Bearer ${f.input.appToken}`);
-      return new SyntheticWebSocket((frame,socket)=>{if(frame.type==='invoke'){socket.accepted(frame);socket.result(frame,'Synthetic saved WSS result');}});
+      return new SyntheticWebSocket((frame,socket)=>{if(frame.type==='invoke'){socket.accepted(frame);
+        socket.result(frame,syntheticAgentArtsResult(frame.payload,'Synthetic saved WSS result'));}});
     },fetchImpl:async()=>{http++;throw Error('Unexpected fallback');}});
   try {
     const client=new Client(app);await client.connect();
@@ -369,7 +390,7 @@ test('known AgentArts destination permits Runtime and Live construction without 
   let application,requests=0;
   const startup=createDeferredRuntimeStartup({isConfigured:()=>config.snapshot().runtimeReady,
     initialize:async()=>{application=createAgentArtsRuntimeApplication({path:path.join(userData,'runtime.sqlite'),
-      ...binding,authorizationProvider:{read:async()=>config.readAuthorization(binding)},
+      ...binding,preparePayload:syntheticPublicPayloadGate,authorizationProvider:{read:async()=>config.readAuthorization(binding)},
       fetchImpl:async()=>{requests++;throw Error('No cloud call is expected without credentials');}});}});
   try {
     assert.equal((await startup.start()).state,'ready');

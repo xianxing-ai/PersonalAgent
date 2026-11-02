@@ -37,7 +37,10 @@ function fixture({path=':memory:',unknown=false,waitCommand=false}={}){
           :{version:1,docMarkdown:'Synthetic candidate only',sampleSnippet:'export const sample=1;'}},
       {id:'recheck',description:'Fixed Synthetic abstention',value:{},abstain:true},
     ]});
-  const image={bindingId:'synthetic-fixed-image',advance:async request=>{advances.push(request.requestId);return engine.advance(request);}};
+  const image={bindingId:'synthetic-fixed-image',advance:async(request,context)=>{
+    assert.equal(context.executionEpoch,app.runtime.readExecutionEpoch(request.taskId));context.assertCurrent();
+    advances.push(request.requestId);return engine.advance(request);
+  }};
   const open=()=>{app=createRuntimeApplication({path,profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-graph-owner',tools});return app;};open();
   const deadline=new Date(Date.now()+60000).toISOString();
   function create(){const task=app.runtime.submitTask({goal:'Synthetic F20 consumption',conversationId:'synthetic-graph-ui',idempotencyKey:'synthetic-driver'});
@@ -70,6 +73,35 @@ function fixture({path=':memory:',unknown=false,waitCommand=false}={}){
     await app.waitForHostToolTask(host.task.taskId);assert.equal(calls.length,before+1);return host;}
   return {get app(){return app;},calls,advances,exports,catalog,create,run,approve,reopen(){app.close();open();}};
 }
+
+test('parent replan invalidates an owned child already waiting for approval without starting its operation',async()=>{
+  const f=fixture(),task=f.create();
+  try {
+    assert.equal((await f.run(task.taskId)).state,'waiting_approval');
+    const state=f.app.runtime.loadCheckpoint(task.taskId,KEY),host=f.app.readHostToolTask(state.waiting.localTaskId);
+    f.app.runtime.advanceExecutionEpoch(task.taskId,{requestId:'new-plan',reason:'replan'});
+    const client=new Client(f.app);await client.connect();
+    await client.call('authorization.respond',{approvalId:host.approval.approvalId,expectedRevision:host.approval.revision,decision:'allow_once'});
+    await f.app.waitForHostToolTask(host.task.taskId);
+    assert.equal(f.calls.length,0);
+    assert.equal(f.app.runtime.getTask(host.task.taskId).state,'failed');
+    assert.equal(f.app.runtime.loadCheckpoint(task.taskId,KEY).waiting.localTaskId,host.task.taskId);
+  } finally {f.app.close();}
+});
+
+test('a historical owned checkpoint without an epoch binding cannot adopt the current replan epoch',async()=>{
+  const f=fixture(),task=f.create();
+  try {
+    const state=f.app.runtime.loadCheckpoint(task.taskId,KEY);
+    state.sequence=1;state.checkpoint='synthetic-historical-cloud-checkpoint';
+    f.app.runtime.saveCheckpoint(task.taskId,KEY,state);
+    f.app.runtime.advanceExecutionEpoch(task.taskId,{requestId:'new-plan',reason:'replan'});
+    const result=await f.run(task.taskId);
+    assert.equal(result.state,'failed');assert.equal(result.error.code,'REVISION_CONFLICT');
+    assert.equal(f.advances.length,0);assert.equal(f.calls.length,0);
+    assert.equal(f.app.runtime.loadCheckpoint(task.taskId,KEY).checkpoint,state.checkpoint);
+  } finally {f.app.close();}
+});
 
 test('real second graph completes all four nodes through the same Runtime task, original approvals and SQLite restart',async()=>{
   const directory=await mkdtemp(join(tmpdir(),'personal-agent-synthetic-owned-driver-'));

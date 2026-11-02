@@ -23,7 +23,7 @@ export interface RuntimeOwnedWorkflowDriverState<TInput=unknown> {
  * Workflow identity, catalog and completion evidence are never chosen by model JSON. */
 export interface RuntimeOwnedWorkflowDriverOptions<TInput> {
   workflowId:string;checkpointKey:string;mode:NonNullable<OwnedWorkflowAdvanceRequest['mode']>;
-  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>};
+  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>};
   bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'>;catalog:readonly CoordinationAvailableTool[];
   requestId:(sequence:number)=>string;
   /** Optional trusted local frontier guard, executed before any host submit. */
@@ -61,11 +61,19 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
   const binding={taskId:worker.taskId,workflowId:options.workflowId,mode:options.mode,sessionId:state.sessionId,
     deadline:worker.deadline,imageBinding:options.image.bindingId,inputDigest:hash(state.input),catalogDigest:hash(options.catalog)};
   const bindingKey=options.checkpointKey+':driver-binding';
+  const epochKey=bindingKey+':execution-epoch';
+  // Historic checkpoints belong to epoch zero; a replan never adopts an old graph or unknown run.
+  application.runtime.saveCheckpointOnce(worker.taskId,epochKey,worker.loadCheckpoint(bindingKey)===undefined
+    &&!state.result&&!state.checkpoint&&!state.pendingSend&&state.sequence===0
+    ?application.runtime.readExecutionEpoch(worker.taskId):0);
+  const executionEpoch=worker.loadCheckpoint(epochKey) as number;
+  application.runtime.assertExecutionEpoch(worker.taskId,executionEpoch);
   application.runtime.saveCheckpointOnce(worker.taskId,bindingKey,binding);
   if(!isDeepStrictEqual(worker.loadCheckpoint(bindingKey),binding))
     throw new ProtocolError('REVISION_CONFLICT','Original workflow input, lifetime or catalog changed');
   const save=()=>worker.saveCheckpoint(options.checkpointKey,state);
-  const active=()=>{if(worker.signal.aborted||application.runtime.getTask(worker.taskId).cancelRequested)
+  const active=()=>{application.runtime.assertExecutionEpoch(worker.taskId,executionEpoch);
+    if(worker.signal.aborted||application.runtime.getTask(worker.taskId).cancelRequested)
     throw new ProtocolError('CANCELLED','Original graph was cancelled');
     if(!Number.isFinite(Date.parse(worker.deadline))||Date.now()>=Date.parse(worker.deadline))
       throw new ProtocolError('TIMEOUT','Original graph deadline expired');};
@@ -96,6 +104,7 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       try {if(worker.signal.aborted)cancelChild();await application.waitForHostToolTask(local.localTaskId);active();}
       finally {worker.signal.removeEventListener('abort',cancelChild);}
       const receipt=await timed('host-readback',async()=>options.bridge.readReceipt(binding,proposal),{nodeId:proposal.nodeId,operationId:proposal.operationId});
+      active();
       if(!receipt||receipt.state==='stopping'||receipt.state==='unknown')return pause(local.localTaskId,proposal.operationId);
       if(receipt.state==='confirmed') {
         state.confirmedHost[proposal.toolName]={localTaskId:local.localTaskId,operationId:proposal.operationId,result:structuredClone(receipt.result)};
@@ -122,7 +131,7 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       receipts:state.receipts,resolvedValues:state.resolvedValues};
     const snapshot=options.snapshot?.(state);if(snapshot)envelope.snapshot=snapshot;
     state.pendingSend={requestId:envelope.requestId,digest:hash({...envelope,signal:undefined})};save();
-    const result=await timed('image-advance',()=>options.image.advance(envelope));active();
+    const result=await timed('image-advance',()=>options.image.advance(envelope,{executionEpoch,assertCurrent:active}));active();
     if(result.workflowId!==options.workflowId||result.workflowVersion!=='1.0.0'||!result.checkpoint||!Array.isArray(result.proposals)||!plain(result.nodes))
       throw new ProtocolError('PROTOCOL_MISMATCH','Invalid original image graph result');
     state.result=structuredClone(result);state.checkpoint=result.checkpoint;state.sequence++;delete state.pendingSend;save();

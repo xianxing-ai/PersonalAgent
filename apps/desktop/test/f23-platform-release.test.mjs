@@ -22,8 +22,8 @@ test('F23 binds original paired outputs and platform score to the actual CAS con
     configuration:{binding:()=>({gatewayUrl:'https://fixture.invalid',runtimeName:'fixture'}),snapshot:()=>({deploymentVersion:'fixture-v1'}),readCredentialReference:()=> 'fixture'},
     authorizeEvaluation:async()=>{throw Error('Fixture reader only');},authorizeExport:async()=>true,
     invokePaired:async({input,context,assertCurrent})=>{assertCurrent();modelCalls+=2;
-      return {requestId:context.runId,result:{branches:Object.fromEntries(['main','shadow'].map(branch=>[branch,input.cases.map(item=>({id:item.id,
-        inputDigest:hash(item.messages),output:branch+' fixture',startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),wallMs:10,modelCalls:1,
+      return {requestId:context.runId,startedAt:new Date().toISOString(),finishedAt:new Date().toISOString(),result:{branches:Object.fromEntries(['main','shadow'].map(branch=>[branch,input.cases.map(item=>({id:item.id,
+        inputDigest:hash(item.messages),output:branch+' fixture',startedAt:new Date(Date.now()-2000).toISOString(),finishedAt:new Date(Date.now()-1990).toISOString(),wallMs:10,modelCalls:1,
         deployment:{verification:'conditional',provider:'explicit-fixture'}}))]))}};},
     readEvaluation:async options=>{options.assertCurrent();reads++;assert.equal(options.expected.length,1);return {qualityScore:options.taskId==='main-eval'?0.8:0.9,digest:hash(options.expected),source:'explicit-fixture'};}});
   const choice={descriptor:{name:'decision.choose_candidate',version:'1.0.0',sideEffect:'read',requiredScopes:['decision:read'],requiresPresence:false,idempotencySupport:false,recoverySupport:false,
@@ -53,6 +53,7 @@ test('F23 binds original paired outputs and platform score to the actual CAS con
   const prepared=await wait(ports.submit(F23_PREPARE_TOOL,{experiment:{candidate,candidateVersion:'candidate-v1',splitAt:'2026-01-01T00:00:00.000Z',
     expiresAt:new Date(Date.now()+60000).toISOString(),metricRules:[{metric:'qualityScore',bound:'min_delta',value:0}],
     cases:[{id:'one',input:'Public fixture',reference:'Expected fixture',availableAt:'2025-01-01T00:00:00.000Z',expectedAt:'2026-02-01T00:00:00.000Z'}]}},{commandId:'prepare',deadline}));
+  assert.ok(app.runtime.loadCheckpoint(prepared.task.taskId,'f23:received'),'Original receipt remains available despite independent cloud clock skew');
   const binding=branch=>({taskId:branch+'-eval',datasetId:branch+'-dataset',datasetVersion:'1',evaluatorId:'fixed-evaluator',evaluatorVersion:'1',itemIds:[branch+'-item']});
   const bound=await wait(ports.submit(F23_BIND_TOOL,{experimentId:prepared.task.taskId,main:binding('main'),shadow:binding('shadow')},{commandId:'bind',deadline}));
   evaluationTaskId=bound.task.taskId;

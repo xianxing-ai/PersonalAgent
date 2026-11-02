@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
+import {createHash} from 'node:crypto';
 const {AuthorizationQuestions}=await import(process.env.PA_TEST_AUTHORIZATION_QUESTION_SOURCE
   ??new URL('../dist/application/authorization-question.js',import.meta.url));
 const H='a'.repeat(64),R='b'.repeat(64);
+const content=text=>({digest:createHash('sha256').update(JSON.stringify(text)).digest('hex'),text});
 function fixture(saved={}) {
   const state={now:Date.parse('2026-10-21T00:00:00Z'),task:'running',owner:'owner-1',available:true,invalidated:[],changes:0};
   const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
@@ -37,6 +39,40 @@ test('the same waiting proposal accepts an answer; execution still requires runn
   assert.throws(()=>f.respond('allow_once',question),/已处理或已变化/);
   assert.throws(()=>f.host.consume(receipt,{...request,argumentsDigest:'c'.repeat(64)},'export','export-1'),/已失效/);
   assert.equal(f.host.snapshot()[0].state,'allowed');f.host.close();
+});
+
+test('complete content requires a fresh explicit decision even with full access or saved task/permanent consent',async()=>{
+  for(const prior of ['full','allow_task','allow_always']){
+    const f=fixture();
+    if(prior==='full')f.host.selectSandbox({profileRef:'full',expectedRevision:1});
+    else{const first=f.host.request(f.request());f.respond(prior);await first;}
+    const full='to: a@example.test\n'+ 'body '.repeat(200)+'END';
+    const request=f.request({runId:'dangerous-1',contentConfirmation:content(full)}),pending=f.host.request(request);
+    const card=f.host.snapshot().at(-1);
+    assert.equal(card.state,'pending');assert.ok(card.description.includes(full));
+    assert.equal(card.canAlways,false);assert.equal(card.canReuseTask,false);assert.equal(card.suggestedDecision,'allow_once');
+    assert.throws(()=>f.respond('allow_task'),{code:'UNAUTHORIZED'});assert.throws(()=>f.respond('allow_always'),{code:'UNAUTHORIZED'});
+    // Progress in unrelated branches is not an authorization binding.
+    f.state.unrelatedRevision=99;f.host.refresh();assert.equal(f.host.snapshot().at(-1).revision,card.revision);
+    f.respond();const receipt=await pending;f.host.consume(receipt,request,'tool','original-tool');
+    f.host.assertRequirement(receipt,request,'tool','original-tool');
+    assert.throws(()=>f.host.consume(receipt,{...request,argumentsDigest:R},'export','changed-args'),{code:'UNAUTHORIZED'});
+    assert.throws(()=>f.host.consume(receipt,{...request,contentConfirmation:content(full+'x')},'export','changed-content'),{code:'UNAUTHORIZED'});
+    const next=f.host.request({...request,runId:'dangerous-2'});assert.equal(f.host.snapshot().at(-1).state,'pending');
+    f.respond('deny');await next;f.host.close();
+  }
+});
+
+test('content confirmation cannot be derived from a consumed result or accepted without its complete display',async()=>{
+  const f=fixture(),request=f.request(),pending=f.host.request(request);f.respond();const receipt=await pending;
+  f.options.readReceiptBinding=f.options.readBinding;
+  f.host.consume(receipt,request,'export','original-export');
+  assert.throws(()=>f.host.deriveConsumedResult(receipt,request,'export','original-export',
+    f.request({runId:'derived',contentConfirmation:content('full content')}),()=>true),/重新明确确认/);
+  f.host.selectSandbox({profileRef:'full',expectedRevision:1});f.state.available=false;
+  await assert.rejects(f.host.request(f.request({runId:'no-ui',contentConfirmation:content('full content')})),/授权卡不可用/);
+  await assert.rejects(f.host.request(f.request({contentConfirmation:{digest:H,text:'tampered'}})),/Invalid trusted content/);
+  f.host.close();
 });
 
 test('changed owner, proposal bindings, expiry and cancellation never authorize execution',async()=>{

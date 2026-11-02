@@ -15,13 +15,14 @@ const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0&&v.le
 const plain=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function fail(code:string,message:string):never {throw new ProtocolError(code,message);}
 
-/** Read-only observation of an existing explicit decision and already-consumed
- * question requirement. This never consumes, creates, extends or resumes a grant. */
+/** Observes the original explicit decision. An optional trusted host may first
+ * answer the same pending card from independently verified final user audio. */
 export function createF02ConfirmationHost(options?:{
   application:Application;questions:Pick<AuthorizationQuestions,'snapshot'|'assertRequirement'> & Partial<Pick<AuthorizationQuestions,'assertConsumedResult'>>;
   requiredScopes:readonly string[];
   /** Trusted Desktop original-operation store, never a model/voice interpretation. */
   resolveOriginalConfirmation:(scope:Scope,original:Original)=>OriginalConfirmation|undefined;
+  confirmOriginalQuestion?:(scope:Scope,context:ToolContext)=>Promise<void>;
   assertCurrent:(scope:Scope,context:ToolContext)=>void;
   authorizeExport:(scope:Scope,result:Result)=>Promise<boolean>;
   now:()=>Date;
@@ -126,11 +127,15 @@ export function createF02ConfirmationHost(options?:{
     return {state:'approved',questionId:receipt.questionId,questionRevision:receipt.revision,
       approvalRevision:approval.revision,toolName:request.toolName,argumentsDigest:request.argumentsDigest};
   }
-  const tool=createOwnedWorkflowAdapter({nodeId:'F02_N05',kind:'host',sideEffect:'read',requiredScopes,
+  const tool=createOwnedWorkflowAdapter({nodeId:'F02_N05',kind:'host',sideEffect:'local_write',requiredScopes,
     inputSchema:{type:'object',additionalProperties:false,properties:{}},
     outputSchema:{type:'object',additionalProperties:false,required:['state','questionId','questionRevision','approvalRevision','toolName','argumentsDigest'],
       properties:{state:{const:'approved'},questionId:{type:'string'},questionRevision:{type:'integer'},approvalRevision:{type:'integer'},toolName:{type:'string'},argumentsDigest:{type:'string'}}},
-    async execute(_input,context){return read(active(context),context);}});
+    async execute(_input,context){
+      const scope=active(context);
+      await options!.confirmOriginalQuestion?.(scope,context);
+      return read(active(context),context);
+    }});
   return {tools:[tool],unavailable:null,authorizeReceipt:async({context,result})=>{
     const scope=active(context),saved=application.readHostToolTask(context.taskId);
     if(saved.commandId!==scope.operationId||saved.toolName!=='workflow.host.f02_n05'||saved.task.state!=='succeeded'

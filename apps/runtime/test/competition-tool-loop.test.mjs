@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, rm} from 'node:fs/promises';
 import {test} from 'node:test';
@@ -110,14 +111,14 @@ test('competition proposal fails explicitly when the trusted host has no tools',
   const base = new URL('../../../.cache/competition-tool-loop/', import.meta.url);
   await mkdir(base, {recursive: true});
   const directory = await mkdtemp(new URL('case-', base));
-  const port = new FakeCoordinationPort(() => ({
+  const port = new FakeCoordinationPort(syntheticCoordinationExecution(() => ({
     kind: 'tool_proposal',
     proposalId: 'proposal-no-tools',
     toolName: 'fixture.echo',
     toolVersion: '1.0.0',
     arguments: {value: 'Beijing'},
     verification: 'mock',
-  }));
+  })));
   const app = createRuntimeApplication({
     path: directory + '/runtime.sqlite',
     profile: 'huawei_ict_agentarts',

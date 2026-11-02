@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -23,7 +24,7 @@ test('F08 lost native admission acknowledgement reads the original F03 task and 
       runDefaultWorker:(subtask,context,scoped)=>app.runDefaultSubagentWorker(subtask,context,scoped)})];
     app=runtimeModule.createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
       hostUserNamespace:'native-f03',coordinationBinding:'synthetic-native-deployment',assertCoordinationBinding:()=>{},tools,
-      coordination:{execute:async request=>{cloudTasks.push(request.taskId);return {kind:'text',text:'Original image result is unknown; no retry.',verification:'unverified'};}},
+      coordination:{execute:syntheticCoordinationExecution(async request=>{cloudTasks.push(request.taskId);return {kind:'text',text:'Original image result is unknown; no retry.',verification:'unverified'};})},
       configuredWorkflowWorkers:[{...worker,image:{bindingId:'synthetic-f03-native-image',receiptSecret:async()=> 'synthetic-original-secret-at-least32',
         advance:async request=>{imageCalls++;assert.deepEqual(request.input.source,source);throw new ProtocolError('RESULT_UNKNOWN','Synthetic image transport lost after original request');}}}],
       competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
@@ -34,16 +35,27 @@ test('F08 lost native admission acknowledgement reads the original F03 task and 
   };
   open();app.runtime.provisionCoordinationStore('native-f03');
   source.graphTaskId=app.runtime.submitTask({goal:'Synthetic original F08 source',conversationId:original.conversationId,idempotencyKey:'original-source'}).taskId;
+  const originalPlan=app.runtime.submitTask({goal:'Synthetic original Plan',conversationId:original.conversationId,idempotencyKey:'original-plan'});
+  const changed={graphTaskId:source.graphTaskId,readRunId:source.readRunId,planSource:{rootTaskId:originalPlan.taskId,sourceDigest:'b'.repeat(64)},effects:[{state:'unknown',runId:'original-effect'}]};
+  app.runtime.saveCheckpoint(source.graphTaskId,'f08:mail-source-change:'+source.readRunId,changed);
   t.after(async()=>{for(const task of app.runtime.listTasks({limit:100}).items)if(!['succeeded','failed','cancelled'].includes(task.state))app.runtime.requestCancel(task.taskId);
     for(let n=0;n<100&&app.activeTaskCount;n++)await new Promise(resolve=>setTimeout(resolve,5));app.close();await rm(directory,{recursive:true,force:true});});
   const scope={parentTaskId:source.graphTaskId,deadline,signal:new AbortController().signal},change={reviewReference:source,change:{readRunId:source.readRunId}};
   const submit=app.submitF03MailReviewTask.bind(app);
-  app.submitF03MailReviewTask=(request,context)=>{submissions++;submit(request,context);throw new ProtocolError('RESULT_UNKNOWN','Synthetic lost admission acknowledgement');};
+  app.submitF03MailReviewTask=(request,context)=>{
+    assert.equal(app.runtime.readExecutionEpoch(source.graphTaskId),1);
+    assert.equal(app.runtime.readExecutionEpoch(originalPlan.taskId),1);
+    submissions++;const reviewTask=submit(request,context);
+    assert.equal(app.runtime.readExecutionEpoch(reviewTask.taskId),0);
+    throw new ProtocolError('RESULT_UNKNOWN','Synthetic lost admission acknowledgement');
+  };
   await assert.rejects(ports.submitChange(scope,change),{code:'RESULT_UNKNOWN'});
   const marker=app.runtime.loadCheckpoint(source.graphTaskId,'f08:competition-review:'+source.readRunId);
   const admitted=app.readF03MailReviewTask(marker.request.idempotencyKey);assert.ok(admitted);
   app.submitF03MailReviewTask=(request,context)=>{submissions++;return submit(request,context);};
   assert.equal((await ports.submitChange(scope,change)).taskId,admitted.taskId);assert.equal(submissions,1);
+  assert.equal(app.runtime.readExecutionEpoch(source.graphTaskId),1);assert.equal(app.runtime.readExecutionEpoch(originalPlan.taskId),1);
+  assert.deepEqual(app.runtime.loadCheckpoint(source.graphTaskId,'f08:mail-source-change:'+source.readRunId),changed);
   assert.throws(()=>app.submitF03MailReviewTask({...marker.request,arguments:{source:{...source,readRunId:'substituted'}}},scope),{code:'REVISION_CONFLICT'});
   const client=new Client(app);await client.connect();
   for(let n=0;n<500&&!imageCalls;n++){
@@ -55,5 +67,6 @@ test('F08 lost native admission acknowledgement reads the original F03 task and 
   app.runtime.requestCancel(admitted.taskId);for(let n=0;n<100&&app.activeTaskCount;n++)await new Promise(resolve=>setTimeout(resolve,5));
   const state=app.runtime.getTask(admitted.taskId).state;app.close();open();
   const restored=await ports.submitChange(scope,change);assert.equal(restored.taskId,admitted.taskId);assert.equal(restored.reviewState,state);
+  assert.equal(app.runtime.readExecutionEpoch(source.graphTaskId),1);assert.equal(app.runtime.readExecutionEpoch(originalPlan.taskId),1);
   assert.equal(imageCalls,1,'SQLite reopen does not dispatch another image request');
 });

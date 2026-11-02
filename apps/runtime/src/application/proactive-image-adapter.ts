@@ -1,7 +1,7 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {createProactiveHostProofs,proactiveWorkflowDigest} from '@personal-agent/agentarts';
 import type {ProactiveAdvanceRequest,ProactiveWorkflowResult} from '@personal-agent/agentarts';
-import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsResponse} from '@personal-agent/coordination';
+import type {AgentArtsRuntimeConfig,AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsResponse,AgentArtsPayloadPreparer} from '@personal-agent/coordination';
 
 export interface RuntimeProactiveImageAdapterOptions {
   /** Original trusted AgentArts transport configuration; never read from a model/event/Renderer request. */
@@ -13,6 +13,7 @@ export interface RuntimeProactiveImageAdapterOptions {
   authorizationProvider:AgentArtsAuthorizationProvider;
   hostAuthorizationProvider?:AgentArtsAuthorizationProvider;
   receiptSecret:string;invokeMode?:'debug'|'published';workflowGoalInput?:string;fetchImpl?:AgentArtsFetch;
+  preparePayload?:AgentArtsPayloadPreparer;
 }
 export type RuntimeProactiveImageResult=ProactiveWorkflowResult&{proactiveVersion:1;requestId:string;proof:string};
 export type RuntimeProactiveImageContext=Pick<ProactiveAdvanceRequest,'taskId'|'sessionId'|'controlRevision'|'taskDeadline'|'requestId'|'deadline'|'signal'>;
@@ -162,7 +163,10 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
     &&Array.isArray(value.contracts)&&value.contracts.every(item=>exact(item,['id','version','qualifiedForMain'])&&plain(item)
       &&typeof item.id==='string'&&!!item.id&&typeof item.version==='string'&&!!item.version&&typeof item.qualifiedForMain==='boolean')
     &&new Set(value.contracts.map(item=>(item as {id:string}).id)).size===value.contracts.length;
-  async function invoke(input:RuntimeProactiveImageContext,describeOnly:boolean):Promise<RuntimeProactiveImageResult|RuntimeProactiveImageDescription> {
+  async function invoke(input:RuntimeProactiveImageContext,describeOnly:boolean,execution?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<RuntimeProactiveImageResult|RuntimeProactiveImageDescription> {
+    const executionEpoch=execution?.executionEpoch;
+    if((!describeOnly||execution!==undefined)&&(!Number.isSafeInteger(executionEpoch)||(executionEpoch as number)<0))
+      fail('INVALID_ARGUMENT','Original proactive execution epoch required');
     const assertBinding=()=>{try{options.assertDeploymentBinding?.();}catch{fail('REVISION_CONFLICT','Original proactive image deployment changed');}};
     assertBinding();
     validContext(input);if(!describeOnly)validInput(input as ProactiveAdvanceRequest);
@@ -177,7 +181,8 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
     const abort=()=>controller.abort();input.signal.addEventListener('abort',abort,{once:true});
     const tick=()=>{const remaining=limit-Date.now();if(remaining<=0)controller.abort();else {timer=setTimeout(tick,Math.min(remaining,2_147_483_647));timer.unref();}};tick();
     const signal=controller.signal;
-    const active=()=>{if(input.signal.aborted)fail('CANCELLED','Proactive image invocation cancelled');if(signal.aborted||Date.now()>=limit)fail('TIMEOUT','Original proactive image deadline expired');};
+    const active=()=>{if(input.signal.aborted)fail('CANCELLED','Proactive image invocation cancelled');if(signal.aborted||Date.now()>=limit)fail('TIMEOUT','Original proactive image deadline expired');
+      try{execution?.assertCurrent?.();}catch{fail('REVISION_CONFLICT','Original proactive execution epoch changed');}};
     async function bounded<T>(work:()=>Promise<T>):Promise<T> {
       active();let stop:()=>void=()=>{};
       const cancelled=new Promise<never>((_resolve,reject)=>{stop=()=>{try{active();}catch(error){reject(error);}};signal.addEventListener('abort',stop,{once:true});});
@@ -198,9 +203,13 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
         ...(request.checkpoint===undefined?{}:{checkpoint:request.checkpoint}),events:request.events??[],responsibilities:request.responsibilities??[],receipts:request.receipts??[],
         ...(request.control===undefined?{}:{control:request.control}),hostFrame:proofs.sign('frame',{requestId:input.requestId,
           hostAvailability:request.hostAvailability,availableCapabilities:request.availableCapabilities},input)};
-      proactiveWorkflowDigest(value);const query=JSON.stringify(value),payload=workflowGoalInput===undefined?{query}:{inputs:{[workflowGoalInput]:query}};
+      proactiveWorkflowDigest(value);const originalQuery=JSON.stringify(value);
+      const query=executionEpoch===undefined?originalQuery:JSON.stringify({executionEpochVersion:1,executionEpoch,query:originalQuery});
+      const payload=workflowGoalInput===undefined?{query}:{inputs:{[workflowGoalInput]:query}};
       const body=JSON.stringify(payload);if(Buffer.byteLength(body)>MAX_BYTES)fail('INVALID_ARGUMENT','Proactive image request exceeds existing transport limit');
-      response=await bounded(()=>{assertBinding();return fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
+      const lease=options.preparePayload?await bounded(()=>options.preparePayload!({requestId:input.requestId,destination:endpoint,payload:body,
+        deadline:new Date(limit).toISOString(),signal,isCurrent:()=>{active();assertBinding();return true;}})):undefined;
+      response=await bounded(()=>{assertBinding();lease?.assertBeforeSend({destination:endpoint,payload:body});return fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
         'x-hw-agentarts-session-id':input.sessionId,'X-Request-Id':input.requestId,'X-Invoke-Mode':invokeMode,'X-PA-Deadline':new Date(limit).toISOString(),
         ...(hostAuth===undefined?{}:{'X-PA-Agent-Token':hostAuth})},body,signal,redirect:'error'});});
       if(response.status!==200)fail(response.status===401||response.status===403?'UNAUTHORIZED':'EXTERNAL_FAILURE','Proactive image invocation rejected; no automatic retry');
@@ -216,7 +225,12 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
       else if(response.text)add(Buffer.from(await bounded(()=>response!.text!())));
       else fail('PROTOCOL_MISMATCH','Proactive image response body unavailable');
       let payloadText:string;try{payloadText=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));}catch{return fail('PROTOCOL_MISMATCH','Proactive image response UTF-8 invalid');}
-      const result=resultFromEvents(eventsFrom(payloadText,response.headers?.get('content-type')??undefined));active();
+      let result=resultFromEvents(eventsFrom(payloadText,response.headers?.get('content-type')??undefined));active();
+      if(executionEpoch!==undefined){
+        if(!plain(result)||!exact(result,['executionEpochVersion','executionEpoch','result'])||result.executionEpochVersion!==1||result.executionEpoch!==executionEpoch)
+          fail('REVISION_CONFLICT','Proactive response execution epoch differs');
+        result=(result as {result:unknown}).result;
+      }
       if(describeOnly) {
         if(!isDescription(result))fail('PROTOCOL_MISMATCH','Invalid proactive image description');return result as RuntimeProactiveImageDescription;
       }
@@ -226,7 +240,7 @@ export function createRuntimeProactiveImageAdapter(options:RuntimeProactiveImage
       return fail('RESULT_UNKNOWN','Proactive image outcome unknown; reconcile the original request without automatic retry');
     }finally {if(timer)clearTimeout(timer);input.signal.removeEventListener('abort',abort);controller.abort();}
   }
-  return {advancePort:(input:ProactiveAdvanceRequest)=>invoke(input,false) as Promise<RuntimeProactiveImageResult>,verifyAdvance,sign:proofs.sign,
+  return {advancePort:(input:ProactiveAdvanceRequest,execution?:{executionEpoch:number;assertCurrent?:()=>void})=>invoke(input,false,execution) as Promise<RuntimeProactiveImageResult>,verifyAdvance,sign:proofs.sign,
     /** Existing unsigned catalog is observation only; it never upgrades qualification or authorizes a proposal. */
     describe:(context:RuntimeProactiveImageContext)=>invoke(context,true) as Promise<RuntimeProactiveImageDescription>};
 }

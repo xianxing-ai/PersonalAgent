@@ -26,4 +26,15 @@ test('fixed deployment reads validate both original versions without exporting s
   await assert.rejects(createAgentArtsObservationRequestAuth(credentials).authorize(request),/outside/);
   await assert.rejects(auth.authorize({...request,url:request.url.replace('fixed-v1','other-v2')}),/outside/);
   await assert.rejects(auth.authorize({...request,method:'PUT'}),/outside/);
+  drift=false;readCount=0;runtime.version_detail.artifact_source.url=binding.imageReference.split('@')[0]+':release-v1';
+  await assert.rejects(readAgentArtsDeployment(input),{code:'REVISION_CONFLICT'});
+  let resolves=0;
+  const tagged={...input,resolveImageReference:async request=>{
+    assert.equal(request.imageReference,runtime.version_detail.artifact_source.url);resolves++;return binding.imageReference;
+  }};
+  assert.equal((await readAgentArtsDeployment(tagged)).imageReference,binding.imageReference);assert.equal(resolves,2);
+  await assert.rejects(readAgentArtsDeployment({...tagged,resolveImageReference:async()=>binding.imageReference.replace(/a{64}$/,'b'.repeat(64))}),{code:'REVISION_CONFLICT'});
+  resolves=0;await assert.rejects(readAgentArtsDeployment({...tagged,resolveImageReference:async()=>++resolves===1?binding.imageReference:binding.imageReference+'0'}),{code:'REVISION_CONFLICT'});
+  runtime.version_detail.artifact_source.url='swr.cn-southwest-2.myhuaweicloud.com/other/owned:release-v1';
+  await assert.rejects(readAgentArtsDeployment(tagged),{code:'REVISION_CONFLICT'});
 });

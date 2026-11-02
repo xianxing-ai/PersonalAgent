@@ -10,6 +10,7 @@ test('actual Main supplies original knowledge and only the public weather tool a
   const weather={descriptor:{name:'weather.forecast'}},foreign={descriptor:{name:'unrelated.tool'}},knowledge={descriptor:{name:'knowledge.search'}};
   const weatherPolicy={toolName:'weather.forecast'},foreignPolicy={toolName:'unrelated.tool'},knowledgePolicy={toolName:'knowledge.search'};
   const context={agentArtsPinned:true,runtimeModule:{},runtimeApplication:{},todoHost:undefined,connectorConversationTools:undefined,
+    f11LocationQuestion:undefined,f11DecisionQuestion:undefined,f08DecisionQuestion:undefined,f08SourceChanges:undefined,f03MailReview:undefined,
     notificationApplicationHost:{},f12ExplicitReturnSource:{},knowledgeTools:{tools:[knowledge],competitionToolExports:[knowledgePolicy]},
     productTools:{tools:[weather,foreign],competitionToolExports:[weatherPolicy,foreignPolicy]},namespace:'fixture',
     createBusinessWorkflowWorkerPorts:options=>options,createBusinessWorkflowAvailability:options=>options,authorizeWorkflowExport(){}};

@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash,randomUUID} from 'node:crypto';
@@ -64,10 +65,10 @@ test('persisted MailTriage cursor anchors the original watch so the next new UID
     requiresToolAuthorization:scope=>scope.toolName==='mail.inbox',
     requestToolAuthorization:async scope=>{mail.prepareAuthorization(scope);return 'allow_once';},
     competitionToolAvailability:watch.competitionToolAvailability,competitionToolExports:watch.competitionToolExports,
-    coordination:{execute:async input=>input.continuation
+    coordination:{execute:syntheticCoordinationExecution(async input=>input.continuation
       ?{kind:'text',text:'Synthetic watch accepted',verification:'unverified'}
       :{kind:'tool_proposal',proposalId:'watch-start',toolName:proposed.descriptor.name,
-        toolVersion:proposed.descriptor.version,arguments:proposed.arguments,verification:'unverified'}}});
+        toolVersion:proposed.descriptor.version,arguments:proposed.arguments,verification:'unverified'})}});
   mail.bindApplication(application);
   changes=createDesktopConnectorChangeHost({application,namespace,readSourceAuthorization:source,
     resolveUserConversation:id=>rootConversation(id)??watch.resolveUserConversation(id),

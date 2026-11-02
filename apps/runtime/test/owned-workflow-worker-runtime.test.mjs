@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -91,11 +92,11 @@ function fixture({configured=true,unknown=false,unknownSource=false,replaceSampl
   app=createRuntimeApplication({path:databasePath,profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f20-owner',
     coordinationBinding:'synthetic-f20-deployment',tools:harnessCandidates?tools.filter(tool=>tool.descriptor.name!=='coding.repair.trial'):tools,
     ...(harnessCandidates?{harnessCandidates}:{}),ownedWorkflowWorker,
-    coordination:{execute:async request=>{cloud.push(request);
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
       if(app.runtime.getTask(request.taskId).conversationId==='user-chat')return {kind:'text',text:'Synthetic parent',verification:'unverified'};
       if(request.continuation)return {kind:'text',text:'Synthetic F20 continuation',verification:'unverified'};
       return {kind:'tool_proposal',proposalId:'f20-synthetic',toolName:OWNED_WORKFLOW_WORKER_TOOL,toolVersion:'1.0.0',
-        arguments:{workflowId:'F20',inputRef:'registered-case'},verification:'unverified'};}},
+        arguments:{workflowId:'F20',inputRef:'registered-case'},verification:'unverified'};})},
     competitionToolAvailability:tools.filter(tool=>!harnessCandidates||tool.descriptor.name!=='coding.repair.trial').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:tools.filter(tool=>!harnessCandidates||tool.descriptor.name!=='coding.repair.trial').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});

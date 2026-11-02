@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -37,9 +38,9 @@ async function fixture() {
   const open=()=>{
     app=createRuntimeApplication({path,profile:'huawei_ict_agentarts',proactiveWorkflows:true,hostUserNamespace:namespace,tools:[tool],
       competitionToolExports:[{toolName:'feeds.collect',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-public-feed-v1',accepts:()=>true,project:({result})=>result}],
-      automaticTools:[{toolName:'feeds.collect',toolVersion:'1.0.0'}],coordination:{execute:async input=>input.continuation
+      automaticTools:[{toolName:'feeds.collect',toolVersion:'1.0.0'}],coordination:{execute:syntheticCoordinationExecution(async input=>input.continuation
         ?{kind:'text',text:'Synthetic source read complete',verification:'unverified'}
-        :{kind:'tool_proposal',proposalId:'synthetic-feed-read',toolName:'feeds.collect',toolVersion:'1.0.0',arguments:{subscriptionId:sourceId},verification:'unverified'}}});
+        :{kind:'tool_proposal',proposalId:'synthetic-feed-read',toolName:'feeds.collect',toolVersion:'1.0.0',arguments:{subscriptionId:sourceId},verification:'unverified'})}});
     source??=app.runtime.submitTask({goal:'Track this selected public source',conversationId:'desktop-panel',idempotencyKey:'source-instruction'});
     responsibilitySource??=source;
     original??=app.runtime.submitTask({goal:source.goal,conversationId:'desktop-panel',idempotencyKey:'original-responsibility'});

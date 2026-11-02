@@ -1,6 +1,8 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {realpathSync} from 'node:fs';
 import {mkdtemp,mkdir,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -18,7 +20,7 @@ const object=properties=>({type:'object',additionalProperties:false,required:Obj
 
 // Real production factories/Engine/Runtime/Policy/SQLite/Intent. Native, model, reference service and clicks are explicit Fixtures.
 test('F21 exact reference chain requires its native enable decision and a reopened unknown probe never executes again',async t=>{
-  const directory=await mkdtemp(join(tmpdir(),'pa-f21-worker-')),workspace=join(directory,'source');await mkdir(workspace);
+  const directory=realpathSync.native(await mkdtemp(join(tmpdir(),'pa-f21-worker-'))),workspace=join(directory,'source');await mkdir(workspace);
   let app,question,intent,executions=0,unknown=false,enabled=false,last;
   const mcp=mcpModule.createReadonlyMcpHost(),descriptor=mcp.tools[0].descriptor;
   const reference={readF21Configuration:()=>({workspace:{rootPath:workspace,nodeExecutable:process.execPath,bindingId:'synthetic-session'},
@@ -57,8 +59,8 @@ test('F21 exact reference chain requires its native enable decision and a reopen
       readDefaultExecutionModel:()=>({modelId:'synthetic-f21-model',catalogRevision:'a'.repeat(64)}),
       resolveExecutionModel:()=>({modelId:'synthetic-f21-model',catalogRevision:'a'.repeat(64)}),
       configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),coordinationBinding:'synthetic-f21',
-      coordination:{execute:async request=>request.continuation?{kind:'text',text:'Synthetic finished',verification:'mock'}:{kind:'tool_proposal',proposalId:'f21-original',
-        toolName:'workflow.skills.enable_reference',toolVersion:'1.0.0',arguments:{capability:'workspace-reference'},verification:'unverified'}},
+      coordination:{execute:syntheticCoordinationExecution(async request=>request.continuation?{kind:'text',text:'Synthetic finished',verification:'mock'}:{kind:'tool_proposal',proposalId:'f21-original',
+        toolName:'workflow.skills.enable_reference',toolVersion:'1.0.0',arguments:{capability:'workspace-reference'},verification:'unverified'})},
       competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
       competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic',accepts:()=>true,project:({result})=>result}))});
     app.configureReferenceSkill({enabled:false,isToolAvailable:()=>false,currentConfigurationRef:()=>undefined});

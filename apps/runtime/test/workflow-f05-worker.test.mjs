@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
@@ -88,10 +89,10 @@ async function fixture(t,{expand=false,unknown=false,onExport,tamperCandidate=fa
   },receiptSecret:async()=>secret};
   const appOptions={path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'synthetic-f05',
     tools,configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),coordinationBinding:'synthetic-f05-deployment',
-    coordination:{execute:async request=>{cloud.push(request);
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
       if(app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation)return {kind:'text',text:'Synthetic graph result',verification:'mock'};
       return {kind:'tool_proposal',proposalId:'synthetic-f05-proposal',toolName:'workflow.memory.answer',toolVersion:'1.0.0',
-        arguments:{query:'initial',factId:'original-fact',limit:2},verification:'unverified'};}},
+        arguments:{query:'initial',factId:'original-fact',limit:2},verification:'unverified'};})},
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:tool.descriptor.name==='knowledge.search'?['/sourceId','/configRevision','/query']:[]})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))};

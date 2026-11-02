@@ -1,3 +1,6 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {mkdir,mkdtemp,rm} from 'node:fs/promises';
@@ -48,7 +51,7 @@ test('trusted goal meter counts the final wrapper and reserves output; unavailab
     ['fractional',1.5,false],['async',Promise.resolve(1),false],['missing',undefined,false]]) {
     await t.test(name,async()=>{
       let credentials=0,sends=0,measured;
-      const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
+      const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
         authorizationProvider:{read:async()=>{credentials++;return 'Bearer synthetic';}},
         fetchImpl:async(_url,init)=>{sends++;assert.equal(JSON.parse(init.body).query,measured);
           return new Response(JSON.stringify({event:'message',data:{text:'synthetic answer',index:0}}),
@@ -74,7 +77,7 @@ test('credential await cannot change the meter version, reservation, measurement
   for(const change of ['tokenizer','reserve','count','checkpoint'])await t.test(change,async()=>{
     let count=5,sends=0,app;
     const budget={tokenizerRef:'fixture:v1',contextTokens:100,reservedOutputTokens:10,countTokens:()=>count};
-    app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
+    app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
       authorizationProvider:{read:async()=>{
         if(change==='tokenizer')budget.tokenizerRef='fixture:v2';
         if(change==='reserve')budget.reservedOutputTokens=20;
@@ -106,9 +109,9 @@ test('SQLite approval recovery preserves the same context, refuses changed revis
         accepts:()=>true,project:({result})=>result}],
       competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
       ...(change==='legacy without hooks'?{}:{coordinationInput:{beforeCoordinationSend(){},readConversationContext:async()=>messages}}),
-      coordination:{execute:async()=>++calls===1?{kind:'tool_proposal',proposalId:'fixture-proposal',
+      coordination:{execute:syntheticCoordinationExecution(async()=>++calls===1?{kind:'tool_proposal',proposalId:'fixture-proposal',
         toolName:descriptor.name,toolVersion:descriptor.version,arguments:{},verification:'unverified'}:
-        {kind:'text',text:'synthetic answer',verification:'unverified'}}};
+        {kind:'text',text:'synthetic answer',verification:'unverified'})}};
     let app=createRuntimeApplication(options);
     try {
       let client=new Client(app);await client.connect();
@@ -136,14 +139,14 @@ test('SQLite approval recovery preserves the same context, refuses changed revis
 test('final export guard rejects existing context checkpoints without hooks, including redacted and malformed metadata',async t=>{
   for(const mode of ['versioned','redacted','null'])await t.test(mode,async()=>{
     let app,guardError,sends=0;
-    app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',coordination:{execute:async request=>{
+    app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',coordination:{execute:syntheticCoordinationExecution(async request=>{
       const checkpoint=mode==='versioned'?bindCompiledContext({taskId:request.taskId,conversationId:'final-guard',
         configurationRef:app.coordinationConfigurationRef,deadline:request.deadline,publicGoal:request.goal,
         preparedGoal:request.goal,compiledGoal:request.goal,messages:[]}):mode==='redacted'?{redacted:true}:null;
       app.runtime.saveCheckpoint(request.taskId,KEY,checkpoint);
       try {app.assertCompetitionExportAllowed(request);}catch(error){guardError=error;throw error;}
       sends++;return {kind:'text',text:'synthetic answer',verification:'unverified'};
-    }}});
+    })}});
     try {
       const client=new Client(app);await client.connect();
       const {taskId}=await client.call('task.submit',{goal:'public',conversationId:'final-guard'},{idempotencyKey:mode});
@@ -156,7 +159,7 @@ test('final export guard rejects existing context checkpoints without hooks, inc
 
 test('history withheld during credential read blocks its old context before HTTP',async t=>{
   let sends=0,earlier,app;
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',
     authorizationProvider:{read:async()=>{app.runtime.saveCheckpoint(earlier,'private-derived-output',{withheld:true});
       return 'Bearer synthetic';}},fetchImpl:async()=>{sends++;throw Error('Withheld history must not reach HTTP');},
     coordinationInput:{beforeCoordinationSend(){},readConversationContext:async()=>[
@@ -171,7 +174,7 @@ test('history withheld during credential read blocks its old context before HTTP
 test('per-fact erasure redacts new context checkpoints and derived children across restart, retaining unrelated tasks',async t=>{
   const path=await directory(t);let app;
   const options={path,profile:'huawei_ict_agentarts',coordinationBinding:'fixture-config-v1',
-    coordination:{execute:async()=>({kind:'text',text:'private derived answer canary',verification:'unverified'})},
+    coordination:{execute:syntheticCoordinationExecution(async()=>({kind:'text',text:'private derived answer canary',verification:'unverified'}))},
     coordinationInput:{beforeCoordinationSend(){},prepareCoordinationGoal:async scope=>{
       if(scope.publicGoal==='independent')return scope.publicGoal;
       app.writePrivateTaskBinding(scope.taskId,{taskId:scope.taskId,conversationId:scope.conversationId,

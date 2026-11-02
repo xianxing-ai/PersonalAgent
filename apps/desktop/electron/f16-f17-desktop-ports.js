@@ -92,6 +92,7 @@ export function createDesktopF16F17WorkflowPorts({runtimeModule,getApplication,c
     authority:{available,assertCurrent:workspace.assertCurrent},authorizeExport,
     f16TestIntent:'preserved-bytes',f16CiIdentityRecipe:'github-readback',
     ...(publicationReady?{f16Publication:{assertCurrent:assertPublication,installGitPort:port=>host.configureF16Publication(port),
+      readPublicationPreview:(input,scope)=>host.readPublicationPreview(input,scope),
       configurationRef:hash(gitConfiguration),requestPresence}}:{}),now});
   if(!publicationReady){ports.configuredWorkflowWorkerPorts=ports.configuredWorkflowWorkerPorts.filter(port=>port.workflowId!=='F16');
     ports.unavailable.push('f16_ci_publication_tool_chain_unavailable');}

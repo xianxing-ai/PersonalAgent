@@ -43,7 +43,8 @@ test('competition submission uses only injected port, persists text and deduplic
     assert.match(task.resultSummary, /verification=mock/);
     assert.deepEqual(task.evidenceRefs, []);
     assert.equal(port.requests.length, 1);
-    assert.deepEqual(Object.keys(port.requests[0]).sort(), ['deadline', 'goal', 'revision', 'signal', 'taskId']);
+    assert.deepEqual(Object.keys(port.requests[0]).sort(), ['deadline', 'executionEpoch', 'goal', 'revision', 'signal', 'taskId']);
+    assert.equal(port.requests[0].executionEpoch, 0);
     assert.equal(app.runtime.loadCheckpoint(a.taskId, 'application-profile'), 'huawei_ict_agentarts');
     assert.throws(() => app.configureText({mode: 'fake'}), /unavailable/);
     assert.throws(() => app.testTextConnection(), /unavailable/);

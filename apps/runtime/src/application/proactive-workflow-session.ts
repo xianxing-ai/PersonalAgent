@@ -24,15 +24,19 @@ interface Operation {
 }
 export interface ProactiveSessionState {
   version:1;binding:ProactiveSessionBinding;checkpoint?:string;
-  requests:Record<string,{digest:string;state:'pending'|'committed';result?:unknown;input?:unknown;checkpointDigest?:string;
+  requests:Record<string,{digest:string;state:'pending'|'committed';result?:unknown;input?:unknown;checkpointDigest?:string;executionEpoch?:number;
     recovery?:'recompute_after_lost_pure_frontier_response'}>;
-  proposals:Record<string,ProactiveSessionProposal>;operations:Record<string,Operation>;
+  proposals:Record<string,ProactiveSessionProposal>;proposalEpochs?:Record<string,number>;operations:Record<string,Operation>;
 }
 export interface ProactiveWorkflowSessionOptions<I extends ProactiveSessionRequest,R extends ProactiveSessionResult> {
   atomicState:RuntimeAtomicStatePort;binding:ProactiveSessionBinding;
+  /** Trusted local fence, persisted beside requests/proposals, never a Policy grant. */
+  executionEpoch?:number;
+  /** Synchronous final fence after asynchronous host checks and before local CAS. */
+  assertExecutionEpoch?:(expectedEpoch:number)=>void;
   /** Must read current TaskRuntime cancellation/terminal state and trusted control revision. */
   assertActive(binding:ProactiveSessionBinding):void|Promise<void>;
-  advancePort(input:I & {checkpoint?:string}):Promise<R>;
+  advancePort(input:I & {checkpoint?:string},context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<R>;
   /** Existing image response signature verifier, including request/session binding. */
   verifyAdvance(result:R,input:I & {checkpoint?:string}):boolean|Promise<boolean>;
   /** Trusted startup capability, never request/model data. Port performs signed frontier computation only: no models, tools or external writes. */
@@ -98,6 +102,7 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
     finally{if(timer)clearTimeout(timer);signal.removeEventListener('abort',onAbort);}
   }
   function read(){
+    options.assertExecutionEpoch?.(options.executionEpoch??0);
     const saved=options.atomicState.read(key),state=saved?.value as ProactiveSessionState|undefined;
     if(state&&(state.version!==1||state.binding.taskId!==binding.taskId||state.binding.sessionId!==binding.sessionId||
       state.binding.taskDeadline!==binding.taskDeadline||state.binding.controlRevision>binding.controlRevision))conflict();
@@ -113,10 +118,14 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
     if(signal.aborted)throw new ProtocolError('CANCELLED','Proactive session cancelled');
     if(now()>=Math.min(Date.parse(deadline),Date.parse(binding.taskDeadline)))throw new ProtocolError('TIMEOUT','Original proactive task deadline expired');
   }
-  const commit=(revision:number|undefined,state:ProactiveSessionState)=>{if(!options.atomicState.compareAndSet(key,revision,state))conflict();};
+  const commit=(revision:number|undefined,state:ProactiveSessionState)=>{
+    options.assertExecutionEpoch?.(options.executionEpoch??0);
+    if(!options.atomicState.compareAndSet(key,revision,state))conflict();
+  };
   async function computeAndCommit(request:I & {checkpoint?:string},reserved:ReturnType<typeof read>,recovery=false):Promise<R>{
     const prior=reserved.state.requests[request.requestId]!;
-    const result=await bounded(()=>options.advancePort(request),request.signal,request.deadline);
+    const result=await bounded(()=>options.advancePort(request,{executionEpoch:options.executionEpoch??0,
+      assertCurrent:()=>options.assertExecutionEpoch?.(options.executionEpoch??0)}),request.signal,request.deadline);
     if(!await bounded(()=>options.verifyAdvance(result,request),request.signal,request.deadline)||!result.checkpoint||result.taskDeadline!==binding.taskDeadline||!Array.isArray(result.proposals))
       throw new ProtocolError('UNAUTHORIZED','Unverified proactive advance response');
     await active(request.signal,request.deadline);
@@ -125,8 +134,9 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
       if(!proposal.proposalId||!proposal.operationId||proposal.originControlRevision!==binding.controlRevision||proposal.taskDeadline!==binding.taskDeadline)
         throw new ProtocolError('UNAUTHORIZED','Proposal outside original session');
       const old=completed.proposals[proposal.proposalId];
-      if(old&&digest(old)!==digest(proposal))conflict();
+      if(old&&(digest(old)!==digest(proposal)||(completed.proposalEpochs?.[proposal.proposalId]??0)!==(options.executionEpoch??0)))conflict();
       completed.proposals[proposal.proposalId]=structuredClone(proposal);
+      (completed.proposalEpochs??={})[proposal.proposalId]=options.executionEpoch??0;
     }
     completed.checkpoint=result.checkpoint;
     completed.requests[request.requestId]={...prior,state:'committed',result:structuredClone(result),
@@ -142,14 +152,15 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
       if('checkpoint' in input)throw new ProtocolError('INVALID_ARGUMENT','Checkpoint comes only from trusted Runtime state');
       const {signal,...data}=input,requestDigest=digest(data),snapshot=read(),prior=snapshot.state.requests[input.requestId];
       if(prior){
+        if((prior.executionEpoch??0)!==(options.executionEpoch??0))conflict();
         if(prior.digest!==requestDigest)conflict();
         if(prior.state==='committed')return structuredClone(prior.result) as R;
         throw new ProtocolError('EXTERNAL_FAILURE','Original advance outcome pending; do not replay request');
       }
-      if(Object.values(snapshot.state.requests).some(r=>r.state==='pending'))conflict();
+      if(Object.values(snapshot.state.requests).some(r=>r.state==='pending'&&(r.executionEpoch??0)===(options.executionEpoch??0)))conflict();
       const state=structuredClone(snapshot.state);
       state.binding=structuredClone(binding);
-      state.requests[input.requestId]={digest:requestDigest,state:'pending',input:structuredClone(data),checkpointDigest:digest(state.checkpoint??null)};
+      state.requests[input.requestId]={digest:requestDigest,state:'pending',input:structuredClone(data),checkpointDigest:digest(state.checkpoint??null),executionEpoch:options.executionEpoch??0};
       commit(snapshot.revision,state);
       const reserved=read();
       if(reserved.revision!==(snapshot.revision??0)+1)conflict();
@@ -161,6 +172,7 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
         throw new ProtocolError('UNSUPPORTED_CAPABILITY','Trusted pure frontier capability unavailable; original request retained');
       const reserved=read(),prior=reserved.state.requests[requestId];
       if(!prior)throw new ProtocolError('NOT_FOUND','Original advance intent unavailable');
+      if((prior.executionEpoch??0)!==(options.executionEpoch??0))conflict();
       if(!prior.input||digest(prior.input)!==prior.digest)conflict();
       const original=structuredClone(prior.input) as Omit<I,'signal'>;
       if(original.requestId!==requestId||digest({taskId:original.taskId,sessionId:original.sessionId,controlRevision:original.controlRevision,taskDeadline:original.taskDeadline})!==digest(binding))conflict();
@@ -179,6 +191,7 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
       if(!execution)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Existing ToolGateway execution adapter unavailable');
       let snapshot=read();
       const registered=snapshot.state.proposals[proposal.proposalId];
+      if((snapshot.state.proposalEpochs?.[proposal.proposalId]??0)!==(options.executionEpoch??0))conflict();
       if(!registered||digest(registered)!==digest(proposal)||proposal.originControlRevision!==binding.controlRevision)
         throw new ProtocolError('UNAUTHORIZED','Proposal was not committed at the current control revision');
       let operation=snapshot.state.operations[proposal.operationId];

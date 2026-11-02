@@ -153,7 +153,8 @@ export function createConfiguredDesktopF19IssueRepairPorts({getApplication,codin
   try{
     const ports=issueConfiguration.createPorts({getApplication,authorizeExport,now,nodeExecutable:native.nodeExecutable,nativeExecutionHost,
       github:{assertCurrent:current,createTools:options=>host.createF18F19Tools(options)},
-      publication:{assertCurrent:current,readConfiguration:scope=>host.readF16PublicationConfiguration(scope?{...scope,taskId:scope.parentTaskId??scope.taskId}:undefined),requestPresence}});
+      publication:{assertCurrent:current,readConfiguration:scope=>host.readF16PublicationConfiguration(scope?{...scope,taskId:scope.parentTaskId??scope.taskId}:undefined),
+        readPublicationPreview:(input,scope)=>host.readPublicationPreview(input,scope),requestPresence}});
     if(!ports.publication||ports.configuredWorkflowWorkerPorts?.length!==1)return missing();
     host.configureF19Publication(ports.publication);return ports;
   }catch{return missing();}

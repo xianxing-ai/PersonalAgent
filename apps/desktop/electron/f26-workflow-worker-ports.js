@@ -1,17 +1,17 @@
 import {createHash} from 'node:crypto';
-import {execFileSync} from 'node:child_process';
+import {execFile,execFileSync} from 'node:child_process';
 import {readFileSync,realpathSync,lstatSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {homedir} from 'node:os';
 import path from 'node:path';
-import {isDeepStrictEqual} from 'node:util';
+import {isDeepStrictEqual,promisify} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import {readAgentArtsDeployment} from './agentarts-deployment-readback.js';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),bytes=value=>createHash('sha256').update(value).digest('hex');
 const fail=(code='UNAUTHORIZED',message='F26 原源码、发布绑定或真实回执不可用')=>{throw new ProtocolError(code,message);};
 const recipeId='f26-owned-image-release',commandName='workspace.f26_release';
-const sourcePaths=['package.json','package-lock.json','packages/contracts','packages/coordination','packages/models','packages/agentarts','apps/agentarts-runtime','scripts/agentarts/release-owned-image.ps1'];
+const sourcePaths=['package.json','package-lock.json','tsconfig.base.json','packages/contracts','packages/coordination','packages/models','packages/agentarts','apps/agentarts-runtime','scripts/agentarts/release-owned-image.ps1'];
 const identity=file=>{const real=realpathSync.native(file),stat=lstatSync(file,{bigint:true});if(stat.isSymbolicLink()||!stat.isFile()||stat.nlink!==1n)fail();
   return [real,String(stat.dev),String(stat.ino),String(stat.size),String(stat.mtimeNs),String(stat.ctimeNs)];};
 
@@ -66,7 +66,17 @@ export function createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingMod
       nativeMode:'full-access',auditDigest:audit.auditDigest,releaseDigest:bytes(content)};
   }
   async function readDeployment(scope,build){const expected=bound(scope),assertCurrent=()=>{if(!isDeepStrictEqual(bound(scope),expected))fail();};
-    const args={...expected.release,imageReference:build.imageReference,deadline:scope.deadline,signal:scope.signal,authorize:authorizeDeployment,assertCurrent};
+    const resolveImageReference=async({imageReference,deadline,signal})=>{
+      assertCurrent();const repository=expected.release.registryRepository;
+      if(!imageReference.startsWith(repository+':')||!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u.test(imageReference.slice(repository.length+1)))fail();
+      let manifest;try{const {stdout}=await promisify(execFile)(dockerPath,['buildx','imagetools','inspect',imageReference,'--format','{{json .Manifest}}'],
+        {cwd:root,windowsHide:true,encoding:'utf8',timeout:Math.min(30000,Date.parse(deadline)-Date.now()),signal,maxBuffer:1024*1024});
+        manifest=JSON.parse(stdout);
+      }catch{assertCurrent();fail('EXTERNAL_FAILURE','SWR 原镜像标签摘要读取失败');}
+      assertCurrent();if(!/^sha256:[a-f0-9]{64}$/u.test(manifest?.digest))fail('PROTOCOL_MISMATCH');
+      return repository+'@'+manifest.digest;
+    };
+    const args={...expected.release,imageReference:build.imageReference,deadline:scope.deadline,signal:scope.signal,authorize:authorizeDeployment,assertCurrent,resolveImageReference};
     const control=await readAgentArtsDeployment(args);assertCurrent();if(!control.runtimeReady)fail('UNSUPPORTED_CAPABILITY');
     // This is an actual authenticated invocation on the same pinned transport, not a cached catalog or Kubernetes claim.
     const result=await getAgentArtsModels().refresh({deadline:scope.deadline,signal:scope.signal});assertCurrent();

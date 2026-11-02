@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -83,10 +84,10 @@ async function fixture(t,{disposition='compatible',revokeProjection=false,longEx
       ?{state:'not_applied',operationId:sha(args[0].taskId+'\n'+args[0].runId),backupId:'synthetic-negative-readback',lockRetained:false,currentSha256:sha(content)}:writer.reconcile(...args);},
       finalize:unknownWrite==='not_applied'?async accepted=>({state:'finalized',operationId:accepted.operationId,outcome:accepted.outcome,currentSha256:accepted.currentSha256}):writer.finalize},
     configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),coordinationBinding:'synthetic-f04-deployment',
-    coordination:{execute:async request=>{cloud.push(request);if(app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation)
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);if(app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation)
       return {kind:'text',text:'Synthetic F04 result',verification:'mock'};
       return {kind:'tool_proposal',proposalId:'synthetic-f04-proposal',toolName:'workflow.wiki.manage',toolVersion:'1.0.0',
-        arguments:{query:'Mercury',factId:'original-fact',candidateKind:'fact',updateText:replacement},verification:'unverified'};}},
+        arguments:{query:'Mercury',factId:'original-fact',candidateKind:'fact',updateText:replacement},verification:'unverified'};})},
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:tool.descriptor.name==='knowledge.search'?['/sourceId','/configRevision','/query']:
         tool.descriptor.name==='knowledge.apply_note_patch'?['/sourceId','/configRevision','/path']:[]})),

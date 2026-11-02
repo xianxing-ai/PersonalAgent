@@ -3,13 +3,15 @@ import {knowledgeSourceNotReadyMessage} from '../src/shared/public-error-message
 import {readCompetitionExecutionPolicy} from './competition-execution-config.js';
 import {createMailMonitorPreparation} from './mail-monitor-preparation.js';
 import {handleConversationAction} from './conversation-actions.js';
+import {assertConversationProhibitions} from './conversation-prohibitions.js';
 import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {createConversationDelivery} from './conversation-delivery.js';
-import {readReconciliationStatus} from './reconciliation-status.js';
+import {readReconciliationStatus,readConversationConflictTasks} from './reconciliation-status.js';
 import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
-import {reconcileTaskFromSurface} from './reconcile-task-action.js';
+import {reconcileTaskFromSurface,skipReconciliationConflictFromSurface} from './reconcile-task-action.js';
+import {readReconciliationConflict,inspectReconciliationConflictOnce,recordUnavailableConflictNotification,assertNoUnresolvedWriteReplay} from './reconciliation-conflict.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {isDeepStrictEqual} from 'node:util';
@@ -51,6 +53,7 @@ import {projectDesktopApproval} from './approval-projection.js';
 import {createPrivateMemoryController} from './private-memory.js';
 import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
+import {createDeletionConfirmationGate,assertDeletionOperationSupported} from './deletion-operation-policy.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
@@ -164,6 +167,7 @@ import {createF20WorkflowWorkerPorts} from './f20-workflow-worker-ports.js';
 import {prepareWorkflowHostPreflight} from './workflow-host-preflight.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {createNativeEgressHost} from './egress-dialog-host.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
@@ -377,6 +381,18 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
+let egressHost;
+const deletionGate=createDeletionConfirmationGate({
+  getStore:()=>runtimeApplication.createHostStateStore('deletion-confirmation'),
+  readUserTurn:()=>runtimeApplication.createHostStateStore('human-turns').get('latest'),
+});
+function recordExplicitUserTurn(taskId,conversationId) {
+  if(!competitionMode||!runtimeApplication)return;
+  const store=runtimeApplication.createHostStateStore('human-turns'),prior=store.get('latest');
+  const task=runtimeApplication.runtime.getTask(taskId);
+  if(task.conversationId!==conversationId)throw new ProtocolError('UNAUTHORIZED','原用户回合不属于此对话');
+  store.compareAndSet('latest',prior,{conversationId,turnId:taskId,createdAt:task.createdAt});
+}
 let agentArtsObservationConfig;
 let agentArtsModels;
 let activeCloudBinding;
@@ -804,6 +820,9 @@ function conversationProjection(surface) {
   const active=scoped.filter(task=>!terminalTaskStates.has(task.state));
   const liveIds=new Set(active.slice(-8).map(task=>task.taskId));
   const projectedTasks=scoped.filter(task=>pageTasks.has(task.taskId)||liveIds.has(task.taskId));
+  const projectedIds=new Set(projectedTasks.map(task=>task.taskId));
+  const childConflicts=fakeMode||runtimeClosed?[]:readConversationConflictTasks({application:runtimeApplication,tasks:ordered,
+    parents:projectedTasks,surface,taskSurface,conversations}).filter(task=>!projectedIds.has(task.taskId)&&taskSurface(task)===undefined);
   const workspaceChildren=surface==='workspace'&&!fakeMode?scopeSubagentConversations(runtimeApplication?.listSubagentConversations({limit:100,
     parentTaskIds:[...new Set(projectedTasks.map(task=>task.taskId))]}).items??[],
     taskId=>runtimeApplication.runtime.getTask(taskId),parent=>visibleConversationTask(parent,'workspace')):[];
@@ -811,13 +830,14 @@ function conversationProjection(surface) {
     subagentTasks:fakeMode?[]:(surface==='workspace'?workspaceChildren:projectSubagentActivity({tasks:projectedTasks,surface,visible:visibleConversationTask,
       readChildren:taskId=>runtimeApplication?.readSubagentTasks?.(taskId),sourceSurface:taskSurface,
       readTask:taskId=>runtimeApplication.runtime.getTask(taskId)})),
-    tasks: projectedTasks.map(original => {const task=readSafeTaskProjection(original,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,
+    tasks: [...projectedTasks,...childConflicts].map(original => {const conflictOnly=!projectedIds.has(original.taskId),task=readSafeTaskProjection(original,{runtime:runtimeClosed?undefined:runtimeApplication?.runtime,
       delivery:conversationDelivery,cache:tasks,goals:taskGoals});return ({...structuredClone(task),
       ...(task.error?{error:{...task.error,...errorDisplay(task.error,'task')}}:{}),
-      reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
+      reconciliationStatus:{...readReconciliationStatus(runtimeApplication,task),...(surface?{conversationId:conversations.activeConversationId(surface)}:{})},
+      ...(conflictOnly?{conflictOnly:true}:{}),
       resultMetadata:taskResultMetadata(task),
       createdAt: task.createdAt ?? conversations?.turns.get(task.taskId)?.createdAt ?? task.updatedAt,
-      userMessage: task.bodyWithheld?task.goal:taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId) ?? task.goal,
+      userMessage: conflictOnly?undefined:task.bodyWithheld?task.goal:taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId) ?? task.goal,
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
       ...(notepadHost?.projectTask(task) ?? {})});}),
     messages: page.entries.filter(entry=>entry.kind==='message').map(entry=>conversations?.messages.get(entry.id)).filter(Boolean).map(message=>({...message})),
@@ -1533,7 +1553,20 @@ function clearInactiveTaskExitWarning() {
   }
 }
 
+function observeTaskConflict(task) {
+  if(competitionMode&&runtimeApplication&&['failed','waiting_reconciliation'].includes(task.state)){
+    recordUnavailableConflictNotification(runtimeApplication,task.taskId);
+    const readOriginal=connectorConversationTools?.readOriginalSendRecoveryAvailable?.(task.taskId)
+      ?()=>connectorConversationTools.readOriginalSendReconciliation({taskId:task.taskId})
+      :connectorConversationTools?.readOriginalArchiveRecoveryAvailable?.(task.taskId)
+        ?()=>connectorConversationTools.readOriginalArchiveReconciliation({taskId:task.taskId}):undefined;
+    void inspectReconciliationConflictOnce({application:runtimeApplication,taskId:task.taskId,readOriginal,
+      deadline:new Date(Date.now()+5000).toISOString(),signal:new AbortController().signal}).then(()=>publish(['tasks']))
+      .catch(()=>{});
+  }
+}
 function observeTextTaskOutput(task) {
+  observeTaskConflict(task);
   if (conversationDelivery.stopped(task)) return;
   liveVoice?.observeTextTask({...task,resultSummary:resultText(task.resultSummary,taskResultMetadata(task))});
 }
@@ -1733,6 +1766,7 @@ async function syncRuntimeSnapshots() {
     if(beforeRowId)await new Promise(resolve=>setImmediate(resolve));
   } while(beforeRowId);
   if(fakeMode){const recent=await client.call('task.list',{limit:100});for(const task of recent.items)tasks.set(task.taskId,task);}
+  for(const task of tasks.values())observeTaskConflict(task);
   for(const surface of ['panel','workspace',undefined])historyPages.load(surface);
   eventCursor.reset(snapshotSequence ?? 0);
   eventThroughSequence = undefined;
@@ -1803,6 +1837,22 @@ function readDesktopConversationContext(scope,maxMessages) {
     .map(message=>({id:message.id,role:message.role,content:message.text,createdAt:message.createdAt}));
   let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages,...(maxMessages===undefined?{}:{maxMessages})});
   if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
+  const prohibitions=conversations.prohibitions(scope.conversationId);
+  for(const item of prohibitions.items)context.push({id:`conversation-prohibition:${item.id}:${prohibitions.revision}`,
+    role:'user',content:item.text,preserveVerbatim:true});
+  for(const question of authorizationQuestionHost?.snapshot(scope.conversationId)??[]){
+    if(question.state!=='pending'||question.taskId===scope.taskId)continue;
+    const original=runtimeApplication.runtime.getTask(question.taskId);
+    if(Date.parse(original.createdAt)>Date.parse(cutoff))continue;
+    context.push({id:`pending-confirmation:${question.questionId}:${question.revision}`,role:'assistant',
+      content:question.description,taskState:'waiting_approval',preserveVerbatim:true});
+  }
+  for(const task of tasks.values()){
+    if(task.conversationId!==scope.conversationId||Date.parse(task.createdAt)>Date.parse(cutoff))continue;
+    const conflict=readReconciliationConflict(runtimeApplication,task);
+    if(conflict)context.push({id:`execution-conflict:${conflict.conflictId}:${conflict.skipped}`,role:'assistant',
+      content:conflict.notice,taskState:task.state,preserveVerbatim:true});
+  }
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
     .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
   if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,JSON.stringify(current));
@@ -1907,7 +1957,7 @@ function readProactiveWorkflowConfiguration() {
   return {contractRef,adapter:{config:{...binding,
     ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
     ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
-    assertDeploymentBinding,fetchImpl:transport.fetchImpl,
+    assertDeploymentBinding,fetchImpl:transport.fetchImpl,preparePayload:transport.preparePayload,
     authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
     hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
 }
@@ -3052,9 +3102,9 @@ async function initializeRuntime() {
         requestToolAuthorization:async scope=>{
           const mailReconciliation=await connectorConversationTools?.prepareOriginalSendReconciliationAuthorization?.(scope);
           if(!mailReconciliation)await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
-          f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
+          await f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
           f18Workflow?.prepareMergeQuestion?.(scope,authorizationQuestionHost);
-          f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
+          await f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
           f19Workflow?.prepareRegressionQuestion?.(scope,authorizationQuestionHost);
           f19Workflow?.prepareCloseQuestion?.(scope,authorizationQuestionHost);
           if(/^(?:computer\.desktop\.|computer\.request_access$|computer\.vision\.|browser\.)/.test(scope.toolName))computerTasks.add(scope.taskId);
@@ -3078,6 +3128,13 @@ async function initializeRuntime() {
             await f19Workflow?.confirmClosePresence?.(scope);
           }
           return decision;
+        },
+        assertToolAllowed:scope=>{
+          assertDeletionOperationSupported(scope);
+          assertNoUnresolvedWriteReplay({application:runtimeApplication,...scope});
+          const conversationId=runtimeApplication.readToolConversation(scope.taskId);
+          if(conversationId&&conversations.containsConversation(conversationId))
+            assertConversationProhibitions({...scope,rules:conversations.prohibitions(conversationId)});
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||remoteMcpCompetition.ownsTool(scope.toolName)
@@ -3258,12 +3315,12 @@ async function initializeRuntime() {
         writeTaskBinding:(taskId,binding)=>runtimeApplication.writePrivateTaskBinding(taskId,binding),
         readConfigurationRef:()=>runtimeApplication.coordinationConfigurationRef,
         assertCopyManagement:()=>privateErasure.assertReady(privateBackups.inventory())});
-      privateErasure=createPrivateMemoryErasureHost({privateMemory:privateMemoryController(),consumptionHost:privateConsumption,
+      privateErasure=createPrivateMemoryErasureHost({privateMemory:privateMemoryController(),consumptionHost:privateConsumption,deletionGate,
         listBindings:input=>runtimeApplication.listBindings(input),
         cancelTask:taskId=>runtimeApplication.runtime.requestCancel(taskId,'私人记忆使用已撤回'),
         eraseTaskCopies:scope=>runtimeApplication.eraseTaskCopies(scope),
         readCopyErasureReceipt:taskId=>runtimeApplication.readCopyErasureReceipt(taskId),backups:privateBackups});
-      memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
+      memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),deletionGate,
         learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
       await memoryLearningHost.recover();
       wikiSourceMonitor?.close();
@@ -3394,7 +3451,7 @@ async function initializeRuntime() {
       return confirmApplicationAuthorization('facts.erase',ref,{scope:{id:ref.id,revision:ref.revision},
         summary:'删除所选公共事实及其绑定版本/投影；已有依赖或未核实状态仍拒绝删除，原擦除审计继续核实'});
     }});
-    memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
+    memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),deletionGate,
       learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
     await memoryLearningHost.recover();
   }
@@ -4825,7 +4882,7 @@ async function action(event, name, payload) {
     }
     throw Error('不支持的私人记忆操作');
   }
-  if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft'].includes(name)){
+  if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft','conversation.prohibitions.update'].includes(name)){
     if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
     const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
     const result=await handleConversationAction({name,payload,surface,conversations,tasks,taskSurface,submitting,publish});
@@ -4979,6 +5036,7 @@ async function action(event, name, payload) {
     deliveryRequest.taskId=result.taskId;
     const userGoal=skillRun?prepared.userGoal:goal;
     conversations.add(result.taskId, surface, userGoal,conversationId);
+    if(!skillRun)recordExplicitUserTurn(result.taskId,conversationId);
     if (!skillRun && !deliveryRequest.interrupted) liveVoice?.trackTextTask({taskId:result.taskId,conversationId});
     rememberTaskGoal(result.taskId, userGoal);
     const stopAcceptedTask=async()=>{
@@ -4995,6 +5053,8 @@ async function action(event, name, payload) {
     return task;
     } finally { conversationDelivery.finish(deliveryRequest); }
   }
+  if(name==='task.reconcile.skip')return skipReconciliationConflictFromSurface({payload,sender,panel,workspace,tasks,taskSurface,
+    conversations,application:runtimeApplication,refresh,publish});
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
     application:runtimeApplication,mailRecovery:connectorConversationTools,resumeMailWorkflow:reconcileOriginalMailWorkflow,
     refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
@@ -5082,6 +5142,10 @@ async function initializeSisVoice() {
   const speechConfig = accessKeyConfig
     ? {region, projectId, requestAuthPort:(await import('./huawei-sis-auth.js')).createHuaweiSisRequestAuth(accessKeyConfig)}
     : {region, projectId, tokenPort};
+  speechConfig.preparePayload=scope=>egressHost.prepare({...scope,isCurrent:()=>{
+    const current=accessKeyConfig?sisConfigHost.currentAccessKey():sisConfigHost.current();
+    return scope.isCurrent()&&JSON.stringify(current)===JSON.stringify(selectedConfig);
+  }});
   const playback = createDesktopSisPlaybackHost({getPanel: () => panel,
     onDiagnostic: phase => desktopHost.logVoicePlayback(phase)});
   let source;
@@ -5106,6 +5170,7 @@ async function initializeSisVoice() {
       onTaskSubmitted: ({taskId, goal}) => {
         rememberTaskGoal(taskId, goal);
         conversations.add(taskId, 'panel', goal);
+        recordExplicitUserTurn(taskId,conversations.turns.get(taskId).conversationId);
       }});
     const wake = createDesktopWakeVoiceHost({getPanel: () => panel, microphoneHost: microphoneCaptureHost,
       voiceInput:input, onUpdate: publish, isBusy: () => Boolean(liveVoice?.hasActive() || voiceConfigurationPending || panelHiding)});
@@ -5237,7 +5302,8 @@ async function initializeLiveVoice() {
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
     authorizeFinalRead:(...args)=>f02Workflow?.authorizeFinalRead?.(...args)===true,
     prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope)??null,
-    onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
+    onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);
+      recordExplicitUserTurn(taskId,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
       contextMessages:readDesktopConversationContext({conversationId,deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal}),
       currentUserQuestion:voiceQuestionForConversation(conversationId),
@@ -5327,6 +5393,8 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  egressHost=createNativeEgressHost({dialog});
+  agentArtsConfig.setEgressHost(egressHost);
   if(competitionMode&&!syntheticMvp) {
     try {
       const created=initializeDefaultWorkspace({userData:app.getPath('userData'),
@@ -5381,8 +5449,10 @@ app.whenReady().then(async () => {
     modelApiHost = createModelApiConfig({userData:app.getPath('userData'),safeStorage,
       isDefaultExecutionAvailable:()=>runtimeApplication?.isDefaultSubagentAvailable()===true,
       createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway});
+    modelApiHost.setEgressHost(egressHost);
     computerVisionConfig=createComputerVisionConfig({userData:app.getPath('userData'),safeStorage,
       createGateway:createConfiguredSubagentModelGateway,onUpdate:publish});
+    computerVisionConfig.setEgressHost(egressHost);
   }
   if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});

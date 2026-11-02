@@ -45,7 +45,7 @@ export interface RuntimeProactiveControllerReceipt {
 }
 export interface RuntimeProactiveWorkflowHostOptions {
   taskId: string; sessionId: string; taskDeadline: string; contractRef: string;
-  advancePort(input: ProactiveAdvanceRequest): Promise<ProactiveWorkflowResult>;
+  advancePort(input: ProactiveAdvanceRequest, context?: {executionEpoch: number; assertCurrent?: () => void}): Promise<ProactiveWorkflowResult>;
   verifyAdvance(result: ProactiveWorkflowResult, input: ProactiveAdvanceRequest): boolean | Promise<boolean>;
   sign(kind: 'event' | 'responsibility' | 'receipt' | 'control', value: Record<string, unknown>, binding: ProactiveSessionBinding): unknown;
   pureAdvance?: {kind: 'signed_frontier_no_effects'};
@@ -81,7 +81,7 @@ interface ResponsibilityLifecycle {
 }
 interface Entry {event: UnsignedEvent; payload: unknown}
 interface FrozenRequest {input: Omit<ProactiveAdvanceRequest, 'signal' | 'checkpoint'>; entryIds: string[];
-  responsibilityIds: string[]; receiptIds: string[]; acknowledged: boolean}
+  responsibilityIds: string[]; receiptIds: string[]; acknowledged: boolean; executionEpoch?: number}
 export interface RuntimeProactiveContextSnapshot {
   sourceTexts: {quote: ProactiveSourceQuote; text: string}[]; goals: NodeVersion[]; facts: FactVersion[];
   knowledge: readonly KnowledgeHit[]; unavailable: string[];
@@ -368,15 +368,23 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
     }
     return {state, evidenceRefs: [record.evidenceId], ...(state === 'confirmed' ? {result} : {})};
   }
-  function session() {
-    const current = binding();
+  function session(allowCancelledControl = false) {
+    const current = binding(), executionEpoch = runtime.readExecutionEpoch(options.taskId);
     return createProactiveWorkflowSession<ProactiveAdvanceRequest, ProactiveWorkflowResult>({atomicState: atomic, binding: current,
+      executionEpoch,
+      assertExecutionEpoch: expected => runtime.assertExecutionEpoch(options.taskId, expected),
       assertActive: expected => {
+        runtime.assertExecutionEpoch(options.taskId, executionEpoch);
         if (digest(binding()) !== digest(expected)) fail('REVISION_CONFLICT', 'Trusted proactive control revision changed');
-        if (terminal(runtime.getTask(options.taskId))) fail('CANCELLED', 'Original Runtime task is not active');
+        if (!allowCancelledControl && terminal(runtime.getTask(options.taskId))) fail('CANCELLED', 'Original Runtime task is not active');
       }, advancePort: options.advancePort, verifyAdvance: options.verifyAdvance,
       ...(options.pureAdvance ? {pureAdvance: options.pureAdvance} : {}), now,
-      execution: {tools, resolveInvocation, readExecution,
+      execution: {tools, resolveInvocation: async (proposal, context) => {
+        const invocation = await resolveInvocation(proposal, context);
+        runtime.assertExecutionEpoch(options.taskId, executionEpoch);
+        runtime.saveCheckpointOnce(options.taskId, 'execution-epoch:run:' + invocation.runId, executionEpoch);
+        return invocation;
+      }, readExecution,
         canResumeApprovedInvocation},
     });
   }
@@ -538,14 +546,15 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       return fail('RESULT_UNKNOWN', 'Notification ingest needs original feed readback');
     return {status: 'completed', resultRef: 'runtime:notification-feed:' + digest(sourceItems.map(value => value.eventId))};
   }
-  async function advanceFrontier(input: Context & {requestId: string}): Promise<ProactiveWorkflowResult> {
-    active(input);
+  async function advanceFrontier(input: Context & {requestId: string}, allowCancelledControl = false): Promise<ProactiveWorkflowResult> {
+    active(input, allowCancelledControl);
+    const executionEpoch = runtime.readExecutionEpoch(options.taskId);
     let snapshot = read(), frozen = snapshot.state.requests[input.requestId];
     if (!text(input.requestId)) fail('INVALID_ARGUMENT', 'Stable original request identity required');
     if (!frozen) {
-      if (Object.values(snapshot.state.requests).some(value => !value.acknowledged)) fail('REVISION_CONFLICT', 'Original pending proactive request must be recovered first');
+      if (Object.values(snapshot.state.requests).some(value => !value.acknowledged && (value.executionEpoch ?? 0) === executionEpoch)) fail('REVISION_CONFLICT', 'Original pending proactive request must be recovered first');
       const current = snapshot.state.binding;
-      const entryIds = Object.keys(snapshot.state.entries).filter(id => !snapshot.state.delivered['event:' + id]);
+      const entryIds = snapshot.state.pendingControl?.action === 'cancel' ? [] : Object.keys(snapshot.state.entries).filter(id => !snapshot.state.delivered['event:' + id]);
       const responsibilityIds = Object.keys(snapshot.state.responsibilities).filter(id => !snapshot.state.delivered['responsibility:' + id + ':' + snapshot.state.responsibilities[id]!.revision]);
       const receiptIds = Object.keys(snapshot.state.receipts).filter(id => !snapshot.state.delivered['receipt:' + digest(snapshot.state.receipts[id])]);
       const request: Omit<ProactiveAdvanceRequest, 'signal' | 'checkpoint'> = {...current, requestId: input.requestId, deadline: input.deadline,
@@ -554,12 +563,13 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
         responsibilities: responsibilityIds.map(id => signed('responsibility', snapshot.state.responsibilities[id]!, current)),
         receipts: receiptIds.map(id => signed('receipt', snapshot.state.receipts[id]!, current)),
         ...(snapshot.state.pendingControl ? {control: signed('control', snapshot.state.pendingControl, current)} : {})};
-      frozen = {input: request, entryIds, responsibilityIds, receiptIds, acknowledged: false};
+      frozen = {input: request, entryIds, responsibilityIds, receiptIds, acknowledged: false, executionEpoch};
       snapshot.state.requests[input.requestId] = frozen; save(snapshot);
-    } else if (frozen.input.deadline !== input.deadline || frozen.input.controlRevision !== snapshot.state.binding.controlRevision) {
+    } else if (frozen.input.deadline !== input.deadline || frozen.input.controlRevision !== snapshot.state.binding.controlRevision || (frozen.executionEpoch ?? 0) !== executionEpoch) {
       fail('REVISION_CONFLICT', 'Original proactive request lifetime/control revision differs');
     }
-    const result = await session().advance({...structuredClone(frozen.input), signal: input.signal});
+    const result = await session(allowCancelledControl).advance({...structuredClone(frozen.input), signal: input.signal});
+    runtime.assertExecutionEpoch(options.taskId, executionEpoch);
     snapshot = read(); const saved = snapshot.state.requests[input.requestId]!;
     for (const id of frozen.entryIds) snapshot.state.delivered['event:' + id] = true;
     for (const value of frozen.input.responsibilities ?? []) snapshot.state.delivered['responsibility:' + value.id + ':' + value.revision] = true;
@@ -677,10 +687,15 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       save(snapshot); notify(); return eventId;
     },
     async advance(input: Context & {requestId: string}): Promise<ProactiveWorkflowResult> {
-      return serializeFrontier(() => advanceFrontier(input));
+      const executionEpoch = runtime.readExecutionEpoch(options.taskId);
+      return serializeFrontier(() => {
+        runtime.assertExecutionEpoch(options.taskId, executionEpoch);
+        return advanceFrontier(input);
+      });
     },
     async control(command: RuntimeProactiveControlCommand, context: Context): Promise<ProactiveWorkflowResult> {
-      return serializeFrontier(async () => {
+      const preempt = command.action === 'pause' || command.action === 'cancel';
+      const apply = async () => {
       active(context);
       const source = sourceTask(command.sourceTaskId);
       if (!options.verifyControlCommand || await options.verifyControlCommand(structuredClone(command), source, context) !== true)
@@ -690,9 +705,12 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       if (old) {
         if (digest(old.command) !== digest(command) || old.revision !== snapshot.state.binding.controlRevision) fail('REVISION_CONFLICT', 'Old control command cannot alter the current workflow');
       } else {
-        if (command.expectedControlRevision !== snapshot.state.binding.controlRevision || Object.values(snapshot.state.requests).some(value => !value.acknowledged)
-          || snapshot.state.pendingControl) fail('REVISION_CONFLICT', 'Original proactive control or request is pending');
+        if (command.expectedControlRevision !== snapshot.state.binding.controlRevision || !preempt &&
+          (Object.values(snapshot.state.requests).some(value => !value.acknowledged && (value.executionEpoch ?? 0) === runtime.readExecutionEpoch(options.taskId))
+          || snapshot.state.pendingControl)) fail('REVISION_CONFLICT', 'Original proactive control or request is pending');
         const priorSession = session().inspect(), records = runtime.readToolExecutions(options.taskId);
+        // Persist invalidation before waiting for any previous frontier or cloud response.
+        if (command.action === 'pause') runtime.advanceExecutionEpoch(options.taskId, {requestId: 'proactive-control:' + command.commandId, reason: 'pause'});
         const neverStarted = Object.values(priorSession.state.proposals).filter(proposal =>
           !priorSession.state.operations[proposal.operationId] && !records.some(record => record.evidenceId === proposal.operationId)
           && Object.values(snapshot.state.lastResult?.items ?? {}).some(item => item.pendingProposalId === proposal.proposalId));
@@ -713,12 +731,15 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
         const control: UnsignedControl = {commandId: command.commandId, action: command.action, evidenceRefs: taskEvidence(source.taskId)};
         snapshot.state.commands[command.commandId] = {command: structuredClone(command), revision: snapshot.state.binding.controlRevision, control};
         snapshot.state.pendingControl = control; save(snapshot);
+        if (command.action === 'cancel') runtime.requestCancel(options.taskId, 'Original proactive workflow cancelled');
       }
-      const result = await advanceFrontier({...context, requestId: 'control-' + digest(command.commandId)});
-      if (command.action === 'cancel') runtime.requestCancel(options.taskId, 'Original proactive workflow cancelled');
       notify();
-      return result;
-      });
+      // Pure frontier notification may finish later; it cannot defer the local control fence.
+      const result = advanceFrontier({...context, requestId: 'control-' + digest(command.commandId)}, command.action === 'cancel');
+      if (preempt) frontierTail = result.then(() => {}, () => {});
+      return result.finally(notify);
+      };
+      return preempt ? apply() : serializeFrontier(apply);
     },
     async executeProposal(proposal: ProactiveHostProposal, context: Context): Promise<ProactiveExecutionReadback> {
       active(context);

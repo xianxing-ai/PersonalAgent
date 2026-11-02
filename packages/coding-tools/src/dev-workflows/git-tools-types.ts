@@ -25,6 +25,7 @@ export interface GitPublicationPort {
   load(context:ToolContext,target:{taskId:string;runId:string}):Promise<GitPublicationIntent|undefined>;
   saveOnce(context:ToolContext,intent:GitPublicationIntent):Promise<void>;
   observed(context:ToolContext,intent:GitPublicationIntent,result:{state:'applied'|'unknown'}):Promise<void>;
+  assertContent?(context:ToolContext,content:Pick<GitPublicationPreview,'baseHeadSha'|'headSha'|'treeSha'|'fingerprint'>):Promise<void>;
 }
 export interface GitToolsOptions {
   repository: string;
@@ -47,3 +48,5 @@ export interface GitCommitInput {repository: string; expectedHeadSha: string; pa
 export interface GitCommitResult {headSha: string; parentSha: string; branch: string}
 export interface GitPushInput {repository: string; expectedHeadSha: string;publication?:GitPublicationBinding}
 export interface GitPushResult {headSha: string; pushed: true}
+export interface GitPublicationPreviewInput {baseHeadSha:string;expectedHeadSha:string;paths:readonly string[];stage:'commit'|'published'}
+export interface GitPublicationPreview {baseHeadSha:string;headSha:string;treeSha:string;fingerprint:string;paths:readonly string[];diff:string;diffDigest:string}

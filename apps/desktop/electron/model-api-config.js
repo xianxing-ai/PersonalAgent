@@ -1,6 +1,7 @@
 import {existsSync, mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {DEFAULT_CONTEXT_OUTPUT_TOKENS,DEFAULT_CONTEXT_POLICY,DEFAULT_HARNESS_STEPS,validateHarnessConfiguration} from './harness-configuration.js';
 
 const providers = new Set(['pangu', 'openai-compatible']);
@@ -63,7 +64,8 @@ function publicRequestBudget(value, binding, configurationRef) {
 export function createModelApiConfig({userData, safeStorage, createGateway, createGuardedGateway,
   fetchImpl=globalThis.fetch, isDefaultExecutionAvailable, profile = 'huawei_ict_agentarts'}) {
   const target = path.join(userData, 'model-api-config.json');
-  let entries = new Map(), defaultId, restoreFailed = false, disposed = false;
+  let entries = new Map(), defaultId, restoreFailed = false, disposed = false, egressHost;
+  const sends=new AsyncLocalStorage();
   let harness={version:1,revision:'unconfigured',enabled:false,context:{enabled:false},events:{enabled:false,quiet:false}};
   const gateways = new Map();
   const controllers = new Map();
@@ -166,12 +168,19 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
       model: entry.model, deployment: `${entry.id}@${entry.bindingId}`,
       ...(entry.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(entry.nativeReasoning)}),
       apiKey: () => {assertCurrent(); return entry.apiKey;},
-      ...(beforeSend===undefined?{}:{fetch:(...args)=>{
+      fetch:async(url,init)=>{
         assertCurrent();
-        const guarded=beforeSend();
+        const host=egressHost,request=sends.getStore();
+        if(!host||!request)throw Object.assign(Error('模型本机出机门禁尚未装配'),{code:'UNSUPPORTED_CAPABILITY'});
+        const destination=url instanceof URL?url.href:url;
+        const lease=await host.prepare({...request,destination,payload:init?.body,
+          isCurrent:()=>{assertCurrent();return egressHost===host&&!request.signal.aborted;}});
+        assertCurrent();
+        const guarded=beforeSend?.();
         if(guarded!==undefined){void Promise.resolve(guarded).catch(()=>undefined);fail('模型发送门禁必须同步完成');}
-        return fetchImpl(...args);
-      }})});
+        lease.assertBeforeSend({destination,payload:init?.body});
+        return fetchImpl(url,init);
+      }});
     if (!modelGateway || typeof modelGateway.complete !== 'function') fail('受信模型网关不可用');
     let latestRequest = 0;
     const gateway = {deployment: modelGateway.deployment, async complete(request) {
@@ -189,7 +198,8 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
       request.signal.addEventListener('abort', abort, {once: true});
       if (request.signal.aborted) abort();
       try {
-        const result = await modelGateway.complete({...request, signal: controller.signal});
+        const result = await sends.run({requestId:randomUUID(),deadline:request.deadline,signal:controller.signal},
+          ()=>modelGateway.complete({...request, signal: controller.signal}));
         assertCurrent();
         if (sequence === latestRequest && !controller.signal.aborted) requestBudgets.set(id,publicRequestBudget(result.requestBudget,
           modelGateway.deployment?.capabilities?.requestTokenBudget,entry.bindingId));
@@ -216,6 +226,7 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
     return entry?buildGateway(entry,createGuardedGateway,beforeSend):undefined;
   }
   return Object.freeze({
+    setEgressHost(host){if(typeof host?.prepare!=='function')fail('模型本机出机门禁不可用');egressHost=host;},
     snapshot, getModelGateway, getGuardedModelGateway, getModelReasoningEfforts, getModelReasoningState,
     readHarnessConfiguration(){active();return structuredClone(harness);},
     configureHarness(input){

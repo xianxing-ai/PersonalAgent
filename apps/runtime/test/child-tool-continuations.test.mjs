@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
@@ -23,7 +25,7 @@ test('opted-in ordinary user tasks retain their original directory both within a
   for(const optIn of [false,true])for(const needsApproval of [false,true])await t.test(`goal=${optIn}; approval=${needsApproval}`,async()=>{
     const requests=[],executions=[];
     const tools=[first,second].map(tool=>({descriptor:tool,execute:async args=>{executions.push(tool.name);return {value:args.value};}}));
-    const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'ordinary-continuation',
+    const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'ordinary-continuation',
       responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',...(optIn?{continuationContext:'goal'}:{}),
       tools,competitionMaxSteps:4,authorizationProvider:{read:async()=> 'Bearer synthetic'},
       automaticTools:(needsApproval?[second]:[first,second]).map(tool=>({toolName:tool.name,toolVersion:tool.version})),
@@ -77,7 +79,7 @@ async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBefo
     assert.match(query.continuation.proposalId,/^required-delegation-/u);
     return rootTool?proposal('forbidden-root-tool',second):text('Synthetic main conversation summarized the original child');
   }
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-child',
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-child',
     ...(environment?{coordinationInput:{beforeCoordinationSend(){},readRequestContext:()=>'{"environment":true}'}}:{}),
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',...(optIn?{continuationContext:'goal'}:{}),
     ...(newTasks?{enableNewTaskToolContinuations:true}:{}),
@@ -99,7 +101,7 @@ async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBefo
       websocketAuthorizationProvider:{read:async()=> 'Bearer synthetic-inner'},websocketFactory:()=>{
         const socket=new SyntheticWebSocket((frame,connection)=>{
           if(frame.type==='cancel')return;
-          assert.equal(frame.type,'invoke');connection.accepted(frame);connection.result(frame,JSON.stringify(answer(JSON.parse(frame.payload.query))));
+          assert.equal(frame.type,'invoke');connection.accepted(frame);connection.result(frame,syntheticAgentArtsResult(frame.payload,answer(JSON.parse(syntheticAgentArtsQuery(frame.payload)))));
         });sockets.push(socket);return socket;
       }}:{}),
     fetchImpl:async(_url,init)=>{assert.equal(transport,'https','WSS does not silently fall back');

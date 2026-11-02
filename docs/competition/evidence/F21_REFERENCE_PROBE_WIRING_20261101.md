@@ -11,3 +11,11 @@
 MCP/Runtime 构建、架构 3/3 通过。`node --test apps/desktop/test/f21-workflow-worker.test.mjs` 1/1 通过：五节点全链、精确原生启用决定、未知探测后 SQLite 重开及新图零重放。该项使用真实 Engine/Runtime/Policy/SQLite/AuthorizationIntent，模型、原生点击、参考连接与 native 执行为显式 Fixture；与上述真实本机协议检查分开。真实 AgentArts 固定部署整图、真人启用确认与第三方 Skill/MCP 能力未验证，不提升 F21 完成或 frozen。
 
 Main 注入：`createConfiguredDesktopF21WorkflowPorts({runtimeModule,mcpModule,codingModule,getApplication,getReferenceHost,nativeExecutionHost,getAuthorizationIntentHost,probeRoot,authorizeExport})` 返回 `tools/configuredWorkflowWorkerPorts/unavailable`；原 worker `workflow.skills.enable_reference@1.0.0` 仅接受 `{capability:'workspace-reference'}`。`probeRoot` 为专用公共样本目录，命令只允许原只读 profile。已注册但关闭的 MCP 由原注册表核对，不要求先启用才进入图。原生确认绑定原图、原 probe 审计与当前 manifest/配置；正文读取和出机仍独立授权。
+
+## Windows CI 的 PSEC 不可用记录（2026-11-02）
+
+提交 `1041c44c` 的 [Windows CI job 125106033220](https://github.com/xianxing-ai/PersonalAgent/actions/runs/41392233967/job/125106033220) 中，F21 原生检查返回 `native-create-environment:-2146233052`、`enforced=false`、`executionStarted=false`，测试失败。同轮既有 coding-tools 和 Desktop 实机探针的普通进程 baseline 成功，PSEC 三种模式均明确不可用；这是该 runner 的能力缺项，不是 F21 隔离通过。
+
+F21 测试现复用已有 `verifyWindowsNativeSandbox` / `unsupportedPsec`：只有真实 baseline 成功、三种 PSEC 模式均返回既有明确不可用原因时，非强制模式才记为 skip。`PA_TEST_NATIVE_SANDBOX_REQUIRED=1` 时缺 helper 或 PSEC 不可用仍失败；支持 PSEC 时保留原协议、越界读写拒绝及终止断言。生产权限和执行器没有修改。
+
+本轮最小检查：语法检查通过；既有不可用回执分类测试 1/1 通过；强制模式缺 helper 明确失败。未重复运行整仓测试或本机 PSEC 验收；修复后的远程 CI 待当前提交执行。前述真实本机记录保留，不能替代当前 runner 或 AgentArts 整图验收。

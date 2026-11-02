@@ -27,7 +27,7 @@ export interface RuntimeConfiguredWorkflowOptions {
   publicEnumPaths:readonly string[];
   requiredTools:readonly {name:string;version:string}[];
   sideEffect:ToolDescriptor['sideEffect'];
-  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>;receiptSecret(signal:AbortSignal):Promise<string>};
+  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>;receiptSecret(signal:AbortSignal):Promise<string>};
   available(scope:Scope):boolean|Promise<boolean>;
   resolveInput(arguments_:Record<string,unknown>,scope:Scope):Promise<unknown>;
   assertCurrent(scope:Scope):void;

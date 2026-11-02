@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -41,9 +42,9 @@ async function fixture(t,{unknown=false,deny=false,substitute=false,revokeDuring
     app=createRuntimeApplication({path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-f01',
       tools,proactiveWorkflows:true,delegateUserTasks:true,configuredWorkflowWorkers:[worker],coordinationBinding:'synthetic-f01-deployment',
       ...(models?{readDefaultExecutionModel:role=>models.readExecutionModel(role),resolveExecutionModel:selection=>models.resolveExecutionModel(selection)}:{}),
-      coordination:{execute:async request=>app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation
+      coordination:{execute:syntheticCoordinationExecution(async request=>app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation
         ?{kind:'text',text:'Synthetic result',verification:'mock'}
-        :{kind:'tool_proposal',proposalId:'selected-f01',toolName:worker.toolName,toolVersion:'1.0.0',arguments:{case:'selected'},verification:'unverified'}},
+        :{kind:'tool_proposal',proposalId:'selected-f01',toolName:worker.toolName,toolVersion:'1.0.0',arguments:{case:'selected'},verification:'unverified'})},
       competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
         publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
       competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic',accepts:()=>true,project:({result})=>result}))});

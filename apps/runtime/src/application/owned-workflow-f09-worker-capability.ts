@@ -25,7 +25,7 @@ interface Binding {version:1;taskId:string;deadline:string;revision:number;bindi
 /** Source authorization must consume the original exact feed receipt and current destination lease.
  * Receipt export is separately authorized for each exact result, including derived N02 content. */
 export interface RuntimeF09WorkflowWorkerOptions {
-  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>;receiptSecret(signal:AbortSignal):Promise<string>};
+  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>;receiptSecret(signal:AbortSignal):Promise<string>};
   available(scope:Scope):boolean|Promise<boolean>;
   resolveInput(inputRef:string,scope:Scope):Promise<RuntimeF09Input|undefined>;
   assertCurrent(scope:Scope):void;

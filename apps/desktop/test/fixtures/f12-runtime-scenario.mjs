@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
 import path from 'node:path';
@@ -58,12 +59,12 @@ export async function scenario(t,options={}){
   app=runtimeModule.createRuntimeApplication({path:path.join(userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'f12',proactiveWorkflows:!!options.returning,
     coordinationBinding:'fixture-deployment',tools,configuredWorkflowWorkers:[{...worker,image:{bindingId:'fixture-f12-image',receiptSecret:async()=>secret,
       advance:async request=>{const result=await engine.advance(request);proposals.push(...result.proposals);return result;}}}],
-    coordination:{execute:async request=>{cloud.push(request);
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
       if(options.nativeReturn&&request.continuation===undefined)throw Error('Native F12 must select its original graph before cloud summary');
       if(options.nativeFinalTool&&request.continuation)return {kind:'tool_proposal',proposalId:'replacement',toolName:worker.toolName,
         toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};
       if(app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation)return {kind:'text',text:'Fixture result',verification:'unverified'};
-      return {kind:'tool_proposal',proposalId:'original-f12',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};}},
+      return {kind:'tool_proposal',proposalId:'original-f12',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};})},
     requiresToolAuthorization:()=>true,requestToolAuthorization:async scope=>{
       await prepareWorkflowHostPreflight({application:app,scope,prepareExport:async()=>{}});
       prepareConfiguredWorkflowDecisionQuestion({application:app,scope,question});host.prepareAuthorization(scope);

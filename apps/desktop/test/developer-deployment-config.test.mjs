@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chmodSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
@@ -208,9 +209,9 @@ test('Local/Synthetic repository context uses the original Runtime ToolGateway, 
   const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:deployment.host.tools,
     competitionToolAvailability:deployment.host.competitionToolAvailability,competitionToolExports:deployment.host.competitionToolExports,
     prepareCompetitionToolExport:deployment.prepareExport,automaticTools:[{toolName:tool.descriptor.name,toolVersion:tool.descriptor.version}],
-    coordination:{async execute(input){if(input.continuation){assert.deepEqual(input.continuation.result,{repository:'fixture/repo'});
+    coordination:{execute:syntheticCoordinationExecution(async (input)=>{if(input.continuation){assert.deepEqual(input.continuation.result,{repository:'fixture/repo'});
       return {kind:'text',text:'Synthetic configured repository readback',verification:'unverified'};}
-      return {kind:'tool_proposal',proposalId:'configured-repository',toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{},verification:'unverified'};}}});
+      return {kind:'tool_proposal',proposalId:'configured-repository',toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{},verification:'unverified'};})}});
   deployment.host.bind(app);t.after(async()=>{for(let i=0;i<200&&app.activeTaskCount;i++)await new Promise(resolve=>setTimeout(resolve,5));deployment.close();app.close();});
   const client=new Client(app,Date.now);await client.connect();
   const task=await client.call('task.submit',{goal:'Synthetic current repository',conversationId:'synthetic-deployment-ui'},{idempotencyKey:'repository-context-runtime'});
