@@ -204,6 +204,7 @@ export {
 export type {RemoteHostRecord, RemoteJobRequest, RemoteJobResult, RunnerSecretPort, RemoteRunnerTransport} from './application/remote-runner.js';
 export {
   ingestDeveloperDutyPoll, recordDeveloperDutyConclusions, queueDeveloperDutyNotification, commitDeveloperDutyStatusComment,
+  commitPullRequestDutyComment, dutyPullCommentBody, dutyPullCommentKey,
   developerDutyToolIntent, storeDeveloperDutyEvalSet, developerDutyCredential, developerDutyRemoteRunner, developerDutyPersonalView,
   developerDutyCiClass,
 } from './application/developer-duty.js';

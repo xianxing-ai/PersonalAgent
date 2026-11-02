@@ -3,7 +3,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool} from '@personal-agent/contracts';
 import {buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
 import type {TaskRuntime} from '../index.js';
-import {commitDeveloperDutyStatusComment, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
+import {commitDeveloperDutyStatusComment, commitPullRequestDutyComment, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
 
 export const DUTY_WATCH = 'duty.watch';
 export const DUTY_UNWATCH = 'duty.unwatch';
@@ -84,10 +84,25 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
       const bucket = Math.floor((options.now?.() ?? Date.now()) / 60_000);
       const digest = createHash('sha256').update(JSON.stringify([repo, cursor?.deliveryId ?? '', page.gap, page.connected, page.events.map(event => event.deliveryId)])).digest('hex').slice(0, 16);
       const statusComment = (page as {statusComment?: {number?: number; body?: string; existing?: unknown; writeState?: string}; reason?: string; evidenceLevel?: string}).statusComment;
+      const pullRequests = (page as {pullRequests?: Array<{number?: number; headSha?: string; ci?: string; conclusion?: string}>}).pullRequests;
       const evidenceLevel = (page as {evidenceLevel?: string}).evidenceLevel ?? 'fixture';
       const pageReason = (page as {reason?: string}).reason;
+      const blocked = page.gap || page.connected === false || (page as {rateLimited?: boolean}).rateLimited === true;
       const writeComment = async (via: 'remote' | 'local'): Promise<{wrote: boolean; reason?: string}> => {
-        if (!policy.comment || !statusComment?.body) return {wrote: false, reason: policy.comment ? 'no status comment' : 'comment is off'};
+        if (blocked) return {wrote: false, reason: (page as {rateLimited?: boolean}).rateLimited ? 'rate limited' : 'gap is not a comment'};
+        if (!policy.comment) return {wrote: false, reason: 'comment is off'};
+        if (Array.isArray(pullRequests)) {
+          let wrote = false;
+          for (const pull of pullRequests) {
+            if (typeof pull.number !== 'number' || !Number.isInteger(pull.number) || typeof pull.headSha !== 'string' || !/^[0-9a-f]{40}$/i.test(pull.headSha) || typeof pull.ci !== 'string' || typeof pull.conclusion !== 'string') continue;
+            const ports = await options.createComments?.({repo, number: pull.number}) ?? (via === 'local' ? comments : undefined);
+            if (!ports) return {wrote, reason: 'not connected'};
+            const result = await commitPullRequestDutyComment(runtime(), task.taskId, ports, {repo, number: pull.number, headSha: pull.headSha, ci: pull.ci, conclusion: pull.conclusion});
+            wrote = wrote || result.wrote;
+          }
+          return {wrote};
+        }
+        if (!statusComment?.body) return {wrote: false, reason: 'no status comment'};
         const ports = await options.createComments?.({repo, ...(Number.isInteger(statusComment.number) ? {number: statusComment.number} : {})}) ?? (via === 'local' ? comments : undefined);
         if (ports) {
           await commitDeveloperDutyStatusComment(runtime(), task.taskId, ports, statusComment.body);

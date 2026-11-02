@@ -88,12 +88,28 @@ export async function readGitHubDutyPage({repo, cursor, readCredential, fetchImp
     }
   }
   const newest = events.at(-1)?.deliveryId ?? cursor?.deliveryId;
-  const number = events.find(event => Number.isInteger(event.number))?.number;
-  const body = events.slice(0, 8).map(event => [event.type, event.number, event.action, event.headSha].filter(Boolean).join(' ')).join('\n');
-  return {repo, connected: true, gap: false, events, previousDeliveryId: cursor?.deliveryId,
+  const pullRequests = conclusionsForOpenPulls(pullsResponse.body, runsResponse.body?.workflow_runs);
+  return {repo, connected: true, gap: false, events, pullRequests, previousDeliveryId: cursor?.deliveryId,
     ...(newest ? {next: {repo, deliveryId: newest, ...(eventsResponse.etag ? {etag: eventsResponse.etag} : {})}} : {}),
-    ...(number && body ? {statusComment: {number, body}} : {}),
     evidenceLevel: 'read'};
+}
+
+/** One conclusion per open pull request, bound to that pull's head SHA. */
+export function conclusionsForOpenPulls(pulls, runs) {
+  const workflows = Array.isArray(runs) ? runs : [];
+  return (Array.isArray(pulls) ? pulls : [])
+    .filter(pull => Number.isInteger(pull?.number) && typeof pull.head?.sha === 'string' && /^[0-9a-f]{40}$/i.test(pull.head.sha))
+    .map(pull => {
+      const headSha = pull.head.sha;
+      const matching = workflows.filter(run => run?.head_sha === headSha);
+      const ci = matching.length === 0 ? 'none'
+        : matching.some(run => run.conclusion === 'failure') ? 'failure'
+          : matching.some(run => run.status === 'queued' || run.status === 'in_progress' || run.status === 'waiting' || run.conclusion == null) ? 'pending'
+            : matching.every(run => run.conclusion === 'success') ? 'success'
+              : String(matching[0].conclusion || 'unknown');
+      return {number: pull.number, headSha, ci, conclusion: `CI ${ci} at ${headSha}`};
+    })
+    .sort((left, right) => left.number - right.number);
 }
 
 /** Idempotent marker comment. The token stays in this closure and is not returned. */

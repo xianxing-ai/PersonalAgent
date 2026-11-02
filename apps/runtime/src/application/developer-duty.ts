@@ -73,6 +73,27 @@ export function queueDeveloperDutyNotification(runtime: TaskRuntime, taskId: str
   return {channel: 'f12' as const, delivered: false, duplicate: false, summary, dedupeKey};
 }
 
+export function dutyPullCommentKey(repo: string, number: number) {return `developer-duty-pr-comment:v1:${repo}#${number}`;}
+
+/** Stable body. The marker is added by the existing comment planner. */
+export function dutyPullCommentBody(input: {repo: string; number: number; headSha: string; ci: string; conclusion: string}) {
+  return [`repo: ${input.repo}`, `pull: ${input.number}`, `head: ${input.headSha}`, `ci: ${input.ci}`, `conclusion: ${input.conclusion}`].join('\n');
+}
+
+/** One comment per repository and pull request. An unchanged head, conclusion and CI state is not written again. */
+export async function commitPullRequestDutyComment(runtime: TaskRuntime, taskId: string, ports: DeveloperDutyPorts, input: {repo: string; number: number; headSha: string; ci: string; conclusion: string}): Promise<{wrote: boolean; attempt?: StatusCommentAttempt}> {
+  const key = dutyPullCommentKey(input.repo, input.number);
+  const saved = runtime.loadCheckpoint(taskId, key) as {headSha?: string; ci?: string; conclusion?: string; attempt?: StatusCommentAttempt} | undefined;
+  if (saved?.headSha === input.headSha && saved.ci === input.ci && saved.conclusion === input.conclusion && saved.attempt?.outcome === 'confirmed') {
+    return {wrote: false, attempt: saved.attempt};
+  }
+  const attempt = await executeStatusComment(ports, dutyPullCommentBody(input), saved?.attempt);
+  runtime.saveCheckpoint(taskId, key, {repo: input.repo, number: input.number, headSha: input.headSha, ci: input.ci, conclusion: input.conclusion, attempt});
+  recordDeveloperDutyConclusions(runtime, taskId, {repo: input.repo, number: input.number, headSha: input.headSha, conclusion: input.conclusion});
+  if (attempt.outcome === 'unknown') throw new ProtocolError('RESULT_UNKNOWN', 'Duty status comment must be read back before another write');
+  return {wrote: saved?.attempt?.body !== attempt.body || saved?.attempt?.outcome !== 'confirmed', attempt};
+}
+
 /** F24 rule: unknown comment writes are read back and never posted again. */
 export async function commitDeveloperDutyStatusComment(runtime: TaskRuntime, taskId: string, ports: DeveloperDutyPorts, desiredBody: string): Promise<StatusCommentAttempt> {
   const previous = runtime.loadCheckpoint(taskId, COMMENT) as StatusCommentAttempt | undefined;

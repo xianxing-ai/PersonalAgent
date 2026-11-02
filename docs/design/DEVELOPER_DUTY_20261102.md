@@ -26,7 +26,7 @@
 
 主进程的 `readPage` 使用开发设置里已经保存的 GitHub 令牌（`developerSettings.readGitHubToken`），请求该仓库的事件、打开的 PR 和最近的 Actions。令牌不进入日志、检查点或工具结果。没有令牌时结果是 `not connected`，不是一条静默的 Fixture。任何请求失败或限流都是缺口：`noChange` 为 false，游标不前进。304 且没有新的 PR 或 workflow 才是没有变化。
 
-状态评论只有在该仓库策略把 `comment` 打开后才会写。默认关闭。合并始终拒绝。写入使用同一令牌，先读回带 `<!-- personal-agent:duty-status -->` 的评论，再创建或就地修改。没有令牌时不写，并说明未连接。`duty.personal.list` 读 `/user` 的真实登录名；没有令牌时同样是 `not connected`。测试用注入的 fetch，不代表真实 GitHub 账号已经验收。有已启用的健康主机时，轮询页仍可交给远端执行器，但令牌留在本机。
+状态评论按每个打开的 PR 各写一条，检查点键是 `仓库#PR号`。评论正文带标记、PR 号、计算结论时的 head SHA、CI 状态和结论。head、结论和 CI 都没变时不再创建或修改。写入前先读回该 PR 上的标记评论。默认关闭。合并始终拒绝。缺口或限流不写。没有令牌时不写，并说明未连接。`duty.personal.list` 读 `/user` 的真实登录名；没有令牌时同样是 `not connected`。测试用注入的 fetch，不代表真实 GitHub 账号已经验收。有已启用的健康主机时，轮询页仍可交给远端执行器，但令牌留在本机。
 
 ## Stub
 
