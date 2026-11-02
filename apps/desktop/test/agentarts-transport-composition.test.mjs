@@ -6,6 +6,7 @@ import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/application';
 import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
 import {createAgentArtsTransportConfig, agentArtsTransportNotice} from '../electron/agentarts-transport-config.js';
+import {syntheticAgentArtsOptions,syntheticPublicPayloadGate,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 
 const source = await readFile(new URL('../electron/main.js', import.meta.url), 'utf8');
 const ast = ts.createSourceFile('main.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -43,7 +44,8 @@ function desktopOptions(environment = {}, previousNotice = '',configuration = {}
     readAuthorization:()=> 'Bearer synthetic-outer-no-real-credential',
     transportConfig(binding){return createAgentArtsTransportConfig({binding,environment,
       transportPreferences:this.readTransportPreferences(),configurationProvider:{read:()=>this.readTransportOptions(binding)},
-      ...(fetchImpl?{fetchImpl}:{})});},...configuration};
+      preparePayload:syntheticPublicPayloadGate,
+      fetchImpl:syntheticAgentArtsOptions({fetchImpl:fetchImpl??(async()=>{throw Error('No explicit Synthetic HTTP reply');})}).fetchImpl});},...configuration};
   const evaluate = new Function('cloudBinding','agentArtsTransportNotice','publish','previousNotice','agentArtsConfig',
     `let cloudTransportNotice = previousNotice; ${setup}\nconst options = {${transportProperties.map(property => property.getText(ast)).join(',\n')}}; return {options, notice: () => cloudTransportNotice};`);
   const result=evaluate(binding,agentArtsTransportNotice,()=>{published++;},previousNotice,agentArtsConfig);
@@ -68,8 +70,8 @@ for (const environment of [{}, {PA_AGENTARTS_TRANSPORT:'https'}]) {
     const desktop = desktopOptions(environment, 'Previous WSS failure');
     let fetches = 0;
     const app = createAgentArtsRuntimeApplication({...desktop.options, path:':memory:', authorizationProvider:outer,
-      fetchImpl:async () => {fetches++; return new Response(JSON.stringify(events('Synthetic HTTPS result')),
-        {headers:{'content-type':'application/json'}});}});
+      fetchImpl:syntheticAgentArtsOptions({fetchImpl:async () => {fetches++; return new Response(JSON.stringify(events('Synthetic HTTPS result')),
+        {headers:{'content-type':'application/json'}});}}).fetchImpl});
     try {
       assert.equal(desktop.options.onTransportState, undefined);
       assert.equal(desktop.notice(), '', 'A new binding clears its previous transport notice');
@@ -91,11 +93,12 @@ test('actual Desktop main closure feeds encrypted config token/version refresh i
   const calls=[];
   const config=createAgentArtsConfig({userData,environment:{},safeStorage:{isEncryptionAvailable:()=>true,
     encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()},
-    fetchImpl:async(url,init)=>{
+    fetchImpl:syntheticAgentArtsOptions({fetchImpl:async(url,init)=>{
       calls.push({url,headers:new Headers(init.headers),redirect:init.redirect});
       return new Response(JSON.stringify(events('Explicit offline fixture through actual Desktop main composition')),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}).fetchImpl});
+  config.setEgressHost({prepare:syntheticPublicPayloadGate});
   const destination={gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'synthetic'};
   const token='explicit-public-desktop-app-token-123456789';
   config.configure({...destination,authorization:'Bearer explicit-public-desktop-outer',appToken:token,deploymentVersion:'arm64-v4-e38ef23d-r2'});
@@ -144,7 +147,7 @@ test('actual Desktop main pins WSS and original Runtime rejects a changed deploy
   const app=createAgentArtsRuntimeApplication({...desktop.options,path:':memory:',authorizationProvider:outer,
     websocketFactory:(url,options)=>{
       connections.push({url,options});const socket=new SyntheticWebSocket((frame,socket)=>{
-        if(frame.type==='invoke'){socket.accepted(frame);socket.result(frame,'Pinned explicit offline WSS fixture');}
+        if(frame.type==='invoke'){socket.accepted(frame);socket.result(frame,syntheticAgentArtsResult(frame.payload,'Pinned explicit offline WSS fixture'));}
       });sockets.push(socket);return socket;
     }});
   try {
@@ -170,7 +173,7 @@ test('actual Desktop WSS callback projects fixed notices and the real factory co
   assert.equal(desktop.published(),1);
   const app = createAgentArtsRuntimeApplication({...desktop.options,path:':memory:',authorizationProvider:outer,
     websocketFactory:() => new SyntheticWebSocket((frame,socket) => {
-      if (frame.type === 'invoke') {socket.accepted(frame);socket.result(frame,'Synthetic WSS result');}
+      if (frame.type === 'invoke') {socket.accepted(frame);socket.result(frame,syntheticAgentArtsResult(frame.payload,'Synthetic WSS result'));}
     }),fetchImpl:async () => {throw Error('Unexpected HTTPS fallback');}});
   try {assert.equal((await runTask(app)).state,'succeeded');} finally {app.close();}
 });
