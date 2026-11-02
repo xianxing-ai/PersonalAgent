@@ -40,6 +40,12 @@ F19 第一段首轮两例在原 F15_N05 报 `ENOENT`，日志 `.cache/integratio
 
 远端另 4 个原生 bundle/旧模拟进程测试由 native 工作包修复中。最新代码还需完整 check 和新提交 CI。
 
+## 2026-11-02 合并前修复（070d9bb0 / d6bb3464）
+
+当前 `3de583b2` 的 Windows job `125209479981` 共 16 项失败，集中于 8 个 Desktop 测试文件；Linux image CI 通过。原 Fake DOM、Main 上下文和 Windows canonical path 夹具已修正。F19 共用 F15 夹具的 60 秒预算不足以完成发布、回归和关闭读回；现在 F19 在提交时一次给出 120 秒绝对测试期限，沿原 deadline 传递，不续期、不改变生产期限或拒绝断言。此前成功用例不重复跑，仅复验原未通过的 changed close response readback 磁盘恢复用例，1/1 通过（46.212 秒）。语法与 diff 检查通过；没有引入 #535 的新内容确认或世代接口。
+
+已合并 main `855a90c4`。唯一 F08 设计冲突同时保留原来源约束与完整内容确认要求；使用本树原锁独立安装并运行设计查看器构建、离线导出和检查，28 个功能、185 个节点、148 条关系、0 外部资源标签。新 head 必需 CI 待远端结果，独立批准和真实云、设备、关机持续运行验收仍未完成，不据本次夹具通过合并 PR。
+
 ## Windows CI fa4fc200
 
 [Foundation run 41281897096](https://github.com/xianxing-ai/PersonalAgent/actions/runs/41281897096) 的 Windows job `124775388732` 于 07:18:04 UTC 完成检查并失败，Linux image 通过。先前子任务、退出和原生修复的对应工作区已通过；Windows 本轮仅 1 个 integration 用例失败：`wiki-write-recovery.test.mjs` 在成功写入并恢复后又向 `revalidateSource` 传入写入前的 `expectedSha256`，收到“原写入来源已变化，不能归因于该操作”。这是新的精确来源门禁正确拒绝旧参数。
