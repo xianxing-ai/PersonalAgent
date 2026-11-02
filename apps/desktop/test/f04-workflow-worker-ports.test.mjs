@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {realpathSync} from 'node:fs';
 import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -12,7 +13,7 @@ import {createKnowledgeSourceConfig} from '../electron/knowledge-source-config.j
 
 // Actual source configuration and files. Native selection and safe storage are Synthetic.
 test('Desktop F04 uses only the selected original public note scope and current source revision',async()=>{
-  const directory=await mkdtemp(join(tmpdir(),'pa-f04-desktop-')),vault=join(directory,'vault');await mkdir(vault);
+  const directory=realpathSync.native(await mkdtemp(join(tmpdir(),'pa-f04-desktop-'))),vault=join(directory,'vault');await mkdir(vault);
   const note=join(vault,'note.md');await writeFile(note,'Synthetic original public line.\n');
   const source=await createKnowledgeSourceConfig({userData:join(directory,'host'),namespace:'synthetic-source',hostIdentity:randomUUID(),
     safeStorage:{isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from('synthetic:'+value),decryptString:value=>value.toString().slice(10)},

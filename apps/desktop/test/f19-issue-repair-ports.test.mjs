@@ -34,6 +34,7 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
   regression=false,unmerged=false,wrongCheckout=false,changedChecker=false,regressionFails=false,unknownRegression=false,
   denyRegression=false,cancelRegression=false,fullClose=false,denyClose=false,unknownClose=false,changedCloseIssue=false,postCloseChanged=false,
   configuredAdapter=false,invalidateConfiguration}={}) {
+  const closeRestart=unknownClose||postCloseChanged;
   let app,ports,developerHost,revoked=false,closedEvidence,dispatchApprovals=0,nativeSelection=selection,remoteHead,pushes=0,presence=0;
   const requests=[],exports=[],nodes=[],failures=[];
   let native,regressionOptions,prepareMergedCheckout,nativeExecutions=0,regressionApprovals=0,mergeReady=false,issueClosed=false,closeApprovals=0,issueConfiguration,configurationChanged=false;
@@ -59,7 +60,9 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
         canonicalIssueId:19,isDuplicate:false,triageCategory:'bug'}},
       {id:'review',description:'Defer unsupported issue',value:null,abstain:true}];}});
   const image={bindingId:'synthetic-f19-engine',advance:request=>engine.advance(request),receiptSecret:async()=>secret};
-  const report=await runCodingRepairFullGraphFixture({fakeModel:true,targetPath:'feature.cjs',firstAttemptSuccess:configuredAdapter&&!invalidateConfiguration,
+  // Close/restart cases exercise F19 no-replay; F15's failed first repair has separate coverage.
+  // Set the complete F19 chain's original fixture deadline once; the F15-only default remains 60 seconds.
+  const report=await runCodingRepairFullGraphFixture({fakeModel:true,deadline:new Date(Date.now()+120_000).toISOString(),targetPath:'feature.cjs',firstAttemptSuccess:configuredAdapter&&!invalidateConfiguration||closeRestart,
     artifactRoot:'.cache/f19-original-repair',createApplication(config){
       const runner={async run(request){
         const endpoint=request.args[5];requests.push({endpoint,method:request.args[4]});let result;
@@ -178,7 +181,9 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
         catch(error){failures.push({tool:tool.descriptor.name,message:error.message,stack:error.stack});throw error;}}}));
       const tools=[...config.tools,...hostTools,...observed,...missing,r.createDesktopSubagentDispatchTool({competitionOnly:true,
         getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scope)=>app.runDefaultSubagentWorker(task,worker,scope)})];
-      app=r.createRuntimeApplication({...config,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,...(fullClose?{}:{available:()=>true})})),
+      // Only these non-restart cases avoid Windows FULL-sync disk flushes; all restart/no-replay
+      // cases retain their original disk SQLite, alongside the real files/Git/Node operations.
+      app=r.createRuntimeApplication({...config,path:configuredAdapter||changedCloseIssue?':memory:':config.path,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,...(fullClose?{}:{available:()=>true})})),
         automaticTools:config.automaticTools.filter(tool=>tool.toolName!=='coding.repair.workflow'),
         requestToolAuthorization:async scope=>{
           const closeProof=ports.prepareCloseQuestion?.(scope,{prepare(_scope,fence){assert.equal(fence.assertCurrent(),true);}});

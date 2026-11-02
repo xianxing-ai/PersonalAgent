@@ -36,6 +36,6 @@ test('actual Main gives F05 and business hosts precedence over duplicate optiona
   f05.push(tool('workflow.guard.f05_n04'),tool('workflow.guard.f05_n06'));
   const business=tool('workflow.host.f08_n09'),other=tool('workflow.host.unrelated');
   const result=runInNewContext(source.slice(begin,end)+'\ngenericWorkflowTools;',{
-    f01Workflow:undefined,f04Workflow:undefined,f05Workflow:{tools:f05},businessWorkflow:{tools:[business]},workflowGraphComposition:{tools:[...f05,business,other]}});
+    syntheticMvp:true,f01Workflow:undefined,f03Workflow:undefined,f04Workflow:undefined,f05Workflow:{tools:f05},businessWorkflow:{tools:[business]},workflowGraphComposition:{tools:[...f05,business,other]}});
   assert.deepEqual([...result],[other]);
 });

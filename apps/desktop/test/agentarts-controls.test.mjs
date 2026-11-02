@@ -30,7 +30,7 @@ function harness(t,invoke) {
       '[data-main]':mainRows,'[data-shadow]':shadowRows,'[data-evaluation-release]':evaluationRelease}[selector])};
   form.contains=target=>[...Object.values(fields),submit,revoke,restore].includes(target);
   const body={},documentListeners=new Map();
-  globalThis.document={body,activeElement:body,createElement:()=>section,
+  globalThis.document={body,activeElement:body,createElement:tag=>tag==='section'?section:{...node(),querySelector:section.querySelector},
     addEventListener:(name,listener)=>documentListeners.set(name,listener),
     removeEventListener:(name,listener)=>{if(documentListeners.get(name)===listener)documentListeners.delete(name);}};
   const controls=mountAgentArtsControls({append(){}},invoke);
