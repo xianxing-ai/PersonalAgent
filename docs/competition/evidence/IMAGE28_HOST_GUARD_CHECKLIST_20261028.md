@@ -258,5 +258,7 @@ F20 无 host / guard 要求（0 / 0）；这不代表可信输入、调用入口
 - [ ] `developer-duty.personal-view` — 指派给我、等我审查、我的失败 PR
 - [ ] `developer-duty.rate-limit` — 限流与未知分支保护时拒绝当作成功或允许强推
 - [ ] `developer-duty.eval-set` — 历史失败可生成 F23 fixture 评估集
-- [ ] `developer-duty.remote-runner` — 仅为 stub，本机关机后不会继续值班
+- [ ] `developer-duty.remote-runner` — 未配置时的 `developerDutyRemoteRunner()` 仍是 stub；已确认主机走真实协议。真机验收另列在下面
+- [ ] `remote-runner.real-server` — 在真实华为云 ECS 或 VPS 上完成安装、主机密钥指纹校验、心跳、值班游标和状态评论回同步。本次只做了回环假主机和本机进程，没有真机验收
+- [ ] `remote-runner.real-github` — 远端执行器使用真实 GitHub 账号轮询并更新一条状态评论，且本地重新上线后不重复发帖。本次没有真实账号
 

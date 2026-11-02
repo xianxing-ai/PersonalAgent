@@ -23,4 +23,4 @@
 
 ## Stub
 
-`createStubRemoteDutyRunner` 是远端值班适配器的占位。`implementation` 为 `stub`，`submit` 固定拒绝，`runsWhenLocalMachineOff` 为 false。本机 Windows 关机后，值班不会继续。这里没有真实云端进程、队列或账号。
+`developerDutyRemoteRunner()` 不传参数时仍返回 `createStubRemoteDutyRunner`。已确认的自备服务器走 `createRemoteRunnerService`，说明见 [远端执行器](REMOTE_RUNNER_20261102.md)。真机验收还没有做。

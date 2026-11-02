@@ -6,6 +6,7 @@ import {readComputerVisionDiagnostic} from './computer-vision-controls.js';
 import {mountSubagentConversationPage} from '../features/conversation/subagent-conversations.js';
 import {mountSubagentCompletionNotice} from '../features/conversation/subagent-completion-notice.js';
 import {mountBackgroundTasks} from '../features/conversation/background-tasks.js';
+import {mountRemoteRunners} from '../features/conversation/remote-runners.js';
 import {mountSubagentConversationList} from '../features/conversation/subagent-conversation-list.js';
 import {mountModelThinkingPicker} from '../features/conversation/model-thinking-picker.js';
 import {mountInputPin} from './input-pin.js';
@@ -168,7 +169,10 @@ else {
   };
   const subagents=mountSubagentCompletionNotice(thread,invoke);
   const backgroundTasks=mountBackgroundTasks(thread,invoke);
-  window.addEventListener('unload',()=>{subagents.dispose();backgroundTasks.dispose();},{once:true});
+  window.addEventListener('unload',()=>subagents.dispose(),{once:true});
+  window.addEventListener('unload',()=>backgroundTasks.dispose(),{once:true});
+  const remoteRunners=mountRemoteRunners(thread,invoke);
+  window.addEventListener('unload',()=>remoteRunners.dispose(),{once:true});
   // Keep the current status outside history: a long old message must not hide
   // a pending presence request while the task appears to be doing nothing.
   const updateProgress=mountTaskProgress(thread.parentElement,thread,taskId=>invoke('computer.control.confirm',{taskId}));
@@ -498,6 +502,7 @@ else {
   render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
     subagents.update(data.subagentTasks??[]);
     void backgroundTasks.refresh();
+    void remoteRunners.refresh();
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);

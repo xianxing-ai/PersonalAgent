@@ -491,6 +491,7 @@ let f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
 let workflowGraphComposition={tools:[],unavailable:['not_assembled']};
 let todoHost;
 let asyncSubagentHost;
+let remoteRunnerHost;
 let todoFailure = '';
 let todoClosing;
 let todoClosed = false;
@@ -2801,8 +2802,13 @@ async function initializeRuntime() {
         ...(f01Workflow?.tools??[]),...(f21Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f28Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
         ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
         ...(notepadHost?.tools??[]),
-        ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(asyncSubagentTools??[]),
+        ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
+      conversationTools.push(...(asyncSubagentTools??[]));
+      const {createRemoteRunnerDesktopHost} = await import('./remote-runner-host.js');
+      remoteRunnerHost = createRemoteRunnerDesktopHost({runtimeModule, getRuntime:()=>runtimeApplication.runtime,
+        safeStorage, userData:app.getPath('userData')});
+      conversationTools.push(...remoteRunnerHost.tools);
       if(f16F17Workflow?.commandTool)conversationTools=conversationTools.map(tool=>
         tool.descriptor.name==='workspace.run_allowed_command'?f16F17Workflow.commandTool:tool);
       conversationTools.push(...(f16F17Workflow?.tools??[]));
@@ -3965,6 +3971,14 @@ async function action(event, name, payload) {
   if(name==='task.openSubagentConversation'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
     return openSubagentConversation(payload);
+  }
+  if(name==='runner.hosts.list'||name==='runner.hosts.test'||name==='runner.hosts.disable'||name==='runner.hosts.enable'){
+    if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话查看远端执行器');
+    if(!remoteRunnerHost)throw Error('远端执行器尚未装配');
+    if(name==='runner.hosts.list')return {hosts:remoteRunnerHost.service.list(), jobs:remoteRunnerHost.service.jobs()};
+    if(name==='runner.hosts.test')return remoteRunnerHost.service.test(payload?.id);
+    const drafted=remoteRunnerHost.service.propose(name==='runner.hosts.disable'?'disable':'enable', {id:payload?.id});
+    return remoteRunnerHost.service.confirm(drafted.proposalId, drafted.digest);
   }
   if(name==='asyncSubagents.list'||name==='asyncSubagents.instruct'||name==='asyncSubagents.stop'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话查看后台任务');

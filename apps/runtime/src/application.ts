@@ -196,6 +196,12 @@ export {
 } from './application/subagent-type-registry.js';
 export type {SubagentTypeDefinition, SubagentTypeRecord, SubagentTypeProposal, SubagentTypeRegistry} from './application/subagent-type-registry.js';
 export {
+  createRemoteRunnerService, createMemoryRunnerSecrets, createLoopbackRunnerTransport, localDutyFallback,
+  signRunnerJob, verifyRunnerJob, reconcileDutyCursor, redactRunnerText,
+  RUNNER_HOST_ADD, RUNNER_HOST_LIST, RUNNER_HOST_CONFIRM, RUNNER_HOST_TEST,
+} from './application/remote-runner.js';
+export type {RemoteHostRecord, RemoteJobRequest, RemoteJobResult, RunnerSecretPort, RemoteRunnerTransport} from './application/remote-runner.js';
+export {
   ingestDeveloperDutyPoll, recordDeveloperDutyConclusions, queueDeveloperDutyNotification, commitDeveloperDutyStatusComment,
   developerDutyToolIntent, storeDeveloperDutyEvalSet, developerDutyCredential, developerDutyRemoteRunner, developerDutyPersonalView,
   developerDutyCiClass,

@@ -216,13 +216,13 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
     }
     return sourceTools.invoke({...request, signal: childWorker.signal});
   }};
-  const computedSteps = subtask.thinkingDepth !== undefined ? Math.max(2, (subtask.thinkingDepth + 1) * 2) : 6;
-  const stepCap = childWorker.loadCheckpoint('async-subagent-step-cap:v1') as {maxSteps?: unknown} | undefined;
-  const maxSteps = stepCap && Number.isInteger(stepCap.maxSteps) && (stepCap.maxSteps as number) >= 1
-    && (stepCap.maxSteps as number) <= computedSteps ? stepCap.maxSteps as number : computedSteps;
+  const maxSteps = subtask.thinkingDepth !== undefined ? Math.max(2, (subtask.thinkingDepth + 1) * 2) : 6;
+  const asyncStepCap = childWorker.loadCheckpoint('async-subagent-step-cap:v1') as {maxSteps?: unknown} | undefined;
+  const boundedMaxSteps = asyncStepCap && Number.isInteger(asyncStepCap.maxSteps) && (asyncStepCap.maxSteps as number) >= 1
+    && (asyncStepCap.maxSteps as number) <= maxSteps ? asyncStepCap.maxSteps as number : maxSteps;
   if (kind === 'competition') {
     childWorker.saveCheckpoint('subtask-thinking-binding', {depth: subtask.thinkingDepth ?? null,
-      stepBudget: {maxSteps}, modelReasoning: {requestedEffort: null, effort: null, supported: false,
+      stepBudget: {maxSteps: boundedMaxSteps}, modelReasoning: {requestedEffort: null, effort: null, supported: false,
         verification: 'conditional', thinkingBudgetSupported: false, reason: 'Competition native reasoning is not declared'}});
     return options.runDefaultWorker!(subtask, childWorker, tools);
   }
@@ -257,7 +257,7 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
     && identity.nativeReasoning === undefined
     && options.getModelReasoningEfforts?.(subtask.model).includes(requestedEffort) ? requestedEffort : undefined;
   childWorker.saveCheckpoint('subtask-thinking-binding', {depth: subtask.thinkingDepth ?? null,
-    stepBudget: {maxSteps}, modelReasoning: {requestedEffort: identity.nativeReasoning === undefined
+    stepBudget: {maxSteps: boundedMaxSteps}, modelReasoning: {requestedEffort: identity.nativeReasoning === undefined
       ? requestedEffort ?? null : identity.nativeReasoning.effort ?? null,
       effort: identity.nativeReasoning?.effort ?? reasoningEffort ?? null,
       supported: identity.nativeReasoning !== undefined || reasoningEffort !== undefined,
@@ -267,20 +267,19 @@ async function runSubagentWorker(options: SubagentHostOptions, subtask: SubtaskD
       reason: identity.nativeReasoning !== undefined ? 'Version-bound native configuration is independent of the step budget'
         : reasoningEffort !== undefined ? 'Trusted host explicitly configured this reasoning_effort'
         : requestedEffort === undefined ? 'No native reasoning effort selected' : 'Selected effort is not configured for this model'}});
+  const rolePrompt: ModelMessage = {role: 'system',
+    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。`};
   const typePrompt = childWorker.loadCheckpoint('async-subagent-type:v1') as {instructions?: unknown; version?: unknown} | undefined;
   const typeInstructions = typePrompt && typeof typePrompt.instructions === 'string' ? typePrompt.instructions.trim() : '';
-  const rolePrompt: ModelMessage = {role: 'system',
-    content: `你是 PersonalAgent 专精执行单元，当前承担【${roleLabel}】(${subtask.role}) 职责。请保持极度专注、沉着与高效，以专业顾问的高标准独立推进并交付指派目标，给出扎实、准确的结论与依据，不冗余赘述。`
-      + (typeInstructions ? `\n\n自定义类型指示（version ${typeof typePrompt?.version === 'number' ? typePrompt.version : 0}）：\n${typeInstructions}` : '')};
+  if (typeInstructions) rolePrompt.content += `\n\n自定义类型指示（version ${typeof typePrompt?.version === 'number' ? typePrompt.version : 0}）：\n${typeInstructions}`;
   const followUp = childWorker.loadCheckpoint('async-subagent-control:v1') as {revision?: unknown; instructions?: unknown} | undefined;
   const appended = followUp && Array.isArray(followUp.instructions)
     ? followUp.instructions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : [];
-  const goal = appended.length === 0 ? subtask.goal
-    : `${subtask.goal}\n\n后续指示（revision ${typeof followUp?.revision === 'number' ? followUp.revision : 0}）：\n${appended.join('\n')}`;
-  const outcome = await runAgent(childWorker, {goal, initialMessages: [rolePrompt], model,
+  if (appended.length) rolePrompt.content += `\n\n后续指示（revision ${typeof followUp?.revision === 'number' ? followUp.revision : 0}）：\n${appended.join('\n')}`;
+  const outcome = await runAgent(childWorker, {goal: subtask.goal, initialMessages: [rolePrompt], model,
     tools,
-    maxSteps,
+    maxSteps: boundedMaxSteps,
     ...(reasoningEffort === undefined ? {} : {reasoningEffort}),
     onUnknownResult: () => {
       if (runtime.getTask(childWorker.taskId).state === 'running') runtime.transitionTask(childWorker.taskId, 'waiting_reconciliation');
@@ -769,7 +768,54 @@ export function desktopSubagentHostOptions(options: DesktopSubagentDispatchToolO
 }
 
 export function createDesktopSubagentDispatchTool(options: DesktopSubagentDispatchToolOptions): RegisteredTool {
-  return createRuntimeSubagentDispatchTool(desktopSubagentHostOptions(options));
+  const {getRuntime, getTools, fakeModelMode, modelConfig, modelRegistry, now, maxRecursionDepth} = options;
+  return createRuntimeSubagentDispatchTool({
+    ...(options.competitionOnly?{competitionOnly:true as const}:{}),
+    getRuntime,
+    getTools,
+    now,
+    maxRecursionDepth,
+    getModelReasoningEfforts: options.getModelReasoningEfforts,
+    runDefaultWorker: fakeModelMode ? undefined : options.runDefaultWorker,
+    getToolsForSubtask: options.getToolsForSubtask,
+    getModelConfigurationRef:options.getModelConfigurationRef,
+    getModelGateway: (modelName?: string) => {
+      if (fakeModelMode) {
+        return new ModelGateway(new FakeModelProvider(
+          Array.from({length: 16}, () => (req: ModelRequest) => ({
+            kind: 'final',
+            text: `[次级智能体 ${modelName || 'default'}] 完成分析与执行：${req.messages.at(-1)?.content || ''}`,
+          })),
+          {
+            provider: 'fake',
+            deployment: 'desktop-subagent-fake',
+            model: modelName || 'fake-subagent-model',
+            verification: 'mock',
+            capabilities: {text: true, streaming: false, toolCalling: true, structuredOutput: true, vision: false},
+          },
+        ));
+      }
+      if (modelRegistry) {
+        const requested = modelName?.trim() || 'default';
+        const factory = Object.hasOwn(modelRegistry, requested) ? modelRegistry[requested] : undefined;
+        return factory?.(requested);
+      }
+      if (options.getModelGateway) return options.getModelGateway(modelName);
+      if (modelConfig?.baseUrl && modelConfig?.apiKey && (modelName === 'pangu' || modelName === 'default' || !modelName)) {
+        const apiKey = modelConfig.apiKey;
+        const panguOptions: PanguModelProviderOptions = {
+          baseUrl: modelConfig.baseUrl,
+          model: modelConfig.model ?? 'default',
+          apiKey: () => apiKey,
+        };
+        if (modelConfig.deployment !== undefined) {
+          panguOptions.deployment = modelConfig.deployment;
+        }
+        return new ModelGateway(new StructuredToolProvider(new PanguModelProvider(panguOptions)));
+      }
+      return undefined;
+    },
+  });
 }
 
 /** Start one already-bound child outside the synchronous dispatch turn.
