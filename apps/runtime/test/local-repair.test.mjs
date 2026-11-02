@@ -10,6 +10,25 @@ import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createRuntimeApplication} from '../dist/application.js';
 
+test('repair preview validates the saved epoch before returning its unchanged candidate DTO',()=>{
+  const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',repairCandidateVersion:'1.0'});
+  try{
+    const runtime=app.runtime,task=runtime.submitTask({goal:'Synthetic repair source',conversationId:'synthetic',idempotencyKey:'repair-epoch'});
+    runtime.transitionTask(task.taskId,'planning');runtime.transitionTask(task.taskId,'running');
+    runtime.transitionTask(task.taskId,'verifying');runtime.transitionTask(task.taskId,'succeeded');
+    const candidate={kind:'repair_candidate',candidateVersion:'1.0',verification:'unverified',candidate:{expectedGraphRevision:0,
+      changes:[{node:{id:'plan',revision:1},summary:'Synthetic revised plan',reason:'Synthetic source update',dependencies:[]}]}};
+    runtime.saveCheckpoint(task.taskId,'competition-repair-candidate',{...candidate,executionEpoch:0});
+    assert.deepEqual(app.readRepairCandidate(task.taskId),candidate);
+    runtime.advanceExecutionEpoch(task.taskId,{requestId:'replan',reason:'replan'});
+    assert.throws(()=>app.readRepairCandidate(task.taskId),{code:'REVISION_CONFLICT'});
+    runtime.saveCheckpoint(task.taskId,'competition-repair-candidate',{...candidate,executionEpoch:1,untrusted:true});
+    assert.throws(()=>app.readRepairCandidate(task.taskId),{code:'INVALID_ARGUMENT'});
+    runtime.saveCheckpoint(task.taskId,'competition-repair-candidate',{...candidate,executionEpoch:1});
+    assert.deepEqual(app.readRepairCandidate(task.taskId),candidate);
+  }finally{app.close();}
+});
+
 const sourceArguments = {id: 'synthetic-meeting'};
 const sourceTool = {name: 'fixture.meeting', version: '1.0.0', arguments: sourceArguments};
 const sourceDescriptor = {

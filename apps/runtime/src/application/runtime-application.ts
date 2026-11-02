@@ -51,18 +51,18 @@ import type {HarnessEventOrigin} from './harness-event-delivery.js';
 import type {RuntimeHarnessExperienceOptions} from './harness-experience.js';
 import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
-import {TaskRuntime} from '../index.js';
+import {TaskRuntime,RuntimeError} from '../index.js';
 import type {WorkerContext,WorkerResult,SubmitTaskInput} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
 import type {QwenRealtimeModelGateway} from '@personal-agent/models';
-import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError, parseCoordinationRepairCandidate,parseCoordinationContinuation} from '@personal-agent/coordination';
-import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
+import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError,parseCoordinationContinuation} from '@personal-agent/coordination';
+import type {CoordinationPort, CoordinationRequest, CoordinationResult, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
 import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt} from './coordination.js';
-import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, readReviewedLocalRepairReceipt, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
+import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, readReviewedLocalRepairReceipt,readStoredRepairCandidate, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
 import type {LocalRepairHostOptions, SubmitLocalRepairRequest, ReviewedLocalRepairReceiptInput} from './local-repair.js';
 import {PLAN_EXECUTION_SOURCE,preparePlanExecutionSource,assertPlanExecutionFacts,
   readPlanExecutionIntent,planExecutionGoal,planExecutionCommandId} from './plan-execution-source.js';
@@ -131,7 +131,7 @@ import type {RuntimeMailReviewOptions,MailReviewEnvelope} from './mail-review-ta
 type SuccessfulResponse = Extract<Response, {outcome: 'ok'}>;
 interface ProactiveTeacherScope {
   taskId:string;runId:string;authorizationRef:string;checkpointKey:string;leaseKey:string;
-  argumentsDigest:string;goalDigest:string;deadline:string;signal:AbortSignal;
+  argumentsDigest:string;goalDigest:string;deadline:string;signal:AbortSignal;executionEpoch:number;
 }
 
 export interface RevokeHostAuthorizationRequest {
@@ -2085,8 +2085,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private assertTeacherScope(request:CoordinationRequest,scope:ProactiveTeacherScope):void {
+    this.runtime.assertExecutionEpoch(scope.taskId,scope.executionEpoch);
     if(this.teacherLeases.get(scope.leaseKey)!==scope||scope.signal.aborted||request.signal.aborted
       ||request.taskId!==scope.taskId||request.deadline!==scope.deadline
+      ||request.executionEpoch!==scope.executionEpoch
       ||request.textOnly!==true||request.availableTools!==undefined||request.continuation!==undefined)
       throw new ProtocolError('UNAUTHORIZED','Original proactive teacher lease is unavailable');
     const host=[...this.proactiveHosts.values()].find(value=>value.taskId===scope.taskId);
@@ -2115,7 +2117,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const matches=[...this.teacherLeases.values()].filter(scope=>{
       const current=this.ephemeralSends.get(scope.leaseKey);
       return current&&!current.signal.aborted&&current.taskId===request.taskId&&current.goal===request.goal
-        &&current.revision===request.revision&&current.deadline===request.deadline;
+        &&current.revision===request.revision&&current.deadline===request.deadline&&current.executionEpoch===request.executionEpoch;
     });
     if(matches.length>1)throw new ProtocolError('UNAUTHORIZED','Proactive teacher request copy is ambiguous');
     const scope=matches[0];if(scope)this.teacherRequestScopes.set(request,scope);return scope;
@@ -2125,7 +2127,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const scope=this.mailReviewSends.get(request.taskId);
     if(!scope||request.textOnly!==true||request.availableTools!==undefined||request.continuation!==undefined
       ||request.priorContinuations!==undefined||request.goal!==scope.request.goal||request.deadline!==scope.context.deadline
-      ||request.revision!==scope.request.revision||scope.context.signal.aborted)
+      ||request.revision!==scope.request.revision||request.executionEpoch!==scope.request.executionEpoch||scope.context.signal.aborted)
       throw new ProtocolError('UNAUTHORIZED','Original mail review send lease is unavailable');
     this.assertCompetitionTaskConfiguration(request.taskId);this.assertInputActive(request);
     const {context,envelope,options}=scope;
@@ -2142,10 +2144,25 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       throw new ProtocolError('UNAUTHORIZED','Mail review export guard must be synchronous');}
   }
 
+  private bindOperationCoordinationEpoch(request:CoordinationRequest,context:ToolContext):CoordinationRequest {
+    const executionEpoch=this.runtime.loadCheckpoint(context.taskId,'execution-epoch:run:'+context.runId) as number|undefined;
+    this.runtime.assertExecutionEpoch(context.taskId,executionEpoch!);
+    if(request.taskId!==context.taskId||request.executionEpoch!==undefined&&request.executionEpoch!==executionEpoch)
+      throw new ProtocolError('REVISION_CONFLICT','Original cloud operation execution epoch changed');
+    return Object.freeze({...request,executionEpoch:executionEpoch!});
+  }
+
+  private assertCoordinationResultEpoch(request:CoordinationRequest,result:CoordinationResult):void {
+    this.runtime.assertExecutionEpoch(request.taskId,request.executionEpoch!);
+    if(result.verification!=='mock'&&result.executionEpoch!==request.executionEpoch)
+      throw new ProtocolError('REVISION_CONFLICT','Cloud result belongs to a stale execution epoch');
+  }
+
   private async executeMailReview(options:RuntimeApplicationOptions,request:CoordinationRequest,context:ToolContext,envelope:MailReviewEnvelope) {
     if(this.profile!=='huawei_ict_agentarts'||!options.coordination||!options.mailReview)
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Mail review requires the original Competition coordinator');
     if(this.mailReviewSends.has(request.taskId))throw new ProtocolError('RESULT_UNKNOWN','Mail review is already active');
+    request=this.bindOperationCoordinationEpoch(request,context);
     this.assertCompetitionTaskConfiguration(request.taskId,true);
     const scope={request,context,envelope,options:options.mailReview};this.mailReviewSends.set(request.taskId,scope);
     try {
@@ -2159,10 +2176,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           throw new ProtocolError('REVISION_CONFLICT','Original mail review dispatch context changed');
       }
       const attempt={version:1,binding:envelope.binding,goalDigest:createHash('sha256').update(request.goal).digest('hex'),
-        deadline:context.deadline,configurationRef:this.coordinationBinding};
+        deadline:context.deadline,configurationRef:this.coordinationBinding,executionEpoch:request.executionEpoch};
       if(!this.runtime.saveCheckpointOnce(request.taskId,'mail-review-attempt:v1',attempt))
         throw new ProtocolError('RESULT_UNKNOWN','Original mail review attempt requires readback; it cannot be resent');
       const result=await options.coordination.execute(request);
+      this.assertCoordinationResultEpoch(request,result);
       this.assertMailReviewSend(request);return result;
     } catch(error) {
       this.runtime.saveCheckpoint(request.taskId,'competition-coordination-failure',coordinationFailureDiagnostic(error,false));
@@ -2185,23 +2203,25 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const host=[...this.proactiveHosts.values()].find(value=>value.taskId===context.taskId);
     const invocation=host?.inspect().session.state.operations[context.runId]?.invocation;
     if(!invocation)throw new ProtocolError('UNAUTHORIZED','Original proactive teacher operation unavailable');
+    request=this.bindOperationCoordinationEpoch(request,context);
     const suffix=createHash('sha256').update(context.runId).digest('hex');
     const scope:ProactiveTeacherScope={taskId:context.taskId,runId:context.runId,authorizationRef:context.authorizationRef,
       checkpointKey:COMPETITION_CONTEXT_CHECKPOINT+':proactive-teacher:'+suffix,
       leaseKey:JSON.stringify(['proactive-teacher',context.taskId,context.runId]),
       argumentsDigest:toolArgumentsDigest(invocation.arguments),goalDigest:createHash('sha256').update(request.goal).digest('hex'),
-      deadline:request.deadline,signal:context.signal};
+      deadline:request.deadline,signal:context.signal,executionEpoch:request.executionEpoch!};
     if(this.teacherLeases.has(scope.leaseKey))throw new ProtocolError('RESULT_UNKNOWN','Original proactive teacher exchange is already active');
     this.teacherLeases.set(scope.leaseKey,scope);this.teacherRequestScopes.set(request,scope);
     try {
       this.assertInputActive(request);this.assertTeacherScope(request,scope);
       const attemptKey=scope.checkpointKey+':attempt',attempt={version:1,runId:scope.runId,argumentsDigest:scope.argumentsDigest,
-        goalDigest:scope.goalDigest,deadline:scope.deadline,configurationRef:this.coordinationBinding};
+        goalDigest:scope.goalDigest,deadline:scope.deadline,configurationRef:this.coordinationBinding,executionEpoch:scope.executionEpoch};
       const prior=this.runtime.loadCheckpoint(scope.taskId,attemptKey);
       if(prior!==undefined&&!isDeepStrictEqual(prior,attempt))throw new ProtocolError('REVISION_CONFLICT','Original proactive teacher input changed');
       if(!this.runtime.saveCheckpointOnce(scope.taskId,attemptKey,attempt))
         throw new ProtocolError('RESULT_UNKNOWN','Original proactive teacher attempt requires its existing Gateway readback');
-      return await this.executeCoordination(port,request);
+      const result=await this.executeCoordination(port,request);
+      this.assertCoordinationResultEpoch(request,result);return result;
     } finally {
       if(this.teacherLeases.get(scope.leaseKey)===scope){this.teacherLeases.delete(scope.leaseKey);
         this.ephemeralSends.delete(scope.leaseKey);this.ephemeralGoals.delete(scope.leaseKey);this.ephemeralContexts.delete(scope.leaseKey);}
@@ -2210,6 +2230,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private async executeCoordination(port:CoordinationPort, request:CoordinationRequest) {
+    this.runtime.assertExecutionEpoch(request.taskId,request.executionEpoch!);
     const teacherScope=this.teacherScopeFor(request),leaseKey=teacherScope?.leaseKey??request.taskId,
       checkpointKey=teacherScope?.checkpointKey??COMPETITION_CONTEXT_CHECKPOINT;
     this.assertCompetitionTaskConfiguration(request.taskId,
@@ -4316,7 +4337,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (this.repairCandidateVersion !== '1.0') throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Repair candidates are not enabled');
     if (this.runtime.getTask(taskId).state !== 'succeeded') return undefined;
     const result = this.runtime.loadCheckpoint(taskId, 'competition-repair-candidate');
-    return result === undefined ? undefined : parseCoordinationRepairCandidate(result);
+    return result === undefined ? undefined : readStoredRepairCandidate(this.runtime,taskId);
   }
 
   /** Host-only original F03 plan proof; reading never authorizes, resumes or executes a repair. */
@@ -5592,8 +5613,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const goal = request.operation === 'task.submit' ? request.payload.goal : undefined;
     const conversationId = request.operation === 'task.submit' ? request.payload.conversationId : undefined;
     if (typeof taskId !== 'string' || typeof goal !== 'string' || typeof conversationId !== 'string' || this.activeTextTasks.has(taskId)) return;
-    if(this.profile==='huawei_ict_agentarts'&&isContextCompactionCommand(goal)&&this.runtime.getTask(taskId).state==='created')
+    if(this.profile==='huawei_ict_agentarts'&&isContextCompactionCommand(goal)&&this.runtime.getTask(taskId).state==='created') {
       this.runtime.saveCheckpoint(taskId,CONTEXT_COMPACTION_COMMAND,true);
+      // A manual command starts a fresh task; it never adopts a later generation on redispatch.
+      this.runtime.saveCheckpointOnce(taskId,CONTEXT_COMPACTION_COMMAND+':execution-epoch',0);
+    }
     this.dispatchAcceptedTextTask(taskId,goal,conversationId,request.deadline);
   }
 
@@ -5641,11 +5665,12 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         try {
           if(!this.coordination)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Context host unavailable');
           const result=await this.coordination.execute({taskId,goal,revision:this.runtime.getTask(taskId).revision,
+            executionEpoch:this.runtime.loadCheckpoint(taskId,CONTEXT_COMPACTION_COMMAND+':execution-epoch') as number,
             deadline:context.deadline,signal:context.signal});
           if(result.kind!=='text')throw new ProtocolError('INVALID_ARGUMENT','Unexpected compaction result');
           return {resultSummary:result.text};
         }catch(error){
-          const code=error instanceof ProtocolError?error.code:'EXTERNAL_FAILURE';
+          const code=error instanceof ProtocolError||error instanceof RuntimeError?error.code:'EXTERNAL_FAILURE';
           const message=code==='UNSUPPORTED_CAPABILITY'?'请在设置 → 模型 → 开发者 Harness 中配置可用摘要模型并启用自动压缩'
             :code==='CANCELLED'?'上下文压缩已取消，原始记录保留'
             :code==='TIMEOUT'?'上下文压缩超时，原始记录保留'

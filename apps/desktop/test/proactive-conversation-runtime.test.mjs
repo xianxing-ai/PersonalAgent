@@ -1,4 +1,4 @@
-import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+import {syntheticAgentArtsOptions,syntheticAgentArtsQuery,syntheticAgentArtsResult,syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -12,16 +12,18 @@ test('Synthetic public conversation -> original Policy -> signed local mirror st
   const secret='synthetic-local-mirror-public-signing-key-32';
   const contract={id:'synthetic-core',version:'1',criteria:'Synthetic public responsibility',qualifiedForMain:false,batchIndependent:true,
     candidates:[{id:'continue',description:'Continue',action:'continue'},{id:'defer',description:'Defer',action:'defer'}]};
-  const controller=createProactiveWorkflowController({receiptSecret:secret,decisionContracts:[contract]});let imageCalls=0;
+  const controller=createProactiveWorkflowController({receiptSecret:secret,decisionContracts:[contract]});let imageCalls=0,mirrorError;
   const server=createServer(async(req,res)=>{try {
     assert.equal(req.headers.authorization,'Bearer synthetic-outer');
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
-    const result=await controller({value:JSON.parse(JSON.parse(Buffer.concat(chunks).toString()).query),
+    const payload=JSON.parse(Buffer.concat(chunks).toString()),query=JSON.parse(payload.query),describe=query.operation==='describe';
+    if(describe)assert.deepEqual(query,{proactiveVersion:1,operation:'describe'});
+    const result=await controller({value:describe?query:JSON.parse(syntheticAgentArtsQuery(payload)),
       sessionId:req.headers['x-hw-agentarts-session-id'],requestId:req.headers['x-request-id'],
       deadline:req.headers['x-pa-deadline'],signal:new AbortController().signal});imageCalls++;
     res.writeHead(200,{'content-type':'application/json'});
-    res.end(JSON.stringify([{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]));
-  }catch{res.writeHead(400);res.end('Synthetic mirror rejected request');}});
+    res.end(JSON.stringify([{event:'message',data:{text:describe?JSON.stringify(result):syntheticAgentArtsResult(payload,result)}},{event:'task_end'},{event:'end'}]));
+  }catch(error){mirrorError=String(error);res.writeHead(400);res.end('Synthetic mirror rejected request');}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   let app,host,workflowTaskId;const requests=[],conversationId='desktop-panel:11111111-1111-4111-8111-111111111111';
   const deadline=new Date(Date.now()+60_000).toISOString();
@@ -45,7 +47,7 @@ test('Synthetic public conversation -> original Policy -> signed local mirror st
     }}));
   host=createDesktopProactiveWorkflowApplication({application:app,localDeviceAvailable:()=>true,resolveUserConversation,
     readConfiguration:()=>({contractRef:contract.id,adapter:{endpoint:'http://127.0.0.1:'+server.address().port+'/invocations',
-      receiptSecret:secret,authorizationProvider:{read:async()=>'Bearer synthetic-outer'},
+      receiptSecret:secret,preparePayload:syntheticPublicPayloadGate,authorizationProvider:{read:async()=>'Bearer synthetic-outer'},
       hostAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'}}})});
   try {
     const client=new Client(app);await client.connect();
@@ -61,7 +63,7 @@ test('Synthetic public conversation -> original Policy -> signed local mirror st
       if(['succeeded','failed','waiting_reconciliation'].includes(state.state))break;
       await new Promise(resolve=>setTimeout(resolve,5));
     }
-    assert.equal(state.state,'succeeded',JSON.stringify(state.error));assert.equal(approved.size,2);
+    assert.equal(state.state,'succeeded',JSON.stringify({error:state.error,imageCalls,mirrorError}));assert.equal(approved.size,2);
     assert.equal(requests[0].availableTools.length,4);
     assert.deepEqual(requests[0].availableTools.find(item=>item.name.endsWith('.control')).inputSchema.properties.action.enum,
       ['pause','resume','cancel','enter_unattended','return']);

@@ -248,6 +248,7 @@ test('slash commands compact immediately without delegation, tools or the main m
     const task=await client.call('task.submit',{goal:command,conversationId:'manual-context'},{idempotencyKey:command,timeoutMs:60000});
     const result=await settled(app,task.taskId);
     assert.equal(result.state,'succeeded',JSON.stringify(result));assert.match(result.resultSummary,/上下文已压缩/);
+    assert.equal(app.runtime.loadCheckpoint(task.taskId,'conversation-compaction-command:v1:execution-epoch'),0);
     assert.ok(summaries>0);assert.equal(sends,0);assert.equal(app.readSubagentTasks(task.taskId).length,0);
     assert.equal(app.runtime.readToolExecutions(task.taskId).length,0);
     const calls=summaries;
@@ -321,6 +322,19 @@ test('cancelling an in-progress manual summary cannot publish a projection or ch
   await started;await client.call('task.cancel',{taskId:task.taskId,reason:'Synthetic cancellation'});
   assert.equal((await settled(app,task.taskId)).state,'cancelled');
   assert.equal(app.runtime.loadCheckpoint(task.taskId,COMPACTED),undefined);
+});
+test('manual summary retains its admitted epoch and cannot commit after local replan',async t=>{
+  let entered,release;const started=new Promise(resolve=>{entered=resolve;}),pending=new Promise(resolve=>{release=resolve;});
+  const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',
+    coordinationInput:{beforeCoordinationSend(){},contextCompaction:{policy:runtimePolicy(),modelConfigurationRef:'summary:v1',
+      assertCurrent(){},readSnapshot:runtimeSource,summarize:async input=>{input.assertBeforeSend();entered();await pending;return 'Original summary';}}},
+    coordination:{execute:async()=>assert.fail('No main model call')}});
+  t.after(()=>app.close());const client=new Client(app);await client.connect();
+  const task=await client.call('task.submit',{goal:'/compact',conversationId:'replan-summary'},{idempotencyKey:'replan-summary',timeoutMs:60000});
+  await started;app.runtime.advanceExecutionEpoch(task.taskId,{requestId:'manual-replan',reason:'replan'});release();
+  const result=await settled(app,task.taskId);assert.equal(result.state,'failed');assert.equal(result.error.code,'REVISION_CONFLICT');
+  assert.equal(app.runtime.loadCheckpoint(task.taskId,'conversation-compaction-command:v1:execution-epoch'),0);
+  assert.equal(app.runtime.readExecutionEpoch(task.taskId),1);assert.equal(app.runtime.loadCheckpoint(task.taskId,COMPACTED),undefined);
 });
 
 test('quoted or extended slash text stays ordinary conversation and never becomes a command',async t=>{

@@ -39,6 +39,7 @@ test('strict mail review JSON accepts only caller labels and exact enum fields',
 });
 test('host mail review waits for Policy and sends no tools or history; persists safe result only',async t=>{
   const f=await fixture(t,async request=>{
+    assert.equal(request.executionEpoch,0);
     assert.equal(request.textOnly,true);assert.equal(request.availableTools,undefined);assert.equal(request.continuation,undefined);
     assert.equal(request.priorContinuations,undefined);
     assert.deepEqual(Object.keys(JSON.parse(request.goal)).sort(),['headers','instruction','labelKeys']);
@@ -48,9 +49,33 @@ test('host mail review waits for Policy and sends no tools or history; persists 
   assert.deepEqual(f.app.runtime.loadCheckpoint(id,MAIL_REVIEW_RESULT),{binding,result:answer});assert.equal(f.sends,1);assert.ok(f.guards>=3);
   assert.equal(f.app.runtime.getTask(id).goal,'Host tool mail.review');
   assert.equal(JSON.stringify(f.app.runtime.loadCheckpoint(id,'mail-review-attempt:v1')).includes('PUBLIC_HEADER_ONLY'),false);
+  assert.equal(f.app.runtime.loadCheckpoint(id,'mail-review-attempt:v1').executionEpoch,0);
   f.submit();assert.equal(f.sends,1);
   assert.throws(()=>f.app.assertCompetitionExportAllowed({taskId:id,revision:f.app.runtime.getTask(id).revision,
     goal:'PUBLIC_HEADER_ONLY',textOnly:true,deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal}),{code:'UNAUTHORIZED'});
+});
+test('mail source await cannot upgrade its original operation to a replanned epoch',async t=>{
+  const f=await fixture(t),read=f.options.mailReview.readEnvelope;
+  f.options.mailReview.readEnvelope=async(original,context)=>{
+    const envelope=await read(original,context);
+    f.app.runtime.advanceExecutionEpoch(context.taskId,{requestId:'mail-source-replan',reason:'replan'});
+    return envelope;
+  };
+  const id=f.submit().task.taskId;await f.approve(id);
+  await wait(f.app,id,task=>['failed','waiting_reconciliation'].includes(task.state));
+  const [operation]=f.app.runtime.readToolExecutions(id);
+  assert.equal(f.app.runtime.loadCheckpoint(id,'execution-epoch:run:'+operation.evidenceId),0);
+  assert.equal(f.app.runtime.readExecutionEpoch(id),1);assert.equal(f.sends,0);
+  assert.equal(f.app.runtime.loadCheckpoint(id,MAIL_REVIEW_RESULT),undefined);
+});
+test('direct mail exchange refuses missing and stale result epochs',async t=>{
+  for(const executionEpoch of [undefined,1])await t.test(String(executionEpoch),async t=>{
+    const f=await fixture(t,async()=>({kind:'text',text:JSON.stringify(answer),verification:'unverified',executionEpoch}));
+    const id=f.submit().task.taskId;await f.approve(id);
+    await wait(f.app,id,task=>['failed','waiting_reconciliation'].includes(task.state));
+    assert.equal(f.sends,1);assert.equal(f.app.runtime.loadCheckpoint(id,MAIL_REVIEW_RESULT),undefined);
+    assert.equal(f.app.runtime.loadCheckpoint(id,'mail-review-attempt:v1').executionEpoch,0);
+  });
 });
 test('revoked exact export prevents cloud dispatch after tool approval',async t=>{
   const f=await fixture(t);const id=f.submit().task.taskId;f.revoke();await f.approve(id);

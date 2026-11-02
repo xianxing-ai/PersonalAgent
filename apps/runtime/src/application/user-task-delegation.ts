@@ -68,13 +68,19 @@ export function assertUserTaskDelegationInvocation(runtime: TaskRuntime,
 export function userTaskDelegationPort(runtime: TaskRuntime, port: CoordinationPort,
   binding: UserTaskDelegation): CoordinationPort {
   return {execute: async request => {
+    const executionEpoch=request.executionEpoch;
+    if(executionEpoch===undefined)throw new ProtocolError('REVISION_CONFLICT','Original user task delegation execution epoch is required');
+    runtime.assertExecutionEpoch(request.taskId,executionEpoch);
     const current = readUserTaskDelegation(runtime, request.taskId);
     if (!isDeepStrictEqual(current, binding) || request.goal !== binding.goal || request.deadline !== binding.deadline) {
       throw new ProtocolError('REVISION_CONFLICT', 'Original user task delegation scope changed');
     }
     const proposal = userTaskDelegationProposal(binding);
     // The host, not a prompt or a model decision, requires a real child before any cloud summary.
-    if (request.continuation === undefined) return proposal;
+    if (request.continuation === undefined) {
+      runtime.assertExecutionEpoch(request.taskId,executionEpoch);
+      return {...proposal,executionEpoch};
+    }
     const runId = `competition-tool-${request.taskId}-1`;
     const child = runtime.findTaskByIdempotencyKey(`subagent-dispatch-${request.taskId}-${binding.subtask.subtaskId}`);
     const record = runtime.readToolExecutions(request.taskId).find(item => item.evidenceId === runId);
@@ -87,6 +93,7 @@ export function userTaskDelegationPort(runtime: TaskRuntime, port: CoordinationP
       throw new ProtocolError('UNAUTHORIZED', 'User summary requires its original confirmed child receipt');
     }
     const result = await port.execute(request);
+    runtime.assertExecutionEpoch(request.taskId,executionEpoch);
     if (result.kind !== 'text') throw new ProtocolError('SCOPE_DENIED', 'User conversation may only summarize delegated results');
     return result;
   }};

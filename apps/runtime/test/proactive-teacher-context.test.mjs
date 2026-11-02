@@ -46,12 +46,14 @@ function fixture({unknown=false,mutateConfiguration=false,revokeGrant=false,hold
           assert.ok(original);app.runtime.policy.revoke(original.evidenceId);}
         if(holdAuthorization)await new Promise(resolve=>{releaseAuthorization=resolve;});return 'Bearer synthetic';}},
       beforeCompetitionSend:request=>{
+        assert.equal(request.executionEpoch,0);
         assert.equal(request.textOnly,true);assert.equal(request.availableTools,undefined);assert.equal(request.continuation,undefined);
         assert.notEqual(request.signal,originalSignal,'Actual coordinator/AgentArts adapter supplied its combined signal');
         const foreign={...request,goal:request.goal+' foreign-input',signal:new AbortController().signal};
         assert.throws(()=>app.assertCompetitionExportAllowed(foreign),{code:'UNAUTHORIZED'});
         assert.throws(()=>app.assertCompetitionExportAllowed({...request,availableTools:[]}),{code:'UNAUTHORIZED'});
-        if(guardCopies.length)assert.throws(()=>app.assertCompetitionExportAllowed({...guardCopies[0],signal:new AbortController().signal}),{code:'UNAUTHORIZED'},
+        // Payload preparation and final dispatch may recheck the same live run.
+        if(guardCopies.length&&guardCopies[0].goal!==request.goal)assert.throws(()=>app.assertCompetitionExportAllowed({...guardCopies[0],signal:new AbortController().signal}),{code:'UNAUTHORIZED'},
           'Previous run cannot borrow the next live run slot');
         guardCopies.push(request);
       },
@@ -109,6 +111,7 @@ test('Production teacher + Runtime input hooks handles two signed public rounds 
       const metadata=f.app.runtime.loadCheckpoint(f.task.taskId,key);assert.equal(metadata.version,1);
       assert.doesNotMatch(JSON.stringify(metadata),/Public source canary|independentQuestions|sourceTexts/);
       assert.equal(f.app.runtime.loadCheckpoint(f.task.taskId,key+':attempt').runId,proposal.operationId);
+      assert.equal(f.app.runtime.loadCheckpoint(f.task.taskId,key+':attempt').executionEpoch,0);
     }
     assert.equal(f.sends(),2);
     const invocation=Object.values(f.host.inspect().session.state.operations).find(value=>value.invocation.toolName==='proactive.teacher_decision').invocation;
@@ -135,6 +138,18 @@ test('Task cancellation while teacher credentials wait revokes the original run 
     const client=new Client(f.app);await client.connect();await client.call('task.cancel',{taskId:f.task.taskId,reason:'Synthetic cancellation'});
     assert.equal(f.app.teacherLeases.size,0);assert.equal(f.app.ephemeralSends.size,0);
     f.release();await worker;assert.equal(f.sends(),0);assert.equal(f.app.ephemeralContexts.size,0);
+  }finally{await f.close();}
+});
+test('teacher credential await retains the original operation epoch after local invalidation',async()=>{
+  const f=fixture({holdAuthorization:true});try {
+    f.source(1);f.start();await until(()=>f.credentials()===1);
+    const original=f.teacherRecords()[0];
+    f.app.runtime.advanceExecutionEpoch(f.task.taskId,{requestId:'teacher-pause',reason:'pause'});
+    f.release();await until(()=>f.teacherRecords().every(value=>value.state!=='started'));
+    assert.equal(f.sends(),0);
+    assert.equal(f.app.runtime.loadCheckpoint(f.task.taskId,'execution-epoch:run:'+original.evidenceId),0);
+    assert.equal(f.app.runtime.readExecutionEpoch(f.task.taskId),1);
+    assert.notEqual(f.teacherRecords()[0].state,'confirmed');
   }finally{await f.close();}
 });
 
