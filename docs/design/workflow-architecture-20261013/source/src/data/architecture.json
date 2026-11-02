@@ -174,7 +174,7 @@
       },
       {
         "id": "F01_N09",
-        "label": "明确已授权责任直接激活并留来源",
+        "label": "记录责任来源；发信删除发布仍要走内容确认",
         "kind": "checkpoint",
         "dependencies": [
           "F01_N04"
@@ -265,7 +265,7 @@
         "source": "F01_N04",
         "target": "F01_N09",
         "required": false,
-        "branchLabel": "授权明确则直接激活",
+        "branchLabel": "责任已记录；不可逆动作另走确认",
         "condition": "持久责任"
       }
     ],
@@ -303,7 +303,7 @@
     "nodes": [
       {
         "id": "F02_N01",
-        "label": "可信操作摘要：对象、参数、问题ID与revision",
+        "label": "只签危险参数：对象、正文或路径；不签整份revision",
         "kind": "deterministic_check",
         "dependencies": [],
         "required": true,
@@ -1799,7 +1799,7 @@
       },
       {
         "id": "F08_N10",
-        "label": "宿主核对具体参数、revision与现有授权",
+        "label": "核对参数；发信必须另有用户对这份正文的确认",
         "kind": "deterministic_check",
         "dependencies": [
           "F08_N05"
@@ -1832,7 +1832,7 @@
       },
       {
         "id": "F08_N07",
-        "label": "授权通过：稳定操作ID发送",
+        "label": "内容已确认：稳定操作ID发送",
         "kind": "tool_exec",
         "dependencies": [
           "F08_N10",
@@ -1847,7 +1847,7 @@
           "工具实际状态"
         ],
         "joinMode": "selected",
-        "condition": "已有授权直接通过，或待决问题得到有效决定",
+        "condition": "用户已确认这份正文、收件人和发布位置",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
@@ -1869,7 +1869,7 @@
       },
       {
         "id": "F08_N12",
-        "label": "结果未知：后台核实，禁止盲目重发",
+        "label": "结果未知：停下来问人，不重发",
         "kind": "checkpoint",
         "dependencies": [
           "F08_N11"
@@ -5466,7 +5466,7 @@
       },
       {
         "id": "F27_N03",
-        "label": "长日志按需由执行模型摘要",
+        "label": "只摘要普通叙述；否定、期限、禁止项整句保留",
         "kind": "execution_model",
         "dependencies": [
           "F27_N02"
