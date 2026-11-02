@@ -1,9 +1,19 @@
+import {readReconciliationConflict,recordReconciliationConflictSkip} from './reconciliation-conflict.js';
+
+/** The explicit button names this exact conflict; it records no success or replay permission. */
+export async function skipReconciliationConflictFromSurface({payload,sender,panel,workspace,tasks,taskSurface,conversations,application,refresh,publish}) {
+ if(sender!==panel&&sender!==workspace||!payload||Object.keys(payload).some(key=>!['taskId','conflictId','expectedRevision'].includes(key)))throw Error('请从原对话明确处理这次冲突');
+ const surface=sender===workspace?'workspace':'panel',task=tasks.get(payload.taskId);
+ if(!task||taskSurface(task)!==surface||conversations.conversationIdForTask(task)!==conversations.activeConversationId(surface))throw Error('这次冲突不属于当前对话');
+ recordReconciliationConflictSkip(application,task,payload);const result=await refresh(task.taskId);publish();return result;
+}
 /** Trusted Desktop action: original-task verification only; Runtime owns terminal state. */
 export async function reconcileTaskFromSurface({taskId,sender,panel,workspace,tasks,taskSurface,application,mailRecovery,resumeMailWorkflow,refresh,publish,observe,reportNative}){
  if(sender!==panel&&sender!==workspace)throw Error('请从当前对话核实任务');
  if(typeof taskId!=='string'||!tasks.has(taskId))throw Error('未知任务');
  const task=tasks.get(taskId);if(taskSurface(task)!==(sender===workspace?'workspace':'panel'))throw Error('无法核实其他工作区的任务');
  if(task.state!=='waiting_reconciliation')throw Error('当前任务不在待核实状态');
+ if(readReconciliationConflict(application,task)?.skipped)throw Error('此冲突已明确跳过后续执行；原未知结果仍保留，不会继续原工作流');
  let native;
  const knowledge=application?.readF04RecoveryAvailable?.(taskId)?'reconcileF04WorkflowTask':
   application?.readF24RecoveryAvailable?.(taskId)?'reconcileF24WorkflowTask':undefined;
