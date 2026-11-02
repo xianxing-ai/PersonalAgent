@@ -42,15 +42,20 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
     const previous=preparedPayloads.get(key);
     if(previous){
       if(previous.payload!==scope.payload||previous.signal!==scope.signal)throw Error('原出机请求内容或取消范围已改变');
+      previous.guards.add(scope.isCurrent);
       previous.lease.assertBeforeSend({destination,payload:scope.payload});return previous.lease;
     }
     const lease=await prepareEgressPayload({...scope,destination});
+    const guards=new Set([scope.isCurrent]);
     const guarded=Object.freeze({assertBeforeSend(actual){
+      for(const guard of guards){let current;try{current=guard();}catch{throw Object.assign(Error('原出机来源已改变'),{code:'UNAUTHORIZED'});}
+        if(current!==true){if(current&&typeof current.then==='function')void Promise.resolve(current).catch(()=>{});
+          throw Object.assign(Error('原出机来源已改变'),{code:'UNAUTHORIZED'});}}
       lease.assertBeforeSend({destination:payloadDestination(actual.destination),payload:actual.payload});
     }});
     guarded.assertBeforeSend({destination,payload:scope.payload});
     if(preparedPayloads.size>=256)preparedPayloads.delete(preparedPayloads.keys().next().value);
-    preparedPayloads.set(key,{payload:scope.payload,signal:scope.signal,deadline:scope.deadline,lease:guarded});return guarded;
+    preparedPayloads.set(key,{payload:scope.payload,signal:scope.signal,deadline:scope.deadline,guards,lease:guarded});return guarded;
   };
   const payloadOptions=preparePayload===undefined?{}:{preparePayload};
   // Only the existing Runtime HTTP port consumes this closure. No credentials are serializable options.

@@ -91,7 +91,7 @@ export class QwenRealtimeModelGateway {
     // Official service limit is 120 minutes. The host renews before this deadline.
     if (request.signal.aborted || !(remaining > 0) || remaining > 120 * 60_000) throw Error('Live 会话期限无效');
     if (!request.instructions || request.instructions.length > 32000) throw Error('Live 上下文过长');
-    const prepared = this.connection === undefined ? {
+    const prepared:RealtimePreparedConnection = this.connection === undefined ? {
       createSocket: () => new this.Socket(
         `wss://${this.config!.workspaceId}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=qwen3.8-omni-flash-realtime`,
         {headers: {Authorization: `Bearer ${this.config!.apiKey}`}, handshakeTimeout: 15_000,
