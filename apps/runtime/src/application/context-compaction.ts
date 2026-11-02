@@ -16,6 +16,8 @@ export interface CompactableContextMessage {
   readonly createdAt?:string;
   readonly taskState?:string;
   readonly answerWithheld?:true;
+  /** Host-owned constraints and pending decisions are never model-summary material. */
+  readonly preserveVerbatim?:true;
 }
 export interface ContextCompactionScope {
   readonly taskId:string;
@@ -69,6 +71,8 @@ interface CompactionMeasurement {
     contextTokens:number;reservedOutputTokens:number};
 }
 export interface ContextCompactionReceipt {
+  /** Includes verbatim originals removed from summary input; older receipts summarized the entire prefix. */
+  readonly prefixCount?:number;
   readonly version:1;
   readonly taskId:string;
   readonly conversationId:string;
@@ -127,6 +131,12 @@ const hash=(value:unknown):string=>createHash('sha256').update(JSON.stringify(va
 const conflict=():never=>{throw new ProtocolError('REVISION_CONFLICT','Original conversation compaction source or configuration changed');};
 const validText=(value:unknown):value is string=>typeof value==='string'&&value.trim().length>0;
 const identity=(message:CompactableContextMessage)=>hash([message.id,message.taskId??null]);
+/** Conservative retention: keep the whole original message, including qualifiers and punctuation. */
+export function mustPreserveContextMessage(message:CompactableContextMessage):boolean {
+  return message.preserveVerbatim===true||message.answerWithheld===true
+    ||Boolean(message.taskState&&!['succeeded','failed','cancelled'].includes(message.taskState))
+    ||/不|勿|禁止|不得|不能|别|未|否定|如果|若|只要|除非|条件|必须|仅|只在|之前|之后|直到|截至|截止|期限|到期|待决|待确认|等待|结果未知|回收站|\d{4}[-/]\d{1,2}|\d+(?:年|月|日|时|点|分钟|小时|天)|今天|明天|后天|星期|周[一二三四五六日天]|\b(?:no|not|never|cannot|can't|don't|won't|without|unless|until|before|after|deadline|expires?|only|must|if|pending|unknown)\b/iu.test(message.content);
+}
 
 /** Observes the original cancellation/deadline even if a supplied port is slow to settle. */
 export async function awaitContextCompactionScope<T>(scope:ContextCompactionScope,work:()=>Promise<T>,now:()=>number=Date.now):Promise<T> {
@@ -174,11 +184,12 @@ function snapshot(options:ContextCompactionOptions):ContextCompactionSnapshot {
   for(const message of value.messages) {
     if(!message||!validText(message.id)||ids.has(message.id)||!['user','assistant'].includes(message.role)
       ||typeof message.content!=='string'||message.withheld===true
-      ||Object.keys(message).some(key=>!['id','role','content','taskId','withheld','createdAt','taskState','answerWithheld'].includes(key))
+      ||Object.keys(message).some(key=>!['id','role','content','taskId','withheld','createdAt','taskState','answerWithheld','preserveVerbatim'].includes(key))
       ||message.createdAt!==undefined&&(typeof message.createdAt!=='string'||!Number.isFinite(Date.parse(message.createdAt)))
       ||message.taskState!==undefined&&!['created','planning','running','waiting_approval','waiting_external',
         'waiting_reconciliation','verifying','cancelling','succeeded','failed','cancelled'].includes(message.taskState)
       ||message.answerWithheld!==undefined&&message.answerWithheld!==true
+      ||message.preserveVerbatim!==undefined&&message.preserveVerbatim!==true
       ||(message.taskId!==undefined&&!validText(message.taskId)))
       throw new ProtocolError('UNAUTHORIZED','Compaction requires already eligible, distinct conversation messages');
     ids.add(message.id);
@@ -222,11 +233,24 @@ export function segmentConversationContext(messages:readonly CompactableContextM
   if(group.length)groups.push(group);
   return groups.map((messages,index)=>({index,rangeDigest:hash(messages),messages}));
 }
+/** A summary's provenance never spans a protected original which was not sent to the model. */
+export function segmentSummarizableContext(messages:readonly CompactableContextMessage[],maxCharacters:number) {
+  const result:(ContextSummarySegment&{sourceStart:number;sourceEnd:number})[]=[];
+  let start=0;
+  for(let end=0;end<=messages.length;end++)if(end===messages.length||mustPreserveContextMessage(messages[end]!)){
+    let offset=start;
+    for(const segment of segmentConversationContext(messages.slice(start,end),maxCharacters)){
+      result.push({...segment,index:result.length,sourceStart:offset,sourceEnd:offset+segment.messages.length});offset+=segment.messages.length;
+    }
+    start=end+1;
+  }
+  return result;
+}
 function baseReceipt(options:ContextCompactionOptions,current:ContextCompactionSnapshot,tail:readonly CompactableContextMessage[]) {
   return {version:1 as const,taskId:options.scope.taskId,conversationId:options.scope.conversationId,cutoff:options.scope.cutoff,
     deadline:options.scope.deadline,configurationRef:current.configurationRef,modelConfigurationRef:options.modelConfigurationRef,
     policy:structuredClone(options.policy),goalFrameDigest:hash(options.compile([])),sourceDigest:hash(current.messages),
-    sourceCount:current.messages.length,sourceTasks:sourceTasks(current.messages),tailDigest:hash(tail)};
+    sourceCount:current.messages.length,prefixCount:current.messages.length-tail.length,sourceTasks:sourceTasks(current.messages),tailDigest:hash(tail)};
 }
 /** Performs one bounded pass. Summary text remains untrusted, process-local data. */
 export async function compactConversationContext(options:ContextCompactionOptions):Promise<ContextCompactionResult> {
@@ -242,7 +266,7 @@ export async function compactConversationContext(options:ContextCompactionOption
   active();
   const original=snapshot(options),before=measure(options.compile(original.messages),options.goalTokenBudget);
   const cacheBinding=hash([options.cacheConversationId??options.scope.conversationId,
-    original.configurationRef,options.modelConfigurationRef,options.policy]);
+    original.configurationRef,options.modelConfigurationRef,options.policy,'verbatim-constraints:v1']);
   const previous=options.previous;
   const validCache=previous?.binding===cacheBinding&&previous.prefixCount>0
     &&previous.prefixDigest===hash(original.messages.slice(0,previous.prefixCount));
@@ -257,22 +281,28 @@ export async function compactConversationContext(options:ContextCompactionOption
     content:JSON.stringify({kind:'derived_conversation_summary',treatment:'untrusted_data',text})}));
   const reuse=validCache&&previous.prefixCount<=boundary
     &&(!options.force||previous.prefixCount===boundary)
-    &&fits(measure(options.compile([...derive(previous.summaries,previous.prefixDigest),...original.messages.slice(previous.prefixCount)]),
+    &&fits(measure(options.compile([...derive(previous.summaries,previous.prefixDigest),
+      ...original.messages.slice(0,previous.prefixCount).filter(mustPreserveContextMessage),...original.messages.slice(previous.prefixCount)]),
       options.goalTokenBudget),options.policy.triggerCharacters-1);
   if(reuse)boundary=previous.prefixCount;
   const prefix=original.messages.slice(0,boundary),tail=original.messages.slice(boundary);
+  const preserved=prefix.filter(mustPreserveContextMessage),summarizable=prefix.filter(message=>!mustPreserveContextMessage(message));
   if(!prefix.length){
     if(options.force&&fits(before,options.policy.maxCharacters))return {state:'unchanged',messages:original.messages};
     throw new ProtocolError('INVALID_ARGUMENT','Conversation budget cannot be met while retaining the required tail');
   }
-  if(!reuse&&options.compile(tail).length>=options.policy.targetCharacters)
+  if(!summarizable.length){
+    if(fits(before,options.policy.maxCharacters))return {state:'unchanged',messages:original.messages};
+    throw new ProtocolError('INVALID_ARGUMENT','Verbatim constraints and pending operations exceed the context budget');
+  }
+  if(!reuse&&options.compile([...preserved,...tail]).length>=options.policy.targetCharacters)
     throw new ProtocolError('INVALID_ARGUMENT','Current goal and retained history exceed the compaction target; original history is unchanged');
   const base=baseReceipt(options,original,tail),saved=options.loadCheckpoint?.();
   if(saved!==undefined) {
     if(!saved||typeof saved!=='object'||!isDeepStrictEqual(base,Object.fromEntries(Object.keys(base)
       .map(key=>[key,(saved as unknown as Record<string,unknown>)[key]]))))conflict();
   }
-  const segments=reuse?[]:segmentConversationContext(prefix,options.policy.segmentCharacters);
+  const segments=reuse?[]:segmentSummarizableContext(prefix,options.policy.segmentCharacters);
   const assertSource=()=>{
     active();validatePolicy(options.policy);
     const current=snapshot(options);
@@ -299,7 +329,7 @@ export async function compactConversationContext(options:ContextCompactionOption
       summaryDigest:hash(text),summaryCharacters:text.length});
   }
   const derived=derive(summaries,hash(prefix));
-  const messages=[...derived,...tail],after=measure(options.compile(messages),options.goalTokenBudget);
+  const messages=[...derived,...preserved,...tail],after=measure(options.compile(messages),options.goalTokenBudget);
   if(after.characters>=before.characters||(after.tokens.state==='measured'&&before.tokens.state==='measured'
     &&after.tokens.inputTokens>=before.tokens.inputTokens))
     throw new ProtocolError('INVALID_ARGUMENT','Conversation summary made no measurable progress');

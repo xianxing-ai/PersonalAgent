@@ -1,0 +1,12 @@
+.conversation-prohibitions-sidebar{position:relative;padding:8px;z-index:20}
+.conversation-prohibitions-sidebar button{font:inherit;cursor:pointer}
+.conversation-prohibitions-sidebar>[data-prohibitions-toggle]{border:1px solid color-mix(in srgb,currentColor 25%,transparent);border-radius:8px;background:transparent;color:inherit;padding:6px 10px}
+.conversation-prohibitions-editor{position:absolute;top:0;right:0;width:min(360px,85vw);max-height:75vh;overflow:auto;padding:16px;border:1px solid color-mix(in srgb,currentColor 25%,transparent);border-radius:12px;background:Canvas;color:CanvasText;box-shadow:0 8px 28px #0003}
+.conversation-prohibitions-editor[hidden]{display:none}
+.cc-rail .conversation-prohibitions-editor{left:calc(100% + 8px);right:auto}
+.panel>.conversation-prohibitions-sidebar{position:absolute;top:64px;right:8px}
+.conversation-prohibitions-editor p{font-size:12px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.conversation-prohibitions-editor label{display:grid;gap:5px;margin:10px 0}
+.conversation-prohibitions-editor textarea,.conversation-prohibitions-editor select{width:100%;box-sizing:border-box;font:inherit}
+.conversation-prohibitions-editor article{padding:10px 0;border-bottom:1px solid color-mix(in srgb,currentColor 20%,transparent)}
+.conversation-prohibitions-editor button{margin:4px 8px 4px 0}

@@ -2,6 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {closeSync,existsSync,fsyncSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {isDeepStrictEqual} from 'node:util';
 import {resultText} from '../src/features/conversation/result-text.js';
+import {validateConversationProhibitions} from './conversation-prohibitions.js';
 import {canRetryConversationMigration,inspectPendingConversationMigration,openConversationSqliteStore,prepareConversationSqliteStore,readConversationMarker} from './conversation-sqlite-store.js';
 
 // Desktop-owned metadata. Runtime still owns task state and results.
@@ -60,14 +61,24 @@ export class Conversations {
     turns:[...this.turns.values()],messages:[...this.messages.values()],preferences:[...this.preferences]};}
   close(){if(this.closed)return;this.store?.close();this.closed=true;}
   validateSession(value){
-    if(!value||typeof value!=='object'||Object.keys(value).some(k=>!['id','surface','title','archived','createdAt','draft'].includes(k))||!['panel','workspace'].includes(value.surface)||typeof value.id!=='string'||!(value.id==='desktop-'+value.surface||new RegExp('^desktop-'+value.surface+':[a-f0-9-]{36}$').test(value.id))||typeof value.title!=='string'||!value.title.trim()||value.title.length>100||/[\u0000-\u001f\u007f]/.test(value.title)||typeof value.archived!=='boolean'||!Number.isFinite(Date.parse(value.createdAt))||typeof value.draft!=='string'||value.draft.length>100000)throw Error('对话元数据无效');
+    if(!value||typeof value!=='object'||Object.keys(value).some(k=>!['id','surface','title','archived','createdAt','draft','prohibitions'].includes(k))||!['panel','workspace'].includes(value.surface)||typeof value.id!=='string'||!(value.id==='desktop-'+value.surface||new RegExp('^desktop-'+value.surface+':[a-f0-9-]{36}$').test(value.id))||typeof value.title!=='string'||!value.title.trim()||value.title.length>100||/[\u0000-\u001f\u007f]/.test(value.title)||typeof value.archived!=='boolean'||!Number.isFinite(Date.parse(value.createdAt))||typeof value.draft!=='string'||value.draft.length>100000)throw Error('对话元数据无效');
+    if(value.prohibitions!==undefined)validateConversationProhibitions(value.prohibitions);
     return value;
   }
   activeConversationId(surface){if(!['panel','workspace'].includes(surface))throw Error('对话窗口无效');return this.activeSessions[surface];}
-  session(id,surface){const value=this.sessions.get(id);if(!value||surface&&value.surface!==surface)throw Error('对话不存在或不属于当前窗口');return {...value};}
+  session(id,surface){const value=this.sessions.get(id);if(!value||surface&&value.surface!==surface)throw Error('对话不存在或不属于当前窗口');return structuredClone(value);}
+  prohibitions(id){return this.session(id).prohibitions??{revision:0,items:[]};}
+  setProhibitions(surface,id,{expectedRevision,items}){
+    const prior=this.session(id,surface);
+    if(prior.archived||id!==this.activeConversationId(surface))throw Error('请在当前对话侧边栏修改禁止项');
+    if(expectedRevision!==(prior.prohibitions?.revision??0))throw Error('本对话禁止项已变化，请刷新后修改');
+    const prohibitions=validateConversationProhibitions({revision:expectedRevision+1,items});
+    const value={...prior,prohibitions},sessions=new Map(this.sessions);sessions.set(id,value);
+    this.saveSessions(sessions,this.activeSessions,[{kind:'sessions',id,value}]);return structuredClone(prohibitions);
+  }
   conversationIdForTask(task){return this.turns.get(task.taskId)?.conversationId??(this.sessions.has(task.conversationId)?task.conversationId:taskSurfaceId(this.surface(task.taskId)));}
   containsConversation(id){return this.sessions.has(id);}
-  snapshot(surface){return {activeId:this.activeConversationId(surface),sessions:[...this.sessions.values()].filter(s=>s.surface===surface).map(({draft,...session})=>({...session})),draft:this.session(this.activeConversationId(surface)).draft};}
+  snapshot(surface){return {activeId:this.activeConversationId(surface),sessions:[...this.sessions.values()].filter(s=>s.surface===surface).map(({draft,...session})=>structuredClone(session)),draft:this.session(this.activeConversationId(surface)).draft};}
   saveSessions(sessions,activeSessions=this.activeSessions,changes){this.save(this.turns,this.messages,this.preferences,sessions,activeSessions,changes);this.sessions=sessions;this.activeSessions=activeSessions;}
   create(surface,title='新对话'){
     this.activeConversationId(surface);const value=this.validateSession({id:'desktop-'+surface+':'+randomUUID(),surface,title,archived:false,createdAt:new Date().toISOString(),draft:''});

@@ -50,11 +50,13 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=errorDisplayText(error);};
   const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
   const draftInput=composer.input;
-  const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose});
+  const prohibitionsRoot=document.createElement('aside');prohibitionsRoot.setAttribute('aria-label','本对话禁止项');
+  const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose,prohibitionsRoot});
   const nativeReasoning=mountModelThinkingPicker(preferences,invoke,report,{readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
   composer.beforeSubmit=async()=>{await nativeReasoning.flush();return sessionControls.flush();};
   composer.onAccepted=token=>sessionControls.submitted(token);
   const center=mountCommandCenter(root,{sessionRoot,preferences,input:draftInput,invoke,report,escape});
+  root.querySelector('.cc-rail').append(prohibitionsRoot);
   const runtimeControls=mountWorkspaceRuntimeControls(root,invoke,report);
   const workspaceApprovals=mountWorkspaceApprovals(conversation,invoke,report,()=>feedbackRevision);
   window.addEventListener('pagehide',()=>nativeReasoning.dispose(),{once:true});
