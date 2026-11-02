@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
@@ -61,12 +62,12 @@ async function composition(t){
     prepareCompetitionToolExport:scope=>connector.prepareExport(scope),
     requiresToolAuthorization:scope=>question.requiresAuthorization(scope),
     requestToolAuthorization:scope=>{host.prepareAuthorization(scope);return question.requestToolAuthorization(scope);},
-    coordination:{async execute(request){
+    coordination:{execute:syntheticCoordinationExecution(async (request)=>{
       if(request.continuation)return {kind:'text',text:'Synthetic conversation summary',verification:'mock'};
       conversationReads++;
       return {kind:'tool_proposal',proposalId:'proposal-'+request.taskId+'-'+conversationReads,toolName:'mail.inbox',
         toolVersion:inboxVersion,arguments:{account:'desktop-qq-inbox',folder:'INBOX',limit:20},verification:'unverified'};
-    }}});
+    })}});
   host.bindApplication(application);
   const client=new Client(application);
   await client.connect();
