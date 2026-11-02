@@ -67,8 +67,15 @@ test('status comments are edited in place and an unknown write is not posted aga
   comments[0].body = `${DUTY_STATUS_MARKER}\nold`;
   const third = await executeStatusComment(ports, 'CI green', {...first, outcome: 'unknown'});
   assert.equal(creates, 1);
-  assert.equal(edits, 1);
-  assert.equal(third.outcome, 'confirmed');
+  assert.equal(edits, 0, 'a different visible body does not reconcile the original unknown write');
+  assert.deepEqual(third, first, 'retain the original operation instead of replacing it with the new body');
+  comments[0].body = first.body;
+  const wrongId = await executeStatusComment(ports, 'CI green', {...first, commentId: 8});
+  assert.equal(wrongId.outcome, 'unknown');
+  assert.equal(edits, 0);
+  const updated = await executeStatusComment(ports, 'CI green', {...first, commentId: 7});
+  assert.equal(edits, 1, 'a new body may be edited only after the original write is confirmed');
+  assert.equal(updated.outcome, 'confirmed');
   const duplicate = planStatusComment({desiredBody: 'x', existing: [{id: 1, body: DUTY_STATUS_MARKER}, {id: 2, body: DUTY_STATUS_MARKER}]});
   assert.equal(duplicate.action, 'refuse');
 });

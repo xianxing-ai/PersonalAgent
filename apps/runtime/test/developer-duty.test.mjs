@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {mkdtempSync, rmSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import {ProtocolError} from '@personal-agent/contracts';
 import {TaskRuntime} from '../dist/index.js';
-import {commitDeveloperDutyStatusComment, developerDutyToolIntent, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, recordDeveloperDutyConclusions, storeDeveloperDutyEvalSet} from '../dist/application.js';
+import {commitDeveloperDutyStatusComment, commitPullRequestDutyComment, dutyPullCommentKey, developerDutyToolIntent, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, recordDeveloperDutyConclusions, storeDeveloperDutyEvalSet} from '../dist/application.js';
 import {defaultRepoDutyPolicy, DUTY_STATUS_MARKER} from '@personal-agent/github';
 
 const task = runtime => runtime.submitTask({conversationId: 'desktop-panel', goal: '值班', idempotencyKey: 'duty-'+Math.random()});
@@ -38,6 +41,96 @@ test('status comment unknown is stored and the next attempt reads back instead o
   const confirmed = await commitDeveloperDutyStatusComment(runtime, owner.taskId, ports, '失败');
   assert.equal(creates, 1);
   assert.equal(confirmed.outcome, 'confirmed');
+});
+
+for (const kind of ['status', 'pull']) {
+  const key = kind === 'status' ? 'developer-duty-comment:v1' : dutyPullCommentKey('octo/repo', 4);
+  const attemptOf = saved => kind === 'status' ? saved : saved?.attempt;
+  const commit = (runtime, taskId, ports, body) => kind === 'status'
+    ? commitDeveloperDutyStatusComment(runtime, taskId, ports, body)
+    : commitPullRequestDutyComment(runtime, taskId, ports, {repo: 'octo/repo', number: 4, headSha: 'a'.repeat(40), ci: 'failure', conclusion: body});
+
+  test(`${kind} comment persists before dispatch and restart never repeats a thrown write`, async t => {
+    const directory = mkdtempSync(join(tmpdir(), 'duty-comment-'));
+    const database = join(directory, 'runtime.sqlite');
+    let runtime = new TaskRuntime(database);
+    t.after(() => {runtime.close(); rmSync(directory, {recursive: true, force: true});});
+    const owner = task(runtime);
+    let creates = 0;
+    let edits = 0;
+    let comments = [];
+    let original;
+    const ports = {listComments: async () => comments,
+      createComment: async body => {
+        creates += 1;
+        original = attemptOf(runtime.loadCheckpoint(owner.taskId, key));
+        assert.deepEqual(original, {outcome: 'unknown', body}, 'write intent is durable before the POST');
+        throw new Error('connection lost after dispatch');
+      },
+      editComment: async (id, body) => {
+        edits += 1;
+        assert.deepEqual(attemptOf(runtime.loadCheckpoint(owner.taskId, key)), {outcome: 'unknown', commentId: id, body});
+        comments = [{id, body}];
+        return {state: 'confirmed'};
+      }};
+    await assert.rejects(commit(runtime, owner.taskId, ports, 'original'), /connection lost/);
+    runtime.close();
+    runtime = new TaskRuntime(database);
+    await assert.rejects(commit(runtime, owner.taskId, ports, 'changed'), {code: 'RESULT_UNKNOWN'});
+    assert.deepEqual(attemptOf(runtime.loadCheckpoint(owner.taskId, key)), original);
+    assert.equal(creates, 1);
+    assert.equal(edits, 0);
+    comments = [{id: 7, body: original.body}];
+    await commit(runtime, owner.taskId, ports, 'changed');
+    assert.equal(creates, 1);
+    assert.equal(edits, 1);
+    assert.equal(attemptOf(runtime.loadCheckpoint(owner.taskId, key)).outcome, 'confirmed');
+  });
+
+  test(`${kind} concurrent comment commits serialize readback and create only once`, async t => {
+    const runtime = new TaskRuntime(':memory:');
+    t.after(() => runtime.close());
+    const owner = task(runtime);
+    let creates = 0;
+    let reads = 0;
+    let entered;
+    let release;
+    const started = new Promise(resolve => {entered = resolve;});
+    const wait = new Promise(resolve => {release = resolve;});
+    const comments = [];
+    const ports = {listComments: async () => {reads += 1; return comments.slice();},
+      createComment: async body => {
+        creates += 1;
+        entered();
+        await wait;
+        comments.push({id: 7, body});
+        return {state: 'confirmed', id: 7};
+      }, editComment: async () => {assert.fail('unchanged body must not be edited');}};
+    const first = commit(runtime, owner.taskId, ports, 'same');
+    const second = commit(runtime, owner.taskId, ports, 'same');
+    await started;
+    assert.equal(reads, 1, 'the second call must not inspect a still-inflight write');
+    assert.equal(attemptOf(runtime.loadCheckpoint(owner.taskId, key)).outcome, 'unknown');
+    release();
+    await Promise.all([first, second]);
+    assert.equal(creates, 1);
+  });
+}
+
+test('an unavailable comment read does not persist an undispatched write', async t => {
+  const runtime = new TaskRuntime(':memory:');
+  t.after(() => runtime.close());
+  const owner = task(runtime);
+  let readable = false;
+  let creates = 0;
+  const ports = {listComments: async () => readable ? [] : 'unknown',
+    createComment: async () => {creates += 1; return {state: 'confirmed', id: 7};},
+    editComment: async () => {assert.fail('no existing comment');}};
+  await assert.rejects(commitDeveloperDutyStatusComment(runtime, owner.taskId, ports, 'same'), {code: 'RESULT_UNKNOWN'});
+  assert.equal(runtime.loadCheckpoint(owner.taskId, 'developer-duty-comment:v1'), undefined);
+  readable = true;
+  await commitDeveloperDutyStatusComment(runtime, owner.taskId, ports, 'same');
+  assert.equal(creates, 1);
 });
 
 test('head conclusions, notification intent, eval set and merge refusal stay on existing chains', () => {

@@ -1,4 +1,5 @@
 import {DUTY_STATUS_MARKER, buildPersonalView, interpretGitHubRateLimit} from '@personal-agent/github';
+import {ProtocolError} from '@personal-agent/contracts';
 
 const API = 'https://api.github.com';
 
@@ -112,22 +113,38 @@ export function conclusionsForOpenPulls(pulls, runs) {
     .sort((left, right) => left.number - right.number);
 }
 
-/** Idempotent marker comment. The token stays in this closure and is not returned. */
-export function createGitHubDutyComments({repo, number, readCredential, fetchImpl = globalThis.fetch}) {
+/** The trusted ToolGateway host must assert the exact target and complete body on every write. */
+export function createGitHubDutyComments({repo, number, readCredential, fetchImpl = globalThis.fetch, assertWriteAuthorized}) {
   const listPath = `/repos/${repo}/issues/${number}/comments?per_page=100`;
+  const writeAvailable = typeof assertWriteAuthorized === 'function';
+  const assertWrite = (action, body, commentId) => {
+    if (!writeAvailable) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Duty comment requires original ToolGateway content authorization');
+    const result = assertWriteAuthorized(Object.freeze({repo, number, action, body, ...(commentId === undefined ? {} : {commentId})}));
+    if (result !== undefined) throw new ProtocolError('UNAUTHORIZED', 'Duty comment authorization must be a synchronous trusted assertion');
+  };
   return {
+    writeAvailable,
     async listComments() {
       const token = await tokenOf(readCredential);
       if (!token || !Number.isInteger(number)) return 'unknown';
       try {
-        const response = await call(fetchImpl, token, listPath);
-        if (response.failed || response.notModified || !Array.isArray(response.body)) return 'unknown';
-        return response.body.filter(item => Number.isInteger(item.id) && typeof item.body === 'string').map(item => ({id: item.id, body: item.body}));
+        const comments = [];
+        for (let page = 1; page <= 100; page += 1) {
+          const response = await call(fetchImpl, token, `${listPath}${page === 1 ? '' : `&page=${page}`}`);
+          if (response.failed || response.notModified || !Array.isArray(response.body)
+            || response.body.some(item => !item || !Number.isInteger(item.id) || typeof item.body !== 'string')) return 'unknown';
+          comments.push(...response.body.map(item => ({id: item.id, body: item.body})));
+          if (response.body.length < 100) return comments;
+        }
+        // An incomplete collection cannot prove that creating another comment is safe.
+        return 'unknown';
       } catch { return 'unknown'; }
     },
     async createComment(body) {
+      if (!writeAvailable) assertWrite('create', body);
       const token = await tokenOf(readCredential);
       if (!token) return {state: 'unknown'};
+      assertWrite('create', body);
       try {
         const response = await fetchImpl(`${API}/repos/${repo}/issues/${number}/comments`, {method: 'POST', headers: {...headers(token), 'Content-Type': 'application/json'}, body: JSON.stringify({body})});
         if (!response.ok) return {state: 'unknown'};
@@ -136,8 +153,10 @@ export function createGitHubDutyComments({repo, number, readCredential, fetchImp
       } catch { return {state: 'unknown'}; }
     },
     async editComment(id, body) {
+      if (!writeAvailable) assertWrite('edit', body, id);
       const token = await tokenOf(readCredential);
       if (!token) return {state: 'unknown'};
+      assertWrite('edit', body, id);
       try {
         const response = await fetchImpl(`${API}/repos/${repo}/issues/comments/${id}`, {method: 'PATCH', headers: {...headers(token), 'Content-Type': 'application/json'}, body: JSON.stringify({body})});
         return {state: response.ok ? 'confirmed' : 'unknown'};

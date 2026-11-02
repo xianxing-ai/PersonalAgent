@@ -1,13 +1,109 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {DUTY_STATUS_MARKER} from '@personal-agent/github';
+import {ProtocolError} from '@personal-agent/contracts';
+import {DUTY_STATUS_MARKER, executeStatusComment} from '@personal-agent/github';
 import {createGitHubDutyComments, readGitHubDutyPage, readGitHubPersonalView} from '../electron/developer-duty-github.js';
 import {TaskRuntime} from '@personal-agent/runtime';
-import {createDeveloperDutyTools} from '@personal-agent/runtime/application';
+import {commitDeveloperDutyStatusComment, createDeveloperDutyTools} from '@personal-agent/runtime/application';
+
+// Explicit Fake for injected transports only; this is not a real ToolGateway approval.
+const fixtureWriteAuthorization = intent => {
+  assert.equal(intent.repo, 'octo/repo');
+  assert.ok([4, 9].includes(intent.number));
+  assert.ok(intent.body.startsWith(DUTY_STATUS_MARKER));
+  if (intent.action === 'edit') assert.ok(Number.isInteger(intent.commentId));
+};
 
 function response(status, body, headers = {}) {
   return {ok: status >= 200 && status < 300, status, headers: {get: name => headers[name.toLowerCase()]}, json: async () => body};
 }
+
+test('missing trusted content authorization leaves real comments read-only and records an intent', async t => {
+  const runtime = new TaskRuntime(':memory:');
+  t.after(() => runtime.close());
+  let reads = 0;
+  const ports = createGitHubDutyComments({repo: 'octo/repo', number: 4, readCredential: () => 'github-token-fixture',
+    fetchImpl: async (_url, init = {}) => {
+      assert.equal(init.method, undefined, 'no POST or PATCH without original ToolGateway authorization');
+      reads += 1;
+      return response(200, []);
+    }});
+  assert.equal(ports.writeAvailable, false);
+  await assert.rejects(ports.createComment('body'), {code: 'UNSUPPORTED_CAPABILITY'});
+  await assert.rejects(ports.editComment(7, 'body'), {code: 'UNSUPPORTED_CAPABILITY'});
+  assert.equal(reads, 0);
+  const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '值班', idempotencyKey: 'no-content-gate'});
+  await assert.rejects(commitDeveloperDutyStatusComment(runtime, parent.taskId, ports, 'body'), {code: 'UNSUPPORTED_CAPABILITY'});
+  assert.equal(runtime.loadCheckpoint(parent.taskId, 'developer-duty-comment:v1'), undefined, 'an unavailable write is never marked dispatched');
+  const duty = createDeveloperDutyTools({getRuntime: () => runtime, createComments: () => ports,
+    readPage: async repo => ({repo, connected: true, gap: false, events: [], pullRequests: [{number: 4, headSha: 'a'.repeat(40), ci: 'failure', conclusion: 'needs repair'}]})});
+  const context = {taskId: parent.taskId};
+  await duty.tools.find(item => item.descriptor.name === 'duty.watch').execute({repo: 'octo/repo'}, context);
+  await duty.tools.find(item => item.descriptor.name === 'duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context);
+  const result = await duty.poll();
+  assert.match(result[0].reason, /requires ToolGateway content authorization/);
+  const owner = runtime.findTaskByIdempotencyKey('developer-duty-registry:v1');
+  const pending = runtime.loadCheckpoint(owner.taskId, 'developer-duty-comment-intent:v1:octo/repo#4');
+  assert.equal(pending.state, 'requires_authorization');
+  assert.equal(pending.body, `${DUTY_STATUS_MARKER}\nrepo: octo/repo\npull: 4\nhead: ${'a'.repeat(40)}\nci: failure\nconclusion: needs repair`);
+  assert.equal(runtime.loadCheckpoint(owner.taskId, 'developer-duty-pr-comment:v1:octo/repo#4'), undefined);
+  assert.equal(reads, 2);
+});
+
+test('comment writes reassert exact target and full body after credential lookup', async () => {
+  const body = `${DUTY_STATUS_MARKER}\nreviewed body`;
+  let revoked = false;
+  let revokeOnCredentialRead = false;
+  const writes = [];
+  const intents = [];
+  const ports = createGitHubDutyComments({repo: 'octo/repo', number: 4,
+    readCredential: async () => {if (revokeOnCredentialRead) revoked = true; return 'github-token-fixture';},
+    assertWriteAuthorized: intent => {
+      intents.push(intent);
+      if (revoked || intent.body !== body || (intent.action === 'edit' && intent.commentId !== 7)) throw new ProtocolError('UNAUTHORIZED', 'Fixture content authorization mismatch');
+      assert.equal(intent.repo, 'octo/repo');
+      assert.equal(intent.number, 4);
+    },
+    fetchImpl: async (_url, init) => {writes.push(init.method); return response(200, {id: 7});}});
+  await ports.createComment(body);
+  await ports.editComment(7, body);
+  assert.deepEqual(intents, [{repo: 'octo/repo', number: 4, action: 'create', body}, {repo: 'octo/repo', number: 4, action: 'edit', body, commentId: 7}]);
+  await assert.rejects(ports.createComment(`${body} changed`), {code: 'UNAUTHORIZED'});
+  await assert.rejects(ports.editComment(8, body), {code: 'UNAUTHORIZED'});
+  revokeOnCredentialRead = true;
+  await assert.rejects(ports.editComment(7, body), {code: 'UNAUTHORIZED'});
+  assert.deepEqual(writes, ['POST', 'PATCH']);
+});
+
+test('comment deduplication reads later pages before choosing an edit', async () => {
+  const paths = [];
+  const writes = [];
+  const ports = createGitHubDutyComments({repo: 'octo/repo', number: 4, readCredential: () => 'github-token-fixture', assertWriteAuthorized: fixtureWriteAuthorization,
+    fetchImpl: async (url, init = {}) => {
+      paths.push(url);
+      if (init.method) {writes.push(init.method); return response(200, {});}
+      if (url.endsWith('&page=2')) return response(200, [{id: 101, body: `${DUTY_STATUS_MARKER}\nold`}]);
+      return response(200, Array.from({length: 100}, (_, id) => ({id: id + 1, body: 'ordinary comment'})));
+    }});
+  const attempt = await executeStatusComment(ports, 'new');
+  assert.equal(attempt.outcome, 'confirmed');
+  assert.equal(attempt.commentId, 101);
+  assert.deepEqual(writes, ['PATCH']);
+  assert.equal(paths[1], 'https://api.github.com/repos/octo/repo/issues/4/comments?per_page=100&page=2');
+});
+
+test('an unavailable later comment page prevents any write', async () => {
+  let reads = 0;
+  const ports = createGitHubDutyComments({repo: 'octo/repo', number: 4, readCredential: () => 'github-token-fixture', assertWriteAuthorized: fixtureWriteAuthorization,
+    fetchImpl: async (url, init = {}) => {
+      assert.equal(init.method, undefined, 'an incomplete collection cannot authorize POST or PATCH');
+      reads += 1;
+      return url.endsWith('&page=2') ? response(503, {})
+        : response(200, Array.from({length: 100}, (_, id) => ({id: id + 1, body: 'ordinary comment'})));
+    }});
+  assert.equal((await executeStatusComment(ports, 'new')).outcome, 'unknown');
+  assert.equal(reads, 2);
+});
 
 test('missing credential is not connected and a failure is a gap', async () => {
   const absent = await readGitHubDutyPage({repo: 'octo/repo', readCredential: () => undefined, fetchImpl: async () => {throw new Error('should not fetch');}});
@@ -55,7 +151,7 @@ test('injected fetch reads events, writes one marked comment, and names the real
   const context = {taskId: parent.taskId, runId: 'run', signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString(), authorizationRef: 'auth', scopes: ['agent:delegate']};
   const duty = createDeveloperDutyTools({getRuntime: () => runtime,
     readPage: (repo, cursor) => readGitHubDutyPage({repo, cursor, readCredential: () => token, fetchImpl}),
-    createComments: ({repo, number}) => createGitHubDutyComments({repo, number, readCredential: () => token, fetchImpl}),
+    createComments: ({repo, number}) => createGitHubDutyComments({repo, number, readCredential: () => token, fetchImpl, assertWriteAuthorized: fixtureWriteAuthorization}),
     readPersonal: () => readGitHubPersonalView({readCredential: () => token, fetchImpl})});
   const tool = name => duty.tools.find(item => item.descriptor.name === name);
   await tool('duty.watch').execute({repo: 'octo/repo'}, context);
@@ -126,7 +222,7 @@ test('each open pull request gets its own comment and an unchanged head is not w
   const context = {taskId: parent.taskId, runId: 'run', signal: new AbortController().signal, deadline: new Date(Date.now() + 60_000).toISOString(), authorizationRef: 'auth', scopes: ['agent:delegate']};
   const duty = createDeveloperDutyTools({getRuntime: () => runtime,
     readPage: (repo, cursor) => readGitHubDutyPage({repo, cursor, readCredential: () => token, fetchImpl}),
-    createComments: ({repo, number}) => createGitHubDutyComments({repo, number, readCredential: () => token, fetchImpl})});
+    createComments: ({repo, number}) => createGitHubDutyComments({repo, number, readCredential: () => token, fetchImpl, assertWriteAuthorized: fixtureWriteAuthorization})});
   const tool = name => duty.tools.find(item => item.descriptor.name === name);
   await tool('duty.watch').execute({repo: 'octo/repo'}, context);
   await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context);

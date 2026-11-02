@@ -90,7 +90,7 @@ export interface RemoteDutyRunner {
   submit(job: {repo: string; cursor?: DutyCursor}): Promise<{accepted: false; reason: 'stub'}>;
 }
 
-const fail = (code: 'INVALID_ARGUMENT' | 'SCOPE_DENIED' | 'RESULT_UNKNOWN', message: string): never => {throw new ProtocolError(code, message);};
+const fail = (code: 'INVALID_ARGUMENT' | 'SCOPE_DENIED' | 'RESULT_UNKNOWN' | 'UNSUPPORTED_CAPABILITY', message: string): never => {throw new ProtocolError(code, message);};
 const repoName = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
 
 export function defaultRepoDutyPolicy(repo: string): RepoDutyPolicy {
@@ -161,25 +161,24 @@ export function planStatusComment(input: {desiredBody: string; existing: StatusC
 }
 
 export async function executeStatusComment(ports: {
+  writeAvailable?: boolean;
   listComments: () => Promise<StatusComment[] | 'unknown'>;
   createComment: (body: string) => Promise<{state: 'confirmed' | 'unknown'; id?: number}>;
   editComment: (id: number, body: string) => Promise<{state: 'confirmed' | 'unknown'}>;
 }, desiredBody: string, previous?: StatusCommentAttempt): Promise<StatusCommentAttempt> {
   const existing = await ports.listComments();
   const remembered = previous?.commentId === undefined ? {} : {commentId: previous.commentId};
-  if (existing === 'unknown') return {outcome: 'unknown', body: `${DUTY_STATUS_MARKER}\n${desiredBody.trim()}`, ...remembered};
+  if (existing === 'unknown') return previous?.outcome === 'unknown' ? previous : {outcome: 'unknown', body: `${DUTY_STATUS_MARKER}\n${desiredBody.trim()}`, ...remembered};
   if (previous?.outcome === 'unknown') {
-    const visible = planStatusComment({desiredBody, existing});
-    if (visible.action === 'create' || visible.action === 'refuse') return {outcome: 'unknown', body: visible.body, ...remembered};
-    if (visible.action === 'edit' && visible.commentId !== undefined) {
-      const written = await ports.editComment(visible.commentId, visible.body);
-      return {outcome: written.state, commentId: visible.commentId, body: visible.body};
-    }
-    return {outcome: 'confirmed', body: visible.body, ...(visible.commentId === undefined ? {} : {commentId: visible.commentId})};
+    const matches = existing.filter(comment => comment.body.includes(DUTY_STATUS_MARKER));
+    const original = matches[0];
+    if (matches.length !== 1 || original?.body !== previous.body
+      || (previous.commentId !== undefined && original.id !== previous.commentId)) return previous;
   }
-  const plan = planStatusComment({desiredBody, existing, ...(previous ? {previousAttempt: previous} : {})});
+  const plan = planStatusComment({desiredBody, existing});
   if (plan.action === 'refuse') fail('RESULT_UNKNOWN', plan.reason);
   if (plan.action === 'read_back') return {outcome: 'confirmed', body: plan.body, ...(plan.commentId === undefined ? {} : {commentId: plan.commentId})};
+  if (ports.writeAvailable === false) fail('UNSUPPORTED_CAPABILITY', 'Duty comment requires original ToolGateway content authorization');
   if (plan.action === 'edit' && plan.commentId !== undefined) {
     const written = await ports.editComment(plan.commentId, plan.body);
     return {outcome: written.state, commentId: plan.commentId, body: plan.body};

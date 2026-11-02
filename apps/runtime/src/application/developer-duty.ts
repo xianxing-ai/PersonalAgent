@@ -29,14 +29,46 @@ const HEADS = 'developer-duty-heads:v1';
 const NOTICE = 'developer-duty-f12-intent:v1';
 const COMMENT = 'developer-duty-comment:v1';
 const EVAL = 'developer-duty-f23-dataset:v1';
+const commentWrites = new WeakMap<TaskRuntime, Map<string, Promise<unknown>>>();
 
 export interface DeveloperDutyPorts {
+  writeAvailable?: boolean;
   listComments: () => Promise<Array<{id: number; body: string}> | 'unknown'>;
   createComment: (body: string) => Promise<{state: 'confirmed' | 'unknown'; id?: number}>;
   editComment: (id: number, body: string) => Promise<{state: 'confirmed' | 'unknown'}>;
 }
 
 function fail(message: string): never {throw new ProtocolError('INVALID_ARGUMENT', message);}
+
+function serializeComment<T>(runtime: TaskRuntime, key: string, work: () => Promise<T>): Promise<T> {
+  const pending = commentWrites.get(runtime) ?? new Map<string, Promise<unknown>>();
+  commentWrites.set(runtime, pending);
+  const result = (pending.get(key) ?? Promise.resolve()).catch(() => {}).then(work);
+  pending.set(key, result);
+  void result.finally(() => {if (pending.get(key) === result) pending.delete(key);}).catch(() => {});
+  return result;
+}
+
+async function executePersistedComment(ports: DeveloperDutyPorts, body: string, previous: StatusCommentAttempt | undefined, save: (attempt: StatusCommentAttempt) => void) {
+  let dispatched = false;
+  const attempt = await executeStatusComment({
+    ...(ports.writeAvailable === undefined ? {} : {writeAvailable: ports.writeAvailable}),
+    listComments: () => ports.listComments(),
+    createComment: body => {
+      save({outcome: 'unknown', body});
+      dispatched = true;
+      return ports.createComment(body);
+    },
+    editComment: (id, body) => {
+      save({outcome: 'unknown', commentId: id, body});
+      dispatched = true;
+      return ports.editComment(id, body);
+    },
+  }, body, previous);
+  // A failed read is not a dispatched write. Preserve any original unknown operation.
+  if (attempt.outcome === 'confirmed' || dispatched || previous?.outcome === 'unknown') save(attempt);
+  return attempt;
+}
 
 /** F09 feed projection. A gap does not create a no-change receipt and does not advance the cursor. */
 export function ingestDeveloperDutyPoll(runtime: TaskRuntime, taskId: string, previous: DutyCursor | undefined, page: DutyPollPage): DutyPollResult & {advanced: boolean; receipt: KnowledgeFeedReceiptV2 | undefined} {
@@ -83,24 +115,28 @@ export function dutyPullCommentBody(input: {repo: string; number: number; headSh
 /** One comment per repository and pull request. An unchanged head, conclusion and CI state is not written again. */
 export async function commitPullRequestDutyComment(runtime: TaskRuntime, taskId: string, ports: DeveloperDutyPorts, input: {repo: string; number: number; headSha: string; ci: string; conclusion: string}): Promise<{wrote: boolean; attempt?: StatusCommentAttempt}> {
   const key = dutyPullCommentKey(input.repo, input.number);
-  const saved = runtime.loadCheckpoint(taskId, key) as {headSha?: string; ci?: string; conclusion?: string; attempt?: StatusCommentAttempt} | undefined;
-  if (saved?.headSha === input.headSha && saved.ci === input.ci && saved.conclusion === input.conclusion && saved.attempt?.outcome === 'confirmed') {
-    return {wrote: false, attempt: saved.attempt};
-  }
-  const attempt = await executeStatusComment(ports, dutyPullCommentBody(input), saved?.attempt);
-  runtime.saveCheckpoint(taskId, key, {repo: input.repo, number: input.number, headSha: input.headSha, ci: input.ci, conclusion: input.conclusion, attempt});
-  recordDeveloperDutyConclusions(runtime, taskId, {repo: input.repo, number: input.number, headSha: input.headSha, conclusion: input.conclusion});
-  if (attempt.outcome === 'unknown') throw new ProtocolError('RESULT_UNKNOWN', 'Duty status comment must be read back before another write');
-  return {wrote: saved?.attempt?.body !== attempt.body || saved?.attempt?.outcome !== 'confirmed', attempt};
+  return serializeComment(runtime, `${taskId}:${key}`, async () => {
+    const saved = runtime.loadCheckpoint(taskId, key) as {headSha?: string; ci?: string; conclusion?: string; attempt?: StatusCommentAttempt} | undefined;
+    if (saved?.headSha === input.headSha && saved.ci === input.ci && saved.conclusion === input.conclusion && saved.attempt?.outcome === 'confirmed') {
+      return {wrote: false, attempt: saved.attempt};
+    }
+    const attempt = await executePersistedComment(ports, dutyPullCommentBody(input), saved?.attempt,
+      attempt => runtime.saveCheckpoint(taskId, key, {...input, attempt}));
+    recordDeveloperDutyConclusions(runtime, taskId, {repo: input.repo, number: input.number, headSha: input.headSha, conclusion: input.conclusion});
+    if (attempt.outcome === 'unknown') throw new ProtocolError('RESULT_UNKNOWN', 'Duty status comment must be read back before another write');
+    return {wrote: saved?.attempt?.body !== attempt.body || saved?.attempt?.outcome !== 'confirmed', attempt};
+  });
 }
 
 /** F24 rule: unknown comment writes are read back and never posted again. */
 export async function commitDeveloperDutyStatusComment(runtime: TaskRuntime, taskId: string, ports: DeveloperDutyPorts, desiredBody: string): Promise<StatusCommentAttempt> {
-  const previous = runtime.loadCheckpoint(taskId, COMMENT) as StatusCommentAttempt | undefined;
-  const attempt = await executeStatusComment(ports, desiredBody, previous);
-  runtime.saveCheckpoint(taskId, COMMENT, attempt);
-  if (attempt.outcome === 'unknown') throw new ProtocolError('RESULT_UNKNOWN', 'Duty status comment must be read back before another write');
-  return attempt;
+  return serializeComment(runtime, `${taskId}:${COMMENT}`, async () => {
+    const previous = runtime.loadCheckpoint(taskId, COMMENT) as StatusCommentAttempt | undefined;
+    const attempt = await executePersistedComment(ports, desiredBody, previous,
+      attempt => runtime.saveCheckpoint(taskId, COMMENT, attempt));
+    if (attempt.outcome === 'unknown') throw new ProtocolError('RESULT_UNKNOWN', 'Duty status comment must be read back before another write');
+    return attempt;
+  });
 }
 
 export function developerDutyToolIntent(policy: RepoDutyPolicy, action: 'comment' | 'push' | 'merge', branch?: string) {

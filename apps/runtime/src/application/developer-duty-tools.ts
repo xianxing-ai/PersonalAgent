@@ -1,9 +1,9 @@
 import {createHash} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool} from '@personal-agent/contracts';
-import {buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
+import {DUTY_STATUS_MARKER, buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
 import type {TaskRuntime} from '../index.js';
-import {commitDeveloperDutyStatusComment, commitPullRequestDutyComment, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
+import {commitDeveloperDutyStatusComment, commitPullRequestDutyComment, dutyPullCommentBody, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
 
 export const DUTY_WATCH = 'duty.watch';
 export const DUTY_UNWATCH = 'duty.unwatch';
@@ -91,22 +91,34 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
       const writeComment = async (via: 'remote' | 'local'): Promise<{wrote: boolean; reason?: string}> => {
         if (blocked) return {wrote: false, reason: (page as {rateLimited?: boolean}).rateLimited ? 'rate limited' : 'gap is not a comment'};
         if (!policy.comment) return {wrote: false, reason: 'comment is off'};
+        const attemptComment = async (write: () => Promise<{wrote: boolean}>, body: string, number?: number) => {
+          try {return await write();} catch (error) {
+            if (!(error instanceof ProtocolError) || error.code !== 'UNSUPPORTED_CAPABILITY') throw error;
+            runtime().saveCheckpoint(task.taskId, `developer-duty-comment-intent:v1:${repo}#${number ?? 'status'}`, {
+              repo, ...(number === undefined ? {} : {number}), body: `${DUTY_STATUS_MARKER}\n${body.trim()}`, state: 'requires_authorization',
+            });
+            return {wrote: false, reason: 'comment requires ToolGateway content authorization'};
+          }
+        };
         if (Array.isArray(pullRequests)) {
           let wrote = false;
+          let reason: string | undefined;
           for (const pull of pullRequests) {
             if (typeof pull.number !== 'number' || !Number.isInteger(pull.number) || typeof pull.headSha !== 'string' || !/^[0-9a-f]{40}$/i.test(pull.headSha) || typeof pull.ci !== 'string' || typeof pull.conclusion !== 'string') continue;
             const ports = await options.createComments?.({repo, number: pull.number}) ?? (via === 'local' ? comments : undefined);
             if (!ports) return {wrote, reason: 'not connected'};
-            const result = await commitPullRequestDutyComment(runtime(), task.taskId, ports, {repo, number: pull.number, headSha: pull.headSha, ci: pull.ci, conclusion: pull.conclusion});
+            const input = {repo, number: pull.number, headSha: pull.headSha, ci: pull.ci, conclusion: pull.conclusion};
+            const result = await attemptComment(() => commitPullRequestDutyComment(runtime(), task.taskId, ports, input), dutyPullCommentBody(input), pull.number);
             wrote = wrote || result.wrote;
+            if ('reason' in result) reason = result.reason;
           }
-          return {wrote};
+          return {wrote, ...(reason ? {reason} : {})};
         }
         if (!statusComment?.body) return {wrote: false, reason: 'no status comment'};
         const ports = await options.createComments?.({repo, ...(Number.isInteger(statusComment.number) ? {number: statusComment.number} : {})}) ?? (via === 'local' ? comments : undefined);
         if (ports) {
-          await commitDeveloperDutyStatusComment(runtime(), task.taskId, ports, statusComment.body);
-          return {wrote: true};
+          const body = statusComment.body;
+          return attemptComment(async () => {await commitDeveloperDutyStatusComment(runtime(), task.taskId, ports, body); return {wrote: true};}, body, statusComment.number);
         }
         if (via === 'remote' && options.submitRemote && !options.createComments) {
           await options.submitRemote({kind: 'developer-duty', idempotencyKey: `duty-comment:${repo}:${digest}`, taskId: task.taskId, repo,
