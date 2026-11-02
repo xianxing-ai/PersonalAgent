@@ -34,3 +34,5 @@ Desktop 先经原 ToolGateway/Policy 固定样本和版本化 acceptance，再�
 平台代码判定显示“即将上新”，因此建立模型判定评估器 `8f00d83e-2adc-4076-bc6b-cdca7c259f0f` / `0.0.1`，只按有效 JSON 对象和参考对象语义等价给出 0/1 分；两组使用相同版本。评估任务 main `d9a31add-6a08-4ffa-8410-ba39d4d6e23e`、shadow `7fe04f66-9549-4fe2-89ef-2371bb0ade96`。main 首次执行在平台失败（2 条失败，0 token），尚无可接受的真实评分；不可把报表占位零分当作评价结果。控制面 AK/SK 在现有 Desktop userData 与当前进程环境均未配置，程序化结果读回仍未验收。
 
 两组平台任务最终均为 2 条失败、0 token。main 详情的明确错误为 `ERR_PROVIDER_AUTH`、HTTP 401、`ModelArts.81003 / Invalid authorization header`；评分器模型选择只有 `deepseek-v4-flash`。未重新执行、未人工改分；平台鉴权修复前不能产出有效评分。平台结果行 ID 与评测集草稿行 ID 不同（main 结果行是 `6ae815f85253c8cdaff8c410`、`6ae815f85253c8cdaff8c411`）；绑定时须从完成任务原结果读取，不得复制草稿 ID。当前界面只展示评分器使用的 output/reference，完整 API `item_data` 仍待凭据可用后核对。
+
+已定位现有模型提供商 `personal-agent-platform-deepseek`，Base URL 为 `https://api.modelarts-maas.com/openai/v1`，出站 API Key 凭据提供者 `personal-agent-platform-deepseek-key`；凭据更新需用户在平台内完成，不在 Evidence 保存密钥。结果绑定复用已有 canonical digest，忽略 JSON 对象键的序列化顺序，保留所有实际值与数组顺序；单条读回测试覆盖字段重排通过、输出替换拒绝，通过 1/1。没有再次运行云模型或平台评估任务。

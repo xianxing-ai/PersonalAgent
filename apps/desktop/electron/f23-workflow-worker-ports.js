@@ -100,7 +100,7 @@ export function createDesktopF23WorkflowPorts({runtimeModule,getApplication,mode
       const binding=value[branch],dataset=rows(value.experimentId,branch);
       if(!binding||Object.keys(binding).sort().join(',')!=='datasetId,datasetVersion,evaluatorId,evaluatorVersion,itemIds,taskId'
         ||!Array.isArray(binding.itemIds)||binding.itemIds.length!==dataset.length)fail('INVALID_ARGUMENT');
-      results[branch]=await readEvaluation({...binding,expected:dataset.map((item,i)=>({itemId:binding.itemIds[i],inputDigest:hash([item]),outputDigest:hash([])})),
+      results[branch]=await readEvaluation({...binding,expected:dataset.map((item,i)=>({itemId:binding.itemIds[i],inputDigest:digest([item]),outputDigest:digest([])})),
         deadline:context.deadline,signal:context.signal,authorize:request=>authorizeEvaluation(request,[value.main.taskId,value.shadow.taskId]),assertCurrent});
     }
     if(value.main.evaluatorId!==value.shadow.evaluatorId||value.main.evaluatorVersion!==value.shadow.evaluatorVersion)fail('REVISION_CONFLICT');

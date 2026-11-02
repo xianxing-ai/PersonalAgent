@@ -1,7 +1,6 @@
-import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
-const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+import {workflowShadowReleaseDigest as digest} from '@personal-agent/agentarts';
 const fail=code=>{throw new ProtocolError(code,'原 AgentArts 评估结果尚未核实');};
 const identity=value=>typeof value==='string'&&/^[A-Za-z0-9_.-]{1,128}$/.test(value);
 
