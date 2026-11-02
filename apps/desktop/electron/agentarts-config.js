@@ -31,6 +31,7 @@ function validateReleaseBinding(value,version) {
     ||!uuid(value.runtimeId)||!uuid(value.endpointId)||typeof value.endpointName!=='string'
     ||!/^[A-Za-z][A-Za-z0-9-]{0,46}[A-Za-z0-9]$/u.test(value.endpointName)||/^(latest|current|default)$/iu.test(value.endpointName)
     ||typeof version!=='string'||!/^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$/u.test(version)||/^(latest|current|default)$/iu.test(version)
+    ||value.endpointName!==version
     ||typeof repository!=='string'||!/^swr\.cn-southwest-2\.myhuaweicloud\.com\/[a-z0-9._-]+\/[a-z0-9._/-]+$/u.test(repository)
     ||value.imageReference!==undefined&&(typeof value.imageReference!=='string'||!value.imageReference.startsWith(repository+'@')
       ||!/@sha256:[a-f0-9]{64}$/u.test(value.imageReference)))
