@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {syntheticPublicPayloadGate,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
@@ -15,8 +16,8 @@ async function wait(app,id,predicate){for(let i=0;i<200;i++){const task=app.runt
 async function fixture(t,execute){
   const directory=await mkdtemp(path.join(os.tmpdir(),'pa-mail-review-'));let app,allowed=true,sends=0,guards=0,closed=false;
   const options={path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'mail-user',
-    coordination:{execute:async request=>{sends++;app.assertCompetitionExportAllowed({...request,signal:new AbortController().signal});
-      return execute?execute(request):{kind:'text',text:JSON.stringify(answer),verification:'unverified'};}},
+    coordination:{execute:syntheticCoordinationExecution(async request=>{sends++;app.assertCompetitionExportAllowed({...request,signal:new AbortController().signal});
+      return execute?execute(request):{kind:'text',text:JSON.stringify(answer),verification:'unverified'};})},
     coordinationInput:{beforeCoordinationSend(){throw Error('Mail must not borrow conversation history');}},
     mailReview:{readEnvelope:async original=>({binding:original,labelKeys:['work','newsletter'],headers:{subject:'PUBLIC_HEADER_ONLY'}}),
       assertExport(original,envelope){guards++;assert.deepEqual(original,binding);assert.deepEqual(envelope.binding,binding);

@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -191,10 +192,10 @@ for(const [configured,unknown] of [[true,false],[false,false],[true,true]])test(
       assert.deepEqual(readConfiguredWorkflowBinding(app,scope),original);
       return f.options.verifyCompletion(input);
     }:undefined}],
-    coordination:{execute:async request=>{cloud.push(request);
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
       if(app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation)
         return {kind:'text',text:'Synthetic configured continuation',verification:'unverified'};
-      return f.proposal;}},
+      return f.proposal;})},
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});

@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -25,7 +26,7 @@ function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,
   const tools=[...(registered?[dispatch]:[]),{descriptor,execute:async(input,context)=>{
     calls.push({taskId:context.taskId,input});return execute?execute(input,context):{answer:56};
   }}];
-  const port=new FakeCoordinationPort(async request=>{
+  const port=new FakeCoordinationPort(syntheticCoordinationExecution(async request=>{
     const task=app.runtime.getTask(request.taskId);
     if(reply)return reply(request,task,app);
     if(task.conversationId.startsWith('desktop-subtask:')) {
@@ -38,7 +39,7 @@ function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,
     assert.ok(request.continuation,'root must never ask the cloud to decide whether to delegate');
     assert.equal(request.continuation.result.succeeded,1);
     return {kind:'text',text:'Summary of confirmed child result',verification:'mock'};
-  });
+  }));
   app=createRuntimeApplication({path:storage,profile:'huawei_ict_agentarts',...(delegate?{delegateUserTasks:true}:{}),
     ...(coordination?{coordination:port}:{}),coordinationBinding:'fixed-fixture-config',tools,
     ...(coordinationInput?{coordinationInput}:{}),

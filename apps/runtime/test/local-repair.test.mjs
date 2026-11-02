@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {mkdtempSync, rmSync} from 'node:fs';
@@ -74,7 +75,7 @@ function fixture(t, overrides = {}) {
       reason: 'Meeting time corrected by a read observation',
       dependencies: [{id: 'meeting', revision: 2}],
     }]}, verification: 'unverified'};
-  const port = new FakeCoordinationPort(request => request.continuation ? proposalResult : sourceProposal);
+  const port = new FakeCoordinationPort(syntheticCoordinationExecution(request => request.continuation ? proposalResult : sourceProposal));
   const create = () => createRuntimeApplication({path, profile: 'huawei_ict_agentarts',
     coordination: port, repairCandidateVersion: '1.0', localRepair: host,
     competitionToolExports: [{toolName: sourceTool.name, toolVersion: sourceTool.version,

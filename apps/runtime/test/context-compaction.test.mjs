@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
@@ -349,14 +350,14 @@ test('Synthetic actual Coordination caller compacts over-16k history and preserv
       assertCurrent(){},readSnapshot:()=>source,summarize:async input=>{input.assertBeforeSend();summarized.push(input);
         assert.ok(input.segment.messages.every(message=>!message.content.includes('Keep this exact tool result')));
         return 'Synthetic compacted decisions '+input.segment.index;}}},
-    coordination:{execute:async request=>{
+    coordination:{execute:syntheticCoordinationExecution(async request=>{
       app.assertCompetitionExportAllowed(request);queries.push(request);
       if(!request.continuation)return {kind:'tool_proposal',proposalId:'current-native-proposal',toolName:descriptor.name,
         toolVersion:descriptor.version,arguments:{},verification:'unverified'};
       const loop=app.runtime.loadCheckpoint(request.taskId,'competition-loop');
       assert.equal(JSON.stringify(request.continuation),JSON.stringify(loop.continuation));
       assert.deepEqual(request.continuation.result,{toolResult:'Keep this exact tool result',nativeProposalId:'preserved'});
-      return {kind:'text',text:'Synthetic child execution answer',verification:'mock'};}}});
+      return {kind:'text',text:'Synthetic child execution answer',verification:'mock'};})}});
   t.after(()=>app.close());const client=new Client(app);await client.connect();
   const task=await client.call('task.submit',{goal:'Exact current public goal',conversationId:'compaction-caller'},
     {idempotencyKey:'actual-caller',timeoutMs:60000});

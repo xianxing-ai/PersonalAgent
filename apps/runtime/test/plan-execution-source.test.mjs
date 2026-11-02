@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
@@ -21,10 +22,10 @@ async function fixture(t,{unknown=false,withFact=false,changeAtCredentials=false
     execute:async()=>{executions++;if(unknown)throw Error('Synthetic lost effect acknowledgement');return {done:true};}};
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
-  const port=new FakeCoordinationPort(request=>app.runtime.getTask(request.taskId).conversationId.startsWith('desktop-subtask:')
+  const port=new FakeCoordinationPort(syntheticCoordinationExecution(request=>app.runtime.getTask(request.taskId).conversationId.startsWith('desktop-subtask:')
     ?request.continuation?{kind:'text',text:'Synthetic original execution observed',verification:'mock'}:
       {kind:'tool_proposal',proposalId:'original-effect',toolName:effect.descriptor.name,toolVersion:'1.0.0',arguments:{},verification:'unverified'}
-    :{kind:'text',text:'Synthetic original child summary',verification:'mock'});
+    :{kind:'text',text:'Synthetic original child summary',verification:'mock'}));
   const options={path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,coordination:port,
     coordinationBinding:'synthetic-fixed-deployment',assertCoordinationBinding:()=>{if(changed)throw Error('changed deployment');},tools:[dispatch,effect],
     coordinationInput:{prepareCoordinationGoal:async request=>{preparations++;return request.publicGoal;},beforeCoordinationSend:()=>{sends++;}},

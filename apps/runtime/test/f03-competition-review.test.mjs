@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -24,7 +25,7 @@ test('Competition F03 original selection uses a separate Policy CAS and restart 
     outputSchema:{type:'object',additionalProperties:false,required:['selectedId'],properties:{selectedId:{type:'string'}}}},
     execute:async()=>({selectedId:'repair'})};
   const options={path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',repairCandidateVersion:'1.0',hostUserNamespace:'f03-fixture',
-    coordination:new FakeCoordinationPort(()=>({kind:'text',text:'synthetic',verification:'unverified'})),tools:[decision],
+    coordination:new FakeCoordinationPort(syntheticCoordinationExecution(()=>({kind:'text',text:'synthetic',verification:'unverified'}))),tools:[decision],
     localRepair:{graphNamespace:namespace,bindingVersion:'competition-v1',withSourceLock:work=>work(),
       competitionSource:{resolve:()=>revoked?undefined:readF03CompetitionReview(app,scope,source)}}};
   const create=()=>{app=createRuntimeApplication(options);app.readConfiguredWorkflowBinding=()=>structuredClone(binding);return app;};

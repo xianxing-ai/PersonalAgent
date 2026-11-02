@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -43,11 +44,11 @@ async function fixture({outcome='applied',conversation='synthetic-chat',exportAl
       lockRetained:true,...(outcome==='unknown'?{}:{currentSha256:'b'.repeat(64)})};},
       finalize:async(accepted,context)=>{finalizeCalls++;if(knowledge)return knowledge.writer.finalize(accepted,context);
         return {state:'finalized',operationId:accepted.operationId,outcome:accepted.outcome,currentSha256:accepted.currentSha256};}},
-    coordination:{execute:async request=>{cloud.push(request);
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
       if(app.runtime.getTask(request.taskId).conversationId==='synthetic-chat'||request.continuation)
         return {kind:'text',text:'Synthetic recovery summary',verification:'unverified'};
       return {kind:'tool_proposal',proposalId:'synthetic-f24-request',toolName:'workflow.recovery.knowledge',toolVersion:'1.0.0',
-        arguments:{sourceTaskId},verification:'unverified'};}},
+        arguments:{sourceTaskId},verification:'unverified'};})},
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))};

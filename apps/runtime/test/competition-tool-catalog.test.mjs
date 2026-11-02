@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
@@ -35,10 +36,10 @@ test('trusted step budget supports four tools plus answer and is not reset by ap
       tools:[{descriptor,execute:async()=>{executions++;return {value:'synthetic'};}}],
       competitionToolExports:[toolExport],
       competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
-      coordination:{execute:async()=>++calls<=4
+      coordination:{execute:syntheticCoordinationExecution(async()=>++calls<=4
         ? {kind:'tool_proposal',proposalId:`budget-${calls}`,toolName:descriptor.name,
           toolVersion:descriptor.version,arguments:{path:'secret-path'},verification:'unverified'}
-        : {kind:'text',text:'Four synthetic operations completed',verification:'unverified'}},
+        : {kind:'text',text:'Four synthetic operations completed',verification:'unverified'})},
     });
     try {
       const client=new Client(app,Date.now);await client.connect();
@@ -472,11 +473,11 @@ test('stale host availability rejects an unverified cloud proposal before approv
   const directory = await mkdtemp(path.join(os.tmpdir(), 'personal-agent-catalog-'));
   let healthy = true;
   let executions = 0;
-  const port = {execute: async () => {
+  const port = {execute: syntheticCoordinationExecution(async () => {
     healthy = false;
     return {kind: 'tool_proposal', proposalId: 'proposal-1', toolName: descriptor.name,
       toolVersion: descriptor.version, arguments: {path: 'secret-path'}, verification: 'unverified'};
-  }};
+  })};
   const app = createRuntimeApplication({path: path.join(directory, 'runtime.sqlite'),
     profile: 'huawei_ict_agentarts', coordination: port,
     tools: [{descriptor, execute: async () => { executions++; return {value: 'local-only'}; }}],
@@ -503,12 +504,12 @@ test('stale host availability rejects an unverified cloud proposal before approv
 test('cloud proposal rejects a catalog from an earlier running task revision', async () => {
   let app;
   let executions = 0;
-  const port = {execute: async request => {
+  const port = {execute: syntheticCoordinationExecution(async request => {
     app.runtime.recordProgress(request.taskId,
       {stepId: 'catalog-proposal-race', label: 'task changed while cloud was running'});
     return {kind: 'tool_proposal', proposalId: 'proposal-stale', toolName: descriptor.name,
       toolVersion: descriptor.version, arguments: {path: 'secret-path'}, verification: 'unverified'};
-  }};
+  })};
   app = createRuntimeApplication({path: ':memory:', profile: 'huawei_ict_agentarts',
     coordination: port,
     tools: [{descriptor, execute: async () => { executions++; return {value: 'local-only'}; }}],
@@ -583,7 +584,7 @@ test('selected read and local write proposals each require local approval before
     competitionToolAvailability: [read, write].map(item => ({
       toolName: item.name, toolVersion: item.version, available: () => true,
     })),
-    coordination: {execute: async request => {
+    coordination: {execute: syntheticCoordinationExecution(async request => {
       requests.push(request);
       if (requests.length === 1) {
         assert.deepEqual(request.availableTools.map(item => item.name), ['fixture.read', 'fixture.write']);
@@ -600,7 +601,7 @@ test('selected read and local write proposals each require local approval before
       assert.deepEqual(request.continuation, {proposalId: 'write-1', state: 'confirmed',
         result: {value: write.name}});
       return {kind: 'text', text: 'Synthetic read and write confirmed', verification: 'unverified'};
-    }},
+    })},
   });
   try {
     const client = new Client(app, Date.now);
@@ -643,11 +644,11 @@ test('a write missing from the task selection cannot reach approval or execution
     })),
     competitionToolAvailability: [{toolName: descriptor.name, toolVersion: descriptor.version,
       available: () => true}],
-    coordination: {execute: async request => {
+    coordination: {execute: syntheticCoordinationExecution(async request => {
       assert.deepEqual(request.availableTools.map(item => item.name), [descriptor.name]);
       return {kind: 'tool_proposal', proposalId: 'unselected-write', toolName: write.name,
         toolVersion: write.version, arguments: {path: 'secret-path'}, verification: 'unverified'};
-    }},
+    })},
   });
   try {
     const client = new Client(app, Date.now);
@@ -677,10 +678,10 @@ test('routine queries and scoped local work execute without prompting while othe
       automaticTools:automatic?[{toolName:descriptor.name,toolVersion:descriptor.version}]:[],
       competitionToolExports:[toolExport],
       competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
-      coordination:{execute:async request=>request.continuation
+      coordination:{execute:syntheticCoordinationExecution(async request=>request.continuation
         ? {kind:'text',text:'Public query completed',verification:'unverified'}
         : {kind:'tool_proposal',proposalId:'public-query',toolName:descriptor.name,
-          toolVersion:descriptor.version,arguments:{path:'secret-path'},verification:'unverified'}}});
+          toolVersion:descriptor.version,arguments:{path:'secret-path'},verification:'unverified'})}});
     try {
       const client=new Client(app,Date.now);await client.connect();
       const {taskId}=await client.call('task.submit',{goal:'Read public forecast',conversationId:'public'},

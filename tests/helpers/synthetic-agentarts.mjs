@@ -18,6 +18,15 @@ export function syntheticAgentArtsResult(payload,result,options){
   return JSON.stringify({executionEpochVersion:1,executionEpoch,result});
 }
 
+export const syntheticCoordinationExecution=execute=>async request=>{
+  const executionEpoch=request.executionEpoch;
+  const result=await execute(request);
+  if(result?.verification!=='unverified'||Object.hasOwn(result,'executionEpoch')
+    ||!['text','tool_proposal','repair_candidate'].includes(result.kind))return result;
+  assert.ok(Number.isSafeInteger(executionEpoch)&&executionEpoch>=0);
+  return {...result,executionEpoch};
+};
+
 export function syntheticAgentArtsOptions(options){
   assert.equal(typeof options.fetchImpl,'function','Synthetic composition requires its explicit fake fetch');
   const fakeFetch=options.fetchImpl;

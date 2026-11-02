@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {Client} from '@personal-agent/client';
@@ -35,8 +36,8 @@ async function state(app, taskId, states) {
 async function fixture(t, {toolExport = binding, result = proposal, sideEffect = 'read', timeoutMs = 30_000,
   now, project, toolState, respond, prepareCompetitionToolExport, path = ':memory:', cleanup = true} = {}) {
   let executions = 0;
-  const port = new FakeCoordinationPort(respond ?? (request => request.continuation
-    ? {kind: 'text', text: 'Cloud fixture consumed projection', verification: 'unverified'} : result));
+  const port = new FakeCoordinationPort(syntheticCoordinationExecution(respond ?? (request => request.continuation
+    ? {kind: 'text', text: 'Cloud fixture consumed projection', verification: 'unverified'} : result)));
   const app = createRuntimeApplication({path, profile: 'huawei_ict_agentarts', coordination: port,
     ...(now ? {now: () => new Date(now())} : {}),
     ...(prepareCompetitionToolExport ? {prepareCompetitionToolExport} : {}),
