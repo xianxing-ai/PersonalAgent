@@ -195,6 +195,11 @@ export {
   BUILTIN_SUBAGENT_ROLES,
 } from './application/subagent-type-registry.js';
 export type {SubagentTypeDefinition, SubagentTypeRecord, SubagentTypeProposal, SubagentTypeRegistry} from './application/subagent-type-registry.js';
+export {
+  ingestDeveloperDutyPoll, recordDeveloperDutyConclusions, queueDeveloperDutyNotification, commitDeveloperDutyStatusComment,
+  developerDutyToolIntent, storeDeveloperDutyEvalSet, developerDutyCredential, developerDutyRemoteRunner, developerDutyPersonalView,
+  developerDutyCiClass,
+} from './application/developer-duty.js';
 export {LOCAL_REPAIR_TOOL} from './application/local-repair.js';
 export {createKnowledgeFeedReceipt,createKnowledgeFeedReceiptFromCollectResult,createKnowledgeFeedReceiptFromConfirmedExecution, parseKnowledgeFeedReceipt, verifyKnowledgeFeedReceiptBinding,
   knowledgeFeedReceiptItems} from './application/knowledge-feed-receipt.js';
