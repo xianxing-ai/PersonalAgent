@@ -132,7 +132,12 @@ export function createF19PublicationHost({getApplication:app,runtimeModule:r,bin
     return {proof,operation:{toolName:original.toolName,arguments:original.arguments},input:{baseHeadSha:input.headSha,
       expectedHeadSha:original.arguments.expectedHeadSha,paths:files.map(file=>file.path).sort(),stage:original.toolName==='workspace.git.commit'?'commit':'published'}};
   }});
-  gitPort.assertContent=async(scope,value)=>content.assertContent(scope,value);
+  gitPort.assertContent=async(scope,value)=>{
+    const original=app().readAuthorizationQuestionInvocation(scope.taskId,scope.runId);
+    if(!original||original.taskId!==scope.taskId||original.runId!==scope.runId||original.deadline!==scope.deadline)
+      fail('Original F19 publication execution changed');
+    content.assertContent({...scope,...original,signal:scope.signal,deadline:scope.deadline,scopes:scope.scopes},value);
+  };
   return {gitPort,resolveTool,
     original(scope){
       const bound=current(scope),hosts=bound.confirmedOperations.filter(value=>value.nodeId==='F19_N03'&&value.toolName===hostName);

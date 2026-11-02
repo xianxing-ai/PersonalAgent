@@ -117,7 +117,12 @@ export function createF16PublicationHost({getApplication,runtimeModule:r,binding
       input:{baseHeadSha:input.headSha,expectedHeadSha:original.arguments.expectedHeadSha??input.headSha,paths:[input.patch.path],
         stage:original.toolName==='workspace.git.push'?'published':'commit'}};
   }});
-  gitPort.assertContent=async(scope,value)=>content.assertContent(scope,value);
+  gitPort.assertContent=async(scope,value)=>{
+    const original=app().readAuthorizationQuestionInvocation(scope.taskId,scope.runId);
+    if(!original||original.taskId!==scope.taskId||original.runId!==scope.runId||original.deadline!==scope.deadline)
+      fail('Original F16 publication execution changed');
+    content.assertContent({...scope,...original,signal:scope.signal,deadline:scope.deadline,scopes:scope.scopes},value);
+  };
   const rawCurrent=gitPort.assertCurrent;
   gitPort.assertCurrent=async(ctx,value)=>{
     await rawCurrent(ctx,value);
