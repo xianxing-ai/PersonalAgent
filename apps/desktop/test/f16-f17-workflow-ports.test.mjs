@@ -194,6 +194,17 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
     }}):authority.authorizeExport;
   let codingWorkspace,developerHost,caseConfiguration,developerDeployment;
   const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()}; // Explicit test-only secure storage.
+  function publicationQuestion(scope){
+    let content;
+    return {prepare(actual,options){
+      assert.equal(actual.taskId,scope.taskId);assert.equal(actual.runId,scope.runId);assert.equal(options.assertCurrent(),true);
+      if(options.contentConfirmation){content=options.contentConfirmation;assert.equal(content.digest,hash(content.text));
+        assert.match(content.text,/完整 Git 差异（未截断）/);assert.match(content.text,/a-b/);assert.match(content.text,/a\+b/);}
+    },currentRequirement(actual,id){
+      assert.equal(id,'tool');assert.equal(actual.taskId,scope.taskId);assert.equal(actual.runId,scope.runId);assert.ok(content);
+      const approval=app.runtime.getApproval(scope.runId);assert.equal(approval.state,'allowed');assert.equal(approval.argumentsDigest,scope.argumentsDigest);
+    }};
+  }
   if(productionSources){
     await writeFile(join(directory,'coding-workspace.json'),JSON.stringify({version:1,encrypted:Buffer.from(root).toString('base64'),
       encryptedNode:Buffer.from(process.execPath).toString('base64'),encryptedCheckFile:Buffer.from('failure.test.mjs').toString('base64')}));
@@ -229,6 +240,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
     }else ports=createF16F17WorkflowPorts({runtimeModule,getApplication:()=>app,workspace,authority,authorizeExport:authority.authorizeExport,f16TestIntent,
       ...(preservedAcceptance?{f16CiIdentityRecipe:'github-readback'}:{}),
       ...(publish?{f16Publication:{installGitPort:port=>developerHost.configureF16Publication(port),
+        readPublicationPreview:(input,scope)=>developerHost.readPublicationPreview(input,scope),
         assertCurrent(input){assert.equal(input.repository,repository);assert.deepEqual(input.publication,{branch,createNewBranch:true});}}}:{})});
     const tools=[decision,productionSources?developerHost.tools.find(tool=>tool.descriptor.name==='workspace.git.head'):gitTool,
       patchTool,...(productionSources&&publish?developerHost.tools.filter(tool=>tool.descriptor.name.startsWith('github.')):github),ports.commandTool,...ports.tools,...(publish?developerHost.tools.filter(tool=>
@@ -239,7 +251,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
       ...(productionSources&&publish?{requestToolAuthorization:async scope=>{
         // Synthetic approval response over the actual Runtime Policy. Actual broker
         // receives a synthetic native gesture, scoped independently to each child.
-        const proof=ports.preparePublicationQuestion(scope,{prepare:(_scope,options)=>assert.equal(options.assertCurrent(),true)});
+        const proof=await ports.preparePublicationQuestion(scope,publicationQuestion(scope));
         if(proof)await ports.confirmPublicationPresence(scope);
         return 'allow_once';
       }}:{}),
@@ -252,15 +264,15 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
           if(completed<3){
             const command=completed===1;
             return {kind:'tool_proposal',proposalId:'original-'+completed,toolName:command?'workspace.run_allowed_command':'workspace.git.head',
-              toolVersion:'1.0.0',arguments:command?{recipeId:recipe.id}:{repository},verification:'unverified'};
+              toolVersion:'1.0.0',arguments:command?{recipeId:recipe.id}:{repository},verification:'unverified',executionEpoch:request.executionEpoch};
           }
           if(completed===3)return {kind:'tool_proposal',proposalId:'fixture-graph',toolName:F16_F17_CONFIGURATIONS[workflow].toolName,
-            toolVersion:'1.0.0',arguments:{selectionRef:'fixture'},verification:'unverified'};
+            toolVersion:'1.0.0',arguments:{selectionRef:'fixture'},verification:'unverified',executionEpoch:request.executionEpoch};
         }
         if(app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation)
-          return {kind:'text',text:'Synthetic configured continuation',verification:'unverified'};
+          return {kind:'text',text:'Synthetic configured continuation',verification:'unverified',executionEpoch:request.executionEpoch};
         return {kind:'tool_proposal',proposalId:'fixture-graph',toolName:F16_F17_CONFIGURATIONS[workflow].toolName,toolVersion:'1.0.0',
-          arguments:{selectionRef:'fixture'},verification:'unverified'};}},
+          arguments:{selectionRef:'fixture'},verification:'unverified',executionEpoch:request.executionEpoch};}},
       competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
         publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
       competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,exportPolicyVersion:'synthetic-v1',
@@ -279,7 +291,7 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
             +(request.operation==='advance'?'?endpoint=fixed-f17-fixture':''));
           const value=request.operation==='advance'?await image.advance({...request,requestId:init.headers['X-Request-Id'],
             sessionId:init.headers['x-hw-agentarts-session-id'],deadline:init.headers['X-PA-Deadline'],signal:init.signal}):await coordination.execute(originalRequest);
-          const {verification:_verification,...response}=value;
+          const {verification:_verification,executionEpoch:_executionEpoch,...response}=value;
           return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(response),index:0}},
             {event:'task_end'},{event:'end'}]),{headers:{'content-type':'application/json'}});
         }}));
@@ -317,12 +329,20 @@ async function fixture(t,{workflow='F17',deny,unknownHead=false,denyNestedHead=f
         {idempotencyKey:'fixture-workflow',timeoutMs:120000});let child;
       for(let i=0;i<3000;i++){
         for(const task of app.runtime.listTasks({limit:100}).items)for(const approval of app.runtime.listApprovals({taskId:task.taskId,state:'pending'}).items){
+          if(productionSources&&publish)continue; // The explicit question callback above owns these original approvals.
           const name=app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName;
           const denied=denyNestedHead&&app.runtime.loadCheckpoint(task.taskId,'workflow-business-tool:source')&&name==='workspace.git.head'
             ||denyReview&&name==='workflow.host.f16_n04'||denyPublish&&name===denyPublish;
+          if(publish&&!denied){
+            const original=app.readAuthorizationQuestionInvocation(task.taskId,approval.approvalId);
+            if(original){const scope={...original,signal:new AbortController().signal};await ports.preparePublicationQuestion(scope,publicationQuestion(scope));}
+          }
           await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:denied?'deny':'allow_once'});
         }
         [child]=app.readSubagentTasks(submitted.taskId);
+        const parent=app.runtime.getTask(submitted.taskId);
+        if(!child&&['failed','cancelled','waiting_reconciliation'].includes(parent.state))
+          throw Error('Configured parent stopped before child dispatch: '+JSON.stringify(parent.error));
         if(denyReview&&child&&app.activeTaskCount===0&&app.runtime.listTasks({limit:100}).items.some(task=>
           task.state==='cancelled'&&app.runtime.loadCheckpoint(task.taskId,'host-tool-intent')?.toolName==='workflow.host.f16_n04'))return child;
         if(child&&app.activeTaskCount===0&&['succeeded','failed','cancelled','waiting_reconciliation'].includes(child.state)){
