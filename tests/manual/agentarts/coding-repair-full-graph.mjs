@@ -155,11 +155,11 @@ export async function runCodingRepairFullGraphFixture(options={}) {
   try {
     let client=new Client(app,Date.now);await client.connect();const begin=Date.now();
     const {taskId}=await client.call('task.submit',{goal:options.fixture?.goal??'Perform the complete F15 minimal repair workflow',conversationId:'synthetic-f15'},
-      {idempotencyKey:'synthetic-f15-'+randomUUID(),timeoutMs:options.fakeModel===true?60000:Date.parse(options.deadline)-Date.now()});
+      {idempotencyKey:'synthetic-f15-'+randomUUID(),timeoutMs:options.fakeModel===true&&options.deadline===undefined?60000:Date.parse(options.deadline)-Date.now()});
     // Cancellation can settle a Runtime task before the original host command has finished unwinding.
     // Capture its report only after both the Runtime workers and fixture-owned host operations settle.
     const waitTask=()=>until(()=>app.activeTaskCount===0&&activeHostOperations===0&&['succeeded','failed','waiting_approval','waiting_reconciliation','cancelled'].includes(app.runtime.getTask(taskId).state),
-      options.fakeModel===true?60000:Math.max(1,Date.parse(app.runtime.loadCheckpoint(taskId,'application-deadline'))-Date.now()));
+      options.fakeModel===true&&options.deadline===undefined?60000:Math.max(1,Date.parse(app.runtime.loadCheckpoint(taskId,'application-deadline'))-Date.now()));
     await waitTask();
     let approvals=0,restarts=0;
     while(options.approveOriginalOperations===true&&app.runtime.getTask(taskId).state==='waiting_approval') {

@@ -42,6 +42,8 @@ Owned 与主动工作流的 advance 同样绑定宿主固定世代；只读能�
 - F16/F19 发布适配从原可信调用补齐完整内容校验所需字段，仍使用实际 ToolContext 的取消、期限与 scopes。修复后 F16 原正向、完整差异变化拒绝及独立 commit/push 拒绝组 3/3；Git 为本地真实仓库，云、原生确认和远端状态为显式 Fixture。
 - 子任务冲突经原 Runtime 父绑定投影到所属对话，卡片保留原 child taskId/state/revision；处理决定额外绑定当前对话，跨窗口、跨会话及旧修订拒绝。此卡不开放原本仅限直接任务的继续/停止入口。冲突与状态定向 26/26，通过一次；没有重跑已通过的 Electron 全流程。
 - F18 单例复现旧直接 Fake 缺少世代回显，25 个同类 Desktop 夹具（含方法形式）改用既有测试 helper；真实端口、原断言及显式旧/缺世代故障输入不改。F18 原失败、F01 原 Policy 和原 Todo 授权正向代表各 1/1，通过后未扩跑本地全量。
+- 从旧工作树移入 business-workflow-main、F04、F05 Main、F21、F25、private-memory-render 六个既有 Fake 环境/Windows canonical path 修复，保留当前世代包装；本轮未重复执行这六个已验夹具。根任务单独复验 AgentArts controls 1/1 通过。
+- F19 夹具补齐异步完整发布预览、原 task/run/参数摘要与 Policy 批准校验。初次两代表均在共用 F15 夹具固定 60 秒期限超时；持久记录确认发布及原生回归已成功，不是漏接端口。仅让显式 Fake 可使用已有 `options.deadline`，F19 在提交前一次设置 120 秒绝对期限，未给期限的 Fake 仍默认 60 秒，真实路径不变且运行中不续期。生产 Git 并发尝试已撤回，并重编 coding-tools 恢复串行产物；随后只复验完整 configured 关闭正向和 changed close response readback 磁盘重启拒绝两例，2/2 通过（76.016 秒、73.474 秒）。原状态、完整内容、单次 PATCH 和重启不重放断言均保留；该结果是本地真实 Git/文件与明确 Fake 远端验收，不是真实 GitHub。
 
 ## 尚未证明的边界
 

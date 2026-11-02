@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {realpathSync} from 'node:fs';
 import {mkdtemp,mkdir,writeFile,rm,readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -16,7 +17,7 @@ import {createDesktopF25Configuration,createDesktopF25WorkflowWorkerPorts} from 
 test('F25 actual graph applies original scope through Intent and preserves unverified account state without exporting its source body',async t=>{
   // Real files, configuration hosts, Engine, Intent/Question, Runtime, Policy and SQLite.
   // Encryption, account credentials, candidates/selector and the human responses are explicit Fixtures; no network request.
-  const directory=await mkdtemp(join(tmpdir(),'pa-f25-')),userData=join(directory,'host'),vault=join(directory,'vault');
+  const directory=realpathSync.native(await mkdtemp(join(tmpdir(),'pa-f25-'))),userData=join(directory,'host'),vault=join(directory,'vault');
   await mkdir(userData);await mkdir(vault);
   const privateName='synthetic-private-filename.md',privateQuery='synthetic-private-selection-query';
   await writeFile(join(vault,privateName),'Synthetic source body, never a cloud prompt');
