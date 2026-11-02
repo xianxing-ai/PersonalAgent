@@ -15,7 +15,7 @@ Set-Location -LiteralPath $paRoot
 $paDocker=(Get-Command $DockerPath -ErrorAction Stop).Source
 $paNode=(Get-Command $NodePath -ErrorAction Stop).Source
 function Assert-PaReleaseSource {
-  if($ExpectedSourceRevision -and ((& git rev-parse HEAD) -ne $ExpectedSourceRevision -or (& git status --porcelain --untracked-files=all -- package.json package-lock.json packages/contracts packages/coordination packages/models packages/agentarts apps/agentarts-runtime scripts/agentarts/release-owned-image.ps1))){throw 'Original release source changed'}
+  if($ExpectedSourceRevision -and ((& git rev-parse HEAD) -ne $ExpectedSourceRevision -or (& git status --porcelain --untracked-files=all -- package.json package-lock.json tsconfig.base.json packages/contracts packages/coordination packages/models packages/agentarts apps/agentarts-runtime scripts/agentarts/release-owned-image.ps1))){throw 'Original release source changed'}
 }
 Assert-PaReleaseSource
 $paOutput=[IO.Path]::GetFullPath($OutputDirectory)

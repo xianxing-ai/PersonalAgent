@@ -11,7 +11,7 @@ import {readAgentArtsDeployment} from './agentarts-deployment-readback.js';
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),bytes=value=>createHash('sha256').update(value).digest('hex');
 const fail=(code='UNAUTHORIZED',message='F26 原源码、发布绑定或真实回执不可用')=>{throw new ProtocolError(code,message);};
 const recipeId='f26-owned-image-release',commandName='workspace.f26_release';
-const sourcePaths=['package.json','package-lock.json','packages/contracts','packages/coordination','packages/models','packages/agentarts','apps/agentarts-runtime','scripts/agentarts/release-owned-image.ps1'];
+const sourcePaths=['package.json','package-lock.json','tsconfig.base.json','packages/contracts','packages/coordination','packages/models','packages/agentarts','apps/agentarts-runtime','scripts/agentarts/release-owned-image.ps1'];
 const identity=file=>{const real=realpathSync.native(file),stat=lstatSync(file,{bigint:true});if(stat.isSymbolicLink()||!stat.isFile()||stat.nlink!==1n)fail();
   return [real,String(stat.dev),String(stat.ino),String(stat.size),String(stat.mtimeNs),String(stat.ctimeNs)];};
 
