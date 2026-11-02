@@ -62,6 +62,20 @@ test('one card receives tool, connector and bounded export requirements without 
   f.host.close();
 });
 
+test('the actual original send invocation replaces task summaries with its complete single-use content card',async()=>{
+  const f=fixture(),source=f.options.getApplication().readAuthorizationQuestionInvocation();
+  assert.equal(f.host.requiresAuthorization({...f.scope,toolName:'vendor.execute',sideEffect:'external_write'}),true);
+  assert.equal(f.host.requiresAuthorization({...f.scope,toolName:'vendor.read',sideEffect:'read'}),false);
+  source.toolName='mail.send';source.scopes=['mail:send'];source.sideEffect='external_write';
+  source.arguments={to:'person@example.test',subject:'Exact subject',text:'body\n'+'x'.repeat(700)+'END'};
+  f.host.prepare(f.scope,{taskConsent:{taskId:f.scope.taskId,bindingDigest:H,summary:'Prior broad task consent',mode:'workspace-write'}});
+  const pending=f.host.requestToolAuthorization(f.scope),card=f.host.snapshot()[0];
+  assert.ok(card.description.includes(JSON.stringify(source.arguments.text)));assert.match(card.description,/person@example.test/);
+  assert.equal(card.canReuseTask,false);assert.equal(card.canAlways,false);
+  f.task.unrelatedProgress='done';f.host.refresh();assert.equal(f.host.snapshot()[0].revision,card.revision);
+  f.respond('allow_once');assert.equal(await pending,'allow_once');f.host.close();
+});
+
 test('repeated preparation cannot extend a decision deadline or change the original invocation deadline',async()=>{
   const f=fixture(),originalDeadline=f.scope.deadline;
   const earlier=new Date(Date.parse(originalDeadline)-30000).toISOString();
