@@ -1,4 +1,4 @@
-import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+import {syntheticAgentArtsOptions,syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -33,6 +33,7 @@ function fixture(t,patch={}) {
   const modelApi=createModelApiConfig({userData:path.join(root,'profile'),safeStorage,
     createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:patch.createGuardedGateway??createConfiguredSubagentModelGateway,
     fetchImpl:async(_url,init)=>{requests.push(JSON.parse(init.body));return response();}});
+  modelApi.setEgressHost({prepare:syntheticPublicPayloadGate});
   const configured=modelApi.configure({id:'chosen-summary',provider:'openai-compatible',baseUrl:'https://summary.example.test/v1',
     model:'synthetic-selected-model',displayName:'Chosen summary model',apiKey:'synthetic-test-key',enabled:true,makeDefault:false});
   const configurationRef=configured.models[0].configurationRef;
