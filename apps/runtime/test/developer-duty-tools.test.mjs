@@ -115,3 +115,25 @@ test('fixture comments are edited in place and a local gap is not no change', as
   assert.equal(local[0].noChange, false);
   assert.match(local[0].reason, /gap is not no change|no healthy remote host/);
 });
+
+test('duty policy cannot replace the original content authorization and poll retains a pending intent', async () => {
+  const runtime = new TaskRuntime(':memory:');
+  const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '值班', idempotencyKey: 'duty-pending-content'});
+  let writes = 0;
+  const duty = createDeveloperDutyTools({getRuntime: () => runtime,
+    readPage: async repo => ({repo, connected: true, gap: false, events: [], statusComment: {number: 4, body: '原完整正文'}}),
+    createComments: () => ({writeAvailable: false, listComments: async () => [],
+      createComment: async () => {writes += 1; return {state: 'confirmed', id: 4};},
+      editComment: async () => {writes += 1; return {state: 'confirmed'};}})});
+  const tool = name => duty.tools.find(item => item.descriptor.name === name);
+  await tool('duty.watch').execute({repo: 'octo/repo'}, context(parent.taskId));
+  await tool('duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context(parent.taskId));
+  const result = await duty.poll();
+  assert.match(result[0].reason, /content authorization/);
+  const owner = runtime.findTaskByIdempotencyKey('developer-duty-registry:v1');
+  assert.deepEqual(runtime.loadCheckpoint(owner.taskId, 'developer-duty-comment-intent:v1:octo/repo#4'), {
+    repo: 'octo/repo', number: 4, body: `${DUTY_STATUS_MARKER}\n原完整正文`, state: 'requires_authorization',
+  });
+  assert.equal(runtime.loadCheckpoint(owner.taskId, 'developer-duty-comment:v1'), undefined);
+  assert.equal(writes, 0);
+});

@@ -19,6 +19,7 @@
 - 后续新增错绑回执拒绝用例，仅运行 `--test-name-pattern='receipt for another job' apps/runtime/test/remote-runner.test.mjs`，1/1 通过。本包合计 13 个不同用例通过，未重复跑全套。
 - SSH 错误收尾统一终止本地子进程后，仅复验其 cancellation 用例，通过。
 - duty 独立树：`node --test --test-concurrency=1 packages/connectors/github/test/developer-duty.test.mjs apps/runtime/test/developer-duty.test.mjs apps/desktop/test/developer-duty-github.test.mjs`，21/21 通过。包括第二页 marker、分页失败、并发、重启 unknown、误匹配拒绝、缺正文授权零写入。
+- 本树整合原轮询调用方 `node --test apps/runtime/test/developer-duty-tools.test.mjs`，4/4 通过；新增确认 `policy.comment=true` 仍不能替代正文授权，原正文作为待授权意图保存、未误记已发送 unknown、实际写入计数为零。
 - 相关 JavaScript `node --check`、`git diff --check` 通过。未运行全仓测试、真实 SSH、真实 GitHub 写入或云验收。
 
 ## 兼容和剩余边界
