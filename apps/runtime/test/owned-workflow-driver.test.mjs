@@ -86,6 +86,20 @@ test('parent replan invalidates an owned child already waiting for approval with
   } finally {f.app.close();}
 });
 
+test('a historical owned checkpoint without an epoch binding cannot adopt the current replan epoch',async()=>{
+  const f=fixture(),task=f.create();
+  try {
+    const state=f.app.runtime.loadCheckpoint(task.taskId,KEY);
+    state.sequence=1;state.checkpoint='synthetic-historical-cloud-checkpoint';
+    f.app.runtime.saveCheckpoint(task.taskId,KEY,state);
+    f.app.runtime.advanceExecutionEpoch(task.taskId,{requestId:'new-plan',reason:'replan'});
+    const result=await f.run(task.taskId);
+    assert.equal(result.state,'failed');assert.equal(result.error.code,'REVISION_CONFLICT');
+    assert.equal(f.advances.length,0);assert.equal(f.calls.length,0);
+    assert.equal(f.app.runtime.loadCheckpoint(task.taskId,KEY).checkpoint,state.checkpoint);
+  } finally {f.app.close();}
+});
+
 test('real second graph completes all four nodes through the same Runtime task, original approvals and SQLite restart',async()=>{
   const directory=await mkdtemp(join(tmpdir(),'personal-agent-synthetic-owned-driver-'));
   const f=fixture({path:join(directory,'runtime.sqlite')}),task=f.create();

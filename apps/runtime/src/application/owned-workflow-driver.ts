@@ -64,6 +64,7 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
   const epochKey=bindingKey+':execution-epoch';
   // Historic checkpoints belong to epoch zero; a replan never adopts an old graph or unknown run.
   application.runtime.saveCheckpointOnce(worker.taskId,epochKey,worker.loadCheckpoint(bindingKey)===undefined
+    &&!state.result&&!state.checkpoint&&!state.pendingSend&&state.sequence===0
     ?application.runtime.readExecutionEpoch(worker.taskId):0);
   const executionEpoch=worker.loadCheckpoint(epochKey) as number;
   application.runtime.assertExecutionEpoch(worker.taskId,executionEpoch);

@@ -133,7 +133,7 @@ export function createProactiveWorkflowSession<I extends ProactiveSessionRequest
       if(!proposal.proposalId||!proposal.operationId||proposal.originControlRevision!==binding.controlRevision||proposal.taskDeadline!==binding.taskDeadline)
         throw new ProtocolError('UNAUTHORIZED','Proposal outside original session');
       const old=completed.proposals[proposal.proposalId];
-      if(old&&digest(old)!==digest(proposal))conflict();
+      if(old&&(digest(old)!==digest(proposal)||(completed.proposalEpochs?.[proposal.proposalId]??0)!==(options.executionEpoch??0)))conflict();
       completed.proposals[proposal.proposalId]=structuredClone(proposal);
       (completed.proposalEpochs??={})[proposal.proposalId]=options.executionEpoch??0;
     }
