@@ -2,20 +2,12 @@ import {createHash} from 'node:crypto';
 
 /** Post the one completion into the conversation recorded at spawn. */
 export function deliverSubagentReport(conversations, report) {
-  let conversationId = typeof report.conversationId === 'string' ? report.conversationId : undefined;
-  let relocated = false;
-  if (conversationId) {
-    try { conversations.session(conversationId, 'panel'); }
-    catch { conversationId = undefined; }
-  }
-  if (!conversationId) {
-    conversationId = conversations.activeConversationId('panel');
-    relocated = true;
-  }
-  const session = conversations.session(conversationId, 'panel');
-  const text = `${String(report.summary || '后台子任务已结束')}${relocated ? '\n（原父会话已不存在，这条回报改送到当前主对话）' : ''}`;
+  const conversationId = typeof report.conversationId === 'string' ? report.conversationId : undefined;
+  if (!conversationId || !conversations.containsConversation(conversationId)) return {pending: true};
+  const session = conversations.session(conversationId);
+  const text = String(report.summary || '后台子任务已结束');
   return conversations.addLiveMessage({id: report.messageId, sessionId: session.id, role: 'assistant', text,
-    createdAt: new Date().toISOString(), surface: 'panel', conversationId});
+    createdAt: new Date().toISOString(), surface: session.surface, conversationId});
 }
 
 /** Desktop adapter. Admission and remote dispatch stay in Runtime. */
@@ -23,6 +15,8 @@ export function createAsyncSubagentHost({runtimeModule, getRuntime, subagentOpti
   const controller = runtimeModule.createDesktopAsyncSubagentTools({...subagentOptions, getGrantedTools,
     verifyUnknownWrite: async taskId => {
       const runtime = (getRuntime ?? subagentOptions?.getRuntime)?.();
+      const remote=runtime?.loadCheckpoint?.(taskId,'async-subagent-remote-dispatch:v1');
+      if(remote?.state==='unknown'||remote?.state==='inflight')return 'unknown';
       const records = runtime?.readToolExecutions?.(taskId) ?? [];
       if (records.some(record => record.state === 'unknown' || record.reconciliationOutcome === 'unknown')) return 'unknown';
       return 'not_applied';

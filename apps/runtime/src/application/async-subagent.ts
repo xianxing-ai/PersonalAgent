@@ -8,12 +8,15 @@ import {
   type SubtaskRole,
 } from '@personal-agent/agents';
 import type {ReasoningEffort} from '@personal-agent/models';
+import {readCanonicalUserWorkParent} from './user-task-delegation.js';
 import {RuntimeError, type TaskRuntime} from '../index.js';
 import {
   desktopSubagentHostOptions,
   readRuntimeSubagentBinding,
   readRuntimeSubagentSummary,
   startRuntimeSubagentChild,
+  runSubagentWorker,
+  readRuntimeAsyncSubagentScope,
   type DesktopSubagentDispatchToolOptions,
   type SubagentHostOptions,
 } from './subagent-host.js';
@@ -77,6 +80,9 @@ interface SpawnMarker {
   maxSteps: number;
   modelConfigurationRef: string | null;
   deadline: string;
+  sourceTaskId?: string;
+  sourceRunId?: string;
+  sourceInputDigest?: string;
   typeName?: string;
   typeVersion?: number;
   typeDigest?: string;
@@ -138,7 +144,8 @@ export function createAsyncSubagentController(options: {
     if (!value) fail('UNSUPPORTED_CAPABILITY', 'Runtime is not available');
     return value;
   };
-  const registry = options.registry ?? createSubagentTypeRegistry(runtime());
+  let boundRegistry=options.registry;
+  const registry=()=>boundRegistry??(boundRegistry=createSubagentTypeRegistry(runtime()));
   const granted = () => options.getGrantedTools?.() ?? options.host.getTools?.()?.list().map(tool => tool.name) ?? [];
   const startChild = options.startChild ?? ((taskId: string, deadline: string, host: SubagentHostOptions) => startRuntimeSubagentChild(host, taskId, deadline));
   let chain: Promise<void> = Promise.resolve();
@@ -163,7 +170,7 @@ export function createAsyncSubagentController(options: {
       found.push(...page.items);
       before = page.nextBeforeSequence;
       snapshot = page.snapshotSequence;
-    } while (before !== undefined && found.length < 500);
+    } while (before !== undefined);
     return found;
   };
   const markerOf = (taskId: string) => runtime().loadCheckpoint(taskId, SPAWN_KEY) as SpawnMarker | undefined;
@@ -225,7 +232,7 @@ export function createAsyncSubagentController(options: {
       if (ref !== marker.modelConfigurationRef) invalidate(taskId, 'F28 model configuration changed; the pending subagent is no longer valid');
     }
     if (!snap) return;
-    const current = registry.get(snap.name);
+    const current = registry().get(snap.name);
     if (!current || !current.definition.enabled || current.version !== snap.version || current.digest !== snap.digest) {
       invalidate(taskId, 'Custom subagent type changed; the pending proposal is no longer valid');
     }
@@ -255,10 +262,7 @@ export function createAsyncSubagentController(options: {
   };
   const deadlineFor = (taskId: string) => {
     const binding = readRuntimeSubagentBinding(runtime(), taskId);
-    const snap = typeOf(taskId);
-    if (!snap?.deadlineMs) return binding.parentDeadline;
-    const sooner = now() + snap.deadlineMs;
-    return sooner < Date.parse(binding.parentDeadline) ? new Date(sooner).toISOString() : binding.parentDeadline;
+    return markerOf(taskId)?.deadline??binding.parentDeadline;
   };
   const runOne = async (taskId: string) => {
     assertRunnable(taskId);
@@ -360,6 +364,8 @@ export function createAsyncSubagentController(options: {
     const parent = runtime().getTask(taskId);
     if (!parent) fail('NOT_FOUND', 'Parent task not found');
     if (parent.conversationId?.startsWith('desktop-subtask:') || runtime().loadCheckpoint(taskId, 'subtask-parent')) {
+      const original=readCanonicalUserWorkParent(runtime(),taskId);
+      if(original)return runtime().getTask(original);
       fail('INVALID_ARGUMENT', 'Subagent recursive delegation is not allowed');
     }
     return parent;
@@ -379,7 +385,7 @@ export function createAsyncSubagentController(options: {
     let type: TypeSnap | undefined;
     if (typeName) {
       if (BUILTIN_SUBAGENT_ROLES.includes(typeName as SubtaskRole)) fail('INVALID_ARGUMENT', 'Custom type name collides with a built-in role');
-      const record = registry.get(typeName);
+      const record = registry().get(typeName);
       if (!record?.definition.enabled) fail('INVALID_ARGUMENT', 'Custom subagent type is unknown or disabled');
       if (role && role !== record.definition.baseRole) fail('REVISION_CONFLICT', 'Custom type base role does not match the requested role');
       if (model && record.definition.model && model !== record.definition.model) fail('REVISION_CONFLICT', 'Custom type model does not match the requested model');
@@ -404,26 +410,33 @@ export function createAsyncSubagentController(options: {
   };
   const spawn = (raw: {subtasks?: unknown}, context: ToolContext): {accepted: true; handles: AsyncSubagentHandle[]; admission: {globalCap: number; perParentCap: number; queued: number}} => {
     const current = runtime();
-    assertParent(context.taskId);
+    const parent=assertParent(context.taskId);
     if (!Number.isFinite(Date.parse(context.deadline))) fail('INVALID_ARGUMENT', 'Parent deadline is invalid');
     if (!Array.isArray(raw?.subtasks) || raw.subtasks.length === 0 || raw.subtasks.length > 10) fail('INVALID_ARGUMENT', 'Subtasks must be a non-empty array of at most 10');
     const seen = new Set<string>();
     const handles: AsyncSubagentHandle[] = [];
     for (const item of raw.subtasks) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) fail('INVALID_ARGUMENT', 'Subtask is invalid');
-      const resolved = resolve(item as Record<string, unknown>, context.taskId);
+      const resolved = resolve(item as Record<string, unknown>, parent.taskId);
+      if(resolved.definition.subtaskId==='user-work')fail('INVALID_ARGUMENT','The original user worker identity is reserved');
       if (seen.has(resolved.definition.subtaskId)) fail('INVALID_ARGUMENT', 'Subtask identity is duplicated');
       seen.add(resolved.definition.subtaskId);
       const roleLabel = resolved.definition.roleLabel?.trim() || DEFAULT_ROLE_LABELS[resolved.definition.role];
-      const idempotencyKey = `subagent-dispatch-${context.taskId}-${resolved.definition.subtaskId}`;
+      const idempotencyKey = `subagent-dispatch-${parent.taskId}-${resolved.definition.subtaskId}`;
       const modelConfigurationRef = options.host.getModelConfigurationRef?.(resolved.definition.model, context.taskId) ?? null;
-      const identity: SpawnMarker = {version: 1, parentTaskId: context.taskId, subtaskId: resolved.definition.subtaskId,
-        enqueuedAt: new Date(now()).toISOString(), usesLaya: /laya/i.test(resolved.definition.model ?? ''), maxSteps: resolved.maxSteps,
-        modelConfigurationRef, deadline: context.deadline, ...(resolved.type ? {typeName: resolved.type.name, typeVersion: resolved.type.version, typeDigest: resolved.type.digest} : {})};
       const previous = current.findTaskByIdempotencyKey(idempotencyKey);
-      const task = current.submitTaskWithSubagentBinding({conversationId: `desktop-subtask:${context.taskId}`,
+      const priorMarker=previous?markerOf(previous.taskId):undefined;
+      const deadline=priorMarker?.deadline??new Date(Math.min(Date.parse(context.deadline),now()+(resolved.type?.deadlineMs??Infinity))).toISOString();
+      const source=current.readToolExecutions(context.taskId).find(record=>record.evidenceId===context.runId
+        &&record.toolName===SUBAGENT_SPAWN_TOOL_NAME&&record.executionStarted&&record.policyDecision==='allow'
+        &&current.matchesToolExecutionInput(record,{arguments:raw as Record<string,unknown>,scopeRef:context.authorizationRef}));
+      const identity: SpawnMarker = {version: 1, parentTaskId: parent.taskId, subtaskId: resolved.definition.subtaskId,
+        enqueuedAt: new Date(now()).toISOString(), usesLaya: /laya/i.test(resolved.definition.model ?? ''), maxSteps: resolved.maxSteps,
+        modelConfigurationRef,deadline,sourceTaskId:context.taskId,...(source?{sourceRunId:context.runId,sourceInputDigest:source.inputDigest}:{}),
+        ...(resolved.type ? {typeName: resolved.type.name, typeVersion: resolved.type.version, typeDigest: resolved.type.digest} : {})};
+      const task = current.submitTaskWithSubagentBinding({conversationId: `desktop-subtask:${parent.taskId}`,
         goal: `[${roleLabel}] ${resolved.definition.goal}`, idempotencyKey}, {
-        parentTaskId: context.taskId, subtaskId: resolved.definition.subtaskId, role: resolved.definition.role, roleLabel,
+        parentTaskId: parent.taskId, subtaskId: resolved.definition.subtaskId, role: resolved.definition.role, roleLabel,
         goal: resolved.definition.goal, ...(resolved.definition.model ? {model: resolved.definition.model} : {}),
         ...(resolved.definition.reasoningEffort === undefined ? {} : {reasoningEffort: resolved.definition.reasoningEffort}),
         ...(resolved.definition.thinkingDepth === undefined ? {} : {thinkingDepth: resolved.definition.thinkingDepth}),
@@ -434,7 +447,7 @@ export function createAsyncSubagentController(options: {
       if (!saved) {
         if (previous) fail('REVISION_CONFLICT', 'Existing child was not created by asynchronous spawn');
         current.saveCheckpoint(task.taskId, SPAWN_KEY, identity);
-        const parentConversationId = current.getTask(context.taskId).conversationId;
+        const parentConversationId = parent.conversationId;
         if (typeof parentConversationId === 'string' && parentConversationId) {
           current.saveCheckpoint(task.taskId, PARENT_CONVERSATION_KEY, {conversationId: parentConversationId});
         }
@@ -452,6 +465,7 @@ export function createAsyncSubagentController(options: {
     }
     const child = childOf(parentTaskId, subtaskId);
     if (TERMINAL.has(child.state) || child.state === 'waiting_reconciliation') fail('REVISION_CONFLICT', 'Follow-up cannot change a finished or unknown subagent');
+    if(child.state!=='created'||runtime().isTaskActive(child.taskId))fail('UNSUPPORTED_CAPABILITY','Follow-up for an already started subagent requires execution-epoch control; no instruction was accepted');
     const current = runtime().loadCheckpoint(child.taskId, CONTROL_KEY) as {revision?: number; instructions?: string[]} | undefined;
     const revision = current?.revision ?? 0;
     if (revision !== expectedControlRevision || !Array.isArray(current?.instructions ?? [])) fail('REVISION_CONFLICT', 'controlRevision does not match');
@@ -468,7 +482,7 @@ export function createAsyncSubagentController(options: {
       const done = runtime().confirmCancellation(current.taskId);
       return {taskId: done.taskId, state: done.state, cancelAccepted: true};
     }
-    return {taskId: current.taskId, state: requested.state, cancelAccepted: requested.cancelAccepted};
+    return {taskId: current.taskId, state: current.state, cancelAccepted: requested.cancelAccepted};
   };
   const list = () => spawned().map(task => {
     const marker = markerOf(task.taskId);
@@ -491,8 +505,7 @@ export function createAsyncSubagentController(options: {
       controlRevision: control?.revision ?? 0, ...(marker?.typeName ? {typeName: marker.typeName, typeVersion: marker.typeVersion} : {})};
   });
   const mainOnly = (context: ToolContext) => {
-    const task = runtime().getTask(context.taskId);
-    if (task.conversationId?.startsWith('desktop-subtask:')) fail('INVALID_ARGUMENT', 'Subagent types are defined from the main conversation');
+    assertParent(context.taskId);
   };
   const proposalResult = (proposal: SubagentTypeProposal) => ({state: 'pending_confirmation' as const, proposalId: proposal.proposalId,
     digest: proposal.digest, kind: proposal.kind, name: proposal.name, summary: subagentTypeChangeSummary(proposal),
@@ -514,22 +527,22 @@ export function createAsyncSubagentController(options: {
     {descriptor: descriptor(SUBAGENT_INSTRUCT_TOOL_NAME, 'local_write', false, objectSchema({subtaskId: {type: 'string'}, instruction: {type: 'string'}, expectedControlRevision: {type: 'integer', minimum: 0}}, ['subtaskId', 'instruction', 'expectedControlRevision']), {type: 'object', additionalProperties: true}),
       execute: async (input, context) => {
         const raw = input as {subtaskId?: string; instruction?: string; expectedControlRevision?: number};
-        return instruct(context.taskId, String(raw.subtaskId ?? ''), String(raw.instruction ?? ''), Number(raw.expectedControlRevision));
+        return instruct(assertParent(context.taskId).taskId, String(raw.subtaskId ?? ''), String(raw.instruction ?? ''), Number(raw.expectedControlRevision));
       }},
     {descriptor: descriptor(SUBAGENT_STOP_TOOL_NAME, 'local_write', false, objectSchema({subtaskId: {type: 'string'}}, ['subtaskId']), {type: 'object', additionalProperties: true}),
-      execute: async (input, context) => stop(context.taskId, String((input as {subtaskId?: string}).subtaskId ?? ''))},
+      execute: async (input, context) => stop(assertParent(context.taskId).taskId, String((input as {subtaskId?: string}).subtaskId ?? ''))},
     {descriptor: descriptor(SUBAGENT_TYPE_LIST_TOOL_NAME, 'read', false, objectSchema({}, []), {type: 'object', additionalProperties: true, description: '列出已确认的自定义子智能体类型。'}),
-      execute: async (_input, context) => { mainOnly(context); return {types: registry.list()}; }},
+      execute: async (_input, context) => { mainOnly(context); return {types: registry().list()}; }},
     {descriptor: descriptor(SUBAGENT_TYPE_CREATE_TOOL_NAME, 'local_write', false, objectSchema({definition: definitionSchema}, ['definition']), {type: 'object', additionalProperties: true, description: '根据用户原话起草自定义子智能体类型。未确认前不生效。'}),
-      execute: async (input, context) => { mainOnly(context); return proposalResult(registry.propose({kind: 'create', definition: (input as {definition?: unknown}).definition}, granted())); }},
+      execute: async (input, context) => { mainOnly(context); return proposalResult(registry().propose({kind: 'create', definition: (input as {definition?: unknown}).definition}, granted())); }},
     {descriptor: descriptor(SUBAGENT_TYPE_UPDATE_TOOL_NAME, 'local_write', false, objectSchema({definition: definitionSchema}, ['definition']), {type: 'object', additionalProperties: true}),
-      execute: async (input, context) => { mainOnly(context); return proposalResult(registry.propose({kind: 'update', definition: (input as {definition?: unknown}).definition}, granted())); }},
+      execute: async (input, context) => { mainOnly(context); return proposalResult(registry().propose({kind: 'update', definition: (input as {definition?: unknown}).definition}, granted())); }},
     {descriptor: descriptor(SUBAGENT_TYPE_DISABLE_TOOL_NAME, 'local_write', false, objectSchema({name: {type: 'string'}}, ['name']), {type: 'object', additionalProperties: true}),
-      execute: async (input, context) => { mainOnly(context); const name = (input as {name?: string}).name; if (!name) fail('INVALID_ARGUMENT', 'Subagent type name is required'); return proposalResult(registry.propose({kind: 'disable', name}, granted())); }},
+      execute: async (input, context) => { mainOnly(context); const name = (input as {name?: string}).name; if (!name) fail('INVALID_ARGUMENT', 'Subagent type name is required'); return proposalResult(registry().propose({kind: 'disable', name}, granted())); }},
     {descriptor: descriptor(SUBAGENT_TYPE_ENABLE_TOOL_NAME, 'local_write', false, objectSchema({name: {type: 'string'}}, ['name']), {type: 'object', additionalProperties: true}),
-      execute: async (input, context) => { mainOnly(context); const name = (input as {name?: string}).name; if (!name) fail('INVALID_ARGUMENT', 'Subagent type name is required'); return proposalResult(registry.propose({kind: 'enable', name}, granted())); }},
+      execute: async (input, context) => { mainOnly(context); const name = (input as {name?: string}).name; if (!name) fail('INVALID_ARGUMENT', 'Subagent type name is required'); return proposalResult(registry().propose({kind: 'enable', name}, granted())); }},
     {descriptor: descriptor(SUBAGENT_TYPE_DELETE_TOOL_NAME, 'local_write', false, objectSchema({name: {type: 'string'}}, ['name']), {type: 'object', additionalProperties: true}),
-      execute: async (input, context) => { mainOnly(context); const name = (input as {name?: string}).name; if (!name) fail('INVALID_ARGUMENT', 'Subagent type name is required'); return proposalResult(registry.propose({kind: 'delete', name}, granted())); }},
+      execute: async (input, context) => { mainOnly(context); const name = (input as {name?: string}).name; if (!name) fail('INVALID_ARGUMENT', 'Subagent type name is required'); return proposalResult(registry().propose({kind: 'delete', name}, granted())); }},
     {descriptor: descriptor(SUBAGENT_TYPE_CONFIRM_TOOL_NAME, 'local_write', true, objectSchema({proposalId: {type: 'string'}, digest: {type: 'string'}, summary: {type: 'string'}}, ['proposalId', 'digest', 'summary']), {type: 'object', additionalProperties: true, description: '只有用户明确确认摘要后才写入类型。确认会作废绑定旧版本的待执行提案。'}),
       execute: async (input, context) => {
         mainOnly(context);
@@ -538,55 +551,76 @@ export function createAsyncSubagentController(options: {
         const owner = runtime().findTaskByIdempotencyKey('subagent-type-registry:v1');
         const proposal = owner ? runtime().loadCheckpoint(owner.taskId, pendingKey) as SubagentTypeProposal | undefined : undefined;
         if (!proposal || raw.summary !== subagentTypeChangeSummary(proposal)) fail('REVISION_CONFLICT', 'Confirmation summary does not match the pending type change');
-        return {state: 'confirmed' as const, record: registry.confirm(String(raw.proposalId), String(raw.digest), granted())};
+        return {state: 'confirmed' as const, record: registry().confirm(String(raw.proposalId), String(raw.digest), granted())};
       }},
     {descriptor: descriptor(SUBAGENT_TYPE_IMPORT_TOOL_NAME, 'local_write', false, objectSchema({text: {type: 'string', description: '用户提供的类型配置 JSON，不会按模型自选路径读取磁盘。'}}, ['text']), {type: 'object', additionalProperties: true}),
       execute: async (input, context) => {
         mainOnly(context);
-        return {state: 'pending_confirmation' as const, proposals: registry.proposeConfig(String((input as {text?: string}).text ?? ''), granted()).map(proposalResult)};
+        return {state: 'pending_confirmation' as const, proposals: registry().proposeConfig(String((input as {text?: string}).text ?? ''), granted()).map(proposalResult)};
       }},
   ];
-  return {registry, tools, pump, recover() { epoch += 1; return pump(); }, list, instruct, stop};
+  return {get registry(){return registry();}, tools, pump, recover() { epoch += 1; return pump(); }, list, instruct, stop};
 }
 
 /** Dispatch a child to a healthy remote host when one exists; otherwise use the local worker. */
 export function createRemoteAwareSubagentStarter(options: {
   host: SubagentHostOptions;
-  getRemote?: () => {list: () => Array<{enabled: boolean; repos?: string[]}>; submit: (job: {kind: 'async-subagent'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>}) => Promise<{location: string; reason?: string; receipt?: {state?: string; summary?: string; error?: string; needsConfig?: boolean; verification?: string}}>} | undefined;
+  getRemote?: () => {list: () => Array<{enabled: boolean; repos?: string[]}>; submit: (job: {kind: 'async-subagent'; idempotencyKey: string; taskId: string; repo?: string; payload: Record<string, unknown>;signal:AbortSignal;deadline:string}) => Promise<{location: string; reason?: string; receipt?: {state?: string; summary?: string; error?: string; needsConfig?: boolean; verification?: string}}>} | undefined;
 }): (taskId: string, deadline: string, host: SubagentHostOptions) => Promise<TaskSnapshot> {
   return async (taskId, deadline, host) => {
     const runtime = options.host.getRuntime();
     const remote = options.getRemote?.();
     const enabled = remote?.list().filter(item => item.enabled) ?? [];
     const note = (reason: string) => runtime.saveCheckpoint(taskId, NOTE_KEY, {location: 'local', reason});
-    if (remote && enabled.length) {
-      const binding = runtime.loadCheckpoint(taskId, 'subtask-parent') as {goal?: string; subtaskId?: string} | undefined;
-      try {
-        const result = await remote.submit({kind: 'async-subagent', idempotencyKey: `remote-subagent:${taskId}`, taskId,
-          ...(enabled[0]?.repos?.[0] ? {repo: enabled[0].repos[0]} : {}), payload: {goal: binding?.goal ?? '', subtaskId: binding?.subtaskId ?? ''}});
-        if (result.location === 'remote' && result.receipt?.state === 'unknown') {
-          return runtime.runTask(taskId, async () => {
-            if (runtime.getTask(taskId).state === 'running') {
-              runtime.transitionTask(taskId, 'waiting_reconciliation', {error: {code: 'RESULT_UNKNOWN', message: 'Remote subagent result is unknown', retryable: false}});
-            }
-            return {resultSummary: 'Remote subagent result is unknown'};
-          }, {deadline, sideEffect: 'read'});
+    const asyncScope=readRuntimeAsyncSubagentScope(runtime,taskId);
+    if(!remote||!enabled.length||asyncScope?.type||asyncScope?.control){
+      if(asyncScope?.type||asyncScope?.control)note('远端尚不能执行原自定义类型或后续指示约束，未发送');
+      else if(remote)note('no healthy remote host');
+      return startRuntimeSubagentChild(host,taskId,deadline);
+    }
+    const child=runtime.getTask(taskId),binding=readRuntimeSubagentBinding(runtime,taskId);
+    if(child.state==='waiting_reconciliation'||child.error?.code==='RESULT_UNKNOWN')throw new ProtocolError('RESULT_UNKNOWN','Original remote child must not be replayed');
+    if(child.state!=='created'||child.cancelRequested)throw new ProtocolError('REVISION_CONFLICT','Original remote child is not waiting for admission');
+    if(deadline!==(asyncScope?.deadline??binding.parentDeadline))throw new ProtocolError('UNAUTHORIZED','Original remote child deadline changed');
+    return runtime.runTask(taskId,async worker=>{
+      let submitted=false;
+      const unknown=()=>{
+        worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'unknown',redo:false});
+        const state=runtime.getTask(taskId).state;
+        if(['running','cancelling'].includes(state))runtime.transitionTask(taskId,'waiting_reconciliation',{
+          error:{code:'RESULT_UNKNOWN',message:'Remote subagent result is unknown; cancellation is not proof that remote execution stopped',retryable:false}});
+      };
+      const abort=()=>{if(submitted)unknown();};
+      worker.signal.addEventListener('abort',abort,{once:true});
+      try{
+        if(worker.signal.aborted)throw new ProtocolError('CANCELLED','Remote child cancelled before dispatch');
+        readRuntimeAsyncSubagentScope(runtime,taskId);
+        worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'inflight',redo:false});
+        submitted=true;
+        const result=await remote.submit({kind:'async-subagent',idempotencyKey:`remote-subagent:${taskId}`,taskId,
+          ...(enabled[0]?.repos?.[0]?{repo:enabled[0].repos[0]}:{}),payload:{goal:binding.goal,subtaskId:binding.subtaskId},
+          signal:worker.signal,deadline:worker.deadline});
+        if(worker.signal.aborted||result.location==='remote'&&result.receipt?.state==='unknown'){
+          unknown();return {resultSummary:'Remote subagent result requires reconciliation'};
         }
-        if (result.location === 'remote' && (result.receipt?.needsConfig === true || result.receipt?.verification === 'needs-config')) {
-          note('远端主机没有配置模型命令');
-        } else if (result.location === 'remote' && result.receipt?.state === 'succeeded' && result.receipt.verification === 'executed') {
-          const summary = String(result.receipt.summary || '远端执行器已回执');
-          return runtime.runTask(taskId, async () => ({resultSummary: `${summary}\n（远端执行）`}), {deadline, sideEffect: 'read'});
-        } else if (result.location === 'remote' && result.receipt?.state === 'failed') {
-          const message = String(result.receipt.summary || result.receipt.error || '远端子任务失败');
-          return runtime.runTask(taskId, async () => { throw new ProtocolError('EXTERNAL_FAILURE', message); }, {deadline, sideEffect: 'read'});
-        } else note(result.reason || 'no healthy remote host');
-      } catch (error) {
-        if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') throw error;
-        note(error instanceof Error ? error.message : 'remote runner failed');
-      }
-    } else if (remote) note('no healthy remote host');
-    return startRuntimeSubagentChild(host, taskId, deadline);
+        if(result.location==='remote'&&result.receipt?.state==='succeeded'&&result.receipt.verification==='executed'){
+          worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'confirmed',redo:false});
+          return {resultSummary:`${String(result.receipt.summary||'远端执行器已回执')}\n（远端执行）`};
+        }
+        if(result.location==='remote'&&result.receipt?.state==='failed'&&result.receipt.needsConfig!==true&&result.receipt.verification!=='needs-config'){
+          worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'failed',redo:false});
+          submitted=false;throw new ProtocolError('EXTERNAL_FAILURE',String(result.receipt.summary||result.receipt.error||'远端子任务失败'));
+        }
+        if(result.location!=='local'&&result.receipt?.needsConfig!==true&&result.receipt?.verification!=='needs-config'){
+          unknown();return {resultSummary:'Remote subagent receipt is not conclusive'};
+        }
+        submitted=false;
+        worker.saveCheckpoint('async-subagent-remote-dispatch:v1',{state:'not_sent',redo:false});
+        note(result.location==='remote'?'远端主机没有配置模型命令':result.reason||'no healthy remote host');
+        return runSubagentWorker(host,binding,worker);
+      }catch(error){if(submitted){unknown();return {resultSummary:'Remote subagent result requires reconciliation'};}throw error;}
+      finally{worker.signal.removeEventListener('abort',abort);}
+    },{deadline,sideEffect:'external_write'});
   };
 }
 

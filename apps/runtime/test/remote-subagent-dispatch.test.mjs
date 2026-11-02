@@ -150,3 +150,25 @@ test('no enabled host keeps local execution and records the reason', async () =>
   assert.match(reports[0].summary, /本地执行：no healthy remote host/);
   assert.equal(JSON.stringify(reports).includes(token), false);
 });
+
+test('cancelling an in-flight remote child preserves unknown and never starts a local replacement',async()=>{
+  const runtime=new TaskRuntime(':memory:');
+  const parent=runtime.submitTask({conversationId:'desktop-panel',goal:'原后台任务',idempotencyKey:'cancel-remote'});
+  let calls=0,localRuns=0,signal,deadline;
+  const host=hostOptions(runtime,{runDefaultWorker:async()=>{localRuns++;return {resultSummary:'must not run'};}});
+  const remote={list:()=>[{enabled:true,repos:['octo/repo']}],submit:job=>{
+    calls++;signal=job.signal;deadline=job.deadline;
+    assert.equal(runtime.getTask(job.taskId).state,'running');assert.equal(runtime.isTaskActive(job.taskId),true);
+    return new Promise((_resolve,reject)=>job.signal.addEventListener('abort',()=>reject(Error('transport aborted after send')),{once:true}));
+  }};
+  const controller=createDesktopAsyncSubagentTools({...host,startChild:createRemoteAwareSubagentStarter({host,getRemote:()=>remote})});
+  const original=context(parent.taskId);
+  await controller.tools.find(tool=>tool.descriptor.name==='subagent.spawn').execute({subtasks:[{subtaskId:'remote',role:'coder',goal:'原操作'}]},original);
+  await controller.pump();
+  const child=runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-remote`);
+  assert.equal(calls,1);assert.equal(deadline,original.deadline);
+  const stopped=controller.stop(parent.taskId,'remote');assert.equal(stopped.state,'waiting_reconciliation');assert.equal(signal.aborted,true);
+  await new Promise(resolve=>setImmediate(resolve));await controller.recover();
+  assert.equal(runtime.getTask(child.taskId).state,'waiting_reconciliation');assert.equal(calls,1);assert.equal(localRuns,0);
+  runtime.close();
+});

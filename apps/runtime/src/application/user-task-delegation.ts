@@ -2,7 +2,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationToolProposalResult} from '@personal-agent/coordination';
 import type {SubtaskDefinition} from '@personal-agent/agents';
-import {SUBAGENT_DISPATCH_TOOL_NAME, SUBAGENT_DISPATCH_TOOL_VERSION} from './subagent-host.js';
+import {SUBAGENT_DISPATCH_TOOL_NAME, SUBAGENT_DISPATCH_TOOL_VERSION, readRuntimeSubagentBinding} from './subagent-host.js';
 import type {TaskRuntime} from '../index.js';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {isDeepStrictEqual} from 'node:util';
@@ -31,6 +31,17 @@ export function readUserTaskDelegation(runtime: TaskRuntime, taskId: string): Us
     throw new ProtocolError('REVISION_CONFLICT', 'Original user task delegation binding changed');
   }
   return saved;
+}
+
+/** The one Runtime-bound user worker may use user-conversation tools; arbitrary children may not. */
+export function readCanonicalUserWorkParent(runtime:TaskRuntime,taskId:string):string|undefined {
+  const child=runtime.getTask(taskId),saved=runtime.loadCheckpoint(taskId,'subtask-parent') as {parentTaskId?:string}|undefined;
+  if(!saved?.parentTaskId)return undefined;
+  const original=readUserTaskDelegation(runtime,saved.parentTaskId);if(!original)return undefined;
+  const {parentTaskId,parentDeadline,...subtask}=readRuntimeSubagentBinding(runtime,taskId);
+  if(child.conversationId!==`desktop-subtask:${parentTaskId}`||parentDeadline!==original.deadline
+    ||!isDeepStrictEqual(subtask,original.subtask))return undefined;
+  return parentTaskId;
 }
 
 export function userTaskDelegationProposal(binding: UserTaskDelegation): CoordinationToolProposalResult {

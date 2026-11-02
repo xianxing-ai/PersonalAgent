@@ -168,6 +168,7 @@ export {
 } from './application/subagent-host.js';
 export type {SubagentHostOptions, DesktopSubagentDispatchToolOptions,ConfiguredSubagentModelOptions} from './application/subagent-host.js';
 export {desktopSubagentHostOptions, startRuntimeSubagentChild} from './application/subagent-host.js';
+export {readCanonicalUserWorkParent} from './application/user-task-delegation.js';
 export {
   createAsyncSubagentController,
   createDesktopAsyncSubagentTools,

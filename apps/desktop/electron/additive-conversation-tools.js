@@ -1,3 +1,5 @@
+import {readCanonicalUserWorkParent} from '@personal-agent/runtime/application';
+
 /** Model-visible bindings for additive tools. Registration alone is not authorization. */
 export const ADDITIVE_CONVERSATION_TOOL_NAMES = [
   'subagent.spawn', 'subagent.instruct', 'subagent.stop',
@@ -12,7 +14,8 @@ export function additiveConversationBindings(tools, getRuntime) {
   const selected = (tools ?? []).filter(tool => ADDITIVE_CONVERSATION_TOOL_NAMES.includes(tool.descriptor?.name));
   const mainConversation = async ({taskId}) => {
     if (!getRuntime || !taskId) return true;
-    try {return !String(getRuntime().getTask(taskId).conversationId ?? '').startsWith('desktop-subtask:');}
+    try {const runtime=getRuntime();return !String(runtime.getTask(taskId).conversationId??'').startsWith('desktop-subtask:')
+      ||readCanonicalUserWorkParent(runtime,taskId)!==undefined;}
     catch {return false;}
   };
   return {
