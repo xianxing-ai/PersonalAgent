@@ -460,7 +460,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   /** Trusted conversation question host. Answers are not execution grants. */
   requestToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;
     scopes:readonly string[];deadline:string;signal:AbortSignal})=>Promise<'allow_once'|'deny'>;
-  requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;deadline:string;signal:AbortSignal})=>boolean;
+  requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect'];deadline:string;signal:AbortSignal})=>boolean;
+  assertToolAllowed?:(input:{taskId:string;toolName:string;sideEffect:ToolDescriptor['sideEffect'];arguments:unknown})=>void;
   /** Composition-only tools require a persisted original submitHostToolTask intent, even if a model guesses the name. */
   hostOnlyTools?:readonly string[];
 }
@@ -470,7 +471,7 @@ export interface CloudSkillRuntimeHostPort {
   dispatchCloudSkillProposal(proposal:import('@personal-agent/coordination').CoordinationToolProposalResult,context:Omit<CloudSkillContext,'proposalId'>):Promise<CloudSkillReceipt>;
   assertReceiptAllowed(selection:CloudSkillSelection,receipt:CloudSkillReceipt,context:CloudSkillContext):void;
 }
-export interface ConversationContextMessage {id:string; role:'user'|'assistant'; content:string; taskId?:string; withheld?:boolean;createdAt?:string;taskState?:string;answerWithheld?:true;}
+export interface ConversationContextMessage {id:string; role:'user'|'assistant'; content:string; taskId?:string; withheld?:boolean;createdAt?:string;taskState?:string;answerWithheld?:true;preserveVerbatim?:true;}
 /** Shared by trusted host preflight and the actual Coordination send. */
 export function serializeCoordinationGoal(publicGoal:string,preparedGoal:string,messages:readonly ConversationContextMessage[]):string {
   return messages.length ? JSON.stringify({publicGoal,
@@ -886,7 +887,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           assertWorkflowBusinessToolInvocation(this,invocation);
           assertF28SubagentToolInvocation(this,invocation);
           let userPresent=false;try{userPresent=options.isUserPresent?.(invocation.taskId)===true;}catch{/* Missing presence is never inferred. */}
-          return gateway!.invoke({...invocation,userPresent});
+          const assertAllowed=()=>{
+            const descriptor=gateway!.list().find(tool=>tool.name===invocation.toolName&&tool.version===invocation.toolVersion);
+            if(descriptor)options.assertToolAllowed?.({taskId:invocation.taskId,toolName:descriptor.name,
+              sideEffect:descriptor.sideEffect,arguments:invocation.arguments});
+          };
+          assertAllowed();
+          return gateway!.invoke({...invocation,userPresent,onAuthorized:()=>{assertAllowed();invocation.onAuthorized?.();}});
         }};
       }} : {}),
     });
@@ -967,6 +974,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             throw new ProtocolError('UNAUTHORIZED','Tool requires its original trusted host intent');
         }
         validateToolValue(tool.inputSchema, invocation.arguments);
+        options.assertToolAllowed?.({taskId:invocation.taskId,toolName:tool.name,sideEffect:tool.sideEffect,arguments:invocation.arguments});
         if (tool.name === WORKSPACE_PATCH_APPLY_TOOL_NAME
           && this.runtime.loadCheckpoint(invocation.taskId, HOST_TOOL_CHECKPOINT) === undefined) {
           this.workspacePatchBindingFor(tool.name);
@@ -997,7 +1005,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             && this.runtime.matchesToolExecutionInput(record, {arguments: invocation.arguments as Record<string, unknown>, scopeRef: ref}));
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
         if(options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
-          toolName:tool.name,toolVersion:tool.version,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
+          toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
         if (routineEligible && tool.name === 'cognition.commit_repair') {
           const intent = this.runtime.loadCheckpoint(invocation.taskId, LOCAL_REPAIR_CHECKPOINT) as
             {sourceKind?: string; sourceTaskId: string; reviewTaskId: string; binding: unknown} | undefined;
@@ -1457,7 +1465,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           ||hostIntent.argumentsDigest!==saved.argumentsDigest||hostIntent.toolName!==saved.toolName||hostIntent.toolVersion!==saved.toolVersion))return undefined;
         validateToolValue(descriptor.inputSchema,saved.arguments);
         const anchor=this.runtime.loadCheckpoint(taskId,'authorization-question-binding:'+requestedRunId) as {proposalId?:string}|undefined;
-        return {taskId,proposalId:anchor?.proposalId??(!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId),runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
+        return {taskId,proposalId:anchor?.proposalId??(!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId),runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],sideEffect:descriptor.sideEffect,
           outputSchema:structuredClone(descriptor.outputSchema)};
       }
       if(loop.pending.toolName===CLOUD_SKILL_TOOL_NAME){
@@ -1473,7 +1481,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!descriptor)return undefined;
         return {taskId,proposalId:loop.pending.proposalId,runId:source.candidate.runId,toolName:descriptor.name,toolVersion:descriptor.version,
           arguments:structuredClone(source.candidate.arguments),argumentsDigest:toolArgumentsDigest(source.candidate.arguments),
-          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],outputSchema:structuredClone(descriptor.outputSchema)};
+          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
       }
       const nested=this.resolveOriginalWorkerApproval(taskId,loop.pending);
       const runId=nested?.runId??`competition-tool-${taskId}-${loop.step}`;
@@ -1484,7 +1492,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       if(!descriptor||typeof deadline!=='string'||Date.parse(deadline)<=this.now().getTime())return undefined;
       validateToolValue(descriptor.inputSchema,args);
       return {taskId,proposalId:loop.pending.proposalId,runId,toolName,toolVersion:descriptor.version,
-        arguments:structuredClone(args),argumentsDigest:toolArgumentsDigest(args),deadline,scopes:[...descriptor.requiredScopes],
+        arguments:structuredClone(args),argumentsDigest:toolArgumentsDigest(args),deadline,scopes:[...descriptor.requiredScopes],sideEffect:descriptor.sideEffect,
         outputSchema:structuredClone(descriptor.outputSchema)};
     }catch{return undefined;}
   }
@@ -2013,6 +2021,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private assertInputActive(request:CoordinationRequest):void {
+    if(request.executionEpoch!==undefined)this.runtime.assertExecutionEpoch(request.taskId,request.executionEpoch);
     this.harnessExperienceRecipes(request.taskId,request);
     this.assertHarnessEventCurrent(request.taskId);
     this.assertPlanExecutionCurrent(request.taskId,request);
@@ -2554,7 +2563,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           if(!Number.isFinite(time))throw new ProtocolError('INVALID_ARGUMENT','Invalid history timestamp');
           order.set(message.id,time);
         }
-        result.set(message.id,structuredClone(message));
+        const original=result.get(message.id);
+        result.set(message.id,{...structuredClone(message),
+          ...(original?.taskState?{taskState:original.taskState}:{}),
+          ...(original?.answerWithheld?{answerWithheld:true as const}:{}),
+          ...(original?.preserveVerbatim?{preserveVerbatim:true as const}:{})});
       }
     }
     // Stable sort also preserves user/assistant order when task timestamps tie.

@@ -9,10 +9,11 @@ test('AgentArts production configuration gates actual fixed endpoint/body for or
   const config=createAgentArtsConfig({userData:mkdtempSync(base),environment:{},
     safeStorage:{isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()},
     fetchImpl:async(url,init)=>{sent.push({url,body:init.body});return {status:200};}});
-  config.configure({gatewayUrl:'https://agentarts.example.test',runtimeName:'fixture',authorization:'Bearer fixture-outer',transport:'https',deploymentVersion:'fixed-v1'});
+  config.configure({gatewayUrl:'https://explicit-fixture.huaweicloud-agentarts.com',runtimeName:'fixture',authorization:'Bearer fixture-outer',transport:'https',deploymentVersion:'fixed-v1'});
   const binding=config.binding(),transport=config.transportConfig(binding),url=binding.gatewayUrl+'/runtimes/fixture/invocations';
+  let requestSequence=0;
   const init=payload=>({method:'POST',redirect:'error',body:JSON.stringify({query:JSON.stringify(payload)}),signal:new AbortController().signal,
-    headers:{Authorization:'Bearer fixture-outer','X-Request-Id':'fixture-request','X-PA-Deadline':new Date(Date.now()+60000).toISOString()}});
+    headers:{Authorization:'Bearer fixture-outer','X-Request-Id':`fixture-request-${++requestSequence}`,'X-PA-Deadline':new Date(Date.now()+60000).toISOString()}});
   await assert.rejects(transport.fetchImpl(url,init({goal:'public'})),error=>error.code==='UNSUPPORTED_CAPABILITY');assert.equal(sent.length,0);
   config.setEgressHost(createDesktopEgressHost({classifyLocally:scope=>{seen.push(scope);return 'public';}}));
   await transport.fetchImpl(url,init({goal:'public fixture'}));

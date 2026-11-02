@@ -63,7 +63,18 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
   const invoke = async ({payload,deadline,signal,sessionId,requestId,bindingAuthorized=false,channel='http'}) => {
     const timeline=createStageTimeline({onRecord:onStageRecord});
     return timeline.run('invocation.dispatch',async()=>{
-    const query = parsePayload(payload,workflowGoalInput);
+    let query = parsePayload(payload,workflowGoalInput);
+    let executionEpoch;
+    try {
+      const envelope=JSON.parse(query);
+      if(envelope&&typeof envelope==='object'&&Object.hasOwn(envelope,'executionEpochVersion')){
+        if(Object.keys(envelope).sort().join(',')!=='executionEpoch,executionEpochVersion,query'
+          ||envelope.executionEpochVersion!==1||!Number.isSafeInteger(envelope.executionEpoch)||envelope.executionEpoch<0
+          ||typeof envelope.query!=='string'||!envelope.query.trim())
+          throw new ProtocolError('INVALID_ARGUMENT','Invalid execution epoch envelope');
+        executionEpoch=envelope.executionEpoch;query=envelope.query;
+      }
+    }catch(error){if(error instanceof ProtocolError)throw error;}
     signal.throwIfAborted();
     let testValue;
     let catalogValue;
@@ -97,9 +108,10 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
       : binding ? await bindings.invoke(invocation,binding) : await bindings.invokeDefault(invocation);
     signal.throwIfAborted();
     if (Date.now() >= Date.parse(deadline)) throw new ProtocolError('TIMEOUT','Invocation deadline expired');
-    const text = JSON.stringify(result);
+    const response=executionEpoch===undefined?result:{executionEpochVersion:1,executionEpoch,result};
+    const text = JSON.stringify(response);
     const outputLimit = (binding?.workflow || serviceValue) && channel==='http' ? 1_100_000 : 64_000;
-    const events=resultEvents(result);
+    const events=resultEvents(response);
     if (Buffer.byteLength(text)>outputLimit||channel==='websocket'&&Buffer.byteLength(JSON.stringify(events))>MAX_AGENTARTS_RESULT_BYTES)
       throw new ProtocolError('EXTERNAL_FAILURE','Agent output exceeds limit');
     return events;

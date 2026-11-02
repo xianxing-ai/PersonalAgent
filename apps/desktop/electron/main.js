@@ -3,6 +3,7 @@ import {knowledgeSourceNotReadyMessage} from '../src/shared/public-error-message
 import {readCompetitionExecutionPolicy} from './competition-execution-config.js';
 import {createMailMonitorPreparation} from './mail-monitor-preparation.js';
 import {handleConversationAction} from './conversation-actions.js';
+import {assertConversationProhibitions} from './conversation-prohibitions.js';
 import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {createConversationDelivery} from './conversation-delivery.js';
 import {readReconciliationStatus} from './reconciliation-status.js';
@@ -164,6 +165,7 @@ import {createF20WorkflowWorkerPorts} from './f20-workflow-worker-ports.js';
 import {prepareWorkflowHostPreflight} from './workflow-host-preflight.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {createNativeEgressHost} from './egress-dialog-host.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
@@ -377,6 +379,7 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
+let egressHost;
 let agentArtsObservationConfig;
 let agentArtsModels;
 let activeCloudBinding;
@@ -1799,6 +1802,16 @@ function readDesktopConversationContext(scope,maxMessages) {
     .map(message=>({id:message.id,role:message.role,content:message.text,createdAt:message.createdAt}));
   let context=runtimeApplication.readConversationContext({...scope,historyMessages:messages,...(maxMessages===undefined?{}:{maxMessages})});
   if(installedSkillsHost)context=installedSkillsHost.filterContext(context);
+  const prohibitions=conversations.prohibitions(scope.conversationId);
+  for(const item of prohibitions.items)context.push({id:`conversation-prohibition:${item.id}:${prohibitions.revision}`,
+    role:'user',content:item.text,preserveVerbatim:true});
+  for(const question of authorizationQuestionHost?.snapshot(scope.conversationId)??[]){
+    if(question.state!=='pending'||question.taskId===scope.taskId)continue;
+    const original=runtimeApplication.runtime.getTask(question.taskId);
+    if(Date.parse(original.createdAt)>Date.parse(cutoff))continue;
+    context.push({id:`pending-confirmation:${question.questionId}:${question.revision}`,role:'assistant',
+      content:question.description,taskState:'waiting_approval',preserveVerbatim:true});
+  }
   const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
     .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
   if(requestingTaskId)coordinationWatchInputs.set(requestingTaskId,JSON.stringify(current));
@@ -1903,7 +1916,7 @@ function readProactiveWorkflowConfiguration() {
   return {contractRef,adapter:{config:{...binding,
     ...(transport.deploymentVersion?{deploymentVersion:transport.deploymentVersion}:{}),
     ...(transport.websocketUrl?{websocketUrl:transport.websocketUrl}:{})},receiptSecret,
-    assertDeploymentBinding,fetchImpl:transport.fetchImpl,
+    assertDeploymentBinding,fetchImpl:transport.fetchImpl,preparePayload:transport.preparePayload,
     authorizationProvider:{read:async()=>agentArtsConfig.readAuthorization(binding,transport)},
     hostAuthorizationProvider:{read:async()=>'Bearer '+hostToken},invokeMode:agentArtsInvokeMode}};
 }
@@ -2996,9 +3009,9 @@ async function initializeRuntime() {
         requestToolAuthorization:async scope=>{
           const mailReconciliation=await connectorConversationTools?.prepareOriginalSendReconciliationAuthorization?.(scope);
           if(!mailReconciliation)await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
-          f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
+          await f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
           f18Workflow?.prepareMergeQuestion?.(scope,authorizationQuestionHost);
-          f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
+          await f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
           f19Workflow?.prepareRegressionQuestion?.(scope,authorizationQuestionHost);
           f19Workflow?.prepareCloseQuestion?.(scope,authorizationQuestionHost);
           if(/^(?:computer\.desktop\.|computer\.request_access$|computer\.vision\.|browser\.)/.test(scope.toolName))computerTasks.add(scope.taskId);
@@ -3022,6 +3035,11 @@ async function initializeRuntime() {
             await f19Workflow?.confirmClosePresence?.(scope);
           }
           return decision;
+        },
+        assertToolAllowed:scope=>{
+          const conversationId=runtimeApplication.readToolConversation(scope.taskId);
+          if(conversationId&&conversations.containsConversation(conversationId))
+            assertConversationProhibitions({...scope,rules:conversations.prohibitions(conversationId)});
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||remoteMcpCompetition.ownsTool(scope.toolName)
@@ -4754,7 +4772,7 @@ async function action(event, name, payload) {
     }
     throw Error('不支持的私人记忆操作');
   }
-  if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft'].includes(name)){
+  if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft','conversation.prohibitions.update'].includes(name)){
     if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
     const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
     const result=await handleConversationAction({name,payload,surface,conversations,tasks,taskSurface,submitting,publish});
@@ -5011,6 +5029,10 @@ async function initializeSisVoice() {
   const speechConfig = accessKeyConfig
     ? {region, projectId, requestAuthPort:(await import('./huawei-sis-auth.js')).createHuaweiSisRequestAuth(accessKeyConfig)}
     : {region, projectId, tokenPort};
+  speechConfig.preparePayload=scope=>egressHost.prepare({...scope,isCurrent:()=>{
+    const current=accessKeyConfig?sisConfigHost.currentAccessKey():sisConfigHost.current();
+    return scope.isCurrent()&&JSON.stringify(current)===JSON.stringify(selectedConfig);
+  }});
   const playback = createDesktopSisPlaybackHost({getPanel: () => panel,
     onDiagnostic: phase => desktopHost.logVoicePlayback(phase)});
   let source;
@@ -5256,6 +5278,8 @@ app.whenReady().then(async () => {
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
   agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  egressHost=createNativeEgressHost({dialog});
+  agentArtsConfig.setEgressHost(egressHost);
   if(competitionMode&&!syntheticMvp) {
     try {
       const created=initializeDefaultWorkspace({userData:app.getPath('userData'),
@@ -5310,8 +5334,10 @@ app.whenReady().then(async () => {
     modelApiHost = createModelApiConfig({userData:app.getPath('userData'),safeStorage,
       isDefaultExecutionAvailable:()=>runtimeApplication?.isDefaultSubagentAvailable()===true,
       createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway});
+    modelApiHost.setEgressHost(egressHost);
     computerVisionConfig=createComputerVisionConfig({userData:app.getPath('userData'),safeStorage,
       createGateway:createConfiguredSubagentModelGateway,onUpdate:publish});
+    computerVisionConfig.setEgressHost(egressHost);
   }
   if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});

@@ -12,7 +12,7 @@ const answer = (frame, socket) => {
 };
 
 function harness({respond = answer, autoReady = true, config: overrides = {}, beforeSend,
-  beforeCatalog, authorization = () => 'Bearer synthetic-outer', appAuthorization, onDispatch} = {}) {
+  beforeCatalog, authorization = () => 'Bearer synthetic-outer', appAuthorization, onDispatch,preparePayload} = {}) {
   const sockets = [], connects = [], states = [], http = [];
   let authorizationReads = 0;
   const port = new AgentArtsCloudAgentPort({...config, ...overrides},
@@ -22,9 +22,26 @@ function harness({respond = answer, autoReady = true, config: overrides = {}, be
     {...(appAuthorization ? {authorizationProvider: {read: async () => appAuthorization()}} : {}),
       factory: (url, options) => { connects.push({url, options});
         const socket = new SyntheticWebSocket(respond, {autoReady}); sockets.push(socket); return socket; },
-      onState: state => states.push(state), onDispatch});
+      onState: state => states.push(state), onDispatch},undefined,undefined,preparePayload);
   return {port, sockets, connects, states, http, get reads() { return authorizationReads; }};
 }
+
+test('content approval binds the actual WSS destination and separately gates an HTTPS fallback',async()=>{
+  const destinations=[];
+  const h=harness({autoReady:false,config:{allowHttpsFallback:true},preparePayload:async scope=>{
+    destinations.push(scope.destination);
+    if(scope.destination.startsWith('https:'))throw Object.assign(Error('Synthetic fallback export denied'),{code:'UNAUTHORIZED'});
+    return {assertBeforeSend(actual){assert.equal(actual.destination,scope.destination);assert.equal(actual.payload,scope.payload);}};
+  }});
+  try{
+    const pending=h.port.invoke(request());const rejected=assert.rejects(pending);
+    while(h.sockets.length===0)await new Promise(resolve=>setImmediate(resolve));
+    h.sockets[0].emit('error',Error('Synthetic pre-invoke connection failure'));
+    await rejected;
+    assert.deepEqual(destinations,[config.websocketUrl,'https://agentarts.example.test/runtimes/synthetic/invocations']);
+    assert.equal(h.http.length,0);assert.equal(h.sockets[0].sent.filter(frame=>frame.type==='invoke').length,0);
+  }finally{h.port.close();}
+});
 
 test('WSS reuses a session across invocations, re-reads credentials, and closes all resources', async () => {
   const h = harness({appAuthorization: () => 'Bearer synthetic-app'});
