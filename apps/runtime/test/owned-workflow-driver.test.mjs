@@ -71,6 +71,21 @@ function fixture({path=':memory:',unknown=false,waitCommand=false}={}){
   return {get app(){return app;},calls,advances,exports,catalog,create,run,approve,reopen(){app.close();open();}};
 }
 
+test('parent replan invalidates an owned child already waiting for approval without starting its operation',async()=>{
+  const f=fixture(),task=f.create();
+  try {
+    assert.equal((await f.run(task.taskId)).state,'waiting_approval');
+    const state=f.app.runtime.loadCheckpoint(task.taskId,KEY),host=f.app.readHostToolTask(state.waiting.localTaskId);
+    f.app.runtime.advanceExecutionEpoch(task.taskId,{requestId:'new-plan',reason:'replan'});
+    const client=new Client(f.app);await client.connect();
+    await client.call('authorization.respond',{approvalId:host.approval.approvalId,expectedRevision:host.approval.revision,decision:'allow_once'});
+    await f.app.waitForHostToolTask(host.task.taskId);
+    assert.equal(f.calls.length,0);
+    assert.equal(f.app.runtime.getTask(host.task.taskId).state,'failed');
+    assert.equal(f.app.runtime.loadCheckpoint(task.taskId,KEY).waiting.localTaskId,host.task.taskId);
+  } finally {f.app.close();}
+});
+
 test('real second graph completes all four nodes through the same Runtime task, original approvals and SQLite restart',async()=>{
   const directory=await mkdtemp(join(tmpdir(),'personal-agent-synthetic-owned-driver-'));
   const f=fixture({path:join(directory,'runtime.sqlite')}),task=f.create();

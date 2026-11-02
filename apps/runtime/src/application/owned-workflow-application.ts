@@ -67,6 +67,8 @@ export function createRuntimeOwnedWorkflowHost(application:RuntimeApplication,
       if(previous!==undefined&&JSON.stringify(previous)!==JSON.stringify(binding))
         throw new ProtocolError('REVISION_CONFLICT','Original graph host child changed');
       application.runtime.saveCheckpointOnce(prepared.taskId,'coding-repair:parent',binding);
+      application.runtime.saveCheckpointOnce(prepared.taskId,'execution-parent-epoch',{
+        taskId:options.parentTaskId,epoch:application.runtime.readExecutionEpoch(options.parentTaskId)});
       application.runtime.saveCheckpointOnce(options.parentTaskId,originalKey,{localTaskId:prepared.taskId,request:structuredClone(request)});
       return application.finalizeHostToolTask({taskId:prepared.taskId,commandId:request.commandId,
         arguments:request.arguments,expectedTaskRevision:prepared.revision});

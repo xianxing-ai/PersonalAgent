@@ -1100,6 +1100,18 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             throw new RuntimeError('REVISION_CONFLICT', 'Tools can only be invoked for a running task');
           }
           const runId = request.idempotencyKey ?? this.idFactory();
+          const executionEpoch = this.readExecutionEpoch(request.taskId);
+          const assertCurrentExecution = () => {
+            this.assertExecutionEpoch(request.taskId!, executionEpoch);
+            const loop = this.loadCheckpoint(request.taskId!, 'competition-loop') as {executionEpoch?: number} | undefined;
+            if (loop?.executionEpoch !== undefined) this.assertExecutionEpoch(request.taskId!, loop.executionEpoch);
+            const original = this.loadCheckpoint(request.taskId!, 'execution-epoch:run:' + runId) as number | undefined;
+            if (original !== undefined) this.assertExecutionEpoch(request.taskId!, original);
+            const parent = this.loadCheckpoint(request.taskId!, 'execution-parent-epoch') as {taskId: string; epoch: number} | undefined;
+            if (parent) this.assertExecutionEpoch(parent.taskId, parent.epoch);
+          };
+          assertCurrentExecution();
+          this.saveCheckpointOnce(request.taskId, 'execution-epoch:run:' + runId, executionEpoch);
           const inputDigest = toolInputDigest(request.taskId, request.payload);
           const previousRow = this.db.prepare('SELECT record_json FROM tool_execution_records WHERE evidence_id = ?').get(runId);
           if (previousRow) {
@@ -1136,7 +1148,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
               authorizationRef: request.payload.scopeRef,
               deadline: request.deadline,
               signal,
-              onAuthorized: () => { record.policyDecision = 'allow'; record.executionStarted = true; this.saveToolExecution(record); },
+              onAuthorized: () => { assertCurrentExecution(); record.policyDecision = 'allow'; record.executionStarted = true; this.saveToolExecution(record); },
             });
             this.saveToolExecution({...record, state: 'confirmed', finishedAt: this.timestamp()}, result);
             data = {runId, state: 'confirmed', result, evidenceRefs: [runId]};
@@ -1772,6 +1784,40 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     }));
   }
 
+  /** Local execution fence. Legacy tasks start at zero; no cloud response can advance it. */
+  readExecutionEpoch(taskId: string): number {
+    this.getTask(taskId);
+    const epoch = this.loadCheckpoint(taskId, 'execution-epoch') ?? 0;
+    if (!Number.isSafeInteger(epoch) || (epoch as number) < 0)
+      throw new RuntimeError('REVISION_CONFLICT', 'Invalid persisted execution epoch');
+    return epoch as number;
+  }
+
+  advanceExecutionEpoch(taskId: string, input: {requestId: string; reason: 'stop' | 'pause' | 'replan'}): number {
+    requireText(input.requestId, 'execution control requestId');
+    if (!['stop', 'pause', 'replan'].includes(input.reason))
+      throw new RuntimeError('INVALID_ARGUMENT', 'Invalid execution control reason');
+    return this.transaction(() => this.advanceExecutionEpochInTransaction(taskId, input));
+  }
+
+  private advanceExecutionEpochInTransaction(taskId: string, input: {requestId: string; reason: 'stop' | 'pause' | 'replan'}): number {
+    const epoch = this.readExecutionEpoch(taskId), key = 'execution-epoch:advance:' + input.requestId;
+    const prior = this.loadCheckpoint(taskId, key) as {reason: string; epoch: number} | undefined;
+    if (prior) {
+      if (prior.reason !== input.reason) throw new RuntimeError('REVISION_CONFLICT', 'Execution control identity changed');
+      return prior.epoch;
+    }
+    if (!Number.isSafeInteger(epoch + 1)) throw new RuntimeError('REVISION_CONFLICT', 'Execution epoch exhausted');
+    this.saveCheckpoint(taskId, 'execution-epoch', epoch + 1);
+    this.saveCheckpointOnce(taskId, key, {reason: input.reason, epoch: epoch + 1});
+    return epoch + 1;
+  }
+
+  assertExecutionEpoch(taskId: string, expectedEpoch: number): void {
+    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 0 || this.readExecutionEpoch(taskId) !== expectedEpoch)
+      throw new RuntimeError('REVISION_CONFLICT', 'Execution epoch is stale');
+  }
+
   saveCheckpoint(taskId: string, key: string, value: unknown): void {
     requireText(key, 'checkpoint key');
     this.getTask(taskId);
@@ -1888,6 +1934,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       const task = taskFromRow(this.taskRow(taskId));
       if (terminal.has(task.state)) return {taskId, state: task.state, cancelAccepted: false};
       if (task.cancelRequested) return {taskId, state: task.state, cancelAccepted: true};
+      this.advanceExecutionEpochInTransaction(taskId, {requestId: 'task.cancel', reason: 'stop'});
       const next = task.state === 'waiting_reconciliation'
         ? this.updateTask(taskId, task.state, {cancelRequested: true}, false)
         : this.updateTask(taskId, 'cancelling', {cancelRequested: true}, true);
