@@ -6,6 +6,7 @@ import {createAgentArtsRuntimeApplication} from '@personal-agent/runtime/applica
 import {OwnedAgentOrchestrator} from '@personal-agent/agentarts';
 import {FakeModelProvider} from '@personal-agent/models';
 import {createAgentServer} from '@personal-agent/agentarts-runtime';
+import {syntheticPublicPayloadGate} from '../helpers/synthetic-agentarts.mjs';
 const wait=async(app,id,states)=>{
   for(let i=0;i<300;i++) {const task=app.runtime.getTask(id); if(states.includes(task.state)) return task; await new Promise(r=>setTimeout(r,5));}
   throw Error(`Task did not reach expected state: ${app.runtime.getTask(id).state}`);
@@ -26,6 +27,7 @@ for (const failContinuation of [false,true]) test(`owned HTTP agent uses Runtime
   app=createAgentArtsRuntimeApplication({path:directory+'/runtime.sqlite',gatewayUrl:'https://synthetic-agentarts.test',runtimeName:'owned',
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',repairCandidateVersion:'1.0',
     authorizationProvider:{read:async()=> 'Bearer synthetic-token'},
+    preparePayload:syntheticPublicPayloadGate,
     competitionToolAvailability:[{toolName:proposal.toolName,toolVersion:proposal.toolVersion,available:()=>true,publicEnumPaths:['/path']}],
     competitionToolExports:[{toolName:proposal.toolName,toolVersion:proposal.toolVersion,exportPolicyVersion:'fixture-v1',accepts:({arguments:args})=>args.path==='public-fixture.txt',project:({result})=>({value:result.value})}],
     tools:[{descriptor:{name:proposal.toolName,version:proposal.toolVersion,

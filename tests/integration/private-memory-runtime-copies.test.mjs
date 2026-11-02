@@ -11,6 +11,7 @@ import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {createPrivateMemoryController} from '../../apps/desktop/electron/private-memory.js';
 import {createPrivateMemoryConsumptionHost} from '../../apps/desktop/electron/private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from '../../apps/desktop/electron/private-memory-erasure-host.js';
+import {syntheticAgentArtsOptions} from '../helpers/synthetic-agentarts.mjs';
 
 const context = () => ({deadline: new Date(Date.now() + 60000).toISOString(), signal: new AbortController().signal});
 async function terminal(app, taskId) {
@@ -38,7 +39,7 @@ async function fixture(t, asynchronousGate = false, delegation = false) {
       {confirmWithdraw: async () => true, authorizeConsumption: async scope => {consents.push(scope.taskId); return true;}});
     const dispatch = delegation ? createDesktopSubagentDispatchTool({getRuntime: () => app.runtime,
       getTools: () => app.tools, runDefaultWorker: (subtask, worker, tools) => app.runDefaultSubagentWorker(subtask, worker, tools)}) : undefined;
-    app = createAgentArtsRuntimeApplication({path: join(directory, 'runtime.sqlite'),
+    app = createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path: join(directory, 'runtime.sqlite'),
       gatewayUrl: 'https://private-memory.example.test', runtimeName: 'synthetic', invokeMode: 'published',
       ...(delegation ? {responseMode: 'tool-proposal-json', tools: [dispatch], competitionToolExports: [{
         toolName: SUBAGENT_DISPATCH_TOOL_NAME, toolVersion: SUBAGENT_DISPATCH_TOOL_VERSION,
@@ -71,7 +72,7 @@ async function fixture(t, asynchronousGate = false, delegation = false) {
             state: allowCopyPurge ? 'purged' : 'withheld'};
         },
         releaseTask: taskId => consumption.releaseTask(taskId),
-      }});
+      }}));
     consumption = createPrivateMemoryConsumptionHost({profile: 'huawei_ict_agentarts', privateMemory: memory,
       readTask: taskId => app.runtime.getTask(taskId), readTaskBinding: taskId => app.readPrivateTaskBinding(taskId),
       writeTaskBinding: (taskId, binding) => app.writePrivateTaskBinding(taskId, binding),
