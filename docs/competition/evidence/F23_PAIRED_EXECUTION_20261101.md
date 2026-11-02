@@ -32,3 +32,5 @@ Desktop 先经原 ToolGateway/Policy 固定样本和版本化 acceptance，再�
 两组真实输出已分别导入并提交 `0.0.1`：main 数据集 `5a7648ec-3a73-4dc3-869d-a03343c3dde5`，item IDs `6ae815f85253c8cdaff8c412`、`6ae815f85253c8cdaff8c413`；shadow 数据集 `4c7b9486-7f27-4cc1-ac80-c6cacf788fcf`，item IDs `6ae81667a6ad840f734fab02`、`6ae81667a6ad840f734fab03`。原输出空白差异保留。
 
 平台代码判定显示“即将上新”，因此建立模型判定评估器 `8f00d83e-2adc-4076-bc6b-cdca7c259f0f` / `0.0.1`，只按有效 JSON 对象和参考对象语义等价给出 0/1 分；两组使用相同版本。评估任务 main `d9a31add-6a08-4ffa-8410-ba39d4d6e23e`、shadow `7fe04f66-9549-4fe2-89ef-2371bb0ade96`。main 首次执行在平台失败（2 条失败，0 token），尚无可接受的真实评分；不可把报表占位零分当作评价结果。控制面 AK/SK 在现有 Desktop userData 与当前进程环境均未配置，程序化结果读回仍未验收。
+
+两组平台任务最终均为 2 条失败、0 token。main 详情的明确错误为 `ERR_PROVIDER_AUTH`、HTTP 401、`ModelArts.81003 / Invalid authorization header`；评分器模型选择只有 `deepseek-v4-flash`。未重新执行、未人工改分；平台鉴权修复前不能产出有效评分。平台结果行 ID 与评测集草稿行 ID 不同（main 结果行是 `6ae815f85253c8cdaff8c410`、`6ae815f85253c8cdaff8c411`）；绑定时须从完成任务原结果读取，不得复制草稿 ID。当前界面只展示评分器使用的 output/reference，完整 API `item_data` 仍待凭据可用后核对。
