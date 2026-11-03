@@ -146,3 +146,40 @@ test('repo-task runner checks out through the injected workspace and refuses an 
   assert.equal(heartbeats, 1);
   assert.equal(executed.leaseExtended, true);
 });
+
+test('each compensation uses its own port and a directory scan keeps an incremental profile', async () => {
+  const calls = [];
+  const git = createMemoryGitWorkspace();
+  const session = createDeveloperDirectionSession({git, compensation: {
+    async deleteComment(input) {calls.push(`comment ${input.commentId}`); return {evidence: `deleted ${input.commentId}`};},
+    async closePullRequest(input) {calls.push(`pr ${input.number}`); return {evidence: `closed ${input.number}`};},
+  }});
+  assert.deepEqual(session.listCompensations().map(item => item.available), [true, true, true, true]);
+  assert.equal((await session.compensate({action: 'revert_commit', repoPath: '/tmp/repo', sha})).available, true);
+  assert.equal((await session.compensate({action: 'restore_branch', repoPath: '/tmp/repo', branch: 'agent/fix', sha})).available, true);
+  assert.equal((await session.compensate({action: 'delete_comment', repo: 'octo/repo', commentId: 9})).available, true);
+  assert.equal((await session.compensate({action: 'close_pr', repo: 'octo/repo', number: 4})).available, true);
+  assert.deepEqual(calls, ['comment 9', 'pr 4']);
+  const bare = createDeveloperDirectionSession();
+  assert.equal(bare.listCompensations().every(item => item.available === false), true);
+  assert.equal((await bare.compensate({action: 'close_pr', repo: 'octo/repo', number: 4})).available, false);
+  const goal = session.submitGoal({sentence: '扫描仓库', repo: 'octo/repo'});
+  assert.equal(session.report(goal.id).compensations.every(item => item.available), true);
+
+  const root = mkdtempSync(path.join(tmpdir(), 'developer-knowledge-'));
+  try {
+    writeFileSync(path.join(root, 'AGENTS.md'), '# listTasks\n用中文\n');
+    writeFileSync(path.join(root, 'api.ts'), 'export function listTasks() {}\n');
+    writeFileSync(path.join(root, 'package.json'), JSON.stringify({scripts: {build: 'tsc', test: 'node --test'}}));
+    const policy = {maxFileBytes: 200, maxTotalBytes: 8_000_000, maxFiles: 50, ignore: ['node_modules', 'dist', '.git']};
+    const scanned = session.scanKnowledge({repo: 'octo/repo', root, policy});
+    assert.equal(scanned.index.evidenceLevel, 'local-scan');
+    assert.ok(scanned.profile.buildRecipes.includes('build'));
+    assert.equal(scanned.drift.drift, false);
+    assert.equal(session.profileFor('octo/repo').digest, scanned.index.digest);
+    session.rememberFix('octo/repo', {failureSignature: 'error ts', patchSummary: '补类型'});
+    const again = session.scanKnowledge({repo: 'octo/repo', root, policy});
+    assert.equal(again.index.files.find(file => file.path === 'api.ts')?.reused, true);
+    assert.equal(session.profileFor('octo/repo').pastFixes.length, 1);
+  } finally {rmSync(root, {recursive: true, force: true});}
+});

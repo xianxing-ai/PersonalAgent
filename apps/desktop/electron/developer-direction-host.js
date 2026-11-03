@@ -65,6 +65,8 @@ export function createDeveloperDirectionHost(options = {}) {
     }
     if (action === 'period') return {text: session.periodReport(input)};
     if (action === 'compensate') return session.compensate(input);
+    if (action === 'compensations') return session.listCompensations();
+    if (action === 'scan') return session.scanKnowledge(input);
     throw new Error('未知的开发者方向操作');
   }};
 }

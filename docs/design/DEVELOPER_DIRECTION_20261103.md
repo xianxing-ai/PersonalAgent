@@ -10,7 +10,7 @@
 
 - `apps/desktop/electron/async-subagent-host.js` 已经实现 `verifyUnknownWrite`：远端 dispatch 为 `unknown`/`inflight`，或工具执行记录为 `unknown` 时返回 `unknown`。附件写“未读到”，不是缺失。
 - `agentarts-observation.ts` 的 `cost=unavailable` 继续保留。平台 trace/log 读回没有请求级费用，不能改成一个编出来的金额。开发者任务另用估算价目做预留和结算，字段标明 `evidenceLevel: 'estimated'`。
-- `packages/learning/src/developer-experience.ts` 仍未注入开发任务提示词。仓库画像是新的 `RepoProfile`，不宣称旧学习模块已经接上。
+- 旧的 `developer-experience` 已激活配方会追加到任务上下文。仓库画像仍是新的 `RepoProfile`，不把学习模块本身改成开发者方向的存储。
 - `acceptGitHubWebhook` 原来只是纯函数。本增量补了本机 HTTP 监听。
 - 隔离修复仍然把源码拷到任务目录。`git worktree` 是旁边的新租约，不替换那条路径。
 
@@ -74,7 +74,7 @@
 
 ### 预算
 
-`CostBudget` 和 `BudgetReservation`。流程是估价、预留、结算或释放。超出时按 `pause | downgrade_model | ask`。`downgrade_model` 只返回决策，这次没有改 ModelGateway 的实际选模。价目由调用方提供；内建 `estimated-default` 只是估算占位，不是厂商价目，更不是 AgentArts 账单。
+`CostBudget` 和 `BudgetReservation`。流程是估价、预留、结算或释放。超出时按 `pause | downgrade_model | ask`。只有会话同时配了主网关和备用网关时，`downgrade_model` 才会改走备用 `ModelGateway`；没配备用网关时只暂停。价目由调用方提供；内建 `estimated-default` 只是估算占位，不是厂商价目，更不是 AgentArts 账单。
 
 ### 远端仓库任务
 
@@ -83,6 +83,8 @@
 ### CI 闭环
 
 `diagnose → patch → local_verify → push → await_ci(headSha) → green | 下一轮 | stopped`。轮次上限 1 到 5。flaky 在同一 head 上最多重跑 1 次。别的 head 的 CI 回执被忽略。
+
+`runInjectedCiRepair` 把上述状态机接到调用方注入的诊断、补丁、本地验证、推送、重跑和读 CI 端口。诊断为环境失败时停住，不打补丁。诊断为 flaky 且调用方给出当前 head 时，先在这个 head 上重跑一次。`readCi` 可以返回分类过的字符串，也可以返回 `{status, logExcerpt}`，后者再用 `classifyCiFailureStable` 判断。真实 Actions 不在这个函数里调用。
 
 ### 评论、通知、报告
 
@@ -96,11 +98,14 @@
 
 `RepoProfile` 从 AGENTS.md、CONTRIBUTING、ARCHITECTURE.md 和 `package.json` scripts 取摘要和配方。文件摘要按不可信数据围住。修复成功后追加 `pastFixes`。私有仓库只留本机标记，不做出机内容。
 
-`detectApiDocDrift` 比较实现名和文档名，并在 digest 变化时标过期。它不扫描整个仓库，调用方传入名单。
+`scanKnowledgeDirectory` 从本机目录建索引。默认忽略 `node_modules`、`dist`、`.git`、`coverage`、`.cache`、`.worktrees`（按路径段匹配，不是完整 gitignore）。单文件默认不超过 256 KiB，总字节默认不超过 8 MB，文件数默认不超过 2000。超过就记入 `skipped` 并标 `truncated`。路径和摘要没变的文件标 `reused`，并保留该文件上的构建/测试配方名。`knowledgeDrift` 用索引里的导出函数名和 Markdown 标题调用 `detectApiDocDrift`。会话的 `scanKnowledge` 会把索引写进仓库画像，再次扫描时保留已记下的 `pastFixes`。
 
-补偿目录：还原提交、删评论、关 PR、恢复分支。没有对应端口时 `available: false`，不发请求。
+补偿目录：还原提交、删评论、关 PR、恢复分支。报告里的 `available` 和 `listCompensations()` 按端口分别判断：还原提交看 `git.revertCommit`，恢复分支看 `git.restoreBranch`，删评论看 `compensation.deleteComment`，关 PR 看 `compensation.closePullRequest`。没有对应端口时 `available: false`，不发请求。
 
-`summarizeDeveloperEval` 只汇总调用方给的结果。仓库里没有新的历史 CI 回放集。
+`summarizeDeveloperEval` 只汇总调用方给的结果。历史 CI 评测另走 `packages/connectors/github/fixtures/historical-ci-eval.json` 和 `loadSourcedCiEval`。清单里的摘录必须能在所引文件中按原文找到。目前三条来源是：
+
+- `packages/connectors/github/test/fixtures/developer-duty-github.json` 的 `logExcerpt`。这是仓库夹具，不是 Actions 下载日志。
+- `docs/competition/evidence/conversation-wiring-20261018/validation.json` 里 `priorCi` 的两条 `failure` 原文，对应记录中的 run `39172889704` 和 `39172886287`。证据只留了结论摘要和 `logSha256`，原始日志不在仓库里，所以这两条不写期望分类，观察到的类可以是 `unknown`。
 
 ## 状态机
 
@@ -130,4 +135,4 @@ CI：见上。head 不一致时停在原阶段。
 - 估算费用可能和真实账单差很远。超支暂停只针对开发者会话里的目标。
 - 本机 webhook 会监听端口。公网入口不在这次范围内；需要暴露端口时应改由远端转发。
 - fork 策略只返回决策，没有把所有现有执行器都改成强制远端。
-- 真实 GitHub 评论、真实远端机器、真实 CI 重跑都没有验收。
+- 真实 GitHub 写入、公网 webhook、远端机器和操作系统通知弹窗都没有验收。对应能力停在夹具或本机回退，证据等级不是真机。

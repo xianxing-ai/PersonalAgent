@@ -9,8 +9,8 @@ import {
 import {argumentsDerivedFromUntrusted, renderUntrustedPrompt, wrapUntrusted, type UntrustedContent} from '@personal-agent/policy';
 import {budgetSpent, estimateCost, reserveBudget, settleBudget, type BudgetState, type ModelPriceCard} from '@personal-agent/policy';
 import {
-  detectApiDocDrift, finishTrigger, initialCiLoop, rememberTrigger, routeTrigger, stepCiLoop, emptyTriggerState,
-  type CiLoopState, type TriggerRule, type TriggerEvent, type TriggerState,
+  detectApiDocDrift, finishTrigger, initialCiLoop, knowledgeDrift, rememberTrigger, routeTrigger, scanKnowledgeDirectory, stepCiLoop, emptyTriggerState,
+  type CiLoopState, type KnowledgeIndex, type KnowledgeScanPolicy, type TriggerRule, type TriggerEvent, type TriggerState,
 } from '@personal-agent/github';
 import {
   acceptDeveloperNotice, emptyDeveloperDelivery, setDeveloperSubscription,
@@ -285,6 +285,7 @@ export interface DeveloperDirectionSession {
   repair(input: {repo: string; number: number; signal: Parameters<typeof stepCiLoop>[1]; headSha?: string; maxRounds?: number}): CiLoopState;
   executeRepoJob(input: {repo: string; repoPath: string; baseSha: string; taskId: string; recipeIds: string[]; slug: string}): Promise<{evidenceLevel: 'fixture' | 'executed-local'; diffSummary: string; testReport: string; artifactSummary: string; heartbeats: number; leaseExtended: boolean}>;
   checkApiDrift(input: {implemented: readonly string[]; documented: readonly string[]}): ReturnType<typeof detectApiDocDrift>;
+  scanKnowledge(input: {repo: string; root: string; policy?: Partial<KnowledgeScanPolicy>}): {index: KnowledgeIndex; drift: ReturnType<typeof knowledgeDrift>; profile: RepoProfile};
   compensate(input: {action: (typeof COMPENSATION_CATALOG)[number]['id']; repo?: string; repoPath?: string; sha?: string; commentId?: number; number?: number; branch?: string}): Promise<{available: boolean; evidence?: string; reason: string}>;
   report(goalId: string, extra?: {risks?: string[]; commands?: Array<{command: string; result: string}>; ciUrl?: string; url?: string}): DeveloperReport;
   periodReport(input: {period: 'daily' | 'weekly'; pulls?: string[]; reviews?: string[]; failing?: string[]}): string;
@@ -294,6 +295,7 @@ export interface DeveloperDirectionSession {
   subscribe(repo: string, classes: readonly DeveloperNoticeClass[]): void;
   timeline(): DeveloperDeliveryState['timeline'];
   applyWizard(input: {repo: string; credentialRef: string; files: ReadonlyArray<{path: string; text: string}>; level?: AutonomyLevel; branchPattern?: string; present?: boolean; runnerId?: string}): {profile: RepoProfile; grant: StandingAutonomyGrant; runnerId?: string; evidenceLevel: 'fixture'};
+  listCompensations(): Array<{id: string; label: string; available: boolean}>;
   snapshot(): Record<string, unknown>;
 }
 
@@ -321,6 +323,7 @@ export function createDeveloperDirectionSession(options: {
   let leases: WorkspaceLease[] = [];
   let locks: RepoLock[] = [];
   let profiles: RepoProfile[] = [];
+  const knowledge = new Map<string, KnowledgeIndex>();
   let loops: CiLoopState[] = [];
   let budget: BudgetState = {reservations: []};
   let delivery: DeveloperDeliveryState = emptyDeveloperDelivery();
@@ -586,6 +589,23 @@ export function createDeveloperDirectionSession(options: {
       }
     },
     checkApiDrift(input) {return detectApiDocDrift(input);},
+    scanKnowledge(input) {
+      if (!repoOk(input.repo)) fail('INVALID_ARGUMENT', 'Repository name is invalid');
+      const previous = knowledge.get(input.repo);
+      const index = scanKnowledgeDirectory({repo: input.repo, root: input.root, ...(previous ? {previous} : {}), ...(input.policy ? {policy: input.policy} : {})});
+      knowledge.set(input.repo, index);
+      const prior = profiles.find(item => item.repo === input.repo);
+      return {index, drift: knowledgeDrift(index), profile: this.rememberProfile({
+        repo: index.repo,
+        conventions: index.files.filter(file => file.convention).map(file => ({path: file.path, digest: file.digest})),
+        buildRecipes: [...index.buildRecipes],
+        testRecipes: [...index.testRecipes],
+        protectedBranches: prior?.protectedBranches ?? ['main', 'master'],
+        pastFixes: prior?.pastFixes ?? [],
+        digest: index.digest,
+        privateRepo: prior?.privateRepo ?? false,
+      })};
+    },
     async compensate(input) {
       const known = COMPENSATION_CATALOG.find(item => item.id === input.action);
       if (!known) fail('INVALID_ARGUMENT', 'Compensation is unknown');
@@ -617,7 +637,7 @@ export function createDeveloperDirectionSession(options: {
         verification: {commands: extra?.commands ?? [], ...(extra?.ciUrl ? {ciUrl: extra.ciUrl} : {})},
         risks: extra?.risks ?? ['未做真实 GitHub 或远端机器验收'],
         cost,
-        compensations: COMPENSATION_CATALOG.map(item => ({id: item.id, label: item.label, available: item.id === 'revert_commit' ? Boolean(options.git?.revertCommit) : Boolean(options.compensation)})),
+        compensations: this.listCompensations(),
       });
     },
     periodReport(input) {
@@ -651,6 +671,13 @@ export function createDeveloperDirectionSession(options: {
       else if (level !== ENROLLED_AUTONOMY_LEVEL) assertAutonomyChange({from: UNCONFIGURED_AUTONOMY_LEVEL, to: level, present: input.present === true});
       const grant = this.enroll({repo: input.repo, ...(input.branchPattern ? {branchPattern: input.branchPattern} : {}), level, credentialRef: input.credentialRef});
       return {profile, grant, ...(input.runnerId ? {runnerId: input.runnerId} : {}), evidenceLevel: 'fixture' as const};
+    },
+    listCompensations() {
+      return COMPENSATION_CATALOG.map(item => ({id: item.id, label: item.label,
+        available: item.id === 'revert_commit' ? Boolean(options.git?.revertCommit)
+          : item.id === 'restore_branch' ? Boolean(options.git?.restoreBranch)
+            : item.id === 'delete_comment' ? Boolean(options.compensation?.deleteComment)
+              : Boolean(options.compensation?.closePullRequest)}));
     },
     snapshot() {
       return {stopped, goals, grants: grants.map(item => ({id: item.id, repo: item.scope.repo, level: item.level, revoked: item.revoked})), leases, locks, profiles: profiles.map(item => ({repo: item.repo, digest: item.digest, pastFixes: item.pastFixes.length, privateRepo: item.privateRepo})), loops, budget: budgetSpent(budget, goals[0]?.repo ?? ''), timeline: delivery.timeline, evidenceLevel: 'fixture'};

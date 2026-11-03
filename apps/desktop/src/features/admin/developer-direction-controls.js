@@ -1,5 +1,32 @@
 const escape = value => String(value ?? '').replace(/[&<>"']/gu, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
 
+/** 面板提交和按钮映射。无头测试直接调用它，不依赖浏览器。 */
+export function directionFormCommand(kind, data) {
+  if (kind === 'goal') return {action: 'goal', payload: {sentence: data.sentence, ...(data.repo ? {repo: data.repo} : {}), ...(data.pullRequest ? {pullRequest: Number(data.pullRequest)} : {}), ...(data.branch ? {branch: data.branch} : {}), ...(data.doneWhen ? {doneWhen: data.doneWhen} : {}), ...(data.budget ? {budget: Number(data.budget)} : {})}};
+  if (kind === 'duty') return {action: 'duty', payload: {sentence: data.sentence, repo: data.repo}};
+  if (kind === 'level') return {action: 'setAutonomy', payload: {repo: data.repo, level: data.level, present: data.present === true}};
+  if (kind === 'subscribe') return {action: 'subscribe', payload: {repo: data.repo, classes: data.classes ?? []}};
+  if (kind === 'wizard') return {action: 'wizard', payload: {credentialRef: data.credentialRef, repo: data.repo, files: data.conventions ? [{path: 'AGENTS.md', text: data.conventions}] : [], present: true}};
+  if (kind === 'emergency') return {action: 'emergency', payload: {reason: '用户急停'}};
+  if (kind === 'report') return {action: 'report', payload: {goalId: data.goalId}};
+  return {action: kind, payload: {goalId: data.goalId}};
+}
+
+export function renderDirectionBoard(items) {
+  const list = items ?? [];
+  return `<h3>任务看板</h3>${list.length ? `<ul>${list.map(item => `<li data-direction-goal="${escape(item.id)}">${escape(item.sentence || item.goal || item.taskId)} · ${escape(item.status || item.state || '')} · ${escape(item.step || '')} · ${escape(item.headSha || '')}
+      <button type="button" data-direction-act="pause" data-id="${escape(item.id)}">暂停</button>
+      <button type="button" data-direction-act="resume" data-id="${escape(item.id)}">恢复</button>
+      <button type="button" data-direction-act="handoff" data-id="${escape(item.id)}">我来接手</button>
+      <button type="button" data-direction-act="stop" data-id="${escape(item.id)}">停止</button>
+      <button type="button" data-direction-act="report" data-id="${escape(item.id)}">报告</button></li>`).join('')}</ul>` : '<p>还没有开发者目标。</p>'}`;
+}
+
+export function renderDirectionTimeline(rows) {
+  const list = rows ?? [];
+  return `<h3>时间线</h3>${list.length ? `<ol>${list.map(item => `<li><a href="#${escape(item.evidenceRef || item.id)}">${escape(item.at)}</a> ${escape(item.summary)} · ${item.delivered ? '已投递' : '未投递'} · ${escape(item.reason || '')}</li>`).join('')}</ol>` : '<p>时间线是空的。</p>'}`;
+}
+
 /** 开发者方向的最小面板。数据来自既有 desktop:action，不另起一套界面框架。 */
 export function mountDeveloperDirectionControls(root, invoke) {
   const view = document.createElement('section');
@@ -55,15 +82,8 @@ export function mountDeveloperDirectionControls(root, invoke) {
   const call = (action, payload) => invoke('developerDirection.invoke', {action, ...payload});
   async function refresh() {
     const value = await call('board', {});
-    const items = value.items ?? [];
-    board.innerHTML = `<h3>任务看板</h3>${items.length ? `<ul>${items.map(item => `<li data-direction-goal="${escape(item.id)}">${escape(item.sentence || item.goal || item.taskId)} · ${escape(item.status || item.state || '')} · ${escape(item.step || '')} · ${escape(item.headSha || '')}
-      <button type="button" data-direction-act="pause" data-id="${escape(item.id)}">暂停</button>
-      <button type="button" data-direction-act="resume" data-id="${escape(item.id)}">恢复</button>
-      <button type="button" data-direction-act="handoff" data-id="${escape(item.id)}">我来接手</button>
-      <button type="button" data-direction-act="stop" data-id="${escape(item.id)}">停止</button>
-      <button type="button" data-direction-act="report" data-id="${escape(item.id)}">报告</button></li>`).join('')}</ul>` : '<p>还没有开发者目标。</p>'}`;
-    const rows = value.timeline ?? [];
-    timeline.innerHTML = `<h3>时间线</h3>${rows.length ? `<ol>${rows.map(item => `<li><a href="#${escape(item.evidenceRef || item.id)}">${escape(item.at)}</a> ${escape(item.summary)} · ${item.delivered ? '已投递' : '未投递'} · ${escape(item.reason || '')}</li>`).join('')}</ol>` : '<p>时间线是空的。</p>'}`;
+    board.innerHTML = renderDirectionBoard(value.items);
+    timeline.innerHTML = renderDirectionTimeline(value.timeline);
     status.textContent = value.snapshot?.stopped ? '急停已生效，常驻授权已撤销' : '开发者方向可用（夹具/本机端口，不是真机验收）';
   }
   view.addEventListener('submit', async event => {
@@ -72,16 +92,16 @@ export function mountDeveloperDirectionControls(root, invoke) {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     try {
-      if (form.matches('[data-direction-goal]')) {
-        await call('goal', {sentence: data.sentence, ...(data.repo ? {repo: data.repo} : {}), ...(data.pullRequest ? {pullRequest: Number(data.pullRequest)} : {}), ...(data.branch ? {branch: data.branch} : {}), ...(data.doneWhen ? {doneWhen: data.doneWhen} : {}), ...(data.budget ? {budget: Number(data.budget)} : {})});
-      } else if (form.matches('[data-direction-duty]')) await call('duty', {sentence: data.sentence, repo: data.repo});
-      else if (form.matches('[data-direction-level]')) await call('setAutonomy', {repo: data.repo, level: data.level, present: form.elements.namedItem('present').checked === true});
-      else if (form.matches('[data-direction-subscribe]')) {
-        const classes = ['interrupt', 'digest', 'silent'].filter(name => form.elements.namedItem(name).checked);
-        await call('subscribe', {repo: data.repo, classes});
-      } else if (form.matches('[data-direction-wizard]')) {
-        await call('wizard', {credentialRef: data.credentialRef, repo: data.repo, files: data.conventions ? [{path: 'AGENTS.md', text: data.conventions}] : [], present: true});
-      }
+      const kind = form.matches('[data-direction-goal]') ? 'goal'
+        : form.matches('[data-direction-duty]') ? 'duty'
+          : form.matches('[data-direction-level]') ? 'level'
+            : form.matches('[data-direction-subscribe]') ? 'subscribe'
+              : form.matches('[data-direction-wizard]') ? 'wizard' : '';
+      if (!kind) return;
+      const present = kind === 'level' && form.elements.namedItem('present').checked === true;
+      const classes = kind === 'subscribe' ? ['interrupt', 'digest', 'silent'].filter(name => form.elements.namedItem(name).checked) : undefined;
+      const command = directionFormCommand(kind, {...data, present, ...(classes ? {classes} : {})});
+      await call(command.action, command.payload);
       status.textContent = '已保存';
       await refresh();
     } catch (error) {status.textContent = error instanceof Error ? error.message : '操作没有完成';}
@@ -91,7 +111,7 @@ export function mountDeveloperDirectionControls(root, invoke) {
     if (!button) return;
     try {
       if (button.matches('[data-direction-refresh]')) await refresh();
-      if (button.matches('[data-direction-stop]')) {await call('emergency', {reason: '用户急停'}); await refresh();}
+      if (button.matches('[data-direction-stop]')) {const command = directionFormCommand('emergency', {}); await call(command.action, command.payload); await refresh();}
       const action = button.dataset.directionAct;
       const goalId = button.dataset.id;
       if (!action || !goalId) return;

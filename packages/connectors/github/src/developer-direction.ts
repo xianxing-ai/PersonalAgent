@@ -1,5 +1,7 @@
 import {createHmac, createHash, timingSafeEqual} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
+import {isAbsolute, relative, resolve} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 import {acceptGitHubWebhook, type DutyEvent} from './developer-duty.js';
 
@@ -336,6 +338,122 @@ export function summarizeDeveloperEval(input: {caseIds: readonly string[]; outco
 
 export function apiDocDigest(names: readonly string[]): string {
   return createHash('sha256').update(JSON.stringify([...names].sort())).digest('hex');
+}
+
+export type CiReadResult = 'green' | 'red' | 'flaky' | {status: 'green' | 'red'; logExcerpt: string};
+
+export interface CiRepairPorts {
+  diagnose(): Promise<'code' | 'flaky' | 'environment' | 'unknown'>;
+  patch(): Promise<void>;
+  verify(): Promise<boolean>;
+  push(): Promise<string>;
+  rerun(headSha: string): Promise<void>;
+  readCi(headSha: string): Promise<CiReadResult>;
+}
+
+function interpretCiRead(value: {status: 'green' | 'red'; logExcerpt: string}, rerunCount: number): 'green' | 'red' | 'flaky' | 'environment' {
+  if (value.status === 'green') return 'green';
+  const classified = classifyCiFailureStable({logExcerpt: value.logExcerpt, rerunCount});
+  if (classified.class === 'environment') return 'environment';
+  if (classified.class === 'flaky' && classified.rerun.recommend) return 'flaky';
+  return 'red';
+}
+
+/** 用注入端口走完诊断、补丁、本地验证、推送、等待 CI、flaky 重跑。环境失败不打补丁。不调用真实 Actions。 */
+export async function runInjectedCiRepair(input: {repo: string; number: number; maxRounds?: number; currentHead?: string; ports: CiRepairPorts}): Promise<{state: CiLoopState; reruns: string[]; evidenceLevel: 'fixture'}> {
+  let state = initialCiLoop({repo: input.repo, number: input.number, maxRounds: input.maxRounds ?? 3});
+  const reruns: string[] = [];
+  for (let guard = 0; guard < 12 && !['green', 'stopped'].includes(state.phase); guard += 1) {
+    if (state.phase === 'diagnose') {
+      const kind = await input.ports.diagnose();
+      if (kind === 'environment') {
+        state = {...state, phase: 'stopped', note: 'environment failure is not patched'};
+        continue;
+      }
+      if (kind === 'flaky' && input.currentHead && state.note === 'waiting for diagnosis' && state.flakyReruns < 1) {
+        state = {...state, phase: 'await_ci', headSha: input.currentHead, note: 'flaky diagnosis waits on the current head'};
+        continue;
+      }
+      state = stepCiLoop(state, 'diagnosed');
+    } else if (state.phase === 'patch') {
+      await input.ports.patch();
+      state = stepCiLoop(state, 'patched');
+    } else if (state.phase === 'local_verify') {
+      const ok = await input.ports.verify();
+      state = stepCiLoop(state, ok ? 'verified' : 'verify_failed');
+    } else if (state.phase === 'push') {
+      const headSha = await input.ports.push();
+      state = stepCiLoop(state, 'pushed', headSha);
+    } else if (state.phase === 'await_ci') {
+      const headSha = state.headSha;
+      if (!headSha) break;
+      const before = state.flakyReruns;
+      const raw = await input.ports.readCi(headSha);
+      const conclusion = typeof raw === 'string' ? raw : interpretCiRead(raw, before);
+      if (conclusion === 'environment') {
+        state = {...state, phase: 'stopped', note: 'environment failure is not patched'};
+        continue;
+      }
+      if (conclusion === 'flaky' && before < 1) await input.ports.rerun(headSha).then(() => {reruns.push(headSha);});
+      state = stepCiLoop(state, conclusion === 'green' ? 'ci_green' : conclusion === 'flaky' ? 'ci_flaky' : 'ci_red', headSha);
+    } else break;
+  }
+  return {state, reruns, evidenceLevel: 'fixture'};
+}
+
+export interface SourcedCiEvalCase {
+  id: string;
+  sourcePath: string;
+  excerpt: string;
+  sourceKind: 'in-repo-fixture' | 'recorded-ci-summary';
+  recordedRunId?: number;
+}
+
+function readRepoSource(root: string, sourcePath: string): string {
+  if (!sourcePath || isAbsolute(sourcePath) || sourcePath.split(/[/\\]/).includes('..')) fail('Evaluation source path must stay inside the repository');
+  const absolute = resolve(root, sourcePath);
+  const rel = relative(resolve(root), absolute);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) fail('Evaluation source path must stay inside the repository');
+  return readFileSync(absolute, 'utf8');
+}
+
+/**
+ * 评测摘录必须是清单所引文件里的原文。清单可以指向仓库夹具，或已提交的 CI 结论摘要。
+ * 这里不下载 Actions 日志，也不给没有原文依据的期望分类。
+ */
+export function loadSourcedCiEval(input: {root: string; manifestPath: string}): {evidenceLevel: 'fixture'; sourcesVerified: true; note: string; cases: SourcedCiEvalCase[]; evaluation: ReturnType<typeof runFixtureCiEval>} {
+  const raw = JSON.parse(readFileSync(input.manifestPath, 'utf8')) as {note?: string; cases?: SourcedCiEvalCase[]};
+  const cases = raw.cases ?? [];
+  if (!cases.length) fail('Sourced evaluation manifest is empty');
+  for (const item of cases) {
+    if (item.sourceKind !== 'in-repo-fixture' && item.sourceKind !== 'recorded-ci-summary') fail('Evaluation source kind is unknown');
+    const text = readRepoSource(input.root, item.sourcePath);
+    if (!item.excerpt.trim() || !text.includes(item.excerpt)) fail(`Excerpt for ${item.id} is not present in ${item.sourcePath}`);
+  }
+  return {
+    evidenceLevel: 'fixture',
+    sourcesVerified: true,
+    note: raw.note ?? '',
+    cases,
+    evaluation: runFixtureCiEval(cases.map(item => ({id: item.id, sourcePath: item.sourcePath, excerpt: item.excerpt}))),
+  };
+}
+
+export interface FixtureEvalCase {id: string; sourcePath: string; excerpt: string; expectedClass?: StableCiClass['class']}
+
+/**
+ * 评测只消费调用方给出的摘录。仓库夹具的来源必须写在 sourcePath。
+ * 没有 expectedClass 时只报告观察到的分类，不算作命中或失败。
+ */
+export function runFixtureCiEval(cases: readonly FixtureEvalCase[]): {evidenceLevel: 'fixture'; results: Array<{id: string; sourcePath: string; observedClass: StableCiClass['class']; matched: boolean | null; rerun: boolean}>; matched: number; labeled: number} {
+  if (!cases.length) fail('Evaluation needs at least one sourced excerpt');
+  const results = cases.map(item => {
+    if (!item.id.trim() || !item.sourcePath.trim() || !item.excerpt.trim()) fail('Evaluation case needs id, sourcePath and excerpt');
+    const observed = classifyCiFailureStable({logExcerpt: item.excerpt});
+    return {id: item.id, sourcePath: item.sourcePath, observedClass: observed.class, matched: item.expectedClass === undefined ? null : observed.class === item.expectedClass, rerun: observed.rerun.recommend};
+  });
+  const labeled = results.filter(item => item.matched !== null);
+  return {evidenceLevel: 'fixture', results, matched: labeled.filter(item => item.matched).length, labeled: labeled.length};
 }
 
 export function detectApiDocDrift(input: {implemented: readonly string[]; documented: readonly string[]; previousDigest?: string}): {drift: boolean; missingInDocs: string[]; staleDigest: boolean; digest: string; evidenceLevel: 'fixture'} {
