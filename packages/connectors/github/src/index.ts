@@ -19,6 +19,15 @@ export { FakeGitHubProvider } from './fake-provider.js';
 export type { GitHubFakeFixtures } from './fake-provider.js';
 export { redactGitHubText } from './redact.js';
 export {registerGitHubRepairLinks, githubRepairOperations, githubRepairCheckName} from './repair-link.js';
+export {
+  DEVELOPER_DUTY_EVIDENCE_LEVEL, DUTY_STATUS_MARKER, defaultRepoDutyPolicy, reduceDutyPoll, acceptGitHubWebhook,
+  evaluateRepoDutyAction, assessDutyPush, planStatusComment, executeStatusComment, bindHeadConclusions, classifyCiFailure,
+  interpretGitHubRateLimit, buildPersonalView, buildOfflineEvalSet, assertDutyCredentialScope, createStubRemoteDutyRunner,
+} from './developer-duty.js';
+export type {
+  DutyCursor, DutyEvent, DutyPollPage, DutyPollResult, RepoDutyPolicy, BranchProtection, StatusComment, StatusCommentAttempt,
+  StatusCommentPlan, HeadBoundConclusion, CiFailureClass, DutyPersonalItem, DutyEvalCase, RemoteDutyRunner,
+} from './developer-duty.js';
 export type {GitHubRepairModuleOptions} from './repair-link.js';
 export interface GitHubModuleOptions { provider: GitHubProvider }
 export function register(host: ToolHost, options: GitHubModuleOptions): () => void {

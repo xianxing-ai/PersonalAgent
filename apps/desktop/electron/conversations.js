@@ -149,9 +149,9 @@ export class Conversations {
       !['id','sessionId'].every(key => typeof message[key] === 'string' && message[key].trim() && message[key].length <= 256) ||
       !['user','assistant'].includes(message.role) || typeof message.text !== 'string' || !message.text.trim() || message.text.length > 100000 ||
       typeof message.createdAt !== 'string' || !Number.isFinite(Date.parse(message.createdAt)) ||
-      (message.surface !== undefined && message.surface !== 'panel')) throw Error('Live 对话消息格式无效');
-    const conversationId=message.conversationId??'desktop-panel';this.session(conversationId,'panel');
-    return {conversationId,id:message.id,sessionId:message.sessionId,role:message.role,text:message.text.trim(),createdAt:new Date(message.createdAt).toISOString(),surface:'panel'};
+      (message.surface !== undefined && !['panel','workspace'].includes(message.surface))) throw Error('Live 对话消息格式无效');
+    const surface=message.surface??'panel',conversationId=message.conversationId??'desktop-panel';this.session(conversationId,surface);
+    return {conversationId,id:message.id,sessionId:message.sessionId,role:message.role,text:message.text.trim(),createdAt:new Date(message.createdAt).toISOString(),surface};
   }
   addLiveMessage(message) {
     const valid = this.validateLiveMessage(message);

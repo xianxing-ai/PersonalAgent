@@ -167,6 +167,49 @@ export {
   SUBAGENT_DISPATCH_TOOL_VERSION,
 } from './application/subagent-host.js';
 export type {SubagentHostOptions, DesktopSubagentDispatchToolOptions,ConfiguredSubagentModelOptions} from './application/subagent-host.js';
+export {desktopSubagentHostOptions, startRuntimeSubagentChild} from './application/subagent-host.js';
+export {readCanonicalUserWorkParent} from './application/user-task-delegation.js';
+export {
+  createAsyncSubagentController,
+  createDesktopAsyncSubagentTools,
+  createRemoteAwareSubagentStarter,
+  SUBAGENT_SPAWN_TOOL_NAME,
+  SUBAGENT_INSTRUCT_TOOL_NAME,
+  SUBAGENT_STOP_TOOL_NAME,
+  SUBAGENT_TYPE_LIST_TOOL_NAME,
+  SUBAGENT_TYPE_CREATE_TOOL_NAME,
+  SUBAGENT_TYPE_UPDATE_TOOL_NAME,
+  SUBAGENT_TYPE_DISABLE_TOOL_NAME,
+  SUBAGENT_TYPE_ENABLE_TOOL_NAME,
+  SUBAGENT_TYPE_DELETE_TOOL_NAME,
+  SUBAGENT_TYPE_CONFIRM_TOOL_NAME,
+  SUBAGENT_TYPE_IMPORT_TOOL_NAME,
+  ASYNC_SUBAGENT_TOOL_VERSION,
+  ASYNC_SUBAGENT_ADMISSION_CONVERSATION,
+} from './application/async-subagent.js';
+export type {AsyncSubagentController, AsyncSubagentReport, AsyncSubagentHandle} from './application/async-subagent.js';
+export {
+  createSubagentTypeRegistry,
+  validateSubagentTypeDefinition,
+  parseSubagentTypeConfig,
+  subagentTypeChangeSummary,
+  subagentTypeDigest,
+  BUILTIN_SUBAGENT_ROLES,
+} from './application/subagent-type-registry.js';
+export type {SubagentTypeDefinition, SubagentTypeRecord, SubagentTypeProposal, SubagentTypeRegistry} from './application/subagent-type-registry.js';
+export {
+  createRemoteRunnerService, createMemoryRunnerSecrets, createLoopbackRunnerTransport, localDutyFallback,
+  signRunnerJob, verifyRunnerJob, reconcileDutyCursor, redactRunnerText,
+  RUNNER_HOST_ADD, RUNNER_HOST_LIST, RUNNER_HOST_CONFIRM, RUNNER_HOST_TEST,
+} from './application/remote-runner.js';
+export type {RemoteHostRecord, RemoteJobRequest, RemoteJobResult, RunnerSecretPort, RemoteRunnerTransport} from './application/remote-runner.js';
+export {
+  ingestDeveloperDutyPoll, recordDeveloperDutyConclusions, queueDeveloperDutyNotification, commitDeveloperDutyStatusComment,
+  commitPullRequestDutyComment, dutyPullCommentBody, dutyPullCommentKey,
+  developerDutyToolIntent, storeDeveloperDutyEvalSet, developerDutyCredential, developerDutyRemoteRunner, developerDutyPersonalView,
+  developerDutyCiClass,
+} from './application/developer-duty.js';
+export {createDeveloperDutyTools, DUTY_WATCH, DUTY_UNWATCH, DUTY_POLICY_SET, DUTY_PERSONAL_LIST, DUTY_STATUS, DUTY_CI_TRIAGE, DUTY_COMMENT_PUBLISH} from './application/developer-duty-tools.js';
 export {LOCAL_REPAIR_TOOL} from './application/local-repair.js';
 export {createKnowledgeFeedReceipt,createKnowledgeFeedReceiptFromCollectResult,createKnowledgeFeedReceiptFromConfirmedExecution, parseKnowledgeFeedReceipt, verifyKnowledgeFeedReceiptBinding,
   knowledgeFeedReceiptItems} from './application/knowledge-feed-receipt.js';
