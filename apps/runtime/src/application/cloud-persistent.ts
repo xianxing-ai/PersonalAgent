@@ -107,6 +107,7 @@ export function createCloudPersistentRuntimeHost(application:RuntimeApplication,
     if(!taskId)fail('NOT_FOUND','Original cloud submission has no task receipt; it must not be resubmitted');
     const binding=readBinding(taskId!,command.target?.sessionId),task=runtime.getTask(taskId!);
     const state=readPersistedRuntimeProactiveWorkflow(runtime,binding.taskId,binding.sessionId);
+    if(!state||state.application.state.binding.taskDeadline!==binding.taskDeadline)return fail('RESULT_UNKNOWN','Original unattended control checkpoint is unavailable');
     const approvals=runtime.listApprovals({taskId:binding.taskId,limit:50}).items.flatMap(value=>{
       const invocation=runtime.loadCheckpoint(binding.taskId,'application-tool-invocation:'+value.approvalId) as {arguments?:Record<string,unknown>}|undefined;
       if(!invocation?.arguments||toolArgumentsDigest(invocation.arguments)!==value.argumentsDigest)return [];
@@ -114,7 +115,7 @@ export function createCloudPersistentRuntimeHost(application:RuntimeApplication,
         argumentsDigest:value.argumentsDigest,expiresAt:value.expiresAt,state:value.state}];});
     return parseCloudPersistentReply({version:1,commandId:command.commandId,owner,target:{taskId:binding.taskId,sessionId:binding.sessionId},
       task:{state:task.state,revision:task.revision,cancelRequested:task.cancelRequested===true},
-      controlRevision:state?.application.state.binding.controlRevision??0,approvals,evidenceRefs:task.evidenceRefs.slice(-100)});
+      controlRevision:state.application.state.binding.controlRevision,approvals,evidenceRefs:task.evidenceRefs.slice(-100)});
   }
   async function handle(value:unknown,signal:AbortSignal):Promise<CloudPersistentReply> {
     const command=parseCloudPersistentCommand(value);assertOwner();
@@ -159,7 +160,7 @@ export function createCloudPersistentRuntimeHost(application:RuntimeApplication,
           conversationId:runtime.getTask(binding.sourceTaskId).conversationId!,idempotencyKey:'cloud-control-source:'+hash(command.commandId)});
         const control={commandId:command.commandId,sourceTaskId:source.taskId,...input};controls.set(command.commandId,digest(control));
         try{await host.control(control,context);}finally{controls.delete(command.commandId);}
-        if(input.action==='resume'||input.action==='return')application.resumeProactiveTask(binding.taskId);
+        if(input.action==='resume'||input.action==='return'||input.action==='enter_unattended')application.resumeProactiveTask(binding.taskId);
       }
     }
     assertOwner();const reply=readback(command);
