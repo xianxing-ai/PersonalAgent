@@ -53,7 +53,7 @@ test('publish computes size and sha256 from the real bytes and registers the man
     const fetched = kernel.getHandoff({actorId: 'reviewer-y', handoffId: 'handoff:patch-0001'});
     assert.deepEqual({...fetched}, {...record});
     // 清单 id 可作为消息 attachmentRef / evidenceRef 传递。
-    kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查补丁', attachmentRefs: [record.handoffId], hop: 1});
+    kernel.sendMessage({actorId: 'coder-x', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查补丁', attachmentRefs: [record.handoffId]});
     const inbox = kernel.receiveMessages('reviewer-y');
     assert.deepEqual([...inbox[0].attachmentRefs], ['handoff:patch-0001']);
   } finally { kernel.close(); }

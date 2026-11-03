@@ -60,7 +60,7 @@ test('a restart marks expired tasks failed and notifies the parent with the fixe
       assert.equal(notification.receipt.status, 'failed');
       assert.equal(notification.receipt.unblock, '');
       assert.equal(notification.assignedAgentId, 'coder-x');
-      assert.equal(notification.rootRequestId, 'root-1');
+      assert.equal(notification.rootRequestId, `root-${notification.taskId}`, 'the root is derived by the store as root-<taskId>');
     }
     assert.equal(second.receiveParentNotifications({actorId: CREW_PARENT_AGENT_ID, dequeue: true}).length, 2, 'notifications can be consumed FIFO');
     assert.deepEqual(second.receiveParentNotifications({actorId: CREW_PARENT_AGENT_ID}), []);

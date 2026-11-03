@@ -60,7 +60,7 @@ test('the parent dispatches, the child claims and reports, the parent collects t
     const collected = kernel.getTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't1'});
     assert.equal(collected.receipt.result, '类型错误已修复并重跑通过');
     assert.deepEqual([...collected.receipt.evidenceRefs], ['commit:abc1234']);
-    assert.deepEqual(kernel.listTasks({actorId: CREW_PARENT_AGENT_ID, rootRequestId: 'root-1'}).map(t => t.taskId), ['t1']);
+    assert.deepEqual(kernel.listTasks({actorId: CREW_PARENT_AGENT_ID, rootRequestId: 'root-t1'}).map(t => t.taskId), ['t1']);
     assert.equal(kernel.getTask({actorId: 'coder-x', taskId: 't1'}).status, 'succeeded', 'the assigned agent can read its own task');
   } finally { kernel.close(); }
 });
@@ -130,14 +130,15 @@ test('the 9th automatic dispatch of one root is rejected with a clear error', ()
   const kernel = open();
   try {
     crew(kernel);
-    for (let i = 1; i <= MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST; i++) {
-      kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: `t${i}`, rootRequestId: 'root-busy', assignedAgentId: 'coder-x', goal: `第 ${i} 项子任务`});
+    kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't1', assignedAgentId: 'coder-x', goal: '根任务'});
+    for (let i = 2; i <= MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST; i++) {
+      kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: `t${i}`, parentTaskId: 't1', assignedAgentId: 'coder-x', goal: `第 ${i - 1} 项子任务`});
     }
     assert.throws(
-      () => kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't9', rootRequestId: 'root-busy', assignedAgentId: 'coder-x', goal: '第 9 次派单'}),
+      () => kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't9', parentTaskId: 't1', rootRequestId: 'brand-new-display-root', assignedAgentId: 'coder-x', goal: '第 9 次派单'}),
       error => error instanceof CrewError && error.code === 'DISPATCH_LIMIT_EXCEEDED',
     );
-    kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 'other', rootRequestId: 'root-other', assignedAgentId: 'coder-x', goal: '新根预算独立'});
+    kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 'other', assignedAgentId: 'coder-x', goal: '新根预算独立'});
   } finally { kernel.close(); }
 });
 
@@ -249,18 +250,25 @@ test('list_agents returns the addressing view only, with no instructions or work
   } finally { kernel.close(); }
 });
 
-test('agent-to-agent messaging goes through mailboxes under kernel hop semantics', () => {
+test('agent-to-agent messaging goes through mailboxes and rejects impersonation (F9)', () => {
   const kernel = open();
   try {
     crew(kernel);
+    // F9：actorId 必须等于 fromAgentId，冒充 parent 或他人一律 NOT_PERMITTED。
     assert.throws(
-      () => kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '子发起却伪装成父链'}),
-      error => error instanceof CrewError && error.code === 'INVALID_INPUT',
-      'child-originated messages must carry hop >= 1',
+      () => kernel.sendMessage({actorId: 'coder-x', fromAgentId: CREW_PARENT_AGENT_ID, toAgentId: 'reviewer-y', text: '冒充 parent 发信'}),
+      error => error instanceof CrewError && error.code === 'NOT_PERMITTED',
+      'a child cannot impersonate the parent',
+    );
+    assert.throws(
+      () => kernel.sendMessage({actorId: 'reviewer-y', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '冒充他人发信'}),
+      error => error instanceof CrewError && error.code === 'NOT_PERMITTED',
     );
     assert.deepEqual(kernel.receiveMessages('reviewer-y'), [], 'rejected messages must not reach the mailbox');
-    const sent = kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查第一个补丁', parentRequestId: 'root-1', rootRequestId: 'root-1', taskId: 't1', expectsReply: true, attachmentRefs: ['handoff:diff-0001'], hop: 1});
-    assert.equal(sent.hop, 1);
+    // 子发起的新消息 hop=0（hop 由 store 推导，不再由调用方自填）。
+    const sent = kernel.sendMessage({actorId: 'coder-x', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查第一个补丁', expectsReply: true, attachmentRefs: ['handoff:diff-0001']});
+    assert.equal(sent.hop, 0);
+    assert.equal(sent.senderAgentId, 'coder-x');
     assert.equal(sent.expectsReply, true);
     assert.deepEqual(kernel.receiveMessages('reviewer-y').map(m => m.messageId), [sent.messageId]);
   } finally { kernel.close(); }
@@ -270,13 +278,11 @@ test('replyToMessage routes back to the sender, carries routing metadata and inc
   const kernel = open();
   try {
     crew(kernel);
-    const request = kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查第一个补丁', parentRequestId: 'root-1', rootRequestId: 'root-1', taskId: 't1', expectsReply: true, hop: 1});
+    const request = kernel.sendMessage({actorId: 'coder-x', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查第一个补丁', expectsReply: true});
     const reply = kernel.replyToMessage({actorId: 'reviewer-y', inReplyToMessageId: request.messageId, text: '补丁有一处未处理的空指针'});
     assert.equal(reply.senderAgentId, 'reviewer-y');
     assert.equal(reply.mailboxAgentId, 'coder-x');
-    assert.equal(reply.hop, 2);
-    assert.equal(reply.parentRequestId, 'root-1');
-    assert.equal(reply.taskId, 't1');
+    assert.equal(reply.hop, 1);
     assert.deepEqual(kernel.receiveMessages('coder-x').map(m => m.messageId), [reply.messageId]);
     assert.throws(
       () => kernel.replyToMessage({actorId: 'coder-x', inReplyToMessageId: request.messageId, text: '不是持有者也能回？'}),
@@ -309,12 +315,30 @@ test('reply hop budget is enforced and pure acknowledgements stay suppressed on 
   const kernel = open();
   try {
     crew(kernel);
-    const deep = kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '深层转发', hop: MAX_MESSAGE_HOP});
-    assert.throws(
-      () => kernel.replyToMessage({actorId: 'reviewer-y', inReplyToMessageId: deep.messageId, text: '超预算的回复'}),
-      error => error instanceof CrewError && error.code === 'INVALID_INPUT',
-    );
-    const first = kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '收到', hop: 1});
+    // 沿回复链推进 hop 到预算上限，下一跳被拒绝。
+    let current = kernel.sendMessage({actorId: 'coder-x', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '深层链'});
+    let holder = 'reviewer-y';
+    let depth = 0;
+    let rejected = false;
+    while (depth <= MAX_MESSAGE_HOP) {
+      let next;
+      try {
+        next = kernel.replyToMessage({actorId: holder, inReplyToMessageId: current.messageId, text: `第 ${depth + 1} 跳`});
+      } catch (error) {
+        assert.ok(error instanceof CrewError && error.code === 'INVALID_INPUT');
+        rejected = true;
+        break;
+      }
+      current = next;
+      holder = holder === 'reviewer-y' ? 'coder-x' : 'reviewer-y';
+      depth += 1;
+    }
+    assert.equal(rejected, true, 'the reply chain is cut at the hop budget');
+    assert.equal(current.hop, MAX_MESSAGE_HOP);
+    // 清空链路消息后单独验证纯确认窗口。
+    kernel.receiveMessages('coder-x', {dequeue: true});
+    kernel.receiveMessages('reviewer-y', {dequeue: true});
+    const first = kernel.sendMessage({actorId: 'coder-x', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '收到'});
     assert.equal(first.pureAck, true, 'first ack is kept');
     const ackReply = kernel.replyToMessage({actorId: 'reviewer-y', inReplyToMessageId: first.messageId, text: '好的'});
     assert.equal(ackReply.pureAck, true, 'the ack reply is kept as the first message of the reverse direction');

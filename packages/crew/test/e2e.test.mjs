@@ -31,9 +31,10 @@ test('端到端：父派两个子，子间互发消息并交接文件，父收�
 
     // 父在同一根请求下给两个子各派一个任务：正好用满每 agent 并发额度。
     assert.equal(MAX_CONCURRENT_TASKS_PER_AGENT, 2);
-    kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't-code', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '生成修复补丁', timeoutMs: 600_000});
-    kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't-review', rootRequestId: 'root-1', assignedAgentId: 'reviewer-y', goal: '审查补丁并给出结论', timeoutMs: 600_000});
-    assert.deepEqual(kernel.listTasks({actorId: CREW_PARENT_AGENT_ID, rootRequestId: 'root-1'}).map(t => t.status), ['queued', 'queued']);
+    // 根请求 id 由 store 依据 taskId 推导（root-<taskId>），调用方不能自报。
+    kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't-code', assignedAgentId: 'coder-x', goal: '生成修复补丁', timeoutMs: 600_000});
+    kernel.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't-review', assignedAgentId: 'reviewer-y', goal: '审查补丁并给出结论', timeoutMs: 600_000});
+    assert.deepEqual(kernel.listTasks({actorId: CREW_PARENT_AGENT_ID}).map(t => t.status), ['queued', 'queued']);
 
     // coder 领任务，把补丁写进共享目录并登记 SHA-256 清单。
     const codeInbox = kernel.receiveMessages('coder-x');
@@ -45,13 +46,14 @@ test('端到端：父派两个子，子间互发消息并交接文件，父收�
     writeFileSync(patchPath, 'patch body v1');
     const handoff = kernel.publishHandoff({actorId: 'coder-x', handoffId: 'handoff:fix-0001', filePath: 'patches/fix-0001.diff'});
 
-    // coder → reviewer 子间消息：携带清单引用，hop 从 1 起（子不能伪装父链）。
+    // coder → reviewer 子间消息：携带清单引用；hop 由 store 推导（新消息为 0），
+    // 自报不属于自己任务的根请求会被拒绝。
     assert.throws(
-      () => kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查 fix-0001', rootRequestId: 'root-1', taskId: 't-code'}),
-      error => error instanceof CrewError && error.code === 'INVALID_INPUT',
+      () => kernel.sendMessage({actorId: 'coder-x', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查 fix-0001', rootRequestId: 'root-other'}),
+      error => error instanceof CrewError && error.code === 'NOT_PERMITTED',
     );
-    const sent = kernel.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查 fix-0001，清单已登记', rootRequestId: 'root-1', taskId: 't-code', expectsReply: true, attachmentRefs: [handoff.handoffId], hop: 1});
-    assert.equal(sent.hop, 1);
+    const sent = kernel.sendMessage({actorId: 'coder-x', fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查 fix-0001，清单已登记', expectsReply: true, attachmentRefs: [handoff.handoffId]});
+    assert.equal(sent.hop, 0);
 
     // coder 按固定格式交回执，父即可收集该子任务的结果。
     kernel.submitReceipt({actorId: 'coder-x', taskId: 't-code', receipt: {status: 'succeeded', result: '补丁已发布到共享目录', evidenceRefs: [handoff.handoffId], unblock: ''}});
@@ -71,7 +73,7 @@ test('端到端：父派两个子，子间互发消息并交接文件，父收�
     kernel.submitReceipt({actorId: 'reviewer-y', taskId: 't-review', receipt: {status: 'succeeded', result: '补丁审查通过', evidenceRefs: ['handoff:fix-0001'], unblock: ''}});
 
     // 父收集全部汇总回执，且两个任务都已终结。
-    const summary = kernel.listTasks({actorId: CREW_PARENT_AGENT_ID, rootRequestId: 'root-1'});
+    const summary = kernel.listTasks({actorId: CREW_PARENT_AGENT_ID});
     assert.deepEqual(summary.map(t => [t.taskId, t.status]), [['t-code', 'succeeded'], ['t-review', 'succeeded']]);
     assert.deepEqual(summary.map(t => t.receipt.status), ['succeeded', 'succeeded']);
     assert.ok(summary.every(t => t.receipt.result), 'every receipt carries its result');

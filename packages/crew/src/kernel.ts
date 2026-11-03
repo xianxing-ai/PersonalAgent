@@ -6,7 +6,6 @@ import {resolveWithinRoot, singleSegment} from './paths.js';
 import {
   CrewStore,
   CREW_PARENT_AGENT_ID,
-  MAX_MESSAGE_HOP,
   type CrewAgentRecord,
   type CrewAgentSpec,
   type CrewDispatchInput,
@@ -115,7 +114,8 @@ export class CrewKernel {
     this.requireParentActor(input.actorId, 'dispatch task roots');
     return this.store.dispatchTask({
       taskId: input.taskId,
-      rootRequestId: input.rootRequestId,
+      ...(input.parentTaskId === undefined ? {} : {parentTaskId: input.parentTaskId}),
+      ...(input.rootRequestId === undefined ? {} : {rootRequestId: input.rootRequestId}),
       assignedAgentId: input.assignedAgentId,
       goal: input.goal,
       ...(input.timeoutMs === undefined ? {} : {timeoutMs: input.timeoutMs}),
@@ -194,23 +194,36 @@ export class CrewKernel {
   // ── 子间协作：send_message / reply ────────────────────────────────────
 
   /**
-   * agent 间消息投递到收件方的 FIFO 信箱（父也可用保留身份发送）。
-   * 子间通信不设限制，但都走信箱并受上限约束；`expectsReply` 标记需要回执，
-   * 连续第二条纯确认消息被丢弃以防确认死循环。
-   * hop 语义与 #554 一致：0 表示直接来自父派发链，因此子 agent 发起的消息
-   * 至少为 1 跳。
+   * agent 间消息投递到收件方的 FIFO 信箱。
+   *
+   * 【仅受信宿主使用】kernel 对象不暴露给子 agent；子侧只能经工具层
+   * （createCrewRuntimeTools，工厂内绑定 actorId）进入这里。
+   * `actorId` 必填且必须等于 `fromAgentId`：两者由宿主注入同一可信值，
+   * 不一致即视为冒充，抛 NOT_PERMITTED。
+   * hop 不接受调用方传入：带 replyToMessageId 时由 store 推导为原消息
+   * hop+1，新消息 hop=0；防回环与条数/速率上限由 store 层保证。
    */
-  sendMessage(input: CrewMessageInput): CrewMessageRecord | undefined {
-    if (input.fromAgentId !== CREW_PARENT_AGENT_ID && (input.hop ?? 0) < 1) {
-      // 先校验再写入：子发起的消息不允许伪装成"直接来自父派发链"。
-      throw new CrewError('INVALID_INPUT', `messages originated by a child agent must carry hop >= 1 (0 is reserved for the parent dispatch chain)`);
+  sendMessage(input: CrewKernelSendMessageInput): CrewMessageRecord | undefined {
+    if (input.actorId !== input.fromAgentId) {
+      throw new CrewError('NOT_PERMITTED', `actorId ${input.actorId} does not match fromAgentId ${input.fromAgentId}; impersonation is not permitted`);
     }
-    return this.store.sendMessage(input);
+    return this.store.sendMessage({
+      fromAgentId: input.fromAgentId,
+      toAgentId: input.toAgentId,
+      text: input.text,
+      ...(input.replyToMessageId === undefined ? {} : {replyToMessageId: input.replyToMessageId}),
+      ...(input.parentRequestId === undefined ? {} : {parentRequestId: input.parentRequestId}),
+      ...(input.rootRequestId === undefined ? {} : {rootRequestId: input.rootRequestId}),
+      ...(input.taskId === undefined ? {} : {taskId: input.taskId}),
+      ...(input.expectsReply === undefined ? {} : {expectsReply: input.expectsReply}),
+      ...(input.attachmentRefs === undefined ? {} : {attachmentRefs: input.attachmentRefs}),
+    });
   }
 
   /**
    * 回复一条消息：收件人 = 原发送者，parentRequestId / rootRequestId / taskId
-   * 沿用原消息，hop = 原 hop + 1（超出上限时明确拒绝）。
+   * 沿用原消息，hop 由 store 依据 replyToMessageId 推导为原 hop + 1
+   * （超出上限时明确拒绝）。
    * 只有消息当前持有者（收件人）可以回复；父没有信箱，对父发出的消息
    * （任务、打断、父直接消息）应通过固定回执格式汇报结果而不是信箱回复。
    * 纯确认防死循环规则与 sendMessage 相同。
@@ -224,20 +237,13 @@ export class CrewKernel {
     if (input.actorId !== original.mailboxAgentId) {
       throw new CrewError('NOT_PERMITTED', `message ${input.inReplyToMessageId} belongs to the mailbox of ${original.mailboxAgentId}`);
     }
-    const hop = original.hop + 1;
-    if (hop > MAX_MESSAGE_HOP) {
-      throw new CrewError('INVALID_INPUT', `reply would exceed the message hop budget of ${MAX_MESSAGE_HOP}`);
-    }
     return this.store.sendMessage({
       fromAgentId: input.actorId,
       toAgentId: original.senderAgentId,
       text: input.text,
-      ...(original.parentRequestId === undefined ? {} : {parentRequestId: original.parentRequestId}),
-      ...(original.rootRequestId === undefined ? {} : {rootRequestId: original.rootRequestId}),
-      ...(original.taskId === undefined ? {} : {taskId: original.taskId}),
+      replyToMessageId: original.messageId,
       ...(input.expectsReply === undefined ? {} : {expectsReply: input.expectsReply}),
       ...(input.attachmentRefs === undefined ? {} : {attachmentRefs: input.attachmentRefs}),
-      hop,
     });
   }
 
@@ -472,6 +478,24 @@ export interface CrewKernelPublishHandoffInput {
 }
 
 export type CrewKernelDispatchInput = CrewDispatchInput & {readonly actorId: string};
+
+/**
+ * sendMessage 的内核入参。`actorId` 与 `fromAgentId` 必须一致；
+ * kernel 仅受信宿主使用，子侧只能经工具层绑定身份，不接受模型自报身份。
+ */
+export interface CrewKernelSendMessageInput {
+  readonly actorId: string;
+  readonly fromAgentId: string;
+  readonly toAgentId: string;
+  readonly text: string;
+  /** hop 由 store 依据该消息推导，不接受调用方自填。 */
+  readonly replyToMessageId?: number;
+  readonly parentRequestId?: string;
+  readonly rootRequestId?: string;
+  readonly taskId?: string;
+  readonly expectsReply?: boolean;
+  readonly attachmentRefs?: readonly string[];
+}
 
 export interface CrewKernelGetTaskInput {
   readonly actorId: string;

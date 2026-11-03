@@ -6,6 +6,7 @@ export type CrewErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'DISPATCH_LIMIT_EXCEEDED'
+  | 'RATE_LIMIT_EXCEEDED'
   | 'UNSUPPORTED'
   | 'HANDOFF_REJECTED';
 
