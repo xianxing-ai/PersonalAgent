@@ -1,7 +1,7 @@
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
-import {DUTY_STATUS_MARKER, buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, planStatusComment, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
+import {DUTY_STATUS_MARKER, buildPersonalView, classifyCiFailure, commentWriteAvailable, defaultRepoDutyPolicy, planStatusComment, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
 import type {TaskRuntime} from '../index.js';
 import {readCanonicalUserWorkParent} from './user-task-delegation.js';
 import {commitDeveloperDutyStatusComment, commitPullRequestDutyComment, dutyPullCommentBody, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
@@ -36,6 +36,10 @@ export interface DeveloperDutyToolOptions {
   useFixtureComments?: boolean;
   now?: () => number;
   onNotify?: (notice: {channel: 'f12'; delivered: boolean; duplicate: boolean; summary: string; dedupeKey: string}) => void;
+  /** 只有显式打开时，可逆自主授权才会让受控评论端口真正写入。默认仍只保存意图。 */
+  automaticComments?: boolean;
+  autonomyForComment?: (repo: string) => {allow: boolean; mode: string; risk: string} | undefined;
+  onEvents?: (repo: string, events: readonly {deliveryId?: string; id?: string; headSha?: string; number?: number}[]) => Promise<void> | void;
   submitRemote?: (job: {kind: 'developer-duty'; idempotencyKey: string; taskId: string; repo: string; payload: Record<string, unknown>}) => Promise<{location: string; reason: string; receipt: Record<string, unknown>}>;
 }
 
@@ -122,16 +126,18 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
           const intent: CommentIntent = {repo, number, body: `${DUTY_STATUS_MARKER}\n${body.trim()}`,
             action: plan.action === 'edit' ? 'edit' : 'create', ...(plan.commentId === undefined ? {} : {commentId: plan.commentId}),
             state: 'requires_authorization', ...(source ? {source} : {})};
+          const autonomy = options.autonomyForComment?.(repo);
+          const writeAvailable = options.automaticComments === true && commentWriteAvailable({policyComment: policy.comment, ...(autonomy ? {autonomy} : {})});
           try {
-            await commitIntent(intent, {...ports, writeAvailable: false, listComments: async () => existing});
+            await commitIntent(intent, {...ports, writeAvailable, listComments: async () => existing});
             saveIntent({...intent, state: 'confirmed'});
+            return {wrote: writeAvailable};
           } catch (error) {
             if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') return {wrote: false, reason: 'comment result requires readback'};
             if (!(error instanceof ProtocolError) || error.code !== 'UNSUPPORTED_CAPABILITY') throw error;
             saveIntent(intent);
             return {wrote: false, reason: 'comment requires ToolGateway content authorization'};
           }
-          return {wrote: false};
         };
         if (Array.isArray(pullRequests)) {
           let wrote = false;
@@ -160,21 +166,26 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
         if (remote.location === 'remote') {
           const gap = remote.receipt.gap === true || remote.receipt.connected === false;
           const events = Array.isArray(remote.receipt.events) ? remote.receipt.events : [];
-          if (!gap && events.length) notify(task.taskId, `${repo} 有 ${events.length} 条新事件`, `duty:${repo}:${events.map(event => (event as {deliveryId?: string; id?: string}).deliveryId ?? (event as {id?: string}).id).join(',')}`);
+          if (!gap && events.length) {
+            notify(task.taskId, `${repo} 有 ${events.length} 条新事件`, `duty:${repo}:${events.map(event => (event as {deliveryId?: string; id?: string}).deliveryId ?? (event as {id?: string}).id).join(',')}`);
+            await options.onEvents?.(repo, events as Array<{deliveryId?: string; id?: string; headSha?: string; number?: number}>);
+          }
           const comment = gap ? {wrote: false} : await writeComment('remote');
           results.push({repo, location: remote.location, reason: pageReason || comment.reason || remote.reason, gap, noChange: gap ? false : remote.receipt.noChange === true, evidenceLevel, ...(comment.wrote ? {comment: true} : {})});
           continue;
         }
         const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
         if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
+        if (local.advanced) await options.onEvents?.(repo, page.events);
         const comment = page.gap || !page.connected ? {wrote: false} : await writeComment('local');
-        results.push({repo, location: 'local', reason: pageReason || comment.reason || remote.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel});
+        results.push({repo, location: 'local', reason: pageReason || comment.reason || remote.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel, ...(comment.wrote ? {comment: true} : {})});
         continue;
       }
       const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
       if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
+      if (local.advanced) await options.onEvents?.(repo, page.events);
       const comment = page.gap || !page.connected ? {wrote: false} : await writeComment('local');
-      results.push({repo, location: 'local', reason: pageReason || comment.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel});
+      results.push({repo, location: 'local', reason: pageReason || comment.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel, ...(comment.wrote ? {comment: true} : {})});
     }
     return results;
   };

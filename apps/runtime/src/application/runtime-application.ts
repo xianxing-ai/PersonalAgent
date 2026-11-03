@@ -1,4 +1,5 @@
 import {ProtocolError, validateToolValue,validateContract} from '@personal-agent/contracts';
+import {standingRoutineAllowed, type StandingRoutineDecision} from '@personal-agent/policy';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
@@ -435,6 +436,11 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   thinking?: ThinkingConfig;
   /** Trusted host policy for routine operations inside already enabled module scopes. */
   automaticTools?: readonly {toolName: string; toolVersion: string}[];
+  /**
+   * 已登记开发者仓库的常驻授权。未提供时保持逐次审批。
+   * 不可逆、特权和需要在场的工具不会因此自动放行。
+   */
+  standingAutonomy?: (input: {taskId: string; toolName: string; toolVersion: string; sideEffect: ToolDescriptor['sideEffect']; arguments: unknown}) => StandingRoutineDecision | undefined;
   /** Opaque identity of trusted Competition configuration, excluding credentials. */
   coordinationBinding?: string;
   /** Trusted synchronous final check; never exposes credentials or changes task identity. */
@@ -1004,6 +1010,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             && record.state === 'confirmed' && record.executionStarted && record.policyDecision === 'allow'
             && this.runtime.matchesToolExecutionInput(record, {arguments: invocation.arguments as Record<string, unknown>, scopeRef: ref}));
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
+        let routineSource: 'trusted-routine-tool-policy' | 'standing-autonomy' = 'trusted-routine-tool-policy';
         if(options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
           toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
         if (routineEligible && tool.name === 'cognition.commit_repair') {
@@ -1012,6 +1019,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           const prepared = intent?.sourceKind === 'goal_review' ? this.localRepair?.reviewedSource?.resolve(intent) : undefined;
           routineEligible = prepared?.kind === 'prepared' && isDeepStrictEqual(prepared.binding, intent?.binding)
             && isDeepStrictEqual(invocation.arguments, {intentDigest: toolArgumentsDigest(intent!)});
+        }
+        if (!routineEligible && options.standingAutonomy && !options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
+          toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal})) {
+          const standing = options.standingAutonomy({taskId:invocation.taskId,toolName:tool.name,toolVersion:tool.version,
+            sideEffect:tool.sideEffect,arguments:invocation.arguments});
+          if (standingRoutineAllowed({sideEffect:tool.sideEffect,requiresPresence:tool.requiresPresence===true,decision:standing})) {
+            routineEligible = true;
+            routineSource = 'standing-autonomy';
+            this.runtime.saveCheckpoint(invocation.taskId, `standing-autonomy-audit:${ref}`, {toolName:tool.name,
+              risk:standing?.risk, reason:standing?.reason ?? '', reversibleClass:standing?.audit?.reversibleClass ?? tool.name});
+          }
         }
         // A routine grant does not create an Approval object. Persist the original nested
         // invocation before granting/executing so confirmed unknown readback can resume it.
@@ -1041,7 +1059,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
           const argumentsDigest = toolArgumentsDigest(invocation.arguments);
           this.runtime.saveCheckpoint(invocation.taskId, decisionKey, {toolName:tool.name,
-            toolVersion:tool.version, argumentsDigest, source:'trusted-routine-tool-policy'});
+            toolVersion:tool.version, argumentsDigest, source:routineSource});
           this.runtime.policy.grant({authorizationRef:ref,taskId:invocation.taskId,toolName:tool.name,
             scopes:tool.requiredScopes,argumentsDigest,maxUses:1,expiresAt:invocation.deadline});
         }

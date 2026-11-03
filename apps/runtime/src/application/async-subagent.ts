@@ -31,6 +31,10 @@ import {
 export const SUBAGENT_SPAWN_TOOL_NAME = 'subagent.spawn';
 export const SUBAGENT_INSTRUCT_TOOL_NAME = 'subagent.instruct';
 export const SUBAGENT_STOP_TOOL_NAME = 'subagent.stop';
+export const SUBAGENT_PAUSE_TOOL_NAME = 'subagent.pause';
+export const SUBAGENT_RESUME_TOOL_NAME = 'subagent.resume';
+export const SUBAGENT_REDIRECT_TOOL_NAME = 'subagent.redirect';
+export const SUBAGENT_HANDOFF_TOOL_NAME = 'subagent.handoff';
 export const SUBAGENT_TYPE_LIST_TOOL_NAME = 'subagent.type.list';
 export const SUBAGENT_TYPE_CREATE_TOOL_NAME = 'subagent.type.create';
 export const SUBAGENT_TYPE_UPDATE_TOOL_NAME = 'subagent.type.update';
@@ -45,6 +49,8 @@ const SPAWN_KEY = 'async-subagent-spawn:v1';
 const TYPE_KEY = 'async-subagent-type:v1';
 const STEP_KEY = 'async-subagent-step-cap:v1';
 const CONTROL_KEY = 'async-subagent-control:v1';
+const PHASE_KEY = 'async-subagent-control-phase:v1';
+const HANDOFF_KEY = 'async-subagent-handoff:v1';
 const START_ERROR = 'async-subagent-start-error:v1';
 const NOTE_KEY = 'async-subagent-runner-note:v1';
 const PARENT_CONVERSATION_KEY = 'async-subagent-parent-conversation:v1';
@@ -109,6 +115,11 @@ export interface AsyncSubagentController {
   list(): Array<Record<string, unknown>>;
   instruct(parentTaskId: string, subtaskId: string, instruction: string, expectedControlRevision: number): {revision: number};
   stop(parentTaskId: string, subtaskId: string): {taskId: string; state: string; cancelAccepted: boolean};
+  pause(parentTaskId: string, subtaskId: string): {phase: 'paused'; epoch: number; revision: number; continuation: 'no-new-steps'};
+  resume(parentTaskId: string, subtaskId: string): {phase: 'running'; epoch: number; revision: number};
+  redirect(parentTaskId: string, subtaskId: string, instruction: string, expectedControlRevision: number): Promise<{phase: 'running'; epoch: number; revision: number; continuation: 'before-start' | 'next-tool-boundary'}>;
+  handoff(parentTaskId: string, subtaskId: string): {phase: 'paused'; epoch: number; revision: number; owner: 'user'};
+  emergencyStop(): Array<{taskId: string; phase: string; epoch: number}>;
 }
 
 function fail(code: 'INVALID_ARGUMENT' | 'REVISION_CONFLICT' | 'SCOPE_DENIED' | 'NOT_FOUND' | 'UNSUPPORTED_CAPABILITY' | 'RESULT_UNKNOWN', message: string): never {
@@ -338,7 +349,12 @@ export function createAsyncSubagentController(options: {
     const admittedParents = new Map<string, number>();
     let slots = globalCap - running.length;
     let layaSlots = 1 - layaRunning;
-    const queued = children.filter(task => task.state === 'created' && !task.cancelRequested && !readSchedule(task.taskId) && !starting.has(task.taskId))
+    const held = (taskId: string) => {
+      const phase = runtime().loadCheckpoint(taskId, PHASE_KEY) as {phase?: string} | undefined;
+      const handoff = runtime().loadCheckpoint(taskId, HANDOFF_KEY) as {owner?: string} | undefined;
+      return phase?.phase === 'paused' || phase?.phase === 'pausing' || handoff?.owner === 'user';
+    };
+    const queued = children.filter(task => task.state === 'created' && !task.cancelRequested && !readSchedule(task.taskId) && !starting.has(task.taskId) && !held(task.taskId))
       .sort((left, right) => (markerOf(left.taskId)?.enqueuedAt ?? '').localeCompare(markerOf(right.taskId)?.enqueuedAt ?? '')
         || (markerOf(left.taskId)?.subtaskId ?? '').localeCompare(markerOf(right.taskId)?.subtaskId ?? '')
         || left.taskId.localeCompare(right.taskId));
@@ -358,7 +374,7 @@ export function createAsyncSubagentController(options: {
     runtime().dispatchDueSchedules(ASYNC_SUBAGENT_ADMISSION_CONVERSATION);
     const launches: Promise<void>[] = [];
     for (const child of spawned()) {
-      if (child.state !== 'created' || child.cancelRequested || starting.has(child.taskId) || runtime().isTaskActive(child.taskId)) continue;
+      if (child.state !== 'created' || child.cancelRequested || starting.has(child.taskId) || runtime().isTaskActive(child.taskId) || held(child.taskId)) continue;
       const schedule = readSchedule(child.taskId);
       if (schedule?.status !== 'fired') continue;
       const error = runtime().loadCheckpoint(child.taskId, START_ERROR) as {epoch?: number} | undefined;
@@ -498,6 +514,70 @@ export function createAsyncSubagentController(options: {
     }
     return {taskId: current.taskId, state: current.state, cancelAccepted: requested.cancelAccepted};
   };
+  const phaseOf = (taskId: string) => {
+    const saved = runtime().loadCheckpoint(taskId, PHASE_KEY) as {phase?: 'running' | 'pausing' | 'paused' | 'redirecting'; epoch?: number; revision?: number} | undefined;
+    return {phase: saved?.phase ?? 'running' as const, epoch: saved?.epoch ?? runtime().readExecutionEpoch(taskId), revision: saved?.revision ?? 0};
+  };
+  const pause = (parentTaskId: string, subtaskId: string) => {
+    const child = childOf(parentTaskId, subtaskId);
+    if (TERMINAL.has(child.state) || child.state === 'waiting_reconciliation') fail('REVISION_CONFLICT', 'A finished or unknown subagent cannot pause');
+    const current = phaseOf(child.taskId);
+    if (current.phase === 'paused') return {phase: 'paused' as const, epoch: current.epoch, revision: current.revision, continuation: 'no-new-steps' as const};
+    const epoch = runtime().advanceExecutionEpoch(child.taskId, {requestId: `subagent-pause:${subtaskId}:${current.revision}`, reason: 'pause'});
+    const next = {phase: 'paused' as const, epoch, revision: current.revision + 1};
+    runtime().saveCheckpoint(child.taskId, PHASE_KEY, next);
+    return {...next, continuation: 'no-new-steps' as const};
+  };
+  const resume = (parentTaskId: string, subtaskId: string) => {
+    const child = childOf(parentTaskId, subtaskId);
+    const current = phaseOf(child.taskId);
+    const handoff = runtime().loadCheckpoint(child.taskId, HANDOFF_KEY) as {owner?: string} | undefined;
+    if (current.phase !== 'paused' && handoff?.owner !== 'user') fail('REVISION_CONFLICT', 'Subagent is not paused');
+    runtime().saveCheckpoint(child.taskId, HANDOFF_KEY, {owner: 'agent', epoch: current.epoch});
+    const next = {phase: 'running' as const, epoch: current.epoch, revision: current.revision + 1};
+    runtime().saveCheckpoint(child.taskId, PHASE_KEY, next);
+    return next;
+  };
+  const redirect = async (parentTaskId: string, subtaskId: string, instruction: string, expectedControlRevision: number) => {
+    if (typeof instruction !== 'string' || !instruction.trim()) fail('INVALID_ARGUMENT', 'Redirect instruction is invalid');
+    const child = childOf(parentTaskId, subtaskId);
+    if (TERMINAL.has(child.state) || child.state === 'waiting_reconciliation') fail('REVISION_CONFLICT', 'A finished or unknown subagent cannot be redirected');
+    if (options.verifyUnknownWrite) {
+      const verdict = await options.verifyUnknownWrite(child.taskId);
+      if (verdict === 'unknown') fail('RESULT_UNKNOWN', 'Unknown write must be read back before redirect');
+    }
+    if (child.state === 'created' && !runtime().isTaskActive(child.taskId)) {
+      const updated = instruct(parentTaskId, subtaskId, instruction, expectedControlRevision);
+      const next = {phase: 'running' as const, epoch: runtime().readExecutionEpoch(child.taskId), revision: updated.revision};
+      runtime().saveCheckpoint(child.taskId, PHASE_KEY, next);
+      return {...next, continuation: 'before-start' as const};
+    }
+    const current = phaseOf(child.taskId);
+    const epoch = runtime().advanceExecutionEpoch(child.taskId, {requestId: `subagent-redirect:${subtaskId}:${current.revision}`, reason: 'replan'});
+    const control = runtime().loadCheckpoint(child.taskId, CONTROL_KEY) as {revision?: number; instructions?: string[]} | undefined;
+    const revision = (control?.revision ?? 0) + 1;
+    runtime().saveCheckpoint(child.taskId, CONTROL_KEY, {revision, instructions: [...(control?.instructions ?? []), instruction.trim()]});
+    const next = {phase: 'running' as const, epoch, revision};
+    runtime().saveCheckpoint(child.taskId, PHASE_KEY, next);
+    return {...next, continuation: 'next-tool-boundary' as const};
+  };
+  const handoff = (parentTaskId: string, subtaskId: string) => {
+    const paused = pause(parentTaskId, subtaskId);
+    const child = childOf(parentTaskId, subtaskId);
+    runtime().saveCheckpoint(child.taskId, HANDOFF_KEY, {owner: 'user', epoch: paused.epoch});
+    return {...paused, owner: 'user' as const};
+  };
+  const emergencyStop = () => {
+    const results: Array<{taskId: string; phase: string; epoch: number}> = [];
+    for (const child of spawned()) {
+      if (TERMINAL.has(child.state) || child.state === 'waiting_reconciliation') continue;
+      const marker = markerOf(child.taskId);
+      if (!marker) continue;
+      const paused = pause(marker.parentTaskId, marker.subtaskId);
+      results.push({taskId: child.taskId, phase: paused.phase, epoch: paused.epoch});
+    }
+    return results;
+  };
   const list = () => spawned().map(task => {
     const marker = markerOf(task.taskId);
     const control = runtime().loadCheckpoint(task.taskId, CONTROL_KEY) as {revision?: number} | undefined;
@@ -516,7 +596,7 @@ export function createAsyncSubagentController(options: {
       revision: task.revision, role, goal, updatedAt: task.updatedAt, queued: task.state === 'created' && !readSchedule(task.taskId), reported,
       ...(conversation?.conversationId ? {conversationId: conversation.conversationId} : {}),
       ...(typeof report?.summary === 'string' ? {summary: report.summary} : {}),
-      controlRevision: control?.revision ?? 0, ...(marker?.typeName ? {typeName: marker.typeName, typeVersion: marker.typeVersion} : {})};
+      controlRevision: control?.revision ?? 0, controlPhase: phaseOf(task.taskId).phase, ...(marker?.typeName ? {typeName: marker.typeName, typeVersion: marker.typeVersion} : {})};
   });
   const mainOnly = (context: ToolContext) => {
     assertParent(context.taskId);
@@ -545,6 +625,17 @@ export function createAsyncSubagentController(options: {
       }},
     {descriptor: descriptor(SUBAGENT_STOP_TOOL_NAME, 'local_write', false, objectSchema({subtaskId: {type: 'string'}}, ['subtaskId']), {type: 'object', additionalProperties: true}),
       execute: async (input, context) => stop(assertParent(context.taskId).taskId, String((input as {subtaskId?: string}).subtaskId ?? ''))},
+    {descriptor: descriptor(SUBAGENT_PAUSE_TOOL_NAME, 'local_write', false, objectSchema({subtaskId: {type: 'string'}}, ['subtaskId']), {type: 'object', additionalProperties: true}),
+      execute: async (input, context) => pause(assertParent(context.taskId).taskId, String((input as {subtaskId?: string}).subtaskId ?? ''))},
+    {descriptor: descriptor(SUBAGENT_RESUME_TOOL_NAME, 'local_write', false, objectSchema({subtaskId: {type: 'string'}}, ['subtaskId']), {type: 'object', additionalProperties: true}),
+      execute: async (input, context) => resume(assertParent(context.taskId).taskId, String((input as {subtaskId?: string}).subtaskId ?? ''))},
+    {descriptor: descriptor(SUBAGENT_REDIRECT_TOOL_NAME, 'local_write', false, objectSchema({subtaskId: {type: 'string'}, instruction: {type: 'string'}, expectedControlRevision: {type: 'integer', minimum: 0}}, ['subtaskId', 'instruction', 'expectedControlRevision']), {type: 'object', additionalProperties: true}),
+      execute: async (input, context) => {
+        const raw = input as {subtaskId?: string; instruction?: string; expectedControlRevision?: number};
+        return redirect(assertParent(context.taskId).taskId, String(raw.subtaskId ?? ''), String(raw.instruction ?? ''), Number(raw.expectedControlRevision));
+      }},
+    {descriptor: descriptor(SUBAGENT_HANDOFF_TOOL_NAME, 'local_write', false, objectSchema({subtaskId: {type: 'string'}}, ['subtaskId']), {type: 'object', additionalProperties: true}),
+      execute: async (input, context) => handoff(assertParent(context.taskId).taskId, String((input as {subtaskId?: string}).subtaskId ?? ''))},
     {descriptor: descriptor(SUBAGENT_TYPE_LIST_TOOL_NAME, 'read', false, objectSchema({}, []), {type: 'object', additionalProperties: true, description: '列出已确认的自定义子智能体类型。'}),
       execute: async (_input, context) => { mainOnly(context); return {types: registry().list()}; }},
     {descriptor: descriptor(SUBAGENT_TYPE_CREATE_TOOL_NAME, 'local_write', false, objectSchema({definition: definitionSchema}, ['definition']), {type: 'object', additionalProperties: true, description: '根据用户原话起草自定义子智能体类型。未确认前不生效。'}),
@@ -573,7 +664,7 @@ export function createAsyncSubagentController(options: {
         return {state: 'pending_confirmation' as const, proposals: registry().proposeConfig(String((input as {text?: string}).text ?? ''), granted()).map(proposalResult)};
       }},
   ];
-  return {get registry(){return registry();}, tools, pump, recover() { epoch += 1; return pump(); }, list, instruct, stop};
+  return {get registry(){return registry();}, tools, pump, recover() { epoch += 1; return pump(); }, list, instruct, stop, pause, resume, redirect, handoff, emergencyStop};
 }
 
 /** Dispatch a child to a healthy remote host when one exists; otherwise use the local worker. */
