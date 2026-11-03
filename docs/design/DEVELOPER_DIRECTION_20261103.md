@@ -78,7 +78,9 @@
 
 ### 远端仓库任务
 
-执行器新增 job kind `repo-task`：`{repo, baseSha, branch, recipeIds}`。没有 `executeRepoTask` 时回执是 `needs-config`，不假装跑过测试。有端口时在工作区跑固定配方，回传 diff 摘要、测试输出和心跳。`createConcurrencyGate` 限制并发。文件锁版 `--serve` 仍然一次一个任务，这是原安全基线，没有改成多进程并行。
+执行器新增 job kind `repo-task`：`{repo, baseSha, branch, recipeIds}`。没有 `executeRepoTask` 时回执是 `needs-config`，摘要里写明四步：本机 `sourcePath`、`recipes` 的 argv、把 `createLocalRepoExecutor` 交给 `handleRunnerJob`、`baseSha` 与 `agent/` 分支。不假装跑过测试。
+
+`createLocalRepoExecutor` 在本机 `git clone --local` 一个已有仓库，检出提交，建立 `agent/` 分支，按配置好的 argv 跑配方，回传 diff 和测试输出，然后删除工作区。任务不能自带命令，也不会访问公网。会话里的 `executeRepoJob` 先走 `authorizeDeveloperCall`；没有自动放行时 `refused: true`，不建工作区。文件锁版 `--serve` 仍然一次一个任务。
 
 ### CI 闭环
 
@@ -88,9 +90,9 @@
 
 ### 评论、通知、报告
 
-`automaticComments: true` 且自主决策是可逆自动时，受控评论端口会真正写入。默认仍是 `writeAvailable: false`，只存 `requires_authorization`。桌面真实 GitHub 端口继续要求原来的逐次正文断言，这次没有把它改成自动发帖。
+`automaticComments: true` 且 `authorizeDeveloperCall` 对 `duty.comment.publish` 给出可逆自动时，受控评论端口会写入。未登记仓库这条决策是拒绝，仍只存 `requires_authorization`。`applyManagedComment` 负责生成、按状态标记去重、更新已有评论，以及用 DELETE 撤销。`createGitHubCommentHttpPort` 把 `Authorization: Bearer` 和 `X-GitHub-Api-Version` 放到请求里。桌面真实端口的删除同样要过原来的正文断言。不可逆决策不发请求。
 
-通知分打断、摘要、静默。打断调用桌面通道；通道接受后时间线 `delivered: true` 并带 `evidenceRef`。通道拒绝时记下原因，不算已投递。默认订阅只有打断。旧 F12 意图仍然 `delivered: false`，新时间线单独记录这次投递。
+通知分打断、摘要、静默，按仓库订阅。打断调用桌面通道；通道接受后时间线 `delivered: true` 并带 `evidenceRef`。安静时段里普通通知先进入摘要，需要确认的闸门仍然立即送出。摘要默认一小时最多一条，并受每天上限约束。`deliverElectronNotification` 接受注入的 Notification 端口，不在库里直接依赖 Electron。系统通知不可用时仍落到桌面内列表。默认订阅只有打断。旧 F12 意图仍然 `delivered: false`，新时间线单独记录这次投递。
 
 报告固定为：目标、结论、改动、验证、风险、成本、可撤销动作。`renderPullRequestBody` 用同一结构。日报/周报只列出调用方给出的 PR、评审、失败 CI 和会话里的动作。
 

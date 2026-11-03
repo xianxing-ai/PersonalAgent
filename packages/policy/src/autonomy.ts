@@ -40,6 +40,8 @@ const REVERSIBLE_TOOL_NAMES = new Set([
   'git.commit',
   'git.push',
   'duty.comment.publish',
+  'github.comment.delete',
+  'repo.task.run',
 ]);
 
 const PRIVILEGED_TOOL_NAMES = new Set([

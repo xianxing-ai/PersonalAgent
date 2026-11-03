@@ -2904,6 +2904,12 @@ async function initializeRuntime() {
           void developerDirectionHost?.session.notify({repo:'duty', kind:'success', summary:notice.summary, evidenceRef:notice.dedupeKey});
           publish();
         },
+        automaticComments:true,
+        autonomyForComment:repo=>{
+          if(!developerDirectionHost)return undefined;
+          const decision=runtimeModule.authorizeDeveloperCall(developerDirectionHost.session,{repo,branch:'*',toolName:'duty.comment.publish',sideEffect:'external_write'});
+          return {allow:decision.allow,mode:decision.mode,risk:decision.risk};
+        },
         onEvents:async(repo,events)=>{
           for(const event of events){
             await developerDirectionHost?.session.routeEvent({repo, source:event.type==='issue'?'issue':event.type==='pull_request'?'pr':'check_run',

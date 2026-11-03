@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
+import {createServer} from 'node:http';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {mkdtempSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
@@ -7,7 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
-  classifyCiFailureStable, commentWriteAvailable, createGitHubWebhookServer, detectApiDocDrift, emptyTriggerState,
+  applyManagedComment, classifyCiFailureStable, commentWriteAvailable, createGitHubCommentHttpPort, createGitHubWebhookServer, detectApiDocDrift, emptyTriggerState,
   indexKnowledgeFiles, initialCiLoop, loadSourcedCiEval, routeTrigger, runFixtureCiEval, runInjectedCiRepair, scanKnowledgeDirectory, stepCiLoop, summarizeDeveloperEval,
 } from '../dist/index.js';
 
@@ -188,6 +189,45 @@ test('injected CI repair reruns a flaky head and does not patch an environment f
   assert.equal(environment.state.phase, 'stopped');
   assert.equal(environment.state.note, 'environment failure is not patched');
   assert.equal(patched, false);
+});
+
+test('managed comments dedupe by editing, revoke by delete, and the HTTP port sends the auth header', async () => {
+  const seen = [];
+  const comments = [{id: 9, body: '<!-- personal-agent:duty-status -->\nold'}];
+  const server = createServer((request, response) => {
+    const chunks = [];
+    request.on('data', chunk => chunks.push(chunk));
+    request.on('end', () => {
+      const header = request.headers.authorization;
+      seen.push({method: request.method, url: request.url, authorization: header, apiVersion: request.headers['x-github-api-version'], body: Buffer.concat(chunks).toString('utf8')});
+      if (request.method === 'GET') {response.writeHead(200, {'content-type': 'application/json'}); response.end(JSON.stringify(comments)); return;}
+      if (request.method === 'PATCH') {comments[0].body = JSON.parse(Buffer.concat(chunks).toString('utf8')).body; response.writeHead(200, {'content-type': 'application/json'}); response.end(JSON.stringify(comments[0])); return;}
+      if (request.method === 'DELETE') {comments.splice(0, comments.length); response.writeHead(204); response.end(); return;}
+      response.writeHead(500); response.end();
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    const ports = createGitHubCommentHttpPort({fetchImpl: async (url, init) => {
+      const response = await fetch(url, init);
+      return {ok: response.ok, status: response.status, json: () => response.json()};
+    }, token: 'github-token-fixture', repo: 'octo/repo', number: 4, apiBase: `http://127.0.0.1:${address.port}`});
+    const decision = {allow: true, mode: 'auto', risk: 'reversible_write'};
+    const published = await applyManagedComment({decision, ports, desiredBody: 'updated', intent: 'publish'});
+    assert.equal(published.wrote, true);
+    assert.equal(published.commentId, 9);
+    assert.equal(seen.filter(item => item.method === 'POST').length, 0);
+    assert.equal(seen.find(item => item.method === 'PATCH').authorization, 'Bearer github-token-fixture');
+    assert.equal(seen.find(item => item.method === 'PATCH').apiVersion, '2022-11-28');
+    const revoked = await applyManagedComment({decision, ports, desiredBody: 'updated', intent: 'revoke', commentId: 9});
+    assert.equal(revoked.action, 'delete');
+    assert.equal(revoked.wrote, true);
+    assert.equal(seen.find(item => item.method === 'DELETE').url, '/repos/octo/repo/issues/comments/9');
+    const blocked = await applyManagedComment({decision: {allow: false, mode: 'deny', risk: 'irreversible'}, ports, desiredBody: 'nope', intent: 'publish'});
+    assert.equal(blocked.wrote, false);
+    assert.equal(blocked.reason, 'authorization required');
+  } finally {await new Promise(resolve => server.close(resolve));}
 });
 
 test('API drift and eval summaries only use the supplied rows', () => {

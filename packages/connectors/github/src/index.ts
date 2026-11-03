@@ -31,11 +31,12 @@ export type {
 export {
   classifyCiFailureStable, headShaFromWebhookPayload, dutyDedupeKey, dedupeDutyEvents, verifyGitHubWebhookSignature,
   createGitHubWebhookServer, emptyTriggerState, routeTrigger, rememberTrigger, finishTrigger, initialCiLoop, stepCiLoop,
-  commentWriteAvailable, summarizeDeveloperEval, apiDocDigest, detectApiDocDrift, runInjectedCiRepair, runFixtureCiEval, loadSourcedCiEval,
+  commentWriteAvailable, applyManagedComment, summarizeDeveloperEval, apiDocDigest, detectApiDocDrift, runInjectedCiRepair, runFixtureCiEval, loadSourcedCiEval,
 } from './developer-direction.js';
 export {DEFAULT_KNOWLEDGE_IGNORE, DEFAULT_KNOWLEDGE_POLICY, digestText, indexKnowledgeFiles, scanKnowledgeDirectory, knowledgeDrift} from './repo-knowledge.js';
 export type {KnowledgeScanPolicy, IndexedKnowledgeFile, KnowledgeIndex} from './repo-knowledge.js';
-export type {CiRepairPorts, CiReadResult, FixtureEvalCase, SourcedCiEvalCase} from './developer-direction.js';
+export type {CiRepairPorts, CiReadResult, FixtureEvalCase, SourcedCiEvalCase, ManagedCommentPorts} from './developer-direction.js';
+export {githubCommentRequest, createGitHubCommentHttpPort} from './comment-http.js';
 export type {
   TriggerSource, TriggerWorkflow, TriggerRule, TriggerEvent, TriggerDispatch, TriggerState, TriggerRoute,
   CiLoopPhase, CiLoopState, CiLoopSignal, StableCiClass, WebhookListener, EvalOutcome,

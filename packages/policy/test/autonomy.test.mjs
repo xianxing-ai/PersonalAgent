@@ -18,6 +18,11 @@ test('enrolled reversible writes are automatic and irreversible actions stay gat
   const comment = decideAutonomy({grant: standing, toolName: 'github.pr.comment', sideEffect: 'external_write', repo: 'octo/repo', branch: 'agent/fix', now});
   assert.equal(comment.allow, true);
   assert.equal(comment.mode, 'auto');
+  const removed = decideAutonomy({grant: standing, toolName: 'github.comment.delete', sideEffect: 'external_write', repo: 'octo/repo', branch: 'agent/fix', now});
+  assert.equal(removed.allow, true);
+  assert.equal(removed.risk, 'reversible_write');
+  const repoTask = decideAutonomy({grant: standing, toolName: 'repo.task.run', sideEffect: 'local_write', repo: 'octo/repo', branch: 'agent/fix', now});
+  assert.equal(repoTask.mode, 'auto');
   const merge = decideAutonomy({grant: standing, toolName: 'github.pr.merge', action: 'merge', repo: 'octo/repo', branch: 'agent/fix', now});
   assert.equal(merge.allow, false);
   assert.equal(merge.risk, 'irreversible');

@@ -13,8 +13,8 @@ import {
   type CiLoopState, type KnowledgeIndex, type KnowledgeScanPolicy, type TriggerRule, type TriggerEvent, type TriggerState,
 } from '@personal-agent/github';
 import {
-  acceptDeveloperNotice, emptyDeveloperDelivery, setDeveloperSubscription,
-  type DesktopNoticeChannel, type DeveloperDeliveryState, type DeveloperNoticeClass, type DeveloperNoticeKind,
+  acceptDeveloperNotice, considerDeveloperDigest, emptyDeveloperDelivery, setDeveloperDigestLimits, setDeveloperSubscription,
+  type DesktopNoticeChannel, type DeveloperDeliveryState, type DeveloperNoticeClass, type DeveloperNoticeKind, type NotificationPolicy,
 } from '@personal-agent/notifications';
 
 export interface GitWorkspacePort {
@@ -243,14 +243,21 @@ export function profilePrompt(profile: RepoProfile, experienceRecipes: readonly 
   return `${renderUntrustedPrompt(files)}${recipes}`;
 }
 
+type DeveloperCall = {repo: string; branch: string; toolName: string; action?: string; sideEffect: 'read' | 'local_write' | 'external_write'};
+
+/** 工具循环、值班评论、子任务和远端仓库任务共用这一次 decide。 */
+export function authorizeDeveloperCall(session: {decide(input: {repo: string; branch: string; toolName: string; action?: string; sideEffect?: 'read' | 'local_write' | 'external_write'; args?: unknown}): AutonomyDecision}, input: DeveloperCall): AutonomyDecision {
+  return session.decide({repo: input.repo, branch: input.branch, toolName: input.toolName, sideEffect: input.sideEffect, ...(input.action ? {action: input.action} : {}), args: {repo: input.repo, branch: input.branch, ...(input.action ? {action: input.action} : {})}});
+}
+
 /** 工具循环用。没有仓库，或该仓库没有常驻授权时返回 undefined，调用方保持逐次授权。 */
-export function standingDecisionForTool(session: {decide(input: {repo: string; branch: string; toolName: string; action?: string; sideEffect?: 'read' | 'local_write' | 'external_write'; args?: unknown}): {allow: boolean; mode: 'deny' | 'suggest' | 'auto'; risk: 'read' | 'reversible_write' | 'irreversible' | 'privileged'; reason: string; audit: {reversibleClass: string}}}, input: {toolName: string; sideEffect: 'read' | 'local_write' | 'external_write'; arguments: unknown}): {allow: boolean; mode: 'deny' | 'suggest' | 'auto'; risk: 'read' | 'reversible_write' | 'irreversible' | 'privileged'; reason: string; audit: {reversibleClass: string}} | undefined {
+export function standingDecisionForTool(session: {decide(input: {repo: string; branch: string; toolName: string; action?: string; sideEffect?: 'read' | 'local_write' | 'external_write'; args?: unknown}): AutonomyDecision}, input: {toolName: string; sideEffect: 'read' | 'local_write' | 'external_write'; arguments: unknown}): {allow: boolean; mode: 'deny' | 'suggest' | 'auto'; risk: 'read' | 'reversible_write' | 'irreversible' | 'privileged'; reason: string; audit: {reversibleClass: string}} | undefined {
   const args = input.arguments && typeof input.arguments === 'object' && !Array.isArray(input.arguments) ? input.arguments as Record<string, unknown> : {};
   const repo = typeof args.repo === 'string' ? args.repo : typeof args.repository === 'string' ? args.repository : undefined;
   if (!repo) return undefined;
   const branch = typeof args.branch === 'string' ? args.branch : '*';
   const action = typeof args.action === 'string' ? args.action : undefined;
-  const decision = session.decide({repo, branch, toolName: input.toolName, sideEffect: input.sideEffect, ...(action ? {action} : {}), args});
+  const decision = authorizeDeveloperCall(session, {repo, branch, toolName: input.toolName, sideEffect: input.sideEffect, ...(action ? {action} : {})});
   if (decision.reason === 'repository has no standing grant' || decision.reason === 'standing grant does not cover this call') return undefined;
   return {allow: decision.allow, mode: decision.mode, risk: decision.risk, reason: decision.reason, audit: {reversibleClass: decision.audit.reversibleClass}};
 }
@@ -283,7 +290,9 @@ export interface DeveloperDirectionSession {
   rememberFix(repo: string, fix: {failureSignature: string; patchSummary: string; prUrl?: string}): RepoProfile;
   profileFor(repo: string): RepoProfile | undefined;
   repair(input: {repo: string; number: number; signal: Parameters<typeof stepCiLoop>[1]; headSha?: string; maxRounds?: number}): CiLoopState;
-  executeRepoJob(input: {repo: string; repoPath: string; baseSha: string; taskId: string; recipeIds: string[]; slug: string}): Promise<{evidenceLevel: 'fixture' | 'executed-local'; diffSummary: string; testReport: string; artifactSummary: string; heartbeats: number; leaseExtended: boolean}>;
+  executeRepoJob(input: {repo: string; repoPath: string; baseSha: string; taskId: string; recipeIds: string[]; slug: string}): Promise<{evidenceLevel: 'fixture' | 'executed-local'; diffSummary: string; testReport: string; artifactSummary: string; heartbeats: number; leaseExtended: boolean; refused: boolean; reason: string}>;
+  configureNotices(input: {quiet?: {startLocal: string; endLocal: string; timeZone: string}; perHour?: number; perDay?: number}): void;
+  flushDigest(): Promise<{delivered: boolean; reason: string}>;
   checkApiDrift(input: {implemented: readonly string[]; documented: readonly string[]}): ReturnType<typeof detectApiDocDrift>;
   scanKnowledge(input: {repo: string; root: string; policy?: Partial<KnowledgeScanPolicy>}): {index: KnowledgeIndex; drift: ReturnType<typeof knowledgeDrift>; profile: RepoProfile};
   compensate(input: {action: (typeof COMPENSATION_CATALOG)[number]['id']; repo?: string; repoPath?: string; sha?: string; commentId?: number; number?: number; branch?: string}): Promise<{available: boolean; evidence?: string; reason: string}>;
@@ -327,6 +336,7 @@ export function createDeveloperDirectionSession(options: {
   let loops: CiLoopState[] = [];
   let budget: BudgetState = {reservations: []};
   let delivery: DeveloperDeliveryState = emptyDeveloperDelivery();
+  let noticePolicy: NotificationPolicy | undefined;
   let stopped = false;
   let activeJobs = 0;
   const waiters: Array<() => void> = [];
@@ -568,6 +578,10 @@ export function createDeveloperDirectionSession(options: {
       const git = options.git;
       const runRecipe = options.runRecipe;
       if (!git || !runRecipe) return fail('UNSUPPORTED_CAPABILITY', 'Repo task needs a git port and a recipe runner');
+      const decision = authorizeDeveloperCall(this, {repo: input.repo, branch: '*', toolName: 'repo.task.run', sideEffect: 'local_write'});
+      if (decision.allow !== true || decision.mode !== 'auto') {
+        return {evidenceLevel: 'fixture', diffSummary: '', testReport: '', artifactSummary: '', heartbeats: 0, leaseExtended: false, refused: true, reason: decision.reason};
+      }
       if (activeJobs >= maxConcurrent) await new Promise<void>(resolve => waiters.push(resolve));
       activeJobs += 1;
       let heartbeats = 0;
@@ -581,7 +595,7 @@ export function createDeveloperDirectionSession(options: {
           reports.push(`${recipeId} exit ${result.exitCode}: ${result.output.slice(0, 500)}`);
           heartbeat();
         }
-        return {evidenceLevel: git.evidenceLevel, diffSummary: `worktree ${lease.branch} at ${lease.baseSha}`, testReport: reports.join('\n'), artifactSummary: `${reports.length} recipe receipts`, heartbeats, leaseExtended: heartbeats > 0};
+        return {evidenceLevel: git.evidenceLevel, diffSummary: `worktree ${lease.branch} at ${lease.baseSha}`, testReport: reports.join('\n'), artifactSummary: `${reports.length} recipe receipts`, heartbeats, leaseExtended: heartbeats > 0, refused: false, reason: decision.reason};
       } finally {
         await this.releaseLease(input.taskId);
         activeJobs -= 1;
@@ -655,8 +669,17 @@ export function createDeveloperDirectionSession(options: {
       const result = await gateway.complete(request);
       return {result, downgraded: downgradeModel};
     },
+    configureNotices(input) {
+      noticePolicy = input.quiet ? {quietHours: input.quiet} : undefined;
+      if (input.perHour !== undefined && input.perDay !== undefined) delivery = setDeveloperDigestLimits(delivery, {perHour: input.perHour, perDay: input.perDay});
+    },
+    async flushDigest() {
+      const flushed = await considerDeveloperDigest(delivery, {now: now(), channel});
+      delivery = flushed.state;
+      return {delivered: flushed.delivered, reason: flushed.reason};
+    },
     async notify(input) {
-      const accepted = await acceptDeveloperNotice(delivery, {id: randomUUID(), repo: input.repo, kind: input.kind, summary: input.summary, at: new Date(now()).toISOString(), ...(input.evidenceRef ? {evidenceRef: input.evidenceRef} : {})}, {now: now(), channel});
+      const accepted = await acceptDeveloperNotice(delivery, {id: randomUUID(), repo: input.repo, kind: input.kind, summary: input.summary, at: new Date(now()).toISOString(), ...(input.evidenceRef ? {evidenceRef: input.evidenceRef} : {})}, {now: now(), channel, ...(noticePolicy ? {policy: noticePolicy} : {})});
       delivery = accepted.state;
       return {delivered: accepted.delivered};
     },

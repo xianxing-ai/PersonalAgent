@@ -3,7 +3,7 @@ import {mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {createDeveloperDirectionHost, deliverDesktopNotice} from '../electron/developer-direction-host.js';
+import {createDeveloperDirectionHost, createElectronDesktopChannel, deliverDesktopNotice} from '../electron/developer-direction-host.js';
 import {directionFormCommand, renderDirectionBoard, renderDirectionTimeline} from '../src/features/admin/developer-direction-controls.js';
 
 test('the settings panel exposes the four autonomy levels and the host records a report', async () => {
@@ -48,4 +48,11 @@ test('the settings panel exposes the four autonomy levels and the host records a
     const listed = await host.invoke('compensations', {});
     assert.equal(listed.every(item => item.available === false), true);
   } finally {rmSync(root, {recursive: true, force: true});}
+  const shownNative = [];
+  const channel = createElectronDesktopChannel({electronNotification: {isSupported: () => true, create(input) {return {show() {shownNative.push(input);}};}}});
+  const native = await channel.send({id: 'e1', title: '需要你确认', body: '合并要确认'});
+  assert.equal(native.evidenceRef, 'desktop:e1');
+  assert.deepEqual(shownNative, [{title: '需要你确认', body: '合并要确认'}]);
+  const quiet = await host.invoke('notify', {repo: 'octo/repo', kind: 'timeline', summary: '只记时间线'});
+  assert.equal(quiet.delivered, false);
 });

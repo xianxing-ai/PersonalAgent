@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs';
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import {isAbsolute, relative, resolve} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
-import {acceptGitHubWebhook, type DutyEvent} from './developer-duty.js';
+import {DUTY_STATUS_MARKER, acceptGitHubWebhook, executeStatusComment, type DutyEvent, type StatusComment} from './developer-duty.js';
 
 export type TriggerSource = 'pr' | 'check_run' | 'workflow_run' | 'issue' | 'schedule' | 'manual';
 export type TriggerWorkflow = 'ci_fix' | 'review' | 'triage' | 'api_docs' | 'custom_subagent';
@@ -323,6 +323,37 @@ export function stepCiLoop(state: CiLoopState, signal: CiLoopSignal, headSha?: s
 
 export function commentWriteAvailable(input: {policyComment: boolean; autonomy?: {allow: boolean; mode: string; risk: string}}): boolean {
   return input.policyComment === true && input.autonomy?.allow === true && input.autonomy.mode === 'auto' && input.autonomy.risk === 'reversible_write';
+}
+
+export interface ManagedCommentPorts {
+  writeAvailable?: boolean;
+  listComments: () => Promise<StatusComment[] | 'unknown'>;
+  createComment: (body: string) => Promise<{state: 'confirmed' | 'unknown'; id?: number}>;
+  editComment: (id: number, body: string) => Promise<{state: 'confirmed' | 'unknown'}>;
+  deleteComment?: (id: number, body: string) => Promise<{state: 'confirmed' | 'unknown'}>;
+}
+
+/** 生成、去重、更新或删除一条状态评论。不可逆决策和未自动放行都不发请求。 */
+export async function applyManagedComment(input: {
+  decision: {allow: boolean; mode: string; risk: string};
+  ports: ManagedCommentPorts;
+  desiredBody: string;
+  intent: 'publish' | 'revoke';
+  commentId?: number;
+}): Promise<{wrote: boolean; reason: string; action: string; commentId?: number; evidenceLevel: 'fixture'}> {
+  if (input.decision.risk === 'irreversible' || input.decision.allow !== true || input.decision.mode !== 'auto') {
+    return {wrote: false, reason: 'authorization required', action: 'none', evidenceLevel: 'fixture'};
+  }
+  if (input.intent === 'revoke') {
+    if (!input.ports.deleteComment || input.commentId === undefined) {
+      return {wrote: false, reason: 'delete port or comment id is missing', action: 'delete', evidenceLevel: 'fixture'};
+    }
+    const body = `${DUTY_STATUS_MARKER}\n${input.desiredBody.trim()}`;
+    const deleted = await input.ports.deleteComment(input.commentId, body);
+    return {wrote: deleted.state === 'confirmed', reason: deleted.state === 'confirmed' ? 'comment deleted' : 'delete outcome unknown', action: 'delete', commentId: input.commentId, evidenceLevel: 'fixture'};
+  }
+  const attempt = await executeStatusComment({...input.ports, writeAvailable: true}, input.desiredBody);
+  return {wrote: attempt.outcome === 'confirmed', reason: attempt.outcome, action: 'publish', ...(attempt.commentId === undefined ? {} : {commentId: attempt.commentId}), evidenceLevel: 'fixture'};
 }
 
 export interface EvalOutcome {id: string; fixed: boolean; rounds: number; cost: number}

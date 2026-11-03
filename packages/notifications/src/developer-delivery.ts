@@ -30,10 +30,18 @@ export interface DeveloperTimelineEntry {
   reason: string;
 }
 
+export interface DeveloperDigestLimits {
+  perHour: number;
+  perDay: number;
+}
+
 export interface DeveloperDeliveryState {
   subscriptions: DeveloperSubscription[];
   timeline: DeveloperTimelineEntry[];
   digest: DeveloperNotice[];
+  lastDigestAt?: number;
+  digestSends?: {hourBucket: string; hourCount: number; dayBucket: string; dayCount: number};
+  digestLimits?: DeveloperDigestLimits;
 }
 
 export interface DesktopNoticeChannel {
@@ -55,7 +63,13 @@ export function emptyDeveloperDelivery(): DeveloperDeliveryState {
 
 export function setDeveloperSubscription(state: DeveloperDeliveryState, subscription: DeveloperSubscription): DeveloperDeliveryState {
   if (!subscription.repo.trim() || subscription.classes.some(item => !['interrupt', 'digest', 'silent'].includes(item))) fail('Subscription is invalid');
-  return {subscriptions: [...state.subscriptions.filter(item => item.repo !== subscription.repo), {repo: subscription.repo, classes: [...subscription.classes]}], timeline: state.timeline, digest: state.digest};
+  return {...state, subscriptions: [...state.subscriptions.filter(item => item.repo !== subscription.repo), {repo: subscription.repo, classes: [...subscription.classes]}]};
+}
+
+export function setDeveloperDigestLimits(state: DeveloperDeliveryState, limits: DeveloperDigestLimits): DeveloperDeliveryState {
+  if (!Number.isInteger(limits.perHour) || limits.perHour < 1 || limits.perHour > 24) fail('Hourly digest limit is invalid');
+  if (!Number.isInteger(limits.perDay) || limits.perDay < limits.perHour || limits.perDay > 100) fail('Daily digest limit is invalid');
+  return {...state, digestLimits: {perHour: limits.perHour, perDay: limits.perDay}};
 }
 
 function subscribed(state: DeveloperDeliveryState, repo: string, noticeClass: DeveloperNoticeClass): boolean {
@@ -99,4 +113,35 @@ export async function flushDeveloperDigest(state: DeveloperDeliveryState, option
   const result = await options.channel.send({id, title: '开发者摘要', body: options.summary});
   const delivered = result.accepted === true;
   return {state: {...state, digest: [], timeline: [...state.timeline, entry(notice, 'digest', delivered, 'desktop', delivered ? 'digest delivered' : 'digest channel declined', result.evidenceRef)]}, delivered};
+}
+
+/** 摘要默认一小时最多一条，一天不超过配置上限。窗口没到就留在 digest 里。 */
+export async function considerDeveloperDigest(state: DeveloperDeliveryState, options: {now: number; channel: DesktopNoticeChannel; summary?: string; minIntervalMs?: number}): Promise<{state: DeveloperDeliveryState; delivered: boolean; reason: string}> {
+  if (!state.digest.length) return {state, delivered: false, reason: 'digest is empty'};
+  const limits = state.digestLimits ?? {perHour: 1, perDay: 24};
+  const hourBucket = new Date(options.now).toISOString().slice(0, 13);
+  const dayBucket = new Date(options.now).toISOString().slice(0, 10);
+  const hourCount = state.digestSends?.hourBucket === hourBucket ? state.digestSends.hourCount : 0;
+  const dayCount = state.digestSends?.dayBucket === dayBucket ? state.digestSends.dayCount : 0;
+  const interval = options.minIntervalMs ?? 3_600_000;
+  if (state.lastDigestAt !== undefined && options.now - state.lastDigestAt < interval) return {state, delivered: false, reason: 'digest is inside the hourly window'};
+  if (hourCount >= limits.perHour) return {state, delivered: false, reason: 'hourly digest limit reached'};
+  if (dayCount >= limits.perDay) return {state, delivered: false, reason: 'daily digest limit reached'};
+  const summary = options.summary ?? state.digest.map(item => item.summary).join('；').slice(0, 500);
+  const flushed = await flushDeveloperDigest(state, {now: options.now, channel: options.channel, summary});
+  return {state: {...flushed.state, lastDigestAt: options.now, digestLimits: limits, digestSends: {hourBucket, hourCount: hourCount + 1, dayBucket, dayCount: dayCount + 1}}, delivered: flushed.delivered, reason: flushed.delivered ? 'digest delivered' : 'digest channel declined'};
+}
+
+export interface ElectronNotificationPort {
+  isSupported?: () => boolean;
+  create(input: {title: string; body: string}): {show?: () => void};
+}
+
+/** 不导入 electron。调用方把 Notification 构造能力注进来。 */
+export function deliverElectronNotification(notice: {id: string; title: string; body: string}, port: ElectronNotificationPort | undefined): {accepted: boolean; evidenceRef?: string; reason?: string} {
+  if (!notice.id.trim() || !notice.title.trim()) fail('Notice is invalid');
+  if (!port || port.isSupported?.() === false) return {accepted: false, reason: 'desktop notification unsupported'};
+  const created = port.create({title: notice.title, body: notice.body});
+  if (typeof created.show === 'function') created.show();
+  return {accepted: true, evidenceRef: `desktop:${notice.id}`};
 }

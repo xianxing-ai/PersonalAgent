@@ -15,4 +15,13 @@ test('downgrade uses the fallback gateway only when one is configured', async ()
   assert.equal(switched.deployment.model, 'fallback-model');
   const unchanged = await selectDeveloperModelGateway({primary, downgrade: true}).complete(request());
   assert.equal(unchanged.response.text, 'primary');
+  let downgrade = false;
+  const configuredFallback = new ModelGateway(new FakeModelProvider([{kind: 'final', text: 'fallback'}], {model: 'fallback-model'}));
+  const configured = new ModelGateway(new FakeModelProvider([{kind: 'final', text: 'primary'}, {kind: 'final', text: 'primary'}], {model: 'primary-model'}), undefined, {fallback: configuredFallback, shouldDowngrade: () => downgrade});
+  const stayed = await configured.complete(request());
+  assert.equal(stayed.deployment.model, 'primary-model');
+  downgrade = true;
+  const moved = await configured.complete(request());
+  assert.equal(moved.response.text, 'fallback');
+  assert.equal(moved.deployment.model, 'fallback-model');
 });

@@ -5,6 +5,7 @@ import {spawn} from 'node:child_process';
 import {mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {describeRepoTaskExecutor} from './local-repo-executor.mjs';
 
 export const RUNNER_VERSION = '1.1.0';
 const MODEL_COMMAND_FILE = process.env.RUNNER_MODEL_COMMAND_FILE || '/etc/personal-agent-runner/model-command.json';
@@ -205,8 +206,9 @@ async function runRepoTask(message, options) {
     return receipt(message, {state: 'failed', error: 'repo-task payload is invalid', redo: false, evidenceLevel: 'fixture'});
   }
   if (typeof options.executeRepoTask !== 'function') {
+    const described = describeRepoTaskExecutor(options.repoExecutor);
     return receipt(message, {state: 'failed', needsConfig: true, verification: 'needs-config', redo: false, evidenceLevel: 'fixture',
-      error: 'repo task executor is not configured', summary: '远端没有登记仓库工作区执行器，任务没有拉取代码。'});
+      error: 'repo task executor is not configured', summary: described.summary, steps: described.steps});
   }
   let heartbeats = 0;
   const heartbeat = () => {heartbeats += 1; options.onHeartbeat?.(message.id);};

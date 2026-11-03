@@ -1,3 +1,4 @@
+import {deliverElectronNotification} from '@personal-agent/notifications';
 import {createDeveloperDirectionSession, renderPullRequestBody} from '@personal-agent/runtime/application';
 
 /** 先尝试系统通知。系统不可用时，交给桌面内通知列表，并记成已投递。 */
@@ -16,15 +17,15 @@ export function createElectronDesktopChannel(options = {}) {
     return deliverDesktopNotice(notice, {
       ...options,
       tryNative: async item => {
+        if (options.electronNotification) return deliverElectronNotification(item, options.electronNotification);
         try {
           const electron = await import('electron');
           const Notification = electron.Notification;
-          if (!Notification || (typeof Notification.isSupported === 'function' && !Notification.isSupported())) {
-            return {accepted: false, reason: 'desktop notification unsupported'};
-          }
-          const created = new Notification({title: item.title, body: item.body});
-          if (typeof created.show === 'function') created.show();
-          return {accepted: true, evidenceRef: `desktop:${item.id}`};
+          if (!Notification) return {accepted: false, reason: 'desktop notification unsupported'};
+          return deliverElectronNotification(item, {
+            isSupported: () => typeof Notification.isSupported !== 'function' || Notification.isSupported(),
+            create: input => new Notification({title: input.title, body: input.body}),
+          });
         } catch {
           return {accepted: false, reason: 'electron notification unavailable'};
         }

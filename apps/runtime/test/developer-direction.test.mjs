@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {ProtocolError} from '@personal-agent/contracts';
 import {TaskRuntime} from '../dist/index.js';
 import {
-  createDeveloperDirectionSession, createDeveloperDutyTools, createMemoryGitWorkspace, createNodeGitWorkspace, renderPullRequestBody,
+  authorizeDeveloperCall, createDeveloperDirectionSession, createDeveloperDutyTools, createMemoryGitWorkspace, createNodeGitWorkspace, renderPullRequestBody, standingDecisionForTool,
 } from '../dist/application.js';
 import {handleRunnerJob, signJob} from '../../../scripts/remote-runner/remote-runner-service.mjs';
+import {createLocalRepoExecutor} from '../../../scripts/remote-runner/local-repo-executor.mjs';
 
 const sha = 'a'.repeat(40);
 const other = 'b'.repeat(40);
@@ -80,6 +81,10 @@ test('memory and node git worktrees run recipes and yield when the human moves t
     active -= 1;
     return {exitCode: 0, output: 'ok'};
   }});
+  const blocked = await session.executeRepoJob({repo: 'octo/repo', repoPath: '/tmp/repo', baseSha: sha, taskId: 'job-blocked', recipeIds: ['test'], slug: 'blocked'});
+  assert.equal(blocked.refused, true);
+  assert.equal(blocked.heartbeats, 0);
+  session.enroll({repo: 'octo/repo', credentialRef: 'github-credential-ref'});
   const lease = await session.openLease({repo: 'octo/repo', repoPath: '/tmp/repo', baseSha: other, taskId: 'task-1', slug: 'fix', epoch: 2});
   assert.match(lease.branch, /^agent\/task-1-fix$/);
   assert.equal((await session.noteHumanPush({repoPath: '/tmp/repo', taskId: 'task-1'})).yielded, true);
@@ -101,6 +106,7 @@ test('memory and node git worktrees run recipes and yield when the human moves t
     execFileSync('git', ['commit', '-m', 'init'], {cwd: root});
     const head = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root}).toString().trim();
     const real = createDeveloperDirectionSession({git: createNodeGitWorkspace(), runRecipe: async () => ({exitCode: 0, output: 'local recipe'})});
+    real.enroll({repo: 'octo/repo', credentialRef: 'github-credential-ref'});
     const created = await real.openLease({repo: 'octo/repo', repoPath: root, baseSha: head, taskId: 'local-task', slug: 'ci', epoch: 1});
     assert.equal(execFileSync('git', ['-C', created.path, 'rev-parse', 'HEAD']).toString().trim(), head);
     const job = await real.executeRepoJob({repo: 'octo/repo', repoPath: root, baseSha: head, taskId: 'local-job', recipeIds: ['test'], slug: 'job'});
@@ -138,6 +144,8 @@ test('repo-task runner checks out through the injected workspace and refuses an 
   const missing = await handleRunnerJob({version: 1, jobs: {}, cursors: {}, comments: {}, recent: []}, message, {token, now: () => Date.parse('2026-11-03T00:00:00.000Z')});
   assert.equal(missing.needsConfig, true);
   assert.equal(missing.evidenceLevel, 'fixture');
+  assert.match(missing.summary, /sourcePath/);
+  assert.ok(missing.steps.some(step => step.includes('recipes')));
   let heartbeats = 0;
   const executed = await handleRunnerJob({version: 1, jobs: {}, cursors: {}, comments: {}, recent: []}, {...message, id: 'job-2', idempotencyKey: 'repo-2', signature: signJob({...message, id: 'job-2', idempotencyKey: 'repo-2'}, token)}, {token, now: () => Date.parse('2026-11-03T00:00:00.000Z'),
     executeRepoTask: async job => {job.heartbeat(); heartbeats += 1; return {ok: true, evidenceLevel: 'fixture', diffSummary: 'diff', testReport: 'pass', artifactSummary: 'none', summary: 'fixture workspace'};}});
@@ -182,4 +190,65 @@ test('each compensation uses its own port and a directory scan keeps an incremen
     assert.equal(again.index.files.find(file => file.path === 'api.ts')?.reused, true);
     assert.equal(session.profileFor('octo/repo').pastFixes.length, 1);
   } finally {rmSync(root, {recursive: true, force: true});}
+});
+
+test('tool loop, duty comments, subagent control and repo tasks share one decision', () => {
+  const session = createDeveloperDirectionSession({now: () => Date.parse('2026-11-03T00:00:00.000Z')});
+  const unenrolled = authorizeDeveloperCall(session, {repo: 'octo/repo', branch: 'agent/fix', toolName: 'duty.comment.publish', sideEffect: 'external_write'});
+  assert.equal(unenrolled.allow, false);
+  assert.equal(standingDecisionForTool(session, {toolName: 'duty.comment.publish', sideEffect: 'external_write', arguments: {repo: 'octo/repo', branch: 'agent/fix'}}), undefined);
+  session.enroll({repo: 'octo/repo', credentialRef: 'github-credential-ref'});
+  for (const spec of [
+    {toolName: 'duty.comment.publish', sideEffect: 'external_write'},
+    {toolName: 'subagent.pause', sideEffect: 'local_write'},
+    {toolName: 'repo.task.run', sideEffect: 'local_write'},
+    {toolName: 'github.pr.comment', sideEffect: 'external_write'},
+  ]) {
+    const decision = authorizeDeveloperCall(session, {repo: 'octo/repo', branch: 'agent/fix', ...spec});
+    const loop = standingDecisionForTool(session, {toolName: spec.toolName, sideEffect: spec.sideEffect, arguments: {repo: 'octo/repo', branch: 'agent/fix'}});
+    assert.equal(decision.mode, 'auto', spec.toolName);
+    assert.equal(loop.allow, decision.allow);
+    assert.equal(loop.risk, decision.risk);
+  }
+  const merge = authorizeDeveloperCall(session, {repo: 'octo/repo', branch: 'agent/fix', toolName: 'github.pr.merge', action: 'merge', sideEffect: 'external_write'});
+  assert.equal(merge.allow, false);
+  assert.equal(merge.risk, 'irreversible');
+});
+
+test('session quiet hours hold ordinary notices and a digest flushes once', async () => {
+  const sent = [];
+  const session = createDeveloperDirectionSession({now: () => Date.parse('2026-11-03T08:00:00.000Z'), channel: {name: 'desktop', async send(notice) {sent.push(notice.title); return {accepted: true, evidenceRef: `desktop:${notice.id}`};}}});
+  session.configureNotices({quiet: {startLocal: '00:00', endLocal: '23:59', timeZone: 'UTC'}, perHour: 1, perDay: 1});
+  assert.equal((await session.notify({repo: 'octo/repo', kind: 'failure', summary: '夜里'})).delivered, false);
+  assert.equal((await session.notify({repo: 'octo/repo', kind: 'gate', summary: '确认'})).delivered, true);
+  assert.equal((await session.flushDigest()).delivered, true);
+  assert.equal((await session.flushDigest()).reason, 'digest is empty');
+  assert.deepEqual(sent, ['需要你确认', '开发者摘要']);
+});
+
+test('local repo executor clones a fixture, runs a recipe, returns the diff, and deletes the workspace', async () => {
+  const source = mkdtempSync(path.join(tmpdir(), 'repo-task-source-'));
+  const workspaceHint = [];
+  try {
+    execFileSync('git', ['init'], {cwd: source});
+    execFileSync('git', ['config', 'user.email', 'dev@example.test'], {cwd: source});
+    execFileSync('git', ['config', 'user.name', 'Developer Direction'], {cwd: source});
+    writeFileSync(path.join(source, 'write.mjs'), 'import {writeFileSync} from "node:fs"; writeFileSync("note.txt", "ran\\n"); console.log("recipe ok");\n');
+    execFileSync('git', ['add', 'write.mjs'], {cwd: source});
+    execFileSync('git', ['commit', '-m', 'init'], {cwd: source});
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: source}).toString().trim();
+    const executor = createLocalRepoExecutor({sourcePath: source, recipes: {test: ['node', 'write.mjs']}});
+    assert.equal(executor.configured, true);
+    const result = await executor.executeRepoTask({repo: 'octo/repo', baseSha: head, branch: 'agent/local-fix', recipeIds: ['test'], heartbeat() {workspaceHint.push('beat');}});
+    assert.equal(result.ok, true);
+    assert.equal(result.evidenceLevel, 'executed-local');
+    assert.match(result.testReport, /recipe ok/);
+    assert.match(result.diffSummary, /note.txt/);
+    assert.equal(result.artifactSummary, '工作区已删除');
+    assert.equal(workspaceHint.length, 2);
+    assert.equal(existsSync(path.join(source, 'note.txt')), false);
+    const missingRecipe = await executor.executeRepoTask({repo: 'octo/repo', baseSha: head, branch: 'agent/other', recipeIds: ['rm-rf'], heartbeat() {}});
+    assert.equal(missingRecipe.ok, false);
+    assert.match(missingRecipe.testReport, /not a configured recipe/);
+  } finally {rmSync(source, {recursive: true, force: true});}
 });
