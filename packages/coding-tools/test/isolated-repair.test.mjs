@@ -6,7 +6,7 @@ import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {existsSync,writeFileSync} from 'node:fs';
 import {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool,
-  captureCodingRepairSnapshot,affectedCodingRepairPackages} from '../dist/index.js';
+  captureCodingRepairSnapshot,affectedCodingRepairPackages,codingVerificationArtifactDigest} from '../dist/index.js';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const powerShellPath=process.env.PA_TEST_PWSH??process.env.PATH?.split(path.delimiter).map(directory=>path.join(directory,'pwsh.exe')).find(existsSync)??'C:/Program Files/PowerShell/7/pwsh.exe';
@@ -95,6 +95,27 @@ test('cancelled real command retains unknown until stopped confirmation and cann
   assert.equal(await readFile(path.join(f.user,'math.cjs'),'utf8'),before);
   await assert.rejects(f.host.patch(input.session.sessionId,{path:'math.cjs',expectedSha256:hash(before),edits:[{oldText:'a-b',newText:'a+b'}]},ctx()),{code:'RESULT_UNKNOWN'});
   assert.equal((await f.host.reconcile(input.session.sessionId,ctx())).state,'clear');
+});
+
+test('failed fixed command keeps a local artifact digest and does not rewrite the user file',async t=>{
+  const f=await fixture(t),input=await f.host.start({mode:'isolated'},ctx());
+  const before=await readFile(path.join(f.user,'math.cjs'),'utf8');
+  const failed=await f.host.verify(input.session.sessionId,'node-test',ctx());
+  assert.equal(failed.status,'FAILED');
+  assert.match(failed.artifactDigest,/^[a-f0-9]{64}$/);
+  assert.equal(failed.artifactDigest,codingVerificationArtifactDigest(failed));
+  assert.equal(JSON.stringify(failed).includes('Unrelated user changes'),false);
+  assert.equal(await readFile(path.join(f.user,'math.cjs'),'utf8'),before);
+  assert.equal(await readFile(path.join(f.user,'user-uncommitted.txt'),'utf8'),'Unrelated user changes\n');
+  const isolated=path.join(f.sessions,input.session.sessionId,'workspace','math.cjs');
+  await writeFile(isolated,'module.exports=(a,b)=>a-b;\nchanged\n');
+  const readback=await f.host.readback(input.session.sessionId,ctx());
+  const derived=readback.verification.find(item=>item.runId===failed.runId);
+  assert.equal(derived.status,'STALE');
+  assert.equal(derived.artifactDigest,failed.artifactDigest);
+  const historical=JSON.parse(await readFile(path.join(f.sessions,input.session.sessionId,'journal.json'),'utf8'));
+  assert.equal(historical.verification.find(item=>item.receipt.runId===failed.runId).receipt.status,'FAILED');
+  assert.equal(historical.verification.find(item=>item.receipt.runId===failed.runId).receipt.artifactDigest,failed.artifactDigest);
 });
 
 test('package source/config changes invalidate its production consumers; root lock and unknown DAG invalidate all',async t=>{
