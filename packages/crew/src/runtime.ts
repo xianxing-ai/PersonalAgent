@@ -1,4 +1,5 @@
 import {CrewError} from './errors.js';
+import {truncateReceiptResult, type CrewReceipt} from './receipts.js';
 import {CrewKernel, type CrewKernelDispatchInput, type CrewKernelGetTaskInput, type CrewKernelInterruptInput, type CrewKernelListTasksInput} from './kernel.js';
 import {CodexAppServerDriver} from './drivers/codex.js';
 import type {CrewConsentGrantInput} from './consent.js';
@@ -190,15 +191,12 @@ export class CrewDriverRuntime {
     try {
       session = await driver.start({agentId, instructions: agent.instructions, workspacePath: agent.workspacePath});
     } catch (error) {
-      return this.kernel.submitReceipt({
-        actorId: agentId,
-        taskId: task.taskId,
-        receipt: {
-          status: 'blocked',
-          result: `驱动无法启动：${describeError(error)}`,
-          evidenceRefs: [],
-          unblock: `在本机安装并登录 ${agent.driver} 对应的官方 CLI 后由父 agent 重新派单`,
-        },
+      return this.submitReceiptOrDegrade(agentId, task, {
+        status: 'blocked',
+        // 截断到回执上限：启动失败的对端错误原文可能很长，不能让提交本身失败卡死任务。
+        result: truncateReceiptResult(`驱动无法启动：${describeError(error)}`),
+        evidenceRefs: [],
+        unblock: `在本机安装并登录 ${agent.driver} 对应的官方 CLI 后由父 agent 重新派单`,
       });
     }
     this.runningTasks.set(task.taskId, session);
@@ -259,20 +257,40 @@ export class CrewDriverRuntime {
       return this.kernel.getTask({actorId: agentId, taskId: task.taskId}) ?? task;
     }
     const receipt = terminal.kind === 'completed'
-      ? {status: 'succeeded' as const, result: terminal.result.trim() || '(CLI 未返回结果文本)', evidenceRefs: [] as string[], unblock: ''}
-      : {status: 'failed' as const, result: terminal.kind === 'failed'
+      ? {status: 'succeeded' as const, result: truncateReceiptResult(terminal.result) || '(CLI 未返回结果文本)', evidenceRefs: [] as string[], unblock: ''}
+      : {status: 'failed' as const, result: truncateReceiptResult(terminal.kind === 'failed'
         ? terminal.message
-        : `驱动进程退出（exit=${terminal.exitCode ?? 'null'}${terminal.error ? `，${terminal.error}` : ''}）`,
+        : `驱动进程退出（exit=${terminal.exitCode ?? 'null'}${terminal.error ? `，${terminal.error}` : ''}）`),
         evidenceRefs: [] as string[], unblock: ''};
+    return this.submitReceiptOrDegrade(agentId, task, receipt);
+  }
+
+  /**
+   * 提交回执并保证任务一定能结束：CONFLICT（完成瞬间被父打断）以打断结果为准；
+   * 其他提交异常降级为一个短的 failed 回执（只写错误码与简短说明，不带对端原文），
+   * 任务结束并释放并发槽，而不是把异常抛给调用方让任务永久停在 running。
+   */
+  private submitReceiptOrDegrade(agentId: string, task: CrewTaskRecord, receipt: CrewReceipt): CrewTaskRecord {
+    const taskId = task.taskId;
     try {
-      return this.kernel.submitReceipt({actorId: agentId, taskId: task.taskId, receipt});
+      return this.kernel.submitReceipt({actorId: agentId, taskId, receipt});
     } catch (error) {
       // 父在完成瞬间打断：提交回执会 CONFLICT，以打断结果为准。
       if (error instanceof CrewError && error.code === 'CONFLICT') {
-        const current = this.kernel.getTask({actorId: agentId, taskId: task.taskId});
+        const current = this.kernel.getTask({actorId: agentId, taskId});
         if (current && current.status === 'cancelled') return current;
       }
-      throw error;
+      const code = error instanceof CrewError ? error.code : 'INTERNAL';
+      try {
+        return this.kernel.submitReceipt({
+          actorId: agentId,
+          taskId,
+          receipt: {status: 'failed', result: `回执提交失败（${code}），已降级结算：任务未能正常写入结果，请父 agent 重试或核查驱动状态`, evidenceRefs: [], unblock: ''},
+        });
+      } catch {
+        // 兜底回执也失败（例如父同时在打断）：返回当前任务记录，至少不再向调用方抛异常。
+        return this.kernel.getTask({actorId: agentId, taskId}) ?? {status: 'running', taskId, rootRequestId: task.rootRequestId, assignedAgentId: task.assignedAgentId, goal: task.goal, createdAt: task.createdAt};
+      }
     }
   }
 }
