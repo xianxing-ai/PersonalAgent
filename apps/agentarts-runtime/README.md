@@ -1,5 +1,7 @@
 # 自有 AgentArts Runtime 镜像
 
+2026-11-03：`platformVersion: 1` 增加 `pinned_readonly.correlate`、`evaluation.bind`、`publish.record`、`deployment.build_plan`、`deployment.correlate_readback`。身份、构建计划和读回端口只来自启动时的 `trustedPlatformPorts`，调用 JSON 不能改部署或夹带分数。未注入端口返回 `UNSUPPORTED_CAPABILITY`。模型代理状态与知识、MCP、trace、评估四面分开，且成功关联也不会把四面标成 verified。真实云验收步骤见 [手工验收说明](../../tests/manual/agentarts/PINNED-READONLY-ACCEPTANCE.md)。
+
 `wikiVersion: 1` 是受内层宿主凭据保护的 provisional 编译/问答服务，经同一 `/invocations` 和 ModelGateway 执行，不持有本机文件路径或工具授权。请求绑定摘要、阶段和输出预算；资料作为不可信输入，响应标记为 `unverified` 并由调用方重新检查引用。新的云端镜像必须先经明确授权发布并实测，旧镜像不因此获得 Wiki 能力；详情见 [ADR-0038](../../docs/adr/0038-llm-wiki-import.md)。
 
 <!-- architecture-scope-20261013 -->

@@ -1,5 +1,7 @@
 # 自有 AgentArts 编排包
 
+2026-11-03 代码增量（MOD-29～32，CW-02 / CW-06 / F23 / F26）：精确部署上的一次已授权只读关联、日常 Competition sampling 台账、平台分数与原输出绑定、ARM64 构建计划与控制面核对。全部通过可注入端口；缺端口为 unavailable，不填默认分数、不把 `run` 或控制面 READY 当成已执行或探针通过。真实华为云、SWR、Docker 与 AK/SK 均未在本增量中调用。说明与自检命令见 [代码增量记录](../../docs/competition/evidence/CW02_CW06_F23_F26_CODE_20261103.md)。
+
 2026-10-22 源码增量 `owned-1.9`：按用户最新要求只精简操作审批提示。普通任务直接提出目录内合法工具操作；审批由原统一宿主卡处理，聊天中不再索要“确认/同意”或复述。宿主仍认可的同任务批准不重复询问；工具续接继续完成原目标，不再被 FAST 的“只总结、不追加动作”阻断。JARVIS 身份与风格段、结果答复提示保持原字节，实际 Policy/授权/结果未知/Schema 门禁不变。源码构建与 46 项定向 Fake/字节检查通过，真实模型与云部署均未运行；现有钉版镜像不会因源码合并自动更新。见 [审批提示精简记录](../../docs/competition/evidence/TASK_ACTION_PROMPT_SIMPLIFICATION_20261022.md)。
 
 2026-10-21 源码增量 `owned-1.8`：按用户提供的 JARVIS 原文仅替换指定声明，保留另外八个声明源码和执行门禁。此处版本是源码/角色诊断标识，**不表示已部署云端版本**；现有 Desktop 仍使用独立钉版 deployment 配置，不自动切换部署。原文 SHA、AST/hash 静态验证及未运行项见 [源码验证记录](../../docs/competition/evidence/JARVIS_EXACT_PROMPT_VALIDATION_20261021.md)。本轮没有真实模型、音频、镜像或平台部署。
