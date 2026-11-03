@@ -59,7 +59,7 @@ test('opted-in ordinary user tasks retain their original directory both within a
 });
 
 async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBeforeEnable=false,rootTool=false,budget=4,afterFirst,unknownSecond=false,proposeExtra=false,secondArguments={value:2},environment=false}={}) {
-  let app,client,rootId,dispatchingTaskId;
+  let app,client,rootId,dispatchingTaskId,pendingRequest;
   const requests=[],sends=[],executions=[],sockets=[],state={firstAllowed:true,extraReady:false,blockAvailability:false};
   let enteredAvailability;
   const availabilityEntered=new Promise(resolve=>{enteredAvailability=resolve;});
@@ -72,6 +72,7 @@ async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBefo
     return {value:args.value};
   }}))];
   function answer(query){
+    requests.push(pendingRequest);
     sends.push({taskId:dispatchingTaskId,query:structuredClone(query)});
     if(!query.continuation)return proposal('child-first',first);
     if(query.continuation.proposalId==='child-first')return proposal('child-second',proposeExtra?extra:second,secondArguments);
@@ -94,9 +95,9 @@ async function fixture(t,{transport='https',optIn=true,newTasks=false,legacyBefo
       exportPolicyVersion:'synthetic-original-v1',accepts:()=>tool.descriptor.name!==first.name||state.firstAllowed,
       project:({result})=>result})),
     authorizationProvider:{read:async()=>{if(state.revokeOnCredential)state.firstAllowed=false;return 'Bearer synthetic-outer';}},
-    beforeCompetitionSend:request=>{dispatchingTaskId=request.taskId;requests.push({taskId:request.taskId,revision:request.revision,
+    beforeCompetitionSend:request=>{dispatchingTaskId=request.taskId;pendingRequest={taskId:request.taskId,revision:request.revision,
       ...(request.availableTools?{availableTools:structuredClone(request.availableTools)}:{}),
-      ...(request.continuation?{continuation:structuredClone(request.continuation)}:{})});},
+      ...(request.continuation?{continuation:structuredClone(request.continuation)}:{})};},
     ...(transport==='wss'?{transport:'wss',websocketUrl:'wss://agentarts.example.test/runtimes/synthetic-child/ws',
       websocketAuthorizationProvider:{read:async()=> 'Bearer synthetic-inner'},websocketFactory:()=>{
         const socket=new SyntheticWebSocket((frame,connection)=>{
