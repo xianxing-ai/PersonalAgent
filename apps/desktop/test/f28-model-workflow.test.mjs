@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -24,6 +25,7 @@ test('F28 actual graph uses original guarded ModelGateway calls and retains unve
   };
   const createGateway=config=>createConfiguredSubagentModelGateway({...config,fetch:config.fetch??fetchImpl});
   const modelApiHost=createModelApiConfig({userData:directory,safeStorage,createGateway,createGuardedGateway:createGateway,fetchImpl});
+  modelApiHost.setEgressHost({prepare:syntheticPublicPayloadGate});
   modelApiHost.configure({id:'synthetic-model',provider:'openai-compatible',baseUrl:'https://synthetic.invalid/v1',model:'synthetic-text',
     displayName:'Fixture',apiKey:'synthetic-secret',enabled:true,makeDefault:true});
   assert.equal(sent.length,0);

@@ -1412,7 +1412,12 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       const preparePayload=()=>this.preparePayload===undefined?undefined:callWithAbort(()=>this.preparePayload!({requestId,destination:payloadDestination,payload:init.body,deadline,
         signal:combined.signal,isCurrent:()=>{
           if(this.closed||currentAbortError(combined))return false;
-          try{return this.beforeSend?.(sendRequest)===undefined;}catch{return false;}
+          try{
+            const result:unknown=this.beforeSend?.(sendRequest);
+            if(result===undefined)return true;
+            void Promise.resolve(result).catch(()=>undefined);
+            return false;
+          }catch{return false;}
         }}),combined);
       let payloadLease:Awaited<ReturnType<typeof preparePayload>>;
 
@@ -1431,9 +1436,13 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         payloadLease=await preparePayload();
       },
       beforeSend: receipt => {
-      payloadLease?.assertBeforeSend({destination:payloadDestination,payload:init.body});
+      stage = 'export_guard';
+      try {
+        payloadLease?.assertBeforeSend({destination:payloadDestination,payload:init.body});
+      } catch {
+        throw currentAbortError(combined) ?? new ProtocolError('UNAUTHORIZED', 'AgentArts payload export permission denied');
+      }
       if (this.beforeSend !== undefined) {
-        stage = 'export_guard';
         try {
           const guardResult: unknown = this.beforeSend(sendRequest);
           if (guardResult !== undefined) {

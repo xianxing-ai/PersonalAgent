@@ -25,9 +25,12 @@ export async function runRuntimeConnectorChangeDecision(options:ConnectorChangeD
     recoveryKey,'runtime-interruption:v1','runtime-startup-recovery:v1']);
   function pure() {
     const task=runtime.getTask(taskId);
+    const stopped=task.cancelRequested&&isDeepStrictEqual(runtime.loadCheckpoint(taskId,'execution-epoch:advance:task.cancel'),
+      {reason:'stop',epoch:runtime.readExecutionEpoch(taskId)});
     if(!isDeepStrictEqual(runtime.loadCheckpoint(taskId,'connector-change-origin'),origin)
       ||task.goal!=='判断是否告知用户：'+options.summary||runtime.readToolExecutions(taskId).length
-      ||runtime.listCheckpointKeys(taskId).some(key=>!allowed.has(key)))fail('RESULT_UNKNOWN');
+      ||runtime.listCheckpointKeys(taskId).some(key=>!allowed.has(key)
+        &&!(stopped&&(key==='execution-epoch'||key==='execution-epoch:advance:task.cancel'))))fail('RESULT_UNKNOWN');
     return task;
   }
   function current() {

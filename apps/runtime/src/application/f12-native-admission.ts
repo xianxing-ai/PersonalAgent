@@ -54,13 +54,15 @@ export function f12ReturnDigestPort(runtime:TaskRuntime,port:CoordinationPort,ch
     toolName:frozen.descriptor.name,toolVersion:frozen.descriptor.version,arguments:structuredClone(frozen.arguments),verification:'unverified'};
   return {execute:async request=>{
     const child=current();
+    runtime.assertExecutionEpoch(childTaskId,request.executionEpoch!);
+    const boundProposal={...proposal,executionEpoch:request.executionEpoch!};
     if(request.taskId!==childTaskId||request.goal!==child.goal||request.deadline!==frozen.deadline||request.signal.aborted)
       throw new ProtocolError('UNAUTHORIZED','Native F12 invocation is outside its original child');
-    if(request.continuation===undefined)return structuredClone(proposal);
+    if(request.continuation===undefined)return structuredClone(boundProposal);
     const loop=runtime.loadCheckpoint(childTaskId,'competition-loop') as {receipts?:{
       proposal:CoordinationToolProposalResult;continuation:unknown;workerSelection?:unknown;workerRevision?:number}[]}|undefined;
     const receipts=loop?.receipts;
-    if(!receipts||receipts.length!==1||!isDeepStrictEqual(receipts[0]!.proposal,proposal)
+    if(!receipts||receipts.length!==1||!isDeepStrictEqual(receipts[0]!.proposal,boundProposal)
       ||!isDeepStrictEqual(receipts[0]!.continuation,request.continuation)||request.continuation.state!=='confirmed'
       ||!Number.isSafeInteger(receipts[0]!.workerRevision))
       throw new ProtocolError('UNAUTHORIZED','Native F12 summary requires its original confirmed graph');

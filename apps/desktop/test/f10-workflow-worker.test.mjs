@@ -1,4 +1,4 @@
-import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
+import {syntheticCoordinationExecution,syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
@@ -34,6 +34,7 @@ test('F10 keeps research metadata distinct, uses the original 200-character know
     fetchImpl:async(_url,request)=>{http++;const body=JSON.parse(request.body);modelBodies.push(body);const input=JSON.parse(body.messages.at(-1).content);
       return new Response(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({state:input.sourceKind==='metadata_only'?'unknown':'supported'})},finish_reason:'stop'}]}),
         {status:200,headers:{'content-type':'application/json'}});}});
+  models.setEgressHost({prepare:syntheticPublicPayloadGate});
   models.configure({id:'aux-review',provider:'openai-compatible',baseUrl:'https://fixture.invalid/v1',model:'fixture-review',displayName:'Explicit auxiliary fixture',apiKey:'fixture-not-a-secret',enabled:true,makeDefault:true});
   const originalPolicies=[...knowledge.competitionToolExports,...publicTools.competitionToolExports.filter(policy=>policy.toolName==='research.search')];
   let reviewError;

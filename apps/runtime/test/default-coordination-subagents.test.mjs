@@ -57,7 +57,7 @@ test('persistent default children retain the original AgentArts candidate protoc
   for(const [initial,restored] of [[undefined,undefined],['1.0','1.0'],[undefined,'1.0'],['1.0',undefined]]) {
     await t.test(`${initial??'disabled'} -> ${restored??'disabled'}`,async()=>{
       const directory=await mkdtemp(path.join(os.tmpdir(),'pa-child-config-'));
-      let app,reads=0;
+      let app,reads=0,pendingRequest;
       const sends=[];
       const open=repairCandidateVersion=>{
         const dispatch=createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,getTools:()=>app.tools,
@@ -74,8 +74,9 @@ test('persistent default children retain the original AgentArts candidate protoc
             {toolName:read.name,toolVersion:read.version,exportPolicyVersion:'fixture-v1',
               accepts:()=>true,project:({result})=>result},
           ],
-          beforeCompetitionSend:request=>{sends.push({taskId:request.taskId,continuation:request.continuation});},
+          beforeCompetitionSend:request=>{pendingRequest={taskId:request.taskId,continuation:request.continuation};},
           fetchImpl:async(_url,init)=>{
+            sends.push(pendingRequest);
             const body=JSON.parse(init.body);
             let query;try {query=JSON.parse(body.query);}catch {query={goal:body.query};}
             const continuation=query.continuation||query.goal?.startsWith('以下本地已确认');

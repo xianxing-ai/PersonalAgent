@@ -89,7 +89,7 @@ function fixture(kind,{modelConfigured=true,presence=true,online=true,repairIssu
       if(request.continuation){assert.ok(request.continuation.result.state||request.continuation.result.status);return {kind:'text',text:'Child used confirmed workflow result',verification:'unverified'};}
       initialWorkerId??=request.taskId;
       const originRead=followupPatch&&request.taskId===initialWorkerId;
-      const proposal={kind:'tool_proposal',proposalId:'developer-request',toolName:'developer.'+(originRead?'ci_list':kind),toolVersion:'1.0.0',arguments:originRead?{repo}:args,verification:'unverified'};
+      const proposal={kind:'tool_proposal',proposalId:'developer-request',toolName:'developer.'+(originRead?'ci_list':kind),toolVersion:'1.0.0',arguments:originRead?{repo}:args,verification:'unverified',executionEpoch:request.executionEpoch};
       if(legacyBinding){const key='developer-workflow:'+sha(JSON.stringify(proposal.proposalId))+':binding';
         if(app.runtime.loadCheckpoint(request.taskId,key)===undefined)app.runtime.saveCheckpoint(request.taskId,key,
           {version:1,bindingId:'synthetic-dev-config',taskId:request.taskId,deadline:request.deadline,proposalRevision:request.revision,

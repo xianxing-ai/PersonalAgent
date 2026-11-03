@@ -153,7 +153,7 @@ test('tool and evidence claims cannot mark a task succeeded', async () => {
   for (const result of [{kind: 'tool_proposal', tool: 'sendMail'},
     {kind: 'text', text: 'done', verification: 'verified'},
     {kind: 'text', text: 'done', verification: 'mock', evidenceRefs: ['forged']}]) {
-    await fixture({execute: async () => result}, async (app, client) => {
+    await fixture({execute: async request => ({...result,executionEpoch:request.executionEpoch})}, async (app, client) => {
       const task = await terminal(app, (await submit(client)).taskId);
       assert.equal(task.state, 'failed');
       assert.equal(task.error.code, 'INVALID_ARGUMENT');
