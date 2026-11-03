@@ -66,6 +66,12 @@ node packages/windows-client/scripts/check-native-platform.mjs
 
 两次均为 `acceptance=not_run`。音频脚本报告 `platform=linux`，未打开麦克风或扬声器。原生脚本报告 `dotnetError=ENOENT`，未打开命名管道、UIA 或凭据库。
 
+## Windows CI 修复复验
+
+Foundation `41618736633` 的三个失败均来自原 `initializeLiveVoice` 提取测试未声明新增宿主上下文。仅补齐 `notificationApplicationHost` 与 `voiceSessionFinalHost` 的未配置值，保留生产初始化器、历史恢复和零音频资源调用断言。
+
+在 Windows 隔离工作树 `.worktrees/pr538-repair` 构建依赖后，`node --test apps/desktop/test/live-voice-boot-history.test.mjs` 为 3/3 通过。没有重复已通过的语音测试，也未把此结果计为麦克风、扬声器或云验收。当前提交完整 CI 仍由推送后单独确认。
+
 ## Windows 与音频真机步骤
 
 在用户明确允许录音、播放和前台窗口操作后，于目标 Windows 机执行。不要把下面的命令输出写成已经发生。
