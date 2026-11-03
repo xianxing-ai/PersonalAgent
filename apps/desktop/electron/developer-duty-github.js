@@ -163,6 +163,16 @@ export function createGitHubDutyComments({repo, number, readCredential, fetchImp
         return {state: response.ok ? 'confirmed' : 'unknown'};
       } catch { return {state: 'unknown'}; }
     },
+    async deleteComment(id, body) {
+      if (!writeAvailable) assertWrite('delete', body, id);
+      const token = await tokenOf(readCredential);
+      if (!token) return {state: 'unknown'};
+      assertWrite('delete', body, id);
+      try {
+        const response = await fetchImpl(`${API}/repos/${repo}/issues/comments/${id}`, {method: 'DELETE', headers: headers(token)});
+        return {state: response.ok || response.status === 204 ? 'confirmed' : 'unknown'};
+      } catch { return {state: 'unknown'}; }
+    },
   };
 }
 

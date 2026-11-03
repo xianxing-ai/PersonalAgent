@@ -47,5 +47,10 @@ export function createAsyncSubagentHost({runtimeModule, getRuntime, subagentOpti
       return controller.instruct(payload?.parentTaskId, payload?.subtaskId, payload?.instruction, payload?.expectedControlRevision);
     },
     stopChild(payload) { return controller.stop(payload?.parentTaskId, payload?.subtaskId); },
+    pause(parentTaskId, subtaskId) { return controller.pause(parentTaskId, subtaskId); },
+    resume(parentTaskId, subtaskId) { return controller.resume(parentTaskId, subtaskId); },
+    redirect(parentTaskId, subtaskId, instruction, expectedControlRevision) { return controller.redirect(parentTaskId, subtaskId, instruction, expectedControlRevision); },
+    handoff(parentTaskId, subtaskId) { return controller.handoff(parentTaskId, subtaskId); },
+    emergencyStop() { return controller.emergencyStop(); },
   };
 }

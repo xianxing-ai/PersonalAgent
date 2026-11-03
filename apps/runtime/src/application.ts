@@ -176,6 +176,10 @@ export {
   SUBAGENT_SPAWN_TOOL_NAME,
   SUBAGENT_INSTRUCT_TOOL_NAME,
   SUBAGENT_STOP_TOOL_NAME,
+  SUBAGENT_PAUSE_TOOL_NAME,
+  SUBAGENT_RESUME_TOOL_NAME,
+  SUBAGENT_REDIRECT_TOOL_NAME,
+  SUBAGENT_HANDOFF_TOOL_NAME,
   SUBAGENT_TYPE_LIST_TOOL_NAME,
   SUBAGENT_TYPE_CREATE_TOOL_NAME,
   SUBAGENT_TYPE_UPDATE_TOOL_NAME,
@@ -210,6 +214,14 @@ export {
   developerDutyCiClass,
 } from './application/developer-duty.js';
 export {createDeveloperDutyTools, DUTY_WATCH, DUTY_UNWATCH, DUTY_POLICY_SET, DUTY_PERSONAL_LIST, DUTY_STATUS, DUTY_CI_TRIAGE, DUTY_COMMENT_PUBLISH} from './application/developer-duty-tools.js';
+export {
+  createDeveloperDirectionSession, createMemoryGitWorkspace, createNodeGitWorkspace, agentBranch, buildRepoProfile,
+  profilePrompt, standingDecisionForTool, authorizeDeveloperCall, buildDeveloperReport, renderPullRequestBody, renderPeriodReport, developerWizardSteps, COMPENSATION_CATALOG,
+} from './application/developer-direction.js';
+export type {
+  DeveloperDirectionSession, DeveloperGoal, DeveloperReport, GitWorkspacePort, WorkspaceLease, RepoLock, RepoProfile,
+  SubagentControlPort,
+} from './application/developer-direction.js';
 export {LOCAL_REPAIR_TOOL} from './application/local-repair.js';
 export {createKnowledgeFeedReceipt,createKnowledgeFeedReceiptFromCollectResult,createKnowledgeFeedReceiptFromConfirmedExecution, parseKnowledgeFeedReceipt, verifyKnowledgeFeedReceiptBinding,
   knowledgeFeedReceiptItems} from './application/knowledge-feed-receipt.js';

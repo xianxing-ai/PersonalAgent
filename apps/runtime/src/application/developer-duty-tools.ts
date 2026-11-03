@@ -36,6 +36,7 @@ export interface DeveloperDutyToolOptions {
   useFixtureComments?: boolean;
   now?: () => number;
   onNotify?: (notice: {channel: 'f12'; delivered: boolean; duplicate: boolean; summary: string; dedupeKey: string}) => void;
+  onEvents?: (repo: string, events: readonly {deliveryId?: string; id?: string; headSha?: string; number?: number}[]) => Promise<void> | void;
   submitRemote?: (job: {kind: 'developer-duty'; idempotencyKey: string; taskId: string; repo: string; payload: Record<string, unknown>}) => Promise<{location: string; reason: string; receipt: Record<string, unknown>}>;
 }
 
@@ -125,13 +126,13 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
           try {
             await commitIntent(intent, {...ports, writeAvailable: false, listComments: async () => existing});
             saveIntent({...intent, state: 'confirmed'});
+            return {wrote: false};
           } catch (error) {
             if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') return {wrote: false, reason: 'comment result requires readback'};
             if (!(error instanceof ProtocolError) || error.code !== 'UNSUPPORTED_CAPABILITY') throw error;
             saveIntent(intent);
             return {wrote: false, reason: 'comment requires ToolGateway content authorization'};
           }
-          return {wrote: false};
         };
         if (Array.isArray(pullRequests)) {
           let wrote = false;
@@ -160,21 +161,26 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
         if (remote.location === 'remote') {
           const gap = remote.receipt.gap === true || remote.receipt.connected === false;
           const events = Array.isArray(remote.receipt.events) ? remote.receipt.events : [];
-          if (!gap && events.length) notify(task.taskId, `${repo} 有 ${events.length} 条新事件`, `duty:${repo}:${events.map(event => (event as {deliveryId?: string; id?: string}).deliveryId ?? (event as {id?: string}).id).join(',')}`);
+          if (!gap && events.length) {
+            notify(task.taskId, `${repo} 有 ${events.length} 条新事件`, `duty:${repo}:${events.map(event => (event as {deliveryId?: string; id?: string}).deliveryId ?? (event as {id?: string}).id).join(',')}`);
+            await options.onEvents?.(repo, events as Array<{deliveryId?: string; id?: string; headSha?: string; number?: number}>);
+          }
           const comment = gap ? {wrote: false} : await writeComment('remote');
           results.push({repo, location: remote.location, reason: pageReason || comment.reason || remote.reason, gap, noChange: gap ? false : remote.receipt.noChange === true, evidenceLevel, ...(comment.wrote ? {comment: true} : {})});
           continue;
         }
         const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
         if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
+        if (local.advanced) await options.onEvents?.(repo, page.events);
         const comment = page.gap || !page.connected ? {wrote: false} : await writeComment('local');
-        results.push({repo, location: 'local', reason: pageReason || comment.reason || remote.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel});
+        results.push({repo, location: 'local', reason: pageReason || comment.reason || remote.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel, ...(comment.wrote ? {comment: true} : {})});
         continue;
       }
       const local = ingestDeveloperDutyPoll(runtime(), task.taskId, cursor, page);
       if (local.advanced && local.receipt) notify(task.taskId, `${repo} 有新的值班事件`, `duty:${repo}:${page.events.map(event => event.deliveryId).join(',')}`);
+      if (local.advanced) await options.onEvents?.(repo, page.events);
       const comment = page.gap || !page.connected ? {wrote: false} : await writeComment('local');
-      results.push({repo, location: 'local', reason: pageReason || comment.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel});
+      results.push({repo, location: 'local', reason: pageReason || comment.reason || (page.gap || !page.connected ? 'gap is not no change' : 'local cursor'), gap: page.gap || !page.connected, noChange: local.noChange === true && page.connected === true && page.gap === false, evidenceLevel, ...(comment.wrote ? {comment: true} : {})});
     }
     return results;
   };

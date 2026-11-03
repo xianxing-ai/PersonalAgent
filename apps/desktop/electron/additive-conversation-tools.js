@@ -2,7 +2,7 @@ import {readCanonicalUserWorkParent} from '@personal-agent/runtime/application';
 
 /** Model-visible bindings for additive tools. Registration alone is not authorization. */
 export const ADDITIVE_CONVERSATION_TOOL_NAMES = [
-  'subagent.spawn', 'subagent.instruct', 'subagent.stop',
+  'subagent.spawn', 'subagent.instruct', 'subagent.stop', 'subagent.pause', 'subagent.resume', 'subagent.redirect', 'subagent.handoff',
   'subagent.type.list', 'subagent.type.create', 'subagent.type.update', 'subagent.type.enable',
   'subagent.type.disable', 'subagent.type.delete', 'subagent.type.confirm', 'subagent.type.import',
   'runner.host.add', 'runner.host.update', 'runner.host.remove', 'runner.host.enable', 'runner.host.disable',

@@ -142,6 +142,20 @@ test('comment writes reassert exact target and full body after credential lookup
   assert.deepEqual(writes, ['POST', 'PATCH']);
 });
 
+test('delete comment sends DELETE with the bearer header and still requires authorization', async () => {
+  const seen = [];
+  const ports = createGitHubDutyComments({repo: 'octo/repo', number: 4, readCredential: () => 'github-token-fixture',
+    assertWriteAuthorized: intent => {assert.equal(intent.action, 'delete'); assert.equal(intent.commentId, 9); assert.ok(intent.body.startsWith(DUTY_STATUS_MARKER));},
+    fetchImpl: async (url, init = {}) => {seen.push({url, method: init.method, authorization: init.headers.Authorization}); return response(204, {});}});
+  const deleted = await ports.deleteComment(9, `${DUTY_STATUS_MARKER}\nupdated`);
+  assert.equal(deleted.state, 'confirmed');
+  assert.equal(seen[0].method, 'DELETE');
+  assert.equal(seen[0].authorization, 'Bearer github-token-fixture');
+  assert.equal(seen[0].url, 'https://api.github.com/repos/octo/repo/issues/comments/9');
+  const readonly = createGitHubDutyComments({repo: 'octo/repo', number: 4, readCredential: () => 'github-token-fixture', fetchImpl: async () => response(204, {})});
+  await assert.rejects(readonly.deleteComment(9, `${DUTY_STATUS_MARKER}\nupdated`), {code: 'UNSUPPORTED_CAPABILITY'});
+});
+
 test('comment deduplication reads later pages before choosing an edit', async () => {
   const paths = [];
   const writes = [];
