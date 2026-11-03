@@ -57,18 +57,19 @@ test('task roots are dispatched by the parent and delivered through the agent ma
   const store = open();
   try {
     coderAgent(store);
-    const task = store.dispatchTask({taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '修复 crew 包的类型错误'});
+    const task = store.dispatchTask({taskId: 't1', assignedAgentId: 'coder-x', goal: '修复 crew 包的类型错误'});
     assert.equal(task.status, 'queued');
+    assert.equal(task.rootRequestId, 'root-t1');
     const inbox = store.receiveMessages('coder-x');
     assert.equal(inbox.length, 1);
     assert.equal(inbox[0].senderAgentId, CREW_PARENT_AGENT_ID);
     assert.equal(inbox[0].kind, 'task');
     assert.equal(inbox[0].taskId, 't1');
-    assert.equal(inbox[0].parentRequestId, 'root-1');
+    assert.equal(inbox[0].parentRequestId, 'root-t1');
     assert.equal(inbox[0].expectsReply, true);
-    assert.throws(() => store.dispatchTask({taskId: 't2', rootRequestId: 'root-1', assignedAgentId: 'nobody', goal: 'x'}), error => error instanceof CrewError && error.code === 'UNKNOWN_AGENT');
-    assert.throws(() => store.dispatchTask({taskId: 't1', rootRequestId: 'root-2', assignedAgentId: 'coder-x', goal: 'x'}), error => error instanceof CrewError && error.code === 'CONFLICT');
-    assert.throws(() => store.dispatchTask({taskId: 't3', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '   '}), /goal/);
+    assert.throws(() => store.dispatchTask({taskId: 't2', assignedAgentId: 'nobody', goal: 'x'}), error => error instanceof CrewError && error.code === 'UNKNOWN_AGENT');
+    assert.throws(() => store.dispatchTask({taskId: 't1', assignedAgentId: 'coder-x', goal: 'x'}), error => error instanceof CrewError && error.code === 'CONFLICT');
+    assert.throws(() => store.dispatchTask({taskId: 't3', assignedAgentId: 'coder-x', goal: '   '}), /goal/);
   } finally { store.close(); }
 });
 
@@ -76,15 +77,16 @@ test('the 9th automatic dispatch of one root request is rejected', () => {
   const store = open();
   try {
     coderAgent(store);
-    for (let i = 1; i <= MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST; i++) {
-      store.dispatchTask({taskId: `t${i}`, rootRequestId: 'root-busy', assignedAgentId: 'coder-x', goal: `第 ${i} 项子任务`});
+    store.dispatchTask({taskId: 't1', assignedAgentId: 'coder-x', goal: '根任务'});
+    for (let i = 2; i <= MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST; i++) {
+      store.dispatchTask({taskId: `t${i}`, parentTaskId: 't1', assignedAgentId: 'coder-x', goal: `第 ${i - 1} 项子任务`});
     }
-    assert.equal(store.listTasks({rootRequestId: 'root-busy'}).length, MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST);
+    assert.equal(store.listTasks({rootRequestId: 'root-t1'}).length, MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST);
     assert.throws(
-      () => store.dispatchTask({taskId: 't9', rootRequestId: 'root-busy', assignedAgentId: 'coder-x', goal: '第 9 次派单'}),
+      () => store.dispatchTask({taskId: 't9', parentTaskId: 't1', rootRequestId: 'brand-new-display-root', assignedAgentId: 'coder-x', goal: '第 9 次派单'}),
       error => error instanceof CrewError && error.code === 'DISPATCH_LIMIT_EXCEEDED',
     );
-    store.dispatchTask({taskId: 'other-1', rootRequestId: 'root-other', assignedAgentId: 'coder-x', goal: '另一个根不受影响'});
+    store.dispatchTask({taskId: 'other-1', assignedAgentId: 'coder-x', goal: '另一个根不受影响'});
     assert.equal(store.getTask('other-1').status, 'queued');
   } finally { store.close(); }
 });
@@ -93,7 +95,7 @@ test('claims are FIFO and the 3rd concurrent task per agent stays queued', () =>
   const store = open();
   try {
     coderAgent(store);
-    for (let i = 1; i <= 3; i++) store.dispatchTask({taskId: `t${i}`, rootRequestId: 'root-fifo', assignedAgentId: 'coder-x', goal: `子任务 ${i}`});
+    for (let i = 1; i <= 3; i++) store.dispatchTask({taskId: `t${i}`, assignedAgentId: 'coder-x', goal: `子任务 ${i}`});
     const first = store.claimNextTask('coder-x');
     const second = store.claimNextTask('coder-x');
     assert.deepEqual([first.taskId, second.taskId], ['t1', 't2']);
@@ -112,9 +114,9 @@ test('per-agent concurrency limits are independent', () => {
   try {
     coderAgent(store);
     store.registerAgent({agentId: 'solo', displayName: '单线程', driver: 'claude', instructions: '一次只跑一个任务。', workspacePath: '/workspace/crew/solo', concurrencyLimit: 1});
-    store.dispatchTask({taskId: 'a1', rootRequestId: 'root-a', assignedAgentId: 'solo', goal: 'a1'});
-    store.dispatchTask({taskId: 'a2', rootRequestId: 'root-a', assignedAgentId: 'solo', goal: 'a2'});
-    store.dispatchTask({taskId: 'x1', rootRequestId: 'root-x', assignedAgentId: 'coder-x', goal: 'x1'});
+    store.dispatchTask({taskId: 'a1', assignedAgentId: 'solo', goal: 'a1'});
+    store.dispatchTask({taskId: 'a2', assignedAgentId: 'solo', goal: 'a2'});
+    store.dispatchTask({taskId: 'x1', assignedAgentId: 'coder-x', goal: 'x1'});
     assert.equal(store.claimNextTask('solo').taskId, 'a1');
     assert.equal(store.claimNextTask('solo'), undefined);
     assert.equal(store.claimNextTask('coder-x').taskId, 'x1');
@@ -142,7 +144,7 @@ test('completeTask stores a valid receipt and rejects invalid ones without write
   const store = open();
   try {
     coderAgent(store);
-    store.dispatchTask({taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '实现任务表'});
+    store.dispatchTask({taskId: 't1', assignedAgentId: 'coder-x', goal: '实现任务表'});
     assert.throws(() => store.completeTask('missing', {status: 'succeeded', result: 'x', evidenceRefs: [], unblock: ''}), error => error instanceof CrewError && error.code === 'NOT_FOUND');
     assert.throws(() => store.completeTask('t1', {status: 'succeeded', result: 'x', evidenceRefs: [], unblock: ''}), error => error instanceof CrewError && error.code === 'CONFLICT');
     const claimed = store.claimNextTask('coder-x');
@@ -161,7 +163,7 @@ test('blocked receipts keep the unblock condition on the task', () => {
   const store = open();
   try {
     coderAgent(store);
-    store.dispatchTask({taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '合并前需要用户确认'});
+    store.dispatchTask({taskId: 't1', assignedAgentId: 'coder-x', goal: '合并前需要用户确认'});
     store.claimNextTask('coder-x');
     const blocked = store.completeTask('t1', {status: 'blocked', result: '需要 force push 授权', evidenceRefs: [], unblock: '用户确认后重新派单'});
     assert.equal(blocked.status, 'blocked');
@@ -174,7 +176,7 @@ test('cancel interrupts a queued or running task and notifies the mailbox', () =
   const store = open();
   try {
     coderAgent(store);
-    store.dispatchTask({taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '长任务'});
+    store.dispatchTask({taskId: 't1', assignedAgentId: 'coder-x', goal: '长任务'});
     const cancelled = store.cancelTask('t1', '父 agent 打断：需求变更');
     assert.equal(cancelled.status, 'cancelled');
     assert.equal(cancelled.cancelReason, '父 agent 打断：需求变更');
@@ -195,13 +197,13 @@ test('agent-to-agent messages are FIFO, keep metadata and survive dequeue + rest
   try {
     coderAgent(store);
     store.registerAgent({agentId: 'reviewer-y', displayName: '评审者', driver: 'opencode', instructions: '独立审查。', workspacePath: '/workspace/crew/reviewer-y'});
-    store.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查第一个补丁', parentRequestId: 'root-1', rootRequestId: 'root-1', taskId: 't1', expectsReply: true, attachmentRefs: ['handoff:diff-0001'], hop: 1});
+    store.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: '请审查第一个补丁', expectsReply: true, attachmentRefs: ['handoff:diff-0001']});
     store.sendMessage({fromAgentId: 'reviewer-y', toAgentId: 'coder-x', text: '补丁有一处未处理的空指针'});
     store.sendMessage({fromAgentId: CREW_PARENT_AGENT_ID, toAgentId: 'coder-x', text: '父 agent 转达：优先修复空指针'});
     const first = store.receiveMessages('reviewer-y');
     assert.deepEqual(first.map(m => m.senderAgentId), ['coder-x']);
     assert.deepEqual([...first[0].attachmentRefs], ['handoff:diff-0001']);
-    assert.equal(first[0].hop, 1);
+    assert.equal(first[0].hop, 0);
     assert.equal(first[0].expectsReply, true);
     const consumed = store.receiveMessages('reviewer-y', {dequeue: true});
     assert.deepEqual(consumed.map(m => m.senderAgentId), ['coder-x']);
@@ -226,7 +228,7 @@ test('message input validation', () => {
     assert.throws(() => store.sendMessage({fromAgentId: 'ghost', toAgentId: 'coder-x', text: 'x'}), error => error instanceof CrewError && error.code === 'UNKNOWN_AGENT');
     assert.throws(() => store.sendMessage({fromAgentId: 'coder-x', toAgentId: 'ghost', text: 'x'}), error => error instanceof CrewError && error.code === 'UNKNOWN_AGENT');
     assert.throws(() => store.sendMessage({fromAgentId: 'coder-x', toAgentId: 'coder-x', text: '自言自语'}), /must differ/);
-    assert.throws(() => store.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: 'x', hop: MAX_MESSAGE_HOP + 1}), /hop/);
+    assert.throws(() => store.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: 'x', replyToMessageId: 0}), /replyToMessageId/);
     assert.throws(() => store.sendMessage({fromAgentId: 'coder-x', toAgentId: 'reviewer-y', text: 'x', attachmentRefs: ['    ']}), /attachmentRefs/);
   } finally { store.close(); }
 });
@@ -253,7 +255,7 @@ test('tasks, agents and mailbox survive a close/reopen cycle', () => {
   const first = CrewStore.open(path, {now: () => (clock += 1000)});
   try {
     coderAgent(first);
-    first.dispatchTask({taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '重启不丢'});
+    first.dispatchTask({taskId: 't1', assignedAgentId: 'coder-x', goal: '重启不丢'});
     first.claimNextTask('coder-x');
   } finally { first.close(); }
 

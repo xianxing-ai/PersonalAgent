@@ -9,8 +9,14 @@ export const CREW_PARENT_AGENT_ID = 'parent';
 export const MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST = 8;
 /** 单个 agent 同时最多 2 个运行中任务，第 3 个并发任务留在队列。 */
 export const MAX_CONCURRENT_TASKS_PER_AGENT = 2;
-/** 消息转发深度上限，与派单上限共用同一预算，防止无限转发。 */
-export const MAX_MESSAGE_HOP = MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST;
+/** 消息转发深度上限：hop 由 store 依据 replyToMessageId 推导，不接受调用方传入。 */
+export const MAX_MESSAGE_HOP = 8;
+/** 每个父 agent 同时处于非终态（queued/running）的任务总数上限，可配置。 */
+export const MAX_ACTIVE_TASKS_PER_PARENT_AGENT = 32;
+/** 每个根的消息总数上限（含派单消息），可配置。 */
+export const MAX_MESSAGES_PER_ROOT = 200;
+/** 每对 agent（发送方向）每分钟的消息条数上限，可配置。 */
+export const MAX_MESSAGES_PER_MINUTE_PER_PAIR = 30;
 
 export type CrewDriverId = 'codex' | 'claude' | 'opencode' | 'grok' | 'gemini' | 'acp-generic';
 export type CrewTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
@@ -41,8 +47,17 @@ export interface CrewAgentRecord {
 export interface CrewDispatchInput {
   /** 调用方生成的任务 id，将来映射为 Runtime 子任务 id。 */
   readonly taskId: string;
-  /** 根请求 id：8 次派单预算按它计数。 */
-  readonly rootRequestId: string;
+  /**
+   * 可选：受信宿主给出的父任务 id。提供时任务根取该父任务的根；
+   * 不提供时由 crew 自己生成新根（`root-<taskId>`）。
+   * 派单预算只按 crew 维护的这个根计数。
+   */
+  readonly parentTaskId?: string;
+  /**
+   * 已废弃为纯展示/关联字段：不参与预算计数或归属判断，
+   * 任务的真实根始终由 crew 自己维护（见 parentTaskId）。
+   */
+  readonly rootRequestId?: string;
   readonly assignedAgentId: string;
   readonly goal: string;
 }
@@ -64,14 +79,19 @@ export interface CrewMessageInput {
   readonly fromAgentId: string;
   readonly toAgentId: string;
   readonly text: string;
+  /**
+   * 可选：被回复的消息 id。必须存在且收信人是发信人；
+   * hop 由此推导为原消息 hop+1，不接受调用方自填。
+   */
+  readonly replyToMessageId?: number;
   /** 触发这条消息的请求链 id（例如所在任务的根请求）。 */
   readonly parentRequestId?: string;
+  /** 必须属于发信人参与的任务，否则拒绝。 */
   readonly rootRequestId?: string;
+  /** 必须属于发信人参与的任务，否则拒绝。 */
   readonly taskId?: string;
   readonly expectsReply?: boolean;
   readonly attachmentRefs?: readonly string[];
-  /** 转发深度，由可信宿主提供；0 表示直接来自父派发链。 */
-  readonly hop?: number;
 }
 
 export interface CrewMessageRecord {
@@ -93,6 +113,12 @@ export interface CrewMessageRecord {
 
 export interface CrewStoreOptions {
   readonly now?: () => number;
+  /** 每个父 agent 同时处于非终态（queued/running）的任务总数上限；默认 32。 */
+  readonly maxActiveTasksPerParentAgent?: number;
+  /** 每个根的消息总数上限；默认 200。 */
+  readonly maxMessagesPerRoot?: number;
+  /** 每对 agent（发送方向）每分钟的消息条数上限；默认 30。时间经 now 注入便于测试。 */
+  readonly maxMessagesPerMinutePerPair?: number;
 }
 
 const MAX_ID = 128;
@@ -275,10 +301,25 @@ function messageRecord(row: MessageRow): CrewMessageRecord {
 export class CrewStore {
   private readonly db: DatabaseSync;
   private readonly now: () => number;
+  private readonly maxActiveTasksPerParentAgent: number;
+  private readonly maxMessagesPerRoot: number;
+  private readonly maxMessagesPerMinutePerPair: number;
 
   private constructor(db: DatabaseSync, options: CrewStoreOptions) {
     this.db = db;
     this.now = options.now ?? Date.now;
+    this.maxActiveTasksPerParentAgent = options.maxActiveTasksPerParentAgent ?? MAX_ACTIVE_TASKS_PER_PARENT_AGENT;
+    this.maxMessagesPerRoot = options.maxMessagesPerRoot ?? MAX_MESSAGES_PER_ROOT;
+    this.maxMessagesPerMinutePerPair = options.maxMessagesPerMinutePerPair ?? MAX_MESSAGES_PER_MINUTE_PER_PAIR;
+    for (const [name, value] of [
+      ['maxActiveTasksPerParentAgent', this.maxActiveTasksPerParentAgent],
+      ['maxMessagesPerRoot', this.maxMessagesPerRoot],
+      ['maxMessagesPerMinutePerPair', this.maxMessagesPerMinutePerPair],
+    ] as const) {
+      if (!Number.isInteger(value) || value < 1) {
+        throw new CrewError('INVALID_INPUT', `${name} must be a positive integer`);
+      }
+    }
   }
 
   /** 打开（必要时创建）独立的 crew 数据库文件；重复打开已迁移文件是幂等的。 */
@@ -349,18 +390,35 @@ export class CrewStore {
 
   /**
    * 父发起一个任务根：写入任务表并投递到目标 agent 的 FIFO 信箱。
-   * 每个根请求最多 8 次派发；子 agent 不能创建任务根，因此不存在回派路径。
+   * 任务根由 crew 自己维护：提供 parentTaskId 时取该父任务的根，
+   * 否则生成新根 `root-<taskId>`；调用方自报的 rootRequestId 只作展示字段，
+   * 不参与预算计数。每个根最多 8 次派发，且每个父 agent 同时处于
+   * 非终态（queued/running）的任务总数受限。子 agent 不能创建任务根。
    */
   dispatchTask(input: CrewDispatchInput): CrewTaskRecord {
     const taskId = requiredId(input.taskId, 'taskId');
-    const rootRequestId = requiredId(input.rootRequestId, 'rootRequestId');
+    optionalText(input.rootRequestId, 'rootRequestId');
     const assignedAgentId = requiredId(input.assignedAgentId, 'assignedAgentId');
     const goal = requiredText(input.goal, 'goal');
     return this.inTransaction(() => {
       this.getAgentRow(assignedAgentId);
+      // 根由 crew 自己维护：不信任调用方自报的 rootRequestId。
+      let rootRequestId: string;
+      if (input.parentTaskId !== undefined) {
+        const parentTaskId = requiredId(input.parentTaskId, 'parentTaskId');
+        const parentRow = this.db.prepare('SELECT root_request_id FROM crew_tasks WHERE task_id = ?').get(parentTaskId) as {root_request_id: string} | undefined;
+        if (!parentRow) throw new CrewError('NOT_FOUND', `parent task ${parentTaskId} does not exist`);
+        rootRequestId = parentRow.root_request_id;
+      } else {
+        rootRequestId = `root-${taskId}`;
+      }
       const dispatched = this.db.prepare('SELECT count(*) AS n FROM crew_tasks WHERE root_request_id = ?').get(rootRequestId) as {n: number};
       if (dispatched.n >= MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST) {
         throw new CrewError('DISPATCH_LIMIT_EXCEEDED', `root request ${rootRequestId} already used ${dispatched.n} of ${MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST} dispatches`);
+      }
+      const active = this.db.prepare("SELECT count(*) AS n FROM crew_tasks WHERE status IN ('queued', 'running')").get() as {n: number};
+      if (active.n >= this.maxActiveTasksPerParentAgent) {
+        throw new CrewError('DISPATCH_LIMIT_EXCEEDED', `parent agent already has ${active.n} active (queued/running) tasks of ${this.maxActiveTasksPerParentAgent}`);
       }
       const duplicate = this.db.prepare('SELECT task_id FROM crew_tasks WHERE task_id = ?').get(taskId);
       if (duplicate) throw new CrewError('CONFLICT', `task ${taskId} already exists`);
@@ -485,10 +543,23 @@ export class CrewStore {
     });
   }
 
+  /** 按消息 id 读取一条消息（含已消费的），供回复推导与审计使用。 */
+  getMessage(messageId: number): CrewMessageRecord | undefined {
+    if (!Number.isInteger(messageId) || messageId < 1) {
+      throw new CrewError('INVALID_INPUT', 'messageId must be a positive integer');
+    }
+    const row = this.db.prepare('SELECT message_id, mailbox_agent_id, sender_agent_id, kind, parent_request_id, root_request_id, task_id, text, attachment_refs_json, expects_reply, hop, pure_ack, enqueued_at, dequeued_at FROM crew_messages WHERE message_id = ?').get(messageId) as MessageRow | undefined;
+    return row ? messageRecord(row) : undefined;
+  }
+
   /**
    * agent 间消息投递到收件方的 FIFO 信箱（父也可以用保留身份 'parent' 发送）。
-   * 防确认死循环：对同一发送→收件方向，连续第二条纯确认消息直接丢弃，
-   * 返回 undefined；信箱内容不变。
+   * hop 不接受调用方传入：带 replyToMessageId 时必须存在且收信人是发信人，
+   * hop 推导为原消息 hop+1（超过 MAX_MESSAGE_HOP 拒绝）；新消息 hop=0。
+   * 防回环与放大：每个根的消息总数与每对 agent 的发送速率受限；
+   * rootRequestId/taskId 必须属于发信人参与的任务。
+   * 防确认死循环：同一对话内，自上次收到对方消息（或对话开始）以来
+   * 只允许一条纯确认消息，之后的纯确认直接丢弃。
    */
   sendMessage(input: CrewMessageInput): CrewMessageRecord | undefined {
     const fromAgentId = requiredId(input.fromAgentId, 'fromAgentId');
@@ -498,20 +569,62 @@ export class CrewStore {
     this.getAgentRow(toAgentId);
     if (fromAgentId === toAgentId) throw new CrewError('INVALID_INPUT', 'sender and recipient must differ');
     const parentRequestId = optionalText(input.parentRequestId, 'parentRequestId');
-    const rootRequestId = optionalText(input.rootRequestId, 'rootRequestId');
-    const taskId = optionalText(input.taskId, 'taskId');
     const attachmentRefs = requiredRefs(input.attachmentRefs, 'attachmentRefs');
-    const hop = input.hop ?? 0;
-    if (!Number.isInteger(hop) || hop < 0 || hop > MAX_MESSAGE_HOP) {
-      throw new CrewError('INVALID_INPUT', `hop must be an integer between 0 and ${MAX_MESSAGE_HOP}`);
-    }
     const expectsReply = input.expectsReply ?? false;
     if (typeof expectsReply !== 'boolean') throw new CrewError('INVALID_INPUT', 'expectsReply must be a boolean');
     const pureAck = isPureAcknowledgement(text);
     return this.inTransaction(() => {
+      // hop 由 store 依据被回复的消息推导，不接受调用方自填。
+      let hop = 0;
+      let rootRequestId = optionalText(input.rootRequestId, 'rootRequestId');
+      let taskId = optionalText(input.taskId, 'taskId');
+      if (input.replyToMessageId !== undefined) {
+        if (!Number.isInteger(input.replyToMessageId) || input.replyToMessageId < 1) {
+          throw new CrewError('INVALID_INPUT', 'replyToMessageId must be a positive integer');
+        }
+        const original = this.getMessage(input.replyToMessageId);
+        if (!original) throw new CrewError('NOT_FOUND', `message ${input.replyToMessageId} does not exist`);
+        if (original.mailboxAgentId !== fromAgentId) {
+          throw new CrewError('INVALID_INPUT', `message ${input.replyToMessageId} is not in the mailbox of ${fromAgentId}; only the current holder can reply`);
+        }
+        hop = original.hop + 1;
+        if (hop > MAX_MESSAGE_HOP) {
+          throw new CrewError('INVALID_INPUT', `reply would exceed the message hop budget of ${MAX_MESSAGE_HOP}`);
+        }
+        // 回复沿用被回复消息的路由上下文，除非显式提供。
+        rootRequestId = rootRequestId ?? original.rootRequestId;
+        taskId = taskId ?? original.taskId;
+      }
+      // rootRequestId/taskId 必须属于发信人参与的任务。
+      if (taskId !== undefined) {
+        const taskRow = this.db.prepare('SELECT assigned_agent_id FROM crew_tasks WHERE task_id = ?').get(taskId) as {assigned_agent_id: string} | undefined;
+        if (!taskRow) throw new CrewError('NOT_FOUND', `task ${taskId} does not exist`);
+        if (fromAgentId !== CREW_PARENT_AGENT_ID && taskRow.assigned_agent_id !== fromAgentId) {
+          throw new CrewError('NOT_PERMITTED', `task ${taskId} is not a task of ${fromAgentId}`);
+        }
+      }
+      if (rootRequestId !== undefined) {
+        const rootRow = fromAgentId === CREW_PARENT_AGENT_ID
+          ? this.db.prepare('SELECT task_id FROM crew_tasks WHERE root_request_id = ? LIMIT 1').get(rootRequestId)
+          : this.db.prepare('SELECT task_id FROM crew_tasks WHERE root_request_id = ? AND assigned_agent_id = ? LIMIT 1').get(rootRequestId, fromAgentId);
+        if (!rootRow) throw new CrewError('NOT_PERMITTED', `root request ${rootRequestId} is not a root of a task that ${fromAgentId} participates in`);
+        const rootMessages = this.db.prepare('SELECT count(*) AS n FROM crew_messages WHERE root_request_id = ?').get(rootRequestId) as {n: number};
+        if (rootMessages.n >= this.maxMessagesPerRoot) {
+          throw new CrewError('RATE_LIMIT_EXCEEDED', `root request ${rootRequestId} already carries ${rootMessages.n} of ${this.maxMessagesPerRoot} messages`);
+        }
+      }
+      // 每对 agent 的发送速率上限（按发送方向计数，时间可注入）。
+      const cutoff = new Date(this.now() - 60_000).toISOString();
+      const recent = this.db.prepare('SELECT count(*) AS n FROM crew_messages WHERE sender_agent_id = ? AND mailbox_agent_id = ? AND enqueued_at >= ?').get(fromAgentId, toAgentId, cutoff) as {n: number};
+      if (recent.n >= this.maxMessagesPerMinutePerPair) {
+        throw new CrewError('RATE_LIMIT_EXCEEDED', `${fromAgentId} already sent ${recent.n} messages to ${toAgentId} within a minute of ${this.maxMessagesPerMinutePerPair}`);
+      }
+      // 防确认死循环（按对话而非同方向最后一条）：自上次收到对方消息以来
+      // 已经发过一条纯确认的，再发纯确认直接丢弃，"ok/内容/ok" 交替同样被抑制。
       if (pureAck) {
-        const last = this.db.prepare("SELECT pure_ack FROM crew_messages WHERE sender_agent_id = ? AND mailbox_agent_id = ? ORDER BY message_id DESC LIMIT 1").get(fromAgentId, toAgentId) as {pure_ack: number} | undefined;
-        if (last?.pure_ack === 1) return undefined;
+        const lastIncoming = this.db.prepare('SELECT COALESCE(MAX(message_id), 0) AS id FROM crew_messages WHERE mailbox_agent_id = ? AND sender_agent_id = ?').get(fromAgentId, toAgentId) as {id: number};
+        const ackedSince = this.db.prepare('SELECT message_id FROM crew_messages WHERE sender_agent_id = ? AND mailbox_agent_id = ? AND pure_ack = 1 AND message_id > ? LIMIT 1').get(fromAgentId, toAgentId, lastIncoming.id);
+        if (ackedSince) return undefined;
       }
       const enqueuedAt = this.iso();
       const messageId = this.insertMessage({
