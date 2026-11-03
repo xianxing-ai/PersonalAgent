@@ -123,9 +123,12 @@ export class CrewDriverRuntime {
     return this.kernel.consent.getConsent(driverId);
   }
 
-  /** 记录用户同意（宿主在用户明确同意后调用；grantedBy 默认 'user'）。 */
-  grantConsent(input: Omit<CrewConsentGrantInput, 'grantedBy'> & {readonly grantedBy?: string}): CrewConsentRecord {
-    return this.kernel.consent.grant({grantedBy: 'user', ...input});
+  /**
+   * 记录用户同意（宿主在用户明确同意后调用）。grantedBy 由宿主注入为 'user'，
+   * 不接受调用方覆盖（审计字段不可被输入改写）。
+   */
+  grantConsent(input: Omit<CrewConsentGrantInput, 'grantedBy'>): CrewConsentRecord {
+    return this.kernel.consent.grant({...input, grantedBy: 'user'});
   }
 
   revokeConsent(driverId: CrewDriverId, reason: string): CrewConsentRecord {

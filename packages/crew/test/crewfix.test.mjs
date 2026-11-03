@@ -170,3 +170,36 @@ test('F8: a task that never reaches a terminal event is failed by the deadline a
     assert.ok(driver.sessions[0].interrupts.length >= 1, 'the CLI is interrupted on deadline');
   } finally { runtime.close(); }
 });
+
+test('F10: consent for codex with a mismatched loginKind is refused and grantedBy cannot be overridden', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    // 以错误的登录方式（api-key）同意 codex（实际是本机登录型）：运行时必须拒绝。
+    runtime.grantConsent({driverId: 'codex', loginKind: 'api-key', termsSummary: '错误的登录方式'});
+    dispatch(runtime);
+    await assert.rejects(
+      () => runtime.runNextTask('coder-x'),
+      error => error instanceof CrewError && error.code === 'CONSENT_REQUIRED' && error.message.includes('loginKind'),
+    );
+    // grantedBy 由宿主注入：input 里的 grantedBy 不能覆盖。
+    const record = runtime.getConsent('codex');
+    assert.equal(record.grantedBy, 'user');
+  } finally { runtime.close(); }
+});
+
+test('F10: a driver without a registered expected loginKind is not compared', async () => {
+  const driver = new FakeDriver({driverId: 'gemini'});
+  const {runtime} = open({drivers: {gemini: driver}});
+  try {
+    runtime.registerAgent({agentId: 'g-x', displayName: 'g', driver: 'gemini', instructions: 'i', workspacePath: '/w'});
+    runtime.grantConsent({driverId: 'gemini', loginKind: 'api-key', termsSummary: 't'});
+    dispatch(runtime, {taskId: 't9', rootRequestId: 'r9', assignedAgentId: 'g-x', goal: 'g'});
+    const runPromise = runtime.runNextTask('g-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    driver.sessions[0].complete('done');
+    const task = await runPromise;
+    assert.equal(task.status, 'succeeded', 'unregistered mapping keeps the old behavior');
+  } finally { runtime.close(); }
+});
