@@ -591,10 +591,17 @@ export async function runCoordinationWorker(
       const worker=options.workerCapabilities?.accepts(result)?options.workerCapabilities:undefined;
       if(result.verification!=='mock') {
         try {await options.prepareCompetitionToolExport?.({phase:'preflight',taskId,runId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});}
-        catch {
+        catch (error) {
           if(context.signal.aborted)throw new ProtocolError('CANCELLED','Export preflight cancelled');
           if(Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Export preflight expired');
-          throw new ProtocolError('UNAUTHORIZED','Native export preflight denied');
+          const rawCode=error&&typeof error==='object'&&'code' in error&&typeof (error as {code?:unknown}).code==='string'
+            ?(error as {code:string}).code:undefined;
+          const causeCode=rawCode&&COORDINATION_FAILURE_CODES.has(rawCode)?rawCode:undefined;
+          const message=causeCode?`Native export preflight denied [cause=${causeCode}]`:'Native export preflight denied';
+          const denied=new ProtocolError('UNAUTHORIZED',message);
+          (denied as {cause?:unknown;details?:unknown}).cause=error;
+          if(causeCode)(denied as {cause?:unknown;details?:unknown}).details={code:causeCode};
+          throw denied;
         }
       }
       if(context.signal.aborted || runtime.getTask(taskId).cancelRequested)throw new ProtocolError('CANCELLED','Export preflight cancelled');

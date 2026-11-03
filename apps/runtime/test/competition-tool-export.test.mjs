@@ -2,8 +2,10 @@ import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-a
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {Client} from '@personal-agent/client';
+import {ProtocolError} from '@personal-agent/contracts';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {createRuntimeApplication} from '../dist/application.js';
+import {runCoordinationWorker} from '../dist/application/coordination.js';
 import {mkdir, mkdtemp, rm} from 'node:fs/promises';
 
 const descriptor = {
@@ -242,6 +244,47 @@ test('native preflight refusal performs no read and creates no execution approva
   assert.equal(f.port.requests.length, 1);
   assert.deepEqual((await f.client.call('approval.list', {taskId: f.taskId})).items, []);
   assert.deepEqual(f.app.runtime.readToolExecutions(f.taskId), []);
+});
+
+test('native export preflight refusal retains diagnostic cause while preserving denial code', async t => {
+  const original = new ProtocolError('UNSUPPORTED_CAPABILITY', 'private-unsupported-reason');
+  const f = await fixture(t, {prepareCompetitionToolExport: async () => {throw original;}});
+  const task = await state(f.app, f.taskId, ['failed']);
+  assert.equal(task.error.code, 'UNAUTHORIZED');
+  assert.match(task.error.message, /Native export preflight denied \[cause=UNSUPPORTED_CAPABILITY\]/);
+  assert.doesNotMatch(JSON.stringify(task), /private-unsupported-reason/);
+  assert.equal(f.executions(), 0);
+  assert.equal(f.port.requests.length, 1);
+  assert.deepEqual((await f.client.call('approval.list', {taskId: f.taskId})).items, []);
+  assert.deepEqual(f.app.runtime.readToolExecutions(f.taskId), []);
+
+  const directTask = f.app.runtime.submitTask({goal: 'Direct preflight', conversationId: 'competition', idempotencyKey: 'direct-preflight'});
+  f.app.runtime.transitionTask(directTask.taskId, 'planning');
+  f.app.runtime.transitionTask(directTask.taskId, 'running');
+  const workerContext = {
+    taskId: directTask.taskId,
+    deadline: new Date(Date.now() + 60_000).toISOString(),
+    signal: new AbortController().signal,
+    saveCheckpoint: () => {},
+    loadCheckpoint: () => undefined,
+    reportProgress: () => {},
+  };
+  const tools = {
+    list: () => [descriptor],
+    invoke: async () => assert.fail('must not invoke'),
+  };
+  await assert.rejects(
+    runCoordinationWorker(f.app.runtime, f.port, tools, directTask.taskId, 'Direct preflight', workerContext, {
+      prepareCompetitionToolExport: async () => { throw original; }
+    }),
+    error => {
+      assert.equal(error.code, 'UNAUTHORIZED');
+      assert.equal(error.cause, original);
+      assert.deepEqual(error.details, {code: 'UNSUPPORTED_CAPABILITY'});
+      assert.match(error.message, /Native export preflight denied \[cause=UNSUPPORTED_CAPABILITY\]/);
+      return true;
+    }
+  );
 });
 
 test('repeated cloud proposals reuse confirmed projection and reject changed input', async t => {
