@@ -3,7 +3,7 @@ import {truncateReceiptResult, type CrewReceipt} from './receipts.js';
 import {CrewKernel, type CrewKernelDispatchInput, type CrewKernelGetTaskInput, type CrewKernelInterruptInput, type CrewKernelListTasksInput} from './kernel.js';
 import {CodexAppServerDriver} from './drivers/codex.js';
 import type {CrewConsentGrantInput} from './consent.js';
-import type {CrewAgentRecord, CrewAgentSpec, CrewConsentRecord, CrewDriverId, CrewTaskRecord} from './store.js';
+import {CREW_PARENT_AGENT_ID, type CrewAgentRecord, type CrewAgentSpec, type CrewConsentRecord, type CrewDriverId, type CrewTaskRecord} from './store.js';
 import type {CrewDriver, CrewDriverEvent, CrewDriverSession, CrewSpawn} from './driver.js';
 
 /**
@@ -121,7 +121,25 @@ export class CrewDriverRuntime {
   }
 
   revokeConsent(driverId: CrewDriverId, reason: string): CrewConsentRecord {
-    return this.kernel.consent.revoke(driverId, reason);
+    const record = this.kernel.consent.revoke(driverId, reason);
+    // 撤回即生效：停掉该驱动下运行中的会话（interrupt + close），任务写 cancelled
+    // 回执（原因"同意已撤回"）。撤回之后才到达的完成结果不会以 succeeded 入库。
+    for (const [taskId, session] of [...this.runningTasks]) {
+      const task = this.kernel.getTask({actorId: CREW_PARENT_AGENT_ID, taskId});
+      if (!task || task.status !== 'running') continue;
+      const agent = this.kernel.getAgent(task.assignedAgentId);
+      if (!agent || agent.driver !== driverId) continue;
+      const revokeReason = `同意已撤回：${reason}`;
+      try {
+        this.kernel.interruptTask({actorId: CREW_PARENT_AGENT_ID, taskId, reason: revokeReason});
+      } catch {
+        // 父打断写库失败不阻断会话停止：尽力中断并关闭进程。
+      }
+      void session.interrupt(revokeReason)
+        .catch(() => undefined)
+        .then(() => session.close().catch(() => undefined));
+    }
+    return record;
   }
 
   // ── 父派子（逻辑不变） ────────────────────────────────────────────────

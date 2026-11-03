@@ -53,6 +53,31 @@ async function waitFor(predicate) {
   throw new Error('waitFor timed out');
 }
 
+// ── F5：撤回同意会停止运行中的会话 ───────────────────────────────────────
+
+test('F5: revoking consent interrupts the running session and the late completion cannot land as succeeded', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    runtime.revokeConsent('codex', '用户撤回订阅');
+    await waitFor(() => driver.sessions[0].interrupts.length === 1);
+    assert.ok(driver.sessions[0].interrupts[0].includes('同意已撤回'), 'the interrupt reason mentions the revoked consent');
+    assert.equal(driver.sessions[0].closed, true, 'the session is closed after revocation');
+    const task = await runPromise;
+    assert.equal(task.status, 'cancelled', 'the running task is cancelled with a reason');
+    assert.ok((task.cancelReason ?? '').includes('同意已撤回'));
+    // 撤回之后 CLI 才完成：结果不得以 succeeded 入库。
+    driver.sessions[0].complete('撤回后仍完成');
+    await new Promise(resolve => setImmediate(resolve));
+    const final = runtime.getTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't1'});
+    assert.notEqual(final.status, 'succeeded', 'a post-revocation completion must not be recorded as succeeded');
+  } finally { runtime.close(); }
+});
+
 // ── F1：回执结果超长不再卡死任务 ─────────────────────────────────────────
 
 const LONG = '长'.repeat(9000);
