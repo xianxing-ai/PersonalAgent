@@ -2,7 +2,7 @@
 # Idempotent installer for a fresh Ubuntu, Debian or openEuler host.
 # It prepares a headless job executor. It does not open extra inbound ports.
 set -eu
-VERSION=1.1.0
+VERSION=1.2.0
 NODE_VERSION=22.21.0
 PREFIX=/opt/personal-agent-runner
 STATE=/var/lib/personal-agent-runner
@@ -52,6 +52,8 @@ JSON
   chmod 644 /etc/personal-agent-runner/model-command.json
 fi
 cp "$SCRIPT_DIR/remote-runner-service.mjs" "$PREFIX/remote-runner-service.mjs"
+cp "$SCRIPT_DIR/local-repo-executor.mjs" "$PREFIX/local-repo-executor.mjs"
+cp "$SCRIPT_DIR/cloud-runtime-transport.mjs" "$PREFIX/cloud-runtime-transport.mjs"
 chmod 755 "$PREFIX/remote-runner-service.mjs"
 printf '%s\n' "$VERSION" > "$PREFIX/VERSION"
 if ! id personal-agent-runner >/dev/null 2>&1; then

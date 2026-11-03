@@ -52,7 +52,9 @@ export interface RuntimeProactiveWorkflowHostOptions {
   /** Actual device observation. A boolean supplied in an input event is never consumed here. */
   localDeviceAvailable(): boolean;
   /** Only an actual persistent host adapter may declare this readiness. Absent means unavailable. */
-  cloudPersistentHost?: {ref: string; available(): boolean};
+  cloudPersistentHost?: {ref: string; available(): boolean; assertCurrent?(): void};
+  /** Trusted cloud Runtime composition only; never selected by an image or event. */
+  coreExecutionLocation?: 'cloud_persistent';
   bindings?: readonly ToolBinding[];
   context?: {publicMemory?: MemoryQueryPort; publicKnowledge?: KnowledgePort; goals?: Pick<CoordinationStorePort, 'read'>; limit: number};
   notificationHost?: RuntimeNotificationHost;
@@ -141,6 +143,21 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
   if (![options.taskId, options.sessionId, options.contractRef].every(text) || !Number.isFinite(Date.parse(options.taskDeadline))
     || typeof options.advancePort !== 'function' || typeof options.verifyAdvance !== 'function' || typeof options.sign !== 'function'
     || typeof options.localDeviceAvailable !== 'function') fail('INVALID_ARGUMENT', 'Trusted proactive host bindings required');
+  if(options.coreExecutionLocation!==undefined&&(options.coreExecutionLocation!=='cloud_persistent'
+    ||!text(options.cloudPersistentHost?.ref)||typeof options.cloudPersistentHost?.assertCurrent!=='function'))
+    fail('UNSUPPORTED_CAPABILITY','An actual cloud Runtime owner is required');
+  const location=options.coreExecutionLocation??'local_device';
+  const owner={location,ref:location==='cloud_persistent'?options.cloudPersistentHost!.ref:'local_device'};
+  const ownerKey='proactive-execution-owner-v1',priorOwner=runtime.loadCheckpoint(options.taskId,ownerKey);
+  if(priorOwner===undefined&&location==='cloud_persistent'
+    &&readPersistedRuntimeProactiveWorkflow(runtime,options.taskId,options.sessionId)!==undefined)
+    fail('REVISION_CONFLICT','An existing local proactive session cannot move to a cloud Runtime');
+  runtime.saveCheckpointOnce(options.taskId,ownerKey,owner);
+  const assertOwner=()=>{
+    if(digest(runtime.loadCheckpoint(options.taskId,ownerKey))!==digest(owner))fail('REVISION_CONFLICT','Original proactive execution owner changed');
+    if(location==='cloud_persistent')options.cloudPersistentHost!.assertCurrent!();
+  };
+  assertOwner();
   const oldDeadline = runtime.loadCheckpoint(options.taskId, 'application-deadline');
   if (oldDeadline !== undefined && oldDeadline !== options.taskDeadline) fail('REVISION_CONFLICT', 'Original Runtime task deadline differs');
   runtime.saveCheckpointOnce(options.taskId, 'application-deadline', options.taskDeadline);
@@ -171,6 +188,7 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
   if (!atomic.read(key)) {const snapshot = read(); save(snapshot);}
   const binding = () => read().state.binding;
   function active(context: Context, historical = false) {
+    assertOwner();
     if (!(context.signal instanceof AbortSignal) || !Number.isFinite(Date.parse(context.deadline))) fail('INVALID_ARGUMENT', 'Original request lifetime required');
     if (context.signal.aborted) fail('CANCELLED', 'Proactive application request cancelled');
     if (!historical && Date.parse(context.deadline) > Date.parse(options.taskDeadline)) fail('INVALID_ARGUMENT', 'Original task deadline cannot be extended');
@@ -326,9 +344,9 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
   }
   function capabilities(): ProactiveHostCapability[] {
     const values: ToolBinding[] = [
-      {kind: 'retrieve_context', toolName: RUNTIME_PROACTIVE_TOOLS.retrieve_context, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location: 'local_device', effect: 'read'},
-      {kind: 'update_item', toolName: RUNTIME_PROACTIVE_TOOLS.update_item, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location: 'local_device', effect: 'write'},
-      {kind: 'schedule_wake', toolName: RUNTIME_PROACTIVE_TOOLS.schedule_wake, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location: 'local_device', effect: 'write'},
+      {kind: 'retrieve_context', toolName: RUNTIME_PROACTIVE_TOOLS.retrieve_context, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location, effect: 'read'},
+      {kind: 'update_item', toolName: RUNTIME_PROACTIVE_TOOLS.update_item, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location, effect: 'write'},
+      {kind: 'schedule_wake', toolName: RUNTIME_PROACTIVE_TOOLS.schedule_wake, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location, effect: 'write'},
       ...(options.notificationHost ? [{kind: 'notify' as const, toolName: RUNTIME_PROACTIVE_TOOLS.notify, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location: 'local_device' as const, effect: 'write' as const}] : []),
       ...(options.bindings ?? []),
     ];
@@ -388,6 +406,7 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       executionEpoch,
       assertExecutionEpoch: expected => runtime.assertExecutionEpoch(options.taskId, expected),
       assertActive: expected => {
+        assertOwner();
         runtime.assertExecutionEpoch(options.taskId, executionEpoch);
         if (digest(binding()) !== digest(expected)) fail('REVISION_CONFLICT', 'Trusted proactive control revision changed');
         if (!allowCancelledControl && terminal(runtime.getTask(options.taskId))) fail('CANCELLED', 'Original Runtime task is not active');
@@ -589,6 +608,7 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       fail('REVISION_CONFLICT', 'Original proactive request lifetime/control revision differs');
     }
     const result = await session(allowCancelledControl).advance({...structuredClone(frozen.input), signal: input.signal});
+    assertOwner();
     runtime.assertExecutionEpoch(options.taskId, executionEpoch);
     snapshot = read(); const saved = snapshot.state.requests[input.requestId]!;
     for (const id of frozen.entryIds) snapshot.state.delivered['event:' + id] = true;

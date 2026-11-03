@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CloudPersistentContracts",
+  "type": "object", "additionalProperties": false, "required": ["command", "reply"],
+  "definitions": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,160}$"},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "time": {"type": "string", "minLength": 20, "maxLength": 40},
+    "target": {"type": "object", "additionalProperties": false, "required": ["taskId", "sessionId"], "properties": {
+      "taskId": {"$ref": "#/definitions/id"}, "sessionId": {"$ref": "#/definitions/id"}
+    }},
+    "owner": {"type": "object", "additionalProperties": false,
+      "required": ["runtimeId", "hostId", "deploymentVersion", "contractRef", "contractVersion"], "properties": {
+        "runtimeId": {"$ref": "#/definitions/id"}, "hostId": {"$ref": "#/definitions/id"},
+        "deploymentVersion": {"$ref": "#/definitions/id"}, "contractRef": {"$ref": "#/definitions/id"}, "contractVersion": {"$ref": "#/definitions/id"}
+    }}
+  },
+  "properties": {
+    "command": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "commandId", "owner", "deadline", "operation"],
+      "properties": {
+        "version": {"const": 1}, "commandId": {"$ref": "#/definitions/id"},
+        "owner": {"$ref": "#/definitions/owner"}, "deadline": {"$ref": "#/definitions/time"},
+        "operation": {"enum": ["submit", "control", "readback", "approval"]},
+        "submit": {"type": "object", "additionalProperties": false,
+          "required": ["originTaskId", "originRuntimeId", "goal", "goalDigest", "taskDeadline"], "properties": {
+            "originTaskId": {"$ref": "#/definitions/id"}, "originRuntimeId": {"$ref": "#/definitions/id"},
+            "goal": {"type": "string", "minLength": 1, "maxLength": 8000}, "goalDigest": {"$ref": "#/definitions/digest"},
+            "taskDeadline": {"$ref": "#/definitions/time"}
+          }},
+        "target": {"$ref": "#/definitions/target"},
+        "originCommandId": {"$ref": "#/definitions/id"},
+        "control": {"type": "object", "additionalProperties": false, "required": ["action", "expectedControlRevision"], "properties": {
+          "action": {"enum": ["pause", "resume", "cancel", "enter_unattended", "return"]},
+          "expectedControlRevision": {"type": "integer", "minimum": 0}
+        }},
+        "approval": {"type": "object", "additionalProperties": false,
+          "required": ["approvalId", "expectedRevision", "argumentsDigest", "expiresAt", "decision"], "properties": {
+            "approvalId": {"$ref": "#/definitions/id"}, "expectedRevision": {"type": "integer", "minimum": 1},
+            "argumentsDigest": {"$ref": "#/definitions/digest"}, "expiresAt": {"$ref": "#/definitions/time"},
+            "decision": {"enum": ["allow_once", "deny"]}
+          }}
+      },
+      "allOf": [
+        {"if": {"properties": {"operation": {"const": "submit"}}}, "then": {"required": ["submit"], "not": {"anyOf": [{"required": ["target"]}, {"required": ["control"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}},
+        {"if": {"properties": {"operation": {"const": "control"}}}, "then": {"required": ["target", "control"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}},
+        {"if": {"properties": {"operation": {"const": "readback"}}}, "then": {"oneOf": [{"required": ["target"]}, {"required": ["originCommandId"]}], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["control"]}, {"required": ["approval"]}]}}},
+        {"if": {"properties": {"operation": {"const": "approval"}}}, "then": {"required": ["target", "approval"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["control"]}, {"required": ["originCommandId"]}]}}}
+      ]
+    },
+    "reply": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "commandId", "owner", "target", "task", "controlRevision", "approvals", "evidenceRefs"],
+      "properties": {
+        "version": {"const": 1}, "commandId": {"$ref": "#/definitions/id"}, "owner": {"$ref": "#/definitions/owner"},
+        "target": {"$ref": "#/definitions/target"}, "controlRevision": {"type": "integer", "minimum": 0},
+        "task": {"type": "object", "additionalProperties": false, "required": ["state", "revision", "cancelRequested"], "properties": {
+          "state": {"enum": ["created", "running", "waiting_approval", "waiting_reconciliation", "cancelling", "cancelled", "failed", "succeeded"]},
+          "revision": {"type": "integer", "minimum": 0}, "cancelRequested": {"type": "boolean"}
+        }},
+        "approvals": {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": false,
+          "required": ["approvalId", "revision", "action", "arguments", "argumentsDigest", "expiresAt", "state"], "properties": {
+            "approvalId": {"$ref": "#/definitions/id"}, "revision": {"type": "integer", "minimum": 1},
+            "action": {"type": "string", "minLength": 1, "maxLength": 200}, "argumentsDigest": {"$ref": "#/definitions/digest"},
+            "arguments": {"type": "object", "maxProperties": 128},
+            "expiresAt": {"$ref": "#/definitions/time"}, "state": {"enum": ["pending", "allowed", "denied"]}
+          }}},
+        "evidenceRefs": {"type": "array", "maxItems": 100, "items": {"$ref": "#/definitions/id"}}
+      }
+    }
+  }
+}

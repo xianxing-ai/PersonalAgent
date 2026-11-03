@@ -1,4 +1,7 @@
 export {createRuntimeApplication, RuntimeApplication,createRuntimeKnowledgeReevaluator,REFERENCE_SKILL_WORKER_TOOL,compileCoordinationGoal,withheldExportMessage} from './application/runtime-application.js';
+export {createRuntimeProactiveMaintenancePump} from './application/proactive-maintenance.js';
+export {createCloudPersistentRuntimeHost} from './application/cloud-persistent.js';
+export type {CloudPersistentRuntimeOptions} from './application/cloud-persistent.js';
 export type {KnowledgeRecheckContext,KnowledgeRecheckOptions,KnowledgeRecheckResult,RuntimeHarnessScope,
   RuntimeHarnessCandidatesOptions,RuntimeHarnessExperienceHostOptions} from './application/runtime-application.js';
 export type {CloudSkillRuntimeHostPort} from './application/runtime-application.js';

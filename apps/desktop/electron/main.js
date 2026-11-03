@@ -92,6 +92,7 @@ import {createDesktopF05WorkflowWorkerPorts} from './f05-workflow-worker-ports.j
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
+import {createDesktopCloudPersistentHost} from './cloud-persistent-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
@@ -452,7 +453,7 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, voiceSessionFinalHost, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, voiceSessionFinalHost, proactiveWorkflowApplication, cloudPersistentWorkflowHost;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -1966,6 +1967,8 @@ function readProactiveWorkflowConfiguration() {
 
 function initializeHarnessEventPorts(runtimeModule) {
   if(!competitionMode||!runtimeApplication?.startProactiveTask||proactiveWorkflowApplication)return;
+  cloudPersistentWorkflowHost=createDesktopCloudPersistentHost({application:runtimeApplication,getRunner:()=>remoteRunnerHost,
+    userData:app.getPath('userData'),resolveUserConversation:taskId=>conversationToolAccess.resolveConversation(taskId)});
   proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
     responsibilityLifecycleAuthority:()=>f01Workflow?.authority,
     resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
@@ -4629,6 +4632,14 @@ async function action(event, name, payload) {
     throw Error('知识读取超时，请核对原任务结果');
   }
   if (name === 'knowledge.status') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel').knowledge;
+  if(name.startsWith('proactive.workflow.cloud.')){
+    if((sender!==panel&&sender!==admin&&sender!==workspace)||event.senderFrame!==sender.webContents.mainFrame||!competitionMode||!cloudPersistentWorkflowHost)
+      throw Error('云持续会话仅允许可信对话或设置调用');
+    const action=name.slice('proactive.workflow.cloud.'.length);
+    if(action==='status')return cloudPersistentWorkflowHost.status();
+    if(!['start','read','control','approval'].includes(action))throw Error('未知云持续会话操作');
+    return cloudPersistentWorkflowHost[action](payload);
+  }
   if (name.startsWith('proactive.workflow.')) {
     if ((sender!==panel&&sender!==admin)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
     if(name==='proactive.workflow.status')return proactiveWorkflowApplication.snapshot();
