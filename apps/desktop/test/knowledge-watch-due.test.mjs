@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {createKnowledgeWatchHost} from '../electron/knowledge-watch-host.js';
-import * as receipts from '../../runtime/dist/application/knowledge-feed-receipt.js';
+import {createDesktopProactiveConfirmedSourceRouter} from '../electron/proactive-confirmed-source-router.js';
+import * as receipts from '@personal-agent/runtime/application';
 
 const start = Date.parse('2026-09-30T00:00:00Z');
 const iso = time => new Date(time).toISOString();
@@ -67,9 +69,9 @@ function fixture({feedCollect, readTrackingGrant, workPort, notificationPort, so
         && identity.sourceReadTaskId === 'root-task' ? structuredClone(sourceReceipts.get(identity.receiptId)) : null} : {}),
     interestDecider: {choose: async () => ({outcome: 'selected', requiresHostRevalidation: true,
       selected: {id: 'track_public', revision: 1}, receipt: {modelReceiptId: 'fixture-laya'}})},
-    feedCollect: async (query, signal) => {
+    feedCollect: async (query, signal, sourceScope) => {
       queries.push({...query, signal});
-      const result = feedCollect ? await feedCollect(query, signal) : collected(time);
+      const result = feedCollect ? await feedCollect(query, signal, sourceScope) : collected(time);
       if (sourceEvidence && result.collection?.state === 'fetched') {
         const receipt = receipts.createKnowledgeFeedReceiptFromCollectResult({namespace, sourceId: query.subscriptionId, result});
         if (receipt) sourceReceipts.set(receipt.receiptId, receipt);
@@ -147,6 +149,72 @@ test('selected sustained interest binds an explicit Runtime schedule; forged and
   assert.equal((await fx.host.consumeFeedCheck(taskId, {signal: controller.signal})).accepted, false);
   assert.equal(fx.queries.length, 1);
   fx.host.dispose();
+});
+
+test('scheduled feed read preserves all original tracking identities through Main preparation and routing', async () => {
+  // Actual watch/Main/prepared-binding code; Runtime execution and sink are explicit fixtures.
+  const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
+  const body = main.slice(main.indexOf('      const feedCollect = async '), main.indexOf('      knowledgeWatchHost = createKnowledgeWatchHost('));
+  let collect;
+  const fx = fixture({feedCollect: (...args) => collect(...args)});
+  try {
+    await fx.track('typescript');
+    await fx.track('javascript');
+    const trackingTaskIds = fx.host.listWatches().map(watch => watch.consumer.intakeTaskId);
+    const deadline = iso(Date.now() + 60_000), rows = new Map(), routed = [];
+    let reads = 0, prepared, granted = true;
+    const sessions = trackingTaskIds.map((id, i) => ({taskId:`responsibility-${i}`,
+      sourceTaskId:id,taskState:'running',taskDeadline:deadline}));
+    const runtime = {...fx.runtime,
+      getTask: id => id === prepared?.taskId ? prepared : sessions.find(item=>item.taskId===id) ?? fx.runtime.getTask(id),
+      loadCheckpoint: (taskId, key) => rows.get(`${taskId}:${key}`),
+      saveCheckpointOnceForCreatedTask(taskId, key, value, revision) {
+        assert.equal(revision, prepared.revision); rows.set(`${taskId}:${key}`, structuredClone(value)); return true;
+      }};
+    const application = {runtime,
+      prepareHostToolTask(input) {
+        prepared = {taskId:'synthetic-feed-read',revision:1,state:'created',conversationId:`host-tool:${namespace}`};
+        rows.set(`${prepared.taskId}:host-tool-preparation`, {...input,namespace}); return prepared;
+      },
+      finalizeHostToolTask(input) {
+        const origin = rows.get(`${input.taskId}:desktop-proactive-feed-origin-v1`);
+        assert.deepEqual([...origin.trackingTaskIds].sort(), [...trackingTaskIds].sort()); reads++;
+        rows.set(`${input.taskId}:host-tool-intent`, {...rows.get(`${input.taskId}:host-tool-preparation`),
+          arguments:input.arguments,argumentsDigest:origin.argumentsDigest});
+      },
+      readHostToolTask: () => ({task:{state:'succeeded'},confirmed:{runId:`host-tool-${prepared.taskId}`,result:collected(start+1000)}}),
+    };
+    const workflow = {snapshot: () => ({state:'configured_not_verified',sessions}),
+      acquireMaintenance: async id => ({binding:sessions.find(item=>item.taskId===id),host:{}})};
+    const router = createDesktopProactiveConfirmedSourceRouter({getApplication:()=>application,getWorkflow:()=>workflow,
+      namespace,resolveUserConversation:id=>fx.runtime.getTask(id)?.conversationId,
+      readSourceBinding:()=>({namespace,sourceId:'feed-a',available:true,sensitivity:'public',containsCredentials:false,configurationRef:'synthetic-config'}),
+      readTrackingGrant:({taskId})=>({namespace,taskId,state:granted?'granted':'revoked',sourceId:'feed-a',configurationRef:'synthetic-config',
+        id:'synthetic-grant',revision:1,publicLowRiskTracking:true,expiresAt:deadline,conversationId:fx.runtime.getTask(taskId).conversationId,
+        purposeDigest:createHash('sha256').update(JSON.stringify(fx.runtime.getTask(taskId).goal)).digest('hex')})});
+    const route = router.routeConfirmedFeed.bind(router);
+    router.routeConfirmedFeed = async (input, context) => {
+      // The real router must accept both prepared identities, but cannot invent real execution Evidence.
+      assert.deepEqual(await route(input,context),{state:'unavailable',reason:'original_complete_confirmed_feed_receipt'});
+      routed.push(input); return {state:'persisted'};
+    };
+    const scope = {namespace,runtimeApplication:application,proactiveSourceRouter:router,proactiveWorkflowApplication:workflow,
+      feedsHost:{tools:[{descriptor:{name:'feeds.collect',version:'0.1.0-alpha.1'}}],
+        competitionToolAvailability:[{toolName:'feeds.collect',available:async()=>true}]},
+      randomUUID:()=> 'synthetic-scheduled-read',knowledgeWatchTask:{taskId:'root-task'},rebuildFeedReceipt:()=>undefined};
+    collect = new Function(...Object.keys(scope), `let proactiveSourceRoutingFailure;\n${body}\nreturn feedCollect;`)(...Object.values(scope));
+    const due = fx.fire(fx.register().schedule.scheduleId);
+    assert.equal((await fx.host.consumeFeedCheck(due,{signal:new AbortController().signal})).accepted,true);
+    assert.equal(reads,1,'One source read serves both explicitly tracked consumers');
+    assert.deepEqual(routed.map(item=>item.trackingTaskId).sort(),[...trackingTaskIds].sort());
+    assert.equal(new Set(routed.map(item=>item.taskId)).size,1);
+    assert.equal(new Set(routed.map(item=>item.workflowTaskId)).size,2);
+    granted=false;
+    await assert.rejects(route(routed[0],{deadline,signal:new AbortController().signal}),{code:'UNSUPPORTED_CAPABILITY'});
+    await fx.host.revoke('typescript',{id:'user-revoke'});
+    assert.equal((await fx.host.consumeFeedCheck(due,{signal:new AbortController().signal})).accepted,false);
+    assert.equal(reads,1,'Revoked schedule does not grant or repeat a read');
+  } finally {fx.host.dispose();}
 });
 
 test('pause/resume invalidates an old due task and old reevaluation consumer; revoke never reopens it', async () => {
