@@ -41,6 +41,10 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   readCurrentQuestion = () => null, authorizeTaskRead = () => false, authorizeFinalRead,
   /** Optional: focus original pending approval card from a trusted final; must not authorize. */
   prepareTaskApproval = async () => null,
+  /** Current notification policy revision. Missing or invalid values do not emit a session final. */
+  readControlRevision = () => undefined,
+  /** Current-session final router. Echo stays unknown here; the router must not treat that as proof. */
+  onSessionFinal = () => {},
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
   const textOutput=createLiveTextOutput({readSession:()=>active,now,onUpdate:()=>publish()});
@@ -169,16 +173,24 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
             record.userSpeaking = true;
             record.finalUserAudio=undefined;
             const question=questionFor(record);
-            record.questionSpeech=typeof event.utteranceId==='string' && /^[\w-]{1,256}$/u.test(event.utteranceId)
+            const utterance=typeof event.utteranceId==='string' && /^[\w-]{1,256}$/u.test(event.utteranceId)?event.utteranceId:undefined;
+            record.sessionSpeech=utterance?{utteranceId:utterance,startedAt:new Date(now()).toISOString(),frames:record.audioFrames}:undefined;
+            record.questionSpeech=utterance
               && question?.state==='pending' && typeof question.questionId==='string' && Number.isSafeInteger(question.revision)
               && typeof question.taskId==='string' && typeof question.sourceApprovalId==='string' && now()<Date.parse(question.expiresAt)
-              ?{utteranceId:event.utteranceId,questionId:question.questionId,questionRevision:question.revision,
-                sourceTaskId:question.taskId,sourceApprovalId:question.sourceApprovalId,startedAt:new Date(now()).toISOString(),frames:record.audioFrames,
+              ?{utteranceId:utterance,questionId:question.questionId,questionRevision:question.revision,
+                sourceTaskId:question.taskId,sourceApprovalId:question.sourceApprovalId,startedAt:record.sessionSpeech.startedAt,frames:record.audioFrames,
                 captureStart:readCapture()}
               :undefined;
           }
           if (event.type === 'speech_stopped') {
             record.userSpeaking = false;
+            if(record.sessionSpeech?.utteranceId===event.utteranceId && record.audioFrames>record.sessionSpeech.frames){
+              record.sessionSpeech.completedAt=new Date(now()).toISOString();
+              let revision;
+              try { revision = readControlRevision(); } catch { revision = undefined; }
+              record.sessionSpeech.controlRevision=Number.isSafeInteger(revision)&&revision>=0?revision:undefined;
+            } else record.sessionSpeech=undefined;
             if(record.questionSpeech?.utteranceId===event.utteranceId && record.audioFrames>record.questionSpeech.frames){
               record.questionSpeech.completedAt=new Date(now()).toISOString();record.questionSpeech.captureEnd=readCapture();
             }
@@ -226,6 +238,21 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
                 &&last.frames>first.frames&&last.bytes>first.bytes&&last.nonzeroFrames>first.nonzeroFrames)
                 record.finalUserAudio.capture={start:first,end:last};
               record.questionSpeech=undefined;
+              record.sessionSpeech=undefined;
+            }
+            const sessionSpeech=record.sessionSpeech;
+            const questionPending=question?.state==='pending' && now()<Date.parse(question.expiresAt);
+            if(!questionPending && sessionSpeech?.completedAt && event.role==='user' && event.phase==='final' && event.source==='input_audio'
+              && event.utteranceId===sessionSpeech.utteranceId && Number.isSafeInteger(sessionSpeech.controlRevision)
+              && trimmed.length<=24000 && now()<Date.parse(record.deadline)) {
+              // input_audio finality is not acoustic echo cancellation. The router must keep echo unknown.
+              const sessionReceipt={sessionId:record.id,conversationId:record.conversationId,utteranceId:sessionSpeech.utteranceId,
+                text:trimmed,transcriptDigest:createHash('sha256').update(trimmed).digest('hex'),source:'live_input_audio',phase:'final',
+                origin:'user',echo:'unknown',controlRevision:sessionSpeech.controlRevision,startedAt:sessionSpeech.startedAt,
+                completedAt:sessionSpeech.completedAt,expiresAt:new Date(Math.min(Date.parse(record.deadline),now()+30_000)).toISOString(),
+                signal:controller.signal};
+              record.sessionSpeech=undefined;
+              void Promise.resolve().then(()=>onSessionFinal(sessionReceipt)).catch(()=>{});
             }
             const message = {id: `${record.id}:${createHash('sha256').update(`${event.role}:${event.id}`).digest('hex')}`, sessionId: record.id,
               ...(record.conversationId==='desktop-panel'?{}:{conversationId:record.conversationId}),
@@ -543,7 +570,16 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     assertRead();
     return messages;
   }
-  return {snapshot, historyMessages, hasActive, start, stop, receive,
+  function readSessionBinding() {
+    const record=active;
+    if(!record||record.controller.signal.aborted||now()>=Date.parse(record.deadline))return null;
+    const question=questionFor(record);
+    const pending=question?.state==='pending'&&typeof question.questionId==='string'&&Number.isSafeInteger(question.revision)
+      &&now()<Date.parse(question.expiresAt);
+    return {sessionId:record.id,conversationId:record.conversationId,deadline:record.deadline,signal:record.controller.signal,
+      pendingQuestion:pending?{questionId:question.questionId,revision:question.revision}:null};
+  }
+  return {snapshot, historyMessages, hasActive, start, stop, receive, readSessionBinding,
     // Host-only: caller binds the original approved notification round and persists each receipt.
     speakNotification:(binding,ports)=>notificationOutput.speak(binding,ports),
     readNotificationDelivery:binding=>notificationOutput.read(binding),

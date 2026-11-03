@@ -41,7 +41,8 @@ if($Build){
   if($LASTEXITCODE){throw 'Context export failed'}
   $paContext=($paExport|Select-Object -Last 1|ConvertFrom-Json).context
   Assert-PaReleaseSource
-  $null=Invoke-PaReleaseDocker 'build' @('build','--platform','linux/arm64','--tag',$Image,$paContext)
+  # Fixed releases must not acquire a different index digest from timestamped provenance on a cached rebuild.
+  $null=Invoke-PaReleaseDocker 'build' @('build','--platform','linux/arm64','--provenance=false','--tag',$Image,$paContext)
 }
 $paInspect=(& $paDocker image inspect $Image|ConvertFrom-Json)
 if($LASTEXITCODE -or $paInspect.Count -ne 1 -or $paInspect[0].Architecture -ne 'arm64'){throw 'An existing ARM64 image is required'}

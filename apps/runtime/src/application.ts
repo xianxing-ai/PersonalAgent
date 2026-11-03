@@ -34,8 +34,10 @@ export {readOriginalF08MailSource,recordOriginalF08MailChange,createCompetitionM
 export type {OriginalMailSourceScope,OriginalMailReviewReference,CompetitionMailSourceChangesOptions} from './application/mail-source-changes.js';
 export {readF03CompetitionReview,assertF03CompetitionReviewEvidence} from './application/f03-competition-review.js';
 export type {F03CompetitionReviewScope,F03CompetitionReviewSource,F03CompetitionReviewInput} from './application/f03-competition-review.js';
-export {readCompetitionWorkflowRepairReceipt} from './application/local-repair.js';
-export type {CompetitionWorkflowRepairRequest} from './application/local-repair.js';
+export {readCompetitionWorkflowRepairReceipt, reconcileCommittedLocalRepair, LOCAL_REPAIR_COMMIT_INTENT} from './application/local-repair.js';
+export type {CompetitionWorkflowRepairRequest, LocalRepairCommitRecovery} from './application/local-repair.js';
+export {consumeOriginalChildControllerAdvice} from './application/delegation-controller.js';
+export type {OriginalChildControllerAdvice, OriginalChildControllerDecision, OriginalChildControllerPorts, OriginalChildControllerReport, OriginalControllerAction} from './application/delegation-controller.js';
 export {assertOwnedWorkflowHostScope} from './application/workflow-owned-host-scope.js';
 export {createRuntimeWorkflowShadowConfigurationPort,readRuntimeWorkflowShadowConfiguration} from './application/workflow-shadow-configuration.js';
 export {createCompetitionDecisionConfigurationConsumer} from './application/competition-decision-configuration.js';
@@ -306,7 +308,7 @@ export {createRuntimeProactiveDecisionTools,RUNTIME_PROACTIVE_DECISION_TOOLS} fr
 export type {RuntimeProactiveDecisionToolOptions} from './application/proactive-decision-tools.js';
 export type {RuntimeProactiveImageAdapterOptions,RuntimeProactiveImageResult,RuntimeProactiveImageContext,
   RuntimeProactiveImageDescription} from './application/proactive-image-adapter.js';
-export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,RUNTIME_PROACTIVE_TOOLS,
+export {createRuntimeProactiveWorkflowHost,createRuntimeProactiveWorkflowTools,createRuntimeProactiveControlPort,RUNTIME_PROACTIVE_TOOLS,
   RUNTIME_PROACTIVE_TOOL_VERSION,readPersistedRuntimeProactiveWorkflow} from './application/proactive-workflow-application.js';
 export type {RuntimeProactiveWorkflowHostOptions,RuntimeProactiveWorkflowHost,RuntimeProactiveContextSnapshot,RuntimeProactiveControlCommand,
   RuntimeProactiveChildReport,RuntimeProactiveControllerReceipt} from './application/proactive-workflow-application.js';

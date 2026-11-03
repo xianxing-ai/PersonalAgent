@@ -9,7 +9,7 @@ const COMMAND_BINDING = 'desktop-notification-user-command';
 /** Desktop composition over the original Runtime host, ToolGateway and OS receipt port.
  * No renderer send endpoint, second queue, permission store or task executor lives here.
  */
-export function createDesktopNotificationApplicationHost({namespace, channel, question,getVoiceHost,now = Date.now, onUpdate = () => {}}) {
+export function createDesktopNotificationApplicationHost({namespace, channel, question,getVoiceHost,verifyVoiceFinal,now = Date.now, onUpdate = () => {}}) {
   if (typeof namespace !== 'string' || !namespace || !channel
     || typeof channel.sendAdvisoryNotification !== 'function' || typeof channel.readDeliveryOutcome !== 'function') {
     throw Error('通知应用宿主缺少用户或真实回执端口');
@@ -26,10 +26,18 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
   };
   const validCommand = (command, context) => {
     const original = commands.get(context.taskId);
-    return Boolean(original && !disposed && command.proof === original.command.proof
-      && command.argumentsDigest === digest(original.command.settings)
-      && digest(command.settings) === command.argumentsDigest
-      && now() < Date.parse(original.command.expiresAt) && original.isCurrent());
+    const bound = original?.command;
+    if (!original || disposed || !bound || command.proof !== bound.proof
+      || command.argumentsDigest !== digest(bound.settings)
+      || digest(command.settings) !== command.argumentsDigest
+      || !(now() < Date.parse(bound.expiresAt)) || !original.isCurrent()) return false;
+    // A voice source is not self-authorizing. The current-session final host must
+    // still match this exact utterance, digest and policy revision.
+    if (bound.source === 'voice') {
+      try { return typeof verifyVoiceFinal === 'function' && verifyVoiceFinal(bound, context) === true; }
+      catch { return false; }
+    }
+    return true;
   };
   const settingsTool = {descriptor, async execute(input, context) {
     if(question)question.currentRequirement(context,'notifications-settings');
@@ -129,10 +137,11 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       if (read.confirmed) return {state: 'confirmed', taskId, result: read.confirmed.result, evidenceRefs: read.confirmed.evidenceRefs};
       if (['failed', 'cancelled'].includes(read.task.state)) throw Error(read.task.error?.message || '通知设置未应用，请读取原任务');
       if (read.task.state === 'waiting_reconciliation') return {state: 'unknown', taskId};
-      if (!question&&read.approval?.state === 'pending' && !responded) {
+      if (!question && command.source !== 'voice' && read.approval?.state === 'pending' && !responded) {
         if (!isCurrent()) throw Error('当前设置或最终语音确认已经失效');
-        // The explicit settings submit/final is the user's decision for these exact
-        // frozen arguments. Runtime's original approval owns the one-use grant.
+        // A structured settings submit is the user's decision for these exact frozen
+        // arguments. Voice never calls authorization.respond; a card or the existing
+        // full-access policy owns that decision.
         responded = true;
         try {await client.call('authorization.respond', {approvalId: read.approval.approvalId,
           expectedRevision: read.approval.revision, decision: 'allow_once'});}

@@ -59,3 +59,9 @@ Owned 与主动工作流的 advance 同样绑定宿主固定世代；只读能�
 后续 Foundation `41596366388` 与 #534 的 `41597498898` 均已越过前述失败，剩余相同的 17 个 `remote-mcp-competition` 集成失败。三处显式 Fake Coordination 回执复用既有 `syntheticCoordinationExecution` 回显原请求世代；原授权卡、拒绝、取消、目录变更、结果未知及私有结果拦截断言均保留。该文件定向执行 19/19 通过，日志 `.cache/pr535-remote-mcp-epoch.log`；这是本地原 Runtime/Desktop 消费链加 Fake MCP 服务，不是真实云验收。
 
 未部署包含这些变更的新云镜像，未完成真实麦克风/扬声器、真实云端整图、独立人工审核或关机后持续运行验收；不提升接口冻结等级。技术 CI 和非作者审核依然是合并门槛，#531 的真实验收条件不被这份本地记录替代。
+
+## PR 增量集成复核（2026-11-03）
+
+在 #534/#536 已合入的 `11885ccd` 上普通合并 #531 的 `8aac49d1`，保留 #537～#540 的实现与原作者记录。两处冲突仅作并集：取消请求仍不携带旧事件，同时保留当前单一显式责任筛选；Runtime 同时导入原候选世代校验与 CAS 后回执恢复入口。
+
+仅构建本次变化的 contracts、policy、notifications、github、models、coding-tools、agentarts 和 runtime 类型，全部通过；按 test-name-pattern 执行取消旧 frontier、单一显式责任、CAS 已提交后原回执恢复、语音 final 不自批四个交叉场景，4/4 通过。日志为 `.cache/pr535-final-types.log` 与 `.cache/pr535-final-cross-boundaries.log`，未重复既有整文件或全仓本地测试，最终必需 CI 仍按新提交读回。F23 平台调试与 F26 构建参数修正分别记录在原证据文档，不据此宣称完整云验收完成。

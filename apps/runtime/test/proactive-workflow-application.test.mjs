@@ -4,7 +4,7 @@ import {mkdirSync, mkdtempSync} from 'node:fs';
 import {join} from 'node:path';
 import {createRuntimeApplication} from '../dist/application/runtime-application.js';
 import {createRuntimeProactiveConnectorHost} from '../dist/application/proactive-connector-host.js';
-import {RUNTIME_PROACTIVE_TOOLS, RUNTIME_PROACTIVE_TOOL_VERSION} from '../dist/application/proactive-workflow-application.js';
+import {createRuntimeProactiveControlPort, RUNTIME_PROACTIVE_TOOLS, RUNTIME_PROACTIVE_TOOL_VERSION} from '../dist/application/proactive-workflow-application.js';
 import {createRuntimeAtomicStatePort} from '../dist/index.js';
 import {ProactiveWorkflowEngine} from '@personal-agent/agentarts';
 import {createProactiveHostProofs} from '@personal-agent/agentarts-runtime/proactive-controller';
@@ -152,6 +152,56 @@ test('responsibility revocation is atomic, checks the execution gate and does no
     assert.throws(()=>f.host.readResponsibilityLifecycleOperation({...activation,validUntil:'2099-01-01T00:00:00.000Z'},f.context),{code:'REVISION_CONFLICT'});
     const snapshot=f.host.readResponsibility({...ref,responsibilityRevision:2},f.context);snapshot.sourceQuotes.length=0;
     assert.equal(f.host.readResponsibility({...ref,responsibilityRevision:2},f.context).sourceQuotes.length,1);
+  } finally {await f.close();}
+});
+
+test('one injected source consumes only its active explicit responsibility, then survives leave and return on the original checkpoint', async () => {
+  const id = 'tracked-source';
+  const f = fixture({options: {sourceResponsibilityBinding: {sourceId: 'fixture-source', responsibilityId: id},
+    verifyResponsibilityLifecycle: async () => true, assertResponsibilityLifecycleCurrent: () => {}}});
+  try {
+    f.host.registerResponsibility({id, revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    f.host.registerResponsibility({id: 'other-interest', revision: 1, sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'inferred_interest', scopeRefs: []}, f.context);
+    await f.connectorRunner.start('fixture-source', f.context);
+    const blocked = await f.connectorRunner.tick('fixture-source', {...f.context, limit: 1});
+    assert.equal(blocked.errorCode, 'UNSUPPORTED_CAPABILITY');
+    assert.equal((await f.connectorRunner.status('fixture-source')).checkpoint.cursor, undefined);
+    await f.host.recordResponsibilityLifecycle({commandId: 'activate-tracked', responsibilityId: id, responsibilityRevision: 1,
+      expectedLifecycleRevision: null, action: 'activate', sourceTaskId: f.source.taskId, validUntil: f.deadline}, f.context);
+    const committed = await f.connectorRunner.tick('fixture-source', {...f.context, limit: 1});
+    assert.equal(committed.state, 'changed');
+    assert.equal(f.calls().sourceReads, 1, 'the same pending batch is drained without another source read');
+    const userEvent = f.host.ingestUserInstruction({sourceTaskId: f.source.taskId, responsibilityId: id}, f.context);
+    const entries = Object.values(f.host.inspect().application.state.entries);
+    assert.deepEqual(entries.find(entry => entry.event.entry === 'connector').event.responsibilityRefs, [id]);
+    assert.deepEqual(entries.find(entry => entry.event.eventId === userEvent).event.responsibilityRefs, [id]);
+    const frontier = await f.next();
+    assert.ok(frontier.proposals.length >= 1);
+    assert.equal(JSON.stringify(frontier).includes('other-interest'), false);
+    assert.equal(f.calls().sourceReads, 1);
+  } finally {await f.close();}
+});
+
+test('runtime control port persists enter and return on the original checkpoint without extending the deadline', async () => {
+  const f = fixture();
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    await f.next();
+    const port = createRuntimeProactiveControlPort(f.app.runtime, f.host);
+    const leave = await port.enter({commandId: 'port-leave', expectedControlRevision: f.host.binding.controlRevision, sourceTaskId: f.source.taskId}, f.context);
+    assert.equal(leave.mode, 'unattended');
+    assert.equal(leave.taskDeadline, f.deadline);
+    assert.equal(leave.replayedNotifications, 0);
+    const calls = f.calls().imageCalls;
+    const returnCommand = {commandId: 'port-return', expectedControlRevision: f.host.binding.controlRevision, sourceTaskId: f.source.taskId};
+    const returned = await port.return(returnCommand, f.context);
+    assert.equal(returned.replayedNotifications, 0);
+    assert.equal(returned.taskDeadline, f.deadline);
+    assert.equal(returned.result.proposals.length, 0);
+    assert.equal(f.host.binding.taskDeadline, f.deadline);
+    assert.equal((await port.return(returnCommand, f.context)).replayedNotifications, 0);
+    assert.equal(f.calls().imageCalls, calls + 1, 'replaying the same return does not advance the image again');
+    assert.equal(f.calls().actionCalls, 0);
   } finally {await f.close();}
 });
 
