@@ -1,4 +1,8 @@
+import {mkdirSync, readFileSync, statSync} from 'node:fs';
+import {join, resolve} from 'node:path';
 import {CrewError} from './errors.js';
+import {measureHandoffFile, sha256OfBytes} from './handoff.js';
+import {resolveWithinRoot, singleSegment} from './paths.js';
 import {
   CrewStore,
   CREW_PARENT_AGENT_ID,
@@ -7,8 +11,10 @@ import {
   type CrewAgentSpec,
   type CrewDispatchInput,
   type CrewDriverId,
+  type CrewHandoffRecord,
   type CrewMessageInput,
   type CrewMessageRecord,
+  type CrewParentNotificationRecord,
   type CrewStoreOptions,
   type CrewTaskRecord,
 } from './store.js';
@@ -27,17 +33,32 @@ import {
  * 将来本地 MCP 工具（send_message / list_agents / interrupt_agent）与驱动层
  * 的每个工具调用都应对应这里的一次内核调用。
  */
+const AGENTS_DIRNAME = 'agents';
+const SHARED_DIRNAME = 'shared';
+
 export class CrewKernel {
   private readonly store: CrewStore;
+  private readonly agentsRoot: string | undefined;
+  private readonly sharedRoot: string | undefined;
 
-  private constructor(store: CrewStore) {
+  private constructor(store: CrewStore, options: CrewKernelOptions) {
     this.store = store;
+    if (options.workspaceRoot !== undefined) {
+      const root = resolve(options.workspaceRoot);
+      this.agentsRoot = join(root, AGENTS_DIRNAME);
+      this.sharedRoot = join(root, SHARED_DIRNAME);
+      mkdirSync(this.agentsRoot, {recursive: true});
+      mkdirSync(this.sharedRoot, {recursive: true});
+    } else {
+      this.agentsRoot = undefined;
+      this.sharedRoot = undefined;
+    }
   }
 
   /** 打开（必要时创建）独立的 crew 数据库并返回内核；数据库与 Runtime 主库分离。 */
   static open(path: string, options: CrewKernelOptions = {}): CrewKernel {
     const storeOptions: CrewStoreOptions = options.now === undefined ? {} : {now: options.now};
-    return new CrewKernel(CrewStore.open(path, storeOptions));
+    return new CrewKernel(CrewStore.open(path, storeOptions), options);
   }
 
   close(): void {
@@ -46,9 +67,18 @@ export class CrewKernel {
 
   // ── 注册表：宿主管理入口 ────────────────────────────────────────────────
 
-  /** 注册一个命名子 agent（宿主管理操作；`parent` 为保留身份不可注册）。 */
+  /**
+   * 注册一个命名子 agent（宿主管理操作；`parent` 为保留身份不可注册）。
+   * agentId 会映射为工作区目录名，因此必须是单一路径片段（拒绝分隔符、
+   * `..`、盘符等）。启用 workspaceRoot 时注册即创建该 agent 的独立工作区目录。
+   */
   registerAgent(spec: CrewAgentSpec): CrewAgentRecord {
-    return this.store.registerAgent(spec);
+    singleSegment(spec.agentId, 'agentId');
+    const record = this.store.registerAgent(spec);
+    if (this.agentsRoot !== undefined) {
+      mkdirSync(join(this.agentsRoot, record.agentId), {recursive: true});
+    }
+    return record;
   }
 
   /** 按 id 读取子 agent 完整记录（宿主管理操作）。 */
@@ -78,6 +108,8 @@ export class CrewKernel {
    * 父发起一个任务根并投递到目标 agent 的 FIFO 信箱。
    * 只有父可以调用；子 agent 没有任何创建任务根的入口，
    * 因此"禁止把任务退回派单方"由内核保证。每个根请求最多自动派 8 次。
+   * 可选 timeoutMs 设定任务期限：重启后超时的未完成任务被恢复流程标记
+   * 失败并通知父（见 recoverExpiredTasks / receiveParentNotifications）。
    */
   dispatchTask(input: CrewKernelDispatchInput): CrewTaskRecord {
     this.requireParentActor(input.actorId, 'dispatch task roots');
@@ -86,6 +118,7 @@ export class CrewKernel {
       rootRequestId: input.rootRequestId,
       assignedAgentId: input.assignedAgentId,
       goal: input.goal,
+      ...(input.timeoutMs === undefined ? {} : {timeoutMs: input.timeoutMs}),
     });
   }
 
@@ -216,6 +249,115 @@ export class CrewKernel {
     return this.store.receiveMessages(actorId, options);
   }
 
+  // ── 工作区：每 agent 独立目录 ──────────────────────────────────────────
+
+  /**
+   * 创建（幂等）并返回一个 agent 的独立工作区目录 `<workspaceRoot>/agents/<agentId>`。
+   * 父可为任意已注册成员创建；子只能创建自己的。
+   */
+  ensureAgentWorkspace(input: CrewKernelWorkspaceInput): CrewWorkspaceInfo {
+    const dir = this.authorizedAgentDir(input.actorId, input.agentId, 'ensure');
+    mkdirSync(dir, {recursive: true});
+    return {agentId: input.agentId, absolutePath: dir};
+  }
+
+  /**
+   * 把 agent 工作区内的相对路径解析为绝对路径（不触碰文件系统）。
+   * 路径规则与 coding-tools 的 workspace-paths 一致：规范子级片段，拒绝
+   * 绝对路径、`..` 穿越、盘符、NUL 与 Windows 歧义段；子只能解析自己的
+   * 工作区，越权访问其他 agent 的工作区一律拒绝。
+   */
+  resolveAgentPath(input: CrewKernelResolveWorkspacePathInput): string {
+    const dir = this.authorizedAgentDir(input.actorId, input.agentId, 'resolve paths in');
+    return resolveWithinRoot(dir, input.relativePath, 'relativePath').absolutePath;
+  }
+
+  // ── 文件交接：共享目录 + SHA-256 清单 ─────────────────────────────────
+
+  /**
+   * 发送方视角：解析共享交接目录 `<workspaceRoot>/shared` 内的写入目标路径。
+   * 发送方先把文件写到该路径，再调用 publishHandoff 登记。
+   */
+  resolveHandoffPath(input: {readonly actorId: string; readonly relativePath: string}): string {
+    return this.sharedPathFor(input.actorId, input.relativePath).absolutePath;
+  }
+
+  /**
+   * 发送方登记一条文件交接：内核从共享目录里的真实字节计算大小与 SHA-256
+   * （不信任自报值），写入清单。同一 handoffId 或同一 file_path 的重复登记
+   * 返回 CONFLICT；文件缺失/非常规文件/超上限返回 INVALID_INPUT。
+   */
+  publishHandoff(input: CrewKernelPublishHandoffInput): CrewHandoffRecord {
+    const {absolutePath, normalized} = this.sharedPathFor(input.actorId, input.filePath);
+    const {sizeBytes, sha256} = measureHandoffFile(absolutePath, `handoff file ${normalized}`);
+    return this.store.registerHandoff({
+      handoffId: input.handoffId,
+      filePath: normalized,
+      sizeBytes,
+      sha256,
+      fromAgentId: input.actorId,
+      ...(input.taskId === undefined ? {} : {taskId: input.taskId}),
+      ...(input.rootRequestId === undefined ? {} : {rootRequestId: input.rootRequestId}),
+    });
+  }
+
+  /**
+   * 接收方校验一条交接：从共享目录重新读取真实字节，与清单中的大小和
+   * SHA-256 比对；文件缺失或哈希/大小不一致返回 HANDOFF_REJECTED（拒收），
+   * 校验通过才返回可读的绝对路径。清单 id 通常经消息 attachmentRefs 传递。
+   */
+  receiveHandoff(input: {readonly actorId: string; readonly handoffId: string}): CrewHandoffDelivery {
+    this.requireHandoffMember(input.actorId);
+    const sharedRoot = this.requireSharedRoot();
+    const record = this.store.getHandoff(input.handoffId);
+    if (!record) throw new CrewError('NOT_FOUND', `handoff ${input.handoffId} is not registered`);
+    const {absolutePath} = resolveWithinRoot(sharedRoot, record.filePath, 'manifest filePath');
+    let bytes: Buffer;
+    try {
+      // 大小与哈希在一条消息里同时报告：任何被篡改的共享文件两者都会变，接收方按真实字节拒收。
+      const stat = statSync(absolutePath);
+      bytes = readFileSync(absolutePath);
+      const sha256OfShared = sha256OfBytes(bytes);
+      if (stat.size !== record.sizeBytes || sha256OfShared !== record.sha256) {
+        throw new CrewError('HANDOFF_REJECTED', `handoff ${input.handoffId} rejected: sha256 mismatch (manifest ${record.sha256}, shared file ${sha256OfShared}); manifest expects ${record.sizeBytes} bytes but the shared file has ${stat.size}`);
+      }
+    } catch (error) {
+      if (error instanceof CrewError) throw error;
+      throw new CrewError('HANDOFF_REJECTED', `handoff ${input.handoffId} rejected: the file is missing from the shared directory`);
+    }
+    return {handoff: record, absolutePath};
+  }
+
+  /** 读取交接清单元数据（不做文件校验）；父或任一成员可读。 */
+  getHandoff(input: {readonly actorId: string; readonly handoffId: string}): CrewHandoffRecord | undefined {
+    this.requireHandoffMember(input.actorId);
+    this.requireSharedRoot();
+    return this.store.getHandoff(input.handoffId);
+  }
+
+  // ── 重启恢复：超时任务与父信箱 ────────────────────────────────────────
+
+  /**
+   * 恢复超时任务：把已过 `deadline_at` 的未完成任务标记 failed（固定回执
+   * 格式）并写入父信箱。打开数据库时已自动执行一次（进程重启即恢复）；
+   * 长驻进程的宿主可周期性调用。幂等。
+   */
+  recoverExpiredTasks(): CrewTaskRecord[] {
+    return this.store.recoverExpiredTasks();
+  }
+
+  /**
+   * 父信箱：读取系统通知（当前只有任务超时），回执为固定四段格式。
+   * 只有父可以读；子对父的结果仍走 submitReceipt 回执通道。
+   */
+  receiveParentNotifications(input: {readonly actorId: string; readonly limit?: number; readonly dequeue?: boolean}): CrewParentNotificationRecord[] {
+    this.requireParentActor(input.actorId, 'read the parent inbox');
+    return this.store.receiveParentNotifications({
+      ...(input.limit === undefined ? {} : {limit: input.limit}),
+      ...(input.dequeue === undefined ? {} : {dequeue: input.dequeue}),
+    });
+  }
+
   // ── actor 边界 ────────────────────────────────────────────────────────
 
   /** actor 必须是父或已注册子 agent；未知身份拒绝。 */
@@ -234,6 +376,50 @@ export class CrewKernel {
       throw new CrewError('NOT_PERMITTED', `only the parent agent (${CREW_PARENT_AGENT_ID}) can ${action}`);
     }
   }
+
+  /** 工作区未配置时明确 unavailable，不用假实现冒充。 */
+  private requireSharedRoot(): string {
+    if (this.sharedRoot === undefined) {
+      throw new CrewError('UNSUPPORTED', 'crew workspaces and handoff are unavailable: no workspaceRoot was configured when opening the kernel');
+    }
+    return this.sharedRoot;
+  }
+
+  /**
+   * 工作区目录的授权入口：子只能操作自己的工作区，父可为任意已注册成员
+   * 操作；agentId 必须是单一路径片段，未注册身份拒绝。
+   */
+  private authorizedAgentDir(actorId: string, agentId: string, action: string): string {
+    if (this.agentsRoot === undefined) {
+      throw new CrewError('UNSUPPORTED', 'crew workspaces are unavailable: no workspaceRoot was configured when opening the kernel');
+    }
+    if (actorId !== CREW_PARENT_AGENT_ID && actorId !== agentId) {
+      throw new CrewError('NOT_PERMITTED', `agent ${actorId} may only ${action} its own workspace`);
+    }
+    if (this.store.getAgent(agentId) === undefined) {
+      throw new CrewError('UNKNOWN_AGENT', `agent ${agentId} is not registered`);
+    }
+    return join(this.agentsRoot, singleSegment(agentId, 'agentId'));
+  }
+
+  /** 共享交接目录的发送方授权：只有已注册子 agent 发布/解析交接路径。 */
+  private sharedPathFor(actorId: string, relativePath: string): {absolutePath: string; normalized: string} {
+    const sharedRoot = this.requireSharedRoot();
+    if (actorId === CREW_PARENT_AGENT_ID) {
+      throw new CrewError('NOT_PERMITTED', 'the parent agent does not publish handoffs; it dispatches goals and collects receipts');
+    }
+    if (this.store.getAgent(actorId) === undefined) {
+      throw new CrewError('UNKNOWN_AGENT', `agent ${actorId} is not registered`);
+    }
+    return resolveWithinRoot(sharedRoot, relativePath, 'filePath');
+  }
+
+  /** 交接的读侧成员校验：父或任一已注册成员都可以接收/查看清单。 */
+  private requireHandoffMember(actorId: string): void {
+    if (actorId !== CREW_PARENT_AGENT_ID && this.store.getAgent(actorId) === undefined) {
+      throw new CrewError('UNKNOWN_AGENT', `agent ${actorId} is not registered`);
+    }
+  }
 }
 
 /** `list_agents` 面向成员的精简视图：不含其他 agent 的指令与工作区路径。 */
@@ -246,6 +432,43 @@ export interface CrewAgentSummary {
 
 export interface CrewKernelOptions {
   readonly now?: () => number;
+  /**
+   * 受信工作区根目录；提供后启用每 agent 独立工作区（`<root>/agents/<agentId>`）
+   * 与共享交接目录（`<root>/shared`）。缺省时工作区与文件交接明确 unavailable。
+   */
+  readonly workspaceRoot?: string;
+}
+
+/** agent 工作区的物化结果。 */
+export interface CrewWorkspaceInfo {
+  readonly agentId: string;
+  readonly absolutePath: string;
+}
+
+/** 接收校验通过后的交接投递：清单记录 + 接收方可读的绝对路径。 */
+export interface CrewHandoffDelivery {
+  readonly handoff: CrewHandoffRecord;
+  readonly absolutePath: string;
+}
+
+export interface CrewKernelWorkspaceInput {
+  readonly actorId: string;
+  readonly agentId: string;
+}
+
+export interface CrewKernelResolveWorkspacePathInput {
+  readonly actorId: string;
+  readonly agentId: string;
+  readonly relativePath: string;
+}
+
+export interface CrewKernelPublishHandoffInput {
+  readonly actorId: string;
+  readonly handoffId: string;
+  /** 共享交接目录内的规范化相对路径。 */
+  readonly filePath: string;
+  readonly taskId?: string;
+  readonly rootRequestId?: string;
 }
 
 export type CrewKernelDispatchInput = CrewDispatchInput & {readonly actorId: string};

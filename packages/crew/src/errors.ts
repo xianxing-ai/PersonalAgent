@@ -6,7 +6,8 @@ export type CrewErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'DISPATCH_LIMIT_EXCEEDED'
-  | 'UNSUPPORTED';
+  | 'UNSUPPORTED'
+  | 'HANDOFF_REJECTED';
 
 export class CrewError extends Error {
   readonly code: CrewErrorCode;

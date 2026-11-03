@@ -45,6 +45,8 @@ export interface CrewDispatchInput {
   readonly rootRequestId: string;
   readonly assignedAgentId: string;
   readonly goal: string;
+  /** 可选超时（毫秒，自派单时刻起算）；超时的未完成任务由恢复流程标记失败并通知父。 */
+  readonly timeoutMs?: number;
 }
 
 export interface CrewTaskRecord {
@@ -58,6 +60,42 @@ export interface CrewTaskRecord {
   readonly createdAt: string;
   readonly startedAt?: string;
   readonly finishedAt?: string;
+  readonly deadlineAt?: string;
+}
+
+/** 发送方登记一条文件交接（内核已从真实字节算好 size 与 sha256）。 */
+export interface CrewHandoffRegistration {
+  readonly handoffId: string;
+  /** 共享交接目录内的规范化相对路径。 */
+  readonly filePath: string;
+  readonly sizeBytes: number;
+  /** 小写十六进制 SHA-256（64 位）。 */
+  readonly sha256: string;
+  readonly fromAgentId: string;
+  readonly taskId?: string;
+  readonly rootRequestId?: string;
+}
+
+export interface CrewHandoffRecord {
+  readonly handoffId: string;
+  readonly filePath: string;
+  readonly sizeBytes: number;
+  readonly sha256: string;
+  readonly fromAgentId: string;
+  readonly taskId?: string;
+  readonly rootRequestId?: string;
+  readonly createdAt: string;
+}
+
+/** 写入父信箱的系统通知（当前只有任务超时），回执使用固定四段格式。 */
+export interface CrewParentNotificationRecord {
+  readonly notificationId: number;
+  readonly taskId: string;
+  readonly rootRequestId: string;
+  readonly assignedAgentId: string;
+  readonly receipt: CrewReceipt;
+  readonly createdAt: string;
+  readonly dequeuedAt?: string;
 }
 
 export interface CrewMessageInput {
@@ -100,6 +138,34 @@ const MAX_TEXT = 8192;
 const MAX_REF = 256;
 const MAX_REFS = 32;
 const MAX_RECEIVED = 100;
+
+/**
+ * 版本 2（crew P3）：任务超时列、文件交接 SHA-256 清单、父信箱。
+ * 只做加列与建表，不修改版本 1 已发布迁移的含义。
+ */
+const MIGRATION_V2 = `
+    ALTER TABLE crew_tasks ADD COLUMN deadline_at TEXT;
+    CREATE INDEX crew_tasks_deadline_idx ON crew_tasks(deadline_at);
+    CREATE TABLE crew_handoff (
+      handoff_id TEXT PRIMARY KEY,
+      file_path TEXT NOT NULL UNIQUE,
+      size_bytes INTEGER NOT NULL CHECK (size_bytes >= 0),
+      sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+      from_agent_id TEXT NOT NULL REFERENCES crew_agents(agent_id),
+      task_id TEXT,
+      root_request_id TEXT,
+      created_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE crew_parent_inbox (
+      notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL REFERENCES crew_tasks(task_id),
+      root_request_id TEXT NOT NULL,
+      assigned_agent_id TEXT NOT NULL REFERENCES crew_agents(agent_id),
+      receipt_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      dequeued_at TEXT
+    ) STRICT;
+  `;
 
 const MIGRATIONS: readonly Migration[] = [{
   version: 1,
@@ -146,6 +212,9 @@ const MIGRATIONS: readonly Migration[] = [{
     CREATE INDEX crew_messages_mailbox_idx ON crew_messages(mailbox_agent_id, message_id);
     CREATE INDEX crew_messages_pair_idx ON crew_messages(sender_agent_id, mailbox_agent_id, message_id DESC);
   `,
+}, {
+  version: 2,
+  sql: MIGRATION_V2,
 }];
 
 function requiredId(value: unknown, field: string): string {
@@ -203,6 +272,7 @@ interface TaskRow {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+  deadline_at: string | null;
 }
 
 interface MessageRow {
@@ -246,6 +316,7 @@ function taskRecord(row: TaskRow): CrewTaskRecord {
     createdAt: row.created_at,
     ...(row.started_at === null ? {} : {startedAt: row.started_at}),
     ...(row.finished_at === null ? {} : {finishedAt: row.finished_at}),
+    ...(row.deadline_at === null ? {} : {deadlineAt: row.deadline_at}),
   };
 }
 
@@ -268,6 +339,52 @@ function messageRecord(row: MessageRow): CrewMessageRecord {
   };
 }
 
+interface HandoffRow {
+  handoff_id: string;
+  file_path: string;
+  size_bytes: number;
+  sha256: string;
+  from_agent_id: string;
+  task_id: string | null;
+  root_request_id: string | null;
+  created_at: string;
+}
+
+function handoffRecord(row: HandoffRow): CrewHandoffRecord {
+  return {
+    handoffId: row.handoff_id,
+    filePath: row.file_path,
+    sizeBytes: row.size_bytes,
+    sha256: row.sha256,
+    fromAgentId: row.from_agent_id,
+    ...(row.task_id === null ? {} : {taskId: row.task_id}),
+    ...(row.root_request_id === null ? {} : {rootRequestId: row.root_request_id}),
+    createdAt: row.created_at,
+  };
+}
+
+interface ParentNotificationRow {
+  notification_id: number;
+  task_id: string;
+  root_request_id: string;
+  assigned_agent_id: string;
+  receipt_json: string;
+  created_at: string;
+  dequeued_at: string | null;
+}
+
+function parentNotificationRecord(row: ParentNotificationRow): CrewParentNotificationRecord {
+  return {
+    notificationId: row.notification_id,
+    taskId: row.task_id,
+    rootRequestId: row.root_request_id,
+    assignedAgentId: row.assigned_agent_id,
+    receipt: parseCrewReceipt(JSON.parse(row.receipt_json) as unknown),
+    createdAt: row.created_at,
+    ...(row.dequeued_at === null ? {} : {dequeuedAt: row.dequeued_at}),
+  };
+}
+
 /**
  * crew 独立 SQLite 存储：命名 agent 注册表、任务表与每 agent 持久 FIFO 信箱。
  * 与 Runtime 主库分离；任务根只由父发起，回执使用固定四段格式。
@@ -281,10 +398,16 @@ export class CrewStore {
     this.now = options.now ?? Date.now;
   }
 
-  /** 打开（必要时创建）独立的 crew 数据库文件；重复打开已迁移文件是幂等的。 */
+  /**
+   * 打开（必要时创建）独立的 crew 数据库文件；重复打开已迁移文件是幂等的。
+   * 打开即执行一次超时恢复：进程重启后，已过期限的未完成任务被标记失败
+   * 并写入父信箱（固定回执格式）；未超时任务与信箱原样从 SQLite 续上。
+   */
   static open(path: string, options: CrewStoreOptions = {}): CrewStore {
     const db = openStorage(path, MIGRATIONS);
-    return new CrewStore(db, options);
+    const store = new CrewStore(db, options);
+    store.recoverExpiredTasks();
+    return store;
   }
 
   close(): void {
@@ -356,6 +479,13 @@ export class CrewStore {
     const rootRequestId = requiredId(input.rootRequestId, 'rootRequestId');
     const assignedAgentId = requiredId(input.assignedAgentId, 'assignedAgentId');
     const goal = requiredText(input.goal, 'goal');
+    let deadlineAt: string | undefined;
+    if (input.timeoutMs !== undefined) {
+      if (!Number.isInteger(input.timeoutMs) || input.timeoutMs <= 0) {
+        throw new CrewError('INVALID_INPUT', 'timeoutMs must be a positive integer of milliseconds');
+      }
+      deadlineAt = new Date(this.now() + input.timeoutMs).toISOString();
+    }
     return this.inTransaction(() => {
       this.getAgentRow(assignedAgentId);
       const dispatched = this.db.prepare('SELECT count(*) AS n FROM crew_tasks WHERE root_request_id = ?').get(rootRequestId) as {n: number};
@@ -365,8 +495,8 @@ export class CrewStore {
       const duplicate = this.db.prepare('SELECT task_id FROM crew_tasks WHERE task_id = ?').get(taskId);
       if (duplicate) throw new CrewError('CONFLICT', `task ${taskId} already exists`);
       const createdAt = this.iso();
-      this.db.prepare('INSERT INTO crew_tasks (task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL)')
-        .run(taskId, rootRequestId, assignedAgentId, goal, 'queued', createdAt);
+      this.db.prepare('INSERT INTO crew_tasks (task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at, deadline_at) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, NULL, NULL, ?)')
+        .run(taskId, rootRequestId, assignedAgentId, goal, 'queued', createdAt, deadlineAt ?? null);
       this.insertMessage({
         mailboxAgentId: assignedAgentId,
         senderAgentId: CREW_PARENT_AGENT_ID,
@@ -388,6 +518,7 @@ export class CrewStore {
         goal,
         status: 'queued' as CrewTaskStatus,
         createdAt,
+        ...(deadlineAt === undefined ? {} : {deadlineAt}),
       };
     });
   }
@@ -402,7 +533,7 @@ export class CrewStore {
       const agent = this.getAgentRow(id);
       const running = this.db.prepare("SELECT count(*) AS n FROM crew_tasks WHERE assigned_agent_id = ? AND status = 'running'").get(id) as {n: number};
       if (running.n >= Math.min(agent.concurrency_limit, MAX_CONCURRENT_TASKS_PER_AGENT)) return undefined;
-      const row = this.db.prepare("SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at FROM crew_tasks WHERE assigned_agent_id = ? AND status = 'queued' ORDER BY created_at, rowid LIMIT 1").get(id) as TaskRow | undefined;
+      const row = this.db.prepare("SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at, deadline_at FROM crew_tasks WHERE assigned_agent_id = ? AND status = 'queued' ORDER BY created_at, rowid LIMIT 1").get(id) as TaskRow | undefined;
       if (!row) return undefined;
       const startedAt = this.iso();
       this.db.prepare("UPDATE crew_tasks SET status = 'running', started_at = ? WHERE task_id = ?").run(startedAt, row.task_id);
@@ -412,7 +543,7 @@ export class CrewStore {
 
   getTask(taskId: string): CrewTaskRecord | undefined {
     const id = requiredId(taskId, 'taskId');
-    const row = this.db.prepare('SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at FROM crew_tasks WHERE task_id = ?').get(id) as TaskRow | undefined;
+    const row = this.db.prepare('SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at, deadline_at FROM crew_tasks WHERE task_id = ?').get(id) as TaskRow | undefined;
     return row ? taskRecord(row) : undefined;
   }
 
@@ -428,7 +559,7 @@ export class CrewStore {
       params.push(requiredId(filter.assignedAgentId, 'assignedAgentId'));
     }
     const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
-    const rows = this.db.prepare(`SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at FROM crew_tasks${where} ORDER BY created_at, rowid`).all(...params) as unknown as TaskRow[];
+    const rows = this.db.prepare(`SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at, deadline_at FROM crew_tasks${where} ORDER BY created_at, rowid`).all(...params) as unknown as TaskRow[];
     return rows.map(taskRecord);
   }
 
@@ -437,7 +568,7 @@ export class CrewStore {
     const id = requiredId(taskId, 'taskId');
     const parsed = parseCrewReceipt(receipt);
     return this.inTransaction(() => {
-      const row = this.db.prepare('SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at FROM crew_tasks WHERE task_id = ?').get(id) as TaskRow | undefined;
+      const row = this.db.prepare('SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at, deadline_at FROM crew_tasks WHERE task_id = ?').get(id) as TaskRow | undefined;
       if (!row) throw new CrewError('NOT_FOUND', `task ${id} does not exist`);
       if (row.status !== 'running') {
         throw new CrewError('CONFLICT', `task ${id} is ${row.status}; only running tasks can be completed`);
@@ -459,7 +590,7 @@ export class CrewStore {
     const id = requiredId(taskId, 'taskId');
     const cancelReason = requiredText(reason, 'reason');
     return this.inTransaction(() => {
-      const row = this.db.prepare('SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at FROM crew_tasks WHERE task_id = ?').get(id) as TaskRow | undefined;
+      const row = this.db.prepare('SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at, deadline_at FROM crew_tasks WHERE task_id = ?').get(id) as TaskRow | undefined;
       if (!row) throw new CrewError('NOT_FOUND', `task ${id} does not exist`);
       if (row.status !== 'queued' && row.status !== 'running') {
         throw new CrewError('CONFLICT', `task ${id} is already ${row.status}`);
@@ -577,6 +708,105 @@ export class CrewStore {
       }
       return rows.map(messageRecord);
     });
+  }
+
+  /**
+   * 超时恢复：把已过 `deadline_at` 的未完成任务（排队或运行中）标记为 failed，
+   * 回执使用固定四段格式，并在同一事务内写入父信箱。
+   * 打开数据库时自动执行一次（模拟进程重启后的恢复）；宿主也可周期性调用。
+   * 幂等：已是终态的任务不会重复处理。
+   */
+  recoverExpiredTasks(): CrewTaskRecord[] {
+    return this.inTransaction(() => {
+      const nowIso = this.iso();
+      const rows = this.db.prepare("SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at, deadline_at FROM crew_tasks WHERE status IN ('queued', 'running') AND deadline_at IS NOT NULL AND deadline_at < ?").all(nowIso) as unknown as TaskRow[];
+      const recovered: CrewTaskRecord[] = [];
+      for (const row of rows) {
+        if (row.deadline_at === null) continue;
+        const finishedAt = this.iso();
+        const receipt: CrewReceipt = {
+          status: 'failed',
+          result: `任务超时：未在期限 ${row.deadline_at} 前完成，恢复流程已标记失败`,
+          evidenceRefs: [],
+          unblock: '',
+        };
+        const receiptJson = JSON.stringify(receipt);
+        this.db.prepare("UPDATE crew_tasks SET status = 'failed', receipt_json = ?, finished_at = ? WHERE task_id = ? AND status IN ('queued', 'running')")
+          .run(receiptJson, finishedAt, row.task_id);
+        this.db.prepare('INSERT INTO crew_parent_inbox (task_id, root_request_id, assigned_agent_id, receipt_json, created_at, dequeued_at) VALUES (?, ?, ?, ?, ?, NULL)')
+          .run(row.task_id, row.root_request_id, row.assigned_agent_id, receiptJson, finishedAt);
+        recovered.push(taskRecord({...row, status: 'failed', receipt_json: receiptJson, finished_at: finishedAt}));
+      }
+      return recovered;
+    });
+  }
+
+  /**
+   * 父信箱：按 FIFO 读取系统通知（当前只有任务超时），回执为固定四段格式。
+   * dequeue 为 true 时在读取的同一事务内标记已消费；通知随 SQLite 持久，重启不丢。
+   */
+  receiveParentNotifications(options: {limit?: number; dequeue?: boolean} = {}): CrewParentNotificationRecord[] {
+    const limit = options.limit ?? 32;
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_RECEIVED) {
+      throw new CrewError('INVALID_INPUT', `limit must be an integer between 1 and ${MAX_RECEIVED}`);
+    }
+    const dequeue = options.dequeue ?? false;
+    return this.inTransaction(() => {
+      const rows = this.db.prepare('SELECT notification_id, task_id, root_request_id, assigned_agent_id, receipt_json, created_at, dequeued_at FROM crew_parent_inbox WHERE dequeued_at IS NULL ORDER BY notification_id LIMIT ?').all(limit) as unknown as ParentNotificationRow[];
+      if (dequeue && rows.length) {
+        const now = this.iso();
+        const mark = this.db.prepare('UPDATE crew_parent_inbox SET dequeued_at = ? WHERE notification_id = ? AND dequeued_at IS NULL');
+        for (const row of rows) mark.run(now, row.notification_id);
+        return rows.map(row => parentNotificationRecord({...row, dequeued_at: now}));
+      }
+      return rows.map(parentNotificationRecord);
+    });
+  }
+
+  /**
+   * 登记一条文件交接清单（发送方）。`sizeBytes` 与 `sha256` 必须来自对真实字节的
+   * 计算（内核在 publish 时完成），不接收模型自报值；同一 handoffId 或同一
+   * file_path 的重复登记都明确拒绝。
+   */
+  registerHandoff(registration: CrewHandoffRegistration): CrewHandoffRecord {
+    const handoffId = requiredId(registration.handoffId, 'handoffId');
+    const filePath = requiredId(registration.filePath, 'filePath');
+    if (!Number.isSafeInteger(registration.sizeBytes) || registration.sizeBytes < 0) {
+      throw new CrewError('INVALID_INPUT', 'sizeBytes must be a non-negative safe integer');
+    }
+    if (typeof registration.sha256 !== 'string' || !/^[0-9a-f]{64}$/u.test(registration.sha256)) {
+      throw new CrewError('INVALID_INPUT', 'sha256 must be a lowercase 64-character hex digest');
+    }
+    const fromAgentId = requiredId(registration.fromAgentId, 'fromAgentId');
+    const taskId = optionalText(registration.taskId, 'taskId');
+    const rootRequestId = optionalText(registration.rootRequestId, 'rootRequestId');
+    return this.inTransaction(() => {
+      this.getAgentRow(fromAgentId);
+      const duplicateId = this.db.prepare('SELECT handoff_id FROM crew_handoff WHERE handoff_id = ?').get(handoffId);
+      if (duplicateId) throw new CrewError('CONFLICT', `handoff ${handoffId} is already registered`);
+      const duplicatePath = this.db.prepare('SELECT handoff_id FROM crew_handoff WHERE file_path = ?').get(filePath);
+      if (duplicatePath) throw new CrewError('CONFLICT', `handoff file path ${filePath} is already registered`);
+      const createdAt = this.iso();
+      this.db.prepare('INSERT INTO crew_handoff (handoff_id, file_path, size_bytes, sha256, from_agent_id, task_id, root_request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(handoffId, filePath, registration.sizeBytes, registration.sha256, fromAgentId, taskId ?? null, rootRequestId ?? null, createdAt);
+      return {
+        handoffId,
+        filePath,
+        sizeBytes: registration.sizeBytes,
+        sha256: registration.sha256,
+        fromAgentId,
+        ...(taskId === undefined ? {} : {taskId}),
+        ...(rootRequestId === undefined ? {} : {rootRequestId}),
+        createdAt,
+      };
+    });
+  }
+
+  /** 按 id 读取交接清单（纯清单读取，不做文件校验；接收校验在内核 receiveHandoff）。 */
+  getHandoff(handoffId: string): CrewHandoffRecord | undefined {
+    const id = requiredId(handoffId, 'handoffId');
+    const row = this.db.prepare('SELECT handoff_id, file_path, size_bytes, sha256, from_agent_id, task_id, root_request_id, created_at FROM crew_handoff WHERE handoff_id = ?').get(id) as HandoffRow | undefined;
+    return row ? handoffRecord(row) : undefined;
   }
 
   private insertMessage(input: {
