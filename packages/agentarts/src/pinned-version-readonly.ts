@@ -21,7 +21,7 @@ export interface PinnedReadonlyPorts {
   /** Injectable CloudAgentPort-shaped call. A fake stands in when no cloud credential exists. */
   invokeCloud:(request:{tool:PinnedReadonlyTool;arguments:Record<string,unknown>},context:PinnedReadonlyContext)=>Promise<{requestId:string;kind:string;toolName?:string;toolVersion?:string;arguments?:unknown}>;
   /** Original local Runtime/Policy/ToolGateway execution. This module does not grant scopes. */
-  executeLocalReadonly:(request:{tool:PinnedReadonlyTool;arguments:Record<string,unknown>;platformRequestId:string},context:PinnedReadonlyContext)=>Promise<{evidenceId:string;state?:string}>;
+  executeLocalReadonly:(request:{tool:PinnedReadonlyTool;arguments:Record<string,unknown>;platformRequestId:string},context:PinnedReadonlyContext)=>Promise<{evidenceId:string;state:string}>;
   authorize:(request:{tool:PinnedReadonlyTool;arguments:Record<string,unknown>},context:PinnedReadonlyContext)=>Promise<boolean>;
   recordEvidence?:(draft:{platformRequestId:string;evidenceId:string;deployment:PinnedDeploymentIdentity;argumentsDigest:string},context:PinnedReadonlyContext)=>Promise<{evidenceId:string}>;
   surfaceStatus?:()=>{knowledge?:{state?:string;missingConfiguration?:string[]};mcp?:{state?:string;missingConfiguration?:string[]};
@@ -95,6 +95,7 @@ export async function correlatePinnedReadonlyTool(ports:PinnedReadonlyPorts,requ
   const executed=await attempt(context,()=>ports.executeLocalReadonly({tool:allowed,arguments:structuredClone(args),platformRequestId:context.requestId},context),'RESULT_UNKNOWN','Local readonly execution has no confirmed evidence');
   active(context);
   if(!text(executed?.evidenceId)||!id.test(executed.evidenceId))fail('EXTERNAL_FAILURE','Local readonly evidence id missing');
+  if(executed.state!=='succeeded')fail('RESULT_UNKNOWN','Local readonly execution is not confirmed successful');
   if(ports.recordEvidence) {
     const recorded=await attempt(context,()=>ports.recordEvidence!({platformRequestId:context.requestId,evidenceId:executed.evidenceId,deployment,argumentsDigest},context),'RESULT_UNKNOWN','Pinned request and local evidence were not both recorded');
     active(context);

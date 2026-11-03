@@ -45,6 +45,13 @@ test('a changed deployment after the local read is not success and is not invoke
   await assert.rejects(correlatePinnedReadonlyTool(f.ports,{arguments:{query:'public'}},context()),{code:'REVISION_CONFLICT'});
   assert.equal(f.calls.cloud,1);assert.equal(f.calls.local,1);assert.equal(f.calls.read,2);
 });
+test('failed, unknown and missing local states cannot become correlated execution',async()=>{
+  for(const state of ['failed','unknown','pending',undefined]) {
+    const f=ports({executeLocalReadonly:async()=>{f.calls.local++;return {evidenceId:'evidence-1',state};}});
+    await assert.rejects(correlatePinnedReadonlyTool(f.ports,{arguments:{query:'public'}},context()),{code:'RESULT_UNKNOWN'});
+    assert.deepEqual(f.calls,{read:1,cloud:1,local:1,record:0});
+  }
+});
 test('missing ports stay unavailable and a cancelled call does not touch the cloud',async()=>{
   await assert.rejects(correlatePinnedReadonlyTool({deployment,allowedTool:tool},{arguments:{query:'public'}},context()),{code:'UNSUPPORTED_CAPABILITY'});
   const abort=new AbortController();abort.abort();
