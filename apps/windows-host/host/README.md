@@ -105,6 +105,36 @@ C# fixture 接入原 Node test glob：Windows 必须找到稳定 .NET 8 SDK，�
 结果须按对应提交的日志另行记录；不能预记成功，也不能代替真实 Pipe、UIA、用户接管
 或设备验收。Windows owner 仍可单独运行原 HostFixture 完成定向验证。
 
+2026-11-04 新增第二批跨平台 `WindowsHost.Portable` 单测（`host/test/portable/`，`net8.0`，
+延续 RunJournal 单测的 `Compile Include` 做法）：`NotepadTargets.cs`、`HostService.cs`、
+`HostWire.cs`、`RunJournal.cs`、`HostSecurity.cs`、`LocalJournalDirectory.cs` 原样编入
+测试程序集（不复制副本、不 fork 逻辑；`WindowsHost.HostFixture.csproj` 用一行
+`Compile Remove="portable/**/*.cs"` 排除该子目录，避免双入口）。覆盖：`NotepadTargets`
+的可注入纯逻辑门禁（不完整基线→`UNAUTHORIZED` 且仅一条 `BaselineUnqueryable` 诊断、
+过期 deadline 先于基线门禁快速失败且无诊断、完整空基线+无 notepad 进程→`NOT_FOUND`
+且仅一条 `NoFreshWindow` 诊断、`Resolve` 未知/空白 targetRef fail closed）、
+`NotepadTargetLease` 租期+身份守卫全语义（过期不查元数据、慢查询期间过期拒绝、身份在
+两次探测任一位置变化/抛异常均 fail closed 且计数精确）、`CheckTargetReady`
+（请求 deadline 优先于目标新鲜度、慢查询过期、fresh 不续期不换实例、missing/异常
+fail closed）、`NotepadExecutionLifetime`（deadline 取任务/目标/十分钟看门狗最早值、
+过期拒绝获取、断连联动取消）、`ActiveExecution`（跨 requester 挂接、同 (requestId,
+sessionId) 去重、跨会话同 requestId 为独立 requester、完成后挂接返回终态回执）、
+`BoundedJsonlReader`（\n 分帧、跨 8 KiB 缓冲整帧读回、CR/空行/EOF 半帧拒绝、
+1 MiB-1 边界精确、超限拒绝）与 `HostLaunchBinding.Parse`/`LocalJournalDirectory`
+参数拒绝矩阵（在触碰进程/SID/磁盘前 fail closed）。NotepadAction 依赖
+`System.Windows.Automation`，无法编入 net8.0 可运行程序集，测试目录内提供一个
+只会抛 `NotSupportedException` 的编译垫片（`NotepadAction.PortableShim.cs`）：
+受测路径一旦触到它测试即失败，以此证明受测路径不经过 Windows API。本轮验证
+（基线 `main@855a90c4`，Linux、.NET SDK 8.0.427）：`dotnet build
+apps/windows-host/host/test/portable/WindowsHost.Portable.csproj -c Release
+--artifacts-path /tmp/zc-winhost-portable-artifacts` 零警告零错误，运行输出
+`PASS: Windows Host portable unit tests (NotepadTargets gates, target lease,
+target readiness, execution lifetime, active execution, bounded JSONL, launch
+validation)`（连跑 3 次稳定）；`WindowsHost.HostFixture` 在同一环境以
+`-p:EnableWindowsTargeting=true` 编译通过（Linux 只编译不运行）。唯一标签/单标签
+结构、HWND/PID 快照绑定、前台身份、不可信镜像拒绝、真实 Pipe/ACL 与用户接管等
+Windows 行为未测，继续按原实机验收清单执行，不得以本测试代替。
+
 `execute` 帧中的 `authorizationRef` 不构成授权；正式调用方必须先在 Runtime 的
 Policy/ToolGateway 中完成任务、工具、参数摘要、目标与期限的授权消费。Host 只接受
 已绑定的可信 Pipe 对端，把同一 `taskId/runId/toolName/toolVersion/authorizationRef/
