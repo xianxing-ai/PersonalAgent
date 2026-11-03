@@ -12,6 +12,7 @@ import {
   type CrewSpawn,
 } from '../driver.js';
 import type {CrewConsentProvider} from '../consent.js';
+import {describeObjectFields, redactSensitiveText} from '../sanitize.js';
 import type {CrewDriverId} from '../store.js';
 
 /**
@@ -165,7 +166,8 @@ class AppServerClient {
       clearTimeout(pending.timer);
       if (message['error'] !== undefined) {
         const error = message['error'];
-        const detail = isRecord(error) ? `${error['code'] ?? '未知'}：${optionalString(error['message']) ?? ''}` : JSON.stringify(error);
+        // 错误只保留方法名、错误码与净化后的短消息，不序列化对端对象。
+        const detail = isRecord(error) ? `${error['code'] ?? '未知'}：${redactSensitiveText(optionalString(error['message']) ?? '')}` : describeObjectFields(error);
         pending.reject(new CrewError('DRIVER_PROTOCOL', `codex app-server 请求 ${pending.method} 失败（code=${detail}）`));
       } else {
         pending.resolve(message['result']);
@@ -260,7 +262,9 @@ class CodexAppServerSession implements CrewDriverSession {
         return;
       }
       case PROTOCOL_EVENT_ERROR: {
-        const raw = optionalString(params['message']) ?? JSON.stringify(notification.params ?? {});
+        // 不把通知参数整体序列化：只有净化后的短消息，缺失时退化为字段名列表。
+        const rawMessage = redactSensitiveText(optionalString(params['message']) ?? '');
+        const raw = rawMessage || `error 通知（${describeObjectFields(notification.params)}）`;
         this.emit({type: 'failed', sessionId: this.sessionId, agentId: this.agentId, driver: this.driver, message: raw});
         return;
       }
@@ -344,7 +348,7 @@ export class CodexAppServerDriver implements CrewDriver {
       }
       const conversation = await client.request(PROTOCOL_NEW_CONVERSATION_METHOD, {cwd: input.workspacePath, baseInstructions: input.instructions});
       if (!isRecord(conversation) || typeof conversation['conversationId'] !== 'string' || !conversation['conversationId'].trim()) {
-        throw new CrewError('DRIVER_PROTOCOL', `codex app-server newConversation 响应缺少 conversationId：${JSON.stringify(conversation)}`);
+        throw new CrewError('DRIVER_PROTOCOL', `codex app-server newConversation 响应缺少 conversationId（${describeObjectFields(conversation)}）`);
       }
       // 同一客户端交给会话继续使用（通知分派由会话接管）。
       const session = new CodexAppServerSession({

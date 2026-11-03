@@ -1,5 +1,6 @@
 import {CrewError} from './errors.js';
 import {truncateReceiptResult, type CrewReceipt} from './receipts.js';
+import {redactSensitiveText} from './sanitize.js';
 import {CrewKernel, type CrewKernelDispatchInput, type CrewKernelGetTaskInput, type CrewKernelInterruptInput, type CrewKernelListTasksInput} from './kernel.js';
 import {CodexAppServerDriver} from './drivers/codex.js';
 import type {CrewConsentGrantInput} from './consent.js';
@@ -212,7 +213,7 @@ export class CrewDriverRuntime {
       return this.submitReceiptOrDegrade(agentId, task, {
         status: 'blocked',
         // 截断到回执上限：启动失败的对端错误原文可能很长，不能让提交本身失败卡死任务。
-        result: truncateReceiptResult(`驱动无法启动：${describeError(error)}`),
+        result: truncateReceiptResult(redactSensitiveText(`驱动无法启动：${describeError(error)}`)),
         evidenceRefs: [],
         unblock: `在本机安装并登录 ${agent.driver} 对应的官方 CLI 后由父 agent 重新派单`,
       });
@@ -275,10 +276,10 @@ export class CrewDriverRuntime {
       return this.kernel.getTask({actorId: agentId, taskId: task.taskId}) ?? task;
     }
     const receipt = terminal.kind === 'completed'
-      ? {status: 'succeeded' as const, result: truncateReceiptResult(terminal.result) || '(CLI 未返回结果文本)', evidenceRefs: [] as string[], unblock: ''}
-      : {status: 'failed' as const, result: truncateReceiptResult(terminal.kind === 'failed'
+      ? {status: 'succeeded' as const, result: truncateReceiptResult(redactSensitiveText(terminal.result)) || '(CLI 未返回结果文本)', evidenceRefs: [] as string[], unblock: ''}
+      : {status: 'failed' as const, result: truncateReceiptResult(redactSensitiveText(terminal.kind === 'failed'
         ? terminal.message
-        : `驱动进程退出（exit=${terminal.exitCode ?? 'null'}${terminal.error ? `，${terminal.error}` : ''}）`),
+        : `驱动进程退出（exit=${terminal.exitCode ?? 'null'}${terminal.error ? `，${terminal.error}` : ''}）`)),
         evidenceRefs: [] as string[], unblock: ''};
     return this.submitReceiptOrDegrade(agentId, task, receipt);
   }

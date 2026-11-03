@@ -137,3 +137,20 @@ test('F1: a submitReceipt failure degrades to a short failed receipt and release
     assert.ok(task.receipt.result.length < 200, 'the degraded receipt stays short');
   } finally { runtime.close(); }
 });
+
+test('F6: the runtime redacts sensitive key/value pairs in driver-reported results before persisting', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    driver.sessions[0].complete('完成；access_token=FAKE-RESULT-TOKEN-999, api_key: dummy-key-abcdef12345678901234');
+    const task = await runPromise;
+    const text = JSON.stringify(task.receipt);
+    assert.ok(!text.includes('FAKE-RESULT-TOKEN-999'), 'token value redacted');
+    assert.ok(!text.includes('dummy-key-abcdef12345678901234'), 'api key value redacted');
+    assert.ok(text.includes('完成'), 'the benign part of the result survives');
+  } finally { runtime.close(); }
+});
