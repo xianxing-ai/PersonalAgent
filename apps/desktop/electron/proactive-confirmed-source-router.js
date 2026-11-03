@@ -257,7 +257,7 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
         if(input.arguments?.subscriptionId!==sourceId)fail('REVISION_CONFLICT','Original pending source identity changed');
         deliveries.push({sourceId,...await enqueue(input,context,true)});
       }catch(error){deliveries.push({sourceId,state:'unavailable',code:
-        ['CANCELLED','TIMEOUT','SCOPE_DENIED','REVISION_CONFLICT','RESULT_UNKNOWN','UNSUPPORTED_CAPABILITY'].includes(error?.code)?error.code:'HOST_UNAVAILABLE'});}
+        ['CANCELLED','TIMEOUT','SCOPE_DENIED','REVISION_CONFLICT','RESULT_UNKNOWN','UNSUPPORTED_CAPABILITY','UNAUTHORIZED'].includes(error?.code)?error.code:'HOST_UNAVAILABLE'});}
     }
     return {state:deliveries.some(item=>item.state==='unavailable')?'unavailable':'recovered',deliveries};
   }};

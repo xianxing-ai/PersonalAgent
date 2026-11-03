@@ -9,7 +9,8 @@ const text=value=>typeof value==='string'&&!!value.trim();
 /** Desktop binds trusted configuration and user commands. The original Runtime owns its worker. */
 export function createDesktopProactiveWorkflowApplication({application,readConfiguration,notificationHost,
   context,bindings,controller,cloudPersistentHost,localDeviceAvailable,resolveUserConversation,onSession=()=>{},
-  readPersistedSession,responsibilityLifecycleAuthority,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter}) {
+  readPersistedSession,responsibilityLifecycleAuthority,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter,
+  sourceResponsibilityBinding}) {
   const sessions=new Map(),controls=new Map();
   const publish=()=>{try{onUpdate();}catch{}};
   function configuration() {
@@ -50,9 +51,12 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     const contract=description.contracts.find(value=>value.id===binding.contractRef);
     if(!contract||contract.version!==binding.contractVersion)throw Error('镜像原契约版本不可用');
     const contextPorts=typeof context==='function'?context():context;
+    const sourceBinding = binding.sourceResponsibilityBinding
+      ?? (typeof sourceResponsibilityBinding === 'function' ? sourceResponsibilityBinding(taskId, binding) : sourceResponsibilityBinding);
     const host=application.createProactiveWorkflowHost({taskId,sessionId:binding.sessionId,taskDeadline:binding.taskDeadline,
       contractRef:binding.contractRef,advancePort:adapter.advancePort,verifyAdvance:adapter.verifyAdvance,sign:adapter.sign,
       pureAdvance:{kind:'signed_frontier_no_effects'},localDeviceAvailable,
+      ...(sourceBinding?{sourceResponsibilityBinding:structuredClone(sourceBinding)}:{}),
       // Explicit unavailable until post-shutdown cloud Evidence exists (never invent available:true).
       cloudPersistentHost:createUnavailableCloudPersistentHost(),
       ...(resolveUserConversation?{resolveUserConversation:id=>resolveUserConversation(id===binding.taskId?binding.sourceTaskId:id)}:{}),
@@ -142,8 +146,12 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
         missing:['business_source_adapters','local_decision_and_teacher_tools'].filter(value=>!bindings?.length||value==='business_source_adapters')};
     },
     async start(input,request) {
-      if(!input||Object.keys(input).some(key=>!['sourceTaskId','commandId','taskDeadline'].includes(key))
+      if(!input||Object.keys(input).some(key=>!['sourceTaskId','commandId','taskDeadline','sourceResponsibilityBinding'].includes(key))
         ||![input.sourceTaskId,input.commandId,input.taskDeadline].every(text))throw Error('持续工作流需要原指令、命令标识和期限');
+      if(input.sourceResponsibilityBinding!==undefined
+        &&(!input.sourceResponsibilityBinding||typeof input.sourceResponsibilityBinding!=='object'
+          ||!text(input.sourceResponsibilityBinding.sourceId)||!text(input.sourceResponsibilityBinding.responsibilityId)))
+        throw Error('持续工作流来源责任绑定格式无效');
       const source=application.runtime.getTask(input.sourceTaskId);
       const conversationId=resolveUserConversation?resolveUserConversation(source.taskId):source.conversationId;
       if(!text(source.goal)||!text(source.conversationId)||application.runtime.loadCheckpoint(source.taskId,'private-copy-erasure')
@@ -157,11 +165,13 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
       const task=application.runtime.submitTask({goal:source.goal,conversationId,
         idempotencyKey:'desktop-proactive-'+digest(input.commandId)});
       const binding={version:1,taskId:task.taskId,sessionId:identity.sessionId,sourceTaskId:source.taskId,
-        taskDeadline:input.taskDeadline,contractRef:contract.id,contractVersion:contract.version,imageBinding:imageBinding(configured)};
+        taskDeadline:input.taskDeadline,contractRef:contract.id,contractVersion:contract.version,imageBinding:imageBinding(configured),
+        ...(input.sourceResponsibilityBinding?{sourceResponsibilityBinding:structuredClone(input.sourceResponsibilityBinding)}:{})};
       application.runtime.saveCheckpointOnce(task.taskId,KEY,binding);
       if(digest(application.runtime.loadCheckpoint(task.taskId,KEY))!==digest(binding))throw Error('原命令已绑定其他参数');
       const session=await bind(task.taskId,ctx);
-      session.host.ingestUserInstruction({sourceTaskId:source.taskId},ctx);
+      session.host.ingestUserInstruction({sourceTaskId:source.taskId,
+        ...(input.sourceResponsibilityBinding?{responsibilityId:input.sourceResponsibilityBinding.responsibilityId}:{})},ctx);
       application.startProactiveTask(task.taskId);publish();return {taskId:task.taskId,sessionId:binding.sessionId,accepted:true};
     },
     async resume(taskId,request) {const session=await bind(taskId,request);application.startProactiveTask(taskId);publish();return session.host.binding;},
@@ -175,8 +185,8 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
         publish();return result;}
       finally{controls.delete(command.commandId);}
     },
-    async instruction(taskId,sourceTaskId,request) {const session=await bind(taskId,request);
-      return session.host.ingestUserInstruction({sourceTaskId},lifetime(session.binding,request));},
+    async instruction(taskId,sourceTaskId,request,responsibilityId) {const session=await bind(taskId,request);
+      return session.host.ingestUserInstruction({sourceTaskId,...(text(responsibilityId)?{responsibilityId}:{})},lifetime(session.binding,request));},
     async readResponsibility(target,reference,sourceTaskId,request) {
       const session=await responsibilitySession(target,sourceTaskId,request);
       return {responsibility:session.host.readResponsibility(reference,request),lifecycle:session.host.readResponsibilityLifecycle(reference,request)};
