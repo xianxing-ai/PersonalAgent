@@ -65,6 +65,8 @@ export interface RuntimeProactiveWorkflowHostOptions {
   assertResponsibilityLifecycleCurrent?(command:RuntimeResponsibilityLifecycleCommand,source:TaskSnapshot,context:Context):void;
   /** Trusted structural provenance only. Does not replace execution identity, deadlines, quotes or grants. */
   resolveUserConversation?(taskId: string): string | undefined;
+  /** One injected connector source may carry only this explicit, lifecycle-current responsibility. */
+  sourceResponsibilityBinding?: {sourceId: string; responsibilityId: string};
   /** Existing controller consumer. An uncertain call is read back, never automatically sent again. */
   controller?: {consume(report: RuntimeProactiveChildReport, context: Context): Promise<RuntimeProactiveControllerReceipt>;
     readReceipt(eventId: string, context: Context): Promise<RuntimeProactiveControllerReceipt | undefined>};
@@ -282,6 +284,18 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
     if(record.state==='revoked')return {state:'unavailable' as const,reason:'responsibility_revoked'};
     if(Date.parse(record.validUntil)<=now())return {state:'unavailable' as const,reason:'responsibility_expired'};
     return {state:'current' as const,revision:record.revision,validUntil:record.validUntil};
+  }
+  function boundExplicitResponsibilityRefs(snapshot: ReturnType<typeof read>, sourceId: string, context: Context): string[] | undefined {
+    const binding = options.sourceResponsibilityBinding;
+    if (!binding) return undefined;
+    if (!text(binding.sourceId) || !text(binding.responsibilityId) || sourceId !== binding.sourceId)
+      fail('UNAUTHORIZED', 'Connector source is not bound to the explicit responsibility');
+    const responsibility = snapshot.state.responsibilities[binding.responsibilityId];
+    if (!responsibility || responsibility.id !== binding.responsibilityId || responsibility.authority !== 'explicit_instruction')
+      fail('UNSUPPORTED_CAPABILITY', 'Bound explicit responsibility is unavailable');
+    const lifecycle = readResponsibilityLifecycle({responsibilityId: responsibility.id, responsibilityRevision: responsibility.revision}, context);
+    if (lifecycle.state !== 'current') fail('UNSUPPORTED_CAPABILITY', 'Bound responsibility is not an active explicit commitment');
+    return [responsibility.id];
   }
   function readResponsibility(input:{responsibilityId:string;responsibilityRevision:number},context:Context) {
     active(context,true);
@@ -546,7 +560,13 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       if (Object.values(snapshot.state.requests).some(value => !value.acknowledged)) fail('REVISION_CONFLICT', 'Original pending proactive request must be recovered first');
       const current = snapshot.state.binding;
       const entryIds = Object.keys(snapshot.state.entries).filter(id => !snapshot.state.delivered['event:' + id]);
-      const responsibilityIds = Object.keys(snapshot.state.responsibilities).filter(id => !snapshot.state.delivered['responsibility:' + id + ':' + snapshot.state.responsibilities[id]!.revision]);
+      const responsibilityIds = Object.keys(snapshot.state.responsibilities).filter(id => {
+        if (snapshot.state.delivered['responsibility:' + id + ':' + snapshot.state.responsibilities[id]!.revision]) return false;
+        const binding = options.sourceResponsibilityBinding;
+        if (!binding || id !== binding.responsibilityId) return !binding;
+        const item = snapshot.state.responsibilities[id]!;
+        return readResponsibilityLifecycle({responsibilityId: id, responsibilityRevision: item.revision}, input).state === 'current';
+      });
       const receiptIds = Object.keys(snapshot.state.receipts).filter(id => !snapshot.state.delivered['receipt:' + digest(snapshot.state.receipts[id])]);
       const request: Omit<ProactiveAdvanceRequest, 'signal' | 'checkpoint'> = {...current, requestId: input.requestId, deadline: input.deadline,
         hostAvailability: {localDevice: options.localDeviceAvailable() === true, cloudPersistentHost: options.cloudPersistentHost?.available() === true},
@@ -577,15 +597,16 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       active(context);
       const snapshot = read(), old = snapshot.state.batches[batch.batchId];
       if (old && digest(old) !== digest(batch)) fail('REVISION_CONFLICT', 'Original connector batch identity changed');
-      const responsibilityRefs = Object.keys(snapshot.state.responsibilities);
+      const boundRefs = boundExplicitResponsibilityRefs(snapshot, batch.sourceId, context);
+      const responsibilityRefs = boundRefs ?? Object.keys(snapshot.state.responsibilities);
       for (const event of batch.events) {
         if (event.sourceId !== batch.sourceId || !text(event.eventId) || !text(event.sourceRevision)) fail('UNAUTHORIZED', 'Connector event does not belong to its durable batch');
         const route = options.routeConnectorEvent?.(structuredClone(event)) ?? {};
         appendEntry(snapshot.state, {event: {eventId: event.eventId, entry: 'connector', conversationId: original.conversationId!,
           sourceId: event.sourceId, entityRef: event.item.dedupeKey, sourceVersion: event.sourceRevision, observedAt: event.observedAt,
           change: 'upsert', payloadRef: 'runtime:proactive-batch:' + batch.batchId + ':' + event.eventId, payloadDigest: digest(event.item),
-          anchorRefs: [], responsibilityRefs, goalRefs: [], contractRef: options.contractRef, priority: 'unknown',
-          evidenceRefs: ['runtime:proactive-batch:' + batch.batchId], ...route}, payload: event});
+          anchorRefs: [], goalRefs: [], contractRef: options.contractRef, priority: 'unknown',
+          evidenceRefs: ['runtime:proactive-batch:' + batch.batchId], ...route, responsibilityRefs}, payload: event});
       }
       snapshot.state.batches[batch.batchId] = structuredClone(batch); save(snapshot);
       notify();
@@ -793,6 +814,21 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
   return host;
 }
 export type RuntimeProactiveWorkflowHost = ReturnType<typeof createRuntimeProactiveWorkflowHost>;
+
+/** Leave/return commands for an already bound host. The result is the original checkpoint, not a new scheduler. */
+export function createRuntimeProactiveControlPort(runtime: Pick<TaskRuntime, 'bindTrustedHostState' | 'getTask'>, host: RuntimeProactiveWorkflowHost) {
+  async function apply(action: 'enter_unattended' | 'return', command: Omit<RuntimeProactiveControlCommand, 'action'>, context: Context) {
+    const result = await host.control({...command, action}, context);
+    const persisted = readPersistedRuntimeProactiveWorkflow(runtime, host.taskId, host.sessionId);
+    if (!persisted || persisted.application.state.binding.taskDeadline !== host.binding.taskDeadline
+      || persisted.application.state.binding.controlRevision !== host.binding.controlRevision)
+      fail('RESULT_UNKNOWN', 'Original unattended control checkpoint is unavailable');
+    return {result, checkpointRevision: persisted.application.revision, taskDeadline: persisted.application.state.binding.taskDeadline,
+      mode: result.mode, replayedNotifications: result.returnSummary?.replayedNotifications ?? 0};
+  }
+  return {enter: (command: Omit<RuntimeProactiveControlCommand, 'action'>, context: Context) => apply('enter_unattended', command, context),
+    return: (command: Omit<RuntimeProactiveControlCommand, 'action'>, context: Context) => apply('return', command, context)};
+}
 
 /** Register at the existing ToolGateway construction boundary; execution re-reads the committed proposal. */
 export function createRuntimeProactiveWorkflowTools(resolveHost: (taskId: string, sessionId: string) => RuntimeProactiveWorkflowHost | undefined): RegisteredTool[] {

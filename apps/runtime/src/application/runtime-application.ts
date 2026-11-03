@@ -62,7 +62,7 @@ import {parseExecutionModelSelection} from '@personal-agent/coordination';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
 import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt} from './coordination.js';
-import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, readReviewedLocalRepairReceipt, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
+import {createLocalRepairTool, prepareLocalRepair, startLocalRepairTask, readReviewedLocalRepairReceipt, reconcileCommittedLocalRepair, LOCAL_REPAIR_CHECKPOINT} from './local-repair.js';
 import type {LocalRepairHostOptions, SubmitLocalRepairRequest, ReviewedLocalRepairReceiptInput} from './local-repair.js';
 import {PLAN_EXECUTION_SOURCE,preparePlanExecutionSource,assertPlanExecutionFacts,
   readPlanExecutionIntent,planExecutionGoal,planExecutionCommandId} from './plan-execution-source.js';
@@ -4309,6 +4309,11 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   /** Host-only original F03 plan proof; reading never authorizes, resumes or executes a repair. */
   readF03PlanRepairReceipt(input: ReviewedLocalRepairReceiptInput) {
     return readReviewedLocalRepairReceipt(this.runtime,input);
+  }
+
+  /** Read back a graph CAS whose tool result was never stored. Does not append or grant. */
+  reconcileCommittedLocalRepair(taskId: string) {
+    return reconcileCommittedLocalRepair(this.runtime, taskId);
   }
 
   /** Native preview only: the actual current source and deployment are checked again after confirmation. */
