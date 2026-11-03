@@ -140,12 +140,16 @@ test('restart re-enqueues created children and an unknown write is read back ins
   runtime.close();
   const reopened = new TaskRuntime(db);
   let started = 0;
+  let restored;
   const recovered = createAsyncSubagentController({host: {getRuntime: () => reopened}, startChild: (taskId, childDeadline) => {
     started += 1;
-    return reopened.runTask(taskId, async () => ({resultSummary: 'restored'}), {deadline: childDeadline, sideEffect: 'read'});
+    restored = reopened.runTask(taskId, async () => ({resultSummary: 'restored'}), {deadline: childDeadline, sideEffect: 'read'});
+    return restored;
   }});
   await recovered.recover();
   assert.equal(started, 1);
+  assert.equal((await restored).state, 'succeeded');
+  await new Promise(resolve => setImmediate(resolve));
   reopened.close();
   const unknownRuntime = new TaskRuntime(':memory:');
   const unknownParent = parentOf(unknownRuntime);
