@@ -12,7 +12,7 @@ test('F27 actual graph consumes the original compiler mapping, rejects source dr
   // Real Runtime compiler/source map, Engine, Policy, HostBridge and SQLite.
   // Model catalog, candidate/selector, source overlay and approval responses are explicit Fixtures.
   const directory=await mkdtemp(join(tmpdir(),'pa-f27-'));let app,original,returned,changed=false,checked=false;
-  const selection={modelId:'synthetic-text',catalogRevision:'a'.repeat(64)},privateText='Synthetic original conversation body must not be exported again'.repeat(200);
+  const selection={modelId:'synthetic-text',catalogRevision:'a'.repeat(64)},privateText='Synthetic private background from the original conversation. '.repeat(200);
   const models={snapshot:()=>({available:true,catalog:{revision:selection.catalogRevision,models:[{
     id:selection.modelId,type:'text',availability:'unverified',requestProfile:'standard',reasoningEfforts:[]}]}}),resolveExecutionModel:()=>selection};
   const exported=[],imageRequests=[],proposals=[];let knowledgeCalls=0,summaryCalls=0,knowledgeChanged=false;
