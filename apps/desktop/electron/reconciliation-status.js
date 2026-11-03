@@ -1,13 +1,44 @@
+import {readReconciliationConflict} from './reconciliation-conflict.js';
+
+/** Child display/action ownership comes from the original Runtime binding, never its synthetic conversation ID. */
+export function reconciliationBelongsToConversation({application,task,surface,taskSurface,conversations}) {
+  if(!task||!['panel','workspace'].includes(surface))return false;
+  const conversationId=conversations.activeConversationId(surface),directSurface=taskSurface(task);
+  if(directSurface!==undefined)return directSurface===surface&&conversations.conversationIdForTask(task)===conversationId;
+  return application?.readToolConversation?.(task.taskId)===conversationId
+    &&conversations.sessions?.get(conversationId)?.surface===surface;
+}
+
+/** Include unresolved original children even when their terminal cache entries were evicted. */
+export function readConversationConflictTasks({application,tasks,parents,surface,taskSurface,conversations}) {
+  if(!application||!surface)return [];
+  const candidates=new Map(tasks.map(task=>[task.taskId,task])),visited=new Set(),queue=[...parents];
+  for(const parent of queue) {
+    if(visited.has(parent.taskId))continue;visited.add(parent.taskId);
+    if(!reconciliationBelongsToConversation({application,task:parent,surface,taskSurface,conversations}))continue;
+    for(const child of application.readSubagentTasks?.(parent.taskId)??[]) {
+      const task=application.runtime.getTask(child.taskId);candidates.set(task.taskId,task);queue.push(task);
+    }
+  }
+  return [...candidates.values()].filter(task=>reconciliationBelongsToConversation({application,task,surface,taskSurface,conversations})
+    &&readReconciliationStatus(application,task).conflictId);
+}
+
 /** Read-only UI metadata. Runtime alone decides whether a task can finish reconciliation. */
 export function readReconciliationStatus(application,task,now=Date.now) {
-  if(task?.state!=='waiting_reconciliation')return {};
+  if(!['waiting_reconciliation','failed'].includes(task?.state))return {};
   try {
+    if(task.state==='failed'){
+      const conflict=readReconciliationConflict(application,task);
+      return conflict?{conflictId:conflict.conflictId,conflictKind:conflict.kind,conflictSkipped:conflict.skipped,notice:conflict.notice}:{};
+    }
     const runtime=application?.runtime;
     if(typeof runtime?.loadCheckpoint!=='function')throw Error('Runtime unavailable');
     const originalDeadline=runtime.loadCheckpoint(task.taskId,'application-deadline');
     const inflight=runtime.loadCheckpoint(task.taskId,'competition-cloud-inflight');
     const unknown=runtime.loadCheckpoint(task.taskId,'competition-cloud-unknown');
-    const status={};
+    const conflict=readReconciliationConflict(application,task),status=conflict?{conflictId:conflict.conflictId,conflictSkipped:conflict.skipped}:{};
+    if(conflict?.skipped)return {...status,notice:conflict.notice,blockedReason:conflict.notice};
     if(originalDeadline!==undefined&&originalDeadline!==null) {
       const timestamp=typeof originalDeadline==='string'?Date.parse(originalDeadline):NaN;
       const current=now();
@@ -46,6 +77,7 @@ export function readReconciliationStatus(application,task,now=Date.now) {
     return status;
   }catch {
     // Checkpoint and error messages may contain private configuration or receipts.
+    if(task.state==='failed')return {notice:'暂时无法读取原失败任务回执，已保留失败状态。请勿重复提交原操作。'};
     return {actionLabel:'按已有回执尝试结束',notice:'暂时无法读取原任务回执；可以尝试检查已有回执，当前不能保证任务可结束。请勿重复提交原操作。'};
   }
 }

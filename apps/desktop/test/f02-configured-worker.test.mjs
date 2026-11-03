@@ -12,12 +12,13 @@ const schema=properties=>({type:'object',additionalProperties:false,required:Obj
 
 // Actual delegated worker, Runtime, Policy, HostBridge and card service. Cloud
 // image, ASR/device/independent acoustic verifier and business service are Fake.
-async function fixture(t,{acoustic=true,forgeSettled=false,unknown=false,denyExport=false,replaceInput=false,cancelAtPlayback=false,cancelAtTranscript=false,revokeAtTranscript=false,alterOriginalInput=false}={}){
-  let app,questions,source,question,voiceTime,steps=0,calls=0,playbackStarted=false,transcriptRead=false,revoked=false;const exports=[],transcript='Synthetic final user audio';
+async function fixture(t,{acoustic=true,forgeSettled=false,unknown=false,denyExport=false,replaceInput=false,cancelAtPlayback=false,cancelAtTranscript=false,revokeAtTranscript=false,alterOriginalInput=false,
+  transcript='同意',denyVoice=false,cancelAtDecision=false,alterPendingInput=false,revokeFinalAfterReceipt=false}={}){
+  let app,questions,source,question,voiceTime,steps=0,calls=0,playbackStarted=false,transcriptRead=false,revoked=false,finalRevoked=false;const exports=[];
   const business={descriptor:{name:'fixture.voice.operation',version:'1.0.0',sideEffect:'local_write',requiredScopes:['fixture:write'],
     inputSchema:schema({value:{const:'original'}}),outputSchema:schema({done:{const:true}}),requiresPresence:false,idempotencySupport:false,recoverySupport:false},
     execute:async()=>{calls++;if(unknown)throw Object.assign(Error('Synthetic accepted, result unknown'),{code:'RESULT_UNKNOWN'});return {done:true};}};
-  const final=binding=>{transcriptRead=true;if(cancelAtTranscript||revokeAtTranscript)return undefined;
+  const final=binding=>{transcriptRead=true;if(cancelAtTranscript||revokeAtTranscript||finalRevoked)return undefined;
     const receipt=question?{...binding,sessionId:'synthetic-voice',utteranceId:'synthetic-utterance',text:transcript,
     transcriptDigest:createHash('sha256').update(transcript).digest('hex'),source:'live_input_audio',phase:'final',origin:'user',
     echo:'unknown',questionPlaybackVerified:false,startedAt:new Date(voiceTime-200).toISOString(),completedAt:new Date(voiceTime-100).toISOString(),expiresAt:question.expiresAt}:undefined;
@@ -33,12 +34,17 @@ async function fixture(t,{acoustic=true,forgeSettled=false,unknown=false,denyExp
     ...(acoustic?{verifyAudioEvidence:()=>true}:{}),authorizeExport:async input=>{exports.push(input);return !denyExport;}});
   assert.equal(factory.tools.length,13,'all fixed local F02 host and guard tools are registered');
   assert.equal(factory.authorizeFinalRead({deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal},{}),false);
-  const ordered=['guard:F02_N01','host:F02_N01','host:F02_N02','host:F02_N03','guard:F02_N05','host:F02_N05','host:F02_N06','host:F02_N11'];
+  const ordered=['guard:F02_N01','host:F02_N01','host:F02_N02','host:F02_N03','guard:F02_N05',
+    ...(denyVoice?['host:F02_N08']:['host:F02_N05','host:F02_N06','host:F02_N11'])];
   const options={...factory.configuredWorkflowWorkerPorts[0],image:{bindingId:'synthetic-f02-image',receiptSecret:async()=> 'synthetic-f02-secret-at-least-32-characters',
     advance:async request=>{
-      if(request.receipts.some(receipt=>receipt.nodeId==='F02_N03')){
-        questions.respond({questionId:question.questionId,expectedRevision:question.revision,decision:'allow_once'},question.conversationId);
-        await until(()=>['succeeded','waiting_reconciliation','failed'].includes(app.runtime.getTask(source.taskId).state));
+      if(revokeFinalAfterReceipt&&request.receipts.some(receipt=>receipt.nodeId==='F02_N03'))finalRevoked=true;
+      if(alterPendingInput&&request.receipts.some(receipt=>receipt.nodeId==='F02_N03')){
+        const read=app.readPendingToolInvocation.bind(app);
+        app.readPendingToolInvocation=(...args)=>{const invocation=read(...args);return invocation&&args[0]===source.taskId?{...invocation,argumentsDigest:'0'.repeat(64)}:invocation;};
+      }
+      if(request.receipts.some(receipt=>receipt.nodeId==='F02_N05'&&receipt.result.state==='approved')&&!cancelAtDecision){
+        await until(()=>['succeeded','waiting_reconciliation','failed','cancelled'].includes(app.runtime.getTask(source.taskId).state));
         if(alterOriginalInput){
           assert.equal(app.runtime.getTask(source.taskId).state,'succeeded','substitute only after the original effect is confirmed');
           const key='application-tool-invocation:host-tool-'+source.taskId,original=app.runtime.loadCheckpoint(source.taskId,key);
@@ -94,6 +100,11 @@ async function fixture(t,{acoustic=true,forgeSettled=false,unknown=false,denyExp
     [child]=app.readSubagentTasks(root.taskId);
     if(child&&cancelAtPlayback&&playbackStarted&&!child.cancelRequested)app.runtime.requestCancel(child.taskId);
     if(child&&cancelAtTranscript&&transcriptRead&&!child.cancelRequested)app.runtime.requestCancel(child.taskId);
+    if(child&&cancelAtDecision&&!child.cancelRequested&&app.runtime.listTasks({limit:100}).items.some(task=>
+      app.runtime.readToolExecutions(task.taskId).some(record=>record.toolName==='workflow.guard.f02_n05'&&record.executionStarted))){
+      assert.equal(questions.snapshot(question.conversationId).find(item=>item.questionId===question.questionId).state,'pending');
+      app.runtime.requestCancel(child.taskId);
+    }
     if(child&&revokeAtTranscript&&transcriptRead&&!revoked){
       const read=app.runtime.listTasks({limit:100}).items.flatMap(task=>app.runtime.readToolExecutions(task.taskId))
         .find(record=>record.toolName==='workflow.host.f02_n03');
@@ -105,11 +116,26 @@ async function fixture(t,{acoustic=true,forgeSettled=false,unknown=false,denyExp
   return {app,root,child,source,question,factory,exports,get calls(){return calls;}};
 }
 
-test('actual configured F02 completes after original card execution, reads consumed zero-use grant, and never submits again',async t=>{
+test('actual configured F02 accepts verified final voice through the original card, reads consumed zero-use grant, and never submits again',async t=>{
   const f=await fixture(t);assert.equal(f.child.state,'succeeded',JSON.stringify(f.child.error));assert.equal(f.calls,1);
   const record=f.app.runtime.readToolExecutions(f.source.taskId)[0];assert.equal(record.executionStarted,true);assert.equal(record.policyDecision,'allow');
   assert.equal(f.app.runtime.policy.get(record.evidenceId).usesRemaining,0);
   assert.ok(f.exports.some(item=>item.stage==='initial'));assert.ok(f.exports.some(item=>item.stage==='completion'));
+});
+
+test('verified final refusal denies the original operation without a business write',async t=>{
+  const f=await fixture(t,{transcript:'不同意。',denyVoice:true});
+  assert.equal(f.child.state,'succeeded',JSON.stringify(f.child.error));assert.equal(f.calls,0);
+  assert.equal(f.app.runtime.getApproval('host-tool-'+f.source.taskId).state,'denied');
+});
+
+test('conditional final voice stays pending and cannot approve changed original arguments',async t=>{
+  const conditional=await fixture(t,{transcript:'同意，但只发给我自己',cancelAtDecision:true});
+  assert.equal(conditional.child.state,'cancelled');assert.equal(conditional.calls,0);
+  const changed=await fixture(t,{alterPendingInput:true});
+  assert.equal(changed.child.state,'failed');assert.equal(changed.calls,0);
+  const revoked=await fixture(t,{revokeFinalAfterReceipt:true});
+  assert.equal(revoked.child.state,'failed');assert.equal(revoked.calls,0);
 });
 
 test('configured F02 refuses missing acoustics, forged completion, denied export and substituted question input',async t=>{

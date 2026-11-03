@@ -184,6 +184,14 @@ export function createF03MailReviewWorkflowPorts({getApplication,sourceChanges,a
     if(prior&&!isDeepStrictEqual(prior,intent))fail('REVISION_CONFLICT','Original F03 admission source changed');
     if(typeof app().readF03MailReviewTask!=='function'||typeof app().submitF03MailReviewTask!=='function')
       fail('UNSUPPORTED_CAPABILITY','Original native F03 admission is unavailable');
+    // readReviewSource has verified this persisted change and its original Plan chain.
+    // Invalidate the old F08/Plan, never the new F03 review which will perform the repair.
+    const changed=runtime().loadCheckpoint(reference.graphTaskId,'f08:mail-source-change:'+reference.readRunId);
+    if(changed?.graphTaskId!==reference.graphTaskId||changed.readRunId!==reference.readRunId||typeof changed.planSource?.rootTaskId!=='string')
+      fail('UNAUTHORIZED','Original replan execution source is unavailable');
+    const requestId='f03-replan:'+toolArgumentsDigest({reference,source:changed});
+    for(const taskId of new Set([reference.graphTaskId,changed.planSource.rootTaskId]))
+      runtime().advanceExecutionEpoch(taskId,{requestId,reason:'replan'});
     let task=app().readF03MailReviewTask(request.idempotencyKey);
     if(!task){
       if(prior||!runtime().saveCheckpointOnce(own.taskId,key,intent))fail('RESULT_UNKNOWN','Original F03 admission needs readback');

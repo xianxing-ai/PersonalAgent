@@ -58,17 +58,25 @@ export function replayFrozenWorkflowTrace({snapshot,requestedActions},{signal,de
       fail('INVALID_ARGUMENT','Frozen decision/model input digest is inconsistent');
   }
   const actionIds=new Set();
-  const actions=requestedActions.map(action=>{
+  const historicalSteps=snapshot.records.filter(record=>record.kind==='tool')
+    .sort((a,b)=>Date.parse(a.observedAt)-Date.parse(b.observedAt));
+  let forked=false;
+  const actions=requestedActions.map((action,index)=>{
     active();
     if(!exact(action,['actionId','toolName','toolVersion','arguments','argumentsDigest','sourceVersions'])||!text(action.actionId)||actionIds.has(action.actionId)
       ||!text(action.toolName)||!text(action.toolVersion)||!plain(action.arguments)||action.argumentsDigest!==workflowTraceDigest(action.arguments)
       ||!versions(action.sourceVersions)||!same(action.sourceVersions,snapshot.sourceVersions))
       fail('INVALID_ARGUMENT','Replay action identity/digest/source version is inconsistent');
     actionIds.add(action.actionId);
-    const matches=calls.get(key(action))??[],refs=[...new Set(matches.flatMap(record=>record.evidenceRefs))];
+    // Compare this step only. A later matching call cannot supply the result of
+    // an earlier proposal, nor can history after a fork validate a new branch.
+    const originalStep=historicalSteps[index];
+    const matches=!forked&&originalStep&&key(originalStep)===key(action)?[originalStep]:[];
+    const refs=[...new Set(matches.flatMap(record=>record.evidenceRefs))];
     const base={actionId:action.actionId,originalRecordIds:matches.map(record=>record.recordId),evidenceRefs:refs,
       actualExecutionVerified:false,counterfactualExecutionVerified:false};
-    if(!matches.length)return {...base,state:'counterfactual_unknown',comparability:'counterfactual_unknown',reason:'no_identical_historical_invocation'};
+    if(forked)return {...base,state:'counterfactual_unknown',comparability:'counterfactual_unknown',reason:'after_trace_fork'};
+    if(!matches.length){forked=true;return {...base,state:'counterfactual_unknown',comparability:'counterfactual_unknown',reason:'trace_fork'};}
     if(matches.some(record=>record.effect==='write'))return {...base,state:'counterfactual_unknown',comparability:'write_not_replayed',reason:'historical_write_is_timeline_only'};
     const evidenced=matches.filter(record=>record.evidenceRefs.length);
     if(!evidenced.length)return {...base,state:'counterfactual_unknown',comparability:'missing_evidence',reason:'no_confirmed_host_evidence_references'};
@@ -83,5 +91,5 @@ export function replayFrozenWorkflowTrace({snapshot,requestedActions},{signal,de
   active();
   return {snapshotAsOf:snapshot.asOf,sourceVersions:snapshot.sourceVersions,snapshotDigest:workflowTraceDigest(snapshot),timeline,actions,
     actualToolCalls:0,actualModelCalls:0,authority:'data_only_no_tool_grant',currentResultValidity:'not_independently_verified',
-    counterfactualComparison:'unknown',provenance:'host_signed_frozen_export_not_new_execution',trainingPerformed:false};
+    counterfactualComparison:'unknown',comparisonScope:'single_step',provenance:'host_signed_frozen_export_not_new_execution',trainingPerformed:false};
 }

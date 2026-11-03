@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution,syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
@@ -33,6 +34,7 @@ test('F10 keeps research metadata distinct, uses the original 200-character know
     fetchImpl:async(_url,request)=>{http++;const body=JSON.parse(request.body);modelBodies.push(body);const input=JSON.parse(body.messages.at(-1).content);
       return new Response(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({state:input.sourceKind==='metadata_only'?'unknown':'supported'})},finish_reason:'stop'}]}),
         {status:200,headers:{'content-type':'application/json'}});}});
+  models.setEgressHost({prepare:syntheticPublicPayloadGate});
   models.configure({id:'aux-review',provider:'openai-compatible',baseUrl:'https://fixture.invalid/v1',model:'fixture-review',displayName:'Explicit auxiliary fixture',apiKey:'fixture-not-a-secret',enabled:true,makeDefault:true});
   const originalPolicies=[...knowledge.competitionToolExports,...publicTools.competitionToolExports.filter(policy=>policy.toolName==='research.search')];
   let reviewError;
@@ -58,8 +60,8 @@ test('F10 keeps research metadata distinct, uses the original 200-character know
   app=runtimeModule.createRuntimeApplication({path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'f10-test',delegateUserTasks:true,tools,
     readDefaultExecutionModel:()=>({modelId:'synthetic-executor',catalogRevision:'a'.repeat(64)}),resolveExecutionModel:()=>({modelId:'synthetic-executor',catalogRevision:'a'.repeat(64)}),
     configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),coordinationBinding:'synthetic-f10',
-    coordination:{execute:async request=>request.continuation?{kind:'text',text:'Synthetic completed',verification:'mock'}:{kind:'tool_proposal',proposalId:'f10-original',toolName:'workflow.research.compare',
-      toolVersion:'1.0.0',arguments:{queryA:'agent',queryB:'research',knowledgeQuery:'project',limit:1},verification:'unverified'}},
+    coordination:{execute:syntheticCoordinationExecution(async request=>request.continuation?{kind:'text',text:'Synthetic completed',verification:'mock'}:{kind:'tool_proposal',proposalId:'f10-original',toolName:'workflow.research.compare',
+      toolVersion:'1.0.0',arguments:{queryA:'agent',queryB:'research',knowledgeQuery:'project',limit:1},verification:'unverified'})},
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
       publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:[...originalPolicies,...tools.filter(tool=>!originalPolicies.some(policy=>policy.toolName===tool.descriptor.name)).map(tool=>({toolName:tool.descriptor.name,

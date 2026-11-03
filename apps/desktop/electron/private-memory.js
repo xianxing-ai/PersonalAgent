@@ -90,6 +90,7 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
     get configurationRevision() { return generation(); },
     /** Content-free host binding. Neither source paths nor summaries cross this port. */
     readConsumptionBinding(ref) { return consumptionBinding(ref); },
+    assertEraseTarget(ref) { head(ref); },
     assertConsumption(binding) {
       if (JSON.stringify(consumptionBinding(binding?.ref)) !== JSON.stringify(binding)) {
         throw Error('私人记忆消费绑定已变化');

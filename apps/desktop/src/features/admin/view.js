@@ -611,7 +611,8 @@ export function mountAdmin(root, invoke, escape) {
       button.disabled = true;
       try {
         const result = await invoke('memory.delete', {ref: savedMemory.facts[Number(button.dataset.memoryDelete)].ref});
-        if (result.state === 'deleted' || result.state === 'pending') {
+        if(result.state==='pending'&&['deletion_user_turn','deletion_result_unknown'].includes(result.phase))savedMemory.status=result.message;
+        else if (result.state === 'deleted' || result.state === 'pending') {
           const page = await invoke('memory.listSaved');
           savedMemory = {...page, status: result.state === 'deleted' ? '已删除该记忆的全部版本并完成读回。'
             : result.pendingBackupIds?.length ? '记忆已停止引用；应用备份仍待清理或整篇笔记备份已保留，删除尚未完成。'

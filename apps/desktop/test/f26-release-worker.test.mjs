@@ -7,8 +7,28 @@ import {tmpdir} from 'node:os';
 import {Client} from '@personal-agent/client';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier} from '@personal-agent/agentarts';
 import * as runtime from '@personal-agent/runtime/application';
+import {readF26RegistryImageReference} from '../electron/f26-workflow-worker-ports.js';
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const object=properties=>({type:'object',additionalProperties:false,required:Object.keys(properties),properties});
+test('F26 registry readback preserves the top digest for single manifests and indexes while rejecting wrong platforms',async()=>{
+  const repository='swr.cn-southwest-2.myhuaweicloud.com/fixture/owned',digest='sha256:'+'a'.repeat(64),child='sha256:'+'b'.repeat(64);
+  for(const indexed of [false,true]){
+    const calls=[],manifest={mediaType:indexed?'application/vnd.oci.image.index.v1+json':'application/vnd.oci.image.manifest.v1+json',digest,
+      ...(indexed?{manifests:[{digest:child,platform:{os:'linux',architecture:'arm64'}},{digest:'sha256:'+'c'.repeat(64),platform:{os:'unknown',architecture:'unknown'}}]}:{})};
+    let platform={os:'linux',architecture:'arm64'},current=true;
+    const input={repository,imageReference:repository+':fixed',dockerPath:'fixture-docker',root:process.cwd(),deadline:new Date(Date.now()+10000).toISOString(),
+      signal:new AbortController().signal,assertCurrent(){assert.equal(current,true);},execFileImpl:async(_executable,args)=>{
+        calls.push(args);return {stdout:JSON.stringify(args.at(-1)==='{{json .Manifest}}'?manifest:platform)};
+      }};
+    assert.equal(await readF26RegistryImageReference(input),repository+'@'+digest);
+    assert.equal(calls[1][3],repository+'@'+(indexed?child:digest));
+    for(platform of [{os:'linux',architecture:'amd64'},{os:'windows',architecture:'arm64'}])
+      await assert.rejects(readF26RegistryImageReference(input),{code:'PROTOCOL_MISMATCH'});
+    if(indexed){manifest.manifests.push({digest:child,platform:{os:'linux',architecture:'arm64'}});
+      await assert.rejects(readF26RegistryImageReference(input),{code:'PROTOCOL_MISMATCH'});}
+    current=false;await assert.rejects(readF26RegistryImageReference(input));
+  }
+});
 // Actual graph, Runtime, Policy, SQLite and business child; image, build, cloud and public HTTP are Fixtures.
 test('F26 binds generated image digest and original public tool evidence without replaying the build',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'pa-f26-'));let app,last,builds=0,reads=0;

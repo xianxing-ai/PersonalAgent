@@ -15,6 +15,7 @@ const textOnlyRequestFields = [...requestFields, 'textOnly'];
 const isoDeadline = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
 interface ValidatedRequest {
+  readonly executionEpoch?:number;
   readonly executionModel?:ExecutionModelSelection;
   readonly taskId: string;
   readonly revision: number;
@@ -93,6 +94,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   let hasAvailableTools = false;
   let textOnly = false;
   let executionModel:ExecutionModelSelection|undefined;
+  let executionEpoch:number|undefined;
   try {
     const hasContinuation = request !== null && typeof request === 'object'
       && Object.prototype.hasOwnProperty.call(request, 'continuation');
@@ -101,12 +103,13 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
     textOnly = request !== null && typeof request === 'object'
       && Object.prototype.hasOwnProperty.call(request, 'textOnly');
     const hasExecutionModel=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'executionModel');
+    const hasEpoch=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'executionEpoch');
     const hasPrior=request!==null && typeof request==='object' && Object.prototype.hasOwnProperty.call(request,'priorContinuations');
     const fields=hasContinuation ? [...continuationRequestFields,...(hasAvailableTools?['availableTools']:[]),...(hasPrior?['priorContinuations']:[])]
       : hasAvailableTools ? availableToolsRequestFields : textOnly ? textOnlyRequestFields : requestFields;
     if (request === null || typeof request !== 'object' || Array.isArray(request)
       || (textOnly && (hasContinuation || hasAvailableTools))
-      || !hasExactEnumerableKeys(request,hasExecutionModel?[...fields,'executionModel']:fields)
+      || !hasExactEnumerableKeys(request,[...fields,...(hasExecutionModel?['executionModel']:[]),...(hasEpoch?['executionEpoch']:[])])
       || (textOnly && request.textOnly !== true)) invalidRequest();
     taskId = request.taskId;
     revision = request.revision;
@@ -117,6 +120,8 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
     priorValue=hasPrior?request.priorContinuations:undefined;
     availableToolsValue = hasAvailableTools ? request.availableTools : undefined;
     executionModel=hasExecutionModel?parseExecutionModelSelection(request.executionModel):undefined;
+    if(hasEpoch&&(!Number.isSafeInteger(request.executionEpoch)||(request.executionEpoch as number)<0))invalidRequest();
+    executionEpoch=hasEpoch?request.executionEpoch:undefined;
   } catch {
     // Request getters and proxies are untrusted input; never echo their errors.
     throw new ProtocolError('INVALID_ARGUMENT', 'Invalid coordination request');
@@ -138,6 +143,7 @@ function validateRequest(request: CoordinationRequest): ValidatedRequest {
   const priorContinuations=Array.isArray(priorValue)?priorValue.map(parseCoordinationContinuation):undefined;
   if(priorContinuations && new Set([...priorContinuations.map(item=>item.proposalId),parseCoordinationContinuation(continuationValue).proposalId]).size!==priorContinuations.length+1)invalidRequest();
   return {taskId, revision, goal, deadline, signal, expiresAt,
+    ...(executionEpoch===undefined?{}:{executionEpoch}),
     ...(priorContinuations===undefined?{}:{priorContinuations}),
     ...(executionModel===undefined?{}:{executionModel}),
     ...(textOnly ? {textOnly:true as const} : {}),
@@ -216,6 +222,7 @@ export class CompetitionCoordinator implements CoordinationPort {
       const input: CoordinationRequest = Object.freeze({
         taskId: validated.taskId,
         revision: validated.revision,
+        ...(validated.executionEpoch===undefined?{}:{executionEpoch:validated.executionEpoch}),
         goal: validated.goal,
         deadline: validated.deadline,
         signal: controller.signal,
@@ -233,6 +240,8 @@ export class CompetitionCoordinator implements CoordinationPort {
       if (readSignalAborted(validated.signal)) throw new ProtocolError('CANCELLED', 'Coordination cancelled');
       if (validated.expiresAt <= Date.now()) throw new ProtocolError('TIMEOUT', 'Coordination deadline expired');
       const parsed = parseCoordinationResult(result);
+      if(validated.executionEpoch!==undefined&&parsed.verification!=='mock'&&parsed.executionEpoch!==validated.executionEpoch)
+        throw new ProtocolError('REVISION_CONFLICT','Cloud proposal belongs to a different execution epoch');
       if (validated.textOnly && parsed.kind !== 'text') {
         throw new ProtocolError('EXTERNAL_FAILURE', 'Text-only coordination cannot propose tools or repairs');
       }

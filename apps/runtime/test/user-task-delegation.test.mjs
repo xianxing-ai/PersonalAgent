@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
@@ -7,6 +8,30 @@ import {Client} from '@personal-agent/client';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {createRuntimeApplication, createDesktopSubagentDispatchTool} from '../dist/application.js';
+import {USER_TASK_DELEGATION,userTaskDelegationPort,userTaskDelegationProposal} from '../dist/application/user-task-delegation.js';
+
+test('required host delegation returns its original execution epoch and refuses a stale request',async()=>{
+  const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts'});
+  try{
+    const runtime=app.runtime,task=runtime.submitTask({goal:'Synthetic delegated goal',conversationId:'synthetic',idempotencyKey:'epoch-delegation'});
+    const deadline=new Date(Date.now()+60000).toISOString();
+    const binding={version:'1.0',parentTaskId:task.taskId,goal:task.goal,deadline,maxSteps:8,
+      subtask:{subtaskId:'user-work',role:'coordinator',roleLabel:'任务执行',goal:task.goal,thinkingDepth:2}};
+    runtime.saveCheckpoint(task.taskId,USER_TASK_DELEGATION,binding);
+    runtime.saveCheckpoint(task.taskId,'application-deadline',deadline);
+    runtime.saveCheckpoint(task.taskId,'task-thinking',{depth:2,maxSteps:8});
+    runtime.saveCheckpoint(task.taskId,'competition-max-steps',8);
+    const port=userTaskDelegationPort(runtime,{execute:async()=>assert.fail('Host proposal must precede cloud invocation')},binding);
+    const request={taskId:task.taskId,goal:task.goal,revision:0,deadline,signal:new AbortController().signal,executionEpoch:0};
+    const {executionEpoch,...proposal}=await port.execute(request);
+    assert.equal(executionEpoch,0);assert.deepEqual(proposal,userTaskDelegationProposal(binding));
+    runtime.advanceExecutionEpoch(task.taskId,{requestId:'replan',reason:'replan'});
+    await assert.rejects(port.execute(request),{code:'REVISION_CONFLICT'});
+    const {executionEpoch:ignored,...missingEpoch}=request;
+    await assert.rejects(port.execute(missingEpoch),{code:'REVISION_CONFLICT'});
+    assert.equal((await port.execute({...request,executionEpoch:1})).executionEpoch,1);
+  }finally{app.close();}
+});
 
 const selection={catalogRevision:'a'.repeat(64),modelId:'selected-cloud',reasoningEffort:'high'};
 const read={name:'fixture.delegated-work',version:'1.0.0',sideEffect:'read',requiredScopes:['fixture:read'],
@@ -25,7 +50,7 @@ function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,
   const tools=[...(registered?[dispatch]:[]),{descriptor,execute:async(input,context)=>{
     calls.push({taskId:context.taskId,input});return execute?execute(input,context):{answer:56};
   }}];
-  const port=new FakeCoordinationPort(async request=>{
+  const port=new FakeCoordinationPort(syntheticCoordinationExecution(async request=>{
     const task=app.runtime.getTask(request.taskId);
     if(reply)return reply(request,task,app);
     if(task.conversationId.startsWith('desktop-subtask:')) {
@@ -38,7 +63,7 @@ function fixture({path:storage=':memory:',autoRead=false,automaticDispatch=true,
     assert.ok(request.continuation,'root must never ask the cloud to decide whether to delegate');
     assert.equal(request.continuation.result.succeeded,1);
     return {kind:'text',text:'Summary of confirmed child result',verification:'mock'};
-  });
+  }));
   app=createRuntimeApplication({path:storage,profile:'huawei_ict_agentarts',...(delegate?{delegateUserTasks:true}:{}),
     ...(coordination?{coordination:port}:{}),coordinationBinding:'fixed-fixture-config',tools,
     ...(coordinationInput?{coordinationInput}:{}),

@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRuntimeApplication,createAgentArtsRuntimeApplication,compileCoordinationGoal} from '../dist/application.js';
@@ -92,7 +94,7 @@ test('revocation of a child source also withholds the parent answer without disc
 test('revocation during credential lookup blocks historical answer bytes before HTTP',async()=>{
  let app,allowed=true,sends=0;
  const binding={toolName:'fixture.read',toolVersion:'1.0.0',exportPolicyVersion:'v1',accepts:()=>allowed,project:({result})=>result};
- app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'history',
+ app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'history',
   competitionToolExports:[binding],coordinationInput:{beforeCoordinationSend:()=>{},readConversationContext:async scope=>app.readConversationContext(scope)},
   authorizationProvider:{read:async()=>{allowed=false;return 'Bearer synthetic';}},fetchImpl:async()=>{sends++;throw Error('Must not send revoked history');}});
  try{

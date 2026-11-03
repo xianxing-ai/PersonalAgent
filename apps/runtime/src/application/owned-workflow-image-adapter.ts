@@ -3,7 +3,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 import type {OwnedWorkflowAdvanceRequest,OwnedWorkflowAdvanceResult} from '@personal-agent/agentarts';
 import {AgentArtsWebSocketTransport,parseAgentArtsResponseText} from '@personal-agent/coordination';
-import type {AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsWebSocketFactory,AgentArtsTransportState} from '@personal-agent/coordination';
+import type {AgentArtsAuthorizationProvider,AgentArtsFetch,AgentArtsWebSocketFactory,AgentArtsTransportState,AgentArtsPayloadPreparer} from '@personal-agent/coordination';
 import type {RuntimeCodingRepairImagePort} from './coding-repair-application.js';
 export interface RuntimeOwnedWorkflowImageOptions {
   gatewayUrl:string;runtimeName:string;deploymentVersion?:string;transport?:'https'|'wss';websocketUrl?:string;
@@ -14,6 +14,7 @@ export interface RuntimeOwnedWorkflowImageOptions {
   assertDeploymentBinding?:()=>void;onTransportState?:(state:AgentArtsTransportState)=>void;
   /** Synchronous trusted source/configuration fence, including after credential awaits and before WSS sends. */
   assertWorkflowCurrent?:(request:OwnedWorkflowAdvanceRequest)=>void;
+  preparePayload?:AgentArtsPayloadPreparer;
   /** Host-only compatibility for a deployed explicit key override. No Renderer configuration. */
   readReceiptSecret?:(signal:AbortSignal)=>Promise<string>;
   /** Original parsed transport response metadata only; not domain completion evidence. */
@@ -53,12 +54,16 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
     if(!/^Bearer [\x21-\x7e]+$/.test(authorization))throw new ProtocolError('UNAUTHORIZED','Owned-workflow host credential unavailable');
     const secret=deriveOwnedWorkflowKeys({transportToken:authorization.slice(7)}).receiptSecret;
     if(!secret)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Owned-workflow receipt identity unavailable');return secret;
-  },close:()=>ws?.close(),advance:async request=>{
-    active(request);
+  },close:()=>ws?.close(),advance:async(request,context)=>{
+    const executionEpoch=context?.executionEpoch;
+    if(!Number.isSafeInteger(executionEpoch)||(executionEpoch as number)<0)
+      throw new ProtocolError('INVALID_ARGUMENT','Original owned-workflow execution epoch required');
+    const assertCurrent=()=>{context?.assertCurrent?.();active(request);};
+    assertCurrent();
     const auth=await read(options.authorizationProvider,request.signal),hostAuth=options.websocketAuthorizationProvider?await read(options.websocketAuthorizationProvider,request.signal):undefined;
-    active(request);
+    assertCurrent();
     const {signal:ignored,deadline:_deadline,requestId:_requestId,sessionId:_sessionId,resultFits:_resultFits,...data}=request;
-    const query=JSON.stringify({workflowVersion:'1.0.0',operation:'advance',...data});
+    const query=JSON.stringify({executionEpochVersion:1,executionEpoch,query:JSON.stringify({workflowVersion:'1.0.0',operation:'advance',...data})});
     const body=JSON.stringify(options.workflowGoalInput?{inputs:{[options.workflowGoalInput]:query}}:{query});
     if(Buffer.byteLength(query)>1_100_000)throw new ProtocolError('INVALID_ARGUMENT','Owned-workflow request exceeds original image capacity');
     const init={method:'POST' as const,headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
@@ -67,21 +72,33 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
     const httpInit=options.fetchHandlesHostAuthorization?{...init,headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
       'x-hw-agentarts-session-id':request.sessionId,'X-Request-Id':request.requestId,'X-PA-Deadline':request.deadline,'X-Invoke-Mode':options.invokeMode??'published'}}:init;
     let response,usedTransport: 'https'|'wss'=options.transport??'https';
+    const prepare=async(destination:string)=>options.preparePayload?.({requestId:request.requestId,destination,payload:body,
+      deadline:request.deadline,signal:request.signal,isCurrent:()=>{assertCurrent();return true;}});
     if(options.transport==='wss') {
       if(!ws)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original owned-workflow WSS endpoint unavailable');
-      try {response=await ws.invoke(init,{beforeSend:()=>active(request),afterAccepted:()=>{},afterTerminal:()=>{}});}
+      const destination=options.websocketUrl!,lease=await prepare(destination);assertCurrent();
+      try {response=await ws.invoke(init,{beforeSend:()=>{assertCurrent();lease?.assertBeforeSend({destination,payload:body});},
+        afterAccepted:assertCurrent,afterTerminal:assertCurrent});}
       catch(error) {
         if(!options.allowHttpsFallback||!ws.canFallback(error))throw error;
-        active(request);ws.reportFallback(request.sessionId,request.requestId);
+        assertCurrent();ws.reportFallback(request.sessionId,request.requestId);
         usedTransport='https';
+        const httpLease=await prepare(endpoint);assertCurrent();httpLease?.assertBeforeSend({destination:endpoint,payload:body});
         response=await (options.fetchImpl??fetch)(endpoint,httpInit);
       }
-    }else response=await (options.fetchImpl??fetch)(endpoint,httpInit);
-    active(request);
+    }else {const lease=await prepare(endpoint);assertCurrent();lease?.assertBeforeSend({destination:endpoint,payload:body});
+      response=await (options.fetchImpl??fetch)(endpoint,httpInit);}
+    assertCurrent();
     if(response.status!==200)throw new ProtocolError(response.status===401||response.status===403?'UNAUTHORIZED':'EXTERNAL_FAILURE','Owned-workflow AgentArts invocation rejected');
     const text=await parseAgentArtsResponseText(response,{signal:request.signal,deadline:request.deadline,strictCompletion:true,
       maxResponseBytes:1_200_000,maxTextChars:1_200_000});
-    active(request);let value:unknown;try{value=JSON.parse(text);}catch{throw new ProtocolError('PROTOCOL_MISMATCH','Malformed owned-workflow image result');}
+    assertCurrent();let value:unknown;try{value=JSON.parse(text);}catch{throw new ProtocolError('PROTOCOL_MISMATCH','Malformed owned-workflow image result');}
+    if(!value||typeof value!=='object'||Array.isArray(value))throw new ProtocolError('PROTOCOL_MISMATCH','Invalid owned-workflow image result');
+    const envelope=value as {executionEpochVersion?:unknown;executionEpoch?:unknown;result?:unknown};
+    if(Object.keys(envelope).sort().join(',')!=='executionEpoch,executionEpochVersion,result'
+      ||envelope.executionEpochVersion!==1||envelope.executionEpoch!==executionEpoch)
+      throw new ProtocolError('REVISION_CONFLICT','Owned-workflow response execution epoch differs');
+    value=envelope.result;
     if(!value||typeof value!=='object'||Array.isArray(value))throw new ProtocolError('PROTOCOL_MISMATCH','Invalid owned-workflow image result');
     options.onInvocationReadback?.({workflowId:request.workflowId,taskId:request.taskId,sessionId:request.sessionId,requestId:request.requestId,bindingId,
       payloadDigest:createHash('sha256').update(body).digest('hex'),resultDigest:createHash('sha256').update(JSON.stringify(value)).digest('hex'),

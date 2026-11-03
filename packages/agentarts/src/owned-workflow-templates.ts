@@ -135,7 +135,7 @@ function compile(feature: SourceFeature): OwnedWorkflowTemplate {
       ...(['F01_N07','F01_N08','F01_N09','F02_N09','F03_N07','F03_N08','F03_N09','F03_N10','F04_N03','F04_N07','F05_N04','F05_N06','F06_N05','F08_N06','F08_N07','F08_N12','F08_N13','F11_N04','F11_N05','F12_N04','F12_N05','F24_N06'].includes(node.id)?{hostGuard:true as const}:{}),resourceKeys:[...node.resourceKeys],
       effect: semantic || kind==='executor' || kind==='assemble' || kind==='input' ? 'none'
         : /写入|缓存/.test(node.effectType)
-          || ['F02_N02','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',
+          || ['F02_N02','F02_N05','F02_N06','F02_N07','F02_N08','F06_N05','F12_N04',
             'F16_N05','F24_N07','F24_N08','F24_N10','F24_N11','F25_N04'].includes(node.id) ? 'write':'read',
       capabilities:mapped.map(item=>({...item})),
       inputFields:[...node.inputFields],outputFields:[...node.outputFields],

@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -94,10 +95,10 @@ async function fixture(t,{unknown=false,deny=false,blocking=false,ciFailure=fals
         }
         return 'allow_once';
       },
-      coordination:{execute:async request=>app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation
+      coordination:{execute:syntheticCoordinationExecution(async request=>app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation
         ?{kind:'text',text:'Synthetic workflow continuation',verification:'unverified'}
         :{kind:'tool_proposal',proposalId:'synthetic-f18',toolName:'workflow.f18.review_merge',toolVersion:'1.0.0',
-          arguments:structuredClone(selection),verification:'unverified'}},
+          arguments:structuredClone(selection),verification:'unverified'})},
       competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true,
         publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:tool.descriptor.name==='github.registered_merge'?['/mergeMethod']:[]})),
       competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,

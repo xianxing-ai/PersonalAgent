@@ -241,3 +241,24 @@ F20 无 host / guard 要求（0 / 0）；这不代表可信输入、调用入口
 - [ ] `workflow.host.f28_n12` — 执行者在派定范围内自主选工具与探索；节点能力：`executor.scoped_tool_loop`
 - [ ] `workflow.guard.f28_n12` — 执行者在派定范围内自主选工具与探索；节点能力：`executor.scoped_tool_loop`
 
+## 增量（2026-11-02，异步子智能体与开发值班；不改变上面的原有项）
+
+以下为新增项，不替代、不勾选上面的原有 host/guard。当前只完成 Fixture 级测试；未做真实模型、真实 GitHub 账号或桌面人工验收。远端值班 runner 是 stub。
+
+- [ ] `subagent.spawn` — 异步创建子任务并立即返回；复用 `subagent-dispatch-${parent}-${subtask}`；一层深度；默认全局/每父各 3；Laya 仍串行
+- [ ] `subagent.instruct` / `subagent.stop` — controlRevision 追加指示；停止走现有 `requestCancel`
+- [ ] `async-subagent-report` — 终态回执按 parentTask、subtaskId、revision 只报告一次，重启不重复
+- [ ] `async-subagent-recovery` — 启动重入仍为 created 的子任务；`waiting_reconciliation` 只读回，不重做
+- [ ] `subagent.type.*` — 主对话起草自定义类型；确认前不生效；不能与五种内置角色重名；工具不得超出已授予范围；定义变更作废旧版本待执行提案
+- [ ] `developer-duty.events` — GitHub webhook/轮询；缺口或断线不得记成无变化
+- [ ] `developer-duty.policy` — 按仓库允许评论和指定分支推送；合并默认禁止；凭据只留引用
+- [ ] `developer-duty.comment` — 单条状态评论就地修改；未知结果先读回，不再次发帖
+- [ ] `developer-duty.head` — PR head 变化后旧结论标为 superseded
+- [ ] `developer-duty.ci` — CI 日志摘录分类为 flaky / environment / code / unknown
+- [ ] `developer-duty.personal-view` — 指派给我、等我审查、我的失败 PR
+- [ ] `developer-duty.rate-limit` — 限流与未知分支保护时拒绝当作成功或允许强推
+- [ ] `developer-duty.eval-set` — 历史失败可生成 F23 fixture 评估集
+- [ ] `developer-duty.remote-runner` — 未配置时的 `developerDutyRemoteRunner()` 仍是 stub；已确认主机走真实协议。真机验收另列在下面
+- [ ] `remote-runner.real-server` — 在真实华为云 ECS 或 VPS 上完成安装、主机密钥指纹校验、心跳、值班游标和状态评论回同步。本次只做了回环假主机和本机进程，没有真机验收
+- [ ] `remote-runner.real-github` — 远端执行器使用真实 GitHub 账号轮询并更新一条状态评论，且本地重新上线后不重复发帖。本次没有真实账号
+

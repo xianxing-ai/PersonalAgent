@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -39,9 +40,9 @@ test('F03 actual graph preserves known mail effects and defers unavailable repla
   app=runtimeModule.createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
     hostUserNamespace:'f03',coordinationBinding:'fixture-f03-deployment',tools,configuredWorkflowWorkers:[{...worker,image:{bindingId:'fixture-f03-image',
       receiptSecret:async()=>secret,advance:async request=>{images.push(request.input);const result=await engine.advance(request);proposals.push(...result.proposals);return result;}}}],
-    coordination:{execute:async request=>request.continuation||app.runtime.getTask(request.taskId).conversationId==='f03-chat'
+    coordination:{execute:syntheticCoordinationExecution(async request=>request.continuation||app.runtime.getTask(request.taskId).conversationId==='f03-chat'
       ?{kind:'text',text:'Original review remains pending',verification:'unverified'}
-      :{kind:'tool_proposal',proposalId:'original-f03-review',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:{source},verification:'unverified'}},
+      :{kind:'tool_proposal',proposalId:'original-f03-review',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:{source},verification:'unverified'})},
     requiresToolAuthorization:()=>true,requestToolAuthorization:async scope=>{
       await prepareWorkflowHostPreflight({application:app,scope,prepareExport:async()=>{}});
       prepareConfiguredWorkflowDecisionQuestion({application:app,scope,question});return question.requestToolAuthorization(scope);},

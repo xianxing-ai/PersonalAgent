@@ -39,7 +39,7 @@ type Proposal=Extract<OwnedWorkflowAdvanceResult['proposals'][number],{kind:'too
  * The completion verifier must independently bind both current sources and the exact recipe to
  * the candidate and confirmed command result; an exit code alone is not document verification. */
 export interface RuntimeOwnedWorkflowWorkerOptions {
-  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>;receiptSecret(signal:AbortSignal):Promise<string>};
+  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>;receiptSecret(signal:AbortSignal):Promise<string>};
   available(scope:Scope):boolean|Promise<boolean>;
   resolveInput(inputRef:string,scope:Scope):Promise<RuntimeF20Input|undefined>;
   assertCurrent(scope:Scope):void;

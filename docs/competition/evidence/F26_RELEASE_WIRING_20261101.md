@@ -27,3 +27,19 @@ N02 通过 Runtime/ToolGateway 和原生执行宿主执行固定发布指令；�
 固定端点错配已由 `95804ebd` 修复：发布绑定的 `endpointName` 必须等于实际 HTTPS 调用的 `deploymentVersion`，防止控制面验证与认证 invoke 指向不同端点；相关配置、传输和读回检查 34/34 通过。另将根 `tsconfig.base.json` 加入 Desktop 原源码集合及发布脚本的未提交修改检查，四个构建包继承的编译配置随原 tree digest 绑定，不能在 HEAD 不变时绕过源码检查。本次仅做静态 diff 与语法检查，未重复构建或调用真实服务。
 
 镜像导出器和 Dockerfile 不向镜像写入 HEAD，发布脚本只在宿主 `release.json` 记录源码提交；`ad354455` 至 `a89d7e1a` 在固定来源目录中的唯一变更是未导出的测试文件。镜像摘要是否一致仍须由原 N02 重建和 SWR 读回确认。既有 `ad354455` 构建日志最大 Docker 阶段为 21.2 秒，尚无原 N02 全流程超过 120 秒的证据；该上限包含 npm 构建、导出、Docker 构建/推送/读回，不预先扩大公共命令期限。
+
+## 固定发布的构建摘要稳定性（2026-11-03）
+
+历史真实构建日志含 attestation manifest 与顶层 index；生产 N02 推送回执和 N03 注册表读回严格比较顶层摘要。因此缓存命中本身不能保证预部署与原 N02 重建所得 index 相同，带时间性的 provenance 可能改变该摘要。专用发布脚本的原 Docker build 增加 `--provenance=false`，保留原源码身份、ARM64 和远程摘要检查，不额外改变 SBOM 默认行为。
+
+尚未执行两次真实构建证明发生过实际摘要失配；此修正不能写成 F26 已通过。最终真实 F26 仍须由原 N02 与 N03 核对同一个摘要，既有手动部署不代替整图回执。
+
+修改后的发布脚本已通过 PowerShell Parser 语法检查；本轮未重复构建镜像或调用真实注册表。
+
+## 单镜像 manifest 的真实兼容问题（2026-11-03）
+
+后续 `d4d942bf` 的 ARM64 预构建与 SWR 推送已实际完成，顶层摘要为 `sha256:9d29ae1e9babdf01b4c570e8f1492d9c34747666206e6f3e50b307d617c337f9`。禁用 provenance 后产物是单 OCI manifest；原 `imagetools inspect` 文本只列 Name、MediaType、Digest，没有 `linux/arm64`，导致发布脚本在已发生推送后拒绝成功回执。这是实测的平台文本兼容问题，并非已证明的两次摘要漂移，也不是 F26 原图通过。
+
+按 [Docker 官方格式文档](https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/)读取 `.Manifest` 和 `.Image` JSON。实际单 manifest 的 `.Manifest` 仅有 mediaType、digest、size；以固定摘要读取 `.Image` 已确认 os=linux、architecture=arm64。发布脚本和 Desktop N03 标签解析都保留顶层摘要身份；旧 index 仅选择唯一 linux/arm64 子 manifest 来核对配置，单 manifest 直接按顶层摘要核对。发布阶段的配置日志只记录 os/architecture，不保存完整镜像配置。
+
+修复后 PowerShell Parser 语法检查通过；一个定向用例覆盖 single/index 顶层摘要保留、固定摘要读取、错误平台及重复 ARM64 子项拒绝，1/1 通过。未重复全图或 Docker 构建，修复后的原 F26 真实回执仍待取得。

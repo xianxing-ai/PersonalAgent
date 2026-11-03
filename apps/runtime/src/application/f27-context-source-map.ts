@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
-import {segmentConversationContext} from './context-compaction.js';
+import {mustPreserveContextMessage,segmentConversationContext,segmentSummarizableContext} from './context-compaction.js';
 import type {CompactableContextMessage,ContextCompactionReceipt} from './context-compaction.js';
 
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -30,10 +30,13 @@ export function bindF27ContextSourceMap(input:{
   }else {
     if(receipt.version!==1||receipt.sourceCount!==source.length||receipt.sourceDigest!==hash(source)
       ||!Array.isArray(receipt.segments)||!receipt.segments.length)reject();
-    const count=receipt.segments.length,boundary=source.length-(assembled.length-count);
-    if(boundary<1||boundary>source.length||!isDeepStrictEqual(assembled.slice(count),source.slice(boundary))
+    const count=receipt.segments.length,boundary=receipt.prefixCount??source.length-(assembled.length-count);
+    const protectedIndexes=receipt.prefixCount===undefined?[]:source.slice(0,boundary).flatMap((message,index)=>mustPreserveContextMessage(message)?[index]:[]);
+    const originals=[...protectedIndexes.map(index=>source[index]!),...source.slice(boundary)];
+    if(!Number.isSafeInteger(boundary)||boundary<1||boundary>source.length||!isDeepStrictEqual(assembled.slice(count),originals)
       ||receipt.tailDigest!==hash(source.slice(boundary)))reject();
-    const prefix=source.slice(0,boundary),segments=segmentConversationContext(prefix,receipt.policy.segmentCharacters);
+    const prefix=source.slice(0,boundary),segments=receipt.prefixCount===undefined
+      ?segmentConversationContext(prefix,receipt.policy.segmentCharacters):segmentSummarizableContext(prefix,receipt.policy.segmentCharacters);
     if(segments.length!==count)reject();
     const summaries:string[]=[];let offset=0;
     mappings=segments.map((segment,index)=>{
@@ -47,10 +50,11 @@ export function bindF27ContextSourceMap(input:{
         ||range.sourceCharacters!==JSON.stringify(segment.messages).length||range.summaryDigest!==hash(derived.text)
         ||range.summaryCharacters!==derived.text.length)reject();
       summaries.push(derived.text);
-      const start=offset;offset+=segment.messages.length;
-      return {identityDigest:identity(message),contentDigest:hash(message.content),kind:'summary',sourceStart:start,sourceEnd:offset};
+      const start='sourceStart' in segment?segment.sourceStart as number:offset;offset+=segment.messages.length;
+      return {identityDigest:identity(message),contentDigest:hash(message.content),kind:'summary',sourceStart:start,sourceEnd:start+segment.messages.length};
     });
-    if(receipt.summaryDigest!==hash(summaries)||offset!==boundary)reject();
+    if(receipt.summaryDigest!==hash(summaries)||offset+protectedIndexes.length!==boundary)reject();
+    mappings.push(...protectedIndexes.map(index=>({...origins[index]!,kind:'original' as const,sourceStart:index,sourceEnd:index+1})));
     mappings.push(...origins.slice(boundary).map((item,index)=>({...item,kind:'original' as const,sourceStart:boundary+index,sourceEnd:boundary+index+1})));
   }
   let last=-1;

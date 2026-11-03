@@ -20,6 +20,9 @@ function fixture(t,extra={}){
   const options={userData,safeStorage:storage,createGateway:config=>{factories.push(config);return createConfiguredSubagentModelGateway(config);},
     fetchImpl:async(url,init)=>{sends.push({url,init});return new Response(JSON.stringify({choices:[{message:{content:'Synthetic observation'}}]}));},...extra};
   const host=createComputerVisionConfig(options);t.after(()=>host.dispose());
+  // Explicit synthetic classification for these generated image/transport fixtures only.
+  host.setEgressHost({prepare:async scope=>({assertBeforeSend(actual){assert.equal(scope.isCurrent(),true);
+    assert.equal(actual.destination,scope.destination);assert.equal(actual.payload,scope.payload);}})});
   return {host,options,sends,factories,save:(patch={})=>host.configure({expectedRevision:host.snapshot().revision,enabled:true,...destination,apiKey:'synthetic-private-key',...patch})};
 }
 // Inject only the serialization step to exercise the exact final transport boundary,

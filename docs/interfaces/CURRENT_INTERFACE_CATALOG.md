@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-02 #533 控制权接线（provisional）
+
+Runtime 增加原检查点持久化的执行世代与最终执行检查，Desktop 接入本对话显式禁止项、完整内容确认、本机出机分类及 F02 原最终语音决定；F16/F19 的可信 Git 预览继续经原 Policy/ToolGateway 执行。普通云传输须回显版本化世代宿主包，F02 N05 的真实授权写入改变模板摘要，旧部署不得当作新能力验收。没有新增依赖、数据库或公开模型授权口；缺乏本地原音频/图像分类时明确不可用。实现、兼容性和本地/真实证据边界见 [控制权接线记录](../competition/evidence/CONTROL_GATES_IMPLEMENTATION_20261102.md)，不据此冻结接口或宣称 #531 真实验收完成。
+
 ## 2026-11-01 F21 固定参考能力的隔离验证与启用（provisional）
 
 `createF21WorkflowWorkerPorts` / Desktop `createConfiguredDesktopF21WorkflowPorts` 将五节点接入同一 configured driver、原业务 child/Policy 与原 native command；仅支持既有固定 filesystem MCP 和 reference-summary Skill。新增 `readReadonlyMcpInstallation`、reference 配置读口及 `readOriginalF21Probe` 为只读宿主证据，不能授权或启动进程。启用另经原 `workflow.enable` 精确确认；原 probe/enable 未知以既有 SQLite CAS 固定能力身份阻止新图重放。旧 UI 启停调用保持兼容，无依赖或数据库迁移。真实本机 PSEC/协议检查已通过，固定 AgentArts 整图与真人验收仍待完成，详见 [F21 证据](../competition/evidence/F21_REFERENCE_PROBE_WIRING_20261101.md)。

@@ -15,6 +15,30 @@ const sourcePaths=['package.json','package-lock.json','tsconfig.base.json','pack
 const identity=file=>{const real=realpathSync.native(file),stat=lstatSync(file,{bigint:true});if(stat.isSymbolicLink()||!stat.isFile()||stat.nlink!==1n)fail();
   return [real,String(stat.dev),String(stat.ino),String(stat.size),String(stat.mtimeNs),String(stat.ctimeNs)];};
 
+/** Resolve a tag's top-level digest; verify the actual ARM64 config through an immutable reference. */
+export async function readF26RegistryImageReference({imageReference,repository,dockerPath,root,deadline,signal,assertCurrent,execFileImpl=promisify(execFile)}){
+  assertCurrent();
+  if(!imageReference.startsWith(repository+':')||!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u.test(imageReference.slice(repository.length+1)))fail();
+  const inspect=async(reference,field)=>{
+    let result;try{const {stdout}=await execFileImpl(dockerPath,['buildx','imagetools','inspect',reference,'--format','{{json .'+field+'}}'],
+      {cwd:root,windowsHide:true,encoding:'utf8',timeout:Math.min(30000,Date.parse(deadline)-Date.now()),signal,maxBuffer:1024*1024});result=JSON.parse(stdout);}
+    catch{assertCurrent();fail('EXTERNAL_FAILURE','SWR 原镜像标签摘要或平台读取失败');}
+    assertCurrent();return result;
+  };
+  const manifest=await inspect(imageReference,'Manifest');
+  if(!/^sha256:[a-f0-9]{64}$/u.test(manifest?.digest))fail('PROTOCOL_MISMATCH');
+  let platformDigest=manifest.digest;
+  if(manifest.manifests!==undefined){
+    if(!Array.isArray(manifest.manifests))fail('PROTOCOL_MISMATCH');
+    const arm64=manifest.manifests.filter(item=>item?.platform?.os==='linux'&&item?.platform?.architecture==='arm64');
+    if(arm64.length!==1||!/^sha256:[a-f0-9]{64}$/u.test(arm64[0].digest))fail('PROTOCOL_MISMATCH');
+    platformDigest=arm64[0].digest;
+  }
+  const platform=await inspect(repository+'@'+platformDigest,'Image');
+  if(platform?.os!=='linux'||platform?.architecture!=='arm64')fail('PROTOCOL_MISMATCH','SWR 原镜像必须为 linux/arm64');
+  return repository+'@'+manifest.digest;
+}
+
 /** Original repository release script + original selected AgentArts configuration. No new installer or publisher. */
 export function createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingModule,getApplication,agentArtsConfig,getAgentArtsModels,nativeExecutionHost,
   repositoryRoot,nodeExecutable,powerShellPath,dockerPath,gitPath,npmCli,authorizeDeployment,toolExports,prepareCompetitionToolExport,authorizeExport}={}){
@@ -60,22 +84,13 @@ export function createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingMod
       ||release.registryReference!==current.configuration.registryReference||!/^sha256:[a-f0-9]{64}$/.test(release.registryManifestDigest)
       ||current.configuration.imageReference!==undefined&&current.configuration.imageReference!==current.release.registryRepository+'@'+release.registryManifestDigest
       ||!Number.isFinite(release.imageSizeBytes)||release.imageSizeBytes<=0||!Array.isArray(release.stages)
-      ||['build','tag','push','remote-inspect'].some(stage=>release.stages.filter(item=>item.stage===stage&&item.exitCode===0).length!==1))fail('REVISION_CONFLICT','F26 原构建/SWR摘要未匹配所选部署');
+      ||['build','tag','push','remote-inspect','remote-platform'].some(stage=>release.stages.filter(item=>item.stage===stage&&item.exitCode===0).length!==1))fail('REVISION_CONFLICT','F26 原构建/SWR摘要未匹配所选部署');
     return {sourceRevision:release.sourceRevision,imageId:release.imageId,imageReference:current.release.registryRepository+'@'+release.registryManifestDigest,imageSizeMb:release.imageSizeBytes/1048576,
       buildDurationSeconds:release.stages.find(stage=>stage.stage==='build').wallMs/1000,architecture:'arm64',published:true,remoteReadbackVerified:true,
       nativeMode:'full-access',auditDigest:audit.auditDigest,releaseDigest:bytes(content)};
   }
   async function readDeployment(scope,build){const expected=bound(scope),assertCurrent=()=>{if(!isDeepStrictEqual(bound(scope),expected))fail();};
-    const resolveImageReference=async({imageReference,deadline,signal})=>{
-      assertCurrent();const repository=expected.release.registryRepository;
-      if(!imageReference.startsWith(repository+':')||!/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u.test(imageReference.slice(repository.length+1)))fail();
-      let manifest;try{const {stdout}=await promisify(execFile)(dockerPath,['buildx','imagetools','inspect',imageReference,'--format','{{json .Manifest}}'],
-        {cwd:root,windowsHide:true,encoding:'utf8',timeout:Math.min(30000,Date.parse(deadline)-Date.now()),signal,maxBuffer:1024*1024});
-        manifest=JSON.parse(stdout);
-      }catch{assertCurrent();fail('EXTERNAL_FAILURE','SWR 原镜像标签摘要读取失败');}
-      assertCurrent();if(!/^sha256:[a-f0-9]{64}$/u.test(manifest?.digest))fail('PROTOCOL_MISMATCH');
-      return repository+'@'+manifest.digest;
-    };
+    const resolveImageReference=request=>readF26RegistryImageReference({...request,repository:expected.release.registryRepository,dockerPath,root,assertCurrent});
     const args={...expected.release,imageReference:build.imageReference,deadline:scope.deadline,signal:scope.signal,authorize:authorizeDeployment,assertCurrent,resolveImageReference};
     const control=await readAgentArtsDeployment(args);assertCurrent();if(!control.runtimeReady)fail('UNSUPPORTED_CAPABILITY');
     // This is an actual authenticated invocation on the same pinned transport, not a cached catalog or Kubernetes claim.

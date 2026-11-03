@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
@@ -26,11 +27,11 @@ function composition(directory){
     tools:todo.tools,competitionToolAvailability:todo.competitionToolAvailability,competitionToolExports:todo.competitionToolExports,
     prepareCompetitionToolExport:scope=>todo.prepareExport(scope),requiresToolAuthorization:scope=>question.requiresAuthorization(scope),
     requestToolAuthorization:scope=>question.requestToolAuthorization(scope),
-    coordination:{async execute(request){
+    coordination:{execute:syntheticCoordinationExecution(async (request)=>{
       if(request.continuation){exports.push(structuredClone(request.continuation));return {kind:'text',text:'Synthetic confirmed continuation',verification:'mock'};}
       return {kind:'tool_proposal',proposalId:'proposal-'+request.taskId,toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
         arguments:{title:request.goal},verification:'unverified'};
-    }}});
+    })}});
   todo.bindApplication(application);const client=new Client(application);
   return {application,question,todo,exports,client,async close(){question.close();await wait(()=>application.activeTaskCount===0);await todo.close();application.close();}};
 }

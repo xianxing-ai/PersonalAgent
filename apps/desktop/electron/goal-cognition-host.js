@@ -1,7 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import {analyzeImpact,buildMeetingRepairOptions,prepareReviewedRepair,selectMeetingRepairScope} from '@personal-agent/cognition';
-import {parseCoordinationRepairCandidate} from '@personal-agent/coordination';
 import {isDeepStrictEqual} from 'node:util';
 
 const VERSION='desktop-goal-analysis-v1';
@@ -182,9 +181,8 @@ export function createDesktopGoalCognitionHost({application,client,facts,namespa
     if (application.runtime.getTask(taskId).state!=='succeeded') return {kind:'unavailable',reason:'source_not_terminal'};
     const prepared=repairPreparation(bound.review);
     if (prepared.kind!=='prepared') return prepared;
-    const saved=application.runtime.loadCheckpoint(taskId,'competition-repair-candidate');
-    if (saved===undefined) return {kind:'unavailable',reason:'no_structured_candidate'};
-    const parsed=parseCoordinationRepairCandidate(saved);
+    const parsed=application.readRepairCandidate(taskId);
+    if (parsed===undefined) return {kind:'unavailable',reason:'no_structured_candidate'};
     const refs=new Map([...prepared.binding.targets,...prepared.binding.dependencies].map(ref=>[`${hash(ref.id)}:${ref.revision}`,ref]));
     const local=ref=>{const found=refs.get(`${ref.id}:${ref.revision}`);if(!found) throw Error('云端修复引用不在原有选择范围内');return {...found};};
     return repairPreparation(bound.review,{expectedGraphRevision:parsed.candidate.expectedGraphRevision,

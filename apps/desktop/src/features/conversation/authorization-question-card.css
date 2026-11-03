@@ -3,7 +3,7 @@
 .authorization-question-card,.authorization-sandbox-panel{padding:16px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:14px;background:color-mix(in srgb,currentColor 4%,transparent);min-width:0;overflow-wrap:anywhere}
 .authorization-question-card p{margin:8px 0;line-height:1.55}
 .authorization-question-title{font-size:15px;margin:0 0 8px;font-weight:650;line-height:1.5}
-.authorization-question-summary{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;line-height:1.5}
+.authorization-question-summary{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;line-height:1.5;white-space:pre-wrap}
 .authorization-question-details{margin-top:10px;font-size:13px}
 .authorization-question-details>summary{cursor:pointer;width:fit-content;font-size:12px;opacity:.75}
 .authorization-question-details[open]>summary{margin-bottom:8px}

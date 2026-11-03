@@ -647,10 +647,11 @@ export function registerWorkspacePatchApply(
 ): () => void {
   return host.register(createWorkspacePatchApplyTool(options));
 }
-export {createGitTools, registerGitTools, readGitWorkspaceFingerprint,
+export {createGitTools, createGitToolsWithPublicationPreview, registerGitTools, readGitWorkspaceFingerprint,
   GIT_HEAD_TOOL, GIT_COMMIT_TOOL, GIT_PUSH_TOOL, GIT_PUBLICATION_READ_TOOL, GIT_READ_SCOPE, GIT_COMMIT_SCOPE, GIT_PUSH_SCOPE} from './dev-workflows/git-tools.js';
 export type {GitFileHash, GitVerificationReceipt, GitToolsOptions, GitHeadResult, GitCommitInput,
-  GitCommitResult, GitPushInput, GitPushResult, GitPublicationBinding, GitPublicationIntent, GitPublicationPort} from './dev-workflows/git-tools-types.js';
+  GitCommitResult, GitPushInput, GitPushResult, GitPublicationBinding, GitPublicationIntent, GitPublicationPort,
+  GitPublicationPreviewInput,GitPublicationPreview} from './dev-workflows/git-tools-types.js';
 export {runCiFix, createCiFixWorkflow} from './dev-workflows/ci-fix.js';
 export {createCiRunDiscoveryWorkflow} from './dev-workflows/ci-run-discovery.js';
 export type {CiDiscoveredRun, CiRunListRequest, CiRunListResult, CiRunDiscoveryOptions,

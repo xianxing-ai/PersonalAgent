@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
@@ -76,9 +77,9 @@ async function scenario(t,options={}){
     }});
   const image={bindingId:'fixture-f11-image',receiptSecret:async()=>secret,advance:async request=>{const result=await engine.advance(request);proposals.push(...result.proposals);return result;}};
   app=runtimeModule.createRuntimeApplication({path:path.join(userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,hostUserNamespace:'f11',
-    coordinationBinding:'fixture-deployment',tools,configuredWorkflowWorkers:[{...worker,image}],coordination:{execute:async request=>{
+    coordinationBinding:'fixture-deployment',tools,configuredWorkflowWorkers:[{...worker,image}],coordination:{execute:syntheticCoordinationExecution(async request=>{
       cloud.push(request);if(app.runtime.getTask(request.taskId).conversationId==='fixture-chat'||request.continuation)return {kind:'text',text:'Fixture result',verification:'unverified'};
-      return {kind:'tool_proposal',proposalId:'original-f11',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};}},
+      return {kind:'tool_proposal',proposalId:'original-f11',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};})},
     requiresToolAuthorization:()=>true,requestToolAuthorization:async scope=>{
       await prepareWorkflowHostPreflight({application:app,scope,prepareExport});prepareConfiguredWorkflowDecisionQuestion({application:app,scope,question});
       return question.requestToolAuthorization(scope);

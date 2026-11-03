@@ -48,6 +48,8 @@ export function parseExecutionModelSelection(value: unknown): ExecutionModelSele
 
 /** In-process, provisional boundary. No Runtime, credentials or history. */
 export interface CoordinationRequest {
+  /** Trusted task generation; independent of progress/revision updates. */
+  readonly executionEpoch?: number;
   readonly executionModel?: ExecutionModelSelection;
   readonly taskId: string;
   readonly revision: number;
@@ -83,7 +85,7 @@ export interface CoordinationContinuation {
   result: unknown;
 }
 
-export type CoordinationResult = CoordinationTextResult | CoordinationToolProposalResult | CoordinationRepairCandidateResult;
+export type CoordinationResult = (CoordinationTextResult | CoordinationToolProposalResult | CoordinationRepairCandidateResult) & {executionEpoch?:number};
 
 export interface CoordinationPort {
   execute(request: CoordinationRequest): Promise<CoordinationResult>;
@@ -99,6 +101,7 @@ export {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminal
 export type {AgentArtsTransportState, AgentArtsUnknownReceipt, AgentArtsWebSocket,
   AgentArtsWebSocketFactory, AgentArtsWebSocketConnectOptions} from './agentarts-websocket.js';
 export type {
+  AgentArtsPayloadPreparer,
   AgentArtsAuthorizationProvider,
   AgentArtsDiagnosticStage,
   AgentArtsFetch,
@@ -326,6 +329,15 @@ function parseContinuation(value: unknown): CoordinationContinuation {
 }
 
 export function parseCoordinationResult(value: unknown): CoordinationResult {
+  let hasEpoch=false;
+  try {hasEpoch=value!==null&&typeof value==='object'&&Object.hasOwn(value,'executionEpoch');}catch{return invalidResult();}
+  if(hasEpoch) {
+    const copy=cloneJsonValue(value,new Set<object>(),0,{remaining:MAX_CONTINUATION_JSON_BYTES}) as Record<string,unknown>;
+    const epoch=copy.executionEpoch;
+    if(!Number.isSafeInteger(epoch)||(epoch as number)<0)invalidResult();
+    delete copy.executionEpoch;
+    return {...parseCoordinationResult(copy),executionEpoch:epoch as number};
+  }
   let kind: unknown;
   try {
     kind = value !== null && typeof value === 'object' ? (value as {kind?: unknown}).kind : undefined;

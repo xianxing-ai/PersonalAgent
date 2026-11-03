@@ -9,9 +9,44 @@ import {syncBuiltinESMExports} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {createHash} from 'node:crypto';
-import {createGitTools, registerGitTools, readGitWorkspaceFingerprint} from '../dist/dev-workflows/git-tools.js';
+import {createGitTools, createGitToolsWithPublicationPreview, registerGitTools, readGitWorkspaceFingerprint} from '../dist/dev-workflows/git-tools.js';
 
 const publicationDigest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+test('publication preview shows the complete verified diff and binds the actual committed tree',async t=>{
+  const f=await publicationFixture(t);let preview,checks=0;
+  const host=createGitToolsWithPublicationPreview({...f.options,publication:{...f.port,assertContent:async(_ctx,content)=>{
+    checks++;assert.deepEqual(content,{baseHeadSha:preview.baseHeadSha,headSha:preview.headSha,treeSha:preview.treeSha,fingerprint:preview.fingerprint});}},
+    readVerification:async()=>({taskId:f.context.taskId,runId:f.args.verificationRunId,toolName:'workspace.run_allowed_command',status:'confirmed',exitCode:0,
+      headSha:f.headSha,files:(await readGitWorkspaceFingerprint(f.options.rootPath,f.options.allowedPaths)).files})});
+  const beforeIndex=readFileSync(join(f.options.rootPath,'.git','index'));
+  preview=await host.readPublicationPreview({baseHeadSha:f.headSha,expectedHeadSha:f.headSha,paths:f.args.paths,stage:'commit'},
+    {...f.context,scopes:['workspace:git:read']});
+  assert.match(preview.diff,/-export const value = 1;/);assert.match(preview.diff,/\+export const value = 2;/);
+  assert.equal(preview.diffDigest,publicationDigest(preview.diff));assert.deepEqual(readFileSync(join(f.options.rootPath,'.git','index')),beforeIndex);
+  const committed=await host.tools.commit.execute(f.args,f.context);assert.equal(checks,1);
+  assert.equal(f.git(['rev-parse',committed.headSha+'^{tree}']),preview.treeSha);
+});
+
+test('publication preview cannot authorize replacement bytes even if a newer command verifies them',async t=>{
+  const f=await publicationFixture(t);let preview;
+  const host=createGitToolsWithPublicationPreview({...f.options,publication:{...f.port,assertContent:async(_ctx,content)=>{
+    assert.equal(content.treeSha,preview.treeSha,'previously confirmed tree changed');}},
+    readVerification:async()=>({taskId:f.context.taskId,runId:f.args.verificationRunId,toolName:'workspace.run_allowed_command',status:'confirmed',exitCode:0,
+      headSha:f.headSha,files:(await readGitWorkspaceFingerprint(f.options.rootPath,f.options.allowedPaths)).files})});
+  preview=await host.readPublicationPreview({baseHeadSha:f.headSha,expectedHeadSha:f.headSha,paths:f.args.paths,stage:'commit'},
+    {...f.context,scopes:['workspace:git:read']});
+  writeFileSync(join(f.options.rootPath,'src/main.ts'),'export const value = 3;\n');
+  await assert.rejects(host.tools.commit.execute(f.args,f.context),/previously confirmed tree changed/);
+  assert.equal(f.git(['rev-parse','HEAD']),f.headSha);assert.equal(f.intents.size,0);
+});
+
+test('publication preview refuses oversized output instead of returning a partial diff',async t=>{
+  const f=await publicationFixture(t);writeFileSync(join(f.options.rootPath,'src/main.ts'),'x'.repeat(1_100_000));
+  const host=createGitToolsWithPublicationPreview(f.options);
+  await assert.rejects(host.readPublicationPreview({baseHeadSha:f.headSha,expectedHeadSha:f.headSha,paths:f.args.paths,stage:'commit'},
+    {...f.context,scopes:['workspace:git:read']}),error=>error.code==='UNSUPPORTED_CAPABILITY');
+  assert.equal(f.git(['rev-parse','HEAD']),f.headSha);
+});
 async function publicationFixture(t,{consumer=true,mutateOnSave=false}={}){
   const f=repositoryFixture();t.after(f.dispose);
   writeFileSync(join(f.options.rootPath,'src/main.ts'),'export const value = 2;\n');

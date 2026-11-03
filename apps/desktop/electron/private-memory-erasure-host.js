@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {createDeletionConfirmationGate} from './deletion-operation-policy.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
 const context = () => ({deadline: new Date(Date.now() + 180_000).toISOString(), signal: new AbortController().signal});
@@ -9,7 +10,7 @@ const active = scope => {
 
 /** Coordinates original Memory erasure markers with original Runtime/history redaction. Never retries tools. */
 export function createPrivateMemoryErasureHost({privateMemory, consumptionHost, listBindings,
-  cancelTask, eraseTaskCopies, readCopyErasureReceipt, backups}) {
+  cancelTask, eraseTaskCopies, readCopyErasureReceipt, backups,deletionGate=createDeletionConfirmationGate()}) {
   const available = [listBindings, cancelTask, eraseTaskCopies, readCopyErasureReceipt]
     .every(value => typeof value === 'function') && Boolean(privateMemory && consumptionHost);
   const inventory = () => {
@@ -95,6 +96,7 @@ export function createPrivateMemoryErasureHost({privateMemory, consumptionHost, 
     async erase(ref, scope = context()) {
       active(scope);
       const target = structuredClone(ref);
+      return deletionGate.run('memory.erase',target,async()=>{
       // Check coverage before native consent; no task is cancelled before exact source deletion commits.
       inventory();
       backups?.inventory();
@@ -115,6 +117,7 @@ export function createPrivateMemoryErasureHost({privateMemory, consumptionHost, 
         pendingTaskIds, pendingBackupIds, maintenancePending};
       return {state: 'deleted', coverage: backups ? 'active_private_database_bound_tasks_and_managed_sqlite_backups'
         : 'active_private_database_and_bound_task_copies'};
+      },()=>{privateMemory.assertEraseTarget?.(target);});
     },
     async reconcile(scope = context()) {
       active(scope);

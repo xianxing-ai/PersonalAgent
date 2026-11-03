@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,generateKeyPairSync,sign} from 'node:crypto';
@@ -89,11 +90,11 @@ function fixture({metadata=true,sourceAllowed=true,unknown=false,bindImage='synt
   app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',...(delegate?{delegateUserTasks:true}:{}),
     hostUserNamespace:'synthetic-owner',coordinationBinding:'synthetic-fixed-deployment',tools,
     readConversationPreference:()=>({depth,fast:false}),
-    coordination:{execute:async request=>{cloud.push(request);
+    coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
       if(request.continuation)return {kind:'text',text:'Synthetic verified workflow continuation',verification:'unverified'};
       if(delegate&&app.runtime.getTask(request.taskId).conversationId==='user-chat')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
       return structuredClone(proposal);
-    }},codingRepair:{image,authorizeMetadata:input=>{if(!metadata)throw new ProtocolError('UNAUTHORIZED','Synthetic metadata denied');exports.push({kind:'metadata',taskId:input.taskId,value:input.value});},
+    })},codingRepair:{image,authorizeMetadata:input=>{if(!metadata)throw new ProtocolError('UNAUTHORIZED','Synthetic metadata denied');exports.push({kind:'metadata',taskId:input.taskId,value:input.value});},
       projectSource:async input=>{if(!sourceAllowed)throw new ProtocolError('UNAUTHORIZED','Synthetic exact source denied');exports.push({kind:'source',taskId:input.taskId});return input.receipt.result;},
       independentReview:review.port,independentReviewProducer:true},
     automaticTools:tools.filter(tool=>tool.descriptor.sideEffect==='read').map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0'})),

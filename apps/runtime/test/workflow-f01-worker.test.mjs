@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -29,12 +30,12 @@ test('F01 commits the original bounded plan through actual subagent.dispatch and
   const image={bindingId:'synthetic-f01',receiptSecret:async()=>secret,advance:request=>engine.advance(request)};
   app=createRuntimeApplication({path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-f01-worker',delegateUserTasks:true,tools,
     readDefaultExecutionModel:()=>selection,resolveExecutionModel:value=>{if(value?.modelId&&value.modelId!==selection.modelId)throw Error('Unknown Synthetic model');return selection;},coordinationBinding:'synthetic-f01-binding',
-    configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),coordination:{execute:async request=>{
+    configuredWorkflowWorkers:bundle.configuredWorkflowWorkerPorts.map(worker=>({...worker,image})),coordination:{execute:syntheticCoordinationExecution(async request=>{
       const task=app.runtime.getTask(request.taskId);
       if(task.goal?.includes('Synthetic child completion'))recursiveAdmission=await bundle.configuredWorkflowWorkerPorts[0].available({taskId:task.taskId,deadline:request.deadline,signal:request.signal});
       return task.goal?.includes('F01 original instruction')&&task.conversationId!=='synthetic-chat'&&!request.continuation
         ?{kind:'tool_proposal',proposalId:'f01-original',toolName:'workflow.responsibility.manage',toolVersion:'1.0.0',arguments:{context:{fact:{id:'synthetic',revision:1},responsibilitySession:{taskId:'synthetic',sessionId:'synthetic'}}},verification:'unverified'}
-        :{kind:'text',text:'Synthetic completed child',verification:'mock'};}},
+        :{kind:'text',text:'Synthetic completed child',verification:'mock'};})},
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',available:()=>true,publicEnumPaths:tool.descriptor.name==='subagent.dispatch'?['/subtasks/*/role']:[]})),
     competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:'1.0.0',exportPolicyVersion:'synthetic',accepts:()=>true,project:({result})=>result}))});
   t.after(async()=>{app.close();await rm(directory,{recursive:true,force:true});});const client=new Client(app);await client.connect();

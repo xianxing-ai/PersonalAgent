@@ -7,6 +7,7 @@ import {
   type CoordinationRequest,
   type AgentArtsTransportState,
   type AgentArtsWebSocketFactory,
+  type AgentArtsPayloadPreparer,
 } from '@personal-agent/coordination';
 import {ProtocolError} from '@personal-agent/contracts';
 import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
@@ -72,6 +73,8 @@ export interface AgentArtsRuntimeApplicationOptions
   onDiagnostic?: (receipt: AgentArtsFailureDiagnostic) => void;
   /** Trusted host egress check, synchronously re-run immediately before each HTTP send. */
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
+  /** Main-only local classification of the complete outgoing payload. */
+  preparePayload?:AgentArtsPayloadPreparer;
   /** Explicit host-only key source for an image configured with a receipt-key override. */
   readOwnedWorkflowReceiptSecret?: (signal:AbortSignal)=>Promise<string>;
   /**
@@ -162,6 +165,9 @@ export function createAgentArtsRuntimeApplication(
     throw new ProtocolError('INVALID_ARGUMENT','New task continuations require the guarded Competition tool catalog');
   }
   let application: RuntimeApplication;
+  const preparePayload:AgentArtsPayloadPreparer=options.preparePayload??(async()=>{
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local cloud-payload classification is unavailable');
+  });
   const cloud = new AgentArtsCloudAgentPort(
     {
       gatewayUrl,
@@ -217,9 +223,10 @@ export function createAgentArtsRuntimeApplication(
       }
     },
     runtimeOptions.enableNewTaskToolContinuations ? taskId => application.usesGoalContinuation(taskId) ? 'goal' : undefined : undefined,
+    preparePayload,
   );
   const ownedImage=initialRequestMode==='goal-with-tools-json'&&deploymentVersion!==undefined
-    ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,
+    ?createRuntimeOwnedWorkflowImageAdapter({gatewayUrl,runtimeName,deploymentVersion,authorizationProvider,preparePayload,
       onInvocationReadback:receipt=>{if(receipt.workflowId!=='F26')return;
         const key='f26:image-readback:'+receipt.requestId,previous=application.runtime.loadCheckpoint(receipt.taskId,key);
         if(previous!==undefined&&JSON.stringify(previous)!==JSON.stringify(receipt))throw new ProtocolError('REVISION_CONFLICT','Original F26 image receipt changed');
@@ -244,7 +251,7 @@ export function createAgentArtsRuntimeApplication(
   const f09WorkflowWorker=runtimeOptions.f09WorkflowWorker??(runtimeF09WorkflowWorkerConfigured(f09FromPorts)?f09FromPorts:undefined);
   const configuredWorkflowWorkers=[...(runtimeOptions.configuredWorkflowWorkers??[]),
     ...(ownedImage?(configuredWorkflowWorkerPorts??[]).map(ports=>({...ports,image:ownedImage})):[])];
-  const wikiModel=wikiImport?createAgentArtsWikiModel({gatewayUrl,runtimeName,authorizationProvider,
+  const wikiModel=wikiImport?createAgentArtsWikiModel({gatewayUrl,runtimeName,authorizationProvider,preparePayload,
     ...(deploymentVersion===undefined?{}:{deploymentVersion}),...(assertDeploymentBinding?{assertDeploymentBinding}:{}),
     ...(transport?{transport}:{}),...(websocketUrl?{websocketUrl}:{}),...(websocketFactory?{websocketFactory}:{}),
     ...(websocketAuthorizationProvider?{websocketAuthorizationProvider}:{}),...(fetchImpl?{fetchImpl}:{}),
@@ -267,6 +274,7 @@ export function createAgentArtsRuntimeApplication(
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.
     competitionRealtimeModel: new AgentArtsRealtimeModelGateway({
+      preparePayload,
       ...(transport === 'wss' && websocketUrl !== undefined ? {websocketUrl} : {}),
       authorizationProvider,
       ...(websocketAuthorizationProvider === undefined ? {} : {websocketAuthorizationProvider}),

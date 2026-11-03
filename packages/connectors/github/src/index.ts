@@ -19,6 +19,28 @@ export { FakeGitHubProvider } from './fake-provider.js';
 export type { GitHubFakeFixtures } from './fake-provider.js';
 export { redactGitHubText } from './redact.js';
 export {registerGitHubRepairLinks, githubRepairOperations, githubRepairCheckName} from './repair-link.js';
+export {
+  DEVELOPER_DUTY_EVIDENCE_LEVEL, DUTY_STATUS_MARKER, defaultRepoDutyPolicy, reduceDutyPoll, acceptGitHubWebhook,
+  evaluateRepoDutyAction, assessDutyPush, planStatusComment, executeStatusComment, bindHeadConclusions, classifyCiFailure,
+  interpretGitHubRateLimit, buildPersonalView, buildOfflineEvalSet, assertDutyCredentialScope, createStubRemoteDutyRunner,
+} from './developer-duty.js';
+export type {
+  DutyCursor, DutyEvent, DutyPollPage, DutyPollResult, RepoDutyPolicy, BranchProtection, StatusComment, StatusCommentAttempt,
+  StatusCommentPlan, HeadBoundConclusion, CiFailureClass, DutyPersonalItem, DutyEvalCase, RemoteDutyRunner,
+} from './developer-duty.js';
+export {
+  classifyCiFailureStable, headShaFromWebhookPayload, dutyDedupeKey, dedupeDutyEvents, verifyGitHubWebhookSignature,
+  createGitHubWebhookServer, emptyTriggerState, routeTrigger, rememberTrigger, finishTrigger, initialCiLoop, stepCiLoop,
+  commentWriteAvailable, applyManagedComment, summarizeDeveloperEval, apiDocDigest, detectApiDocDrift, runInjectedCiRepair, runFixtureCiEval, loadSourcedCiEval,
+} from './developer-direction.js';
+export {DEFAULT_KNOWLEDGE_IGNORE, DEFAULT_KNOWLEDGE_POLICY, digestText, indexKnowledgeFiles, scanKnowledgeDirectory, knowledgeDrift} from './repo-knowledge.js';
+export type {KnowledgeScanPolicy, IndexedKnowledgeFile, KnowledgeIndex} from './repo-knowledge.js';
+export type {CiRepairPorts, CiReadResult, FixtureEvalCase, SourcedCiEvalCase, ManagedCommentPorts} from './developer-direction.js';
+export {githubCommentRequest, createGitHubCommentHttpPort} from './comment-http.js';
+export type {
+  TriggerSource, TriggerWorkflow, TriggerRule, TriggerEvent, TriggerDispatch, TriggerState, TriggerRoute,
+  CiLoopPhase, CiLoopState, CiLoopSignal, StableCiClass, WebhookListener, EvalOutcome,
+} from './developer-direction.js';
 export type {GitHubRepairModuleOptions} from './repair-link.js';
 export interface GitHubModuleOptions { provider: GitHubProvider }
 export function register(host: ToolHost, options: GitHubModuleOptions): () => void {

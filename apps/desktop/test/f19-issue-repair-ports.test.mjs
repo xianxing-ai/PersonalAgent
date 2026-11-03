@@ -61,7 +61,8 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
       {id:'review',description:'Defer unsupported issue',value:null,abstain:true}];}});
   const image={bindingId:'synthetic-f19-engine',advance:request=>engine.advance(request),receiptSecret:async()=>secret};
   // Close/restart cases exercise F19 no-replay; F15's failed first repair has separate coverage.
-  // Set the complete F19 chain's original fixture deadline once; the F15-only default remains 60 seconds.
+  // F19 includes F15 repair, three complete publication confirmations and regression/close.
+  // Set its original fixture deadline once; the shared F15-only default remains 60 seconds.
   const report=await runCodingRepairFullGraphFixture({fakeModel:true,deadline:new Date(Date.now()+120_000).toISOString(),targetPath:'feature.cjs',firstAttemptSuccess:configuredAdapter&&!invalidateConfiguration||closeRestart,
     artifactRoot:'.cache/f19-original-repair',createApplication(config){
       const runner={async run(request){
@@ -135,6 +136,7 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
       const factoryOptions={getApplication:()=>app,selection:{configurationRef:'a'.repeat(64),assertCurrent:current,readSelection:async()=>nativeSelection},
         ...(publish?{publication:{configurationRef:'b'.repeat(64),assertCurrent:current,
           readConfiguration:()=>({...developerHost.readF16PublicationConfiguration(),...(foreignRemote?{remoteUrl:'https://github.com/synthetic/foreign.git'}:{})}),
+          readPublicationPreview:(input,scope)=>developerHost.readPublicationPreview(input,scope),
           requestPresence:async scope=>{
             presence++;if(revokePresence)revoked=true;
             if(!configurationChanged&&invalidateConfiguration==='publication-checker'&&scope.toolName==='workspace.git.commit'){
@@ -181,8 +183,8 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
         catch(error){failures.push({tool:tool.descriptor.name,message:error.message,stack:error.stack});throw error;}}}));
       const tools=[...config.tools,...hostTools,...observed,...missing,r.createDesktopSubagentDispatchTool({competitionOnly:true,
         getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scope)=>app.runDefaultSubagentWorker(task,worker,scope)})];
-      // Only these non-restart cases avoid Windows FULL-sync disk flushes; all restart/no-replay
-      // cases retain their original disk SQLite, alongside the real files/Git/Node operations.
+      // Only non-restart cases avoid Windows FULL-sync disk flushes. Restart/no-replay
+      // cases retain disk SQLite, and every case still uses real files, Git and Node.
       app=r.createRuntimeApplication({...config,path:configuredAdapter||changedCloseIssue?':memory:':config.path,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,...(fullClose?{}:{available:()=>true})})),
         automaticTools:config.automaticTools.filter(tool=>tool.toolName!=='coding.repair.workflow'),
         requestToolAuthorization:async scope=>{
@@ -201,9 +203,18 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
             prepareMergedCheckout();await ports.confirmRegressionPresence(scope);
           }
           if(scope.toolName==='workspace.f19_regression_command')await native.prepare(scope);
-          const proof=ports.preparePublicationQuestion?.(scope,{prepare:(_scope,fence)=>assert.equal(fence.assertCurrent(),true)});
+          let content;
+          const proof=await ports.preparePublicationQuestion?.(scope,{prepare(actual,fence){
+            assert.equal(actual.taskId,scope.taskId);assert.equal(actual.runId,scope.runId);assert.equal(fence.assertCurrent(),true);
+            if(fence.contentConfirmation){content=fence.contentConfirmation;assert.equal(content.digest,digest(content.text));
+              assert.match(content.text,/完整 Git 差异（未截断）/);assert.match(content.text,/feature\.cjs/);
+              assert.match(content.text,/-module\.exports=\(\)=>1;/);assert.match(content.text,/\+module\.exports=\(\)=>3;/);}
+          },currentRequirement(actual,id){
+            assert.equal(id,'tool');assert.equal(actual.taskId,scope.taskId);assert.equal(actual.runId,scope.runId);assert.ok(content);
+            const approval=app.runtime.getApproval(scope.runId);assert.equal(approval.state,'allowed');assert.equal(approval.argumentsDigest,scope.argumentsDigest);
+          }});
           if(proof){
-            assert.throws(()=>ports.preparePublicationQuestion({...scope,argumentsDigest:'f'.repeat(64)},{prepare(){}}),{code:'UNAUTHORIZED'});
+            await assert.rejects(ports.preparePublicationQuestion({...scope,argumentsDigest:'f'.repeat(64)},{prepare(){}}),{code:'UNAUTHORIZED'});
             if(denyPublication===scope.toolName)return 'deny';
             await ports.confirmPublicationPresence(scope);
           }

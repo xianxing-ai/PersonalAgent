@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
@@ -55,12 +57,12 @@ test('persistent default children retain the original AgentArts candidate protoc
   for(const [initial,restored] of [[undefined,undefined],['1.0','1.0'],[undefined,'1.0'],['1.0',undefined]]) {
     await t.test(`${initial??'disabled'} -> ${restored??'disabled'}`,async()=>{
       const directory=await mkdtemp(path.join(os.tmpdir(),'pa-child-config-'));
-      let app,reads=0;
+      let app,reads=0,pendingRequest;
       const sends=[];
       const open=repairCandidateVersion=>{
         const dispatch=createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,getTools:()=>app.tools,
           runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
-        return createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+        return createSyntheticAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
           gatewayUrl:'https://agentarts.example.test',runtimeName:'binding',responseMode:'tool-proposal-json',
           ...(repairCandidateVersion===undefined?{}:{repairCandidateVersion}),
           authorizationProvider:{read:async()=>'Bearer synthetic'},
@@ -72,8 +74,9 @@ test('persistent default children retain the original AgentArts candidate protoc
             {toolName:read.name,toolVersion:read.version,exportPolicyVersion:'fixture-v1',
               accepts:()=>true,project:({result})=>result},
           ],
-          beforeCompetitionSend:request=>{sends.push({taskId:request.taskId,continuation:request.continuation});},
+          beforeCompetitionSend:request=>{pendingRequest={taskId:request.taskId,continuation:request.continuation};},
           fetchImpl:async(_url,init)=>{
+            sends.push(pendingRequest);
             const body=JSON.parse(init.body);
             let query;try {query=JSON.parse(body.query);}catch {query={goal:body.query};}
             const continuation=query.continuation||query.goal?.startsWith('以下本地已确认');
@@ -139,7 +142,7 @@ test('persistent default children retain the original AgentArts candidate protoc
 
 test('AgentArts factory snapshots the candidate mode once for the adapter and child binding',()=>{
   let reads=0,fetches=0;
-  const app=createAgentArtsRuntimeApplication({path:':memory:',
+  const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',
     gatewayUrl:'https://agentarts.example.test',runtimeName:'binding',responseMode:'tool-proposal-json',
     get repairCandidateVersion(){reads++;return reads===1?'1.0':undefined;},
     authorizationProvider:{read:async()=>'Bearer synthetic'},
@@ -163,7 +166,7 @@ test('confirmed default-child replay retains parent cancellation without reexecu
     const sends=[];
     const dispatch=createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,getTools:()=>app.tools,
       runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
-    app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',
+    app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',
       runtimeName:'replay',responseMode:'tool-proposal-json',
       authorizationProvider:{read:async()=>'Bearer synthetic'},
       tools:[dispatch,{descriptor:read,execute:async input=>{reads++;return input;}}],
@@ -246,7 +249,7 @@ test('sequential Competition dispatch accepts prototype-like IDs and absent IDs 
    arguments:{subtasks:[definition(id,index)]}});
   const dispatch=createDesktopSubagentDispatchTool({getRuntime:()=>app.runtime,getTools:()=>app.tools,
    runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
-  app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',
    runtimeName:'special-id',responseMode:'tool-proposal-json',authorizationProvider:{read:async()=>'Bearer synthetic'},
    tools:[dispatch],automaticTools:[{toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:SUBAGENT_DISPATCH_TOOL_VERSION}],
    competitionToolExports:[{toolName:SUBAGENT_DISPATCH_TOOL_NAME,toolVersion:SUBAGENT_DISPATCH_TOOL_VERSION,

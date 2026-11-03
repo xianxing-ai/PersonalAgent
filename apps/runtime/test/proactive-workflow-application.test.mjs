@@ -277,6 +277,53 @@ test('trusted unattended/pause/return/cancel controls use actual original comman
   } finally {await f.close();}
 });
 
+test('pause invalidates a pending cloud frontier before it settles and rejects its late proposals', async () => {
+  let entered, release;
+  const waiting = new Promise(resolve => {entered = resolve;}), gate = new Promise(resolve => {release = resolve;});
+  const f = fixture();
+  const advance = f.options.advancePort;
+  f.options.advancePort = async input => {
+    if (input.requestId === 'blocked-frontier') {entered(); await gate;}
+    return advance(input);
+  };
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    const pending = f.host.advance({...f.context, requestId: 'blocked-frontier'});
+    const rejected = assert.rejects(pending, {code: 'REVISION_CONFLICT'});
+    await waiting;
+    const paused = await f.host.control({commandId: 'pause-pending', action: 'pause', expectedControlRevision: 0, sourceTaskId: f.source.taskId}, f.context);
+    assert.equal(paused.mode, 'paused');
+    assert.equal(f.app.runtime.readExecutionEpoch(f.task.taskId), 1);
+    assert.equal(f.host.inspect().application.state.requests['blocked-frontier'].acknowledged, false);
+    release(); await rejected;
+    assert.equal(f.calls().actionCalls, 0);
+    assert.equal(f.host.inspect().application.state.lastResult.mode, 'paused');
+  } finally {release(); await f.close();}
+});
+
+test('cancel persists before both the old frontier and cloud cancellation notification return', {timeout:5000}, async () => {
+  let entered, notified, release;
+  const waiting = new Promise(resolve => {entered = resolve;}), notification = new Promise(resolve => {notified = resolve;});
+  const gate = new Promise(resolve => {release = resolve;}), f = fixture();
+  const advance = f.options.advancePort;
+  f.options.advancePort = async input => {
+    if (input.requestId === 'blocked-frontier') entered(); else if (input.control?.action === 'cancel') notified();
+    await gate; return advance(input);
+  };
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    const pending = f.host.advance({...f.context, requestId:'blocked-frontier'});
+    const rejected = assert.rejects(pending, {code:'REVISION_CONFLICT'});
+    await waiting;
+    const cancelled = f.host.control({commandId:'cancel-pending', action:'cancel', expectedControlRevision:0, sourceTaskId:f.source.taskId}, f.context);
+    await notification;
+    assert.equal(f.app.runtime.getTask(f.task.taskId).cancelRequested, true);
+    assert.equal(f.app.runtime.readExecutionEpoch(f.task.taskId), 1);
+    release(); await rejected; await cancelled;
+    assert.equal(f.calls().actionCalls, 0);
+  } finally {release(); await f.close();}
+});
+
 test('offline local device without an actual persistent host stays waiting_device; optional notification service is never invented', async () => {
   const f = fixture();
   try {

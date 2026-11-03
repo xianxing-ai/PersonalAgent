@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
 import path from 'node:path';
@@ -63,9 +64,9 @@ export async function scenario(t,options={}){
     }};
     app=runtimeModule.createRuntimeApplication({path:path.join(userData,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
       hostUserNamespace:'offline-f06',coordinationBinding:'offline-deployment',tools,configuredWorkflowWorkers:[{...worker,image}],
-      coordination:{execute:async request=>{cloud.push(request);
+      coordination:{execute:syntheticCoordinationExecution(async request=>{cloud.push(request);
         if(app.runtime.getTask(request.taskId).conversationId==='offline-chat'||request.continuation)return {kind:'text',text:'Offline result',verification:'unverified'};
-        return {kind:'tool_proposal',proposalId:'original-f06',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};}},
+        return {kind:'tool_proposal',proposalId:'original-f06',toolName:worker.toolName,toolVersion:worker.toolVersion,arguments:input,verification:'unverified'};})},
       requestToolAuthorization:async scope=>{
         await prepareWorkflowHostPreflight({application:app,scope,prepareExport});
         const proof=prepareConfiguredWorkflowDecisionQuestion({application:app,scope,question});if(proof)decisionProofs.push(proof);

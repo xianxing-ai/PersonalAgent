@@ -2,7 +2,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, TaskSnapshot} from '@personal-agent/contracts';
 import type {AgentToolPort} from '@personal-agent/agents';
-import {parseCoordinationRepairCandidate} from '@personal-agent/coordination';
+import {parseCoordinationRepairCandidate,parseCoordinationResult} from '@personal-agent/coordination';
 import type {CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {commitStoredRepair, previewStoredRepair, prepareReviewedRepair} from '@personal-agent/cognition';
 import type {ReviewedRepairBinding, ReviewedRepairPreparation} from '@personal-agent/cognition';
@@ -17,6 +17,14 @@ export const LOCAL_REPAIR_TOOL = 'cognition.commit_repair';
 export const LOCAL_REPAIR_CHECKPOINT = 'local-repair-intent';
 /** Durable preview sealed before graph CAS. It is not a tool result and grants nothing. */
 export const LOCAL_REPAIR_COMMIT_INTENT = 'local-repair-commit-intent';
+
+/** Validate the saved cloud envelope before exposing the original repair DTO. */
+export function readStoredRepairCandidate(runtime:TaskRuntime,taskId:string,current=true):CoordinationRepairCandidateResult {
+  const {executionEpoch,...candidate}=parseCoordinationResult(runtime.loadCheckpoint(taskId,'competition-repair-candidate'));
+  const parsed=parseCoordinationRepairCandidate(candidate);
+  if(current)runtime.assertExecutionEpoch(taskId,executionEpoch??0);
+  return parsed;
+}
 
 /** Captured at the original projection/export, never rebound to newer refs. */
 export interface LocalRepairBinding {
@@ -92,7 +100,7 @@ export function readReviewedLocalRepairReceipt(runtime: TaskRuntime, input: Revi
       || !task.attachmentRefs?.includes('local-repair-intent:'+toolArgumentsDigest(intent))) return;
     const source=runtime.getTask(sourceTaskId),reviewTask=runtime.getTask(reviewTaskId);
     const review=runtime.loadCheckpoint(reviewTaskId,'proactive-cognition-review-v1') as import('./proactive-cognition-host.js').ProactiveCognitionReview | undefined;
-    const cloud=parseCoordinationRepairCandidate(runtime.loadCheckpoint(sourceTaskId,'competition-repair-candidate'));
+    const cloud=readStoredRepairCandidate(runtime,sourceTaskId,false);
     if (source.state!=='succeeded' || source.conversationId!==task.conversationId
       || reviewTask.state!=='succeeded' || reviewTask.conversationId!==`proactive-cognition:${graphNamespace}`
       || !review || review.taskId!==reviewTaskId || toolArgumentsDigest(review)!==intent.reviewDigest
@@ -172,6 +180,7 @@ function active(deadline: string, signal: AbortSignal): void {
 function sameRef(a: NodeRef, b: NodeRef): boolean { return a.id === b.id && a.revision === b.revision; }
 
 function requireSource(runtime: TaskRuntime, intent: FactRepairIntent): unknown {
+  if(!isDeepStrictEqual(readStoredRepairCandidate(runtime,intent.sourceTaskId),intent.candidate))denied();
   const source = runtime.getTask(intent.sourceTaskId);
   const record = runtime.readToolExecutions(intent.sourceTaskId).find(item => item.evidenceId === intent.evidenceId);
   if (source.state !== 'succeeded' || !source.evidenceRefs.includes(intent.evidenceId)
@@ -193,7 +202,7 @@ function requireReviewedSource(runtime: TaskRuntime, host: LocalRepairHostOption
   if (host.graphNamespace!==intent.graphNamespace || host.bindingVersion!==intent.bindingVersion) denied();
   const source=runtime.getTask(intent.sourceTaskId),reviewTask=runtime.getTask(intent.reviewTaskId);
   const review=runtime.loadCheckpoint(intent.reviewTaskId,'proactive-cognition-review-v1') as import('./proactive-cognition-host.js').ProactiveCognitionReview | undefined;
-  const cloud=parseCoordinationRepairCandidate(runtime.loadCheckpoint(intent.sourceTaskId,'competition-repair-candidate'));
+  const cloud=readStoredRepairCandidate(runtime,intent.sourceTaskId);
   if (source.state!=='succeeded' || source.conversationId!==`desktop-proactive-goals:${host.graphNamespace}`
     || reviewTask.state!=='succeeded' || reviewTask.conversationId!==`proactive-cognition:${host.graphNamespace}`
     || !review || review.taskId!==intent.reviewTaskId || toolArgumentsDigest(review)!==intent.reviewDigest
@@ -263,7 +272,7 @@ export function prepareLocalRepair(
     }
     const prepared=host.reviewedSource?.resolve({sourceTaskId:request.sourceTaskId,reviewTaskId:request.reviewTaskId});
     if (prepared?.kind!=='prepared' || prepared.binding.reviewTaskId!==request.reviewTaskId) denied();
-    const cloud=parseCoordinationRepairCandidate(runtime.loadCheckpoint(request.sourceTaskId,'competition-repair-candidate'));
+    const cloud=readStoredRepairCandidate(runtime,request.sourceTaskId);
     const review=runtime.loadCheckpoint(request.reviewTaskId,'proactive-cognition-review-v1');
     if (!review || typeof review!=='object') denied();
     const intent: ReviewedRepairIntent={...request,sourceKind:'goal_review',binding:structuredClone(prepared.binding),
@@ -276,7 +285,7 @@ export function prepareLocalRepair(
   if (Object.keys(request).some(key => !['sourceTaskId', 'evidenceId', 'idempotencyKey', 'deadline'].includes(key))
     || Object.values(request).some(value => typeof value !== 'string' || !value.trim())
     || !Number.isFinite(Date.parse(request.deadline))) denied();
-  const candidate = parseCoordinationRepairCandidate(runtime.loadCheckpoint(request.sourceTaskId, 'competition-repair-candidate'));
+  const candidate = readStoredRepairCandidate(runtime,request.sourceTaskId);
   const binding = structuredClone(host.resolveBinding({sourceTaskId: request.sourceTaskId, evidenceId: request.evidenceId}));
   const intent: FactRepairIntent = {...request, candidate, binding,
     graphNamespace: host.graphNamespace, bindingVersion: host.bindingVersion, sourceTool: structuredClone(host.sourceTool)};

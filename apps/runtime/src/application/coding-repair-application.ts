@@ -25,7 +25,7 @@ export const CODING_REPAIR_REQUEST='coding-repair:request';
 export const CODING_REPAIR_STATE='coding-repair:graph';
 export const CODING_REPAIR_PARENT='coding-repair:parent';
 export interface RuntimeCodingRepairImagePort {
-  advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>;
+  advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>;
   receiptSecret(signal:AbortSignal):Promise<string>;
   bindingId:string;
 }

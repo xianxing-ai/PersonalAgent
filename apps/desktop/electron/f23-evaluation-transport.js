@@ -11,8 +11,12 @@ export async function invokeF23PairedEvaluation({configuration,input,context,ass
   const current=()=>{assertCurrent();if(!isDeepStrictEqual(options,configuration.readTransportOptions(binding)))
     throw new ProtocolError('REVISION_CONFLICT','Original F23 transport changed');};
   current();const requestId=context.runId,sessionId=randomUUID(),body=JSON.stringify({query:JSON.stringify(input)}),startedAt=new Date().toISOString();
-  const response=await transport.fetchImpl(binding.gatewayUrl+'/runtimes/'+encodeURIComponent(binding.runtimeName)+'/invocations?endpoint='+encodeURIComponent(options.deploymentVersion),{
-    method:'POST',redirect:'error',signal:AbortSignal.any([context.signal,AbortSignal.timeout(Math.max(1,Date.parse(context.deadline)-Date.now()))]),
+  const destination=binding.gatewayUrl+'/runtimes/'+encodeURIComponent(binding.runtimeName)+'/invocations?endpoint='+encodeURIComponent(options.deploymentVersion),
+    signal=AbortSignal.any([context.signal,AbortSignal.timeout(Math.max(1,Date.parse(context.deadline)-Date.now()))]);
+  const lease=await transport.preparePayload?.({requestId,destination,payload:body,deadline:context.deadline,signal,isCurrent:()=>{current();return true;}});
+  current();lease?.assertBeforeSend({destination,payload:body});
+  const response=await transport.fetchImpl(destination,{
+    method:'POST',redirect:'error',signal,
     headers:{Authorization:configuration.readAuthorization(binding,transport),'Content-Type':'application/json','X-Request-Id':requestId,
       'x-hw-agentarts-session-id':sessionId,'X-Invoke-Mode':'published','X-PA-Deadline':context.deadline},body});
   current();if(response.status!==200){await response.body?.cancel().catch(()=>{});throw new ProtocolError('EXTERNAL_FAILURE','Original F23 invocation not confirmed');}

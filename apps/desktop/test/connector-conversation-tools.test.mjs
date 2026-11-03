@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
@@ -266,13 +267,13 @@ test('actual Runtime asks for approval before a supplemental write and then conf
   const host=createConnectorConversationTools({mail:{current:()=>({user:'synthetic@qq.com',authCode:'synthetic-password',revision:1})},
     getApplication:()=>application,resolveConversation:id=>application.runtime.getTask(id).conversationId,
     createMailProvider:()=>provider,confirmExport:async()=>true});t.after(()=>host.close());
-  application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'supplemental-tools',
+  application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'supplemental-tools',
     initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
     tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
     prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
     fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
       ?{kind:'tool_proposal',proposalId:'mark',toolName:'mail.mark_seen',toolVersion:'0.1.0-alpha.1',arguments:{folder:'INBOX',uid:2}}
-      :{kind:'text',text:'已标记为已读。'})}}),{headers:{'content-type':'application/json'}});}});t.after(()=>application.close());
+      :{kind:'text',text:'已标记为已读。'})}}),{headers:{'content-type':'application/json'}});}}));t.after(()=>application.close());
   const client=new Client(application);await client.connect();const {taskId}=await client.call('task.submit',{goal:'标记合成邮件为已读',conversationId:'synthetic'},{idempotencyKey:'mark',timeoutMs:10000});
   const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
   await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');assert.equal(writes,0);
@@ -295,13 +296,13 @@ test('ordinary mail read callback runs only after original Runtime approval and 
         assert.equal(record.policyDecision,'allow');assert.equal(record.executionStarted,true);
         bindings.push(input);if(failBinding)throw Error('synthetic private binding failure');
       },createMailProvider:()=>{created++;assert.equal(bindings.length,1);return provider;},confirmExport:async()=>true});
-    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'ordinary-read',
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'ordinary-read',
       initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
       tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
       prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
       fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
         ?{kind:'tool_proposal',proposalId:'ordinary-read',toolName:'mail.inbox',toolVersion:'0.1.0-alpha.1',arguments:{limit:1}}
-        :{kind:'text',text:'Synthetic original inbox read completed'})}}),{headers:{'content-type':'application/json'}});}});
+        :{kind:'text',text:'Synthetic original inbox read completed'})}}),{headers:{'content-type':'application/json'}});}}));
     t.after(async()=>{await host.close();application.close();});
     const client=new Client(application);await client.connect();const {taskId}=await client.call('task.submit',
       {goal:'Read one explicitly synthetic message',conversationId:'ordinary-read-conversation'},{idempotencyKey:'ordinary-read',timeoutMs:10000});
@@ -360,13 +361,13 @@ test('actual Runtime requires separate original approval for each calendar write
       getApplication:()=>application,resolveConversation:id=>application.runtime.getTask(id).conversationId,
       createCalendarProvider:()=>provider,confirmExport:async()=>true});t.after(()=>host.close());
     assert.ok(host.tools.some(tool=>tool.descriptor.name===name));
-    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-writes',
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-writes',
       initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
       tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
       prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
       fetchImpl:async()=>{sends++;return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
         ?{kind:'tool_proposal',proposalId:'calendar-write',toolName:name,toolVersion:'0.1.0-alpha.1',arguments:args}
-        :{kind:'text',text:'合成日历操作已完成。'})}}),{headers:{'content-type':'application/json'}});}});t.after(()=>application.close());
+        :{kind:'text',text:'合成日历操作已完成。'})}}),{headers:{'content-type':'application/json'}});}}));t.after(()=>application.close());
     const client=new Client(application);await client.connect();const {taskId}=await client.call('task.submit',{goal:'合成日历写操作',conversationId:'synthetic-calendar'},{idempotencyKey:name,timeoutMs:10000});
     const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};
     await wait(()=>application.runtime.getTask(taskId).state==='waiting_approval');assert.equal(writes,0);
@@ -473,13 +474,13 @@ test('actual Runtime advertises calendar writes and requires original approval b
     const descriptor=host.tools.find(tool=>tool.descriptor.name===name).descriptor;
     assert.equal(descriptor.sideEffect,'external_write');assert.deepEqual(descriptor.requiredScopes,['calendar:write']);
     if(name==='calendar.create'){assert.equal(descriptor.idempotencySupport,false);assert.equal(descriptor.recoverySupport,false);}
-    application=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-write-consumer',
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.invalid',runtimeName:'calendar-write-consumer',
       initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',continuationContext:'goal',
       tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
       prepareCompetitionToolExport:scope=>host.prepareExport(scope),authorizationProvider:{read:async()=> 'Bearer synthetic'},
       fetchImpl:async(_url,init)=>{sends++;catalog??=String(init.body);return new Response(JSON.stringify({event:'message',data:{index:0,text:JSON.stringify(sends===1
         ?{kind:'tool_proposal',proposalId:'calendar-write',toolName:name,toolVersion:descriptor.version,arguments:args}
-        :{kind:'text',text:'合成日历操作已核实。'})}}),{headers:{'content-type':'application/json'}});}});
+        :{kind:'text',text:'合成日历操作已核实。'})}}),{headers:{'content-type':'application/json'}});}}));
     t.after(()=>application.close());const client=new Client(application);await client.connect();
     const {taskId}=await client.call('task.submit',{goal:'执行合成日历操作',conversationId:'calendar-consumer'},{idempotencyKey:name,timeoutMs:10000});
     const wait=async predicate=>{const end=Date.now()+10000;while(Date.now()<end){if(predicate())return;await new Promise(r=>setTimeout(r,10));}throw Error(JSON.stringify(application.runtime.getTask(taskId)));};

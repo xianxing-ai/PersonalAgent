@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {createF16GitPublicationPort,readF16OriginalInvocation} from './f16-git-publication-port.js';
+import {createPublicationContentHost} from './publication-content-host.js';
 
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const fail=message=>{throw new ProtocolError('UNAUTHORIZED',message);};
@@ -108,6 +109,20 @@ export function createF16PublicationHost({getApplication,runtimeModule:r,binding
       sessionId:owner.sessionId,operationId:owner.operationId,configurationDigest:bound.configurationDigest};
   }
   const gitPort=createF16GitPublicationPort({getApplication:app,resolve:resolveGit,now});
+  const content=createPublicationContentHost({readPreview:configuration.readPublicationPreview,readBinding:scope=>{
+    const proof=authorization(scope);if(!proof)return;
+    const original=app().readAuthorizationQuestionInvocation(scope.taskId,scope.runId),ctx={...scope,authorizationRef:scope.runId};
+    const owner=original.toolName===hostName?source(ctx,true).scope:resolveGit(ctx,ctx,true).scope,{input}=binding('F16',owner);
+    return {proof,operation:{toolName:original.toolName,arguments:original.arguments,repository:input.repository,branch:input.publication.branch},
+      input:{baseHeadSha:input.headSha,expectedHeadSha:original.arguments.expectedHeadSha??input.headSha,paths:[input.patch.path],
+        stage:original.toolName==='workspace.git.push'?'published':'commit'}};
+  }});
+  gitPort.assertContent=async(scope,value)=>{
+    const original=app().readAuthorizationQuestionInvocation(scope.taskId,scope.runId);
+    if(!original||original.taskId!==scope.taskId||original.runId!==scope.runId||original.deadline!==scope.deadline)
+      fail('Original F16 publication execution changed');
+    content.assertContent({...scope,...original,signal:scope.signal,deadline:scope.deadline,scopes:scope.scopes},value);
+  };
   const rawCurrent=gitPort.assertCurrent;
   gitPort.assertCurrent=async(ctx,value)=>{
     await rawCurrent(ctx,value);
@@ -168,8 +183,9 @@ export function createF16PublicationHost({getApplication,runtimeModule:r,binding
       const receipt=await bridge().invoke({actionKey,input:args},ctx);
       return readSource(scope,ref(receipt),'workspace.git.read_publication');
     },
-    prepareQuestion(scope,question){
+    async prepareQuestion(scope,question){
       const proof=authorization(scope);if(!proof)return;
+      await content.prepare(scope,question);
       question.prepare(scope,{assertCurrent:()=>{try{return isDeepStrictEqual(proof,authorization(scope));}catch{return false;}}});
       return proof;
     },
@@ -178,6 +194,7 @@ export function createF16PublicationHost({getApplication,runtimeModule:r,binding
       if(typeof configuration.requestPresence!=='function')throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original task presence broker unavailable');
       await r.awaitF16Port(scope,now,()=>configuration.requestPresence(scope));
       if(!isDeepStrictEqual(proof,authorization(scope)))fail('Original F16 publication changed during native presence confirmation');
+      await content.recheck(scope);
     },
     async readUnknownInspection(taskId,{signal}){
       const read=app().readHostToolTask(taskId),intent=app().runtime.loadCheckpoint(taskId,'host-tool-intent');
