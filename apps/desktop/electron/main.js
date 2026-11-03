@@ -509,6 +509,7 @@ let todoHost;
 let asyncSubagentHost;
 let remoteRunnerHost;
 let dutyPoll;
+let developerDirectionHost;
 let additiveSurface;
 let todoFailure = '';
 let todoClosing;
@@ -2874,6 +2875,16 @@ async function initializeRuntime() {
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       conversationTools.push(...(asyncSubagentTools??[]));
       conversationTools.push(...remoteRunnerHost.tools);
+      const {createDeveloperDirectionHost} = await import('./developer-direction-host.js');
+      developerDirectionHost = createDeveloperDirectionHost({subagentControl: asyncSubagentHost ? {
+        pause: (parentTaskId, subtaskId) => asyncSubagentHost.pause(parentTaskId, subtaskId),
+        resume: (parentTaskId, subtaskId) => asyncSubagentHost.resume(parentTaskId, subtaskId),
+        redirect: (parentTaskId, subtaskId, instruction, expectedControlRevision) => asyncSubagentHost.redirect(parentTaskId, subtaskId, instruction, expectedControlRevision),
+        stop: (parentTaskId, subtaskId) => asyncSubagentHost.stopChild({parentTaskId, subtaskId}),
+        handoff: (parentTaskId, subtaskId) => asyncSubagentHost.handoff(parentTaskId, subtaskId),
+        emergencyStop: () => asyncSubagentHost.emergencyStop(),
+        list: () => asyncSubagentHost.list().items ?? [],
+      } : undefined});
       const {readGitHubDutyPage, createAuthorizedGitHubDutyComments, readGitHubPersonalView} = await import('./developer-duty-github.js');
       const readDutyCredential=()=>developerSettings?.readGitHubToken?.();
       const dutyHost=runtimeModule.createDeveloperDutyTools({getRuntime:()=>runtimeApplication.runtime,
@@ -2886,7 +2897,15 @@ async function initializeRuntime() {
           const id=`duty-f12:${notice.dedupeKey}`;
           if(notifications.has(id))return;
           notifications.set(id,{notificationId:id, summary:notice.summary, occurredAt:new Date().toISOString(), channel:'f12', delivered:false, evidenceLevel:'fixture'});
+          void developerDirectionHost?.session.notify({repo:'duty', kind:'success', summary:notice.summary, evidenceRef:notice.dedupeKey});
           publish();
+        },
+        onEvents:async(repo,events)=>{
+          for(const event of events){
+            await developerDirectionHost?.session.routeEvent({repo, source:event.type==='issue'?'issue':event.type==='pull_request'?'pr':'check_run',
+              deliveryId:String(event.deliveryId||event.id||'poll'), ...(event.number===undefined?{}:{number:event.number}),
+              ...(event.headSha?{headSha:event.headSha}:{}), conclusion:'failure'});
+          }
         }});
       conversationTools.push(...dutyHost.tools);
       if(dutyPoll)clearInterval(dutyPoll);
@@ -4077,12 +4096,22 @@ async function action(event, name, payload) {
     const drafted=remoteRunnerHost.service.propose(name==='runner.hosts.disable'?'disable':'enable', {id:payload?.id});
     return remoteRunnerHost.service.confirm(drafted.proposalId, drafted.digest);
   }
-  if(name==='asyncSubagents.list'||name==='asyncSubagents.instruct'||name==='asyncSubagents.stop'){
+  if(name==='asyncSubagents.list'||name==='asyncSubagents.instruct'||name==='asyncSubagents.stop'||name==='asyncSubagents.pause'||name==='asyncSubagents.resume'||name==='asyncSubagents.redirect'||name==='asyncSubagents.handoff'||name==='asyncSubagents.emergencyStop'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话查看后台任务');
     if(!asyncSubagentHost)throw Error('后台子任务尚未装配');
     if(name==='asyncSubagents.list')return asyncSubagentHost.list();
     if(name==='asyncSubagents.instruct')return asyncSubagentHost.instruct(payload);
+    if(name==='asyncSubagents.pause')return asyncSubagentHost.pause(payload?.parentTaskId, payload?.subtaskId);
+    if(name==='asyncSubagents.resume')return asyncSubagentHost.resume(payload?.parentTaskId, payload?.subtaskId);
+    if(name==='asyncSubagents.redirect')return asyncSubagentHost.redirect(payload?.parentTaskId, payload?.subtaskId, payload?.instruction, payload?.expectedControlRevision);
+    if(name==='asyncSubagents.handoff')return asyncSubagentHost.handoff(payload?.parentTaskId, payload?.subtaskId);
+    if(name==='asyncSubagents.emergencyStop')return asyncSubagentHost.emergencyStop();
     return asyncSubagentHost.stopChild(payload);
+  }
+  if(name==='developerDirection.invoke'){
+    if(sender!==admin||!competitionMode)throw Error('请从正式管理后台使用开发者方向');
+    if(!developerDirectionHost)throw Error('开发者方向尚未装配');
+    return developerDirectionHost.invoke(payload?.action, payload);
   }
   if(name==='subagentConversations.openAll'){
     if(sender!==workspace||payload!==undefined)throw Error('请从工作区打开全部子智能体');
