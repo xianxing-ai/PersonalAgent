@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {createHash} from 'node:crypto';
 import {notificationDigest as digest} from '@personal-agent/notifications';
 import {createVoiceSessionFinalHost} from '../electron/voice-session-final-host.js';
 import {createLiveVoiceHost} from '../electron/live-voice-host.js';
@@ -8,6 +9,7 @@ import {Client} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
 
 // Injected receipts and a Live event fixture. No microphone, speaker, named pipe, or Windows UI.
+const transcriptDigest = text => createHash('sha256').update(text).digest('hex');
 const localPolicy = {
   mode: 'normal', maxInterruptions: null, windowMinutes: 17, silentUntilUtc: null,
   preferredChannel: 'banner', allowUrgentBreakthrough: false, digestMode: 'on_return', quietHours: null,
@@ -27,7 +29,7 @@ function receipt(env, text, extra = {}) {
   return {
     source: 'live_input_audio', phase: 'final', origin: 'user', echo: false,
     sessionId: env.session.sessionId, conversationId: env.session.conversationId, utteranceId: 'utterance-1',
-    text, transcriptDigest: digest(text), controlRevision: env.policy.revision,
+    text, transcriptDigest: transcriptDigest(text), controlRevision: env.policy.revision,
     startedAt: completed, completedAt: completed, expiresAt: new Date(env.now() + 30_000).toISOString(),
     signal: env.signal, ...extra,
   };
@@ -52,7 +54,7 @@ test('ordinary final becomes current-session input and never submits settings or
   assert.equal(result.controlRevision, 2);
   assert.equal(result.text, '查一下明天的天气');
   assert.deepEqual(host.readCurrentInput(), {kind: 'user_input', sessionId: 'live-session', conversationId: 'fixture-conversation',
-    controlRevision: 2, utteranceId: 'utterance-1', text: '查一下明天的天气', transcriptDigest: digest('查一下明天的天气'),
+    controlRevision: 2, utteranceId: 'utterance-1', text: '查一下明天的天气', transcriptDigest: transcriptDigest('查一下明天的天气'),
     expiresAt: result.expiresAt});
   env.policy = {...env.policy, revision: 3};
   assert.equal(host.readCurrentInput(), null);
@@ -69,7 +71,7 @@ test('exact silence and resume commands preserve the current policy and do not a
       utteranceId: authority.utteranceId, transcriptDigest: authority.transcriptDigest,
       argumentsDigest: digest(settings), expiresAt: authority.expiresAt};
     assert.equal(host.verifyVoiceCommand(command), true);
-    const forged = {...command, transcriptDigest: digest('其他句子')};
+    const forged = {...command, transcriptDigest: transcriptDigest('其他句子')};
     assert.equal(host.verifyVoiceCommand(forged), false);
     assert.equal(authority.isCurrent(), true);
     env.session = {...env.session, sessionId: 'replaced'};
@@ -107,11 +109,11 @@ test('partial, echo, silence, stale revision, old session, negation and a pendin
     [{origin: 'model'}, 'stale_or_untrusted_final'],
     [{echo: true}, 'echo_rejected'],
     [{echo: 'unknown'}, 'echo_unverified'],
-    [{text: '   ', transcriptDigest: digest('   ')}, 'silence'],
+    [{text: '   ', transcriptDigest: transcriptDigest('   ')}, 'silence'],
     [{controlRevision: 1}, 'stale_control_revision'],
     [{sessionId: 'other'}, 'stale_session'],
-    [{text: '不要保持静默', transcriptDigest: digest('不要保持静默')}, 'user_input'],
-    [{text: '同意', transcriptDigest: digest('同意')}, 'user_input'],
+    [{text: '不要保持静默', transcriptDigest: transcriptDigest('不要保持静默')}, 'user_input'],
+    [{text: '同意', transcriptDigest: transcriptDigest('同意')}, 'user_input'],
   ];
   for (const [extra, reason] of samples) {
     const result = await host.consumeFinal(receipt(env, extra.text ?? '保持静默', {utteranceId: JSON.stringify(extra), ...extra}));
@@ -124,7 +126,7 @@ test('partial, echo, silence, stale revision, old session, negation and a pendin
   env.policy = {revision: 2, state: 'unconfigured', local: null};
   env.session = {...env.session, pendingQuestion: null};
   assert.equal((await host.consumeFinal(receipt(env, '开启静默', {utteranceId: 'bare'}))).reason, 'policy_unconfigured');
-  const once = receipt(env, '查天气', {utteranceId: 'once', transcriptDigest: digest('查天气')});
+  const once = receipt(env, '查天气', {utteranceId: 'once', transcriptDigest: transcriptDigest('查天气')});
   env.policy = {revision: 2, state: 'configured', local: localPolicy};
   assert.equal((await host.consumeFinal(once)).accepted, true);
   assert.equal((await host.consumeFinal(once)).reason, 'duplicate_final');
@@ -133,7 +135,7 @@ test('partial, echo, silence, stale revision, old session, negation and a pendin
 
 test('Live production final keeps echo unknown, so silence does not reach settings', async () => {
   let writes = 0, emitted = 0;
-  let host, request, frames;
+  let host, request, frames, emittedReceipt;
   const now = Date.parse('2026-11-03T02:10:00.000Z');
   const contents = {mainFrame: {}, isDestroyed: () => false, send(_channel, message) {
     if (['start', 'stop'].includes(message.type)) queueMicrotask(() => host.receive({sender: contents, senderFrame: contents.mainFrame},
@@ -151,7 +153,7 @@ test('Live production final keeps echo unknown, so silence does not reach settin
     createGateway: () => ({async connect(value) { request = value; return {sendAudio() {}, interrupt() {}, close: async () => {}}; }}),
     createConsumer: () => ({}), client: {}, readContext: () => '', onTranscript() {}, readConversationId: () => 'fixture-conversation',
     readCurrentQuestion: () => question, readControlRevision: () => 2,
-    onSessionFinal: receipt => { emitted++; return router.consumeFinal(receipt); }});
+    onSessionFinal: receipt => { emitted++; emittedReceipt = receipt; return router.consumeFinal(receipt); }});
   let question = null;
   await host.start();
   try {
@@ -166,6 +168,10 @@ test('Live production final keeps echo unknown, so silence does not reach settin
     assert.equal(emitted, 1);
     assert.equal(writes, 0);
     assert.equal(router.readCurrentInput(), null);
+    assert.equal(emittedReceipt.transcriptDigest, transcriptDigest('保持静默'));
+    // Explicit Fake echo verification tests the receipt boundary, not acoustic detection.
+    assert.equal((await router.consumeFinal({...emittedReceipt, echo: false})).accepted, true);
+    assert.equal(writes, 1);
     question = {questionId: 'card', revision: 1, state: 'pending', taskId: 'task', sourceApprovalId: 'approval',
       expiresAt: new Date(now + 60_000).toISOString()};
     request.onEvent({type: 'speech_started', utteranceId: 'during-card'});
@@ -174,7 +180,7 @@ test('Live production final keeps echo unknown, so silence does not reach settin
     request.onEvent({type: 'transcript', id: 'during-card', utteranceId: 'during-card', role: 'user', phase: 'final', source: 'input_audio', text: '保持静默'});
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(emitted, 1);
-    assert.equal(writes, 0);
+    assert.equal(writes, 1);
   } finally { await host.stop(); }
 });
 
@@ -212,7 +218,7 @@ test('a pending card suppresses the Live session final, and a direct voice setti
   const result = await finalHost.consumeFinal({
     source: 'live_input_audio', phase: 'final', origin: 'user', echo: false,
     sessionId: session.sessionId, conversationId: session.conversationId, utteranceId: 'real-final',
-    text, transcriptDigest: digest(text), controlRevision: snapshot.policy.revision,
+    text, transcriptDigest: transcriptDigest(text), controlRevision: snapshot.policy.revision,
     startedAt: spoken, completedAt: spoken, expiresAt: new Date(Date.now() + 120).toISOString(), signal: session.signal,
   });
   assert.equal(result.accepted, false);

@@ -72,6 +72,12 @@ Foundation `41618736633` 的三个失败均来自原 `initializeLiveVoice` 提�
 
 在 Windows 隔离工作树 `.worktrees/pr538-repair` 构建依赖后，`node --test apps/desktop/test/live-voice-boot-history.test.mjs` 为 3/3 通过。没有重复已通过的语音测试，也未把此结果计为麦克风、扬声器或云验收。当前提交完整 CI 仍由推送后单独确认。
 
+## 转写摘要消费修复
+
+Live 生产 final 使用原始转写文本的 SHA-256；消费方此前误用了对 JSON 字符串求摘要的通知摘要函数，导致可信 final 仍被拒绝。现在仅让转写校验沿用生产方算法，设置参数摘要保持原契约。
+
+Windows 隔离工作树执行 `node --test apps/desktop/test/voice-session-final-host.test.mjs`，5/5 通过。用例直接捕获 Live 生产方生成的摘要：原 `echo: unknown` 仍被拒绝，只有显式 Fake 回声校验后的回执通过。该结果只覆盖摘要接线与原有确认门槛，不代表真实回声识别、麦克风或平台验收。
+
 ## Windows 与音频真机步骤
 
 在用户明确允许录音、播放和前台窗口操作后，于目标 Windows 机执行。不要把下面的命令输出写成已经发生。

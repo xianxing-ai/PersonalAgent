@@ -1,4 +1,5 @@
 import {notificationDigest as digest} from '@personal-agent/notifications';
+import {createHash} from 'node:crypto';
 
 const POLICY_FIELDS = ['mode', 'maxInterruptions', 'windowMinutes', 'silentUntilUtc', 'preferredChannel', 'allowUrgentBreakthrough', 'digestMode', 'quietHours'];
 const MAX_FINALS = 1024;
@@ -86,7 +87,7 @@ export function createVoiceSessionFinalHost({readSession, readPolicy, configureS
       if (receipt.signal?.aborted) return reject('cancelled');
       if (typeof receipt.text !== 'string' || receipt.text.trim().length === 0) return reject('silence');
       if (receipt.text.length > 24000 || typeof receipt.sessionId !== 'string' || typeof receipt.utteranceId !== 'string'
-        || typeof receipt.conversationId !== 'string' || receipt.transcriptDigest !== digest(receipt.text)) return reject('stale_or_untrusted_final');
+        || typeof receipt.conversationId !== 'string' || receipt.transcriptDigest !== createHash('sha256').update(receipt.text).digest('hex')) return reject('stale_or_untrusted_final');
       if (!utc(receipt.startedAt) || !utc(receipt.completedAt) || !utc(receipt.expiresAt)
         || Date.parse(receipt.completedAt) < Date.parse(receipt.startedAt)
         || Date.parse(receipt.completedAt) > now() || Date.parse(receipt.expiresAt) <= now()) return reject('expired');
