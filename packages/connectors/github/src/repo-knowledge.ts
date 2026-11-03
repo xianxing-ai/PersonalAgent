@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {readdirSync, readFileSync, statSync} from 'node:fs';
+import {readdirSync, readFileSync, lstatSync} from 'node:fs';
 import {join, relative, sep} from 'node:path';
 import {ProtocolError} from '@personal-agent/contracts';
 import {detectApiDocDrift} from './developer-direction.js';
@@ -120,6 +120,8 @@ export function indexKnowledgeFiles(input: {
 export function scanKnowledgeDirectory(input: {repo: string; root: string; previous?: Pick<KnowledgeIndex, 'files' | 'buildRecipes' | 'testRecipes'>; policy?: Partial<KnowledgeScanPolicy>}): KnowledgeIndex {
   const policy = {...DEFAULT_KNOWLEDGE_POLICY, ...input.policy, ignore: input.policy?.ignore ?? DEFAULT_KNOWLEDGE_POLICY.ignore};
   const found: Array<{path: string; text: string; bytes: number}> = [];
+  const skipped: KnowledgeIndex['skipped'] = [];
+  let total = 0, truncated = false;
   const walk = (directory: string) => {
     let entries: string[] = [];
     try {entries = readdirSync(directory);} catch {return;}
@@ -128,16 +130,24 @@ export function scanKnowledgeDirectory(input: {repo: string; root: string; previ
       const rel = relative(input.root, absolute).split(sep).join('/');
       if (ignored(rel, policy.ignore)) continue;
       let info;
-      try {info = statSync(absolute);} catch {continue;}
+      try {info = lstatSync(absolute);} catch {continue;}
+      if (info.isSymbolicLink()) {skipped.push({path: rel, reason: 'symbolic link'}); continue;}
       if (info.isDirectory()) walk(absolute);
       else if (info.isFile()) {
-        if (info.size > policy.maxFileBytes) {found.push({path: rel, text: '', bytes: info.size}); continue;}
-        found.push({path: rel, text: readFileSync(absolute, 'utf8'), bytes: info.size});
+        if (found.length >= policy.maxFiles) {truncated = true; skipped.push({path: rel, reason: 'file count'}); return;}
+        if (info.size > policy.maxFileBytes) {skipped.push({path: rel, reason: 'file too large'}); continue;}
+        if (total + info.size > policy.maxTotalBytes) {truncated = true; skipped.push({path: rel, reason: 'total size'}); continue;}
+        try {
+          const text = readFileSync(absolute, 'utf8');
+          found.push({path: rel, text, bytes: info.size});
+          total += info.size;
+        } catch {skipped.push({path: rel, reason: 'unreadable'});}
       }
     }
   };
   walk(input.root);
-  return indexKnowledgeFiles({repo: input.repo, files: found, ...(input.previous ? {previous: input.previous} : {}), policy, evidenceLevel: 'local-scan'});
+  const index = indexKnowledgeFiles({repo: input.repo, files: found, ...(input.previous ? {previous: input.previous} : {}), policy, evidenceLevel: 'local-scan'});
+  return {...index, skipped: [...index.skipped, ...skipped], truncated: index.truncated || truncated};
 }
 
 export function knowledgeDrift(index: KnowledgeIndex) {

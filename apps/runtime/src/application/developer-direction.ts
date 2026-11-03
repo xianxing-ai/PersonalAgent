@@ -243,11 +243,11 @@ export function profilePrompt(profile: RepoProfile, experienceRecipes: readonly 
   return `${renderUntrustedPrompt(files)}${recipes}`;
 }
 
-type DeveloperCall = {repo: string; branch: string; toolName: string; action?: string; sideEffect: 'read' | 'local_write' | 'external_write'};
+type DeveloperCall = {repo: string; branch: string; toolName: string; action?: string; sideEffect: 'read' | 'local_write' | 'external_write'; args?: unknown};
 
 /** 工具循环、值班评论、子任务和远端仓库任务共用这一次 decide。 */
 export function authorizeDeveloperCall(session: {decide(input: {repo: string; branch: string; toolName: string; action?: string; sideEffect?: 'read' | 'local_write' | 'external_write'; args?: unknown}): AutonomyDecision}, input: DeveloperCall): AutonomyDecision {
-  return session.decide({repo: input.repo, branch: input.branch, toolName: input.toolName, sideEffect: input.sideEffect, ...(input.action ? {action: input.action} : {}), args: {repo: input.repo, branch: input.branch, ...(input.action ? {action: input.action} : {})}});
+  return session.decide({repo: input.repo, branch: input.branch, toolName: input.toolName, sideEffect: input.sideEffect, ...(input.action ? {action: input.action} : {}), args: input.args ?? {repo: input.repo, branch: input.branch, ...(input.action ? {action: input.action} : {})}});
 }
 
 /** 工具循环用。没有仓库，或该仓库没有常驻授权时返回 undefined，调用方保持逐次授权。 */
@@ -257,7 +257,7 @@ export function standingDecisionForTool(session: {decide(input: {repo: string; b
   if (!repo) return undefined;
   const branch = typeof args.branch === 'string' ? args.branch : '*';
   const action = typeof args.action === 'string' ? args.action : undefined;
-  const decision = authorizeDeveloperCall(session, {repo, branch, toolName: input.toolName, sideEffect: input.sideEffect, ...(action ? {action} : {})});
+  const decision = authorizeDeveloperCall(session, {repo, branch, toolName: input.toolName, sideEffect: input.sideEffect, args: input.arguments, ...(action ? {action} : {})});
   if (decision.reason === 'repository has no standing grant' || decision.reason === 'standing grant does not cover this call') return undefined;
   return {allow: decision.allow, mode: decision.mode, risk: decision.risk, reason: decision.reason, audit: {reversibleClass: decision.audit.reversibleClass}};
 }

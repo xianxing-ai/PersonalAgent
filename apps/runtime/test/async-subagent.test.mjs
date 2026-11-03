@@ -206,6 +206,26 @@ test('pause keeps a queued child out and redirect waits for an unknown write to 
   }
 });
 
+test('concurrent redirects recheck the running child control revision after readback', async () => {
+  const runtime = new TaskRuntime(':memory:');
+  const parent = parentOf(runtime), gate = hold();
+  const {pool} = controller(runtime, {verifyUnknownWrite: async () => 'not_applied',
+    startChild: (taskId, childDeadline) => runtime.runTask(taskId, () => gate.promise.then(() => ({resultSummary: 'ok'})), {deadline: childDeadline, sideEffect: 'read'})});
+  await tool(pool, 'subagent.spawn').execute({subtasks: [{subtaskId: 'live', role: 'coder', goal: '在跑'}]}, context(parent.taskId));
+  await pool.pump();
+  const child = runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-live`);
+  try {
+    const results = await Promise.allSettled([pool.redirect(parent.taskId, 'live', 'first', 0), pool.redirect(parent.taskId, 'live', 'stale', 0)]);
+    assert.equal(results[0].status, 'fulfilled');
+    assert.equal(results[1].status, 'rejected');
+    assert.equal(results[1].reason.code, 'REVISION_CONFLICT');
+    assert.deepEqual(runtime.loadCheckpoint(child.taskId, 'async-subagent-control:v1'), {revision: 1, instructions: ['first']});
+    const epoch = runtime.readExecutionEpoch(child.taskId);
+    await assert.rejects(pool.redirect(parent.taskId, 'live', 'still stale', 0), {code: 'REVISION_CONFLICT'});
+    assert.equal(runtime.readExecutionEpoch(child.taskId), epoch);
+  } finally {gate.release();}
+});
+
 test('custom types require confirmation, reject built-in names and ungranted tools, and invalidate old proposals', async () => {
   const runtime = new TaskRuntime(':memory:');
   const parent = parentOf(runtime);

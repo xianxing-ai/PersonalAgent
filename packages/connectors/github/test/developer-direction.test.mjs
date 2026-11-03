@@ -3,7 +3,7 @@ import {createHmac} from 'node:crypto';
 import {createServer} from 'node:http';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
-import {mkdtempSync, mkdirSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -72,6 +72,26 @@ test('CI loop waits for the bound head, reruns flaky once, then stops', () => {
   assert.equal(state.phase, 'stopped');
   assert.equal(commentWriteAvailable({policyComment: true, autonomy: {allow: true, mode: 'auto', risk: 'reversible_write'}}), true);
   assert.equal(commentWriteAvailable({policyComment: true, autonomy: {allow: false, mode: 'deny', risk: 'irreversible'}}), false);
+});
+
+test('knowledge scan excludes linked directories and respects read budgets', () => {
+  const fixture = mkdtempSync(path.join(tmpdir(), 'knowledge-link-'));
+  const root = path.join(fixture, 'repo'), outside = path.join(fixture, 'outside');
+  try {
+    mkdirSync(root); mkdirSync(outside);
+    writeFileSync(path.join(root, 'a.ts'), 'export function allowed() {}');
+    writeFileSync(path.join(outside, 'private.ts'), 'export function outsideSecret() {}');
+    symlinkSync(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+    const index = scanKnowledgeDirectory({repo: 'octo/repo', root});
+    assert.deepEqual(index.implemented, ['allowed']);
+    assert.ok(index.skipped.some(item => item.path === 'linked' && item.reason === 'symbolic link'));
+    writeFileSync(path.join(root, 'b.ts'), 'export function second() {}');
+    for (const policy of [{maxFiles: 1}, {maxTotalBytes: 30}]) {
+      const limited = scanKnowledgeDirectory({repo: 'octo/repo', root, policy});
+      assert.equal(limited.files.length, 1);
+      assert.equal(limited.truncated, true);
+    }
+  } finally {rmSync(fixture, {recursive: true, force: true});}
 });
 
 test('knowledge scan ignores heavy directories, skips oversized files, and reuses unchanged digests', () => {

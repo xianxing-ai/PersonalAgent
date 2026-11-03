@@ -539,12 +539,14 @@ export function createAsyncSubagentController(options: {
     return next;
   };
   const redirect = async (parentTaskId: string, subtaskId: string, instruction: string, expectedControlRevision: number) => {
-    if (typeof instruction !== 'string' || !instruction.trim()) fail('INVALID_ARGUMENT', 'Redirect instruction is invalid');
-    const child = childOf(parentTaskId, subtaskId);
+    if (typeof instruction !== 'string' || !instruction.trim() || instruction.length > 4000 || !Number.isInteger(expectedControlRevision) || expectedControlRevision < 0) fail('INVALID_ARGUMENT', 'Redirect instruction is invalid');
+    let child = childOf(parentTaskId, subtaskId);
     if (TERMINAL.has(child.state) || child.state === 'waiting_reconciliation') fail('REVISION_CONFLICT', 'A finished or unknown subagent cannot be redirected');
     if (options.verifyUnknownWrite) {
       const verdict = await options.verifyUnknownWrite(child.taskId);
       if (verdict === 'unknown') fail('RESULT_UNKNOWN', 'Unknown write must be read back before redirect');
+      child = childOf(parentTaskId, subtaskId);
+      if (TERMINAL.has(child.state) || child.state === 'waiting_reconciliation') fail('REVISION_CONFLICT', 'A finished or unknown subagent cannot be redirected');
     }
     if (child.state === 'created' && !runtime().isTaskActive(child.taskId)) {
       const updated = instruct(parentTaskId, subtaskId, instruction, expectedControlRevision);
@@ -552,9 +554,10 @@ export function createAsyncSubagentController(options: {
       runtime().saveCheckpoint(child.taskId, PHASE_KEY, next);
       return {...next, continuation: 'before-start' as const};
     }
+    const control = runtime().loadCheckpoint(child.taskId, CONTROL_KEY) as {revision?: number; instructions?: string[]} | undefined;
+    if ((control?.revision ?? 0) !== expectedControlRevision || !Array.isArray(control?.instructions ?? [])) fail('REVISION_CONFLICT', 'controlRevision does not match');
     const current = phaseOf(child.taskId);
     const epoch = runtime().advanceExecutionEpoch(child.taskId, {requestId: `subagent-redirect:${subtaskId}:${current.revision}`, reason: 'replan'});
-    const control = runtime().loadCheckpoint(child.taskId, CONTROL_KEY) as {revision?: number; instructions?: string[]} | undefined;
     const revision = (control?.revision ?? 0) + 1;
     runtime().saveCheckpoint(child.taskId, CONTROL_KEY, {revision, instructions: [...(control?.instructions ?? []), instruction.trim()]});
     const next = {phase: 'running' as const, epoch, revision};
