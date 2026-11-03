@@ -217,3 +217,7 @@ node packages/windows-client/scripts/capture-windows-evidence.mjs $evidence
 仅在本机保存并分享经审核的脱敏内容。脚本只保存来源、采样时间、
 Schema 校验与不可用项等脱敏元数据，不保存 CPU/内存数值、用户名或设备标识。
 这次调用直达 provider，**不验证**终端是否已提权、生产授权、capability 握手、AgentArts 或 Desktop。
+
+平台自检不打开命名管道、窗口或凭据库：`node packages/windows-client/scripts/check-native-platform.mjs`。
+非 Windows 或缺少 .NET SDK 时结果保持 `acceptance=not_run`，不能当作 MOD-16/17 真机验收。
+步骤见 [CW10 设备记录](../../docs/competition/evidence/CW10_VOICE_WINDOWS_DEVICE_20261103.md)。
