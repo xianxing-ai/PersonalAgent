@@ -235,6 +235,7 @@ export class ModelCapabilityRegistry {
   }
 }
 
+export {selectDeveloperModelGateway} from './downgrade.js';
 export class ModelGateway implements ModelPort {
   readonly deployment: ModelDeployment;
 

@@ -216,7 +216,7 @@ export {
 export {createDeveloperDutyTools, DUTY_WATCH, DUTY_UNWATCH, DUTY_POLICY_SET, DUTY_PERSONAL_LIST, DUTY_STATUS, DUTY_CI_TRIAGE, DUTY_COMMENT_PUBLISH} from './application/developer-duty-tools.js';
 export {
   createDeveloperDirectionSession, createMemoryGitWorkspace, createNodeGitWorkspace, agentBranch, buildRepoProfile,
-  profilePrompt, buildDeveloperReport, renderPullRequestBody, renderPeriodReport, developerWizardSteps, COMPENSATION_CATALOG,
+  profilePrompt, standingDecisionForTool, buildDeveloperReport, renderPullRequestBody, renderPeriodReport, developerWizardSteps, COMPENSATION_CATALOG,
 } from './application/developer-direction.js';
 export type {
   DeveloperDirectionSession, DeveloperGoal, DeveloperReport, GitWorkspacePort, WorkspaceLease, RepoLock, RepoProfile,

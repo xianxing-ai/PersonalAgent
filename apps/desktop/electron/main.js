@@ -2875,8 +2875,12 @@ async function initializeRuntime() {
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       conversationTools.push(...(asyncSubagentTools??[]));
       conversationTools.push(...remoteRunnerHost.tools);
-      const {createDeveloperDirectionHost} = await import('./developer-direction-host.js');
-      developerDirectionHost = createDeveloperDirectionHost({subagentControl: asyncSubagentHost ? {
+      const {createDeveloperDirectionHost, createElectronDesktopChannel} = await import('./developer-direction-host.js');
+      developerDirectionHost = createDeveloperDirectionHost({channel: createElectronDesktopChannel({deliverInApp(notice) {
+        const id = `developer-direction:${notice.id}`;
+        if (!notifications.has(id)) notifications.set(id, {notificationId: id, summary: notice.body, occurredAt: new Date().toISOString(), channel: 'desktop', delivered: true, evidenceLevel: 'fixture'});
+        publish();
+      }}), subagentControl: asyncSubagentHost ? {
         pause: (parentTaskId, subtaskId) => asyncSubagentHost.pause(parentTaskId, subtaskId),
         resume: (parentTaskId, subtaskId) => asyncSubagentHost.resume(parentTaskId, subtaskId),
         redirect: (parentTaskId, subtaskId, instruction, expectedControlRevision) => asyncSubagentHost.redirect(parentTaskId, subtaskId, instruction, expectedControlRevision),
@@ -3159,6 +3163,7 @@ async function initializeRuntime() {
           if(conversationId&&conversations.containsConversation(conversationId))
             assertConversationProhibitions({...scope,rules:conversations.prohibitions(conversationId)});
         },
+        standingAutonomy:input=>developerDirectionHost?runtimeModule.standingDecisionForTool(developerDirectionHost.session, input):undefined,
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'

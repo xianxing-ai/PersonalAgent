@@ -1,20 +1,35 @@
 import {createDeveloperDirectionSession, renderPullRequestBody} from '@personal-agent/runtime/application';
 
-/** 桌面通知通道。系统不支持弹出时记拒绝原因，不把“只记下意图”当成已投递。 */
-export function createElectronDesktopChannel() {
+/** 先尝试系统通知。系统不可用时，交给桌面内通知列表，并记成已投递。 */
+export async function deliverDesktopNotice(notice, options = {}) {
+  const native = await options.tryNative?.(notice);
+  if (native?.accepted) return native;
+  if (typeof options.deliverInApp === 'function') {
+    options.deliverInApp(notice);
+    return {accepted: true, evidenceRef: `desktop-inapp:${notice.id}`};
+  }
+  return {accepted: false, reason: native?.reason ?? 'desktop notification unsupported'};
+}
+
+export function createElectronDesktopChannel(options = {}) {
   return {name: 'desktop', async send(notice) {
-    try {
-      const electron = await import('electron');
-      const Notification = electron.Notification;
-      if (!Notification || (typeof Notification.isSupported === 'function' && !Notification.isSupported())) {
-        return {accepted: false, reason: 'desktop notification unsupported'};
-      }
-      const item = new Notification({title: notice.title, body: notice.body});
-      if (typeof item.show === 'function') item.show();
-      return {accepted: true, evidenceRef: `desktop:${notice.id}`};
-    } catch {
-      return {accepted: false, reason: 'electron notification unavailable'};
-    }
+    return deliverDesktopNotice(notice, {
+      ...options,
+      tryNative: async item => {
+        try {
+          const electron = await import('electron');
+          const Notification = electron.Notification;
+          if (!Notification || (typeof Notification.isSupported === 'function' && !Notification.isSupported())) {
+            return {accepted: false, reason: 'desktop notification unsupported'};
+          }
+          const created = new Notification({title: item.title, body: item.body});
+          if (typeof created.show === 'function') created.show();
+          return {accepted: true, evidenceRef: `desktop:${item.id}`};
+        } catch {
+          return {accepted: false, reason: 'electron notification unavailable'};
+        }
+      },
+    });
   }};
 }
 

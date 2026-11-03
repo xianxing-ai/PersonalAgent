@@ -1020,8 +1020,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           routineEligible = prepared?.kind === 'prepared' && isDeepStrictEqual(prepared.binding, intent?.binding)
             && isDeepStrictEqual(invocation.arguments, {intentDigest: toolArgumentsDigest(intent!)});
         }
-        if (!routineEligible && options.standingAutonomy && !options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
-          toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal})) {
+        if (!routineEligible && options.standingAutonomy) {
           const standing = options.standingAutonomy({taskId:invocation.taskId,toolName:tool.name,toolVersion:tool.version,
             sideEffect:tool.sideEffect,arguments:invocation.arguments});
           if (standingRoutineAllowed({sideEffect:tool.sideEffect,requiresPresence:tool.requiresPresence===true,decision:standing})) {

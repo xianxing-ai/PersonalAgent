@@ -1,3 +1,4 @@
+import {selectDeveloperModelGateway, type ModelGateway, type ModelRequest, type ModelResult} from '@personal-agent/models';
 import {spawn} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
@@ -236,9 +237,22 @@ export function buildRepoProfile(input: {repo: string; files: ReadonlyArray<{pat
   return {repo: input.repo, conventions, buildRecipes, testRecipes, protectedBranches, pastFixes: [], digest, privateRepo: input.privateRepo === true};
 }
 
-export function profilePrompt(profile: RepoProfile): string {
+export function profilePrompt(profile: RepoProfile, experienceRecipes: readonly string[] = []): string {
   const files = profile.conventions.map(item => wrapUntrusted({source: 'repo-profile', uri: `${profile.repo}:${item.path}`, text: `${item.path} digest ${item.digest}`}));
-  return renderUntrustedPrompt(files);
+  const recipes = experienceRecipes.length ? `\n已确认的开发经验配方：${experienceRecipes.join(', ')}` : '';
+  return `${renderUntrustedPrompt(files)}${recipes}`;
+}
+
+/** 工具循环用。没有仓库，或该仓库没有常驻授权时返回 undefined，调用方保持逐次授权。 */
+export function standingDecisionForTool(session: {decide(input: {repo: string; branch: string; toolName: string; action?: string; sideEffect?: 'read' | 'local_write' | 'external_write'; args?: unknown}): {allow: boolean; mode: 'deny' | 'suggest' | 'auto'; risk: 'read' | 'reversible_write' | 'irreversible' | 'privileged'; reason: string; audit: {reversibleClass: string}}}, input: {toolName: string; sideEffect: 'read' | 'local_write' | 'external_write'; arguments: unknown}): {allow: boolean; mode: 'deny' | 'suggest' | 'auto'; risk: 'read' | 'reversible_write' | 'irreversible' | 'privileged'; reason: string; audit: {reversibleClass: string}} | undefined {
+  const args = input.arguments && typeof input.arguments === 'object' && !Array.isArray(input.arguments) ? input.arguments as Record<string, unknown> : {};
+  const repo = typeof args.repo === 'string' ? args.repo : typeof args.repository === 'string' ? args.repository : undefined;
+  if (!repo) return undefined;
+  const branch = typeof args.branch === 'string' ? args.branch : '*';
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const decision = session.decide({repo, branch, toolName: input.toolName, sideEffect: input.sideEffect, ...(action ? {action} : {}), args});
+  if (decision.reason === 'repository has no standing grant' || decision.reason === 'standing grant does not cover this call') return undefined;
+  return {allow: decision.allow, mode: decision.mode, risk: decision.risk, reason: decision.reason, audit: {reversibleClass: decision.audit.reversibleClass}};
 }
 
 const ESTIMATED_PRICE: ModelPriceCard = {model: 'estimated-default', currency: 'CNY', inputPerMillion: 1, outputPerMillion: 2};
@@ -275,6 +289,8 @@ export interface DeveloperDirectionSession {
   report(goalId: string, extra?: {risks?: string[]; commands?: Array<{command: string; result: string}>; ciUrl?: string; url?: string}): DeveloperReport;
   periodReport(input: {period: 'daily' | 'weekly'; pulls?: string[]; reviews?: string[]; failing?: string[]}): string;
   notify(input: {repo: string; kind: DeveloperNoticeKind; summary: string; evidenceRef?: string}): Promise<{delivered: boolean}>;
+  taskContext(repo: string): string;
+  completeModel(request: ModelRequest): Promise<{result: ModelResult; downgraded: boolean}>;
   subscribe(repo: string, classes: readonly DeveloperNoticeClass[]): void;
   timeline(): DeveloperDeliveryState['timeline'];
   applyWizard(input: {repo: string; credentialRef: string; files: ReadonlyArray<{path: string; text: string}>; level?: AutonomyLevel; branchPattern?: string; present?: boolean; runnerId?: string}): {profile: RepoProfile; grant: StandingAutonomyGrant; runnerId?: string; evidenceLevel: 'fixture'};
@@ -291,6 +307,9 @@ export function createDeveloperDirectionSession(options: {
   prepareDependencies?: (path: string) => Promise<void>;
   compensation?: CompensationPort;
   maxConcurrent?: number;
+  /** 只有同时给出备用网关时，超支才会改走备用模型。缺省仍暂停，不改模型。 */
+  modelDowngrade?: {primary: ModelGateway; fallback: ModelGateway};
+  readExperienceRecipes?: (repo: string) => readonly string[];
 } = {}): DeveloperDirectionSession {
   const now = options.now ?? Date.now;
   const prices = options.prices ?? [ESTIMATED_PRICE];
@@ -311,6 +330,7 @@ export function createDeveloperDirectionSession(options: {
   const maxConcurrent = options.maxConcurrent ?? 2;
   const contents = new Map<string, UntrustedContent[]>();
   const reservationOf = new Map<string, string>();
+  let downgradeModel = false;
 
   const goalOf = (id: string): DeveloperGoal => {
     const goal = goals.find(item => item.id === id);
@@ -506,11 +526,12 @@ export function createDeveloperDirectionSession(options: {
       const estimated = estimateCost(price, input.tokens);
       const goalBudget = goals.find(item => item.id === input.taskId)?.budget;
       const perTask = goalBudget ?? 20;
-      const policy = {scope: 'repo' as const, scopeId: input.repo || input.taskId, currency: 'CNY' as const, daily: Math.max(100, perTask), perTask, onExceed: 'pause' as const};
+      const policy = {scope: 'repo' as const, scopeId: input.repo || input.taskId, currency: 'CNY' as const, daily: Math.max(100, perTask), perTask, onExceed: options.modelDowngrade ? 'downgrade_model' as const : 'pause' as const};
       const id = `cost-${budget.reservations.length + 1}`;
       const result = reserveBudget(budget, policy, {id, taskId: input.taskId, model: price.model, estimated, now: now()});
       budget = result.state;
       if (result.reservation) reservationOf.set(input.taskId, result.reservation.id);
+      if (result.decision.action === 'downgrade_model') downgradeModel = true;
       if (result.decision.action === 'pause') {
         const goal = goals.find(item => item.id === input.taskId || item.taskId === input.taskId);
         if (goal && goal.status === 'open') replaceGoal(revise(goal, {status: 'paused', step: 'budget exceeded', controlRevision: goal.controlRevision, nextGate: 'budget'}));
@@ -601,6 +622,18 @@ export function createDeveloperDirectionSession(options: {
     },
     periodReport(input) {
       return renderPeriodReport({period: input.period, pulls: input.pulls ?? [], reviews: input.reviews ?? [], failing: input.failing ?? [], actions: goals.map(goal => `${goal.sentence}：${goal.step}`)});
+    },
+    taskContext(repo) {
+      const profile = profiles.find(item => item.repo === repo);
+      const recipes = options.readExperienceRecipes?.(repo) ?? [];
+      if (!profile) return recipes.length ? `已确认的开发经验配方：${recipes.join(', ')}` : '';
+      return profilePrompt(profile, recipes);
+    },
+    async completeModel(request) {
+      if (!options.modelDowngrade) return fail('UNSUPPORTED_CAPABILITY', 'Model downgrade is not configured; the original gateway stays in use');
+      const gateway = selectDeveloperModelGateway({primary: options.modelDowngrade.primary, fallback: options.modelDowngrade.fallback, downgrade: downgradeModel});
+      const result = await gateway.complete(request);
+      return {result, downgraded: downgradeModel};
     },
     async notify(input) {
       const accepted = await acceptDeveloperNotice(delivery, {id: randomUUID(), repo: input.repo, kind: input.kind, summary: input.summary, at: new Date(now()).toISOString(), ...(input.evidenceRef ? {evidenceRef: input.evidenceRef} : {})}, {now: now(), channel});
