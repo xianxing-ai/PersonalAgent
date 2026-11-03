@@ -35,3 +35,11 @@ N02 通过 Runtime/ToolGateway 和原生执行宿主执行固定发布指令；�
 尚未执行两次真实构建证明发生过实际摘要失配；此修正不能写成 F26 已通过。最终真实 F26 仍须由原 N02 与 N03 核对同一个摘要，既有手动部署不代替整图回执。
 
 修改后的发布脚本已通过 PowerShell Parser 语法检查；本轮未重复构建镜像或调用真实注册表。
+
+## 单镜像 manifest 的真实兼容问题（2026-11-03）
+
+后续 `d4d942bf` 的 ARM64 预构建与 SWR 推送已实际完成，顶层摘要为 `sha256:9d29ae1e9babdf01b4c570e8f1492d9c34747666206e6f3e50b307d617c337f9`。禁用 provenance 后产物是单 OCI manifest；原 `imagetools inspect` 文本只列 Name、MediaType、Digest，没有 `linux/arm64`，导致发布脚本在已发生推送后拒绝成功回执。这是实测的平台文本兼容问题，并非已证明的两次摘要漂移，也不是 F26 原图通过。
+
+按 [Docker 官方格式文档](https://docs.docker.com/reference/cli/docker/buildx/imagetools/inspect/)读取 `.Manifest` 和 `.Image` JSON。实际单 manifest 的 `.Manifest` 仅有 mediaType、digest、size；以固定摘要读取 `.Image` 已确认 os=linux、architecture=arm64。发布脚本和 Desktop N03 标签解析都保留顶层摘要身份；旧 index 仅选择唯一 linux/arm64 子 manifest 来核对配置，单 manifest 直接按顶层摘要核对。发布阶段的配置日志只记录 os/architecture，不保存完整镜像配置。
+
+修复后 PowerShell Parser 语法检查通过；一个定向用例覆盖 single/index 顶层摘要保留、固定摘要读取、错误平台及重复 ARM64 子项拒绝，1/1 通过。未重复全图或 Docker 构建，修复后的原 F26 真实回执仍待取得。
