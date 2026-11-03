@@ -114,12 +114,49 @@ export interface CrewDriverProcess {
   readonly exited: Promise<{exitCode: number | null; signal: NodeJS.Signals | null; error?: Error}>;
 }
 
-export type CrewSpawn = (command: string, args: readonly string[], options: {readonly cwd: string}) => CrewDriverProcess;
+export type CrewSpawn = (command: string, args: readonly string[], options: {readonly cwd: string; readonly env?: Readonly<Record<string, string>>}) => CrewDriverProcess;
+
+/**
+ * 子进程环境变量白名单：驱动拉起的官方 CLI 只拿到登录与运行必需项。
+ * CLI 是能执行任意 shell 的 agent，继承宿主全量环境会把 Claude/Grok API key
+ * 等秘密暴露给模型或其工具（提示注入即可读出外传），因此默认剔除一切不在
+ * 白名单内的变量，明确剔除 `*_API_KEY`/`*_TOKEN`/`*_SECRET`/`*_PASSWORD`/
+ * `PI_NOTIFY_*` 这类凭据模式（即使调用方经 `env` 显式传入也丢弃）。
+ */
+const DRIVER_ENV_ALLOW_EXACT: readonly string[] = [
+  'PATH', 'HOME', 'USERPROFILE', 'LANG', 'TERM', 'TMPDIR', 'TEMP', 'TMP', 'SYSTEMROOT', 'CODEX_HOME', 'SHELL',
+];
+const DRIVER_ENV_ALLOW_PREFIX: readonly string[] = ['LC_', 'XDG_'];
+const DRIVER_ENV_DENY_SUFFIX: readonly string[] = ['_API_KEY', '_TOKEN', '_SECRET', '_PASSWORD'];
+const DRIVER_ENV_DENY_PREFIX: readonly string[] = ['PI_NOTIFY_'];
+
+/** 判断一个变量名是否落在凭据剔除模式内（白名单前的硬性否决）。 */
+export function isDriverEnvDenied(name: string): boolean {
+  const upper = name.toUpperCase();
+  return DRIVER_ENV_DENY_PREFIX.some(prefix => upper.startsWith(prefix))
+    || DRIVER_ENV_DENY_SUFFIX.some(suffix => upper.endsWith(suffix));
+}
+
+/** 组装驱动子进程的环境：白名单 ∪（调用方 extraEnv 剔除凭据模式后）。 */
+export function resolveDriverEnv(env?: Readonly<Record<string, string>>): Record<string, string> {
+  const resolved: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    const allowed = DRIVER_ENV_ALLOW_EXACT.includes(name)
+      || DRIVER_ENV_ALLOW_PREFIX.some(prefix => name.startsWith(prefix));
+    if (allowed && !isDriverEnvDenied(name)) resolved[name] = value;
+  }
+  for (const [name, value] of Object.entries(env ?? {})) {
+    if (isDriverEnvDenied(name)) continue; // 调用方也不能经 extraEnv 把凭据带进子进程。
+    resolved[name] = value;
+  }
+  return resolved;
+}
 
 /** 生产实现：node child_process.spawn，stdio 三根管道；启动失败经 exited 结算。 */
 export function createNodeSpawn(): CrewSpawn {
   return (command, args, options) => {
-    const child = spawn(command, [...args], {cwd: options.cwd, stdio: ['pipe', 'pipe', 'pipe']});
+    const child = spawn(command, [...args], {cwd: options.cwd, env: resolveDriverEnv(options.env), stdio: ['pipe', 'pipe', 'pipe']});
     const exited = new Promise<{exitCode: number | null; signal: NodeJS.Signals | null; error?: Error}>(resolve => {
       let settled = false;
       const settle = (exitCode: number | null, signal: NodeJS.Signals | null, error?: Error) => {
