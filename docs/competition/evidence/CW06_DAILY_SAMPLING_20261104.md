@@ -14,11 +14,34 @@
 
 | 校验条目 | 核心实现 | 生产调用者 | 测试覆盖 | 结论与基线状态 |
 | --- | --- | --- | --- | --- |
-| **日常 Competition 选择写入 sampling 台账** | `packages/agentarts/src/ordinary-competition-sampling.ts`（`admitOrdinaryCompetitionSampling`、`ordinaryCompetitionSamplingKey`）；`owned-workflow-host-bridge.ts`（`readReceiptWithShadow`） | `runRuntimeOwnedWorkflowDriver`（`apps/runtime/src/application/owned-workflow-driver.ts`）在节点回读处优先调用 `options.bridge.readReceiptWithShadow`；`createRuntimeOwnedWorkflowHost` 透传 `options.shadow` 并在 worker capability 中注入 | `apps/runtime/test/owned-workflow-sampling-integration.test.mjs`；`packages/agentarts/test/owned-workflow-shadow.test.mjs` | **已完成最小接线**：基线驱动原本仅调用 `readReceipt`，现支持若 bridge 提供 `readReceiptWithShadow` 则优先调用，在日常决策确认时将台账写入真实 SQLite `task_checkpoints`。 |
+| **日常 Competition 选择写入 sampling 台账** | `packages/agentarts/src/ordinary-competition-sampling.ts`（`admitOrdinaryCompetitionSampling`、`ordinaryCompetitionSamplingKey`）；`owned-workflow-host-bridge.ts`（`readReceiptWithShadow`） | `runRuntimeOwnedWorkflowDriver`（`apps/runtime/src/application/owned-workflow-driver.ts`）在节点回读处优先调用 `options.bridge.readReceiptWithShadow`；F20 worker capability 透传该方法，但**创建 host 时未传 `shadow`**（`owned-workflow-worker-capability.ts` 第 139–140 行），见 §1.1 | `apps/runtime/test/owned-workflow-sampling-integration.test.mjs`；`packages/agentarts/test/owned-workflow-shadow.test.mjs` | **仅完成驱动侧接线**：基线驱动原本仅调用 `readReceipt`，现在 bridge 提供 `readReceiptWithShadow` 时优先调用。只有调用方给 host 配置了 `options.shadow` 时才会写台账（集成测试自行构造带 shadow 的 host）；**F20 生产路径目前写入 0 条台账**，见 §1.1。 |
 | **台账只读读回与纯函数汇总** | `packages/agentarts/src/ordinary-competition-sampling-summary.ts`（`summarizeOrdinaryCompetitionSampling`、`collectOrdinaryCompetitionSamplingRecords`、`isOrdinaryCompetitionSamplingRecord`） | 供只读查询客户端、台账读回接口、状态统计工具调用；从 index 导出 | `packages/agentarts/test/ordinary-competition-sampling.test.mjs`；`apps/runtime/test/owned-workflow-sampling-integration.test.mjs` | **新增实现**：纯函数汇总机会总数、`run/defer/skip/need_teacher` 四状态分布、`sampled` 计数、`unknownRatio` 比例，保持 `totalBenefit` 与 `averageBenefit` 绝不隐式推断。 |
-| **重启与重复读回幂等不重复计数** | Checkpoint key `owned-workflow:ordinary-sampling:${operationId}:${hash}` 经 `writeOnce` 持久化；汇总纯函数按 `${taskKey}:${decisionRef}` 去重 | `OwnedWorkflowHostBridge`、SQLite TaskRuntime | `packages/agentarts/test/ordinary-competition-sampling.test.mjs`；`apps/runtime/test/owned-workflow-sampling-integration.test.mjs` | **完整验证**：SQLite reopen 重启、多次重复扫描同一 checkpoint 记录，`totalOpportunities` 保持为 1，`duplicateRecordCount` 精确累加，不虚增机会与收益。 |
+| **重启与重复读回幂等不重复计数** | Checkpoint key `owned-workflow:ordinary-sampling:${operationId}:${hash}` 经 `writeOnce` 持久化；汇总纯函数按 `JSON.stringify([taskKey, decisionRef])` 分组去重，同一机会多版本按 §1.2 规则确定性合并 | `OwnedWorkflowHostBridge`、SQLite TaskRuntime | `packages/agentarts/test/ordinary-competition-sampling.test.mjs`；`apps/runtime/test/owned-workflow-sampling-integration.test.mjs` | **完整验证**：SQLite reopen 重启、多次重复扫描同一 checkpoint 记录，`totalOpportunities` 保持为 1，`duplicateRecordCount` 精确累加，不虚增机会与收益。 |
 | **缺影子/缺资源计量保持 unknown 不伪造收益** | `admitOrdinaryCompetitionSampling`（`packages/agentarts/src/ordinary-competition-sampling.ts`）；`summarizeOrdinaryCompetitionSampling` | `OwnedWorkflowHostBridge.readReceiptWithShadow` | `packages/agentarts/test/ordinary-competition-sampling.test.mjs`；`packages/agentarts/test/workflow-shadow-policy.test.mjs` | **严格保持**：缺影子时 `comparison.status === 'unknown'`、`benefit === null`；纯函数汇总在无 `comparable` 记录时 `totalBenefit === null`、`averageBenefit === null`，`executedCount === 0`，`executed === false` 绝不伪造。 |
 | **专项 compare 与 special-serial-pair 不入日常台账** | `admitOrdinaryCompetitionSampling` 拒绝非 `ordinary` 与 `special-serial-pair`；`readReceiptWithShadow` 仅在 `plan.mode === 'ordinary' && !comparisonRequested` 写入 | `OwnedWorkflowHostBridge`、`runRuntimeOwnedWorkflowDriver` | `packages/agentarts/test/ordinary-competition-sampling.test.mjs`；`apps/runtime/test/owned-workflow-sampling-integration.test.mjs` | **严格隔离**：`plan.mode === 'compare'` 执行时 checkpoint 不写入任何 `owned-workflow:ordinary-sampling:` 键。 |
+
+### 1.1 F20 生产路径的实际行为（2026-11-04 交叉审阅后更正）
+
+此前本文与 PR 描述写“`createRuntimeOwnedWorkflowHost` 透传 `options.shadow` 并在 worker capability 中注入”“F20 台账只会记 defer 和 unknown”，**都不准确**。核实结果如下：
+
+- F20 worker capability 调用 `createRuntimeOwnedWorkflowHost(application,{receiptSecret,parentTaskId,assertActive})` 时**没有传 `shadow`**（`apps/runtime/src/application/owned-workflow-worker-capability.ts` 第 139–140 行）。
+- `OwnedWorkflowHostBridge.readReceiptWithShadow` 只在 `this.options.shadow` 存在的分支里调用 `admitOrdinaryCompetitionSampling`，并写入 `owned-workflow:ordinary-sampling:*`（`packages/agentarts/src/owned-workflow-host-bridge.ts` 第 227–259 行）。
+- 没有 shadow 时：
+  - 只写一条 `owned-workflow:shadow-evaluation:*`，内容为 `policy.action='defer'`、`reason='trusted_shadow_policy_host_unavailable'`、`comparison.status='unknown'`（第 225–226 行、第 268 行）；
+  - receipt 中加入 `shadowEvaluation`，proof 加入 `shadowDigest` 并重签。
+- **结论：当前 F20 生产路径写入的日常 sampling 台账为 0 条。** 台账要等可信 shadow host 在组合层接入后才会产生。本 PR 只把驱动的读回入口打通。集成测试 `owned-workflow-sampling-integration.test.mjs` 自行用 `app.createOwnedWorkflowHost({shadow})` 构造 bridge，不经过 F20 worker capability。
+- F20 路径的行为变化需要 goo122 确认，即上述 shadow-evaluation checkpoint、重签 proof，以及 deadline 校验带来的新失败模式。镜像侧对重签 proof 的兼容性未验证。
+
+### 1.2 汇总合并规则与 fail-closed 说明（2026-11-04 补充）
+
+- **去重 key**：`JSON.stringify([taskKey, decisionRef])`。原来的 `taskKey:decisionRef` 拼接会把 (`a:b`,`c`) 与 (`a`,`b:c`) 误判为同一个机会。
+- **同一机会有多条不同记录**时（例如 `refreshShadowReceipt` 或重启后重新评估），按下面的规则确定性合并：
+  1. `comparable` 优先于 `unknown`。后到的已验证反事实覆盖缺失的反事实；unknown 不能抹掉已验证收益，也不会推断收益。
+  2. 状态相同时，取规范化 JSON 字典序最小的一条。
+  3. 不使用“最新”：记录里没有可信时间戳。
+- 合并结果与输入顺序无关。新增 `conflictingOpportunityCount` 字段，统计出现多版本的机会数，使冲突可见。
+- **fail-closed 是有意设计。** `isOrdinaryCompetitionSamplingRecord` 遇到 kind/version 匹配但执行标记缺失或不正确的记录时，会抛 `INVALID_ARGUMENT`，`collect…` 和 `summarize…` 随之整体失败。这类记录只可能来自台账损坏或伪造；静默跳过会让台账看起来更小、更“干净”。其他形状不匹配的记录返回 false 并跳过。这一行为已写入 JSDoc，并有测试覆盖。
+- 生产中目前没有按前缀列出台账 key 的只读入口，调用方需要自行提供 key（需要 goo122 在 Runtime 侧补充）。
 
 ---
 
@@ -98,16 +121,28 @@ node --test --test-isolation=none \
 ✔ forged execution claims in records are strictly rejected by summary (0.112808ms)
 ✔ collectOrdinaryCompetitionSamplingRecords safely retrieves records from checkpoint port (0.201693ms)
 ...
-ℹ tests 70
+ℹ tests 73
 ℹ suites 0
-ℹ pass 70
+ℹ pass 73
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 2073.599193
 ```
-全部 70 项测试（包含 9 项 ordinary sampling 专项单元测试、2 项 driver 真实 SQLite 集成测试）全量通过。
+2026-11-04 复跑：全部 **73/73** 通过（Node v24，`--test-isolation=none`，命令见上）。各文件的通过数如下：
+
+- ordinary-competition-sampling：12（含新增 3 项：顺序无关合并、冒号不碰撞、损坏记录 fail-closed）
+- owned-workflow-shadow：14
+- workflow-shadow-policy：7
+- workflow-shadow-release：15
+- trace-replay：10
+- sampling-integration：2
+- owned-workflow-driver：11
+- owned-workflow-host-bridge：2
+
+原 PR 描述中的 “57/57” 无法按任何记录过的文件组合复现，已作废。
+
+Runtime 回归：`apps/runtime/test/{owned-workflow-*,f20-verify-completion,proactive-task-driver,workflow-f24-*}.test.mjs` 共 88 项，87 通过、0 失败、1 跳过（F24 用例原本即为 SKIP）。Desktop `f20-workflow-worker-ports`：2/2 通过。
 
 ### 3.4 格式与空白检查
 ```bash

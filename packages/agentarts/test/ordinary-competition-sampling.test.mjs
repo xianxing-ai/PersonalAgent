@@ -208,3 +208,53 @@ test('collectOrdinaryCompetitionSamplingRecords safely retrieves records from ch
   assert.equal(summary.executedCount, 0);
   assert.equal(summary.totalBenefit, null);
 });
+
+test('conflicting records of one decision merge deterministically regardless of input order (comparable wins)', () => {
+  const unknownRecord = admitOrdinaryCompetitionSampling({plan, policy: unknownPolicy, resources, main: quality('main')});
+  const comparablePolicy = {...unknownPolicy, action: 'skip', reason: 'both_verified_no_rerun_needed',
+    comparison: {status: 'comparable', qualityDelta: 1, wallMsDelta: 0, modelCallsDelta: 0, benefit: 0.5, recommendedBranch: 'shadow'}};
+  const comparableRecord = admitOrdinaryCompetitionSampling({plan, policy: comparablePolicy, resources, main: quality('main'), shadow: quality('shadow')});
+  const forward = summarizeOrdinaryCompetitionSampling([unknownRecord, comparableRecord]);
+  const reverse = summarizeOrdinaryCompetitionSampling([comparableRecord, unknownRecord]);
+  assert.deepEqual(forward, reverse, 'summary must not depend on input order');
+  assert.equal(forward.totalOpportunities, 1);
+  assert.equal(forward.duplicateRecordCount, 1);
+  assert.equal(forward.conflictingOpportunityCount, 1);
+  assert.equal(forward.comparableCount, 1);
+  assert.equal(forward.totalBenefit, 0.5);
+  assert.deepEqual(forward.actions, {run: 0, defer: 0, skip: 1, need_teacher: 0});
+
+  // Two different comparable versions: tie broken by canonical JSON, still order-independent.
+  const otherComparable = admitOrdinaryCompetitionSampling({plan,
+    policy: {...comparablePolicy, comparison: {...comparablePolicy.comparison, benefit: 0.25}}, resources, main: quality('main'), shadow: quality('shadow')});
+  const permutations = [[comparableRecord, otherComparable, unknownRecord], [otherComparable, unknownRecord, comparableRecord], [unknownRecord, comparableRecord, otherComparable]];
+  const summaries = permutations.map(list => summarizeOrdinaryCompetitionSampling(list));
+  for (const summary of summaries) assert.deepEqual(summary, summaries[0]);
+  assert.equal(summaries[0].conflictingOpportunityCount, 1);
+  assert.equal(summaries[0].comparableCount, 1);
+
+  // Identical copies are duplicates but not conflicts.
+  const identical = summarizeOrdinaryCompetitionSampling([unknownRecord, structuredClone(unknownRecord)]);
+  assert.equal(identical.duplicateRecordCount, 1);
+  assert.equal(identical.conflictingOpportunityCount, 0);
+});
+
+test('dedup key does not collide when taskKey or decisionRef contain a colon', () => {
+  const left = admitOrdinaryCompetitionSampling({plan: {...plan, taskKey: 'a:b', decision: {...plan.decision, decisionRef: 'c'}}, policy: unknownPolicy, resources});
+  const right = admitOrdinaryCompetitionSampling({plan: {...plan, taskKey: 'a', decision: {...plan.decision, decisionRef: 'b:c'}}, policy: unknownPolicy, resources});
+  const summary = summarizeOrdinaryCompetitionSampling([left, right]);
+  assert.equal(summary.totalOpportunities, 2);
+  assert.equal(summary.duplicateRecordCount, 0);
+});
+
+test('a corrupt ledger record (missing execution markers) fails the whole collection closed', () => {
+  const record = admitOrdinaryCompetitionSampling({plan, policy: unknownPolicy, resources});
+  const {executed: _ignored, ...corrupt} = record;
+  assert.throws(() => isOrdinaryCompetitionSamplingRecord(corrupt), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => summarizeOrdinaryCompetitionSampling([record, corrupt]), {code: 'INVALID_ARGUMENT'});
+  const key = ordinaryCompetitionSamplingKey('decision-1', record);
+  const reader = {read: (_taskId, k) => k === key ? record : corrupt};
+  assert.throws(() => collectOrdinaryCompetitionSamplingRecords(reader, 'task-1', [key, 'owned-workflow:ordinary-sampling:corrupt']), {code: 'INVALID_ARGUMENT'});
+  // Non-sampling shapes are skipped, not thrown.
+  assert.equal(isOrdinaryCompetitionSamplingRecord({kind: 'other'}), false);
+});
