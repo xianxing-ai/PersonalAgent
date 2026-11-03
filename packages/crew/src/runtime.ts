@@ -60,7 +60,11 @@ export interface CrewDriverRuntimeOptions {
   /** 默认 codex 驱动的进程工厂注入（测试用假子进程模拟协议）。 */
   readonly codexSpawn?: CrewSpawn;
   readonly codexCommand?: string;
+  /** 整轮任务 deadline（毫秒），默认 10 分钟；到期 interrupt/close 并写 failed 回执。 */
+  readonly taskDeadlineMs?: number;
 }
+
+const DEFAULT_TASK_DEADLINE_MS = 10 * 60 * 1000;
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -70,11 +74,14 @@ export class CrewDriverRuntime {
   private readonly kernel: CrewKernel;
   private readonly drivers: CrewDriverRegistry;
   private readonly runningTasks = new Map<string, CrewDriverSession>();
+  /** 整轮任务 deadline（毫秒）；0 或负数表示不限制（一般仅测试用）。 */
+  private readonly taskDeadlineMs: number;
   private readonly listeners = new Set<(event: CrewRuntimeEvent) => void>();
 
-  private constructor(kernel: CrewKernel, drivers: CrewDriverRegistry) {
+  private constructor(kernel: CrewKernel, drivers: CrewDriverRegistry, taskDeadlineMs: number) {
     this.kernel = kernel;
     this.drivers = drivers;
+    this.taskDeadlineMs = taskDeadlineMs;
   }
 
   /** 打开（必要时创建）crew 数据库并构建运行时；默认注册表只有真实 codex 驱动。 */
@@ -87,7 +94,7 @@ export class CrewDriverRuntime {
         ...(options.codexSpawn === undefined ? {} : {spawn: options.codexSpawn}),
       }),
     };
-    return new CrewDriverRuntime(kernel, drivers);
+    return new CrewDriverRuntime(kernel, drivers, options.taskDeadlineMs ?? DEFAULT_TASK_DEADLINE_MS);
   }
 
   close(): void {
@@ -222,7 +229,7 @@ export class CrewDriverRuntime {
     const forwardUnsubscribe = session.onEvent(event => this.emit({...event, taskId: task.taskId}));
     // 终态监视必须在 send 之前订阅：CLI 的响应与完成通知可能在同一数据块内
     // 同步到达，晚订阅会漏掉 completed/failed。
-    const terminalPromise = this.awaitTerminalEvent(session);
+    const terminalPromise = this.awaitTerminalEvent(session, this.taskDeadlineMs > 0 ? this.taskDeadlineMs : undefined);
     try {
       // 5. 发送任务目标；发送失败按外部失败回执（结果不确定 → failed）。
       try {
@@ -249,24 +256,35 @@ export class CrewDriverRuntime {
     for (const listener of [...this.listeners]) listener(event);
   }
 
-  private awaitTerminalEvent(session: CrewDriverSession): Promise<CrewTerminalEvent> {
+  private awaitTerminalEvent(session: CrewDriverSession, deadlineMs?: number): Promise<CrewTerminalEvent> {
     return new Promise(resolve => {
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+      const settle = (terminal: CrewTerminalEvent): void => {
+        if (settled) return;
+        settled = true;
+        if (timer !== undefined) clearTimeout(timer);
+        unsubscribe();
+        resolve(terminal);
+      };
       const unsubscribe = session.onEvent(event => {
         if (event.type === 'completed') {
-          cleanup();
-          resolve({kind: 'completed', result: event.result});
+          settle({kind: 'completed', result: event.result});
         } else if (event.type === 'failed') {
-          cleanup();
-          resolve({kind: 'failed', message: event.message});
+          settle({kind: 'failed', message: event.message});
         } else if (event.type === 'interrupted') {
-          cleanup();
-          resolve({kind: 'interrupted', reason: event.reason});
+          settle({kind: 'interrupted', reason: event.reason});
         } else if (event.type === 'exited') {
-          cleanup();
-          resolve({kind: 'exited', exitCode: event.exitCode, ...(event.error === undefined ? {} : {error: event.error})});
+          settle({kind: 'exited', exitCode: event.exitCode, ...(event.error === undefined ? {} : {error: event.error})});
         }
       });
-      const cleanup = (): void => unsubscribe();
+      if (deadlineMs !== undefined) {
+        timer = setTimeout(() => {
+          // 先结算（failed 回执），再尽力打断并关闭会话；事件已退订，不会再次结算。
+          settle({kind: 'failed', message: `任务超过整轮 deadline（${deadlineMs}ms）仍未结束，已打断并关闭会话`});
+          void session.interrupt('任务超时').catch(() => undefined).then(() => session.close().catch(() => undefined));
+        }, deadlineMs);
+      }
     });
   }
 

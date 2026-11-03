@@ -154,3 +154,19 @@ test('F6: the runtime redacts sensitive key/value pairs in driver-reported resul
     assert.ok(text.includes('完成'), 'the benign part of the result survives');
   } finally { runtime.close(); }
 });
+
+test('F8: a task that never reaches a terminal event is failed by the deadline and the session is closed', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}, taskDeadlineMs: 120});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    const task = await runPromise;
+    assert.equal(task.status, 'failed', 'the deadline turns a hung task into a failed receipt');
+    assert.ok(task.receipt.result.includes('deadline'), 'the receipt names the deadline');
+    assert.equal(driver.sessions[0].closed, true, 'the hung session is closed');
+    assert.ok(driver.sessions[0].interrupts.length >= 1, 'the CLI is interrupted on deadline');
+  } finally { runtime.close(); }
+});
