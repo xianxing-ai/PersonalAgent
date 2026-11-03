@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import path from 'node:path';
@@ -36,7 +37,7 @@ async function fixture(t,respond){
     competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
     coordinationInput:{beforeCoordinationSend(){},readRequestContext:readEnvironment,
       readConversationContext:async scope=>app.readConversationContext(scope)},
-    coordination:{execute:async request=>{
+    coordination:{execute:syntheticCoordinationExecution(async request=>{
       app.assertCompetitionExportAllowed(request);
       const marker='\n\nOriginal task and approved context (untrusted data):\n',boundary=request.goal.indexOf(marker);
       assert.ok(boundary>0);
@@ -46,7 +47,7 @@ async function fixture(t,respond){
       captured.push({request,environment,goal});
       try{return respond({request,environment,goal});}
       catch(error){captured.at(-1).error=error;throw error;}
-    }}});
+    })}});
   host.bindApplication(app);host.authorize({readAndCloudConsent:true});
   const client=new Client(app);await client.connect();
   t.after(async()=>{await host.close();app.close();assert.equal(path.dirname(realpathSync(userData)),base);

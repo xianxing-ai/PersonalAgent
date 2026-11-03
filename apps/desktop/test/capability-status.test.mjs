@@ -15,9 +15,9 @@ test('actual local authorization startup loads its directory and projects origin
   const mainFile=fileURLToPath(new URL('../electron/main.js',import.meta.url)),source=readFileSync(mainFile,'utf8');
   const ast=ts.createSourceFile(mainFile,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS),functions=new Map();
   for(const node of ast.statements)if(ts.isFunctionDeclaration(node)&&['syncCapabilities','initializeLocalAuthorizationControlPlane',
-    'syncRuntimeSnapshots','pumpEvents','applyEvent','refresh','clearInactiveTaskExitWarning','observeTextTaskOutput'].includes(node.name?.text))
+    'syncRuntimeSnapshots','pumpEvents','applyEvent','refresh','clearInactiveTaskExitWarning','observeTaskConflict','observeTextTaskOutput'].includes(node.name?.text))
     functions.set(node.name.text,node.getText(ast));
-  assert.equal(functions.size,8);
+  assert.equal(functions.size,9);
   const base=resolve('.cache/capability-startup-tests');mkdirSync(base,{recursive:true});
   const database=join(mkdtempSync(join(base,'run-')),'runtime.sqlite');let executions=0;const polls=[],loadedSurfaces=[];
   const schema={type:'object',additionalProperties:false,properties:{}},descriptor={name:'synthetic.authorization',version:'1.0.0',
@@ -28,7 +28,7 @@ test('actual local authorization startup loads its directory and projects origin
     runtimeClosed:false,eventBusy:false,taskReadbackAt:0,eventPoll:undefined,eventSubscriptionConnection:undefined,eventThroughSequence:undefined,eventContinuation:undefined,
     tasks:new Map(),approvals:new Map(),notifications:new Map(),terminalTaskStates:new Set(['succeeded','failed','cancelled']),runtimeError:'',
     historyPages:{clear(){loadedSurfaces.length=0;},load(surface){loadedSurfaces.push(surface);}},
-    rememberTaskGoal(){},fakeMode:false,connectorChangeHost:undefined,harnessEventsHost:undefined,
+    rememberTaskGoal(){},fakeMode:false,competitionMode:false,connectorChangeHost:undefined,harnessEventsHost:undefined,
     conversationDelivery:createConversationDelivery(new Set()),liveVoice:undefined,
     p5DeviceTelemetrySubscription:undefined,syntheticRepairHost:undefined,repairCandidateVersion:undefined,
     dispatchKnowledgeFeedCheckTask(){},dispatchKnowledgeRecheckTask(){},structuredClone,setImmediate,

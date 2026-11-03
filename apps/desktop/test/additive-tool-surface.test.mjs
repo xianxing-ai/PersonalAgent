@@ -12,9 +12,9 @@ import {
   createDesktopAsyncSubagentTools,
   createLoopbackRunnerTransport,
   createMemoryRunnerSecrets,
-  createRemoteRunnerService,
   createRuntimeApplication,
 } from '@personal-agent/runtime/application';
+import {createSyntheticRemoteRunnerService as createRemoteRunnerService} from '../../../tests/helpers/synthetic-remote-runner.mjs';
 import {handleRunnerJob} from '../../../scripts/remote-runner/remote-runner-service.mjs';
 
 const privateKey = '-----BEGIN OPENSSH PRIVATE KEY-----\nfixture-key\n-----END OPENSSH PRIVATE KEY-----';
@@ -65,7 +65,7 @@ test('every additive tool is on the model-visible surface and hidden from child 
   app.close();
 });
 
-test('a finished remote child is posted into the parent conversation once', async () => {
+test('a finished remote child is posted into the parent conversation once', {timeout: 10_000}, async () => {
   const runtime = new TaskRuntime(':memory:');
   const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '主对话', idempotencyKey: 'report-parent'});
   const state = {version: 1, jobs: {}, cursors: {}, comments: {}, recent: []};
@@ -78,16 +78,18 @@ test('a finished remote child is posted into the parent conversation once', asyn
   await pool.tools.find(tool => tool.descriptor.name === 'runner.host.confirm').execute({proposalId: drafted.proposalId, digest: drafted.digest, summary: drafted.summary}, context(parent.taskId));
   const conversations = new Conversations();
   conversations.create('panel', '另一对话');
+  let reportDelivered;
+  const reported = new Promise(resolve => {reportDelivered = resolve;});
   const runtimeModule = await import('@personal-agent/runtime/application');
   const host = createAsyncSubagentHost({runtimeModule, getRuntime: () => runtime,
     getRemoteSubmit: () => pool,
     subagentOptions: {competitionOnly: true, getRuntime: () => runtime,
       getTools: () => ({list: () => [], invoke: async () => ({})}),
       runDefaultWorker: async () => ({resultSummary: '不应走本地'})},
-    deliverReport: report => deliverSubagentReport(conversations, report)});
+    deliverReport: report => {deliverSubagentReport(conversations, report); reportDelivered();}});
   await host.tools.find(tool => tool.descriptor.name === 'subagent.spawn').execute({subtasks: [{subtaskId: 'notes', role: 'researcher', goal: '写说明'}]}, context(parent.taskId));
   await host.pump();
-  await new Promise(resolve => setImmediate(resolve));
+  await reported;
   await host.pump();
   const messages = [...conversations.messages.values()];
   assert.equal(messages.length, 1);

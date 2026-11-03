@@ -30,6 +30,10 @@
 
 ## 明确保留的限制
 
+2026-11-03 CI 修复：已合入 #535 `ac644408` 的公共执行世代及测试夹具修复。#534 的远端完成测试改为等待原终态报告，恢复测试等待 worker 完成后关闭数据库；Desktop 远端夹具复用显式 Fake 出机宿主。对话测试分别断言非法 surface 和合法 surface 的会话归属错误，并在失败路径关闭 SQLite，避免 Windows 清理错误遮住原断言。
+
+Coordination 与 Runtime 类型构建通过。五项定向测试均取得通过证据（首轮 4/5，定位并修复原对话断言后仅重跑该项 1/1）；日志 `.cache/pr534-four-ci-fixes.log`、`.cache/pr534-conversation-fixed.log`。未重复 #535 已通过的本地测试，整套必需检查由最新提交的 CI 执行。
+
 - Main 不给后台 duty poll 注入 remoteSubmit：现有 watch 没有可验证的原用户 task/run 生命周期，不能以 host.enabled、token 或 comment 开关代替数据出机授权。自动远端值班未接通；原本地轮询与显式评论消费已接通。
 - running/waiting 子任务的 instruct 继续明确不支持；只有尚未开工的原 child 可接受追加指令。未知远端执行不能通过新 epoch 重放。
 - 未运行真实 SSH、GitHub 写入或新增 AgentArts 验收；受保护 CI 与 PR 合并由根继续处理。本记录不声明 #534 全部功能或真实服务验收完成。

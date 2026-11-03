@@ -29,12 +29,13 @@ async function terminal(application,id) {
   }
   throw Error('Synthetic task did not settle');
 }
-async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,onTaskCallback=()=>{},largeScope=false}={}) {
+async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,repairProtocolOnly=false,onTaskCallback=()=>{},largeScope=false}={}) {
   const root=fileURLToPath(new URL('../../../.cache/desktop-goal-cognition/',import.meta.url));
   await mkdir(root,{recursive:true});const directory=await mkdtemp(path.join(root,'case-'));
   let host,layaCalls=0,goalWrites=0,updateCalls=0,releaseFetch,time=Date.now(),unavailable=unavailableInitially;const sent=[],announced=[];
   const application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+    ...(repairProtocolOnly?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json'}:{}),
     ...(controlledRepair?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json',localRepair:{graphNamespace:namespace,bindingVersion:'desktop-reviewed-execution-v1',
       withSourceLock:async work=>work(),reviewedSource:{resolve:input=>{
         const prepared=host.readPreparedRepair(input.sourceTaskId);return prepared?.kind==='prepared' && prepared.binding.reviewTaskId===input.reviewTaskId?prepared:undefined;
@@ -52,7 +53,7 @@ async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCred
       const context=controlledRepair?JSON.parse(payload.query.slice(payload.query.lastIndexOf('\n')+1)).repairContext:undefined;
       const text=context?JSON.stringify({kind:'repair_candidate',candidateVersion:'1.0',
         candidate:{expectedGraphRevision:context.expectedGraphRevision,changes:context.targets.map(item=>({node:item.node,
-          summary:item.summary,reason:'Synthetic semantic review of selected dependency change',dependencies:item.requestedDependencies}))}}):'合成规划已接收';
+          summary:item.summary,reason:'Synthetic semantic review of selected dependency change',dependencies:item.requestedDependencies}))}}):repairProtocolOnly?JSON.stringify({kind:'text',text:'合成规划已接收'}):'合成规划已接收';
       return new Response(JSON.stringify({event:'message',data:{text,index:0}}),
         {headers:{'content-type':'application/json'}});
     }}));
@@ -395,7 +396,7 @@ test('a selected strategy must still match the offered candidate and host bindin
 });
 
 test('a structured cloud repair translates only this selected scope and preserves private source omission',async t=>{
-  const f=await fixture(t);
+  const f=await fixture(t,{repairProtocolOnly:true});
   f.host().configure({enabled:true,cloudAllowed:true});await f.host().tick();
   const taskId=f.announced[0].taskId;await terminal(f.application,taskId);
   const binding=f.host().readRepairBinding(taskId);assert.ok(binding);

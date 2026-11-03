@@ -147,14 +147,14 @@ test('unverified cloud proposal cannot export a local tool result', async () => 
   await mkdir(base, {recursive: true});
   const directory = await mkdtemp(new URL('case-', base));
   let executions = 0;
-  const port = new FakeCoordinationPort(() => ({
+  const port = new FakeCoordinationPort(syntheticCoordinationExecution(() => ({
     kind: 'tool_proposal',
     proposalId: 'proposal-real',
     toolName: 'fixture.echo',
     toolVersion: '1.0.0',
     arguments: {value: 'private'},
     verification: 'unverified',
-  }));
+  })));
   const app = createRuntimeApplication({
     path: directory + '/runtime.sqlite',
     profile: 'huawei_ict_agentarts',

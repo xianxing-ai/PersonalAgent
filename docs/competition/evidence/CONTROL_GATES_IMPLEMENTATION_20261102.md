@@ -45,6 +45,17 @@ Owned 与主动工作流的 advance 同样绑定宿主固定世代；只读能�
 - 从旧工作树移入 business-workflow-main、F04、F05 Main、F21、F25、private-memory-render 六个既有 Fake 环境/Windows canonical path 修复，保留当前世代包装；本轮未重复执行这六个已验夹具。根任务单独复验 AgentArts controls 1/1 通过。
 - F19 夹具补齐异步完整发布预览、原 task/run/参数摘要与 Policy 批准校验。初次两代表均在共用 F15 夹具固定 60 秒期限超时；持久记录确认发布及原生回归已成功，不是漏接端口。仅让显式 Fake 可使用已有 `options.deadline`，F19 在提交前一次设置 120 秒绝对期限，未给期限的 Fake 仍默认 60 秒，真实路径不变且运行中不续期。生产 Git 并发尝试已撤回，并重编 coding-tools 恢复串行产物；随后只复验完整 configured 关闭正向和 changed close response readback 磁盘重启拒绝两例，2/2 通过（76.016 秒、73.474 秒）。原状态、完整内容、单次 PATCH 和重启不重放断言均保留；该结果是本地真实 Git/文件与明确 Fake 远端验收，不是真实 GitHub。
 
+## 2026-11-03 当前 CI 失败修复
+
+针对 `7a48ce19` 的 Foundation `41460612550` Windows 失败日志逐项处理，保留实际来源、Policy、未知结果和隐私断言。修复提交截至 `18318f9e`，完整必需 CI 尚待新提交读回；本节不是云端验收记录。
+
+- 生产修复：载荷最终拒绝归类为 `export_guard/UNAUTHORIZED`，消费非同步 guard 的拒绝，仍在 HTTP/WSS 发送前停止；执行容量通过现有完整 Coordination 解析器校验携带世代的原回执；F03/F12 原生提案与其后续回执绑定同一子任务世代；纯本地决策取消仅认可精确 `task.cancel/stop` 世代回执，带云意图的任务即使取消也保持待核实。
+- 测试接线：VM 使用当前 Main 原函数；显式 Fake 回显原请求世代，实际发送计数移到传输边界；F05 保留原调用 context，主动 HTTP 区分无世代 describe 与有世代执行信封；F10/F28 补显式测试载荷门禁。备份擦除测试复用明确已确认范围，真实两回合规则仍由独立 deletion-operation-policy 测试约束。F27 普通背景夹具去除必须逐字保留的禁止句，保留来源变化与私有内容不导出的断言。
+- 定向结果：原生 F03/F12 4/4、本地取消及带云意图的取消/非取消 3/3、容量/渐进执行 40/40、WSS 原调用恢复 4/4、委派目录与发送计数 42/42、最终 guard 21/21 与适配器边界 7/7 通过。F05、原图来源、邮件复核、工具导出、旧运行重放，以及其余日志列出的 Desktop 失败均已取得对应定向通过结果；首次批次超时后只继续未完成及失败场景，未重跑已通过项。
+- 按当前依赖产物构建 Coordination 与 Runtime TypeScript 通过，`git diff --check` 通过。此批未重复全仓本地测试或 Electron 目视流程；推送后由当前提交的必需 CI 执行整仓检查，未读回前不能宣称其通过。
+
 ## 尚未证明的边界
+
+后续 Foundation `41596366388` 与 #534 的 `41597498898` 均已越过前述失败，剩余相同的 17 个 `remote-mcp-competition` 集成失败。三处显式 Fake Coordination 回执复用既有 `syntheticCoordinationExecution` 回显原请求世代；原授权卡、拒绝、取消、目录变更、结果未知及私有结果拦截断言均保留。该文件定向执行 19/19 通过，日志 `.cache/pr535-remote-mcp-epoch.log`；这是本地原 Runtime/Desktop 消费链加 Fake MCP 服务，不是真实云验收。
 
 未部署包含这些变更的新云镜像，未完成真实麦克风/扬声器、真实云端整图、独立人工审核或关机后持续运行验收；不提升接口冻结等级。技术 CI 和非作者审核依然是合并门槛，#531 的真实验收条件不被这份本地记录替代。

@@ -108,7 +108,7 @@ test('actual AgentArts adapter rechecks copied lease before HTTP and accepts no 
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json'}, {read:async()=> 'Bearer fixture'},async(_url,init)=>{
       sends++;const wire=JSON.parse(init.body);assert.equal(typeof wire.query,'string');assert.match(wire.query,/PUBLIC_HEADER_ONLY/);
       assert.equal(wire.query.includes('workspace.'),false);
-      return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify({kind:'text',text:JSON.stringify(answer)})}}),
+      return new Response(JSON.stringify({event:'message',data:{text:syntheticAgentArtsResult(wire,{kind:'text',text:JSON.stringify(answer)})}}),
         {headers:{'content-type':'application/json'}});
     },request=>f.app.assertCompetitionExportAllowed(request),()=>{throw Error('No catalog permitted');});
   // The original injected port is immutable to application code; its fixture delegate selects the real adapter.

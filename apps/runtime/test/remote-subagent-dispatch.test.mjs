@@ -42,19 +42,22 @@ function hostOptions(runtime, extra = {}) {
     ...extra};
 }
 
-test('spawn dispatches through the loopback host and reports completion once', async () => {
+test('spawn dispatches through the loopback host and reports completion once', {timeout: 10_000}, async () => {
   const runtime = new TaskRuntime(':memory:');
   const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '主对话', idempotencyKey: 'remote-parent'});
   const {pool, state} = poolFor(runtime, undefined, {modelCommand: {command: ['agent', '--once'], timeoutMs: 1000},
     spawnImpl: async ({input}) => ({code: 0, stdout: `写完了 ${input}`, stderr: ''})});
   await addHost(pool, parent.taskId);
   const reports = [];
+  let reportDelivered;
+  const reported = new Promise(resolve => {reportDelivered = resolve;});
   const controller = createDesktopAsyncSubagentTools({...hostOptions(runtime),
     startChild: createRemoteAwareSubagentStarter({host: hostOptions(runtime), getRemote: () => pool}),
-    onReport: report => reports.push(report),
+    onReport: report => {reports.push(report); reportDelivered();},
     verifyUnknownWrite: async () => 'not_applied'});
   await controller.tools.find(tool => tool.descriptor.name === 'subagent.spawn').execute({subtasks: [{subtaskId: 'notes', role: 'researcher', goal: '写说明'}]}, context(parent.taskId));
   await controller.pump();
+  await reported;
   const child = runtime.findTaskByIdempotencyKey(`subagent-dispatch-${parent.taskId}-notes`);
   assert.equal(child.state, 'succeeded');
   assert.match(child.resultSummary, /写完了 写说明/);

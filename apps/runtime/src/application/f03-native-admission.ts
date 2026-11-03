@@ -53,12 +53,14 @@ export function f03MailReviewPort(runtime:TaskRuntime,port:CoordinationPort,chil
     toolName:frozen.descriptor.name,toolVersion:frozen.descriptor.version,arguments:structuredClone(frozen.arguments),verification:'unverified'};
   return {execute:async request=>{
     const child=current();
+    runtime.assertExecutionEpoch(childTaskId,request.executionEpoch!);
+    const boundProposal={...proposal,executionEpoch:request.executionEpoch!};
     if(request.taskId!==childTaskId||request.goal!==child.goal||request.deadline!==frozen.deadline||request.signal.aborted)
       throw new ProtocolError('UNAUTHORIZED','Native F03 invocation is outside its original child');
-    if(request.continuation===undefined)return structuredClone(proposal);
+    if(request.continuation===undefined)return structuredClone(boundProposal);
     const loop=runtime.loadCheckpoint(childTaskId,'competition-loop') as {receipts?:{
       proposal:CoordinationToolProposalResult;continuation:unknown;workerRevision?:number}[]}|undefined;
-    if(loop?.receipts?.length!==1||!isDeepStrictEqual(loop.receipts[0]!.proposal,proposal)
+    if(loop?.receipts?.length!==1||!isDeepStrictEqual(loop.receipts[0]!.proposal,boundProposal)
       ||!isDeepStrictEqual(loop.receipts[0]!.continuation,request.continuation)||request.continuation.state!=='confirmed'
       ||!Number.isSafeInteger(loop.receipts[0]!.workerRevision))
       throw new ProtocolError('UNAUTHORIZED','Native F03 summary requires its original confirmed graph');
