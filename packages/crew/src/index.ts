@@ -27,3 +27,15 @@ export {
   type CrewReceiptStatus,
 } from './receipts.js';
 export {CrewError, type CrewErrorCode} from './errors.js';
+export {
+  CrewKernel,
+  openCrewKernel,
+  type CrewAgentSummary,
+  type CrewKernelOptions,
+  type CrewKernelDispatchInput,
+  type CrewKernelGetTaskInput,
+  type CrewKernelListTasksInput,
+  type CrewKernelInterruptInput,
+  type CrewKernelReceiptInput,
+  type CrewKernelReplyInput,
+} from './kernel.js';

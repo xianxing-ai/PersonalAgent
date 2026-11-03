@@ -546,6 +546,15 @@ export class CrewStore {
     });
   }
 
+  /** 按消息 id 读取单条消息（含已消费的）；不存在时返回 undefined。供可信宿主与内核做回复路由。 */
+  getMessage(messageId: number): CrewMessageRecord | undefined {
+    if (!Number.isInteger(messageId) || messageId < 1) {
+      throw new CrewError('INVALID_INPUT', 'messageId must be a positive integer');
+    }
+    const row = this.db.prepare('SELECT message_id, mailbox_agent_id, sender_agent_id, kind, parent_request_id, root_request_id, task_id, text, attachment_refs_json, expects_reply, hop, pure_ack, enqueued_at, dequeued_at FROM crew_messages WHERE message_id = ?').get(messageId) as MessageRow | undefined;
+    return row ? messageRecord(row) : undefined;
+  }
+
   /**
    * 按 FIFO 读取信箱中未消费的消息；dequeue 为 true 时在读取的同一事务内
    * 标记已消费（保留行与 dequeued_at 供审计）。未消费消息跨重启保留。
