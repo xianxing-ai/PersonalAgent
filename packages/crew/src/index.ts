@@ -15,7 +15,11 @@ export {
   type CrewMessageRecord,
   type CrewMessageKind,
   type CrewDriverId,
+  type CrewHandoffRegistration,
+  type CrewHandoffRecord,
+  type CrewParentNotificationRecord,
 } from './store.js';
+export {MAX_HANDOFF_FILE_BYTES} from './handoff.js';
 export {
   parseCrewReceipt,
   isPureAcknowledgement,
@@ -39,4 +43,9 @@ export {
   type CrewKernelInterruptInput,
   type CrewKernelReceiptInput,
   type CrewKernelReplyInput,
+  type CrewWorkspaceInfo,
+  type CrewHandoffDelivery,
+  type CrewKernelWorkspaceInput,
+  type CrewKernelResolveWorkspacePathInput,
+  type CrewKernelPublishHandoffInput,
 } from './kernel.js';
