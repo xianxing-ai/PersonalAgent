@@ -25,6 +25,7 @@ export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
 export * from './pinned-version-readonly.js';
 export * from './ordinary-competition-sampling.js';
+export * from './ordinary-competition-sampling-summary.js';
 export * from './platform-evaluation-binding.js';
 export * from './owned-image-build.js';
 export * from './workflow-voice-final-transcript.js';
