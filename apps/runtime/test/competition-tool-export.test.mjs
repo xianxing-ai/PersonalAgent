@@ -207,12 +207,12 @@ test('async native preparation separates unexecuted preflight from confirmed pro
   let f;
   f = await fixture(t, {prepareCompetitionToolExport: async input => {
     phases.push(input.phase);
-    assert.deepEqual(input.proposal, proposal);
+    assert.deepEqual(input.proposal, {...proposal,executionEpoch:f.app.runtime.readExecutionEpoch(input.taskId)});
     assert.equal(input.signal.aborted, false);
     await Promise.resolve();
     if (input.phase === 'projection') {
       const loop = f.app.runtime.loadCheckpoint(input.taskId, 'competition-loop');
-      assert.deepEqual(loop.pending, proposal);
+      assert.deepEqual(loop.pending, input.proposal);
       const record = f.app.runtime.readToolExecutions(input.taskId)[0];
       assert.equal(record.state, 'confirmed');
       assert.equal(record.policyDecision, 'allow');
