@@ -297,8 +297,14 @@ export class CodexAppServerDriver implements CrewDriver {
     this.sessionIdPrefix = options.sessionIdPrefix ?? 'codex-session';
   }
 
-  /** 探测官方 CLI 是否安装：spawn `codex --version`，ENOENT/非零/超时都明确 unavailable。 */
+  /** 探测官方 CLI 是否安装：先过同意门（无同意不 spawn），再 `codex --version`；ENOENT/非零/超时都明确 unavailable。 */
   async probe(): Promise<CrewDriverProbe> {
+    // F11：探测也不得在无同意时拉起 CLI——无同意返回 unavailable 而不是 spawn。
+    try {
+      this.consent.requireGranted(CODEX_DRIVER_ID);
+    } catch (error) {
+      return {status: 'unavailable', reason: `未获用户同意，不探测官方 CLI：${error instanceof Error ? error.message : String(error)}`};
+    }
     const attempt = this.spawnImpl(this.command, ['--version'], {cwd: process.cwd()});
     const timeout = setTimeout(() => attempt.kill('SIGKILL'), this.requestTimeoutMs);
     try {

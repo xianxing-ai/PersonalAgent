@@ -135,3 +135,20 @@ test('F6: an error notification with an authorization header never leaks into th
     assert.ok(!JSON.stringify(stored.receipt).includes('FAKE-BEARER-777'));
   } finally { runtime.close(); }
 });
+
+test('F11: probe does not spawn the CLI when the user has not granted consent', async () => {
+  const {spawn, servers} = scriptedSpawn({});
+  let spawns = 0;
+  const countingSpawn = (command, args, options) => { spawns += 1; return spawn(command, args, options); };
+  const {runtime} = open({codexSpawn: countingSpawn});
+  try {
+    setup(runtime);
+    runtime.revokeConsent('codex', '撤销检查');
+    const driver = runtime.drivers.codex;
+    const probe = await driver.probe();
+    assert.equal(probe.status, 'unavailable', 'no consent means no probe spawn');
+    assert.ok((probe.reason ?? '').includes('同意'), 'the reason explains the consent gate');
+    assert.equal(spawns, 0, 'no process was spawned without consent');
+    assert.equal(servers.length, 0);
+  } finally { runtime.close(); }
+});
