@@ -76,6 +76,7 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
+import {createVoiceSessionFinalHost} from './voice-session-final-host.js';
 import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
@@ -435,7 +436,7 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, voiceSessionFinalHost, proactiveWorkflowApplication;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -2131,7 +2132,7 @@ async function initializeRuntime() {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,
-          getVoiceHost:()=>liveVoice,onUpdate: publish});
+          getVoiceHost:()=>liveVoice,verifyVoiceFinal:command=>voiceSessionFinalHost?.verifyVoiceCommand(command)===true,onUpdate: publish});
       }
       goalHost = createGoalHost(namespace);
       if (!syntheticMvp && calendarConfig) {
@@ -5153,7 +5154,21 @@ function registerLiveShortcut() {
 async function initializeLiveVoice() {
   if (!competitionMode || !client) return;
   const {createVoicePcmFrameSourcePort, createRuntimeClientTranscriptConsumer} = await import('@personal-agent/voice');
+  if (notificationApplicationHost && !voiceSessionFinalHost) {
+    voiceSessionFinalHost = createVoiceSessionFinalHost({
+      readSession: () => liveVoice?.readSessionBinding?.() ?? null,
+      readPolicy: () => {
+        const snapshot = notificationApplicationHost.snapshot({kind: 'global'});
+        const policy = snapshot?.available ? snapshot.policy : null;
+        if (!policy || !Number.isSafeInteger(policy.revision)) return null;
+        return {revision: policy.revision, state: policy.state, local: policy.local ?? null};
+      },
+      configureSettings: (settings, authority) => notificationApplicationHost.configureSettings(settings, authority),
+    });
+  }
   liveVoice = createLiveVoiceHost({getPanel: () => panel, config: liveConfig, microphoneHost: microphoneCaptureHost,
+    readControlRevision: () => notificationApplicationHost?.snapshot({kind: 'global'})?.policy?.revision,
+    onSessionFinal: receipt => voiceSessionFinalHost?.consumeFinal(receipt),
     createSource: () => createVoicePcmFrameSourcePort(microphoneCaptureHost.binding),
     createGateway: config => runtimeApplication.createLiveVoiceModel(config),
     createConsumer: createRuntimeClientTranscriptConsumer, client, onUpdate: publish,
