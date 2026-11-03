@@ -18,17 +18,20 @@ async function settle(app) {
   for (let index = 0; index < 200 && app.activeTaskCount; index += 1) await new Promise(resolve => setTimeout(resolve, 5));
 }
 
-test('the main tool loop keeps per-action approval until a repository is enrolled, and irreversible actions still ask', async () => {
+test('repository enrollment cannot override required per-action confirmation', async () => {
   const session = createDeveloperDirectionSession({now: () => Date.parse('2026-11-03T00:00:00.000Z')});
   let questions = 0;
   let comments = 0;
   let merges = 0;
+  let localWrites = 0;
+  const local = {...comment, name: 'git.commit', sideEffect: 'local_write'};
   const app = createRuntimeApplication({path: ':memory:', profile: 'huawei_ict_agentarts', hostUserNamespace: 'direction-fixture',
     tools: [
       {descriptor: comment, execute: async () => {comments += 1; return {};}},
       {descriptor: merge, execute: async () => {merges += 1; return {};}},
+      {descriptor: local, execute: async () => {localWrites += 1; return {};}},
     ],
-    requiresToolAuthorization: () => true,
+    requiresToolAuthorization: scope => scope.toolName !== local.name,
     requestToolAuthorization: async () => {questions += 1; return 'deny';},
     standingAutonomy: input => standingDecisionForTool(session, input)});
   try {
@@ -42,16 +45,22 @@ test('the main tool loop keeps per-action approval until a repository is enrolle
     const allowed = app.submitHostToolTask({commandId: 'comment-enrolled', toolName: comment.name, toolVersion: comment.version,
       arguments: {repo: 'octo/repo', branch: 'agent/fix', body: 'status'}, deadline: deadline()});
     await settle(app);
-    assert.equal(questions, 1);
-    assert.equal(comments, 1);
-    assert.equal(app.runtime.getTask(allowed.task.taskId).state, 'succeeded');
-    assert.ok(app.runtime.listCheckpointKeys(allowed.task.taskId).some(key => key.startsWith('standing-autonomy-audit:')));
+    assert.equal(questions, 2);
+    assert.equal(comments, 0);
+    assert.notEqual(app.runtime.getTask(allowed.task.taskId).state, 'succeeded');
+    assert.equal(app.runtime.listCheckpointKeys(allowed.task.taskId).some(key => key.startsWith('standing-autonomy-audit:')), false);
     const irreversible = app.submitHostToolTask({commandId: 'merge-enrolled', toolName: merge.name, toolVersion: merge.version,
       arguments: {repo: 'octo/repo', branch: 'agent/fix', action: 'merge'}, deadline: deadline()});
     await settle(app);
-    assert.equal(questions, 2);
+    assert.equal(questions, 3);
     assert.equal(merges, 0);
     assert.notEqual(app.runtime.getTask(irreversible.task.taskId).state, 'succeeded');
+    const routine = app.submitHostToolTask({commandId: 'local-enrolled', toolName: local.name, toolVersion: local.version,
+      arguments: {repo: 'octo/repo', branch: 'agent/fix', body: 'local change'}, deadline: deadline()});
+    await settle(app);
+    assert.equal(questions, 3);
+    assert.equal(localWrites, 1);
+    assert.equal(app.runtime.getTask(routine.task.taskId).state, 'succeeded');
   } finally {app.close();}
 });
 

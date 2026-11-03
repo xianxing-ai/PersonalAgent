@@ -117,7 +117,7 @@ test('memory and node git worktrees run recipes and yield when the human moves t
   } finally {rmSync(root, {recursive: true, force: true});}
 });
 
-test('automatic duty comments write through the controlled port and still require authorization by default', async () => {
+test('duty polling keeps complete comment content pending even when legacy automatic options are supplied', async () => {
   const runtime = new TaskRuntime(':memory:');
   const parent = runtime.submitTask({conversationId: 'desktop-panel', goal: '主对话', idempotencyKey: 'duty-parent'});
   const seen = [];
@@ -129,11 +129,12 @@ test('automatic duty comments write through the controlled port and still requir
   await tools.find(tool => tool.descriptor.name === 'duty.watch').execute({repo: 'octo/repo'}, context(parent.taskId));
   await tools.find(tool => tool.descriptor.name === 'duty.policy.set').execute({repo: 'octo/repo', allowed: true, comment: true}, context(parent.taskId));
   const page = await poll();
-  assert.equal(page[0].comment, true);
+  assert.notEqual(page[0].comment, true);
+  assert.equal(page[0].reason, 'comment requires ToolGateway content authorization');
   assert.equal(seen.length, 1);
   const owner = runtime.findTaskByIdempotencyKey('developer-duty-registry:v1');
   const stored = runtime.loadCheckpoint(owner.taskId, 'developer-duty-fixture-comments:v1');
-  assert.equal(stored.items.length, 1);
+  assert.equal(stored?.items?.length ?? 0, 0);
   runtime.close();
 });
 

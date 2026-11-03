@@ -1011,8 +1011,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             && this.runtime.matchesToolExecutionInput(record, {arguments: invocation.arguments as Record<string, unknown>, scopeRef: ref}));
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
         let routineSource: 'trusted-routine-tool-policy' | 'standing-autonomy' = 'trusted-routine-tool-policy';
-        if(options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
-          toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
+        const authorizationRequired=options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
+          toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal});
+        if(authorizationRequired)routineEligible=false;
         if (routineEligible && tool.name === 'cognition.commit_repair') {
           const intent = this.runtime.loadCheckpoint(invocation.taskId, LOCAL_REPAIR_CHECKPOINT) as
             {sourceKind?: string; sourceTaskId: string; reviewTaskId: string; binding: unknown} | undefined;
@@ -1020,7 +1021,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           routineEligible = prepared?.kind === 'prepared' && isDeepStrictEqual(prepared.binding, intent?.binding)
             && isDeepStrictEqual(invocation.arguments, {intentDigest: toolArgumentsDigest(intent!)});
         }
-        if (!routineEligible && options.standingAutonomy) {
+        if (!routineEligible && !authorizationRequired && options.standingAutonomy) {
           const standing = options.standingAutonomy({taskId:invocation.taskId,toolName:tool.name,toolVersion:tool.version,
             sideEffect:tool.sideEffect,arguments:invocation.arguments});
           if (standingRoutineAllowed({sideEffect:tool.sideEffect,requiresPresence:tool.requiresPresence===true,decision:standing})) {

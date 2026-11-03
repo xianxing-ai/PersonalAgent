@@ -1,7 +1,7 @@
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext} from '@personal-agent/contracts';
-import {DUTY_STATUS_MARKER, buildPersonalView, classifyCiFailure, commentWriteAvailable, defaultRepoDutyPolicy, planStatusComment, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
+import {DUTY_STATUS_MARKER, buildPersonalView, classifyCiFailure, defaultRepoDutyPolicy, planStatusComment, type DutyCursor, type DutyPollPage, type RepoDutyPolicy} from '@personal-agent/github';
 import type {TaskRuntime} from '../index.js';
 import {readCanonicalUserWorkParent} from './user-task-delegation.js';
 import {commitDeveloperDutyStatusComment, commitPullRequestDutyComment, dutyPullCommentBody, ingestDeveloperDutyPoll, queueDeveloperDutyNotification, type DeveloperDutyPorts} from './developer-duty.js';
@@ -36,9 +36,6 @@ export interface DeveloperDutyToolOptions {
   useFixtureComments?: boolean;
   now?: () => number;
   onNotify?: (notice: {channel: 'f12'; delivered: boolean; duplicate: boolean; summary: string; dedupeKey: string}) => void;
-  /** 只有显式打开时，可逆自主授权才会让受控评论端口真正写入。默认仍只保存意图。 */
-  automaticComments?: boolean;
-  autonomyForComment?: (repo: string) => {allow: boolean; mode: string; risk: string} | undefined;
   onEvents?: (repo: string, events: readonly {deliveryId?: string; id?: string; headSha?: string; number?: number}[]) => Promise<void> | void;
   submitRemote?: (job: {kind: 'developer-duty'; idempotencyKey: string; taskId: string; repo: string; payload: Record<string, unknown>}) => Promise<{location: string; reason: string; receipt: Record<string, unknown>}>;
 }
@@ -126,12 +123,10 @@ export function createDeveloperDutyTools(options: DeveloperDutyToolOptions): {to
           const intent: CommentIntent = {repo, number, body: `${DUTY_STATUS_MARKER}\n${body.trim()}`,
             action: plan.action === 'edit' ? 'edit' : 'create', ...(plan.commentId === undefined ? {} : {commentId: plan.commentId}),
             state: 'requires_authorization', ...(source ? {source} : {})};
-          const autonomy = options.autonomyForComment?.(repo);
-          const writeAvailable = options.automaticComments === true && commentWriteAvailable({policyComment: policy.comment, ...(autonomy ? {autonomy} : {})});
           try {
-            await commitIntent(intent, {...ports, writeAvailable, listComments: async () => existing});
+            await commitIntent(intent, {...ports, writeAvailable: false, listComments: async () => existing});
             saveIntent({...intent, state: 'confirmed'});
-            return {wrote: writeAvailable};
+            return {wrote: false};
           } catch (error) {
             if (error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN') return {wrote: false, reason: 'comment result requires readback'};
             if (!(error instanceof ProtocolError) || error.code !== 'UNSUPPORTED_CAPABILITY') throw error;

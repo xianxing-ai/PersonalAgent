@@ -28,7 +28,7 @@
 
 `act_reversible` 自动放行读和已标成可逆的写入。`act_all_but_irreversible` 在此之上把未知外部写入也当成可逆，但不可逆名单和“需要在场”的工具仍然要人确认。
 
-主对话的 `createAgentArtsRuntimeApplication` 传入 `standingAutonomy`。参数里没有仓库，或该仓库没有常驻授权时，回调返回空，工具循环保持逐次授权。已登记仓库按级别决策。不可逆动作即使已登记也不自动放行。自动放行仍签发原来的 `maxUses: 1` grant，并绑定这次参数摘要；审计检查点是 `standing-autonomy-audit:<runId>`。
+主对话的 `createAgentArtsRuntimeApplication` 传入 `standingAutonomy`。参数里没有仓库，或该仓库没有常驻授权时，回调返回空，工具循环保持逐次授权。已登记仓库按级别决策，但不能覆盖可信宿主的 `requiresToolAuthorization`；完整内容确认、不可逆动作和在场要求仍有效。自动放行仍签发原来的 `maxUses: 1` grant，并绑定这次参数摘要；审计检查点是 `standing-autonomy-audit:<runId>`。
 
 预算降模只有在会话显式带上主网关和备用网关时才会调用备用 `ModelGateway`。没配备用网关时，超支仍只暂停，不改模型。任务上下文会读旧的 `developer-experience` 已激活配方；系统通知不可用时，通知落到桌面内通知列表并记成已投递。
 
@@ -90,7 +90,7 @@
 
 ### 评论、通知、报告
 
-`automaticComments: true` 且 `authorizeDeveloperCall` 对 `duty.comment.publish` 给出可逆自动时，受控评论端口会写入。未登记仓库这条决策是拒绝，仍只存 `requires_authorization`。`applyManagedComment` 负责生成、按状态标记去重、更新已有评论，以及用 DELETE 撤销。`createGitHubCommentHttpPort` 把 `Authorization: Bearer` 和 `X-GitHub-Api-Version` 放到请求里。桌面真实端口的删除同样要过原来的正文断言。不可逆决策不发请求。
+值班轮询只保存完整评论意图为 `requires_authorization`；旧的 `automaticComments` 选项不能触发写入。发布经原 `duty.comment.publish`、ToolGateway、完整内容问题卡和精确出机许可，常驻授权不代答。`applyManagedComment` 保留生成、去重、更新与删除的注入端口，`createGitHubCommentHttpPort` 负责认证 HTTP；这些端口本身不构成授权。桌面真实端口继续核对原任务、正文、目的地和期限。
 
 通知分打断、摘要、静默，按仓库订阅。打断调用桌面通道；通道接受后时间线 `delivered: true` 并带 `evidenceRef`。安静时段里普通通知先进入摘要，需要确认的闸门仍然立即送出。摘要默认一小时最多一条，并受每天上限约束。`deliverElectronNotification` 接受注入的 Notification 端口，不在库里直接依赖 Electron。系统通知不可用时仍落到桌面内列表。默认订阅只有打断。旧 F12 意图仍然 `delivered: false`，新时间线单独记录这次投递。
 
