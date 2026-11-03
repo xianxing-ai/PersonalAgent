@@ -5,12 +5,28 @@ import {createUnavailableCloudPersistentHost} from './cloud-persistent-unavailab
 const KEY='desktop-proactive-workflow-v1';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const text=value=>typeof value==='string'&&!!value.trim();
+const RESERVED_IDS=['__proto__','constructor','prototype'];
+/** Same identity rule as Runtime lifecycleCommand: non-empty, <=256 chars, no prototype-reserved names. */
+const responsibilityIdentity=value=>text(value)&&value.length<=256&&!RESERVED_IDS.includes(value);
+/** Exactly {sourceId,responsibilityId}; plain object only; both identities follow the Runtime rule. */
+function validSourceResponsibilityBinding(value) {
+  if(!value||typeof value!=='object'||Array.isArray(value)
+    ||![Object.prototype,null].includes(Object.getPrototypeOf(value)))return false;
+  const keys=Object.keys(value);
+  return keys.length===2&&keys.every(key=>key==='sourceId'||key==='responsibilityId')
+    &&responsibilityIdentity(value.sourceId)&&responsibilityIdentity(value.responsibilityId);
+}
 
 /** Desktop binds trusted configuration and user commands. The original Runtime owns its worker. */
 export function createDesktopProactiveWorkflowApplication({application,readConfiguration,notificationHost,
   context,bindings,controller,cloudPersistentHost,localDeviceAvailable,resolveUserConversation,onSession=()=>{},
   readPersistedSession,responsibilityLifecycleAuthority,onUpdate=()=>{},createAdapter=createRuntimeProactiveImageAdapter,
   sourceResponsibilityBinding}) {
+  // Only a per-task resolver is accepted: a plain object would apply one binding to every session and make the
+  // Runtime filter out every other responsibility. The resolver runs once in start() and its result is persisted
+  // into the original command binding; bind()/resume never re-evaluate it.
+  if(sourceResponsibilityBinding!==undefined&&typeof sourceResponsibilityBinding!=='function')
+    throw TypeError('sourceResponsibilityBinding must be a per-task resolver function');
   const sessions=new Map(),controls=new Map();
   const publish=()=>{try{onUpdate();}catch{}};
   function configuration() {
@@ -51,8 +67,8 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     const contract=description.contracts.find(value=>value.id===binding.contractRef);
     if(!contract||contract.version!==binding.contractVersion)throw Error('镜像原契约版本不可用');
     const contextPorts=typeof context==='function'?context():context;
-    const sourceBinding = binding.sourceResponsibilityBinding
-      ?? (typeof sourceResponsibilityBinding === 'function' ? sourceResponsibilityBinding(taskId, binding) : sourceResponsibilityBinding);
+    const sourceBinding=binding.sourceResponsibilityBinding;
+    if(sourceBinding!==undefined&&!validSourceResponsibilityBinding(sourceBinding))throw Error('持续工作流来源责任绑定格式无效');
     const host=application.createProactiveWorkflowHost({taskId,sessionId:binding.sessionId,taskDeadline:binding.taskDeadline,
       contractRef:binding.contractRef,advancePort:adapter.advancePort,verifyAdvance:adapter.verifyAdvance,sign:adapter.sign,
       pureAdvance:{kind:'signed_frontier_no_effects'},localDeviceAvailable,
@@ -148,9 +164,7 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
     async start(input,request) {
       if(!input||Object.keys(input).some(key=>!['sourceTaskId','commandId','taskDeadline','sourceResponsibilityBinding'].includes(key))
         ||![input.sourceTaskId,input.commandId,input.taskDeadline].every(text))throw Error('持续工作流需要原指令、命令标识和期限');
-      if(input.sourceResponsibilityBinding!==undefined
-        &&(!input.sourceResponsibilityBinding||typeof input.sourceResponsibilityBinding!=='object'
-          ||!text(input.sourceResponsibilityBinding.sourceId)||!text(input.sourceResponsibilityBinding.responsibilityId)))
+      if(input.sourceResponsibilityBinding!==undefined&&!validSourceResponsibilityBinding(input.sourceResponsibilityBinding))
         throw Error('持续工作流来源责任绑定格式无效');
       const source=application.runtime.getTask(input.sourceTaskId);
       const conversationId=resolveUserConversation?resolveUserConversation(source.taskId):source.conversationId;
@@ -164,14 +178,19 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
       if(!contract)throw Error('镜像没有发布当前持续工作流契约');
       const task=application.runtime.submitTask({goal:source.goal,conversationId,
         idempotencyKey:'desktop-proactive-'+digest(input.commandId)});
+      let sourceBinding=input.sourceResponsibilityBinding;
+      if(sourceBinding===undefined&&sourceResponsibilityBinding){
+        sourceBinding=sourceResponsibilityBinding({taskId:task.taskId,sourceTaskId:source.taskId});
+        if(sourceBinding!==undefined&&!validSourceResponsibilityBinding(sourceBinding))throw Error('持续工作流来源责任绑定格式无效');
+      }
       const binding={version:1,taskId:task.taskId,sessionId:identity.sessionId,sourceTaskId:source.taskId,
         taskDeadline:input.taskDeadline,contractRef:contract.id,contractVersion:contract.version,imageBinding:imageBinding(configured),
-        ...(input.sourceResponsibilityBinding?{sourceResponsibilityBinding:structuredClone(input.sourceResponsibilityBinding)}:{})};
+        ...(sourceBinding?{sourceResponsibilityBinding:{sourceId:sourceBinding.sourceId,responsibilityId:sourceBinding.responsibilityId}}:{})};
       application.runtime.saveCheckpointOnce(task.taskId,KEY,binding);
       if(digest(application.runtime.loadCheckpoint(task.taskId,KEY))!==digest(binding))throw Error('原命令已绑定其他参数');
       const session=await bind(task.taskId,ctx);
       session.host.ingestUserInstruction({sourceTaskId:source.taskId,
-        ...(input.sourceResponsibilityBinding?{responsibilityId:input.sourceResponsibilityBinding.responsibilityId}:{})},ctx);
+        ...(sourceBinding?{responsibilityId:sourceBinding.responsibilityId}:{})},ctx);
       application.startProactiveTask(task.taskId);publish();return {taskId:task.taskId,sessionId:binding.sessionId,accepted:true};
     },
     async resume(taskId,request) {const session=await bind(taskId,request);application.startProactiveTask(taskId);publish();return session.host.binding;},
@@ -185,8 +204,10 @@ export function createDesktopProactiveWorkflowApplication({application,readConfi
         publish();return result;}
       finally{controls.delete(command.commandId);}
     },
-    async instruction(taskId,sourceTaskId,request,responsibilityId) {const session=await bind(taskId,request);
-      return session.host.ingestUserInstruction({sourceTaskId,...(text(responsibilityId)?{responsibilityId}:{})},lifetime(session.binding,request));},
+    async instruction(taskId,sourceTaskId,request,responsibilityId) {
+      if(responsibilityId!==undefined&&!responsibilityIdentity(responsibilityId))throw Error('持续工作流责任标识无效');
+      const session=await bind(taskId,request);
+      return session.host.ingestUserInstruction({sourceTaskId,...(responsibilityId!==undefined?{responsibilityId}:{})},lifetime(session.binding,request));},
     async readResponsibility(target,reference,sourceTaskId,request) {
       const session=await responsibilitySession(target,sourceTaskId,request);
       return {responsibility:session.host.readResponsibility(reference,request),lifecycle:session.host.readResponsibilityLifecycle(reference,request)};

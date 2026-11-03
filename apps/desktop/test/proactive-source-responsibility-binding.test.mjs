@@ -33,7 +33,7 @@ const contract = {
 };
 const capabilities = [{kind: 'retrieve_context', ref: 'fixture.proactive.retrieve_context', location: 'cloud_persistent', effect: 'read'}];
 
-async function createFixture() {
+async function createFixture(fixtureOptions = {}) {
   const cache = resolve('.cache/wiring-20261018/cw03');
   mkdirSync(cache, {recursive: true});
   const folder = mkdtempSync(join(cache, 'source-responsibility-'));
@@ -222,7 +222,8 @@ async function createFixture() {
         },
         verifyAdvance: (res, req) => res.requestId === req.requestId && proofs.verify('advance_result', res, req),
         sign: proofs.sign
-      })
+      }),
+      ...(fixtureOptions.desktopOptions ?? {})
     });
 
     router = createDesktopProactiveConfirmedSourceRouter({
@@ -654,6 +655,120 @@ test('CW-03 duplicate receipt deduplication and SQLite restart preserves binding
     const postRestartRepeat = await f.router.routeConfirmedFeed(input, f.context());
     assert.equal(postRestartRepeat.state, 'already_persisted');
     assert.equal(f.providerCalls(), 1);
+  } finally {
+    f.close();
+  }
+});
+
+test('CW-03 start: custom responsibilityId is bound, persisted and used for routing', async () => {
+  const f = await createFixture();
+  try {
+    const responsibilityId = 'pelican-custom-responsibility';
+    const {taskId: workflowTaskId} = await f.desktopWorkflow.start({
+      sourceTaskId: f.userSourceTask.taskId, commandId: 'cmd-custom-id', taskDeadline: f.deadline,
+      sourceResponsibilityBinding: {sourceId: f.sourceId, responsibilityId}
+    });
+    assert.deepEqual(f.app.runtime.loadCheckpoint(workflowTaskId, 'desktop-proactive-workflow-v1').sourceResponsibilityBinding,
+      {sourceId: f.sourceId, responsibilityId});
+    const session = await f.desktopWorkflow.acquireMaintenance(workflowTaskId, f.context());
+    assert.equal(session.host.readResponsibility({responsibilityId, responsibilityRevision: 1}, f.context()).id, responsibilityId);
+    await f.desktopWorkflow.recordResponsibilityLifecycle({taskId: workflowTaskId, sessionId: session.binding.sessionId}, {
+      commandId: 'activate-custom', responsibilityId, responsibilityRevision: 1, expectedLifecycleRevision: null,
+      action: 'activate', sourceTaskId: f.userSourceTask.taskId, validUntil: f.deadline
+    }, f.context());
+    const feed = await f.readConfirmedFeed('read-custom-id');
+    const routed = await f.router.routeConfirmedFeed({...feed, workflowTaskId}, f.context());
+    assert.notEqual(routed.state, 'unavailable');
+    const entries = Object.values(session.host.inspect().application.state.entries);
+    const connectorEntry = entries.find(e => e.event.entry === 'connector' && e.event.sourceId === f.sourceId);
+    assert.deepEqual(connectorEntry.event.responsibilityRefs, [responsibilityId]);
+  } finally {
+    f.close();
+  }
+});
+
+test('CW-03 start: binding identities follow the Runtime rule and only two keys are accepted', async () => {
+  const f = await createFixture();
+  try {
+    const base = {sourceTaskId: f.userSourceTask.taskId, taskDeadline: f.deadline};
+    const invalid = [
+      {sourceId: f.sourceId, responsibilityId: '__proto__'},
+      {sourceId: f.sourceId, responsibilityId: 'constructor'},
+      {sourceId: f.sourceId, responsibilityId: 'prototype'},
+      {sourceId: '__proto__', responsibilityId: 'ok-id'},
+      {sourceId: f.sourceId, responsibilityId: 'x'.repeat(257)},
+      {sourceId: 'y'.repeat(257), responsibilityId: 'ok-id'},
+      {sourceId: f.sourceId, responsibilityId: 'ok-id', extra: 'smuggled'},
+      {sourceId: f.sourceId},
+      {sourceId: f.sourceId, responsibilityId: '   '},
+      [f.sourceId, 'ok-id'],
+      Object.assign(Object.create({inherited: true}), {sourceId: f.sourceId, responsibilityId: 'ok-id'}),
+      null,
+    ];
+    for (const [index, sourceResponsibilityBinding] of invalid.entries()) {
+      await assert.rejects(f.desktopWorkflow.start({...base, commandId: 'cmd-invalid-' + index, sourceResponsibilityBinding}),
+        /来源责任绑定格式无效/, 'case ' + index);
+    }
+    // __proto__ given as an own JSON key (as an IPC payload would carry it) is rejected too.
+    await assert.rejects(f.desktopWorkflow.start({...base, commandId: 'cmd-invalid-json',
+      sourceResponsibilityBinding: JSON.parse('{"sourceId":"pelican-feed-source","__proto__":{"x":1}}')}), /来源责任绑定格式无效/);
+    const accepted = await f.desktopWorkflow.start({...base, commandId: 'cmd-max-length',
+      sourceResponsibilityBinding: {sourceId: f.sourceId, responsibilityId: 'r'.repeat(256)}});
+    assert.equal(accepted.accepted, true);
+  } finally {
+    f.close();
+  }
+});
+
+test('CW-03 constructor: object form is refused; resolver runs once in start and its result is persisted', async () => {
+  await assert.rejects(async () => createFixture({desktopOptions: {sourceResponsibilityBinding: {sourceId: 'pelican-feed-source', responsibilityId: 'global'}}}),
+    {name: 'TypeError'});
+  const calls = [];
+  let answer = 'resolved-responsibility';
+  const f = await createFixture({desktopOptions: {sourceResponsibilityBinding: input => {
+    calls.push(structuredClone(input));
+    return answer === undefined ? undefined : {sourceId: 'pelican-feed-source', responsibilityId: answer};
+  }}});
+  try {
+    const {taskId} = await f.desktopWorkflow.start({sourceTaskId: f.userSourceTask.taskId, commandId: 'cmd-resolver', taskDeadline: f.deadline});
+    assert.deepEqual(calls, [{taskId, sourceTaskId: f.userSourceTask.taskId}]);
+    assert.deepEqual(f.app.runtime.loadCheckpoint(taskId, 'desktop-proactive-workflow-v1').sourceResponsibilityBinding,
+      {sourceId: 'pelican-feed-source', responsibilityId: 'resolved-responsibility'});
+    const session = await f.desktopWorkflow.acquireMaintenance(taskId, f.context());
+    assert.equal(session.host.readResponsibility({responsibilityId: 'resolved-responsibility', responsibilityRevision: 1}, f.context()).id,
+      'resolved-responsibility');
+    // Restart: the persisted binding is reused; the resolver is not re-evaluated even if it would now answer differently.
+    answer = 'changed-after-restart';
+    f.reopen();
+    await f.desktopWorkflow.resume(taskId, f.context());
+    assert.equal(calls.length, 1);
+    assert.equal(f.app.runtime.loadCheckpoint(taskId, 'desktop-proactive-workflow-v1').sourceResponsibilityBinding.responsibilityId,
+      'resolved-responsibility');
+    // An explicit start binding wins over the resolver; an invalid resolver answer is refused.
+    await f.desktopWorkflow.start({sourceTaskId: f.userSourceTask.taskId, commandId: 'cmd-explicit', taskDeadline: f.deadline,
+      sourceResponsibilityBinding: {sourceId: 'pelican-feed-source', responsibilityId: 'explicit-id'}});
+    assert.equal(calls.length, 1);
+    answer = '__proto__';
+    await assert.rejects(f.desktopWorkflow.start({sourceTaskId: f.userSourceTask.taskId, commandId: 'cmd-bad-resolver', taskDeadline: f.deadline}),
+      /来源责任绑定格式无效/);
+  } finally {
+    f.close();
+  }
+});
+
+test('CW-03 instruction(): optional 4th responsibilityId is validated and registers that responsibility', async () => {
+  const f = await createFixture();
+  try {
+    const {taskId} = await f.desktopWorkflow.start({sourceTaskId: f.userSourceTask.taskId, commandId: 'cmd-instruction', taskDeadline: f.deadline});
+    for (const bad of ['__proto__', 'constructor', 'z'.repeat(257), '', 42]) {
+      await assert.rejects(f.desktopWorkflow.instruction(taskId, f.userSourceTask.taskId, f.context(), bad), /责任标识无效/);
+    }
+    const followUp = f.app.runtime.submitTask({goal: '用户原话：另外追踪 Pelican 迁徙公告', conversationId: 'desktop-panel',
+      idempotencyKey: 'user-pelican-follow-up'});
+    await f.desktopWorkflow.instruction(taskId, followUp.taskId, f.context(), 'instruction-custom-id');
+    const session = await f.desktopWorkflow.acquireMaintenance(taskId, f.context());
+    assert.equal(session.host.readResponsibility({responsibilityId: 'instruction-custom-id', responsibilityRevision: 1}, f.context()).id,
+      'instruction-custom-id');
   } finally {
     f.close();
   }
