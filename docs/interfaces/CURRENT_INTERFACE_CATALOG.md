@@ -2,7 +2,7 @@
 
 ## 2026-11-03 独立云持续会话宿主（provisional，真实环境未验）
 
-公开 `cloud-persistent` v1 Schema 与 `createCloudPersistentRuntimeHost` 将新会话固定到唯一云 Runtime，复用原 TaskRuntime/SQLite/Policy/Scheduler；Desktop 经原受信 SSH 与出机检查提交、控制、审批和读回。已有本机会话不迁移，原 grant/数据库不复制，默认缺宿主资格配置仍不可用。`createRuntimeProactiveMaintenancePump` 是原 Desktop 维护实现的共享入口，不另建调度器。现服务只装配原 core 与 AgentArts teacher，具体云业务/设备能力不据此补齐；没有 Linux/SSH/持久卷或关机后真实验收结论。方案与兼容见 [云持续设计](../design/CLOUD_PERSISTENT_RUNTIME_20261103.md)，操作前提见 [云宿主说明](../../scripts/remote-runner/CLOUD_RUNTIME.md)，#531 完整验收门槛不变。
+公开 `cloud-persistent` v1 Schema 与 `createCloudPersistentRuntimeHost` 将新会话固定到唯一云 Runtime，复用原 TaskRuntime/SQLite/Policy/Scheduler；Desktop 经原受信 SSH 与出机检查提交、控制、审批和读回。已有本机会话不迁移，原 grant/数据库不复制，默认缺宿主资格配置仍不可用。`createRuntimeProactiveMaintenancePump` 是原 Desktop 维护实现的共享入口，不另建调度器。现服务装配原 core、AgentArts teacher、云本地公共 Memory/Goal/只读 Vault 消费与公开 feeds。来源选择和子读取审批使用同一公开 Schema，tracking 不签工具 grant；每次原 HostToolTask 仍须原 `allow_once`，确认后经共享 `createRuntimeProactiveConfirmedSourceRouter` 入原 eventSink。邮件/日历/待办/GitHub、云通知和实体设备等其他能力尚未装配；没有 Linux/SSH/持久卷或关机后真实验收结论。方案与兼容见 [云持续设计](../design/CLOUD_PERSISTENT_RUNTIME_20261103.md)，操作前提见 [云宿主说明](../../scripts/remote-runner/CLOUD_RUNTIME.md)，#531 完整验收门槛不变。
 
 ## 2026-11-02 #533 控制权接线（provisional）
 

@@ -7,6 +7,8 @@ import {createAgentArtsRuntimeApplication,createCloudPersistentRuntimeHost} from
 import {parseCloudPersistentCommand} from '@personal-agent/contracts/cloud-persistent';
 import {readRuntimeBuildIdentity} from '@personal-agent/runtime';
 import {verifyJob} from './remote-runner-service.mjs';
+import {createCloudRuntimeContext} from './cloud-runtime-context.mjs';
+import {createCloudRuntimeFeeds} from './cloud-runtime-feeds.mjs';
 
 const MAX_BYTES=1024*1024;
 const fail=(code,message)=>{throw Object.assign(new Error(message),{code});};
@@ -29,7 +31,7 @@ function secret(file) {
   const value=readFileSync(file,'utf8').trim();if(value.length<16)fail('UNAUTHORIZED','Cloud secret is unavailable');return value;
 }
 export async function startCloudRuntimeService(configFile) {
-  let lease,application,server,stopping=false;
+  let lease,application,server,publicContext,feedHost,stopping=false;
   try {
   if(process.platform!=='linux')fail('UNSUPPORTED_CAPABILITY','Independent cloud Runtime requires the qualified Linux host');
   if(!isAbsolute(configFile))fail('INVALID_ARGUMENT','Absolute cloud Runtime configuration required');
@@ -53,11 +55,18 @@ export async function startCloudRuntimeService(configFile) {
   // No dynamic plugins, provider replacements, DB/grant import or automatic approvals.
   const authorizationProvider={read:async()=>{assertCurrent();return 'Bearer '+secret(config.agentAuthorizationFile);}};
   const hostAuthorizationProvider={read:async()=>{assertCurrent();return 'Bearer '+secret(config.hostAuthorizationFile);}};
+  if(config.feeds!==undefined)feedHost=createCloudRuntimeFeeds({getApplication:()=>application,namespace:config.owner.runtimeId,
+    subscriptions:config.feeds,assertCurrent});
   application=createAgentArtsRuntimeApplication({path:join(lease.directory,'runtime.sqlite'),hostUserNamespace:config.owner.runtimeId,
     ...agent,assertDeploymentBinding:assertCurrent,beforeCompetitionSend:assertCurrent,authorizationProvider,websocketAuthorizationProvider:hostAuthorizationProvider,
-    proactiveWorkflows:true,responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',continuationContext:'goal'});
+    proactiveWorkflows:true,responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',continuationContext:'goal',
+    ...(feedHost?{tools:feedHost.tools,hostOnlyTools:feedHost.tools.map(tool=>tool.descriptor.name)}:{})});
+  publicContext=await createCloudRuntimeContext({application,dataDirectory:lease.directory,owner:config.owner,
+    knowledge:config.publicKnowledge,assertCurrent});
   const host=createCloudPersistentRuntimeHost(application,{owner:config.owner,assertCurrent,qualificationEvidenceRef:qualification.independentHostEvidenceRef,
     image:{config:agent,authorizationProvider,hostAuthorizationProvider,assertDeploymentBinding:assertCurrent,receiptSecret:secret(config.receiptSecretFile)},
+    context:publicContext.context,
+    ...(feedHost?{feeds:feedHost}:{}),
     bindings:[{kind:'teacher_decision',toolName:'proactive.teacher_decision',toolVersion:'1.0.0',location:'cloud_persistent',effect:'read'}]});
   // Only after exclusive directory/owner validation. This is the original Runtime recovery:
   // interrupted runs become reconciliation work, never new tasks or fresh tool attempts.
@@ -98,11 +107,11 @@ export async function startCloudRuntimeService(configFile) {
   await new Promise((ok,no)=>{server.once('error',no);server.listen(socketPath,ok);});chmodSync(socketPath,0o660);
   // Maintenance delegates every wake/state change to the existing TaskRuntime Scheduler and worker.
   const timer=setInterval(()=>{void host.tick().catch(()=>{});},1000);
-  return {owner:host.owner,close(){stopping=true;clearInterval(timer);server.close();application.close();lease.release();}};
+  return {owner:host.owner,close(){stopping=true;clearInterval(timer);server.close();application.close();feedHost?.close();publicContext.close();lease.release();}};
   }catch(error){
     // Before admission, release only this process's own lock after the original app confirms it is idle.
     // If any worker started, close() rejects and the lock deliberately remains for explicit recovery.
-    let idle=true;try{server?.close();application?.close();}catch{idle=false;}
+    let idle=true;try{server?.close();application?.close();feedHost?.close();publicContext?.close();}catch{idle=false;}
     if(idle&&lease){try{lease.release();}catch{}}
     throw error;
   }
