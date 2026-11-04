@@ -18,6 +18,7 @@ export function createRuntimeProactiveMaintenancePump(options:{
   getWorkflow():ProactiveMaintenanceWorkflow|undefined;
   resolveUserConversation(taskId:string):string|undefined;
   recoverSources?(taskId:string,context:Context):Promise<{state:string;deliveries?:unknown[]}|undefined>;
+  beforeNativeMaintenance?(taskId:string,context:Context):Promise<void>|void;
   afterNativeMaintenance?(taskId:string,context:Context):Promise<void>|void;
   now?:()=>number;
 }) {
@@ -43,6 +44,7 @@ export function createRuntimeProactiveMaintenancePump(options:{
         if(!binding.imageBinding){status.push({taskId:binding.taskId,state:'legacy_requires_explicit_resume'});continue;}
         const context={signal:new AbortController().signal,deadline:new Date(Math.min(Date.parse(binding.taskDeadline),now()+5000)).toISOString()};
         try {
+          await options.beforeNativeMaintenance?.(binding.taskId,context);
           const session=await workflow.acquireMaintenance(binding.taskId,context);
           const sourceRecovery=await options.recoverSources?.(binding.taskId,context);
           const schedules=Object.keys(session.host.inspect().application.state.schedules);

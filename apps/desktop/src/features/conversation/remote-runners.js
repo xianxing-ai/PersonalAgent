@@ -106,6 +106,33 @@ export function mountRemoteRunners(root, invoke) {
             expectedRevision:source.revision}},session),!confirmed));
       }
       if(reply?.sources?.length)row.append(text('p','跟踪期限与本云会话一致；每次实际读取仍需审批，结果未确认时不会重新采集。'));
+      if(reply?.todos){
+        const inactive=!confirmed||['cancelled','failed','succeeded'].includes(reply.task.state)
+          ||reply.todos.operations.some(value=>!['succeeded','failed','cancelled'].includes(value.state));
+        const title=document.createElement('input');title.type='text';title.maxLength=200;title.setAttribute('aria-label','云待办标题');
+        const remind=document.createElement('input');remind.type='datetime-local';remind.setAttribute('aria-label','云提醒时间');
+        row.append(text('h4','云端待办与提醒'),title,remind,cloudButton('提交云提醒审批',()=>{
+          const time=new Date(remind.value);if(!title.value.trim()||!Number.isFinite(time.getTime())){cloudStatus.textContent='请输入待办标题和有效提醒时间。';return;}
+          return cloudAction('todo',{...identity(),target:reply.target,todo:{action:'create',title:title.value.trim(),remindUtc:time.toISOString(),missedPolicy:'run_once'}},session);
+        },inactive));
+        for(const item of reply.todos.items){
+          const reminder=item.reminderState==='delivered'?'已进入云通知队列，设备尚未送达':item.reminderState==='missed'?'已错过':'等待原计划';
+          row.append(text('p',`${item.title} · ${item.status} · 版本 ${item.revision}${item.remindUtc?' · '+item.remindUtc+' · '+reminder:''}`));
+          if(item.status==='open')for(const [status,label]of [['done','完成云待办'],['cancelled','取消云待办']])
+            row.append(cloudButton(label,()=>cloudAction('todo',{...identity(),target:reply.target,
+              todo:{action:'update',id:item.id,expectedRevision:item.revision,status}},session),inactive));
+        }
+        for(const operation of reply.todos.operations)row.append(text('p',`待办操作 ${operation.taskId??operation.commandId} · ${operation.state}`));
+        row.append(text('p','创建和修改均须原审批；结果未确认时只读回，不重复提交。提醒期限不能超过本云会话。'));
+      }
+      if(reply?.notifications){
+        const feed=reply.notifications;
+        row.append(text('h4','云端通知记录'),text('p',`当前有效未读 ${feed.unreadItemIds.length} 项 · 按原归来策略汇总 ${feed.returnItemIds.length} 项 · 主动打扰 ${feed.interruptionCount} 次`),
+          text('p','记录已持久保存；横幅和声音等待设备，不代表已送达或用户已读。'));
+        for(const item of feed.items){row.append(text('p',`${item.source} · ${item.contentRef} · ${item.readAt?'已读':'未读'}`));
+          if(!item.readAt)row.append(cloudButton('标记此项已读',()=>cloudAction('notification',{...identity(),target:reply.target,
+            notification:{action:'read',itemIds:[item.id]}},session),!confirmed));}
+      }
       for (const approval of reply?.approvals ?? []) {
         if (approval.state !== 'pending') continue;
         const validArguments = approval.arguments && typeof approval.arguments === 'object' && !Array.isArray(approval.arguments);

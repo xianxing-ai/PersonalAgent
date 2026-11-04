@@ -4643,7 +4643,7 @@ async function action(event, name, payload) {
       throw Error('云持续会话仅允许可信对话或设置调用');
     const action=name.slice('proactive.workflow.cloud.'.length);
     if(action==='status')return cloudPersistentWorkflowHost.status();
-    if(!['start','read','control','approval','source'].includes(action))throw Error('未知云持续会话操作');
+    if(!['start','read','control','approval','source','todo','notification'].includes(action))throw Error('未知云持续会话操作');
     return cloudPersistentWorkflowHost[action](payload);
   }
   if (name.startsWith('proactive.workflow.')) {
