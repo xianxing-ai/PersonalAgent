@@ -10,6 +10,7 @@
 - 独立持久数据目录，不能是 tmpfs，不能指向 Desktop 数据库或其副本。首次云 owner 不能接管已有其他任务的数据库。
 - 固定且干净的源码 release，按根锁文件安装并构建完整依赖。现有 owned AgentArts 镜像只包含控制器依赖，**不包含这套 Runtime/SQLite/Policy**，不能拿它替代此宿主。
 - 原 runner 已安装为 1.2；安装脚本同时部署 `remote-runner-service.mjs`、`local-repo-executor.mjs` 和 `cloud-runtime-transport.mjs`。非交互 SSH 不继承 systemd 环境，所以 runner 在无 `RUNNER_TOKEN` 时只读取固定 `/etc/personal-agent-runner/token`，不执行该文件的 shell 内容。
+- runner 安装器使用仓库当前固定 Node 24.15.0 与 CI 固定 npm 11.12.1，检查实际 systemd 使用的 `/usr/local/bin`。已有 runner 版本号相同但 Node/npm 不符时仍更新这两项，不能因提前返回遗留旧 Node 22；云 installer 在此后从同一 PATH 固定 Node 的绝对执行路径。
 - 已登记 SSH 用户必须已经能访问原 runner journal、凭据和专用 `personal-agent-runner` 组。云 installer 只检查权限，不修改用户、组或策略。私有 socket 为该组 `0660`，目录为 `0750`；不监听公网 TCP。
 - 独立云宿主资格记录必须包含固定 host/runtime、源码 revision、Runtime artifact 身份、持久卷和独立宿主观察的 Evidence 引用。它不能由模型、Renderer 输入或一次 SSH 心跳生成。关机后的真实持续运行证据仍单独验收。
 
