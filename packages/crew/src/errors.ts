@@ -17,7 +17,8 @@ export type CrewErrorCode =
   /** 驱动请求超时。 */
   | 'TIMEOUT'
   /** 驱动进程异常退出，结果不确定。 */
-  | 'DRIVER_FAILED';
+  | 'DRIVER_FAILED'
+  | 'HANDOFF_REJECTED';
 
 export class CrewError extends Error {
   readonly code: CrewErrorCode;

@@ -23,6 +23,12 @@
 
 ## 使用
 
+### P2 / P3 集成的数据库版本
+
+集成顺序保留 P2 的 v2 `crew_consents` SQL 原样，P3 的任务期限、交接清单与父信箱新增为 v3；不修改 v1 / v2 的校验和，不删除或重建原库。P3 尚未进入 main，其独立实验分支曾把另一份 SQL 编号为 v2，因此该实验库与 P2 / 集成库不能直接混用：原 `openStorage` 会拒绝校验和漂移，保留原数据库，不能通过清库或改迁移记录绕过。
+
+集成后的迁移验证尚待执行：使用 P2 v2 创建含 agent、任务、消息与同意记录的库，再由集成 v3 打开，核对原数据、同意与任务身份保留且新增表可用。此说明不是验证通过记录。
+
 ```sh
 npm run build --workspace=@personal-agent/crew
 npm run test --workspace=@personal-agent/crew
