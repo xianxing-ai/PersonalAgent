@@ -57,7 +57,7 @@ import {
 | `runtime` | 来源变化要提交工作时需要 | `runtimeApplication.runtime` | `submitTask`、`findTaskByIdempotencyKey`；若同时有调度方法，也用于下面三行 |
 | `workPort` | 否 | 只在显式测试里代替 `runtime` | `read` / `submit`。传入后不再改编 `runtime.submitTask` |
 | `scheduler` | 否 | 同上 Runtime，或单独传入同名方法 | `createSchedule`、`listSchedules`、`reconcileSchedules` |
-| `feedCollect` | 要读真实订阅时需要 | `feedsHost.tools` 里 `descriptor.name === "feeds.collect"` 的 `execute` | `feedCollect({subscriptionId, cursor?}, signal)`，对应 `FeedService.collect` |
+| `feedCollect` | 要读真实订阅时需要 | Main 的原 `prepareHostToolTask` / `finalizeHostToolTask` / 已确认工具回执适配 | `feedCollect({subscriptionId, cursor?}, signal, sourceScope?)`；定时检查传入原消费者的 `trackingTaskIds`，沿原 Policy 执行 |
 | `feedSubscriptionId` | 否 | 已配置订阅的 `id`。`feeds.subscriptions` 只返回 `id`、`title`、`sensitivity` | `refreshSubscribedFeed()` 省略参数时使用 |
 | `notificationService` | 否 | `@personal-agent/notifications` 的 `NotificationService` | `ingest`、`drain`。宿主不调用 `acknowledge` |
 | `notificationPort` | 否 | 显式测试双份 | `send`，可选 `read`。传入后不再改编 `notificationService` |
@@ -377,3 +377,9 @@ Runtime 检查任务的 `workKey`、namespace、conversation、topic/consumer re
 - 定向纵向测试通过 `FakeFeedProvider` 和合成 Laya chooser 检查生产 evaluator、来源/consumer 重验、Runtime source-read 与 judgment checkpoint 读回，以及 P7 绑定。该结果仅为 conditional，不代表真实订阅网络、真实 Laya 或桌面用户会话已验收。
 - feeds connector 当前只提供条目标题、摘要和定位符；它不返回文章全文。checkpoint 引用也只代表本地 Runtime 记录，不能替代通用 EvidencePort。
 - 真实 Electron、F9 用户审批、新空白 Notepad 目标读回和持久 Evidence 验收仍须单独完成；真实 Laya 启动受 2 GiB 空闲内存门槛限制时保持未验证，不得降低门槛。
+
+## 2026-11-03 定时订阅原跟踪身份接线
+
+原 `consumeFeedCheck` 已复核持久调度与消费者，但此前刷新未把这些消费者的原用户任务传给 Main，导致已确认读取不能进入持续责任的来源入口。本次将去重后的原 `trackingTaskIds` 贯穿到 Main 准备绑定，一次采集分别投递给匹配责任；旧单个 `trackingTaskId` 及检查点继续可读。原来源、任务、期限、撤销、Policy 与确认回执检查不变，不新增授权。
+
+定向命令 `node --test --test-name-pattern="scheduled feed read preserves all original" apps/desktop/test/knowledge-watch-due.test.mjs` 通过 1/1：实际 watch/Main/router 准备及身份复核消费两个原跟踪任务，一次读取分别路由；缺少执行 Evidence 仍不可投递，撤销后拒绝。Runtime 执行与 sink 为明确 fixture，未连接真实订阅或 AgentArts，不作为云持续运行验收。三个修改的生产 JS 文件 `node --check` 通过；整仓检查留给最终 PR CI。隔离树 Runtime 构建因祖先依赖产物缺少既有导出而未通过，未以此声称类型检查成功；定向测试使用公开 Runtime receipt 导出。

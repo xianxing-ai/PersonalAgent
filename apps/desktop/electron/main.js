@@ -3603,15 +3603,19 @@ async function initializeRuntime() {
           error.code = 'UNAUTHORIZED';
           throw error;
         }
-        const responsibilities=typeof sourceScope?.trackingTaskId==='string'&&proactiveSourceRouter
+        const trackingTaskIds=sourceScope?.trackingTaskIds??(sourceScope?.trackingTaskId?[sourceScope.trackingTaskId]:[]);
+        const responsibilities=trackingTaskIds.length&&proactiveSourceRouter
           ?(proactiveWorkflowApplication?.snapshot().sessions??[]).filter(session=>
             !['succeeded','failed','cancelled'].includes(session.taskState)&&Date.parse(session.taskDeadline)>Date.now()
-            &&proactiveSourceRouter.matchesTrackingTask(session.sourceTaskId,sourceScope.trackingTaskId)):[];
+            &&trackingTaskIds.some(taskId=>proactiveSourceRouter.matchesTrackingTask(session.sourceTaskId,taskId)))
+            .map(session=>({session,trackingTaskId:trackingTaskIds.find(taskId=>
+              proactiveSourceRouter.matchesTrackingTask(session.sourceTaskId,taskId))})):[];
         let proactiveReadBound=false;
         if(responsibilities.length){
           try{
             proactiveSourceRouter.bindPreparedFeedRead({taskId:prepared.taskId,expectedTaskRevision:prepared.revision,
-              trackingTaskId:sourceScope.trackingTaskId,commandId,toolVersion:collectTool.descriptor.version,arguments:query});
+              trackingTaskIds:[...new Set(responsibilities.map(item=>item.trackingTaskId))],
+              commandId,toolVersion:collectTool.descriptor.version,arguments:query});
             proactiveReadBound=true;
           }catch{proactiveSourceRoutingFailure='原持续责任与订阅读取未能绑定；未自动投递来源';}
         }
@@ -3637,11 +3641,11 @@ async function initializeRuntime() {
                   'knowledge-watch-source-read:'+receipt.receiptId,receipt);
                 feedProofStore.set(sourceKey(query.subscriptionId),{...binding,receiptId:receipt.receiptId});
               }
-              if(proactiveReadBound)for(const session of responsibilities){
+              if(proactiveReadBound)for(const {session,trackingTaskId} of responsibilities){
                 try{
                   const routed=await proactiveSourceRouter.routeConfirmedFeed({workflowTaskId:session.taskId,taskId:prepared.taskId,
                     runId:read.confirmed.runId,toolVersion:collectTool.descriptor.version,arguments:query,
-                    scopeRef:read.confirmed.runId,trackingTaskId:sourceScope.trackingTaskId},{signal,deadline});
+                    scopeRef:read.confirmed.runId,trackingTaskId},{signal,deadline});
                   if(!['persisted','already_persisted'].includes(routed?.state))
                     proactiveSourceRoutingFailure='订阅已读取，但原持续责任的来源适配尚不可用';
                 }catch{proactiveSourceRoutingFailure='订阅已读取，但原持续责任尚未确认接收来源';}

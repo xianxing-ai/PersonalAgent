@@ -46,7 +46,8 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
       const origin=application.runtime.loadCheckpoint(input.taskId,PREPARED_SOURCE);
       const intent=application.runtime.loadCheckpoint(input.taskId,'host-tool-intent');
       if(!origin||origin.version!==1||origin.namespace!==namespace||origin.taskId!==input.taskId
-        ||origin.trackingTaskId!==trackingTaskId||origin.sourceId!==input.arguments.subscriptionId
+        ||!(origin.trackingTaskId===trackingTaskId||Array.isArray(origin.trackingTaskIds)&&origin.trackingTaskIds.includes(trackingTaskId))
+        ||origin.sourceId!==input.arguments.subscriptionId
         ||origin.argumentsDigest!==toolArgumentsDigest(input.arguments)||origin.toolVersion!==input.toolVersion
         ||origin.commandId!==intent?.commandId||intent?.namespace!==namespace||intent?.toolName!=='feeds.collect'
         ||intent?.toolVersion!==input.toolVersion||intent?.argumentsDigest!==origin.argumentsDigest
@@ -216,18 +217,22 @@ export function createDesktopProactiveConfirmedSourceRouter({getApplication,getW
     }catch{return undefined;}
   },
   /** Bind only the original still-created host read before finalizeHostToolTask executes it.
-   * Main calls this solely from its native-interest task admission, never background collection. */
+   * Main supplies original native-interest identities, including their bound scheduled checks. */
   bindPreparedFeedRead(input) {
     const application=getApplication(),runtime=application?.runtime;
-    if(!runtime||!input?.taskId||!input.trackingTaskId||!input.commandId||!input.toolVersion
+    const trackingTaskIds=input?.trackingTaskIds??[input?.trackingTaskId];
+    if(!runtime||!input?.taskId||!Array.isArray(trackingTaskIds)||!trackingTaskIds.length
+      ||new Set(trackingTaskIds).size!==trackingTaskIds.length||trackingTaskIds.some(taskId=>typeof taskId!=='string'||!taskId)
+      ||!input.commandId||!input.toolVersion
       ||typeof input.arguments?.subscriptionId!=='string')fail('INVALID_ARGUMENT','Original prepared source binding required');
     const task=runtime.getTask(input.taskId),preparation=runtime.loadCheckpoint(input.taskId,'host-tool-preparation');
     if(task.conversationId!==`host-tool:${namespace}`||preparation?.namespace!==namespace
       ||preparation?.commandId!==input.commandId||preparation?.toolName!=='feeds.collect'
       ||preparation?.toolVersion!==input.toolVersion||!(Date.parse(preparation.deadline)>now())
       ||runtime.loadCheckpoint(input.taskId,'host-tool-intent')!==undefined
-      ||!resolveUserConversation(input.trackingTaskId))fail('SCOPE_DENIED','Original source read is not preparable');
-    const value={version:1,namespace,taskId:input.taskId,trackingTaskId:input.trackingTaskId,
+      ||trackingTaskIds.some(taskId=>!resolveUserConversation(taskId)))fail('SCOPE_DENIED','Original source read is not preparable');
+    const value={version:1,namespace,taskId:input.taskId,
+      ...(input.trackingTaskIds?{trackingTaskIds}:{trackingTaskId:input.trackingTaskId}),
       commandId:input.commandId,sourceId:input.arguments.subscriptionId,toolVersion:input.toolVersion,
       argumentsDigest:toolArgumentsDigest(input.arguments)};
     if(!runtime.saveCheckpointOnceForCreatedTask(task.taskId,PREPARED_SOURCE,value,input.expectedTaskRevision)
