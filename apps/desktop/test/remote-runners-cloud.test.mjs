@@ -30,6 +30,28 @@ const session = () => ({sourceTaskId: source.taskId, commandId: 'original-submit
   task: {state: 'waiting_approval', revision: 4, cancelRequested: false}, approvals: [structuredClone(approval)]}});
 const snapshot = (sessions = []) => ({state: 'configured_not_verified', hostId: host.id, sourceTasks: [source], sessions});
 
+test('cloud reminders and feed use original revisions, explicit read acknowledgement and no device delivery claim',async t=>{
+  const current=session();current.lastReply.todos={items:[{id:'original-todo',title:'<云提醒>',status:'open',revision:3,
+    remindUtc:'2099-01-01T00:00:00Z',reminderState:'delivered'}],operations:[]};
+  current.lastReply.notifications={items:[{id:'original-reminder',source:'productivity',contentRef:'original-todo'}],
+    unreadItemIds:['original-reminder'],returnItemIds:[],interruptionCount:0,delivery:'waiting_device'};
+  const ui=fixture(t,name=>name==='runner.hosts.list'?{hosts:[host]}:name.endsWith('.status')?snapshot([current]):{state:'confirmed',reply:current.lastReply});
+  await ui.ui.refresh();assert.match(ui.root.textContent,/已进入云通知队列，设备尚未送达/);assert.match(ui.root.textContent,/主动打扰 0 次/);
+  ui.field('云待办标题').value='New explicit cloud reminder';ui.field('云提醒时间').value='2099-01-01T12:00';
+  await ui.button('提交云提醒审批').onclick();
+  const created=ui.calls.find(value=>value.name.endsWith('.todo')).payload;
+  assert.equal(created.todo.action,'create');assert.equal(created.todo.title,'New explicit cloud reminder');
+  assert.deepEqual(created.target,current.lastReply.target);assert.equal(created.originCommandId,current.commandId);
+  await ui.button('完成云待办').onclick();
+  const updated=ui.calls.filter(value=>value.name.endsWith('.todo'))[1].payload;
+  assert.deepEqual(updated.todo,{action:'update',id:'original-todo',expectedRevision:3,status:'done'});
+  await ui.button('标记此项已读').onclick();
+  assert.deepEqual(ui.calls.find(value=>value.name.endsWith('.notification')).payload.notification,{action:'read',itemIds:['original-reminder']});
+  current.lastReply.todos.operations=[{commandId:'original-command',taskId:'unknown-child',state:'waiting_reconciliation'}];
+  await ui.ui.refresh();assert.equal(ui.button('提交云提醒审批').disabled,true);assert.equal(ui.button('完成云待办').disabled,true);
+  assert.equal(ui.calls.some(value=>value.name.endsWith('.approval')),false);
+});
+
 test('cloud card uses selected original goal and an explicit deadline, only on its enabled host', async t => {
   let state = snapshot();
   const ui = fixture(t, (name) => name === 'runner.hosts.list' ? {hosts: [host, {...host, id: 'other'}]} :

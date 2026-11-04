@@ -55,7 +55,7 @@ function fixture(extra = {}) {
     now: () => new Date(clock), tools: toolValues,
     automaticTools: [
       ...toolValues.filter(tool => extra.approval ? tool.descriptor.sideEffect === 'read' : true).map(tool => ({toolName: tool.descriptor.name, toolVersion: tool.descriptor.version})),
-      ...Object.entries(RUNTIME_PROACTIVE_TOOLS).filter(([kind]) => kind !== 'notify').map(([, toolName]) => ({toolName, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION})),
+      ...Object.entries(RUNTIME_PROACTIVE_TOOLS).filter(([kind]) => kind !== 'notify' || extra.notify).map(([, toolName]) => ({toolName, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION})),
     ]});
   const task = app.runtime.submitTask({goal: 'Continuously track this original public responsibility', conversationId: 'fixture-conversation', idempotencyKey: 'original-proactive-task'});
   const source = app.runtime.submitTask({goal: 'Original user words: keep the tracked source current and report changes', conversationId: 'fixture-conversation', idempotencyKey: 'original-user-instruction'});
@@ -79,6 +79,10 @@ function fixture(extra = {}) {
         location: 'local_device', effect: 'write', arguments: () => ({subtasks: [{subtaskId: 'child-one', role: 'researcher', goal: 'Read only the assigned public material'}]})}
         : {kind: extra.action ?? 'continue', toolName: 'fixture.action', toolVersion: '1.0.0', location: 'local_device', effect: 'write'}],
     ...(extra.options ?? {})};
+  if (extra.notify) {
+    options.notificationHost = app.createNotificationHost({policy: {}, settingsScopes: ['notifications:settings'], verifyUserCommand: async () => false});
+    options.bindings = options.bindings.filter(binding => binding.kind !== 'notify');
+  }
   const host = app.createProactiveWorkflowHost(options);
   let sequence = 0;
   const context = {deadline, signal};
@@ -406,6 +410,39 @@ test('one Runtime notification factory returns the same actual service and rejec
     assert.equal(f.app.createNotificationHost({...options}), host);
     assert.throws(() => f.app.createNotificationHost({...options, settingsScopes: ['different']}), {code: 'REVISION_CONFLICT'});
     assert.throws(() => f.app.createProactiveWorkflowHost({...f.options, notificationHost: {...host}}), {code: 'UNAUTHORIZED'});
+  } finally {await f.close();}
+});
+
+test('the same connector event produces separate durable notification receipts in each original responsibility scope', async () => {
+  const f = fixture({action: 'notify', notify: true});
+  try {
+    const second = f.app.runtime.submitTask({goal: 'Second explicit public responsibility', conversationId: 'fixture-conversation', idempotencyKey: 'second-notify'});
+    const other = f.app.createProactiveWorkflowHost({...f.options, taskId: second.taskId, sessionId: 'second-notify-session'});
+    for (const host of [f.host, other]) host.registerResponsibility({id: 'notify-source', revision: 1,
+      sourceTaskIds: [f.source.taskId], goalRefs: [], authority: 'explicit_instruction', scopeRefs: []}, f.context);
+    await f.connectorRunner.start('fixture-source', f.context);
+    assert.equal((await f.connectorRunner.tick('fixture-source', {...f.context, limit: 1})).state, 'changed');
+    const batch = Object.values(f.host.inspect().application.state.batches)[0];
+    await other.eventSink.persist(batch, f.context);
+    for (const [host, taskId] of [[f.host, f.task.taskId], [other, second.taskId]]) {
+      const result = await f.app.runtime.runTask(taskId, async worker => {
+        for (let n = 0; n < 7; n++) {
+          const frontier = await host.advance({...f.context, requestId: 'notify-' + n});
+          for (const proposal of frontier.proposals)
+            assert.equal((await host.executeProposal(proposal, {deadline: worker.deadline, signal: worker.signal})).state, 'confirmed');
+          if (Object.values(frontier.items).every(item => item.stage === 'done')) break;
+        }
+        return {resultSummary: 'Original notification queue read back'};
+      }, {deadline: f.deadline, sideEffect: 'local_write'});
+      assert.equal(result.state, 'succeeded', result.error?.message);
+    }
+    const service = f.options.notificationHost;
+    const entries = [f.task.taskId, second.taskId].map(taskId => service.notificationFeed({
+      scope: {kind: 'responsibility', responsibilityId: taskId, connectorId: 'fixture-source'}}).items);
+    assert.deepEqual(entries.map(items => items.length), [1, 1]);
+    assert.notEqual(entries[0][0].id, entries[1][0].id);
+    assert.equal(service.notificationFeed({scope: {kind: 'connector', connectorId: 'fixture-source'}}).items.length, 2);
+    assert.equal(Object.values(f.host.inspect().application.state.batches)[0].events[0].item.dedupeKey, 'source-one');
   } finally {await f.close();}
 });
 
