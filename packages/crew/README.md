@@ -46,7 +46,7 @@ const tools = createCrewRuntimeTools({runtime, kernel, actorId: CREW_PARENT_AGEN
 
 集成顺序保留 P2 的 v2 `crew_consents` SQL 原样，P3 的任务期限、交接清单与父信箱新增为 v3；不修改 v1 / v2 的校验和，不删除或重建原库。P3 尚未进入 main，其独立实验分支曾把另一份 SQL 编号为 v2，因此该实验库与 P2 / 集成库不能直接混用：原 `openStorage` 会拒绝校验和漂移，保留原数据库，不能通过清库或改迁移记录绕过。
 
-集成后的迁移验证尚待执行：使用 P2 v2 创建含 agent、任务、消息与同意记录的库，再由集成 v3 打开，核对原数据、同意与任务身份保留且新增表可用。此说明不是验证通过记录。
+2026-11-04 在 Node 24.15.0 / npm 11.12.1 下，新增定向迁移回归首次 1/1 通过：使用冻结的 P2 v1/v2 SQL 创建含 agent、运行中任务、消息与同意记录的 SQLite 库，再由集成 v3 打开，原数据、身份及 v1/v2 校验和均保留，新增表与任务期限可用。同一候选的一次 `npm run build` 通过；未运行全量测试，这些本地结果不代替真实 CLI、云或设备验收。
 
 ```sh
 npm run build --workspace=@personal-agent/crew

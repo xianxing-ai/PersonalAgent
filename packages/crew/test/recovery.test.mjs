@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import {DatabaseSync} from 'node:sqlite';
+import {openStorage} from '@personal-agent/storage';
 import {
   CrewError,
   CrewKernel,
@@ -19,6 +21,108 @@ function makeClock(start = 1700000000000) {
 }
 
 const dbFile = () => join(mkdtempSync(join(root, 'rec-')), 'crew.sqlite');
+
+test('P2 v2 data survives the P3 v3 additive migration without changing prior checksums', () => {
+  // Frozen SQL from P2 commit 6cabc9eda950f3bea491ce5c0feaa30521c7a5f1.
+  // Do not derive this fixture from the current production migration array.
+  const legacy = [
+    {version: 1, sql: `
+    CREATE TABLE crew_agents (
+      agent_id TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      driver TEXT NOT NULL CHECK (driver IN ('codex', 'claude', 'opencode', 'grok', 'gemini', 'acp-generic')),
+      instructions TEXT NOT NULL,
+      workspace_path TEXT NOT NULL,
+      concurrency_limit INTEGER NOT NULL CHECK (concurrency_limit BETWEEN 1 AND 2),
+      created_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE crew_tasks (
+      task_id TEXT PRIMARY KEY,
+      root_request_id TEXT NOT NULL,
+      assigned_agent_id TEXT NOT NULL REFERENCES crew_agents(agent_id),
+      goal TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'blocked', 'cancelled')),
+      receipt_json TEXT,
+      cancel_reason TEXT,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT
+    ) STRICT;
+    CREATE INDEX crew_tasks_root_idx ON crew_tasks(root_request_id);
+    CREATE INDEX crew_tasks_claim_idx ON crew_tasks(assigned_agent_id, status);
+    CREATE TABLE crew_messages (
+      message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mailbox_agent_id TEXT NOT NULL REFERENCES crew_agents(agent_id),
+      sender_agent_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('task', 'message', 'interrupt')),
+      parent_request_id TEXT,
+      root_request_id TEXT,
+      task_id TEXT,
+      text TEXT NOT NULL,
+      attachment_refs_json TEXT NOT NULL,
+      expects_reply INTEGER NOT NULL CHECK (expects_reply IN (0, 1)),
+      hop INTEGER NOT NULL CHECK (hop BETWEEN 0 AND 8),
+      pure_ack INTEGER NOT NULL CHECK (pure_ack IN (0, 1)),
+      enqueued_at TEXT NOT NULL,
+      dequeued_at TEXT
+    ) STRICT;
+    CREATE INDEX crew_messages_mailbox_idx ON crew_messages(mailbox_agent_id, message_id);
+    CREATE INDEX crew_messages_pair_idx ON crew_messages(sender_agent_id, mailbox_agent_id, message_id DESC);
+  `},
+    {version: 2, sql: `
+    CREATE TABLE crew_consents (
+      driver_id TEXT PRIMARY KEY CHECK (driver_id IN ('codex', 'claude', 'opencode', 'grok', 'gemini', 'acp-generic')),
+      granted INTEGER NOT NULL CHECK (granted IN (0, 1)),
+      login_kind TEXT NOT NULL CHECK (login_kind IN ('local-login', 'api-key')),
+      terms_summary TEXT NOT NULL,
+      granted_by TEXT NOT NULL,
+      granted_at TEXT NOT NULL,
+      revoked_at TEXT,
+      revoke_reason TEXT,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+  `},
+  ];
+  const file = dbFile(), at = '2026-11-04T00:00:00.000Z';
+  const queries = [
+    'SELECT * FROM crew_agents',
+    'SELECT task_id, root_request_id, assigned_agent_id, goal, status, receipt_json, cancel_reason, created_at, started_at, finished_at FROM crew_tasks',
+    'SELECT * FROM crew_messages',
+    'SELECT * FROM crew_consents',
+  ];
+  const old = openStorage(file, legacy);
+  let rows, checksums;
+  try {
+    old.prepare("INSERT INTO crew_agents VALUES ('coder-x', 'Original coder', 'codex', 'Original instructions', '/w/coder-x', 1, ?)").run(at);
+    old.prepare("INSERT INTO crew_tasks VALUES ('old-task', 'root-old-task', 'coder-x', 'Original running task', 'running', NULL, NULL, ?, ?, NULL)").run(at, at);
+    old.prepare("INSERT INTO crew_messages VALUES (1, 'coder-x', 'parent', 'task', NULL, 'root-old-task', 'old-task', 'Original pending message', '[]', 0, 0, 0, ?, NULL)").run(at);
+    old.prepare("INSERT INTO crew_consents VALUES ('codex', 1, 'local-login', 'Original consent terms', 'fixture-user', ?, NULL, NULL, ?)").run(at, at);
+    rows = queries.map(query => old.prepare(query).all());
+    checksums = old.prepare('SELECT version, checksum FROM schema_migrations ORDER BY version').all();
+  } finally { old.close(); }
+
+  const store = CrewStore.open(file, {now: () => Date.parse(at)});
+  try {
+    assert.equal(store.getAgent('coder-x').workspacePath, '/w/coder-x');
+    assert.equal(store.getTask('old-task').status, 'running');
+    assert.equal(store.getTask('old-task').deadlineAt, undefined);
+    assert.equal(store.getConsentRecord('codex').granted, true);
+    assert.deepEqual(store.receiveParentNotifications(), [], 'Existing non-deadline task is not marked failed');
+    const migrated = new DatabaseSync(file, {readOnly: true});
+    try {
+      for (let index = 0; index < queries.length; index++) assert.deepEqual(migrated.prepare(queries[index]).all(), rows[index]);
+      const applied = migrated.prepare('SELECT version, checksum FROM schema_migrations ORDER BY version').all();
+      assert.deepEqual(applied.slice(0, 2), checksums, 'Original migration records retain exact checksums');
+      assert.deepEqual(applied.map(value => value.version), [1, 2, 3]);
+      assert.equal(migrated.prepare('SELECT count(*) AS count FROM crew_handoff').get().count, 0);
+      assert.equal(migrated.prepare('SELECT count(*) AS count FROM crew_parent_inbox').get().count, 0);
+    } finally { migrated.close(); }
+    const newTask = store.dispatchTask({taskId: 'new-v3-task', assignedAgentId: 'coder-x', goal: 'New deadline support', timeoutMs: 1000});
+    assert.equal(newTask.deadlineAt, '2026-11-04T00:00:01.000Z');
+    assert.equal(store.receiveMessages('coder-x').filter(message => message.taskId === 'old-task').length, 1, 'Original mailbox identity survives');
+  } finally { store.close(); }
+});
+
 
 function coderAgent(kernel) {
   kernel.registerAgent({agentId: 'coder-x', displayName: '编码者', driver: 'codex', instructions: '编码。', workspacePath: '/w/coder-x'});
