@@ -146,3 +146,19 @@ test('pending operations prevent double dispatch and an unavailable status remov
   assert.equal(ui.field('云持续会话'), undefined);
   assert.match(ui.root.textContent, /云持续会话不可用/);
 });
+
+test('public source tracking is explicit and child approval keeps the original read task identity',async t=>{
+  const current=session();current.lastReply.approvals[0].taskId='original-feed-child';
+  current.lastReply.sources=[{sourceId:'public-feed',title:'Public feed',url:'https://example.org/feed',configurationRef:'original-config',
+    intervalSeconds:900,revision:0,state:'available'}];
+  const ui=fixture(t,name=>name==='runner.hosts.list'?{hosts:[host]}:name.endsWith('.status')?snapshot([current]):{state:'confirmed'});
+  await ui.ui.refresh();assert.equal(ui.calls.some(call=>call.name.endsWith('.source')),false);
+  await ui.button('同意公开订阅跟踪与云端分析').onclick();
+  const sent=ui.calls.find(call=>call.name.endsWith('.source')).payload;
+  assert.deepEqual(sent.target,current.lastReply.target);assert.equal(sent.originCommandId,current.commandId);
+  assert.deepEqual(sent.source,{action:'track',sourceId:'public-feed',configurationRef:'original-config',expectedRevision:0,readAndCloudConsent:true});
+  await ui.button('允许一次').onclick();
+  assert.equal(ui.calls.find(call=>call.name.endsWith('.approval')).payload.approval.taskId,'original-feed-child');
+  current.transportState='unknown';await ui.ui.refresh();
+  assert.equal(ui.button('同意公开订阅跟踪与云端分析').disabled,true);
+});
