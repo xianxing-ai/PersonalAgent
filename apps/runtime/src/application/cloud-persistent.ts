@@ -18,6 +18,18 @@ const fail=(code:string,message:string):never=>{throw new ProtocolError(code,mes
 interface Binding extends ProactiveMaintenanceBinding {
   version:1;owner:CloudPersistentOwner;submitCommandId:string;originTaskId:string;originRuntimeId:string;goalDigest:string;
 }
+export interface CloudPersistentFeedBinding extends ProactiveMaintenanceBinding {goalDigest:string;}
+export interface CloudPersistentFeedHost {
+  bindWorkflow(workflow:{snapshot():{state:string};readBinding(taskId:string):CloudPersistentFeedBinding;
+    acquireMaintenance(taskId:string,context:{signal:AbortSignal;deadline:string}):
+    Promise<{binding:CloudPersistentFeedBinding;host:RuntimeProactiveWorkflowHost}>}):void;
+  snapshot(binding:CloudPersistentFeedBinding):NonNullable<CloudPersistentReply['sources']>;
+  configure(binding:CloudPersistentFeedBinding,input:NonNullable<CloudPersistentCommand['source']>,commandId:string):void;
+  approvalTaskIds(binding:CloudPersistentFeedBinding):readonly string[];
+  assertReadCurrent(binding:CloudPersistentFeedBinding,taskId:string):void;
+  restrict(binding:CloudPersistentFeedBinding,action?:'pause'|'cancel'):void;
+  maintain(binding:CloudPersistentFeedBinding,context:{signal:AbortSignal;deadline:string}):Promise<{state:string}>;
+}
 export interface CloudPersistentRuntimeOptions {
   owner:CloudPersistentOwner;
   image:RuntimeProactiveImageAdapterOptions;
@@ -27,6 +39,7 @@ export interface CloudPersistentRuntimeOptions {
   assertCurrent():void;
   bindings?:RuntimeProactiveWorkflowHostOptions['bindings'];
   context?:RuntimeProactiveWorkflowHostOptions['context'];
+  feeds?:CloudPersistentFeedHost;
   now?:()=>number;
 }
 
@@ -107,14 +120,16 @@ export function createCloudPersistentRuntimeHost(application:RuntimeApplication,
     if(!taskId)fail('NOT_FOUND','Original cloud submission has no task receipt; it must not be resubmitted');
     const binding=readBinding(taskId!,command.target?.sessionId),task=runtime.getTask(taskId!);
     const state=readPersistedRuntimeProactiveWorkflow(runtime,binding.taskId,binding.sessionId);
-    const approvals=runtime.listApprovals({taskId:binding.taskId,limit:50}).items.flatMap(value=>{
-      const invocation=runtime.loadCheckpoint(binding.taskId,'application-tool-invocation:'+value.approvalId) as {arguments?:Record<string,unknown>}|undefined;
+    const approvals=[binding.taskId,...(options.feeds?.approvalTaskIds(binding)??[])].flatMap(approvalTaskId=>
+      runtime.listApprovals({taskId:approvalTaskId,limit:50}).items).flatMap(value=>{
+      const invocation=runtime.loadCheckpoint(value.taskId,value.taskId===binding.taskId?'application-tool-invocation:'+value.approvalId:'host-tool-intent') as {arguments?:Record<string,unknown>}|undefined;
       if(!invocation?.arguments||toolArgumentsDigest(invocation.arguments)!==value.argumentsDigest)return [];
       return [{approvalId:value.approvalId,revision:value.revision,action:value.action,arguments:invocation.arguments,
-        argumentsDigest:value.argumentsDigest,expiresAt:value.expiresAt,state:value.state}];});
+        ...(value.taskId===binding.taskId?{}:{taskId:value.taskId}),argumentsDigest:value.argumentsDigest,expiresAt:value.expiresAt,state:value.state}];}).slice(0,50);
     return parseCloudPersistentReply({version:1,commandId:command.commandId,owner,target:{taskId:binding.taskId,sessionId:binding.sessionId},
       task:{state:task.state,revision:task.revision,cancelRequested:task.cancelRequested===true},
-      controlRevision:state?.application.state.binding.controlRevision??0,approvals,evidenceRefs:task.evidenceRefs.slice(-100)});
+      controlRevision:state?.application.state.binding.controlRevision??0,approvals,evidenceRefs:task.evidenceRefs.slice(-100),
+      ...(options.feeds?{sources:options.feeds.snapshot(binding)}:{})});
   }
   async function handle(value:unknown,signal:AbortSignal):Promise<CloudPersistentReply> {
     const command=parseCloudPersistentCommand(value);assertOwner();
@@ -148,14 +163,28 @@ export function createCloudPersistentRuntimeHost(application:RuntimeApplication,
       if(command.operation==='approval') {
         const input=command.approval!,original=runtime.getApproval(input.approvalId);
         if(input.decision==='allow_once')sourceCurrent(binding);
-        if(original.taskId!==binding.taskId||original.argumentsDigest!==input.argumentsDigest||original.expiresAt!==input.expiresAt)
+        const approvalTaskId=input.taskId??binding.taskId;
+        if(approvalTaskId!==binding.taskId&&!options.feeds?.approvalTaskIds(binding).includes(approvalTaskId))
+          fail('UNAUTHORIZED','Approval child is not owned by the original cloud session');
+        if(original.taskId!==approvalTaskId||original.argumentsDigest!==input.argumentsDigest||original.expiresAt!==input.expiresAt)
           fail('UNAUTHORIZED','Approval must match the original cloud task, arguments and expiry');
+        if(input.decision==='allow_once'&&approvalTaskId!==binding.taskId)options.feeds!.assertReadCurrent(binding,approvalTaskId);
         runtime.respondApproval(input.approvalId,input.decision,input.expectedRevision);
-        if(input.decision==='allow_once'){bind(binding.taskId);application.resumeProactiveTask(binding.taskId);}
+        if(input.decision==='allow_once'){
+          if(approvalTaskId!==binding.taskId)application.resumeHostToolTask(approvalTaskId);
+          else {bind(binding.taskId);application.resumeProactiveTask(binding.taskId);}
+        }
+      } else if(command.operation==='source') {
+        if(!options.feeds)fail('UNSUPPORTED_CAPABILITY','Cloud source host is unavailable');
+        if(command.source!.action==='track')sourceCurrent(binding);
+        options.feeds!.configure(binding,command.source!,command.commandId);
       } else {
         const input=command.control!;
         if(!['pause','cancel'].includes(input.action))sourceCurrent(binding);
-        const {host}=bind(binding.taskId),source=runtime.submitTask({goal:'User cloud control: '+input.action,
+        const {host}=bind(binding.taskId);
+        if(host.binding.controlRevision!==input.expectedControlRevision)fail('REVISION_CONFLICT','Original cloud control revision changed');
+        if(input.action==='pause'||input.action==='cancel')options.feeds?.restrict(binding,input.action);
+        const source=runtime.submitTask({goal:'User cloud control: '+input.action,
           conversationId:runtime.getTask(binding.sourceTaskId).conversationId!,idempotencyKey:'cloud-control-source:'+hash(command.commandId)});
         const control={commandId:command.commandId,sourceTaskId:source.taskId,...input};controls.set(command.commandId,digest(control));
         try{await host.control(control,context);}finally{controls.delete(command.commandId);}
@@ -166,7 +195,8 @@ export function createCloudPersistentRuntimeHost(application:RuntimeApplication,
     runtime.saveCheckpoint(registry.taskId,commandKey,{digest:commandDigest,reply});return reply;
     }catch{ return fail('RESULT_UNKNOWN','Original cloud command was admitted; read back its original session before any further action'); }
   }
-  const workflow={snapshot:()=>({state:'configured_not_verified'}),acquireMaintenance:prepare,
+  const workflow={snapshot:()=>({state:'configured_not_verified'}),readBinding,
+    acquireMaintenance:async(taskId:string,context:{signal:AbortSignal;deadline:string})=>({...await prepare(taskId,context),binding:readBinding(taskId)}),
     maintenancePage(input:{beforeSequence?:number;snapshotSequence?:number}) {
       assertOwner();const page=runtime.listTaskCheckpointPage({limit:100,...input},[KEY]);
       return {...page,items:page.items.map(task=>{const binding=readBinding(task.taskId);let withheld=false;
@@ -174,6 +204,8 @@ export function createCloudPersistentRuntimeHost(application:RuntimeApplication,
         return {binding,state:task.state,cancelRequested:task.cancelRequested===true,conversationId:task.conversationId,withheld};})};
     }};
   const maintenance=createRuntimeProactiveMaintenancePump({getApplication:()=>application,getWorkflow:()=>workflow,
-    resolveUserConversation:taskId=>runtime.getTask(taskId).conversationId,now});
+    resolveUserConversation:taskId=>runtime.getTask(taskId).conversationId,
+    ...(options.feeds?{recoverSources:(taskId:string,context:{signal:AbortSignal;deadline:string})=>options.feeds!.maintain(readBinding(taskId),context)}:{}),now});
+  options.feeds?.bindWorkflow(workflow);
   return {handle,tick:()=>{assertOwner();return maintenance.tick();},owner:structuredClone(owner)};
 }
