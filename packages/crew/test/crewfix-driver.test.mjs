@@ -54,7 +54,13 @@ test('F2: whitelisted login/runtime variables still reach the child, and extraEn
 test('F12: a child writing 4MB to stderr does not deadlock, and the sanitized tail is kept', async () => {
   const spawn = createNodeSpawn();
   // 4MB stderr（远超保留上限）：子进程必须能写完并正常退出（管道不被写满阻塞）。
-  const script = `process.stderr.write('x'.repeat(4 * 1024 * 1024)); process.stderr.write('\n诊断尾部标记 END-OF-STDERR'); process.stdout.write('done');`;
+  // 不要把 4MB 字面量塞进 -e 参数（会撞 ARG_MAX / 启动失败）；在子进程里分块写出。
+  const script = [
+    'const chunk = Buffer.alloc(64 * 1024, 0x78);',
+    'for (let i = 0; i < 64; i++) process.stderr.write(chunk);',
+    "process.stderr.write('\\n诊断尾部标记 END-OF-STDERR');",
+    "process.stdout.write('done');",
+  ].join('');
   const proc = spawn(process.execPath, ['-e', script], {cwd: process.cwd()});
   proc.stdout.setEncoding('utf8');
   let out = '';
