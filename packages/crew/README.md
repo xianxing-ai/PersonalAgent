@@ -1,8 +1,22 @@
-# Crew 子智能体协作底座（P0 存储原语 + P1 协作内核 + P2 驱动层）
+# Crew 子智能体协作底座（P0 存储原语 + P1 协作内核 + P2 驱动层 + P5 Runtime 工具适配器）
 
-负责人 `zemeng`（GitHub：`zemeng5208`）。本包是[子智能体协作体系设计](https://github.com/xianxing-ai/PersonalAgent)的 crew 纵向切片：P0（#554）交付命名 agent 注册表、独立 SQLite 任务表、每 agent 持久 FIFO 信箱与固定回执格式；P1（#559）交付协作内核（actor 边界 + dispatch / interrupt / 子间消息）；本 PR 在其上交付 P2 驱动层（统一驱动接口 + Codex 驱动 + 订阅同意钩子）。协作与评审规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准；模块归属以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。
+负责人 `zemeng`（GitHub：`zemeng5208`）。本包是[子智能体协作体系设计](https://github.com/xianxing-ai/PersonalAgent)的 crew 纵向切片：P0（#554）交付命名 agent 注册表、独立 SQLite 任务表、每 agent 持久 FIFO 信箱与固定回执格式；P1（#559）交付协作内核（actor 边界 + dispatch / interrupt / 子间消息）；P2 在其上交付驱动层（统一驱动接口 + Codex 驱动 + 订阅同意钩子）；P5 交付 Runtime 工具适配器（`src/runtime-tools.ts`，把 dispatch / send_message / list_agents / interrupt 暴露成与 Runtime `RegisteredTool` 同形状的对象）与集成说明（[docs/crew-integration.md](docs/crew-integration.md)）。协作与评审规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准；模块归属以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。
 
-## 当前范围（本 PR：P2 驱动层）
+## Runtime 工具适配器（P5）
+
+`createCrewRuntimeTools({runtime, kernel, actorId})` 产出 `crew.dispatch` / `crew.send_message` / `crew.list_agents` / `crew.interrupt` 四个 `RegisteredTool` 形状的对象（descriptor：name/version/inputSchema/outputSchema/sideEffect/requiredScopes/idempotencySupport/recoverySupport/requiresPresence + `execute(input, context)`），工厂模式与 `subagent.dispatch`（`packages/agents`）一致。crew 不 import contracts/apps：结构兼容的本地镜像类型（`CrewToolDescriptor`/`CrewToolContext`/`CrewRegisteredTool`）逐字段对照 `packages/contracts/src/ports.ts` 与 `generated.ts` 注明出处，兼容性由 `test/runtime-tools.test.mjs` 的形状镜像测试证明；与真实 contracts 的编译期核对发生在 apps/runtime 接线时。语义要点：actor 由受信宿主在工厂参数绑定（不信任模型输入）；`crew.dispatch` 入队前有订阅同意门（未同意/已撤销抛 `CONSENT_REQUIRED`，任务不入队）；错误一律 `CrewError`（`code` + `[CODE] message`）。**本适配器不注册到 ToolGateway、不创建 Runtime 子任务**——apps/runtime 的接线位置、伪代码、需 goo122 配合的事项（错误码映射、Policy 对接、首次同意流）见 [docs/crew-integration.md](docs/crew-integration.md)。
+
+```ts
+import {openCrewDriverRuntime, openCrewKernel, createCrewRuntimeTools, CREW_PARENT_AGENT_ID} from '@personal-agent/crew';
+
+const runtime = openCrewDriverRuntime('/data/crew.sqlite');
+const kernel = openCrewKernel('/data/crew.sqlite'); // 同一路径；send_message/同意门走内核
+const tools = createCrewRuntimeTools({runtime, kernel, actorId: CREW_PARENT_AGENT_ID});
+// tools.tools 逐个交给 ToolHost.register(...)（接线说明见 docs/crew-integration.md）
+```
+
+
+## 当前范围（P2 驱动层 + P5 Runtime 工具适配器）
 
 在 P1 内核之上新增三层：统一驱动契约（`src/driver.ts`）、Codex 驱动（`src/drivers/codex.ts`）、驱动运行时（`src/runtime.ts`），以及订阅使用同意接口（`src/consent.ts`，写入 crew 自己的 SQLite）。主父 agent 派子的逻辑不变：任务根仍只由父发起，驱动只是子 agent 的执行器。
 
@@ -17,7 +31,7 @@
 
 - **Claude/Grok（API key 驱动）与 Gemini、其余 ACP 客户端（opencode acp、grok agent stdio 等）**：本 PR 不做，注册表查询返回明确的 `DRIVER_UNAVAILABLE`（"留后续 PR"），任务保持排队。
 - **未对真实 Codex 做实机验证**：协议实现与握手字段未经真实 CLI 核对；`probe` 的登录探测只确认 CLI 可执行性，登录状态在握手期经 `loginStatus` 确认。真实 Codex 的实机验证（含产品进程内无任何令牌读写记录的验收）留待有已登录环境的条件下进行。
-- **`subagent.dispatch` 接线**：本包尚未注册为 `RegisteredTool`，未接入 Runtime/ToolGateway/Policy；驱动运行时到 Runtime 子任务的映射留待接线 PR。设置页同意流程与 agent 列表/信箱视图的前端接线归前端负责人。
+- **`subagent.dispatch` 接线**：P5 已交付与 Runtime `RegisteredTool` 同形状的适配器（`src/runtime-tools.ts`）与集成说明（`docs/crew-integration.md`），但**未接入 apps/runtime、未注册到 ToolGateway/Policy**——接线归 goo122（位置与伪代码见集成说明）；适配器不创建 Runtime 子任务，crew 任务与 Runtime 子任务的映射留接线 PR。设置页同意流程与 agent 列表/信箱视图的前端接线归前端负责人。
 - **驱动回执的 evidenceRefs**：CLI 自报结果不是可信证据，驱动产出的回执 `evidenceRefs` 一律留空，父应按"模型自报"对待；可信产物引用（worktree 提交、交接 manifest）留后续 PR。
 - **互审编排、文件交接 manifest、按 agent 的持久 worktree 隔离**：按设计页分期留后续 PR。
 
@@ -61,4 +75,4 @@ import {FakeDriver, createFakeCodexSpawn} from '@personal-agent/crew/testing';
 - 同意门同时挂在驱动 `start`（契约）与运行时 `runNextTask`（在领取之前），拒绝路径不产生任何进程或任务状态变化。
 - 会话事件总线先缓冲后回放：start 期间产生的 `started` 对迟到的订阅者不丢；运行时终态监视在 `send` 之前订阅，避免响应与完成通知同块到达时漏掉 `completed`。
 - 协议字段集中在 `PROTOCOL_*` 常量，未实机验证的部分（`loginStatus.requiresLogin` 语义、通知字段名）单独标注，实机联调时只需小改。
-- 测试只覆盖本包行为（SQLite 临时库 + 可注入时钟 + 假子进程/管道协议模拟，56 条），不证明任何真实 CLI 已连通。
+- 测试只覆盖本包行为（SQLite 临时库 + 可注入时钟 + 假子进程/管道协议模拟，65 条），不证明任何真实 CLI 已连通，也不证明 apps/runtime 接线后的全链行为（`validateContract('tool', …)` / ajv schema 校验在不依赖 contracts 的本包内无法执行，见集成说明“已知限制”）。
