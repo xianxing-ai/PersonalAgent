@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {fileURLToPath} from 'node:url';
 import {
   createRuntimeF22ShadowObservationHost,
   createF22TraceReplayWorkflowPorts,
@@ -248,7 +249,7 @@ test('F26 release worker stays unavailable when unconfigured and Desktop wrapper
     agentArtsConfig: {readReleaseBinding: () => ({}), snapshot: () => ({configured: true})},
     getAgentArtsModels: () => ({snapshot: () => ({catalog: {revision: '1'}}), readExecutionModel: () => ({catalogRevision: '1'})}),
     nativeExecutionHost: {createCommandTool: () => ({}), readOriginalF26Release: () => ({})},
-    repositoryRoot: process.cwd(),
+    repositoryRoot: fileURLToPath(new URL('../../../', import.meta.url)),
     nodeExecutable: process.execPath,
     powerShellPath: process.execPath,
     dockerPath: process.execPath,
