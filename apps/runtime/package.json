@@ -49,6 +49,7 @@
     "@personal-agent/models": "0.1.0-alpha.1",
     "@personal-agent/memory": "0.1.0-alpha.1",
     "@personal-agent/mail": "0.1.0-alpha.1",
+    "@personal-agent/feeds": "0.1.0-alpha.1",
     "@personal-agent/knowledge": "0.1.0-alpha.1",
     "@personal-agent/policy": "0.1.0-alpha.1",
     "@personal-agent/storage": "0.0.0",
