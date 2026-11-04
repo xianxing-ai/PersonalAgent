@@ -38,7 +38,7 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
     inFlight.add(operationKey);
     try {
     const restrictive=command.operation==='readback'||command.operation==='control'&&['pause','cancel'].includes(command.control.action)
-      ||command.operation==='approval'&&command.approval.decision==='deny';
+      ||command.operation==='approval'&&command.approval.decision==='deny'||command.operation==='source'&&command.source.action==='revoke';
     const config=configuration(),task=source(sourceTaskId,restrictive),originalGoal=hash(task.goal??''),originalConfig=digest(config);
     if(digest(config.value.owner)!==digest(command.owner))fail('REVISION_CONFLICT','原云会话宿主配置已改变');
     const epoch=runtime.readExecutionEpoch(sourceTaskId),controller=new AbortController();
@@ -77,7 +77,7 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
     return send(task.taskId,command,entry,entryKey);
   }
   async function act(operation,input) {
-    if(!input||Object.keys(input).some(k=>!['sourceTaskId','originCommandId','commandId','target','control','approval'].includes(k)))
+    if(!input||Object.keys(input).some(k=>!['sourceTaskId','originCommandId','commandId','target','control','approval','source'].includes(k)))
       fail('INVALID_ARGUMENT','云会话操作字段无效');
     const saved=original(input.sourceTaskId,input.originCommandId),deadline=new Date(operation==='readback'?now()+55_000:
       Math.min(now()+55_000,Date.parse(saved.command.submit.taskDeadline))).toISOString();
@@ -87,7 +87,12 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
     if(operation==='approval'){
       const known=saved.lastReply.approvals.find(value=>value.approvalId===input.approval?.approvalId);
       if(!known||known.state!=='pending'||known.revision!==input.approval.expectedRevision||known.argumentsDigest!==input.approval.argumentsDigest
-        ||known.expiresAt!==input.approval.expiresAt)fail('REVISION_CONFLICT','审批必须匹配原云会话的当前请求');
+        ||known.expiresAt!==input.approval.expiresAt||known.taskId!==input.approval.taskId)fail('REVISION_CONFLICT','审批必须匹配原云会话的当前请求');
+    }
+    if(operation==='source'){
+      const known=saved.lastReply.sources?.find(value=>value.sourceId===input.source?.sourceId);
+      if(!known||known.configurationRef!==input.source.configurationRef||known.revision!==input.source.expectedRevision)
+        fail('REVISION_CONFLICT','来源选择必须匹配原云会话读回');
     }
     if(operation==='control'&&saved.lastReply&&input.control&&Number.isInteger(saved.lastReply.controlRevision)&&input.control.expectedControlRevision!==saved.lastReply.controlRevision)
       fail('REVISION_CONFLICT','控制必须匹配原云会话的当前控制版本');
@@ -113,5 +118,5 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
     }
     return {state:'configured_not_verified',hostId:configured.value.owner.hostId,sourceTasks,sessions};
   }
-  return {status,start,read:input=>act('readback',input),control:input=>act('control',input),approval:input=>act('approval',input)};
+  return {status,start,read:input=>act('readback',input),control:input=>act('control',input),approval:input=>act('approval',input),source:input=>act('source',input)};
 }

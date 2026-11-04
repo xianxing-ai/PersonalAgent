@@ -31,6 +31,8 @@
 
 当前代码将归属、独立 Runtime 组合、固定 SSH socket 传输、Desktop 提交/控制/审批/读回及原维护循环一起接线，没有单独交付未消费的位置开关。部署前提、具体已装配工具与真实缺项见 [云宿主说明](../../scripts/remote-runner/CLOUD_RUNTIME.md)。仅有代码或离线 Fixture 不构成真实云持续验收。
 
+来源增量复用原 confirmed-source router、原 HostToolTask/Policy 与原 Scheduler。公开 `source` 命令把原生用户选择绑定固定父会话/配置/revision/期限；子读取审批额外携带经过父会话核实的原 taskId。跟踪不等于 tool grant，每次网络读取仍须原 `allow_once`。当前限制每会话一个公开 feed，撤销同时取消该会话，防止撤销后继续发送旧来源；unknown 不另建读取或更换来源。旧 v1 消息不含这些可选字段时保持原行为；来源功能需要同一新 release 的云/桌面消费者，旧宿主将拒绝不认识的字段。纯 source router 提取保留 Desktop 原 CAS/state 键，未迁移用户数据。
+
 ## 必要验证与真实验收
 
 本地最小验证覆盖：历史本机会话不能改为云归属；同一任务不能改 Runtime 身份、位置或 deadline；异步准备期间丢失所有权不能执行；原任务取消/过期与未知写入仍沿原拒绝和只读恢复路径。

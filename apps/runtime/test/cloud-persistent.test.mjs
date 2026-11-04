@@ -11,9 +11,9 @@ import {proactiveWorkflowDigest} from '@personal-agent/agentarts';
 // Actual Runtime/SQLite/Policy and signed image protocol; image/model/host qualification are explicit offline fixtures.
 const owner={runtimeId:'fixture-runtime',hostId:'fixture-host',deploymentVersion:'fixture-v1',contractRef:'fixture-contract',contractVersion:'1'};
 const hash=value=>createHash('sha256').update(value).digest('hex');
-function fixture() {
+function fixture(applicationOptions={},feeds) {
   mkdirSync('.cache',{recursive:true});const path=join(mkdtempSync(join('.cache','cloud-persistent-')),'runtime.sqlite');
-  const app=createRuntimeApplication({path,profile:'huawei_ict_agentarts',proactiveWorkflows:true});
+  const app=createRuntimeApplication({path,profile:'huawei_ict_agentarts',proactiveWorkflows:true,...applicationOptions});
   const secret='explicit-offline-cloud-controller-secret-32';let current=true,requests=0,offline=false;
   const controller=createProactiveWorkflowController({receiptSecret:secret,decisionContracts:[{id:owner.contractRef,version:'1',qualifiedForMain:false,
     batchIndependent:true,criteria:'Offline fixture',candidates:[{id:'continue',description:'Continue',action:'continue'},{id:'defer',description:'Defer',action:'defer'}]}]});
@@ -26,7 +26,7 @@ function fixture() {
     return {status:200,headers:{get:()=> 'application/json'},text:async()=>JSON.stringify([
       {event:'message',data:{text:JSON.stringify(answer)}},{event:'task_end'},{event:'end'}])};
   };
-  const options={owner,qualificationEvidenceRef:'fixture:not-real-cloud',assertCurrent(){if(!current)throw Error('fixture owner lost');},
+  const options={owner,qualificationEvidenceRef:'fixture:not-real-cloud',...(feeds?{feeds}:{}),assertCurrent(){if(!current)throw Error('fixture owner lost');},
     image:{endpoint:'http://127.0.0.1:9810/runtimes/fixture/invocations?endpoint=fixture-v1',receiptSecret:secret,authorizationProvider:{read:async()=> 'Bearer fixture'},fetchImpl}};
   const host=createCloudPersistentRuntimeHost(app,options),goal='Public offline responsibility';
   const command={version:1,commandId:'submit-one',owner,deadline:new Date(Date.now()+30_000).toISOString(),operation:'submit',
@@ -37,6 +37,33 @@ const signal=()=>new AbortController().signal;
 const read=(f,id='read-one')=>({...f.command,commandId:id,operation:'readback',submit:undefined,originCommandId:f.command.commandId});
 const readCommand=(f,id='read-one')=>{const result=read(f,id);delete result.submit;return result;};
 async function settle(app){for(let i=0;i<40;i++){try{app.close();return;}catch{await new Promise(resolve=>setTimeout(resolve,5));}}throw Error('fixture worker did not settle');}
+
+test('cloud child approvals must belong to the original source operation and consume original Policy once',async()=>{
+  let childTaskId,calls=0;
+  const tools=[{descriptor:{name:'fixture.source_read',version:'1.0.0',inputSchema:{type:'object',additionalProperties:false},
+    outputSchema:{type:'object'},requiredScopes:['fixture:source:read'],sideEffect:'read',idempotencySupport:true,recoverySupport:true,requiresPresence:false},
+    execute:async()=>{calls++;return {read:true};}}];
+  const feeds={bindWorkflow(){},snapshot:()=>[],approvalTaskIds:()=>childTaskId?[childTaskId]:[],
+    assertReadCurrent:(_binding,taskId)=>assert.equal(taskId,childTaskId),restrict(){},configure(){},maintain:async()=>({state:'unavailable'})};
+  const f=fixture({hostUserNamespace:owner.runtimeId,tools,hostOnlyTools:['fixture.source_read']},feeds);
+  const first=await f.host.handle(f.command,signal());
+  const child=f.app.prepareHostToolTask({commandId:'native-source-read',toolName:'fixture.source_read',toolVersion:'1.0.0',deadline:f.command.deadline});
+  childTaskId=child.taskId;f.app.finalizeHostToolTask({taskId:child.taskId,commandId:'native-source-read',expectedTaskRevision:child.revision,arguments:{}});
+  for(let n=0;n<100&&f.app.readHostToolTask(childTaskId).task.state!=='waiting_approval';n++)await new Promise(resolve=>setTimeout(resolve,5));
+  const observed=await f.host.handle(readCommand(f,'read-child'),signal()),approval=observed.approvals.find(value=>value.taskId===childTaskId);
+  assert.ok(approval);assert.equal(calls,0);
+  const command={version:1,commandId:'approve-wrong-child',owner,deadline:f.command.deadline,operation:'approval',target:first.target,
+    approval:{taskId:'foreign-task',approvalId:approval.approvalId,expectedRevision:approval.revision,argumentsDigest:approval.argumentsDigest,
+      expiresAt:approval.expiresAt,decision:'allow_once'}};
+  await assert.rejects(f.host.handle(command,signal()),{code:'RESULT_UNKNOWN'});
+  assert.equal(f.app.runtime.getApproval(approval.approvalId).state,'pending');assert.equal(calls,0);
+  command.commandId='approve-original-child';command.approval.taskId=childTaskId;
+  await f.host.handle(command,signal());
+  for(let n=0;n<100&&f.app.runtime.getTask(childTaskId).state!=='succeeded';n++)await new Promise(resolve=>setTimeout(resolve,5));
+  assert.equal(f.app.runtime.getTask(childTaskId).state,'succeeded');assert.equal(calls,1);
+  await f.host.handle(command,signal());assert.equal(calls,1);
+  f.app.runtime.requestCancel(first.target.taskId);await settle(f.app);
+});
 
 test('cloud admission persists one original session; approval stays in original Policy and readback survives restart',async()=>{
   const f=fixture();const first=await f.host.handle(f.command,signal());

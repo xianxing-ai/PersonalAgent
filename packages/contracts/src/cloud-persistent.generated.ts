@@ -10,7 +10,7 @@ export interface CloudPersistentContracts {
     commandId: Id;
     owner: Owner;
     deadline: Time;
-    operation: "submit" | "control" | "readback" | "approval";
+    operation: "submit" | "control" | "readback" | "approval" | "source";
     submit?: {
       originTaskId: Id;
       originRuntimeId: Id;
@@ -27,9 +27,13 @@ export interface CloudPersistentContracts {
     approval?: {
       approvalId: Id;
       expectedRevision: number;
+      taskId?: Id;
       argumentsDigest: Digest;
       expiresAt: Time;
       decision: "allow_once" | "deny";
+    };
+    source?: {
+      [k: string]: unknown;
     };
   };
   reply: {
@@ -57,6 +61,7 @@ export interface CloudPersistentContracts {
     approvals: {
       approvalId: Id;
       revision: number;
+      taskId?: Id;
       action: string;
       argumentsDigest: Digest;
       arguments: {
@@ -69,6 +74,21 @@ export interface CloudPersistentContracts {
      * @maxItems 100
      */
     evidenceRefs: Id[];
+    /**
+     * @maxItems 20
+     */
+    sources?: {
+      sourceId: Id;
+      title: string;
+      url: string;
+      configurationRef: string;
+      intervalSeconds: number;
+      revision: number;
+      state:
+        "available" | "tracking" | "revoked" | "waiting_approval" | "waiting_reconciliation" | "failed" | "expired";
+      readTaskId?: Id;
+      nextRunAt?: Time;
+    }[];
   };
 }
 export interface Owner {
