@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {createRuntimeApplication,createCloudPersistentRuntimeHost,createRemoteRunnerService,createMemoryRunnerSecrets} from '../dist/application.js';
+import {createRuntimeApplication,createCloudPersistentRuntimeHost,createRemoteRunnerService,createMemoryRunnerSecrets,readPersistedRuntimeProactiveWorkflow} from '../dist/application.js';
 import {createProactiveWorkflowController} from '../../agentarts-runtime/src/proactive-controller.mjs';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
+import {proactiveWorkflowDigest} from '@personal-agent/agentarts';
 
 // Actual Runtime/SQLite/Policy and signed image protocol; image/model/host qualification are explicit offline fixtures.
 const owner={runtimeId:'fixture-runtime',hostId:'fixture-host',deploymentVersion:'fixture-v1',contractRef:'fixture-contract',contractVersion:'1'};
@@ -114,4 +115,71 @@ test('cloud transport keeps the exact host and never selects local fallback',asy
   const result=await runner.submit(job);assert.equal(result.accepted,false);assert.equal(result.location,'remote');
   assert.equal(result.receipt.state,'rejected');assert.equal(connected,0);assert.equal(local,0);
   await assert.rejects(runner.submit({...job,hostId:'replacement',payload:{owner:{hostId:'replacement'}}}),{code:'REVISION_CONFLICT'});app.close();
+});
+test('enter_unattended and return controls persist checkpoints, survive restart and reject unknown replays or missing checkpoint storage',async()=>{
+  const f=fixture();
+  const admitted=await f.host.handle(f.command,signal());
+  assert.equal(admitted.controlRevision,0);
+
+  // 1. enter_unattended control persists checkpoint and increments controlRevision to 1
+  const enterCmd={version:1,commandId:'control-enter-1',owner,deadline:f.command.deadline,operation:'control',
+    target:admitted.target,control:{action:'enter_unattended',expectedControlRevision:0}};
+  const enterReply=await f.host.handle(enterCmd,signal());
+  assert.equal(enterReply.controlRevision,1);
+  const persistedAfterEnter=readPersistedRuntimeProactiveWorkflow(f.app.runtime,admitted.target.taskId,admitted.target.sessionId);
+  assert.ok(persistedAfterEnter);
+  assert.equal(persistedAfterEnter.application.state.binding.controlRevision,1);
+  assert.equal(persistedAfterEnter.application.state.lastResult.mode,'unattended');
+
+  // Duplicate enter_unattended with same commandId returns identical cached reply (no duplicate execution)
+  const duplicateEnter=await f.host.handle(enterCmd,signal());
+  assert.equal(duplicateEnter.controlRevision,1);
+
+  // 2. Restart and recover from SQLite checkpoint
+  await settle(f.app);
+  const restarted=createRuntimeApplication({path:f.path,profile:'huawei_ict_agentarts',proactiveWorkflows:true});
+  restarted.runtime.recoverInterruptedTasks();
+  const restoredHost=createCloudPersistentRuntimeHost(restarted,f.options);
+
+  // Readback after restart restores controlRevision 1
+  const readAfterRestart=await restoredHost.handle(readCommand(f,'read-after-restart'),signal());
+  assert.equal(readAfterRestart.controlRevision,1);
+
+  // Stale expectedControlRevision: 0 fails and requires readback
+  const staleReturn={version:1,commandId:'control-return-stale',owner,deadline:f.command.deadline,operation:'control',
+    target:admitted.target,control:{action:'return',expectedControlRevision:0}};
+  await assert.rejects(restoredHost.handle(staleReturn,signal()),{code:'RESULT_UNKNOWN'});
+
+  // Valid return control advances controlRevision from 1 to 2 and restores mode 'attended'
+  const returnCmd={version:1,commandId:'control-return-1',owner,deadline:f.command.deadline,operation:'control',
+    target:admitted.target,control:{action:'return',expectedControlRevision:1}};
+  const returnReply=await restoredHost.handle(returnCmd,signal());
+  assert.equal(returnReply.controlRevision,2);
+  const persistedAfterReturn=readPersistedRuntimeProactiveWorkflow(restarted.runtime,admitted.target.taskId,admitted.target.sessionId);
+  assert.ok(persistedAfterReturn);
+  assert.equal(persistedAfterReturn.application.state.binding.controlRevision,2);
+  assert.equal(persistedAfterReturn.application.state.lastResult.mode,'attended');
+
+  // Unknown command that was admitted without saved reply requires readback, not another execution
+  const interruptedCmd={version:1,commandId:'interrupted-cmd-1',owner,deadline:f.command.deadline,operation:'control',
+    target:admitted.target,control:{action:'enter_unattended',expectedControlRevision:2}};
+  const regTask=restarted.runtime.findTaskByIdempotencyKey('cloud-persistent-owner-v1');
+  assert.ok(regTask);
+  restarted.runtime.saveCheckpointOnce(regTask.taskId,'cloud-command:'+hash(interruptedCmd.commandId),{digest:proactiveWorkflowDigest(interruptedCmd)});
+  await assert.rejects(restoredHost.handle(interruptedCmd,signal()),{code:'RESULT_UNKNOWN'});
+
+  // Corrupted or missing checkpoint storage fails with RESULT_UNKNOWN
+  const tamperedSession='cloud-corrupt-session';
+  const dummyTask=restarted.runtime.submitTask({goal:'Tampered checkpoint',conversationId:'cloud-tampered',idempotencyKey:'cloud-tampered'});
+  restarted.runtime.saveCheckpointOnce(dummyTask.taskId,'cloud-persistent-session-v1',{
+    version:1,owner,submitCommandId:'tampered-submit',taskId:dummyTask.taskId,sessionId:tamperedSession,
+    sourceTaskId:f.command.submit.originTaskId,taskDeadline:f.command.submit.taskDeadline,imageBinding:proactiveWorkflowDigest(owner),
+    originTaskId:f.command.submit.originTaskId,originRuntimeId:f.command.submit.originRuntimeId,goalDigest:f.command.submit.goalDigest
+  });
+  const missingRead={version:1,commandId:'read-missing-checkpoint',owner,deadline:f.command.deadline,operation:'readback',
+    target:{taskId:dummyTask.taskId,sessionId:tamperedSession}};
+  await assert.rejects(restoredHost.handle(missingRead,signal()),{code:'RESULT_UNKNOWN'});
+
+  restarted.runtime.requestCancel(admitted.target.taskId);
+  await settle(restarted);
 });
