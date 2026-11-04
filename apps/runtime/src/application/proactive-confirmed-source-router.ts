@@ -319,7 +319,7 @@ export function createRuntimeProactiveConfirmedSourceRouter({getApplication,getW
         deliveries.push({sourceId,...await enqueue(input,context,true)});
       }catch(error){const code=error&&typeof error==='object'&&'code'in error&&typeof error.code==='string'?error.code:'';
         deliveries.push({sourceId,state:'unavailable',code:
-        ['CANCELLED','TIMEOUT','SCOPE_DENIED','REVISION_CONFLICT','RESULT_UNKNOWN','UNSUPPORTED_CAPABILITY'].includes(code)?code:'HOST_UNAVAILABLE'});}
+        ['CANCELLED','TIMEOUT','SCOPE_DENIED','REVISION_CONFLICT','RESULT_UNKNOWN','UNSUPPORTED_CAPABILITY','UNAUTHORIZED'].includes(code)?code:'HOST_UNAVAILABLE'});}
     }
     return {state:deliveries.some(item=>item.state==='unavailable')?'unavailable':'recovered',deliveries};
   }};
