@@ -663,7 +663,9 @@ test('the fake API key never leaks into events, receipts, the sqlite file, error
     runtime.dispatchTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't2', rootRequestId: 'root-2', assignedAgentId: 'reviewer-g', goal: '评审补丁'});
     const bad = await runtime.runNextTask('reviewer-g');
     assert.equal(bad.status, 'failed', 'the grok 401 maps to a failed receipt');
-    assert.ok(bad.receipt.result.includes('invalid bearer token'), 'the vendor message is surfaced');
+    assert.ok(bad.receipt.result.includes('invalid bearer'), 'the vendor message is surfaced (token value redacted)');
+    assert.ok(!bad.receipt.result.includes('invalid bearer token'), 'the trailing token word is redacted per F6');
+    assert.ok(bad.receipt.result.includes('[已脱敏]') || bad.receipt.result.includes('401'), 'redaction or status remains');
     assert.ok(grokSeen, 'the grok request actually reached the fake server');
 
     // 1. 事件流里没有密钥。

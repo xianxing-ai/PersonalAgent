@@ -1,5 +1,6 @@
 import {spawn} from 'node:child_process';
 import type {Readable, Writable} from 'node:stream';
+import {redactSensitiveText} from './sanitize.js';
 import type {CrewDriverId} from './store.js';
 
 /**
@@ -108,18 +109,71 @@ export interface CrewDriverProcess {
   readonly stdin: Writable;
   readonly stdout: Readable;
   readonly stderr: Readable;
+  /** 子进程 stderr 的脱敏尾部（诊断用）；只在生产 spawn 实现上提供。 */
+  readonly stderrTail?: () => string;
   /** 终止进程；返回是否成功发出信号。 */
   kill(signal?: NodeJS.Signals): boolean;
   /** 进程退出（或启动失败，error 为 ENOENT 等）时结算。 */
   readonly exited: Promise<{exitCode: number | null; signal: NodeJS.Signals | null; error?: Error}>;
 }
 
-export type CrewSpawn = (command: string, args: readonly string[], options: {readonly cwd: string}) => CrewDriverProcess;
+export type CrewSpawn = (command: string, args: readonly string[], options: {readonly cwd: string; readonly env?: Readonly<Record<string, string>>}) => CrewDriverProcess;
+
+/** 保留的 stderr 尾部上限（字符）：持续消费管道防写满阻塞，只留尾部若干 KB 供诊断。 */
+export const MAX_DRIVER_STDERR_TAIL = 8192;
+
+/**
+ * 子进程环境变量白名单：驱动拉起的官方 CLI 只拿到登录与运行必需项。
+ * CLI 是能执行任意 shell 的 agent，继承宿主全量环境会把 Claude/Grok API key
+ * 等秘密暴露给模型或其工具（提示注入即可读出外传），因此默认剔除一切不在
+ * 白名单内的变量，明确剔除 `*_API_KEY`/`*_TOKEN`/`*_SECRET`/`*_PASSWORD`/
+ * `PI_NOTIFY_*` 这类凭据模式（即使调用方经 `env` 显式传入也丢弃）。
+ */
+const DRIVER_ENV_ALLOW_EXACT: readonly string[] = [
+  'PATH', 'HOME', 'USERPROFILE', 'LANG', 'TERM', 'TMPDIR', 'TEMP', 'TMP', 'SYSTEMROOT', 'CODEX_HOME', 'SHELL',
+];
+const DRIVER_ENV_ALLOW_PREFIX: readonly string[] = ['LC_', 'XDG_'];
+const DRIVER_ENV_DENY_SUFFIX: readonly string[] = ['_API_KEY', '_TOKEN', '_SECRET', '_PASSWORD'];
+const DRIVER_ENV_DENY_PREFIX: readonly string[] = ['PI_NOTIFY_'];
+
+/** 判断一个变量名是否落在凭据剔除模式内（白名单前的硬性否决）。 */
+export function isDriverEnvDenied(name: string): boolean {
+  const upper = name.toUpperCase();
+  return DRIVER_ENV_DENY_PREFIX.some(prefix => upper.startsWith(prefix))
+    || DRIVER_ENV_DENY_SUFFIX.some(suffix => upper.endsWith(suffix));
+}
+
+/** 组装驱动子进程的环境：白名单 ∪（调用方 extraEnv 剔除凭据模式后）。 */
+export function resolveDriverEnv(env?: Readonly<Record<string, string>>): Record<string, string> {
+  const resolved: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    const allowed = DRIVER_ENV_ALLOW_EXACT.includes(name)
+      || DRIVER_ENV_ALLOW_PREFIX.some(prefix => name.startsWith(prefix));
+    if (allowed && !isDriverEnvDenied(name)) resolved[name] = value;
+  }
+  for (const [name, value] of Object.entries(env ?? {})) {
+    if (isDriverEnvDenied(name)) continue; // 调用方也不能经 extraEnv 把凭据带进子进程。
+    resolved[name] = value;
+  }
+  return resolved;
+}
 
 /** 生产实现：node child_process.spawn，stdio 三根管道；启动失败经 exited 结算。 */
 export function createNodeSpawn(): CrewSpawn {
   return (command, args, options) => {
-    const child = spawn(command, [...args], {cwd: options.cwd, stdio: ['pipe', 'pipe', 'pipe']});
+    const child = spawn(command, [...args], {cwd: options.cwd, env: resolveDriverEnv(options.env), stdio: ['pipe', 'pipe', 'pipe']});
+    // F12：stderr 管道必须持续消费，否则子进程大量写 stderr 会写满管道而阻塞；
+    // 只保留脱敏后的尾部若干 KB 供诊断，不落盘、不打印。
+    child.stderr.setEncoding('utf8');
+    let stderrTailBuffer = '';
+    child.stderr.on('data', (chunk: string) => {
+      stderrTailBuffer += chunk;
+      if (stderrTailBuffer.length > MAX_DRIVER_STDERR_TAIL) {
+        stderrTailBuffer = stderrTailBuffer.slice(stderrTailBuffer.length - MAX_DRIVER_STDERR_TAIL);
+      }
+    });
+    child.stderr.resume();
     const exited = new Promise<{exitCode: number | null; signal: NodeJS.Signals | null; error?: Error}>(resolve => {
       let settled = false;
       const settle = (exitCode: number | null, signal: NodeJS.Signals | null, error?: Error) => {
@@ -134,6 +188,7 @@ export function createNodeSpawn(): CrewSpawn {
       stdin: child.stdin,
       stdout: child.stdout,
       stderr: child.stderr,
+      stderrTail: () => redactSensitiveText(stderrTailBuffer),
       kill: signal => child.kill(signal),
       exited,
     };

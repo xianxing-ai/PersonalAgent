@@ -49,9 +49,17 @@ export interface CrewConsentProvider {
  */
 export class CrewStoreConsentProvider implements CrewConsentProvider {
   private readonly store: CrewStore;
+  /** driver → 期望 loginKind 映射（可注册）；未注册的驱动不做比对（claude/grok 的 api-key 留 p4）。 */
+  private readonly expectedLoginKinds: Map<CrewDriverId, CrewConsentLoginKind>;
 
-  constructor(store: CrewStore) {
+  constructor(store: CrewStore, expectedLoginKinds: Partial<Record<CrewDriverId, CrewConsentLoginKind>> = {codex: 'local-login'}) {
     this.store = store;
+    this.expectedLoginKinds = new Map(Object.entries(expectedLoginKinds) as Array<[CrewDriverId, CrewConsentLoginKind]>);
+  }
+
+  /** 宿主注册某驱动的期望登录方式；之后 requireGranted 会按它比对。 */
+  registerExpectedLoginKind(driverId: CrewDriverId, loginKind: CrewConsentLoginKind): void {
+    this.expectedLoginKinds.set(driverId, loginKind);
   }
 
   getConsent(driverId: CrewDriverId): CrewConsentRecord | undefined {
@@ -65,6 +73,10 @@ export class CrewStoreConsentProvider implements CrewConsentProvider {
     }
     if (!record.granted) {
       throw new CrewError('CONSENT_REQUIRED', `${driverId} 的订阅使用同意已被撤销（${record.revokedAt ?? '未知时间'}），如需继续使用请用户重新同意`);
+    }
+    const expectedLoginKind = this.expectedLoginKinds.get(driverId);
+    if (expectedLoginKind !== undefined && record.loginKind !== expectedLoginKind) {
+      throw new CrewError('CONSENT_REQUIRED', `${driverId} 的同意记录 loginKind 不匹配：登记为 ${record.loginKind}，该驱动要求 ${expectedLoginKind}；请用户以正确的登录方式重新同意`);
     }
     return record;
   }
