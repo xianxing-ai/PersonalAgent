@@ -95,6 +95,17 @@ export function mountRemoteRunners(root, invoke) {
             control: {action, expectedControlRevision: reply.controlRevision}}, session)));
         }
       }
+      const selected=(reply?.sources??[]).some(value=>value.revision>0);
+      for(const source of reply?.sources??[]){
+        row.append(text('p', `${source.title} · ${source.url} · ${source.state} · 每 ${source.intervalSeconds} 秒检查`));
+        if(source.state==='available'&&!selected)row.append(cloudButton('同意公开订阅跟踪与云端分析',()=>cloudAction('source',{
+          ...identity(),target:reply.target,source:{action:'track',sourceId:source.sourceId,configurationRef:source.configurationRef,
+            expectedRevision:source.revision,readAndCloudConsent:true}},session),!confirmed||['cancelled','failed','succeeded'].includes(reply.task.state)));
+        if(source.revision>0&&source.state!=='revoked')row.append(cloudButton('撤销跟踪并取消云会话',()=>cloudAction('source',{
+          ...identity(),target:reply.target,source:{action:'revoke',sourceId:source.sourceId,configurationRef:source.configurationRef,
+            expectedRevision:source.revision}},session),!confirmed));
+      }
+      if(reply?.sources?.length)row.append(text('p','跟踪期限与本云会话一致；每次实际读取仍需审批，结果未确认时不会重新采集。'));
       for (const approval of reply?.approvals ?? []) {
         if (approval.state !== 'pending') continue;
         const validArguments = approval.arguments && typeof approval.arguments === 'object' && !Array.isArray(approval.arguments);
@@ -103,7 +114,7 @@ export function mountRemoteRunners(root, invoke) {
         for (const [decision, label] of [['allow_once', '允许一次'], ['deny', '拒绝']]) {
           row.append(cloudButton(label, () => cloudAction('approval', {...identity(), target: reply.target,
             approval: {approvalId: approval.approvalId, expectedRevision: approval.revision, argumentsDigest: approval.argumentsDigest,
-              expiresAt: approval.expiresAt, decision}}, session), !confirmed || !validArguments || !(Date.parse(approval.expiresAt) > Date.now())));
+              expiresAt: approval.expiresAt, decision,...(approval.taskId?{taskId:approval.taskId}:{})}}, session), !confirmed || !validArguments || !(Date.parse(approval.expiresAt) > Date.now())));
         }
       }
       panel.append(row);
