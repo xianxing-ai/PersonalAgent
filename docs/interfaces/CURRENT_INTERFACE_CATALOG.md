@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-03 独立云持续会话宿主（provisional，真实环境未验）
+
+公开 `cloud-persistent` v1 Schema 与 `createCloudPersistentRuntimeHost` 将新会话固定到唯一云 Runtime，复用原 TaskRuntime/SQLite/Policy/Scheduler；Desktop 经原受信 SSH 与出机检查提交、控制、审批和读回。已有本机会话不迁移，原 grant/数据库不复制，默认缺宿主资格配置仍不可用。`createRuntimeProactiveMaintenancePump` 是原 Desktop 维护实现的共享入口，不另建调度器。现服务装配原 core、AgentArts teacher、云本地公共 Memory/Goal/只读 Vault 消费与公开 feeds。来源选择和子读取审批使用同一公开 Schema，tracking 不签工具 grant；每次原 HostToolTask 仍须原 `allow_once`，确认后经共享 `createRuntimeProactiveConfirmedSourceRouter` 入原 eventSink。邮件/日历/待办/GitHub、云通知和实体设备等其他能力尚未装配；没有 Linux/SSH/持久卷或关机后真实验收结论。方案与兼容见 [云持续设计](../design/CLOUD_PERSISTENT_RUNTIME_20261103.md)，操作前提见 [云宿主说明](../../scripts/remote-runner/CLOUD_RUNTIME.md)，#531 完整验收门槛不变。
+
 ## 2026-11-02 #533 控制权接线（provisional）
 
 Runtime 增加原检查点持久化的执行世代与最终执行检查，Desktop 接入本对话显式禁止项、完整内容确认、本机出机分类及 F02 原最终语音决定；F16/F19 的可信 Git 预览继续经原 Policy/ToolGateway 执行。普通云传输须回显版本化世代宿主包，F02 N05 的真实授权写入改变模板摘要，旧部署不得当作新能力验收。没有新增依赖、数据库或公开模型授权口；缺乏本地原音频/图像分类时明确不可用。实现、兼容性和本地/真实证据边界见 [控制权接线记录](../competition/evidence/CONTROL_GATES_IMPLEMENTATION_20261102.md)，不据此冻结接口或宣称 #531 真实验收完成。
