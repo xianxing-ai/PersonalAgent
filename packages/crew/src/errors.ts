@@ -6,6 +6,7 @@ export type CrewErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'DISPATCH_LIMIT_EXCEEDED'
+  | 'RATE_LIMIT_EXCEEDED'
   | 'UNSUPPORTED'
   /** 首次使用某家订阅来源未经用户同意（或同意已被撤销）。 */
   | 'CONSENT_REQUIRED'
