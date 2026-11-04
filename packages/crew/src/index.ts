@@ -71,10 +71,28 @@ export {
 } from './driver.js';
 export {CodexAppServerDriver, CODEX_DRIVER_ID, type CodexDriverOptions} from './drivers/codex.js';
 export {
+  ClaudeApiDriver,
+  CLAUDE_DRIVER_ID,
+  type ClaudeApiDriverOptions,
+} from './drivers/claude.js';
+export {
+  GrokApiDriver,
+  GROK_DRIVER_ID,
+  type GrokApiDriverOptions,
+} from './drivers/grok.js';
+export {
+  EnvCrewApiKeyProvider,
+  apiKeyEnvNames,
+  CLAUDE_API_KEY_ENV_NAMES,
+  GROK_API_KEY_ENV_NAMES,
+  type CrewApiKeyProvider,
+} from './secrets.js';
+export {
   CrewDriverRuntime,
   openCrewDriverRuntime,
   type CrewDriverRegistry,
   type CrewDriverRuntimeOptions,
+  type CrewRuntimeApiDriverOptions,
   type CrewRuntimeEvent,
 } from './runtime.js';
 export {

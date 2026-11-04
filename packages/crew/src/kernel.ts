@@ -44,7 +44,7 @@ export class CrewKernel {
 
   private constructor(store: CrewStore, options: CrewKernelOptions) {
     this.store = store;
-    this.consentProvider = new CrewStoreConsentProvider(store);
+    this.consentProvider = new CrewStoreConsentProvider(store, {codex: 'local-login', claude: 'api-key', grok: 'api-key'});
     if (options.workspaceRoot !== undefined) {
       const root = resolve(options.workspaceRoot);
       this.agentsRoot = join(root, AGENTS_DIRNAME);
