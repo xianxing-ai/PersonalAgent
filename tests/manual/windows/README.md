@@ -29,3 +29,17 @@ runner 不检测管理员令牌；需要声明普通权限时另记录当前会�
 当前回执见 [MOD-17 记录](../../../packages/windows-client/ACCEPTANCE-20261013.md)。
 
 MOD-16 现场入口和未验证条件见 [Windows Host 记录](../../../apps/windows-host/ACCEPTANCE-20261013.md)。
+
+## 记事本隔离手工脚本
+
+`notepad-full-access-acceptance.mjs --run-public-notepad` 是显式 opt-in 的真实原生写入脚本，使用独立 SQLite、journal 和脚本内已有的 `manual-full` 策略。它不读取或证明正式 Desktop 的用户沙箱选择；脚本通过不能代替原 Desktop 模式与凭据验收。执行须另有对新空白记事本公开测试文本的授权。
+
+普通用户令牌检查复用 Desktop 的 `findWindowsExecutable('pwsh.exe')`，从 PATH 解析规范路径并排除当前仓库。未发现可用 PowerShell 7 时，在打开原生窗口之前以 `NOT_FOUND` 失败；不回退到旧 Windows PowerShell，也不安装工具。
+
+## F15 原补丁窗口的单次目视路径
+
+正式 Competition Desktop 的设置页须已有实际审核者配置，以及原任务生成的待审核项。对该项点击「在本机查看原补丁」会调用 `coding.review.show`；Main 复核原任务、工作区许可与授权，再启动 WinForms。不要用临时审核者、替造签名或脚本内的 `manual-full` 代替这些前提。
+
+在原任务 deadline 前目视确认补丁窗口的内容，再正常关闭该窗口。原 viewer 只有收到 `SHOWN`、`CLOSED` 且子进程正常退出，才向 UI 返回展示完成。单独 `SHOWN` 只表示 WinForms 的 Shown 事件；保持窗口打开直到 deadline 会得到 `deadline_expired`，不证明用户已看见窗口。展示完成也不构成审核批准，审核结论仍须原独立签名。
+
+2026-11-03 本轮仅核对代码与本机工具发现，并做脚本语法检查；未打开窗口、采集音频或执行上述手工验收。

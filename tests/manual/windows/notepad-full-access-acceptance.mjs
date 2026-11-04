@@ -11,6 +11,7 @@ import {AuthorizationQuestions,createRuntimeApplication,createWindowsHostBridgeT
   createWindowsHostNotepadAdapter,createRuntimeWindowsHostAttemptStore} from '@personal-agent/runtime/application';
 import {createDesktopNotepadHost} from '../../../apps/desktop/electron/notepad-host.js';
 import {createDesktopAuthorizationQuestionHost} from '../../../apps/desktop/electron/authorization-question-host.js';
+import {findWindowsExecutable} from '../../../apps/desktop/electron/windows-executable-discovery.js';
 
 const root=fileURLToPath(new URL('../../../',import.meta.url));
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -24,7 +25,9 @@ async function settle(check,timeout=45000){const until=Date.now()+timeout;for(;;
   await new Promise(resolve=>setTimeout(resolve,20));}}
 try{
   assert.equal(process.platform,'win32');assert.deepEqual(process.argv.slice(2),['--run-public-notepad']);
-  const token=spawnSync('C:\\Program Files\\PowerShell\\7\\pwsh.exe',['-NoProfile','-NonInteractive','-Command',
+  const powerShellPath=findWindowsExecutable('pwsh.exe',{excludedDirectories:[root]});
+  if(!powerShellPath)throw Object.assign(Error('PowerShell 7 executable unavailable'),{code:'NOT_FOUND'});
+  const token=spawnSync(powerShellPath,['-NoProfile','-NonInteractive','-Command',
     '$i=[Security.Principal.WindowsIdentity]::GetCurrent(); $p=[Security.Principal.WindowsPrincipal]::new($i); if($p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){exit 2}'],
   {windowsHide:true,stdio:'ignore'});assert.equal(token.status,0,'Ordinary user token required');
   receipt.ordinaryToken=true;
