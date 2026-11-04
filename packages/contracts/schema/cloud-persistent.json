@@ -22,7 +22,7 @@
       "properties": {
         "version": {"const": 1}, "commandId": {"$ref": "#/definitions/id"},
         "owner": {"$ref": "#/definitions/owner"}, "deadline": {"$ref": "#/definitions/time"},
-        "operation": {"enum": ["submit", "control", "readback", "approval"]},
+        "operation": {"enum": ["submit", "control", "readback", "approval", "source"]},
         "submit": {"type": "object", "additionalProperties": false,
           "required": ["originTaskId", "originRuntimeId", "goal", "goalDigest", "taskDeadline"], "properties": {
             "originTaskId": {"$ref": "#/definitions/id"}, "originRuntimeId": {"$ref": "#/definitions/id"},
@@ -38,11 +38,19 @@
         "approval": {"type": "object", "additionalProperties": false,
           "required": ["approvalId", "expectedRevision", "argumentsDigest", "expiresAt", "decision"], "properties": {
             "approvalId": {"$ref": "#/definitions/id"}, "expectedRevision": {"type": "integer", "minimum": 1},
+            "taskId": {"$ref": "#/definitions/id"},
             "argumentsDigest": {"$ref": "#/definitions/digest"}, "expiresAt": {"$ref": "#/definitions/time"},
             "decision": {"enum": ["allow_once", "deny"]}
-          }}
+          }},
+        "source": {"type": "object", "additionalProperties": false,
+          "required": ["action", "sourceId", "configurationRef", "expectedRevision"], "properties": {
+            "action": {"enum": ["track", "revoke"]}, "sourceId": {"$ref": "#/definitions/id"},
+            "configurationRef": {"type": "string", "minLength": 1, "maxLength": 200},
+            "expectedRevision": {"type": "integer", "minimum": 0}, "readAndCloudConsent": {"const": true}
+          }, "allOf": [{"if": {"properties": {"action": {"const": "track"}}}, "then": {"required": ["readAndCloudConsent"]}}]}
       },
       "allOf": [
+        {"if": {"properties": {"operation": {"const": "source"}}}, "then": {"required": ["target", "source"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["control"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}, "else": {"not": {"required": ["source"]}}},
         {"if": {"properties": {"operation": {"const": "submit"}}}, "then": {"required": ["submit"], "not": {"anyOf": [{"required": ["target"]}, {"required": ["control"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}},
         {"if": {"properties": {"operation": {"const": "control"}}}, "then": {"required": ["target", "control"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}},
         {"if": {"properties": {"operation": {"const": "readback"}}}, "then": {"oneOf": [{"required": ["target"]}, {"required": ["originCommandId"]}], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["control"]}, {"required": ["approval"]}]}}},
@@ -62,11 +70,21 @@
         "approvals": {"type": "array", "maxItems": 50, "items": {"type": "object", "additionalProperties": false,
           "required": ["approvalId", "revision", "action", "arguments", "argumentsDigest", "expiresAt", "state"], "properties": {
             "approvalId": {"$ref": "#/definitions/id"}, "revision": {"type": "integer", "minimum": 1},
+            "taskId": {"$ref": "#/definitions/id"},
             "action": {"type": "string", "minLength": 1, "maxLength": 200}, "argumentsDigest": {"$ref": "#/definitions/digest"},
             "arguments": {"type": "object", "maxProperties": 128},
             "expiresAt": {"$ref": "#/definitions/time"}, "state": {"enum": ["pending", "allowed", "denied"]}
           }}},
-        "evidenceRefs": {"type": "array", "maxItems": 100, "items": {"$ref": "#/definitions/id"}}
+        "evidenceRefs": {"type": "array", "maxItems": 100, "items": {"$ref": "#/definitions/id"}},
+        "sources": {"type": "array", "maxItems": 20, "items": {"type": "object", "additionalProperties": false,
+          "required": ["sourceId", "title", "url", "configurationRef", "intervalSeconds", "revision", "state"], "properties": {
+            "sourceId": {"$ref": "#/definitions/id"}, "title": {"type": "string", "minLength": 1, "maxLength": 200},
+            "url": {"type": "string", "minLength": 1, "maxLength": 2048},
+            "configurationRef": {"type": "string", "minLength": 1, "maxLength": 200},
+            "intervalSeconds": {"type": "integer", "minimum": 60, "maximum": 86400}, "revision": {"type": "integer", "minimum": 0},
+            "state": {"enum": ["available", "tracking", "revoked", "waiting_approval", "waiting_reconciliation", "failed", "expired"]},
+            "readTaskId": {"$ref": "#/definitions/id"}, "nextRunAt": {"$ref": "#/definitions/time"}
+          }}}
       }
     }
   }
