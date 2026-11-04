@@ -36,6 +36,7 @@ export {
   type CrewAgentSummary,
   type CrewKernelOptions,
   type CrewKernelDispatchInput,
+  type CrewKernelSendMessageInput,
   type CrewKernelGetTaskInput,
   type CrewKernelListTasksInput,
   type CrewKernelInterruptInput,
