@@ -26,7 +26,9 @@
     "./f20-candidate": {"types":"./dist/f20-candidate.d.ts","import":"./dist/f20-candidate.js"},
     "./f20-candidate-schema": "./schema/f20-candidate.json",
     "./f05-answer": {"types":"./dist/f05-answer.d.ts","import":"./dist/f05-answer.js"},
-    "./f05-answer-schema": "./schema/f05-answer.json"
+    "./f05-answer-schema": "./schema/f05-answer.json",
+    "./cloud-persistent": {"types":"./dist/cloud-persistent.d.ts","import":"./dist/cloud-persistent.js"},
+    "./cloud-persistent-schema": "./schema/cloud-persistent.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

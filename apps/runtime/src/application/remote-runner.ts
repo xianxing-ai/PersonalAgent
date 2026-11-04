@@ -50,7 +50,9 @@ export interface RemoteRunnerTransport {
   connect(host: RemoteHostRecord, auth: {privateKey: string; runnerToken: string; hostKey: string}): Promise<RemoteRunnerSession>;
 }
 export interface RemoteJobRequest {
-  kind: 'developer-duty' | 'async-subagent';
+  kind: 'developer-duty' | 'async-subagent' | 'cloud-persistent';
+  /** Persistent sessions never select a replacement host or fall back to the device. */
+  hostId?: string;
   idempotencyKey: string;
   taskId: string;
   payload: Record<string, unknown>;
@@ -261,10 +263,13 @@ export function createRemoteRunnerService(options: {
     return {token: runnerToken, session: await options.transport.connect(host, {privateKey, runnerToken, hostKey})};
   };
   const submit = async (job: RemoteJobRequest): Promise<RemoteJobResult> => {
-    if (job.kind !== 'developer-duty' && job.kind !== 'async-subagent') fail('INVALID_ARGUMENT', 'Job kind is not allowlisted');
+    if (job.kind !== 'developer-duty' && job.kind !== 'async-subagent' && job.kind !== 'cloud-persistent') fail('INVALID_ARGUMENT', 'Job kind is not allowlisted');
+    if(job.kind==='cloud-persistent'&&(!job.hostId||job.hostId!==(job.payload.owner as {hostId?:string}|undefined)?.hostId))
+      fail('INVALID_ARGUMENT','A cloud session requires its fixed original host');
     if (job.payload.action === 'merge') fail('SCOPE_DENIED', 'Merge stays forbidden');
     if (!job.idempotencyKey || !job.taskId) fail('INVALID_ARGUMENT', 'Job identity is required');
-    const requestDigest = createHash('sha256').update(canonical({kind: job.kind, taskId: job.taskId, repo: job.repo ?? null, payload: job.payload})).digest('hex');
+    const requestDigest = createHash('sha256').update(canonical({kind: job.kind, taskId: job.taskId, repo: job.repo ?? null, payload: job.payload,
+      ...(job.hostId?{hostId:job.hostId}:{})})).digest('hex');
     const saved = runtime().loadCheckpoint(owner().taskId, JOB_PREFIX + job.idempotencyKey) as (RemoteJobResult & {requestDigest?: string}) | undefined;
     if (saved) {
       if (saved.requestDigest !== requestDigest) fail('REVISION_CONFLICT', 'Remote job input changed or its original binding is unavailable');
@@ -277,7 +282,7 @@ export function createRemoteRunnerService(options: {
       if (now() >= deadlineMs) throw new ProtocolError('TIMEOUT', 'Remote job deadline elapsed');
     };
     assertActive();
-    const eligible = hosts().filter(host => host.enabled && (!job.repo || host.repos.includes(job.repo)));
+    const eligible = hosts().filter(host => host.enabled && (!job.repo || host.repos.includes(job.repo))&&(!job.hostId||host.id===job.hostId));
     if (eligible.length && (!options.prepareDispatch || !job.assertCurrent || !job.signal))
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Remote dispatch requires original source and exact payload authorization');
     const message = {v: 1, id: ids(), idempotencyKey: job.idempotencyKey, kind: job.kind, deadline: new Date(deadlineMs).toISOString(),
@@ -312,7 +317,8 @@ export function createRemoteRunnerService(options: {
           assertActive();
           if (canonical(hosts().find(value => value.id === host.id)) !== originalHost || job.signal !== originalSignal
             || job.deadline !== originalDeadline || job.assertCurrent !== originalGuard
-            || createHash('sha256').update(canonical({kind: job.kind, taskId: job.taskId, repo: job.repo ?? null, payload: job.payload})).digest('hex') !== requestDigest)
+            || createHash('sha256').update(canonical({kind: job.kind, taskId: job.taskId, repo: job.repo ?? null, payload: job.payload,
+              ...(job.hostId?{hostId:job.hostId}:{})})).digest('hex') !== requestDigest)
             fail('UNAUTHORIZED', 'Original remote dispatch binding changed');
           const result: unknown = originalGuard!();
           if (result !== undefined) {
@@ -362,6 +368,9 @@ export function createRemoteRunnerService(options: {
       } finally {connected.session.close();}
     }
     assertActive();
+    if(job.kind==='cloud-persistent')return persist({accepted:false,location:'remote',...(job.hostId?{hostId:job.hostId}:{}),
+      reason:'Fixed cloud Runtime host is unavailable; no fallback or resubmission',
+      receipt:{v:1,jobId:message.id,idempotencyKey:message.idempotencyKey,kind:message.kind,state:'rejected',redo:false},redo:false});
     persist({...pending, location: 'local', reason});
     let localReceipt: Record<string, unknown>;
     try {localReceipt = options.localExecute ? await options.localExecute(job) : {state: 'failed', error: reason, verification: 'fixture'};}

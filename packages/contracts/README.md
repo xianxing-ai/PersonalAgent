@@ -47,3 +47,6 @@ Windows Host 的内部 Pipe `0.1.0` 契约单独位于 `schema/windows-host.json
 新增依赖：Ajv 8.17.1（MIT）用于运行时校验，会增加客户端校验器代码和初始化成本；json-schema-to-typescript 15.0.4（MIT）仅开发时生成类型，不需进入产品包。替代方案是手写双份类型或编译期单独生成验证器；当前选择单一 Schema 和可测试生成流程。最终桌面打包体积和许可证声明留在分发验收中核验。
 
 AgentArts 自有镜像的独立传输 0.1.0 从 `@personal-agent/contracts/agentarts-transport` 导出，schema 为 `schema/agentarts-transport.json`，生成类型跟随既有 `generate`/`check:generated`。它是 provisional 云编排信封，不改变本地 wire 1.0.0 冻结集合；包含 invoke/status/cancel 与 ready/accepted/result/error/status，摘要绑定单键 HTTP payload，受理不等于完成，进程缓存不提供跨重启恢复。见 ADR-0014。
+# 云持续会话命令（provisional）
+
+`@personal-agent/contracts/cloud-persistent` 从 `schema/cloud-persistent.json` 校验固定 owner 的 submit、control、readback、approval 及原 Runtime 读回；类型和运行时 Schema 均由现有 `generate` / `check:generated` 流程维护。命令不携带 grant、数据库或任意主机/程序路径。条件必需字段由公共 Schema 验证，生成 TypeScript 暴露公共字段与可选操作体，消费者必须先调用 parser。审批绑定原 task/session、revision、参数 digest 与期限；传输签名不构成授权。部署和未验边界见 [云宿主说明](../../scripts/remote-runner/CLOUD_RUNTIME.md)。
