@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {existsSync} from 'node:fs';
+import {existsSync, realpathSync} from 'node:fs';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -23,7 +23,7 @@ async function fixture(t) {
   const recoveryRootPath = join(base, 'trusted-recovery');
   await mkdir(join(root, 'src'), {recursive: true});
   await mkdir(recoveryRootPath);
-  return {base, root, recoveryRootPath};
+  return {base, root: realpathSync.native(root), recoveryRootPath: realpathSync.native(recoveryRootPath)};
 }
 
 const reconcile = (f, overrides = {}) => reconcileWorkspaceCreateText({

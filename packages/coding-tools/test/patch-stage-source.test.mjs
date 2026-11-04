@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdir, mkdtemp, link, readFile, readdir, rm, symlink, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, link, readFile, readdir, realpath, rm, symlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
@@ -25,7 +25,7 @@ async function fixture(t) {
   await writeFile(join(root, 'src', 'note.txt'), 'before\n');
   await writeFile(join(root, 'plain.txt'), 'plain\n');
   t.after(() => rm(base, {recursive: true, force: true}));
-  return {root};
+  return {root: await realpath(root)};
 }
 
 test('staging refuses a multi-link source and leaves no candidate behind', async t => {

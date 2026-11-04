@@ -7,8 +7,8 @@ import {createHash, randomUUID} from 'node:crypto';
 import {createIsolatedCodingRepairHost} from '../dist/index.js';
 
 // Existing isolated-repair tests cover command- and publish-kind recovery; the
-// interrupted-patch journal path is only reachable where the locked apply
-// refuses to run, which the portable POSIX CI exercises without a helper host.
+// interrupted-patch journal path uses the existing host check to stop before
+// locked apply on every platform, without relying on an installed helper.
 const hash = value => createHash('sha256').update(value).digest('hex');
 const ctx = (overrides = {}) => ({taskId: 'parent-fixture', runId: 'run-' + randomUUID(),
   scopes: ['workspace:read', 'workspace:write', 'workspace:apply'],
@@ -25,6 +25,9 @@ async function fixture(t) {
   await writeFile(path.join(user, 'math.cjs'), 'module.exports=(a,b)=>a-b;\n');
   const options = {workspaceRoot: user, sessionRoot: sessions, workspaceId: 'fixture-workspace',
     patch: {powerShellPath: 'C:/Program Files/PowerShell/7/pwsh.exe'},
+    assertRecoveryDirectory() {
+      throw Object.assign(new Error('Synthetic recovery directory unavailable'), {code: 'UNSUPPORTED_CAPABILITY'});
+    },
     recipes: [{recipeId: 'node-test', packageIds: [], required: true}]};
   return {user, sessions, options, host: await createIsolatedCodingRepairHost(options)};
 }

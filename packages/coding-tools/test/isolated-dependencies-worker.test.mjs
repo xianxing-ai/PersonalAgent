@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chmod, mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {Worker} from 'node:worker_threads';
@@ -50,20 +50,13 @@ test('the async API turns an invalid deadline into TIMEOUT without spawning work
   }), {code: 'TIMEOUT'});
 });
 
-test('an unreadable dependency tree surfaces as one wrapped unsupported-capability error', async t => {
+test('an inaccessible dependency root surfaces as one wrapped unsupported-capability error', async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'pa-dependency-denied-'));
   t.after(() => rm(base, {recursive: true, force: true}));
-  const source = path.join(base, 'source');
-  await mkdir(source);
-  await writeFile(path.join(source, 'package.json'), '{"name":"fixture"}');
-  try {
-    await chmod(source, 0o000);
-    // A generic filesystem error never reaches the caller as a raw errno; the
-    // worker reduces it to one stable unsupported-capability protocol error.
-    await assert.rejects(capturePreparedDependencyFingerprint(source, {
-      signal: new AbortController().signal, deadline,
-    }), {code: 'UNSUPPORTED_CAPABILITY'});
-  } finally {
-    await chmod(source, 0o755);
-  }
+  const source = path.join(base, 'missing-source');
+  // Missing roots fail on every platform, including Windows and elevated POSIX
+  // users for which chmod(000) does not make a directory unreadable.
+  await assert.rejects(capturePreparedDependencyFingerprint(source, {
+    signal: new AbortController().signal, deadline,
+  }), {code: 'UNSUPPORTED_CAPABILITY', message: 'Prepared dependency filesystem could not be verified'});
 });
