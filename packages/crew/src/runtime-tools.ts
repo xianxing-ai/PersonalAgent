@@ -29,7 +29,7 @@ import {CREW_PARENT_AGENT_ID} from './store.js';
  *   只有父可以调用，非父 NOT_PERMITTED）。
  * - actor 绑定：工具以工厂参数 `actorId` 的身份执行（受信宿主在注册时决定，
  *   不信任模型输入）。派发/打断用 `CREW_PARENT_AGENT_ID` 之外的身份会被内核拒绝；
- *   `send_message` 以 `actorId` 为发送者，子身份发起的消息按内核规则携带 hop ≥ 1。
+ *   `send_message` 以 `actorId` 为发送者；hop 由 store 依据 replyToMessageId 推导，工具层不再自填。
  * - 订阅同意门：`crew.dispatch` 在入队之前检查目标 agent 驱动的同意记录，
  *   未同意/已撤销抛 `CONSENT_REQUIRED`，任务不入队、信箱无写入（运行时
  *   `runNextTask` 的同意门保持不变，两层防御）。
@@ -259,11 +259,12 @@ export function createCrewRuntimeTools(options: CrewRuntimeToolsOptions): CrewRu
         type: 'object',
         properties: {
           taskId: {type: 'string', minLength: 1},
-          rootRequestId: {type: 'string', minLength: 1},
           assignedAgentId: {type: 'string', minLength: 1},
           goal: {type: 'string', minLength: 1},
+          // rootRequestId 若仍传入则忽略：根绑定到 context.taskId（F3）。
+          rootRequestId: {type: 'string', minLength: 1},
         },
-        required: ['taskId', 'rootRequestId', 'assignedAgentId', 'goal'],
+        required: ['taskId', 'assignedAgentId', 'goal'],
         additionalProperties: false,
       },
       outputSchema: {
@@ -288,8 +289,8 @@ export function createCrewRuntimeTools(options: CrewRuntimeToolsOptions): CrewRu
     },
     execute: async (rawInput, context) => {
       const input = parseToolInput(CREW_DISPATCH_TOOL_NAME, rawInput, {
-        required: ['taskId', 'rootRequestId', 'assignedAgentId', 'goal'],
-        optional: [],
+        required: ['taskId', 'assignedAgentId', 'goal'],
+        optional: ['rootRequestId'],
       });
       const assignedAgentId = requireStringField(input, 'assignedAgentId', CREW_DISPATCH_TOOL_NAME);
       const agent = runtime.getAgent(assignedAgentId);
@@ -298,10 +299,13 @@ export function createCrewRuntimeTools(options: CrewRuntimeToolsOptions): CrewRu
       }
       // 订阅同意门（在入队之前）：未同意/已撤销时拒绝，任务不入队、信箱无写入。
       kernel.consent.requireGranted(agent.driver);
+      // F3：rootRequestId 绑定宿主可信的 context.taskId，忽略模型自报值。
+      // store 层也会忽略自报根并按 parentTaskId 派生；这里仍把可信根写入入参以对齐文档 §2.3。
+      const boundRootRequestId = context.taskId;
       const task = runtime.dispatchTask({
         actorId,
         taskId: requireStringField(input, 'taskId', CREW_DISPATCH_TOOL_NAME),
-        rootRequestId: requireStringField(input, 'rootRequestId', CREW_DISPATCH_TOOL_NAME),
+        rootRequestId: boundRootRequestId,
         assignedAgentId,
         goal: requireStringField(input, 'goal', CREW_DISPATCH_TOOL_NAME),
       });
@@ -322,6 +326,7 @@ export function createCrewRuntimeTools(options: CrewRuntimeToolsOptions): CrewRu
           parentRequestId: {type: 'string', minLength: 1},
           rootRequestId: {type: 'string', minLength: 1},
           taskId: {type: 'string', minLength: 1},
+          replyToMessageId: {type: 'integer', minimum: 1},
           expectsReply: {type: 'boolean'},
           attachmentRefs: {type: 'array', items: {type: 'string', minLength: 1}},
         },
@@ -361,26 +366,32 @@ export function createCrewRuntimeTools(options: CrewRuntimeToolsOptions): CrewRu
     execute: async (rawInput, context) => {
       const input = parseToolInput(CREW_SEND_MESSAGE_TOOL_NAME, rawInput, {
         required: ['toAgentId', 'text'],
-        optional: ['parentRequestId', 'rootRequestId', 'taskId', 'expectsReply', 'attachmentRefs'],
+        optional: ['parentRequestId', 'rootRequestId', 'taskId', 'replyToMessageId', 'expectsReply', 'attachmentRefs'],
       });
       const parentRequestId = optionalStringField(input, 'parentRequestId', CREW_SEND_MESSAGE_TOOL_NAME);
       const rootRequestId = optionalStringField(input, 'rootRequestId', CREW_SEND_MESSAGE_TOOL_NAME);
       const taskId = optionalStringField(input, 'taskId', CREW_SEND_MESSAGE_TOOL_NAME);
       const expectsReply = optionalBooleanField(input, 'expectsReply', CREW_SEND_MESSAGE_TOOL_NAME);
       const attachmentRefs = optionalStringArrayField(input, 'attachmentRefs', CREW_SEND_MESSAGE_TOOL_NAME);
-      // hop 由受信宿主（本适配器）提供：父身份 0（父派发链），子身份 1（子发起的第一跳）。
-      // 内核强制：子发起的消息 hop ≥ 1，0 保留给父派发链。
-      const hop = actorId === CREW_PARENT_AGENT_ID ? 0 : 1;
+      const replyToRaw = input.replyToMessageId;
+      const replyToMessageId = replyToRaw === undefined ? undefined : (() => {
+        if (typeof replyToRaw !== 'number' || !Number.isInteger(replyToRaw) || replyToRaw < 1) {
+          throw new CrewError('INVALID_INPUT', `${CREW_SEND_MESSAGE_TOOL_NAME}.replyToMessageId must be a positive integer`);
+        }
+        return replyToRaw;
+      })();
+      // F4：hop 全部交由 store 推导（replyToMessageId → hop+1，否则 hop=0）；工具层不再自填。
       const record = kernel.sendMessage({
+        actorId,
         fromAgentId: actorId,
         toAgentId: requireStringField(input, 'toAgentId', CREW_SEND_MESSAGE_TOOL_NAME),
         text: requireStringField(input, 'text', CREW_SEND_MESSAGE_TOOL_NAME),
+        ...(replyToMessageId === undefined ? {} : {replyToMessageId}),
         ...(parentRequestId === undefined ? {} : {parentRequestId}),
         ...(rootRequestId === undefined ? {} : {rootRequestId}),
         ...(taskId === undefined ? {} : {taskId}),
         ...(expectsReply === undefined ? {} : {expectsReply}),
         ...(attachmentRefs === undefined ? {} : {attachmentRefs}),
-        hop,
       });
       // 纯确认防死循环：连续第二条纯确认被丢弃（undefined），以 delivered:false 表达。
       return record === undefined ? {delivered: false} : {delivered: true, message: messageOutput(record)};

@@ -114,13 +114,13 @@ export function createRuntimeCrewDispatchTool(getApplication: () => RuntimeAppli
 `isRuntimeDispatchTool`（`coding-repair-application.ts:55`）。改动面大（contracts/agents
 语义都在 goo122 手里），本 PR 不推荐、也未实现。
 
-### 2.3 crew taskId ↔ Runtime 子任务 id 的映射（未接线，提案）
+### 2.3 crew taskId ↔ Runtime 子任务 id 的映射（已接线）
 
 `CrewDispatchInput.taskId` 的注释即设计意图：“调用方生成的任务 id，将来映射为 Runtime
 子任务 id”（`packages/crew/src/store.ts`）。当前适配器不创建 Runtime 子任务。接线时的
 建议（提案，未实现）：
 
-- `rootRequestId` 取父 Runtime 任务的 `context.taskId`（一个父任务的 8 次派单预算天然按它计数）；
+- `rootRequestId` 取父 Runtime 任务的 `context.taskId`（模型自报值忽略）；store 层最终按 `parentTaskId`/`root-<taskId>` 派生真实根并计数；
 - `taskId` 用与生产幂等键一致的合成方式——生产已用 `subagent-dispatch-<parentTaskId>-<subtaskId>`
   作为幂等键（`apps/runtime/src/application/subagent-host.ts:466,505`、`harness-event-delivery.ts:45`），
   crew 可用 `crew-<parentTaskId>-<n>` 同风格生成；
@@ -200,7 +200,7 @@ ToolGateway+Policy 处理。两层各自生效：Policy 管“这次工具调用
   crew 包内单元测试（SQLite 临时库 + FakeDriver/假协议子进程）。
 - **适配器不创建 Runtime 子任务**：crew 任务仍是 crew SQLite 里的记录；与 Runtime
   子任务的双向映射（2.3）是提案。
-- **`context` 未消费**：`execute(input, context)` 按 RegisteredTool 签名接收 ToolContext，
+- **`context` 已消费（F3）**：`crew.dispatch` 用 `context.taskId` 绑定 rootRequestId；
   但 crew 四个操作是同步 SQLite 事务，取消/授权仍在 Gateway 一侧生效。
 - **两个内核连接**：`CrewDriverRuntime.open` 内部自建内核且不外露，因此 `send_message`
   经宿主另开的 `CrewKernel`（同一路径、同一 SQLite；crew 现有测试即此装配方式，WAL 下

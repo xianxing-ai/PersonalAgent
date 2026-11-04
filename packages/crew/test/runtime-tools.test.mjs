@@ -163,15 +163,15 @@ test('crew.dispatch validates input before any kernel call', async () => {
       'not-an-object',
       ['array'],
       {},
-      {taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x'},
-      {taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '修复', extra: 1},
-      {taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'ghost', goal: '修复'},
-      {taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '   '},
+      {taskId: 't1', assignedAgentId: 'coder-x'},
+      {taskId: 't1', assignedAgentId: 'coder-x', goal: '修复', extra: 1},
+      {taskId: 't1', assignedAgentId: 'ghost', goal: '修复'},
+      {taskId: 't1', assignedAgentId: 'coder-x', goal: '   '},
     ]) {
       await assert.rejects(() => dispatch(bad), error => error instanceof CrewError && error.code === 'INVALID_INPUT'
         || error instanceof CrewError && error.code === 'UNKNOWN_AGENT');
     }
-    assert.deepEqual(runtime.listTasks({actorId: CREW_PARENT_AGENT_ID, rootRequestId: 'root-1'}), [], 'no task was created by rejected input');
+    assert.deepEqual(runtime.listTasks({actorId: CREW_PARENT_AGENT_ID}), [], 'no task was created by rejected input');
     assert.deepEqual(kernel.receiveMessages('coder-x'), [], 'no mailbox write from rejected input');
   } finally { runtime.close(); kernel.close(); }
 });
@@ -184,16 +184,18 @@ test('crew.dispatch enqueues through the fake driver end to end', async () => {
     grantCodex(runtime);
     const crew = tools(runtime, kernel);
     const result = await crew.dispatch.execute({
-      taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '修复 crew 包的类型错误',
+      taskId: 't1', rootRequestId: 'model-forged-root', assignedAgentId: 'coder-x', goal: '修复 crew 包的类型错误',
     }, CONTEXT);
+    // F3：模型自报 rootRequestId 被忽略；store 派生 root-<taskId>。
     assert.deepEqual(result, {
       taskId: 't1',
-      rootRequestId: 'root-1',
+      rootRequestId: 'root-t1',
       assignedAgentId: 'coder-x',
       goal: '修复 crew 包的类型错误',
       status: 'queued',
       createdAt: result.createdAt,
     });
+    assert.notEqual(result.rootRequestId, 'model-forged-root');
     assert.match(result.createdAt, /^\d{4}-\d{2}-\d{2}T/, 'createdAt is an ISO timestamp');
     assert.deepEqual(kernel.receiveMessages('coder-x').map(m => m.kind), ['task'], 'the task message reached the mailbox');
     // 派单后的任务由 p2 的驱动运行时真实执行（假驱动）：工具派单 → 领取 → 回执。
@@ -216,7 +218,7 @@ test('crew.dispatch refuses before enqueueing when the driver subscription has n
       () => crew.dispatch.execute({taskId: 't1', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '修复'}, CONTEXT),
       error => error instanceof CrewError && error.code === 'CONSENT_REQUIRED',
     );
-    assert.deepEqual(runtime.listTasks({actorId: CREW_PARENT_AGENT_ID, rootRequestId: 'root-1'}), [], 'the task must not be enqueued');
+    assert.deepEqual(runtime.listTasks({actorId: CREW_PARENT_AGENT_ID}), [], 'the task must not be enqueued');
     assert.deepEqual(kernel.receiveMessages('coder-x'), [], 'the mailbox must stay untouched');
     // 同意后同一调用成功；撤销后再次拒绝（撤销的同意不算同意）。
     grantCodex(runtime);
@@ -226,7 +228,7 @@ test('crew.dispatch refuses before enqueueing when the driver subscription has n
       () => crew.dispatch.execute({taskId: 't2', rootRequestId: 'root-1', assignedAgentId: 'coder-x', goal: '再修一次'}, CONTEXT),
       error => error instanceof CrewError && error.code === 'CONSENT_REQUIRED',
     );
-    assert.equal(runtime.listTasks({actorId: CREW_PARENT_AGENT_ID, rootRequestId: 'root-1'}).length, 1, 'revoked consent also refuses before enqueueing');
+    assert.equal(runtime.listTasks({actorId: CREW_PARENT_AGENT_ID}).length, 1, 'revoked consent also refuses before enqueueing');
   } finally { runtime.close(); kernel.close(); }
 });
 
@@ -288,7 +290,7 @@ test('crew.interrupt forwards to the running CLI session and reports conflicts f
   } finally { runtime.close(); kernel.close(); }
 });
 
-test('crew.send_message delivers to the target mailbox with host-provided hop and drops pure acks', async () => {
+test('crew.send_message delivers to the target mailbox; hop is store-derived and pure acks drop', async () => {
   const {runtime, kernel} = open();
   try {
     registerCoders(runtime);
@@ -298,7 +300,7 @@ test('crew.send_message delivers to the target mailbox with host-provided hop an
     assert.equal(sent.message.senderAgentId, 'coder-x');
     assert.equal(sent.message.mailboxAgentId, 'reviewer-y');
     assert.equal(sent.message.kind, 'message');
-    assert.equal(sent.message.hop, 1, 'child-initiated messages carry hop 1');
+    assert.equal(sent.message.hop, 0, 'fresh messages are hop 0; hop is derived by the store, not the tool layer');
     const mailbox = kernel.receiveMessages('reviewer-y');
     assert.equal(mailbox.length, 1);
     assert.equal(mailbox[0].messageId, sent.message.messageId);
@@ -310,11 +312,16 @@ test('crew.send_message delivers to the target mailbox with host-provided hop an
     const ack2 = await crew.sendMessage.execute({toAgentId: 'reviewer-y', text: '收到'}, CONTEXT);
     assert.deepEqual(ack2, {delivered: false});
     assert.equal(kernel.receiveMessages('reviewer-y').length, 2, 'the dropped ack left no mailbox write');
-    // 父身份发送：hop 0（父派发链）。
+    // 父身份发送：同样 hop 0（新消息）；回复链通过 replyToMessageId 递增。
     const parentTools = tools(runtime, kernel);
     const fromParent = await parentTools.sendMessage.execute({toAgentId: 'coder-x', text: '补充上下文'}, CONTEXT);
     assert.equal(fromParent.message.hop, 0);
-    // 参数校验与未知收件人。
+    // 只有当前信箱持有人才能回复：reviewer-y 回复 coder-x 刚发来的消息。
+    const reviewerTools = tools(runtime, kernel, 'reviewer-y');
+    const reply = await reviewerTools.sendMessage.execute({toAgentId: 'coder-x', text: '回一跳', replyToMessageId: sent.message.messageId}, CONTEXT);
+    assert.equal(reply.delivered, true);
+    assert.equal(reply.message.hop, 1, 'replyToMessageId makes the store derive hop+1');
+    // 参数校验与未知收件人；模型自报 hop 被拒绝（additionalProperties:false）。
     await assert.rejects(
       () => crew.sendMessage.execute({toAgentId: 'reviewer-y'}, CONTEXT),
       error => error instanceof CrewError && error.code === 'INVALID_INPUT',
@@ -326,7 +333,7 @@ test('crew.send_message delivers to the target mailbox with host-provided hop an
     await assert.rejects(
       () => crew.sendMessage.execute({toAgentId: 'reviewer-y', text: 'hello', hop: 3}, CONTEXT),
       error => error instanceof CrewError && error.code === 'INVALID_INPUT',
-      'hop is host-provided and never accepted from model input',
+      'hop is never accepted from model input',
     );
   } finally { runtime.close(); kernel.close(); }
 });
