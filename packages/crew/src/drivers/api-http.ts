@@ -1,4 +1,5 @@
 import {CrewError} from '../errors.js';
+import {redactSensitiveText} from '../sanitize.js';
 
 /**
  * Claude/Grok HTTP API 驱动共享的传输底座（P4）。
@@ -113,9 +114,31 @@ export function describeVendorError(bodyText: string): string {
   const message = optionalString(errorField?.['message']) ?? optionalString(parsed['message']);
   const type = optionalString(errorField?.['type']) ?? optionalString(errorField?.['code']) ?? optionalString(parsed['type']);
   const parts: string[] = [];
-  if (type) parts.push(`type=${truncate(type)}`);
-  if (message) parts.push(truncate(message));
+  if (type) parts.push(`type=${truncate(redactSensitiveText(type))}`);
+  if (message) parts.push(truncate(redactSensitiveText(message)));
+  // 字段名列表（不含值）帮助诊断，避免把完整 JSON 塞进回执。
+  const keys = Object.keys(errorField ?? parsed).slice(0, 8);
+  if (!parts.length && keys.length) parts.push(`fields=${keys.join(',')}`);
   return parts.length ? parts.join('：') : '（厂商错误体缺少可展示字段，不予回显）';
+}
+
+/**
+ * F7：生产 baseUrl 必须是 https；测试可用 allowHttpLoopback 放行 127.0.0.1/localhost 的 http。
+ */
+export function assertSafeApiBaseUrl(baseUrl: string, options: {readonly allowHttpLoopback?: boolean} = {}): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new CrewError('INVALID_INPUT', `baseUrl is not a valid URL: ${baseUrl}`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  if (parsed.protocol === 'https:') return baseUrl.replace(/\/+$/, '');
+  if (parsed.protocol === 'http:' && options.allowHttpLoopback === true && loopback) {
+    return baseUrl.replace(/\/+$/, '');
+  }
+  throw new CrewError('INVALID_INPUT', `baseUrl must use https (got ${parsed.protocol}//${host}); set allowHttpLoopback for local fake servers in tests`);
 }
 
 function truncate(text: string, max = 300): string {

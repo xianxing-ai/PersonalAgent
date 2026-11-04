@@ -13,6 +13,7 @@ import {apiKeyEnvNames, type CrewApiKeyProvider} from '../secrets.js';
 import type {CrewDriverId} from '../store.js';
 import {
   describeTransportError,
+  assertSafeApiBaseUrl,
   describeVendorError,
   isRecord,
   optionalString,
@@ -61,6 +62,8 @@ export interface GrokApiDriverOptions {
   readonly apiKeyProvider?: CrewApiKeyProvider;
   /** 官方 API 根地址；默认 https://api.x.ai。测试注入本地假服务器地址。 */
   readonly baseUrl?: string;
+  /** 测试专用：允许 http://127.0.0.1 或 localhost 假服务器（F7）。 */
+  readonly allowHttpLoopback?: boolean;
   /** 模型名；默认 grok-4（未实机验证，可配置）。 */
   readonly model?: string;
   /** 单次请求输出上限；省略时不下发该字段（由服务端默认）。 */
@@ -158,7 +161,8 @@ class GrokApiSession implements CrewDriverSession {
   }
 
   private baseUrl(): string {
-    return (this.options.baseUrl ?? DEFAULT_GROK_BASE_URL).replace(/\/+$/, '');
+    const raw = (this.options.baseUrl ?? DEFAULT_GROK_BASE_URL).replace(/\/+$/, '');
+    return assertSafeApiBaseUrl(raw, {allowHttpLoopback: this.options.allowHttpLoopback === true});
   }
 
   private requestTimeoutMs(): number {
@@ -198,6 +202,8 @@ class GrokApiSession implements CrewDriverSession {
           authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(this.requestBody()),
+        // F7：禁止自动跟随重定向（与 Claude 对齐；Bearer 虽会被 undici 剥离，仍明确拒绝）。
+        redirect: 'error',
         signal: state.controller.signal,
       });
       if (!response.ok) {
@@ -276,6 +282,7 @@ export class GrokApiDriver implements CrewDriver {
     this.apiKeyProvider = options.apiKeyProvider ?? {getApiKey: () => undefined};
     this.sessionOptions = {
       ...(options.baseUrl === undefined ? {} : {baseUrl: options.baseUrl}),
+      ...(options.allowHttpLoopback === undefined ? {} : {allowHttpLoopback: options.allowHttpLoopback}),
       ...(options.model === undefined ? {} : {model: options.model}),
       ...(options.maxTokens === undefined ? {} : {maxTokens: options.maxTokens}),
       ...(options.fetchImpl === undefined ? {} : {fetchImpl: options.fetchImpl}),

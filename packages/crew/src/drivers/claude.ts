@@ -13,6 +13,7 @@ import {apiKeyEnvNames, type CrewApiKeyProvider} from '../secrets.js';
 import type {CrewDriverId} from '../store.js';
 import {
   describeTransportError,
+  assertSafeApiBaseUrl,
   describeVendorError,
   isRecord,
   optionalString,
@@ -65,6 +66,8 @@ export interface ClaudeApiDriverOptions {
   readonly apiKeyProvider?: CrewApiKeyProvider;
   /** 官方 API 根地址；默认 https://api.anthropic.com。测试注入本地假服务器地址。 */
   readonly baseUrl?: string;
+  /** 测试专用：允许 http://127.0.0.1 或 localhost 假服务器（F7）。 */
+  readonly allowHttpLoopback?: boolean;
   /** 模型名；默认 claude-sonnet-4-5（未实机验证，可配置）。 */
   readonly model?: string;
   /** 单次请求输出上限（Messages API 必填字段）；默认 8192。 */
@@ -164,7 +167,8 @@ class ClaudeApiSession implements CrewDriverSession {
   }
 
   private baseUrl(): string {
-    return (this.options.baseUrl ?? DEFAULT_CLAUDE_BASE_URL).replace(/\/+$/, '');
+    const raw = (this.options.baseUrl ?? DEFAULT_CLAUDE_BASE_URL).replace(/\/+$/, '');
+    return assertSafeApiBaseUrl(raw, {allowHttpLoopback: this.options.allowHttpLoopback === true});
   }
 
   private requestTimeoutMs(): number {
@@ -200,6 +204,8 @@ class ClaudeApiSession implements CrewDriverSession {
           system: this.instructions,
           messages: this.messages,
         }),
+        // F7：禁止自动跟随重定向，避免跨源时把自定义 x-api-key 转发出去。
+        redirect: 'error',
         signal: state.controller.signal,
       });
       if (!response.ok) {
@@ -283,6 +289,7 @@ export class ClaudeApiDriver implements CrewDriver {
     this.apiKeyProvider = options.apiKeyProvider ?? {getApiKey: () => undefined};
     this.sessionOptions = {
       ...(options.baseUrl === undefined ? {} : {baseUrl: options.baseUrl}),
+      ...(options.allowHttpLoopback === undefined ? {} : {allowHttpLoopback: options.allowHttpLoopback}),
       ...(options.model === undefined ? {} : {model: options.model}),
       ...(options.maxTokens === undefined ? {} : {maxTokens: options.maxTokens}),
       ...(options.anthropicVersion === undefined ? {} : {anthropicVersion: options.anthropicVersion}),

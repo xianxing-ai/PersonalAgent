@@ -113,7 +113,7 @@ test('claude driver refuses start without user consent even when a key is presen
   const kernel = openUnconsentedKernel();
   const api = createFakeApi();
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const probe = await driver.probe();
     assert.equal(probe.status, 'available', 'probe only reflects key availability, not consent');
     await assert.rejects(
@@ -143,7 +143,7 @@ test('claude probe and start never issue an HTTP request just to probe availabil
   const kernel = openKernel(CLAUDE_DRIVER_ID);
   const api = createFakeApi();
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     assert.equal((await driver.probe()).status, 'available');
     const session = await driver.start({agentId: 'writer-c', instructions: 'x', workspacePath: '/w'});
     assert.equal(session.driver, CLAUDE_DRIVER_ID);
@@ -169,7 +169,7 @@ test('claude session streams a completion end to end: headers, body, output even
     res.end();
   });
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const session = await driver.start({agentId: 'writer-c', instructions: '按固定回执格式汇报', workspacePath: '/workspace/crew/writer-c'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -205,7 +205,7 @@ test('claude session keeps the multi-turn conversation in memory across sends', 
     res.end();
   });
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const session = await driver.start({agentId: 'writer-c', instructions: 'x', workspacePath: '/w'});
     await session.send('第一问');
     await session.send('第二问');
@@ -228,7 +228,7 @@ test('claude HTTP errors become failed events that carry the vendor message but 
     res.end(JSON.stringify({type: 'error', error: {type: 'authentication_error', message: 'invalid x-api-key'}}));
   });
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const session = await driver.start({agentId: 'writer-c', instructions: 'x', workspacePath: '/w'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -255,7 +255,7 @@ test('claude stream error events become failed events', async () => {
     res.end();
   });
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const session = await driver.start({agentId: 'writer-c', instructions: 'x', workspacePath: '/w'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -272,7 +272,7 @@ test('claude request timeout is a clear failure, not a hang', async () => {
   const api = createFakeApi();
   api.setHandler(hangHandler);
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), requestTimeoutMs: 60});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true, requestTimeoutMs: 60});
     const session = await driver.start({agentId: 'writer-c', instructions: 'x', workspacePath: '/w'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -293,7 +293,7 @@ test('claude interrupt aborts the in-flight stream and emits interrupted without
     await new Promise(resolve => res.on('close', resolve)); // 流保持打开，等待客户端打断。
   });
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const session = await driver.start({agentId: 'writer-c', instructions: 'x', workspacePath: '/w'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -315,7 +315,7 @@ test('claude send after close is rejected, and close is idempotent', async () =>
   const kernel = openKernel(CLAUDE_DRIVER_ID);
   const api = createFakeApi();
   try {
-    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const session = await driver.start({agentId: 'writer-c', instructions: 'x', workspacePath: '/w'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -366,7 +366,7 @@ test('grok session streams a chat completion end to end with the bearer header a
     res.end();
   });
   try {
-    const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), model: 'grok-4-fast'});
+    const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true, model: 'grok-4-fast'});
     const session = await driver.start({agentId: 'writer-g', instructions: '独立评审补丁', workspacePath: '/workspace/crew/writer-g'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -398,7 +398,7 @@ test('grok HTTP errors and in-stream error frames become failed events without t
       res.end(JSON.stringify({error: {message: 'rate limited', code: '429'}}));
     });
     try {
-      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
       const session = await driver.start({agentId: 'writer-g', instructions: 'x', workspacePath: '/w'});
       const events = [];
       session.onEvent(event => events.push(event));
@@ -419,7 +419,7 @@ test('grok HTTP errors and in-stream error frames become failed events without t
       res.end();
     });
     try {
-      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api2.url()});
+      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api2.url(), allowHttpLoopback: true});
       const session = await driver.start({agentId: 'writer-g', instructions: 'x', workspacePath: '/w'});
       const events = [];
       session.onEvent(event => events.push(event));
@@ -438,7 +438,7 @@ test('grok timeout and missing [DONE] are explicit protocol failures', async () 
     const api = createFakeApi();
     api.setHandler(hangHandler);
     try {
-      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), requestTimeoutMs: 60});
+      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true, requestTimeoutMs: 60});
       const session = await driver.start({agentId: 'writer-g', instructions: 'x', workspacePath: '/w'});
       const events = [];
       session.onEvent(event => events.push(event));
@@ -455,7 +455,7 @@ test('grok timeout and missing [DONE] are explicit protocol failures', async () 
       res.end(); // 流在 [DONE] 前被服务端关闭。
     });
     try {
-      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api2.url()});
+      const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api2.url(), allowHttpLoopback: true});
       const session = await driver.start({agentId: 'writer-g', instructions: 'x', workspacePath: '/w'});
       const events = [];
       session.onEvent(event => events.push(event));
@@ -476,7 +476,7 @@ test('grok interrupt aborts the in-flight stream and emits interrupted without a
     await new Promise(resolve => res.on('close', resolve));
   });
   try {
-    const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url()});
+    const driver = new GrokApiDriver({consent: kernel.consent, apiKeyProvider: fixedKeyProvider(), baseUrl: await api.url(), allowHttpLoopback: true});
     const session = await driver.start({agentId: 'writer-g', instructions: 'x', workspacePath: '/w'});
     const events = [];
     session.onEvent(event => events.push(event));
@@ -516,8 +516,8 @@ function openRuntime(baseUrl, overrides = {}) {
     ...runtimeOptions,
     now: () => (clock += 1000),
     apiKeyProvider: missingKeyProvider,
-    claudeOptions: {baseUrl, requestTimeoutMs: 5000, apiKeyProvider: fixedKeyProvider(), ...claudeOptions},
-    grokOptions: {baseUrl, requestTimeoutMs: 5000, apiKeyProvider: fixedKeyProvider(), ...grokOptions},
+    claudeOptions: {baseUrl, allowHttpLoopback: true, requestTimeoutMs: 5000, apiKeyProvider: fixedKeyProvider(), ...claudeOptions},
+    grokOptions: {baseUrl, allowHttpLoopback: true, requestTimeoutMs: 5000, apiKeyProvider: fixedKeyProvider(), ...grokOptions},
   });
   const kernel = openCrewKernel(path, {now: () => 1700000000000});
   return {runtime, kernel, path};
@@ -700,5 +700,53 @@ test('the fake API key never leaks into events, receipts, the sqlite file, error
     for (const method of Object.keys(originals)) console[method] = originals[method];
     runtime.close();
     await api.close();
+  }
+});
+
+
+test('F6: describeVendorError redacts bearer/token-like vendor messages', async () => {
+  const {describeVendorError} = await import('../dist/drivers/api-http.js');
+  const body = JSON.stringify({
+    error: {type: 'auth_error', message: 'invalid bearer FAKESECRETTOKENVALUE123456789012345678901234567890'},
+  });
+  const summary = describeVendorError(body);
+  assert.ok(summary.includes('auth_error') || summary.includes('type='), 'type survives');
+  assert.ok(!summary.includes('FAKESECRETTOKENVALUE'), 'long tokenish value is redacted');
+});
+
+test('F7: baseUrl requires https (loopback http only with allowHttpLoopback) and Claude fetch sets redirect error', async () => {
+  const {assertSafeApiBaseUrl} = await import('../dist/drivers/api-http.js');
+  const {ClaudeApiDriver} = await import('../dist/drivers/claude.js');
+  assert.equal(assertSafeApiBaseUrl('https://api.anthropic.com/'), 'https://api.anthropic.com');
+  assert.throws(
+    () => assertSafeApiBaseUrl('http://evil.example'),
+    error => error instanceof CrewError && error.code === 'INVALID_INPUT',
+  );
+  assert.equal(assertSafeApiBaseUrl('http://127.0.0.1:9', {allowHttpLoopback: true}), 'http://127.0.0.1:9');
+
+  const seen = [];
+  const fakeFetch = async (_url, init) => {
+    seen.push(init?.redirect);
+    return new Response(
+      JSON.stringify({type: 'error', error: {type: 'invalid_request_error', message: 'boom'}}),
+      {status: 400, headers: {'content-type': 'application/json'}},
+    );
+  };
+  const kernel = openKernel('claude');
+  try {
+    const driver = new ClaudeApiDriver({
+      consent: kernel.consent,
+      apiKeyProvider: {getApiKey: () => 'sk-test-not-real-0123456789abcdef'},
+      baseUrl: 'http://127.0.0.1:9',
+      allowHttpLoopback: true,
+      fetchImpl: fakeFetch,
+      requestTimeoutMs: 500,
+    });
+    const session = await driver.start({agentId: 'writer-c', instructions: 'hi', workspacePath: '/tmp/crew-f7'});
+    await session.send('ping').catch(() => undefined);
+    await session.close().catch(() => undefined);
+    assert.ok(seen.includes('error'), `fetch must pass redirect:'error', saw ${JSON.stringify(seen)}`);
+  } finally {
+    kernel.close();
   }
 });
