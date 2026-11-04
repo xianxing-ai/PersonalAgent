@@ -50,3 +50,27 @@ test('F2: whitelisted login/runtime variables still reach the child, and extraEn
   const secretSeen = await probeEnv(['FAKE_API_KEY'], {FAKE_API_KEY: 'dummy'});
   assert.deepEqual(secretSeen, [], 'extraEnv keys matching the deny patterns are dropped');
 });
+
+test('F12: a child writing 4MB to stderr does not deadlock, and the sanitized tail is kept', async () => {
+  const spawn = createNodeSpawn();
+  // 4MB stderr（远超保留上限）：子进程必须能写完并正常退出（管道不被写满阻塞）。
+  const script = `process.stderr.write('x'.repeat(4 * 1024 * 1024)); process.stderr.write('\n诊断尾部标记 END-OF-STDERR'); process.stdout.write('done');`;
+  const proc = spawn(process.execPath, ['-e', script], {cwd: process.cwd()});
+  proc.stdout.setEncoding('utf8');
+  let out = '';
+  proc.stdout.on('data', chunk => { out += chunk; });
+  const exit = await Promise.race([
+    proc.exited.then(async e => {
+      // stderr 数据块可能在 exit 事件后才投递完，稍等再取尾部。
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return e;
+    }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('child deadlocked writing stderr')), 15000)),
+  ]);
+  assert.equal(exit.exitCode, 0, 'the child exits cleanly');
+  assert.equal(out, 'done');
+  assert.ok(proc.stderrTail, 'the tail accessor is provided');
+  const tail = proc.stderrTail();
+  assert.ok(tail.length <= 8192 + 16, 'only a bounded tail is retained');
+  assert.ok(tail.endsWith('END-OF-STDERR'), 'the most recent diagnostics survive');
+});
