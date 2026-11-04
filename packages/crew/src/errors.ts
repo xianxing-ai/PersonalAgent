@@ -1,7 +1,8 @@
-/** crew 模块错误码，对齐仓库统一错误分类：输入错误、不支持、限流、冲突、未知目标。 */
+/** crew 模块错误码，对齐仓库统一错误分类：输入错误、未授权、不支持、限流、冲突、未知目标。 */
 export type CrewErrorCode =
   | 'INVALID_INPUT'
   | 'UNKNOWN_AGENT'
+  | 'NOT_PERMITTED'
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'DISPATCH_LIMIT_EXCEEDED'
