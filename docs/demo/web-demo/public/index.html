@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PersonalAgent · 在线 Demo</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>PersonalAgent 在线 Demo</h1>
+    <p class="sub">华为 ICT 大赛 · AgentArts 赛道 · Profile <code id="profile">…</code></p>
+  </div>
+  <div class="meta" id="meta">加载仓库真实数据…</div>
+</header>
+
+<main>
+  <section id="banner" class="banner hidden"></section>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="card">
+    <h2>诚实声明</h2>
+    <p id="rule" class="muted"></p>
+    <p class="muted">本页所有数据由 <code>docs/demo/web-demo/build-demo-data.mjs</code> 从仓库真实文件生成（见页脚来源哈希），不含任何模拟成功结果；未接线的口一律显示 unavailable。</p>
+  </section>
+
+  <section class="card">
+    <h2>在途交付（Highlights）</h2>
+    <div id="highlights" class="hl-grid"></div>
+  </section>
+
+  <section class="card">
+    <h2>28 张工作流图</h2>
+    <p class="muted">点击任意图查看节点、依赖能力与逐节点证据要求。</p>
+    <div class="filters" id="filters"></div>
+    <div id="wf-grid" class="wf-grid"></div>
+  </section>
+
+  <section class="card" id="detail-card" hidden>
+    <button class="close" id="detail-close" title="关闭">✕</button>
+    <h2 id="detail-title"></h2>
+    <div id="detail-body"></div>
+  </section>
+
+  <section class="card">
+    <h2>实时交互（可选）</h2>
+    <p class="muted">若决赛环境已部署 AgentArts Runtime，可输入其地址做<strong>只读</strong>探测（GET /healthz）。未部署或探测失败时显示 unavailable，本页不提供模拟数据。</p>
+    <div class="live-row">
+      <input id="runtime-url" type="url" placeholder="例如 http://127.0.0.1:8787" />
+      <button id="probe-btn">只读探测</button>
+    </div>
+    <pre id="probe-result" class="probe hidden"></pre>
+  </section>
+</main>
+
+<footer>
+  <div id="sources" class="muted"></div>
+  <div class="muted">生成工具：<code>docs/demo/web-demo/build-demo-data.mjs</code> · 服务器：<code>docs/demo/web-demo/demo-server.mjs</code>（零依赖，只读接口）</div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

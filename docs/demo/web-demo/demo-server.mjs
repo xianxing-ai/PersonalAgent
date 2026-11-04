@@ -1,0 +1,180 @@
+#!/usr/bin/env node
+// 在线 Web Demo 静态服务器（零依赖，Node ≥22）。
+// - 服务 docs/demo/web-demo/public/ 下的静态页
+// - 暴露只读 JSON 接口（数据来自 build-demo-data.mjs 产出的 demo-data.json）
+// - 数据未构建时接口返回 503 unavailable，绝不返回编造数据
+// 用法：node docs/demo/web-demo/demo-server.mjs [--port 8080] [--data <demo-data.json 路径>] [--public <静态目录>] [--repo-root <path>]
+
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { dirname, extname, join, normalize, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_DATA = join(here, 'demo-data.json');
+const DEFAULT_PUBLIC = join(here, 'public');
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
+
+export function parseArgs(argv) {
+  const args = { port: 8080, data: DEFAULT_DATA, public: DEFAULT_PUBLIC, repoRoot: resolve(join(here, '..', '..', '..')) };
+  for (let i = 2; i < argv.length; i++) {
+    if (argv[i] === '--port') args.port = Number(argv[++i]);
+    else if (argv[i] === '--data') args.data = resolve(argv[++i]);
+    else if (argv[i] === '--public') args.public = resolve(argv[++i]);
+    else if (argv[i] === '--repo-root') args.repoRoot = resolve(argv[++i]);
+  }
+  return args;
+}
+
+async function loadJson(path) {
+  try {
+    const text = await readFile(path, 'utf8');
+    return { loaded: true, data: JSON.parse(text) };
+  } catch (err) {
+    return { loaded: false, error: `${path} 不可读（${err.code ?? err.message}）` };
+  }
+}
+
+function sendJson(res, status, body) {
+  const text = JSON.stringify(body);
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': status === 200 ? 'no-cache' : 'no-store',
+  });
+  res.end(text);
+}
+
+/**
+ * 启动 Demo 服务器。返回 { server, url, close }，供测试复用。
+ * 所有接口均为只读；数据缺失时明确 503，不编造。
+ */
+export function startDemoServer(options = {}) {
+  const { port = 8080, dataFile = DEFAULT_DATA, publicDir = DEFAULT_PUBLIC } = options;
+
+  const server = createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const pathname = decodeURIComponent(url.pathname);
+
+    // 只允许 GET/HEAD
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      sendJson(res, 405, { error: 'method_not_allowed', message: 'Demo 服务器只提供只读接口' });
+      return;
+    }
+
+    try {
+      // API：只读 JSON
+      if (pathname === '/api/health') {
+        const data = await loadJson(dataFile);
+        sendJson(res, 200, {
+          ok: true,
+          dataLoaded: data.loaded,
+          ...(data.loaded ? { profile: data.data.profile, generatedAt: data.data.generatedAt } : { detail: data.error }),
+        });
+        return;
+      }
+      if (pathname === '/api/demo-data') {
+        const data = await loadJson(dataFile);
+        if (!data.loaded) sendJson(res, 503, { error: 'data_unavailable', message: 'demo-data.json 尚未构建。请运行 node docs/demo/web-demo/build-demo-data.mjs 后重试。', detail: data.error });
+        else sendJson(res, 200, data.data);
+        return;
+      }
+      if (pathname === '/api/workflows') {
+        const data = await loadJson(dataFile);
+        if (!data.loaded) {
+          sendJson(res, 503, { error: 'data_unavailable', message: 'demo-data.json 尚未构建。' });
+          return;
+        }
+        sendJson(res, 200, {
+          profile: data.data.profile,
+          stats: data.data.stats,
+          workflows: data.data.workflows.map(({ nodes, ...rest }) => ({ ...rest, nodeCount: rest.nodeCount ?? nodes.length })),
+        });
+        return;
+      }
+      const workflowMatch = /^\/api\/workflows\/(F[0-9]{2})$/.exec(pathname);
+      if (workflowMatch) {
+        const data = await loadJson(dataFile);
+        const wf = data.loaded ? data.data.workflows.find((w) => w.workflowId === workflowMatch[1]) : null;
+        if (!wf) sendJson(res, data.loaded ? 404 : 503, { error: data.loaded ? 'workflow_not_found' : 'data_unavailable' });
+        else sendJson(res, 200, wf);
+        return;
+      }
+      if (pathname === '/api/capabilities') {
+        const data = await loadJson(dataFile);
+        if (!data.loaded) {
+          sendJson(res, 503, { error: 'data_unavailable', message: 'demo-data.json 尚未构建。' });
+          return;
+        }
+        sendJson(res, 200, {
+          snapshotDate: data.data.stats.snapshotDate,
+          globalRule: data.data.globalRule,
+          capabilities: data.data.workflows.map((w) => ({ workflowId: w.workflowId, name: w.name, status: w.status })),
+        });
+        return;
+      }
+      if (pathname === '/api/highlights') {
+        const data = await loadJson(dataFile);
+        if (!data.loaded) {
+          sendJson(res, 503, { error: 'data_unavailable' });
+          return;
+        }
+        sendJson(res, 200, data.data.highlights);
+        return;
+      }
+
+      // 静态文件（防目录穿越）
+      let filePath = normalize(join(publicDir, pathname === '/' ? 'index.html' : pathname));
+      if (!filePath.startsWith(normalize(publicDir))) {
+        sendJson(res, 403, { error: 'forbidden' });
+        return;
+      }
+      let fileStat = await stat(filePath).catch(() => null);
+      if (fileStat?.isDirectory()) {
+        filePath = join(filePath, 'index.html');
+        fileStat = await stat(filePath).catch(() => null);
+      }
+      if (!fileStat) {
+        sendJson(res, 404, { error: 'not_found', path: pathname });
+        return;
+      }
+      const body = await readFile(filePath);
+      res.writeHead(200, { 'content-type': MIME[extname(filePath)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
+      res.end(req.method === 'HEAD' ? undefined : body);
+    } catch (err) {
+      sendJson(res, 500, { error: 'internal_error', message: err.message });
+    }
+  });
+
+  return new Promise((resolveStart) => {
+    server.listen(port, () => {
+      const address = server.address();
+      const url = `http://127.0.0.1:${address.port}`;
+      resolveStart({ server, url, close: () => new Promise((r) => server.close(r)) });
+    });
+  });
+}
+
+async function main(argv) {
+  const args = parseArgs(argv);
+  const { url, close } = await startDemoServer(args);
+  console.log(`[web-demo] Demo 服务器已启动：${url}`);
+  console.log('[web-demo] 数据接口：/api/health /api/demo-data /api/workflows /api/workflows/F01 /api/capabilities /api/highlights');
+  const shutdown = () => {
+    close().then(() => process.exit(0));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main(process.argv);
+}

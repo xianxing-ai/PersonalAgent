@@ -1,0 +1,3346 @@
+{
+  "schemaVersion": "1.0.0",
+  "generatedAt": "2026-11-04T16:53:22.740Z",
+  "profile": "huawei_ict_agentarts",
+  "wiringSchemaVersion": "1.0.0",
+  "verification": "unverified",
+  "git": {
+    "head": "8d02662698575889e998db39b27460e40ac13fb7",
+    "branch": "zc/competition-web-demo",
+    "subject": "demo(competition): 在线 Web Demo——静态页 + 只读数据接口 + 构建脚本（独立新目录）"
+  },
+  "sources": [
+    {
+      "path": "docs/competition/workflow-wiring.json",
+      "sha256": "520ee8b5675c27afc90eb2fb263e48c0f106d8f04fd999c279299f3b266e3876"
+    },
+    {
+      "path": "docs/demo/web-demo/capability-status.json",
+      "sha256": "8e51d4d81ef9a7fb1dd0c0e79af598046b3ea417bb5de4479c58afd264f7d755"
+    }
+  ],
+  "stats": {
+    "workflowCount": 28,
+    "designNodeCount": 185,
+    "hostGuardChecklistTotal": 152,
+    "hostGuardChecklistDone": 0,
+    "configuredCount": 0,
+    "configuredTotal": 28,
+    "statusCounts": {
+      "production-gap": 21,
+      "needs-real-environment": 4,
+      "wiring-in-pr": 3
+    },
+    "snapshotDate": "2026-11-05"
+  },
+  "globalRule": "缺受信口保持 unavailable，禁止 Fake/静默回退 Local；勾选须具备生产注册+真实宿主+约定证据。",
+  "highlights": [
+    {
+      "title": "IMAGE28 整图接线",
+      "pr": 531,
+      "state": "draft",
+      "note": "28 图 configured 0/28；#531 为草稿，完整验收前勿合并，整条堆叠压在其上。"
+    },
+    {
+      "title": "cloudPersistent 关机后云持续宿主",
+      "pr": 543,
+      "state": "approved-not-merged",
+      "note": "需真实云证据（关机后云持续）才允许启用；Desktop 组合由 lab 在口齐后接线。"
+    },
+    {
+      "title": "F06/F12 云提醒与通知投递",
+      "pr": 574,
+      "state": "approved-not-merged",
+      "note": "真实渠道投递读回待验收。"
+    },
+    {
+      "title": "F22/F26/F28 门控修复",
+      "pr": 571,
+      "state": "open",
+      "note": "门控与部署读回修复在途。"
+    },
+    {
+      "title": "packages/crew 子智能体链",
+      "pr": 554,
+      "state": "open-stacked",
+      "note": "#554→#559→#565→#569/#570/#573 堆叠未合并，未实机验收。"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "F01",
+      "name": "主对话与责任理解",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F01",
+      "nodeCount": 9,
+      "nodes": [
+        {
+          "id": "F01_N01",
+          "label": "保存可信用户原句、来源与指令版本",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N02",
+          "label": "独立依赖（默认串行）召回有效责任、上下文与能力",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F01_N01"
+          ],
+          "capabilityNames": [
+            "memory.query",
+            "responsibility.snapshot",
+            "model.capabilities"
+          ],
+          "evidenceRequirement": "每个引用可回到原始来源；事实记录与动作授权分别标记。 模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N03",
+          "label": "既有候选选择联合判断责任、计划与分工",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F01_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N04",
+          "label": "宿主检查引用、适用范围与现有授权",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F01_N03"
+          ],
+          "capabilityNames": [
+            "policy.scope_check"
+          ],
+          "evidenceRequirement": "字符串出现不证明自然语言等价；不能把“别发给张总”反转成发送授权。 模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N05",
+          "label": "F28适配执行模型与实际支持参数",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F01_N04"
+          ],
+          "capabilityNames": [
+            "model.native_config_check"
+          ],
+          "evidenceRequirement": "消费候选判断已有分派建议；只有新问题才再调用同一主决策配置。 模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N06",
+          "label": "TaskRuntime建立责任关联任务图",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F01_N05"
+          ],
+          "capabilityNames": [
+            "runtime.commit_task_graph"
+          ],
+          "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N07",
+          "label": "缺信息：在既有数据范围扩充检索",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F01_N03"
+          ],
+          "capabilityNames": [
+            "knowledge.search"
+          ],
+          "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N08",
+          "label": "真正歧义：主动语音或文字补问",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F01_N04"
+          ],
+          "capabilityNames": [
+            "voice.ask_question"
+          ],
+          "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F01_N09",
+          "label": "明确已授权责任直接激活并留来源",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F01_N04"
+          ],
+          "capabilityNames": [
+            "runtime.commit_responsibility"
+          ],
+          "evidenceRequirement": "模板与主动责任端口已有；真实用户会话→持久责任→原任务分派仍按调用方逐项验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "knowledge.search",
+        "memory.query",
+        "model.capabilities",
+        "model.native_config_check",
+        "policy.scope_check",
+        "responsibility.snapshot",
+        "runtime.commit_responsibility",
+        "runtime.commit_task_graph",
+        "voice.ask_question"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "责任生命周期与出机许可生产提供者缺口；控制闸门修复在途 PR。",
+        "openGaps": [
+          "出机许可生产提供者",
+          "责任生命周期生产口"
+        ],
+        "inFlightPrs": [
+          535
+        ],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F02",
+      "name": "语音交互与确认",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F02",
+      "nodeCount": 11,
+      "nodes": [
+        {
+          "id": "F02_N01",
+          "label": "可信操作摘要：对象、参数、问题ID与revision",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "policy.pending_question"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N02",
+          "label": "主动询问：本地播报与文字同步",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F02_N01"
+          ],
+          "capabilityNames": [
+            "voice.speak_question"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N03",
+          "label": "可信语音会话的最终转写；中途与回声不作确认",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F02_N02"
+          ],
+          "capabilityNames": [
+            "voice.final_transcript"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N04",
+          "label": "有歧义、修改或条件时解释语义",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F02_N03"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N05",
+          "label": "检查当前问题、revision、参数指纹与一次消费",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F02_N03"
+          ],
+          "capabilityNames": [
+            "policy.confirmation_check"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N06",
+          "label": "明确同意：交回既有Policy，执行后核实",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F02_N05"
+          ],
+          "capabilityNames": [
+            "policy.resume_original_operation"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N07",
+          "label": "修改或条件：旧确认失效，再核对已有授权",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F02_N04"
+          ],
+          "capabilityNames": [
+            "runtime.invalidate_question"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N08",
+          "label": "拒绝：本地停止当前动作，独立分支继续",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F02_N03"
+          ],
+          "capabilityNames": [
+            "runtime.reject_operation"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N09",
+          "label": "本地直接停止入口：不等待ASR或云模型",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "runtime.local_stop_observation"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N10",
+          "label": "ASR / 云端不可用：显示本地操作入口",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F02_N03"
+          ],
+          "capabilityNames": [
+            "voice.local_fallback"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F02_N11",
+          "label": "核实操作结果并反馈",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F02_N06"
+          ],
+          "capabilityNames": [
+            "runtime.read_original_effect"
+          ],
+          "evidenceRequirement": "有限实时握手及命令验证fixture；真实录音/听说/权限确认/主任务组合未由握手证明，SIS平台不可用 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "policy.confirmation_check",
+        "policy.pending_question",
+        "policy.resume_original_operation",
+        "runtime.invalidate_question",
+        "runtime.local_stop_observation",
+        "runtime.read_original_effect",
+        "runtime.reject_operation",
+        "voice.final_transcript",
+        "voice.local_fallback",
+        "voice.speak_question"
+      ],
+      "effects": [
+        "read",
+        "write",
+        "none"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "needs-real-environment",
+        "summary": "原生语音能力待真机：声学防回声、final 回执、设备证据；SIS 平台当前不可用。UI 接线归 lab。",
+        "openGaps": [
+          "声学防回声",
+          "final 回执",
+          "设备证据"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+          "docs/ROADMAP.md#MOD-14"
+        ]
+      }
+    },
+    {
+      "workflowId": "F03",
+      "name": "世界状态、目标与局部重规划",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F03",
+      "nodeCount": 10,
+      "nodes": [
+        {
+          "id": "F03_N01",
+          "label": "接收事件或用户变更并核对版本",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N05",
+          "label": "独立依赖（默认串行）宽松召回时间、地点、人物、资源",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F03_N01"
+          ],
+          "capabilityNames": [
+            "memory.query"
+          ],
+          "evidenceRequirement": "未知地点/时间不因优先级低被自动排除；能力和配置决定实际检索范围。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N02",
+          "label": "候选判断判断依赖与受影响子图",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F03_N05"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N03",
+          "label": "保留有效成果；仅使过时计划节点失效",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F03_N02"
+          ],
+          "capabilityNames": [
+            "runtime.invalidate_affected_subgraph"
+          ],
+          "evidenceRequirement": "不删除已发邮件或已发生写入的事实；依赖假设不是已验证因果关系。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N06",
+          "label": "宿主绑定原操作、效果与变更因果链",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F03_N02"
+          ],
+          "capabilityNames": [
+            "runtime.original_effect_binding"
+          ],
+          "evidenceRequirement": "REVISE加同一对象存在写入不够；必须关联具体原效果与修正原因，不能相信模型自报分类。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N07",
+          "label": "未知原写入：先读回核实",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F03_N06"
+          ],
+          "capabilityNames": [
+            "runtime.reconcile_original_effect"
+          ],
+          "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N08",
+          "label": "现有Policy核对实际补偿授权",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F03_N06"
+          ],
+          "capabilityNames": [
+            "policy.compensation_check"
+          ],
+          "evidenceRequirement": "正向授权不自动等于补偿授权；已有范围覆盖更正时直接执行。 版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N09",
+          "label": "覆盖授权：执行补偿并读回",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F03_N08"
+          ],
+          "capabilityNames": [
+            "runtime.submit_bound_compensation"
+          ],
+          "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N10",
+          "label": "缺决定：保留补偿草稿并语音补问",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F03_N08"
+          ],
+          "capabilityNames": [
+            "voice.ask_question"
+          ],
+          "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F03_N04",
+          "label": "F24按新依赖调度；独立分支继续",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F03_N03"
+          ],
+          "capabilityNames": [
+            "runtime.schedule_graph"
+          ],
+          "evidenceRequirement": "版本化输入/主动frontier及公开端口已有；完整世界模型与最小修复算法未定/暂停，不把动画补丁验收当全算法验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "memory.query",
+        "policy.compensation_check",
+        "runtime.invalidate_affected_subgraph",
+        "runtime.original_effect_binding",
+        "runtime.reconcile_original_effect",
+        "runtime.schedule_graph",
+        "runtime.submit_bound_compensation",
+        "voice.ask_question"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "MemoryQuery 受信 Gateway invoke、版本冲突口未写。",
+        "openGaps": [
+          "MemoryQuery 受信 Gateway invoke",
+          "版本冲突处理口"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F04",
+      "name": "Wiki 与作用域记忆管理",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F04",
+      "nodeCount": 7,
+      "nodes": [
+        {
+          "id": "F04_N01",
+          "label": "获取候选、来源与作用域",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F04_N05",
+          "label": "独立依赖（默认串行）检索已有版本与有效授权引用",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F04_N01"
+          ],
+          "capabilityNames": [
+            "memory.query"
+          ],
+          "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F04_N02",
+          "label": "候选判断判断相容、冲突或失效",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F04_N05"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F04_N06",
+          "label": "宿主核对来源与公开写入能力",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F04_N02"
+          ],
+          "capabilityNames": [
+            "knowledge.source_and_write_check"
+          ],
+          "evidenceRequirement": "已确认事实不等于动作授权；来源不可读或能力未发布时明确不可用。 复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F04_N03",
+          "label": "相容：写新版本并保留旧版来源",
+          "kind": "tool",
+          "effect": "write",
+          "dependencies": [
+            "F04_N06"
+          ],
+          "capabilityNames": [
+            "knowledge.apply_note_patch"
+          ],
+          "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F04_N07",
+          "label": "冲突：隔离候选，按需澄清",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F04_N06"
+          ],
+          "capabilityNames": [
+            "memory.quarantine_candidate"
+          ],
+          "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F04_N04",
+          "label": "通知受影响索引与上下文失效",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F04_N03",
+            "F04_N07"
+          ],
+          "capabilityNames": [
+            "memory.invalidate_projection"
+          ],
+          "evidenceRequirement": "复用现有知识/记忆模块；跨模块真实持续写回、来源更正与云消费按接口/Evidence验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "knowledge.apply_note_patch",
+        "knowledge.source_and_write_check",
+        "memory.invalidate_projection",
+        "memory.quarantine_candidate",
+        "memory.query"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "knowledge.search 受信 Gateway invoke 与引用验真口未写。",
+        "openGaps": [
+          "knowledge.search 受信 invoke",
+          "引用验真"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F05",
+      "name": "记忆搜索与来源回答",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F05",
+      "nodeCount": 7,
+      "nodes": [
+        {
+          "id": "F05_N01",
+          "label": "输入查询、事件线索与证据要求",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F05_N02",
+          "label": "范围/版本初筛后独立依赖（默认串行）多路召回",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F05_N01"
+          ],
+          "capabilityNames": [
+            "knowledge.search",
+            "memory.query"
+          ],
+          "evidenceRequirement": "MemoryQueryPort事实查询与KnowledgePort.search分开；未提供向量能力不冒充已实现。 检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F05_N03",
+          "label": "候选判断重排证据并判断缺口",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F05_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F05_N06",
+          "label": "按需扩充已授权数据范围的检索",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F05_N03"
+          ],
+          "capabilityNames": [
+            "knowledge.search"
+          ],
+          "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F05_N04",
+          "label": "执行模型生成带来源候选回答",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F05_N03"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F05_N05",
+          "label": "候选判断检查支持关系；代码核对引用版本",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F05_N04"
+          ],
+          "capabilityNames": [
+            "knowledge.citation_revision_check"
+          ],
+          "evidenceRequirement": "引用可读且版本有效；模型判定不等于事实已独立验证。 检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F05_N07",
+          "label": "发布有据回答并记录引用影响",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F05_N05"
+          ],
+          "capabilityNames": [
+            "runtime.publish_sourced_answer"
+          ],
+          "evidenceRequirement": "检索/Memory端口按目录可消费；不把摘要或模型回答当原文，不由合成相关性标签提升真实质量 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "knowledge.citation_revision_check",
+        "knowledge.search",
+        "memory.query",
+        "runtime.publish_sourced_answer"
+      ],
+      "effects": [
+        "none",
+        "read"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "Memory Gateway invoke 受信口未写，来源回答依赖 F04/F05 同组接线。",
+        "openGaps": [
+          "Memory Gateway invoke"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F06",
+      "name": "待办、提醒与跟进",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F06",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F06_N01",
+          "label": "解析任务与提醒要素",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F06_N02",
+          "label": "决策模型 查重与意图确认",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F06_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F06_N03",
+          "label": "写入待办系统 (带幂等键)",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F06_N02"
+          ],
+          "capabilityNames": [
+            "todo.registered_write"
+          ],
+          "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F06_N04",
+          "label": "按实际时钟与当前提醒版本检查到期",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F06_N03"
+          ],
+          "capabilityNames": [
+            "reminder.current_clock_and_revision"
+          ],
+          "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F06_N05",
+          "label": "播发提醒通知",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F06_N04"
+          ],
+          "capabilityNames": [
+            "notification.deliver"
+          ],
+          "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "notification.deliver",
+        "reminder.current_clock_and_revision",
+        "todo.registered_write"
+      ],
+      "effects": [
+        "none",
+        "write",
+        "read"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498",
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "生产 invokeTodoCreate 与 N05 真实投递回执未写；云提醒接线在途 PR。",
+        "openGaps": [
+          "invokeTodoCreate 生产实现",
+          "N05 真实投递回执"
+        ],
+        "inFlightPrs": [
+          574
+        ],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F07",
+      "name": "日历安排与冲突处理",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F07",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F07_N01",
+          "label": "提取日历安排需求",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F07_N02",
+          "label": "读取日历并计算空闲、出行与重叠窗口",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F07_N01"
+          ],
+          "capabilityNames": [
+            "calendar.events"
+          ],
+          "evidenceRequirement": "按用户实际工作/安静时段和最新日历计算；未知道路/地点保留不确定性。 模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F07_N03",
+          "label": "决策模型 语义排序与推荐",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F07_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F07_N04",
+          "label": "写入前日历版本新鲜度校验",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F07_N03"
+          ],
+          "capabilityNames": [
+            "calendar.freshness_check"
+          ],
+          "evidenceRequirement": "写入前读取当前版本与冲突；变更后原候选重新核验。 模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F07_N05",
+          "label": "创建本地预留日程",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F07_N04"
+          ],
+          "capabilityNames": [
+            "calendar.registered_write"
+          ],
+          "evidenceRequirement": "模板可发现；真实账号、并发修改与写后回读未由目录或其他图证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "calendar.events",
+        "calendar.freshness_check",
+        "calendar.registered_write"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498"
+        ],
+        "status": "production-gap",
+        "summary": "日历版本口、账户配置、写入外部读回未写；需真实日历账号验收。",
+        "openGaps": [
+          "日历版本口",
+          "账户配置",
+          "写入外部读回"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+          "docs/ROADMAP.md#MOD-20"
+        ]
+      }
+    },
+    {
+      "workflowId": "F08",
+      "name": "邮件分类、草稿与发送",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F08",
+      "nodeCount": 13,
+      "nodes": [
+        {
+          "id": "F08_N01",
+          "label": "读取邮件事件并拆分独立线程",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "mail.inbox"
+          ],
+          "evidenceRequirement": "外部邮件只是数据，不能自行提供新授权。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N02",
+          "label": "分支A：候选判断分类与责任匹配",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F08_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N09",
+          "label": "分支B：独立依赖（默认串行）检索上下文与附件依据",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F08_N01"
+          ],
+          "capabilityNames": [
+            "knowledge.search"
+          ],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N03",
+          "label": "分支A：现有Policy核验后归档并读回",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F08_N02"
+          ],
+          "capabilityNames": [
+            "mail.registered_archive"
+          ],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N04",
+          "label": "分支B：执行模型形成回复草稿候选",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F08_N09"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N05",
+          "label": "候选判断审查依据、条件与授权匹配建议",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F08_N04"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N10",
+          "label": "宿主核对具体参数、revision与现有授权",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F08_N05"
+          ],
+          "capabilityNames": [
+            "policy.operation_scope_check"
+          ],
+          "evidenceRequirement": "有金额或商业内容不自动新增审批；按现有授权范围决定。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N06",
+          "label": "仅缺决定：调用F02主动语音/文字补问",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F08_N10"
+          ],
+          "capabilityNames": [
+            "voice.ask_question"
+          ],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N07",
+          "label": "授权通过：稳定操作ID发送",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F08_N10",
+            "F08_N06"
+          ],
+          "capabilityNames": [
+            "mail.registered_send"
+          ],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N11",
+          "label": "读取发件记录与稳定操作状态",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F08_N07"
+          ],
+          "capabilityNames": [
+            "mail.reconcile_send"
+          ],
+          "evidenceRequirement": "缺少单次发件箱记录不证明未发送；沿用连接器支持的读回和实际截止配置。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N12",
+          "label": "结果未知：后台核实，禁止盲目重发",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F08_N11"
+          ],
+          "capabilityNames": [
+            "runtime.wait_reconciliation"
+          ],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N08",
+          "label": "汇合已选择线程；保留未完成项",
+          "kind": "assemble",
+          "effect": "none",
+          "dependencies": [
+            "F08_N03",
+            "F08_N11"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F08_N13",
+          "label": "输入变化：转F03保留原效果并局部修订",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F08_N01"
+          ],
+          "capabilityNames": [
+            "runtime.versioned_replan"
+          ],
+          "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "knowledge.search",
+        "mail.inbox",
+        "mail.reconcile_send",
+        "mail.registered_archive",
+        "mail.registered_send",
+        "policy.operation_scope_check",
+        "runtime.versioned_replan",
+        "runtime.wait_reconciliation",
+        "voice.ask_question"
+      ],
+      "effects": [
+        "read",
+        "none",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498"
+        ],
+        "status": "production-gap",
+        "summary": "Gateway 真归档、真 SMTP 发送、N12 Sent 对账未写。",
+        "openGaps": [
+          "真实归档",
+          "真 SMTP 发送",
+          "N12 Sent 对账"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F09",
+      "name": "订阅、信号发现与筛选",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F09",
+      "nodeCount": 4,
+      "nodes": [
+        {
+          "id": "F09_N01",
+          "label": "多源订阅流独立依赖（默认串行）拉取",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "feeds.collect"
+          ],
+          "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F09_N02",
+          "label": "确定性哈希去重与格式校验",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F09_N01"
+          ],
+          "capabilityNames": [
+            "feeds.validate_and_deduplicate"
+          ],
+          "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F09_N03",
+          "label": "决策模型 语义相关性与价值判别",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F09_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F09_N04",
+          "label": "转入 F10 深度研究队列",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F09_N03"
+          ],
+          "capabilityNames": [
+            "runtime.enqueue_research"
+          ],
+          "evidenceRequirement": "源端口与分诊契约已有；账号watch/轮询、断线恢复和未订阅相关事件的真实质量待验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "feeds.collect",
+        "feeds.validate_and_deduplicate",
+        "runtime.enqueue_research"
+      ],
+      "effects": [
+        "read",
+        "none",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498",
+          "zemeng5208"
+        ],
+        "status": "production-gap",
+        "summary": "真实 feeds 提供者与会话授权缺口；云前缀验收待华为云联跑。",
+        "openGaps": [
+          "真实 feeds 提供者",
+          "会话授权",
+          "云前缀验收"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F10",
+      "name": "深度研究与证据汇总",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F10",
+      "nodeCount": 6,
+      "nodes": [
+        {
+          "id": "F10_N01",
+          "label": "研究维度拆解与依赖派发（当前串行）",
+          "kind": "assemble",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F10_N02",
+          "label": "分支A：配置执行模型检索主题的一手资料",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F10_N01"
+          ],
+          "capabilityNames": [
+            "research.search"
+          ],
+          "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F10_N03",
+          "label": "分支B：配置执行模型寻找反例与替代路径",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F10_N01"
+          ],
+          "capabilityNames": [
+            "research.search"
+          ],
+          "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F10_N04",
+          "label": "分支C：配置执行模型整理已有项目上下文",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F10_N01"
+          ],
+          "capabilityNames": [
+            "knowledge.search"
+          ],
+          "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F10_N05",
+          "label": "独立红蓝对抗审查 (寻找未支持主张与反例)",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F10_N02",
+            "F10_N03",
+            "F10_N04"
+          ],
+          "capabilityNames": [
+            "knowledge.check_supported_claims"
+          ],
+          "evidenceRequirement": "未验证数据一律标为未知，不可把模型猜测当基准数据 模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F10_N06",
+          "label": "候选判断判断证据差异并汇总候选",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F10_N05"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板/原research接口可接；真实来源可达性、质量和可复核引用需本图证据 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "knowledge.check_supported_claims",
+        "knowledge.search",
+        "research.search"
+      ],
+      "effects": [
+        "none",
+        "read"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "原来源读回与独立审核绑定缺口；F10 enqueue 未注入。",
+        "openGaps": [
+          "原来源读回",
+          "独立审核绑定",
+          "enqueue 注入"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F11",
+      "name": "天气、出行及计划影响",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F11",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F11_N01",
+          "label": "接收气象与交通警报",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F11_N02",
+          "label": "独立依赖（默认串行）检索关联日程及未知地点项",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F11_N01"
+          ],
+          "capabilityNames": [
+            "calendar.events"
+          ],
+          "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F11_N03",
+          "label": "决策模型 评估冲击并拟定改线方案",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F11_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F11_N04",
+          "label": "仅真正缺决定时主动语音补问",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F11_N03"
+          ],
+          "capabilityNames": [
+            "voice.ask_question"
+          ],
+          "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F11_N05",
+          "label": "更新日程属性并作废旧出行闹铃",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F11_N03",
+            "F11_N04"
+          ],
+          "capabilityNames": [
+            "calendar.update_and_invalidate_reminder"
+          ],
+          "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "calendar.events",
+        "calendar.update_and_invalidate_reminder",
+        "voice.ask_question"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498"
+        ],
+        "status": "production-gap",
+        "summary": "calendar.update 生产工具链与真实读回未写。",
+        "openGaps": [
+          "calendar.update 生产工具链",
+          "真实读回"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F12",
+      "name": "通知、安静时段与主动服务",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F12",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F12_N01",
+          "label": "来源事件持久feed，保留source/revision/撤回",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F12_N02",
+          "label": "读取global→connector→responsibility当前策略",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F12_N01"
+          ],
+          "capabilityNames": [
+            "policy.quiet_hours"
+          ],
+          "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F12_N03",
+          "label": "候选重要性与当前通知策略分流；不授权限",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F12_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F12_N04",
+          "label": "原子reserve同round→最新策略复检→实际渠道receipt",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F12_N03"
+          ],
+          "capabilityNames": [
+            "notification.deliver"
+          ],
+          "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F12_N05",
+          "label": "静默feed/独立read ack与有效return digest",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F12_N03"
+          ],
+          "capabilityNames": [
+            "notification.deliver_when_due"
+          ],
+          "evidenceRequirement": "原子CAS策略/同轮额度/最新通道复检及Runtime facade有fixture；真实设备渠道与主控消费方仍需验收 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        }
+      ],
+      "capabilityNames": [
+        "notification.deliver",
+        "notification.deliver_when_due",
+        "policy.quiet_hours"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498",
+          "goo122"
+        ],
+        "status": "wiring-in-pr",
+        "summary": "N04 真实渠道投递读回端口；通知接线在途 PR。",
+        "openGaps": [
+          "N04 真实渠道投递读回"
+        ],
+        "inFlightPrs": [
+          574
+        ],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F13",
+      "name": "系统检查与故障诊断",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F13",
+      "nodeCount": 4,
+      "nodes": [
+        {
+          "id": "F13_N01",
+          "label": "读取卡滞任务状态与日志",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F13_N02",
+          "label": "独立依赖（默认串行）运行确定性探针诊断",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F13_N01"
+          ],
+          "capabilityNames": [
+            "system.registered_probe"
+          ],
+          "evidenceRequirement": "探针结果、进程/锁身份与时间分别记录，不能从日志文字推定宿主已停止。 模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F13_N03",
+          "label": "决策模型 归因分析与修复方案规划",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F13_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F13_N04",
+          "label": "核实执行宿主与未知效果后恢复资源",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F13_N03"
+          ],
+          "capabilityNames": [
+            "runtime.confirmed_recovery"
+          ],
+          "evidenceRequirement": "锁释放需要宿主生命周期与执行记录支持，不能凭模型说进程卡死强制解锁。 模板已有；权限下真实OS观察逐项提供，不从RSS/CPU单点臆断原因或完整资源配额 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "runtime.confirmed_recovery",
+        "system.registered_probe"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "needs-real-environment",
+        "summary": "系统观测 Policy/AgentArts/Desktop 实机闭环未验收。",
+        "openGaps": [
+          "实机闭环验收"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/ROADMAP.md#MOD-17"
+        ]
+      }
+    },
+    {
+      "workflowId": "F14",
+      "name": "浏览器与桌面操作",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F14",
+      "nodeCount": 6,
+      "nodes": [
+        {
+          "id": "F14_N01",
+          "label": "加载浏览器页面并解析可操作 DOM",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "desktop.current_observation"
+          ],
+          "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F14_N02",
+          "label": "申请桌面/浏览器输入互斥锁",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F14_N01"
+          ],
+          "capabilityNames": [
+            "runtime.desktop_input_lock"
+          ],
+          "evidenceRequirement": "独占键盘与鼠标控制权，防止与其他并发任务按键打架 两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F14_N03",
+          "label": "串行键盘填充字段",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F14_N02"
+          ],
+          "capabilityNames": [
+            "desktop.registered_input"
+          ],
+          "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F14_N04",
+          "label": "候选判断评估下一动作与已授权范围",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F14_N03"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F14_N05",
+          "label": "缺少决定时主动语音/文字确认",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F14_N04"
+          ],
+          "capabilityNames": [
+            "voice.ask_question"
+          ],
+          "evidenceRequirement": "两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F14_N06",
+          "label": "点击提交并释放输入锁",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F14_N04",
+            "F14_N05"
+          ],
+          "capabilityNames": [
+            "desktop.registered_submit"
+          ],
+          "evidenceRequirement": "动作后核对页面/目标身份；结果未知先观察读回，不盲目重复点击。 两案例有隔离Edge运动观察；不是用户桌面任意操作、窗口控制或全部站点验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "desktop.current_observation",
+        "desktop.registered_input",
+        "desktop.registered_submit",
+        "runtime.desktop_input_lock",
+        "voice.ask_question"
+      ],
+      "effects": [
+        "read",
+        "write",
+        "none"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "production-gap",
+        "summary": "原生 browser.observe、输入锁、会话绑定缺口（UI 归 lab）。",
+        "openGaps": [
+          "browser.observe 原生实现",
+          "输入锁",
+          "会话绑定"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F15",
+      "name": "代码修改、补丁与命令执行",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F15",
+      "nodeCount": 6,
+      "nodes": [
+        {
+          "id": "F15_N01",
+          "label": "定位报错文件与调用栈基线",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "workspace.read_text"
+          ],
+          "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F15_N02",
+          "label": "决策模型 圈定修改边界与指派编码模型",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F15_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F15_N03",
+          "label": "编码模型生成候选补丁",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F15_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F15_N04",
+          "label": "独立红线审查 (防越界与隐蔽变更)",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F15_N03"
+          ],
+          "capabilityNames": [
+            "workspace.patch_scope_check"
+          ],
+          "evidenceRequirement": "审查实际补丁、目标范围与行为影响，不能按改动行数宣布无风险。 Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F15_N05",
+          "label": "在支持的测试工作区应用补丁并运行必要检查",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F15_N04"
+          ],
+          "capabilityNames": [
+            "runtime.patch_and_required_checks"
+          ],
+          "evidenceRequirement": "记录实际测试命令、基线、结果与失败；隔离能力按宿主真实实现描述。 Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F15_N06",
+          "label": "交付补丁及检查凭证，按既有发布条件处理",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F15_N05"
+          ],
+          "capabilityNames": [
+            "runtime.deliver_patch_evidence"
+          ],
+          "evidenceRequirement": "Wukong/Pelican公开runner实际工具修复与单CAS交付通过；不等于F15每节点/任意仓库、命令或用户工作区全验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "runtime.deliver_patch_evidence",
+        "runtime.patch_and_required_checks",
+        "workspace.patch_scope_check",
+        "workspace.read_text"
+      ],
+      "effects": [
+        "read",
+        "none",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "needs-real-environment",
+        "summary": "真人独立审核签名与实机 WinForms 目视验收未做；配置 UI 归 lab。",
+        "openGaps": [
+          "真人独立审核签名",
+          "实机 WinForms 目视"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F16",
+      "name": "CI 检查与修复",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F16",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F16_N01",
+          "label": "绑定提交版本与失败日志",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "github.bound_ci_failure"
+          ],
+          "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F16_N02",
+          "label": "决策模型 归因分析 (排除作弊嫌疑)",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F16_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F16_N03",
+          "label": "执行修复补丁应用",
+          "kind": "tool",
+          "effect": "write",
+          "dependencies": [
+            "F16_N02"
+          ],
+          "capabilityNames": [
+            "workspace.apply_text_patch"
+          ],
+          "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F16_N04",
+          "label": "审查修复是否保留真实验收意图",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F16_N03"
+          ],
+          "capabilityNames": [
+            "workspace.test_intent_check"
+          ],
+          "evidenceRequirement": "检查断言/测试行为与需求，不以文件未改或断言数量不变证明没有规避测试。 模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F16_N05",
+          "label": "隔离环境重跑 CI 并确认绿灯",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F16_N04"
+          ],
+          "capabilityNames": [
+            "workspace.run_allowed_command"
+          ],
+          "evidenceRequirement": "模板及本仓检查日志存在；真实远端CI权限、触发/结果关联与修复闭环另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "github.bound_ci_failure",
+        "workspace.apply_text_patch",
+        "workspace.run_allowed_command",
+        "workspace.test_intent_check"
+      ],
+      "effects": [
+        "read",
+        "none",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498",
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "CI 修复真实自动写入与设备场景待验收；失败解析生产口只有工厂导出。",
+        "openGaps": [
+          "真实 resolveFailure",
+          "readCurrentHead 生产口",
+          "真实写入验收"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/ROADMAP.md#MOD-34",
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F17",
+      "name": "测试失败定位",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F17",
+      "nodeCount": 4,
+      "nodes": [
+        {
+          "id": "F17_N01",
+          "label": "固定失败日志、版本与调用栈",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F17_N02",
+          "label": "决策模型 聚类分析与同源归因",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F17_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F17_N03",
+          "label": "设计最小单一复现脚本",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F17_N02"
+          ],
+          "capabilityNames": [
+            "workspace.run_allowed_command"
+          ],
+          "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F17_N04",
+          "label": "交付根因证据清单与针对性修复",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F17_N03"
+          ],
+          "capabilityNames": [
+            "runtime.deliver_failure_report"
+          ],
+          "evidenceRequirement": "两动画案例证明特定失败→修复→浏览器通过；泛化测试定位与业务回归质量未证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "runtime.deliver_failure_report",
+        "workspace.run_allowed_command"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "Potatos498",
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "失败报告 checkpoint 与真实定位消费验收缺口。",
+        "openGaps": [
+          "失败报告 checkpoint",
+          "真实定位验收"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/ROADMAP.md#MOD-35",
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F18",
+      "name": "PR 审查、批准条件与合并",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F18",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F18_N01",
+          "label": "固定 PR 当前提交 SHA 与 Diff",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "github.bound_pr_diff"
+          ],
+          "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F18_N02",
+          "label": "执行模型分别提出审查意见",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F18_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F18_N03",
+          "label": "决策模型 整理阻断项与建议",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F18_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F18_N04",
+          "label": "确定性门禁检查 (真人批准、CI、冲突)",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F18_N03"
+          ],
+          "capabilityNames": [
+            "github.current_head_merge_gate"
+          ],
+          "evidenceRequirement": "严格核对为非作者真实批准，且CI全部通过 模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F18_N05",
+          "label": "执行受控合并并更新主干版本",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F18_N04"
+          ],
+          "capabilityNames": [
+            "github.registered_merge"
+          ],
+          "evidenceRequirement": "模板保留；开发协作规则不成为模型授权，真实PR操作按当前请求/角色独立验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "github.bound_pr_diff",
+        "github.current_head_merge_gate",
+        "github.registered_merge"
+      ],
+      "effects": [
+        "read",
+        "none",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "production-gap",
+        "summary": "PR 图路径与平台/授权读回缺口。",
+        "openGaps": [
+          "PR 图路径",
+          "平台授权读回"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F19",
+      "name": "Issue 分诊与关联修复",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F19",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F19_N01",
+          "label": "接收新用户报告并检索已有 Issue 库",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "github.issue_snapshot"
+          ],
+          "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F19_N02",
+          "label": "决策模型 语义查重与合并判断",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F19_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F19_N03",
+          "label": "创建关联修复子任务 (进入 F15)",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F19_N02"
+          ],
+          "capabilityNames": [
+            "runtime.enqueue_issue_repair"
+          ],
+          "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F19_N04",
+          "label": "PR 合并后独立回归复验",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F19_N03"
+          ],
+          "capabilityNames": [
+            "github.merged_repair_readback"
+          ],
+          "evidenceRequirement": "按原问题复现并核实实际行为；PR合并、模型结论和Fake通过分别标记。 模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F19_N05",
+          "label": "核实解决后安全关闭 Issue",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F19_N04"
+          ],
+          "capabilityNames": [
+            "github.registered_close_issue"
+          ],
+          "evidenceRequirement": "模板可发现；账号事件到真实修复/状态更新需本图Evidence 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "github.issue_snapshot",
+        "github.merged_repair_readback",
+        "github.registered_close_issue",
+        "runtime.enqueue_issue_repair"
+      ],
+      "effects": [
+        "read",
+        "none",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "production-gap",
+        "summary": "Issue 图路径与平台/授权读回缺口。",
+        "openGaps": [
+          "Issue 图路径",
+          "平台授权读回"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F20",
+      "name": "API 文档与一致性检查",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F20",
+      "nodeCount": 4,
+      "nodes": [
+        {
+          "id": "F20_N01",
+          "label": "比对后端代码与契约文件",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "workspace.read_text"
+          ],
+          "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F20_N02",
+          "label": "执行模型生成文档补丁与示例",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F20_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F20_N03",
+          "label": "确定性校验：示例代码可编译可解析",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F20_N02"
+          ],
+          "capabilityNames": [
+            "workspace.run_allowed_command"
+          ],
+          "evidenceRequirement": "类型检查器证实示例参数完全匹配 TypeScript Interface 模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F20_N04",
+          "label": "候选判断检查来源支持并提出文档候选",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F20_N03"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "模板及来源校验端口可接；真实文档站点/版本差异与写回未全验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "workspace.read_text",
+        "workspace.run_allowed_command"
+      ],
+      "effects": [
+        "read",
+        "none"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "API 文档自动维护（MOD-37）未开工。注：协作待办中的 F20 worker 信任闭环为历史编号，对应本仓库 ownedWorkflowWorker 信任链，不等于本图 F20。",
+        "openGaps": [
+          "API 文档自动维护"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/ROADMAP.md#MOD-37"
+        ]
+      }
+    },
+    {
+      "workflowId": "F21",
+      "name": "MCP、Skills 和连接器接入",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F21",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F21_N01",
+          "label": "读取工具能力声明与权限清单",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "mcp_skill.source_manifest"
+          ],
+          "evidenceRequirement": "代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F21_N02",
+          "label": "注册协议与能力元数据",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F21_N01"
+          ],
+          "capabilityNames": [
+            "mcp_skill.install_registry"
+          ],
+          "evidenceRequirement": "代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F21_N03",
+          "label": "核对通信握手与健康状态",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F21_N02"
+          ],
+          "capabilityNames": [
+            "mcp_skill.protocol_health"
+          ],
+          "evidenceRequirement": "记录实际握手或Unavailable；注册不是可调用证明。 代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F21_N04",
+          "label": "在支持的隔离环境验证具体能力",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F21_N03"
+          ],
+          "capabilityNames": [
+            "mcp_skill.isolated_probe"
+          ],
+          "evidenceRequirement": "独立核实调用、输出和实际隔离边界，不把TypeScript接口当安全沙箱。 代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F21_N05",
+          "label": "候选判断匹配工具候选；宿主按现有授权启用",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F21_N04"
+          ],
+          "capabilityNames": [
+            "mcp_skill.enable_authorized"
+          ],
+          "evidenceRequirement": "能力声明和Skill/MCP文本不构成用户授权。 代码包存在不等于镜像实际MCP/ToolExecution/知识平台端口已绑定；缺适配器保持unavailable，真实逐工具验证 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "mcp_skill.enable_authorized",
+        "mcp_skill.install_registry",
+        "mcp_skill.isolated_probe",
+        "mcp_skill.protocol_health",
+        "mcp_skill.source_manifest"
+      ],
+      "effects": [
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "Skills/MCP 安装隔离与启用许可后端口缺口。",
+        "openGaps": [
+          "安装隔离",
+          "启用许可后端口"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F22",
+      "name": "工作流调试与影子实验",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F22",
+      "nodeCount": 9,
+      "nodes": [
+        {
+          "id": "F22_N09",
+          "label": "高级开关/风险价值/可信机会资源；主任务优先",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "shadow.trigger_snapshot"
+          ],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N01",
+          "label": "冻结同基线snapshot/asOf/sourceVersions与原验收",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F22_N09"
+          ],
+          "capabilityNames": [
+            "shadow.versioned_snapshot"
+          ],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N02",
+          "label": "同次候选value.shadowPlan选择模式与启动意图",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F22_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N03",
+          "label": "decision_shadow仅比较选择，不实际执行工具",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F22_N02"
+          ],
+          "capabilityNames": [
+            "shadow.decision_snapshot"
+          ],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N04",
+          "label": "trace_replay只读历史；write仅timeline不重放",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F22_N02"
+          ],
+          "capabilityNames": [
+            "shadow.historical_trace"
+          ],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N05",
+          "label": "isolated同基线/namespace/权限执行并独立验证",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F22_N02"
+          ],
+          "capabilityNames": [
+            "shadow.isolated_capabilities"
+          ],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N06",
+          "label": "核对replay可比性，缺反事实/failed/unknown保留原态",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F22_N04"
+          ],
+          "capabilityNames": [
+            "shadow.counterfactual_evidence"
+          ],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N07",
+          "label": "按已选模式汇合可比结果；显式比较才等双方",
+          "kind": "assemble",
+          "effect": "none",
+          "dependencies": [
+            "F22_N03",
+            "F22_N06",
+            "F22_N05"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F22_N08",
+          "label": "记录实际收益/资源/失败，候选交原F23",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F22_N07"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "有策略/签名/replay及两套顺序双分支实测；真实机会并行、主优先/普通任务先交主结果仍待接线 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        }
+      ],
+      "capabilityNames": [
+        "shadow.counterfactual_evidence",
+        "shadow.decision_snapshot",
+        "shadow.historical_trace",
+        "shadow.isolated_capabilities",
+        "shadow.trigger_snapshot",
+        "shadow.versioned_snapshot"
+      ],
+      "effects": [
+        "read",
+        "none"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "wiring-in-pr",
+        "summary": "工作流调试/影子实验门控与部署读回，修复在途 PR。",
+        "openGaps": [
+          "部署读回"
+        ],
+        "inFlightPrs": [
+          571
+        ],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F23",
+      "name": "决策配置、评估与版本晋升",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F23",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F23_N01",
+          "label": "可信验收配置/同task-session-revision-deadline比较",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "evaluation.dataset_snapshot"
+          ],
+          "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F23_N02",
+          "label": "验签与verifyComparable完整上下文；不是授权",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F23_N01"
+          ],
+          "capabilityNames": [
+            "evaluation.temporal_leakage_check"
+          ],
+          "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F23_N03",
+          "label": "原Policy/ToolGateway授权configuration port",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F23_N02"
+          ],
+          "capabilityNames": [
+            "evaluation.actual_result_dataset"
+          ],
+          "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F23_N04",
+          "label": "revision CAS晋升并保留原operation",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F23_N03"
+          ],
+          "capabilityNames": [
+            "configuration.promote_with_rollback"
+          ],
+          "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        },
+        {
+          "id": "F23_N05",
+          "label": "真实回读；必要回滚仍核原版本与授权",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F23_N04"
+          ],
+          "capabilityNames": [
+            "configuration.operation_readback"
+          ],
+          "evidenceRequirement": "release/service与失败路径fixture已有；真实configuration port/Policy绑定与平台写入未由receipt或目录授予，缺口unavailable 节点字段是展示设计而非公共DTO；保留真实Policy/执行/Evidence/读回，未配置能力unavailable。"
+        }
+      ],
+      "capabilityNames": [
+        "configuration.operation_readback",
+        "configuration.promote_with_rollback",
+        "evaluation.actual_result_dataset",
+        "evaluation.dataset_snapshot",
+        "evaluation.temporal_leakage_check"
+      ],
+      "effects": [
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "现行配置消费者、可信测量与 Evidence 生产者缺口；齐前禁 shadow release。",
+        "openGaps": [
+          "配置消费者",
+          "可信测量",
+          "Evidence 生产者"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F24",
+      "name": "调度、并发、取消与恢复",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F24",
+      "nodeCount": 12,
+      "nodes": [
+        {
+          "id": "F24_N01",
+          "label": "持久化任务图、revision与完成条件",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [],
+          "capabilityNames": [
+            "runtime.persist_graph"
+          ],
+          "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N02",
+          "label": "就绪节点默认串行；资源冲突进入等待",
+          "kind": "assemble",
+          "effect": "none",
+          "dependencies": [
+            "F24_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "CPU/账号/服务能力按实际容量与用户配置调度；不新增固定并发上限。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N03",
+          "label": "执行前核对Policy、版本与操作身份",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F24_N02"
+          ],
+          "capabilityNames": [
+            "policy.operation_scope_check"
+          ],
+          "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N04",
+          "label": "经ModelGateway/ToolGateway执行并存检查点",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F24_N03"
+          ],
+          "capabilityNames": [
+            "runtime.execute_published_operation"
+          ],
+          "evidenceRequirement": "读取、模型请求可并行；桌面输入和同资源写入遵守既有锁。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N05",
+          "label": "证据就绪：汇合已选择的必需分支",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F24_N04"
+          ],
+          "capabilityNames": [
+            "runtime.selected_branch_evidence"
+          ],
+          "evidenceRequirement": "TaskRuntime决定终态；模型自报、工具受理或取消受理都不等于完成。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N06",
+          "label": "本地取消/停止：先更新控制revision",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "runtime.local_stop_observation"
+          ],
+          "evidenceRequirement": "直接本地入口不等待云端；拦住尚未开始操作，取消传播到在途请求。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N07",
+          "label": "未开始：阻止当前操作并保留此前效果",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F24_N06"
+          ],
+          "capabilityNames": [
+            "runtime.stop_not_started"
+          ],
+          "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N08",
+          "label": "已提交/在途：显示正在停止",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F24_N06"
+          ],
+          "capabilityNames": [
+            "runtime.stop_in_flight"
+          ],
+          "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N09",
+          "label": "结果未知：等待对账与外部读回",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F24_N06",
+            "F24_N08"
+          ],
+          "capabilityNames": [
+            "runtime.reconcile_original_effect"
+          ],
+          "evidenceRequirement": "一次缺失读回不是未执行证明；使用支持的查询/回查及实际期限。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N10",
+          "label": "已确认发生：保留结果，按需转补偿",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F24_N06",
+            "F24_N09"
+          ],
+          "capabilityNames": [
+            "runtime.keep_confirmed_effect"
+          ],
+          "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N11",
+          "label": "恢复：读检查点及原操作结果再调度",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [],
+          "capabilityNames": [
+            "runtime.recover_checkpoint"
+          ],
+          "evidenceRequirement": "SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F24_N12",
+          "label": "状态徽章与必要主动通知",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F24_N05",
+            "F24_N07",
+            "F24_N08",
+            "F24_N09",
+            "F24_N10"
+          ],
+          "capabilityNames": [
+            "runtime.publish_actual_status"
+          ],
+          "evidenceRequirement": "正常等待可静默；重要效果、截止冲击和必须决定的事项主动通知，不能一律隐藏。 SQLite重启/pure frontier恢复/幂等及原调度组合有fixture；真实长期设备/云恢复与并发资源策略仍须验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "policy.operation_scope_check",
+        "runtime.execute_published_operation",
+        "runtime.keep_confirmed_effect",
+        "runtime.local_stop_observation",
+        "runtime.persist_graph",
+        "runtime.publish_actual_status",
+        "runtime.reconcile_original_effect",
+        "runtime.recover_checkpoint",
+        "runtime.selected_branch_evidence",
+        "runtime.stop_in_flight",
+        "runtime.stop_not_started"
+      ],
+      "effects": [
+        "write",
+        "none",
+        "read"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "知识对账身份、出站凭据、Model 能力 guard 缺口。",
+        "openGaps": [
+          "知识对账身份",
+          "出站凭据",
+          "Model 能力 guard"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F25",
+      "name": "配置、账户、凭据和数据范围",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F25",
+      "nodeCount": 4,
+      "nodes": [
+        {
+          "id": "F25_N01",
+          "label": "接收账户与安全范围策略指令",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F25_N02",
+          "label": "决策模型 圈定上下文允许域",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F25_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F25_N03",
+          "label": "宿主依据实际授权组装出站上下文",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F25_N02"
+          ],
+          "capabilityNames": [
+            "policy.outbound_context_check"
+          ],
+          "evidenceRequirement": "保留凭据隔离并核对数据范围；本地保存不等于没有内容送往已配置国内云。 已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F25_N04",
+          "label": "保存安全配置引用 (三态独立验证)",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F25_N03"
+          ],
+          "capabilityNames": [
+            "configuration.save_credential_reference"
+          ],
+          "evidenceRequirement": "已有安全配置端口；具体账号可用性/权限范围逐项验证，配置成功不等于接通 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "configuration.save_credential_reference",
+        "policy.outbound_context_check"
+      ],
+      "effects": [
+        "none",
+        "read",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "出站凭据与账户配置消费缺口（与 F24 同组）。",
+        "openGaps": [
+          "出站凭据"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F26",
+      "name": "镜像、部署与比赛验收",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F26",
+      "nodeCount": 5,
+      "nodes": [
+        {
+          "id": "F26_N01",
+          "label": "固定代码、镜像与模型调用配置版本",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F26_N02",
+          "label": "[阶段1/4] 构建镜像并检查产物",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F26_N01"
+          ],
+          "capabilityNames": [
+            "deployment.build_arm64_image"
+          ],
+          "evidenceRequirement": "local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F26_N03",
+          "label": "[阶段2/4] 部署上线并就绪探针",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F26_N02"
+          ],
+          "capabilityNames": [
+            "deployment.runtime_readback"
+          ],
+          "evidenceRequirement": "分别读取实际镜像版本、deployment与健康结果；就绪探针不是语义工具闭环。 local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F26_N04",
+          "label": "[阶段3/4] 真实语义闭环评测：云端提案->本地Policy->工具->证据",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F26_N03"
+          ],
+          "capabilityNames": [
+            "deployment.real_tool_evidence"
+          ],
+          "evidenceRequirement": "分别留存invocation/trace、工具实际状态、Evidence及外部读回，不扩大固定读取场景证明范围。 local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F26_N05",
+          "label": "记录验收覆盖与剩余问题；按既有发布条件上线",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F26_N04"
+          ],
+          "capabilityNames": [
+            "deployment.publish_verified_coverage"
+          ],
+          "evidenceRequirement": "local-laya-v3-244ca434及云arm64-local-v3-244ca434已读回；案例完整执行表面为本机同版镜像+本机Runtime/Laya+远端AA代理，非全部云工作流/平台评估验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "deployment.build_arm64_image",
+        "deployment.publish_verified_coverage",
+        "deployment.real_tool_evidence",
+        "deployment.runtime_readback"
+      ],
+      "effects": [
+        "none",
+        "write",
+        "read"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "needs-real-environment",
+        "summary": "镜像/部署/比赛验收读回，修复在途 PR；真实云证据缺口，需华为云账号。",
+        "openGaps": [
+          "真实云证据",
+          "部署读回"
+        ],
+        "inFlightPrs": [
+          571
+        ],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F27",
+      "name": "上下文预算、压缩与恢复",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F27",
+      "nodeCount": 7,
+      "nodes": [
+        {
+          "id": "F27_N01",
+          "label": "读取模型实际容量、配置与版本",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [],
+          "capabilityNames": [
+            "model.capabilities"
+          ],
+          "evidenceRequirement": "不默认固定Token数；服务参数接受与内部思考深度验证分开。 现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F27_N05",
+          "label": "独立依赖（默认串行）召回当前责任、事实与必要工具证据",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F27_N01"
+          ],
+          "capabilityNames": [
+            "memory.query"
+          ],
+          "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F27_N02",
+          "label": "候选判断联合排序上下文并识别缺口",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F27_N05"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F27_N03",
+          "label": "长日志按需由执行模型摘要",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F27_N02"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F27_N06",
+          "label": "需要原证据时恢复引用或扩充检索",
+          "kind": "tool",
+          "effect": "read",
+          "dependencies": [
+            "F27_N02"
+          ],
+          "capabilityNames": [
+            "knowledge.search"
+          ],
+          "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F27_N04",
+          "label": "宿主组装关键指令/授权/版本映射",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F27_N02",
+            "F27_N03"
+          ],
+          "capabilityNames": [
+            "model.context_source_map_check"
+          ],
+          "evidenceRequirement": "关键指令与有效授权绑定不可被摘要替换；实际容量不足时明确报告。 现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F27_N07",
+          "label": "变化使旧映射失效并反馈F28",
+          "kind": "host",
+          "effect": "write",
+          "dependencies": [
+            "F27_N04"
+          ],
+          "capabilityNames": [
+            "runtime.invalidate_context_mapping"
+          ],
+          "evidenceRequirement": "现有token窗口/来源绑定/恢复接口可核；全业务压缩保真、长期记忆完整性与成本收益另验 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "knowledge.search",
+        "memory.query",
+        "model.capabilities",
+        "model.context_source_map_check",
+        "runtime.invalidate_context_mapping"
+      ],
+      "effects": [
+        "read",
+        "none",
+        "write"
+      ],
+      "status": {
+        "owners": [
+          "goo122"
+        ],
+        "status": "production-gap",
+        "summary": "上下文预算 Model 能力 guard 与恢复映射缺口。",
+        "openGaps": [
+          "Model 能力 guard",
+          "恢复映射"
+        ],
+        "inFlightPrs": [],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    },
+    {
+      "workflowId": "F28",
+      "name": "多厂商模型、思考深度与主对话分配",
+      "version": "2026.10.15.2",
+      "bindingId": "owned-F28",
+      "nodeCount": 12,
+      "nodes": [
+        {
+          "id": "F28_N01",
+          "label": "主对话接收目标与模型偏好",
+          "kind": "input",
+          "effect": "none",
+          "dependencies": [],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N02",
+          "label": "合格Laya/未合格配置执行模型选择模型分工与上下文",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F28_N01"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N03",
+          "label": "区分原生思考、步骤预算与验证强度",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F28_N01",
+            "F28_N02"
+          ],
+          "capabilityNames": [
+            "model.native_config_check"
+          ],
+          "evidenceRequirement": "按实际MaaS/Provider能力映射；不支持的参数明确报告，步骤预算不冒充原生思考深度。 当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N04",
+          "label": "依赖就绪后串行推进独立研究与分析分支",
+          "kind": "assemble",
+          "effect": "none",
+          "dependencies": [
+            "F28_N03"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N06",
+          "label": "配置执行模型3-32B：收集与整理资料候选",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F28_N04"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N07",
+          "label": "配置执行模型-V4-Pro：分析现有上下文",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F28_N04"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N08",
+          "label": "配置执行模型-5.2：依据研究结果生成补丁候选",
+          "kind": "executor",
+          "effect": "none",
+          "dependencies": [
+            "F28_N06"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N09",
+          "label": "汇合研究、分析与补丁候选",
+          "kind": "assemble",
+          "effect": "none",
+          "dependencies": [
+            "F28_N06",
+            "F28_N07",
+            "F28_N08"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N10",
+          "label": "独立检查来源、补丁与行为测试",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F28_N09"
+          ],
+          "capabilityNames": [
+            "workspace.source_and_test_check"
+          ],
+          "evidenceRequirement": "独立来源核对与实际行为检查分别记录；模型自报不能充当工具执行证据。 当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N05",
+          "label": "既有候选判断判断是否需要补查或修订",
+          "kind": "decision",
+          "effect": "none",
+          "dependencies": [
+            "F28_N10"
+          ],
+          "capabilityNames": [],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N11",
+          "label": "Runtime 完成条件通过后汇总",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F28_N05"
+          ],
+          "capabilityNames": [
+            "runtime.completion_check"
+          ],
+          "evidenceRequirement": "当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        },
+        {
+          "id": "F28_N12",
+          "label": "执行者在派定范围内自主选工具与探索",
+          "kind": "host",
+          "effect": "read",
+          "dependencies": [
+            "F28_N04"
+          ],
+          "capabilityNames": [
+            "executor.scoped_tool_loop"
+          ],
+          "evidenceRequirement": "复用subagent-host.ts受限工具循环；无需每次工具选择都回到全局模型。授权仍通过原有Policy。 当前DeepSeek经AgentArts代理真实返回；Laya未全域合格、六处实际裁决均升级，其他厂商/思考深度/减少高级调用仍不预填 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
+        }
+      ],
+      "capabilityNames": [
+        "executor.scoped_tool_loop",
+        "model.native_config_check",
+        "runtime.completion_check",
+        "workspace.source_and_test_check"
+      ],
+      "effects": [
+        "none",
+        "read"
+      ],
+      "status": {
+        "owners": [
+          "zemeng5208"
+        ],
+        "status": "wiring-in-pr",
+        "summary": "多厂商模型门控修复在途 PR（与 F22/F26 同批）。",
+        "openGaps": [
+          "门控接线"
+        ],
+        "inFlightPrs": [
+          571
+        ],
+        "sources": [
+          "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md"
+        ]
+      }
+    }
+  ],
+  "liveDemo": {
+    "runtimeConfigured": false,
+    "reason": "构建期未提供已部署 AgentArts Runtime 地址。页面支持在“实时交互”区输入已部署 Runtime 的地址按其公开契约只读探测；未部署或探测失败时一律显示 unavailable，不提供模拟数据。",
+    "probeHint": "GET {runtimeUrl}/healthz 与 GET {runtimeUrl}/api/demo-data，只读，不发任何写请求。"
+  }
+}
