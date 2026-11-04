@@ -22,7 +22,7 @@
       "properties": {
         "version": {"const": 1}, "commandId": {"$ref": "#/definitions/id"},
         "owner": {"$ref": "#/definitions/owner"}, "deadline": {"$ref": "#/definitions/time"},
-        "operation": {"enum": ["submit", "control", "readback", "approval", "source"]},
+        "operation": {"enum": ["submit", "control", "readback", "approval", "source", "todo", "notification"]},
         "submit": {"type": "object", "additionalProperties": false,
           "required": ["originTaskId", "originRuntimeId", "goal", "goalDigest", "taskDeadline"], "properties": {
             "originTaskId": {"$ref": "#/definitions/id"}, "originRuntimeId": {"$ref": "#/definitions/id"},
@@ -42,6 +42,19 @@
             "argumentsDigest": {"$ref": "#/definitions/digest"}, "expiresAt": {"$ref": "#/definitions/time"},
             "decision": {"enum": ["allow_once", "deny"]}
           }},
+        "todo": {"type": "object", "additionalProperties": false, "required": ["action"], "properties": {
+          "action": {"enum": ["create", "update"]}, "title": {"type": "string", "minLength": 1, "maxLength": 200},
+          "dueUtc": {"$ref": "#/definitions/time"}, "remindUtc": {"$ref": "#/definitions/time"},
+          "missedPolicy": {"enum": ["run_once", "skip"]}, "id": {"$ref": "#/definitions/id"},
+          "expectedRevision": {"type": "integer", "minimum": 1}, "status": {"enum": ["done", "cancelled"]}, "clearReminder": {"const": true}
+        }, "allOf": [{"if": {"properties": {"action": {"const": "create"}}},
+          "then": {"required": ["title"], "not": {"anyOf": [{"required": ["id"]}, {"required": ["expectedRevision"]}, {"required": ["status"]}, {"required": ["clearReminder"]}]}},
+          "else": {"required": ["id", "expectedRevision"], "anyOf": [{"required": ["status"]}, {"required": ["clearReminder"]}],
+            "not": {"anyOf": [{"required": ["title"]}, {"required": ["dueUtc"]}, {"required": ["remindUtc"]}, {"required": ["missedPolicy"]}]}}}]},
+        "notification": {"type": "object", "additionalProperties": false, "required": ["action", "itemIds"], "properties": {
+          "action": {"const": "read"}, "itemIds": {"type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1, "maxLength": 512}}
+        }},
         "source": {"type": "object", "additionalProperties": false,
           "required": ["action", "sourceId", "configurationRef", "expectedRevision"], "properties": {
             "action": {"enum": ["track", "revoke"]}, "sourceId": {"$ref": "#/definitions/id"},
@@ -50,6 +63,8 @@
           }, "allOf": [{"if": {"properties": {"action": {"const": "track"}}}, "then": {"required": ["readAndCloudConsent"]}}]}
       },
       "allOf": [
+        {"if": {"properties": {"operation": {"const": "todo"}}}, "then": {"required": ["target", "todo"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["control"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}, "else": {"not": {"required": ["todo"]}}},
+        {"if": {"properties": {"operation": {"const": "notification"}}}, "then": {"required": ["target", "notification"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["control"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}, "else": {"not": {"required": ["notification"]}}},
         {"if": {"properties": {"operation": {"const": "source"}}}, "then": {"required": ["target", "source"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["control"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}, "else": {"not": {"required": ["source"]}}},
         {"if": {"properties": {"operation": {"const": "submit"}}}, "then": {"required": ["submit"], "not": {"anyOf": [{"required": ["target"]}, {"required": ["control"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}},
         {"if": {"properties": {"operation": {"const": "control"}}}, "then": {"required": ["target", "control"], "not": {"anyOf": [{"required": ["submit"]}, {"required": ["approval"]}, {"required": ["originCommandId"]}]}}},
@@ -76,6 +91,30 @@
             "expiresAt": {"$ref": "#/definitions/time"}, "state": {"enum": ["pending", "allowed", "denied"]}
           }}},
         "evidenceRefs": {"type": "array", "maxItems": 100, "items": {"$ref": "#/definitions/id"}},
+        "notifications": {"type": "object", "additionalProperties": false,
+          "required": ["items", "unreadItemIds", "returnItemIds", "interruptionCount", "delivery"], "properties": {
+            "items": {"type": "array", "maxItems": 100, "items": {"type": "object", "additionalProperties": false,
+              "required": ["id", "source", "contentRef", "occurredAt", "receivedAt"], "properties": {
+                "id": {"type": "string", "minLength": 1, "maxLength": 512}, "source": {"type": "string", "minLength": 1, "maxLength": 200},
+                "contentRef": {"type": "string", "minLength": 1, "maxLength": 2048}, "occurredAt": {"$ref": "#/definitions/time"},
+                "receivedAt": {"$ref": "#/definitions/time"}, "readAt": {"$ref": "#/definitions/time"}
+              }}},
+            "unreadItemIds": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+            "returnItemIds": {"type": "array", "maxItems": 100, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+            "interruptionCount": {"const": 0}, "delivery": {"const": "waiting_device"}
+          }},
+        "todos": {"type": "object", "additionalProperties": false, "required": ["items", "operations"], "properties": {
+          "items": {"type": "array", "maxItems": 32, "items": {"type": "object", "additionalProperties": false,
+            "required": ["id", "title", "status", "revision"], "properties": {
+              "id": {"$ref": "#/definitions/id"}, "title": {"type": "string", "minLength": 1, "maxLength": 200},
+              "status": {"enum": ["open", "done", "cancelled"]}, "revision": {"type": "integer", "minimum": 1},
+              "dueUtc": {"$ref": "#/definitions/time"}, "remindUtc": {"$ref": "#/definitions/time"},
+              "reminderState": {"enum": ["scheduled", "delivered", "missed"]}
+            }}},
+          "operations": {"type": "array", "maxItems": 32, "items": {"type": "object", "additionalProperties": false,
+            "required": ["commandId", "state"], "properties": {"commandId": {"$ref": "#/definitions/id"}, "taskId": {"$ref": "#/definitions/id"},
+              "state": {"enum": ["created", "running", "waiting_approval", "waiting_reconciliation", "cancelling", "cancelled", "failed", "succeeded"]}}}}
+        }},
         "sources": {"type": "array", "maxItems": 20, "items": {"type": "object", "additionalProperties": false,
           "required": ["sourceId", "title", "url", "configurationRef", "intervalSeconds", "revision", "state"], "properties": {
             "sourceId": {"$ref": "#/definitions/id"}, "title": {"type": "string", "minLength": 1, "maxLength": 200},
