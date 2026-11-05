@@ -51,3 +51,21 @@ test('rejects changed selection, strategy-as-summary, arbitrary node, dependency
   assert.throws(()=>prepareReviewedRepair(before,at,{...review,graphRevision:3}),{code:'REVISION_CONFLICT'});
   assert.deepEqual(store.read(),before);
 });
+
+test('Fact withdrawal and expiry propagate to impact analysis and prepareReviewedRepair rejects revision conflict', () => {
+  const {store, review} = fixture();
+  const current = store.read();
+
+  // Withdraw the source fact
+  store.append(current.revision, {
+    id: 'source', kind: 'fact', dependencies: [], summary: 'source withdrawn',
+    sourceRef: 'test/source', sensitivity: 'private', state: 'withdrawn', reason: 'revoked',
+    validFrom: '2026-01-01T00:00:00.000Z', validUntil: '2099-01-01T00:00:00.000Z'
+  });
+
+  const updatedSnapshot = store.read();
+  assert.equal(updatedSnapshot.revision, 5);
+
+  // Older review referencing graphRevision 4 must fail with REVISION_CONFLICT
+  assert.throws(() => prepareReviewedRepair(updatedSnapshot, at, review), {code: 'REVISION_CONFLICT'});
+});
