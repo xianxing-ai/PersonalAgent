@@ -27,12 +27,7 @@ export function collectThirdPartyDirectDeps(repoRoot) {
   const deps = new Map();
   const roots = [join(repoRoot, 'packages'), join(repoRoot, 'apps')];
   for (const r of roots) {
-    let files = [];
-    try {
-      files = listPackageJsonFiles(repoRoot, r);
-    } catch {
-      continue;
-    }
+    const files = listPackageJsonFiles(repoRoot, r);
     for (const file of files) {
       const pkg = JSON.parse(readFileSync(file, 'utf8'));
       for (const section of ['dependencies', 'optionalDependencies', 'peerDependencies', 'devDependencies']) {
@@ -60,7 +55,7 @@ export function collectThirdPartyDirectDeps(repoRoot) {
 const NPM_NAME_RE = /(?<![\w.@/-])@[a-z0-9][\w.-]*\/[a-z0-9][\w.-]*(?![\w.@/-])|(?<![\w.@/-])[a-z][\w.-]*(?![\w.@/-])/g;
 
 /** 解析清单 markdown 表格行，返回 [{ name, row }]；跳过表头与分隔行。
- *  npm 包名可能出现在组件名列，也可能出现在版本列的括号说明里（如 `10.0.0（@types/nodemailer 8.0.1）`）。
+ *  每行组件名列只包含一个 npm 包名，版本列仅对应该包。
  *  传入 knownNames（如 lock 中的包名集合）时，只保留其中的名字，滤掉 "engines" 这类普通词。 */
 export function parseListedPackages(docText, knownNames = null) {
   const listed = [];
@@ -73,23 +68,19 @@ export function parseListedPackages(docText, knownNames = null) {
     const verCell = cells[2] ?? '';
     if (!nameCell || /^[-—:]*$/.test(nameCell.replace(/\s/g, ''))) continue;
     if (/^组件$/i.test(nameCell)) continue;
-    const names = [
-      ...new Set(
-        [...(nameCell.match(NPM_NAME_RE) ?? []), ...(verCell.match(NPM_NAME_RE) ?? [])].filter((n) =>
-          knownNames ? knownNames.has(n) : true,
-        ),
-      ),
-    ];
+    const names = (nameCell.match(NPM_NAME_RE) ?? []).filter((n) =>
+      n === nameCell && (knownNames ? knownNames.has(n) : true),
+    );
     for (const name of names) listed.push({ name, versionText: verCell, row: line });
   }
   return listed;
 }
 
 function versionMentioned(versionText, installed) {
-  if (versionText.includes(installed)) return true;
+  if (versionText === installed) return true;
   // 允许 8.18.x 这种前缀写法
   const parts = installed.split('.');
-  if (parts.length >= 2) return versionText.includes(`${parts[0]}.${parts[1]}.x`);
+  if (parts.length >= 2) return versionText === `${parts[0]}.${parts[1]}.x`;
   return false;
 }
 

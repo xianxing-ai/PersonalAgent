@@ -26,7 +26,8 @@
 
 | 组件 | 版本 | 许可证 | 用途 | 引入位置 |
 | --- | --- | --- | --- | --- |
-| ws | 8.22.0 / 8.18.x（@types/ws） | MIT / MIT | WebSocket 传输 | packages/models、packages/coordination、apps/agentarts-runtime |
+| ws | 8.22.0 | MIT | WebSocket 传输 | packages/models、packages/coordination、apps/agentarts-runtime |
+| @types/ws | 8.18.x | MIT | WebSocket 类型定义 | packages/models、packages/coordination |
 
 ## 4. 文档与内容解析（知识/订阅/邮件能力）
 
@@ -47,7 +48,8 @@
 
 | 组件 | 版本 | 许可证 | 用途 | 引入位置 |
 | --- | --- | --- | --- | --- |
-| nodemailer | 10.0.0（@types/nodemailer 8.0.1） | MIT-0 / MIT | SMTP 发信（邮件连接器） | packages/connectors |
+| nodemailer | 10.0.0 | MIT-0 | SMTP 发信（邮件连接器） | packages/connectors |
+| @types/nodemailer | 8.0.1 | MIT | SMTP 类型定义 | packages/connectors |
 | imapflow | 1.7.8 | MIT | IMAP 收信（邮件连接器） | packages/connectors |
 | @jackwener/opencli | 1.8.6 | Apache-2.0 | OpenCLI 受控命令行执行桥 | apps/desktop |
 

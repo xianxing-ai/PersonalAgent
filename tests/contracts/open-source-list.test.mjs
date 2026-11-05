@@ -34,11 +34,11 @@ test('扫描器：排除 @personal-agent/*，包含根 devDependencies', () => {
   }
 });
 
-test('解析器：版本列括号里的包名也能识别（如 @types/nodemailer）', () => {
+test('解析器：每个包通过独立行登记', () => {
   const docText = readFileSync(join(repoRoot, 'docs', 'competition', 'OPEN_SOURCE_LIST.md'), 'utf8');
   const listed = parseListedPackages(docText);
   const names = new Set(listed.map((l) => l.name));
-  assert.ok(names.has('@types/nodemailer'), '括号内的 @types/nodemailer 应被解析');
+  assert.ok(names.has('@types/nodemailer'), '@types/nodemailer 应被解析');
   assert.ok(names.has('nodemailer'), 'nodemailer 应被解析');
   assert.ok(!names.has('Node.js') && !names.has('Node'), '非 npm 的 Node.js 行不应被当成依赖');
   // 版本前缀写法：ws 行允许 8.22.0 精确版本
@@ -48,7 +48,7 @@ test('解析器：版本列括号里的包名也能识别（如 @types/nodemaile
 
 test('负例：缺少登记或版本不一致时报错', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'osl-'));
-  for (const part of ['docs/competition', 'packages/demo', 'scripts/competition']) mkdirSync(join(tmp, part), { recursive: true });
+  for (const part of ['docs/competition', 'apps', 'packages/demo', 'scripts/competition']) mkdirSync(join(tmp, part), { recursive: true });
   writeFileSync(
     join(tmp, 'package-lock.json'),
     JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/left-pad': { version: '1.3.0', license: 'WTFPL' } } }),
@@ -69,4 +69,30 @@ test('负例：缺少登记或版本不一致时报错', () => {
   const wrongVersion = verifyOpenSourceList(tmp);
   assert.equal(wrongVersion.ok, false);
   assert.ok(wrongVersion.errors.some((e) => e.includes('left-pad') && e.includes('不一致')), `应报版本不一致：${wrongVersion.errors.join('; ')}`);
+
+  writeFileSync(join(tmp, 'docs', 'competition', 'OPEN_SOURCE_LIST.md'), '| left-pad | 1.3.00 |\n');
+  assert.equal(verifyOpenSourceList(tmp).ok, false, '版本前缀相同不能视为匹配');
+
+  writeFileSync(join(tmp, 'package-lock.json'), JSON.stringify({ packages: { 'node_modules/left-pad': { version: '1.3.0-rc.1+build.2' } } }));
+  writeFileSync(join(tmp, 'docs', 'competition', 'OPEN_SOURCE_LIST.md'), '| left-pad | 1.3.0-rc.1+build.2 |\n');
+  assert.equal(verifyOpenSourceList(tmp).ok, true, '预发布及构建元数据应精确匹配');
+  writeFileSync(join(tmp, 'docs', 'competition', 'OPEN_SOURCE_LIST.md'), '| left-pad | 1.3.0-rc.1+build.20 |\n');
+  assert.equal(verifyOpenSourceList(tmp).ok, false, '预发布及构建元数据不能前缀匹配');
+});
+
+test('扫描目录不可读取时不能静默通过', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'osl-missing-'));
+  mkdirSync(join(tmp, 'packages'));
+  assert.throws(() => collectThirdPartyDirectDeps(tmp), { code: 'ENOENT' });
+});
+
+test('版本与对应包绑定，交换两个包的版本必须失败', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'osl-swap-'));
+  for (const part of ['docs/competition', 'apps', 'packages']) mkdirSync(join(tmp, part), { recursive: true });
+  writeFileSync(join(tmp, 'package.json'), JSON.stringify({ dependencies: { first: '1.0.0', second: '2.0.0' } }));
+  writeFileSync(join(tmp, 'package-lock.json'), JSON.stringify({ packages: { 'node_modules/first': { version: '1.0.0' }, 'node_modules/second': { version: '2.0.0' } } }));
+  writeFileSync(join(tmp, 'docs/competition/OPEN_SOURCE_LIST.md'), '| first | 2.0.0 |\n| second | 1.0.0 |\n');
+  assert.equal(verifyOpenSourceList(tmp).errors.length, 2);
+  writeFileSync(join(tmp, 'docs/competition/OPEN_SOURCE_LIST.md'), '| first | 2.0.0 / 1.0.0 |\n| second | 1.0.0 / 2.0.0 |\n');
+  assert.equal(verifyOpenSourceList(tmp).errors.length, 2);
 });
