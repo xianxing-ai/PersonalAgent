@@ -14,6 +14,10 @@ test('signed host proofs are deterministic over kind, binding and value body, an
   assert.ok(proofs.verify('event',signed,b));
   assert.equal(proofs.verify('receipt',signed,b),false);
   assert.equal(createProactiveHostProofs(secret+'rotated').verify('event',signed,b),false);
+  const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const noncanonical=signed.proof.slice(0,-1)+alphabet[alphabet.indexOf(signed.proof.at(-1))^1];
+  assert.deepEqual(Buffer.from(noncanonical,'base64url'),Buffer.from(signed.proof,'base64url'));
+  assert.equal(proofs.verify('event',{...signed,proof:noncanonical},b),false);
   for(const changed of [{...signed,payload:{answer:'tampered'}},{...signed,proof:signed.proof.slice(0,-1)+(signed.proof.endsWith('A')?'B':'A')},
     {...signed,proof:Buffer.from('wrong').toString('base64url')}]) assert.equal(proofs.verify('event',changed,b),false);
   for(const [field,other] of [['taskId','other-task'],['sessionId','other-session'],['controlRevision',b.controlRevision+1],

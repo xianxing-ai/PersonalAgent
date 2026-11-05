@@ -26,7 +26,7 @@ export function createProactiveHostProofs(secret:string) {
     verify(kind:ProactiveHostProofKind,value:unknown,binding:ProactiveHostProofBinding):boolean {
       if(!plain(value)||typeof value.proof!=='string')return false;
       try {const supplied=Buffer.from(value.proof,'base64url'),expected=digest(kind,value,binding);
-        return supplied.length===expected.length&&timingSafeEqual(supplied,expected);
+        return supplied.length===expected.length&&supplied.toString('base64url')===value.proof&&timingSafeEqual(supplied,expected);
       } catch {return false;}
     },
   };
