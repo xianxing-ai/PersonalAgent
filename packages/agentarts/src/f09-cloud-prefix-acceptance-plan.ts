@@ -1,6 +1,46 @@
 import { ProtocolError } from '@personal-agent/contracts';
 
+export const PLAN_ID = 'f09-cloud-prefix-plan';
+export const PLAN_TITLE = 'F09：订阅云前缀与会话授权端到端读回离线规划';
 export const F09_ACCEPTANCE_PENDING_REASON = '待真云验收' as const;
+export const PENDING_REASON = F09_ACCEPTANCE_PENDING_REASON;
+
+/**
+ * 必需环境声明（依据 docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['huawei_cloud', 'real_account'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md §2.3）
+ */
+export const ACCEPTANCE_STEPS = [
+  '华为云 AgentArts 托管运行时前缀路由（/invocations/*）公网端点实际映射与读回',
+  '华为云端到端会话授权与 feed-source-grant: 租约凭据在线读回（非本地 mock）',
+  '真实 feeds 连接器多源订阅流拉取、增量 cursor 与去重校验',
+  'AgentArts 代理决策模型（DeepSeek/Laya）对动态信号的语义相关性与价值判别在线推理',
+  'F09_N04 到 F10 深度研究队列的跨工作流真实任务投递与回执确认',
+  'AgentArts 平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'F09CloudPrefixReceipt 合规云前缀回执（含 gatewayUrl HTTPS origin、cloudPrefix 路径、runtimeName、prefixVerified=true 与 sessionAuth 租约）',
+  'AgentArts 平台独立 TraceId 关联、Token/计费在线读回与真实 feeds 数据落盘审计',
+];
+
+/**
+ * 默认待真云验收挂起项声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'huawei_cloud_prefix_route_readback',
+  'cloud_session_auth_and_source_grant',
+  'real_feeds_provider_binding',
+  'agentarts_decision_model_inference',
+  'enqueue_research_cross_workflow_handoff',
+  'platform_independent_trace_and_cost',
+];
 
 export const F09_WORKFLOW_NODES = [
   'F09_N01',
