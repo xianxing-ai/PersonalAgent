@@ -1,3 +1,13 @@
+---
+id: sqlite-packaged-electron-smoke
+title: MOD-19 打包后 Electron SQLite 烟测规划与占位
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - windows_real_machine
+reason: 待真机环境执行打包后 Electron SQLite 烟测
+---
+
 # MOD-19 打包后 Electron SQLite 烟测规划与占位（2026-11-07）
 
 <!-- current-design-20261015 -->
@@ -31,7 +41,7 @@
    - `scripts/release/preflight.mjs` 中的 `sqlite-packaged-electron-smoke` 检查项固定为 `blocked`，错误码 `PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED`。
    - 发布判定 `publishable` 必须仍为 `false`。
 
-## 3. 验收清单（Checklist）
+## 验收步骤（Checklist）
 
 真机环境执行打包后 SQLite 烟测时，必须在打包后的 Electron 主进程中顺序完成以下 6 项验证：
 
@@ -41,6 +51,28 @@
 4. **读写事务闭环**：执行 Task 表与 Runtime 状态写入并执行事务读回，校验数据完整性；
 5. **正常关闭连接**：正常关闭数据库连接，确保存储 WAL 日志落盘与 checkpoint 正常；
 6. **重启读回验证**：重新启动打包后的 Electron 主进程实例，对前序写入的数据执行独立读回校验，验证数据跨进程重启持久性。
+
+## 证据要求
+
+1. `tests/manual/release/windows-electron-sqlite.json` 验收占位文件（pending/unverified）保持无篡改；
+2. 真实 Windows 环境下打包后 Electron 主进程运行 SQLite 建库、WAL 模式、读写事务与重启读回的完整审计回执。
+
+## 挂起项
+
+- `packaged_sqlite_smoke_real_machine`：待真机环境执行打包后 Electron SQLite 烟测（当前无真实环境验收证据，离线规划声明 closedLoop: false / status: unavailable）。
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `sqlite-packaged-electron-smoke` | `scripts/release/packaged-sqlite-smoke.plan.mjs` | L6: `const PLAN_ID = 'sqlite-packaged-electron-smoke'`；文档 §2.4: `sqlite-packaged-electron-smoke 检查项固定为 blocked` |
+| title | `MOD-19 打包后 Electron SQLite 烟测规划与占位` | `docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md` | L1: `# MOD-19 打包后 Electron SQLite 烟测规划与占位（2026-11-07）` |
+| status | `unavailable` | `scripts/release/packaged-sqlite-smoke.plan.mjs` | L141, L159: `reason: 'unavailable'`；文档 §2.3: `固定输出 { ready: false, reason: 'unavailable', pending: true }` |
+| closedLoop | `false` | `docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md` | §1: `真实执行待真机环境...绝不宣称已验收`；代码 L144: `verified: false` |
+| requiredEnvironments | `['windows_real_machine']` | `docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md` | §1: `真实执行待真机环境`；§3: `真机环境执行打包后 SQLite 烟测时，必须在打包后的 Electron 主进程中顺序完成以下 6 项验证` |
+| acceptanceSteps | 6 项完整步骤 | `docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md` | §3: 模块加载、建库与迁移、WAL 模式、读写事务、正常关闭连接、重启读回验证 6 项步骤 |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md` | §2.2: 占位文件 `windows-electron-sqlite.json`；§3.6: 重启读回与数据跨进程重启持久性回执 |
+| reason / pendingItems | `待真机环境执行打包后 Electron SQLite 烟测` | `docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md` | §1: `状态：in_progress（规划与占位就绪，真实执行待真机环境）` |
 
 ## 4. 交付文件清单
 
