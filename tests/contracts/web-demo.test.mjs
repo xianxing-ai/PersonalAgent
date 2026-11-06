@@ -3,7 +3,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, copyFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, copyFileSync, mkdirSync, unlinkSync, symlinkSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -125,6 +127,34 @@ test('demo-server：接口返回真实数据；数据缺失返回 503 而不是�
     assert.equal(health.dataLoaded, false);
   } finally {
     await close2();
+  }
+});
+
+test('CLI 使用指定数据与静态目录，拒绝同前缀目录和符号链接逃逸', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'webdemo-cli-boundary-'));
+  const publicDir = join(tmp, 'public');
+  const outside = join(tmp, 'public-private');
+  mkdirSync(publicDir);
+  mkdirSync(outside);
+  writeFileSync(join(publicDir, 'index.html'), 'custom static root');
+  writeFileSync(join(outside, 'secret.txt'), 'private');
+  symlinkSync(outside, join(publicDir, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+  const dataFile = join(tmp, 'data.json');
+  writeFileSync(dataFile, JSON.stringify({ profile: 'custom-fixture' }));
+  const child = spawn(process.execPath, [join(repoRoot, 'docs/demo/web-demo/demo-server.mjs'), '--port', '0', '--data', dataFile, '--public', publicDir], { stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    const [chunk] = await once(child.stdout, 'data', { signal: AbortSignal.timeout(10000) });
+    const match = /http:\/\/127\.0\.0\.1:\d+/.exec(chunk.toString());
+    assert.ok(match, 'CLI 应报告监听地址');
+    const url = match[0];
+    assert.equal((await (await fetch(`${url}/api/health`)).json()).profile, 'custom-fixture');
+    assert.equal(await (await fetch(`${url}/`)).text(), 'custom static root');
+    assert.equal((await fetch(`${url}/..%2fpublic-private%2fsecret.txt`)).status, 403);
+    assert.equal((await fetch(`${url}/escape/secret.txt`)).status, 403);
+    assert.equal((await fetch(`${url}/api/health`)).status, 200);
+  } finally {
+    child.kill();
+    if (child.exitCode === null && child.signalCode === null) await once(child, 'exit');
   }
 });
 

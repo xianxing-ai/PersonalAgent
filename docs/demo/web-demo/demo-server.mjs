@@ -6,8 +6,8 @@
 // 用法：node docs/demo/web-demo/demo-server.mjs [--port 8080] [--data <demo-data.json 路径>] [--public <静态目录>] [--repo-root <path>]
 
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { dirname, extname, join, normalize, resolve } from 'node:path';
+import { readFile, realpath, stat } from 'node:fs/promises';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -137,14 +137,34 @@ export function startDemoServer(options = {}) {
       }
 
       // 静态文件（防目录穿越）
-      let filePath = normalize(join(publicDir, pathname === '/' ? 'index.html' : pathname));
-      if (!filePath.startsWith(normalize(publicDir))) {
+      const root = await realpath(publicDir);
+      let filePath = resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
+      const withinRoot = (path) => {
+        const rel = relative(root, path);
+        return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+      };
+      if (!withinRoot(filePath)) {
         sendJson(res, 403, { error: 'forbidden' });
         return;
       }
-      let fileStat = await stat(filePath).catch(() => null);
+      filePath = await realpath(filePath).catch((err) => {
+        if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return null;
+        throw err;
+      });
+      if (filePath && !withinRoot(filePath)) {
+        sendJson(res, 403, { error: 'forbidden' });
+        return;
+      }
+      let fileStat = filePath ? await stat(filePath) : null;
       if (fileStat?.isDirectory()) {
-        filePath = join(filePath, 'index.html');
+        filePath = await realpath(join(filePath, 'index.html')).catch((err) => {
+          if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return null;
+          throw err;
+        });
+        if (filePath && !withinRoot(filePath)) {
+          sendJson(res, 403, { error: 'forbidden' });
+          return;
+        }
         fileStat = await stat(filePath).catch(() => null);
       }
       if (!fileStat) {
@@ -170,7 +190,7 @@ export function startDemoServer(options = {}) {
 
 async function main(argv) {
   const args = parseArgs(argv);
-  const { url, close } = await startDemoServer(args);
+  const { url, close } = await startDemoServer({ port: args.port, dataFile: args.data, publicDir: args.public });
   console.log(`[web-demo] Demo 服务器已启动：${url}`);
   console.log('[web-demo] 数据接口：/api/health /api/demo-data /api/workflows /api/workflows/F01 /api/capabilities /api/highlights');
   const shutdown = () => {
