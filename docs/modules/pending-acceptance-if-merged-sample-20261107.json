@@ -1,0 +1,2401 @@
+{
+  "schemaVersion": "1.0.0",
+  "disclaimer": "仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干",
+  "generatedAt": "2026-11-07T06:50:00.000Z",
+  "source": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans",
+  "manifestReference": [
+    {
+      "pr": 594,
+      "branch": "zemeng/mod19-sqlite-smoke-plan",
+      "head": "75fb8333a3a371640d938b33e117e6c1fddc4c91",
+      "originalPath": "docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+      "sha256": "2d76bf7d65c9ebe10d6469b852615ad814628579fac22894ed08633135e8774f",
+      "bytes": 5059
+    },
+    {
+      "pr": 594,
+      "branch": "zemeng/mod19-sqlite-smoke-plan",
+      "head": "75fb8333a3a371640d938b33e117e6c1fddc4c91",
+      "originalPath": "scripts/release/packaged-sqlite-smoke.plan.mjs",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+      "sha256": "d857a9205c1cb4bb9665500e8154da9cbe7e6a012cfd4a985c97f7e8efcb2d7b",
+      "bytes": 11623
+    },
+    {
+      "pr": 596,
+      "branch": "zemeng/mod29-deployment-readback-plan",
+      "head": "2a78de4d3033f091b82d72f7d5f5d836f9e1fa41",
+      "originalPath": "docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+      "sha256": "58bf10371f8e1bcde76b7785cf5b0c6e816f590feff979f98ca523be1a9d05f4",
+      "bytes": 6232
+    },
+    {
+      "pr": 596,
+      "branch": "zemeng/mod29-deployment-readback-plan",
+      "head": "2a78de4d3033f091b82d72f7d5f5d836f9e1fa41",
+      "originalPath": "packages/agentarts/src/deployment-readback-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+      "sha256": "1f653d7b32acf601bb605e7331899d4d316b6539f9578a8372f0f68dcd28dc76",
+      "bytes": 13282
+    },
+    {
+      "pr": 598,
+      "branch": "zemeng/mod19-release-acceptance-plans",
+      "head": "1e62a3bd2321d47d2e06c78f954844fc2220f3a4",
+      "originalPath": "docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+      "sha256": "7e1d71a6cd1fd7faad5e688e54e1e40c5f95176bbe964d2727d7b53c90b95544",
+      "bytes": 9020
+    },
+    {
+      "pr": 598,
+      "branch": "zemeng/mod19-release-acceptance-plans",
+      "head": "1e62a3bd2321d47d2e06c78f954844fc2220f3a4",
+      "originalPath": "scripts/release/release-install-upgrade-uninstall.plan.mjs",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+      "sha256": "e403a1a3fc045f6a70cf77dc8eca8930f5451eabe4b18f71ad34a68fe94e7a3e",
+      "bytes": 18568
+    },
+    {
+      "pr": 599,
+      "branch": "zemeng/mod16-live-acceptance-plan",
+      "head": "ce1c10c364722a568b0db811d4a1ebac50e202cc",
+      "originalPath": "docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "d5a7e98e46ea63c19f065192fc8ff8aa5bcaeca1257e439f25b9de1c0abdb6f5",
+      "bytes": 7624
+    },
+    {
+      "pr": 599,
+      "branch": "zemeng/mod16-live-acceptance-plan",
+      "head": "ce1c10c364722a568b0db811d4a1ebac50e202cc",
+      "originalPath": "packages/windows-client/src/notepad-live-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+      "sha256": "592fb8145e622bdbbf0e64dc62823901f5189344f05fab4290234c3b3fe5daff",
+      "bytes": 14750
+    },
+    {
+      "pr": 602,
+      "branch": "zemeng/mod27-privacy-deletion-plan",
+      "head": "e8746ddd5269263cd2e1986536b61607b9308ae2",
+      "originalPath": "docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+      "sha256": "b33f2f3ab4ad147706db7793fbcb08264f33ff179a15199c0277af33cd18df0c",
+      "bytes": 7369
+    },
+    {
+      "pr": 602,
+      "branch": "zemeng/mod27-privacy-deletion-plan",
+      "head": "e8746ddd5269263cd2e1986536b61607b9308ae2",
+      "originalPath": "packages/goals/src/privacy-deletion-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+      "sha256": "d6d875c0334478aae15bbf2a60744f068708adb676929bd69a20ac23ab0573f2",
+      "bytes": 15728
+    },
+    {
+      "pr": 604,
+      "branch": "zemeng/mod18-windows-sandbox-acceptance-plan",
+      "head": "806be8af78fc13815f69f0cddad13afefaf3371c",
+      "originalPath": "docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "414aa0f990cfc2c191b4bddee6915208c22d56ddf66b5d3ea5280a4bdc317095",
+      "bytes": 9700
+    },
+    {
+      "pr": 604,
+      "branch": "zemeng/mod18-windows-sandbox-acceptance-plan",
+      "head": "806be8af78fc13815f69f0cddad13afefaf3371c",
+      "originalPath": "packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+      "sha256": "e11c91cdc703b8b87dab9a47b29aff908b59dd3baa95327a83468fd6ace740b8",
+      "bytes": 19155
+    },
+    {
+      "pr": 605,
+      "branch": "zemeng/f09-cloud-prefix-acceptance-plan",
+      "head": "b4f1d048165b655b8852fa284aa0597130bdb800",
+      "originalPath": "docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "ed07f95a081681dcedaac1b24ba2c0236fc08f9ab582cf7d9125d22fd211e570",
+      "bytes": 8544
+    },
+    {
+      "pr": 605,
+      "branch": "zemeng/f09-cloud-prefix-acceptance-plan",
+      "head": "b4f1d048165b655b8852fa284aa0597130bdb800",
+      "originalPath": "packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+      "sha256": "5372c193252a87330a0da6e676443c7db8401abf4eb1a26be16bdec28666da1a",
+      "bytes": 17215
+    },
+    {
+      "pr": 606,
+      "branch": "zemeng/cloudpersist-acceptance-plan",
+      "head": "e2eda29f4634469e45c96ea1a5530dad92431857",
+      "originalPath": "docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "47e441faa449e449b5eeba51d9f12d86628b534da44846b42f175a4a9b00f2a0",
+      "bytes": 9644
+    },
+    {
+      "pr": 606,
+      "branch": "zemeng/cloudpersist-acceptance-plan",
+      "head": "e2eda29f4634469e45c96ea1a5530dad92431857",
+      "originalPath": "packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+      "sha256": "7f9f45f04ce4e230a8586f50d16423abedc4cbdaa6f1979d5abfc04d0273bc0d",
+      "bytes": 21996
+    },
+    {
+      "pr": 607,
+      "branch": "zemeng/mod04b-agentarts-acceptance-plan",
+      "head": "fb6df79722c75699e44567178f2b06cd03952e31",
+      "originalPath": "docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+      "sha256": "8cecc6f470f44d42a2e6e347f76240c10b98bf36e289338d63a81ba75cd6ed14",
+      "bytes": 10191
+    },
+    {
+      "pr": 607,
+      "branch": "zemeng/mod04b-agentarts-acceptance-plan",
+      "head": "fb6df79722c75699e44567178f2b06cd03952e31",
+      "originalPath": "packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+      "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+      "sha256": "446c637008044c7222b86cbec32fcf291e8d08a366488e97fc518d3656e8e605",
+      "bytes": 27112
+    }
+  ],
+  "summary": {
+    "totalSnapshots": 18,
+    "totalScannedFiles": 19,
+    "validPlans": 0,
+    "errorsCount": 18,
+    "skippedCount": 1,
+    "note": "0 假齐套。所有 18 份规划均准确识别并如实输出缺失字段与 cannot_confirm 追溯记录。"
+  },
+  "errors": [
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+      "title": "MOD-19 发布准备与打包",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "mod-19-packaged-sqlite-smoke-plan-20261107",
+        "title": "MOD-19 发布准备与打包",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": "in_progress",
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "MOD-19 发布准备与打包",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+            "lineStart": 9,
+            "lineEnd": 9,
+            "source": "markdown_metadata_line"
+          },
+          "status": {
+            "value": "in_progress",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+            "lineStart": 11,
+            "lineEnd": 11,
+            "source": "markdown_metadata_line"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+      "title": "sqlite-packaged-electron-smoke",
+      "missingFields": [
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "reason": "missing_closedLoop",
+          "details": "No closedLoop property found in code"
+        },
+        "status": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "reason": "missing_status",
+          "details": "No explicit status literal found in code"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "sqlite-packaged-electron-smoke",
+        "title": "sqlite-packaged-electron-smoke",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+        "planType": "code_plan_static",
+        "status": null,
+        "acceptanceSteps": [
+          "在打包后的 Electron 主进程环境中加载内置 node:sqlite 模块",
+          "在隔离 userData 目录下创建 SQLite 数据库并执行 schema 建库与迁移",
+          "配置并验证 WAL 模式（PRAGMA journal_mode=WAL）与忙超时（PRAGMA busy_timeout）生效",
+          "执行基础数据写入与事务读写验证（Task/State 表写入与查询）",
+          "正常关闭数据库连接以确保 WAL 检查点与文件落盘",
+          "重启打包后的应用主进程实例，执行重启读回与数据一致性验证"
+        ],
+        "reason": "unavailable",
+        "pendingItems": [],
+        "provenance": {
+          "id": {
+            "value": "sqlite-packaged-electron-smoke",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "lineStart": 6,
+            "lineEnd": 6,
+            "source": "ts_code_literal",
+            "raw": "const PLAN_ID = 'sqlite-packaged-electron-smoke';"
+          },
+          "reason": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "lineStart": 126,
+            "lineEnd": 126,
+            "source": "ts_code_literal",
+            "raw": "* 在非 Windows 或无安装包产物时输出 { ready: false, reason: 'unavailable', pending: true }。"
+          },
+          "acceptanceSteps": {
+            "value": [
+              "在打包后的 Electron 主进程环境中加载内置 node:sqlite 模块",
+              "在隔离 userData 目录下创建 SQLite 数据库并执行 schema 建库与迁移",
+              "配置并验证 WAL 模式（PRAGMA journal_mode=WAL）与忙超时（PRAGMA busy_timeout）生效",
+              "执行基础数据写入与事务读写验证（Task/State 表写入与查询）",
+              "正常关闭数据库连接以确保 WAL 检查点与文件落盘",
+              "重启打包后的应用主进程实例，执行重启读回与数据一致性验证"
+            ],
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "source": "ts_code_checklist_literal",
+            "itemCount": 6
+          }
+        },
+        "cannotConfirm": {
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "reason": "missing_closedLoop",
+            "details": "No closedLoop property found in code"
+          },
+          "status": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "reason": "missing_status",
+            "details": "No explicit status literal found in code"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+      "title": "MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划（2026-11-07）",
+      "missingFields": [
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "status": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "reason": "missing_status",
+          "details": "No explicit status found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "mod-29-deployment-readback-plan-20261107",
+        "title": "MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划（2026-11-07）",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": null,
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划（2026-11-07）",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+            "source": "markdown_h1_heading"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "status": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+            "reason": "missing_status",
+            "details": "No explicit status found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+      "title": "deployment-readback-plan",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "reason": "missing_id",
+          "details": "No explicit id/planId/capability string literal found in code"
+        },
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "reason": "ambiguous_closedLoop",
+          "details": "Multiple conditional branches (3) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+          "occurrences": [
+            {
+              "line": 232,
+              "rawVal": "false，状态标记为 unavailable'",
+              "fullLine": "'缺少华为云真实执行证据时，全链路闭环标记为 closedLoop=false，状态标记为 unavailable',"
+            },
+            {
+              "line": 289,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 314,
+              "rawVal": "true",
+              "fullLine": "closedLoop: true,"
+            }
+          ]
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "deployment-readback-plan",
+        "title": "deployment-readback-plan",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+        "planType": "code_plan_static",
+        "status": "unavailable",
+        "reason": "待真云验收",
+        "pendingItems": [],
+        "provenance": {
+          "status": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "lineStart": 282,
+            "lineEnd": 282,
+            "source": "ts_code_literal",
+            "raw": "status: 'unavailable' as const,"
+          },
+          "reason": {
+            "value": "待真云验收",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "lineStart": 4,
+            "lineEnd": 4,
+            "source": "ts_code_literal",
+            "raw": "export const DEPLOYMENT_ACCEPTANCE_PENDING_REASON = '待真云验收' as const;"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "reason": "missing_id",
+            "details": "No explicit id/planId/capability string literal found in code"
+          },
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "reason": "ambiguous_closedLoop",
+            "details": "Multiple conditional branches (3) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+            "occurrences": [
+              {
+                "line": 232,
+                "rawVal": "false，状态标记为 unavailable'",
+                "fullLine": "'缺少华为云真实执行证据时，全链路闭环标记为 closedLoop=false，状态标记为 unavailable',"
+              },
+              {
+                "line": 289,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 314,
+                "rawVal": "true",
+                "fullLine": "closedLoop: true,"
+              }
+            ]
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+      "title": "MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107：Windows 安装/升级/卸载离线规划",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Invalid status \"review\"; expected one of: unavailable, pending, in_progress, ready, verified",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "mod-19-release-acceptance-plans-20261107",
+        "title": "MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107：Windows 安装/升级/卸载离线规划",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+        "planType": "markdown_plan",
+        "status": "review",
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107：Windows 安装/升级/卸载离线规划",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+            "source": "markdown_h1_heading"
+          },
+          "status": {
+            "value": "review",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+            "lineStart": 12,
+            "lineEnd": 12,
+            "source": "markdown_metadata_line"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+      "title": "release-install-upgrade-uninstall",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "reason": "missing_closedLoop",
+          "details": "No closedLoop property found in code"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "release-install-upgrade-uninstall",
+        "title": "release-install-upgrade-uninstall",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+        "planType": "code_plan_static",
+        "status": "pending",
+        "reason": "unavailable",
+        "pendingItems": [],
+        "provenance": {
+          "id": {
+            "value": "release-install-upgrade-uninstall",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "lineStart": 6,
+            "lineEnd": 6,
+            "source": "ts_code_literal",
+            "raw": "const PLAN_ID = 'release-install-upgrade-uninstall';"
+          },
+          "status": {
+            "value": "pending",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "lineStart": 191,
+            "lineEnd": 191,
+            "source": "ts_code_literal",
+            "raw": "status: 'pending',"
+          },
+          "reason": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "lineStart": 172,
+            "lineEnd": 172,
+            "source": "ts_code_literal",
+            "raw": "* 非 Windows、无安装包产物或缺占位文件/占位非法时，固定输出 { ready: false, reason: 'unavailable', pending: true }。"
+          }
+        },
+        "cannotConfirm": {
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "reason": "missing_closedLoop",
+            "details": "No closedLoop property found in code"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+      "title": "MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "mod-16-notepad-live-acceptance-plan-20261107",
+        "title": "MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": "in_progress",
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+            "source": "markdown_h1_heading"
+          },
+          "status": {
+            "value": "in_progress",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+            "lineStart": 7,
+            "lineEnd": 7,
+            "source": "markdown_metadata_line"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+      "title": "notepad.replace_text",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "reason": "ambiguous_closedLoop",
+          "details": "Multiple conditional branches (7) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+          "occurrences": [
+            {
+              "line": 89,
+              "rawVal": "false 且 status=\"unavailable\"'",
+              "fullLine": "'非 Windows (win32) 平台、无实机执行凭据或 mock 模式下，强制 closedLoop=false 且 status=\"unavailable\"',"
+            },
+            {
+              "line": 244,
+              "rawVal": "false",
+              "fullLine": "* - Non-win32 platform -> closedLoop: false, status: 'unavailable', reason: '待真机验收'."
+            },
+            {
+              "line": 245,
+              "rawVal": "false.",
+              "fullLine": "* - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop: false."
+            },
+            {
+              "line": 246,
+              "rawVal": "false.",
+              "fullLine": "* - Mock mode (options or evidence marked as mock) -> closedLoop: false."
+            },
+            {
+              "line": 247,
+              "rawVal": "true without passing all real machine gates.",
+              "fullLine": "* - Prohibits fake success: caller cannot override closedLoop: true without passing all real machine gates."
+            },
+            {
+              "line": 286,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 357,
+              "rawVal": "isClosedLoop",
+              "fullLine": "closedLoop: isClosedLoop,"
+            }
+          ]
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "notepad.replace_text",
+        "title": "notepad.replace_text",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+        "planType": "code_plan_static",
+        "status": "unavailable",
+        "reason": "待真机验收",
+        "pendingItems": [],
+        "provenance": {
+          "id": {
+            "value": "notepad.replace_text",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "lineStart": 3,
+            "lineEnd": 3,
+            "source": "ts_code_literal",
+            "raw": "export const NOTEPAD_LIVE_ACCEPTANCE_CAPABILITY = 'notepad.replace_text' as const;"
+          },
+          "status": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "lineStart": 89,
+            "lineEnd": 89,
+            "source": "ts_code_literal",
+            "raw": "'非 Windows (win32) 平台、无实机执行凭据或 mock 模式下，强制 closedLoop=false 且 status=\"unavailable\"',"
+          },
+          "reason": {
+            "value": "待真机验收",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "lineStart": 5,
+            "lineEnd": 5,
+            "source": "ts_code_literal",
+            "raw": "export const NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;"
+          }
+        },
+        "cannotConfirm": {
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "reason": "ambiguous_closedLoop",
+            "details": "Multiple conditional branches (7) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+            "occurrences": [
+              {
+                "line": 89,
+                "rawVal": "false 且 status=\"unavailable\"'",
+                "fullLine": "'非 Windows (win32) 平台、无实机执行凭据或 mock 模式下，强制 closedLoop=false 且 status=\"unavailable\"',"
+              },
+              {
+                "line": 244,
+                "rawVal": "false",
+                "fullLine": "* - Non-win32 platform -> closedLoop: false, status: 'unavailable', reason: '待真机验收'."
+              },
+              {
+                "line": 245,
+                "rawVal": "false.",
+                "fullLine": "* - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop: false."
+              },
+              {
+                "line": 246,
+                "rawVal": "false.",
+                "fullLine": "* - Mock mode (options or evidence marked as mock) -> closedLoop: false."
+              },
+              {
+                "line": 247,
+                "rawVal": "true without passing all real machine gates.",
+                "fullLine": "* - Prohibits fake success: caller cannot override closedLoop: true without passing all real machine gates."
+              },
+              {
+                "line": 286,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 357,
+                "rawVal": "isClosedLoop",
+                "fullLine": "closedLoop: isClosedLoop,"
+              }
+            ]
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+      "title": "MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）",
+      "missingFields": [
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "status": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "reason": "missing_status",
+          "details": "No explicit status found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "mod-27-privacy-deletion-plan-20261107",
+        "title": "MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": null,
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+            "source": "markdown_h1_heading"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "status": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+            "reason": "missing_status",
+            "details": "No explicit status found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+      "title": "privacy-deletion-acceptance-plan",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "reason": "missing_id",
+          "details": "No explicit id/planId/capability string literal found in code"
+        },
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "reason": "ambiguous_closedLoop",
+          "details": "Multiple conditional branches (2) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+          "occurrences": [
+            {
+              "line": 338,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 352,
+              "rawVal": "true",
+              "fullLine": "closedLoop: true,"
+            }
+          ]
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "privacy-deletion-acceptance-plan",
+        "title": "privacy-deletion-acceptance-plan",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+        "planType": "code_plan_static",
+        "status": "unavailable",
+        "reason": "待真人/真机验收",
+        "pendingItems": [],
+        "provenance": {
+          "status": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "lineStart": 71,
+            "lineEnd": 71,
+            "source": "ts_code_literal",
+            "raw": "status: 'unavailable',"
+          },
+          "reason": {
+            "value": "待真人/真机验收",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "lineStart": 3,
+            "lineEnd": 3,
+            "source": "ts_code_literal",
+            "raw": "export const PRIVACY_ACCEPTANCE_PENDING_REASON = '待真人/真机验收' as const;"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "reason": "missing_id",
+            "details": "No explicit id/planId/capability string literal found in code"
+          },
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "reason": "ambiguous_closedLoop",
+            "details": "Multiple conditional branches (2) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+            "occurrences": [
+              {
+                "line": 338,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 352,
+                "rawVal": "true",
+                "fullLine": "closedLoop: true,"
+              }
+            ]
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+      "title": "MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "mod-18-windows-sandbox-acceptance-plan-20261107",
+        "title": "MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": "in_progress",
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+            "source": "markdown_h1_heading"
+          },
+          "status": {
+            "value": "in_progress",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+            "lineStart": 7,
+            "lineEnd": 7,
+            "source": "markdown_metadata_line"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+      "title": "workspace.run_allowed_command",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "reason": "ambiguous_closedLoop",
+          "details": "Multiple conditional branches (8) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+          "occurrences": [
+            {
+              "line": 111,
+              "rawVal": "false 且 status=\"unavailable\"'",
+              "fullLine": "'非 Windows (win32) 平台、辅助进程不可用、无实机执行凭据或 mock 模式下，强制 closedLoop=false 且 status=\"unavailable\"',"
+            },
+            {
+              "line": 298,
+              "rawVal": "false",
+              "fullLine": "* - Non-win32 platform -> closedLoop: false, status: 'unavailable', reason: '待真机验收'."
+            },
+            {
+              "line": 299,
+              "rawVal": "false",
+              "fullLine": "* - Helper unavailable (explicitly or invalid path) -> closedLoop: false, status: 'unavailable', reason: '待真机验收'."
+            },
+            {
+              "line": 300,
+              "rawVal": "false.",
+              "fullLine": "* - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop: false."
+            },
+            {
+              "line": 301,
+              "rawVal": "false.",
+              "fullLine": "* - Mock mode (options or evidence marked as mock) -> closedLoop: false."
+            },
+            {
+              "line": 302,
+              "rawVal": "true without passing all real machine gates.",
+              "fullLine": "* - Prohibits fake success: caller cannot override closedLoop: true without passing all real machine gates."
+            },
+            {
+              "line": 347,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 447,
+              "rawVal": "isClosedLoop",
+              "fullLine": "closedLoop: isClosedLoop,"
+            }
+          ]
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "workspace.run_allowed_command",
+        "title": "workspace.run_allowed_command",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+        "planType": "code_plan_static",
+        "status": "unavailable",
+        "reason": "待真机验收",
+        "pendingItems": [],
+        "provenance": {
+          "id": {
+            "value": "workspace.run_allowed_command",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "lineStart": 5,
+            "lineEnd": 5,
+            "source": "ts_code_literal",
+            "raw": "export const WINDOWS_SANDBOX_ACCEPTANCE_CAPABILITY = 'workspace.run_allowed_command' as const;"
+          },
+          "status": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "lineStart": 111,
+            "lineEnd": 111,
+            "source": "ts_code_literal",
+            "raw": "'非 Windows (win32) 平台、辅助进程不可用、无实机执行凭据或 mock 模式下，强制 closedLoop=false 且 status=\"unavailable\"',"
+          },
+          "reason": {
+            "value": "待真机验收",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "lineStart": 6,
+            "lineEnd": 6,
+            "source": "ts_code_literal",
+            "raw": "export const WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;"
+          }
+        },
+        "cannotConfirm": {
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "reason": "ambiguous_closedLoop",
+            "details": "Multiple conditional branches (8) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+            "occurrences": [
+              {
+                "line": 111,
+                "rawVal": "false 且 status=\"unavailable\"'",
+                "fullLine": "'非 Windows (win32) 平台、辅助进程不可用、无实机执行凭据或 mock 模式下，强制 closedLoop=false 且 status=\"unavailable\"',"
+              },
+              {
+                "line": 298,
+                "rawVal": "false",
+                "fullLine": "* - Non-win32 platform -> closedLoop: false, status: 'unavailable', reason: '待真机验收'."
+              },
+              {
+                "line": 299,
+                "rawVal": "false",
+                "fullLine": "* - Helper unavailable (explicitly or invalid path) -> closedLoop: false, status: 'unavailable', reason: '待真机验收'."
+              },
+              {
+                "line": 300,
+                "rawVal": "false.",
+                "fullLine": "* - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop: false."
+              },
+              {
+                "line": 301,
+                "rawVal": "false.",
+                "fullLine": "* - Mock mode (options or evidence marked as mock) -> closedLoop: false."
+              },
+              {
+                "line": 302,
+                "rawVal": "true without passing all real machine gates.",
+                "fullLine": "* - Prohibits fake success: caller cannot override closedLoop: true without passing all real machine gates."
+              },
+              {
+                "line": 347,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 447,
+                "rawVal": "isClosedLoop",
+                "fullLine": "closedLoop: isClosedLoop,"
+              }
+            ]
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+      "title": "F09：订阅云前缀与会话授权端到端读回离线规划（2026-11-07）",
+      "missingFields": [
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "status": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_status",
+          "details": "No explicit status found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "f09-cloud-prefix-acceptance-plan-20261107",
+        "title": "F09：订阅云前缀与会话授权端到端读回离线规划（2026-11-07）",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": null,
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "F09：订阅云前缀与会话授权端到端读回离线规划（2026-11-07）",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+            "source": "markdown_h1_heading"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "status": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_status",
+            "details": "No explicit status found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+      "title": "f09-cloud-prefix-acceptance-plan",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "reason": "missing_id",
+          "details": "No explicit id/planId/capability string literal found in code"
+        },
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "reason": "ambiguous_closedLoop",
+          "details": "Multiple conditional branches (4) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+          "occurrences": [
+            {
+              "line": 261,
+              "rawVal": "false，状态标记为 unavailable'",
+              "fullLine": "'缺少华为云真实前缀读回与真实会话授权时，全链路闭环标记为 closedLoop=false，状态标记为 unavailable',"
+            },
+            {
+              "line": 319,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 407,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 431,
+              "rawVal": "true",
+              "fullLine": "closedLoop: true,"
+            }
+          ]
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "f09-cloud-prefix-acceptance-plan",
+        "title": "f09-cloud-prefix-acceptance-plan",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+        "planType": "code_plan_static",
+        "status": "unavailable",
+        "reason": "待真云验收",
+        "pendingItems": [],
+        "provenance": {
+          "status": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "lineStart": 44,
+            "lineEnd": 44,
+            "source": "ts_code_literal",
+            "raw": "readonly status: 'unavailable';"
+          },
+          "reason": {
+            "value": "待真云验收",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "lineStart": 3,
+            "lineEnd": 3,
+            "source": "ts_code_literal",
+            "raw": "export const F09_ACCEPTANCE_PENDING_REASON = '待真云验收' as const;"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "reason": "missing_id",
+            "details": "No explicit id/planId/capability string literal found in code"
+          },
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "reason": "ambiguous_closedLoop",
+            "details": "Multiple conditional branches (4) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+            "occurrences": [
+              {
+                "line": 261,
+                "rawVal": "false，状态标记为 unavailable'",
+                "fullLine": "'缺少华为云真实前缀读回与真实会话授权时，全链路闭环标记为 closedLoop=false，状态标记为 unavailable',"
+              },
+              {
+                "line": 319,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 407,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 431,
+                "rawVal": "true",
+                "fullLine": "closedLoop: true,"
+              }
+            ]
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+      "title": "cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）",
+      "missingFields": [
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "status": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_status",
+          "details": "No explicit status found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "cloud-persistent-acceptance-plan-20261107",
+        "title": "cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": null,
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+            "source": "markdown_h1_heading"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "status": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_status",
+            "details": "No explicit status found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+      "title": "cloud_persistent",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "reason": "ambiguous_closedLoop",
+          "details": "Multiple conditional branches (5) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+          "occurrences": [
+            {
+              "line": 367,
+              "rawVal": "true'",
+              "fullLine": "'关机后云持续执行（cloudPersistent）必须具备真实华为云端到端关机后运行证据，严禁在无证据时宣称 closedLoop=true',"
+            },
+            {
+              "line": 369,
+              "rawVal": "false，状态标记为 unavailable，待真云关机验收'",
+              "fullLine": "'遵循 AGENTS.md 与华为比赛 Profile 规范：无真实云关机证据时 closedLoop=false，状态标记为 unavailable，待真云关机验收',"
+            },
+            {
+              "line": 398,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 500,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 540,
+              "rawVal": "pending.length === 0",
+              "fullLine": "closedLoop: pending.length === 0,"
+            }
+          ]
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "cloud_persistent",
+        "title": "cloud_persistent",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+        "planType": "code_plan_static",
+        "status": "unavailable",
+        "reason": "待真云关机验收",
+        "pendingItems": [],
+        "provenance": {
+          "id": {
+            "value": "cloud_persistent",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "lineStart": 18,
+            "lineEnd": 18,
+            "source": "ts_code_literal",
+            "raw": "readonly capability: 'cloud_persistent';"
+          },
+          "status": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "lineStart": 44,
+            "lineEnd": 44,
+            "source": "ts_code_literal",
+            "raw": "readonly status: 'unavailable';"
+          },
+          "reason": {
+            "value": "待真云关机验收",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "lineStart": 3,
+            "lineEnd": 3,
+            "source": "ts_code_literal",
+            "raw": "export const CLOUD_PERSISTENT_PENDING_REASON = '待真云关机验收' as const;"
+          }
+        },
+        "cannotConfirm": {
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "reason": "ambiguous_closedLoop",
+            "details": "Multiple conditional branches (5) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+            "occurrences": [
+              {
+                "line": 367,
+                "rawVal": "true'",
+                "fullLine": "'关机后云持续执行（cloudPersistent）必须具备真实华为云端到端关机后运行证据，严禁在无证据时宣称 closedLoop=true',"
+              },
+              {
+                "line": 369,
+                "rawVal": "false，状态标记为 unavailable，待真云关机验收'",
+                "fullLine": "'遵循 AGENTS.md 与华为比赛 Profile 规范：无真实云关机证据时 closedLoop=false，状态标记为 unavailable，待真云关机验收',"
+              },
+              {
+                "line": 398,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 500,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 540,
+                "rawVal": "pending.length === 0",
+                "fullLine": "closedLoop: pending.length === 0,"
+              }
+            ]
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+      "title": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划（2026-11-07）",
+      "missingFields": [
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "inferred_id_from_filename",
+          "details": "No explicit id declared in frontmatter or metadata line"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "status": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_status",
+          "details": "No explicit status found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": "mod-04b-agentarts-acceptance-plan-20261107",
+        "title": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划（2026-11-07）",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+        "planType": "markdown_plan",
+        "status": null,
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划（2026-11-07）",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+            "source": "markdown_h1_heading"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "inferred_id_from_filename",
+            "details": "No explicit id declared in frontmatter or metadata line"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "status": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_status",
+            "details": "No explicit status found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+      "title": "competition_coordination",
+      "missingFields": [
+        "closedLoop",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "title": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code"
+        },
+        "closedLoop": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "reason": "ambiguous_closedLoop",
+          "details": "Multiple conditional branches (5) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+          "occurrences": [
+            {
+              "line": 488,
+              "rawVal": "true'",
+              "fullLine": "'真实 AgentArts 多 Agent 结果与 continuation 闭环必须具备华为云真实端到端读回证据，严禁在无证据时宣称 closedLoop=true',"
+            },
+            {
+              "line": 490,
+              "rawVal": "false，状态标记为 unavailable，待真云验收'",
+              "fullLine": "'遵循 AGENTS.md 与华为比赛 Profile 规范：无真实云证据时 closedLoop=false，状态标记为 unavailable，待真云验收',"
+            },
+            {
+              "line": 517,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            },
+            {
+              "line": 606,
+              "rawVal": "true",
+              "fullLine": "closedLoop: true,"
+            },
+            {
+              "line": 666,
+              "rawVal": "false",
+              "fullLine": "closedLoop: false,"
+            }
+          ]
+        },
+        "requiredEnvironments": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": "competition_coordination",
+        "title": "competition_coordination",
+        "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+        "planType": "code_plan_static",
+        "status": "unavailable",
+        "reason": "待真云验收",
+        "pendingItems": [],
+        "provenance": {
+          "id": {
+            "value": "competition_coordination",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "lineStart": 4,
+            "lineEnd": 4,
+            "source": "ts_code_literal",
+            "raw": "export const MOD04B_AGENTARTS_CAPABILITY = 'competition_coordination' as const;"
+          },
+          "status": {
+            "value": "unavailable",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "lineStart": 58,
+            "lineEnd": 58,
+            "source": "ts_code_literal",
+            "raw": "readonly status: 'unavailable';"
+          },
+          "reason": {
+            "value": "待真云验收",
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "lineStart": 5,
+            "lineEnd": 5,
+            "source": "ts_code_literal",
+            "raw": "export const MOD04B_AGENTARTS_PENDING_REASON = '待真云验收' as const;"
+          }
+        },
+        "cannotConfirm": {
+          "title": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code"
+          },
+          "closedLoop": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "reason": "ambiguous_closedLoop",
+            "details": "Multiple conditional branches (5) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.",
+            "occurrences": [
+              {
+                "line": 488,
+                "rawVal": "true'",
+                "fullLine": "'真实 AgentArts 多 Agent 结果与 continuation 闭环必须具备华为云真实端到端读回证据，严禁在无证据时宣称 closedLoop=true',"
+              },
+              {
+                "line": 490,
+                "rawVal": "false，状态标记为 unavailable，待真云验收'",
+                "fullLine": "'遵循 AGENTS.md 与华为比赛 Profile 规范：无真实云证据时 closedLoop=false，状态标记为 unavailable，待真云验收',"
+              },
+              {
+                "line": 517,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              },
+              {
+                "line": 606,
+                "rawVal": "true",
+                "fullLine": "closedLoop: true,"
+              },
+              {
+                "line": 666,
+                "rawVal": "false",
+                "fullLine": "closedLoop: false,"
+              }
+            ]
+          },
+          "requiredEnvironments": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/MANIFEST.json",
+      "reason": "json_not_object"
+    }
+  ]
+}

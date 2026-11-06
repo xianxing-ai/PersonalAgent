@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 /**
- * 必需环境枚举集合（至少覆盖五种）
+ * 必需环境枚举集合（至少覆盖五种物理/外部依赖环境）
  */
 export const REQUIRED_ENVIRONMENTS = Object.freeze([
   'windows_real_machine',
@@ -120,8 +120,9 @@ export const KNOWN_UNMERGED_PRS = Object.freeze([
 ]);
 
 /**
- * 将任意文本或集合映射到规范化环境枚举
- * 映射不到则标记 'other' 并要求原文环境文本非空（避免静默漏报）
+ * 严格将显式环境文本/列表映射到规范化环境枚举。
+ * 严禁通过上下文普通词汇（如 profile/token/windows 散落出现）猜测环境！
+ * 只有明确的环境字段、字面量数组或声明值才允许传入此函数。
  */
 export function normalizeEnvironment(rawInput) {
   if (!rawInput) {
@@ -147,48 +148,48 @@ export function normalizeEnvironment(rawInput) {
     const lower = raw.toLowerCase();
 
     if (
-      lower.includes('windows') ||
-      lower.includes('win32') ||
-      lower.includes('win-unpacked') ||
-      lower.includes('windows真机') ||
-      lower.includes('桌面真机') ||
-      lower.includes('electron') ||
-      lower.includes('windows_real_machine')
+      lower === 'windows_real_machine' ||
+      lower === 'windows真机' ||
+      lower === 'windows真机环境' ||
+      lower === '桌面真机' ||
+      lower === 'win32' ||
+      lower.includes('windows真机')
     ) {
       resultEnvs.add('windows_real_machine');
       envDetails.push({ env: 'windows_real_machine', raw });
     } else if (
-      lower.includes('huawei') ||
-      lower.includes('agentarts') ||
+      lower === 'huawei_cloud' ||
+      lower === '华为云' ||
+      lower === 'agentarts云端' ||
+      lower === 'agentarts' ||
+      lower === '华为云真机' ||
       lower.includes('华为云') ||
-      lower.includes('真云') ||
-      lower.includes('cloud') ||
-      lower.includes('huawei_cloud')
+      lower.includes('agentarts云端')
     ) {
       resultEnvs.add('huawei_cloud');
       envDetails.push({ env: 'huawei_cloud', raw });
     } else if (
-      lower.includes('account') ||
-      lower.includes('token') ||
-      lower.includes('凭据') ||
-      lower.includes('账号') ||
-      lower.includes('secret') ||
-      lower.includes('real_account')
+      lower === 'real_account' ||
+      lower === '真实账号' ||
+      lower === '凭据授权' ||
+      lower === '真凭据' ||
+      lower.includes('真实账号')
     ) {
       resultEnvs.add('real_account');
       envDetails.push({ env: 'real_account', raw });
     } else if (
-      lower.includes('human') ||
+      lower === 'rights_holder_or_human' ||
+      lower === '权利人' ||
+      lower === '人工审批' ||
+      lower === '人工复核' ||
+      lower === '人机协同' ||
       lower.includes('权利人') ||
-      lower.includes('人工') ||
-      lower.includes('审批') ||
-      lower.includes('复核') ||
-      lower.includes('rights_holder_or_human')
+      lower.includes('人工审批')
     ) {
       resultEnvs.add('rights_holder_or_human');
       envDetails.push({ env: 'rights_holder_or_human', raw });
     } else {
-      // 无法直接映射但文本非空 -> 归入 other，保留 raw 文本
+      // 显式声明了非空环境但未在标准前四项枚举中的，映射为 'other'
       resultEnvs.add('other');
       envDetails.push({ env: 'other', raw });
     }
@@ -205,17 +206,20 @@ export function normalizeEnvironment(rawInput) {
 }
 
 /**
- * 校验规范化记录结构及字段完整性
+ * 校验规划记录的齐套性与契约合规性。
+ * 遵循严格契约：缺字段报错并记录 cannot_confirm，绝不假齐套，绝不猜默认分支。
  */
-export function validateNormalizedRecord(record, sourcePath = 'unknown') {
+export function validateNormalizedRecord(record, sourcePath = '') {
   const missingFields = [];
   const errors = [];
+  const cannotConfirm = record?.cannotConfirm ? { ...record.cannotConfirm } : {};
 
   if (!record || typeof record !== 'object') {
     return {
       ok: false,
       missingFields: ['record'],
       errors: ['Record must be a non-null object'],
+      cannotConfirm: { record: { reason: 'not_an_object' } },
     };
   }
 
@@ -223,12 +227,14 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
   if (typeof record.id !== 'string' || record.id.trim().length === 0) {
     missingFields.push('id');
     errors.push('Missing or empty id');
+    if (!cannotConfirm.id) cannotConfirm.id = { reason: 'missing_id' };
   }
 
   // 2. title
   if (typeof record.title !== 'string' || record.title.trim().length === 0) {
     missingFields.push('title');
     errors.push('Missing or empty title');
+    if (!cannotConfirm.title) cannotConfirm.title = { reason: 'missing_title' };
   }
 
   // 3. sourcePath
@@ -237,16 +243,25 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
     errors.push('Missing or empty sourcePath');
   }
 
-  // 4. closedLoop: 必须明确为布尔值，缺则报错，绝对不得默认 true
+  // 4. closedLoop: 必须明确为布尔值，缺则报错，绝对不得默认 true 或从 false 出现盲推默认
   if (typeof record.closedLoop !== 'boolean') {
     missingFields.push('closedLoop');
-    errors.push('Missing closedLoop boolean (must be explicitly true or false; never default to true)');
+    const cc = cannotConfirm.closedLoop;
+    if (cc?.reason === 'ambiguous_closedLoop') {
+      errors.push(
+        'Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.',
+      );
+    } else {
+      errors.push('Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)');
+      if (!cannotConfirm.closedLoop) cannotConfirm.closedLoop = { reason: 'missing_closedLoop' };
+    }
   }
 
   // 5. status
   if (typeof record.status !== 'string' || record.status.trim().length === 0) {
     missingFields.push('status');
     errors.push('Missing status string');
+    if (!cannotConfirm.status) cannotConfirm.status = { reason: 'missing_status' };
   } else if (!VALID_STATUSES.includes(record.status)) {
     errors.push(`Invalid status "${record.status}"; expected one of: ${VALID_STATUSES.join(', ')}`);
   }
@@ -258,6 +273,12 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
   ) {
     missingFields.push('requiredEnvironments');
     errors.push('Missing or empty requiredEnvironments (must be a non-empty array of environment enums)');
+    if (!cannotConfirm.requiredEnvironments) {
+      cannotConfirm.requiredEnvironments = {
+        reason: 'missing_environment_declaration',
+        details: 'No explicit requiredEnvironments literal or field found. Keyword guessing is strictly prohibited.',
+      };
+    }
   } else {
     for (const env of record.requiredEnvironments) {
       if (!REQUIRED_ENVIRONMENTS.includes(env)) {
@@ -270,6 +291,12 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
   if (!Array.isArray(record.acceptanceSteps) || record.acceptanceSteps.length === 0) {
     missingFields.push('acceptanceSteps');
     errors.push('Missing or empty acceptanceSteps (must contain at least one step string)');
+    if (!cannotConfirm.acceptanceSteps) {
+      cannotConfirm.acceptanceSteps = {
+        reason: 'missing_acceptance_steps',
+        details: 'No explicit acceptance steps or checklist declared.',
+      };
+    }
   } else {
     const validSteps = record.acceptanceSteps.filter(
       (s) => typeof s === 'string' && s.trim().length > 0,
@@ -277,6 +304,9 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
     if (validSteps.length === 0) {
       missingFields.push('acceptanceSteps');
       errors.push('acceptanceSteps contains no non-empty strings');
+      if (!cannotConfirm.acceptanceSteps) {
+        cannotConfirm.acceptanceSteps = { reason: 'empty_acceptance_steps' };
+      }
     }
   }
 
@@ -287,6 +317,12 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
   ) {
     missingFields.push('evidenceRequirements');
     errors.push('Missing or empty evidenceRequirements (must contain at least one requirement string)');
+    if (!cannotConfirm.evidenceRequirements) {
+      cannotConfirm.evidenceRequirements = {
+        reason: 'missing_evidence_requirements',
+        details: 'No explicit evidence requirements declared.',
+      };
+    }
   } else {
     const validEvidence = record.evidenceRequirements.filter(
       (s) => typeof s === 'string' && s.trim().length > 0,
@@ -294,6 +330,9 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
     if (validEvidence.length === 0) {
       missingFields.push('evidenceRequirements');
       errors.push('evidenceRequirements contains no non-empty strings');
+      if (!cannotConfirm.evidenceRequirements) {
+        cannotConfirm.evidenceRequirements = { reason: 'empty_evidence_requirements' };
+      }
     }
   }
 
@@ -311,11 +350,11 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
     if (!hasReason && !hasPendingItems) {
       missingFields.push('reason/pendingItems');
       errors.push('closedLoop is false, so either reason or non-empty pendingItems must be provided');
+      if (!cannotConfirm.reason) cannotConfirm.reason = { reason: 'missing_reason_or_pending' };
     }
   }
 
   // 10. closedLoop === true 时的防伪造检查：
-  // 默认把 closedLoop===true 且无充分证据标记的条目视为错误
   if (record.closedLoop === true) {
     const hasEvidenceProof =
       record.hasVerifiedEvidence === true ||
@@ -334,6 +373,10 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
       errors.push(
         'Anti-forgery violation: closedLoop claimed true without sufficient verified real-environment evidence. Falsified or unverified acceptance claims are strictly prohibited.',
       );
+      cannotConfirm.closedLoop = {
+        reason: 'unverified_closedLoop_claim',
+        details: 'Claimed closedLoop:true but lacking verified evidence proof, or marked mock/synthetic.',
+      };
     }
   }
 
@@ -341,5 +384,6 @@ export function validateNormalizedRecord(record, sourcePath = 'unknown') {
     ok: errors.length === 0,
     missingFields,
     errors,
+    cannotConfirm,
   };
 }

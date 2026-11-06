@@ -23,7 +23,8 @@ export function formatMarkdownReport({ records, errors, skipped, summary, genera
     '',
     '> [!IMPORTANT]',
     '> 本总表由离线工具 `scripts/acceptance/build-pending-acceptance-index.mjs` 静态扫描生成。',
-    '> **红线声明**：未连接任何真机/华为云环境，未读取密钥凭据，未执行任何规划文本内的指令（文件严格当数据处理）。',
+    '> **核心声明**：仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干。',
+    '> **安全红线**：未连接任何真机/华为云环境，未读取密钥凭据，未执行任何规划文本内的指令（所有输入文件纯粹作为静态文本读取，严禁 import/eval/执行）。',
     '> **诚实原则**：`closedLoop: false` 属于合规待真实验收状态；缺失真环境独立读回证据前，工具绝不推断或背书「已闭环」。',
     '',
     '## 1. 扫描与待验收概览',
@@ -56,11 +57,14 @@ export function formatMarkdownReport({ records, errors, skipped, summary, genera
       continue;
     }
 
-    lines.push('| 规划 ID / 标题 | 来源路径 | 状态 | closedLoop | 步骤摘要 | 证据要求 | 原因 / 挂起项 |');
+    lines.push('| 规划 ID / 标题 | 来源路径与行号 | 状态 | closedLoop | 步骤摘要 | 证据要求 | 原因 / 挂起项 |');
     lines.push('| --- | --- | --- | --- | --- | --- | --- |');
 
     for (const r of recordsInEnv) {
       const titleLink = `[${escapeMarkdown(r.title)}](../../${r.sourcePath})`;
+      const provPath = r.provenance?.closedLoop?.lineStart
+        ? `\`${r.sourcePath}:${r.provenance.closedLoop.lineStart}\``
+        : `\`${r.sourcePath}\``;
       const stepsSummary = escapeMarkdown(
         Array.isArray(r.acceptanceSteps)
           ? r.acceptanceSteps.slice(0, 3).map((s, idx) => `${idx + 1}. ${s}`).join('<br/>') +
@@ -78,7 +82,7 @@ export function formatMarkdownReport({ records, errors, skipped, summary, genera
       );
 
       lines.push(
-        `| ${titleLink} | \`${r.sourcePath}\` | \`${r.status}\` | \`${r.closedLoop}\` | ${stepsSummary} | ${evidenceSummary} | ${reasonSummary} |`,
+        `| ${titleLink} | ${provPath} | \`${r.status}\` | \`${r.closedLoop}\` | ${stepsSummary} | ${evidenceSummary} | ${reasonSummary} |`,
       );
     }
 
@@ -120,20 +124,23 @@ export function formatMarkdownReport({ records, errors, skipped, summary, genera
   }
   lines.push('');
 
-  // 5. 校验异常清单
+  // 5. 校验异常清单（含逐字段来源与 cannot_confirm 原因）
   if (errors.length > 0) {
     lines.push(`## 5. 扫描校验异常清单 (${errors.length} 项)`);
     lines.push('');
     lines.push('> [!CAUTION]');
-    lines.push('> 以下文件被识别为验收规划候选，但因字段缺失或防伪校验失败而报错。工具已如实记录，绝不静默跳过或伪造默认值：');
+    lines.push('> 以下文件被识别为验收规划候选，但因字段缺失、分支歧义或防伪校验失败而报错。工具已如实记录，绝不静默跳过、绝不猜测默认分支、绝不伪造字段：');
     lines.push('');
-    lines.push('| 来源路径 | 规划标题 | 缺失字段 | 错误详情 |');
-    lines.push('| --- | --- | --- | --- |');
+    lines.push('| 来源路径 | 规划标题 | 缺失字段 | 无法确认原因 (cannot_confirm) | 错误详情 |');
+    lines.push('| --- | --- | --- | --- | --- |');
 
     for (const err of errors) {
       const missing = err.missingFields?.length > 0 ? err.missingFields.map((f) => `\`${f}\``).join(', ') : '无';
+      const cannotConfirmReasons = Object.entries(err.cannotConfirm || {})
+        .map(([k, v]) => `\`${k}\`: ${v.reason || 'unknown'}`)
+        .join('<br/>') || '无';
       const errMsg = escapeMarkdown(err.errors?.join('； ') || '未知错误');
-      lines.push(`| \`${err.sourcePath}\` | ${escapeMarkdown(err.title)} | ${missing} | ${errMsg} |`);
+      lines.push(`| \`${err.sourcePath}\` | ${escapeMarkdown(err.title)} | ${missing} | ${cannotConfirmReasons} | ${errMsg} |`);
     }
     lines.push('');
   }
@@ -165,6 +172,7 @@ export function formatMarkdownReport({ records, errors, skipped, summary, genera
 export function formatJsonReport({ records, errors, skipped, summary, generatedAt, scanRoots }) {
   const payload = {
     schemaVersion: '1.0.0',
+    disclaimer: '仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干',
     generatedAt: generatedAt || new Date().toISOString(),
     scanRoots: scanRoots || ['.'],
     summary,

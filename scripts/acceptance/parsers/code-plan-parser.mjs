@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import {
   normalizeEnvironment,
   validateNormalizedRecord,
@@ -17,7 +16,7 @@ const TOOL_SELF_FILES = new Set([
 ]);
 
 /**
- * 判断代码文件是否为验收规划候选文件
+ * 判断代码文件是否为验收规划候选文件（纯文件名与静态导出特征）
  */
 export function isCodePlanCandidate(filePath, content = '') {
   const baseName = path.basename(filePath).toLowerCase();
@@ -44,12 +43,14 @@ export function isCodePlanCandidate(filePath, content = '') {
     return true;
   }
 
-  // 2. 代码导出特征：必须明确导出 plan*Acceptance 或 *AcceptancePlan 纯函数
+  // 2. 代码导出特征：必须明确导出 plan*Acceptance 或 *AcceptancePlan 纯函数/对象
   if (
     /export\s+(?:async\s+)?function\s+plan[A-Za-z0-9_]*Acceptance/i.test(content) ||
     /export\s+(?:async\s+)?function\s+[A-Za-z0-9_]*AcceptancePlan/i.test(content) ||
     /export\s+const\s+plan[A-Za-z0-9_]*Acceptance/i.test(content) ||
-    /export\s+const\s+[A-Za-z0-9_]*AcceptancePlan/i.test(content)
+    /export\s+const\s+[A-Za-z0-9_]*AcceptancePlan/i.test(content) ||
+    /export\s+(?:async\s+)?function\s+plan[A-Za-z0-9_]+/i.test(content) ||
+    /export\s+const\s+plan[A-Za-z0-9_]+/i.test(content)
   ) {
     return true;
   }
@@ -58,101 +59,320 @@ export function isCodePlanCandidate(filePath, content = '') {
 }
 
 /**
- * 静态提取 TypeScript 或不可直接 import 的代码文件中的规划属性
+ * 从多行文本中提取静态字符串字面量数组（支持单引号、双引号、反引号）
+ */
+function extractStringLiteralsFromArrayText(rawBlock) {
+  const items = [];
+  const regex = /(?:['"`])([^'"`\\]*(?:\\.[^'"`\\]*)*)(?:['"`])/g;
+  let match;
+  while ((match = regex.exec(rawBlock)) !== null) {
+    const val = match[1].trim();
+    if (val) {
+      items.push(val);
+    }
+  }
+  return items;
+}
+
+/**
+ * 纯静态文本提取代码规划文件字段（绝不 import/require/eval/vm 执行任何代码）
  */
 function staticallyExtractPlanRecord(content, filePath, repoRoot) {
   const relativePath = path.relative(repoRoot, filePath).split(path.sep).join('/');
   const baseName = path.basename(filePath, path.extname(filePath));
+  const lines = content.split('\n');
 
-  // 提取 planId / id
+  const provenance = {};
+  const cannotConfirm = {};
+  const warnings = [];
+
+  // 1. 提取 ID / Capability
   let id = null;
-  const idMatch = content.match(/(?:planId|id|capability)\s*[:=]\s*['"]([^'"]+)['"]/);
-  if (idMatch) {
-    id = idMatch[1];
-  } else {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const capMatch = line.match(/(?:export\s+const\s+[A-Z0-9_]*CAPABILITY\s*=\s*|const\s+PLAN_ID\s*=\s*|(?:planId|id|capability)\s*[:=]\s*)['"]([^'"]+)['"]/);
+    if (capMatch) {
+      id = capMatch[1];
+      provenance.id = {
+        value: id,
+        sourcePath: relativePath,
+        lineStart: i + 1,
+        lineEnd: i + 1,
+        source: 'ts_code_literal',
+        raw: line.trim(),
+      };
+      break;
+    }
+  }
+  if (!id) {
+    // 无法从明确变量提取，标记 cannotConfirm，但使用规范化文件名作为临时标识
     id = baseName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    cannotConfirm.id = {
+      sourcePath: relativePath,
+      reason: 'missing_id',
+      details: 'No explicit id/planId/capability string literal found in code',
+    };
   }
 
-  // 提取 title
+  // 2. 提取 Title
   let title = null;
-  const titleMatch = content.match(/(?:title|planTitle|name)\s*[:=]\s*['"]([^'"]+)['"]/);
-  if (titleMatch) {
-    title = titleMatch[1];
-  } else {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const titleMatch = line.match(/(?:const\s+PLAN_TITLE\s*=\s*|(?:title|planTitle|name)\s*[:=]\s*)['"]([^'"]+)['"]/);
+    if (titleMatch) {
+      title = titleMatch[1];
+      provenance.title = {
+        value: title,
+        sourcePath: relativePath,
+        lineStart: i + 1,
+        lineEnd: i + 1,
+        source: 'ts_code_literal',
+        raw: line.trim(),
+      };
+      break;
+    }
+  }
+  if (!title) {
     title = id;
+    cannotConfirm.title = {
+      sourcePath: relativePath,
+      reason: 'missing_title',
+      details: 'No explicit title/planTitle string literal found in code',
+    };
   }
 
-  // 提取 closedLoop
+  // 3. 提取 closedLoop
+  // 查找文件中所有的 closedLoop 出现行（排除纯类型定义行，如 readonly closedLoop: boolean）
+  const closedLoopOccurrences = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // 跳过纯类型定义
+    if (/readonly\s+closedLoop\s*:\s*boolean/i.test(line) || /closedLoop\s*:\s*boolean/i.test(line)) {
+      continue;
+    }
+    const match = line.match(/closedLoop\s*[:=]\s*([^,\n;]+)/);
+    if (match) {
+      const rawVal = match[1].trim();
+      closedLoopOccurrences.push({
+        line: i + 1,
+        rawVal,
+        fullLine: line.trim(),
+      });
+    }
+  }
+
   let closedLoop = undefined;
-  const closedLoopMatch = content.match(/closedLoop\s*[:=]\s*(true|false)/);
-  if (closedLoopMatch) {
-    closedLoop = closedLoopMatch[1] === 'true';
-  }
-
-  // 提取 status
-  let status = null;
-  const statusMatch = content.match(/status\s*[:=]\s*['"](unavailable|pending|in_progress|ready|verified)['"]/);
-  if (statusMatch) {
-    status = statusMatch[1];
-  } else if (content.includes("status: 'unavailable'") || content.includes('status: "unavailable"')) {
-    status = 'unavailable';
-  } else if (content.includes('pending: true')) {
-    status = 'unavailable';
-  }
-
-  // 提取 reason
-  let reason = null;
-  const reasonMatch = content.match(/reason\s*[:=]\s*(?:['"]([^'"]+)['"]|([A-Z0-9_]+))/);
-  if (reasonMatch) {
-    if (reasonMatch[1]) {
-      reason = reasonMatch[1];
-    } else if (reasonMatch[2]) {
-      const constName = reasonMatch[2];
-      const constDef = content.match(new RegExp(`(?:const|let|var)\\s+${constName}\\s*=\\s*['"]([^'"]+)['"]`));
-      if (constDef) reason = constDef[1];
-    }
-  }
-
-  // 提取 checklist 或 steps
-  let acceptanceSteps = [];
-  const checklistMatch = content.match(/(?:checklist|acceptanceSteps|DEFAULT_CHECKLIST)\s*[:=]\s*(?:Object\.freeze\()?\[([\s\S]*?)\]/);
-  if (checklistMatch) {
-    const rawItems = checklistMatch[1].match(/['"]([^'"]+)['"]/g);
-    if (rawItems) {
-      acceptanceSteps = rawItems.map((s) => s.slice(1, -1).trim()).filter(Boolean);
-    }
-  }
-
-  // 提取 evidence
-  let evidenceRequirements = [];
-  const evidenceMatch = content.match(/(?:evidenceRequirements|evidenceChecks|evidence)\s*[:=]\s*(?:Object\.freeze\()?\[([\s\S]*?)\]/);
-  if (evidenceMatch) {
-    const rawItems = evidenceMatch[1].match(/['"]([^'"]+)['"]/g);
-    if (rawItems) {
-      evidenceRequirements = rawItems.map((s) => s.slice(1, -1).trim()).filter(Boolean);
+  if (closedLoopOccurrences.length === 0) {
+    cannotConfirm.closedLoop = {
+      sourcePath: relativePath,
+      reason: 'missing_closedLoop',
+      details: 'No closedLoop property found in code',
+    };
+  } else if (closedLoopOccurrences.length === 1) {
+    const occ = closedLoopOccurrences[0];
+    if (occ.rawVal === 'false') {
+      closedLoop = false;
+      provenance.closedLoop = {
+        value: false,
+        sourcePath: relativePath,
+        lineStart: occ.line,
+        lineEnd: occ.line,
+        source: 'ts_code_literal',
+        raw: occ.fullLine,
+      };
+    } else if (occ.rawVal === 'true') {
+      closedLoop = true;
+      provenance.closedLoop = {
+        value: true,
+        sourcePath: relativePath,
+        lineStart: occ.line,
+        lineEnd: occ.line,
+        source: 'ts_code_literal',
+        raw: occ.fullLine,
+      };
+    } else {
+      // 动态表达式（如 closedLoop: isClosedLoop 或 closedLoop: pending.length === 0）
+      cannotConfirm.closedLoop = {
+        sourcePath: relativePath,
+        reason: 'ambiguous_closedLoop',
+        lineStart: occ.line,
+        lineEnd: occ.line,
+        details: `Dynamic expression for closedLoop detected: "${occ.rawVal}". Static analysis cannot evaluate runtime boolean expression.`,
+        occurrences: closedLoopOccurrences,
+      };
     }
   } else {
-    // 检查是否有 PLACEHOLDER_RELATIVE_PATH 或 evidence 文件引用
-    const placeholderMatch = content.match(/(?:PLACEHOLDER_RELATIVE_PATH|receiptPath|evidencePath)\s*=\s*['"]([^'"]+)['"]/);
-    if (placeholderMatch) {
-      evidenceRequirements.push(`外部读回/证据文件：${placeholderMatch[1]}`);
+    // 存在多个条件分支返回不同 closedLoop
+    // 必须严格报错 ambiguous_closedLoop，绝不能盲猜默认分支，更不能从出现 false 盲推或将 true 改 false
+    cannotConfirm.closedLoop = {
+      sourcePath: relativePath,
+      reason: 'ambiguous_closedLoop',
+      details: `Multiple conditional branches (${closedLoopOccurrences.length}) assigning closedLoop detected in code. Static analysis cannot determine default branch without runtime execution.`,
+      occurrences: closedLoopOccurrences,
+    };
+  }
+
+  // 4. 提取 status
+  let status = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // 跳过纯类型定义
+    if (/status\s*:\s*['"]?[a-z_]+['"]?\s*\|/i.test(line)) continue;
+    const stMatch = line.match(/status\s*[:=]\s*['"](unavailable|pending|in_progress|ready|verified)['"]/);
+    if (stMatch) {
+      status = stMatch[1];
+      provenance.status = {
+        value: status,
+        sourcePath: relativePath,
+        lineStart: i + 1,
+        lineEnd: i + 1,
+        source: 'ts_code_literal',
+        raw: line.trim(),
+      };
+      break;
+    }
+  }
+  if (!status) {
+    cannotConfirm.status = {
+      sourcePath: relativePath,
+      reason: 'missing_status',
+      details: 'No explicit status literal found in code',
+    };
+  }
+
+  // 5. 提取 reason
+  let reason = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const rMatch = line.match(/(?:export\s+const\s+[A-Z0-9_]*PENDING_REASON\s*=\s*|reason\s*[:=]\s*)['"]([^'"]+)['"]/);
+    if (rMatch) {
+      reason = rMatch[1];
+      provenance.reason = {
+        value: reason,
+        sourcePath: relativePath,
+        lineStart: i + 1,
+        lineEnd: i + 1,
+        source: 'ts_code_literal',
+        raw: line.trim(),
+      };
+      break;
     }
   }
 
-  // 提取环境
-  let rawEnvs = [];
-  if (content.includes('platform === \'win32\'') || content.includes('win32') || content.includes('windows')) {
-    rawEnvs.push('windows_real_machine');
+  // 6. 提取 requiredEnvironments（严禁全文关键词猜测环境，只读明确字面量数组）
+  let requiredEnvironments = undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const envMatch = line.match(/(?:export\s+const\s+REQUIRED_ENVIRONMENTS\s*=\s*|(?:requiredEnvironments|environments)\s*[:=]\s*)\[([\s\S]*?)\]/);
+    if (envMatch) {
+      const rawItems = extractStringLiteralsFromArrayText(envMatch[1]);
+      const norm = normalizeEnvironment(rawItems);
+      if (norm && norm.environments.length > 0) {
+        requiredEnvironments = norm.environments;
+        provenance.requiredEnvironments = {
+          value: requiredEnvironments,
+          sourcePath: relativePath,
+          lineStart: i + 1,
+          lineEnd: i + 1,
+          source: 'ts_code_literal',
+          raw: line.trim(),
+        };
+        break;
+      }
+    }
   }
-  if (content.includes('huawei_ict_agentarts') || content.includes('agentarts') || content.includes('真云')) {
-    rawEnvs.push('huawei_cloud');
+  if (!requiredEnvironments) {
+    // 检查是否跨多行声明了 REQUIRED_ENVIRONMENTS 数组
+    const multiMatch = content.match(/(?:export\s+const\s+REQUIRED_ENVIRONMENTS\s*=\s*|(?:requiredEnvironments|environments)\s*[:=]\s*)\[([\s\S]*?)\]/);
+    if (multiMatch) {
+      const rawItems = extractStringLiteralsFromArrayText(multiMatch[1]);
+      const norm = normalizeEnvironment(rawItems);
+      if (norm && norm.environments.length > 0) {
+        requiredEnvironments = norm.environments;
+        provenance.requiredEnvironments = {
+          value: requiredEnvironments,
+          sourcePath: relativePath,
+          source: 'ts_code_multiline_literal',
+          raw: multiMatch[0].slice(0, 100),
+        };
+      }
+    }
   }
-  if (content.includes('account') || content.includes('token') || content.includes('凭据')) {
-    rawEnvs.push('real_account');
+  if (!requiredEnvironments) {
+    cannotConfirm.requiredEnvironments = {
+      sourcePath: relativePath,
+      reason: 'missing_environment_declaration',
+      details: 'No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments.',
+    };
   }
 
-  const envNorm = normalizeEnvironment(rawEnvs.length > 0 ? rawEnvs : null);
-  const requiredEnvironments = envNorm ? envNorm.environments : undefined;
+  // 7. 提取 acceptanceSteps（严禁借用 pending 填补步骤）
+  let acceptanceSteps = undefined;
+  const stepsRegex = /(?:const\s+DEFAULT_CHECKLIST\s*=\s*|const\s+ACCEPTANCE_STEPS\s*=\s*|(?:acceptanceSteps|checklist|DEFAULT_STEPS)\s*[:=]\s*)(?:Object\.freeze\()?\[([\s\S]*?)\]/g;
+  let stepsMatch;
+  while ((stepsMatch = stepsRegex.exec(content)) !== null) {
+    const rawItems = extractStringLiteralsFromArrayText(stepsMatch[1]);
+    if (rawItems.length > 0) {
+      acceptanceSteps = rawItems;
+      provenance.acceptanceSteps = {
+        value: acceptanceSteps,
+        sourcePath: relativePath,
+        source: 'ts_code_checklist_literal',
+        itemCount: acceptanceSteps.length,
+      };
+      break;
+    }
+  }
+  if (!acceptanceSteps) {
+    cannotConfirm.acceptanceSteps = {
+      sourcePath: relativePath,
+      reason: 'missing_acceptance_steps',
+      details: 'No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited.',
+    };
+  }
+
+  // 8. 提取 evidenceRequirements（严禁借用 pending 填补证据）
+  let evidenceRequirements = undefined;
+  const evRegex = /(?:const\s+EVIDENCE_REQUIREMENTS\s*=\s*|const\s+EVIDENCE_CHECKS\s*=\s*|(?:evidenceRequirements|evidenceChecks|DEFAULT_EVIDENCE)\s*[:=]\s*)(?:Object\.freeze\()?\[([\s\S]*?)\]/g;
+  let evMatch;
+  while ((evMatch = evRegex.exec(content)) !== null) {
+    const rawItems = extractStringLiteralsFromArrayText(evMatch[1]);
+    if (rawItems.length > 0) {
+      evidenceRequirements = rawItems;
+      provenance.evidenceRequirements = {
+        value: evidenceRequirements,
+        sourcePath: relativePath,
+        source: 'ts_code_evidence_literal',
+        itemCount: evidenceRequirements.length,
+      };
+      break;
+    }
+  }
+  if (!evidenceRequirements) {
+    cannotConfirm.evidenceRequirements = {
+      sourcePath: relativePath,
+      reason: 'missing_evidence_requirements',
+      details: 'No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited.',
+    };
+  }
+
+  // 9. 提取 pendingItems
+  let pendingItems = [];
+  const pendRegex = /(?:DEFAULT_[A-Z0-9_]*PENDING_ITEMS\s*=\s*|pendingItems\s*[:=]\s*)(?:Object\.freeze\()?\[([\s\S]*?)\]/g;
+  let pendMatch;
+  while ((pendMatch = pendRegex.exec(content)) !== null) {
+    const rawItems = extractStringLiteralsFromArrayText(pendMatch[1]);
+    if (rawItems.length > 0) {
+      pendingItems = rawItems;
+      provenance.pendingItems = {
+        value: pendingItems,
+        sourcePath: relativePath,
+        source: 'ts_code_pending_literal',
+        itemCount: pendingItems.length,
+      };
+      break;
+    }
+  }
 
   return {
     id,
@@ -165,14 +385,17 @@ function staticallyExtractPlanRecord(content, filePath, repoRoot) {
     acceptanceSteps,
     evidenceRequirements,
     reason,
-    pendingItems: [],
+    pendingItems,
+    provenance,
+    cannotConfirm,
+    warnings,
   };
 }
 
 /**
- * 解析代码规划文件（.plan.mjs, .plan.ts, 等）
+ * 解析代码规划文件（纯文本静态分析，绝不动态 import/require/eval/vm 执行任何文件）
  */
-export async function parseCodePlan(filePath, repoRoot = '.') {
+export function parseCodePlan(filePath, repoRoot = '.') {
   const relativePath = path.relative(repoRoot, filePath).split(path.sep).join('/');
   let content = '';
 
@@ -182,6 +405,7 @@ export async function parseCodePlan(filePath, repoRoot = '.') {
     return {
       isPlan: false,
       skippedReason: `read_error: ${err.message}`,
+      sourcePath: relativePath,
     };
   }
 
@@ -201,60 +425,8 @@ export async function parseCodePlan(filePath, repoRoot = '.') {
     };
   }
 
-  // 优先尝试动态加载纯函数执行（仅限受控 .mjs 或 .js）
-  let planObj = null;
-  const ext = path.extname(filePath);
-
-  if (ext === '.mjs' || ext === '.js') {
-    try {
-      const fileUrl = pathToFileURL(path.resolve(filePath)).href;
-      const mod = await import(fileUrl);
-
-      let targetFn = null;
-      for (const [key, val] of Object.entries(mod)) {
-        if (
-          typeof val === 'function' &&
-          (/^plan.*Acceptance/i.test(key) || /AcceptancePlan$/i.test(key) || /^plan/i.test(key))
-        ) {
-          targetFn = val;
-          break;
-        }
-      }
-
-      if (targetFn) {
-        // 调用离线纯函数规划器（绝不传入真实环境参数）
-        const res = targetFn({ projectRoot: repoRoot, dryRun: true });
-        if (res && typeof res === 'object') {
-          const rawEnvs = res.requiredEnvironments || res.environments || res.platform || res.profile;
-          const envNorm = normalizeEnvironment(rawEnvs);
-
-          planObj = {
-            id: res.id || res.planId || res.capability || path.basename(filePath, ext),
-            title: res.title || res.planTitle || res.name || res.planId || path.basename(filePath, ext),
-            sourcePath: relativePath,
-            planType: 'code_plan_module',
-            closedLoop: res.closedLoop,
-            status: res.status || (res.pending ? 'unavailable' : undefined),
-            requiredEnvironments: envNorm ? envNorm.environments : undefined,
-            acceptanceSteps: res.acceptanceSteps || res.checklist || res.steps || [],
-            evidenceRequirements: res.evidenceRequirements || res.evidenceChecks || res.evidence || [],
-            reason: res.reason || res.notes,
-            pendingItems: res.pendingItems || res.pending,
-            hasVerifiedEvidence: res.verified === true && !res.mock && res.evidenceLevel === 'verified',
-            claimVerified: res.closedLoop === true,
-          };
-        }
-      }
-    } catch {
-      // 动态导入失败则回退至静态解析
-      planObj = null;
-    }
-  }
-
-  if (!planObj) {
-    planObj = staticallyExtractPlanRecord(content, filePath, repoRoot);
-  }
-
+  // 纯静态文本提取
+  const planObj = staticallyExtractPlanRecord(content, filePath, repoRoot);
   const validation = validateNormalizedRecord(planObj, relativePath);
 
   if (!validation.ok) {
@@ -265,6 +437,7 @@ export async function parseCodePlan(filePath, repoRoot = '.') {
       title: planObj.title || path.basename(filePath),
       missingFields: validation.missingFields,
       errors: validation.errors,
+      cannotConfirm: validation.cannotConfirm,
       rawRecord: planObj,
     };
   }

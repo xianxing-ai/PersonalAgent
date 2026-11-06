@@ -92,7 +92,7 @@ function collectFiles(dirPath, rootPath, globs = null, skipTestFixtures = true) 
 }
 
 /**
- * 执行扫描与聚合
+ * 执行扫描与聚合（全静态文本解析，绝无动态代码执行）
  */
 export async function scanAcceptancePlans(options = {}) {
   const rootPath = path.resolve(options.root || '.');
@@ -115,7 +115,7 @@ export async function scanAcceptancePlans(options = {}) {
     if (file.ext === '.md') {
       result = parseMarkdownPlan(file.fullPath, rootPath);
     } else if (file.ext === '.mjs' || file.ext === '.js' || file.ext === '.ts') {
-      result = await parseCodePlan(file.fullPath, rootPath);
+      result = parseCodePlan(file.fullPath, rootPath);
     } else if (file.ext === '.json') {
       result = parseJsonPlan(file.fullPath, rootPath);
     }
@@ -131,6 +131,7 @@ export async function scanAcceptancePlans(options = {}) {
           title: result.title || path.basename(file.fullPath),
           missingFields: result.missingFields || [],
           errors: result.errors || [],
+          cannotConfirm: result.cannotConfirm || {},
           rawRecord: result.rawRecord || null,
         });
       }

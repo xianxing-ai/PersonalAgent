@@ -6,7 +6,26 @@ import {
 } from '../types.mjs';
 
 /**
- * 解析 JSON 规划文件
+ * 提取 JSON 键名在源文件中的行号
+ */
+function findJsonKeyLines(rawText) {
+  const lineMap = {};
+  const lines = rawText.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const match = line.match(/^\s*["']([^"']+)["']\s*:/);
+    if (match) {
+      const key = match[1];
+      if (!lineMap[key]) {
+        lineMap[key] = i + 1;
+      }
+    }
+  }
+  return lineMap;
+}
+
+/**
+ * 解析 JSON 规划文件（附带行号 provenance）
  */
 export function parseJsonPlan(filePath, repoRoot = '.') {
   const relativePath = path.relative(repoRoot, filePath).split(path.sep).join('/');
@@ -18,6 +37,7 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
     return {
       isPlan: false,
       skippedReason: `read_error: ${err.message}`,
+      sourcePath: relativePath,
     };
   }
 
@@ -28,6 +48,7 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
     return {
       isPlan: false,
       skippedReason: 'invalid_json',
+      sourcePath: relativePath,
     };
   }
 
@@ -35,11 +56,12 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
     return {
       isPlan: false,
       skippedReason: 'json_not_object',
+      sourcePath: relativePath,
     };
   }
 
   const baseName = path.basename(filePath).toLowerCase();
-  if (baseName === 'pending-acceptance-index.json') {
+  if (baseName === 'pending-acceptance-index.json' || baseName.includes('sample-')) {
     return {
       isPlan: false,
       skippedReason: 'tool_output_file',
@@ -69,23 +91,156 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
     };
   }
 
-  const rawEnv = obj.requiredEnvironments || obj.environments || obj.platform || obj.profile;
+  const keyLines = findJsonKeyLines(raw);
+  const provenance = {};
+  const cannotConfirm = {};
+  const warnings = [];
+
+  // 1. ID
+  const id = obj.id || obj.planId || path.basename(filePath, '.json');
+  provenance.id = {
+    value: id,
+    sourcePath: relativePath,
+    lineStart: keyLines.id || keyLines.planId || 1,
+    lineEnd: keyLines.id || keyLines.planId || 1,
+    source: 'json_key',
+  };
+
+  // 2. Title
+  const title = obj.title || obj.planTitle || obj.name || path.basename(filePath, '.json');
+  provenance.title = {
+    value: title,
+    sourcePath: relativePath,
+    lineStart: keyLines.title || keyLines.planTitle || keyLines.name || 1,
+    lineEnd: keyLines.title || keyLines.planTitle || keyLines.name || 1,
+    source: 'json_key',
+  };
+
+  // 3. closedLoop
+  let closedLoop = undefined;
+  if (typeof obj.closedLoop === 'boolean') {
+    closedLoop = obj.closedLoop;
+    provenance.closedLoop = {
+      value: closedLoop,
+      sourcePath: relativePath,
+      lineStart: keyLines.closedLoop || 1,
+      lineEnd: keyLines.closedLoop || 1,
+      source: 'json_key',
+    };
+  } else {
+    cannotConfirm.closedLoop = {
+      sourcePath: relativePath,
+      reason: 'missing_closedLoop',
+      details: 'No boolean closedLoop key in JSON object',
+    };
+  }
+
+  // 4. Status
+  const status = obj.status || (obj.pending ? 'unavailable' : undefined);
+  if (status) {
+    provenance.status = {
+      value: status,
+      sourcePath: relativePath,
+      lineStart: keyLines.status || keyLines.pending || 1,
+      lineEnd: keyLines.status || keyLines.pending || 1,
+      source: 'json_key',
+    };
+  } else {
+    cannotConfirm.status = {
+      sourcePath: relativePath,
+      reason: 'missing_status',
+      details: 'No status key in JSON object',
+    };
+  }
+
+  // 5. requiredEnvironments
+  const rawEnv = obj.requiredEnvironments || obj.environments;
   const envNorm = normalizeEnvironment(rawEnv);
+  const requiredEnvironments = envNorm ? envNorm.environments : undefined;
+  if (requiredEnvironments) {
+    provenance.requiredEnvironments = {
+      value: requiredEnvironments,
+      sourcePath: relativePath,
+      lineStart: keyLines.requiredEnvironments || keyLines.environments || 1,
+      lineEnd: keyLines.requiredEnvironments || keyLines.environments || 1,
+      source: 'json_key',
+    };
+  } else {
+    cannotConfirm.requiredEnvironments = {
+      sourcePath: relativePath,
+      reason: 'missing_environment_declaration',
+      details: 'No requiredEnvironments or environments key declared in JSON object',
+    };
+  }
+
+  // 6. acceptanceSteps
+  const acceptanceSteps = obj.acceptanceSteps || obj.checklist || obj.steps;
+  if (Array.isArray(acceptanceSteps) && acceptanceSteps.length > 0) {
+    provenance.acceptanceSteps = {
+      value: acceptanceSteps,
+      sourcePath: relativePath,
+      lineStart: keyLines.acceptanceSteps || keyLines.checklist || keyLines.steps || 1,
+      lineEnd: keyLines.acceptanceSteps || keyLines.checklist || keyLines.steps || 1,
+      source: 'json_key',
+      itemCount: acceptanceSteps.length,
+    };
+  } else {
+    cannotConfirm.acceptanceSteps = {
+      sourcePath: relativePath,
+      reason: 'missing_acceptance_steps',
+      details: 'No acceptanceSteps, checklist, or steps array found in JSON object',
+    };
+  }
+
+  // 7. evidenceRequirements
+  const evidenceRequirements = obj.evidenceRequirements || obj.evidenceChecks || obj.evidence;
+  if (Array.isArray(evidenceRequirements) && evidenceRequirements.length > 0) {
+    provenance.evidenceRequirements = {
+      value: evidenceRequirements,
+      sourcePath: relativePath,
+      lineStart: keyLines.evidenceRequirements || keyLines.evidenceChecks || keyLines.evidence || 1,
+      lineEnd: keyLines.evidenceRequirements || keyLines.evidenceChecks || keyLines.evidence || 1,
+      source: 'json_key',
+      itemCount: evidenceRequirements.length,
+    };
+  } else {
+    cannotConfirm.evidenceRequirements = {
+      sourcePath: relativePath,
+      reason: 'missing_evidence_requirements',
+      details: 'No evidenceRequirements or evidenceChecks array found in JSON object',
+    };
+  }
+
+  // 8. reason & pendingItems
+  const reason = obj.reason || obj.notes;
+  const pendingItems = obj.pendingItems || obj.pending;
+  if (reason) {
+    provenance.reason = {
+      value: reason,
+      sourcePath: relativePath,
+      lineStart: keyLines.reason || keyLines.notes || 1,
+      lineEnd: keyLines.reason || keyLines.notes || 1,
+      source: 'json_key',
+    };
+  }
 
   const record = {
-    id: obj.id || obj.planId || path.basename(filePath, '.json'),
-    title: obj.title || obj.planTitle || obj.name || path.basename(filePath, '.json'),
+    id,
+    title,
     sourcePath: relativePath,
     planType: 'json_plan',
-    closedLoop: obj.closedLoop,
-    status: obj.status || (obj.pending ? 'unavailable' : undefined),
-    requiredEnvironments: envNorm ? envNorm.environments : undefined,
-    acceptanceSteps: obj.acceptanceSteps || obj.checklist || obj.steps,
-    evidenceRequirements: obj.evidenceRequirements || obj.evidenceChecks || obj.evidence,
-    reason: obj.reason || obj.notes,
-    pendingItems: obj.pendingItems || obj.pending,
+    closedLoop,
+    status,
+    requiredEnvironments,
+    acceptanceSteps,
+    evidenceRequirements,
+    reason,
+    pendingItems,
     hasVerifiedEvidence: obj.verified === true && !obj.mock && obj.evidenceLevel === 'verified',
     claimVerified: obj.closedLoop === true,
+    provenance,
+    cannotConfirm,
+    warnings,
   };
 
   const validation = validateNormalizedRecord(record, relativePath);
@@ -98,6 +253,7 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
       title: record.title,
       missingFields: validation.missingFields,
       errors: validation.errors,
+      cannotConfirm: validation.cannotConfirm,
       rawRecord: record,
     };
   }
