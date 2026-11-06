@@ -1,3 +1,14 @@
+---
+id: privacy-deletion-acceptance-plan
+title: MOD-27：隐私删除与私人数据授权离线验收规划
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - rights_holder_or_human
+  - windows_real_machine
+reason: 待真人/真机验收
+---
+
 # MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）
 
 <!-- current-design-20261015 -->
@@ -43,6 +54,40 @@
        5. `cloud_boundary_and_leak_prevention`：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）；
    - **防 mock 假闭环**：当 `mock === true` 或 `evidenceLevel === 'mock'` 时，即使设置了授权标志，也坚决拒绝闭环；
    - 仅在真人现场授权、现场删除读回均具备且证据级别为 `verified` 时，才允许输出闭环状态。
+
+## 验收步骤
+
+1. human_user_privacy_authorization：真人用户隐私授权与敏感范围审查（现场明确授权访问与删除范围，严禁模型代签或自动放行）
+2. on_site_deletion_readback：删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）
+3. graph_dependency_erasure_integrity：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）
+4. durable_storage_restart_verification：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）
+5. cloud_boundary_and_leak_prevention：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）
+
+## 证据要求
+
+1. PrivacyDeletionReceipt 合规物理删除回执（包含 receiptId、namespace、targetId、action='privacy_deletion'、physicalErasure=true、有序 erasedGraphRevisions）
+2. 真人用户现场授权凭证（realUserAuthorization）与持久化存储物理擦除现场读回回执（realDeletionReadback）
+
+## 挂起项
+
+- `human_user_privacy_authorization`: 真人用户隐私授权与敏感范围审查
+- `on_site_deletion_readback`: 删除现场物理读回与存储清零验证
+- `graph_dependency_erasure_integrity`: 图谱依赖级联处理与断链校验
+- `durable_storage_restart_verification`: 持久化存储进程重启后现场读回
+- `cloud_boundary_and_leak_prevention`: 云端与跨进程边界防泄露核验
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `privacy-deletion-acceptance-plan` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | L1: `MOD-27：隐私删除与私人数据授权离线验收规划`；代码 `PLAN_ID` |
+| title | `MOD-27：隐私删除与私人数据授权离线验收规划` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | L1: `# MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）` |
+| status | `unavailable` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `状态统一标记为 status: 'unavailable'`；§2.3: `status: 'unavailable'` |
+| closedLoop | `false` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `未取得真人用户现场授权凭证与删除现场读回证据前，closedLoop 必须为 false`；代码 L338 |
+| requiredEnvironments | `['rights_holder_or_human', 'windows_real_machine']` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `无真人/真机证据不宣称闭环：未取得真人用户现场授权凭证与删除现场读回证据前...原因统一标为 待真人/真机验收` |
+| acceptanceSteps | 5 项完整步骤 | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §2.3: 五项现场验收核心门限（human_user_privacy_authorization, on_site_deletion_readback 等） |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §2.1: `assertPrivacyDeletionReceipt` 回执校验条件；§2.3: 真人授权与删除现场读回凭证 |
+| reason / pendingItems | `待真人/真机验收` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `原因统一标为 待真人/真机验收`；代码 `PRIVACY_ACCEPTANCE_PENDING_REASON` |
 
 ## 3. 验证结果
 

@@ -1,6 +1,44 @@
 import { GraphError } from './index.js';
 
+export const PLAN_ID = 'privacy-deletion-acceptance-plan';
+export const PLAN_TITLE = 'MOD-27：隐私删除与私人数据授权离线验收规划';
 export const PRIVACY_ACCEPTANCE_PENDING_REASON = '待真人/真机验收' as const;
+export const PENDING_REASON = PRIVACY_ACCEPTANCE_PENDING_REASON;
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['rights_holder_or_human', 'windows_real_machine'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md §2.3）
+ */
+export const ACCEPTANCE_STEPS = [
+  'human_user_privacy_authorization：真人用户隐私授权与敏感范围审查（现场明确授权访问与删除范围，严禁模型代签或自动放行）',
+  'on_site_deletion_readback：删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）',
+  'graph_dependency_erasure_integrity：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）',
+  'durable_storage_restart_verification：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）',
+  'cloud_boundary_and_leak_prevention：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md §1/§2）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'PrivacyDeletionReceipt 合规物理删除回执（包含 receiptId、namespace、targetId、action=\'privacy_deletion\'、physicalErasure=true、有序 erasedGraphRevisions）',
+  '真人用户现场授权凭证（realUserAuthorization）与持久化存储物理擦除现场读回回执（realDeletionReadback）',
+];
+
+/**
+ * 默认待现场验收挂起项声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'human_user_privacy_authorization',
+  'on_site_deletion_readback',
+  'graph_dependency_erasure_integrity',
+  'durable_storage_restart_verification',
+  'cloud_boundary_and_leak_prevention',
+];
 
 export type PrivacyDeletionReceiptAction = 'withdrawal' | 'privacy_deletion';
 
