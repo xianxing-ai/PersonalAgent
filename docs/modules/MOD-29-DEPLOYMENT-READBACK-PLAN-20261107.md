@@ -1,3 +1,14 @@
+---
+id: deployment-readback-plan
+title: MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - huawei_cloud
+  - real_account
+reason: 待真云验收
+---
+
 # MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划（2026-11-07）
 
 <!-- current-design-20261015 -->
@@ -41,6 +52,43 @@
      4. `multi_agent_routing_and_inference`：AgentArts 云端多智能体角色路由与模型推理真实回执；
      5. `platform_independent_trace_and_cost`：平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）；
      6. `local_policy_evidence_closed_loop`：本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环。
+
+## 验收步骤
+
+1. 华为云账号凭据认证与受信端点绑定读回（huawei_cloud_credentials_readback）
+2. 当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回（runtime_head_deployment_verified）
+3. 8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回（owned_bindings_invocation_readback）
+4. AgentArts 云端多智能体角色路由与模型推理真实回执（multi_agent_routing_and_inference）
+5. 平台独立 TraceId 关联与 Token/计费读回（platform_independent_trace_and_cost）
+6. 本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环（local_policy_evidence_closed_loop）
+
+## 证据要求
+
+1. DeploymentReadbackReceipt 合规回执（Profile 为 huawei_ict_agentarts、HTTPS origin、HEAD commit 对齐、ARM64 deploymentVersion）
+2. 华为云平台独立 TraceId 关联与 Token/计费在线读回回执（非本地应用日志）
+3. 本地 Policy/ToolGateway 授权与真实目标读回 Evidence 审计记录
+
+## 挂起项
+
+- `huawei_cloud_credentials_readback`: 华为云账号凭据认证与受信端点绑定读回
+- `runtime_head_deployment_verified`: 当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回
+- `owned_bindings_invocation_readback`: 8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回
+- `multi_agent_routing_and_inference`: AgentArts 云端多智能体角色路由与模型推理真实回执
+- `platform_independent_trace_and_cost`: 平台独立 TraceId 关联与 Token/计费读回
+- `local_policy_evidence_closed_loop`: 本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `deployment-readback-plan` | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | L1, L9: `MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划`；代码 `PLAN_ID` |
+| title | `MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划` | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | L1: `# MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划（2026-11-07）` |
+| status | `unavailable` | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | §1: `状态标记为 unavailable`；§2.3: `status: 'unavailable'` |
+| closedLoop | `false` | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | §1: `未连接华为云账号并获得真实认证读回前，closedLoop 必须为 false`；代码 L289 |
+| requiredEnvironments | `['huawei_cloud', 'real_account']` | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | §1: `完整的端到端真实调用、平台 Trace、计费...仍需华为云真实账号及在线环境读回`；§2.3: `huawei_cloud_credentials_readback：华为云账号凭据认证` |
+| acceptanceSteps | 6 项完整步骤 | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | §2.3: 六大华为云端到端真实验收挂起项列表 |
+| evidenceRequirements | 3 项证据要求 | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | §2.1: `DeploymentReadbackReceipt` 形状断言；§2.3: TraceId 关联、Token/计费读回及本地 Policy/Evidence 回执 |
+| reason / pendingItems | `待真云验收` | `docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md` | §1: `需华为云账号的真实验收项明确标为 status: unavailable，原因统一标识为 待真云验收`；代码 `DEPLOYMENT_ACCEPTANCE_PENDING_REASON` |
 
 ## 3. 验证结果
 

@@ -1,7 +1,47 @@
 import { ProtocolError } from '@personal-agent/contracts';
 import { getOwnedBindings } from './bindings.js';
 
+export const PLAN_ID = 'deployment-readback-plan';
+export const PLAN_TITLE = 'AgentArts 部署当前 HEAD 端到端读回离线规划';
 export const DEPLOYMENT_ACCEPTANCE_PENDING_REASON = '待真云验收' as const;
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['huawei_cloud', 'real_account'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md §2.3）
+ */
+export const ACCEPTANCE_STEPS = [
+  '华为云账号凭据认证与受信端点绑定读回（huawei_cloud_credentials_readback）',
+  '当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回（runtime_head_deployment_verified）',
+  '8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回（owned_bindings_invocation_readback）',
+  'AgentArts 云端多智能体角色路由与模型推理真实回执（multi_agent_routing_and_inference）',
+  '平台独立 TraceId 关联与 Token/计费读回（platform_independent_trace_and_cost）',
+  '本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环（local_policy_evidence_closed_loop）',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md §1/§2）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'DeploymentReadbackReceipt 合规回执（Profile 为 huawei_ict_agentarts、HTTPS origin、HEAD commit 对齐、ARM64 deploymentVersion）',
+  '华为云平台独立 TraceId 关联与 Token/计费回执（非本地应用日志）',
+  '本地 Policy/ToolGateway 授权与真实目标读回 Evidence 审计记录',
+];
+
+/**
+ * 默认待真云验收挂起项声明（依据 docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md §2.3）
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'huawei_cloud_credentials_readback',
+  'runtime_head_deployment_verified',
+  'owned_bindings_invocation_readback',
+  'multi_agent_routing_and_inference',
+  'platform_independent_trace_and_cost',
+  'local_policy_evidence_closed_loop',
+];
 
 export interface DeploymentReadbackReceipt {
   readonly profile: 'huawei_ict_agentarts';
