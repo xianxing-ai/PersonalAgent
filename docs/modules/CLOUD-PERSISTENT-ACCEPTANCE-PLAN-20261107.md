@@ -1,3 +1,13 @@
+---
+id: cloud-persistent-acceptance-plan
+title: cloudPersistent：关机后云持续离线契约与验收规划
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - huawei_cloud
+reason: 待真云关机验收
+---
+
 # cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）
 
 <!-- current-design-20261015 -->
@@ -69,6 +79,42 @@
        6. `platform_independent_trace_and_cost`：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）。
    - 校验 HEAD 提交对齐（`headCommit` 与 `sourceCommit`），失配时追加 `source_head_commit_alignment` 挂起项；
    - 仅当真实华为云证据齐备且对齐时，方可收敛至 `closedLoop: true`、`status: 'verified'`。
+
+## 验收步骤
+
+1. device_shutdown_detection：本机桌面系统关机/休眠/离线事件捕获与状态读回（localDevice=false）
+2. cloud_persistent_host_handover：向 AgentArts 云端常驻宿主（cloudPersistentHost）原子交接执行会话与检查点恢复
+3. unattended_cloud_autonomous_dispatch：关机脱机期间云端自主调度器（Scheduler）唤醒与工具执行（非本机轮询驱动）
+4. cloud_checkpoint_persistence：关机持续运行期间任务状态、阶段时间线与回执在华为云端的原子持久化读回
+5. device_reconnect_reconciliation：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回
+6. platform_independent_trace_and_cost：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）
+
+## 证据要求
+
+1. CloudPersistentEvidence 合规回执（含 cloudPersistentHost HTTPS/WSS URL、严格时序因果 cloudExecutionStartedAt >= deviceShutdownAt 与 cloudTraceId）
+2. AgentArts 平台独立 TraceId 关联、双向对账回执与华为云持久化检查点读回记录
+
+## 挂起项
+
+- `device_shutdown_detection`: 本机桌面系统关机/休眠/离线事件捕获与状态读回
+- `cloud_persistent_host_handover`: 向 AgentArts 云端常驻宿主原子交接执行会话与检查点恢复
+- `unattended_cloud_autonomous_dispatch`: 关机脱机期间云端自主调度器唤醒与工具执行
+- `cloud_checkpoint_persistence`: 关机持续运行期间任务状态与回执在华为云端的原子持久化读回
+- `device_reconnect_reconciliation`: 宿主机开机重新连接后云端执行结果与本地对账读回
+- `platform_independent_trace_and_cost`: 华为云 AgentArts 平台独立 TraceId 与计费读回
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `cloud-persistent-acceptance-plan` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | L1: `cloudPersistent：关机后云持续离线契约与验收规划`；代码 `PLAN_ID` |
+| title | `cloudPersistent：关机后云持续离线契约与验收规划` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | L1: `# cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）` |
+| status | `unavailable` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `状态标记为 unavailable`；§2.3: `status: 'unavailable'` |
+| closedLoop | `false` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `无关机后云证据时 closedLoop: false`；代码 L398, L500 |
+| requiredEnvironments | `['huawei_cloud']` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `将执行会话安全交接至 AgentArts 云端常驻宿主（cloudPersistentHost: true），由云端自主调度器持续执行` |
+| acceptanceSteps | 6 项完整步骤 | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §2.3: 包含 6 项挂起项（device_shutdown_detection, cloud_host_handover 等） |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §2.1: `assertCloudPersistentEvidence` 形状校验；§2.3: 独立 TraceId 与对账回执 |
+| reason / pendingItems | `待真云关机验收` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `原因统一标记为 '待真云关机验收'`；代码 `CLOUD_PERSISTENT_PENDING_REASON` |
 
 ---
 

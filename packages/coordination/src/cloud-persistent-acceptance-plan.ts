@@ -1,7 +1,47 @@
 import { ProtocolError } from '@personal-agent/contracts';
 
+export const PLAN_ID = 'cloud-persistent-acceptance-plan';
+export const PLAN_TITLE = 'cloudPersistent：关机后云持续离线契约与验收规划';
 export const CLOUD_PERSISTENT_PENDING_REASON = '待真云关机验收' as const;
+export const PENDING_REASON = CLOUD_PERSISTENT_PENDING_REASON;
 export const CLOUD_PERSISTENT_PROFILE = 'huawei_ict_agentarts' as const;
+
+/**
+ * 必需环境声明（依据 docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['huawei_cloud'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md §2.3）
+ */
+export const ACCEPTANCE_STEPS = [
+  'device_shutdown_detection：本机桌面系统关机/休眠/离线事件捕获与状态读回（localDevice=false）',
+  'cloud_persistent_host_handover：向 AgentArts 云端常驻宿主（cloudPersistentHost）原子交接执行会话与检查点恢复',
+  'unattended_cloud_autonomous_dispatch：关机脱机期间云端自主调度器（Scheduler）唤醒与工具执行（非本机轮询驱动）',
+  'cloud_checkpoint_persistence：关机持续运行期间任务状态、阶段时间线与回执在华为云端的原子持久化读回',
+  'device_reconnect_reconciliation：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回',
+  'platform_independent_trace_and_cost：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'CloudPersistentEvidence 合规回执（含 cloudPersistentHost HTTPS/WSS URL、严格时序因果 cloudExecutionStartedAt >= deviceShutdownAt 与 cloudTraceId）',
+  'AgentArts 平台独立 TraceId 关联、双向对账回执与华为云持久化检查点读回记录',
+];
+
+/**
+ * 默认待真云关机验收挂起项声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'device_shutdown_detection',
+  'cloud_persistent_host_handover',
+  'unattended_cloud_autonomous_dispatch',
+  'cloud_checkpoint_persistence',
+  'device_reconnect_reconciliation',
+  'platform_independent_trace_and_cost',
+];
 
 export const CLOUD_PERSISTENT_PHASES = [
   'device_shutdown_detected',
