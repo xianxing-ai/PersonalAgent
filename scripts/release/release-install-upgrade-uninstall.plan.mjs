@@ -3,7 +3,37 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const PROFILE = 'huawei_ict_agentarts';
-const PLAN_ID = 'release-install-upgrade-uninstall';
+export const PLAN_ID = 'release-install-upgrade-uninstall';
+export const PLAN_TITLE = 'MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划';
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md §2.2/§5）
+ */
+export const REQUIRED_ENVIRONMENTS = ['windows_real_machine'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md §5）
+ */
+export const ACCEPTANCE_STEPS = [
+  '全新安装与启动（release-install-start）：运行独立安装包，验证无需管理员提权即可在当前用户空间安装，快捷方式生成且 userData 正常初始化',
+  '覆盖升级与数据保留（release-upgrade-data）：运行新版本安装包覆盖安装，启动新版本验证 userData 与 SQLite 任务/会话记录完好保留且表未重建',
+  '安全卸载（release-uninstall）：通过系统设置触发卸载，验证程序文件与快捷方式清理且用户数据默认保留',
+  '真实证据读回：真实 Windows 机器人工验收完成后将操作环境、执行人、日志与时间戳记录至三份 json 占位文件',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md §1/§5）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'tests/manual/release/windows-install-start.json 人工验收占位文件及真实操作启动日志',
+  'tests/manual/release/windows-upgrade-data-retention.json 人工验收占位文件及覆盖读回日志',
+  'tests/manual/release/windows-uninstall.json 人工验收占位文件及卸载残留检测日志',
+];
+
+/**
+ * 挂起原因声明（依据 docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md §1/§2.2）
+ */
+export const PENDING_REASON = '待 Windows 真实环境人工执行安装、覆盖升级与卸载验收';
 
 export const ACCEPTANCE_ITEMS = Object.freeze([
   {
@@ -216,79 +246,63 @@ export function planReleaseInstallUpgradeUninstall(options = {}) {
 
   const artifactInfo = findInstallerArtifact(projectRoot, customArtifact);
 
+  const basePlan = {
+    schemaVersion: 1,
+    profile: PROFILE,
+    planId: PLAN_ID,
+    title: PLAN_TITLE,
+    status: 'unavailable',
+    closedLoop: false,
+    requiredEnvironments: REQUIRED_ENVIRONMENTS,
+    acceptanceSteps: ACCEPTANCE_STEPS,
+    evidenceRequirements: EVIDENCE_REQUIREMENTS,
+    reason: 'unavailable',
+    pending: true,
+    executed: false,
+    verified: false,
+    evidenceLevel: 'unverified',
+    platform,
+    items: Object.freeze(items),
+  };
+
   // 1. 缺占位文件或占位文件非法（含伪造 passed 假成功）时固定 unavailable
   if (missingPlaceholders.length > 0 || invalidPlaceholders.length > 0) {
     return Object.freeze({
-      schemaVersion: 1,
-      profile: PROFILE,
-      planId: PLAN_ID,
+      ...basePlan,
       ready: false,
-      reason: 'unavailable',
-      pending: true,
-      executed: false,
-      verified: false,
-      evidenceLevel: 'unverified',
-      platform,
       artifact: artifactInfo.exists ? artifactInfo.path : null,
       missingPlaceholders: Object.freeze([...missingPlaceholders, ...invalidPlaceholders]),
       notes: '缺少必要的人工验收占位文件或占位文件非法（占位文件必须为 pending 且绝不可声明 passed 或 verified=true）；规划处于 unavailable 状态。',
-      items: Object.freeze(items),
     });
   }
 
   // 2. 非 Windows 平台时固定 unavailable
   if (platform !== 'win32') {
     return Object.freeze({
-      schemaVersion: 1,
-      profile: PROFILE,
-      planId: PLAN_ID,
+      ...basePlan,
       ready: false,
-      reason: 'unavailable',
-      pending: true,
-      executed: false,
-      verified: false,
-      evidenceLevel: 'unverified',
-      platform,
       artifact: artifactInfo.exists ? artifactInfo.path : null,
       notes: '非 Windows 环境无法执行 Windows 安装/覆盖升级/卸载验收；当前输出静态规划，明确不可当作已验收。即使提供安装包路径也绝不拉起安装器或 Electron。',
-      items: Object.freeze(items),
     });
   }
 
   // 3. Windows 环境无安装包产物时固定 unavailable
   if (!artifactInfo.exists) {
     return Object.freeze({
-      schemaVersion: 1,
-      profile: PROFILE,
-      planId: PLAN_ID,
+      ...basePlan,
       ready: false,
-      reason: 'unavailable',
-      pending: true,
-      executed: false,
-      verified: false,
-      evidenceLevel: 'unverified',
-      platform,
       artifact: null,
       notes: 'Windows 环境未检测到打包后的 Windows 安装包产物（NSIS .exe）；当前仅为静态规划，明确不可当作已验收。',
-      items: Object.freeze(items),
     });
   }
 
   // 4. Windows 环境且产物及占位文件齐全：输出待执行的人工规划，绝不宣称已验收
   return Object.freeze({
-    schemaVersion: 1,
-    profile: PROFILE,
-    planId: PLAN_ID,
+    ...basePlan,
     ready: true,
     reason: 'planned_manual_acceptance_required',
-    pending: true,
-    executed: false,
-    verified: false,
-    evidenceLevel: 'unverified',
-    platform,
     artifact: artifactInfo.path,
     notes: '已发现 Windows 安装包产物，静态规划就绪；本规划器绝不执行安装器或 Electron 进程，仍须人工在真实 Windows 主机隔离环境中执行并读回验收证据。',
-    items: Object.freeze(items),
   });
 }
 

@@ -1,3 +1,13 @@
+---
+id: release-install-upgrade-uninstall
+title: MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - windows_real_machine
+reason: 待 Windows 真实环境人工执行安装、覆盖升级与卸载验收
+---
+
 # MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107：Windows 安装/升级/卸载离线规划
 
 <!-- current-design-20261015 -->
@@ -113,6 +123,38 @@ git diff --check
 ---
 
 ## 5. 后续真实环境人工验收路线
+
+## 验收步骤
+
+1. 全新安装与启动（`release-install-start`）：运行独立安装包，验证无需管理员提权即可在当前用户空间安装，桌面及开始菜单快捷方式正确生成，首次启动主进程正确初始化 `userData` 目录
+2. 覆盖升级与数据保留（`release-upgrade-data`）：预先写入测试版本 `userData` 后运行新版本安装包覆盖安装，启动新版本验证 SQLite 任务与会话数据完好保留且表结构未重建
+3. 安全卸载（`release-uninstall`）：通过系统设置或快捷方式触发卸载，验证安装目录及快捷方式被彻底清理且用户数据（`userData`）按默认策略完整保留
+4. 真实证据读回：真实人工验收完成后，将具体操作环境信息、执行人、日志与时间戳记录至三份 json 占位文件
+
+## 证据要求
+
+1. `tests/manual/release/windows-install-start.json` 人工验收占位文件（pending/unverified）及真实启动日志
+2. `tests/manual/release/windows-upgrade-data-retention.json` 人工验收占位文件及覆盖读回日志
+3. `tests/manual/release/windows-uninstall.json` 人工验收占位文件及卸载残留检测日志
+
+## 挂起项
+
+- `release_install_start_real_machine`：全新安装与启动待 Windows 真实机人工执行验收
+- `release_upgrade_data_retention_real_machine`：覆盖升级与数据保留待 Windows 真实机人工执行验收
+- `release_uninstall_real_machine`：安全卸载与数据保留待 Windows 真实机人工执行验收
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `release-install-upgrade-uninstall` | `scripts/release/release-install-upgrade-uninstall.plan.mjs` | L6: `const PLAN_ID = 'release-install-upgrade-uninstall'` |
+| title | `MOD-19 Windows 安装/覆盖升级/卸载全生命周期离线规划` | `docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md` | L1: `# MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107：Windows 安装/升级/卸载离线规划`；代码 `PLAN_TITLE` |
+| status | `unavailable` | `scripts/release/release-install-upgrade-uninstall.plan.mjs` | L226, L246, L265: `reason: 'unavailable'`；文档 §2.2: `ready: false, reason: 'unavailable', pending: true` |
+| closedLoop | `false` | `docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md` | §1: `不代表 Windows 安装包已完成真实环境验收`；代码 L229: `verified: false` |
+| requiredEnvironments | `['windows_real_machine']` | `docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md` | §2.2: `在 Linux/macOS 环境下无法执行真实 Windows 安装程序验收`；§5: `须在真实 Windows 11 x64 干净实体机（或隔离虚拟机）按以下规范执行人工验收` |
+| acceptanceSteps | 4 项完整步骤 | `docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md` | §5: 全新安装与启动、覆盖升级与数据保留、安全卸载、证据读回 4 项验收清单 |
+| evidenceRequirements | 3 项证据要求 | `docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md` | §1: 文件清单列出的三份人工验收占位文件；§5.4: 证据读回要求 |
+| reason / pendingItems | `待 Windows 真实环境人工执行安装、覆盖升级与卸载验收` | `docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md` | §1: `非完成声明...占位文件仅代表离线脚手架到位，占位≠验收通过`；§2.2: `reason: 'unavailable'` |
 
 当后续主对话授权生产打包配置实施并生成实际安装包（`.exe`）后，须在真实 Windows 11 x64 干净实体机（或隔离虚拟机）按以下规范执行人工验收并读回证据：
 
