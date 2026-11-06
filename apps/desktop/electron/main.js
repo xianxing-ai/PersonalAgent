@@ -4707,6 +4707,12 @@ app.whenReady().then(async () => {
     catch (error) {
       if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(args[1]))
         return developerSettingsErrorResponse(error);
+      // MOD-12: keep the published SESSION_* failure codes exact over IPC
+      // (errorDisplay alone would classify them into generic codes).
+      if(typeof args[1]==='string'&&args[1].startsWith('session.')&&typeof error?.code==='string'&&error.code.startsWith('SESSION_')){
+        const failure=errorDisplay(error,'ipc');
+        return {ok:false,error:failure.message,errorCode:error.code};
+      }
       if(typeof args[1]==='string'&&(args[1].startsWith('computer.control.')||args[1]==='computer.vision.configure')){
         const failure=computerControlFailure(error,args[1]);
         return {ok:false,error:failure.message,errorCode:failure.code,stage:failure.stage,
