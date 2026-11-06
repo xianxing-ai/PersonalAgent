@@ -4,7 +4,6 @@ import {ProtocolError} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolDescriptor, ToolHost} from '@personal-agent/contracts';
 export * from './desktop-control.js';
 export * from './native-desktop.js';
-export * from './notepad-live-acceptance-plan.js';
 
 export const SYSTEM_OBSERVATION_TOOL_NAME = 'computer.system.observe';
 export const SYSTEM_OBSERVATION_TOOL_VERSION = '1.0.0';
@@ -297,3 +296,5 @@ export function createSystemObservationTool(options: SystemObservationToolOption
 export function register(host: ToolHost, options: SystemObservationToolOptions = {}): () => void {
   return host.register(createSystemObservationTool(options));
 }
+
+export * from './notepad-live-acceptance-plan.js';
