@@ -8,7 +8,7 @@
 
 - 渲染层/受信对话窗口：`window.desktop.invoke('session.<op>', payload)` → 主进程 `desktop:action` → `handleSessionManagementApi`。
 - 发送方边界：仅 panel / workspace 两个受信对话窗口；其它来源一律拒绝（`SESSION_SURFACE_INVALID`）。
-- 失败形态：错误以 `SessionApiError` 抛出，经既有 `desktop:action` 包装为 `{ok:false,error,errorCode}`；`code` 即下表错误码。
+- 失败形态：错误以 `SessionApiError` 抛出，经 `desktop:action` 包装为 `{ok:false,error,errorCode}`；`errorCode` 保留本表精确错误码（`SESSION_*`），`error` 为人类可读消息。
 
 ## 操作目录（修订 1）
 
