@@ -1,3 +1,13 @@
+---
+id: mod04b-agentarts-acceptance-plan
+title: MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - huawei_cloud
+reason: 待真云验收
+---
+
 # MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划（2026-11-07）
 
 <!-- current-design-20261015 -->
@@ -117,3 +127,48 @@ MOD-04B（Competition 文字协调消费实现）在华为比赛 Profile（`huaw
 - 模块接口保持 `provisional`，未变更 Core wire Schema 或扩大冻结范围；
 - ROADMAP 中 MOD-04B 补充本次离线规划小注，状态维持 `review`/`in_progress`（待后续华为云真实端到端执行证据）；
 - 本次改动未修改 `apps/runtime`、`apps/desktop`、业务连接器或根 `package.json`，未修改 ZCode 评测/Demo 文件。
+
+---
+
+## 验收步骤
+
+- 步骤 1：`agentarts_real_cloud_endpoint`：华为云 AgentArts 真实端点（HTTPS/WSS）与有效凭据（Authorization）端到端连通读回（非本地 Fake）
+- 步骤 2：`agentarts_multi_agent_routing`：AgentArts 云端多智能体协作网络（主协调器与专业子 Agent）角色路由与分派结果真实读回
+- 步骤 3：`agentarts_continuation_roundtrip`：基于真实提案 proposalId 的受限 continuation 工具结果回传与多轮续答闭环读回
+- 步骤 4：`agentarts_tool_proposal_verification`：云端生成 ToolProposal 到本地 Policy/ToolGateway 授权审批与结果核实的双向读回
+- 步骤 5：`platform_independent_trace_and_cost`：华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）
+- 步骤 6：`local_cancellation_and_deadline_settlement`：真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回
+
+---
+
+## 证据要求
+
+- 凭证 1：`Mod04bAgentArtsEvidence` 合规回执（含 gatewayUrl HTTPS/WSS、CloudTraceId、时序因果 completedAt >= invokedAt、至少 2 位不同非 Mock Agent 与/或 confirmed 状态 continuation）
+- 凭证 2：华为云 AgentArts 平台独立 TraceId 关联、Token/计费在线读回与双向授权审计凭据
+
+---
+
+## 挂起项
+
+- 挂起项 1：`agentarts_real_cloud_endpoint`（status: unavailable, reason: 待真云验收）
+- 挂起项 2：`agentarts_multi_agent_routing`（status: unavailable, reason: 待真云验收）
+- 挂起项 3：`agentarts_continuation_roundtrip`（status: unavailable, reason: 待真云验收）
+- 挂起项 4：`agentarts_tool_proposal_verification`（status: unavailable, reason: 待真云验收）
+- 挂起项 5：`platform_independent_trace_and_cost`（status: unavailable, reason: 待真云验收）
+- 挂起项 6：`local_cancellation_and_deadline_settlement`（status: unavailable, reason: 待真云验收）
+
+---
+
+## 字段来源依据（Source References）
+
+| 字段名称 | 结构化声明值 | 原规划来源依据（章节 / 行 / 原句） |
+| :--- | :--- | :--- |
+| `id` | `mod04b-agentarts-acceptance-plan` | 本文档标题及 §2（`packages/coordination/src/mod04b-agentarts-acceptance-plan.ts`） |
+| `title` | `MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划` | 本文档一级标题第 1 行 |
+| `status` | `unavailable` | 本文档文首要点及 §1.1/§2.3（"状态标记为 `unavailable`"） |
+| `closedLoop` | `false` | 本文档文首要点及 §1.1/§2.3（"无真实华为云多 Agent / continuation 读回证据时 `closedLoop: false`"） |
+| `requiredEnvironments` | `['huawei_cloud']` | 本文档文首与 §1、§2.3（明确要求华为云在线真实多 Agent 环境，无真实云证据不闭环） |
+| `reason` | `待真云验收` | 本文档文首要点及 §1.1/§2.3（"原因统一标记为 `'待真云验收'`"） |
+| `acceptanceSteps` | 6 项核心端到端步骤 | 本文档 §2.3 明确定义的 6 大华为云端到端真实验收挂起项编号与原名 |
+| `evidenceRequirements` | 2 项合规证据 | 本文档 §1.3/§2.1 明确规定的 `Mod04bAgentArtsEvidence` 回执要求与云平台 Trace 凭据 |
+| `pending` | 6 项默认挂起项 | 本文档 §1.2/§2.3 声明的 6 大华为云端到端真实验收挂起项 |

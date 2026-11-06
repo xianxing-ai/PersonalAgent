@@ -1,8 +1,48 @@
 import { ProtocolError } from '@personal-agent/contracts';
 
+export const PLAN_ID = 'mod04b-agentarts-acceptance-plan';
+export const PLAN_TITLE = 'MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划';
 export const MOD04B_AGENTARTS_PROFILE = 'huawei_ict_agentarts' as const;
 export const MOD04B_AGENTARTS_CAPABILITY = 'competition_coordination' as const;
 export const MOD04B_AGENTARTS_PENDING_REASON = '待真云验收' as const;
+export const PENDING_REASON = MOD04B_AGENTARTS_PENDING_REASON;
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['huawei_cloud'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md §2.3）
+ */
+export const ACCEPTANCE_STEPS = [
+  'agentarts_real_cloud_endpoint：华为云 AgentArts 真实端点（HTTPS/WSS）与有效凭据（Authorization）端到端连通读回（非本地 Fake）',
+  'agentarts_multi_agent_routing：AgentArts 云端多智能体协作网络（主协调器与专业子 Agent）角色路由与分派结果真实读回',
+  'agentarts_continuation_roundtrip：基于真实提案 proposalId 的受限 continuation 工具结果回传与多轮续答闭环读回',
+  'agentarts_tool_proposal_verification：云端生成 ToolProposal 到本地 Policy/ToolGateway 授权审批与结果核实的双向读回',
+  'platform_independent_trace_and_cost：华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）',
+  'local_cancellation_and_deadline_settlement：真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'Mod04bAgentArtsEvidence 合规回执（含 gatewayUrl HTTPS/WSS、CloudTraceId、时序因果 completedAt >= invokedAt、至少 2 位不同非 Mock Agent 与/或 confirmed 状态 continuation）',
+  '华为云 AgentArts 平台独立 TraceId 关联、Token/计费在线读回与双向授权审计凭据',
+];
+
+/**
+ * 默认待真云验收挂起项声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'agentarts_real_cloud_endpoint',
+  'agentarts_multi_agent_routing',
+  'agentarts_continuation_roundtrip',
+  'agentarts_tool_proposal_verification',
+  'platform_independent_trace_and_cost',
+  'local_cancellation_and_deadline_settlement',
+];
 
 export interface Mod04bAgentRole {
   readonly role: string;
