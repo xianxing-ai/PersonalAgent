@@ -23,6 +23,7 @@
     "test:mcp-tls-smoke": "node tests/manual/mcp/remote-tls-smoke.mjs",
     "test:dev-workflows": "node --test packages/connectors/github/test/*.test.mjs packages/coding-tools/test/ci-fix.test.mjs packages/coding-tools/test/git-tools.test.mjs packages/cognition/test/code-review.test.mjs packages/cognition/test/issue-triage.test.mjs apps/runtime/test/dev-workflows-runtime.test.mjs",
     "test:contract-fixtures": "node --test tests/contracts/*.test.mjs",
+    "check:packaged-sqlite-smoke-plan": "node scripts/release/packaged-sqlite-smoke.plan.mjs --check",
     "check": "npm run check:architecture && npm run test:contract-fixtures && npm run check:generated --workspace=@personal-agent/contracts && npm run typecheck && npm run test --workspaces && npm run test:integration",
     "demo:protocol": "npm run build && node scripts/dev/protocol-demo.mjs",
     "demo:runtime": "npm run build && node apps/runtime/examples/task-lifecycle.mjs",
