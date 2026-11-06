@@ -3,7 +3,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, copyFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, copyFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +40,24 @@ test('buildDemoData：从仓库真实文件生成 28 图数据，含可追溯来
   assert.match(data.sources[0].sha256, /^[0-9a-f]{64}$/);
   assert.ok(!Number.isNaN(Date.parse(data.generatedAt)));
   assert.equal(data.liveDemo.runtimeConfigured, false, '构建期未配置 Runtime 必须如实标 false');
+});
+
+test('buildDemoData：所有来源均属于指定仓库', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'webdemo-source-'));
+  const wiringDir = join(tmp, 'docs', 'competition');
+  const statusDir = join(tmp, 'docs', 'demo', 'web-demo');
+  mkdirSync(wiringDir, { recursive: true });
+  mkdirSync(statusDir, { recursive: true });
+  copyFileSync(join(repoRoot, 'docs', 'competition', 'workflow-wiring.json'), join(wiringDir, 'workflow-wiring.json'));
+  const statusPath = join(statusDir, 'capability-status.json');
+  const statusText = JSON.stringify({ snapshotDate: 'fixture-date', capabilities: [{ id: 'F01', status: 'fixture-status' }] });
+  writeFileSync(statusPath, statusText);
+  const data = buildDemoData(tmp);
+  assert.equal(data.stats.snapshotDate, 'fixture-date');
+  assert.equal(data.workflows[0].status.status, 'fixture-status');
+  assert.equal(data.sources[1].sha256, createHash('sha256').update(statusText).digest('hex'));
+  unlinkSync(statusPath);
+  assert.throws(() => buildDemoData(tmp), { code: 'ENOENT' });
 });
 
 test('demo-server：接口返回真实数据；数据缺失返回 503 而不是编造', async () => {

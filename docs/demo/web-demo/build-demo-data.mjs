@@ -28,7 +28,7 @@ function sha256File(path) {
 
 export function buildDemoData(repoRoot = resolve(join(here, '..', '..', '..')), now = new Date()) {
   const wiringPath = join(repoRoot, 'docs', 'competition', 'workflow-wiring.json');
-  const statusPath = join(here, 'capability-status.json');
+  const statusPath = join(repoRoot, 'docs', 'demo', 'web-demo', 'capability-status.json');
   const wiring = JSON.parse(readFileSync(wiringPath, 'utf8'));
   const status = JSON.parse(readFileSync(statusPath, 'utf8'));
 
