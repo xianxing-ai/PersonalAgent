@@ -7,7 +7,7 @@
 //   node scripts/competition/run-evaluation.mjs [--adapter contract|runtime] [--runtime-url URL]
 //        [--cases <cases.json>] [--wiring <workflow-wiring.json>] [--filter EVAL-F01-001,EVAL-F02-001]
 //        [--out <dir>] [--timeout-ms 20000]
-// 退出码：0=完成；1=参数/文件错误；2=manifest 与 events 汇总不一致；3=runtime 不可用。
+// 退出码：0=完成；1=参数/文件错误（含空过滤结果）；2=manifest 与 events 汇总不一致；3=runtime 不可用；4=contract 结构检查失败。
 
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
@@ -91,6 +91,7 @@ export async function runEvaluation(args, { now = () => new Date() } = {}) {
   const caseSet = JSON.parse(readFileSync(args.cases, 'utf8'));
   const wiring = JSON.parse(readFileSync(args.wiring, 'utf8'));
   const cases = args.filter ? caseSet.cases.filter((c) => args.filter.includes(c.id)) : caseSet.cases;
+  if (args.filter && cases.length === 0) throw new Error('过滤条件未匹配任何评测用例');
   const runId = `eval-${now().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`;
   const events = [];
   const emit = (type, data) => events.push({ ts: now().toISOString(), runId, type, ...data });
@@ -209,7 +210,7 @@ async function main(argv) {
   }
   console.log(`[evaluation] runId=${runId} adapter=${summary.adapter} passed=${summary.passed} failed=${summary.failed} unavailable=${summary.unavailable} score=${summary.score === null ? 'unavailable' : `${(summary.score * 100).toFixed(1)}%`}`);
   for (const f of files ?? []) console.log(`[evaluation] trace: ${f}`);
-  return summary.adapter === 'runtime' ? 3 : 0;
+  return summary.adapter === 'runtime' ? 3 : (summary.failed > 0 ? 4 : 0);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

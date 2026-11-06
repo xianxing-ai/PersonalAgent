@@ -27,7 +27,7 @@ node scripts/competition/run-evaluation.mjs --adapter runtime --runtime-url http
 node scripts/competition/run-evaluation.mjs --out /tmp/eval-runs
 ```
 
-退出码：0 完成；1 参数/文件错误；2 manifest 与 events 汇总不一致（判分无效）；3 runtime 执行不可用。
+退出码：0 完成；1 参数/文件错误或过滤后无用例；2 manifest 与 events 汇总不一致（判分无效）；3 runtime 执行不可用；4 contract 结构检查失败。
 
 ## 边界（重要）
 

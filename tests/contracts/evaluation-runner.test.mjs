@@ -155,3 +155,19 @@ test('Trace 自检拒绝汇总与用例不一致、重复或缺失标识', async
   assert.equal(readFileSync(priorManifest, 'utf8'), 'previous manifest');
   assert.equal(existsSync(newEvents), false, '第二文件创建失败应移除本次新建的第一文件');
 });
+
+
+test('contract CLI 结构失败或空过滤时返回非零', () => {
+  const out = mkdtempSync(join(tmpdir(), 'eval-invalid-'));
+  const casesFile = join(out, 'invalid-cases.json');
+  const caseInput = { cases: [{ ...caseSet.cases[0], workflowId: 'F99' }] };
+  writeFileSync(casesFile, JSON.stringify(caseInput));
+  const script = join(repoRoot, 'scripts/competition/run-evaluation.mjs');
+  const broken = spawnSync(process.execPath, [script, '--adapter', 'contract', '--cases', casesFile, '--out', out], { encoding: 'utf8' });
+  assert.equal(broken.status, 4);
+  const manifest = JSON.parse(readFileSync(join(out, readdirSync(out).find((f) => f.endsWith('.manifest.json'))), 'utf8'));
+  assert.equal(manifest.totals.failed, 1);
+  const empty = spawnSync(process.execPath, [script, '--adapter', 'contract', '--filter', 'NO-SUCH-CASE', '--out', out], { encoding: 'utf8' });
+  assert.equal(empty.status, 1);
+  assert.match(empty.stderr, /过滤条件未匹配任何评测用例/);
+});
