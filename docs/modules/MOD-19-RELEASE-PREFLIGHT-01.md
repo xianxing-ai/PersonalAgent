@@ -61,7 +61,7 @@ Electron 自带的 Node/V8 运行时与命令行 Node 不是同一可执行环�
 针对打包后 Electron 主进程 SQLite 验证缺口，仓库已补充纯静态规划与占位脚手架：
 1. `tests/manual/release/windows-electron-sqlite.json`（`status=pending`、`executed=false`、`evidenceLevel=unverified`）；
 2. 静态规划脚本 `scripts/release/packaged-sqlite-smoke.plan.mjs` 及测试 `scripts/release/packaged-sqlite-smoke.plan.test.mjs`；
-3. 根命令 `npm run check:packaged-sqlite-smoke-plan` 用于静态校验规划与占位文件。
+3. 直接运行 `node scripts/release/packaged-sqlite-smoke.plan.mjs --check` 用于静态校验规划与占位文件（不改根 package.json）。
 
 **关键安全边界：占位 ≠ 验收。**
 - 静态规划器不执行 Electron 进程（有路径也不拉起）；在非 Windows 或无产物时固定输出 `{ready:false, reason:'unavailable', pending:true}`，直接 CLI 运行返回非 0 退出码表示“不可当作已验收”；

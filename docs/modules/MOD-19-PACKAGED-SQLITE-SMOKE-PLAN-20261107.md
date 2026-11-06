@@ -51,7 +51,7 @@
 | `scripts/release/packaged-sqlite-smoke.plan.test.mjs` | 静态规划器、占位文件与安全边界单元测试 | 新增 |
 | `docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md` | 本设计与规划说明文档 | 新增 |
 | `docs/modules/MOD-19-RELEASE-PREFLIGHT-01.md` | 更新说明占位与验收边界 | 补充 |
-| `package.json` | 提供 `check:packaged-sqlite-smoke-plan` 静态检验脚本 | 补充 |
+| `package.json` | 提供 `node scripts/release/packaged-sqlite-smoke.plan.mjs --check` 静态检验脚本 | 补充 |
 
 ## 5. 验证方式
 
@@ -63,7 +63,7 @@ node --test scripts/release/packaged-sqlite-smoke.plan.test.mjs
 node --test scripts/release/preflight.test.mjs
 
 # 3. 运行静态规划检查
-npm run check:packaged-sqlite-smoke-plan
+node scripts/release/packaged-sqlite-smoke.plan.mjs --check
 
 # 4. 差异安全检查
 git diff --check
