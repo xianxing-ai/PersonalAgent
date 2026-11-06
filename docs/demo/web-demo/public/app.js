@@ -51,15 +51,15 @@ async function main() {
 function render(data) {
   document.getElementById('profile').textContent = data.profile;
   const head = data.git?.head ? data.git.head.slice(0, 12) : '未知';
-  document.getElementById('meta').textContent = `数据生成于 ${new Date(data.generatedAt).toLocaleString('zh-CN')} · HEAD ${head} · 校验 ${data.verification}`;
+  document.getElementById('meta').textContent = `历史状态快照 ${data.stats.snapshotDate ?? '未知'}（非实时状态） · 数据生成于 ${new Date(data.generatedAt).toLocaleString('zh-CN')} · 生成时 HEAD ${head}（工作区可能有未提交修改） · 校验 ${data.verification}`;
 
   const s = data.stats;
   const statsEl = document.getElementById('stats');
   statsEl.append(
     statCard(s.workflowCount, '张工作流图'),
     statCard(s.designNodeCount, '个设计节点'),
-    statCard(`${s.configuredCount}/${s.configuredTotal}`, '已 configured（接线完成）'),
-    statCard(`${s.hostGuardChecklistDone ?? 0}/${s.hostGuardChecklistTotal ?? '—'}`, '宿主守卫清单勾选'),
+    statCard(`${s.configuredCount ?? '未知'}/${s.configuredTotal}`, '已 configured（接线完成）'),
+    statCard(`${s.hostGuardChecklistDone ?? '未知'}/${s.hostGuardChecklistTotal ?? '—'}`, '宿主守卫清单勾选'),
   );
   for (const [status, count] of Object.entries(s.statusCounts)) {
     const meta = STATUS_LABEL[status] ?? STATUS_LABEL.unknown;

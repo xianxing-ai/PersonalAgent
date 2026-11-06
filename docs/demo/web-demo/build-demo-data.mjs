@@ -99,7 +99,7 @@ export function buildDemoData(repoRoot = resolve(join(here, '..', '..', '..')), 
       designNodeCount: workflows.reduce((s, w) => s + w.nodeCount, 0),
       hostGuardChecklistTotal: status.global?.hostGuardChecklistTotal ?? null,
       hostGuardChecklistDone: status.global?.hostGuardChecklistDone ?? null,
-      configuredCount: 0,
+      configuredCount: status.global?.workflowsConfigured ?? null,
       configuredTotal: workflows.length,
       statusCounts: statuses.reduce((acc, s) => ((acc[s] = (acc[s] ?? 0) + 1), acc), {}),
       snapshotDate: status.snapshotDate,
@@ -110,7 +110,7 @@ export function buildDemoData(repoRoot = resolve(join(here, '..', '..', '..')), 
     liveDemo: {
       runtimeConfigured: false,
       reason:
-        '构建期未提供已部署 AgentArts Runtime 地址。页面支持在“实时交互”区输入已部署 Runtime 的地址按其公开契约只读探测；未部署或探测失败时一律显示 unavailable，不提供模拟数据。',
+        '构建期未提供已部署 AgentArts Runtime 地址。页面支持在“运行时健康探测”区输入地址进行只读探测，不执行任务；未部署或探测失败时一律显示 unavailable，不提供模拟数据。',
       probeHint: 'GET {runtimeUrl}/healthz 与 GET {runtimeUrl}/api/demo-data，只读，不发任何写请求。',
     },
   };

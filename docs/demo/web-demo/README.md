@@ -32,7 +32,7 @@ node docs/demo/web-demo/demo-server.mjs --port 8080        # http://127.0.0.1:80
 
 1. 在干净 checkout 执行 `node docs/demo/web-demo/build-demo-data.mjs`（数据随 checkout 的 HEAD 变化，保证可追溯）。
 2. `node docs/demo/web-demo/demo-server.mjs --port 8080` 常驻；或将 `public/` + `demo-data.json` 交给任意静态托管 + 只读 API 代理。
-3. 页面“实时交互”区可输入已部署 AgentArts Runtime 地址做只读探测（GET /healthz）；未部署时显示 unavailable。
+3. 页面“运行时健康探测”区可输入已部署 AgentArts Runtime 地址做只读探测（GET /healthz）；未部署时显示 unavailable。此探测不执行任务。
 
 ## 边界与编号说明
 
@@ -43,4 +43,4 @@ node docs/demo/web-demo/demo-server.mjs --port 8080        # http://127.0.0.1:80
 ## 已知不可测项
 
 - 静态页的浏览器渲染效果由人工/CI 浏览器确认；仓库内测试只覆盖数据构建、服务器接口与内容断言。
-- “实时交互”探测依赖真实部署的 Runtime，本地无部署时按设计显示 unavailable（这是明确行为，不是故障）。
+- “运行时健康探测”依赖真实部署的 Runtime，本地无部署时按设计显示 unavailable；它不验证真实任务交互。

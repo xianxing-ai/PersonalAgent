@@ -61,8 +61,13 @@ export function startDemoServer(options = {}) {
   const { port = 8080, dataFile = DEFAULT_DATA, publicDir = DEFAULT_PUBLIC } = options;
 
   const server = createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
-    const pathname = decodeURIComponent(url.pathname);
+    let pathname;
+    try {
+      pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    } catch {
+      sendJson(res, 400, { error: 'invalid_url' });
+      return;
+    }
 
     // 只允许 GET/HEAD
     if (req.method !== 'GET' && req.method !== 'HEAD') {

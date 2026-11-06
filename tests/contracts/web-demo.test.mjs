@@ -50,12 +50,15 @@ test('buildDemoData：所有来源均属于指定仓库', () => {
   mkdirSync(statusDir, { recursive: true });
   copyFileSync(join(repoRoot, 'docs', 'competition', 'workflow-wiring.json'), join(wiringDir, 'workflow-wiring.json'));
   const statusPath = join(statusDir, 'capability-status.json');
-  const statusText = JSON.stringify({ snapshotDate: 'fixture-date', capabilities: [{ id: 'F01', status: 'fixture-status' }] });
+  const statusText = JSON.stringify({ snapshotDate: 'fixture-date', global: { workflowsConfigured: 1 }, capabilities: [{ id: 'F01', status: 'fixture-status' }] });
   writeFileSync(statusPath, statusText);
   const data = buildDemoData(tmp);
   assert.equal(data.stats.snapshotDate, 'fixture-date');
+  assert.equal(data.stats.configuredCount, 1);
   assert.equal(data.workflows[0].status.status, 'fixture-status');
   assert.equal(data.sources[1].sha256, createHash('sha256').update(statusText).digest('hex'));
+  writeFileSync(statusPath, JSON.stringify({ capabilities: [] }));
+  assert.equal(buildDemoData(tmp).stats.configuredCount, null);
   unlinkSync(statusPath);
   assert.throws(() => buildDemoData(tmp), { code: 'ENOENT' });
 });
@@ -102,6 +105,11 @@ test('demo-server：接口返回真实数据；数据缺失返回 503 而不是�
     // 写方法拒绝
     const post = await fetch(`${url}/api/demo-data`, { method: 'POST' });
     assert.equal(post.status, 405);
+
+    const malformed = await fetch(`${url}/%ZZ`);
+    assert.equal(malformed.status, 400);
+    assert.equal((await malformed.json()).error, 'invalid_url');
+    assert.equal((await fetch(`${url}/api/health`)).status, 200);
   } finally {
     await close();
   }
