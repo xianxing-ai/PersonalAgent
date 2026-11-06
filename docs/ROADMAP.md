@@ -425,7 +425,7 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 | MOD-02 | M1 起步门槛 | done | goo122 / PR #1 原始 14 operation；PR #34 增至 17 operation 并完成 Desktop 消费验证；只冻结 Core Runtime Profile 1，不冻结整包 |
 | MOD-03 | M1/M2 | done | goo122 / PR #5 / 合并提交 e14aebf / 7 项 Runtime 测试及评审通过 |
 | MOD-04A | Local Profile 可选模型层 | review | `goo122` / 历史 PR #10、#11、#26 已合并；ModelGateway、Pangu 文本 Provider、JSON 提案适配离线通过；代码保留，但新增 Local 能力不进入当前比赛优先级 |
-| MOD-04B | Competition Coordination；Local Agent 可选 | review | `zemeng` / PR #36、#49、#72（Workflow 输入）、#80（continuation 边界）均已进入 main（2026-09-30 台账核对），离线审批工具循环已验证；真实 AgentArts 调用和多 Agent 结果仍未验收 |
+| MOD-04B | Competition Coordination；Local Agent 可选 | review | `zemeng` / PR #36、#49、#72（Workflow 输入）、#80（continuation 边界）均已进入 main（2026-09-30 台账核对），离线审批工具循环已验证；2026-11-07 补充真实 AgentArts 多 Agent 结果与 continuation 离线验收规划（无真云证据 closedLoop=false，标待真云验收，见 docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md）；真实 AgentArts 调用和多 Agent 结果仍未验收 |
 | MOD-05 | M1/M2 | review | goo122 / PR #7、#26、#49 已合并；任务级 SQLite 授权、参数绑定、审批恢复、工具 Evidence、幂等重放和 Competition 离线工具循环已验证；跨任务持续授权、真实 SecretStore 和真实写入恢复尚未完成 |
 | MOD-06 | M2 | in_progress | main 已有固定官方 filesystem stdio、受控只读映射与断连生命周期，详见 [MCP/Skill MVP](modules/MOD-06-07-MVP.md)；保持 provisional，不含任意服务/写工具；原生与真实云完整消费仍待验收 |
 | MOD-07 | M2 | in_progress | main 已有固定版本化参考摘要、受控调用及 Runtime/SQLite 审批恢复；本机 SKILL.md 安装/启停/使用/卸载和安装资源纯本地预览已由 #346→[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 合入 main `31b0ce5c`，#318 已关闭并保留分支/评审。[安装说明](modules/MOD-07-LOCAL-INSTALLATION-20261009.md) 与[组合集成记录](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 区分历史与当前证据。原生真人完整流程及真实云消费未验收，不标整个模块 done，不含任意脚本引擎 |
@@ -551,6 +551,7 @@ DEV-WORKFLOWS 历史真实验收：MOD-36 已取得只读模型预审回执；MO
 - 工作树 `.worktrees/zemeng-mod04b-coordinator`，分支 `codex/zemeng/mod04b-coordinator`。
 - 复用已有文字端口，交付 CompetitionCoordinator 与显式 Unavailable；不修改 Runtime 或公共契约。
 - 详见[工作包](modules/MOD-04B-COMPETITION-TEXT.md)。真实 AgentArts 与工具闭环仍 unavailable。
+- 2026-11-07 补充真实 AgentArts 多 Agent 结果与 continuation 离线验收规划（[MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md](modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md)）：交付 `assertMod04bAgentArtsEvidence` 与 `planMod04bAgentArtsAcceptance`，无真云证据时 `closedLoop: false`、状态 `unavailable`、标明 `待真云验收`，挂起 6 项真实验收项；状态仍维持 `review`/`in_progress`。
 
 ### MOD-28-IMPACT-01（本地依赖影响与显式修订提案）
 

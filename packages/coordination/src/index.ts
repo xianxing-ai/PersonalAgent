@@ -339,3 +339,22 @@ export function parseCoordinationResult(value: unknown): CoordinationResult {
 }
 
 export {CompetitionCoordinator, UnavailableCloudAgentPort} from './coordinator.js';
+export {
+  assertMod04bAgentArtsEvidence,
+  parseMod04bAgentArtsEvidence,
+  planMod04bAgentArtsAcceptance,
+  MOD04B_AGENTARTS_PROFILE,
+  MOD04B_AGENTARTS_CAPABILITY,
+  MOD04B_AGENTARTS_PENDING_REASON,
+  DEFAULT_MOD04B_AGENTARTS_PENDING_ITEMS,
+} from './mod04b-agentarts-acceptance-plan.js';
+export type {
+  Mod04bAgentRole,
+  Mod04bMultiAgentDetail,
+  Mod04bContinuationEvidence,
+  Mod04bAgentArtsEvidence,
+  Mod04bAgentArtsPendingItem,
+  RealCloudMultiAgentEvidence,
+  PlanMod04bAgentArtsAcceptanceOptions,
+  Mod04bAgentArtsAcceptancePlan,
+} from './mod04b-agentarts-acceptance-plan.js';
