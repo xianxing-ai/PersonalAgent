@@ -76,7 +76,7 @@ export async function runAcceptanceIndexCli(argv = process.argv.slice(2)) {
     for (const err of errors) {
       const missing = err.missingFields?.length > 0 ? err.missingFields.join(', ') : 'none';
       process.stderr.write(`  [ERROR] 路径: ${err.sourcePath}\n`);
-      process.stderr.write(`          标题: ${err.title}\n`);
+      process.stderr.write(`          标题: ${err.title || '（未显式声明标题）'}\n`);
       process.stderr.write(`          缺失字段: [${missing}]\n`);
       process.stderr.write(`          原因: ${err.errors.join('; ')}\n\n`);
     }

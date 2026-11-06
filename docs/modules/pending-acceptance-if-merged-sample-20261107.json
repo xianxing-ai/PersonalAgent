@@ -173,19 +173,21 @@
     "validPlans": 0,
     "errorsCount": 18,
     "skippedCount": 1,
-    "note": "0 假齐套。所有 18 份规划均准确识别并如实输出缺失字段与 cannot_confirm 追溯记录。"
+    "note": "0 假齐套。所有 18 份规划均准确识别并如实输出缺失字段与 cannot_confirm 追溯记录。严禁以文件名或字段ID回填缺失的 id/title，所有不能确认的字段必须列入 missingFields。"
   },
   "errors": [
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
       "title": "MOD-19 发布准备与打包",
       "missingFields": [
+        "id",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -194,8 +196,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
@@ -219,7 +221,7 @@
         }
       },
       "rawRecord": {
-        "id": "mod-19-packaged-sqlite-smoke-plan-20261107",
+        "id": null,
         "title": "MOD-19 发布准备与打包",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -245,8 +247,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
@@ -274,14 +276,16 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
-      "title": "sqlite-packaged-electron-smoke",
+      "title": null,
       "missingFields": [
+        "title",
         "closedLoop",
         "status",
         "requiredEnvironments",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty title",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing status string",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
@@ -291,7 +295,7 @@
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
@@ -316,7 +320,7 @@
       },
       "rawRecord": {
         "id": "sqlite-packaged-electron-smoke",
-        "title": "sqlite-packaged-electron-smoke",
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
         "planType": "code_plan_static",
         "status": null,
@@ -365,7 +369,7 @@
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
@@ -395,6 +399,7 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
       "title": "MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划（2026-11-07）",
       "missingFields": [
+        "id",
         "closedLoop",
         "status",
         "requiredEnvironments",
@@ -402,6 +407,7 @@
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing status string",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
@@ -411,8 +417,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
@@ -441,7 +447,7 @@
         }
       },
       "rawRecord": {
-        "id": "mod-29-deployment-readback-plan-20261107",
+        "id": null,
         "title": "MOD-29：AgentArts 部署当前 HEAD 端到端读回离线规划（2026-11-07）",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -458,8 +464,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
@@ -492,14 +498,18 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
-      "title": "deployment-readback-plan",
+      "title": null,
       "missingFields": [
+        "id",
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
+        "Missing or empty title",
         "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -509,12 +519,12 @@
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
           "reason": "missing_id",
-          "details": "No explicit id/planId/capability string literal found in code"
+          "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
         },
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
@@ -555,8 +565,8 @@
         }
       },
       "rawRecord": {
-        "id": "deployment-readback-plan",
-        "title": "deployment-readback-plan",
+        "id": null,
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
         "planType": "code_plan_static",
         "status": "unavailable",
@@ -584,12 +594,12 @@
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
             "reason": "missing_id",
-            "details": "No explicit id/planId/capability string literal found in code"
+            "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
           },
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
@@ -636,12 +646,14 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
       "title": "MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107：Windows 安装/升级/卸载离线规划",
       "missingFields": [
+        "id",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Invalid status \"review\"; expected one of: unavailable, pending, in_progress, ready, verified",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
@@ -651,8 +663,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
@@ -676,7 +688,7 @@
         }
       },
       "rawRecord": {
-        "id": "mod-19-release-acceptance-plans-20261107",
+        "id": null,
         "title": "MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107：Windows 安装/升级/卸载离线规划",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
         "planType": "markdown_plan",
@@ -700,8 +712,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
@@ -729,14 +741,16 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
-      "title": "release-install-upgrade-uninstall",
+      "title": null,
       "missingFields": [
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty title",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -746,7 +760,7 @@
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
@@ -771,7 +785,7 @@
       },
       "rawRecord": {
         "id": "release-install-upgrade-uninstall",
-        "title": "release-install-upgrade-uninstall",
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
         "planType": "code_plan_static",
         "status": "pending",
@@ -807,7 +821,7 @@
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
@@ -837,12 +851,14 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
       "title": "MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验",
       "missingFields": [
+        "id",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -851,8 +867,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
@@ -876,7 +892,7 @@
         }
       },
       "rawRecord": {
-        "id": "mod-16-notepad-live-acceptance-plan-20261107",
+        "id": null,
         "title": "MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -900,8 +916,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
@@ -929,14 +945,16 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
-      "title": "notepad.replace_text",
+      "title": null,
       "missingFields": [
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty title",
         "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -946,7 +964,7 @@
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
@@ -1008,7 +1026,7 @@
       },
       "rawRecord": {
         "id": "notepad.replace_text",
-        "title": "notepad.replace_text",
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
         "planType": "code_plan_static",
         "status": "unavailable",
@@ -1044,7 +1062,7 @@
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
@@ -1111,6 +1129,7 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
       "title": "MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）",
       "missingFields": [
+        "id",
         "closedLoop",
         "status",
         "requiredEnvironments",
@@ -1118,6 +1137,7 @@
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing status string",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
@@ -1127,8 +1147,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
@@ -1157,7 +1177,7 @@
         }
       },
       "rawRecord": {
-        "id": "mod-27-privacy-deletion-plan-20261107",
+        "id": null,
         "title": "MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -1174,8 +1194,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
@@ -1208,14 +1228,18 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
-      "title": "privacy-deletion-acceptance-plan",
+      "title": null,
       "missingFields": [
+        "id",
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
+        "Missing or empty title",
         "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -1225,12 +1249,12 @@
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
           "reason": "missing_id",
-          "details": "No explicit id/planId/capability string literal found in code"
+          "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
         },
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
@@ -1266,8 +1290,8 @@
         }
       },
       "rawRecord": {
-        "id": "privacy-deletion-acceptance-plan",
-        "title": "privacy-deletion-acceptance-plan",
+        "id": null,
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
         "planType": "code_plan_static",
         "status": "unavailable",
@@ -1295,12 +1319,12 @@
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
             "reason": "missing_id",
-            "details": "No explicit id/planId/capability string literal found in code"
+            "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
           },
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
@@ -1342,12 +1366,14 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
       "title": "MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
       "missingFields": [
+        "id",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -1356,8 +1382,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
@@ -1381,7 +1407,7 @@
         }
       },
       "rawRecord": {
-        "id": "mod-18-windows-sandbox-acceptance-plan-20261107",
+        "id": null,
         "title": "MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -1405,8 +1431,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
@@ -1434,14 +1460,16 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
-      "title": "workspace.run_allowed_command",
+      "title": null,
       "missingFields": [
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty title",
         "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -1451,7 +1479,7 @@
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
@@ -1518,7 +1546,7 @@
       },
       "rawRecord": {
         "id": "workspace.run_allowed_command",
-        "title": "workspace.run_allowed_command",
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
         "planType": "code_plan_static",
         "status": "unavailable",
@@ -1554,7 +1582,7 @@
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
@@ -1626,6 +1654,7 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
       "title": "F09：订阅云前缀与会话授权端到端读回离线规划（2026-11-07）",
       "missingFields": [
+        "id",
         "closedLoop",
         "status",
         "requiredEnvironments",
@@ -1633,6 +1662,7 @@
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing status string",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
@@ -1642,8 +1672,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
@@ -1672,7 +1702,7 @@
         }
       },
       "rawRecord": {
-        "id": "f09-cloud-prefix-acceptance-plan-20261107",
+        "id": null,
         "title": "F09：订阅云前缀与会话授权端到端读回离线规划（2026-11-07）",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -1689,8 +1719,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
@@ -1723,14 +1753,18 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
-      "title": "f09-cloud-prefix-acceptance-plan",
+      "title": null,
       "missingFields": [
+        "id",
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
+        "Missing or empty title",
         "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -1740,12 +1774,12 @@
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
           "reason": "missing_id",
-          "details": "No explicit id/planId/capability string literal found in code"
+          "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
         },
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
@@ -1791,8 +1825,8 @@
         }
       },
       "rawRecord": {
-        "id": "f09-cloud-prefix-acceptance-plan",
-        "title": "f09-cloud-prefix-acceptance-plan",
+        "id": null,
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
         "planType": "code_plan_static",
         "status": "unavailable",
@@ -1820,12 +1854,12 @@
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
             "reason": "missing_id",
-            "details": "No explicit id/planId/capability string literal found in code"
+            "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
           },
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
@@ -1877,6 +1911,7 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
       "title": "cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）",
       "missingFields": [
+        "id",
         "closedLoop",
         "status",
         "requiredEnvironments",
@@ -1884,6 +1919,7 @@
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing status string",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
@@ -1893,8 +1929,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
@@ -1923,7 +1959,7 @@
         }
       },
       "rawRecord": {
-        "id": "cloud-persistent-acceptance-plan-20261107",
+        "id": null,
         "title": "cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -1940,8 +1976,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
@@ -1974,14 +2010,16 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
-      "title": "cloud_persistent",
+      "title": null,
       "missingFields": [
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty title",
         "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -1991,7 +2029,7 @@
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
@@ -2043,7 +2081,7 @@
       },
       "rawRecord": {
         "id": "cloud_persistent",
-        "title": "cloud_persistent",
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
         "planType": "code_plan_static",
         "status": "unavailable",
@@ -2079,7 +2117,7 @@
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
@@ -2136,6 +2174,7 @@
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
       "title": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划（2026-11-07）",
       "missingFields": [
+        "id",
         "closedLoop",
         "status",
         "requiredEnvironments",
@@ -2143,6 +2182,7 @@
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty id",
         "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing status string",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
@@ -2152,8 +2192,8 @@
       "cannotConfirm": {
         "id": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
-          "reason": "inferred_id_from_filename",
-          "details": "No explicit id declared in frontmatter or metadata line"
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
@@ -2182,7 +2222,7 @@
         }
       },
       "rawRecord": {
-        "id": "mod-04b-agentarts-acceptance-plan-20261107",
+        "id": null,
         "title": "MOD-04B：AgentArts 多 Agent 结果与文字协调离线验收规划（2026-11-07）",
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
         "planType": "markdown_plan",
@@ -2199,8 +2239,8 @@
         "cannotConfirm": {
           "id": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
-            "reason": "inferred_id_from_filename",
-            "details": "No explicit id declared in frontmatter or metadata line"
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
@@ -2233,14 +2273,16 @@
     },
     {
       "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
-      "title": "competition_coordination",
+      "title": null,
       "missingFields": [
+        "title",
         "closedLoop",
         "requiredEnvironments",
         "acceptanceSteps",
         "evidenceRequirements"
       ],
       "errors": [
+        "Missing or empty title",
         "Ambiguous closedLoop: multiple conditional branches or dynamic expressions detected in code. Static analysis cannot determine default branch without runtime execution.",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
@@ -2250,7 +2292,7 @@
         "title": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
           "reason": "missing_title",
-          "details": "No explicit title/planTitle string literal found in code"
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
         },
         "closedLoop": {
           "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
@@ -2302,7 +2344,7 @@
       },
       "rawRecord": {
         "id": "competition_coordination",
-        "title": "competition_coordination",
+        "title": null,
         "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
         "planType": "code_plan_static",
         "status": "unavailable",
@@ -2338,7 +2380,7 @@
           "title": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
             "reason": "missing_title",
-            "details": "No explicit title/planTitle string literal found in code"
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
           },
           "closedLoop": {
             "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
@@ -2390,12 +2432,6 @@
         },
         "warnings": []
       }
-    }
-  ],
-  "skipped": [
-    {
-      "sourcePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/MANIFEST.json",
-      "reason": "json_not_object"
     }
   ]
 }

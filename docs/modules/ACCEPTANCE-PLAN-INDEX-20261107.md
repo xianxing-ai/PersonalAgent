@@ -40,13 +40,14 @@
    - TS/代码规划函数中若存在多个条件分支（例如非 Windows 时返回 `closedLoop: false`，通过门控后返回 `closedLoop: true` 或 `closedLoop: isClosedLoop`），静态解析器无法在不运行代码的前提下确定默认分支走向；
    - 此时必须严格将 `closedLoop` 标记为 `undefined`（缺失），并在 `cannotConfirm.closedLoop` 中明确记录 `ambiguous_closedLoop`、分支数量及各分支所在行号与原始语句，绝不擅自猜测默认分支。
 
-5. **逐字段可追溯 Provenance（文件 + 行号）**：
+5. **逐字段可追溯 Provenance（文件 + 行号）与严禁字段回填（No Fallback）**：
    - 每个提取出的合法字段均附带 `provenance[field]`，记录 `sourcePath`、`lineStart`、`lineEnd`、`source`（来源形态）与 `raw` 片段；
-   - 每个无法确认或缺失的字段均附带 `cannotConfirm[field]`，记录确切的不可确认原因与详情。
+   - 每个无法确认或缺失的字段均附带 `cannotConfirm[field]`，记录确切的不可确认原因与详情；
+   - **严禁以文件名或其它字段ID回填缺失的 `id` 或 `title`**：文件名仅用于报告展示定位，绝不作为提取出的源字段；源码中未显式声明的必需字段必须严格进入 `missingFields` 并记录 `cannotConfirm`（`missing_id` / `missing_title`），杜绝因临时赋值而绕过校验掩盖缺项。
 
 6. **样例文档核心声明**：
    - 针对未合并 PR 离线快照生成的样例文档，明确声明：**“仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干”**；
-   - 旧 WIP 报告自称的「8 valid」不代表人工确认，系由规则过宽推断造成的虚假齐套；本工具在严格静态文本规则下，如实反映 18 份输入的真实缺项。
+   - 旧 WIP 报告自称的「8 valid」不代表人工确认，系由规则过宽推断（猜关键词、true改false、pending拼凑、文件名回填id/title）造成的虚假齐套；本工具在严格静态文本规则下，如实反映 18 份输入的真实缺项（0 valid）。
 
 ## 2. 规范化记录字段定义
 

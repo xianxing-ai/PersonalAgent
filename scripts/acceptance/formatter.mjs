@@ -140,7 +140,8 @@ export function formatMarkdownReport({ records, errors, skipped, summary, genera
         .map(([k, v]) => `\`${k}\`: ${v.reason || 'unknown'}`)
         .join('<br/>') || '无';
       const errMsg = escapeMarkdown(err.errors?.join('； ') || '未知错误');
-      lines.push(`| \`${err.sourcePath}\` | ${escapeMarkdown(err.title)} | ${missing} | ${cannotConfirmReasons} | ${errMsg} |`);
+      const titleDisplay = err.title ? escapeMarkdown(err.title) : '（未显式声明标题）';
+      lines.push(`| \`${err.sourcePath}\` | ${titleDisplay} | ${missing} | ${cannotConfirmReasons} | ${errMsg} |`);
     }
     lines.push('');
   }

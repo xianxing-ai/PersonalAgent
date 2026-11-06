@@ -128,7 +128,7 @@ export async function scanAcceptancePlans(options = {}) {
       } else {
         errors.push({
           sourcePath: result.sourcePath,
-          title: result.title || path.basename(file.fullPath),
+          title: result.title || null,
           missingFields: result.missingFields || [],
           errors: result.errors || [],
           cannotConfirm: result.cannotConfirm || {},

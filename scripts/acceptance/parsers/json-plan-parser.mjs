@@ -97,24 +97,52 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
   const warnings = [];
 
   // 1. ID
-  const id = obj.id || obj.planId || path.basename(filePath, '.json');
-  provenance.id = {
-    value: id,
-    sourcePath: relativePath,
-    lineStart: keyLines.id || keyLines.planId || 1,
-    lineEnd: keyLines.id || keyLines.planId || 1,
-    source: 'json_key',
-  };
+  const id = (typeof obj.id === 'string' && obj.id.trim().length > 0)
+    ? obj.id.trim()
+    : (typeof obj.planId === 'string' && obj.planId.trim().length > 0)
+      ? obj.planId.trim()
+      : undefined;
+
+  if (id) {
+    provenance.id = {
+      value: id,
+      sourcePath: relativePath,
+      lineStart: keyLines.id || keyLines.planId || 1,
+      lineEnd: keyLines.id || keyLines.planId || 1,
+      source: 'json_key',
+    };
+  } else {
+    cannotConfirm.id = {
+      sourcePath: relativePath,
+      reason: 'missing_id',
+      details: 'No explicit id or planId string declared in JSON object. Filename cannot substitute for missing source field.',
+    };
+  }
 
   // 2. Title
-  const title = obj.title || obj.planTitle || obj.name || path.basename(filePath, '.json');
-  provenance.title = {
-    value: title,
-    sourcePath: relativePath,
-    lineStart: keyLines.title || keyLines.planTitle || keyLines.name || 1,
-    lineEnd: keyLines.title || keyLines.planTitle || keyLines.name || 1,
-    source: 'json_key',
-  };
+  const title = (typeof obj.title === 'string' && obj.title.trim().length > 0)
+    ? obj.title.trim()
+    : (typeof obj.planTitle === 'string' && obj.planTitle.trim().length > 0)
+      ? obj.planTitle.trim()
+      : (typeof obj.name === 'string' && obj.name.trim().length > 0)
+        ? obj.name.trim()
+        : undefined;
+
+  if (title) {
+    provenance.title = {
+      value: title,
+      sourcePath: relativePath,
+      lineStart: keyLines.title || keyLines.planTitle || keyLines.name || 1,
+      lineEnd: keyLines.title || keyLines.planTitle || keyLines.name || 1,
+      source: 'json_key',
+    };
+  } else {
+    cannotConfirm.title = {
+      sourcePath: relativePath,
+      reason: 'missing_title',
+      details: 'No explicit title, planTitle, or name string declared in JSON object. Filename cannot substitute for missing source field.',
+    };
+  }
 
   // 3. closedLoop
   let closedLoop = undefined;
@@ -136,20 +164,20 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
   }
 
   // 4. Status
-  const status = obj.status || (obj.pending ? 'unavailable' : undefined);
+  const status = (typeof obj.status === 'string' && obj.status.trim().length > 0) ? obj.status.trim() : undefined;
   if (status) {
     provenance.status = {
       value: status,
       sourcePath: relativePath,
-      lineStart: keyLines.status || keyLines.pending || 1,
-      lineEnd: keyLines.status || keyLines.pending || 1,
+      lineStart: keyLines.status || 1,
+      lineEnd: keyLines.status || 1,
       source: 'json_key',
     };
   } else {
     cannotConfirm.status = {
       sourcePath: relativePath,
       reason: 'missing_status',
-      details: 'No status key in JSON object',
+      details: 'No explicit status key declared in JSON object',
     };
   }
 
@@ -250,7 +278,7 @@ export function parseJsonPlan(filePath, repoRoot = '.') {
       isPlan: true,
       ok: false,
       sourcePath: relativePath,
-      title: record.title,
+      title: record.title || null,
       missingFields: validation.missingFields,
       errors: validation.errors,
       cannotConfirm: validation.cannotConfirm,

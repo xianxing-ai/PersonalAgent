@@ -79,7 +79,6 @@ function extractStringLiteralsFromArrayText(rawBlock) {
  */
 function staticallyExtractPlanRecord(content, filePath, repoRoot) {
   const relativePath = path.relative(repoRoot, filePath).split(path.sep).join('/');
-  const baseName = path.basename(filePath, path.extname(filePath));
   const lines = content.split('\n');
 
   const provenance = {};
@@ -105,12 +104,10 @@ function staticallyExtractPlanRecord(content, filePath, repoRoot) {
     }
   }
   if (!id) {
-    // 无法从明确变量提取，标记 cannotConfirm，但使用规范化文件名作为临时标识
-    id = baseName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
     cannotConfirm.id = {
       sourcePath: relativePath,
       reason: 'missing_id',
-      details: 'No explicit id/planId/capability string literal found in code',
+      details: 'No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field.',
     };
   }
 
@@ -133,11 +130,10 @@ function staticallyExtractPlanRecord(content, filePath, repoRoot) {
     }
   }
   if (!title) {
-    title = id;
     cannotConfirm.title = {
       sourcePath: relativePath,
       reason: 'missing_title',
-      details: 'No explicit title/planTitle string literal found in code',
+      details: 'No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field.',
     };
   }
 
@@ -434,7 +430,7 @@ export function parseCodePlan(filePath, repoRoot = '.') {
       isPlan: true,
       ok: false,
       sourcePath: relativePath,
-      title: planObj.title || path.basename(filePath),
+      title: planObj.title || null,
       missingFields: validation.missingFields,
       errors: validation.errors,
       cannotConfirm: validation.cannotConfirm,

@@ -325,11 +325,10 @@ export function parseMarkdownPlan(filePath, repoRoot = '.') {
     }
   }
   if (!title) {
-    title = path.basename(filePath, path.extname(filePath));
     cannotConfirm.title = {
       sourcePath: relativePath,
       reason: 'missing_title',
-      details: 'No title found in frontmatter, metadata line, or H1 heading',
+      details: 'No explicit title found in frontmatter, metadata line, or H1 heading. Filename cannot substitute for missing source field.',
     };
   }
 
@@ -354,13 +353,10 @@ export function parseMarkdownPlan(filePath, repoRoot = '.') {
       source: 'markdown_metadata_line',
     };
   } else {
-    // 从文件名推导作为默认回退
-    const baseWithoutExt = path.basename(filePath, path.extname(filePath));
-    id = baseWithoutExt.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
     cannotConfirm.id = {
       sourcePath: relativePath,
-      reason: 'inferred_id_from_filename',
-      details: 'No explicit id declared in frontmatter or metadata line',
+      reason: 'missing_id',
+      details: 'No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field.',
     };
   }
 
@@ -607,7 +603,7 @@ export function parseMarkdownPlan(filePath, repoRoot = '.') {
       isPlan: true,
       ok: false,
       sourcePath: relativePath,
-      title: record.title,
+      title: record.title || null,
       missingFields: validation.missingFields,
       errors: validation.errors,
       cannotConfirm: validation.cannotConfirm,

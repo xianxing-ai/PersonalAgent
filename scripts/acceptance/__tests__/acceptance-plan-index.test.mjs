@@ -241,8 +241,42 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
     let res;
     if (item.originalPath.endsWith('.md')) {
       res = parseMarkdownPlan(fullPath, '.');
+      // 9 篇 Markdown 均未包含显式 id frontmatter/metadata：严禁以文件名回填 id，必须列入 missingFields
+      assert.ok(
+        res.missingFields.includes('id'),
+        `Markdown plan ${item.originalPath} lacking frontmatter id must report id in missingFields`,
+      );
+      assert.equal(
+        res.cannotConfirm?.id?.reason,
+        'missing_id',
+        `Markdown plan ${item.originalPath} lacking frontmatter id must have cannotConfirm.id.reason='missing_id'`,
+      );
     } else {
       res = parseCodePlan(fullPath, '.');
+      // 9 个代码规划均未显式声明 title/planTitle 字符串字面量：严禁以 id 或文件名回填 title，必须列入 missingFields
+      assert.ok(
+        res.missingFields.includes('title'),
+        `Code plan ${item.originalPath} lacking title literal must report title in missingFields`,
+      );
+      assert.equal(
+        res.cannotConfirm?.title?.reason,
+        'missing_title',
+        `Code plan ${item.originalPath} lacking title literal must have cannotConfirm.title.reason='missing_title'`,
+      );
+      assert.equal(res.title, null, `Code plan ${item.originalPath} must have title === null when not explicitly declared`);
+
+      // 3 个无显式 capability/id 的代码规划（deployment-readback, privacy-deletion, f09-cloud-prefix）必须 missing id
+      if (
+        item.originalPath.includes('deployment-readback') ||
+        item.originalPath.includes('privacy-deletion') ||
+        item.originalPath.includes('f09-cloud-prefix')
+      ) {
+        assert.ok(
+          res.missingFields.includes('id'),
+          `Code plan ${item.originalPath} lacking capability literal must report id in missingFields`,
+        );
+        assert.equal(res.cannotConfirm?.id?.reason, 'missing_id');
+      }
     }
 
     assert.equal(res.isPlan, true, `File ${item.originalPath} must be accurately classified as an acceptance plan candidate`);
@@ -260,6 +294,61 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
   }
 
   assert.equal(planCandidates, 18);
+});
+
+test('parsers: strict elimination of id and title fallbacks across markdown, code, and json', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pa-fallback-test-'));
+  try {
+    // 1. Markdown without frontmatter id and title
+    const mdPath = path.join(tmpDir, 'no-id-or-title-ACCEPTANCE-PLAN.md');
+    fs.writeFileSync(
+      mdPath,
+      '正文开头没有 H1 也没有 frontmatter。\n\n## 验收步骤\n1. 步1\n\n## 证据要求\n1. 证1\n',
+      'utf8',
+    );
+    const mdRes = parseMarkdownPlan(mdPath, tmpDir);
+    assert.equal(mdRes.isPlan, true);
+    assert.equal(mdRes.ok, false);
+    assert.ok(mdRes.missingFields.includes('id'), 'Markdown lacking id must report id in missingFields');
+    assert.ok(mdRes.missingFields.includes('title'), 'Markdown lacking title must report title in missingFields');
+    assert.equal(mdRes.cannotConfirm?.id?.reason, 'missing_id');
+    assert.equal(mdRes.cannotConfirm?.title?.reason, 'missing_title');
+    assert.equal(mdRes.title, null, 'Extracted title must be null when missing in source');
+
+    // 2. Code without id or title
+    const codePath = path.join(tmpDir, 'anonymous-plan.plan.mjs');
+    fs.writeFileSync(
+      codePath,
+      'export function planAnon() { return { closedLoop: false, status: "unavailable" }; }\n',
+      'utf8',
+    );
+    const codeRes = parseCodePlan(codePath, tmpDir);
+    assert.equal(codeRes.isPlan, true);
+    assert.equal(codeRes.ok, false);
+    assert.ok(codeRes.missingFields.includes('id'), 'Code lacking id must report id in missingFields');
+    assert.ok(codeRes.missingFields.includes('title'), 'Code lacking title must report title in missingFields');
+    assert.equal(codeRes.cannotConfirm?.id?.reason, 'missing_id');
+    assert.equal(codeRes.cannotConfirm?.title?.reason, 'missing_title');
+    assert.equal(codeRes.title, null, 'Extracted title must be null when missing in source');
+
+    // 3. JSON without id or title
+    const jsonPath = path.join(tmpDir, 'anonymous-plan.plan.json');
+    fs.writeFileSync(
+      jsonPath,
+      JSON.stringify({ isPlan: true, closedLoop: false, status: 'unavailable' }, null, 2),
+      'utf8',
+    );
+    const jsonRes = parseJsonPlan(jsonPath, tmpDir);
+    assert.equal(jsonRes.isPlan, true);
+    assert.equal(jsonRes.ok, false);
+    assert.ok(jsonRes.missingFields.includes('id'), 'JSON lacking id must report id in missingFields');
+    assert.ok(jsonRes.missingFields.includes('title'), 'JSON lacking title must report title in missingFields');
+    assert.equal(jsonRes.cannotConfirm?.id?.reason, 'missing_id');
+    assert.equal(jsonRes.cannotConfirm?.title?.reason, 'missing_title');
+    assert.equal(jsonRes.title, null, 'Extracted title must be null when missing in source');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('scanner: scanAcceptancePlans collects plans, errors, and skips by environment', async () => {
