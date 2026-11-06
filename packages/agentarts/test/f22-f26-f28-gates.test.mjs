@@ -1,7 +1,8 @@
 // F22/F26/F28 门控契约校验（main 侧可测面）。
 // 范围说明：runtime 侧 F22/F26/F28 worker 工厂在 #531 堆叠链（未进 main），其门控修复在 #571；
 // 本文件只校验 main 上已存在的门控面：agentarts shadow release/policy（F22/F23）与既有验收语义。
-// 运行：node --test tests/contracts/f22-f26-f28-gates.test.mjs
+// 运行：node --test packages/agentarts/test/f22-f26-f28-gates.test.mjs（在包构建后的 workspace 测试阶段运行，
+// 因为它导入 @personal-agent/agentarts dist；contract-fixtures 在构建前运行，不能依赖包产物）
 
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
