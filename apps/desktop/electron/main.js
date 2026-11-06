@@ -3,6 +3,7 @@ import {knowledgeSourceNotReadyMessage} from '../src/shared/public-error-message
 import {readCompetitionExecutionPolicy} from './competition-execution-config.js';
 import {createMailMonitorPreparation} from './mail-monitor-preparation.js';
 import {handleConversationAction} from './conversation-actions.js';
+import {handleSessionManagementApi} from './session-management-api.js';
 import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {createConversationDelivery} from './conversation-delivery.js';
 import {readReconciliationStatus} from './reconciliation-status.js';
@@ -4126,6 +4127,16 @@ async function action(event, name, payload) {
       const result=await memoryLearningHost.invoke(name,payload);publish();return result;
     }
     throw Error('不支持的私人记忆操作');
+  }
+  // MOD-12 explicit session management API: same trusted-sender boundary and
+  // live-voice invalidation as conversation.*, but with a published operation
+  // catalog and coded failures (see docs/interfaces/DESKTOP_SESSION_MANAGEMENT_API.md).
+  if(typeof name==='string'&&name.startsWith('session.')){
+    if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
+    const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
+    const result=handleSessionManagementApi({name,payload,surface,conversations,tasks,taskSurface,submitting,publish});
+    if(conversations.activeConversationId(surface)!==previousConversationId)liveVoice?.invalidateTextOutput(previousConversationId);
+    return result;
   }
   if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft'].includes(name)){
     if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
