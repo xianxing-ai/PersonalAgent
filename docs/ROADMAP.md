@@ -1,5 +1,7 @@
 # 开发计划与进度
 
+> 2026-11-07 离线索引工具：[真环境待验收总表离线索引说明](modules/ACCEPTANCE-PLAN-INDEX-20261107.md) · 工具脚本 `scripts/acceptance/build-pending-acceptance-index.mjs`
+
 ## 2026-10-26 本地工程移交与会话 SQLite（review，历史快照未完整复原）
 
 已实际接收并核验本地源码 ZIP，在 `934b7c44` 的独立工作树准备三方候选，尚未提交、推送或发布。119 份基线原文的长度/SHA256/Git blob ID 均符合 manifest；`b2fb20dd` commit provenance 未核实。来源 A12 中另有 65 项未交付输入与当前 main 不同或缺失，包括 team broker 及部分 provider/模型控制基线；因此不能称完整 Windows 工程已还原或继承 A12 全绿。当前候选的独立根 build 已通过，65 项是历史快照可复原性清单，不是当前候选构建缺文件清单；定向测试结果与平台限制另按实际记录判断。
