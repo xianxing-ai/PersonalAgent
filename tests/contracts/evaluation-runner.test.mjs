@@ -3,6 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -10,9 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   contractChecks,
-  invokeRuntime,
   runEvaluation,
-  scoreRuntimeCase,
   writeTrace,
   parseArgs,
 } from '../../scripts/competition/run-evaluation.mjs';
@@ -84,43 +83,37 @@ test('contract adapter：坏题集必须被拒绝（workflowId 不存在/能力�
   assert.equal(bad3.ok, false, '权重和≠1 应失败');
 });
 
-test('runtime adapter：无 runtime-url 时全部 unavailable，不模拟', async () => {
-  const { summary, events } = await runEvaluation(parseArgs(cli('--adapter', 'runtime', '--filter', 'EVAL-F01-001')), {
-    now: () => new Date('2026-11-05T00:00:00Z'),
-  });
-  assert.equal(summary.unavailable, 1);
-  assert.equal(summary.passed, 0);
-  assert.match(events.find((e) => e.type === 'run_finished').note ?? '', /不做本地模拟替代/);
+test('runtime adapter：真假账户用例均不派发，也不输出响应内容', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error('must not dispatch'); };
+  try {
+    for (const extra of [[], ['--runtime-url', 'http://fake-runtime']]) {
+      const args = parseArgs(cli('--adapter', 'runtime', '--filter', 'EVAL-F01-001,EVAL-F06-001', ...extra));
+      const { events, summary, runId } = await runEvaluation(args);
+      assert.equal(summary.unavailable, 2);
+      assert.equal(summary.passed, 0);
+      assert.equal(summary.score, null);
+      assert.equal(events.filter((e) => e.type === 'case_finished' && e.reason === 'missing_trusted_execution_and_verifier').length, 2);
+      assert.ok(events.filter((e) => e.type === 'check').every((e) => e.result === 'unverified'));
+      assert.equal(events.some((e) => e.type === 'invocation'), false);
+      const tmp = mkdtempSync(join(tmpdir(), 'eval-runtime-'));
+      assert.equal(writeTrace(tmp, { events, summary, runId }, args).consistent, true);
+      assert.equal(readFileSync(join(tmp, `trace-${runId}.events.jsonl`), 'utf8').includes('rawResponse'), false);
+    }
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
-test('runtime adapter：不可达 Runtime → unavailable 且带原因', async () => {
-  const result = await invokeRuntime('http://127.0.0.1:1', caseSet.cases[0], 800, {});
-  assert.equal(result.status, 'unavailable');
-  assert.ok(result.reason.startsWith('runtime_unreachable') || result.reason === 'runtime_timeout');
-});
 
-test('runtime adapter：假 Runtime 返回带能力与证据的事件 → 判分可用', async () => {
-  const testCase = caseSet.cases.find((c) => c.id === 'EVAL-F01-001');
-  const fakeFetch = async () => {
-    const body = {
-      events: [
-        { event: 'result', data: { name: 'responsibility.snapshot', output: { user_original_text: '…', negation_scope: '不要动其他任何安排', task_id: 't-1' } } },
-        { event: 'tool_call', data: { name: 'memory.query', status: 'ok' } },
-      ],
-    };
-    return { ok: true, status: 200, text: async () => JSON.stringify(body) };
-  };
-  const invocation = await invokeRuntime('http://fake-runtime', testCase, 5000, { fetchImpl: fakeFetch });
-  assert.equal(invocation.status, 'invoked');
-  const scored = scoreRuntimeCase(testCase, invocation);
-  assert.equal(scored.status, 'pass');
-  assert.equal(scored.score, 1);
-});
-
-test('runtime adapter：响应缺结构化证据 → unverified/unavailable，不判 pass', async () => {
-  const testCase = caseSet.cases.find((c) => c.id === 'EVAL-F01-001');
-  const fakeFetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ events: [{ event: 'result', data: { text: '我已完成' } }] }) });
-  const invocation = await invokeRuntime('http://fake-runtime', testCase, 5000, { fetchImpl: fakeFetch });
-  const scored = scoreRuntimeCase(testCase, invocation);
-  assert.notEqual(scored.status, 'pass', '模型自述不能当 pass 证据');
+test('runtime CLI 不可用时退出非零并保留不可用回执', () => {
+  const out = mkdtempSync(join(tmpdir(), 'eval-cli-'));
+  const run = spawnSync(process.execPath, [join(repoRoot, 'scripts/competition/run-evaluation.mjs'), '--adapter', 'runtime', '--filter', 'EVAL-F01-001', '--out', out], { encoding: 'utf8' });
+  assert.equal(run.status, 3);
+  assert.match(run.stdout, /score=unavailable/);
+  const manifest = JSON.parse(readFileSync(join(out, readdirSync(out).find((f) => f.endsWith('.manifest.json'))), 'utf8'));
+  assert.equal(manifest.totals.unavailable, 1);
+  assert.equal(manifest.totals.score, null);
 });
