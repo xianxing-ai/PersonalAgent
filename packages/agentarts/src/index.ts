@@ -22,6 +22,7 @@ export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
 export * from './coding-repair.js';
 export * from './harness-candidates.js';
 export * from './f20-worker-trust.js';
+export * from './f14-native-observation.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
 export * from './workflow-voice-final-transcript.js';
