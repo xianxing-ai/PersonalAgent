@@ -9,7 +9,7 @@
 //        [--out <dir>] [--timeout-ms 20000]
 // 退出码：0=完成；1=参数/文件错误；2=manifest 与 events 汇总不一致；3=runtime 不可用。
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join, dirname, resolve } from 'node:path';
@@ -136,10 +136,8 @@ export async function runEvaluation(args, { now = () => new Date() } = {}) {
 /** 写出 trace 文件并做 manifest↔events 一致性自检。 */
 export function writeTrace(outDir, { runId, events, summary }, args) {
   if (!outDir) return { consistent: true, files: [] };
-  mkdirSync(outDir, { recursive: true });
   const eventsPath = join(outDir, `trace-${runId}.events.jsonl`);
   const manifestPath = join(outDir, `trace-${runId}.manifest.json`);
-  writeFileSync(eventsPath, events.map((e) => JSON.stringify(e)).join('\n') + '\n');
 
   const finished = events.find((e) => e.type === 'run_finished');
   const caseFinishes = events.filter((e) => e.type === 'case_finished');
@@ -161,14 +159,43 @@ export function writeTrace(outDir, { runId, events, summary }, args) {
     perCase: caseFinishes.map((e) => ({ caseId: e.caseId, status: e.status, score: e.score })),
     files: { events: eventsPath, manifest: manifestPath },
   };
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 
+  const starts = events.filter((e) => e.type === 'case_started');
+  const startIds = new Set(starts.map((e) => e.caseId));
+  const finishIds = new Set(caseFinishes.map((e) => e.caseId));
+  const counts = { pass: 0, fail: 0, unavailable: 0 };
+  let validCases = true;
+  for (const event of caseFinishes) {
+    if (!Object.hasOwn(counts, event.status)) { validCases = false; continue; }
+    counts[event.status]++;
+    if (args.adapter === 'contract' && (event.status === 'unavailable' || event.score !== (event.status === 'pass' ? 1 : 0))) validCases = false;
+    if (args.adapter === 'runtime' && (event.status === 'pass' || (event.status === 'fail' && event.score !== 0) || (event.status === 'unavailable' && event.score !== undefined))) validCases = false;
+  }
+  const expectedScore = args.adapter === 'contract' ? (starts.length ? counts.pass / starts.length : 0) : null;
   const totalsMatch =
-    manifest.totals.passed === summary.passed &&
-    manifest.totals.failed === summary.failed &&
-    manifest.totals.unavailable === summary.unavailable &&
-    manifest.perCase.length === events.filter((e) => e.type === 'case_started').length;
-  return { consistent: totalsMatch, files: [eventsPath, manifestPath], manifest };
+    events.filter((e) => e.type === 'run_started').length === 1 &&
+    events.filter((e) => e.type === 'run_finished').length === 1 &&
+    events[0]?.type === 'run_started' && events[events.length - 1]?.type === 'run_finished' &&
+    summary.adapter === args.adapter && ['contract', 'runtime'].includes(args.adapter) &&
+    validCases && starts.every((e) => typeof e.caseId === 'string' && e.caseId.length > 0) &&
+    startIds.size === starts.length && finishIds.size === caseFinishes.length &&
+    startIds.size === finishIds.size && [...finishIds].every((id) => startIds.has(id)) &&
+    events[0]?.caseCount === starts.length &&
+    finished.passed === counts.pass && finished.failed === counts.fail && finished.unavailable === counts.unavailable && finished.score === expectedScore &&
+    manifest.totals.passed === counts.pass && summary.passed === counts.pass &&
+    manifest.totals.failed === counts.fail && summary.failed === counts.fail &&
+    manifest.totals.unavailable === counts.unavailable && summary.unavailable === counts.unavailable &&
+    manifest.totals.score === expectedScore && summary.score === expectedScore;
+  if (!totalsMatch) return { consistent: false, files: [], manifest };
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(eventsPath, events.map((e) => JSON.stringify(e)).join('\n') + '\n', { flag: 'wx' });
+  try {
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', { flag: 'wx' });
+  } catch (err) {
+    unlinkSync(eventsPath);
+    throw err;
+  }
+  return { consistent: true, files: [eventsPath, manifestPath], manifest };
 }
 
 async function main(argv) {

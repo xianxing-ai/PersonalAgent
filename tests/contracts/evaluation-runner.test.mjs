@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync, mkdtempSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -116,4 +116,42 @@ test('runtime CLI 不可用时退出非零并保留不可用回执', () => {
   const manifest = JSON.parse(readFileSync(join(out, readdirSync(out).find((f) => f.endsWith('.manifest.json'))), 'utf8'));
   assert.equal(manifest.totals.unavailable, 1);
   assert.equal(manifest.totals.score, null);
+});
+
+test('Trace 自检拒绝汇总与用例不一致、重复或缺失标识', async () => {
+  const args = parseArgs(cli('--adapter', 'contract', '--filter', 'EVAL-F01-001'));
+  const original = await runEvaluation(args);
+  const out = mkdtempSync(join(tmpdir(), 'eval-tamper-'));
+  const inconsistent = (mutate) => {
+    const copy = structuredClone(original);
+    mutate(copy);
+    return writeTrace(out, copy, args).consistent;
+  };
+  assert.equal(inconsistent(({ events }) => {
+    const finish = events.find((e) => e.type === 'case_finished');
+    finish.status = 'fail'; finish.score = 0;
+  }), false, '用例失败而汇总通过必须无效');
+  assert.equal(inconsistent(({ events }) => {
+    events.find((e) => e.type === 'case_finished').caseId = 'other';
+  }), false, '开始和结束标识不一致必须无效');
+  assert.equal(inconsistent(({ events }) => {
+    const event = events.find((e) => e.type === 'case_started');
+    events.splice(2, 0, { ...event });
+  }), false, '重复标识必须无效');
+  assert.equal(inconsistent(({ events }) => {
+    events.find((e) => e.type === 'run_finished').score = 0;
+  }), false, '汇总分数不一致必须无效');
+  assert.deepEqual(readdirSync(out), [], '不一致的回执不能写入文件');
+  const valid = writeTrace(out, original, args);
+  assert.equal(valid.consistent, true);
+  const before = valid.files.map((path) => readFileSync(path, 'utf8'));
+  assert.throws(() => writeTrace(out, original, args), { code: 'EEXIST' });
+  assert.deepEqual(valid.files.map((path) => readFileSync(path, 'utf8')), before, '已有回执不能被覆盖');
+  const partial = mkdtempSync(join(tmpdir(), 'eval-partial-'));
+  const priorManifest = join(partial, `trace-${original.runId}.manifest.json`);
+  const newEvents = join(partial, `trace-${original.runId}.events.jsonl`);
+  writeFileSync(priorManifest, 'previous manifest');
+  assert.throws(() => writeTrace(partial, original, args), { code: 'EEXIST' });
+  assert.equal(readFileSync(priorManifest, 'utf8'), 'previous manifest');
+  assert.equal(existsSync(newEvents), false, '第二文件创建失败应移除本次新建的第一文件');
 });
