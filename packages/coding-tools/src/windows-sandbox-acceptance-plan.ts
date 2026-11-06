@@ -1,9 +1,49 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {NativeSandboxBackend, SandboxExecutionResult} from './native-sandbox.js';
 
+export const PLAN_ID = 'windows-sandbox-acceptance-plan';
+export const PLAN_TITLE = 'Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验';
 export const WINDOWS_SANDBOX_ACCEPTANCE_BACKEND = 'windows-psec' as const;
 export const WINDOWS_SANDBOX_ACCEPTANCE_CAPABILITY = 'workspace.run_allowed_command' as const;
 export const WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;
+export const PENDING_REASON = WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON;
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['windows_real_machine'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md §2.2）
+ */
+export const ACCEPTANCE_STEPS = [
+  'helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过',
+  'psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true',
+  'job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）',
+  'filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻',
+  'network_deny_guard：网络连接在沙箱内部被内核拦截拒绝',
+  'policy_binding：参数绑定、任务引用及单次授权已被确实验证',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md §2.1）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）',
+  '辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据',
+];
+
+/**
+ * 默认待真机验收门控声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'helper_attestation',
+  'psec_appcontainer_boundary',
+  'job_object_containment',
+  'filesystem_isolation',
+  'network_deny_guard',
+  'policy_binding',
+];
 
 export const WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES = Object.freeze([
   'helper_attestation',

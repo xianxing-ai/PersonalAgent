@@ -1,3 +1,13 @@
+---
+id: windows-sandbox-acceptance-plan
+title: MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - windows_real_machine
+reason: 待真机验收
+---
+
 # MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验
 
 <!-- current-design-20261015 -->
@@ -80,6 +90,42 @@ MOD-18 负责受限编程工具与 Windows 原生沙箱执行（`windows-psec` �
   4. `filesystem_isolation`：读写根受限、副作用可控（`sideEffects: 'none' | 'possible'`）且符号链接逃逸受阻；
   5. `network_deny_guard`：网络连接在沙箱内部被内核拦截拒绝；
   6. `policy_binding`：参数绑定、任务引用及单次授权已被确实验证。
+
+## 验收步骤
+
+1. helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过
+2. psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true
+3. job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）
+4. filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻
+5. network_deny_guard：网络连接在沙箱内部被内核拦截拒绝
+6. policy_binding：参数绑定、任务引用及单次授权已被确实验证
+
+## 证据要求
+
+1. win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）
+2. 辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据
+
+## 挂起项
+
+- `helper_attestation`: 辅助进程可信身份与文件 SHA-256 Pin 核验通过
+- `psec_appcontainer_boundary`: AppContainer 隔离生效且 enforced === true
+- `job_object_containment`: JobObject 容器锁定且子孙进程均随 helper 终止
+- `filesystem_isolation`: 读写根受限、副作用可控且符号链接逃逸受阻
+- `network_deny_guard`: 网络连接在沙箱内部被内核拦截拒绝
+- `policy_binding`: 参数绑定、任务引用及单次授权已被确实验证
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `windows-sandbox-acceptance-plan` | `packages/coding-tools/src/windows-sandbox-acceptance-plan.ts` | 代码 `PLAN_ID`；§1: `MOD-18 负责受限编程工具与 Windows 原生沙箱执行` |
+| title | `MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | L1: `# MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验` |
+| status | `unavailable` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `status: 'unavailable'`；§2.2: `status: "unavailable"` |
+| closedLoop | `false` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `强制执行 fail-closed 门控：closedLoop: false`；代码 L347 |
+| requiredEnvironments | `['windows_real_machine']` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `MOD-18 负责受限编程工具与 Windows 原生沙箱执行`；§2.1: `平台强制：platform 必须严格为 win32` |
+| acceptanceSteps | 6 项完整步骤 | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §2.2: 六项门控完整性判定（helper, psec, job, fs, net, policy） |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §2.1: `assertWindowsSandboxEvidence` 校验条件；§1: 辅助进程隔离审计日志与读回 |
+| reason / pendingItems | `待真机验收` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `reason: '待真机验收'`；§2.2: `WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON` |
 
 ---
 
