@@ -1,0 +1,1587 @@
+{
+  "$comment": "28 图能力缺口登记（2026-11-07，由 scripts/competition/verify-graph-capability-coverage.mjs 强制）：graph 声明但 main 尚无提供者的每个能力名必须在此登记（domain/owners/status/note/sources），否则校验失败。status：open=生产口缺口；in-flight-pr=修复在途；needs-real-environment=需真机/真云。有提供者后应把条目移除（校验会 WARN）。",
+  "version": "2026.11.07.1",
+  "mainHead": "855a90c4",
+  "declaredTotal": 109,
+  "providedTotal": 23,
+  "gaps": [
+    {
+      "name": "calendar.update_and_invalidate_reminder",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F11"
+      ],
+      "note": "calendar.update 生产工具链与真实读回缺口（MOD-20/F11）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "feeds.validate_and_deduplicate",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F09"
+      ],
+      "note": "真实 feeds 提供者与会话授权缺口（F09）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mail.registered_archive",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F08"
+      ],
+      "note": "Gateway 真归档缺口（F08）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mail.registered_send",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F08"
+      ],
+      "note": "真 SMTP 发送缺口（F08）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "notification.deliver",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498",
+        "goo122"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F06",
+        "F12"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [
+        574
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "notification.deliver_when_due",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F12"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [
+        574
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "reminder.current_clock_and_revision",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F06"
+      ],
+      "note": "提醒时钟与版本口缺口（F06）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "todo.registered_write",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F06"
+      ],
+      "note": "生产 invokeTodoCreate 缺口（F06）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "deployment.build_arm64_image",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F26"
+      ],
+      "note": "真实云证据缺口，需华为云账号（F26）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "deployment.publish_verified_coverage",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F26"
+      ],
+      "note": "真实云证据缺口，需华为云账号（F26）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "deployment.real_tool_evidence",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F26"
+      ],
+      "note": "真实工具证据缺口，需华为云账号（F26）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "deployment.runtime_readback",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F26"
+      ],
+      "note": "部署读回门控修复在途 #571；真实读回需华为云",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "desktop.registered_input",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F14"
+      ],
+      "note": "原生受控输入写口（串行执行仍归既有输入租约与 Policy）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "desktop.registered_submit",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F14"
+      ],
+      "note": "原生受控提交写口（同上）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "evaluation.actual_result_dataset",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F23"
+      ],
+      "note": "真实评估结果数据集入口；平台评估待云（MOD-31）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "evaluation.dataset_snapshot",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F23"
+      ],
+      "note": "评测数据集快照的配置消费口（离线 runner 见 docs/competition/evaluation）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "evaluation.temporal_leakage_check",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F23"
+      ],
+      "note": "时间泄漏检查的配置消费口",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "executor.scoped_tool_loop",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F28"
+      ],
+      "note": "F28 执行器门控修复在途 #571",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "shadow.counterfactual_evidence",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F22"
+      ],
+      "note": "shadow 服务对照缺口，修复在途 #571；真实 shadow 服务待验收",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "shadow.decision_snapshot",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F22"
+      ],
+      "note": "shadow 决策快照口，修复在途 #571",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "shadow.historical_trace",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F22"
+      ],
+      "note": "shadow 历史 trace 口，修复在途 #571",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "shadow.isolated_capabilities",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F22"
+      ],
+      "note": "shadow 隔离能力口，修复在途 #571",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "shadow.trigger_snapshot",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F22"
+      ],
+      "note": "shadow 触发快照口，修复在途 #571",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "shadow.versioned_snapshot",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "in-flight-pr",
+      "workflowIds": [
+        "F22"
+      ],
+      "note": "shadow 版本快照口，修复在途 #571",
+      "inFlightPrs": [
+        571
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "voice.ask_question",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01",
+        "F03",
+        "F08",
+        "F11",
+        "F14"
+      ],
+      "note": "主动语音/文字询问口（跨 F01/F03/F08/F11/F14）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "voice.local_fallback",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "语音本地兜底口（F02；待真机）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "voice.speak_question",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "TTS 说话口组合缺口（F02；输出端口已在 voice 包）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "configuration.operation_readback",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F23"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "configuration.promote_with_rollback",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F23"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "configuration.save_credential_reference",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F25"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "github.registered_close_issue",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F19"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "github.registered_merge",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F18"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "knowledge.check_supported_claims",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F10"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "knowledge.citation_revision_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F05"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "knowledge.source_and_write_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F04"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mcp_skill.enable_authorized",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F21"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mcp_skill.install_registry",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F21"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mcp_skill.isolated_probe",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F21"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mcp_skill.protocol_health",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F21"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mcp_skill.source_manifest",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F21"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "memory.invalidate_projection",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F04"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "memory.quarantine_candidate",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F04"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "model.context_source_map_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F27"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "model.native_config_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01",
+        "F28"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.compensation_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F03"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.confirmation_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.operation_scope_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F08",
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.outbound_context_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F25"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.pending_question",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.quiet_hours",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F12"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.resume_original_operation",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "policy.scope_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.commit_responsibility",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.commit_task_graph",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.completion_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F28"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.confirmed_recovery",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F13"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.deliver_failure_report",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F17"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.deliver_patch_evidence",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F15"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.enqueue_issue_repair",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F19"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.enqueue_research",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F09"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.execute_published_operation",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.invalidate_affected_subgraph",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F03"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.invalidate_context_mapping",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F27"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.invalidate_question",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.keep_confirmed_effect",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.local_stop_observation",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02",
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.original_effect_binding",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F03"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.patch_and_required_checks",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F15"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.persist_graph",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.publish_actual_status",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.publish_sourced_answer",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F05"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.read_original_effect",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.reconcile_original_effect",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F03",
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.recover_checkpoint",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.reject_operation",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F02"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.schedule_graph",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F03"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.selected_branch_evidence",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.stop_in_flight",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.stop_not_started",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F24"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.submit_bound_compensation",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F03"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.versioned_replan",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F08"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "runtime.wait_reconciliation",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F08"
+      ],
+      "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "system.registered_probe",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F13"
+      ],
+      "note": "系统观测 probe 的 host 组合缺口（MOD-17 providers 已有）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "workspace.patch_scope_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F15"
+      ],
+      "note": "F15 独立红线审查的补丁范围检查口",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "workspace.source_and_test_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "zemeng5208"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F28"
+      ],
+      "note": "F28 源码与测试一致性检查口",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "workspace.test_intent_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F16"
+      ],
+      "note": "F16 测试意图检查口",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    }
+  ]
+}
