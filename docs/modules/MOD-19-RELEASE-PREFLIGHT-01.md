@@ -62,6 +62,19 @@ Electron 自带的 Node/V8 运行时与命令行 Node 不是同一可执行环�
 
 因此本首片工作包进入 `review`；检查报告的 `releaseStatus` 仍是 `blocked`。它提供可重复的准备检查与缺口列表，不把“文件存在”升级成“可以发布”。后续是否实施生产打包配置与候选生成由主对话统一指挥；本首片不会自行转入安装器实现。后续若获授权，还须在隔离用户数据目录完成安装、启动、升级、数据保留、卸载和回滚边界验收，发布授权仍是独立门槛。
 
+## 脚手架已声明、验收未做（2026-11-07）
+
+在 MOD-19 脚手架工作包（[MOD-19-PACKAGING-SCAFFOLD-20261107.md](MOD-19-PACKAGING-SCAFFOLD-20261107.md)）中，仓库已声明：
+1. `apps/desktop/electron-builder.yml` 及 `apps/desktop/package.json` 中的 `build` 字段（`production-packaging-config` 转为 `pass`）；
+2. `apps/desktop/package.json` 中的 `scripts["package:win"]`（`windows-package-script` 转为 `pass`）；
+3. `build.win.target` 中声明的 `nsis` 目标（`windows-installer-definition` 转为 `pass`）；
+4. `tests/manual/release/` 下的安装启动、升级数据保留、卸载三个验收占位（状态由 `MANUAL_EVIDENCE_MISSING` 迁移为 `MANUAL_EVIDENCE_NOT_EXECUTED`，即 `unverified`）。
+
+检查器仍严格保持以下语义：
+- `PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED` 保持 `blocked`；
+- 只要人工验收仍为 `unverified` 或缺少打包后 SQLite 运行证据，`publishable` 固定为 `false`，`releaseStatus` 固定为 `blocked`；
+- 不因存在脚手架而将工程误判为可发布。
+
 ## 最少验收
 
 本首片只要求：
