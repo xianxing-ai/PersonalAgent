@@ -1,6 +1,8 @@
 # CW-02 / #459 AA 镜像远端版本只读校验与 ARM64 读回离线工具（2026-11-04）
 
 Profile：`huawei_ict_agentarts`。分支：`zemeng/cw02-459-image-readonly-check`（基于 PR #543 head `codex/pr531-cloud-persistent`）。
+
+本工具的 `verified` 仅表示所提供的离线 JSON 字段通过一致性检查；输入本身可能伪造或来自其他来源，不能证明远端读回、物理 ARM64 执行或真实服务验收。操作者须另行提供可信来源及设备证据。
 任务：CW-02「AA 镜像精确远端版本只读校验」与 Issue #459「ARM64 镜像差异核对与目录 smoke 配置修复」（负责人：zemeng5208）。
 
 ---

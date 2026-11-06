@@ -16,6 +16,25 @@ const EXPECTED_REPO = 'swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-
 const EXPECTED_DIGEST = 'sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004';
 const EXPECTED_REVISION = 'a93734c195ceaff56d3e7a5654e320f3007b35f3';
 
+test('verify-image-readback: rejects missing ping, wrong image and duplicate workflows', async () => {
+  const load = async (name) => JSON.parse(await readFile(path.join(fixturesDir, name), 'utf8'));
+  const manifestInspect = await load('valid-manifest-inspect.json');
+  const imageInspect = await load('valid-image-inspect.json');
+  const smoke = await load('valid-smoke-report.json');
+  for (const mutate of [
+    s => { delete s.pingStatus; },
+    s => { s.imageId = `sha256:${'1'.repeat(64)}`; },
+    s => { s.observed[1].workflowId = s.observed[0].workflowId; },
+  ]) {
+    const modified = structuredClone(smoke);
+    mutate(modified);
+    const result = verifyImageReadback({ manifestInspect, imageInspect, smokeOutput: modified,
+      expectedRepository: EXPECTED_REPO, expectedDigest: EXPECTED_DIGEST, expectedRevision: EXPECTED_REVISION });
+    assert.equal(result.verified, false);
+    assert.equal(result.status, 'failed');
+  }
+});
+
 test('verify-image-readback: positive case with all fields verified', async () => {
   const result = await verifyImageReadbackFiles({
     manifestInspectPath: path.join(fixturesDir, 'valid-manifest-inspect.json'),

@@ -184,6 +184,13 @@ export function verifyImageReadback({
       const smokeUser = s.user;
       const smokeLaya = s.embeddedLayaPathPresent;
       const smokePing = s.pingStatus;
+      const inspectImageId = img?.Id ?? img?.imageId;
+
+      if (typeof inspectImageId !== 'string' || !SHA256_RE.test(inspectImageId) ||
+          typeof s.imageId !== 'string' || !SHA256_RE.test(s.imageId) ||
+          s.imageId.toLowerCase() !== inspectImageId.toLowerCase()) {
+        failureReasons.push('Smoke imageId does not match image inspect Id');
+      }
 
       let allDigestsValid = true;
       let observedNodesSum = 0;
@@ -205,7 +212,7 @@ export function verifyImageReadback({
       if (smokeLaya !== false) {
         failureReasons.push(`Smoke reported embeddedLayaPathPresent: ${smokeLaya}, embedded Laya must be false`);
       }
-      if (smokePing !== undefined && smokePing !== 200) {
+      if (smokePing !== 200) {
         failureReasons.push(`Smoke pingStatus is ${smokePing}, expected 200`);
       }
 
@@ -214,6 +221,10 @@ export function verifyImageReadback({
       } else {
         if (s.observed.length !== 28) {
           failureReasons.push(`Smoke observed workflows count is ${s.observed.length}, expected 28`);
+        }
+        const ids = new Set(s.observed.map(wf => wf?.workflowId));
+        if (ids.size !== 28 || !Array.from({ length: 28 }, (_, i) => `F${String(i + 1).padStart(2, '0')}`).every(id => ids.has(id))) {
+          failureReasons.push('Smoke observed workflows must contain F01–F28 exactly once');
         }
         for (const wf of s.observed) {
           if (!wf || typeof wf !== 'object' || !wf.workflowId) {
