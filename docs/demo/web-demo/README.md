@@ -31,7 +31,7 @@ node docs/demo/web-demo/demo-server.mjs --port 8080        # http://127.0.0.1:80
 ## 部署（决赛在线页面）
 
 1. 在干净 checkout 执行 `node docs/demo/web-demo/build-demo-data.mjs`（数据随 checkout 的 HEAD 变化，保证可追溯）。
-2. `node docs/demo/web-demo/demo-server.mjs --port 8080` 常驻；或将 `public/` + `demo-data.json` 交给任意静态托管 + 只读 API 代理。
+2. 默认仅监听本机 `127.0.0.1`；在线访问可经已授权的反向代理。容器映射等确需监听其他网卡时，可显式指定 `--host 0.0.0.0`；此操作可能对网络开放服务，须先获得授权并配置网络访问限制。也可将 `public/` + `demo-data.json` 交给静态托管和只读 API 代理。
 3. 页面“运行时健康探测”区可输入已部署 AgentArts Runtime 地址做只读探测（GET /healthz）；未部署时显示 unavailable。此探测不执行任务。
 
 ## 边界与编号说明

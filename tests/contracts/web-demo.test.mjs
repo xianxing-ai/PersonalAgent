@@ -12,7 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildDemoData } from '../../docs/demo/web-demo/build-demo-data.mjs';
-import { startDemoServer } from '../../docs/demo/web-demo/demo-server.mjs';
+import { startDemoServer, parseArgs } from '../../docs/demo/web-demo/demo-server.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '..', '..');
@@ -168,4 +168,29 @@ test('构建脚本 CLI：--out 写入指定路径，内容与函数一致', asyn
   const expected = buildDemoData(repoRoot);
   assert.equal(written.stats.workflowCount, expected.stats.workflowCount);
   assert.equal(written.git.head, expected.git.head);
+});
+
+
+test('demo-server：默认只监听回环且错误不披露本机路径或正文', async () => {
+  assert.equal(parseArgs(['node', 'demo-server']).host, '127.0.0.1');
+  assert.equal(parseArgs(['node', 'demo-server', '--host', '0.0.0.0']).host, '0.0.0.0');
+  assert.throws(() => parseArgs(['node', 'demo-server', '--host', 'invalid']));
+  const tmp = mkdtempSync(join(tmpdir(), 'webdemo-private-'));
+  const dataFile = join(tmp, 'private-data.json');
+  writeFileSync(dataFile, 'sensitive-invalid-json');
+  const { server, url, close } = await startDemoServer({ port: 0, dataFile, publicDir: join(tmp, 'private-missing-directory') });
+  try {
+    assert.equal(server.address().address, '127.0.0.1');
+    for (const path of ['/api/health', '/api/demo-data', '/missing']) {
+      const response = await fetch(`${url}${path}`);
+      const body = await response.text();
+      assert.equal(body.includes(tmp), false);
+      assert.equal(body.includes('sensitive-invalid-json'), false);
+      assert.equal(body.includes('private-missing-directory'), false);
+      assert.equal(response.status, path === '/api/health' ? 200 : path === '/api/demo-data' ? 503 : 500);
+    }
+    assert.equal((await (await fetch(`${url}/api/health`)).json()).detail, 'INVALID_JSON');
+  } finally {
+    await close();
+  }
 });

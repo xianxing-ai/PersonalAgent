@@ -3,7 +3,7 @@
 // - 服务 docs/demo/web-demo/public/ 下的静态页
 // - 暴露只读 JSON 接口（数据来自 build-demo-data.mjs 产出的 demo-data.json）
 // - 数据未构建时接口返回 503 unavailable，绝不返回编造数据
-// 用法：node docs/demo/web-demo/demo-server.mjs [--port 8080] [--data <demo-data.json 路径>] [--public <静态目录>] [--repo-root <path>]
+// 用法：node docs/demo/web-demo/demo-server.mjs [--host 127.0.0.1] [--port 8080] [--data <demo-data.json 路径>] [--public <静态目录>] [--repo-root <path>]
 
 import { createServer } from 'node:http';
 import { readFile, realpath, stat } from 'node:fs/promises';
@@ -25,13 +25,15 @@ const MIME = {
 };
 
 export function parseArgs(argv) {
-  const args = { port: 8080, data: DEFAULT_DATA, public: DEFAULT_PUBLIC, repoRoot: resolve(join(here, '..', '..', '..')) };
+  const args = { host: '127.0.0.1', port: 8080, data: DEFAULT_DATA, public: DEFAULT_PUBLIC, repoRoot: resolve(join(here, '..', '..', '..')) };
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === '--port') args.port = Number(argv[++i]);
+    if (argv[i] === '--host') args.host = argv[++i];
+    else if (argv[i] === '--port') args.port = Number(argv[++i]);
     else if (argv[i] === '--data') args.data = resolve(argv[++i]);
     else if (argv[i] === '--public') args.public = resolve(argv[++i]);
     else if (argv[i] === '--repo-root') args.repoRoot = resolve(argv[++i]);
   }
+  if (!['127.0.0.1', '0.0.0.0'].includes(args.host)) throw new Error('host 只支持 127.0.0.1 或 0.0.0.0');
   return args;
 }
 
@@ -40,7 +42,7 @@ async function loadJson(path) {
     const text = await readFile(path, 'utf8');
     return { loaded: true, data: JSON.parse(text) };
   } catch (err) {
-    return { loaded: false, error: `${path} 不可读（${err.code ?? err.message}）` };
+    return { loaded: false, error: err instanceof SyntaxError ? 'INVALID_JSON' : ['ENOENT', 'EACCES'].includes(err.code) ? err.code : 'READ_ERROR' };
   }
 }
 
@@ -58,7 +60,8 @@ function sendJson(res, status, body) {
  * 所有接口均为只读；数据缺失时明确 503，不编造。
  */
 export function startDemoServer(options = {}) {
-  const { port = 8080, dataFile = DEFAULT_DATA, publicDir = DEFAULT_PUBLIC } = options;
+  const { host = '127.0.0.1', port = 8080, dataFile = DEFAULT_DATA, publicDir = DEFAULT_PUBLIC } = options;
+  if (!['127.0.0.1', '0.0.0.0'].includes(host)) throw new Error('host 只支持 127.0.0.1 或 0.0.0.0');
 
   const server = createServer(async (req, res) => {
     let pathname;
@@ -174,15 +177,15 @@ export function startDemoServer(options = {}) {
       const body = await readFile(filePath);
       res.writeHead(200, { 'content-type': MIME[extname(filePath)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
       res.end(req.method === 'HEAD' ? undefined : body);
-    } catch (err) {
-      sendJson(res, 500, { error: 'internal_error', message: err.message });
+    } catch {
+      sendJson(res, 500, { error: 'internal_error' });
     }
   });
 
   return new Promise((resolveStart) => {
-    server.listen(port, () => {
+    server.listen(port, host, () => {
       const address = server.address();
-      const url = `http://127.0.0.1:${address.port}`;
+      const url = `http://${address.address}:${address.port}`;
       resolveStart({ server, url, close: () => new Promise((r) => server.close(r)) });
     });
   });
@@ -190,7 +193,7 @@ export function startDemoServer(options = {}) {
 
 async function main(argv) {
   const args = parseArgs(argv);
-  const { url, close } = await startDemoServer({ port: args.port, dataFile: args.data, publicDir: args.public });
+  const { url, close } = await startDemoServer({ host: args.host, port: args.port, dataFile: args.data, publicDir: args.public });
   console.log(`[web-demo] Demo 服务器已启动：${url}`);
   console.log('[web-demo] 数据接口：/api/health /api/demo-data /api/workflows /api/workflows/F01 /api/capabilities /api/highlights');
   const shutdown = () => {
