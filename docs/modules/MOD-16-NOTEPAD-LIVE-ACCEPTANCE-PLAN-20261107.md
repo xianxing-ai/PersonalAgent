@@ -1,3 +1,14 @@
+---
+id: notepad-live-acceptance
+title: MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - windows_real_machine
+  - rights_holder_or_human
+reason: 待真机验收
+---
+
 # MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验
 
 <!-- current-design-20261015 -->
@@ -69,6 +80,40 @@ MOD-16 负责 Windows 本地受限记事本执行（`computer.notepad.replace_te
   3. `independent_readback`：具备独立读回摘要且 `nativeReadbackVerified === true`；
   4. `policy_authorization`：`exactGrantConsumed === true` 或 `policyDecision === 'allow'`；
   5. `windows_host_pipe`：`isolatedJournalReadback === true` 或 `pipeVerified === true`。
+
+## 验收步骤
+
+1. f9_confirmation_gate：确认物理 F9 按键或受信操作者现场确认生效
+2. uia_write：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换
+3. independent_readback：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致
+4. policy_authorization：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）
+5. windows_host_pipe：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）
+
+## 证据要求
+
+1. win32 平台原生记事本写入证据（含 capability、confirmationGate、targetRef 与 runId）
+2. 独立 UIA 读回 SHA-256 摘要（readbackDigest）与 isolatedJournalReadback 审计日志
+
+## 挂起项
+
+- `f9_confirmation_gate`: 确认物理 F9 按键或受信操作者现场确认生效
+- `uia_write`: 由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换
+- `independent_readback`: 具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致
+- `policy_authorization`: 精确凭据/策略授权校验放行
+- `windows_host_pipe`: 受信管道通信与隔离日志读回
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `notepad-live-acceptance` | `packages/windows-client/src/notepad-live-acceptance-plan.ts` | 代码 `PLAN_ID`；§1: `MOD-16 负责 Windows 本地受限记事本执行` |
+| title | `MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验` | `docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md` | L1: `# MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107：Windows 记事本真机验收离线规划与契约校验` |
+| status | `unavailable` | `docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md` | §1: `status: 'unavailable'`；§2.2: `status: "unavailable"` |
+| closedLoop | `false` | `docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md` | §1: `强制执行 fail-closed 门控：closedLoop: false`；代码 L286 |
+| requiredEnvironments | `['windows_real_machine', 'rights_holder_or_human']` | `docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md` | §1: `F9 确认门控：在操作实际 Windows 窗口前，必须获得操作者物理 F9 按键或受信本地确认`；§2.1: `平台强制：platform 必须严格为 win32` |
+| acceptanceSteps | 5 项完整步骤 | `docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md` | §2.2: 五项门控完整性判定（f9, uia, readback, policy, pipe） |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md` | §2.1: `assertNotepadLiveEvidence` 形状校验条件；§1.3: 独立读回摘要与 isolatedJournalReadback |
+| reason / pendingItems | `待真机验收` | `docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md` | §1: `reason: '待真机验收'`；§2.2: `NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON` |
 
 ---
 

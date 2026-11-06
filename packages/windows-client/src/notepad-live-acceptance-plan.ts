@@ -1,8 +1,46 @@
 import {ProtocolError} from '@personal-agent/contracts';
 
+export const PLAN_ID = 'notepad-live-acceptance';
+export const PLAN_TITLE = 'Windows 记事本真机验收离线规划与契约校验';
 export const NOTEPAD_LIVE_ACCEPTANCE_CAPABILITY = 'notepad.replace_text' as const;
 export const NOTEPAD_LIVE_ACCEPTANCE_TOOL_NAME = 'computer.notepad.replace_text' as const;
 export const NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;
+export const PENDING_REASON = NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON;
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['windows_real_machine', 'rights_holder_or_human'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md §2.2）
+ */
+export const ACCEPTANCE_STEPS = [
+  'f9_confirmation_gate：确认物理 F9 按键或受信操作者现场确认生效',
+  'uia_write：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换',
+  'independent_readback：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致',
+  'policy_authorization：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）',
+  'windows_host_pipe：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md §2.1）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'win32 平台原生记事本写入证据（含 capability、confirmationGate、targetRef 与 runId）',
+  '独立 UIA 读回 SHA-256 摘要（readbackDigest）与 isolatedJournalReadback 审计日志',
+];
+
+/**
+ * 默认待真机验收门控声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'f9_confirmation_gate',
+  'uia_write',
+  'independent_readback',
+  'policy_authorization',
+  'windows_host_pipe',
+];
 
 export const NOTEPAD_LIVE_ACCEPTANCE_PENDING_GATES = Object.freeze([
   'f9_confirmation_gate',
