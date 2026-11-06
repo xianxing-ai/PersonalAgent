@@ -96,3 +96,24 @@ test('版本与对应包绑定，交换两个包的版本必须失败', () => {
   writeFileSync(join(tmp, 'docs/competition/OPEN_SOURCE_LIST.md'), '| first | 2.0.0 / 1.0.0 |\n| second | 1.0.0 / 2.0.0 |\n');
   assert.equal(verifyOpenSourceList(tmp).errors.length, 2);
 });
+
+test('直接依赖按声明者解析嵌套安装，不计无关传递依赖', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'osl-nested-'));
+  for (const part of ['docs/competition', 'apps', 'packages/a', 'packages/b']) mkdirSync(join(tmp, part), { recursive: true });
+  writeFileSync(join(tmp, 'package.json'), JSON.stringify({}));
+  for (const pkg of ['a', 'b']) writeFileSync(join(tmp, `packages/${pkg}/package.json`), JSON.stringify({ dependencies: { example: '^1.0.0' } }));
+  writeFileSync(join(tmp, 'package-lock.json'), JSON.stringify({ packages: {
+    'node_modules/example': { version: '1.0.1' },
+    'packages/b/node_modules/example': { version: '1.0.2' },
+    'node_modules/other/node_modules/example': { version: '9.0.0' },
+  } }));
+  writeFileSync(join(tmp, 'docs/competition/OPEN_SOURCE_LIST.md'), '| example | 1.0.1 |\n');
+  const mismatch = verifyOpenSourceList(tmp);
+  assert.equal(mismatch.ok, false);
+  assert.ok(mismatch.errors.some((error) => error.includes('packages/b') && error.includes('1.0.2')));
+  writeFileSync(join(tmp, 'docs/competition/OPEN_SOURCE_LIST.md'), '| example | 1.0.x |\n');
+  assert.equal(verifyOpenSourceList(tmp).ok, true);
+  writeFileSync(join(tmp, 'package-lock.json'), JSON.stringify({ packages: { 'packages/b/node_modules/example': { version: '1.0.2' } } }));
+  const missing = verifyOpenSourceList(tmp);
+  assert.ok(missing.errors.some((error) => error.includes('packages/a') && error.includes('没有可解析')));
+});

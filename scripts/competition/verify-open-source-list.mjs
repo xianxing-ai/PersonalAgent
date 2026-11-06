@@ -7,7 +7,7 @@
 //       （node --test tests/contracts/open-source-list.test.mjs 亦调用本模块）
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, relative, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const OUR_SCOPE = '@personal-agent/';
@@ -23,7 +23,7 @@ function listPackageJsonFiles(root, dir, out = []) {
 }
 
 /** 扫描全部工作区 package.json，返回 { name -> Set<range> }（仅第三方直接依赖）。 */
-export function collectThirdPartyDirectDeps(repoRoot) {
+export function collectThirdPartyDirectDeps(repoRoot, owners = new Map()) {
   const deps = new Map();
   const roots = [join(repoRoot, 'packages'), join(repoRoot, 'apps')];
   for (const r of roots) {
@@ -35,6 +35,8 @@ export function collectThirdPartyDirectDeps(repoRoot) {
           if (name.startsWith(OUR_SCOPE)) continue;
           if (!deps.has(name)) deps.set(name, new Set());
           deps.get(name).add(String(range));
+          if (!owners.has(name)) owners.set(name, new Set());
+          owners.get(name).add(relative(repoRoot, dirname(file)).replaceAll('\\', '/'));
         }
       }
     }
@@ -46,6 +48,8 @@ export function collectThirdPartyDirectDeps(repoRoot) {
       if (name.startsWith(OUR_SCOPE)) continue;
       if (!deps.has(name)) deps.set(name, new Set());
       deps.get(name).add(String(range));
+      if (!owners.has(name)) owners.set(name, new Set());
+      owners.get(name).add('');
     }
   }
   return deps;
@@ -95,8 +99,10 @@ export function verifyOpenSourceList(repoRoot) {
   const docText = readFileSync(docPath, 'utf8');
   const lock = JSON.parse(readFileSync(join(repoRoot, 'package-lock.json'), 'utf8'));
 
-  const directDeps = collectThirdPartyDirectDeps(repoRoot);
+  const owners = new Map();
+  const directDeps = collectThirdPartyDirectDeps(repoRoot, owners);
   const lockNames = new Set(Object.keys(lock.packages ?? {}).map((k) => k.replace(/^node_modules\//, '')).filter((n) => n && !n.includes('/packages/') && !n.startsWith('packages/') && !n.startsWith('apps/')));
+  for (const name of directDeps.keys()) lockNames.add(name);
   const listed = parseListedPackages(docText, lockNames);
   const listedByName = new Map();
   for (const item of listed) {
@@ -110,18 +116,25 @@ export function verifyOpenSourceList(repoRoot) {
       errors.push(`第三方直接依赖 ${name} 未登记进 OPEN_SOURCE_LIST.md`);
       continue;
     }
-    // 2) 必须存在于 lock
-    const lockEntry = lock.packages?.[`node_modules/${name}`];
-    if (!lockEntry) {
-      errors.push(`清单登记了 ${name}，但 package-lock.json 中没有 node_modules/${name}`);
-      continue;
-    }
-    // 3) 版本一致（行级）
-    const installed = String(lockEntry.version ?? '');
-    const rows = listedByName.get(name);
-    const mentioned = rows.some((r) => versionMentioned(r.versionText, installed));
-    if (!mentioned) {
-      errors.push(`${name} 清单版本（${rows.map((r) => r.versionText).join('; ')}）与 lock 安装版本 ${installed} 不一致`);
+    // 查找每个声明者实际解析到的最近安装位置，避免把其他包的传递依赖算作直接依赖。
+    for (const owner of owners.get(name)) {
+      let dir = owner;
+      let lockEntry;
+      do {
+        lockEntry = lock.packages?.[`${dir ? `${dir}/` : ''}node_modules/${name}`];
+        if (lockEntry || !dir) break;
+        const parent = posix.dirname(dir);
+        dir = parent === '.' ? '' : parent;
+      } while (true);
+      if (!lockEntry) {
+        errors.push(`直接依赖 ${name}（${owner || '.'}）在 package-lock.json 中没有可解析的安装位置`);
+        continue;
+      }
+      const installed = String(lockEntry.version ?? '');
+      const rows = listedByName.get(name);
+      if (!rows.some((r) => versionMentioned(r.versionText, installed))) {
+        errors.push(`${name}（${owner || '.'}）清单版本（${rows.map((r) => r.versionText).join('; ')}）与 lock 安装版本 ${installed} 不一致`);
+      }
     }
   }
 
