@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../WindowsHost.Host.csproj" />
+    <Compile Remove="journal/**/*.cs" />
   </ItemGroup>
 </Project>
