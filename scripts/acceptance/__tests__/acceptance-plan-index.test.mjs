@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import crypto from 'node:crypto';
 
 import {
   REQUIRED_ENVIRONMENTS,
@@ -233,67 +234,247 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assert.equal(manifest.length, 18, 'Must contain all 18 unmerged files');
 
+  // 18 份快照逐文件静态解析预期分类与行号精准对照表（严禁仅靠 12/6 总数通过，防止异错偶合）
+  const EXPECTED_PER_FIXTURE = {
+    // PR #594
+    'docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md': {
+      pr: 594,
+      ok: true,
+      id: 'sqlite-packaged-electron-smoke',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'scripts/release/packaged-sqlite-smoke.plan.mjs': {
+      pr: 594,
+      ok: true,
+      id: 'sqlite-packaged-electron-smoke',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 160,
+    },
+    // PR #596
+    'docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md': {
+      pr: 596,
+      ok: true,
+      id: 'deployment-readback-plan',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'packages/agentarts/src/deployment-readback-plan.ts': {
+      pr: 596,
+      ok: false,
+      id: 'deployment-readback-plan',
+      status: 'unavailable',
+      missingFields: ['closedLoop'],
+      cannotConfirmReason: 'ambiguous_closedLoop',
+      expectedLines: [263, 392],
+    },
+    // PR #598
+    'docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md': {
+      pr: 598,
+      ok: true,
+      id: 'release-install-upgrade-uninstall',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'scripts/release/release-install-upgrade-uninstall.plan.mjs': {
+      pr: 598,
+      ok: true,
+      id: 'release-install-upgrade-uninstall',
+      closedLoop: false,
+      status: 'pending',
+      closedLoopLine: 255,
+    },
+    // PR #599
+    'docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md': {
+      pr: 599,
+      ok: true,
+      id: 'notepad-live-acceptance',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'packages/windows-client/src/notepad-live-acceptance-plan.ts': {
+      pr: 599,
+      ok: false,
+      id: 'notepad-live-acceptance',
+      status: 'unavailable',
+      missingFields: ['closedLoop'],
+      cannotConfirmReason: 'ambiguous_closedLoop',
+      expectedLines: [127, 346],
+    },
+    // PR #602
+    'docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md': {
+      pr: 602,
+      ok: true,
+      id: 'privacy-deletion-acceptance-plan',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'packages/goals/src/privacy-deletion-acceptance-plan.ts': {
+      pr: 602,
+      ok: true,
+      id: 'privacy-deletion-acceptance-plan',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 423,
+    },
+    // PR #604
+    'docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md': {
+      pr: 604,
+      ok: true,
+      id: 'windows-sandbox-acceptance-plan',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'packages/coding-tools/src/windows-sandbox-acceptance-plan.ts': {
+      pr: 604,
+      ok: false,
+      id: 'windows-sandbox-acceptance-plan',
+      status: 'unavailable',
+      missingFields: ['closedLoop'],
+      cannotConfirmReason: 'ambiguous_closedLoop',
+      expectedLines: [161, 512],
+    },
+    // PR #605
+    'docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md': {
+      pr: 605,
+      ok: true,
+      id: 'f09-cloud-prefix-plan',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts': {
+      pr: 605,
+      ok: false,
+      id: 'f09-cloud-prefix-plan',
+      status: 'unavailable',
+      missingFields: ['closedLoop'],
+      cannotConfirmReason: 'ambiguous_closedLoop',
+      expectedLines: [330, 481],
+    },
+    // PR #606
+    'docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md': {
+      pr: 606,
+      ok: true,
+      id: 'cloud-persistent-acceptance-plan',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'packages/coordination/src/cloud-persistent-acceptance-plan.ts': {
+      pr: 606,
+      ok: false,
+      id: 'cloud-persistent-acceptance-plan',
+      status: 'unavailable',
+      missingFields: ['closedLoop'],
+      cannotConfirmReason: 'ambiguous_closedLoop',
+      expectedLines: [434, 436, 565],
+    },
+    // PR #607
+    'docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md': {
+      pr: 607,
+      ok: true,
+      id: 'mod04b-agentarts-acceptance-plan',
+      closedLoop: false,
+      status: 'unavailable',
+      closedLoopLine: 5,
+    },
+    'packages/coordination/src/mod04b-agentarts-acceptance-plan.ts': {
+      pr: 607,
+      ok: false,
+      id: 'mod04b-agentarts-acceptance-plan',
+      status: 'unavailable',
+      missingFields: ['closedLoop'],
+      cannotConfirmReason: 'ambiguous_closedLoop',
+      expectedLines: [558, 560, 817],
+    },
+  };
+
   let planCandidates = 0;
+  let validCount = 0;
+  let errorCount = 0;
+
   for (const item of manifest) {
+    assert.ok(item.snapshotAt, `Item ${item.originalPath} must have snapshotAt timestamp`);
+    assert.ok(item.disclaimer, `Item ${item.originalPath} must have disclaimer stating not main and not real acceptance`);
+
     const fullPath = path.resolve(item.fixturePath);
     assert.ok(fs.existsSync(fullPath), `Fixture file must exist: ${item.fixturePath}`);
+
+    // 严防篡改：逐文件核验 SHA-256 与字节长度
+    const fileBytes = fs.readFileSync(fullPath);
+    const actualSha = crypto.createHash('sha256').update(fileBytes).digest('hex');
+    assert.equal(actualSha, item.sha256, `SHA256 must match MANIFEST for ${item.originalPath}`);
+    assert.equal(fileBytes.length, item.bytes, `Byte length must match MANIFEST for ${item.originalPath}`);
 
     let res;
     if (item.originalPath.endsWith('.md')) {
       res = parseMarkdownPlan(fullPath, '.');
-      // 9 篇 Markdown 均未包含显式 id frontmatter/metadata：严禁以文件名回填 id，必须列入 missingFields
-      assert.ok(
-        res.missingFields.includes('id'),
-        `Markdown plan ${item.originalPath} lacking frontmatter id must report id in missingFields`,
-      );
-      assert.equal(
-        res.cannotConfirm?.id?.reason,
-        'missing_id',
-        `Markdown plan ${item.originalPath} lacking frontmatter id must have cannotConfirm.id.reason='missing_id'`,
-      );
     } else {
       res = parseCodePlan(fullPath, '.');
-      // 9 个代码规划均未显式声明 title/planTitle 字符串字面量：严禁以 id 或文件名回填 title，必须列入 missingFields
-      assert.ok(
-        res.missingFields.includes('title'),
-        `Code plan ${item.originalPath} lacking title literal must report title in missingFields`,
-      );
-      assert.equal(
-        res.cannotConfirm?.title?.reason,
-        'missing_title',
-        `Code plan ${item.originalPath} lacking title literal must have cannotConfirm.title.reason='missing_title'`,
-      );
-      assert.equal(res.title, null, `Code plan ${item.originalPath} must have title === null when not explicitly declared`);
-
-      // 3 个无显式 capability/id 的代码规划（deployment-readback, privacy-deletion, f09-cloud-prefix）必须 missing id
-      if (
-        item.originalPath.includes('deployment-readback') ||
-        item.originalPath.includes('privacy-deletion') ||
-        item.originalPath.includes('f09-cloud-prefix')
-      ) {
-        assert.ok(
-          res.missingFields.includes('id'),
-          `Code plan ${item.originalPath} lacking capability literal must report id in missingFields`,
-        );
-        assert.equal(res.cannotConfirm?.id?.reason, 'missing_id');
-      }
     }
 
     assert.equal(res.isPlan, true, `File ${item.originalPath} must be accurately classified as an acceptance plan candidate`);
     planCandidates++;
 
-    // 严禁假齐套：在未提供完整机器格式字面量的情况下，必须诚实报错，不能假报 ok=true
-    assert.equal(res.ok, false, `File ${item.originalPath} must honestly fail full validation due to missing explicit fields`);
-    assert.ok(Array.isArray(res.missingFields) && res.missingFields.length > 0, `File ${item.originalPath} must list missing fields`);
-    assert.ok(res.cannotConfirm && typeof res.cannotConfirm === 'object', `File ${item.originalPath} must have cannotConfirm records`);
+    const exp = EXPECTED_PER_FIXTURE[item.originalPath];
+    assert.ok(exp, `Expected configuration must exist for ${item.originalPath}`);
+    assert.equal(item.pr, exp.pr, `PR must match for ${item.originalPath}`);
+    assert.equal(res.ok, exp.ok, `Parse result ok must match expected for ${item.originalPath}`);
 
-    // 严禁将 true 改为 false：检查不能有任何字段被违规篡改
-    if (res.rawRecord?.cannotConfirm?.closedLoop?.reason === 'ambiguous_closedLoop') {
-      assert.equal(res.rawRecord.closedLoop, undefined, 'Ambiguous closedLoop must remain undefined, never guessed or mutated');
+    if (exp.ok) {
+      validCount++;
+      // 合规规划必须满足离线安全红线：closedLoop 为 false，状态为待真实验收状态 (unavailable/pending)
+      assert.equal(res.record.id, exp.id, `id must match for ${item.originalPath}`);
+      assert.equal(res.record.closedLoop, exp.closedLoop, `Valid plan ${item.originalPath} must have closedLoop: false`);
+      assert.equal(res.record.status, exp.status, `Valid plan ${item.originalPath} must match status`);
+      assert.equal(
+        res.record.provenance?.closedLoop?.lineStart,
+        exp.closedLoopLine,
+        `closedLoop line provenance must match for ${item.originalPath}`,
+      );
+      assert.equal(
+        res.record.provenance?.closedLoop?.sourcePath,
+        path.relative('.', fullPath),
+        `sourcePath provenance must match for ${item.originalPath}`,
+      );
+    } else {
+      errorCount++;
+      // 存在缺漏的规划必须如实列入 missingFields 并具备 cannotConfirm 原因
+      assert.equal(res.rawRecord?.id, exp.id, `id must match for ${item.originalPath}`);
+      assert.equal(res.rawRecord?.status, exp.status, `status must match for ${item.originalPath}`);
+      assert.equal(res.rawRecord?.closedLoop, undefined, `closedLoop must remain undefined for ${item.originalPath}`);
+      assert.deepEqual(res.missingFields, exp.missingFields, `missingFields must match exactly for ${item.originalPath}`);
+      assert.equal(
+        res.cannotConfirm?.closedLoop?.reason,
+        exp.cannotConfirmReason,
+        `cannotConfirm reason must match for ${item.originalPath}`,
+      );
+      assert.equal(
+        res.cannotConfirm?.closedLoop?.sourcePath,
+        path.relative('.', fullPath),
+        `cannotConfirm sourcePath must match for ${item.originalPath}`,
+      );
+
+      const occurrenceLines = res.cannotConfirm?.closedLoop?.occurrences?.map((o) => o.line);
+      assert.deepEqual(
+        occurrenceLines,
+        exp.expectedLines,
+        `Occurrence lines must match exactly for ${item.originalPath}`,
+      );
     }
   }
 
-  assert.equal(planCandidates, 18);
+  assert.equal(planCandidates, 18, 'All 18 files must be recognized as plan candidates');
+  assert.equal(validCount, 12, 'Exactly 12 plans (9 markdown + 3 code) have complete machine declarations');
+  assert.equal(errorCount, 6, 'Exactly 6 code plans report ambiguous_closedLoop due to limits strings');
 });
 
 test('parsers: strict elimination of id and title fallbacks across markdown, code, and json', () => {

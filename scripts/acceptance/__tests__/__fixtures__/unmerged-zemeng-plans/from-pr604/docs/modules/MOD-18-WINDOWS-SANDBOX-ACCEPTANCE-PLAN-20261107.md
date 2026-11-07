@@ -1,3 +1,13 @@
+---
+id: windows-sandbox-acceptance-plan
+title: MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - windows_real_machine
+reason: 待真机验收
+---
+
 # MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验
 
 <!-- current-design-20261015 -->
@@ -70,16 +80,53 @@ MOD-18 负责受限编程工具与 Windows 原生沙箱执行（`windows-psec` �
       ]
     }
     ```
-- **禁止假成功（Prohibit Fake Success）**：
-  - 调用方即使在参数中传入 `{ closedLoop: true }`，若缺少真机六项门控凭据或处于 Linux/mock 模式，该标志被严格忽略/覆盖，决不输出虚假成功；
-- **六项门控完整性判定**：
-  只有当平台为 `'win32'`、`hasRealMachineEvidence === true`、`helperAvailable !== false`、无 mock 且 `assertWindowsSandboxEvidence` 校验通过，并且以下 6 项门控全部达成时，才输出 `closedLoop: true`、`status: 'verified'`：
-  1. `helper_attestation`：辅助进程可信身份与文件 SHA-256 Pin 核验通过；
-  2. `psec_appcontainer_boundary`：AppContainer 隔离生效且 `enforced === true`；
-  3. `job_object_containment`：JobObject 容器锁定且子孙进程均随 helper 终止（`stopped === true`）；
-  4. `filesystem_isolation`：读写根受限、副作用可控（`sideEffects: 'none' | 'possible'`）且符号链接逃逸受阻；
-  5. `network_deny_guard`：网络连接在沙箱内部被内核拦截拒绝；
-  6. `policy_binding`：参数绑定、任务引用及单次授权已被确实验证。
+- **禁止假成功与可信来源边界（Prohibit Fake Success & Attestation Boundary）**：
+  - 调用方即使在参数中传入 `{ closedLoop: true }` 或在内存中构造模拟证据对象，若缺少真机实体验收与辅助进程审计日志，决不输出虚假闭环；
+  - 本规划工具为离线纯函数，能够执行契约与结构校验，但由于不直接调动真实 WindowsJobProcessHost.exe 与操作系统 AppContainer 内核，缺少独立于调用方的权威审计；全链路闭环严格保持 `closedLoop: false`、`status: 'unavailable'`，待真机验收现场核验；
+- **六项沙箱结构门控精确判定逻辑（绝无 outcome exited 短路）**：
+  1. `helper_attestation`：辅助进程存在性与文件 SHA-256 格式校验（`helperVerified === true || helper.attested === true`，无 exited 短路；注意：当前仅核验 64-hex 结构，未与固定受信 Pin 清单比对，实机受信依赖带签名清单的现场读回，缺口如实记录，不编造受信清单）；
+  2. `psec_appcontainer_boundary`：AppContainer 隔离生效且 `enforced === true`（`appContainer === true || psecVerified === true`，无 exited 短路）；
+  3. `job_object_containment`：JobObject 容器锁定且子孙进程随 helper 终止（`stopped === true && (jobObjectVerified === true || descendantsStopped === true)`，无 exited 短路）；
+  4. `filesystem_isolation`：读写根受限、副作用可控（严格要求 `sideEffects === 'none'` 且 `filesystemVerified === true`，拒绝 `possible`）；
+  5. `network_deny_guard`：网络连接在沙箱内部被内核拦截拒绝（`networkDenyVerified === true || networkBlocked === true || networkVerified === true`，无 exited 短路）；
+  6. `policy_binding`：参数绑定、任务引用及单次授权已被确实验证（严格要求 `exactGrantConsumed === true`，拒绝仅凭 authorizationRef 字符串放行）。
+  离线/纯模拟环境下，全部 6 项实机门控在 `pending` 中严格保持，绝不因模拟结构齐全而消失；结构校验通过项由 `structuralGates` 与 `structuralVerification` 显式呈现，逐字段缺失（`missingFields`/`missingGates`）精确可测；`verifiedGates` 保持为空，全链路闭环严格保持 `closedLoop: false`。
+
+## 验收步骤
+
+1. helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过
+2. psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true
+3. job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）
+4. filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻
+5. network_deny_guard：网络连接在沙箱内部被内核拦截拒绝
+6. policy_binding：参数绑定、任务引用及单次授权已被确实验证
+
+## 证据要求
+
+1. win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）
+2. 辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据
+
+## 挂起项
+
+- `helper_attestation`: 辅助进程可信身份与文件 SHA-256 Pin 核验通过
+- `psec_appcontainer_boundary`: AppContainer 隔离生效且 enforced === true
+- `job_object_containment`: JobObject 容器锁定且子孙进程均随 helper 终止
+- `filesystem_isolation`: 读写根受限、副作用可控且符号链接逃逸受阻
+- `network_deny_guard`: 网络连接在沙箱内部被内核拦截拒绝
+- `policy_binding`: 参数绑定、任务引用及单次授权已被确实验证
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `windows-sandbox-acceptance-plan` | `packages/coding-tools/src/windows-sandbox-acceptance-plan.ts` | 代码 `PLAN_ID`；§1: `MOD-18 负责受限编程工具与 Windows 原生沙箱执行` |
+| title | `MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | L1: `# MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107：Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验` |
+| status | `unavailable` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `status: 'unavailable'`；§2.2: `status: "unavailable"` |
+| closedLoop | `false` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `强制执行 fail-closed 门控：closedLoop: false`；代码 L347 |
+| requiredEnvironments | `['windows_real_machine']` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `MOD-18 负责受限编程工具与 Windows 原生沙箱执行`；§2.1: `平台强制：platform 必须严格为 win32` |
+| acceptanceSteps | 6 项完整步骤 | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §2.2: 六项门控完整性判定（helper, psec, job, fs, net, policy） |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §2.1: `assertWindowsSandboxEvidence` 校验条件；§1: 辅助进程隔离审计日志与读回 |
+| reason / pendingItems | `待真机验收` | `docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md` | §1: `reason: '待真机验收'`；§2.2: `WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON` |
 
 ---
 
@@ -106,7 +153,7 @@ MOD-18 负责受限编程工具与 Windows 原生沙箱执行（`windows-psec` �
 | 验证项 | 执行命令 | 结果 |
 | --- | --- | --- |
 | 模块构建 | `npm run build --workspace=@personal-agent/coding-tools` | 退出码 0，tsc 编译通过 |
-| 独立单元测试 | `node --test packages/coding-tools/test/windows-sandbox-acceptance-plan.test.mjs` | 17/17 通过 |
-| 模块全量测试 | `npm test --workspace=@personal-agent/coding-tools` | 335/335（307 pass / 28 Windows skip / 0 fail） |
+| 独立单元测试（本轮实测） | `node --test packages/coding-tools/test/windows-sandbox-acceptance-plan.test.mjs` | **18/18 通过 (0 失败)** |
+| 模块历史全量基线 | `npm test --workspace=@personal-agent/coding-tools` | 历史记录 335/335（307 pass / 28 Windows skip / 0 fail；本轮仅重跑受影响定向测试，未宣称全量已跑） |
 | 架构约束检查 | `npm run check:architecture` | 3/3 通过 |
 | Git 格式检查 | `git diff --check` | 0 格式警告/冲突 |

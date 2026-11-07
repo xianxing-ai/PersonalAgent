@@ -45,9 +45,11 @@
    - 每个无法确认或缺失的字段均附带 `cannotConfirm[field]`，记录确切的不可确认原因与详情；
    - **严禁以文件名或其它字段ID回填缺失的 `id` 或 `title`**：文件名仅用于报告展示定位，绝不作为提取出的源字段；源码中未显式声明的必需字段必须严格进入 `missingFields` 并记录 `cannotConfirm`（`missing_id` / `missing_title`），杜绝因临时赋值而绕过校验掩盖缺项。
 
-6. **样例文档核心声明**：
-   - 针对未合并 PR 离线快照生成的样例文档，明确声明：**“仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干”**；
-   - 旧 WIP 报告自称的「8 valid」不代表人工确认，系由规则过宽推断（猜关键词、true改false、pending拼凑、文件名回填id/title）造成的虚假齐套；本工具在严格静态文本规则下，如实反映 18 份输入的真实缺项（0 valid）。
+6. **样例文档核心声明与真实结果统计**：
+   - 针对未合并 PR 固定 SHA 离线快照生成的样例文档，明确声明：**“仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干”**；
+   - 本工具在严格静态文本规则下，对最新提交固定 SHA 的 18 份快照实测得出：**12 份合规待验收规划**（9 篇 Markdown 规划 + 3 份静态字段可解析代码规划，PR #594, #598, #602）与 **6 份因 limits 注释字面量触发静态正则分支歧义（`ambiguous_closedLoop`）报错的代码规划**；
+   - 恪守“不为迎合正则改自然语言词汇”原则，绝不强行改词粉饰；
+   - 明确**齐套不代表真机/真云已验收**，所有条目 `closedLoop` 均为 `false`，状态为 `unavailable` 或 `pending`，真实事项均处于待验收状态。
 
 ## 2. 规范化记录字段定义
 
@@ -72,20 +74,26 @@
 
 同级维护完整的 `MANIFEST.json` 清单，严格记录：
 - `pr`：来源 PR 编号（#594, #596, #598, #599, #602, #604, #605, #606, #607）
-- `branch`：来源分支名称
+- `branch`：来源分支名称（如 PR #598 为 `zemeng/mod19-release-acceptance-plans`）
 - `head`：固定 Git commit SHA
 - `originalPath`：主干目标路径
 - `sha256`：逐字快照内容的 SHA256 哈希值
 - `bytes`：文件精确字节大小
+- `snapshotAt`：抓取时间戳（带明确时区，如 `2026-11-07T11:32:05+08:00`）
+- `disclaimer`：明确声明“未合并 PR 固定 SHA 快照，非 main 分支，非真实验收”
 
 > **隔离说明**：测试夹具存放在默认全库扫描排除的 `__fixtures__` 目录下，严禁拷贝至业务代码 `src/` 中冒充 main 已存在。
 
 ## 4. 验证命令与测试
 
 ```bash
-# 1. 运行验收规划索引工具全量单元测试（包含安全防执行测试、歧义分支测试、18份真实快照逐份覆盖测试）
+# 1. 运行验收规划索引工具全量单元测试（包含安全防执行测试、歧义分支测试、18份真实快照逐份覆盖测试，实测 15/15 pass）
 node --test scripts/acceptance/__tests__/*.test.mjs
 
-# 2. 扫描真实未合并快照生成离线样例报告（因如实报错缺少字段，需带 --report-errors）
+# 2. 扫描 PR #608 自身分支工作树（/workspace/zemeng-review-608-20261107 @1918e61f，基于 main 祖先 @0e7f3aa1）生成实际待验收索引
+# （说明：此命令反映当前工作树扫描结果，包含 2462 个文件、0 合规、4 错误、734 跳过；main 主干尚未合入上述 9 个 PR 是独立事实，本命令不假称干净 main 扫描）
+node scripts/acceptance/build-pending-acceptance-index.mjs --root . --out-dir docs/modules --report-errors
+
+# 3. 扫描真实未合并快照生成离线样例报告（实测 12 合规 / 6 报错，需带 --report-errors）
 node scripts/acceptance/build-pending-acceptance-index.mjs --root scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans --globs "**/*" --out-dir docs/modules --report-errors
 ```

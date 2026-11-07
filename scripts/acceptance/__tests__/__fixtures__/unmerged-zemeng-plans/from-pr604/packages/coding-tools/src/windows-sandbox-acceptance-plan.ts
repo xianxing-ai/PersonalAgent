@@ -1,9 +1,49 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {NativeSandboxBackend, SandboxExecutionResult} from './native-sandbox.js';
 
+export const PLAN_ID = 'windows-sandbox-acceptance-plan';
+export const PLAN_TITLE = 'Windows 原生沙箱（windows-psec）真机验收离线规划与契约校验';
 export const WINDOWS_SANDBOX_ACCEPTANCE_BACKEND = 'windows-psec' as const;
 export const WINDOWS_SANDBOX_ACCEPTANCE_CAPABILITY = 'workspace.run_allowed_command' as const;
 export const WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;
+export const PENDING_REASON = WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON;
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['windows_real_machine'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md §2.2）
+ */
+export const ACCEPTANCE_STEPS = [
+  'helper_attestation：辅助进程可信身份与文件 SHA-256 Pin 核验通过',
+  'psec_appcontainer_boundary：AppContainer 隔离生效且 enforced === true',
+  'job_object_containment：JobObject 容器锁定且子孙进程均随 helper 终止（stopped === true）',
+  'filesystem_isolation：读写根受限、副作用可控且符号链接逃逸受阻',
+  'network_deny_guard：网络连接在沙箱内部被内核拦截拒绝',
+  'policy_binding：参数绑定、任务引用及单次授权已被确实验证',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md §2.1）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'win32 平台 windows-psec 原生沙箱执行回执（含 helperPath、helperSha256、helperFilesSha256、enforced=true 与 outcome）',
+  '辅助进程隔离审计日志与文件系统/网络内核级拦截读回证据',
+];
+
+/**
+ * 默认待真机验收门控声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'helper_attestation',
+  'psec_appcontainer_boundary',
+  'job_object_containment',
+  'filesystem_isolation',
+  'network_deny_guard',
+  'policy_binding',
+];
 
 export const WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES = Object.freeze([
   'helper_attestation',
@@ -82,6 +122,14 @@ export interface PlanWindowsSandboxAcceptanceOptions {
   readonly customPendingItems?: readonly WindowsSandboxAcceptanceGate[] | undefined;
 }
 
+export interface WindowsSandboxStructuralVerification {
+  readonly verifiedGates: readonly WindowsSandboxAcceptanceGate[];
+  readonly missingGates: readonly WindowsSandboxAcceptanceGate[];
+  readonly missingFields: readonly string[];
+  readonly fullyCovered: boolean;
+  readonly pinAttestationGap: string;
+}
+
 export interface WindowsSandboxAcceptancePlan {
   readonly profile: string;
   readonly platform: string;
@@ -92,6 +140,8 @@ export interface WindowsSandboxAcceptancePlan {
   readonly reason: string;
   readonly pending: readonly WindowsSandboxAcceptanceGate[];
   readonly verifiedGates: readonly WindowsSandboxAcceptanceGate[];
+  readonly structuralGates?: readonly WindowsSandboxAcceptanceGate[] | undefined;
+  readonly structuralVerification?: WindowsSandboxStructuralVerification | undefined;
   readonly evidenceSummary?: {
     readonly taskId?: string | undefined;
     readonly runId?: string | undefined;
@@ -295,16 +345,14 @@ export function isWindowsSandboxEvidence(value: unknown): value is WindowsSandbo
  * Evaluates whether Windows Native Sandbox (windows-psec) execution has achieved real physical closed loop.
  *
  * Rules:
- * - Non-win32 platform -> closedLoop: false, status: 'unavailable', reason: '待真机验收'.
- * - Helper unavailable (explicitly or invalid path) -> closedLoop: false, status: 'unavailable', reason: '待真机验收'.
- * - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop: false.
- * - Mock mode (options or evidence marked as mock) -> closedLoop: false.
- * - Prohibits fake success: caller cannot override closedLoop: true without passing all real machine gates.
+ * - Non-win32 platform -> closedLoop is false, status is 'unavailable', reason is '待真机验收'.
+ * - Helper unavailable (explicitly or invalid path) -> closedLoop is false, status is 'unavailable', reason is '待真机验收'.
+ * - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop is false.
+ * - Mock mode (options or evidence marked as mock) -> closedLoop is false.
+ * - Prohibits fake success: caller cannot override closedLoop without passing all real machine gates.
  * - Offline safety: does NOT launch real helper process, does NOT connect to network.
  *
- * Only when running on win32 (or platform: 'win32') with verified real machine evidence
- * satisfying all required acceptance gates (helper attestation, PSEC AppContainer boundary,
- * JobObject containment, filesystem isolation, network deny guard, policy binding) will closedLoop be true.
+ * Real physical closed loop requires execution in genuine Windows environment with verified helper.
  */
 export function planWindowsSandboxAcceptance(
   options: PlanWindowsSandboxAcceptanceOptions = {},
@@ -327,105 +375,121 @@ export function planWindowsSandboxAcceptance(
     (options.helperPath === undefined || HELPER_EXE_NAME_PATTERN.test(options.helperPath));
   const requiredGates = options.requiredGates ?? WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES;
 
-  // Fail-closed gate: non-win32, helper unavailable, mock, or missing real machine evidence
-  if (!isWin32 || !helperAvailable || isMock || !hasReal || options.evidence === undefined) {
-    const pendingList: WindowsSandboxAcceptanceGate[] = [...requiredGates];
-    if (options.customPendingItems) {
-      for (const item of options.customPendingItems) {
-        if (!pendingList.includes(item)) {
-          pendingList.push(item);
-        }
-      }
-    }
-
-    return Object.freeze({
-      profile: 'huawei_ict_agentarts',
-      platform: targetPlatform,
-      backend: WINDOWS_SANDBOX_ACCEPTANCE_BACKEND,
-      capability: WINDOWS_SANDBOX_ACCEPTANCE_CAPABILITY,
-      status: 'unavailable',
-      closedLoop: false,
-      reason: WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON,
-      pending: Object.freeze(pendingList),
-      verifiedGates: Object.freeze([]),
-      limits: WINDOWS_SANDBOX_ACCEPTANCE_LIMITS,
-    });
-  }
-
-  // Real evidence was supplied on win32 - validate structural shape
-  assertWindowsSandboxEvidence(options.evidence);
-  const evidence = options.evidence as WindowsSandboxEvidence;
-  const helper = extractHelperInfo(evidence);
-
   const verified: WindowsSandboxAcceptanceGate[] = [];
   const pending: WindowsSandboxAcceptanceGate[] = [];
+  let evidence: WindowsSandboxEvidence | undefined;
+  let helper: WindowsSandboxHelperAttestation | undefined;
+  let structuralVerificationResult: WindowsSandboxStructuralVerification | undefined;
 
-  // Gate 1: Helper Attestation
-  if (
-    helper &&
-    helper.helperSha256 &&
-    helper.helperFilesSha256 &&
-    (evidence.helperVerified === true || helper.attested === true || evidence.outcome === 'exited')
-  ) {
-    verified.push('helper_attestation');
+  // Fail-closed gate: non-win32, helper unavailable, mock, or missing real machine evidence
+  if (!isWin32 || !helperAvailable || isMock || !hasReal || options.evidence === undefined) {
+    for (const g of requiredGates) {
+      pending.push(g);
+    }
   } else {
-    pending.push('helper_attestation');
-  }
+    // Real evidence was supplied on win32 - validate structural shape
+    assertWindowsSandboxEvidence(options.evidence);
+    evidence = options.evidence as WindowsSandboxEvidence;
+    helper = extractHelperInfo(evidence);
 
-  // Gate 2: PSEC AppContainer Boundary
-  if (
-    evidence.backend === 'windows-psec' &&
-    evidence.enforced === true &&
-    (evidence.appContainer === true || evidence.psecVerified === true || evidence.outcome === 'exited')
-  ) {
-    verified.push('psec_appcontainer_boundary');
-  } else {
-    pending.push('psec_appcontainer_boundary');
-  }
+    const structuralGates: WindowsSandboxAcceptanceGate[] = [];
+    const missingGates: WindowsSandboxAcceptanceGate[] = [];
+    const missingFields: string[] = [];
 
-  // Gate 3: JobObject Containment & Process Lifecycle
-  if (
-    evidence.stopped === true &&
-    (evidence.jobObjectVerified === true || evidence.descendantsStopped === true || evidence.outcome === 'exited')
-  ) {
-    verified.push('job_object_containment');
-  } else {
-    pending.push('job_object_containment');
-  }
+    // Gate 1: Helper Attestation (No outcome: 'exited' short-circuit!)
+    // 依据事实核验：仅对 helper 及其 3 依赖文件进行格式与非空 64-hex SHA-256 结构校验，
+    // 未比对固定受信 Pin 清单（代码库中无硬编码 Pin 清单，实机凭证依赖带签名清单的现场读回）。
+    const gate1Passed = Boolean(
+      helper &&
+      helper.helperSha256 &&
+      helper.helperFilesSha256 &&
+      REQUIRED_HELPER_FILES.every(file => typeof helper?.helperFilesSha256?.[file] === 'string') &&
+      (evidence.helperVerified === true || helper.attested === true)
+    );
+    if (gate1Passed) {
+      structuralGates.push('helper_attestation');
+    } else {
+      missingGates.push('helper_attestation');
+      missingFields.push('helper_attestation_hash_or_verified');
+    }
 
-  // Gate 4: Filesystem Isolation (Roots & Reparse protection)
-  if (
-    evidence.filesystemVerified === true ||
-    evidence.sideEffects === 'none' ||
-    evidence.sideEffects === 'possible'
-  ) {
-    verified.push('filesystem_isolation');
-  } else {
-    pending.push('filesystem_isolation');
-  }
+    // Gate 2: PSEC AppContainer Boundary (No outcome: 'exited' short-circuit!)
+    const gate2Passed = Boolean(
+      evidence.backend === 'windows-psec' &&
+      evidence.enforced === true &&
+      (evidence.appContainer === true || evidence.psecVerified === true)
+    );
+    if (gate2Passed) {
+      structuralGates.push('psec_appcontainer_boundary');
+    } else {
+      missingGates.push('psec_appcontainer_boundary');
+      missingFields.push('appContainer_or_psecVerified');
+    }
 
-  // Gate 5: Network Deny Guard
-  if (
-    evidence.networkDenyVerified === true ||
-    evidence.networkBlocked === true ||
-    evidence.networkVerified === true ||
-    evidence.outcome === 'exited'
-  ) {
-    verified.push('network_deny_guard');
-  } else {
-    pending.push('network_deny_guard');
-  }
+    // Gate 3: JobObject Containment & Process Lifecycle (No outcome: 'exited' short-circuit!)
+    const gate3Passed = Boolean(
+      evidence.stopped === true &&
+      (evidence.jobObjectVerified === true || evidence.descendantsStopped === true)
+    );
+    if (gate3Passed) {
+      structuralGates.push('job_object_containment');
+    } else {
+      missingGates.push('job_object_containment');
+      missingFields.push('jobObjectVerified_or_descendantsStopped');
+    }
 
-  // Gate 6: Policy Binding & Single-use Authorization
-  if (
-    evidence.bindingVerified === true ||
-    evidence.assertCurrentVerified === true ||
-    evidence.exactGrantConsumed === true ||
-    (typeof evidence.authorizationRef === 'string' && evidence.authorizationRef.length > 0)
-  ) {
-    verified.push('policy_binding');
-  } else {
-    pending.push('policy_binding');
+    // Gate 4: Filesystem Isolation (Strictly sideEffects === 'none' AND filesystemVerified === true)
+    const gate4Passed = Boolean(
+      evidence.sideEffects === 'none' &&
+      evidence.filesystemVerified === true
+    );
+    if (gate4Passed) {
+      structuralGates.push('filesystem_isolation');
+    } else {
+      missingGates.push('filesystem_isolation');
+      missingFields.push('filesystemVerified_none_sideEffects');
+    }
+
+    // Gate 5: Network Deny Guard (No outcome: 'exited' short-circuit!)
+    const gate5Passed = Boolean(
+      evidence.networkDenyVerified === true ||
+      evidence.networkBlocked === true ||
+      evidence.networkVerified === true
+    );
+    if (gate5Passed) {
+      structuralGates.push('network_deny_guard');
+    } else {
+      missingGates.push('network_deny_guard');
+      missingFields.push('networkDenyVerified');
+    }
+
+    // Gate 6: Policy Binding & Single-use Authorization (Strictly requires exactGrantConsumed === true)
+    const gate6Passed = Boolean(
+      evidence.exactGrantConsumed === true &&
+      (evidence.bindingVerified === true ||
+       evidence.assertCurrentVerified === true ||
+       (typeof evidence.authorizationRef === 'string' && evidence.authorizationRef.length > 0))
+    );
+    if (gate6Passed) {
+      structuralGates.push('policy_binding');
+    } else {
+      missingGates.push('policy_binding');
+      missingFields.push('exactGrantConsumed');
+    }
+
+    // 在离线/纯模拟环境下，结构校验通过不替代物理 Windows 会话中 WindowsJobProcessHost 的内核级沙箱与网络拦截执行。
+    // 全部 6 项实机验收门控无条件保持在 pending 中，绝不因自报或模拟结构齐全而消失！
+    for (const g of requiredGates) {
+      pending.push(g);
+    }
+
+    structuralVerificationResult = {
+      verifiedGates: Object.freeze(structuralGates),
+      missingGates: Object.freeze(missingGates),
+      missingFields: Object.freeze(missingFields),
+      fullyCovered: missingGates.length === 0,
+      pinAttestationGap: 'helper 及其依赖文件 hash 仅执行结构存在性与格式校验，未与固定受信 Pin 清单比对，实机受信依赖真实 Windows 运行环境现场签发读回',
+    };
   }
 
   if (options.customPendingItems) {
@@ -436,19 +500,22 @@ export function planWindowsSandboxAcceptance(
     }
   }
 
-  const isClosedLoop = pending.length === 0;
-
+  // Real sandbox execution authority boundary:
+  // Offline structure assertions and self-reported flags do NOT substitute for live helper execution
+  // and Windows AppContainer OS kernel containment. Full closed loop remains false.
   return Object.freeze({
-    profile: typeof evidence.profile === 'string' ? evidence.profile : 'huawei_ict_agentarts',
+    profile: typeof evidence?.profile === 'string' ? evidence.profile : 'huawei_ict_agentarts',
     platform: targetPlatform,
-    backend: evidence.backend,
-    capability: typeof evidence.capability === 'string' ? evidence.capability : WINDOWS_SANDBOX_ACCEPTANCE_CAPABILITY,
-    status: isClosedLoop ? 'verified' : 'unavailable',
-    closedLoop: isClosedLoop,
-    reason: isClosedLoop ? '已通过 Windows 真机验收' : WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON,
+    backend: evidence?.backend ?? WINDOWS_SANDBOX_ACCEPTANCE_BACKEND,
+    capability: typeof evidence?.capability === 'string' ? evidence.capability : WINDOWS_SANDBOX_ACCEPTANCE_CAPABILITY,
+    status: 'unavailable',
+    closedLoop: false,
+    reason: WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON,
     pending: Object.freeze(pending),
     verifiedGates: Object.freeze(verified),
-    evidenceSummary: Object.freeze({
+    structuralGates: structuralVerificationResult ? structuralVerificationResult.verifiedGates : undefined,
+    structuralVerification: structuralVerificationResult,
+    evidenceSummary: evidence ? Object.freeze({
       taskId: typeof evidence.taskId === 'string' ? evidence.taskId : undefined,
       runId: typeof evidence.runId === 'string' ? evidence.runId : undefined,
       sandboxRef: typeof evidence.sandboxRef === 'string' ? evidence.sandboxRef : undefined,
@@ -458,7 +525,7 @@ export function planWindowsSandboxAcceptance(
       outcome: evidence.outcome,
       exitCode: evidence.exitCode,
       enforced: evidence.enforced,
-    }),
+    }) : undefined,
     limits: WINDOWS_SANDBOX_ACCEPTANCE_LIMITS,
   });
 }

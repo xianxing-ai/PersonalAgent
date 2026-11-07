@@ -1,3 +1,13 @@
+---
+id: cloud-persistent-acceptance-plan
+title: cloudPersistent：关机后云持续离线契约与验收规划
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - huawei_cloud
+reason: 待真云关机验收
+---
+
 # cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）
 
 <!-- current-design-20261015 -->
@@ -53,9 +63,14 @@
    - 包装断言并返回强类型 `CloudPersistentEvidence`。
 3. `planCloudPersistentAcceptance(optionsOrEvidence?: unknown | PlanCloudPersistentAcceptanceOptions): CloudPersistentAcceptancePlan`：
    - 纯离线纯函数 helper，不发起网络请求、不读取凭据；
-   - 支持无参数调用（生成默认 6 项待真云关机验收挂起项）；
+   - 支持无参数调用（生成默认待真云关机验收挂起项）；
    - 支持传入完整参数选项对象或直接传入证据；
-   - 传入证据时先执行 `assertCloudPersistentEvidence` 严格校验；
+   - 传入证据时先执行 `assertCloudPersistentEvidence` 严格校验，并核对代码基线（`headMatches === true`，缺失或不匹配均挂起 `source_head_commit_alignment`）；
+   - 校验持续执行 4 阶段覆盖状态（`missingPhases.length === 0`，未全覆盖时在 `cloud_phases_coverage` 中明确保留缺失项）；
+   - **输入门控防御与边界澄清**：
+     - `realCloudEvidence` 仅支持结构化对象 `RealCloudShutdownEvidence`，严格删除 `boolean` 重载；运行时传入布尔直接拒绝抛错；
+     - 结构核验要求必须完整声明 `authenticated`、`shutdownVerified`、`cloudHostActive`、`checkpointVerified`、`unattendedExecutionVerified` 与 `reconciliationVerified` 六项字段；
+     - 当前规划 helper 纯离线运行，缺乏向华为云持久化宿主下发探测探针能力，自报对象不构成真实独立验证；全链路闭环严格保持 `closedLoop: false`，`status: 'unavailable'`，`reason: '待真云关机验收'`；
    - 若无华为云真实关机证据或证据标为未验证，强制返回：
      - `closedLoop: false`
      - `status: 'unavailable'`
@@ -68,7 +83,43 @@
        5. `device_reconnect_reconciliation`：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回；
        6. `platform_independent_trace_and_cost`：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）。
    - 校验 HEAD 提交对齐（`headCommit` 与 `sourceCommit`），失配时追加 `source_head_commit_alignment` 挂起项；
-   - 仅当真实华为云证据齐备且对齐时，方可收敛至 `closedLoop: true`、`status: 'verified'`。
+   - **真实证据可信边界澄清**：当前规划 helper 为离线纯函数，能够完成回执结构与关机因果时序断言，但在纯离线环境下无法产生物理设备真实关机与华为云端宿主持续执行的独立验签凭据；自报对象或模拟布尔值不构成真实独立验证。因此在缺乏真实云关机独立凭证读回时，全链路闭环严格保持 `closedLoop: false`，`status: 'unavailable'`，`reason: '待真云关机验收'`。
+
+## 验收步骤
+
+1. device_shutdown_detection：本机桌面系统关机/休眠/离线事件捕获与状态读回（localDevice=false）
+2. cloud_persistent_host_handover：向 AgentArts 云端常驻宿主（cloudPersistentHost）原子交接执行会话与检查点恢复
+3. unattended_cloud_autonomous_dispatch：关机脱机期间云端自主调度器（Scheduler）唤醒与工具执行（非本机轮询驱动）
+4. cloud_checkpoint_persistence：关机持续运行期间任务状态、阶段时间线与回执在华为云端的原子持久化读回
+5. device_reconnect_reconciliation：宿主机开机重新连接后云端执行结果与本地 TaskRuntime 状态双向对账读回
+6. platform_independent_trace_and_cost：华为云 AgentArts 平台独立 TraceId、调用耗时与计费读回（非本机应用模拟日志）
+
+## 证据要求
+
+1. CloudPersistentEvidence 合规回执（含 cloudPersistentHost HTTPS/WSS URL、严格时序因果 cloudExecutionStartedAt >= deviceShutdownAt 与 cloudTraceId）
+2. AgentArts 平台独立 TraceId 关联、双向对账回执与华为云持久化检查点读回记录
+
+## 挂起项
+
+- `device_shutdown_detection`: 本机桌面系统关机/休眠/离线事件捕获与状态读回
+- `cloud_persistent_host_handover`: 向 AgentArts 云端常驻宿主原子交接执行会话与检查点恢复
+- `unattended_cloud_autonomous_dispatch`: 关机脱机期间云端自主调度器唤醒与工具执行
+- `cloud_checkpoint_persistence`: 关机持续运行期间任务状态与回执在华为云端的原子持久化读回
+- `device_reconnect_reconciliation`: 宿主机开机重新连接后云端执行结果与本地对账读回
+- `platform_independent_trace_and_cost`: 华为云 AgentArts 平台独立 TraceId 与计费读回
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `cloud-persistent-acceptance-plan` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | L1: `cloudPersistent：关机后云持续离线契约与验收规划`；代码 `PLAN_ID` |
+| title | `cloudPersistent：关机后云持续离线契约与验收规划` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | L1: `# cloudPersistent：关机后云持续离线契约与验收规划（2026-11-07）` |
+| status | `unavailable` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `状态标记为 unavailable`；§2.3: `status: 'unavailable'` |
+| closedLoop | `false` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `无关机后云证据时 closedLoop: false`；代码 L398, L500 |
+| requiredEnvironments | `['huawei_cloud']` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `将执行会话安全交接至 AgentArts 云端常驻宿主（cloudPersistentHost: true），由云端自主调度器持续执行` |
+| acceptanceSteps | 6 项完整步骤 | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §2.3: 包含 6 项挂起项（device_shutdown_detection, cloud_host_handover 等） |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §2.1: `assertCloudPersistentEvidence` 形状校验；§2.3: 独立 TraceId 与对账回执 |
+| reason / pendingItems | `待真云关机验收` | `docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md` | §1: `原因统一标记为 '待真云关机验收'`；代码 `CLOUD_PERSISTENT_PENDING_REASON` |
 
 ---
 
@@ -76,8 +127,8 @@
 
 - **构建与类型检查**：
   `npm run build --workspace=@personal-agent/coordination` 成功，类型检查通过，生成对应 `.d.ts` 与 `.js` 产物。
-- **定向测试**：
-  `node --test packages/coordination/test/cloud-persistent-acceptance-plan.test.mjs` 16/16 全部通过：
+- **独立单元测试（本轮实测）**：
+  `node --test packages/coordination/test/cloud-persistent-acceptance-plan.test.mjs` **17/17 全部通过 (0 失败)**：
   - 完整合法证据校验与字段提取；
   - 最小合法证据校验；
   - 非普通对象输入拒绝（null、undefined、基本类型、数组）；
@@ -90,10 +141,11 @@
   - 无参调用安全生成默认 `unavailable` 验收规划；
   - 有证据但无真实关机证据时保持 `closedLoop: false`、`status: unavailable`、`reason: '待真云关机验收'`；
   - HEAD Commit 失配探测与挂起；
-  - 真实云关机证据闭环收敛验证；
+  - 跨审查项修复：删除 boolean 重载（运行时传布尔抛错）、missingPhases 阶段覆盖门控、HEAD 对齐门控与结构化缺口可观测字段（`structuralVerification`）；
+  - 模拟真实关机证据时 closedLoop 严格保持 false，全部挂起项保持 pending；
   - 自定义挂起项保留验证。
-- **工作区全量回归**：
-  `npm test --workspace=@personal-agent/coordination` 257/257 全部通过。
+- **历史全量基线参考**：
+  历史记录 257/257 全部通过（本轮仅重跑受影响定向测试，未宣称本轮已跑全量）。
 - **架构门禁**：
   `npm run check:architecture` 3/3 全部通过。
 - **代码规范检查**：

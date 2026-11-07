@@ -3,8 +3,27 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const PROFILE = 'huawei_ict_agentarts';
-const PLAN_ID = 'sqlite-packaged-electron-smoke';
+export const PLAN_ID = 'sqlite-packaged-electron-smoke';
+export const PLAN_TITLE = 'MOD-19 打包后 Electron SQLite 烟测规划与占位';
 const PLACEHOLDER_RELATIVE_PATH = 'tests/manual/release/windows-electron-sqlite.json';
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md §1/§3）
+ */
+export const REQUIRED_ENVIRONMENTS = ['windows_real_machine'];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md §2.2/§3）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'tests/manual/release/windows-electron-sqlite.json 验收占位文件保持 pending/unverified 无篡改',
+  '打包后 Electron 主进程 SQLite 建库、WAL 模式、读写事务与重启读回独立回执',
+];
+
+/**
+ * 挂起原因声明（依据 docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md §1）
+ */
+export const PENDING_REASON = '待真机环境执行打包后 Electron SQLite 烟测';
 
 const REQUIRED_CHECKLIST_KEYWORDS = [
   'node:sqlite',
@@ -132,56 +151,50 @@ export function planPackagedSqliteSmoke(options = {}) {
 
   const artifactInfo = findPackagedArtifact(projectRoot, customArtifact);
 
+  const basePlan = {
+    schemaVersion: 1,
+    profile: PROFILE,
+    planId: PLAN_ID,
+    title: PLAN_TITLE,
+    status: 'unavailable',
+    closedLoop: false,
+    requiredEnvironments: REQUIRED_ENVIRONMENTS,
+    evidenceRequirements: EVIDENCE_REQUIREMENTS,
+    reason: 'unavailable',
+    pending: true,
+    executed: false,
+    verified: false,
+    evidenceLevel: 'unverified',
+    checklist: DEFAULT_CHECKLIST,
+  };
+
   if (platform !== 'win32') {
     return Object.freeze({
-      schemaVersion: 1,
-      profile: PROFILE,
-      planId: PLAN_ID,
+      ...basePlan,
       ready: false,
-      reason: 'unavailable',
-      pending: true,
-      executed: false,
-      verified: false,
-      evidenceLevel: 'unverified',
       platform,
       artifact: artifactInfo.exists ? artifactInfo.path : null,
       notes: '非 Windows 环境无法执行 Windows 打包后 Electron SQLite 烟测；当前输出静态规划，明确不可当作已验收。即使提供路径也不执行 Electron。',
-      checklist: DEFAULT_CHECKLIST,
     });
   }
 
   if (!artifactInfo.exists) {
     return Object.freeze({
-      schemaVersion: 1,
-      profile: PROFILE,
-      planId: PLAN_ID,
+      ...basePlan,
       ready: false,
-      reason: 'unavailable',
-      pending: true,
-      executed: false,
-      verified: false,
-      evidenceLevel: 'unverified',
       platform,
       artifact: null,
       notes: 'Windows 环境未检测到打包后的 Electron 安装产物（.exe 或 win-unpacked 目录）；当前仅为静态规划，明确不可当作已验收。',
-      checklist: DEFAULT_CHECKLIST,
     });
   }
 
   return Object.freeze({
-    schemaVersion: 1,
-    profile: PROFILE,
-    planId: PLAN_ID,
+    ...basePlan,
     ready: true,
     reason: 'planned_manual_acceptance_required',
-    pending: true,
-    executed: false,
-    verified: false,
-    evidenceLevel: 'unverified',
     platform,
     artifact: artifactInfo.path,
     notes: '已发现 Windows 打包产物，静态规划就绪；本规划器绝不执行 Electron 进程，仍须人工在真实 Windows 主机隔离环境中执行并读回验收证据。',
-    checklist: DEFAULT_CHECKLIST,
   });
 }
 

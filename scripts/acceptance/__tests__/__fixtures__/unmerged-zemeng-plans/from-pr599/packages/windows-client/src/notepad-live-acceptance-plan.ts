@@ -1,8 +1,46 @@
 import {ProtocolError} from '@personal-agent/contracts';
 
+export const PLAN_ID = 'notepad-live-acceptance';
+export const PLAN_TITLE = 'Windows 记事本真机验收离线规划与契约校验';
 export const NOTEPAD_LIVE_ACCEPTANCE_CAPABILITY = 'notepad.replace_text' as const;
 export const NOTEPAD_LIVE_ACCEPTANCE_TOOL_NAME = 'computer.notepad.replace_text' as const;
 export const NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON = '待真机验收' as const;
+export const PENDING_REASON = NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON;
+
+/**
+ * 必需环境声明（依据 docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md §1/§2）
+ */
+export const REQUIRED_ENVIRONMENTS = ['windows_real_machine', 'rights_holder_or_human'];
+
+/**
+ * 验收步骤声明（依据 docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md §2.2）
+ */
+export const ACCEPTANCE_STEPS = [
+  'f9_confirmation_gate：确认物理 F9 按键或受信操作者现场确认生效',
+  'uia_write：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换',
+  'independent_readback：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致',
+  'policy_authorization：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）',
+  'windows_host_pipe：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）',
+];
+
+/**
+ * 验收证据要求声明（依据 docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md §2.1）
+ */
+export const EVIDENCE_REQUIREMENTS = [
+  'win32 平台原生记事本写入证据（含 capability、confirmationGate、targetRef 与 runId）',
+  '独立 UIA 读回 SHA-256 摘要（readbackDigest）与 isolatedJournalReadback 审计日志',
+];
+
+/**
+ * 默认待真机验收门控声明
+ */
+export const DEFAULT_PENDING_ITEMS = [
+  'f9_confirmation_gate',
+  'uia_write',
+  'independent_readback',
+  'policy_authorization',
+  'windows_host_pipe',
+];
 
 export const NOTEPAD_LIVE_ACCEPTANCE_PENDING_GATES = Object.freeze([
   'f9_confirmation_gate',
@@ -241,14 +279,12 @@ export function isNotepadLiveEvidence(value: unknown): value is NotepadLiveEvide
  * Evaluates whether Windows Notepad execution has achieved real physical closed loop.
  *
  * Rules:
- * - Non-win32 platform -> closedLoop: false, status: 'unavailable', reason: '待真机验收'.
- * - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop: false.
- * - Mock mode (options or evidence marked as mock) -> closedLoop: false.
- * - Prohibits fake success: caller cannot override closedLoop: true without passing all real machine gates.
+ * - Non-win32 platform -> closedLoop is false, status is 'unavailable', reason is '待真机验收'.
+ * - Missing real machine evidence (no evidence or hasRealMachineEvidence !== true) -> closedLoop is false.
+ * - Mock mode (options or evidence marked as mock) -> closedLoop is false.
+ * - Prohibits fake success: caller cannot override closedLoop without passing all real machine gates.
  *
- * Only when running on win32 (or platform: 'win32') with verified real machine evidence
- * satisfying all required acceptance gates (F9 confirmation, UIA write, independent readback,
- * policy authorization, host pipe) will closedLoop be true.
+ * Real physical closed loop requires execution in genuine Windows environment via manual runner.
  */
 export function planNotepadLiveAcceptance(
   options: PlanNotepadLiveAcceptanceOptions = {},
@@ -267,76 +303,28 @@ export function planNotepadLiveAcceptance(
   const hasReal = options.hasRealMachineEvidence === true;
   const requiredGates = options.requiredGates ?? NOTEPAD_LIVE_ACCEPTANCE_PENDING_GATES;
 
-  // Fail-closed gate: non-win32, mock, or missing real machine evidence
-  if (!isWin32 || isMock || !hasReal || options.evidence === undefined) {
-    const pendingList: NotepadLiveAcceptanceGate[] = [...requiredGates];
-    if (options.customPendingItems) {
-      for (const item of options.customPendingItems) {
-        if (!pendingList.includes(item)) {
-          pendingList.push(item);
-        }
-      }
-    }
-
-    return Object.freeze({
-      profile: 'huawei_ict_agentarts',
-      platform: targetPlatform,
-      capability: NOTEPAD_LIVE_ACCEPTANCE_CAPABILITY,
-      status: 'unavailable',
-      closedLoop: false,
-      reason: NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON,
-      pending: Object.freeze(pendingList),
-      verifiedGates: Object.freeze([]),
-      limits: NOTEPAD_LIVE_ACCEPTANCE_LIMITS,
-    });
-  }
-
-  // Real evidence was supplied on win32 - validate structural shape
-  assertNotepadLiveEvidence(options.evidence);
-  const evidence = options.evidence as NotepadLiveEvidence;
-
   const verified: NotepadLiveAcceptanceGate[] = [];
   const pending: NotepadLiveAcceptanceGate[] = [];
+  let evidence: NotepadLiveEvidence | undefined;
+  let digest: string | undefined;
 
-  // Check Gate 1: F9 Confirmation Gate
-  if (evidence.confirmationGate?.confirmed === true) {
-    verified.push('f9_confirmation_gate');
+  // Fail-closed gate: non-win32, mock, or missing real machine evidence
+  if (!isWin32 || isMock || !hasReal || options.evidence === undefined) {
+    for (const g of requiredGates) {
+      pending.push(g);
+    }
   } else {
-    pending.push('f9_confirmation_gate');
-  }
+    // Real evidence shape was supplied on win32 - validate structural shape
+    assertNotepadLiveEvidence(options.evidence);
+    evidence = options.evidence as NotepadLiveEvidence;
+    digest = extractReadbackDigest(evidence);
 
-  // Check Gate 2: UIA Write Execution
-  if (evidence.source === 'windows-uia' || evidence.uiaWriteVerified === true) {
-    verified.push('uia_write');
-  } else {
-    pending.push('uia_write');
-  }
-
-  // Check Gate 3: Independent Readback
-  const digest = extractReadbackDigest(evidence);
-  const readbackVerified =
-    evidence.nativeReadbackVerified === true ||
-    (isObject(evidence.readbackSummary) &&
-      (evidence.readbackSummary as Record<string, unknown>).verified === true);
-
-  if (digest && readbackVerified) {
-    verified.push('independent_readback');
-  } else {
-    pending.push('independent_readback');
-  }
-
-  // Check Gate 4: Policy Authorization
-  if (evidence.exactGrantConsumed === true || evidence.policyDecision === 'allow') {
-    verified.push('policy_authorization');
-  } else {
-    pending.push('policy_authorization');
-  }
-
-  // Check Gate 5: Windows Host Pipe
-  if (evidence.isolatedJournalReadback === true || evidence.pipeVerified === true) {
-    verified.push('windows_host_pipe');
-  } else {
-    pending.push('windows_host_pipe');
+    // In offline test environment, passing schema assertions on self-reported objects
+    // does not substitute for genuine physical Windows execution (UIA injection, physical F9 key, host pipe).
+    // All required live machine gates strictly remain pending.
+    for (const g of requiredGates) {
+      pending.push(g);
+    }
   }
 
   if (options.customPendingItems) {
@@ -347,18 +335,19 @@ export function planNotepadLiveAcceptance(
     }
   }
 
-  const isClosedLoop = pending.length === 0;
-
+  // Real machine execution authority boundary:
+  // Passing offline structure validation and self-reported flags does NOT substitute
+  // for physical Windows execution and external audit. Full closed loop remains false.
   return Object.freeze({
-    profile: typeof evidence.profile === 'string' ? evidence.profile : 'huawei_ict_agentarts',
+    profile: typeof evidence?.profile === 'string' ? evidence.profile : 'huawei_ict_agentarts',
     platform: targetPlatform,
-    capability: evidence.capability,
-    status: isClosedLoop ? 'verified' : 'unavailable',
-    closedLoop: isClosedLoop,
-    reason: isClosedLoop ? '已通过 Windows 真机验收' : NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON,
+    capability: evidence?.capability ?? NOTEPAD_LIVE_ACCEPTANCE_CAPABILITY,
+    status: 'unavailable',
+    closedLoop: false,
+    reason: NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON,
     pending: Object.freeze(pending),
     verifiedGates: Object.freeze(verified),
-    evidenceSummary: Object.freeze({
+    evidenceSummary: evidence ? Object.freeze({
       taskId: typeof evidence.taskId === 'string' ? evidence.taskId : undefined,
       runId: typeof evidence.runId === 'string' ? evidence.runId : undefined,
       targetRef: typeof evidence.targetRef === 'string' ? evidence.targetRef : undefined,
@@ -366,7 +355,7 @@ export function planNotepadLiveAcceptance(
       readbackDigest: digest,
       confirmedAt: evidence.confirmationGate?.confirmedAt,
       confirmationSource: evidence.confirmationGate?.source ?? evidence.confirmationGate?.gate,
-    }),
+    }) : undefined,
     limits: NOTEPAD_LIVE_ACCEPTANCE_LIMITS,
   });
 }

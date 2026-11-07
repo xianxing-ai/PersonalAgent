@@ -1,14 +1,15 @@
 {
   "schemaVersion": "1.0.0",
-  "generatedAt": "2026-11-06T22:12:55.057Z",
+  "disclaimer": "仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干",
+  "generatedAt": "2026-11-07T03:40:54.370Z",
   "scanRoots": [
-    "/workspace/mod-acceptance-index"
+    "/workspace/zemeng-review-608-20261107"
   ],
   "summary": {
-    "totalFilesScanned": 2460,
+    "totalFilesScanned": 2462,
     "validPlans": 0,
-    "errorsCount": 1,
-    "skippedCount": 733,
+    "errorsCount": 4,
+    "skippedCount": 734,
     "byEnvironment": {
       "windows_real_machine": 0,
       "huawei_cloud": 0,
@@ -20,9 +21,10 @@
   "records": [],
   "errors": [
     {
-      "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
-      "title": "Competition MVP: one acceptance path",
+      "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+      "title": "DEV-WORKFLOWS：开发工作流自动化功能群（2026-10-02 登记）",
       "missingFields": [
+        "id",
         "closedLoop",
         "status",
         "requiredEnvironments",
@@ -30,19 +32,417 @@
         "evidenceRequirements"
       ],
       "errors": [
-        "Missing closedLoop boolean (must be explicitly true or false; never default to true)",
+        "Missing or empty id",
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
         "Missing status string",
         "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
         "Missing or empty acceptanceSteps (must contain at least one step string)",
         "Missing or empty evidenceRequirements (must contain at least one requirement string)"
       ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
+        },
+        "closedLoop": {
+          "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "status": {
+          "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+          "reason": "missing_status",
+          "details": "No explicit status found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
       "rawRecord": {
-        "id": "mvp-acceptance",
+        "id": null,
+        "title": "DEV-WORKFLOWS：开发工作流自动化功能群（2026-10-02 登记）",
+        "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+        "planType": "markdown_plan",
+        "status": null,
+        "hasVerifiedEvidence": false,
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "DEV-WORKFLOWS：开发工作流自动化功能群（2026-10-02 登记）",
+            "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+            "source": "markdown_h1_heading"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
+          },
+          "closedLoop": {
+            "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "status": {
+            "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+            "reason": "missing_status",
+            "details": "No explicit status found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "packages/agentarts/src/prompts.ts",
+      "title": null,
+      "missingFields": [
+        "id",
+        "title",
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing or empty id",
+        "Missing or empty title",
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "packages/agentarts/src/prompts.ts",
+          "reason": "missing_id",
+          "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
+        },
+        "title": {
+          "sourcePath": "packages/agentarts/src/prompts.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
+        },
+        "closedLoop": {
+          "sourcePath": "packages/agentarts/src/prompts.ts",
+          "reason": "missing_closedLoop",
+          "details": "No closedLoop property found in code"
+        },
+        "status": {
+          "sourcePath": "packages/agentarts/src/prompts.ts",
+          "reason": "missing_status",
+          "details": "No explicit status literal found in code"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "packages/agentarts/src/prompts.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "packages/agentarts/src/prompts.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "packages/agentarts/src/prompts.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": null,
+        "title": null,
+        "sourcePath": "packages/agentarts/src/prompts.ts",
+        "planType": "code_plan_static",
+        "status": null,
+        "reason": null,
+        "pendingItems": [],
+        "provenance": {},
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "packages/agentarts/src/prompts.ts",
+            "reason": "missing_id",
+            "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
+          },
+          "title": {
+            "sourcePath": "packages/agentarts/src/prompts.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
+          },
+          "closedLoop": {
+            "sourcePath": "packages/agentarts/src/prompts.ts",
+            "reason": "missing_closedLoop",
+            "details": "No closedLoop property found in code"
+          },
+          "status": {
+            "sourcePath": "packages/agentarts/src/prompts.ts",
+            "reason": "missing_status",
+            "details": "No explicit status literal found in code"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "packages/agentarts/src/prompts.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "packages/agentarts/src/prompts.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "packages/agentarts/src/prompts.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+      "title": null,
+      "missingFields": [
+        "id",
+        "title",
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing or empty id",
+        "Missing or empty title",
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+          "reason": "missing_id",
+          "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
+        },
+        "title": {
+          "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+          "reason": "missing_title",
+          "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
+        },
+        "closedLoop": {
+          "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+          "reason": "missing_closedLoop",
+          "details": "No closedLoop property found in code"
+        },
+        "status": {
+          "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+          "reason": "missing_status",
+          "details": "No explicit status literal found in code"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+        }
+      },
+      "rawRecord": {
+        "id": null,
+        "title": null,
+        "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+        "planType": "code_plan_static",
+        "status": null,
+        "reason": "source_withdrawn",
+        "pendingItems": [],
+        "provenance": {
+          "reason": {
+            "value": "source_withdrawn",
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "lineStart": 131,
+            "lineEnd": 131,
+            "source": "ts_code_literal",
+            "raw": "knowledge = {...knowledge, action: 'unavailable', reason: 'source_withdrawn'};"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "reason": "missing_id",
+            "details": "No explicit id/planId/capability string literal found in code. Filename cannot substitute for missing source field."
+          },
+          "title": {
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "reason": "missing_title",
+            "details": "No explicit title/planTitle string literal found in code. ID or filename cannot substitute for missing source field."
+          },
+          "closedLoop": {
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "reason": "missing_closedLoop",
+            "details": "No closedLoop property found in code"
+          },
+          "status": {
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "reason": "missing_status",
+            "details": "No explicit status literal found in code"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments literal array found in code. Context keywords (such as profile/token/windows) are strictly prohibited from inferring required environments."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit checklist/acceptanceSteps array literal found in code. Borrowing pending descriptions to fake steps is strictly prohibited."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "packages/cognition/src/knowledge-reevaluation.ts",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidenceRequirements or evidenceChecks array literal found in code. Borrowing pending items or path strings is strictly prohibited."
+          }
+        },
+        "warnings": []
+      }
+    },
+    {
+      "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+      "title": "Competition MVP: one acceptance path",
+      "missingFields": [
+        "id",
+        "closedLoop",
+        "status",
+        "requiredEnvironments",
+        "acceptanceSteps",
+        "evidenceRequirements"
+      ],
+      "errors": [
+        "Missing or empty id",
+        "Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)",
+        "Missing status string",
+        "Missing or empty requiredEnvironments (must be a non-empty array of environment enums)",
+        "Missing or empty acceptanceSteps (must contain at least one step string)",
+        "Missing or empty evidenceRequirements (must contain at least one requirement string)"
+      ],
+      "cannotConfirm": {
+        "id": {
+          "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+          "reason": "missing_id",
+          "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
+        },
+        "closedLoop": {
+          "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+          "reason": "missing_closedLoop",
+          "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+        },
+        "status": {
+          "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+          "reason": "missing_status",
+          "details": "No explicit status found in frontmatter or metadata lines"
+        },
+        "requiredEnvironments": {
+          "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+          "reason": "missing_environment_declaration",
+          "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+        },
+        "acceptanceSteps": {
+          "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+          "reason": "missing_acceptance_steps",
+          "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+        },
+        "evidenceRequirements": {
+          "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+          "reason": "missing_evidence_requirements",
+          "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+        }
+      },
+      "rawRecord": {
+        "id": null,
         "title": "Competition MVP: one acceptance path",
         "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
         "planType": "markdown_plan",
+        "status": null,
         "hasVerifiedEvidence": false,
-        "claimVerified": false
+        "claimVerified": false,
+        "provenance": {
+          "title": {
+            "value": "Competition MVP: one acceptance path",
+            "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+            "source": "markdown_h1_heading"
+          }
+        },
+        "cannotConfirm": {
+          "id": {
+            "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+            "reason": "missing_id",
+            "details": "No explicit id declared in frontmatter or metadata line. Filename cannot substitute for missing source field."
+          },
+          "closedLoop": {
+            "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+            "reason": "missing_closedLoop",
+            "details": "No explicit closedLoop boolean declaration found in frontmatter or metadata lines"
+          },
+          "status": {
+            "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+            "reason": "missing_status",
+            "details": "No explicit status found in frontmatter or metadata lines"
+          },
+          "requiredEnvironments": {
+            "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+            "reason": "missing_environment_declaration",
+            "details": "No explicit requiredEnvironments frontmatter or metadata bullet found. Profile mentions do not count as environment declarations."
+          },
+          "acceptanceSteps": {
+            "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+            "reason": "missing_acceptance_steps",
+            "details": "No explicit acceptance steps found in frontmatter or markdown checklist sections."
+          },
+          "evidenceRequirements": {
+            "sourcePath": "tests/manual/agentarts/MVP-ACCEPTANCE.md",
+            "reason": "missing_evidence_requirements",
+            "details": "No explicit evidence requirements found in frontmatter or evidence sections."
+          }
+        },
+        "warnings": []
       }
     }
   ],
@@ -1708,10 +2108,6 @@
       "reason": "historical_acceptance_evidence_or_receipt_not_a_plan"
     },
     {
-      "sourcePath": "docs/modules/DEV-WORKFLOWS-PLAN-20261002.md",
-      "reason": "historical_acceptance_evidence_or_receipt_not_a_plan"
-    },
-    {
       "sourcePath": "docs/modules/DEV-WORKFLOWS-REAL-ACCEPTANCE-20261005.md",
       "reason": "historical_acceptance_evidence_or_receipt_not_a_plan"
     },
@@ -2252,6 +2648,10 @@
       "reason": "historical_acceptance_evidence_or_receipt_not_a_plan"
     },
     {
+      "sourcePath": "docs/modules/PENDING-ACCEPTANCE-IF-MERGED-SAMPLE-20261107.md",
+      "reason": "historical_acceptance_evidence_or_receipt_not_a_plan"
+    },
+    {
       "sourcePath": "docs/modules/POTATOS-MVP-TASKS-20260930.md",
       "reason": "historical_acceptance_evidence_or_receipt_not_a_plan"
     },
@@ -2290,6 +2690,10 @@
     {
       "sourcePath": "docs/modules/pending-acceptance-by-env.md",
       "reason": "historical_acceptance_evidence_or_receipt_not_a_plan"
+    },
+    {
+      "sourcePath": "docs/modules/pending-acceptance-if-merged-sample-20261107.json",
+      "reason": "tool_output_file"
     },
     {
       "sourcePath": "docs/modules/pending-acceptance-index.json",

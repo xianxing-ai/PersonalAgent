@@ -1,3 +1,14 @@
+---
+id: privacy-deletion-acceptance-plan
+title: MOD-27：隐私删除与私人数据授权离线验收规划
+status: unavailable
+closedLoop: false
+requiredEnvironments:
+  - rights_holder_or_human
+  - windows_real_machine
+reason: 待真人/真机验收
+---
+
 # MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）
 
 <!-- current-design-20261015 -->
@@ -31,7 +42,10 @@
    - 包装断言并返回类型化回执对象。
 3. `planPrivacyDeletionAcceptance(options?: PlanPrivacyDeletionAcceptanceOptions | unknown): PrivacyDeletionAcceptancePlan`：
    - 支持空参或接收包含 `receipt`、`realUserAuthorization`、`realDeletionReadback`、`evidenceLevel` 等选项；
-   - **无真人授权证据或无删除现场读回时，强制返回**：
+   - **输入门控防御与语义隔离**：
+     - `realAuthorizationEvidence` 仅支持结构化对象，严格删除 `boolean` 重载；运行时传入布尔直接抛错；
+     - 撤回回执（`action: 'withdrawal'`）严格禁止声称物理删除读回门控，只有 `action: 'privacy_deletion'` 且 `physicalErasure === true` 才能核验物理删除结构；
+   - **无真人现场授权与现场物理删除读回审计前，强制返回**：
      - `closedLoop: false`
      - `status: 'unavailable'`
      - `reason: '待真人/真机验收'`
@@ -41,13 +55,46 @@
        3. `graph_dependency_erasure_integrity`：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）；
        4. `durable_storage_restart_verification`：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）；
        5. `cloud_boundary_and_leak_prevention`：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）；
-   - **防 mock 假闭环**：当 `mock === true` 或 `evidenceLevel === 'mock'` 时，即使设置了授权标志，也坚决拒绝闭环；
-   - 仅在真人现场授权、现场删除读回均具备且证据级别为 `verified` 时，才允许输出闭环状态。
+   - **真实证据可信边界澄清**：当前规划 helper 为离线纯函数，能够完成回执结构与撤回/物理删除语义断言，但在纯离线环境下无法产生真人用户现场授权凭据（realUserAuthorization）或持久化存储物理删除现场读回（realDeletionReadback）；自报字段不构成真实独立验证，待真人现场明确授权与存储物理清零现场审计验证。因此全链路闭环严格保持 `closedLoop: false`，且 5 项核心验收门限持续处于 `pending` 状态。
+
+## 验收步骤
+
+1. human_user_privacy_authorization：真人用户隐私授权与敏感范围审查（现场明确授权访问与删除范围，严禁模型代签或自动放行）
+2. on_site_deletion_readback：删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）
+3. graph_dependency_erasure_integrity：图谱依赖级联处理与断链校验（被删除节点后继依赖清理与一致性核验，旧版本不混淆别名）
+4. durable_storage_restart_verification：持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）
+5. cloud_boundary_and_leak_prevention：云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）
+
+## 证据要求
+
+1. PrivacyDeletionReceipt 合规物理删除回执（包含 receiptId、namespace、targetId、action='privacy_deletion'、physicalErasure=true、有序 erasedGraphRevisions）
+2. 真人用户现场授权凭证（realUserAuthorization）与持久化存储物理擦除现场读回回执（realDeletionReadback）
+
+## 挂起项
+
+- `human_user_privacy_authorization`: 真人用户隐私授权与敏感范围审查
+- `on_site_deletion_readback`: 删除现场物理读回与存储清零验证
+- `graph_dependency_erasure_integrity`: 图谱依赖级联处理与断链校验
+- `durable_storage_restart_verification`: 持久化存储进程重启后现场读回
+- `cloud_boundary_and_leak_prevention`: 云端与跨进程边界防泄露核验
+
+## 字段来源依据（Source References）
+
+| 字段 | 机器取值 | 来源文件 | 章节/行号及原文依据 |
+| --- | --- | --- | --- |
+| id | `privacy-deletion-acceptance-plan` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | L1: `MOD-27：隐私删除与私人数据授权离线验收规划`；代码 `PLAN_ID` |
+| title | `MOD-27：隐私删除与私人数据授权离线验收规划` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | L1: `# MOD-27：隐私删除与私人数据授权离线验收规划（2026-11-07）` |
+| status | `unavailable` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `状态统一标记为 status: 'unavailable'`；§2.3: `status: 'unavailable'` |
+| closedLoop | `false` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `未取得真人用户现场授权凭证与删除现场读回证据前，closedLoop 必须为 false`；代码 L338 |
+| requiredEnvironments | `['rights_holder_or_human', 'windows_real_machine']` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `无真人/真机证据不宣称闭环：未取得真人用户现场授权凭证与删除现场读回证据前...原因统一标为 待真人/真机验收` |
+| acceptanceSteps | 5 项完整步骤 | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §2.3: 五项现场验收核心门限（human_user_privacy_authorization, on_site_deletion_readback 等） |
+| evidenceRequirements | 2 项证据要求 | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §2.1: `assertPrivacyDeletionReceipt` 回执校验条件；§2.3: 真人授权与删除现场读回凭证 |
+| reason / pendingItems | `待真人/真机验收` | `docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md` | §1: `原因统一标为 待真人/真机验收`；代码 `PRIVACY_ACCEPTANCE_PENDING_REASON` |
 
 ## 3. 验证结果
 
 - 编译：`npm run build --workspace=@personal-agent/goals` 成功，类型检查无错误；
-- 测试：`packages/goals/test/privacy-deletion-acceptance-plan.test.mjs` 11 项定向测试通过：
+- 独立单元测试（本轮实测）：`node --test packages/goals/test/privacy-deletion-acceptance-plan.test.mjs` **12/12 全部通过 (0 失败)**：
   - 合法逻辑撤回与物理隐私删除回执形状校验；
   - 严禁把撤回称为物理删除（`physicalErasure: true`、`isPhysicalDeletion: true`、`physicalDeletion: true`、`erasedGraphRevisions`）的阻断断言；
   - 非法隐私删除参数（`physicalErasure: false`、未排序/非正整数 `erasedGraphRevisions`）的拒绝；
@@ -56,9 +103,9 @@
   - 带有回执但无真实验收证据时保持 `closedLoop: false`；
   - 显式 `mock` 或 `evidenceLevel: 'mock'` 冒充闭环的坚决拒绝；
   - 部分证据（仅授权或仅读回）的挂起项核验；
-  - 完整真实证据下的闭环通路核验；
-  - 选项中传入非法回执的即时抛错。
-- 全包回归：`npm test --workspace=@personal-agent/goals` 30/30 全部通过。
+  - 选项中传入非法回执的即时抛错；
+  - 跨审查项修复：删除 boolean 重载（运行时传布尔抛错）、撤回（withdrawal）严格阻断物理删除验证与读回、5 项现场门控离线无条件保持 pending，并通过 `structuralVerification` 明确结构结果与逐项缺失字段。
+- 历史全量基线参考：历史记录 30/30 全部通过（本轮仅重跑受影响定向测试，未宣称本轮已跑全量）。
 - 架构门禁：`npm run check:architecture` 3/3 全部通过。
 - 差异检查：`git diff --check` 无空白或格式问题。
 

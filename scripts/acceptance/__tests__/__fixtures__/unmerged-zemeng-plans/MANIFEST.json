@@ -2,163 +2,199 @@
   {
     "pr": 594,
     "branch": "zemeng/mod19-sqlite-smoke-plan",
-    "head": "75fb8333a3a371640d938b33e117e6c1fddc4c91",
+    "head": "e0262f710ea7afc2b7924c21eacb94f9b5bbd79a",
     "originalPath": "docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/docs/modules/MOD-19-PACKAGED-SQLITE-SMOKE-PLAN-20261107.md",
-    "sha256": "2d76bf7d65c9ebe10d6469b852615ad814628579fac22894ed08633135e8774f",
-    "bytes": 5059
+    "sha256": "c23430b1fb3465afa2ea07f1269c4937356849d7a9a4764de7d1a0c129462409",
+    "bytes": 7730,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 594,
     "branch": "zemeng/mod19-sqlite-smoke-plan",
-    "head": "75fb8333a3a371640d938b33e117e6c1fddc4c91",
+    "head": "e0262f710ea7afc2b7924c21eacb94f9b5bbd79a",
     "originalPath": "scripts/release/packaged-sqlite-smoke.plan.mjs",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr594/scripts/release/packaged-sqlite-smoke.plan.mjs",
-    "sha256": "d857a9205c1cb4bb9665500e8154da9cbe7e6a012cfd4a985c97f7e8efcb2d7b",
-    "bytes": 11623
+    "sha256": "a480fb15265afc4a889698f6cc92fddefcb7b015a51d50a7fa393fd28c89c04b",
+    "bytes": 12256,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 596,
     "branch": "zemeng/mod29-deployment-readback-plan",
-    "head": "2a78de4d3033f091b82d72f7d5f5d836f9e1fa41",
+    "head": "e05e66d13f91740500a0161167f48c0d54aaef74",
     "originalPath": "docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md",
-    "sha256": "58bf10371f8e1bcde76b7785cf5b0c6e816f590feff979f98ca523be1a9d05f4",
-    "bytes": 6232
+    "sha256": "c6640922863ec2930fc9e72186b879721105e0d6d9f8a03ec635f69a67a470f4",
+    "bytes": 11419,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 596,
     "branch": "zemeng/mod29-deployment-readback-plan",
-    "head": "2a78de4d3033f091b82d72f7d5f5d836f9e1fa41",
+    "head": "e05e66d13f91740500a0161167f48c0d54aaef74",
     "originalPath": "packages/agentarts/src/deployment-readback-plan.ts",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr596/packages/agentarts/src/deployment-readback-plan.ts",
-    "sha256": "1f653d7b32acf601bb605e7331899d4d316b6539f9578a8372f0f68dcd28dc76",
-    "bytes": 13282
+    "sha256": "e074bc9e9d469a369cc9c71f19047b983f15190a57aa4aa77eb668bd71d57111",
+    "bytes": 17439,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 598,
     "branch": "zemeng/mod19-release-acceptance-plans",
-    "head": "1e62a3bd2321d47d2e06c78f954844fc2220f3a4",
+    "head": "b1104cec71e2ce2a3e2b24004f0ffa0ade776464",
     "originalPath": "docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md",
-    "sha256": "7e1d71a6cd1fd7faad5e688e54e1e40c5f95176bbe964d2727d7b53c90b95544",
-    "bytes": 9020
+    "sha256": "316df03901a627f350d442e934e22d4828c3b257c7e5161d20e164cba234d8e7",
+    "bytes": 12788,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 598,
     "branch": "zemeng/mod19-release-acceptance-plans",
-    "head": "1e62a3bd2321d47d2e06c78f954844fc2220f3a4",
+    "head": "b1104cec71e2ce2a3e2b24004f0ffa0ade776464",
     "originalPath": "scripts/release/release-install-upgrade-uninstall.plan.mjs",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr598/scripts/release/release-install-upgrade-uninstall.plan.mjs",
-    "sha256": "e403a1a3fc045f6a70cf77dc8eca8930f5451eabe4b18f71ad34a68fe94e7a3e",
-    "bytes": 18568
+    "sha256": "01c4399732e22e126c9d6a89b454796c6e551c1fcb1d617a3fa433c5aa42da3e",
+    "bytes": 19924,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 599,
     "branch": "zemeng/mod16-live-acceptance-plan",
-    "head": "ce1c10c364722a568b0db811d4a1ebac50e202cc",
+    "head": "46402d2b353c66cf3eead6a16be12524ee093984",
     "originalPath": "docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md",
-    "sha256": "d5a7e98e46ea63c19f065192fc8ff8aa5bcaeca1257e439f25b9de1c0abdb6f5",
-    "bytes": 7624
+    "sha256": "35b793d5a58b835e03bc68577aa12eb1623c268ecfc077a222308806c40f0686",
+    "bytes": 11402,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 599,
     "branch": "zemeng/mod16-live-acceptance-plan",
-    "head": "ce1c10c364722a568b0db811d4a1ebac50e202cc",
+    "head": "46402d2b353c66cf3eead6a16be12524ee093984",
     "originalPath": "packages/windows-client/src/notepad-live-acceptance-plan.ts",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr599/packages/windows-client/src/notepad-live-acceptance-plan.ts",
-    "sha256": "592fb8145e622bdbbf0e64dc62823901f5189344f05fab4290234c3b3fe5daff",
-    "bytes": 14750
+    "sha256": "44aabdd4dd8a0f63da26bc3a49e1e3c1c4a0666c2b81d8fd38e2e4bcf4882427",
+    "bytes": 15014,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 602,
     "branch": "zemeng/mod27-privacy-deletion-plan",
-    "head": "e8746ddd5269263cd2e1986536b61607b9308ae2",
+    "head": "748ec730e326cec3d5c903376be294b43207dc68",
     "originalPath": "docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md",
-    "sha256": "b33f2f3ab4ad147706db7793fbcb08264f33ff179a15199c0277af33cd18df0c",
-    "bytes": 7369
+    "sha256": "8581bcb18249f6966ee3f86d62bab83ac6ae67ece90dd949cb2aec2478b42655",
+    "bytes": 12032,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 602,
     "branch": "zemeng/mod27-privacy-deletion-plan",
-    "head": "e8746ddd5269263cd2e1986536b61607b9308ae2",
+    "head": "748ec730e326cec3d5c903376be294b43207dc68",
     "originalPath": "packages/goals/src/privacy-deletion-acceptance-plan.ts",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr602/packages/goals/src/privacy-deletion-acceptance-plan.ts",
-    "sha256": "d6d875c0334478aae15bbf2a60744f068708adb676929bd69a20ac23ab0573f2",
-    "bytes": 15728
+    "sha256": "4987ddceeac9323a358c7eb4ece9f813c921941f2313e0919ff7e03065411fc1",
+    "bytes": 19660,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 604,
     "branch": "zemeng/mod18-windows-sandbox-acceptance-plan",
-    "head": "806be8af78fc13815f69f0cddad13afefaf3371c",
+    "head": "c20e2298ed074dca56a881e20ad6ea29df5f2a94",
     "originalPath": "docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md",
-    "sha256": "414aa0f990cfc2c191b4bddee6915208c22d56ddf66b5d3ea5280a4bdc317095",
-    "bytes": 9700
+    "sha256": "f5fc2fa423a10bb0a89e180f64da5ca5b5e5ff813f404edc0975f056839887bf",
+    "bytes": 14399,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 604,
     "branch": "zemeng/mod18-windows-sandbox-acceptance-plan",
-    "head": "806be8af78fc13815f69f0cddad13afefaf3371c",
+    "head": "c20e2298ed074dca56a881e20ad6ea29df5f2a94",
     "originalPath": "packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr604/packages/coding-tools/src/windows-sandbox-acceptance-plan.ts",
-    "sha256": "e11c91cdc703b8b87dab9a47b29aff908b59dd3baa95327a83468fd6ace740b8",
-    "bytes": 19155
+    "sha256": "8ea3b0836d5364714fc0a2c11877d662d4556c25a93687c79e5aacc71e0afcfd",
+    "bytes": 23233,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 605,
     "branch": "zemeng/f09-cloud-prefix-acceptance-plan",
-    "head": "b4f1d048165b655b8852fa284aa0597130bdb800",
+    "head": "f9d575e4b2abba06345b3e13afc9165df9994c7d",
     "originalPath": "docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md",
-    "sha256": "ed07f95a081681dcedaac1b24ba2c0236fc08f9ab582cf7d9125d22fd211e570",
-    "bytes": 8544
+    "sha256": "05c5c098bc953761c5fa2eb9084f5f2db4b458a4f71e12b3902aae458109bb48",
+    "bytes": 13334,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 605,
     "branch": "zemeng/f09-cloud-prefix-acceptance-plan",
-    "head": "b4f1d048165b655b8852fa284aa0597130bdb800",
+    "head": "f9d575e4b2abba06345b3e13afc9165df9994c7d",
     "originalPath": "packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr605/packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts",
-    "sha256": "5372c193252a87330a0da6e676443c7db8401abf4eb1a26be16bdec28666da1a",
-    "bytes": 17215
+    "sha256": "8e67889f9470f7840478239adbfae5aaaa9352d14d2078cc7772d533f6808648",
+    "bytes": 20931,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 606,
     "branch": "zemeng/cloudpersist-acceptance-plan",
-    "head": "e2eda29f4634469e45c96ea1a5530dad92431857",
+    "head": "9883fb941318616990a682552e16d37c86a6165a",
     "originalPath": "docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md",
-    "sha256": "47e441faa449e449b5eeba51d9f12d86628b534da44846b42f175a4a9b00f2a0",
-    "bytes": 9644
+    "sha256": "d94a2b08495039dba616b76a6d18ac1d7256026bbe531e194395e67a2cb4888d",
+    "bytes": 14990,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 606,
     "branch": "zemeng/cloudpersist-acceptance-plan",
-    "head": "e2eda29f4634469e45c96ea1a5530dad92431857",
+    "head": "9883fb941318616990a682552e16d37c86a6165a",
     "originalPath": "packages/coordination/src/cloud-persistent-acceptance-plan.ts",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr606/packages/coordination/src/cloud-persistent-acceptance-plan.ts",
-    "sha256": "7f9f45f04ce4e230a8586f50d16423abedc4cbdaa6f1979d5abfc04d0273bc0d",
-    "bytes": 21996
+    "sha256": "301d358c0f8e19a2487ef20c682539db41b5bb3fe0b69a1a5d88466a7b30a0f6",
+    "bytes": 25121,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 607,
     "branch": "zemeng/mod04b-agentarts-acceptance-plan",
-    "head": "fb6df79722c75699e44567178f2b06cd03952e31",
+    "head": "e2081ce21e13c17892bbfe975114a60ae5981208",
     "originalPath": "docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md",
-    "sha256": "8cecc6f470f44d42a2e6e347f76240c10b98bf36e289338d63a81ba75cd6ed14",
-    "bytes": 10191
+    "sha256": "5a271f983329492f9e6a09761e4d44c623489b7a3f6d9ac3979b1d0b4279c6ec",
+    "bytes": 15206,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   },
   {
     "pr": 607,
     "branch": "zemeng/mod04b-agentarts-acceptance-plan",
-    "head": "fb6df79722c75699e44567178f2b06cd03952e31",
+    "head": "e2081ce21e13c17892bbfe975114a60ae5981208",
     "originalPath": "packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
     "fixturePath": "scripts/acceptance/__tests__/__fixtures__/unmerged-zemeng-plans/from-pr607/packages/coordination/src/mod04b-agentarts-acceptance-plan.ts",
-    "sha256": "446c637008044c7222b86cbec32fcf291e8d08a366488e97fc518d3656e8e605",
-    "bytes": 27112
+    "sha256": "7b546bf0693160dd8ef7b2c3c3ac756e1ca8a788e48bfcb289bee66edfb85486",
+    "bytes": 35395,
+    "snapshotAt": "2026-11-07T11:32:05+08:00",
+    "disclaimer": "未合并 PR 固定 SHA 快照，非 main 分支，非真实验收"
   }
 ]

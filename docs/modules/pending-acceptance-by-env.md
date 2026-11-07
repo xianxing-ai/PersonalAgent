@@ -1,21 +1,23 @@
 # 真环境待验收总表
 
-<!-- generatedAt: 2026-11-06T22:12:55.057Z -->
-> 生成时间：`2026-11-06T22:12:55.057Z` · 依据规范：[AGENTS.md](../../AGENTS.md) · [当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md) · 扫描范围：仅当前工作树
+<!-- generatedAt: 2026-11-07T03:40:54.370Z -->
+> 生成时间：`2026-11-07T03:40:54.370Z` · 依据规范：[AGENTS.md](../../AGENTS.md) · [当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md) · 扫描范围：PR #608 分支工作树（@1918e61f，基于 main 祖先 @0e7f3aa1）
 
 > [!IMPORTANT]
 > 本总表由离线工具 `scripts/acceptance/build-pending-acceptance-index.mjs` 静态扫描生成。
-> **红线声明**：未连接任何真机/华为云环境，未读取密钥凭据，未执行任何规划文本内的指令（文件严格当数据处理）。
+> **工作树说明**：本表数据仅说明 PR #608 自身分支工作树（`/workspace/zemeng-review-608-20261107` @ 1918e61f，基于 main 祖先 @ 0e7f3aa1）的实际扫描结果，不代表干净 main 扫描；未合并 PR 的 18 份快照尚未合入主干是独立事实。
+> **核心声明**：仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干。
+> **安全红线**：未连接任何真机/华为云环境，未读取密钥凭据，未执行任何规划文本内的指令（所有输入文件纯粹作为静态文本读取，严禁 import/eval/执行）。
 > **诚实原则**：`closedLoop: false` 属于合规待真实验收状态；缺失真环境独立读回证据前，工具绝不推断或背书「已闭环」。
 
 ## 1. 扫描与待验收概览
 
 | 指标 | 数量 | 说明 |
 | --- | --- | --- |
-| 扫描文件总数 | 2460 | 排除 .git / node_modules / dist / .worktrees |
+| 扫描文件总数 | 2462 | 排除 .git / node_modules / dist / .worktrees |
 | 合规待验收规划 | 0 | 结构完整、字段齐全的规划记录 |
-| 校验异常/缺字段项 | 1 | 识别为规划但缺 closedLoop/环境/步骤/证据等字段 |
-| 跳过的历史非规划文件 | 733 | 历史证据/回执/矩阵，不作为规划执行 |
+| 校验异常/缺字段项 | 4 | 识别为规划但缺 closedLoop/环境/步骤/证据等字段 |
+| 跳过的历史非规划文件 | 734 | 历史证据/回执/矩阵，不作为规划执行 |
 
 ## 2. 各环境待验收规划汇总
 
@@ -56,16 +58,19 @@
 | **#607** | `zemeng/mod04b-agentarts-acceptance-plan` | MOD-04B AgentArts 端到端云编排验收规划 | `huawei_cloud` | `open_pending_merge` | `planMod04bAgentArtsAcceptance` |
 | **#572** | `zemeng/real-acceptance-guide` | 真实验收指引（指引规范，非闭环记录） | `windows_real_machine`, `huawei_cloud`, `real_account`, `rights_holder_or_human` | `open_pending_merge` | `guideline_only` |
 
-## 5. 扫描校验异常清单 (1 项)
+## 5. 扫描校验异常清单 (4 项)
 
 > [!CAUTION]
-> 以下文件被识别为验收规划候选，但因字段缺失或防伪校验失败而报错。工具已如实记录，绝不静默跳过或伪造默认值：
+> 以下文件被识别为验收规划候选，但因字段缺失、分支歧义或防伪校验失败而报错。工具已如实记录，绝不静默跳过、绝不猜测默认分支、绝不伪造字段：
 
-| 来源路径 | 规划标题 | 缺失字段 | 错误详情 |
-| --- | --- | --- | --- |
-| `tests/manual/agentarts/MVP-ACCEPTANCE.md` | Competition MVP: one acceptance path | `closedLoop`, `status`, `requiredEnvironments`, `acceptanceSteps`, `evidenceRequirements` | Missing closedLoop boolean (must be explicitly true or false; never default to true)； Missing status string； Missing or empty requiredEnvironments (must be a non-empty array of environment enums)； Missing or empty acceptanceSteps (must contain at least one step string)； Missing or empty evidenceRequirements (must contain at least one requirement string) |
+| 来源路径 | 规划标题 | 缺失字段 | 无法确认原因 (cannot_confirm) | 错误详情 |
+| --- | --- | --- | --- | --- |
+| `docs/modules/DEV-WORKFLOWS-PLAN-20261002.md` | DEV-WORKFLOWS：开发工作流自动化功能群（2026-10-02 登记） | `id`, `closedLoop`, `status`, `requiredEnvironments`, `acceptanceSteps`, `evidenceRequirements` | `id`: missing_id<br/>`closedLoop`: missing_closedLoop<br/>`status`: missing_status<br/>`requiredEnvironments`: missing_environment_declaration<br/>`acceptanceSteps`: missing_acceptance_steps<br/>`evidenceRequirements`: missing_evidence_requirements | Missing or empty id； Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)； Missing status string； Missing or empty requiredEnvironments (must be a non-empty array of environment enums)； Missing or empty acceptanceSteps (must contain at least one step string)； Missing or empty evidenceRequirements (must contain at least one requirement string) |
+| `packages/agentarts/src/prompts.ts` | （未显式声明标题） | `id`, `title`, `closedLoop`, `status`, `requiredEnvironments`, `acceptanceSteps`, `evidenceRequirements` | `id`: missing_id<br/>`title`: missing_title<br/>`closedLoop`: missing_closedLoop<br/>`status`: missing_status<br/>`requiredEnvironments`: missing_environment_declaration<br/>`acceptanceSteps`: missing_acceptance_steps<br/>`evidenceRequirements`: missing_evidence_requirements | Missing or empty id； Missing or empty title； Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)； Missing status string； Missing or empty requiredEnvironments (must be a non-empty array of environment enums)； Missing or empty acceptanceSteps (must contain at least one step string)； Missing or empty evidenceRequirements (must contain at least one requirement string) |
+| `packages/cognition/src/knowledge-reevaluation.ts` | （未显式声明标题） | `id`, `title`, `closedLoop`, `status`, `requiredEnvironments`, `acceptanceSteps`, `evidenceRequirements` | `id`: missing_id<br/>`title`: missing_title<br/>`closedLoop`: missing_closedLoop<br/>`status`: missing_status<br/>`requiredEnvironments`: missing_environment_declaration<br/>`acceptanceSteps`: missing_acceptance_steps<br/>`evidenceRequirements`: missing_evidence_requirements | Missing or empty id； Missing or empty title； Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)； Missing status string； Missing or empty requiredEnvironments (must be a non-empty array of environment enums)； Missing or empty acceptanceSteps (must contain at least one step string)； Missing or empty evidenceRequirements (must contain at least one requirement string) |
+| `tests/manual/agentarts/MVP-ACCEPTANCE.md` | Competition MVP: one acceptance path | `id`, `closedLoop`, `status`, `requiredEnvironments`, `acceptanceSteps`, `evidenceRequirements` | `id`: missing_id<br/>`closedLoop`: missing_closedLoop<br/>`status`: missing_status<br/>`requiredEnvironments`: missing_environment_declaration<br/>`acceptanceSteps`: missing_acceptance_steps<br/>`evidenceRequirements`: missing_evidence_requirements | Missing or empty id； Missing closedLoop boolean (must be explicitly true or false; never default to true or guess from partial conditions)； Missing status string； Missing or empty requiredEnvironments (must be a non-empty array of environment enums)； Missing or empty acceptanceSteps (must contain at least one step string)； Missing or empty evidenceRequirements (must contain at least one requirement string) |
 
-## 6. 跳过的历史验收文件清单 (共 733 篇)
+## 6. 跳过的历史验收文件清单 (共 734 篇)
 
 历史中存在若干名称包含 `ACCEPTANCE` 但仅为执行回执/证据/矩阵、不构成待验收规划的文件，已做区分并安全跳过（未标为已验收）：
 
@@ -121,4 +126,4 @@
 | `apps/desktop/docs/live-proactive-20260927.md` | `historical_acceptance_evidence_or_receipt_not_a_plan` |
 | `apps/desktop/docs/mail-analysis.md` | `historical_acceptance_evidence_or_receipt_not_a_plan` |
 | `apps/desktop/docs/mail-triage-host.md` | `historical_acceptance_evidence_or_receipt_not_a_plan` |
-| ...等共 733 篇 | 更多历史回执已保留 |
+| ...等共 734 篇 | 更多历史回执已保留 |
