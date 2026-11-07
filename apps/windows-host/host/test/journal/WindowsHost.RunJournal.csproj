@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Cross-platform on purpose: RunJournal.cs is pure BCL code, so its durable
+         receipt semantics run on any OS without Windows UIA/Win32. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The production source is compiled verbatim into this test assembly, so the
+         tests always exercise the real RunJournal implementation. It stays excluded
+         from WindowsHost.HostFixture via the Compile Remove in that project file. -->
+    <Compile Include="../../RunJournal.cs" Link="RunJournal.cs" />
+  </ItemGroup>
+</Project>
