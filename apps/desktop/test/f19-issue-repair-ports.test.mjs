@@ -34,7 +34,7 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
   regression=false,unmerged=false,wrongCheckout=false,changedChecker=false,regressionFails=false,unknownRegression=false,
   denyRegression=false,cancelRegression=false,fullClose=false,denyClose=false,unknownClose=false,changedCloseIssue=false,postCloseChanged=false,
   configuredAdapter=false,invalidateConfiguration}={}) {
-  const closeRestart=unknownClose||postCloseChanged;
+  const closeRestart=unknownClose||postCloseChanged,diskRestart=!publish||closeRestart||unknownRegression||unknownPr;
   let app,ports,developerHost,revoked=false,closedEvidence,dispatchApprovals=0,nativeSelection=selection,remoteHead,pushes=0,presence=0;
   const requests=[],exports=[],nodes=[],failures=[];
   let native,regressionOptions,prepareMergedCheckout,nativeExecutions=0,regressionApprovals=0,mergeReady=false,issueClosed=false,closeApprovals=0,issueConfiguration,configurationChanged=false;
@@ -63,7 +63,7 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
   // Close/restart cases exercise F19 no-replay; F15's failed first repair has separate coverage.
   // F19 includes F15 repair, three complete publication confirmations and regression/close.
   // Set its original fixture deadline once; the shared F15-only default remains 60 seconds.
-  const report=await runCodingRepairFullGraphFixture({fakeModel:true,deadline:new Date(Date.now()+120_000).toISOString(),targetPath:'feature.cjs',firstAttemptSuccess:configuredAdapter&&!invalidateConfiguration||closeRestart,
+  const report=await runCodingRepairFullGraphFixture({fakeModel:true,deadline:new Date(Date.now()+120_000).toISOString(),targetPath:'feature.cjs',firstAttemptSuccess:Boolean(publish)&&!invalidateConfiguration||closeRestart,
     artifactRoot:'.cache/f19-original-repair',createApplication(config){
       const runner={async run(request){
         const endpoint=request.args[5];requests.push({endpoint,method:request.args[4]});let result;
@@ -185,7 +185,7 @@ async function fixture({replaceDigest=false,denyDispatch=false,cancelDispatch=fa
         getRuntime:()=>app.runtime,getTools:()=>app.tools,runDefaultWorker:(task,worker,scope)=>app.runDefaultSubagentWorker(task,worker,scope)})];
       // Only non-restart cases avoid Windows FULL-sync disk flushes. Restart/no-replay
       // cases retain disk SQLite, and every case still uses real files, Git and Node.
-      app=r.createRuntimeApplication({...config,path:configuredAdapter||changedCloseIssue?':memory:':config.path,tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,...(fullClose?{}:{available:()=>true})})),
+      app=r.createRuntimeApplication({...config,path:diskRestart?config.path:':memory:',tools,delegateUserTasks:true,isUserPresent:()=>true,configuredWorkflowWorkers:ports.configuredWorkflowWorkerPorts.map(worker=>({...worker,image,...(fullClose?{}:{available:()=>true})})),
         automaticTools:config.automaticTools.filter(tool=>tool.toolName!=='coding.repair.workflow'),
         requestToolAuthorization:async scope=>{
           const closeProof=ports.prepareCloseQuestion?.(scope,{prepare(_scope,fence){assert.equal(fence.assertCurrent(),true);}});
