@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "acceptanceId": "sqlite-packaged-electron-smoke",
+  "status": "pending",
+  "executed": false,
+  "verified": false,
+  "evidenceLevel": "unverified",
+  "target": "Packaged Windows Electron main process (node:sqlite)",
+  "requiredEnvironment": "Windows 11 x64, packaged Electron app artifact (.exe or win-unpacked directory), isolated userData",
+  "notes": "占位与规划：尚未在打包后的 Electron 主进程执行 SQLite 烟测验证。本文件仅作为验收规划占位，明确未验收（PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED / unverified / executed=false），绝不能写成 passed，不作为任何发布证据。",
+  "checklist": [
+    "在打包后的 Electron 主进程环境中加载内置 node:sqlite 模块",
+    "在隔离 userData 目录下创建 SQLite 数据库并执行 schema 建库与迁移",
+    "配置并验证 WAL 模式（PRAGMA journal_mode=WAL）与忙超时（PRAGMA busy_timeout）生效",
+    "执行基础数据写入与事务读写验证（Task/State 表写入与查询）",
+    "正常关闭数据库连接以确保 WAL 检查点与文件落盘",
+    "重启打包后的应用主进程实例，执行重启读回与数据一致性验证"
+  ]
+}

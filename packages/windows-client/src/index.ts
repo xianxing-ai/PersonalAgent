@@ -296,3 +296,5 @@ export function createSystemObservationTool(options: SystemObservationToolOption
 export function register(host: ToolHost, options: SystemObservationToolOptions = {}): () => void {
   return host.register(createSystemObservationTool(options));
 }
+
+export * from './notepad-live-acceptance-plan.js';
