@@ -333,7 +333,10 @@ test('planWindowsSandboxAcceptance prohibits caller forcing fake closedLoop: tru
   assert.equal(plan.status, 'unavailable');
 });
 
-test('planWindowsSandboxAcceptance achieves verified closedLoop with valid win32 real machine evidence', () => {
+test('planWindowsSandboxAcceptance verifies structural gates with simulated win32 evidence but keeps closedLoop=false (no physical helper process execution)', () => {
+  // 依据 AGENTS.md 与 Windows 沙箱可信验收规范：内存自报对象不构成独立于调用方的 Windows 原生 AppContainer/JobObject 物理执行证据。
+  // 结构门全部通过进入 structuralGates，但全部 6 项实机门控在未物理执行时必须保持在 pending 中，
+  // verifiedGates 保持为空，全链路闭环严格保持 closedLoop: false、status: unavailable。
   const evidence = makeValidEvidence();
   const plan = planWindowsSandboxAcceptance({
     platform: 'win32',
@@ -341,11 +344,16 @@ test('planWindowsSandboxAcceptance achieves verified closedLoop with valid win32
     evidence,
   });
 
-  assert.equal(plan.closedLoop, true);
-  assert.equal(plan.status, 'verified');
-  assert.equal(plan.reason, '已通过 Windows 真机验收');
-  assert.deepEqual(plan.pending, []);
-  assert.deepEqual(plan.verifiedGates, WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES);
+  assert.equal(plan.closedLoop, false);
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.reason, WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON);
+  assert.equal(plan.pending.length, 6);
+  assert.deepEqual(plan.pending, WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES);
+  assert.deepEqual(plan.verifiedGates, []);
+  assert.deepEqual(plan.structuralGates, WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES);
+  assert.equal(plan.structuralVerification?.fullyCovered, true);
+  assert.equal(plan.structuralVerification?.missingGates.length, 0);
+  assert.ok(plan.structuralVerification?.pinAttestationGap.includes('未与固定受信 Pin 清单比对'));
   assert.equal(plan.evidenceSummary?.helperSha256, validSha);
   assert.equal(plan.evidenceSummary?.outcome, 'exited');
   assert.equal(plan.evidenceSummary?.enforced, true);
@@ -353,7 +361,7 @@ test('planWindowsSandboxAcceptance achieves verified closedLoop with valid win32
   assert.equal(plan.evidenceSummary?.runId, 'run-001');
 });
 
-test('planWindowsSandboxAcceptance tracks pending gates when specific gates are unverified', () => {
+test('planWindowsSandboxAcceptance tracks pending gate when specific gate is unverified in evidence', () => {
   const incompleteEvidence = makeValidEvidence({
     networkDenyVerified: false,
     networkBlocked: false,
@@ -369,10 +377,14 @@ test('planWindowsSandboxAcceptance tracks pending gates when specific gates are 
 
   assert.equal(plan.closedLoop, false);
   assert.equal(plan.status, 'unavailable');
-  assert.ok(plan.pending.includes('network_deny_guard'));
+  assert.equal(plan.pending.length, 6);
+  assert.ok(!plan.structuralGates?.includes('network_deny_guard'));
+  assert.ok(plan.structuralVerification?.missingGates.includes('network_deny_guard'));
+  assert.ok(plan.structuralVerification?.missingFields.includes('networkDenyVerified'));
+  assert.equal(plan.structuralVerification?.fullyCovered, false);
 });
 
-test('planWindowsSandboxAcceptance preserves custom pending items', () => {
+test('planWindowsSandboxAcceptance preserves custom pending items and validates limits', () => {
   const customGate = 'host_pipe_handshake';
   const plan = planWindowsSandboxAcceptance({
     platform: 'linux',
@@ -381,4 +393,88 @@ test('planWindowsSandboxAcceptance preserves custom pending items', () => {
 
   assert.equal(plan.closedLoop, false);
   assert.ok(plan.pending.includes(customGate));
+  const text = plan.limits.join('\n');
+  assert.ok(text.includes('closedLoop=false'));
+});
+
+test('planWindowsSandboxAcceptance cross-review blockers: removes outcome exited short-circuits, enforces gate 4 sideEffects none and gate 6 exactGrantConsumed (simulated fixture)', () => {
+  // Blocker 1: outcome: 'exited' must not short-circuit gates 1, 2, 3, 5
+  const exitedShortCircuitAttempt = makeValidEvidence({
+    outcome: 'exited',
+    helper: {
+      helperPath: 'C:\\Program Files\\PersonalAgent\\native\\WindowsJobProcessHost.exe',
+      helperSha256: validSha,
+      helperFilesSha256: makeValidHelperFiles(),
+      attested: false,
+    },
+    helperVerified: false,
+    appContainer: false,
+    psecVerified: false,
+    jobObjectVerified: false,
+    descendantsStopped: false,
+    networkDenyVerified: false,
+    networkBlocked: false,
+    networkVerified: false,
+  });
+
+  const plan1 = planWindowsSandboxAcceptance({
+    platform: 'win32',
+    hasRealMachineEvidence: true,
+    evidence: exitedShortCircuitAttempt,
+  });
+
+  assert.ok(plan1.structuralVerification?.missingGates.includes('helper_attestation'));
+  assert.ok(plan1.structuralVerification?.missingGates.includes('psec_appcontainer_boundary'));
+  assert.ok(plan1.structuralVerification?.missingGates.includes('job_object_containment'));
+  assert.ok(plan1.structuralVerification?.missingGates.includes('network_deny_guard'));
+
+  // Blocker 2: gate 4 requires sideEffects === 'none' AND filesystemVerified === true
+  const sideEffectsPossibleEvidence = makeValidEvidence({
+    sideEffects: 'possible', // Cannot pass gate 4!
+    filesystemVerified: true,
+  });
+  const plan2 = planWindowsSandboxAcceptance({
+    platform: 'win32',
+    hasRealMachineEvidence: true,
+    evidence: sideEffectsPossibleEvidence,
+  });
+  assert.ok(plan2.structuralVerification?.missingGates.includes('filesystem_isolation'));
+
+  // Blocker 2 (cont): gate 6 requires exactGrantConsumed === true (authorizationRef alone is insufficient)
+  const noExactGrantEvidence = makeValidEvidence({
+    authorizationRef: 'auth-ref-only',
+    exactGrantConsumed: false,
+  });
+  const plan3 = planWindowsSandboxAcceptance({
+    platform: 'win32',
+    hasRealMachineEvidence: true,
+    evidence: noExactGrantEvidence,
+  });
+  assert.ok(plan3.structuralVerification?.missingGates.includes('policy_binding'));
+
+  // When all 6 gates strictly pass simulated structure validation:
+  const allGatesPassEvidence = makeValidEvidence({
+    outcome: 'exited',
+    helperVerified: true,
+    enforced: true,
+    appContainer: true,
+    stopped: true,
+    jobObjectVerified: true,
+    sideEffects: 'none',
+    filesystemVerified: true,
+    networkDenyVerified: true,
+    exactGrantConsumed: true,
+  });
+  const plan4 = planWindowsSandboxAcceptance({
+    platform: 'win32',
+    hasRealMachineEvidence: true,
+    evidence: allGatesPassEvidence,
+  });
+  assert.equal(plan4.pending.length, 6);
+  assert.deepEqual(plan4.structuralGates, WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES);
+  assert.equal(plan4.structuralVerification?.fullyCovered, true);
+  assert.deepEqual(plan4.verifiedGates, []);
+  // Full closed loop strictly remains false without physical helper execution
+  assert.equal(plan4.closedLoop, false);
+  assert.equal(plan4.status, 'unavailable');
 });
