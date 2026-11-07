@@ -1,4 +1,5 @@
 import {CrewError} from './errors.js';
+import {CrewStoreConsentProvider, type CrewConsentProvider} from './consent.js';
 import {
   CrewStore,
   CREW_PARENT_AGENT_ID,
@@ -27,9 +28,11 @@ import {
  */
 export class CrewKernel {
   private readonly store: CrewStore;
+  private readonly consentProvider: CrewStoreConsentProvider;
 
   private constructor(store: CrewStore) {
     this.store = store;
+    this.consentProvider = new CrewStoreConsentProvider(store);
   }
 
   /** 打开（必要时创建）独立的 crew 数据库并返回内核；数据库与 Runtime 主库分离。 */
@@ -40,6 +43,15 @@ export class CrewKernel {
 
   close(): void {
     this.store.close();
+  }
+
+  /**
+   * 订阅使用同意接口（合规边界）：记录写入 crew 自己的 SQLite（crew_consents 表）。
+   * 驱动的 start 必须先经它确认同意；宿主管理操作（grant/revoke）也通过它完成，
+   * 撤销后对应驱动不得再启动。
+   */
+  get consent(): CrewConsentProvider {
+    return this.consentProvider;
   }
 
   // ── 注册表：宿主管理入口 ────────────────────────────────────────────────
@@ -219,6 +231,20 @@ export class CrewKernel {
       throw new CrewError('NOT_PERMITTED', 'the parent agent has no mailbox; results arrive through receipts');
     }
     return this.store.receiveMessages(actorId, options);
+  }
+
+  /**
+   * 消费自己信箱中对应指定任务的最老一条未消费 task 消息（驱动运行时领取任务后
+   * 的信箱衔接；P1 语义不变，interrupt 等消息仍由 MCP 工具层消费）。
+   * 只有任务执行者本人可以消费；父不消费子的信箱。
+   */
+  dequeueTaskMessage(actorId: string, taskId: string): CrewMessageRecord | undefined {
+    const task = this.store.getTask(taskId);
+    if (!task) throw new CrewError('NOT_FOUND', `task ${taskId} does not exist`);
+    if (actorId !== task.assignedAgentId) {
+      throw new CrewError('NOT_PERMITTED', `task ${taskId} is assigned to ${task.assignedAgentId}; only the assigned agent can consume its mailbox message`);
+    }
+    return this.store.dequeueTaskMessage(actorId, taskId);
   }
 
   // ── actor 边界 ────────────────────────────────────────────────────────
