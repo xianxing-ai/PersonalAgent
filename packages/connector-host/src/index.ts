@@ -2,6 +2,7 @@ import { ProtocolError, validateContract } from '@personal-agent/contracts';
 import type { ConnectorManifest, ConnectorPort } from '@personal-agent/contracts';
 import type {ProactiveSourceDefinition,ProactiveContext,ProactivePage,ProactiveSourceBinding} from './proactive.js';
 export * from './proactive.js';
+export * from './settings-wire.js';
 
 export interface SecretStorePort {
   read(secretRef: string, signal: AbortSignal): string | undefined | Promise<string | undefined>;
