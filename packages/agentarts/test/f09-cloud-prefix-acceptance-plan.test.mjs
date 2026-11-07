@@ -317,18 +317,26 @@ test('planF09CloudPrefixAcceptance with valid receipt but no realCloudEvidence f
 });
 
 test('planF09CloudPrefixAcceptance fails closed if cloudEvidence is false or prefixVerified is false', () => {
-  // Even if realCloudEvidence boolean is true, receipt with cloudEvidence=false fails closed
+  const simulatedCloud = {
+    authenticated: true,
+    apiCallVerified: true,
+    prefixRouteVerified: true,
+    sessionAuthVerified: true,
+    traceReadbackVerified: true,
+  };
+
+  // Even if realCloudEvidence is provided, receipt with cloudEvidence=false fails closed
   const plan1 = planF09CloudPrefixAcceptance({
     receipt: validReceipt({ cloudEvidence: false }),
-    realCloudEvidence: true,
+    realCloudEvidence: simulatedCloud,
   });
   assert.equal(plan1.closedLoop, false);
   assert.equal(plan1.status, 'unavailable');
 
-  // Even if realCloudEvidence boolean is true, receipt with prefixVerified=false fails closed
+  // Even if realCloudEvidence is provided, receipt with prefixVerified=false fails closed
   const plan2 = planF09CloudPrefixAcceptance({
     receipt: validReceipt({ prefixVerified: false }),
-    realCloudEvidence: true,
+    realCloudEvidence: simulatedCloud,
   });
   assert.equal(plan2.closedLoop, false);
   assert.equal(plan2.status, 'unavailable');
@@ -361,7 +369,9 @@ test('planF09CloudPrefixAcceptance supports custom pending items', () => {
   assert.ok(plan.pending.some(p => p.item === 'custom_feed_topic_filter'));
 });
 
-test('planF09CloudPrefixAcceptance transitions to verified when real cloud evidence is provided', () => {
+test('planF09CloudPrefixAcceptance keeps closedLoop=false even when simulated real cloud evidence is provided (no online token attestation)', () => {
+  // 依据 AGENTS.md 与可信验收规范：内存自报对象不构成华为云在线前缀端点映射与真实会话凭据。
+  // 旧测试将纯 JS 形状等同于真云闭环属于不可信结论，收紧为 closedLoop: false，保留为严格负例。
   const receipt = validReceipt({
     sourceCommit: '4aa8f93f1234567890abcdef1234567890abcdef',
     cloudEvidence: true,
@@ -380,11 +390,12 @@ test('planF09CloudPrefixAcceptance transitions to verified when real cloud evide
     },
   });
 
-  assert.equal(plan.closedLoop, true);
-  assert.equal(plan.status, 'verified');
-  assert.equal(plan.reason, '已验证真实云端读回');
-  assert.equal(plan.pending.length, 0);
+  assert.equal(plan.closedLoop, false);
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.reason, '待真云验收');
+  assert.ok(plan.pending.length >= 6);
   assert.equal(plan.headMatches, true);
+  assert.ok(plan.limits.some(l => l.includes('closedLoop=false')));
 });
 
 test('planF09CloudPrefixAcceptance stays unavailable if partial realCloudEvidence provided', () => {
@@ -404,4 +415,43 @@ test('planF09CloudPrefixAcceptance stays unavailable if partial realCloudEvidenc
   assert.equal(plan.status, 'unavailable');
   assert.equal(plan.reason, '待真云验收');
   assert.ok(plan.pending.length >= 6);
+});
+
+test('planF09CloudPrefixAcceptance cross-review blockers: rejects boolean realCloudEvidence, enforces prefixVerified and missingNodes coverage (simulated fixture)', () => {
+  const receipt = validReceipt({
+    sourceCommit: '4aa8f93f1234567890abcdef1234567890abcdef',
+    nodes: ['F09_N01'], // missing F09_N02, F09_N03, F09_N04
+    prefixVerified: false,
+  });
+
+  // Blocker 1: boolean realCloudEvidence must be rejected
+  assert.throws(
+    () => planF09CloudPrefixAcceptance({ receipt, realCloudEvidence: true }),
+    err => err instanceof ProtocolError && err.code === 'INVALID_ARGUMENT' && err.message.includes('boolean is not supported')
+  );
+
+  // Blocker 2: prefixVerified !== true generates structural warning
+  const planIncomplete = planF09CloudPrefixAcceptance({
+    receipt,
+    headCommit: '4aa8f93f',
+    realCloudEvidence: {
+      authenticated: true,
+      apiCallVerified: true,
+      prefixRouteVerified: true,
+      sessionAuthVerified: true,
+      // missing traceReadbackVerified
+    },
+  });
+  assert.ok(planIncomplete.verified.some(v => v.includes('结构告警：回执中前缀路由尚未经端到端验证')));
+  assert.ok(planIncomplete.verified.some(v => v.includes('结构告警：自报云证据对象未完整包含全部结构字段')));
+  assert.equal(planIncomplete.structuralVerification?.fullyCovered, false);
+  assert.ok(planIncomplete.structuralVerification?.missingFields.includes('prefixVerified'));
+  assert.ok(planIncomplete.structuralVerification?.missingFields.includes('traceReadbackVerified'));
+
+  // Blocker 3: missingNodes must be tracked in pending workflow_nodes_coverage
+  assert.ok(planIncomplete.pending.some(p => p.item === 'workflow_nodes_coverage' && p.description.includes('缺失节点')));
+
+  // Blocker 4: missing headCommit must keep head_commit_alignment pending
+  const planNoHead = planF09CloudPrefixAcceptance({ receipt });
+  assert.ok(planNoHead.pending.some(p => p.item === 'head_commit_alignment' && p.description.includes('未提供当前 HEAD 提交')));
 });

@@ -85,7 +85,7 @@ export interface F09PendingItem {
   readonly reason: typeof F09_ACCEPTANCE_PENDING_REASON | string;
 }
 
-export interface RealCloudEvidence {
+export interface F09RealCloudEvidence {
   readonly authenticated: boolean;
   readonly apiCallVerified?: boolean | undefined;
   readonly prefixRouteVerified?: boolean | undefined;
@@ -93,11 +93,24 @@ export interface RealCloudEvidence {
   readonly traceReadbackVerified?: boolean | undefined;
 }
 
+export type RealCloudEvidence = F09RealCloudEvidence;
+
 export interface PlanF09CloudPrefixAcceptanceOptions {
   readonly receipt?: unknown | undefined;
   readonly headCommit?: string | undefined;
-  readonly realCloudEvidence?: RealCloudEvidence | boolean | undefined;
+  readonly realCloudEvidence?: F09RealCloudEvidence | undefined;
   readonly customPendingItems?: readonly string[] | undefined;
+}
+
+export interface F09StructuralVerification {
+  readonly prefixVerified: boolean;
+  readonly authenticated: boolean;
+  readonly apiCallVerified: boolean;
+  readonly prefixRouteVerified: boolean;
+  readonly sessionAuthVerified: boolean;
+  readonly traceReadbackVerified: boolean;
+  readonly missingFields: readonly string[];
+  readonly fullyCovered: boolean;
 }
 
 export interface F09CloudPrefixAcceptancePlan {
@@ -120,6 +133,7 @@ export interface F09CloudPrefixAcceptancePlan {
     readonly reportedNodes: readonly string[];
     readonly missingNodes: readonly string[];
   };
+  readonly structuralVerification?: F09StructuralVerification | undefined;
 }
 
 function plain(value: unknown): value is Record<string, unknown> {
@@ -280,7 +294,7 @@ export function planF09CloudPrefixAcceptance(
 ): F09CloudPrefixAcceptancePlan {
   let receiptInput: unknown;
   let headCommit: string | undefined;
-  let realCloudEvidence: RealCloudEvidence | boolean | undefined;
+  let realCloudEvidence: unknown;
   let customPendingItems: readonly string[] | undefined;
 
   if (isPlanOptions(receiptOrOptions)) {
@@ -295,6 +309,21 @@ export function planF09CloudPrefixAcceptance(
     customPendingItems = extraOptions?.customPendingItems;
   }
 
+  // Runtime defense against caller passing boolean for realCloudEvidence
+  if (typeof realCloudEvidence === 'boolean') {
+    fail('realCloudEvidence must be an object, boolean is not supported');
+  }
+
+  let typedCloudEvidence: F09RealCloudEvidence | undefined;
+  if (realCloudEvidence !== undefined) {
+    if (typeof realCloudEvidence !== 'object' || realCloudEvidence === null || Array.isArray(realCloudEvidence)) {
+      fail('realCloudEvidence must be an object');
+    }
+    typedCloudEvidence = realCloudEvidence as unknown as F09RealCloudEvidence;
+  }
+
+
+  let structuralVerification: F09StructuralVerification | undefined;
 
   const limits: readonly string[] = [
     '本规划仅执行本地契约结构与离线约束校验，未连接华为云或使用真实账号凭据',
@@ -332,157 +361,139 @@ export function planF09CloudPrefixAcceptance(
 
   const expectedNodes = [...F09_WORKFLOW_NODES];
 
+  let receipt: F09CloudPrefixReceipt | undefined;
+  let gatewayOrigin: string | undefined;
+  let receiptCommit = '';
+  let headMatches: boolean | undefined;
+  let reportedNodes: string[] = [];
+  let missingNodes = expectedNodes;
+  const verified: string[] = [];
+
   // Case 1: No receipt input provided -> default offline plan
   if (!receiptInput) {
-    const pending: F09PendingItem[] = defaultPendingSpecs.map(spec => ({
-      item: spec.item,
-      description: spec.description,
-      status: 'unavailable' as const,
-      reason: F09_ACCEPTANCE_PENDING_REASON,
-    }));
+    verified.push('离线规划：未提供读回回执，已生成 F09 华为云前缀与会话授权离线验收规划');
+  } else {
+    // Case 2: Receipt input provided -> validate receipt
+    assertF09CloudPrefixReceipt(receiptInput);
+    receipt = receiptInput as F09CloudPrefixReceipt;
 
-    if (customPendingItems) {
-      for (const item of customPendingItems) {
-        pending.push({
-          item,
-          description: item,
-          status: 'unavailable' as const,
-          reason: F09_ACCEPTANCE_PENDING_REASON,
-        });
-      }
+    const rawGateway = receipt.gatewayUrl;
+    gatewayOrigin = new URL(rawGateway).origin;
+    receiptCommit = receipt.sourceCommit ?? '';
+
+    if (typeof headCommit === 'string' && headCommit.trim().length > 0 && receiptCommit.length > 0) {
+      const normalizedHead = headCommit.trim();
+      headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
     }
 
-    return {
-      profile: 'huawei_ict_agentarts',
-      workflowId: 'F09',
-      status: 'unavailable',
-      closedLoop: false,
-      headCommit,
-      verified: ['离线规划：未提供读回回执，已生成 F09 华为云前缀与会话授权离线验收规划'],
-      pending,
-      reason: F09_ACCEPTANCE_PENDING_REASON,
-      limits,
-      nodesStatus: {
-        expectedNodes,
-        reportedNodes: [],
-        missingNodes: expectedNodes,
-      },
+    reportedNodes = receipt.nodes ? [...receipt.nodes] : [];
+    missingNodes = expectedNodes.filter(n => !reportedNodes.includes(n));
+
+    verified.push(
+      `契约结构：Profile "${receipt.profile}"、WorkflowId "${receipt.workflowId}" 校验通过`,
+      `云端前缀：网关 ${gatewayOrigin}，前缀路径 "${receipt.cloudPrefix}"，运行时 "${receipt.runtimeName}"`,
+      `会话授权：SessionId "${receipt.sessionAuth.sessionId}"，授权引用 "${receipt.sessionAuth.authorizationRef}"，范围 [${receipt.sessionAuth.grantedScopes.join(', ')}]，状态 "${receipt.sessionAuth.sessionState}"`
+    );
+
+    if (headMatches === true) {
+      verified.push(`代码对齐：当前 HEAD 提交 (${headCommit}) 与前缀回执源提交 (${receiptCommit}) 一致`);
+    }
+
+    if (reportedNodes.length > 0) {
+      verified.push(`节点核验：覆盖 ${reportedNodes.length}/${expectedNodes.length} 工作流节点 [${reportedNodes.join(', ')}]`);
+    }
+
+    const missingFields: string[] = [];
+    if (receipt.prefixVerified !== true) {
+      missingFields.push('prefixVerified');
+      verified.push('结构告警：回执中前缀路由尚未经端到端验证 (prefixVerified !== true)');
+    }
+
+    if (typedCloudEvidence) {
+      if (typedCloudEvidence.authenticated !== true) missingFields.push('authenticated');
+      if (typedCloudEvidence.apiCallVerified !== true) missingFields.push('apiCallVerified');
+      if (typedCloudEvidence.prefixRouteVerified !== true) missingFields.push('prefixRouteVerified');
+      if (typedCloudEvidence.sessionAuthVerified !== true) missingFields.push('sessionAuthVerified');
+      if (typedCloudEvidence.traceReadbackVerified !== true) missingFields.push('traceReadbackVerified');
+
+      if (missingFields.length === 0) {
+        verified.push('结构核验：自报云证据对象包含认证、API调用、前缀路由、会话授权及Trace读回全量声明（离线占位，待真云验收）');
+      } else {
+        verified.push(`结构告警：自报云证据对象未完整包含全部结构字段，缺失项: [${missingFields.join(', ')}]`);
+      }
+    } else {
+      missingFields.push('realCloudEvidence');
+    }
+
+    structuralVerification = {
+      prefixVerified: receipt.prefixVerified === true,
+      authenticated: typedCloudEvidence?.authenticated === true,
+      apiCallVerified: typedCloudEvidence?.apiCallVerified === true,
+      prefixRouteVerified: typedCloudEvidence?.prefixRouteVerified === true,
+      sessionAuthVerified: typedCloudEvidence?.sessionAuthVerified === true,
+      traceReadbackVerified: typedCloudEvidence?.traceReadbackVerified === true,
+      missingFields: Object.freeze(missingFields),
+      fullyCovered: missingFields.length === 0,
     };
   }
 
-  // Case 2: Receipt input provided -> validate receipt
-  assertF09CloudPrefixReceipt(receiptInput);
-  const receipt = receiptInput as F09CloudPrefixReceipt;
+  // Real cloud execution authority boundary:
+  // In offline context, schema validation of receipt and simulated options does NOT substitute
+  // for live Huawei Cloud prefix routing and session token attestation.
+  // Hence closedLoop strictly remains false and status remains unavailable.
+  const pendingSpecs: { item: string; description: string }[] = [];
 
-  const rawGateway = receipt.gatewayUrl;
-  const gatewayOrigin = new URL(rawGateway).origin;
-  const receiptCommit = receipt.sourceCommit ?? '';
-
-  let headMatches: boolean | undefined;
-  if (typeof headCommit === 'string' && headCommit.trim().length > 0 && receiptCommit.length > 0) {
-    const normalizedHead = headCommit.trim();
-    headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
+  if (receipt && headMatches !== true) {
+    pendingSpecs.push({
+      item: 'head_commit_alignment',
+      description: headMatches === false
+        ? `前缀源提交 (${receiptCommit}) 与当前 HEAD (${headCommit}) 不一致，需核实代码基线`
+        : `未提供当前 HEAD 提交进行代码对齐比对，需显式传入 headCommit 验证对齐`,
+    });
   }
 
-  let hasRealCloud = false;
-  if (typeof realCloudEvidence === 'boolean') {
-    hasRealCloud = realCloudEvidence;
-  } else if (realCloudEvidence && typeof realCloudEvidence === 'object') {
-    hasRealCloud = realCloudEvidence.authenticated === true &&
-      realCloudEvidence.apiCallVerified === true &&
-      realCloudEvidence.prefixRouteVerified === true &&
-      realCloudEvidence.sessionAuthVerified === true;
+  if (receipt && missingNodes.length > 0) {
+    pendingSpecs.push({
+      item: 'workflow_nodes_coverage',
+      description: `F09 工作流节点覆盖未完整 (${reportedNodes.length}/${expectedNodes.length})，缺失节点: [${missingNodes.join(', ')}]`,
+    });
   }
 
-  if (receipt.cloudEvidence === false || receipt.evidenceLevel === 'mock' || receipt.prefixVerified === false) {
-    hasRealCloud = false;
-  }
+  pendingSpecs.push(...defaultPendingSpecs);
 
-  const reportedNodes = receipt.nodes ? [...receipt.nodes] : [];
-  const missingNodes = expectedNodes.filter(n => !reportedNodes.includes(n));
-
-  const verified: string[] = [
-    `契约结构：Profile "${receipt.profile}"、WorkflowId "${receipt.workflowId}" 校验通过`,
-    `云端前缀：网关 ${gatewayOrigin}，前缀路径 "${receipt.cloudPrefix}"，运行时 "${receipt.runtimeName}"`,
-    `会话授权：SessionId "${receipt.sessionAuth.sessionId}"，授权引用 "${receipt.sessionAuth.authorizationRef}"，范围 [${receipt.sessionAuth.grantedScopes.join(', ')}]，状态 "${receipt.sessionAuth.sessionState}"`,
-  ];
-
-  if (headMatches === true) {
-    verified.push(`代码对齐：当前 HEAD 提交 (${headCommit}) 与前缀回执源提交 (${receiptCommit}) 一致`);
-  }
-
-  if (reportedNodes.length > 0) {
-    verified.push(`节点核验：覆盖 ${reportedNodes.length}/${expectedNodes.length} 工作流节点 [${reportedNodes.join(', ')}]`);
-  }
-
-  if (!hasRealCloud || headMatches === false) {
-    const pendingSpecs: { item: string; description: string }[] = [];
-
-    if (headMatches === false) {
-      pendingSpecs.push({
-        item: 'head_commit_alignment',
-        description: `前缀源提交 (${receiptCommit}) 与当前 HEAD (${headCommit}) 不一致，需核实代码基线`,
-      });
+  if (customPendingItems) {
+    for (const item of customPendingItems) {
+      pendingSpecs.push({ item, description: item });
     }
-
-    pendingSpecs.push(...defaultPendingSpecs);
-
-    if (customPendingItems) {
-      for (const item of customPendingItems) {
-        pendingSpecs.push({ item, description: item });
-      }
-    }
-
-    const pending: F09PendingItem[] = pendingSpecs.map(spec => ({
-      item: spec.item,
-      description: spec.description,
-      status: 'unavailable' as const,
-      reason: F09_ACCEPTANCE_PENDING_REASON,
-    }));
-
-    return {
-      profile: receipt.profile,
-      workflowId: receipt.workflowId,
-      status: 'unavailable',
-      closedLoop: false,
-      cloudPrefix: receipt.cloudPrefix,
-      gatewayUrl: gatewayOrigin,
-      runtimeName: receipt.runtimeName,
-      sourceCommit: receiptCommit || undefined,
-      headCommit,
-      headMatches,
-      verified,
-      pending,
-      reason: F09_ACCEPTANCE_PENDING_REASON,
-      limits,
-      nodesStatus: {
-        expectedNodes,
-        reportedNodes,
-        missingNodes,
-      },
-    };
   }
 
-  // Real cloud evidence is present and headMatches !== false
+  const pending: F09PendingItem[] = pendingSpecs.map(spec => ({
+    item: spec.item,
+    description: spec.description,
+    status: 'unavailable' as const,
+    reason: F09_ACCEPTANCE_PENDING_REASON,
+  }));
+
   return {
-    profile: receipt.profile,
-    workflowId: receipt.workflowId,
-    status: 'verified',
-    closedLoop: true,
-    cloudPrefix: receipt.cloudPrefix,
+    profile: receipt ? receipt.profile : 'huawei_ict_agentarts',
+    workflowId: receipt ? receipt.workflowId : 'F09',
+    status: 'unavailable',
+    closedLoop: false,
+    cloudPrefix: receipt ? receipt.cloudPrefix : undefined,
     gatewayUrl: gatewayOrigin,
-    runtimeName: receipt.runtimeName,
+    runtimeName: receipt ? receipt.runtimeName : undefined,
     sourceCommit: receiptCommit || undefined,
     headCommit,
     headMatches,
     verified,
-    pending: [],
-    reason: '已验证真实云端读回',
+    pending,
+    reason: F09_ACCEPTANCE_PENDING_REASON,
     limits,
     nodesStatus: {
       expectedNodes,
       reportedNodes,
       missingNodes,
     },
+    structuralVerification,
   };
 }
