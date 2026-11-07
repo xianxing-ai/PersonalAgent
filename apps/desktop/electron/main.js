@@ -3,6 +3,7 @@ import {knowledgeSourceNotReadyMessage} from '../src/shared/public-error-message
 import {readCompetitionExecutionPolicy} from './competition-execution-config.js';
 import {createMailMonitorPreparation} from './mail-monitor-preparation.js';
 import {handleConversationAction} from './conversation-actions.js';
+import {handleSessionManagementApi} from './session-management-api.js';
 import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {createConversationDelivery} from './conversation-delivery.js';
 import {readReconciliationStatus} from './reconciliation-status.js';
@@ -4128,6 +4129,16 @@ async function action(event, name, payload) {
     }
     throw Error('不支持的私人记忆操作');
   }
+  // MOD-12 explicit session management API: same trusted-sender boundary and
+  // live-voice invalidation as conversation.*, but with a published operation
+  // catalog and coded failures (see docs/interfaces/DESKTOP_SESSION_MANAGEMENT_API.md).
+  if(typeof name==='string'&&name.startsWith('session.')){
+    if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
+    const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
+    const result=handleSessionManagementApi({name,payload,surface,conversations,tasks,taskSurface,submitting,publish});
+    if(conversations.activeConversationId(surface)!==previousConversationId)liveVoice?.invalidateTextOutput(previousConversationId);
+    return result;
+  }
   if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft'].includes(name)){
     if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
     const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
@@ -4705,6 +4716,12 @@ app.whenReady().then(async () => {
     catch (error) {
       if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(args[1]))
         return developerSettingsErrorResponse(error);
+      // MOD-12: keep the published SESSION_* failure codes exact over IPC
+      // (errorDisplay alone would classify them into generic codes).
+      if(typeof args[1]==='string'&&args[1].startsWith('session.')&&typeof error?.code==='string'&&error.code.startsWith('SESSION_')){
+        const failure=errorDisplay(error,'ipc');
+        return {ok:false,error:failure.message,errorCode:error.code};
+      }
       if(typeof args[1]==='string'&&(args[1].startsWith('computer.control.')||args[1]==='computer.vision.configure')){
         const failure=computerControlFailure(error,args[1]);
         return {ok:false,error:failure.message,errorCode:failure.code,stage:failure.stage,
