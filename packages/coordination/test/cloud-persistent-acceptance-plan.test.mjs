@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { ProtocolError } from '@personal-agent/contracts';
 import {
   assertCloudPersistentEvidence,
   parseCloudPersistentEvidence,
@@ -252,7 +253,10 @@ test('planCloudPersistentAcceptance with options wrapper reflects taskId and hea
 
 test('planCloudPersistentAcceptance with valid evidence but without real cloud shutdown evidence stays unavailable', () => {
   const evidence = validEvidenceFixture();
-  const plan = planCloudPersistentAcceptance(evidence);
+  const plan = planCloudPersistentAcceptance({
+    evidence,
+    headCommit: '0e7f3aa1633b8997fe59ce4256ad4509b4674cf3',
+  });
 
   assert.equal(plan.closedLoop, false);
   assert.equal(plan.status, 'unavailable');
@@ -282,7 +286,9 @@ test('planCloudPersistentAcceptance detects HEAD commit mismatch and adds pendin
   assert.equal(mismatchItem.status, 'unavailable');
 });
 
-test('planCloudPersistentAcceptance converges to verified when real cloud shutdown evidence is provided', () => {
+test('planCloudPersistentAcceptance keeps closedLoop=false even with simulated real cloud shutdown evidence (no online cloud persistent host attestation)', () => {
+  // 依据 AGENTS.md 与可信验收规范：内存自报对象不构成华为云在线关机接管与持续执行凭证。
+  // 旧测试将纯 JS 形状等同于真云闭环属于不可信结论，收紧为 closedLoop: false，保留为严格负例。
   const evidence = validEvidenceFixture({ sourceCommit: '0e7f3aa1633b8997fe59ce4256ad4509b4674cf3' });
   const realCloudEvidence = {
     authenticated: true,
@@ -297,10 +303,11 @@ test('planCloudPersistentAcceptance converges to verified when real cloud shutdo
     realCloudEvidence,
   });
 
-  assert.equal(plan.closedLoop, true);
-  assert.equal(plan.status, 'verified');
+  assert.equal(plan.closedLoop, false);
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.reason, CLOUD_PERSISTENT_PENDING_REASON);
   assert.equal(plan.headMatches, true);
-  assert.equal(plan.pending.length, 0);
+  assert.ok(plan.pending.length >= DEFAULT_CLOUD_PERSISTENT_PENDING_ITEMS.length);
   assert.ok(plan.verified.some(v => v.includes('代码对齐')));
 });
 
@@ -309,12 +316,60 @@ test('planCloudPersistentAcceptance preserves custom pending items even with rea
   const plan = planCloudPersistentAcceptance({
     evidence,
     headCommit: '0e7f3aa1',
-    realCloudEvidence: true,
+    realCloudEvidence: {
+      authenticated: true,
+      shutdownVerified: true,
+      cloudHostActive: true,
+      checkpointVerified: true,
+      unattendedExecutionVerified: true,
+      reconciliationVerified: true,
+    },
     customPendingItems: ['pending_third_party_audit'],
   });
 
   assert.equal(plan.closedLoop, false);
-  assert.equal(plan.status, 'in_progress');
-  assert.equal(plan.pending.length, 1);
-  assert.equal(plan.pending[0].item, 'pending_third_party_audit');
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.structuralVerification?.fullyCovered, true);
+  assert.deepEqual(plan.structuralVerification?.missingFields, []);
+  assert.ok(plan.pending.some(p => p.item === 'pending_third_party_audit'));
+  const text = plan.limits.join('\n');
+  assert.ok(text.includes('closedLoop=true'));
+  assert.ok(text.includes('closedLoop=false'));
+});
+
+test('planCloudPersistentAcceptance cross-review blockers: rejects boolean realCloudEvidence, enforces missingPhases and headCommit (simulated fixture)', () => {
+  const evidence = validEvidenceFixture({
+    sourceCommit: '0e7f3aa1',
+    phases: ['device_shutdown_signal'], // missing takeover, checkpoint, completion
+  });
+
+  // Blocker 1: boolean realCloudEvidence must be rejected
+  assert.throws(
+    () => planCloudPersistentAcceptance({ evidence, realCloudEvidence: true }),
+    err => err instanceof ProtocolError && err.code === 'INVALID_ARGUMENT' && err.message.includes('boolean is not supported')
+  );
+
+  // Blocker 2: missing unattendedExecutionVerified/reconciliationVerified produces warning
+  const planIncomplete = planCloudPersistentAcceptance({
+    evidence,
+    headCommit: '0e7f3aa1',
+    realCloudEvidence: {
+      authenticated: true,
+      shutdownVerified: true,
+      cloudHostActive: true,
+      checkpointVerified: true,
+      // missing unattendedExecutionVerified & reconciliationVerified
+    },
+  });
+  assert.ok(planIncomplete.verified.some(v => v.includes('结构告警：自报云端关机证据对象未完整包含全部结构字段')));
+  assert.equal(planIncomplete.structuralVerification?.fullyCovered, false);
+  assert.ok(planIncomplete.structuralVerification?.missingFields.includes('unattendedExecutionVerified'));
+  assert.ok(planIncomplete.structuralVerification?.missingFields.includes('reconciliationVerified'));
+
+  // Blocker 2 (cont): missing phases must be tracked in pending
+  assert.ok(planIncomplete.pending.some(p => p.item === 'cloud_phases_coverage' && p.description.includes('缺失阶段')));
+
+  // Blocker 2 (cont): missing headCommit must keep source_head_commit_alignment pending
+  const planNoHead = planCloudPersistentAcceptance({ evidence });
+  assert.ok(planNoHead.pending.some(p => p.item === 'source_head_commit_alignment' && p.description.includes('未提供当前 HEAD 提交')));
 });

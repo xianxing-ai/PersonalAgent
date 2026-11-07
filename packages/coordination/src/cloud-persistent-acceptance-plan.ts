@@ -98,9 +98,20 @@ export interface PlanCloudPersistentAcceptanceOptions {
   readonly evidence?: unknown | undefined;
   readonly receipt?: unknown | undefined;
   readonly headCommit?: string | undefined;
-  readonly realCloudEvidence?: RealCloudShutdownEvidence | boolean | undefined;
+  readonly realCloudEvidence?: RealCloudShutdownEvidence | undefined;
   readonly customPendingItems?: readonly string[] | undefined;
   readonly taskId?: string | undefined;
+}
+
+export interface CloudPersistentStructuralVerification {
+  readonly authenticated: boolean;
+  readonly shutdownVerified: boolean;
+  readonly cloudHostActive: boolean;
+  readonly checkpointVerified: boolean;
+  readonly unattendedExecutionVerified: boolean;
+  readonly reconciliationVerified: boolean;
+  readonly missingFields: readonly string[];
+  readonly fullyCovered: boolean;
 }
 
 export interface CloudPersistentAcceptancePlan {
@@ -127,6 +138,7 @@ export interface CloudPersistentAcceptancePlan {
     readonly reportedPhases: readonly string[];
     readonly missingPhases: readonly string[];
   };
+  readonly structuralVerification?: CloudPersistentStructuralVerification | undefined;
 }
 
 export const DEFAULT_CLOUD_PERSISTENT_PENDING_ITEMS: readonly CloudPersistentPendingItem[] = Object.freeze([
@@ -384,7 +396,7 @@ export function planCloudPersistentAcceptance(
 ): CloudPersistentAcceptancePlan {
   let evidenceInput: unknown;
   let headCommit: string | undefined;
-  let realCloudEvidence: RealCloudShutdownEvidence | boolean | undefined;
+  let realCloudEvidence: unknown;
   let customPendingItems: readonly string[] | undefined;
   let explicitTaskId: string | undefined;
 
@@ -402,6 +414,21 @@ export function planCloudPersistentAcceptance(
     explicitTaskId = extraOptions?.taskId;
   }
 
+  // Runtime defense against caller passing boolean for realCloudEvidence
+  if (typeof realCloudEvidence === 'boolean') {
+    fail('realCloudEvidence must be an object, boolean is not supported');
+  }
+
+  let structuralVerification: CloudPersistentStructuralVerification | undefined;
+
+  let typedCloudEvidence: RealCloudShutdownEvidence | undefined;
+  if (realCloudEvidence !== undefined) {
+    if (typeof realCloudEvidence !== 'object' || realCloudEvidence === null || Array.isArray(realCloudEvidence)) {
+      fail('realCloudEvidence must be an object');
+    }
+    typedCloudEvidence = realCloudEvidence as unknown as RealCloudShutdownEvidence;
+  }
+
   const limits: readonly string[] = [
     '本规划为离线契约 helper，不连接华为云，不读取任何云凭据或密钥',
     '关机后云持续执行（cloudPersistent）必须具备真实华为云端到端关机后运行证据，严禁在无证据时宣称 closedLoop=true',
@@ -411,157 +438,115 @@ export function planCloudPersistentAcceptance(
 
   const expectedPhases = [...CLOUD_PERSISTENT_PHASES];
 
+  let evidence: CloudPersistentEvidence | undefined;
+  let receiptCommit = '';
+  let headMatches: boolean | undefined;
+  let reportedPhases: string[] = [];
+  let missingPhases = expectedPhases;
+  const verified: string[] = [];
+
   // Case 1: No evidence input provided -> default offline plan
   if (!evidenceInput) {
-    const pending: CloudPersistentPendingItem[] = DEFAULT_CLOUD_PERSISTENT_PENDING_ITEMS.map(spec => ({
-      item: spec.item,
-      description: spec.description,
+    verified.push('离线规划：未提供关机后云持续读回证据，已生成 AgentArts 关机后云持续离线验收规划');
+  } else {
+    // Case 2: Evidence input provided -> validate evidence structure
+    assertCloudPersistentEvidence(evidenceInput);
+    evidence = evidenceInput as CloudPersistentEvidence;
+
+    receiptCommit = evidence.sourceCommit ?? '';
+
+    if (typeof headCommit === 'string' && headCommit.trim().length > 0 && receiptCommit.length > 0) {
+      const normalizedHead = headCommit.trim();
+      headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
+    }
+
+    reportedPhases = evidence.phases ? [...evidence.phases] : [];
+    missingPhases = expectedPhases.filter(p => !reportedPhases.includes(p));
+
+    verified.push(
+      `契约结构：Profile "${evidence.profile}"、Capability "${evidence.capability}" 校验通过`,
+      `任务会话：TaskId "${evidence.taskId}"，SessionId "${evidence.sessionId}"，TraceId "${evidence.cloudTraceId}"`,
+      `时序因果：关机时间 ${evidence.deviceShutdownAt}，云端开始时间 ${evidence.cloudExecutionStartedAt}`,
+      `常驻宿主：cloudPersistentHost "${evidence.cloudPersistentHost}"，执行状态 "${evidence.executionStatus ?? 'completed'}"`
+    );
+
+    if (evidence.cloudExecutionCompletedAt) {
+      verified.push(`云端完成：完成时间 ${evidence.cloudExecutionCompletedAt}`);
+    }
+
+    if (headMatches === true) {
+      verified.push(`代码对齐：当前 HEAD 提交 (${headCommit}) 与证据源提交 (${receiptCommit}) 一致`);
+    }
+
+    if (reportedPhases.length > 0) {
+      verified.push(`阶段核验：覆盖 ${reportedPhases.length}/${expectedPhases.length} 持续执行阶段 [${reportedPhases.join(', ')}]`);
+    }
+
+    const missingFields: string[] = [];
+    if (typedCloudEvidence) {
+      if (typedCloudEvidence.authenticated !== true) missingFields.push('authenticated');
+      if (typedCloudEvidence.shutdownVerified !== true) missingFields.push('shutdownVerified');
+      if (typedCloudEvidence.cloudHostActive !== true) missingFields.push('cloudHostActive');
+      if (typedCloudEvidence.checkpointVerified !== true) missingFields.push('checkpointVerified');
+      if (typedCloudEvidence.unattendedExecutionVerified !== true) missingFields.push('unattendedExecutionVerified');
+      if (typedCloudEvidence.reconciliationVerified !== true) missingFields.push('reconciliationVerified');
+
+      if (missingFields.length === 0) {
+        verified.push('结构核验：自报云端关机证据对象包含认证、关机确认、常驻宿主、检查点、无人值守及对账核验全量声明（离线占位，待真云验收）');
+      } else {
+        verified.push(`结构告警：自报云端关机证据对象未完整包含全部结构字段，缺失项: [${missingFields.join(', ')}]`);
+      }
+    } else {
+      missingFields.push('realCloudEvidence');
+    }
+
+    structuralVerification = {
+      authenticated: typedCloudEvidence?.authenticated === true,
+      shutdownVerified: typedCloudEvidence?.shutdownVerified === true,
+      cloudHostActive: typedCloudEvidence?.cloudHostActive === true,
+      checkpointVerified: typedCloudEvidence?.checkpointVerified === true,
+      unattendedExecutionVerified: typedCloudEvidence?.unattendedExecutionVerified === true,
+      reconciliationVerified: typedCloudEvidence?.reconciliationVerified === true,
+      missingFields: Object.freeze(missingFields),
+      fullyCovered: missingFields.length === 0,
+    };
+  }
+
+  // Real cloud execution authority boundary:
+  // In offline context, schema validation of evidence and simulated flags does NOT substitute
+  // for physical machine shutdown and genuine Huawei Cloud persistent host takeover.
+  // Hence closedLoop strictly remains false and status remains unavailable.
+  const pending: CloudPersistentPendingItem[] = [];
+
+  for (const item of DEFAULT_CLOUD_PERSISTENT_PENDING_ITEMS) {
+    pending.push({
+      item: item.item,
+      description: item.description,
       status: 'unavailable' as const,
       reason: CLOUD_PERSISTENT_PENDING_REASON,
-    }));
+    });
+  }
 
-    if (customPendingItems) {
-      for (const item of customPendingItems) {
-        pending.push({
-          item,
-          description: item,
-          status: 'unavailable' as const,
-          reason: CLOUD_PERSISTENT_PENDING_REASON,
-        });
-      }
-    }
-
-    return {
-      profile: CLOUD_PERSISTENT_PROFILE,
-      capability: 'cloud_persistent',
-      status: 'unavailable',
-      closedLoop: false,
-      taskId: explicitTaskId,
-      headCommit,
-      verified: ['离线规划：未提供关机后云持续读回证据，已生成 AgentArts 关机后云持续离线验收规划'],
-      pending,
+  if (evidence && headMatches !== true) {
+    pending.push({
+      item: 'source_head_commit_alignment',
+      description: headMatches === false
+        ? `代码基线失配：当前 HEAD (${headCommit}) 与证据提交 (${receiptCommit}) 不一致，待在当前 HEAD 重放关机验收`
+        : `未提供当前 HEAD 提交进行代码对齐比对，需显式传入 headCommit 验证对齐`,
+      status: 'unavailable' as const,
       reason: CLOUD_PERSISTENT_PENDING_REASON,
-      limits,
-      phasesStatus: {
-        expectedPhases,
-        reportedPhases: [],
-        missingPhases: expectedPhases,
-      },
-    };
+    });
   }
 
-  // Case 2: Evidence input provided -> validate evidence
-  assertCloudPersistentEvidence(evidenceInput);
-  const evidence = evidenceInput as CloudPersistentEvidence;
-
-  const receiptCommit = evidence.sourceCommit ?? '';
-
-  let headMatches: boolean | undefined;
-  if (typeof headCommit === 'string' && headCommit.trim().length > 0 && receiptCommit.length > 0) {
-    const normalizedHead = headCommit.trim();
-    headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
-  }
-
-  let hasRealCloud = false;
-  if (typeof realCloudEvidence === 'boolean') {
-    hasRealCloud = realCloudEvidence;
-  } else if (realCloudEvidence && typeof realCloudEvidence === 'object') {
-    hasRealCloud =
-      realCloudEvidence.authenticated === true &&
-      realCloudEvidence.shutdownVerified === true &&
-      realCloudEvidence.cloudHostActive === true &&
-      realCloudEvidence.checkpointVerified === true;
-  }
-
-  if (evidence.cloudEvidence === false || evidence.evidenceLevel === 'mock') {
-    hasRealCloud = false;
-  }
-
-  const reportedPhases = evidence.phases ? [...evidence.phases] : [];
-  const missingPhases = expectedPhases.filter(p => !reportedPhases.includes(p));
-
-  const verified: string[] = [
-    `契约结构：Profile "${evidence.profile}"、Capability "${evidence.capability}" 校验通过`,
-    `任务会话：TaskId "${evidence.taskId}"，SessionId "${evidence.sessionId}"，TraceId "${evidence.cloudTraceId}"`,
-    `时序因果：关机时间 ${evidence.deviceShutdownAt}，云端开始时间 ${evidence.cloudExecutionStartedAt}`,
-    `常驻宿主：cloudPersistentHost "${evidence.cloudPersistentHost}"，执行状态 "${evidence.executionStatus ?? 'completed'}"`,
-  ];
-
-  if (evidence.cloudExecutionCompletedAt) {
-    verified.push(`云端完成：完成时间 ${evidence.cloudExecutionCompletedAt}`);
-  }
-
-  if (headMatches === true) {
-    verified.push(`代码对齐：当前 HEAD 提交 (${headCommit}) 与证据源提交 (${receiptCommit}) 一致`);
-  }
-
-  if (reportedPhases.length > 0) {
-    verified.push(`阶段核验：覆盖 ${reportedPhases.length}/${expectedPhases.length} 持续执行阶段 [${reportedPhases.join(', ')}]`);
-  }
-
-  if (!hasRealCloud || headMatches === false) {
-    const pending: CloudPersistentPendingItem[] = [];
-
-    if (!hasRealCloud) {
-      for (const item of DEFAULT_CLOUD_PERSISTENT_PENDING_ITEMS) {
-        pending.push({
-          item: item.item,
-          description: item.description,
-          status: 'unavailable' as const,
-          reason: CLOUD_PERSISTENT_PENDING_REASON,
-        });
-      }
-    }
-
-    if (headMatches === false) {
-      pending.push({
-        item: 'source_head_commit_alignment',
-        description: `代码基线失配：当前 HEAD (${headCommit}) 与证据提交 (${receiptCommit}) 不一致，待在当前 HEAD 重放关机验收`,
-        status: 'unavailable' as const,
-        reason: CLOUD_PERSISTENT_PENDING_REASON,
-      });
-    }
-
-    if (customPendingItems) {
-      for (const item of customPendingItems) {
-        pending.push({
-          item,
-          description: item,
-          status: 'unavailable' as const,
-          reason: CLOUD_PERSISTENT_PENDING_REASON,
-        });
-      }
-    }
-
-    return {
-      profile: CLOUD_PERSISTENT_PROFILE,
-      capability: 'cloud_persistent',
-      status: 'unavailable',
-      closedLoop: false,
-      taskId: evidence.taskId,
-      sessionId: evidence.sessionId,
-      cloudPersistentHost: evidence.cloudPersistentHost,
-      deviceShutdownAt: evidence.deviceShutdownAt,
-      cloudExecutionStartedAt: evidence.cloudExecutionStartedAt,
-      cloudExecutionCompletedAt: evidence.cloudExecutionCompletedAt,
-      cloudTraceId: evidence.cloudTraceId,
-      sourceCommit: evidence.sourceCommit,
-      headCommit,
-      headMatches,
-      verified,
-      pending,
+  if (evidence && missingPhases.length > 0) {
+    pending.push({
+      item: 'cloud_phases_coverage',
+      description: `关机后持续执行阶段未全量覆盖 (${reportedPhases.length}/${expectedPhases.length})，缺失阶段: [${missingPhases.join(', ')}]`,
+      status: 'unavailable' as const,
       reason: CLOUD_PERSISTENT_PENDING_REASON,
-      limits,
-      phasesStatus: {
-        expectedPhases,
-        reportedPhases,
-        missingPhases,
-      },
-    };
+    });
   }
 
-  // Real cloud shutdown evidence verified and aligned with HEAD commit
-  const pending: CloudPersistentPendingItem[] = [];
   if (customPendingItems) {
     for (const item of customPendingItems) {
       pending.push({
@@ -576,26 +561,27 @@ export function planCloudPersistentAcceptance(
   return {
     profile: CLOUD_PERSISTENT_PROFILE,
     capability: 'cloud_persistent',
-    status: pending.length > 0 ? 'in_progress' : 'verified',
-    closedLoop: pending.length === 0,
-    taskId: evidence.taskId,
-    sessionId: evidence.sessionId,
-    cloudPersistentHost: evidence.cloudPersistentHost,
-    deviceShutdownAt: evidence.deviceShutdownAt,
-    cloudExecutionStartedAt: evidence.cloudExecutionStartedAt,
-    cloudExecutionCompletedAt: evidence.cloudExecutionCompletedAt,
-    cloudTraceId: evidence.cloudTraceId,
-    sourceCommit: evidence.sourceCommit,
+    status: 'unavailable',
+    closedLoop: false,
+    taskId: evidence ? evidence.taskId : explicitTaskId,
+    sessionId: evidence?.sessionId,
+    cloudPersistentHost: evidence?.cloudPersistentHost,
+    deviceShutdownAt: evidence?.deviceShutdownAt,
+    cloudExecutionStartedAt: evidence?.cloudExecutionStartedAt,
+    cloudExecutionCompletedAt: evidence?.cloudExecutionCompletedAt,
+    cloudTraceId: evidence?.cloudTraceId,
+    sourceCommit: evidence?.sourceCommit,
     headCommit,
     headMatches,
     verified,
     pending,
-    reason: pending.length > 0 ? CLOUD_PERSISTENT_PENDING_REASON : '已完成真实华为云关机后云持续端到端读实验收',
+    reason: CLOUD_PERSISTENT_PENDING_REASON,
     limits,
     phasesStatus: {
       expectedPhases,
       reportedPhases,
       missingPhases,
     },
+    structuralVerification,
   };
 }
