@@ -7,7 +7,9 @@ import {createTrustedMeetingSourceRevisionReader} from '../dist/reviewed-meeting
 import {createCommittedMeetingProjectionReader} from '../dist/reviewed-meeting.js';
 
 const now = () => Date.parse('2026-11-07T08:00:00Z');
-const deadline = '2026-11-07T08:01:00Z';
+// context.deadline 会进入 createCommittedMeetingProjectionReader 的 withCognitionDeadline（默认真实时钟），
+// 必须相对当前墙钟取未来值；写死的时间戳一过即为 TIMEOUT（mock now 只注入 source reader 的 fixture 校验）。
+const deadline = new Date(Date.now() + 60_000).toISOString();
 const signal = new AbortController().signal;
 const context = {deadline, signal};
 const event = {
