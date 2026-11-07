@@ -20,19 +20,19 @@ node scripts/competition/run-evaluation.mjs --adapter contract
 # 只跑部分用例
 node scripts/competition/run-evaluation.mjs --filter EVAL-F01-001,EVAL-F04-001
 
-# runtime 档：对已部署 AgentArts Runtime 真实 POST /invocations 并判分
+# runtime 档：runtime 档当前不调用 Runtime，行为项为 unverified
 node scripts/competition/run-evaluation.mjs --adapter runtime --runtime-url http://127.0.0.1:8787
 
 # 指定输出目录
 node scripts/competition/run-evaluation.mjs --out /tmp/eval-runs
 ```
 
-退出码：0 完成；1 参数/文件错误；2 manifest 与 events 汇总不一致（判分无效）。
+退出码：0 完成；1 参数/文件错误或过滤后无用例；2 manifest 与 events 汇总不一致（判分无效）；3 runtime 执行不可用；4 contract 结构检查失败。
 
 ## 边界（重要）
 
 - `contract` adapter **不评测模型行为**——它验证的是题集质量（workflowId/能力引用/权重/证据字段与 28 图契约一致），行为判分项全部记 unverified，不会伪装成通过。
-- `runtime` adapter 需要真实部署的 AgentArts Runtime；不可达时每条用例记 `unavailable` 及原因，**不做本地模拟替代，不生成假 Trace**。
+- `runtime` adapter 因缺少可信隔离授权及逐项验证器，不派发任何调用；行为项为 `unverified`、用例为 `unavailable`，不生成假 Trace。
 - `requiresRealAccount: true` 的用例（真实邮件/日历/通知/GitHub/云）在无真实账号环境下按 RUBRIC 判 unavailable，列明原因。
 - 最终比赛跑分以 AgentArts 平台评估为准；本 runner 的分数是本地回归口径，不替代平台结果。
 
@@ -41,3 +41,5 @@ node scripts/competition/run-evaluation.mjs --out /tmp/eval-runs
 - Trace 格式对齐 MOD-31/32 观测边界：事件级 JSONL + manifest 汇总，manifest↔events 自检不一致即判分无效。
 - 用例 `requiredCapabilities` 直接引用 `docs/competition/workflow-wiring.json` 中各图登记的能力名，contract adapter 强制校验——题集与整图接线使用同一份契约来源。
 - Web Demo（docs/demo/web-demo）的 F23 卡片展示“evaluation.actual_result_dataset”等能力：本评测集是这些能力的实际数据集入口之一。
+
+当前所有 runtime 用例均不派发；恢复执行须先接入可信隔离授权和逐项证据验证。
