@@ -95,3 +95,78 @@ test('concrete candidates retain scores and binding; unauthorized, duplicate, ch
   }});
   assert.equal((await fabricated.choose(request([candidate, noop, revoked]))).eligibleForRuntime, false);
 });
+
+test('choice requests and candidate payloads are gated before any model access', async () => {
+  let calls = 0;
+  const service = new LayaActionChoiceService({async infer() {calls++; return validChoice();}});
+  const base = choiceRequest();
+  await assert.rejects(service.choose({...base, candidates: base.candidates.slice(0, 1)}), /Invalid action choice request/,
+    'a single option is a rubber stamp, not a choice');
+  const many = Array.from({length: 17}, (_, index) => ({...base.candidates[0], id: `extra-${index}`}));
+  await assert.rejects(service.choose({...base, candidates: many}), /Invalid action choice request/);
+  await assert.rejects(service.choose({...base, context: '   '}), /Invalid action choice request/);
+  await assert.rejects(service.choose({...base, deadline: 'not-a-date'}), /Invalid action choice request/);
+  await assert.rejects(service.choose({...base, signal: undefined}), /Invalid action choice request/);
+  const expiresAt = new Date(Date.now() + 60_000).toISOString();
+  const args = {folder: 'work'};
+  const tool = {name: 'inbox.classification.save', version: '1.0.0', arguments: args};
+  const digest = actionArgumentsDigest(args);
+  const sources = [{id: 'message-1', revision: 3}];
+  const toolCandidate = {id: 'with-tool', revision: 1, kind: 'tool', description: 'Group this message',
+    sources, scopeRef: 'local', expiresAt, risk: 'low', tool, argumentsDigest: digest};
+  await assert.rejects(service.choose({...base, candidates: [{...toolCandidate, tool: undefined}, base.candidates[0]]}),
+    /Tool candidate is not executable/);
+  await assert.rejects(service.choose({...base, candidates: [{...base.candidates[0], tool}, base.candidates[1]]}),
+    /Non-tool candidate cannot hide a tool/, 'noop or defer carriers must not smuggle executable tools');
+  assert.equal(calls, 0, 'validation failures must never reach the model');
+});
+
+test('model probability answers are re-verified against the eligible set before any selection', async () => {
+  for (const [name, answer] of [
+    ['missing probability key', {choice: 'candidate_0', probabilities: {candidate_0: 1}, answer_confidence: 1, confidence: 0.5}],
+    ['out-of-range probability', {choice: 'candidate_0', probabilities: {candidate_0: 1.5, candidate_1: -0.5}, answer_confidence: 1, confidence: 0.5}],
+    ['mass not conserved', {choice: 'candidate_0', probabilities: {candidate_0: 0.9, candidate_1: 0.2}, answer_confidence: 0.9, confidence: 0.5}],
+    ['chosen is not top ranked', {choice: 'candidate_0', probabilities: {candidate_0: 0.3, candidate_1: 0.7}, answer_confidence: 0.7, confidence: 0.5}],
+    ['confidence disagrees with the top candidate', {choice: 'candidate_0', probabilities: {candidate_0: 0.9, candidate_1: 0.1}, answer_confidence: 0.5, confidence: 0.5}],
+  ]) {
+    const service = new LayaActionChoiceService({async infer() {return {answers: {action: answer}};}});
+    const result = await service.choose(choiceRequest());
+    assert.equal(result.reason, 'invalid_response', name);
+    assert.equal(result.state, 'abstain', name);
+    assert.equal(result.eligibleForRuntime, false, name);
+    assert.deepEqual(result.scores.map(item => item.probability), [null, null], name);
+  }
+});
+
+test('a candidate expiring during inference abstains with its scores intact and thin margins stay in review', async () => {
+  const expiresAt = new Date(Date.now() + 120).toISOString();
+  const args = {folder: 'expiring'};
+  const digest = actionArgumentsDigest(args);
+  const expiring = {id: 'expiring-tool', revision: 1, kind: 'tool', description: 'File into expiring metadata',
+    sources: [], scopeRef: 'local', expiresAt, risk: 'low',
+    tool: {name: 'inbox.classification.save', version: '1.0.0', arguments: args}, argumentsDigest: digest,
+    authorization: {state: 'granted', refDigest: 'b'.repeat(64), scopeRef: 'local', argumentsDigest: digest, expiresAt}};
+  const noop = {id: 'leave', revision: 1, kind: 'noop', description: 'Keep as is', sources: [], scopeRef: 'local',
+    expiresAt: new Date(Date.now() + 60_000).toISOString(), risk: 'low', argumentsDigest: actionArgumentsDigest({})};
+  const service = new LayaActionChoiceService({infer() {
+    while (Date.parse(expiresAt) > Date.now()) {}
+    return Promise.resolve(validChoice());
+  }});
+  const expired = await service.choose({context: 'Expiring work', candidates: [expiring, noop],
+    deadline: new Date(Date.now() + 60_000).toISOString(), signal: new AbortController().signal});
+  assert.equal(expired.reason, 'candidate_expired');
+  assert.equal(expired.state, 'abstain');
+  assert.equal(expired.eligibleForRuntime, false, 'an expired selection can never reach Runtime');
+  assert.deepEqual(expired.scores.map(item => item.probability), [0.9, 0.1], 'the model answer is still reported');
+  assert.equal(expired.answerConfidence, 0.9);
+  assert.equal(expired.receipt.candidates[0].exclusion, undefined, 'the candidate was eligible at submission time');
+  const thin = new LayaActionChoiceService({async infer() {return {answers: {action: {choice: 'candidate_1',
+    probabilities: {candidate_0: 0.4, candidate_1: 0.5, candidate_2: 0.1}, answer_confidence: 0.5, confidence: 0.5}}};}});
+  const review = await thin.choose({context: 'Thin margin', candidates: [noop,
+    {...noop, id: 'leave-other'}, {...noop, id: 'leave-third'}], deadline: new Date(Date.now() + 60_000).toISOString(),
+    signal: new AbortController().signal});
+  assert.equal(review.state, 'review');
+  assert.equal(review.reason, 'uncertain', 'a 0.10 margin cannot reach Runtime even as the top-ranked choice');
+  assert.equal(review.eligibleForRuntime, false);
+  assert.deepEqual(review.selected, {id: 'leave-other', revision: 1});
+});

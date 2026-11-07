@@ -1,0 +1,205 @@
+// 审阅修复（crew-p2 #565 阶段）：F1/F2/F5/F6/F8/F10/F11/F12 的回归测试。
+// 每条修复一个场景，全部使用假驱动/假 CLI 与假值，不接触真实凭据。
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import {
+  CrewError,
+  CREW_PARENT_AGENT_ID,
+  openCrewDriverRuntime,
+  openCrewKernel,
+} from '../dist/index.js';
+import { createFakeCodexSpawn, FakeDriver } from '../dist/testing.js';
+
+const root = fileURLToPath(new URL('../../../.cache/crew-tests/', import.meta.url));
+mkdirSync(root, {recursive: true});
+const dbFile = () => join(mkdtempSync(join(root, 'crewfix-')), 'crew.sqlite');
+
+function open(options = {}) {
+  let clock = 1700000000000;
+  const path = dbFile();
+  const runtime = openCrewDriverRuntime(path, {...options, now: options.now ?? (() => (clock += 1000))});
+  const kernel = openCrewKernel(path, {now: () => 1700000000000});
+  return {runtime, kernel, path};
+}
+
+function setup(runtime, driver) {
+  runtime.registerAgent({
+    agentId: 'coder-x',
+    displayName: '编码者',
+    driver: 'codex',
+    instructions: '在自有 worktree 内完成编码任务。',
+    workspacePath: '/workspace/crew/coder-x',
+  });
+  runtime.grantConsent({driverId: 'codex', loginKind: 'local-login', termsSummary: '本人本机登录的官方 Codex CLI'});
+}
+
+const dispatch = (runtime, overrides = {}) => runtime.dispatchTask({
+  actorId: CREW_PARENT_AGENT_ID,
+  taskId: 't1',
+  rootRequestId: 'root-1',
+  assignedAgentId: 'coder-x',
+  goal: '修复 crew 包的类型错误',
+  ...overrides,
+});
+
+async function waitFor(predicate) {
+  for (let i = 0; i < 500; i++) {
+    if (predicate()) return;
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  throw new Error('waitFor timed out');
+}
+
+// ── F5：撤回同意会停止运行中的会话 ───────────────────────────────────────
+
+test('F5: revoking consent interrupts the running session and the late completion cannot land as succeeded', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    runtime.revokeConsent('codex', '用户撤回订阅');
+    await waitFor(() => driver.sessions[0].interrupts.length === 1);
+    assert.ok(driver.sessions[0].interrupts[0].includes('同意已撤回'), 'the interrupt reason mentions the revoked consent');
+    assert.equal(driver.sessions[0].closed, true, 'the session is closed after revocation');
+    const task = await runPromise;
+    assert.equal(task.status, 'cancelled', 'the running task is cancelled with a reason');
+    assert.ok((task.cancelReason ?? '').includes('同意已撤回'));
+    // 撤回之后 CLI 才完成：结果不得以 succeeded 入库。
+    driver.sessions[0].complete('撤回后仍完成');
+    await new Promise(resolve => setImmediate(resolve));
+    const final = runtime.getTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't1'});
+    assert.notEqual(final.status, 'succeeded', 'a post-revocation completion must not be recorded as succeeded');
+  } finally { runtime.close(); }
+});
+
+// ── F1：回执结果超长不再卡死任务 ─────────────────────────────────────────
+
+const LONG = '长'.repeat(9000);
+
+test('F1: an over-long CLI result is truncated, not stuck in running', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    driver.sessions[0].complete(LONG);
+    const task = await runPromise;
+    assert.equal(task.status, 'succeeded', 'the task must end even with a >8192 result');
+    assert.ok(task.receipt.result.length <= 8192, 'the result is capped at MAX_RECEIPT_RESULT');
+    assert.ok(task.receipt.result.endsWith('…（已截断）'), 'the truncation marker is kept');
+  } finally { runtime.close(); }
+});
+
+test('F1: an over-long start-failure message still maps to a short blocked receipt', async () => {
+  const driver = new FakeDriver({startFailure: new CrewError('DRIVER_UNAVAILABLE', '启动失败详情：' + LONG)});
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const task = await runtime.runNextTask('coder-x');
+    assert.equal(task.status, 'blocked');
+    assert.ok(task.receipt.result.length <= 8192);
+    assert.ok(task.receipt.result.endsWith('…（已截断）'));
+    assert.equal(task.receipt.unblock, '在本机安装并登录 codex 对应的官方 CLI 后由父 agent 重新派单');
+  } finally { runtime.close(); }
+});
+
+test('F1: a submitReceipt failure degrades to a short failed receipt and releases the slot', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    // 让第一次 submitReceipt 抛非 CONFLICT 异常（模拟持久层意外），验证降级回执兜底。
+    const kernel = runtime.kernel;
+    const original = kernel.submitReceipt.bind(kernel);
+    let calls = 0;
+    kernel.submitReceipt = input => {
+      calls += 1;
+      if (calls === 1) throw new CrewError('INVALID_INPUT', 'simulated persistence failure');
+      return original(input);
+    };
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    driver.sessions[0].complete('正常完成');
+    const task = await runPromise;
+    assert.equal(task.status, 'failed', 'the degraded receipt marks the task failed');
+    assert.equal(task.receipt.status, 'failed');
+    assert.ok(task.receipt.result.includes('INVALID_INPUT'), 'the degraded receipt names the error code');
+    assert.ok(task.receipt.result.length < 200, 'the degraded receipt stays short');
+  } finally { runtime.close(); }
+});
+
+test('F6: the runtime redacts sensitive key/value pairs in driver-reported results before persisting', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    driver.sessions[0].complete('完成；access_token=FAKE-RESULT-TOKEN-999, api_key: dummy-key-abcdef12345678901234');
+    const task = await runPromise;
+    const text = JSON.stringify(task.receipt);
+    assert.ok(!text.includes('FAKE-RESULT-TOKEN-999'), 'token value redacted');
+    assert.ok(!text.includes('dummy-key-abcdef12345678901234'), 'api key value redacted');
+    assert.ok(text.includes('完成'), 'the benign part of the result survives');
+  } finally { runtime.close(); }
+});
+
+test('F8: a task that never reaches a terminal event is failed by the deadline and the session is closed', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}, taskDeadlineMs: 120});
+  try {
+    setup(runtime, driver);
+    dispatch(runtime);
+    const runPromise = runtime.runNextTask('coder-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    const task = await runPromise;
+    assert.equal(task.status, 'failed', 'the deadline turns a hung task into a failed receipt');
+    assert.ok(task.receipt.result.includes('deadline'), 'the receipt names the deadline');
+    assert.equal(driver.sessions[0].closed, true, 'the hung session is closed');
+    assert.ok(driver.sessions[0].interrupts.length >= 1, 'the CLI is interrupted on deadline');
+  } finally { runtime.close(); }
+});
+
+test('F10: consent for codex with a mismatched loginKind is refused and grantedBy cannot be overridden', async () => {
+  const driver = new FakeDriver();
+  const {runtime} = open({drivers: {codex: driver}});
+  try {
+    setup(runtime, driver);
+    // 以错误的登录方式（api-key）同意 codex（实际是本机登录型）：运行时必须拒绝。
+    runtime.grantConsent({driverId: 'codex', loginKind: 'api-key', termsSummary: '错误的登录方式'});
+    dispatch(runtime);
+    await assert.rejects(
+      () => runtime.runNextTask('coder-x'),
+      error => error instanceof CrewError && error.code === 'CONSENT_REQUIRED' && error.message.includes('loginKind'),
+    );
+    // grantedBy 由宿主注入：input 里的 grantedBy 不能覆盖。
+    const record = runtime.getConsent('codex');
+    assert.equal(record.grantedBy, 'user');
+  } finally { runtime.close(); }
+});
+
+test('F10: a driver without a registered expected loginKind is not compared', async () => {
+  const driver = new FakeDriver({driverId: 'gemini'});
+  const {runtime} = open({drivers: {gemini: driver}});
+  try {
+    runtime.registerAgent({agentId: 'g-x', displayName: 'g', driver: 'gemini', instructions: 'i', workspacePath: '/w'});
+    runtime.grantConsent({driverId: 'gemini', loginKind: 'api-key', termsSummary: 't'});
+    dispatch(runtime, {taskId: 't9', rootRequestId: 'r9', assignedAgentId: 'g-x', goal: 'g'});
+    const runPromise = runtime.runNextTask('g-x');
+    await waitFor(() => driver.sessions.length === 1 && driver.sessions[0].prompts.length === 1);
+    driver.sessions[0].complete('done');
+    const task = await runPromise;
+    assert.equal(task.status, 'succeeded', 'unregistered mapping keeps the old behavior');
+  } finally { runtime.close(); }
+});
