@@ -5,6 +5,17 @@ import {ProtocolError} from '@personal-agent/contracts';
 
 /** Bind an explicit source path to its already-published schema; no semantic inference or tool execution. */
 export function boundSourceReadCandidates(context:WorkflowNodeContext):readonly WorkflowCandidate[]|undefined {
+  if(context.node.id==='F09_N02') {
+    const source=context.predecessorOperations?.F09_N01;
+    if(context.predecessorStates.F09_N01!=='completed'||!source||source.toolName!=='feeds.collect'
+      ||source.toolVersion!=='1.0.0'||typeof source.operationId!=='string'||!source.operationId)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original feed operation correlation unavailable');
+    const descriptor=context.availableTools.find(tool=>tool.name==='workflow.host.f09_n02'&&tool.version==='1.0.0');
+    if(!descriptor)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Feed graph adapter is not published');
+    const argumentsValue={sourceOperationId:source.operationId};validateToolValue(descriptor.inputSchema,argumentsValue);
+    return [{id:'bound-feed-operation',description:'Request validation of the original feed operation; the host independently checks its receipt and authorization.',
+      value:{arguments:argumentsValue}}];
+  }
   const coding=context.codingRepair;
   if(coding&&(['F15_N01','F15_N04','F15_N05','F15_N06'].includes(context.node.id)||context.node.id==='F15_N03'&&coding.readPath)){
     const sessionId=coding.configuration.session.sessionId;

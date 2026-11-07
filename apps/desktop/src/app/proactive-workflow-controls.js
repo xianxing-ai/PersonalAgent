@@ -110,6 +110,11 @@ export function mountProactiveWorkflowControls(container, invoke, {settings = fa
           } else {
             status.textContent = '控制请求已返回；模式与 revision 以当前读回为准。';
           }
+          if(action==='return') {
+            if(result.notificationDigest?.state==='submitted')status.textContent+=' · 通知摘要已受理，请查看原对话任务';
+            else if(result.notificationDigest?.state==='empty')status.textContent+=' · 暂无有效未读通知';
+            else if(result.notificationDigest?.state==='unconfirmed')status.textContent+=' · 通知摘要未确认，请查看原任务';
+          }
         }
       } else if (!closed) {
         status.textContent = '控制请求已返回；模式与 revision 以当前读回为准。';

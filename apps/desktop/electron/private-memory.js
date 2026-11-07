@@ -172,6 +172,19 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
       const read = acquireRead(input, request);
       try {
         const at = new Date().toISOString();
+        const facts=[];
+        // Only the original successful write may request causal source readback.
+        // Resident scans retain their existing behavior and do not claim an operation.
+        const original=input.expectedSha256===undefined?undefined:structuredClone(input);
+        const assertOriginal=async()=>{
+          if(!original) return;
+          if(!/^[a-f0-9]{64}$/.test(original.expectedSha256) || original.paths?.length!==1) throw Error('原写入来源版本无效');
+          const pages=await read.reader.scanPages(read.scope);read.stable();
+          const page=pages.find(page=>page.path===original.paths[0]);
+          if(!page || page.sourceId!==original.sourceId || page.configRevision!==original.configRevision
+            || page.revision!==original.expectedSha256) throw Error('原写入来源已变化，不能归因于该操作');
+        };
+        await assertOriginal();
         let snapshot, cursor;
         do {
           read.stable();
@@ -189,9 +202,18 @@ export function createPrivateMemoryController(databasePath, confirm, confirmDele
             const result = await revalidateWikiFact({wiki: read.reader, memory: memoryHost(), namespace,
               fact: current.ref, assertCurrent: read.stable}, read.scope);
             if (result.state === 'source_unavailable') throw Error('写回后的 Wiki 来源尚不可核实');
+            if(original) {
+              const head=memoryHost().readUserFactHead(namespace,result.fact.ref.id);
+              if(!head || head.ref.revision!==result.fact.ref.revision || head.state!==result.fact.state
+                || head.sourceRef!==current.sourceRef) throw Error('原 Fact 读回已变化');
+              facts.push({previous:{...current.ref},current:{...result.fact.ref},sourceDigest:hash(current.sourceRef),sourceRevision:source.revision,
+                state:result.state,appended:result.appended});
+            }
           }
         } while (cursor !== undefined);
-        read.stable();
+        await assertOriginal();read.stable();
+        if(original) return {version:1,sourceId:original.sourceId,configRevision:original.configRevision,path:original.paths[0],
+          sourceRevision:original.expectedSha256,memoryNamespace:namespace,coverage:'observed_active_heads',facts};
       } finally {read.release();}
     },
     async save(source, summary, baseline) {

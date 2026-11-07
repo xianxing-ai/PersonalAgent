@@ -2,6 +2,8 @@ import { ProtocolError } from '@personal-agent/contracts';
 import type { ProtocolContracts } from '@personal-agent/contracts';
 import type {
   MailFetchInput,
+  MailArchiveInput,
+  MailArchiveMove,
   MailFolder,
   MailMarkSeenInput,
   MailMessage,
@@ -106,8 +108,19 @@ export class RegistryMailProvider implements MailProvider {
     return this.registry.resolve(accountRef).markSeen(accountRef, input, context);
   }
 
-  send(accountRef: string, input: MailSendInput & {idempotencyKey: string}): MailSendResult | Promise<MailSendResult> {
-    return this.registry.resolve(accountRef).send(accountRef, input);
+  send(accountRef: string, input: MailSendInput & {idempotencyKey: string},context?:MailOperationContext): MailSendResult | Promise<MailSendResult> {
+    return this.registry.resolve(accountRef).send(accountRef, input,context);
+  }
+
+  async archive(accountRef:string,input:MailArchiveInput,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
+    const provider=this.registry.resolve(accountRef);
+    if(!provider.archive)throw new ProtocolError('UNSUPPORTED_CAPABILITY','This mail provider cannot archive messages');
+    return provider.archive(accountRef,input,context);
+  }
+  async reconcileArchive(accountRef:string,input:MailArchiveInput&MailArchiveMove,context?:MailOperationContext):Promise<ProtocolContracts['connectorAction']> {
+    const provider=this.registry.resolve(accountRef);
+    if(!provider.reconcileArchive)throw new ProtocolError('UNSUPPORTED_CAPABILITY','This mail provider cannot reconcile archive mapping');
+    return provider.reconcileArchive(accountRef,input,context);
   }
 
   async saveDraft(accountRef: string, input: MailSendInput & {idempotencyKey: string}, context?: MailOperationContext): Promise<ProtocolContracts['connectorAction']> {

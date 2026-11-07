@@ -12,8 +12,13 @@ export interface RuntimeOwnedWorkflowImageOptions {
   fetchHandlesHostAuthorization?:true;
   websocketFactory?:AgentArtsWebSocketFactory;fetchImpl?:AgentArtsFetch;invokeMode?:'debug'|'published';workflowGoalInput?:string;
   assertDeploymentBinding?:()=>void;onTransportState?:(state:AgentArtsTransportState)=>void;
+  /** Synchronous trusted source/configuration fence, including after credential awaits and before WSS sends. */
+  assertWorkflowCurrent?:(request:OwnedWorkflowAdvanceRequest)=>void;
   /** Host-only compatibility for a deployed explicit key override. No Renderer configuration. */
   readReceiptSecret?:(signal:AbortSignal)=>Promise<string>;
+  /** Original parsed transport response metadata only; not domain completion evidence. */
+  onInvocationReadback?:(value:{workflowId:string;taskId:string;sessionId:string;requestId:string;bindingId:string;
+    payloadDigest:string;resultDigest:string;deploymentVersion:string;transport:'https'|'wss'})=>void;
 }
 /** Same original AgentArts target/credentials and public transports as normal tasks. */
 export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkflowImageOptions):RuntimeCodingRepairImagePort&{close():void} {
@@ -37,7 +42,7 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
   const active=(request:OwnedWorkflowAdvanceRequest)=>{
     if(!(request.signal instanceof AbortSignal)||!Number.isFinite(Date.parse(request.deadline))
       ||!Number.isFinite(Date.parse(request.taskDeadline??request.deadline)))throw new ProtocolError('INVALID_ARGUMENT','Invalid owned-workflow invocation lifetime');
-    options.assertDeploymentBinding?.();if(request.signal.aborted)throw new ProtocolError('CANCELLED','Original graph request cancelled');
+    options.assertDeploymentBinding?.();options.assertWorkflowCurrent?.(request);if(request.signal.aborted)throw new ProtocolError('CANCELLED','Original graph request cancelled');
     if(Date.now()>=Math.min(Date.parse(request.deadline),Date.parse(request.taskDeadline??request.deadline)))throw new ProtocolError('TIMEOUT','Original graph deadline expired');};
   const read=async(provider:AgentArtsAuthorizationProvider,signal:AbortSignal)=>{const value=await provider.read(signal);
     if(typeof value!=='string'||!value.trim()||/[\u0000-\u001f\u007f]/.test(value))throw new ProtocolError('UNAUTHORIZED','Owned-workflow credential unavailable');return value;};
@@ -61,13 +66,14 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
       'X-Invoke-Mode':options.invokeMode??'published',...(hostAuth?{'X-PA-Agent-Token':hostAuth}:{})},body,signal:request.signal,redirect:'error' as const};
     const httpInit=options.fetchHandlesHostAuthorization?{...init,headers:{'Content-Type':'application/json',Accept:'application/json,text/event-stream',Authorization:auth,
       'x-hw-agentarts-session-id':request.sessionId,'X-Request-Id':request.requestId,'X-PA-Deadline':request.deadline,'X-Invoke-Mode':options.invokeMode??'published'}}:init;
-    let response;
+    let response,usedTransport: 'https'|'wss'=options.transport??'https';
     if(options.transport==='wss') {
       if(!ws)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original owned-workflow WSS endpoint unavailable');
       try {response=await ws.invoke(init,{beforeSend:()=>active(request),afterAccepted:()=>{},afterTerminal:()=>{}});}
       catch(error) {
         if(!options.allowHttpsFallback||!ws.canFallback(error))throw error;
         active(request);ws.reportFallback(request.sessionId,request.requestId);
+        usedTransport='https';
         response=await (options.fetchImpl??fetch)(endpoint,httpInit);
       }
     }else response=await (options.fetchImpl??fetch)(endpoint,httpInit);
@@ -77,6 +83,9 @@ export function createRuntimeOwnedWorkflowImageAdapter(options:RuntimeOwnedWorkf
       maxResponseBytes:1_200_000,maxTextChars:1_200_000});
     active(request);let value:unknown;try{value=JSON.parse(text);}catch{throw new ProtocolError('PROTOCOL_MISMATCH','Malformed owned-workflow image result');}
     if(!value||typeof value!=='object'||Array.isArray(value))throw new ProtocolError('PROTOCOL_MISMATCH','Invalid owned-workflow image result');
+    options.onInvocationReadback?.({workflowId:request.workflowId,taskId:request.taskId,sessionId:request.sessionId,requestId:request.requestId,bindingId,
+      payloadDigest:createHash('sha256').update(body).digest('hex'),resultDigest:createHash('sha256').update(JSON.stringify(value)).digest('hex'),
+      deploymentVersion:options.deploymentVersion??'',transport:usedTransport});
     return value as OwnedWorkflowAdvanceResult;
   }};
 }

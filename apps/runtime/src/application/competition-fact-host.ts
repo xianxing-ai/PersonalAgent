@@ -1,6 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {MemoryQueryError} from '@personal-agent/memory';
-import type {FactVersion, MemoryQueryPort, MemoryReadContext} from '@personal-agent/memory';
+import type {FactRef, FactVersion, MemoryQueryPort, MemoryReadContext} from '@personal-agent/memory';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {isAbsolute} from 'node:path';
 import type {RuntimeApplication} from './runtime-application.js';
@@ -40,6 +40,8 @@ export interface TrustedPublicWithdrawal extends PublicSourceKey {
 }
 
 export interface CompetitionFactHost extends SqliteFactProjectionHost {
+  /** Synchronous final send/Policy guard; original current public version only, no source text lookup. */
+  readCurrentPublicFact(ref:FactRef):FactVersion|undefined;
   /** Fixed host namespace and public scope. Withdrawn/erased facts cannot be read through history. */
   readonly publicMemory: MemoryQueryPort;
   createPublicFactErasureApplication(options:{confirm:(ref:{id:string;revision:number})=>Promise<boolean>}): ReturnType<typeof createBoundPublicFactErasureApplication>;
@@ -116,6 +118,13 @@ export function createCompetitionFactHost(
       memoryNamespace, graphNamespace, consumerKey});
     return Object.freeze({
       publicMemory,
+      readCurrentPublicFact:(ref:FactRef)=>{
+        active();
+        if(!ref||Object.keys(ref).sort().join(',')!=='id,revision'||!Number.isSafeInteger(ref.revision)||ref.revision<1)
+          throw new ProtocolError('INVALID_ARGUMENT','Invalid original public Fact reference');
+        const head=memory.readPublicFactHead(memoryNamespace,ref.id);active();
+        return head?.ref.revision===ref.revision&&head.state==='active'?head:undefined;
+      },
       createPublicFactErasureApplication:({confirm}:{confirm:(ref:{id:string;revision:number})=>Promise<boolean>})=>{
         active();
         const erasure=createBoundPublicFactErasureApplication({profile:'huawei_ict_agentarts',memory,

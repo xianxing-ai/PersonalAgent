@@ -1,5 +1,5 @@
 // Generated from reviewed architecture.json by scripts/import-owned-workflows.mjs.
-// Source projection sha256: b9603488d7d8db8dba98619de15c3627bc5dc6f49355d332de4cfea7a7f8cc65
+// Source projection sha256: 061b30fd197338f25c21bc5dd77e68b1e9e508055e25c0ea3d31696c899d2ec9
 export const OWNED_WORKFLOW_SOURCE: unknown = [
   {
     "id": "F01",
@@ -1249,6 +1249,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     ],
     "designNotes": [
       "当前实现/实测边界：调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收",
+      "未来提醒的原条目与pending schedule精确读回后以scheduled完成；仅真实投递回执可返回delivered，不推进时钟或延长原图deadline。",
       "该图默认串行；图中独立依赖、分支与join是控制关系，不等于已实际并发。",
       "本机Laya仍为实验候选、架构未最终定型；未合格站点/复杂未知升级经AgentArts代理的DeepSeek。"
     ],
@@ -1313,10 +1314,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "effectType": "写入（以工具描述为准）",
         "inputFields": [
           "todoTitle",
-          "due"
+          "due",
+          "remindUtc"
         ],
         "outputFields": [
           "todoId",
+          "revision",
           "opKey"
         ],
         "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
@@ -1330,11 +1333,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "required": true,
         "resourceKeys": [
-          "virtual_clock_timer"
+          "runtime_scheduler"
         ],
         "effectType": "读取",
         "inputFields": [
-          "advanceTo"
+          "todoId",
+          "revision"
         ],
         "outputFields": [
           "isTaskAlreadyFinished",
@@ -1360,6 +1364,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "delivered"
         ],
+        "condition": "原提醒已到期且仍有效；未到期的原持久调度返回已安排，由原Scheduler后续投递",
         "evidenceRequirement": "调度/主动唤醒组合有fixture；真实责任到期、通知投递与重启跟进仍须业务验收 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       }
     ],
@@ -1611,7 +1616,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N09",
-        "label": "分支B：独立依赖（默认串行）检索上下文与附件依据",
+        "label": "分支B：原知识工具检索上下文与附件依据，仅出口公开投影",
         "kind": "tool_exec",
         "dependencies": [
           "F08_N01"
@@ -1619,11 +1624,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "required": true,
         "resourceKeys": [],
         "effectType": "读取",
-        "inputFields": [],
+        "inputFields": [
+          "knowledgeQuery"
+        ],
         "outputFields": [
-          "项目事实",
-          "附件来源",
-          "缺失依据"
+          "hits",
+          "truncated"
         ],
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
@@ -1691,7 +1697,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F08_N10",
-        "label": "宿主核对具体参数、revision与现有授权",
+        "label": "宿主核对原来源与完整显式参数；准备进入原Policy",
         "kind": "deterministic_check",
         "dependencies": [
           "F08_N05"
@@ -1701,13 +1707,13 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "effectType": "读取",
         "inputFields": [],
         "outputFields": [
-          "可直接执行或待决问题"
+          "planReady / requiresDecision；不表示未来发送已获批准"
         ],
         "evidenceRequirement": "有金额或商业内容不自动新增审批；按现有授权范围决定。 主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
         "id": "F08_N06",
-        "label": "仅缺决定：调用F02主动语音/文字补问",
+        "label": "仅缺决定：原文字补问草稿或F02语音来源",
         "kind": "wait_user",
         "dependencies": [
           "F08_N10"
@@ -1719,7 +1725,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "outputFields": [
           "当前问题及revision的回答"
         ],
-        "condition": "现有授权未覆盖或关键条件不明确",
+        "condition": "完整原草稿缺采用决定时明确采用或拒绝；答复不签发发送授权，F02语音来源独立核验",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
@@ -1738,7 +1744,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "原发送operation/effect ID",
           "工具实际状态"
         ],
-        "condition": "已有授权直接通过，或待决问题得到有效决定",
+        "condition": "完整显式回复或补问明确采用已绑定原来源；拒绝跳过发送并保留归档，采用仍经独立原Policy审批",
         "evidenceRequirement": "主动来源持久批次有离线组合证据；真实邮件质量、账号与发送闭环单独验收，不用真实发送替代fixture 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "joinMode": "selected"
       },
@@ -2257,7 +2263,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
     "nodes": [
       {
         "id": "F11_N01",
-        "label": "接收气象与交通警报",
+        "label": "绑定原天气预报来源；气象与交通警报仍需独立来源",
         "kind": "input",
         "dependencies": [],
         "required": true,
@@ -2266,11 +2272,12 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         ],
         "effectType": "读取",
         "inputFields": [
-          "alertLevel",
-          "timeRange"
+          "weather",
+          "eventId"
         ],
         "outputFields": [
-          "severeWeather"
+          "sourceKind",
+          "weather"
         ],
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
@@ -2299,7 +2306,8 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
         "label": "决策模型 评估冲击并拟定改线方案",
         "kind": "semantic_decision",
         "dependencies": [
-          "F11_N02"
+          "F11_N02",
+          "F11_N01"
         ],
         "required": true,
         "resourceKeys": [
@@ -2324,7 +2332,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "id": "F11_N04",
-        "label": "仅真正缺决定时主动语音补问",
+        "label": "仅真正缺决定时主动语音或文字补问",
         "kind": "wait_user",
         "dependencies": [
           "F11_N03"
@@ -2338,9 +2346,9 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "question"
         ],
         "outputFields": [
-          "userConfirmed"
+          "decision"
         ],
-        "condition": "现有授权未覆盖或关键条件不明确",
+        "condition": "关键决定缺失时绑定原方案明确采用或拒绝；完整显式方案无需重复问决定，答复不签发工具授权",
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。"
       },
       {
@@ -2364,7 +2372,7 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
           "calendarUpdated",
           "oldTrafficAlarmVoided"
         ],
-        "condition": "已授权直接执行或补问得到有效回答",
+        "condition": "完整显式方案或补问明确采用已绑定原事件与提醒；拒绝则跳过写入，采用仍进入原Policy逐项审批",
         "evidenceRequirement": "模板已有；真实服务、时效与行程影响闭环未由28目录证明 节点字段是展示设计；真实执行须原Policy/ToolGateway/Evidence，不把目录/签名/模型自报当完成。",
         "joinMode": "selected"
       }
@@ -2377,6 +2385,11 @@ export const OWNED_WORKFLOW_SOURCE: unknown = [
       },
       {
         "source": "F11_N02",
+        "target": "F11_N03",
+        "required": true
+      },
+      {
+        "source": "F11_N01",
         "target": "F11_N03",
         "required": true
       },

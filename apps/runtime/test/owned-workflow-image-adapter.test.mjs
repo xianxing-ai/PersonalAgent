@@ -12,6 +12,14 @@ const original={gatewayUrl:'https://fixture.invalid',runtimeName:'fixture-runtim
 const request=()=>({workflowId:'F15',taskId:'fixture-task',sessionId:'fixture-session',controlRevision:1,requestId:'fixture-request',input:{goal:'Public synthetic fixture'},availableTools:[],
   deadline:new Date(Date.now()+10000).toISOString(),signal:new AbortController().signal});
 
+test('a trusted graph source fence runs again after credential resolution and stops a stale send',async()=>{
+  let current=true,sends=0;
+  const adapter=createRuntimeOwnedWorkflowImageAdapter({...original,authorizationProvider:{read:async()=>{current=false;return 'Bearer synthetic';}},
+    assertWorkflowCurrent:()=>{if(!current)throw Error('Original graph source changed');},fetchImpl:async()=>{sends++;return response();}});
+  try{await assert.rejects(adapter.advance({...request(),workflowId:'F20'}),/Original graph source changed/);assert.equal(sends,0);}
+  finally{adapter.close();}
+});
+
 test('actual Desktop HTTPS configuration supplies host-only receipt identity before isolation start',async()=>{
   const token='synthetic-desktop-https-host-credential-more-than-32';
   let configuration={appToken:token,deploymentVersion:'v-fixed'};const calls=[];

@@ -236,6 +236,17 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     if(!entry||entry.request.taskId!==scope.taskId||entry.request.deadline!==scope.deadline)denied();
     service().assertConsumedResult(entry.receipt,entry.request,requirementId,consumerId);return true;
   }
+  function readConsumedOperation(scope){
+    if(!scope||!scope.signal||scope.signal.aborted||!Number.isFinite(Date.parse(scope.deadline))||now()>=Date.parse(scope.deadline))denied();
+    assertConsumedResult(scope,'tool');
+    const entry=operations.get(key(scope));
+    const {signal,...request}=entry.request;
+    if(signal?.aborted)denied();
+    const copy=structuredClone({request,receipt:entry.receipt});
+    const freeze=value=>{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}};
+    freeze(copy);
+    return Object.freeze({request:Object.freeze({...copy.request,signal}),receipt:copy.receipt});
+  }
   function authorizeConsumedExport(scope,result,requirementId='export'){
     if(getApplication()?.runtime.getTask(scope.taskId).state==='running')return authorizeExport(scope,result,requirementId);
     const entry=operations.get(key(scope));if(!entry||scope.signal?.aborted||entry.request.deadline!==scope.deadline)denied();
@@ -287,12 +298,13 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
   return {
     requiresAuthorization:scope=>preparations.has(key(scope)),
     requiresNativeForAuthorization:scope=>preparations.get(key(scope))?.taskConsent?.requiresNative===true,
-    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
+    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,readConsumedOperation,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
     readResourceGeneration,rotateResourceGeneration,
     request:(request,current)=>service().request(request,current),
     consume:(...args)=>service().consume(...args),assertRequirement:(...args)=>service().assertRequirement(...args),
     respond:(input,conversationId)=>service().respond(input,conversationId),
     snapshot:conversationId=>closed||!getApplication()?.runtime?[]:service().snapshot(conversationId),
+    refresh:()=>service().refresh(),
     hasPending,
     automaticallyApproves:()=>!closed&&Boolean(getApplication()?.runtime)&&service().sandboxSnapshot().selected.mode==='full-access',
     sandboxSnapshot:()=>service().sandboxSnapshot(),selectSandbox:input=>service().selectSandbox(input),revokeRule:input=>service().revokeRule(input),

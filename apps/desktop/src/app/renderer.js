@@ -30,6 +30,7 @@ import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/con
 import {isStopRequest} from '../features/conversation/stop-request.js';
 import {mountPanelLight} from './panel-light.js';
 import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
+import {mountWorkflowQuestionCards} from '../features/conversation/workflow-question-card.js';
 import {createMessageQueue} from '../features/conversation/message-queue.js';
 import {createSnapshotReceiver} from '../shared/snapshot-receiver.js';
 import {mountRenderBudget} from '../shared/render-budget.js';
@@ -498,7 +499,7 @@ else {
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
     updateProgress(data.tasks.filter(task=>!task.outputTruncated),data.computerControl,
-      {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
+      {questions:data.authorizationQuestions,workflowQuestions:data.workflowQuestions,conversationId:data.conversationState?.activeId});
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
     proactiveWorkflowControls.render(data.proactiveWorkflow);
@@ -547,6 +548,7 @@ else {
 const authorizationThread=root.querySelector(mode==='workspace'?'#workspace-stage':'.thread');
 if(bridge&&authorizationThread) {
   const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
+  const workflowQuestionRoot=document.createElement('div');authorizationThread.append(workflowQuestionRoot);
   const previousRender=render;
   let questionClosed=false,questionSnapshotRevision=0;
   const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onPending:({questionId})=>{
@@ -561,16 +563,21 @@ if(bridge&&authorizationThread) {
     const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
     if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
   }});
+  const workflowQuestions=mountWorkflowQuestionCards(workflowQuestionRoot,{invoke,onChanged:async()=>{
+    const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
+    if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
+  }});
   render=(data,...options)=>{
     questionSnapshotRevision++;
     previousRender(data,...options);
     // Missing conversation identity must not widen the view to another conversation's questions.
     const conversationId=data.conversationState?.activeId;
     questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
+    workflowQuestions.update(data.workflowQuestions,{conversationId});
   };
   render.setAudioLevel=previousRender.setAudioLevel;
   render.setResourceBudget=previousRender.setResourceBudget;
-  window.addEventListener('unload',()=>{questionClosed=true;questions.dispose();},{once:true});
+  window.addEventListener('unload',()=>{questionClosed=true;questions.dispose();workflowQuestions.dispose();},{once:true});
 }
 if(bridge&&(!mode||['panel','workspace'].includes(mode))) {
   const scrollContainer=root.querySelector(mode==='workspace'?'#workspace-stage':'.thread');

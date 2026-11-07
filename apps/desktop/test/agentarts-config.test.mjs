@@ -22,6 +22,20 @@ function wssFixture(t,environment={}) {
   return {options,input,file:path.join(userData,'agentarts-config.json'),config:createAgentArtsConfig(options)};
 }
 
+test('release readback cannot select a different endpoint from the pinned invocation',t=>{
+  const f=wssFixture(t),releaseBinding={runtimeId:'11111111-1111-4111-8111-111111111111',
+    endpointId:'22222222-2222-4222-8222-222222222222',endpointName:'release-v1',
+    registryRepository:'swr.cn-southwest-2.myhuaweicloud.com/fixture/owned'};
+  const input={gatewayUrl:f.input.gatewayUrl,runtimeName:f.input.runtimeName,authorization:f.input.authorization,
+    transport:'https',deploymentVersion:'release-v1',releaseBinding};
+  f.config.configure(input);
+  const before=readFileSync(f.file,'utf8'),binding=f.config.readReleaseBinding();
+  assert.equal(binding.endpointName,f.config.readTransportOptions(f.config.binding()).deploymentVersion);
+  assert.throws(()=>f.config.configure({...input,releaseBinding:{...releaseBinding,endpointName:'release-v2'}}),/发布绑定/);
+  assert.equal(readFileSync(f.file,'utf8'),before,'rejected endpoint changes never replace the saved configuration');
+  assert.deepEqual(f.config.readReleaseBinding(),binding);
+});
+
 test('saved WSS restores both private credentials and overrides stale transport environment',async t=>{
   const f=wssFixture(t,{PA_AGENTARTS_TRANSPORT:'https'});
   assert.equal(f.config.snapshot().transport,'https');

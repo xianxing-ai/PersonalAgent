@@ -109,6 +109,21 @@ test('nonrunning export checks still require the original confirmed result recei
   f.host.close();
 });
 
+test('readConsumedOperation exposes immutable original receipt only through the existing consumed-result gate',async()=>{
+  const f=fixture();f.prepare();f.task.state='waiting_approval';const pending=f.host.requestToolAuthorization(f.scope);
+  assert.throws(()=>f.host.readConsumedOperation(f.scope),{code:'UNAUTHORIZED'});
+  f.respond('allow_once');await pending;f.task.state='succeeded';
+  assert.throws(()=>f.host.readConsumedOperation(f.scope),{code:'UNAUTHORIZED'});
+  f.options.getApplication().readAuthorizationQuestionReceiptBinding=()=>({conversationId:'conversation-1',digest:'original-owner'});
+  const receipt=f.host.readConsumedOperation(f.scope);
+  assert.equal(receipt.request.taskId,f.scope.taskId);assert.equal(receipt.request.runId,f.scope.runId);
+  assert.equal(receipt.receipt.decision,'allow_once');
+  assert.throws(()=>{receipt.request.requirements[0].scopes.push('changed');},TypeError);
+  assert.throws(()=>f.host.readConsumedOperation({...f.scope,runId:'other'}),{code:'UNAUTHORIZED'});
+  assert.throws(()=>f.host.readConsumedOperation({...f.scope,signal:AbortSignal.abort()}),{code:'UNAUTHORIZED'});
+  f.changeGeneration();assert.throws(()=>f.host.readConsumedOperation(f.scope),{code:'UNAUTHORIZED'});f.host.close();
+});
+
 test('deny and UI answer retries produce no connector or result export grant',async()=>{
   const f=fixture();f.prepare();f.task.state='waiting_approval';const decision=f.host.requestToolAuthorization(f.scope);
   const q=f.host.snapshot()[0];f.respond('deny');assert.equal(await decision,'deny');

@@ -13,7 +13,14 @@ export const developerTestLocatorDescriptor={name:'workspace.locate_test_failure
 /** Main-only composition of the existing public developer ports. No ambient credentials or network calls. */
 export function createDesktopDeveloperToolsHost({githubModule,github,git,command,testLocate,workflows,
   exports:policies=[],now=Date.now}={}) {
-  let active=true,application;
+  let active=true,application,f16Publication,f19Publication;
+  const publicationFor=context=>{
+    const parent=application?.runtime.loadCheckpoint(context.taskId,'coding-repair:parent');
+    const source=parent&&application.runtime.loadCheckpoint(parent.taskId,'host-tool-intent');
+    // Routing only. The selected port must prove exact graph/host/business edges,
+    // current Policy and arguments before performing any publication operation.
+    return source?.toolName==='workflow.host.f19_n03'?f19Publication:f16Publication;
+  };
   const tools=[],disposers=[],unavailable=[];
   const readiness=new Map(),publicEnums=new Map();
   const missing=(capability,reason)=>unavailable.push({capability,reason});
@@ -48,11 +55,18 @@ export function createDesktopDeveloperToolsHost({githubModule,github,git,command
         const receipt=application?.runtime.loadCheckpoint(context.taskId,'developer-git-verification:'+runId);
         if(!record||record.state!=='confirmed'||!record.executionStarted||record.policyDecision!=='allow'
           ||record.toolName!=='workspace.run_allowed_command'||cached?.result?.exitCode!==0
-          ||receipt?.taskId!==context.taskId||receipt.runId!==runId||receipt.exitCode!==0)return undefined;
+          ||receipt?.taskId!==context.taskId||receipt.runId!==runId||receipt.exitCode!==0)
+          return publicationFor(context)?.readVerification(context,runId);
         return receipt;
       };
-      gitTools=coding.createGitTools({...git.options,readVerification});
-      for(const tool of Object.values(gitTools)){disposers.push(host.register(tool));readiness.set(tool.descriptor.name,git.available);}
+      const publication=Object.fromEntries(['assertCurrent','load','saveOnce','observed'].map(name=>[name,async(...args)=>{
+        const port=publicationFor(args[0]);
+        if(!active||!port)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Original publication binding is unavailable');
+        return port[name](...args);
+      }]));
+      gitTools=coding.createGitTools({...git.options,readVerification,publication});
+      for(const tool of Object.values(gitTools)){disposers.push(host.register(tool));readiness.set(tool.descriptor.name,
+        tool.descriptor.name==='workspace.git.read_publication'?async scope=>Boolean(publicationFor(scope))&&await git.available(scope)===true:git.available);}
     }else missing('workspace.git','trusted_branch_remote_paths_and_verification_required');
     if((command?.options||command?.tool)&&typeof command.available==='function') {
       if(git&&realpathSync(command.options?.rootPath??command.rootPath)!==realpathSync(git.options.rootPath))throw Error('Developer command and Git roots must match');
@@ -106,6 +120,24 @@ export function createDesktopDeveloperToolsHost({githubModule,github,git,command
       assertCurrent:scope=>{if(!current(scope))throw new ProtocolError('UNAUTHORIZED','Developer workflow lease ended');workflows.assertCurrent(scope);}}:undefined;
     if(!developerWorkflows)missing('developer.workflows','trusted_model_rules_workspace_and_export_ports_required');
     return {tools:registered,competitionToolExports,
+      configureF16Publication(port){
+        if(f16Publication&&f16Publication!==port)throw Error('F16 publication port binding is immutable');
+        if(['assertCurrent','load','saveOnce','observed','readVerification'].some(name=>typeof port?.[name]!=='function'))
+          throw Error('F16 original publication ports are required');
+        f16Publication=port;
+      },
+      configureF19Publication(port){
+        if(f19Publication&&f19Publication!==port)throw Error('F19 publication port binding is immutable');
+        if(['assertCurrent','load','saveOnce','observed','readVerification'].some(name=>typeof port?.[name]!=='function'))
+          throw Error('F19 original publication ports are required');
+        f19Publication=port;
+      },
+      readF16PublicationConfiguration(scope){
+        if(!active||!gitTools)return undefined;
+        if(scope)git.assertCurrent?.(scope);
+        const {repository,rootPath,sourceBranch,remoteUrl,allowedPaths,authorName,authorEmail}=git.options;
+        return {repository,rootPath,sourceBranch,remoteUrl,allowedPaths:[...allowedPaths],authorName,authorEmail};
+      },
       competitionToolAvailability:registered.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
         publicEnumPaths:publicEnums.get(tool.descriptor.name)??[],available:context=>ready(tool.descriptor.name,context)})),
       ...(developerWorkflows?{runtimeOptions:{developerWorkflows}}:{runtimeOptions:{}}),

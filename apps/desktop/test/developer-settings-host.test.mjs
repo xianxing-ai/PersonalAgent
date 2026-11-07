@@ -24,6 +24,38 @@ function runtimeFixture(){
   };
 }
 
+test('F16 and F18/F19 trusted adapters retain the original deployment revision and write mutex',async t=>{
+  const base=path.resolve('.cache');mkdirSync(base,{recursive:true});const userData=mkdtempSync(path.join(base,'developer-publication-'));
+  const runtime=runtimeFixture(),installed=[];let release;
+  const safeStorage={isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value),decryptString:value=>value.toString()};
+  const parameters={requiredChecks:['ci'],eligibleReviewers:['reviewer'],beforeWrite(){}};
+  const settings=createDeveloperSettingsHost({userData,safeStorage,readWorkspace:()=>({bindingId:'workspace',rootPath:userData}),
+    readToolDescriptors:async()=>[],createDeployment:async({configurationSource})=>{
+      const {repository}=JSON.parse(configurationSource.readConfiguration());
+      return {host:{tools:[],competitionToolAvailability:[],competitionToolExports:[],runtimeOptions:{},bind(){},
+        configureF16Publication:port=>installed.push(port),readF16PublicationConfiguration:()=>({repository,rootPath:userData,sourceBranch:'repair/original'}),
+        createF18F19Tools:options=>{assert.equal(options,parameters);return [{descriptor:{name:'synthetic.github.write',sideEffect:'external_write'},
+          execute:async()=>new Promise(resolve=>{release=()=>resolve({repository});})}];}},
+        snapshot:()=>({configured:true}),close(){}};
+    }});
+  t.after(()=>{settings.close();rmSync(userData,{recursive:true,force:true});});
+  const deployment=await settings.createDeployment({});deployment.host.bind({runtime});
+  assert.equal(deployment.host.createF18F19Tools(parameters),undefined);
+  const publicationPort={};deployment.host.configureF16Publication(publicationPort);
+  const configure=repository=>settings.configure({enabled:true,configuration:{version:1,repository,github:{executable:'synthetic'},git:{}},token:'synthetic-token'});
+  await configure('fixture/first');assert.equal(installed[0],publicationPort);
+  const scope={taskId:runtime.add('original'),deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal};
+  const original=deployment.host.readF16PublicationConfiguration(scope);assert.equal(original.repository,'fixture/first');
+  assert.ok(original.configurationRef);assert.equal(JSON.stringify(original).includes('synthetic-token'),false);
+  const [tool]=deployment.host.createF18F19Tools(parameters),writing=tool.execute({},scope);
+  await assert.rejects(tool.execute({},scope),{code:'INVALID_STATE'});
+  await settings.setEnabled({enabled:false});release();await assert.rejects(writing,{code:'RESULT_UNKNOWN'});
+  await configure('fixture/second');assert.equal(installed[1],publicationPort);
+  assert.equal(deployment.host.readF16PublicationConfiguration(scope),undefined);
+  await assert.rejects(tool.execute({},scope),{code:'REVISION_CONFLICT'});
+  assert.throws(()=>deployment.host.configureF16Publication({}),/immutable/);
+});
+
 test('repairLinks remains explicit boolean opt-in across configure, encrypted restore and safe snapshot',async t=>{
   const base=path.resolve('.cache');mkdirSync(base,{recursive:true});
   const userData=mkdtempSync(path.join(base,'developer-repairlinks-'));

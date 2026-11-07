@@ -6,12 +6,13 @@ import {tmpdir} from 'node:os';
 import {join, resolve, relative, isAbsolute, dirname, basename} from 'node:path';
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolDescriptor, ToolHost} from '@personal-agent/contracts';
-import type {GitToolsOptions, GitCommitInput, GitPushInput, GitFileHash} from './git-tools-types.js';
+import type {GitToolsOptions, GitCommitInput, GitPushInput, GitFileHash,GitPublicationBinding,GitPublicationIntent} from './git-tools-types.js';
 export type * from './git-tools-types.js';
 
 export const GIT_HEAD_TOOL = 'workspace.git.head';
 export const GIT_COMMIT_TOOL = 'workspace.git.commit';
 export const GIT_PUSH_TOOL = 'workspace.git.push';
+export const GIT_PUBLICATION_READ_TOOL = 'workspace.git.read_publication';
 export const GIT_READ_SCOPE = 'workspace:git:read';
 export const GIT_COMMIT_SCOPE = 'workspace:git:commit';
 export const GIT_PUSH_SCOPE = 'workspace:git:push';
@@ -36,7 +37,7 @@ export async function readGitWorkspaceFingerprint(rootPath: string, allowedPaths
   return {files,fingerprint:digest(files)};
 }
 
-export function createGitTools(options: GitToolsOptions): {head: RegisteredTool; commit: RegisteredTool; push: RegisteredTool} {
+export function createGitTools(options: GitToolsOptions): {head: RegisteredTool; commit: RegisteredTool; push: RegisteredTool;publicationRead:RegisteredTool} {
   const root = realpathSync.native(options.rootPath);
   const rootIdentity = lstatSync(root, {bigint: true});
   if (!rootIdentity.isDirectory() || rootIdentity.isSymbolicLink()) fail('Git root must be a canonical directory');
@@ -170,12 +171,61 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
   const hd = descriptor(GIT_HEAD_TOOL,GIT_READ_SCOPE,properties,resultSchema({headSha:sha,clean:{type:'boolean'},workspaceClean:{type:'boolean'},fingerprint:{type:'string'}}));
   const cd = descriptor(GIT_COMMIT_TOOL,GIT_COMMIT_SCOPE,{...properties,expectedHeadSha:sha,paths:{type:'array',minItems:1,maxItems:128,uniqueItems:true,items:{type:'string',enum:paths}},message:{type:'string',minLength:1,maxLength:1000},verificationRunId:{type:'string',minLength:1,maxLength:512}},resultSchema({headSha:sha,parentSha:sha,branch:{type:'string'}}));
   const pd = descriptor(GIT_PUSH_TOOL,GIT_PUSH_SCOPE,{...properties,expectedHeadSha:sha},resultSchema({headSha:sha,pushed:{const:true}}));
+  const publicationSchema=resultSchema({selectionRef:{type:'string',minLength:1,maxLength:256},branch:{type:'string',minLength:1,maxLength:200},
+    baseHeadSha:sha,repairDigest:{type:'string',pattern:'^[a-f0-9]{64}$'}});
+  for(const d of [cd,pd])(d.inputSchema.properties as Record<string,unknown>).publication=publicationSchema;
+  const rd=descriptor(GIT_PUBLICATION_READ_TOOL,GIT_READ_SCOPE,{...properties,taskId:{type:'string',minLength:1,maxLength:256},
+    runId:{type:'string',minLength:1,maxLength:512},publication:publicationSchema},resultSchema({state:{enum:['applied','unknown']},
+    operation:{enum:['commit','push']},taskId:{type:'string'},runId:{type:'string'},headSha:sha,branch:{type:'string'}}));
+  rd.sideEffect='read';rd.requiresPresence=false;
+  const publication=async(c:ToolContext,q:GitCommitInput|GitPushInput,scope:string)=>{
+    if(!q.publication)return;
+    if(!options.publication||q.publication.branch!==options.sourceBranch||['main','master'].includes(q.publication.branch))
+      fail('Explicit new repair branch publication is unavailable');
+    await hostRead(c,scope,bounded=>options.publication!.assertCurrent(bounded,q.publication!));
+    const prior=await hostRead(c,scope,bounded=>options.publication!.load(bounded,{taskId:c.taskId,runId:c.runId}));
+    if(prior)throw new ProtocolError('RESULT_UNKNOWN','Original Git publication already attempted; use readback, never replay');
+  };
+  const savePublication=async(c:ToolContext,q:GitCommitInput|GitPushInput,scope:string,operation:'commit'|'push',fingerprint:string,
+    expected:GitPublicationIntent['expected'])=>{
+    if(!q.publication)return;
+    await hostRead(c,scope,bounded=>options.publication!.assertCurrent(bounded,q.publication!));
+    const intent:GitPublicationIntent={version:1,operation,taskId:c.taskId,runId:c.runId,repository:options.repository,
+      remoteUrl:options.remoteUrl,arguments:structuredClone(q),publication:structuredClone(q.publication),fingerprint,expected};
+    await hostRead(c,scope,bounded=>options.publication!.saveOnce(bounded,intent));
+    const stored=await hostRead(c,scope,bounded=>options.publication!.load(bounded,{taskId:c.taskId,runId:c.runId}));
+    if(digest(stored)!==digest(intent))fail('Original Git intent was not durably sealed');
+  };
+  const authentication=async(c:ToolContext,scope:string)=>{
+    const credentials=await hostRead(c,scope,bounded=>options.getCredentials?.(bounded)??Promise.resolve(undefined));
+    if(!credentials?.token||credentials.token.length>16384||/[\x00-\x20\x7f]/u.test(credentials.token))
+      throw new ProtocolError('UNAUTHORIZED','Trusted Git push credentials are unavailable');
+    return {GIT_CONFIG_COUNT:'2',GIT_CONFIG_KEY_0:`http.${options.remoteUrl}.extraheader`,
+      GIT_CONFIG_VALUE_0:`Authorization: Basic ${Buffer.from('x-access-token:'+credentials.token).toString('base64')}`,
+      GIT_CONFIG_KEY_1:`http.${options.remoteUrl}.followRedirects`,GIT_CONFIG_VALUE_1:'false'};
+  };
+  const exactPublicationTransport=async(c:ToolContext,scope:string)=>{
+    // An explicit URL still honors local url.*.pushInsteadOf. Inspect only key
+    // names, never credential-bearing config values, before publication I/O.
+    const keys=(await git(['config','--null','--name-only','--list'],c,scope)).split('\0');
+    if(keys.some(key=>/^url\..*\.(?:insteadof|pushinsteadof)$/iu.test(key)))
+      fail('Git URL rewriting is incompatible with the configured exact publication target');
+  };
+  const remoteHead=async(c:ToolContext,scope:string,auth:Record<string,string>,publicationOnly=false)=>{
+    if(publicationOnly)await exactPublicationTransport(c,scope);
+    const ref=`refs/heads/${options.sourceBranch}`,lines=(await git(['ls-remote','--heads',options.remoteUrl,ref],c,scope,auth)).trim();
+    if(!lines)return '';
+    const fields=lines.split(/\s/u);if(fields.length!==2||fields[1]!==ref||!/^[a-f0-9]{40,64}$/u.test(fields[0]!))fail('Remote branch identity is ambiguous');
+    return fields[0]!;
+  };
   let busy = false;
   const exclusive = async <T>(work:()=>Promise<T>):Promise<T> => {if(busy) fail('Git repository operation already active'); busy=true; try{return await work();} finally{busy=false;}};
   return {
     head:{descriptor:hd,execute:async(input,c)=>{validateToolValue(hd.inputSchema,input); return exclusive(async()=>{const s=await state(c,GIT_READ_SCOPE); return {headSha:s.headSha,clean:s.clean,workspaceClean:s.workspaceClean,fingerprint:s.fingerprint};});}},
     commit:{descriptor:cd,execute:async(input,c)=>{validateToolValue(cd.inputSchema,input); const q=input as GitCommitInput; return exclusive(async()=>{
+      await publication(c,q,GIT_COMMIT_SCOPE);
       const s=await state(c,GIT_COMMIT_SCOPE);
+      if(q.publication&&q.publication.baseHeadSha!==s.headSha)fail('Original repair base HEAD changed');
       if(!s.clean || s.headSha!==q.expectedHeadSha) fail('Git baseline or unrelated workspace changes conflict');
       const rawIndexPath=(await git(['rev-parse','--git-path','index'],c,GIT_COMMIT_SCOPE)).trim();
       const requestedIndexPath=resolve(root,rawIndexPath);
@@ -186,7 +236,9 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
       const originalIndex=await readFile(indexPath);
       const originalIndexHash=createHash('sha256').update(originalIndex).digest('hex');
       const receipt=await hostRead(c,GIT_COMMIT_SCOPE,bounded=>options.readVerification(bounded,q.verificationRunId));
-      if(!receipt || receipt.taskId!==c.taskId || receipt.runId!==q.verificationRunId || receipt.toolName!=='workspace.run_allowed_command' || receipt.status!=='confirmed' || receipt.exitCode!==0 || receipt.headSha!==s.headSha || digest([...receipt.files].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0))!==s.fingerprint) fail('Trusted successful command receipt does not match current files');
+      const originalConsumer=receipt?.taskId===c.taskId||Boolean(q.publication&&receipt?.consumer?.taskId===c.taskId
+        &&receipt.consumer.runId===c.runId&&receipt.consumer.argumentsDigest===digest(q));
+      if(!receipt || !originalConsumer || receipt.runId!==q.verificationRunId || receipt.toolName!=='workspace.run_allowed_command' || receipt.status!=='confirmed' || receipt.exitCode!==0 || receipt.headSha!==s.headSha || digest([...receipt.files].sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0))!==s.fingerprint) fail('Trusted successful command receipt does not match current files');
       const temp=await mkdtemp(join(tmpdir(),'personal-agent-git-'));
       try {
         const env={GIT_INDEX_FILE:join(temp,'index'),GIT_AUTHOR_NAME:options.authorName,GIT_AUTHOR_EMAIL:options.authorEmail,GIT_COMMITTER_NAME:options.authorName,GIT_COMMITTER_EMAIL:options.authorEmail};
@@ -218,6 +270,9 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
           await lock.sync();
           await lock.close();
           check(c,GIT_COMMIT_SCOPE);
+          await savePublication(c,q,GIT_COMMIT_SCOPE,'commit',s.fingerprint,{headSha:next,parentSha:s.headSha,branch:options.sourceBranch});
+          if(q.publication){const final=await state(c,GIT_COMMIT_SCOPE);
+            if(!final.clean||final.headSha!==s.headSha||final.fingerprint!==s.fingerprint)fail('Verified repair changed while sealing commit intent');}
           refAttempted=true;
           await git(['update-ref',`refs/heads/${options.sourceBranch}`,next,s.headSha],c,GIT_COMMIT_SCOPE);
           // Complete local index installation even if cancellation arrives after
@@ -238,22 +293,47 @@ export function createGitTools(options: GitToolsOptions): {head: RegisteredTool;
       } finally {await rm(temp,{recursive:true,force:true});}
     });}},
     push:{descriptor:pd,execute:async(input,c)=>{validateToolValue(pd.inputSchema,input); const q=input as GitPushInput; return exclusive(async()=>{
+      await publication(c,q,GIT_PUSH_SCOPE);
       const s=await state(c,GIT_PUSH_SCOPE); if(s.headSha!==q.expectedHeadSha) fail('Git push HEAD changed');
+      if(q.publication&&(!s.workspaceClean||q.publication.baseHeadSha===s.headSha))fail('Only the clean exact repaired commit may be published');
       check(c,GIT_PUSH_SCOPE);
-      const credentials=await hostRead(c,GIT_PUSH_SCOPE,bounded=>options.getCredentials?.(bounded) ?? Promise.resolve(undefined));
+      const authEnv=await authentication(c,GIT_PUSH_SCOPE);
       check(c,GIT_PUSH_SCOPE);
-      if(!credentials?.token || credentials.token.length>16384 || /[\x00-\x20\x7f]/u.test(credentials.token)) throw new ProtocolError('UNAUTHORIZED','Trusted Git push credentials are unavailable');
       // Exact host URL only. Secret lives in this child's environment, never
       // argv, model arguments, returned diagnostics, or process-global config.
-      const authEnv={GIT_CONFIG_COUNT:'2',GIT_CONFIG_KEY_0:`http.${options.remoteUrl}.extraheader`,GIT_CONFIG_VALUE_0:`Authorization: Basic ${Buffer.from('x-access-token:'+credentials.token).toString('base64')}`,GIT_CONFIG_KEY_1:`http.${options.remoteUrl}.followRedirects`,GIT_CONFIG_VALUE_1:'false'};
       const ref=`refs/heads/${options.sourceBranch}`;
-      const remote=(await git(['ls-remote','--heads',options.remoteUrl,ref],c,GIT_PUSH_SCOPE,authEnv)).trim().split(/\s/u)[0] ?? '';
-      if(remote && !/^[0-9a-f]{40,64}$/u.test(remote)) fail('Invalid remote branch state');
+      const remote=await remoteHead(c,GIT_PUSH_SCOPE,authEnv,!!q.publication);
+      if(q.publication&&remote)fail('Configured repair branch already exists remotely; no update or overwrite is allowed');
       if(remote) await git(['merge-base','--is-ancestor',remote,s.headSha],c,GIT_PUSH_SCOPE);
+      await savePublication(c,q,GIT_PUSH_SCOPE,'push',s.fingerprint,{headSha:s.headSha,pushed:true});
+      if(q.publication){const final=await state(c,GIT_PUSH_SCOPE);
+        if(!final.workspaceClean||final.headSha!==s.headSha||final.fingerprint!==s.fingerprint)fail('Verified repair changed while sealing push intent');
+        await exactPublicationTransport(c,GIT_PUSH_SCOPE);}
       // Lease closes the remote read/write race; ancestry above forbids overwriting divergent history.
-      await git(['push','--porcelain',`--force-with-lease=${ref}:${remote}`,options.remoteUrl,`${s.headSha}:${ref}`],c,GIT_PUSH_SCOPE,authEnv);
+      await git(['push','--porcelain',...(q.publication?['--no-follow-tags','--recurse-submodules=no']:[]),
+        `--force-with-lease=${ref}:${remote}`,options.remoteUrl,`${s.headSha}:${ref}`],c,GIT_PUSH_SCOPE,authEnv);
+      if(q.publication&&await remoteHead(c,GIT_PUSH_SCOPE,authEnv,true)!==s.headSha)
+        throw new ProtocolError('RESULT_UNKNOWN','Published branch has no exact HEAD readback; do not push again');
       return {headSha:s.headSha,pushed:true};
     });}},
+    publicationRead:{descriptor:rd,execute:async(input,c)=>{validateToolValue(rd.inputSchema,input);
+      const q=input as {taskId:string;runId:string;publication:GitPublicationBinding};return exclusive(async()=>{
+        if(!options.publication||q.publication.branch!==options.sourceBranch)fail('Original publication readback is unavailable');
+        await hostRead(c,GIT_READ_SCOPE,bounded=>options.publication!.assertCurrent(bounded,q.publication));
+        const intent=await hostRead(c,GIT_READ_SCOPE,bounded=>options.publication!.load(bounded,{taskId:q.taskId,runId:q.runId}));
+        if(!intent||intent.version!==1||intent.taskId!==q.taskId||intent.runId!==q.runId||intent.repository!==options.repository
+          ||intent.remoteUrl!==options.remoteUrl||digest(intent.publication)!==digest(q.publication))return fail('Original publication identity changed');
+        let applied=false;
+        if(intent.operation==='commit'){
+          const s=await state(c,GIT_READ_SCOPE);applied=s.headSha===intent.expected.headSha&&s.workspaceClean&&s.fingerprint===intent.fingerprint;
+        }else if(intent.operation==='push'){
+          const auth=await authentication(c,GIT_READ_SCOPE);applied=await remoteHead(c,GIT_READ_SCOPE,auth,true)===intent.expected.headSha;
+        }else fail('Unknown publication operation');
+        const stateValue=applied?'applied' as const:'unknown' as const;
+        await hostRead(c,GIT_READ_SCOPE,bounded=>options.publication!.assertCurrent(bounded,q.publication));
+        await hostRead(c,GIT_READ_SCOPE,bounded=>options.publication!.observed(bounded,intent,{state:stateValue}));
+        return {state:stateValue,operation:intent.operation,taskId:q.taskId,runId:q.runId,headSha:intent.expected.headSha,branch:q.publication.branch};
+      });}},
   };
 }
 export function registerGitTools(host:ToolHost,options:GitToolsOptions):()=>void {

@@ -2,6 +2,8 @@
 
 `RealtimeSession.speakText?(text)` 为受信宿主的可选同会话文字播报入口，返回 `{accepted:true}` 仅表示交给模型，不是音频或播放证明。Desktop 已开启 Live 的同对话新文字任务消费此口；单条上限 8000 字符，繁忙返回 `REALTIME_BUSY`。播报禁工具，完成/中断删除临时输入 item；provider 的 response-scoped 参数和删除事件兼容性、真实模型/设备尚未验收，详见 [接线说明](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
 
+2026-11-01 兼容增量：Qwen 原文字播报返回可选 `renditionId`（原临时 input item 的本机标识）；同一原串行 response 的 audio、assistant final transcript、turn_complete 附带该标识与 `responseId`。普通回答仅关联 responseId，用户输入转写不携带播报标识；中断/结束后不把旧标识留给下一轮。既有调用方可忽略新增字段，旧 provider 未提供该字段时不能构造通知关联证据。没有新增网络请求字段或服务端能力声明；这些字段关联原请求与供应商事件，不证明逐字发声、播放或用户已听到。详见 [F12 语音关联方案](../../docs/competition/evidence/F12_VOICE_RENDITION_20261101.md)。
+
 ## 可选 PNG 视觉输入（provisional）
 
 `ModelMessage.content` 保持字符串。受信宿主可在 `ModelRequest.images` 传入 `{mediaType:'image/png', dataBase64, sha256}` 数组；只接收 canonical base64 内存数据，不接受 URL、data URL、文件路径或额外字段。原 task/artifact/目标/目的地/授权绑定不放进模型请求，由宿主 reader 与注入的 guarded fetch 在实际出机前重验。端口的 PNG/SHA 校验不是授权、像素解码或完整 PNG 解码器。

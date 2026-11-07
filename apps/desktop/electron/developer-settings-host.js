@@ -17,7 +17,7 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
   createDeployment,readToolDescriptors,makeProtocolError=error,onUpdate=()=>{}}) {
   const target=path.join(userData,'developer-settings.json');
   let record,restoreFailed=false,closed=false,saving=false,slot,options,application,stable;
-  let writing=false,creating;
+  let writing=false,creating,f16Publication;
   let bindingRuntime,startupSequence;
   const publish=()=>{try{onUpdate();}catch{}};
   const models=()=>{
@@ -112,6 +112,7 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
     if(!selected||selected.bindingId!==value.workspaceBindingId)throw developerSettingsError('DEV_SETTINGS_WORKSPACE_CHANGED');
     const deployment=await createDeployment({...options,configPath:undefined,configurationSource:source(value),workspace:selected});
     if(deployment.snapshot().configured!==true){deployment.close();throw developerSettingsError('DEV_SETTINGS_HOST_UNAVAILABLE');}
+    if(f16Publication)deployment.host.configureF16Publication?.(f16Publication);
     return {record:value,deployment};
   }
   const snapshot=()=>{
@@ -224,6 +225,26 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
         const policy=selected.lease.deployment.host.competitionToolExports.find(item=>item.toolName===descriptor.name);
         if(!policy)unavailable();const result=await policy.project(input);if(!bound(selected.lease,input))throw changed();return result;}}));
     stable={host:{tools,competitionToolAvailability:availability,competitionToolExports:policies,runtimeOptions:{},
+      createF18F19Tools(parameters){
+        const lease=active(),created=lease?.deployment.host.createF18F19Tools?.(parameters);
+        return created?.map(tool=>({...tool,async execute(input,scope){
+          if(!bound(lease,scope,true))throw changed();
+          const write=tool.descriptor.sideEffect!=='read';if(write&&writing)throw makeProtocolError('INVALID_STATE','原开发写入尚未结束');
+          if(write)writing=true;
+          try{const result=await tool.execute(input,scope);if(!bound(lease,scope))throw changed();return result;}
+          catch(cause){if(active()!==lease&&write)throw makeProtocolError('RESULT_UNKNOWN','设置已撤销；已开始的 GitHub 写入须按原任务核实');throw cause;}
+          finally{if(write)writing=false;}
+        }}));
+      },
+      configureF16Publication(port){
+        if(f16Publication&&f16Publication!==port)throw Error('F16 publication port binding is immutable');
+        slot?.deployment.host.configureF16Publication?.(port);f16Publication=port;
+      },
+      readF16PublicationConfiguration(scope){
+        const lease=active();if(scope&&(!lease||!bound(lease,scope,true)))return;
+        const value=lease?.deployment.host.readF16PublicationConfiguration?.(scope);
+        return value?{...value,configurationRef:lease.record.revision}:undefined;
+      },
       bind(value){
         if(application&&application!==value)throw Error('原 Runtime 绑定不可替换');
         if(application===value)return;

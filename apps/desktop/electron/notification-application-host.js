@@ -1,4 +1,5 @@
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {isDeepStrictEqual} from 'node:util';
 import {createNotificationSettingsDescriptor, notificationDigest as digest} from '@personal-agent/notifications';
 import {validateToolValue} from '@personal-agent/contracts';
 
@@ -8,7 +9,7 @@ const COMMAND_BINDING = 'desktop-notification-user-command';
 /** Desktop composition over the original Runtime host, ToolGateway and OS receipt port.
  * No renderer send endpoint, second queue, permission store or task executor lives here.
  */
-export function createDesktopNotificationApplicationHost({namespace, channel, question,now = Date.now, onUpdate = () => {}}) {
+export function createDesktopNotificationApplicationHost({namespace, channel, question,getVoiceHost,verifyVoiceFinal,now = Date.now, onUpdate = () => {}}) {
   if (typeof namespace !== 'string' || !namespace || !channel
     || typeof channel.sendAdvisoryNotification !== 'function' || typeof channel.readDeliveryOutcome !== 'function') {
     throw Error('通知应用宿主缺少用户或真实回执端口');
@@ -25,16 +26,75 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
   };
   const validCommand = (command, context) => {
     const original = commands.get(context.taskId);
-    return Boolean(original && !disposed && command.proof === original.command.proof
-      && command.argumentsDigest === digest(original.command.settings)
-      && digest(command.settings) === command.argumentsDigest
-      && now() < Date.parse(original.command.expiresAt) && original.isCurrent());
+    const bound = original?.command;
+    if (!original || disposed || !bound || command.proof !== bound.proof
+      || command.argumentsDigest !== digest(bound.settings)
+      || digest(command.settings) !== command.argumentsDigest
+      || !(now() < Date.parse(bound.expiresAt)) || !original.isCurrent()) return false;
+    // A voice source is not self-authorizing. The current-session final host must
+    // still match this exact utterance, digest and policy revision.
+    if (bound.source === 'voice') {
+      try { return typeof verifyVoiceFinal === 'function' && verifyVoiceFinal(bound, context) === true; }
+      catch { return false; }
+    }
+    return true;
   };
   const settingsTool = {descriptor, async execute(input, context) {
     if(question)question.currentRequirement(context,'notifications-settings');
     return current().settingsTool.execute(input, context);
   }};
   const channelId = roundId => 'notification-round-' + digest(roundId);
+  const voiceKey=roundId=>'desktop-notification:voice:'+digest(roundId);
+  function voiceScope(roundId,authority) {
+    const context=authority?.context,runtime=application?.runtime;
+    if(!context||!(context.signal instanceof AbortSignal)||context.signal.aborted||disposed||!runtime
+      ||context.runId!=='host-tool-'+context.taskId||context.authorizationRef!==context.runId
+      ||typeof authority.assertCurrent!=='function'||!Number.isFinite(Date.parse(context.deadline))||Date.parse(context.deadline)<=now())
+      throw Error('原语音通知执行许可不可用');
+    const task=runtime.getTask(context.taskId),intent=runtime.loadCheckpoint(context.taskId,'host-tool-intent');
+    const record=runtime.readToolExecutions(context.taskId).find(item=>item.evidenceId===context.runId);
+    const grant=runtime.policy.get(context.authorizationRef);
+    if(task.state!=='running'||task.cancelRequested||intent?.toolName!=='workflow.host.f12_n04'||intent.deadline!==context.deadline
+      ||intent.arguments.roundId!==roundId||intent.arguments.channel!=='voice'||!grant||grant.taskId!==context.taskId
+      ||grant.toolName!==intent.toolName||Date.parse(grant.expiresAt)<=now()||!grant.scopes.includes('notifications:deliver')
+      ||record?.state!=='started'||record.policyDecision!=='allow'||!record.executionStarted||record.toolName!==intent.toolName
+      ||!runtime.matchesToolExecutionInput(record,{arguments:intent.arguments,scopeRef:context.runId}))throw Error('原语音通知没有正在执行的独立 Policy 证据');
+    const checked=authority.assertCurrent();
+    if(checked!==undefined){void Promise.resolve(checked).catch(()=>{});throw Error('原语音通知来源必须同步核验');}
+    const conversationId=application.readToolConversation(context.taskId);
+    if(!conversationId)throw Error('原语音通知会话绑定缺失');
+    return {taskId:context.taskId,runId:context.runId,conversationId,deadline:context.deadline};
+  }
+  function deliverVoice({roundId,title,body,authority}) {
+    const service=current(),scope=voiceScope(roundId,authority),round=service.getInterruptionRound(roundId);
+    const voice=getVoiceHost?.(),binding={...scope,roundId,text:title+'。'+body};
+    if(!round||round.expiresAt!==scope.deadline||!isDeepStrictEqual(round.channels,['voice']))throw Error('原语音通知轮次绑定缺失');
+    const args=application.runtime.loadCheckpoint(scope.taskId,'host-tool-intent').arguments;
+    if(!isDeepStrictEqual([...(args.itemIds??[args.itemId])].sort(),[...round.itemIds].sort()))throw Error('原语音通知选择已改变');
+    const feed=service.notificationFeed({limit:100}).items,entries=round.itemIds.map(id=>feed.find(item=>item.id===id));
+    const fixedBody=entries.length===1?'来源 '+entries[0]?.source+' 有一条更新，请查看通知列表。':'有 '+entries.length+' 条更新，请查看通知列表。';
+    if(entries.some(item=>!item||item.validity!=='active'||!item.unread)||title!=='PersonalAgent 通知'||body!==fixedBody)
+      throw Error('语音通知必须使用原选择的固定提示文本');
+    const original=application.runtime.loadCheckpoint(scope.taskId,voiceKey(roundId));
+    if(original&&!isDeepStrictEqual(original.binding,binding))throw Error('原语音通知内容已被替换');
+    if(round.attempts.voice)return round; // Restart/unknown can only read the original attempt.
+    if(typeof voice?.speakNotification!=='function'||typeof voice.readNotificationDelivery!=='function'||voice.canSpeakNotification?.(scope.conversationId)!==true)
+      throw Error('原 Live 通知端口不可用');
+    const begun=service.beginDelivery({roundId,channel:'voice'});if(!begun.maySend)return begun.round;
+    application.runtime.saveCheckpointOnce(scope.taskId,voiceKey(roundId),{binding,receipt:{state:'unknown',playbackVerified:false}});
+    const assertCurrent=()=>{voiceScope(roundId,authority);
+      if(!isDeepStrictEqual(application.runtime.loadCheckpoint(scope.taskId,voiceKey(roundId))?.binding,binding))throw Error('原语音通知持久绑定改变');};
+    try {
+      voice.speakNotification({...binding,signal:authority.context.signal},{assertCurrent,onReceipt:receipt=>{
+        assertCurrent();
+        if(receipt.roundId!==roundId||receipt.taskId!==scope.taskId||receipt.runId!==scope.runId
+          ||receipt.conversationId!==scope.conversationId||receipt.deadline!==scope.deadline||receipt.textDigest!==createHash('sha256').update(binding.text).digest('hex')
+          ||receipt.playbackVerified!==false||!['unknown','accepted','draining','renderer_completed'].includes(receipt.state))throw Error('原语音通知回执不匹配');
+        application.runtime.saveCheckpoint(scope.taskId,voiceKey(roundId),{binding,receipt:structuredClone(receipt)});publish();
+      }});
+    }catch { /* The original session may have accepted audio. Never retry or declare hardware delivery. */ }
+    const result=service.completeDelivery({roundId,channel:'voice',state:'unknown',evidenceRefs:[]});publish();return result;
+  }
   function recordOutcome(roundId) {
     const service = current(), round = service.getInterruptionRound(roundId);
     if (!round?.attempts.banner) return round;
@@ -77,10 +137,11 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       if (read.confirmed) return {state: 'confirmed', taskId, result: read.confirmed.result, evidenceRefs: read.confirmed.evidenceRefs};
       if (['failed', 'cancelled'].includes(read.task.state)) throw Error(read.task.error?.message || '通知设置未应用，请读取原任务');
       if (read.task.state === 'waiting_reconciliation') return {state: 'unknown', taskId};
-      if (!question&&read.approval?.state === 'pending' && !responded) {
+      if (!question && command.source !== 'voice' && read.approval?.state === 'pending' && !responded) {
         if (!isCurrent()) throw Error('当前设置或最终语音确认已经失效');
-        // The explicit settings submit/final is the user's decision for these exact
-        // frozen arguments. Runtime's original approval owns the one-use grant.
+        // A structured settings submit is the user's decision for these exact frozen
+        // arguments. Voice never calls authorization.respond; a card or the existing
+        // full-access policy owns that decision.
         responded = true;
         try {await client.call('authorization.respond', {approvalId: read.approval.approvalId,
           expectedRevision: read.approval.revision, decision: 'allow_once'});}
@@ -192,10 +253,11 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       if (!round.counted) return round;
       return api.deliverRound({roundId, channel: channelName, title, body, source});
     },
-    async deliverRound({roundId, channel: channelName, title, body, source}) {
-      if (channelName !== 'banner') return {state: 'unavailable', reason: 'notification_voice_delivery_unavailable'};
+    async deliverRound({roundId, channel: channelName, title, body, source, authority}) {
       if (typeof title !== 'string' || !title.trim() || title.length > 200
         || typeof body !== 'string' || !body.trim() || body.length > 2000) throw Error('通知展示内容无效');
+      if(channelName==='voice')return deliverVoice({roundId,title,body,authority});
+      if(channelName!=='banner')return {state:'unavailable',reason:'notification_channel_unavailable'};
       const service = current(), round = service.getInterruptionRound(roundId);
       if (!round) throw Error('原通知轮次不存在');
       if (round.attempts.banner) return recordOutcome(roundId) ?? round;
@@ -213,6 +275,12 @@ export function createDesktopNotificationApplicationHost({namespace, channel, qu
       publish(); return result;
     },
     reconcileDelivery(roundId) {return recordOutcome(roundId);},
+    hasVoicePort:conversationId=>{const voice=getVoiceHost?.();return typeof voice?.speakNotification==='function'
+      &&typeof voice.readNotificationDelivery==='function'&&voice.canSpeakNotification?.(conversationId)===true;},
+    readVoiceDelivery({roundId,taskId}) {
+      current();const saved=application.runtime.loadCheckpoint(taskId,voiceKey(roundId));
+      return saved?.binding.roundId===roundId&&saved.binding.taskId===taskId?structuredClone(saved.receipt):undefined;
+    },
     dispose() {disposed = true; commands.clear(); channel.dispose?.();},
   };
   return api;

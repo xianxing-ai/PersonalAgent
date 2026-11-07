@@ -12,6 +12,7 @@ import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
+import {isDeepStrictEqual} from 'node:util';
 import {computerControlFailure} from './computer-control-errors.js';
 import {createComputerControlLaya} from './computer-control-laya.js';
 import {createOpenCliBrowserHost} from './opencli-browser-host.js';
@@ -30,10 +31,10 @@ import {app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, na
 import {createDesktopVoiceStartupHost} from './voice-startup-host.js';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 import path from 'node:path';
 import {freemem,totalmem,availableParallelism} from 'node:os';
-import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
@@ -75,11 +76,16 @@ import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
+import {createVoiceSessionFinalHost} from './voice-session-final-host.js';
 import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
 import {createConversationToolAccess,projectComputerConversationStatus} from './conversation-tool-access.js';
 import {createDesktopAuthorizationQuestionHost} from './authorization-question-host.js';
 import {createDesktopAuthorizationIntentHost,AUTHORIZATION_INTENT_TOOL} from './authorization-intent-host.js';
 import {createDesktopNativeExecutionHost} from './native-execution-host.js';
+import {readPackagedNativeJobHelper} from './native-job-component.js';
+import {readWindowsHostComponent} from './native-windows-host-component.js';
+import {createPlanExecutionFactReader} from './goal-host-core.js';
+import {createDesktopF05WorkflowWorkerPorts} from './f05-workflow-worker-ports.js';
 import {createDesktopProactiveConversationTools} from './proactive-conversation-tools.js';
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
@@ -95,13 +101,47 @@ import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWeatherCardHost} from './weather-card-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
+import {createDesktopF15ReviewConfigHost} from './f15-review-config-host.js';
+import {createDesktopF15ReviewOriginHost} from './f15-review-origin-host.js';
+import {createF15NativeReviewViewer} from './f15-review-native-view.js';
+import {findWindowsExecutable} from './windows-executable-discovery.js';
 import {projectDeveloperConversationStatus} from './developer-deployment-config.js';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 import {createToolPresenceHost} from './tool-presence-host.js';
 import {createConversationToolSurface} from './conversation-tool-surface.js';
 import {createImageWorkflowCatalogHost} from './image-workflow-catalog.js';
 import {resolveDesktopWorkflowShadowRelease} from './workflow-shadow-release-host.js';
-import {resolveDesktopVoiceFinalTranscript} from './voice-final-transcript-host.js';
+import {createF02WorkflowWorkerPorts} from './f02-workflow-worker-ports.js';
+import {createWorkflowExportConsent} from './workflow-export-consent.js';
+import {createConfiguredDesktopF01WorkflowPorts} from './f01-workflow-worker-ports.js';
+import {createDesktopF22TraceReplayConfiguration,createDesktopF22WorkflowWorkerPorts} from './f22-trace-replay-host.js';
+import {createDesktopF25Configuration,createDesktopF25WorkflowWorkerPorts} from './f25-configuration-host.js';
+import {createDesktopF27WorkflowWorkerPorts} from './f27-context-workflow-ports.js';
+import {createConfiguredDesktopF21WorkflowPorts} from './f21-workflow-worker-ports.js';
+import {createDesktopF28WorkflowWorkerPorts} from './f28-model-workflow-ports.js';
+import {createF08SourceChangeHost} from './f08-source-change-host.js';
+import {createF08SourceActions} from './f08-source-actions.js';
+import {createF03MailReviewWorkflowPorts} from './f03-mail-review-workflow-ports.js';
+import {createDesktopF23DecisionConfiguration,F23_INITIALIZE_TOOL} from './f23-decision-configuration.js';
+import {createDesktopF23WorkflowPorts,F23_PREPARE_TOOL,F23_BIND_TOOL} from './f23-workflow-worker-ports.js';
+import {createConfiguredDesktopF10WorkflowPorts} from './f10-workflow-worker-ports.js';
+import {createF04RecoveryExportConsent} from './f04-recovery-export-consent.js';
+import {createBusinessWorkflowWorkerPorts} from './business-workflow-worker-ports.js';
+import {createF11LocationQuestionHost,createF11DecisionQuestionHost} from './f11-location-question-host.js';
+import {createF08DecisionQuestionHost} from './business-workflow-question-host.js';
+import {readBusinessWorkflowQuestions} from './business-workflow-question-projection.js';
+import {createF12ExplicitReturnSource} from './f12-explicit-return-source.js';
+import {createF12ReturnDigestController} from './f12-return-digest-controller.js';
+import {createDesktopF04WorkflowWorkerPorts} from './f04-workflow-worker-ports.js';
+import {createBusinessWorkflowAvailability} from './business-workflow-availability.js';
+import {prepareConfiguredWorkflowDecisionQuestion} from './configured-workflow-decision-source.js';
+import {createF16F17CaseConfiguration} from './f16-f17-case-config-host.js';
+import {createDesktopF16F17WorkflowPorts} from './f16-f17-desktop-ports.js';
+import {createF18ReviewConfiguration,createConfiguredDesktopF18F19WorkflowPorts} from './f18-review-config-host.js';
+import {createF19IssueConfiguration,createConfiguredDesktopF19IssueRepairPorts} from './f19-issue-config-host.js';
+import {createDesktopF24WorkflowWorkerPorts} from './f24-workflow-worker-ports.js';
+import {createF13WorkflowWorkerPorts} from './f13-workflow-worker-ports.js';
+import {createF14WorkflowWorkerPorts} from './f14-workflow-worker-ports.js';
 import {createSystemObservationConversation} from './system-observation-conversation.js';
 import {createDesktopWindowsControlHost} from './windows-control-host.js';
 import {createComputerControlLease} from './computer-control-lease.js';
@@ -121,11 +161,14 @@ import {createDesktopRemoteMcpServices} from './remote-mcp-services.js';
 import {createNativePublicReferenceConsent} from './public-reference-consent.js';
 import {createPublicReferenceQuestionConsent} from './public-reference-question.js';
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
+import {createF20WorkflowWorkerPorts} from './f20-workflow-worker-ports.js';
+import {prepareWorkflowHostPreflight} from './workflow-host-preflight.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
-import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
+import {resolveDesktopAgentArtsObservation,createAgentArtsDeploymentRequestAuth,createAgentArtsEvaluationRequestAuth} from './agentarts-observation-auth.js';
+import {createConfiguredDesktopF26WorkflowPorts} from './f26-workflow-worker-ports.js';
 import {createAgentArtsTransportConfig,agentArtsTransportNotice} from './agentarts-transport-config.js';
 import {agentArtsModelSnapshot} from './agentarts-model-state.js';
 import {agentArtsFailureNotice} from './agentarts-failure-notice.js';
@@ -142,6 +185,10 @@ import {resolveRuntimeProfile} from './runtime-profile.js';
 import {createDesktopCalendarMeetingHost,calendarConfigurationId,calendarApprovalResponse} from './calendar-meeting-host.js';
 import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
+import {createF09FeedGraphHost} from './f09-feed-graph-host.js';
+import {createF09WorkflowWorkerPorts} from './f09-workflow-worker-ports.js';
+import {createVerifyWorkflowReminderBinding} from './f06-reminder-binding.js';
+import {createDesktopWorkflowGraphComposition} from './workflow-graph-composition.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
@@ -340,6 +387,32 @@ const runtimeStartup = createDeferredRuntimeStartup({
   initialize: initializeProductServices,
 });
 let liveVoice;
+let f02Workflow;
+let f16F17Cases,f16F17Workflow;
+let f18ReviewCases,f18Workflow,f18ActiveRevision;
+let f19IssueCases,f19Workflow,f19ActiveRevision;
+let f12ExplicitReturnSource,f12ReturnDigest;
+let f24Workflow;
+let f04Workflow;
+let f01Workflow;
+let f22Configuration,f22Workflow;
+let f25Configuration,f25Workflow;
+let f08SourceChanges,f08SourceActions;
+let f23DecisionConfiguration,f23Workflow,f28Workflow;
+let reconcileOriginalMailWorkflow;
+let f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion;
+let f14Workflow;
+const f16F17Snapshot=()=>({F16:f16F17Cases?.snapshot('F16')??{configured:false},
+  F17:f16F17Cases?.snapshot('F17')??{configured:false},unavailable:f16F17Workflow?.unavailable??['fixed_deployment_unavailable']});
+const f18Snapshot=()=>{const selected=f18ReviewCases?.snapshot()??{configured:false};return {...selected,
+  selectionAvailable:Boolean(f18ReviewCases&&developerDeployment?.snapshot().configured),
+  requiresRestart:selected.configured&&selected.revision!==f18ActiveRevision};};
+const f19Snapshot=()=>{const selected=f19IssueCases?.snapshot()??{configured:false};return {...selected,
+  selectionAvailable:Boolean(f19IssueCases&&developerDeployment?.snapshot().configured&&codingWorkspace?.readWorkspaceBinding()?.nodeExecutable),
+  requiresRestart:selected.configured&&selected.revision!==f19ActiveRevision};};
+const codingSettingsSnapshot=()=>({...(codingWorkspace?.snapshot()??defaultWorkspaceState),
+  independentReview:f15ReviewSnapshot(),f20:codingWorkspace?.readF20CaseConfiguration?.()??{configured:false},
+  f16f17:f16F17Snapshot(),f18:f18Snapshot(),f19:f19Snapshot()});
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
 let wakeQuitHandled = false;
@@ -363,7 +436,7 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, voiceSessionFinalHost, proactiveWorkflowApplication;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -393,6 +466,7 @@ let productTools;
 let weatherCardHost;
 let connectorConversationTools;
 let codingWorkspace;
+let f15ReviewHost,f15ReviewOrigin,f15ReviewViewer,f15ReviewInstalled=false,f15ReviewNotice='';
 let developerDeployment;
 let developerSettings;
 let developerDeploymentFailure='';
@@ -414,6 +488,8 @@ let mailConfig;
 let calendarConfig;
 let calendarMeetingHost;
 let feedsHost;
+let f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
+let workflowGraphComposition={tools:[],unavailable:['not_assembled']};
 let todoHost;
 let todoFailure = '';
 let todoClosing;
@@ -708,6 +784,10 @@ function agentArtsSnapshot() {
   const failure=cloudRequestFailureNotice || cloudTransportNotice;
   const observation = agentArtsObservationConfig?.snapshot();
   return value && {...value,reason:failure?errorDisplayText(failure,'runtime'):value.reason,
+    traceReplay:f22Configuration?{...f22Configuration.snapshot(),available:!!f22Workflow}:undefined,
+    dataScope:f25Configuration?{...f25Configuration.snapshot(),available:!!f25Workflow&&knowledgeSourceConfig?.snapshot().available===true}:undefined,
+    decisionConfiguration:f23DecisionConfiguration?{...f23DecisionConfiguration.snapshot(),catalogRevision:agentArtsModels?.snapshot().catalog?.revision}:undefined,
+    evaluation:f23Workflow?.snapshot(),
     ...(observation ? {observation} : {})};
 }
 
@@ -743,6 +823,8 @@ function conversationProjection(surface) {
     surfaceBusy:surface?active.length>0:false,
     conversation: surface ?? 'all',
     authorizationQuestions,
+    workflowQuestions:!runtimeClosed&&surface?readBusinessWorkflowQuestions({application:runtimeApplication,
+      hosts:[f01Workflow?.questions,f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion],tasks:projectedTasks,conversationId:conversations?.activeConversationId(surface)}):[],
     authorizationSandbox:runtimeApplication&&authorizationQuestionHost?authorizationQuestionHost.sandboxSnapshot().selected:undefined,
     approvals: (authorizationQuestionHost?.automaticallyApproves()?[]:[...approvals.values()]).filter(approval=>(!surface||tasks.has(approval.taskId)&&visibleConversationTask(tasks.get(approval.taskId),surface))
       &&!authorizationQuestionHost?.hasPending(approval.approvalId)
@@ -823,7 +905,7 @@ function snapshot(surface) {
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
     computerControl:computerControlSnapshot(surface),
-    coding: codingWorkspace?.snapshot() ?? defaultWorkspaceState,
+    coding: codingSettingsSnapshot(),
     reference:surface ? undefined : referenceHost?.snapshot(),
     agentArts: cloudSettings,
     laya: localLaya?.snapshot() ?? {state:'unavailable', ready:false, reason:'本地模型尚未装配'},
@@ -1752,6 +1834,37 @@ function readDesktopDeveloperHarnessConfiguration() {
     }};
 }
 
+// Windows' own signed-code verifier checks the fixed PowerShell viewer binary;
+// source text is never passed to it, to a command line, or to the Renderer.
+const f15ViewerSignatureCache=new Map();
+function verifyF15ViewerExecutable({path:executable,sha256}) {
+  if(process.platform!=='win32'||typeof executable!=='string'||!/^[a-f0-9]{64}$/.test(sha256))return false;
+  const key=executable+'\0'+sha256,prior=f15ViewerSignatureCache.get(key);
+  if(prior&&Date.now()-prior.time<60000)return prior.valid;
+  try {
+    const systemRoot=process.env.SystemRoot;if(!systemRoot||!path.isAbsolute(systemRoot))return false;
+    const verifier=path.join(systemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
+    if(realpathSync.native(verifier).toLowerCase()!==path.normalize(verifier).toLowerCase())return false;
+    const target=Buffer.from(executable,'utf8').toString('base64');
+    const script=`$ErrorActionPreference='Stop';$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${target}'));$s=Get-AuthenticodeSignature -LiteralPath $p;if($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match '(^|,\\s*)CN=Microsoft Corporation(,|$)'){[Console]::Write('OK')}else{exit 1}`;
+    const output=execFileSync(verifier,['-NoLogo','-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],
+      {encoding:'utf8',windowsHide:true,timeout:10000,stdio:['ignore','pipe','ignore']});
+    const valid=output==='OK';f15ViewerSignatureCache.set(key,{time:Date.now(),valid});return valid;
+  }catch{return false;}
+}
+function f15ReviewSnapshot(){
+  const state=f15ReviewHost?.snapshot()??{configured:false,available:false},viewer=f15ReviewViewer?.snapshot();
+  return {...state,canConfigure:Boolean(f15ReviewOrigin?.readAuthorIdentity()&&viewer?.available),
+    installed:Boolean(f15ReviewInstalled&&state.available&&viewer?.available),pending:f15ReviewHost?.pending()??[],
+    ...(f15ReviewNotice?{reason:f15ReviewNotice}:{})};
+}
+function installF15Review(){
+  f15ReviewInstalled=false;f15ReviewNotice='';
+  if(!f15ReviewHost?.snapshot().available||!f15ReviewViewer?.snapshot().available)return;
+  try{runtimeApplication.configureCodingRepairIndependentReview(f15ReviewHost.createBinding());f15ReviewInstalled=true;}
+  catch{f15ReviewNotice='独立审核已配置，但原任务或 Runtime 绑定尚不允许接入。';}
+}
+
 function readDesktopModelApiState() {
   const value=modelApiHost?.snapshot();
   if(!value)return undefined;
@@ -1799,6 +1912,7 @@ function readProactiveWorkflowConfiguration() {
 function initializeHarnessEventPorts(runtimeModule) {
   if(!competitionMode||!runtimeApplication?.startProactiveTask||proactiveWorkflowApplication)return;
   proactiveWorkflowApplication=createDesktopProactiveWorkflowApplication({application:runtimeApplication,
+    responsibilityLifecycleAuthority:()=>f01Workflow?.authority,
     resolveUserConversation:id=>conversationToolAccess.resolveConversation(id),
     readPersistedSession:(taskId,sessionId)=>runtimeModule.readPersistedRuntimeProactiveWorkflow(runtimeApplication.runtime,taskId,sessionId),
     notificationHost:notificationApplicationHost?.runtimeHost,localDeviceAvailable:()=>!app.isQuitting,onUpdate:publish,
@@ -1999,15 +2113,17 @@ async function initializeRuntime() {
       const codingModule=await import('@personal-agent/coding-tools');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
+      let developmentJobHelper;
       nativeExecutionHost=createDesktopNativeExecutionHost({coding:codingModule,question:authorizationQuestionHost,getApplication:()=>runtimeApplication,
         readConfiguration:()=>codingWorkspace?.readWorkspaceBinding(),probeRootPath:path.join(app.getPath('userData'),'native-probes'),
         systemRoot:process.env.SystemRoot,localAppData:app.getPath('userData'),onUpdate:publish,
         ensureHelper:async()=>{
-          const helper=path.join(app.getPath('userData'),'native-tools','workspace-command','WindowsJobProcessHost.exe');
-          if(existsSync(helper))return helper;
-          if(app.isPackaged)throw new ProtocolError('UNSUPPORTED_CAPABILITY','安装包缺少已发布的原生进程隔离组件');
+          if(app.isPackaged)return readPackagedNativeJobHelper(process.resourcesPath).helperPath;
+          if(developmentJobHelper){codingModule.readWindowsNativeHelperAttestation(developmentJobHelper);return developmentJobHelper;}
+          const directory=path.join(app.getPath('userData'),'native-tools');mkdirSync(directory,{recursive:true});
           const {buildNativeHelper}=await import('@personal-agent/coding-tools/native-helper');
-          return buildNativeHelper({targetDir:path.dirname(helper)}).helperPath;
+          developmentJobHelper=buildNativeHelper({targetDir:mkdtempSync(path.join(directory,'workspace-command-sc-')),selfContained:true}).helperPath;
+          return developmentJobHelper;
         }});
       const createWorkspaceCommandTool=options=>nativeExecutionHost.createCommandTool(options);
       const {createDesktopCompetitionToolCatalog} = await import('./competition-tool-catalog.js');
@@ -2015,7 +2131,8 @@ async function initializeRuntime() {
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
-        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
+        notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,
+          getVoiceHost:()=>liveVoice,verifyVoiceFinal:command=>voiceSessionFinalHost?.verifyVoiceCommand(command)===true,onUpdate: publish});
       }
       goalHost = createGoalHost(namespace);
       if (!syntheticMvp && calendarConfig) {
@@ -2068,6 +2185,7 @@ async function initializeRuntime() {
       if (!syntheticMvp) {
         try {todoHost = createDesktopTodoHost({userData:app.getPath('userData'),safeStorage,namespace,question:authorizationQuestionPort,
           notificationHost:notificationApplicationHost,
+          verifyWorkflowReminderBinding:createVerifyWorkflowReminderBinding({getApplication:()=>runtimeApplication}),
           createDeliveryHost:runtimeModule.createReminderDeliveryHost,onUpdate:publish,
           onNotification:async item=>{
             if (!item.batchId) return;
@@ -2120,6 +2238,7 @@ async function initializeRuntime() {
         }
         browserControlHost=createBrowserControlHost({userDataPath:path.join(app.getPath('userData'),'controlled-browser'),
           downloadDirectory:path.join(app.getPath('downloads'),'PersonalAgent'),
+          authorizeWorkflowTarget:input=>f14Workflow?.authorizeWorkflowTarget(input)===true,
           isFullAccess:()=>computerControlConfig?.snapshot().enabled===true&&windowsControlHost?.snapshot().observationExportAllowed===true&&authorizationQuestionHost?.automaticallyApproves()===true,
           authorizePresence:async scope=>{
             if(!computerControlConfig?.snapshot().enabled||!windowsControlHost?.snapshot().observationExportAllowed)return false;
@@ -2146,14 +2265,21 @@ async function initializeRuntime() {
       }
       const hostPath = path.resolve(dir, '../../windows-host/host/bin/Release/net8.0-windows/WindowsHost.Host.exe');
       const bridgePath = path.resolve(dir, '../../windows-host/host/bridge/bin/Release/net8.0-windows/WindowsHost.PipeBridge.exe');
-      if (!syntheticMvp && process.platform === 'win32' && existsSync(hostPath) && existsSync(bridgePath)) {
+      let windowsHostComponent;
+      if(!syntheticMvp&&process.platform==='win32'){
+        try{windowsHostComponent=app.isPackaged?readWindowsHostComponent(process.resourcesPath):
+          existsSync(hostPath)&&existsSync(bridgePath)?{hostPath,bridgePath}:undefined;}
+        catch{console.warn('Windows Host 发布组件不可用，记事本操作保持未接通');}
+      }
+      if (windowsHostComponent) {
         notepadHost = createDesktopNotepadHost({
           isFullAccess:()=>authorizationQuestionHost?.automaticallyApproves()===true,
           readPolicyBinding:()=>{const selected=authorizationQuestionHost?.sandboxSnapshot().selected;
             return selected?JSON.stringify([selected.mode,selected.revision]):undefined;},
           createAdapter:runtimeModule.createWindowsHostNotepadAdapter,
           createAttempts:runtimeModule.createRuntimeWindowsHostAttemptStore,
-          transport:runtimeModule.createWindowsHostBridgeTransport({hostPath,bridgePath}),
+          transport:runtimeModule.createWindowsHostBridgeTransport({...windowsHostComponent,
+            journalDirectory:path.join(app.getPath('userData'),'native-tools','windows-host-journal')}),
           registerConfirmation:handler=>toolPresenceHost?.registerConfirmation(handler),
           openNotepad:() => new Promise((resolve,reject) => {
             const child=spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows','System32','notepad.exe'),[],
@@ -2213,6 +2339,7 @@ async function initializeRuntime() {
         defaultWorkspace:path.join(app.getPath('userData'),'Workspace'),
         question:authorizationQuestionPort,createWorkspaceCommandTool,
         readHarnessVersions:readDesktopHarnessVersions,
+        readOriginalCommandStopState:input=>nativeExecutionHost.readOriginalCommandStopState(input),
         patchHelperScriptPath:process.env.PA_CODING_PATCH_HELPER_SCRIPT,
         createWorkspaceReferenceExport:publicReferenceModule.createWorkspaceReferenceExport,
         readWorkspaceExportPreflight:query=>publicReferenceConsent?.readPreflight(query),
@@ -2345,6 +2472,7 @@ async function initializeRuntime() {
         competitionOnly:true,
         getRuntime: () => runtimeApplication.runtime,
         getTools: () => runtimeApplication.tools,
+        getToolsForSubtask:(subtask,worker)=>f28Workflow?.getToolsForSubtask(subtask,worker,runtimeApplication.tools)??runtimeApplication.tools,
         runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools),
         fakeModelMode,
       });
@@ -2352,6 +2480,7 @@ async function initializeRuntime() {
         const taskThinking = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-thinking');
         const boundTool=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>runtimeApplication.runtime,
           getTools:()=>runtimeApplication.tools,fakeModelMode,
+          getToolsForSubtask:(subtask,worker)=>f28Workflow?.getToolsForSubtask(subtask,worker,runtimeApplication.tools)??runtimeApplication.tools,
           runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)});
         return boundTool.execute({...input,subtasks:input.subtasks.map(subtask=>({...subtask,
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
@@ -2393,10 +2522,10 @@ async function initializeRuntime() {
           const choice=await dialog.showOpenDialog(admin,{title:'选择允许整理的知识笔记',defaultPath:root,
             properties:['openFile','multiSelections'],filters:[{name:'Markdown',extensions:['md']}]});
           return choice.canceled?undefined:choice.filePaths;
-        },confirmPermissions:async details=>{
+        },confirmPermissions:async (details,control={})=>{
           const {isCurrent,...payload}=details;
           return confirmApplicationAuthorization('knowledge.configure',payload,{scope:{sourceId:details.sourceId,configRevision:details.configRevision},
-            summary:`配置知识源 ${details.displayName}：${details.writeAllowed?'可整理选定笔记；':''}${details.cloudExportAllowed?'向本任务模型公布选定PUBLIC查询与笔记目录；':''}具体内容操作在任务卡片确认。`.slice(0,512),isCurrent});
+            summary:`配置知识源 ${details.displayName}：${details.writeAllowed?'可整理选定笔记；':''}${details.cloudExportAllowed?'向本任务模型公布选定PUBLIC查询与笔记目录；':''}具体内容操作在任务卡片确认。`.slice(0,512),isCurrent,...control});
         }});
       obsidianPairing=createDesktopObsidianPairing({source:knowledgeSourceConfig,
         userData:app.getPath('userData'),
@@ -2425,13 +2554,253 @@ async function initializeRuntime() {
         return readDesktopConversationContext({taskId,conversationId:task.conversationId,
           deadline:runtimeApplication.runtime.loadCheckpoint(taskId,'application-deadline'),signal:signal??new AbortController().signal});
       }});
+      f09FeedGraphHost=feedsHost?createF09FeedGraphHost({getApplication:()=>runtimeApplication,
+        collectTool:feedsHost.tools.find(tool=>tool.descriptor?.name==='feeds.collect'),
+        assertFeedAccess:binding=>feedsHost.assertWorkflowFeedAccess(binding)}):{tools:[],unavailable:'feeds_host_required'};
+      const systemObserveTool=productTools?.tools?.find(tool=>tool.descriptor?.name==='computer.system.observe');
+      workflowGraphComposition=createDesktopWorkflowGraphComposition({runtimeModule,getApplication:()=>runtimeApplication,
+        feedsHost,todoHost,mailHost,notificationApplicationHost,systemObserveTool});
+      // F09 worker ports require a pinned AgentArts deployment (matches ownedImage gate).
+      // Unpinned / missing version stays unavailable — never inject ports that would look ready without image.
+      const agentArtsPinned=(()=>{
+        const snap=agentArtsConfig.snapshot();
+        return snap?.deploymentSelection==='pinned'
+          &&typeof snap.deploymentVersion==='string'
+          &&!!snap.deploymentVersion.trim()
+          &&!/^(latest|current|default)$/iu.test(snap.deploymentVersion);
+      })();
+      const f09WorkflowWorkerPorts=feedsHost&&agentArtsPinned?createF09WorkflowWorkerPorts({
+        getApplication:()=>runtimeApplication,feedsHost,
+        readHarnessVersions:()=>readDesktopHarnessVersions(),
+      }):undefined;
+      const f20WorkflowWorkerPorts=agentArtsPinned&&codingWorkspace?.readF20CaseConfiguration
+        ?createF20WorkflowWorkerPorts({getApplication:()=>runtimeApplication,codingWorkspace,runtimeModule,
+          readHarnessVersions:()=>readDesktopHarnessVersions(),readReviewerIdentity:()=>localLaya?.readClassifierIdentity?.()}):undefined;
+      let prepareWorkflowToolExport;
+      const readWorkflowDeploymentBinding=()=>{
+        const selected=agentArtsConfig.snapshot();
+        if(!selected.runtimeReady||selected.deploymentSelection!=='pinned'||!selected.deploymentVersion)return;
+        return createHash('sha256').update(JSON.stringify({binding:agentArtsConfig.binding(),version:selected.deploymentVersion,
+          transport:agentArtsConfig.readTransportPreferences()})).digest('hex');
+      };
+      const authorizeWorkflowExport=createWorkflowExportConsent({getApplication:()=>runtimeApplication,
+        confirmAuthorization:confirmApplicationAuthorization,readDeploymentBinding:readWorkflowDeploymentBinding});
+      const f04RecoveryExport=createF04RecoveryExportConsent({getApplication:()=>runtimeApplication,
+        confirmAuthorization:confirmApplicationAuthorization,readDeploymentBinding:readWorkflowDeploymentBinding});
+      f02Workflow=agentArtsPinned?createF02WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        authorizationQuestions:authorizationQuestionHost,authorizeExport:authorizeWorkflowExport,
+        liveVoiceHost:{readFinalUserAudio:(...args)=>liveVoice?.readFinalUserAudio(...args),
+          readFinalCaptureEvidence:(...args)=>liveVoice?.readFinalCaptureEvidence(...args),
+          readQuestionDelivery:(...args)=>liveVoice?.readQuestionDelivery(...args),askCurrentQuestion:()=>liveVoice?.askCurrentQuestion()},
+        microphoneHost:{readCaptureReceipt:(...args)=>microphoneCaptureHost?.readCaptureReceipt(...args)},
+        voiceCommandHost:{prepareApproval:(...args)=>voiceCommandHost?.prepareApproval(...args)}}):undefined;
+      f12ExplicitReturnSource=agentArtsPinned?createF12ExplicitReturnSource({getApplication:()=>runtimeApplication,
+        readPersistedWorkflow:runtimeModule.readPersistedRuntimeProactiveWorkflow}):undefined;
+      f12ReturnDigest=f12ExplicitReturnSource&&notificationApplicationHost?createF12ReturnDigestController({
+        getApplication:()=>runtimeApplication,explicitReturnSource:f12ExplicitReturnSource,notificationHost:notificationApplicationHost,
+        readTimeoutMs:()=>readCompetitionExecutionPolicy().taskTimeoutMs,onTask:task=>{
+          if(!conversations.turns.has(task.taskId)){conversations.add(task.taskId,'panel',task.goal,task.conversationId);rememberTaskGoal(task.taskId,task.goal);}
+        }}):undefined;
+      f11LocationQuestion=agentArtsPinned?createF11LocationQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
+      f11DecisionQuestion=agentArtsPinned?createF11DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
+      f08DecisionQuestion=agentArtsPinned?createF08DecisionQuestionHost({getApplication:()=>runtimeApplication,onUpdate:publish}):undefined;
+      let f03Workflow;
+      const f03MailReview={async submitChange(...args){
+        if(!f03Workflow)throw Error('原邮件审查尚未接通');
+        const result=await f03Workflow.submitChange(...args);
+        if(result.taskId&&!conversations.turns.has(result.taskId)){
+          const task=runtimeApplication.runtime.getTask(result.taskId);
+          conversations.add(task.taskId,'panel',task.goal,task.conversationId);rememberTaskGoal(task.taskId,task.goal);
+        }
+        publish();return result;
+      }};
+      f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
+      if(!syntheticMvp&&agentArtsPinned){
+        const originalMailConfig=mailConfig;let originalMailBinding;
+        const confirmSource=(action,summary)=>(value,control)=>{
+          const owner=admin,host=f08SourceChanges;if(!owner||owner.isDestroyed())return false;
+          const digest=createHash('sha256').update(JSON.stringify(value)).digest('hex');
+          return confirmApplicationAuthorization(action,{digest},{deadline:control.deadline,signal:control.signal,
+            scope:{namespace:host.memoryNamespace,...control.control},summary,isCurrent:()=>{
+              control.assertCurrent();return admin===owner&&!owner.isDestroyed()&&f08SourceChanges===host;
+            }});
+        };
+        f08SourceChanges=createF08SourceChangeHost({getApplication:()=>runtimeApplication,memoryPath:dataPaths.privateMemory,graphNamespace:namespace,
+          assertCurrent:()=>{
+            const current=mailConfig?.reviewConfigurationRef('workflow.business.f08');
+            if(mailConfig!==originalMailConfig||!current||(originalMailBinding&&originalMailBinding!==current))throw Error('原邮件配置已改变，请重新启动应用');
+            originalMailBinding??=current;
+          },confirmSource:confirmSource('memory.save','保存刚选定的邮件来源摘要及有效期；仅此版本，不授予云端使用权限'),
+          confirmWithdraw:confirmSource('memory.withdraw','撤回所选邮件来源记忆版本，停止后续消费'),
+          confirmErase:confirmSource('memory.erase','删除所选邮件来源记忆的全部版本及绑定图副本；历史邮箱记录与备份不属于此次删除范围')});
+        f08SourceActions=createF08SourceActions({getApplication:()=>runtimeApplication,sourceHost:f08SourceChanges,f03MailReview,
+          confirmReview:confirmSource('workflow.enable','审查原邮件变化对所选计划的影响，保留已发生的效果；具体云端发送与修改仍须分别授权')});
+      }
+      const businessWorkflow=agentArtsPinned?createBusinessWorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        f11LocationQuestion,f11DecisionQuestion,f08DecisionQuestion,f08SourceChanges,f03MailReview,
+        explicitReturnSource:f12ExplicitReturnSource,
+        businessTools:[...(todoHost?.tools??[]),...(connectorConversationTools?.tools??[]),...(knowledgeTools?.tools??[]),
+          ...productTools.tools.filter(tool=>tool.descriptor.name==='weather.forecast')],todoHost,notificationHost:notificationApplicationHost,
+        competitionToolExports:[...(todoHost?.competitionToolExports??[]),...(connectorConversationTools?.competitionToolExports??[]),
+          ...(knowledgeTools?.competitionToolExports??[]),...productTools.competitionToolExports.filter(binding=>binding.toolName==='weather.forecast')],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,
+        readBusinessAvailability:createBusinessWorkflowAvailability({namespace,getApplication:()=>runtimeApplication,todoHost,
+          notificationHost:notificationApplicationHost,readCalendarBinding:()=>calendarConfig?.binding(),
+          readMailBinding:()=>({configurationRef:mailConfig?.reviewConfigurationRef('workflow.business.f08')}),
+          readKnowledgeBinding:()=>knowledgeSourceConfig?.snapshot(),
+          deviceAvailable:()=>!app.isQuitting&&Notification.isSupported()})}):undefined;
+      reconcileOriginalMailWorkflow=businessWorkflow?.reconcileOriginalMailWorkflow;
+      f16F17Cases=createF16F17CaseConfiguration({userData:app.getPath('userData'),safeStorage,
+        readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),selectFile:async workflowId=>{
+          const selected=await dialog.showOpenDialog(admin,{title:`选择 ${workflowId} 工作区案例`,properties:['openFile'],
+            filters:[{name:'JSON',extensions:['json']}]});
+          return selected.canceled?undefined:selected.filePaths[0];
+        }});
+      f16F17Workflow=agentArtsPinned?createDesktopF16F17WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        codingWorkspace,developerDeployment,caseConfiguration:f16F17Cases,authorizeExport:authorizeWorkflowExport,
+        requestPresence:scope=>toolPresenceHost.requestPresence(scope)}):undefined;
+      f18ReviewCases?.close();
+      f18ReviewCases=createF18ReviewConfiguration({userData:app.getPath('userData'),safeStorage,
+        readRepositoryBinding:()=>{const workspace=codingWorkspace.readDeveloperConfiguration(),deployment=developerDeployment?.snapshot();
+          return workspace?.bindingId&&deployment?.configured&&deployment.repository?
+            {repository:deployment.repository,bindingId:workspace.bindingId}:undefined;},
+        selectFile:async()=>{const owner=admin;if(!owner||owner.isDestroyed())throw Error('原设置窗口不可用');
+          const selected=await dialog.showOpenDialog(owner,{title:'选择 PR 审核配置',properties:['openFile'],filters:[{name:'JSON',extensions:['json']}]});
+          if(admin!==owner||owner.isDestroyed()||runtimeApplication?.activeTaskCount)throw Error('原设置窗口或任务状态已变化');
+          return selected.canceled?undefined:selected.filePaths[0];}});
+      f18Workflow=agentArtsPinned?createConfiguredDesktopF18F19WorkflowPorts({getApplication:()=>runtimeApplication,
+        codingWorkspace,developerDeployment,reviewConfiguration:f18ReviewCases,authorizeExport:authorizeWorkflowExport,
+        requestPresence:scope=>toolPresenceHost.requestPresence(scope)}):undefined;
+      f18ActiveRevision=f18ReviewCases.snapshot().revision;
+      f19IssueCases?.close();
+      f19IssueCases=createF19IssueConfiguration({userData:app.getPath('userData'),safeStorage,
+        readWorkspace:()=>codingWorkspace.readDeveloperConfiguration(),
+        readRepositoryBinding:()=>{const workspace=codingWorkspace.readDeveloperConfiguration(),deployment=developerDeployment?.snapshot();
+          return workspace?.bindingId&&deployment?.configured&&deployment.repository?
+            {repository:deployment.repository,bindingId:workspace.bindingId}:undefined;},
+        selectFile:async()=>{const owner=admin;if(!owner||owner.isDestroyed())throw Error('原设置窗口不可用');
+          const selected=await dialog.showOpenDialog(owner,{title:'选择 Issue 修复配置',properties:['openFile'],filters:[{name:'JSON',extensions:['json']}]});
+          if(admin!==owner||owner.isDestroyed()||runtimeApplication?.activeTaskCount)throw Error('原设置窗口或任务状态已变化');
+          return selected.canceled?undefined:selected.filePaths[0];}});
+      f19Workflow=agentArtsPinned?createConfiguredDesktopF19IssueRepairPorts({getApplication:()=>runtimeApplication,
+        codingWorkspace,developerDeployment,issueConfiguration:f19IssueCases,nativeExecutionHost,authorizeExport:authorizeWorkflowExport,
+        requestPresence:scope=>toolPresenceHost.requestPresence(scope)}):undefined;
+      f19ActiveRevision=f19IssueCases.snapshot().revision;
+      f24Workflow=agentArtsPinned?createDesktopF24WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        getKnowledgeSourceConfig:()=>knowledgeSourceConfig,getKnowledgeTools:()=>knowledgeTools,
+        hostUserNamespace:namespace,authorizeExport:authorizeWorkflowExport}):undefined;
+      f04Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF04WorkflowWorkerPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        getKnowledgeSourceConfig:()=>knowledgeSourceConfig,
+        getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
+        knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport}):undefined;
+      const f05Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF05WorkflowWorkerPorts({runtimeModule,
+        getApplication:()=>runtimeApplication,getKnowledgeSourceConfig:()=>knowledgeSourceConfig,
+        getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
+        knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport}):undefined;
+      const f13Workflow=agentArtsPinned?createF13WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        systemObserveTool,authorizeExport:authorizeWorkflowExport}):undefined;
+      f14Workflow=agentArtsPinned?createF14WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        browserHost:browserControlHost,computerControlLease,authorizationQuestions:authorizationQuestionHost,
+        authorizeExport:authorizeWorkflowExport}):undefined;
+      f01Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF01WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        getPublicFactHost:()=>proactiveHost?{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}:undefined,
+        getProactiveHost:()=>proactiveWorkflowApplication,getAuthorizationIntentHost:()=>authorizationIntentHost,
+        models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,getKnowledgeSourceConfig:()=>knowledgeSourceConfig,
+        toolExports:[...(knowledgeTools?.competitionToolExports??[]),...(subagentExport?[subagentExport]:[])],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,onUpdate:publish}):undefined;
+      f22Configuration?.close();f22Configuration=createDesktopF22TraceReplayConfiguration({userData:app.getPath('userData')});
+      f22Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF22WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        configuration:f22Configuration,hostUserNamespace:namespace,
+        getToolDescriptor:(name,version)=>runtimeApplication?.runtime.readToolDescriptors().find(tool=>tool.name===name&&tool.version===version),
+        authorizeExport:authorizeWorkflowExport}):undefined;
+      f25Configuration?.close();f25Configuration=createDesktopF25Configuration({userData:app.getPath('userData'),safeStorage,
+        getAgentArtsConfig:()=>agentArtsConfig,getKnowledgeSourceConfig:()=>knowledgeSourceConfig});
+      f25Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF25WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        configuration:f25Configuration,authorizeExport:authorizeWorkflowExport}):undefined;
+      const f27Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF27WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        models:agentArtsModels,readDeploymentBinding:readWorkflowDeploymentBinding,authorizeExport:authorizeWorkflowExport,
+        getKnowledgeSourceConfig:()=>knowledgeSourceConfig,knowledgeToolExports:knowledgeTools?.competitionToolExports??[],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope)}):undefined;
+      const releaseSource=app.isPackaged?undefined:path.resolve(dir,'../../..');
+      const releaseDiscovery={excludedDirectories:[app.getPath('userData'),...(releaseSource?[releaseSource]:[])]};
+      const releaseNode=codingWorkspace.readWorkspaceBinding?.()?.nodeExecutable??findWindowsExecutable('node.exe',releaseDiscovery);
+      const f26Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingModule,
+        getApplication:()=>runtimeApplication,agentArtsConfig,getAgentArtsModels:()=>agentArtsModels,nativeExecutionHost,
+        repositoryRoot:releaseSource,nodeExecutable:releaseNode,
+        powerShellPath:findWindowsExecutable('pwsh.exe',releaseDiscovery),gitPath:findWindowsExecutable('git.exe',releaseDiscovery),
+        dockerPath:findWindowsExecutable('docker.exe',releaseDiscovery),
+        npmCli:releaseNode?path.join(path.dirname(releaseNode),'node_modules','npm','bin','npm-cli.js'):undefined,
+        authorizeDeployment:request=>{
+          const binding=agentArtsConfig.readReleaseBinding(),credentials=agentArtsObservationConfig?.readCredentials();
+          if(!binding||!credentials)throw Error('固定部署读回需要已配置的控制面凭据');
+          return createAgentArtsDeploymentRequestAuth(credentials,binding).authorize(request);
+        },toolExports:productTools.competitionToolExports,
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport}):undefined;
+      f23DecisionConfiguration=!syntheticMvp&&agentArtsPinned?createDesktopF23DecisionConfiguration({runtimeModule,
+        getApplication:()=>runtimeApplication,models:agentArtsModels,namespace,onUpdate:publish}):undefined;
+      f23Workflow=f23DecisionConfiguration?createDesktopF23WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        models:agentArtsModels,configuration:agentArtsConfig,decisionConfiguration:f23DecisionConfiguration,namespace,
+        authorizeEvaluation:(request,taskIds)=>{
+          const credentials=agentArtsObservationConfig?.readCredentials();if(!credentials)throw Error('平台评估读回需要已配置的控制面凭据');
+          return createAgentArtsEvaluationRequestAuth(credentials,{taskIds}).authorize(request);
+        },authorizeExport:authorizeWorkflowExport,onUpdate:publish}):undefined;
+      const f03DeploymentBinding=readWorkflowDeploymentBinding();
+      f03Workflow=f08SourceChanges&&f03DeploymentBinding?createF03MailReviewWorkflowPorts({
+        getApplication:()=>runtimeApplication,sourceChanges:f08SourceChanges,authorizeExport:authorizeWorkflowExport,
+        assertCurrent:()=>{if(readWorkflowDeploymentBinding()!==f03DeploymentBinding)throw Error('原 F03 固定部署已改变');},
+        readDecisionConfiguration:()=>f23DecisionConfiguration?.readDecisionConfiguration(),
+        assertDecisionConfiguration:binding=>f23DecisionConfiguration.assertDecisionConfiguration(binding)}):undefined;
+      const f21Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF21WorkflowPorts({runtimeModule,mcpModule:publicReferenceModule,codingModule,
+        getApplication:()=>runtimeApplication,getReferenceHost:()=>referenceHost,nativeExecutionHost,
+        getAuthorizationIntentHost:()=>authorizationIntentHost,probeRoot:path.join(app.getPath('userData'),'f21-probe'),authorizeExport:authorizeWorkflowExport}):undefined;
+      f28Workflow=!syntheticMvp&&agentArtsPinned?createDesktopF28WorkflowWorkerPorts({getApplication:()=>runtimeApplication,
+        modelApiHost:{snapshot:()=>modelApiHost?.snapshot()??{models:[]},getModelGateway:(...args)=>modelApiHost?.getModelGateway(...args),
+          getGuardedModelGateway:(...args)=>modelApiHost?.getGuardedModelGateway(...args)},authorizeExport:authorizeWorkflowExport,
+        confirmModelExport:request=>confirmApplicationAuthorization('developer.export',request.payload,{
+          scope:{taskId:request.taskId,nodeId:request.nodeId,destination:request.payload.destination},
+          operation:{taskId:request.taskId,digest:createHash('sha256').update(JSON.stringify(request.payload)).digest('hex')},
+          summary:`F28 仅本次候选请求发送给所选辅助模型 ${request.payload.destination.model}；不代表结果或工具能力已验证`,
+          deadline:request.deadline,signal:request.signal,isCurrent:()=>{request.assertCurrent();return true;}})}):undefined;
+      const configuredHostNames=new Set([...(businessWorkflow?.tools??[]),...(f01Workflow?.tools??[]),...(f03Workflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[])].map(tool=>tool.descriptor.name));
+      const f10Workflow=!syntheticMvp&&agentArtsPinned?createConfiguredDesktopF10WorkflowPorts({runtimeModule,getApplication:()=>runtimeApplication,
+        getKnowledgeSourceConfig:()=>knowledgeSourceConfig,modelApiHost:{snapshot:()=>modelApiHost?.snapshot()??{models:[]},
+          getGuardedModelGateway:(...args)=>modelApiHost?.getGuardedModelGateway(...args)},
+        toolExports:[...(knowledgeTools?.competitionToolExports??[]),...productTools.competitionToolExports.filter(binding=>binding.toolName==='research.search')],
+        prepareCompetitionToolExport:scope=>prepareWorkflowToolExport(scope),authorizeExport:authorizeWorkflowExport,
+        confirmModelExport:request=>confirmApplicationAuthorization('developer.export',{payload:request.payload,destination:request.model.baseUrl},{
+          scope:{...request.scope,model:request.model},operation:{taskId:request.scope.taskId,
+            digest:createHash('sha256').update(JSON.stringify({payload:request.payload,destination:request.model.baseUrl})).digest('hex')},
+          summary:`仅本次原引用发送给独立辅助审查模型 ${request.model.model}（${new URL(request.model.baseUrl).hostname}）；不是 AgentArts 主模型验收`,
+          deadline:request.deadline,signal:request.signal,isCurrent:request.isCurrent})}):undefined;
+      const genericWorkflowTools=(workflowGraphComposition.tools??[]).filter(tool=>!configuredHostNames.has(tool.descriptor.name));
       let conversationTools=[...(historyTool?[historyTool.tool]:[]),...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),
+        ...(f10Workflow?.tools??[]),
+        ...(f26Workflow?.tools??[]),
+        ...(f03Workflow?.tools??[]),
+        ...(f23DecisionConfiguration?[f23DecisionConfiguration.tool]:[]),
+        ...(f23Workflow?.tools??[]),
         ...(syntheticMvp?syntheticTools.tools:codingWorkspace.tools.length?codingWorkspace.tools:competitionCatalog?[competitionCatalog.tool]:[]),
         ...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??goalHost.tools),
         ...(proactiveConversationTools?.tools??[]),...(connectorWatchHost?.tools??[]),...productTools.tools,...(connectorConversationTools?.tools??[]),
-        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
+        ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(f09FeedGraphHost.tools??[]),...genericWorkflowTools,
+        ...(f01Workflow?.tools??[]),...(f21Workflow?.tools??[]),...(f22Workflow?.tools??[]),...(f25Workflow?.tools??[]),...(f27Workflow?.tools??[]),...(f28Workflow?.tools??[]),...(f02Workflow?.tools??[]),...(businessWorkflow?.tools??[]),...(f04Workflow?.tools??[]),...(f05Workflow?.tools??[]),...(f24Workflow?.tools??[]),
+        ...(f13Workflow?.tools??[]),...(f14Workflow?.tools??[]),
+        ...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
+      if(f16F17Workflow?.commandTool)conversationTools=conversationTools.map(tool=>
+        tool.descriptor.name==='workspace.run_allowed_command'?f16F17Workflow.commandTool:tool);
+      conversationTools.push(...(f16F17Workflow?.tools??[]));
+      conversationTools.push(...(f18Workflow?.tools??[]));
+      const sharedF19Reads=new Set(['github.issue_snapshot','github.merged_pr_readback','github.issue_close_readback']);
+      for(const tool of f19Workflow?.tools??[]){
+        const original=sharedF19Reads.has(tool.descriptor.name)?f18Workflow?.tools.find(value=>value.descriptor.name===tool.descriptor.name):undefined;
+        if(original){
+          if(!isDeepStrictEqual(original.descriptor,tool.descriptor))throw Error('F18/F19 原部署只读工具描述不一致');
+        }else conversationTools.push(tool);
+      }
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2457,10 +2826,6 @@ async function initializeRuntime() {
       // verifiers via resolveDesktopWorkflowShadowRelease({...}). No production ports yet
       // → undefined → tools stay unregistered; never invent Fake ports here.
       const workflowShadowRelease = resolveDesktopWorkflowShadowRelease();
-      // F02_N03 voice.final_transcript: only when Desktop injects a trusted final-only
-      // receipt port via resolveDesktopVoiceFinalTranscript({port}). Absent → tool stays
-      // unregistered; engine reports unavailable (no Fake ASR / silent success).
-      const voiceFinalTranscript = resolveDesktopVoiceFinalTranscript();
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
       const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
         readApplication:()=>runtimeApplication,question:authorizationQuestionPort});
@@ -2468,8 +2833,37 @@ async function initializeRuntime() {
         path: dbPath,
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
+        getToolsForSubtask:(subtask,worker,tools)=>f28Workflow?.getToolsForSubtask(subtask,worker,tools)??tools,
+        ...(f09WorkflowWorkerPorts?{f09WorkflowWorkerPorts}:{}),
+        ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
+        ...(f24Workflow?.recovery?{f24Recovery:f24Workflow.recovery}:{}),
+        ...(f04Workflow?.recovery?{f04Recovery:f04Workflow.recovery}:{}),
+        configuredWorkflowWorkerPorts:[...(f02Workflow?.configuredWorkflowWorkerPorts??[]),...(businessWorkflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f03Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f01Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f10Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f21Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f22Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f25Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f26Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f23Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f27Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f28Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f04Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f05Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f16F17Workflow?.configuredWorkflowWorkerPorts??[]),...(f24Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f18Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f19Workflow?.configuredWorkflowWorkerPorts??[]),
+          ...(f13Workflow?.configuredWorkflowWorkerPorts??[]),...(f14Workflow?.configuredWorkflowWorkerPorts??[])],
+        planExecution:{readCurrentFact:(input,context)=>{
+          if(f08SourceChanges&&input.memoryNamespace===f08SourceChanges.memoryNamespace){
+            if(context.signal.aborted||Date.now()>=Date.parse(context.deadline))throw Error('原计划 Fact 读取已过期');
+            return f08SourceChanges.readCurrentFact(input);
+          }
+          return createPlanExecutionFactReader(()=>proactiveHost?
+            [{memoryNamespace:`${namespace}:proactive-public`,facts:proactiveHost}]:[])(input,context);
+        }},
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
-        ...(voiceFinalTranscript ? {voiceFinalTranscript} : {}),
         ...(observationOptions?.observationAuthorization
           ? {observationAuthorization: observationOptions.observationAuthorization} : {}),
         ...(observationOptions?.observationApplicationId
@@ -2482,6 +2876,7 @@ async function initializeRuntime() {
         readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
         ...(codingWorkspace.harnessRepairHost&&typeof codingWorkspace.readHarnessCandidateContext==='function'?{
           harnessCandidates:{host:codingWorkspace.harnessRepairHost,
+            readF20WorkspaceRef:scope=>codingWorkspace.readF20WorkspaceRef(scope),
             readContext:(context,scope)=>codingWorkspace.readHarnessCandidateContext(context,scope),
             reconcileOriginalSession:input=>codingWorkspace.reconcileHarnessOriginalSession(input)},
         }:{}),
@@ -2515,6 +2910,7 @@ async function initializeRuntime() {
             return (await privateConsumption.prepare({...scope,goal:scope.publicGoal})).goal;
           },
           readConversationContext:readDesktopConversationContext,
+          readConversationSnapshot:readDesktopConversationContext,
           beforeCoordinationSend:(request,scope)=>{
             cloudRequestFailureNotice = '';
             const conversationOrigin=runtimeApplication.readSubagentConversationOrigin?.(request.taskId);
@@ -2597,26 +2993,50 @@ async function initializeRuntime() {
         },
         tools: conversationTools,
         competitionToolDiscovery:true,
-        hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
-        requestToolAuthorization:scope=>{
+        hostOnlyTools:[AUTHORIZATION_INTENT_TOOL,...(f23DecisionConfiguration?[F23_INITIALIZE_TOOL]:[]),...(f23Workflow?.hostOnlyTools??[])],
+        requestToolAuthorization:async scope=>{
+          const mailReconciliation=await connectorConversationTools?.prepareOriginalSendReconciliationAuthorization?.(scope);
+          if(!mailReconciliation)await prepareWorkflowHostPreflight({application:runtimeApplication,scope,prepareExport:prepareWorkflowToolExport});
+          f16F17Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
+          f18Workflow?.prepareMergeQuestion?.(scope,authorizationQuestionHost);
+          f19Workflow?.preparePublicationQuestion?.(scope,authorizationQuestionHost);
+          f19Workflow?.prepareRegressionQuestion?.(scope,authorizationQuestionHost);
+          f19Workflow?.prepareCloseQuestion?.(scope,authorizationQuestionHost);
           if(/^(?:computer\.desktop\.|computer\.request_access$|computer\.vision\.|browser\.)/.test(scope.toolName))computerTasks.add(scope.taskId);
           authorizationIntentHost.prepareQuestion(scope);
           calendarMeetingHost?.prepareAuthorization?.(scope);
           mailHost?.prepareAuthorization?.(scope);
           mailAnalysisHost?.prepareAuthorization?.(scope);
-          codingWorkspace?.prepareAuthorization?.(scope);
+          const configuredDecision=prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
+          if(!configuredDecision)codingWorkspace?.prepareAuthorization?.(scope);
           knowledgeSourceConfig?.prepareAuthorization?.(scope);
           notificationApplicationHost?.prepareAuthorization?.(scope);
           connectorWatchHost?.prepareAuthorization?.(scope);
-          return nativeExecutionHost.prepare(scope,{forTaskConsent:authorizationQuestionHost.requiresNativeForAuthorization(scope)})
-            .then(()=>authorizationQuestionHost.requestToolAuthorization(scope));
+          feedsHost?.prepareWorkflowFeedSource?.(scope);
+          await nativeExecutionHost.prepare(scope,{forTaskConsent:authorizationQuestionHost.requiresNativeForAuthorization(scope)});
+          const decision=await authorizationQuestionHost.requestToolAuthorization(scope);
+          if(decision==='allow_once'){
+            await f16F17Workflow?.confirmPublicationPresence?.(scope);
+            await f18Workflow?.confirmMergePresence?.(scope);
+            await f19Workflow?.confirmPublicationPresence?.(scope);
+            await f19Workflow?.confirmRegressionPresence?.(scope);
+            await f19Workflow?.confirmClosePresence?.(scope);
+          }
+          return decision;
         },
         requiresToolAuthorization:scope=>authorizationQuestionHost.automaticallyApproves()||authorizationQuestionHost.requiresAuthorization(scope)
           ||remoteMcpCompetition.ownsTool(scope.toolName)
           ||scope.toolName===AUTHORIZATION_INTENT_TOOL||scope.toolName==='mail.review'||scope.toolName==='notifications.interruption_policy.set'
+          ||scope.toolName==='mail.reconcile_send'||scope.toolName==='mail.reconcile_archive'
+          ||scope.toolName==='decision.choose_candidate'
+          ||scope.toolName==='workflow.host.f01_n09'
+          ||scope.toolName===F23_INITIALIZE_TOOL
+          ||scope.toolName==='workflow.host.f16_n05'
+          ||scope.toolName==='github.registered_merge'||/^workflow\.host\.f18_/u.test(scope.toolName)
+          ||scope.toolName==='github.pr.create'||scope.toolName==='github.registered_close_issue'||/^workflow\.host\.f19_/u.test(scope.toolName)
           ||/^(?:computer\.desktop\.|computer\.vision\.|browser\.)/u.test(scope.toolName)
-          ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_)/u.test(scope.toolName),
-        prepareCompetitionToolExport:async ({phase,taskId,runId,proposal,deadline,signal})=>{
+          ||/^(?:workspace\.|coding\.repair\.|workflow\.host\.f15_|workflow\.host\.f09_)/u.test(scope.toolName),
+        prepareCompetitionToolExport:prepareWorkflowToolExport=async ({phase,taskId,runId,proposal,deadline,signal})=>{
           const scope={phase,taskId,runId,proposal,deadline,signal};
           await remoteMcpCompetition.prepare(scope);
           if(phase==='preflight'&&proposal?.toolName==='computer.request_access'&&computerControlConfig?.snapshot().enabled)computerControlLaya?.prepare();
@@ -2626,7 +3046,8 @@ async function initializeRuntime() {
           await feedsHost?.prepareExport?.(scope);
           await developerDeployment?.prepareExport(scope);
           await connectorConversationTools?.prepareExport(scope);
-          await codingWorkspace?.prepareExport?.(scope);
+          const configuredDecision=phase==='preflight'&&prepareConfiguredWorkflowDecisionQuestion({application:runtimeApplication,scope,question:authorizationQuestionHost});
+          if(!configuredDecision)await codingWorkspace?.prepareExport?.(scope);
           await goalCloudHost?.prepareExport?.(scope);
           if(['knowledge.search','knowledge.apply_note_patch'].includes(proposal?.toolName)) {
             const binding=knowledgeSourceConfig.snapshot();
@@ -2637,7 +3058,7 @@ async function initializeRuntime() {
               ruleBindingDigest:createHash('sha256').update(JSON.stringify({sourceId:binding.sourceId,configRevision:binding.configRevision,
                 publicQueries:binding.publicQueries,allowedNotePaths:binding.allowedNotePaths,projection:'knowledge-public-summary-v1'})).digest('hex'),
               summary:'把PUBLIC查询的有界摘要或整理结果用于本次对话。',assertCurrent:isCurrent});
-            else authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
+            else if(!await f04RecoveryExport.prepare(scope))authorizationQuestionPort.currentRequirement(scope,'knowledge-export');
             return;
           }
           if (!['workspace.read_text','mcp.workspace.read_text','skill.workspace_reference_summary'].includes(proposal?.toolName)) return;
@@ -2654,6 +3075,7 @@ async function initializeRuntime() {
         ...(codingWorkspace.patchReconciliation ? {workspacePatchReconciliation: codingWorkspace.patchReconciliation} : {}),
         localRepair: syntheticMvp ? syntheticRepairHost.localRepair : {
           graphNamespace: namespace, bindingVersion:'desktop-reviewed-execution-v1',
+          ...(f03Workflow?.competitionSource?{competitionSource:f03Workflow.competitionSource}:{}),
           withSourceLock:withReviewedRepairLock,
           reviewedSource:{resolve({sourceTaskId,reviewTaskId}) {
             const value = proactiveHost?.readPreparedRepair?.(sourceTaskId);
@@ -2701,6 +3123,41 @@ async function initializeRuntime() {
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
       codingWorkspace.bindApplication(runtimeApplication);
+      f15ReviewHost?.close();f15ReviewViewer?.close();f15ReviewInstalled=false;
+      if(!syntheticMvp&&typeof runtimeModule.createRuntimeCodingRepairSignedReview==='function'){
+        const workspaceRoot=codingWorkspace.readWorkspaceBinding?.()?.rootPath;
+        const defaultViewerPath=path.join(process.env.ProgramFiles??'C:\\Program Files','PowerShell','7','pwsh.exe');
+        const viewerPath=existsSync(defaultViewerPath)?defaultViewerPath:findWindowsExecutable('pwsh.exe',{
+          excludedDirectories:[app.getPath('userData'),...(workspaceRoot?[workspaceRoot]:[])]});
+        f15ReviewViewer=createF15NativeReviewViewer({powerShellPath:viewerPath,verifyExecutable:verifyF15ViewerExecutable,
+          excludedDirectories:[app.getPath('userData'),...(workspaceRoot?[workspaceRoot]:[])]});
+        const confirmNative=async(message,detail,button)=>{
+          const owner=admin;if(!owner||owner.isDestroyed())return false;
+          const answer=await dialog.showMessageBox(owner,{type:'warning',message,detail,buttons:[button,'取消'],defaultId:1,cancelId:1,noLink:true});
+          return answer.response===0&&admin===owner&&!owner.isDestroyed();
+        };
+        f15ReviewOrigin=createDesktopF15ReviewOriginHost({getApplication:()=>runtimeApplication,
+          readExecutionConfig:()=>runtimeApplication?.readCodingRepairExecutionIdentity?.(),
+          assertWorkspacePermission:input=>codingWorkspace?.assertF15ReviewWorkspacePermission?.(input)===true,
+          confirmNativeDisclosure:input=>confirmNative('在本机显示原补丁与源码？',
+            `审核者：${input.reviewerId}\n任务：${input.taskId}\n补丁 SHA-256：${input.patchDigest}\n将仅在本机只读窗口显示，不会自动发送。`, '显示'),
+          showNativePatch:async value=>(await f15ReviewViewer.show(value,{signal:new AbortController().signal,
+            assertCurrent:()=>f15ReviewOrigin?.assertOriginalOwner(value)===true})).state==='shown'});
+        f15ReviewHost=createDesktopF15ReviewConfigHost({userData:app.getPath('userData'),safeStorage,
+          selectPublicKey:async()=>{const owner=admin;if(!owner||owner.isDestroyed())return;
+            const choice=await dialog.showOpenDialog(owner,{title:'选择独立审核者 Ed25519 公钥',properties:['openFile'],filters:[{name:'公钥',extensions:['pem']}]});
+            return admin===owner&&!owner.isDestroyed()&&!choice.canceled&&choice.filePaths.length===1?choice.filePaths[0]:undefined;},
+          selectReviewDirectory:async()=>{const owner=admin;if(!owner||owner.isDestroyed())return;
+            const choice=await dialog.showOpenDialog(owner,{title:'选择独立审核签名记录目录',properties:['openDirectory']});
+            return admin===owner&&!owner.isDestroyed()&&!choice.canceled&&choice.filePaths.length===1?choice.filePaths[0]:undefined;},
+          confirmConfiguration:input=>confirmNative('确认独立审核配置',
+            `审核者：${input.reviewerId}\n部署作者标识：${input.authorId}\n审核策略：${input.policyId}\n公钥指纹：${input.publicKeyFingerprint}\n公钥：${input.publicKeyPath}\n签名目录：${input.reviewDirectoryPath}`,'确认配置'),
+          confirmIndependence:input=>confirmNative('确认审核者独立性',
+            `请确认 ${input.reviewerId} 的密钥由独立审核者掌握，并独立于本次编码部署。此确认不验证自然人身份，也不代表补丁已审核。\n公钥指纹：${input.publicKeyFingerprint}`,'我确认独立'),
+          readAuthorIdentity:()=>f15ReviewOrigin.readAuthorIdentity(),assertOriginalOwner:value=>f15ReviewOrigin.assertOriginalOwner(value),
+          getApplication:()=>runtimeApplication,createSignedReview:runtimeModule.createRuntimeCodingRepairSignedReview,onPendingChange:publish});
+        installF15Review();
+      }
       developerDeployment?.host.bind(runtimeApplication);
       windowsControlHost?.bind(runtimeApplication);
       browserControlHost?.bind(runtimeApplication);
@@ -2738,7 +3195,8 @@ async function initializeRuntime() {
             summary:'删除所选学习流程全部版本并停止其未完成任务；保留工作区原文件，原存储核实规则仍生效'});
         }});
       privateConsumption?.close();
-      privateBackups=createPrivateMemoryBackupHost({userData:app.getPath('userData'),privateMemory:privateMemoryController()});
+      privateBackups=createPrivateMemoryBackupHost({userData:app.getPath('userData'),privateMemory:privateMemoryController(),
+        assertCoverage:scope=>f08SourceChanges?.assertLegacyPrivacyCoverage(scope)});
       privateConsumption=createPrivateMemoryConsumptionHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
         readTask:taskId=>runtimeApplication.runtime.getTask(taskId),
         readTaskBinding:taskId=>runtimeApplication.readPrivateTaskBinding(taskId),
@@ -3332,6 +3790,13 @@ async function action(event, name, payload) {
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
     const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
   }
+  if(['workflow.f11.location.respond','workflow.f11.decision.respond','workflow.f08.decision.respond','workflow.f01.clarification.respond'].includes(name)){
+    const host=name==='workflow.f01.clarification.respond'?f01Workflow?.questions:name==='workflow.f11.location.respond'?f11LocationQuestion:name==='workflow.f11.decision.respond'?f11DecisionQuestion:f08DecisionQuestion;
+    if(sender!==panel&&sender!==workspace||!host)throw Error('请在原对话中补充任务信息');
+    const conversationId=conversations?.activeConversationId(sender===workspace?'workspace':'panel');
+    if(!conversationId)throw Error('当前对话不可用');
+    const result=host.submitReply(payload,{conversationId});publish();return result;
+  }
   if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
     if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
     if(name==='authorization.sandbox.read'&&payload!==undefined)throw Error('授权管理读取不接受额外字段');
@@ -3642,6 +4107,139 @@ async function action(event, name, payload) {
   if (name === 'coding.reconcile') {
     return recoverWorkspacePatch(event, payload);
   }
+  if(['coding.review.configure','coding.review.revoke','coding.review.show'].includes(name)){
+    if(sender!==admin||!competitionMode||syntheticMvp||!codingWorkspace||!f15ReviewHost||!f15ReviewOrigin)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请从正式应用设置操作独立审核');
+    if(name==='coding.review.configure'){
+      if(!payload||Object.keys(payload).sort().join(',')!=='policyId,reviewerId'||typeof payload.reviewerId!=='string'||typeof payload.policyId!=='string')
+        throw new ProtocolError('INVALID_ARGUMENT','请输入审核者与审核策略标识');
+      if(runtimeApplication.activeTaskCount||runtimeApplication.runtime.listTasks({states:['created','planning','running','waiting_approval',
+        'waiting_external','waiting_reconciliation','verifying','cancelling'],limit:1}).items.length)
+        throw new ProtocolError('REVISION_CONFLICT','请先完成或核实当前任务，再更改独立审核配置');
+      const authorId=f15ReviewOrigin.readAuthorIdentity();if(!authorId||!f15ReviewViewer?.snapshot().available)
+        throw new ProtocolError('UNSUPPORTED_CAPABILITY','原部署身份或本机审核窗口不可用');
+      await f15ReviewHost.configure({reviewerId:payload.reviewerId,policyId:payload.policyId,authorId});installF15Review();
+    }else if(name==='coding.review.revoke'){
+      if(payload!==undefined)throw new ProtocolError('INVALID_ARGUMENT','撤销操作不接受参数');
+      f15ReviewHost.revoke();f15ReviewInstalled=false;f15ReviewNotice='';
+    }else{
+      if(!payload||Object.keys(payload).join(',')!=='operationId'||typeof payload.operationId!=='string'
+        ||!/^f15-review-[a-f0-9]{64}$/.test(payload.operationId))throw new ProtocolError('INVALID_ARGUMENT','请选择原审核任务');
+      const pending=f15ReviewHost.pending().find(item=>item.recordFileName===payload.operationId+'.json');
+      if(!pending)throw new ProtocolError('UNSUPPORTED_CAPABILITY','原审核任务不再等待');
+      const result=await f15ReviewOrigin.showOriginalPatch(pending);publish();
+      return {coding:codingSettingsSnapshot(),reviewShown:result.shown};
+    }
+    publish();return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='coding.f16f17.select'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f16F17Cases||!codingWorkspace)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请从正式应用设置选择工作区案例');
+    if(!payload||Object.keys(payload).join(',')!=='workflowId'||!['F16','F17'].includes(payload.workflowId))
+      throw new ProtocolError('INVALID_ARGUMENT','请选择 F16 或 F17 工作流');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改工作区案例');
+    await f16F17Cases.selectFromNativeDialog(payload.workflowId);publish();
+    return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='coding.f18.select'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f18ReviewCases||!codingWorkspace||!f18Snapshot().selectionAvailable)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先在正式应用设置配置 GitHub 仓库与工作区');
+    if(payload!==undefined)throw new ProtocolError('INVALID_ARGUMENT','PR 审核配置仅由本机文件选择器提供');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 PR 审核配置');
+    await f18ReviewCases.selectFromNativeDialog();publish();
+    return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='workflow.modelCandidates.read'){
+    const surface=sender===workspace?'workspace':sender===panel?'panel':undefined;
+    if(!competitionMode||syntheticMvp||!f28Workflow||!runtimeApplication||!['panel','workspace'].includes(surface)
+      ||!payload||Object.keys(payload).join(',')!=='taskId'||typeof payload.taskId!=='string')
+      throw Error('请从原对话查看候选答案');
+    const task=runtimeApplication.runtime.getTask(payload.taskId),conversationId=conversations.activeConversationId(surface);
+    if(!visibleConversationTask(task,surface)||!conversationToolAccess.authorizeTaskRead({taskId:task.taskId,conversationId}))
+      throw Error('原对话不可用');
+    const ids=[task.taskId,...runtimeApplication.readSubagentTasks(task.taskId).map(child=>child.taskId)];
+    const results=[];
+    for(const taskId of ids){
+      if(!conversationToolAccess.authorizeTaskRead({taskId,conversationId}))continue;
+      if(runtimeApplication.runtime.loadCheckpoint(taskId,'f28:original-model-candidates')===undefined)continue;
+      const original=runtimeApplication.runtime.getTask(taskId);
+      results.push(f28Workflow.readLocalCandidates({taskId,conversationId,expectedRevision:original.revision}));
+    }
+    return {results};
+  }
+  if(name==='workflow.decisionConfiguration.initialize'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f23DecisionConfiguration)throw Error('请从正式管理后台初始化决策基线');
+    const result=f23DecisionConfiguration.initialize(payload,{deadline:new Date(Date.now()+180000).toISOString(),signal:new AbortController().signal});
+    publish();return result;
+  }
+  if(name==='workflow.evaluation.prepare'||name==='workflow.evaluation.bind'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f23Workflow)throw Error('请从正式管理后台提交决策评估');
+    const {commandId,...args}=payload??{};
+    const result=f23Workflow.submit(name==='workflow.evaluation.prepare'?F23_PREPARE_TOOL:F23_BIND_TOOL,args,
+      {commandId,deadline:new Date(Date.now()+1800000).toISOString()});publish();return {taskId:result.taskId,state:result.state};
+  }
+  if(name==='workflow.dataScope.configure'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f25Configuration||!f25Workflow)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先设置固定 AgentArts 部署与知识源');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改数据范围');
+    f25Configuration.configure(payload);publish();return agentArtsSnapshot();
+  }
+  if(name==='workflow.traceReplay.configure'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f22Configuration||!f22Workflow)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先在正式应用设置固定 AgentArts 部署');
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).sort().join(',')!=='enabled,expectedRevision'
+      ||typeof payload.enabled!=='boolean'||!Number.isSafeInteger(payload.expectedRevision))
+      throw new ProtocolError('INVALID_ARGUMENT','历史回放设置已变化，请刷新');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改历史回放设置');
+    const owner=admin,configuration=f22Configuration;
+    const current=()=>owner===admin&&!owner.isDestroyed()&&configuration===f22Configuration
+      &&configuration.snapshot().revision===payload.expectedRevision;
+    if(!current())throw new ProtocolError('REVISION_CONFLICT','历史回放设置已变化，请刷新');
+    if(payload.enabled&&!await confirmApplicationAuthorization('workflow.enable',{workflowId:'F22',mode:'trace_replay',...payload},
+      {scope:{workflowId:'F22',revision:payload.expectedRevision},summary:'启用原任务历史回放；只读取同一对话的原执行记录，不重新执行工具。读取与发送结果仍分别确认。',isCurrent:current}))
+      throw new ProtocolError('UNAUTHORIZED','未确认开启历史回放');
+    if(!current()||runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','原设置或任务状态已变化');
+    configuration.configure(payload);publish();return agentArtsSnapshot();
+  }
+  if(name==='coding.f19.select'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!f19IssueCases||!codingWorkspace||!f19Snapshot().selectionAvailable)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先在正式应用设置配置 GitHub 仓库、工作区与 Node');
+    if(payload!==undefined)throw new ProtocolError('INVALID_ARGUMENT','Issue 修复配置仅由本机文件选择器提供');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 Issue 修复配置');
+    await f19IssueCases.selectFromNativeDialog();publish();
+    return {coding:codingSettingsSnapshot()};
+  }
+  if(name==='coding.f20.configure'){
+    if(sender!==admin||!competitionMode||syntheticMvp||!codingWorkspace?.setF20CaseFromNativeSelection)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请从正式应用设置配置 F20 固定 case');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 F20 case');
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)
+      ||Object.keys(payload).sort().join(',')!=='docTemplate,inputRef,recipeId'
+      ||typeof payload.inputRef!=='string'||typeof payload.recipeId!=='string'||typeof payload.docTemplate!=='string')
+      throw new ProtocolError('INVALID_ARGUMENT','请提供 F20 inputRef、recipeId 与文档模板');
+    const binding=codingWorkspace.readWorkspaceBinding?.();
+    if(!binding?.rootPath||!path.isAbsolute(binding.rootPath))
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先选择编程工作区');
+    const owner=admin;const pick=async title=>{
+      if(!owner||owner.isDestroyed())return;
+      const choice=await dialog.showOpenDialog(owner,{title,properties:['openFile'],
+        filters:[{name:'源文件',extensions:['js','mjs','cjs','ts','json','md']}]});
+      if(admin!==owner||owner.isDestroyed()||choice.canceled||choice.filePaths.length!==1)return;
+      const relative=path.relative(binding.rootPath,choice.filePaths[0]);
+      if(!relative||relative.startsWith('..')||path.isAbsolute(relative))
+        throw new ProtocolError('UNAUTHORIZED','F20 源文件必须位于当前工作区内');
+      return relative.split(path.sep).join('/');
+    };
+    const schemaFile=await pick('选择 F20 schema 文件');
+    const codeFile=await pick('选择 F20 代码文件');
+    const targetDoc=await pick('选择 F20 目标文档');
+    if(!schemaFile||!codeFile||!targetDoc){
+      publish();return {coding:codingSettingsSnapshot(),codingSelectionCancelled:true};
+    }
+    codingWorkspace.setF20CaseFromNativeSelection({inputRef:payload.inputRef,recipeId:payload.recipeId,
+      docTemplate:payload.docTemplate,schemaFile,codeFile,targetDoc});
+    publish();return {coding:codingSettingsSnapshot()};
+  }
   if (['coding.select','coding.selectNode','coding.selectNpmCli','coding.selectCheckFile','coding.authorize','coding.revoke'].includes(name)) {
     if ((sender !== admin && sender !== workspace) || !competitionMode || syntheticMvp || !codingWorkspace) throw Error('请从正式应用设置配置编程工作区');
     if (name !== 'coding.revoke' && runtimeApplication.activeTaskCount > 0) throw Error('请等待当前任务结束后更改工作区');
@@ -3653,7 +4251,7 @@ async function action(event, name, payload) {
     if (name === 'coding.selectCheckFile') selectionResult = await codingWorkspace.selectCheckFile();
     if (name === 'coding.authorize') await codingWorkspace.authorize(payload);
     if (name === 'coding.revoke') codingWorkspace.revoke();
-    publish();return {coding:codingWorkspace.snapshot(),
+    publish();return {coding:codingSettingsSnapshot(),
       ...(selectionResult?.selectionCancelled === true ? {codingSelectionCancelled:true} : {})};
   }
   if (['reference.mcp','reference.skill','reference.run','reference.reconcile'].includes(name)) {
@@ -3869,7 +4467,18 @@ async function action(event, name, payload) {
     if ((sender!==panel&&sender!==admin)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
     if(name==='proactive.workflow.status')return proactiveWorkflowApplication.snapshot();
     if(name==='proactive.workflow.start')return proactiveWorkflowApplication.start(payload);
-    if(name==='proactive.workflow.control')return proactiveWorkflowApplication.control(payload);
+    if(name==='proactive.workflow.control'){
+      const result=await proactiveWorkflowApplication.control(payload);
+      if(payload.action!=='return')return result;
+      let notificationDigest;
+      try {
+        if(!f12ReturnDigest)throw Error('归来摘要尚未配置');
+        const {binding}=proactiveWorkflowApplication.read(payload.taskId);
+        notificationDigest=f12ReturnDigest.submit({taskId:payload.taskId,sessionId:binding.sessionId,
+          sourceTaskId:payload.sourceTaskId,commandId:payload.commandId,controlRevision:binding.controlRevision});
+      }catch{notificationDigest={state:'unconfirmed',tasks:[]};}
+      publish();return {...result,notificationDigest};
+    }
     if(!payload||Object.keys(payload).some(key=>key!=='taskId')||typeof payload.taskId!=='string')throw Error('原持续工作流任务标识无效');
     if(name==='proactive.workflow.resume')return proactiveWorkflowApplication.resume(payload.taskId);
     if(name==='proactive.workflow.read')return proactiveWorkflowApplication.read(payload.taskId);
@@ -4103,6 +4712,25 @@ async function action(event, name, payload) {
     if (sender !== admin || !competitionMode || !runtimeApplication) {
       throw Error('私人记忆仅在 Competition 管理后台可用');
     }
+    if(name.startsWith('memory.mail.')){
+      if(!f08SourceActions)throw Error('原邮件来源管理尚未接通');
+      const action=name.slice('memory.mail.'.length);
+      if(!['readSource','remember','listSources','withdraw','erase','readReview','submitReview'].includes(action))throw Error('不支持的邮件来源操作');
+      if(action==='listSources'&&payload!==undefined)throw Error('来源列表不接受额外参数');
+      if(['readSource','readReview'].includes(action)&&(!payload||Object.keys(payload).join(',')!=='taskId'))throw Error('请选择原邮件任务');
+      if(['withdraw','erase'].includes(action)&&(!payload||Object.keys(payload).sort().join(',')!=='expectedRevision,factId,operationId'))throw Error('请选择原记忆版本');
+      const controller=new AbortController(),owner=admin,onClose=()=>controller.abort();owner.once('closed',onClose);
+      const context={signal:controller.signal,deadline:new Date(Date.now()+180000).toISOString()};
+      try{
+        if(['readSource','remember','readReview','submitReview'].includes(action)){
+          const task=runtimeApplication.runtime.getTask(payload.taskId);
+          if(!conversations?.turns.has(task.taskId)||!conversations.containsConversation(task.conversationId))throw Error('原邮件对话不可用');
+          context.conversationId=task.conversationId;
+        }
+        const result=action==='listSources'?await f08SourceActions.listSources(context):await f08SourceActions[action](payload,context);
+        publish();return result;
+      }finally{owner.removeListener('closed',onClose);controller.abort();}
+    }
     if (name === 'memory.selectVault') {
       if (!knowledgeSourceConfig) throw Error(knowledgeSourceNotReadyMessage);
       obsidianPairing?.useFilesystem();
@@ -4206,6 +4834,35 @@ async function action(event, name, payload) {
     if (name === 'goal.revise') return goalHost.revise(payload);
     if (name === 'goal.readTask') return goalHost.readTask(payload);
     if (name === 'goal.listTasks') return goalHost.listTasks();
+    if (name === 'goal.plan.execute') {
+      if(!competitionMode||syntheticMvp)throw new ProtocolError('UNSUPPORTED_CAPABILITY','计划执行需要正式 Competition 配置');
+      const owner=sender,surface=sender===workspace?'workspace':'panel',conversationId=conversations.activeConversationId(surface);
+      const application=runtimeApplication,host=goalHost,controller=new AbortController(),onClose=()=>controller.abort();
+      const deadline=new Date(Date.now()+readCompetitionExecutionPolicy().taskTimeoutMs).toISOString();
+      const current=()=>!controller.signal.aborted&&!owner.isDestroyed()&&sender===owner
+        &&(surface==='workspace'?workspace:panel)===owner&&runtimeApplication===application&&goalHost===host
+        &&conversations.activeConversationId(surface)===conversationId&&Date.now()<Date.parse(deadline);
+      owner.once('closed',onClose);
+      try {
+        const result=await host.executePlan(payload,{conversationId,deadline,signal:controller.signal,confirm:async preview=>{
+          const selected=agentArtsConfig.snapshot();
+          if(!current()||!selected.runtimeReady||selected.deploymentSelection!=='pinned'
+            ||!selected.deploymentVersion||application.coordinationConfigurationRef!==preview.configurationRef)return false;
+          const destination=JSON.stringify([selected.gatewayUrl,selected.runtimeName,selected.deploymentVersion]);
+          const answer=await dialog.showMessageBox(owner,{type:'question',title:'执行所选计划',message:'确认将此计划交由当前 AgentArts 部署执行？',
+            detail:`${preview.summary}\n\n计划：${preview.plan.id} / ${preview.plan.revision}\n部署：${selected.runtimeName} / ${selected.deploymentVersion}\n网关：${selected.gatewayUrl}\n来源摘要：${preview.sourceDigest}\n依赖：${preview.dependencyCount} 项（公开 Fact ${preview.factCount} 项）\n只提交本计划摘要；后续工具、内容出机和写入仍逐项确认。`,
+            buttons:['取消','执行计划'],defaultId:0,cancelId:0,noLink:true});
+          const latest=agentArtsConfig.snapshot();
+          return answer.response===1&&current()&&latest.runtimeReady&&latest.deploymentSelection==='pinned'
+            &&JSON.stringify([latest.gatewayUrl,latest.runtimeName,latest.deploymentVersion])===destination
+            &&application.coordinationConfigurationRef===preview.configurationRef;
+        }});
+        if(result.state==='submitted'&&result.task.conversationId===conversationId&&!conversations.turns.has(result.task.taskId)){
+          conversations.add(result.task.taskId,surface,result.task.goal,conversationId);rememberTaskGoal(result.task.taskId,result.task.goal);
+        }
+        publish();return result;
+      }finally{owner.removeListener('closed',onClose);controller.abort();}
+    }
     if (name === 'goal.cancel') {
       goalHost.readTask(payload);
       const result = await client.call('task.cancel', {taskId: payload, reason: '用户取消 Goal 任务'});
@@ -4269,8 +4926,15 @@ async function action(event, name, payload) {
     } finally { conversationDelivery.finish(deliveryRequest); }
   }
   if(name==='task.reconcile.finish')return reconcileTaskFromSurface({taskId:payload,sender,panel,workspace,tasks,taskSurface,
-    application:runtimeApplication,refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
-    reportNative:result=>dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
+    application:runtimeApplication,mailRecovery:connectorConversationTools,resumeMailWorkflow:reconcileOriginalMailWorkflow,
+    refresh,publish,observe:operation=>withNativeReadbackScope({owner:sender},operation),
+    reportNative:result=>['mail_send','mail_archive'].includes(result.kind)?dialog.showMessageBox(sender,{type:'info',
+      message:result.state==='confirmed'?'已核实原邮件'+(result.kind==='mail_archive'?'归档':'发送')+'结果':result.state==='pending'?'正在等待原邮箱核实':'原邮件结果仍待核实',
+      detail:result.state==='pending'?'请在原对话中完成邮箱读取授权，随后再次核实。':result.state==='confirmed'?'本次只读回原结果，没有重复操作邮件。原任务的其他步骤仍须完成。':'本次没有重复操作邮件，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
+      :['f04_knowledge','f24_knowledge'].includes(result.kind)?dialog.showMessageBox(sender,{type:'info',
+      message:result.state==='confirmed'?'已核实原结果，正在继续原任务':'原写入结果仍待核实',
+      detail:result.state==='confirmed'?'原写入没有重发。任务完成前，仍需审批的操作会另行询问。':'本次没有重发写入，也没有把未知结果视为成功。',buttons:['关闭'],noLink:true})
+      :dialog.showMessageBox(sender,{type:'info',message:`已读取原编码会话；原任务状态：${({waiting_reconciliation:'待核实',cancelled:'已取消',failed:'失败',succeeded:'已完成'})[result.task?.state]??result.task?.state??'未知'}`,
       detail:(result.readbacks??[]).map(item=>`${item.taskId}：${({clear:'原宿主当前已空闲；这不证明未知试验成功',in_progress:'原宿主仍在执行',unknown:'原宿主状态仍无法确认'})[item.recovery.state]??'状态未知'}；证据 ${item.evidenceRef}`).join('\n')
         +'\n本次只读取原会话，没有重发试验或更改原 UNKNOWN。',buttons:['关闭'],noLink:true})});
   if (name === 'task.cancel') {
@@ -4490,7 +5154,21 @@ function registerLiveShortcut() {
 async function initializeLiveVoice() {
   if (!competitionMode || !client) return;
   const {createVoicePcmFrameSourcePort, createRuntimeClientTranscriptConsumer} = await import('@personal-agent/voice');
+  if (notificationApplicationHost && !voiceSessionFinalHost) {
+    voiceSessionFinalHost = createVoiceSessionFinalHost({
+      readSession: () => liveVoice?.readSessionBinding?.() ?? null,
+      readPolicy: () => {
+        const snapshot = notificationApplicationHost.snapshot({kind: 'global'});
+        const policy = snapshot?.available ? snapshot.policy : null;
+        if (!policy || !Number.isSafeInteger(policy.revision)) return null;
+        return {revision: policy.revision, state: policy.state, local: policy.local ?? null};
+      },
+      configureSettings: (settings, authority) => notificationApplicationHost.configureSettings(settings, authority),
+    });
+  }
   liveVoice = createLiveVoiceHost({getPanel: () => panel, config: liveConfig, microphoneHost: microphoneCaptureHost,
+    readControlRevision: () => notificationApplicationHost?.snapshot({kind: 'global'})?.policy?.revision,
+    onSessionFinal: receipt => voiceSessionFinalHost?.consumeFinal(receipt),
     createSource: () => createVoicePcmFrameSourcePort(microphoneCaptureHost.binding),
     createGateway: config => runtimeApplication.createLiveVoiceModel(config),
     createConsumer: createRuntimeClientTranscriptConsumer, client, onUpdate: publish,
@@ -4501,6 +5179,7 @@ async function initializeLiveVoice() {
     onTranscript: message => conversations.addLiveMessage(message),
     readCurrentQuestion:({conversationId}={})=>voiceQuestionForConversation(conversationId??conversations.activeConversationId('panel')),
     authorizeTaskRead:scope=>conversationToolAccess?.authorizeTaskRead(scope)===true,
+    authorizeFinalRead:(...args)=>f02Workflow?.authorizeFinalRead?.(...args)===true,
     prepareTaskApproval:scope=>voiceApprovalBridge?.prepareTaskApproval(scope)??null,
     onTaskSubmitted: ({taskId, goal,conversationId='desktop-panel'}) => {rememberTaskGoal(taskId, goal);conversations.add(taskId, 'panel', goal,conversationId);},
     readContext: ({conversationId=conversations.activeConversationId('panel')}={}) => JSON.stringify({profile: 'huawei_ict_agentarts',
@@ -4922,6 +5601,7 @@ app.whenReady().then(async () => {
       void connectorConversationTools?.close();
       computerVisionHost?.close();
       computerVisionConfig?.dispose();
+      f15ReviewViewer?.close();f15ReviewHost?.close();
       authorizationQuestionHost?.close();
       authorizationIntentHost?.close();
       mailMonitorPreparation?.close();
@@ -4944,6 +5624,25 @@ app.whenReady().then(async () => {
       publicReferenceConsent?.close();
       publicSkillSources.clear();
       feedsHost?.close();
+      f09FeedGraphHost={tools:[],unavailable:'feeds_host_required'};
+      workflowGraphComposition={tools:[],unavailable:['reset']};
+      f02Workflow=undefined;
+      f16F17Cases=undefined;f16F17Workflow=undefined;
+      f18ReviewCases?.close();f18ReviewCases=undefined;f18Workflow=undefined;f18ActiveRevision=undefined;
+      f19IssueCases?.close();f19IssueCases=undefined;f19Workflow=undefined;f19ActiveRevision=undefined;
+      f12ReturnDigest=undefined;f12ExplicitReturnSource=undefined;
+      f24Workflow=undefined;
+      f04Workflow=undefined;
+      f01Workflow=undefined;
+      f22Configuration?.close();f22Configuration=undefined;f22Workflow=undefined;
+      f25Configuration?.close();f25Configuration=undefined;f25Workflow=undefined;
+      f08SourceChanges?.close();f08SourceChanges=undefined;f08SourceActions=undefined;
+      f23DecisionConfiguration=undefined;f23Workflow=undefined;f28Workflow=undefined;
+      reconcileOriginalMailWorkflow=undefined;
+      f11LocationQuestion=undefined;
+      f11DecisionQuestion=undefined;
+      f08DecisionQuestion=undefined;
+      f14Workflow=undefined;
       void todoHost?.close();
     } catch (error) {
       event.preventDefault();

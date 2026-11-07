@@ -23,6 +23,10 @@ export * from './coding-repair.js';
 export * from './harness-candidates.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
+export * from './pinned-version-readonly.js';
+export * from './ordinary-competition-sampling.js';
+export * from './platform-evaluation-binding.js';
+export * from './owned-image-build.js';
 export * from './workflow-voice-final-transcript.js';
 export {createProactiveHostProofs} from './proactive-host-proofs.js';
 export type {ProactiveHostProofBinding,ProactiveHostProofKind} from './proactive-host-proofs.js';
@@ -135,6 +139,7 @@ export class OwnedAgentOrchestrator {
           designNotes:context.template.designNotes,acceptance:context.template.acceptance},
         ...workflowCandidateMetadata(context.node,context.availableTools),
         predecessorOutputs:context.predecessorOutputs,predecessorStates:context.predecessorStates,availableTools:context.availableTools,
+        ...(context.predecessorOperations?{predecessorOperations:context.predecessorOperations}:{}),
         ...(context.codingRepair?{codingRepair:context.codingRepair,codingRepairContract:{version:1,
           currentRound:context.codingRepair.round,rule:'Use the current SHA-bound snapshot and actual verification diagnostics; preserve working code and unrelated files. Patch the smallest causally supported scope. Do not remove tests or assertions merely to make checks pass. JS/TS AST analysis describes syntax/declaration ranges only; other languages require the published validation recipes.',
           nodeOutput:context.node.id==='F15_N03'?{diagnosis:'explain actual failure evidence',patches:[{path:'current relative file',expectedSha256:'exact current SHA256',edits:[{oldText:'unique exact current bytes',newText:'incremental replacement'}]}]}

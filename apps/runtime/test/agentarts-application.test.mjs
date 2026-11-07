@@ -2,9 +2,53 @@ import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, rm} from 'node:fs/promises';
 import {test} from 'node:test';
 import {Client} from '@personal-agent/client';
-import {createAgentArtsRuntimeApplication} from '../dist/application.js';
+import {createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
 
 const event = text => ({event: 'message', data: {text, index: 0}});
+
+for(const [pinned,complete,available] of [[true,true,true],[false,true,true],[true,false,true],[true,true,false]])
+test(`configured graph catalog requires fixed image and complete available ports (${pinned}/${complete}/${available})`,async()=>{
+  const schema={type:'object',additionalProperties:false,required:[],properties:{}};
+  const probe={descriptor:{name:'computer.system.observe',version:'1.0.0',inputSchema:schema,outputSchema:schema,
+    sideEffect:'read',requiredScopes:['synthetic:probe'],idempotencySupport:false,recoverySupport:false,requiresPresence:false},
+    execute:async()=>{throw Error('Catalog test must not execute the probe');}};
+  let app;const requests=[];
+  const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
+    runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
+  const tools=[probe,dispatch];
+  app=createAgentArtsRuntimeApplication({path:':memory:',delegateUserTasks:true,hostUserNamespace:'synthetic-image-composition',
+    gatewayUrl:'https://agentarts.example.test',runtimeName:'pa-runtime',...(pinned?{deploymentVersion:'fixed-v1'}:{}),
+    initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',tools,
+    authorizationProvider:{read:async()=> 'Bearer synthetic-token'},
+    beforeCompetitionSend:request=>{requests.push(request);},
+    fetchImpl:async()=>new Response(JSON.stringify(event(JSON.stringify({kind:'text',text:'Synthetic catalog reply'}))),
+      {headers:{'content-type':'application/json'}}),
+    configuredWorkflowWorkerPorts:[{workflowId:'F13',toolName:'workflow.system.diagnose',toolVersion:'1.0.0',configurationVersion:'synthetic-v1',
+      requestSchema:schema,inputSchema:schema,resultSchema:schema,publicEnumPaths:[],
+      requiredTools:[{name:probe.descriptor.name,version:'1.0.0'}],sideEffect:'read',available:()=>available,
+      resolveInput:async()=>({}),assertCurrent:()=>{},assertFrontier:()=>true,authorizeExport:async()=>true,
+      ...(complete?{verifyCompletion:async()=>{throw Error('Catalog test must not run a graph');}}:{})}],
+    competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+      available:()=>true,publicEnumPaths:tool===dispatch?['/subtasks/*/role']:[]})),
+    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+      exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
+  try{
+    const client=new Client(app);await client.connect();const root=await client.call('task.submit',
+      {goal:'Read synthetic graph catalog',conversationId:'synthetic-chat'},{idempotencyKey:'synthetic-image-ports',timeoutMs:60000});
+    for(let attempt=0;attempt<600;attempt++){
+      const tasks=[app.runtime.getTask(root.taskId),...app.readSubagentTasks(root.taskId)];
+      for(const task of tasks)for(const approval of app.runtime.listApprovals({taskId:task.taskId,state:'pending'}).items)
+        await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+      if(app.activeTaskCount===0&&['succeeded','failed','cancelled'].includes(app.runtime.getTask(root.taskId).state))break;
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }
+    const children=app.readSubagentTasks(root.taskId);assert.equal(children.length,1);
+    assert.equal(children[0].state,'succeeded',JSON.stringify(children[0].error));
+    const childRequests=requests.filter(request=>request.taskId===children[0].taskId);assert.ok(childRequests.length);
+    assert.equal(childRequests.some(request=>request.availableTools?.some(tool=>tool.name==='workflow.system.diagnose')),
+      pinned&&complete&&available);
+  }finally{app.close();}
+});
 
 async function terminal(app, taskId, states = ['succeeded', 'failed', 'cancelled']) {
   for (let attempt = 0; attempt < 200; attempt += 1) {

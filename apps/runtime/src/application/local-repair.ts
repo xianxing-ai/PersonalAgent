@@ -11,9 +11,12 @@ import type {FactRef, FactVersion, MemoryQueryPort} from '@personal-agent/memory
 import type {GraphSnapshot, NodeRef, NodeVersion} from '@personal-agent/goals';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {TaskRuntime} from '../index.js';
+import type {F03CompetitionReviewSource} from './f03-competition-review.js';
 
 export const LOCAL_REPAIR_TOOL = 'cognition.commit_repair';
 export const LOCAL_REPAIR_CHECKPOINT = 'local-repair-intent';
+/** Durable preview sealed before graph CAS. It is not a tool result and grants nothing. */
+export const LOCAL_REPAIR_COMMIT_INTENT = 'local-repair-commit-intent';
 
 /** Captured at the original projection/export, never rebound to newer refs. */
 export interface LocalRepairBinding {
@@ -35,6 +38,12 @@ export interface LocalRepairHostOptions {
   matchesSource?(input: {result: unknown; fact: FactVersion; node: NodeVersion}): boolean;
   /** Trusted current session resolver, never a model callback or new wire capability. */
   reviewedSource?: {resolve(input: {sourceTaskId: string; reviewTaskId: string}): ReviewedRepairPreparation | undefined};
+  /** Original F03 configured-image selection and its current private source fence. Never a legacy Laya review. */
+  competitionSource?: {resolve(input:{sourceTaskId:string;sourceOperationId:string}):F03CompetitionReviewSource|undefined};
+  /** After the commit intent is durable and before graph CAS. A throw leaves the graph unchanged. */
+  beforeGraphCommit?(proof:{taskId:string;expectedGraphRevision:number}):void;
+  /** After CAS and version readback, before Runtime stores the tool result. RESULT_UNKNOWN stays recoverable. */
+  afterCommittedRepair?(proof:{taskId:string;graphRevision:number}):void;
 }
 
 interface FactRepairRequest {
@@ -44,7 +53,8 @@ interface FactRepairRequest {
   deadline: string;
 }
 interface ReviewedRepairRequest {sourceTaskId: string; reviewTaskId: string; idempotencyKey: string; deadline: string;}
-export type SubmitLocalRepairRequest = FactRepairRequest | ReviewedRepairRequest;
+export interface CompetitionWorkflowRepairRequest {sourceTaskId:string;sourceOperationId:string;idempotencyKey:string;deadline:string}
+export type SubmitLocalRepairRequest = FactRepairRequest | ReviewedRepairRequest | CompetitionWorkflowRepairRequest;
 
 interface FactRepairIntent extends FactRepairRequest {
   candidate: CoordinationRepairCandidateResult;
@@ -62,8 +72,91 @@ interface ReviewedRepairIntent extends ReviewedRepairRequest {
   reviewDigest: string;
   cloudCandidateDigest: string;
 }
-type LocalRepairIntent = FactRepairIntent | ReviewedRepairIntent;
+interface CompetitionWorkflowRepairIntent extends CompetitionWorkflowRepairRequest {
+  sourceKind:'competition_workflow';graphNamespace:string;bindingVersion:string;source:F03CompetitionReviewSource;
+}
+type LocalRepairIntent = FactRepairIntent | ReviewedRepairIntent | CompetitionWorkflowRepairIntent;
 const reviewed=(intent: LocalRepairIntent): intent is ReviewedRepairIntent => 'sourceKind' in intent && intent.sourceKind==='goal_review';
+const competitionReviewed=(intent:LocalRepairIntent):intent is CompetitionWorkflowRepairIntent=>'sourceKind' in intent&&intent.sourceKind==='competition_workflow';
+
+export interface ReviewedLocalRepairReceiptInput {taskId: string; sourceTaskId: string; reviewTaskId: string; graphNamespace: string;}
+
+/** Read the original approved CAS only. A later node version does not erase its historical effect. */
+export function readReviewedLocalRepairReceipt(runtime: TaskRuntime, input: ReviewedLocalRepairReceiptInput) {
+  try {
+    const {taskId,sourceTaskId,reviewTaskId,graphNamespace}=input;
+    const task=runtime.getTask(taskId),intent=runtime.loadCheckpoint(taskId,LOCAL_REPAIR_CHECKPOINT) as LocalRepairIntent | undefined;
+    if (!intent || !reviewed(intent) || intent.sourceTaskId!==sourceTaskId || intent.reviewTaskId!==reviewTaskId
+      || intent.graphNamespace!==graphNamespace || task.conversationId!==`desktop-proactive-goals:${graphNamespace}`
+      || runtime.findTaskByIdempotencyKey('local-repair:'+intent.idempotencyKey)?.taskId!==taskId
+      || !task.attachmentRefs?.includes('local-repair-intent:'+toolArgumentsDigest(intent))) return;
+    const source=runtime.getTask(sourceTaskId),reviewTask=runtime.getTask(reviewTaskId);
+    const review=runtime.loadCheckpoint(reviewTaskId,'proactive-cognition-review-v1') as import('./proactive-cognition-host.js').ProactiveCognitionReview | undefined;
+    const cloud=parseCoordinationRepairCandidate(runtime.loadCheckpoint(sourceTaskId,'competition-repair-candidate'));
+    if (source.state!=='succeeded' || source.conversationId!==task.conversationId
+      || reviewTask.state!=='succeeded' || reviewTask.conversationId!==`proactive-cognition:${graphNamespace}`
+      || !review || review.taskId!==reviewTaskId || toolArgumentsDigest(review)!==intent.reviewDigest
+      || toolArgumentsDigest(cloud)!==intent.cloudCandidateDigest) return;
+    const store=runtime.bindCoordinationStore(graphNamespace);
+    const prepared=prepareReviewedRepair(store.read(intent.binding.graphRevision),review.evaluatedAt,review,intent.candidate.candidate);
+    if (prepared.kind!=='prepared' || !isDeepStrictEqual(prepared.binding,intent.binding)) return;
+    const runId='local-repair-'+taskId,record=runtime.readToolExecutions(taskId).find(item=>item.evidenceId===runId);
+    if (!record || record.taskId!==taskId || record.toolName!==LOCAL_REPAIR_TOOL || record.toolVersion!=='1.0.0'
+      || record.state!=='confirmed' || record.policyDecision!=='allow' || !record.executionStarted
+      || !task.evidenceRefs.includes(runId)
+      || !runtime.matchesToolExecutionInput(record,{arguments:{intentDigest:toolArgumentsDigest(intent)},scopeRef:runId})) return;
+    const result=runtime.loadCheckpoint(taskId,'tool-result-'+runId) as {result?: {kind?: string; graphRevision?: number}} | undefined;
+    const graphRevision=result?.result?.graphRevision;
+    if (result?.result?.kind!=='applied' || graphRevision!==prepared.preview.after.snapshot.revision
+      || !isDeepStrictEqual(store.read(graphRevision),prepared.preview.after.snapshot)) return;
+    const updatedNodes=prepared.preview.inputs.map(node=>{
+      const applied=prepared.preview.after.snapshot.history.findLast(item=>item.id===node.id)!;
+      return Object.freeze({id:applied.id,revision:applied.revision,kind:applied.kind});
+    });
+    const current=store.read();
+    return Object.freeze({taskId,runId,sourceTaskId,reviewTaskId,graphNamespace,graphRevision,
+      currentGraphRevision:current.revision,inputDigest:record.inputDigest,candidateDigest:intent.binding.candidateDigest,
+      graphUpdateVerified:updatedNodes.every(ref=>{
+        const head=current.history.findLast(node=>node.id===ref.id);return !!head && sameRef(head,ref);
+      }),updatedNodes:Object.freeze(updatedNodes),evidenceRefs:Object.freeze([runId])});
+  } catch {return undefined;}
+}
+
+/** Historical original Competition decision + approved CAS readback, with no legacy review marker. */
+export function readCompetitionWorkflowRepairReceipt(runtime:TaskRuntime,input:{taskId:string;sourceTaskId:string;sourceOperationId:string}) {
+  try{
+    const task=runtime.getTask(input.taskId),intent=runtime.loadCheckpoint(input.taskId,LOCAL_REPAIR_CHECKPOINT) as LocalRepairIntent|undefined;
+    if(!intent||!competitionReviewed(intent)||intent.sourceTaskId!==input.sourceTaskId||intent.sourceOperationId!==input.sourceOperationId
+      ||runtime.findTaskByIdempotencyKey('local-repair:'+intent.idempotencyKey)?.taskId!==input.taskId
+      ||!task.attachmentRefs?.includes('local-repair-intent:'+toolArgumentsDigest(intent))
+      ||task.conversationId!==runtime.getTask(intent.sourceTaskId).conversationId
+      ||runtime.loadCheckpoint(input.taskId,'private-copy-erasure')!==undefined
+      ||runtime.loadCheckpoint(intent.sourceTaskId,'private-copy-erasure')!==undefined)return;
+    const source=intent.source,decision=source.decision,original=runtime.readToolExecutions(decision.taskId).find(item=>item.evidenceId===decision.runId);
+    const selected=runtime.loadCheckpoint(decision.taskId,'tool-result-'+decision.runId) as {result?:{selectedId?:string}}|undefined;
+    if(!original||original.state!=='confirmed'||!original.executionStarted||original.policyDecision!=='allow'
+      ||original.toolName!==decision.toolName||original.toolVersion!==decision.toolVersion||selected?.result?.selectedId!==decision.selectedId
+      ||!runtime.matchesToolExecutionInput(original,{arguments:decision.arguments,scopeRef:decision.runId})
+      ||!isDeepStrictEqual(runtime.loadCheckpoint(decision.taskId,'coding-repair:parent'),{taskId:intent.sourceTaskId,operationId:intent.sourceOperationId}))return;
+    const runId='local-repair-'+input.taskId,record=runtime.readToolExecutions(input.taskId).find(item=>item.evidenceId===runId);
+    if(!record||record.toolName!==LOCAL_REPAIR_TOOL||record.toolVersion!=='1.0.0'||record.state!=='confirmed'
+      ||!record.executionStarted||record.policyDecision!=='allow'
+      ||!runtime.matchesToolExecutionInput(record,{arguments:{intentDigest:toolArgumentsDigest(intent)},scopeRef:runId}))return;
+    const saved=runtime.loadCheckpoint(input.taskId,'tool-result-'+runId) as {result?:{kind?:string;graphRevision?:number}}|undefined;
+    const store=runtime.bindCoordinationStore(intent.graphNamespace);
+    const prepared=prepareReviewedRepair(store.read(source.graphRevision),source.evaluatedAt,source.review,source.request);
+    if(prepared.kind!=='prepared'||saved?.result?.kind!=='applied'||saved.result.graphRevision!==prepared.preview.after.snapshot.revision
+      ||!isDeepStrictEqual(store.read(saved.result.graphRevision),prepared.preview.after.snapshot))return;
+    const updatedNodes=prepared.preview.inputs.map(node=>{
+      const saved=prepared.preview.after.snapshot.history.findLast(value=>value.id===node.id)!;
+      return {id:saved.id,revision:saved.revision,kind:saved.kind};});
+    const current=store.read();
+    return {taskId:input.taskId,runId,sourceTaskId:intent.sourceTaskId,sourceOperationId:intent.sourceOperationId,
+      graphNamespace:intent.graphNamespace,graphRevision:saved.result.graphRevision,updatedNodes,
+      graphUpdateVerified:updatedNodes.every(node=>{const head=current.history.findLast(value=>value.id===node.id);return !!head&&sameRef(head,node);}),
+      evidenceRefs:[decision.runId,runId]};
+  }catch{return;}
+}
 
 function denied(message = 'Local repair binding is invalid'): never {
   throw new ProtocolError('UNAUTHORIZED', message);
@@ -119,10 +212,42 @@ function requireReviewedSource(runtime: TaskRuntime, host: LocalRepairHostOption
   if (!isDeepStrictEqual(normalized,intent.candidate.candidate)) denied();
 }
 
+function requireCompetitionSource(runtime:TaskRuntime,host:LocalRepairHostOptions,intent:CompetitionWorkflowRepairIntent):void {
+  const source=host.competitionSource?.resolve({sourceTaskId:intent.sourceTaskId,sourceOperationId:intent.sourceOperationId});
+  if(!source||!isDeepStrictEqual(source,intent.source)||source.sourceTaskId!==intent.sourceTaskId||source.sourceOperationId!==intent.sourceOperationId
+    ||source.graphNamespace!==host.graphNamespace||intent.graphNamespace!==host.graphNamespace||host.bindingVersion!==intent.bindingVersion
+    ||source.deadline!==intent.deadline||runtime.getTask(source.sourceTaskId).cancelRequested
+    ||runtime.loadCheckpoint(source.sourceTaskId,'private-copy-erasure')!==undefined)denied();
+  const original=source.decision,record=runtime.readToolExecutions(original.taskId).find(value=>value.evidenceId===original.runId);
+  const grant=runtime.policy.get(original.runId),result=runtime.loadCheckpoint(original.taskId,'tool-result-'+original.runId) as {result?:{selectedId?:string}}|undefined;
+  if(!isDeepStrictEqual(runtime.loadCheckpoint(original.taskId,'coding-repair:parent'),{taskId:source.sourceTaskId,operationId:source.sourceOperationId})
+    ||!record||record.state!=='confirmed'||record.policyDecision!=='allow'||!record.executionStarted
+    ||record.toolName!==original.toolName||record.toolVersion!==original.toolVersion||result?.result?.selectedId!==original.selectedId
+    ||!runtime.matchesToolExecutionInput(record,{arguments:original.arguments,scopeRef:original.runId})
+    ||!grant||Date.parse(grant.expiresAt)<=Date.now()||grant.argumentsDigest!==toolArgumentsDigest(original.arguments))denied();
+  const prepared=prepareReviewedRepair(runtime.bindCoordinationStore(host.graphNamespace).read(),source.evaluatedAt,source.review,source.request);
+  if(prepared.kind!=='prepared'||!isDeepStrictEqual(prepared.request,source.request))denied();
+}
+
 /** Compile the entire immutable intent before starting a worker. */
 export function prepareLocalRepair(
   runtime: TaskRuntime, host: LocalRepairHostOptions, request: SubmitLocalRepairRequest,
 ): TaskSnapshot {
+  if('sourceOperationId' in request){
+    if(Object.keys(request).sort().join(',')!=='deadline,idempotencyKey,sourceOperationId,sourceTaskId'
+      ||Object.values(request).some(value=>typeof value!=='string'||!value.trim())||!Number.isFinite(Date.parse(request.deadline)))denied();
+    const prior=runtime.findTaskByIdempotencyKey('local-repair:'+request.idempotencyKey);
+    if(prior){const saved=runtime.loadCheckpoint(prior.taskId,LOCAL_REPAIR_CHECKPOINT) as LocalRepairIntent|undefined;
+      if(!saved||!competitionReviewed(saved)||saved.sourceTaskId!==request.sourceTaskId||saved.sourceOperationId!==request.sourceOperationId
+        ||saved.deadline!==request.deadline||saved.graphNamespace!==host.graphNamespace||saved.bindingVersion!==host.bindingVersion
+        ||!prior.attachmentRefs?.includes('local-repair-intent:'+toolArgumentsDigest(saved)))denied();
+      return prior;
+    }
+    const source=host.competitionSource?.resolve(request);if(!source)return denied();
+    const intent:CompetitionWorkflowRepairIntent={...request,sourceKind:'competition_workflow',graphNamespace:host.graphNamespace,
+      bindingVersion:host.bindingVersion,source:structuredClone(source)};
+    requireCompetitionSource(runtime,host,intent);return persistIntent(runtime,intent);
+  }
   if ('reviewTaskId' in request) {
     if (Object.keys(request).length!==4 || Object.keys(request).some(key=>!['sourceTaskId','reviewTaskId','idempotencyKey','deadline'].includes(key))
       || Object.values(request).some(value=>typeof value!=='string'||!value.trim()) || !Number.isFinite(Date.parse(request.deadline))) denied();
@@ -214,6 +339,15 @@ export function createLocalRepairTool(getRuntime: () => TaskRuntime, host: Local
       if (!intent || (input as {intentDigest?: string}).intentDigest !== toolArgumentsDigest(intent)) denied();
       return host.withSourceLock(async () => {
       const store = runtime.bindCoordinationStore(intent.graphNamespace);
+      if(competitionReviewed(intent)){
+        try{active(context.deadline,context.signal);requireCompetitionSource(runtime,host,intent);
+          const grant=runtime.policy.get(context.authorizationRef);
+          if(!grant||grant.taskId!==context.taskId||grant.toolName!==LOCAL_REPAIR_TOOL||Date.parse(grant.expiresAt)<=Date.now()
+            ||!grant.scopes.includes('cognition:repair')||grant.argumentsDigest!==toolArgumentsDigest(input))denied();
+          active(context.deadline,context.signal);
+        }catch{return {kind:'rejected',graphRevision:store.read().revision};}
+        return commitAndReadBack(runtime,context.taskId,toolArgumentsDigest(intent),store,intent.source.request,host);
+      }
       if (reviewed(intent)) {
         try {
           active(context.deadline,context.signal);
@@ -224,7 +358,7 @@ export function createLocalRepairTool(getRuntime: () => TaskRuntime, host: Local
             || grant.argumentsDigest!==toolArgumentsDigest(input)) denied();
           active(context.deadline,context.signal);
         } catch {return {kind:'rejected',graphRevision:store.read().revision};}
-        return commitAndReadBack(store,intent.candidate.candidate);
+        return commitAndReadBack(runtime,context.taskId,toolArgumentsDigest(intent),store,intent.candidate.candidate,host);
       }
       // A pre-write rejection is a confirmed no-write result, not an unknown write.
       let fact: FactVersion;
@@ -263,20 +397,70 @@ export function createLocalRepairTool(getRuntime: () => TaskRuntime, host: Local
       } catch {
         return {kind: 'rejected', graphRevision: store.read().revision};
       }
-      // Synchronous CAS followed by durable version readback. If the process dies
-      // here, Runtime's already-persisted started record prevents automatic replay.
-      return commitAndReadBack(store,intent.candidate.candidate);
+      // The preview is sealed before CAS. A crash before the tool result is recoverable
+      // from that intent; the started execution record still forbids a second append.
+      return commitAndReadBack(runtime,context.taskId,toolArgumentsDigest(intent),store,intent.candidate.candidate,host);
       });
     },
   };
 }
 
-function commitAndReadBack(store: import('@personal-agent/goals/store').AtomicCoordinationStorePort,
-  request: import('@personal-agent/cognition').StoredRepairRequest): {kind:'applied'|'rejected';graphRevision:number} {
-  const result=commitStoredRepair(store,new Date().toISOString(),request);
+interface LocalRepairCommitIntent {
+  version:1;intentDigest:string;expectedGraphRevision:number;graphRevision:number;snapshot:GraphSnapshot;
+}
+function commitAndReadBack(runtime:TaskRuntime,taskId:string,intentDigest:string,
+  store: import('@personal-agent/goals/store').AtomicCoordinationStorePort,
+  request: import('@personal-agent/cognition').StoredRepairRequest, host: LocalRepairHostOptions): {kind:'applied'|'rejected';graphRevision:number} {
+  const at=new Date().toISOString();
+  const preview=previewStoredRepair(store,at,request);
+  const commitIntent:LocalRepairCommitIntent={version:1,intentDigest,expectedGraphRevision:request.expectedGraphRevision,
+    graphRevision:preview.after.snapshot.revision,snapshot:preview.after.snapshot};
+  if(!runtime.saveCheckpointOnce(taskId,LOCAL_REPAIR_COMMIT_INTENT,commitIntent)
+    &&!isDeepStrictEqual(runtime.loadCheckpoint(taskId,LOCAL_REPAIR_COMMIT_INTENT),commitIntent))
+    throw new ProtocolError('REVISION_CONFLICT','Local repair commit intent changed');
+  host.beforeGraphCommit?.({taskId,expectedGraphRevision:request.expectedGraphRevision});
+  const result=commitStoredRepair(store,at,request);
   if(result.kind!=='applied') return {kind:'rejected',graphRevision:result.currentGraphRevision};
-  if(!isDeepStrictEqual(store.read(result.snapshot.revision),result.snapshot)) throw new ProtocolError('RESULT_UNKNOWN','Repair commit requires reconciliation');
+  if(!isDeepStrictEqual(store.read(result.snapshot.revision),result.snapshot)
+    ||!isDeepStrictEqual(result.snapshot,preview.after.snapshot))
+    throw new ProtocolError('RESULT_UNKNOWN','Repair commit requires reconciliation');
+  host.afterCommittedRepair?.({taskId,graphRevision:result.snapshot.revision});
   return {kind:'applied',graphRevision:result.snapshot.revision};
+}
+
+export type LocalRepairCommitRecovery={state:'applied'|'uncommitted'|'conflict'|'settled';graphRevision:number;runId:string;};
+/** Project a tool result only when the sealed preview already matches the graph. Never appends again. */
+export function reconcileCommittedLocalRepair(runtime:TaskRuntime,taskId:string):LocalRepairCommitRecovery {
+  const intent=runtime.loadCheckpoint(taskId,LOCAL_REPAIR_CHECKPOINT) as LocalRepairIntent|undefined;
+  const commit=runtime.loadCheckpoint(taskId,LOCAL_REPAIR_COMMIT_INTENT) as LocalRepairCommitIntent|undefined;
+  const runId='local-repair-'+taskId;
+  const record=runtime.readToolExecutions(taskId).find(item=>item.evidenceId===runId);
+  if(!intent||!commit||commit.version!==1||commit.intentDigest!==toolArgumentsDigest(intent)||!record
+    ||record.toolName!==LOCAL_REPAIR_TOOL||record.toolVersion!=='1.0.0'
+    ||!runtime.matchesToolExecutionInput(record,{arguments:{intentDigest:commit.intentDigest},scopeRef:runId}))
+    throw new ProtocolError('UNAUTHORIZED','Original local repair commit is unavailable');
+  const current=runtime.bindCoordinationStore(intent.graphNamespace).read();
+  const revisionBefore=current.revision;
+  const matches=commit.graphRevision===current.revision&&isDeepStrictEqual(current,commit.snapshot);
+  const saved=runtime.loadCheckpoint(taskId,'tool-result-'+runId) as {result?:{kind?:string;graphRevision?:number}}|undefined;
+  if(record.state==='confirmed'&&saved?.result) {
+    if(saved.result.kind==='applied'&&saved.result.graphRevision===commit.graphRevision&&matches)
+      return {state:'applied',graphRevision:current.revision,runId};
+    if(saved.result.kind==='rejected') return {state:'settled',graphRevision:current.revision,runId};
+    throw new ProtocolError('REVISION_CONFLICT','Original local repair result does not match its commit intent');
+  }
+  if(runtime.getTask(taskId).state!=='waiting_reconciliation'||!record.executionStarted||record.policyDecision!=='allow'
+    ||(record.state!=='unknown'&&record.state!=='started'))
+    throw new ProtocolError('REVISION_CONFLICT','Local repair is not waiting for its original commit readback');
+  if(matches) {
+    runtime.reconcileToolExecution(taskId,runId,'applied',{kind:'applied',graphRevision:commit.graphRevision},[]);
+    if(runtime.bindCoordinationStore(intent.graphNamespace).read().revision!==revisionBefore)
+      throw new ProtocolError('REVISION_CONFLICT','Local repair recovery changed the committed graph');
+    return {state:'applied',graphRevision:commit.graphRevision,runId};
+  }
+  if(current.revision===commit.expectedGraphRevision)
+    return {state:'uncommitted',graphRevision:current.revision,runId};
+  return {state:'conflict',graphRevision:current.revision,runId};
 }
 
 export function startLocalRepairTask(
