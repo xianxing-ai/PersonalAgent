@@ -22,6 +22,7 @@ export type {
   RealCloudMultiAgentEvidence,
   PlanMod04bAgentArtsAcceptanceOptions,
   Mod04bAgentArtsAcceptancePlan,
+  Mod04bStructuralVerification,
 } from './mod04b-agentarts-acceptance-plan.js';
 
 const textResultFields = ['kind', 'text', 'verification'] as const;

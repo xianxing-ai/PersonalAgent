@@ -41,7 +41,7 @@ function validEvidenceFixture(overrides = {}) {
     },
     evidenceLevel: 'conditional',
     cloudEvidence: true,
-    sourceCommit: '0e7f3aa1633b8997fe59ce4256ad4509b4674cf3',
+    sourceCommit: 'simulated-commit-04b-1234567890abcdef',
     ...overrides,
   };
 }
@@ -319,7 +319,15 @@ test('planMod04bAgentArtsAcceptance with valid evidence but no real cloud eviden
   assert.equal(plan.multiAgentStatus.agentCount, 3);
   assert.equal(plan.continuationStatus.hasContinuation, true);
   assert.equal(plan.continuationStatus.proposalId, 'prop-workspace-patch-001');
-  assert.equal(plan.pending.length, DEFAULT_MOD04B_AGENTARTS_PENDING_ITEMS.length);
+  assert.equal(plan.pending.length, DEFAULT_MOD04B_AGENTARTS_PENDING_ITEMS.length + 1);
+  assert.ok(plan.pending.some((p) => p.item === 'source_head_commit_alignment'));
+  assert.ok(plan.structuralVerification);
+  assert.equal(plan.structuralVerification.fullyCovered, false);
+  assert.ok(plan.structuralVerification.missingFields.includes('authenticated'));
+  assert.ok(plan.structuralVerification.missingFields.includes('multiAgentRoutingVerified'));
+  assert.ok(plan.structuralVerification.missingFields.includes('continuationVerified'));
+  assert.ok(plan.structuralVerification.missingFields.includes('toolProposalVerified'));
+  assert.ok(plan.structuralVerification.missingFields.includes('traceReadbackVerified'));
 });
 
 test('planMod04bAgentArtsAcceptance detects HEAD commit mismatch and adds pending item', () => {
@@ -335,23 +343,96 @@ test('planMod04bAgentArtsAcceptance detects HEAD commit mismatch and adds pendin
   assert.equal(mismatchItem.status, 'unavailable');
 });
 
-test('planMod04bAgentArtsAcceptance resolves to verified when real cloud evidence is provided', () => {
-  const fixture = validEvidenceFixture({ sourceCommit: '0e7f3aa1633b8997fe59ce4256ad4509b4674cf3' });
+test('planMod04bAgentArtsAcceptance keeps closedLoop=false even with simulated real cloud evidence (simulated fixture)', () => {
+  // 依据 AGENTS.md 与可信验收规范：内存自报对象不构成华为云在线多Agent路由、模型推理与continuation执行凭据。
+  // 旧测试将纯 JS 形状等同于真云闭环属于不可信结论，收紧为 closedLoop: false，保留为严格负例。
+  // 测试 fixture 显式使用模拟 commit，不冒充真实 main HEAD。
+  const simulatedHead = 'simulated-commit-04b-1234567890abcdef';
+  const fixture = validEvidenceFixture({ sourceCommit: simulatedHead });
   const plan = planMod04bAgentArtsAcceptance({
     evidence: fixture,
-    headCommit: '0e7f3aa1633b8997fe59ce4256ad4509b4674cf3',
+    headCommit: simulatedHead,
     realCloudEvidence: {
       authenticated: true,
       multiAgentRoutingVerified: true,
       continuationVerified: true,
+      toolProposalVerified: true,
       traceReadbackVerified: true,
     },
   });
-  assert.equal(plan.closedLoop, true);
-  assert.equal(plan.status, 'verified');
-  assert.equal(plan.reason, '真云多Agent与continuation已验收');
-  assert.equal(plan.pending.length, 0);
+  assert.equal(plan.closedLoop, false);
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.reason, MOD04B_AGENTARTS_PENDING_REASON);
+  assert.ok(plan.pending.length >= DEFAULT_MOD04B_AGENTARTS_PENDING_ITEMS.length);
   assert.equal(plan.headMatches, true);
+  assert.ok(plan.structuralVerification);
+  assert.equal(plan.structuralVerification.fullyCovered, true);
+  assert.deepEqual(plan.structuralVerification.missingFields, []);
+  assert.equal(plan.structuralVerification.hasGatewayUrl, true);
+  assert.equal(plan.structuralVerification.hasCausalTimestamps, true);
+  assert.equal(plan.structuralVerification.isMultiAgent, true);
+  assert.equal(plan.structuralVerification.hasContinuation, true);
+  assert.equal(plan.structuralVerification.authenticated, true);
+  assert.equal(plan.structuralVerification.multiAgentRoutingVerified, true);
+  assert.equal(plan.structuralVerification.continuationVerified, true);
+  assert.equal(plan.structuralVerification.toolProposalVerified, true);
+  assert.equal(plan.structuralVerification.traceReadbackVerified, true);
+  const text = plan.limits.join('\n');
+  assert.ok(text.includes('closedLoop=true'));
+  assert.ok(text.includes('closedLoop=false'));
+});
+
+test('planMod04bAgentArtsAcceptance rejects boolean realCloudEvidence', () => {
+  assert.throws(
+    () => planMod04bAgentArtsAcceptance({ evidence: validEvidenceFixture(), realCloudEvidence: true }),
+    (err) => err.code === 'INVALID_ARGUMENT' && /boolean flag is prohibited/.test(err.message)
+  );
+  assert.throws(
+    () => planMod04bAgentArtsAcceptance({ evidence: validEvidenceFixture(), realCloudEvidence: false }),
+    (err) => err.code === 'INVALID_ARGUMENT' && /boolean flag is prohibited/.test(err.message)
+  );
+});
+
+test('planMod04bAgentArtsAcceptance reflects missing gatewayUrl and timestamps in pending', () => {
+  const minimalEvidence = {
+    profile: MOD04B_AGENTARTS_PROFILE,
+    taskId: 'task-no-gw',
+    sessionId: 'session-no-gw',
+    cloudTraceId: 'trace-no-gw',
+    multiAgent: { agents: ['agent-1', 'agent-2'] },
+  };
+  const plan = planMod04bAgentArtsAcceptance({ evidence: minimalEvidence });
+  assert.equal(plan.closedLoop, false);
+  const endpointItem = plan.pending.find((p) => p.item === 'agentarts_real_cloud_endpoint');
+  assert.ok(endpointItem);
+  assert.ok(endpointItem.description.includes('缺少有效 gatewayUrl'));
+  assert.ok(plan.structuralVerification);
+  assert.equal(plan.structuralVerification.hasGatewayUrl, false);
+  assert.equal(plan.structuralVerification.hasCausalTimestamps, false);
+  assert.ok(plan.structuralVerification.missingFields.includes('gatewayUrl'));
+  assert.ok(plan.structuralVerification.missingFields.includes('causal_timestamps'));
+});
+
+test('planMod04bAgentArtsAcceptance reflects missing toolProposalVerified in pending', () => {
+  const fixture = validEvidenceFixture();
+  const plan = planMod04bAgentArtsAcceptance({
+    evidence: fixture,
+    realCloudEvidence: {
+      authenticated: true,
+      multiAgentRoutingVerified: true,
+      continuationVerified: true,
+      // toolProposalVerified omitted
+      traceReadbackVerified: true,
+    },
+  });
+  assert.equal(plan.closedLoop, false);
+  const toolItem = plan.pending.find((p) => p.item === 'agentarts_tool_proposal_verification');
+  assert.ok(toolItem);
+  assert.ok(toolItem.description.includes('需 toolProposalVerified=true'));
+  assert.ok(plan.structuralVerification);
+  assert.equal(plan.structuralVerification.toolProposalVerified, false);
+  assert.ok(plan.structuralVerification.missingFields.includes('toolProposalVerified'));
+  assert.equal(plan.structuralVerification.fullyCovered, false);
 });
 
 test('planMod04bAgentArtsAcceptance preserves custom pending items', () => {

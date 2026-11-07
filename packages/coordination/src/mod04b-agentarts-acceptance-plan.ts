@@ -107,11 +107,25 @@ export interface RealCloudMultiAgentEvidence {
   readonly traceReadbackVerified?: boolean | undefined;
 }
 
+export interface Mod04bStructuralVerification {
+  readonly hasGatewayUrl: boolean;
+  readonly hasCausalTimestamps: boolean;
+  readonly isMultiAgent: boolean;
+  readonly hasContinuation: boolean;
+  readonly authenticated: boolean;
+  readonly multiAgentRoutingVerified: boolean;
+  readonly continuationVerified: boolean;
+  readonly toolProposalVerified: boolean;
+  readonly traceReadbackVerified: boolean;
+  readonly missingFields: readonly string[];
+  readonly fullyCovered: boolean;
+}
+
 export interface PlanMod04bAgentArtsAcceptanceOptions {
   readonly evidence?: unknown | undefined;
   readonly receipt?: unknown | undefined;
   readonly headCommit?: string | undefined;
-  readonly realCloudEvidence?: RealCloudMultiAgentEvidence | boolean | undefined;
+  readonly realCloudEvidence?: RealCloudMultiAgentEvidence | undefined;
   readonly customPendingItems?: readonly string[] | undefined;
   readonly taskId?: string | undefined;
 }
@@ -135,6 +149,7 @@ export interface Mod04bAgentArtsAcceptancePlan {
   readonly pending: readonly Mod04bAgentArtsPendingItem[];
   readonly reason: typeof MOD04B_AGENTARTS_PENDING_REASON | string;
   readonly limits: readonly string[];
+  readonly structuralVerification?: Mod04bStructuralVerification | undefined;
   readonly multiAgentStatus: {
     readonly isMultiAgent: boolean;
     readonly agentCount: number;
@@ -523,6 +538,21 @@ export function planMod04bAgentArtsAcceptance(
     explicitTaskId = extraOptions?.taskId;
   }
 
+  // 严格防御：禁止通过布尔标记伪造真实多智能体云端读回
+  if (typeof realCloudEvidence === 'boolean') {
+    fail('realCloudEvidence must be an object with structured verification fields, boolean flag is prohibited');
+  }
+
+  if (realCloudEvidence !== undefined) {
+    if (!plain(realCloudEvidence)) {
+      fail('realCloudEvidence must be an object with structured verification fields');
+    }
+    const rce = realCloudEvidence as unknown as RealCloudMultiAgentEvidence;
+    if (typeof rce.authenticated !== 'boolean') {
+      fail('realCloudEvidence.authenticated must be a boolean');
+    }
+  }
+
   const limits: readonly string[] = [
     '本规划为离线契约 helper，不连接华为云，不读取任何云凭据或密钥',
     '真实 AgentArts 多 Agent 结果与 continuation 闭环必须具备华为云真实端到端读回证据，严禁在无证据时宣称 closedLoop=true',
@@ -530,162 +560,243 @@ export function planMod04bAgentArtsAcceptance(
     '遵循 AGENTS.md 与华为比赛 Profile 规范：无真实云证据时 closedLoop=false，状态标记为 unavailable，待真云验收',
   ];
 
+  let evidence: Mod04bAgentArtsEvidence | undefined;
+  let receiptCommit = '';
+  let headMatches: boolean | undefined;
+  let isMultiAgent = false;
+  let agentList: string[] = [];
+  let continuationItem: Mod04bContinuationEvidence | undefined;
+  let hasContinuation = false;
+  let hasGatewayUrl = false;
+  let hasCausalTimestamps = false;
+  let structuralVerification: Mod04bStructuralVerification | undefined;
+  const verified: string[] = [];
+
+  const rce = plain(realCloudEvidence) ? (realCloudEvidence as unknown as RealCloudMultiAgentEvidence) : undefined;
+  const toolProposalVerified = rce?.toolProposalVerified === true;
+  const multiAgentRoutingVerified = rce?.multiAgentRoutingVerified === true;
+  const continuationVerified = rce?.continuationVerified === true;
+  const traceReadbackVerified = rce?.traceReadbackVerified === true;
+
   // Case 1: No evidence input provided -> default offline plan
   if (!evidenceInput) {
-    const pending: Mod04bAgentArtsPendingItem[] = DEFAULT_MOD04B_AGENTARTS_PENDING_ITEMS.map(spec => ({
-      item: spec.item,
-      description: spec.description,
-      status: 'unavailable' as const,
-      reason: MOD04B_AGENTARTS_PENDING_REASON,
-    }));
+    verified.push('离线规划：未提供 AgentArts 多 Agent / continuation 真云读回证据，已生成 MOD-04B 离线验收规划');
+  } else {
+    // Case 2: Evidence input provided -> validate evidence structure
+    assertMod04bAgentArtsEvidence(evidenceInput);
+    evidence = evidenceInput as Mod04bAgentArtsEvidence;
 
-    if (customPendingItems) {
-      for (const item of customPendingItems) {
-        pending.push({
-          item,
-          description: item,
-          status: 'unavailable' as const,
-          reason: MOD04B_AGENTARTS_PENDING_REASON,
-        });
+    const rawAgents = evidence.multiAgent?.agents ?? evidence.agents;
+    if (Array.isArray(rawAgents)) {
+      for (const a of rawAgents) {
+        agentList.push(extractAgentName(a));
       }
     }
 
-    return {
-      profile: MOD04B_AGENTARTS_PROFILE,
-      capability: MOD04B_AGENTARTS_CAPABILITY,
-      status: 'unavailable',
-      closedLoop: false,
-      taskId: explicitTaskId,
-      headCommit,
-      verified: ['离线规划：未提供 AgentArts 多 Agent / continuation 真云读回证据，已生成 MOD-04B 离线验收规划'],
-      pending,
-      reason: MOD04B_AGENTARTS_PENDING_REASON,
-      limits,
-      multiAgentStatus: {
-        isMultiAgent: false,
-        agentCount: 0,
-        agents: [],
-      },
-      continuationStatus: {
-        hasContinuation: false,
-      },
-    };
-  }
+    isMultiAgent = agentList.length >= 2;
+    continuationItem = evidence.continuation ?? (Array.isArray(evidence.continuations) && evidence.continuations.length > 0 ? evidence.continuations[0] : undefined);
+    hasContinuation = Boolean(continuationItem);
 
-  // Case 2: Evidence input provided -> validate evidence
-  assertMod04bAgentArtsEvidence(evidenceInput);
-  const evidence = evidenceInput as Mod04bAgentArtsEvidence;
+    hasGatewayUrl = typeof evidence.gatewayUrl === 'string' && evidence.gatewayUrl.trim().length > 0;
+    const hasInvokedAt = evidence.invokedAt !== undefined;
+    const hasCompletedAt = evidence.completedAt !== undefined;
+    if (hasInvokedAt && hasCompletedAt) {
+      const invokedMs = parseIsoTimestamp(evidence.invokedAt);
+      const completedMs = parseIsoTimestamp(evidence.completedAt);
+      hasCausalTimestamps = invokedMs !== undefined && completedMs !== undefined && completedMs >= invokedMs;
+    }
 
-  const rawAgents = evidence.multiAgent?.agents ?? evidence.agents;
-  const agentList: string[] = [];
-  if (Array.isArray(rawAgents)) {
-    for (const a of rawAgents) {
-      agentList.push(extractAgentName(a));
+    receiptCommit = evidence.sourceCommit ?? '';
+    if (typeof headCommit === 'string' && headCommit.trim().length > 0 && receiptCommit.length > 0) {
+      const normalizedHead = headCommit.trim();
+      headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
+    }
+
+    verified.push(
+      `契约结构：Profile "${evidence.profile}"、Capability "${evidence.capability ?? MOD04B_AGENTARTS_CAPABILITY}" 校验通过`,
+      `任务会话：TaskId "${evidence.taskId}"，SessionId "${evidence.sessionId}"，CloudTraceId "${evidence.cloudTraceId}"`
+    );
+
+    if (isMultiAgent) {
+      verified.push(`多智能体：识别到 ${agentList.length} 位协作 Agent [${agentList.join(', ')}]${evidence.multiAgent?.coordinator ? `，主协调器 "${evidence.multiAgent.coordinator}"` : ''}`);
+    }
+
+    if (hasContinuation && continuationItem) {
+      verified.push(`工具延续：ProposalId "${continuationItem.proposalId}"，状态 "${continuationItem.state}"${continuationItem.toolName ? `，工具 "${continuationItem.toolName}"` : ''}`);
+    }
+
+    if (hasGatewayUrl) {
+      verified.push(`云端网关：gatewayUrl "${evidence.gatewayUrl}" 校验通过（安全协议，非回环/非Mock）`);
+    } else {
+      verified.push('结构告警：回执中缺少有效 gatewayUrl (HTTPS/WSS) 声明');
+    }
+
+    if (evidence.runtimeName) {
+      verified.push(`运行时名称：runtimeName "${evidence.runtimeName}" 校验通过`);
+    }
+
+    if (hasCausalTimestamps) {
+      verified.push(`因果时序：调用时间 ${evidence.invokedAt}，完成时间 ${evidence.completedAt}（单调递增）`);
+    } else if (hasInvokedAt || hasCompletedAt) {
+      verified.push('结构告警：调用与完成时间戳缺失或不满足因果时序单调性');
+    }
+
+    if (typeof headMatches === 'boolean') {
+      verified.push(`源码提交：sourceCommit "${receiptCommit}" ${headMatches ? '匹配' : '不匹配'} HEAD "${headCommit}"`);
+    }
+
+    if (toolProposalVerified) {
+      verified.push('工具提案核验：toolProposalVerified 核验通过（本地 Policy/ToolGateway 双向授权匹配）');
+    }
+
+    if (multiAgentRoutingVerified) {
+      verified.push('路由分派核验：multiAgentRoutingVerified 核验通过');
+    }
+
+    if (continuationVerified) {
+      verified.push('多轮续答核验：continuationVerified 核验通过');
+    }
+
+    if (traceReadbackVerified) {
+      verified.push('链路追踪核验：traceReadbackVerified 核验通过');
     }
   }
 
-  const isMultiAgent = agentList.length >= 2;
-  const continuationItem = evidence.continuation ?? (Array.isArray(evidence.continuations) && evidence.continuations.length > 0 ? evidence.continuations[0] : undefined);
-  const hasContinuation = Boolean(continuationItem);
+  // Real cloud execution authority boundary:
+  // In offline context, schema validation of multi-agent results and continuation items does NOT substitute
+  // for genuine AgentArts cloud multi-agent orchestration, live model inference, and external trace readback.
+  // Hence closedLoop strictly remains false and status remains unavailable.
+  const pending: Mod04bAgentArtsPendingItem[] = [];
 
-  const receiptCommit = evidence.sourceCommit ?? '';
-  let headMatches: boolean | undefined;
-  if (typeof headCommit === 'string' && headCommit.trim().length > 0 && receiptCommit.length > 0) {
-    const normalizedHead = headCommit.trim();
-    headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
-  }
-
-  let hasRealCloud = false;
-  if (typeof realCloudEvidence === 'boolean') {
-    hasRealCloud = realCloudEvidence;
-  } else if (realCloudEvidence && typeof realCloudEvidence === 'object') {
-    hasRealCloud =
-      realCloudEvidence.authenticated === true &&
-      (realCloudEvidence.multiAgentRoutingVerified === true || realCloudEvidence.continuationVerified === true) &&
-      realCloudEvidence.traceReadbackVerified === true;
-  }
-
-  if (evidence.cloudEvidence === false || evidence.evidenceLevel === 'mock') {
-    hasRealCloud = false;
-  }
-
-  const verified: string[] = [
-    `契约结构：Profile "${evidence.profile}"、Capability "${evidence.capability ?? MOD04B_AGENTARTS_CAPABILITY}" 校验通过`,
-    `任务会话：TaskId "${evidence.taskId}"，SessionId "${evidence.sessionId}"，CloudTraceId "${evidence.cloudTraceId}"`,
-  ];
-
-  if (isMultiAgent) {
-    verified.push(`多智能体：识别到 ${agentList.length} 位协作 Agent [${agentList.join(', ')}]${evidence.multiAgent?.coordinator ? `，主协调器 "${evidence.multiAgent.coordinator}"` : ''}`);
-  }
-
-  if (hasContinuation && continuationItem) {
-    verified.push(`工具延续：ProposalId "${continuationItem.proposalId}"，状态 "${continuationItem.state}"${continuationItem.toolName ? `，工具 "${continuationItem.toolName}"` : ''}`);
-  }
-
-  if (evidence.gatewayUrl) {
-    verified.push(`云端网关：gatewayUrl "${evidence.gatewayUrl}" 校验通过（安全协议，非回环/非Mock）`);
-  }
-
-  if (evidence.runtimeName) {
-    verified.push(`运行时名称：runtimeName "${evidence.runtimeName}" 校验通过`);
-  }
-
-  if (evidence.invokedAt && evidence.completedAt) {
-    verified.push(`因果时序：调用时间 ${evidence.invokedAt}，完成时间 ${evidence.completedAt}`);
-  }
-
-  if (typeof headMatches === 'boolean') {
-    verified.push(`源码提交：sourceCommit "${receiptCommit}" ${headMatches ? '匹配' : '不匹配'} HEAD "${headCommit}"`);
-  }
-
-  if (hasRealCloud && headMatches !== false) {
-    return {
-      profile: MOD04B_AGENTARTS_PROFILE,
-      capability: MOD04B_AGENTARTS_CAPABILITY,
-      status: 'verified',
-      closedLoop: true,
-      taskId: evidence.taskId,
-      sessionId: evidence.sessionId,
-      cloudTraceId: evidence.cloudTraceId,
-      runtimeName: evidence.runtimeName,
-      gatewayUrl: evidence.gatewayUrl,
-      invokedAt: evidence.invokedAt,
-      completedAt: evidence.completedAt,
-      sourceCommit: evidence.sourceCommit,
-      headCommit,
-      headMatches,
-      verified,
-      pending: [],
-      reason: '真云多Agent与continuation已验收',
-      limits,
-      multiAgentStatus: {
-        isMultiAgent,
-        agentCount: agentList.length,
-        agents: agentList,
-      },
-      continuationStatus: {
-        hasContinuation,
-        proposalId: continuationItem?.proposalId,
-        state: continuationItem?.state,
-      },
-    };
-  }
-
-  // If real cloud evidence is missing or head commit mismatches -> unavailable
-  const pending: Mod04bAgentArtsPendingItem[] = DEFAULT_MOD04B_AGENTARTS_PENDING_ITEMS.map(spec => ({
-    item: spec.item,
-    description: spec.description,
-    status: 'unavailable' as const,
-    reason: MOD04B_AGENTARTS_PENDING_REASON,
-  }));
-
-  if (headMatches === false) {
+  // Item 1: agentarts_real_cloud_endpoint
+  if (!evidence || !hasGatewayUrl || !hasCausalTimestamps) {
     pending.push({
-      item: 'source_head_commit_alignment',
-      description: `读回源提交 (${receiptCommit}) 与当前 HEAD (${headCommit}) 不对齐，需在当前代码构建下重新执行真云验收`,
+      item: 'agentarts_real_cloud_endpoint',
+      description: '华为云 AgentArts 真实端点未核验（回执缺少有效 gatewayUrl HTTPS/WSS 或调用/完成时间戳时序倒挂/缺失）',
       status: 'unavailable' as const,
       reason: MOD04B_AGENTARTS_PENDING_REASON,
     });
+  } else {
+    pending.push({
+      item: 'agentarts_real_cloud_endpoint',
+      description: '华为云 AgentArts 真实端点（HTTPS/WSS）与有效凭据（Authorization）端到端连通读回（非本地 Fake）',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  }
+
+  // Item 2: agentarts_multi_agent_routing
+  if (!isMultiAgent || !multiAgentRoutingVerified) {
+    pending.push({
+      item: 'agentarts_multi_agent_routing',
+      description: 'AgentArts 云端多智能体协作网络角色路由未核验（需至少 2 位不同 Agent 且 multiAgentRoutingVerified=true）',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  } else {
+    pending.push({
+      item: 'agentarts_multi_agent_routing',
+      description: 'AgentArts 云端多智能体协作网络（主协调器与专业子 Agent）角色路由与分派结果真实读回',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  }
+
+  // Item 3: agentarts_continuation_roundtrip
+  if (!hasContinuation || !continuationVerified) {
+    pending.push({
+      item: 'agentarts_continuation_roundtrip',
+      description: '基于真实提案 proposalId 的受限 continuation 延续未核验（需 confirmed 延续回执且 continuationVerified=true）',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  } else {
+    pending.push({
+      item: 'agentarts_continuation_roundtrip',
+      description: '基于真实提案 proposalId 的受限 continuation 工具结果回传与多轮续答闭环读回',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  }
+
+  // Item 4: agentarts_tool_proposal_verification
+  if (!toolProposalVerified) {
+    pending.push({
+      item: 'agentarts_tool_proposal_verification',
+      description: '云端生成 ToolProposal 授权与结果核实未通过（需 toolProposalVerified=true 经本地 Policy/ToolGateway 双向读回）',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  } else {
+    pending.push({
+      item: 'agentarts_tool_proposal_verification',
+      description: '云端生成 ToolProposal 到本地 Policy/ToolGateway 授权审批与结果核实的双向读回',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  }
+
+  // Item 5: platform_independent_trace_and_cost
+  if (!traceReadbackVerified) {
+    pending.push({
+      item: 'platform_independent_trace_and_cost',
+      description: '华为云平台独立 TraceId 关联与计费未核验（需 traceReadbackVerified=true）',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  } else {
+    pending.push({
+      item: 'platform_independent_trace_and_cost',
+      description: '华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  }
+
+  // Item 6: local_cancellation_and_deadline_settlement
+  pending.push({
+    item: 'local_cancellation_and_deadline_settlement',
+    description: '真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回',
+    status: 'unavailable' as const,
+    reason: MOD04B_AGENTARTS_PENDING_REASON,
+  });
+
+  if (evidence && headMatches !== true) {
+    pending.push({
+      item: 'source_head_commit_alignment',
+      description: typeof headCommit === 'string' && headCommit.trim().length > 0
+        ? `读回源提交 (${receiptCommit}) 与当前 HEAD (${headCommit}) 不对齐，需在当前代码构建下重新执行真云验收`
+        : '未提供当前 HEAD commit 比对，需在当前代码构建下重新执行真云验收',
+      status: 'unavailable' as const,
+      reason: MOD04B_AGENTARTS_PENDING_REASON,
+    });
+  }
+
+  if (evidence) {
+    const missingFields: string[] = [];
+    if (!hasGatewayUrl) missingFields.push('gatewayUrl');
+    if (!hasCausalTimestamps) missingFields.push('causal_timestamps');
+    if (!isMultiAgent) missingFields.push('multiAgent');
+    if (!hasContinuation) missingFields.push('continuation');
+    if (rce?.authenticated !== true) missingFields.push('authenticated');
+    if (!multiAgentRoutingVerified) missingFields.push('multiAgentRoutingVerified');
+    if (!continuationVerified) missingFields.push('continuationVerified');
+    if (!toolProposalVerified) missingFields.push('toolProposalVerified');
+    if (!traceReadbackVerified) missingFields.push('traceReadbackVerified');
+
+    structuralVerification = {
+      hasGatewayUrl,
+      hasCausalTimestamps,
+      isMultiAgent,
+      hasContinuation,
+      authenticated: rce?.authenticated === true,
+      multiAgentRoutingVerified,
+      continuationVerified,
+      toolProposalVerified,
+      traceReadbackVerified,
+      missingFields,
+      fullyCovered: missingFields.length === 0,
+    };
   }
 
   if (customPendingItems) {
@@ -704,20 +815,21 @@ export function planMod04bAgentArtsAcceptance(
     capability: MOD04B_AGENTARTS_CAPABILITY,
     status: 'unavailable',
     closedLoop: false,
-    taskId: evidence.taskId,
-    sessionId: evidence.sessionId,
-    cloudTraceId: evidence.cloudTraceId,
-    runtimeName: evidence.runtimeName,
-    gatewayUrl: evidence.gatewayUrl,
-    invokedAt: evidence.invokedAt,
-    completedAt: evidence.completedAt,
-    sourceCommit: evidence.sourceCommit,
+    taskId: evidence ? evidence.taskId : explicitTaskId,
+    sessionId: evidence?.sessionId,
+    cloudTraceId: evidence?.cloudTraceId,
+    runtimeName: evidence?.runtimeName,
+    gatewayUrl: evidence?.gatewayUrl,
+    invokedAt: evidence?.invokedAt,
+    completedAt: evidence?.completedAt,
+    sourceCommit: evidence?.sourceCommit,
     headCommit,
     headMatches,
     verified,
     pending,
     reason: MOD04B_AGENTARTS_PENDING_REASON,
     limits,
+    structuralVerification,
     multiAgentStatus: {
       isMultiAgent,
       agentCount: agentList.length,

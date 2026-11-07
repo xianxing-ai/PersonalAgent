@@ -82,7 +82,13 @@ MOD-04B（Competition 文字协调消费实现）在华为比赛 Profile（`huaw
        5. `platform_independent_trace_and_cost`：华为云平台独立 TraceId 关联、步骤耗时与 Token 消耗/计费真实读回（非本地模拟）；
        6. `local_cancellation_and_deadline_settlement`：真实网络延迟下的本地 deadline 与取消信号传播、不交付迟到结果的对账读回。
    - 校验 HEAD 提交对齐（`headCommit` 与 `sourceCommit`），失配时追加 `source_head_commit_alignment` 挂起项；
-   - 仅当真实华为云多 Agent / continuation 证据齐备且代码提交对齐时，方可收敛至 `closedLoop: true`、`status: 'verified'`。
+   - **证据入口与可信边界澄清**：
+     - `realCloudEvidence` 仅接受包含 `authenticated`、`multiAgentRoutingVerified`、`continuationVerified`、`toolProposalVerified`、`traceReadbackVerified` 的结构化对象，严禁传入布尔值重载（传入布尔抛出 `ProtocolError('INVALID_ARGUMENT')`）；
+     - 回执必须包含合规的云端网关端点（`gatewayUrl` HTTPS/WSS 且非回环/非Mock）与调用因果时序（`completedAt >= invokedAt`），任一缺失或倒挂将在 `agentarts_real_cloud_endpoint` 挂起项中明示缺口；
+     - 工具提案核验必须显式提供 `toolProposalVerified === true`，缺少时在 `agentarts_tool_proposal_verification` 挂起项中明示缺口；
+     - 规划结果输出显式结构化校验字段 `structuralVerification: Mod04bStructuralVerification`，包含 `hasGatewayUrl`、`hasCausalTimestamps`、`isMultiAgent`、`hasContinuation`、`authenticated`、`multiAgentRoutingVerified`、`continuationVerified`、`toolProposalVerified`、`traceReadbackVerified`、`missingFields` 与 `fullyCovered`，逐字段缺失具备明确可观测性；
+     - 离线环境下上述字段仅完成本地结构性校验，因缺乏华为云在线可信端点连通、独立 TraceId 与 Token 计费读回机制，全链路闭环严格保持 `closedLoop: false`，`status: 'unavailable'`，`reason: '待真云验收'`，全部 6 项真实验收门控无条件保持挂起在 `pending` 中；
+     - 测试 fixture 显式标注 `(simulated fixture)`，不使用真实 main HEAD 冒充已验收。
 
 ---
 
@@ -91,7 +97,7 @@ MOD-04B（Competition 文字协调消费实现）在华为比赛 Profile（`huaw
 - **构建与类型检查**：
   `npm run build --workspace=@personal-agent/coordination` 成功，类型检查通过，生成对应 `.d.ts` 与 `.js` 产物。
 - **定向测试**：
-  `node --test packages/coordination/test/mod04b-agentarts-acceptance-plan.test.mjs` 21/21 全部通过：
+  `node --test packages/coordination/test/mod04b-agentarts-acceptance-plan.test.mjs` 实测 24/24 全部通过（24 pass, 0 fail）：
   - 完整合法多 Agent 与 continuation 证据结构校验；
   - 最小合法多 Agent 证据校验；
   - 最小合法 continuation 证据校验；
@@ -114,7 +120,7 @@ MOD-04B（Competition 文字协调消费实现）在华为比赛 Profile（`huaw
   - 自定义挂起项保留验证；
   - 通过 options 传入 mock 证据时的严格拦截。
 - **工作区全量回归**：
-  `npm test --workspace=@personal-agent/coordination` 262/262 全部通过。
+  `npm test --workspace=@personal-agent/coordination` 262 项历史全量基线。
 - **架构门禁**：
   `npm run check:architecture` 3/3 全部通过。
 - **代码规范检查**：
