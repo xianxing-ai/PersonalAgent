@@ -45,6 +45,19 @@ export {parseAgentInput, PROMPT_VERSION};
 export {getOwnedBindings} from './bindings.js';
 export type {OwnedBinding} from './bindings.js';
 export type {AgentInput};
+export {
+  assertDeploymentReadbackReceipt,
+  parseDeploymentReadbackReceipt,
+  planDeploymentAcceptance,
+  DEPLOYMENT_ACCEPTANCE_PENDING_REASON,
+} from './deployment-readback-plan.js';
+export type {
+  DeploymentReadbackReceipt,
+  DeploymentPendingItem,
+  DeploymentAcceptancePlan,
+  RealCloudEvidence,
+  PlanDeploymentAcceptanceOptions,
+} from './deployment-readback-plan.js';
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
 export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string;executionModel?:ExecutionModelSelection}

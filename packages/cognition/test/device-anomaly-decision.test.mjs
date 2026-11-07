@@ -753,3 +753,140 @@ test('DeviceAnomalyDecisionService: missing notificationPort does not claim deli
   assert.equal(res2.status, 'alert_triggered');
   assert.equal(res2.notificationDelivered, false);
 });
+
+test('device service construction rejects malformed ports and out-of-range threshold configuration', () => {
+  assert.throws(() => new DeviceAnomalyDecisionService(null), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => new DeviceAnomalyDecisionService({}), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => new DeviceAnomalyDecisionService({infer: 'not-a-function'}), {code: 'INVALID_ARGUMENT'});
+  for (const bad of [
+    {cpuThresholdPercent: 101},
+    {cpuThresholdPercent: 0},
+    {memoryThresholdPercent: 101},
+    {memoryThresholdPercent: -5},
+    {recoveryThresholdPercent: 90},
+    {memoryThresholdPercent: 80, recoveryThresholdPercent: 80},
+    {sustainedSampleCount: 1.5},
+    {cooldownMs: -1},
+    {maxSamplingGapMultiplier: 0.5},
+  ]) assert.throws(() => new DeviceAnomalyDecisionService(createMockLayaChoiceInference(), bad), {code: 'INVALID_ARGUMENT'});
+  // sustainedSampleCount is clamped up to 1, never below.
+  new DeviceAnomalyDecisionService(createMockLayaChoiceInference(), {sustainedSampleCount: 0,
+    cpuThresholdPercent: 100, memoryThresholdPercent: 1, recoveryThresholdPercent: 0,
+    cooldownMs: 0, maxSamplingGapMultiplier: 1});
+});
+
+test('device sample and request validation rejects malformed telemetry before any state change', async () => {
+  let calls = 0;
+  const service = new DeviceAnomalyDecisionService({async choose() {calls++; throw Error('unexpected synthetic inference');}});
+  const base = {source: 'sys', timestamp: new Date().toISOString(), cpuPercent: 10, memoryPercent: 20, samplingIntervalMs: 1000};
+  for (const bad of [
+    null,
+    {...base, source: '  '},
+    {...base, source: 7},
+    {...base, timestamp: 'not-a-date'},
+    {...base, cpuPercent: 101},
+    {...base, cpuPercent: -1},
+    {...base, cpuPercent: Number.NaN},
+    {...base, memoryPercent: 101},
+    {...base, samplingIntervalMs: 0},
+    {...base, samplingIntervalMs: 2.5},
+  ]) await assert.rejects(service.evaluateSample(bad), {code: 'INVALID_ARGUMENT'});
+  assert.deepEqual(await service.readFeedback(), [], 'rejected samples must not create source state');
+  const later = {...base, timestamp: new Date(Date.now() + 1000).toISOString()};
+  const request = () => ({deadline: new Date(Date.now() + 60_000).toISOString(), signal: new AbortController().signal});
+  await assert.rejects(service.evaluateSample(later, {...request(), deadline: 'not-a-date'}), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(service.evaluateSample(later, {...request(), deadline: new Date(Date.now() - 1000).toISOString()}),
+    {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(service.evaluateSample(later, {...request(), signal: 'not-a-signal'}), {code: 'INVALID_ARGUMENT'});
+  const aborted = new AbortController();
+  aborted.abort();
+  await assert.rejects(service.evaluateSample({...base, timestamp: new Date(Date.now() + 2000).toISOString()},
+    {deadline: request().deadline, signal: aborted.signal}), {code: 'INVALID_ARGUMENT'});
+  assert.equal(calls, 0);
+});
+
+test('device checkpoint schema validation rejects foreign or corrupt payloads wholesale', async t => {
+  for (const corruption of ['version', 'digest', 'array-sources', 'empty-source', 'sample-counter', 'timestamps', 'pending-delivery']) {
+    await t.test(corruption, async () => {
+      const chooser = {choose() {throw Error('unexpected synthetic inference');}};
+      const sample = {source: 'synthetic-origin', timestamp: '2026-10-08T03:00:00.000Z', cpuPercent: 10,
+        memoryPercent: 20, samplingIntervalMs: 1000};
+      let saved;
+      const checkpoint = {load: () => saved, save(value) {saved = structuredClone(value);}};
+      await new DeviceAnomalyDecisionService(chooser, {checkpoint}).evaluateSample(sample);
+      const valid = structuredClone(saved);
+      saved = structuredClone(valid);
+      if (corruption === 'version') saved.version = 2;
+      else if (corruption === 'digest') saved.configDigest = '0'.repeat(64);
+      else if (corruption === 'array-sources') saved.sources = [];
+      else if (corruption === 'empty-source') saved.sources['  '] = valid.sources['synthetic-origin'];
+      else if (corruption === 'sample-counter') saved.sources['synthetic-origin'].sampleCounter = -1;
+      else if (corruption === 'timestamps') saved.sources['synthetic-origin'].lastSampleTimestampMs = Number.NaN;
+      else if (corruption === 'pending-delivery') saved.sources['synthetic-origin'].pendingDelivery = {id: 9, timestampMs: 1};
+      const corrupt = structuredClone(saved);
+      const affected = new DeviceAnomalyDecisionService(chooser, {checkpoint});
+      await assert.rejects(() => affected.readFeedback(), {code: 'INVALID_ARGUMENT'});
+      await assert.rejects(() => affected.evaluateSample(sample), {code: 'INVALID_ARGUMENT'});
+      assert.deepEqual(saved, corrupt, 'rejected checkpoint loads must not rewrite disk state');
+    });
+  }
+});
+
+test('abstained device selections keep monitoring without notification or cooldown lock', async () => {
+  let deliveries = 0, calls = 0;
+  const service = new DeviceAnomalyDecisionService({async choose() {
+    calls++;
+    return {state: 'abstain', reason: 'low_confidence', eligibleForRuntime: false, calibrated: false,
+      scores: [], selected: null, receipt: {id: 'abstain'}};
+  }}, {sustainedSampleCount: 1, cooldownMs: 60_000,
+    notificationPort: {sendAdvisoryNotification: () => {deliveries++; return {delivered: true};}}});
+  const base = {source: 'sys:abstain', cpuPercent: 95, memoryPercent: 50, samplingIntervalMs: 5000};
+  const at = index => ({...base, timestamp: new Date(Date.parse('2026-09-29T20:00:00.000Z') + index * 5000).toISOString()});
+  const first = await service.evaluateSample(at(0));
+  assert.equal(first.status, 'monitoring');
+  assert.equal(first.selection?.state, 'abstain');
+  assert.equal(first.isAlertActive, false);
+  assert.equal(first.notificationDelivered, undefined);
+  assert.match(first.safeAdvice, /low_confidence/);
+  const again = await service.evaluateSample(at(1));
+  assert.equal(again.status, 'monitoring', 'abstention must not lock the cooldown window');
+  assert.equal(calls, 2);
+  assert.equal(deliveries, 0);
+});
+
+test('stale selected revisions route to review without delivery', async () => {
+  let deliveries = 0;
+  const service = new DeviceAnomalyDecisionService({async choose() {
+    return {state: 'selected', eligibleForRuntime: true, calibrated: true, scores: [],
+      selected: {id: 'remind_user_inspect', revision: 9}, receipt: {id: 'synthetic-selection'}};
+  }}, {sustainedSampleCount: 1,
+    notificationPort: {sendAdvisoryNotification: () => {deliveries++; return {delivered: true};}}});
+  const sample = {source: 'sys:review', timestamp: '2026-09-29T21:00:00.000Z', cpuPercent: 95,
+    memoryPercent: 50, samplingIntervalMs: 5000};
+  const receipt = await service.evaluateSample(sample,
+    {deadline: new Date(Date.now() + 60_000).toISOString(), signal: new AbortController().signal});
+  assert.equal(receipt.status, 'monitoring');
+  assert.equal(receipt.notificationDelivered, false);
+  assert.ok(receipt.safeAdvice.includes('待复核'));
+  assert.equal(receipt.selection.state, 'selected');
+  assert.equal(receipt.candidates.length, 3);
+  assert.equal(deliveries, 0);
+});
+
+test('hysteresis band keeps an active alert and partial unavailability cannot fake recovery', async () => {
+  const inference = createMockLayaChoiceInference(0);
+  const service = new DeviceAnomalyDecisionService(inference, {cpuThresholdPercent: 90, recoveryThresholdPercent: 80,
+    sustainedSampleCount: 1, notificationPort: {sendAdvisoryNotification: () => ({delivered: true})}});
+  const base = {source: 'agent:telemetry', memoryPercent: 50, samplingIntervalMs: 5000};
+  const at = index => ({...base, timestamp: new Date(Date.parse('2026-09-29T22:00:00.000Z') + index * 5000).toISOString()});
+  assert.equal((await service.evaluateSample({...at(0), cpuPercent: 95})).status, 'alert_triggered');
+  const band = await service.evaluateSample({...at(1), cpuPercent: 85});
+  assert.equal(band.status, 'alert_active_hysteresis');
+  assert.equal(band.isAlertActive, true);
+  const partial = await service.evaluateSample({...at(2), cpuPercent: 5, unavailableMetrics: ['cpu']});
+  assert.equal(partial.status, 'alert_active_hysteresis', 'unavailable cpu must not count as recovery evidence');
+  assert.equal(partial.isAlertActive, true);
+  const recovered = await service.evaluateSample({...at(3), cpuPercent: 10});
+  assert.equal(recovered.status, 'recovered');
+  assert.equal(recovered.isAlertActive, false);
+});

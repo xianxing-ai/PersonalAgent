@@ -56,11 +56,38 @@ node scripts/release/preflight.mjs .
 
 Electron 自带的 Node/V8 运行时与命令行 Node 不是同一可执行环境。正式候选必须在打包后的 Electron 主进程中验证至少一次 SQLite 导入、建库/迁移、写入、读回、关闭与重启读回；静态版本匹配和源码中的 `node:sqlite` 引用不能代替该验收。检查器以固定阻塞项 `PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED` 保留这一边界。
 
+### 打包后 SQLite 烟测规划占位与验收边界（2026-11-07）
+
+针对打包后 Electron 主进程 SQLite 验证缺口，仓库已补充纯静态规划与占位脚手架：
+1. `tests/manual/release/windows-electron-sqlite.json`（`status=pending`、`executed=false`、`evidenceLevel=unverified`）；
+2. 静态规划脚本 `scripts/release/packaged-sqlite-smoke.plan.mjs` 及测试 `scripts/release/packaged-sqlite-smoke.plan.test.mjs`；
+3. 直接运行 `node scripts/release/packaged-sqlite-smoke.plan.mjs --check` 用于静态校验规划与占位文件（不改根 package.json）。
+
+**关键安全边界：占位 ≠ 验收。**
+- 静态规划器不执行 Electron 进程（有路径也不拉起）；在非 Windows 或无产物时固定输出 `{ready:false, reason:'unavailable', pending:true}`，直接 CLI 运行返回非 0 退出码表示“不可当作已验收”；
+- 检查器中的 `PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED` 保持固定阻断（`blocked`）；
+- 占位文件绝不宣称 `passed`，`publishable` 必须仍为 `false`；真实验收必须在 Windows 真机打包后的 Electron 主进程中完成建库、WAL 模式、读写事务以及重启读回并收集外部证据。
+
 ## 当前仓库结论
 
-在基线 `72cc76b` 上，Desktop/Runtime 源入口和版本声明存在，但仓库没有生产打包配置、Windows 安装器定义或发布脚本；独立安装/启动、升级保留数据、卸载及打包后 SQLite 运行证据也未提供。干净工作树未预置所有必要 `dist` 文件时，检查器会先报告 `run_build`，但它不会自行执行构建。
+在基线 `72cc76b` 上，Desktop/Runtime 源入口和版本声明存在，但仓库没有生产打包配置、Windows 安装器定义或发布脚本；打包后 SQLite 运行证据仍未提供。干净工作树未预置所有必要 `dist` 文件时，检查器会先报告 `run_build`，但它不会自行执行构建。
+
+在引入人工验收占位文件（`windows-install-start.json`、`windows-upgrade-data-retention.json`、`windows-uninstall.json`）后，检查器将这三项的状态从 `missing`（`MANUAL_EVIDENCE_MISSING`）更新为 `unverified`（`MANUAL_EVIDENCE_NOT_EXECUTED`）。必须特别说明：**占位文件存在绝不等于验收通过（占位≠验收）**。占位文件仅用于固化离线验收脚手架与核对清单，明确标记为 `status: pending`、`executed: false`、`verified: false`。检查报告的 `releaseStatus` 依然严格维持 `blocked`，`publishable` 固定为 `false`。严禁将占位文件误当作通过证据，也严禁私自将状态修改为 `passed`。
 
 因此本首片工作包进入 `review`；检查报告的 `releaseStatus` 仍是 `blocked`。它提供可重复的准备检查与缺口列表，不把“文件存在”升级成“可以发布”。后续是否实施生产打包配置与候选生成由主对话统一指挥；本首片不会自行转入安装器实现。后续若获授权，还须在隔离用户数据目录完成安装、启动、升级、数据保留、卸载和回滚边界验收，发布授权仍是独立门槛。
+
+## 脚手架已声明、验收未做（2026-11-07）
+
+在 MOD-19 脚手架工作包（[MOD-19-PACKAGING-SCAFFOLD-20261107.md](MOD-19-PACKAGING-SCAFFOLD-20261107.md)）中，仓库已声明：
+1. `apps/desktop/electron-builder.yml` 及 `apps/desktop/package.json` 中的 `build` 字段（`production-packaging-config` 转为 `pass`）；
+2. `apps/desktop/package.json` 中的 `scripts["package:win"]`（`windows-package-script` 转为 `pass`）；
+3. `build.win.target` 中声明的 `nsis` 目标（`windows-installer-definition` 转为 `pass`）；
+4. `tests/manual/release/` 下的安装启动、升级数据保留、卸载三个验收占位（状态由 `MANUAL_EVIDENCE_MISSING` 迁移为 `MANUAL_EVIDENCE_NOT_EXECUTED`，即 `unverified`）。
+
+检查器仍严格保持以下语义：
+- `PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED` 保持 `blocked`；
+- 只要人工验收仍为 `unverified` 或缺少打包后 SQLite 运行证据，`publishable` 固定为 `false`，`releaseStatus` 固定为 `blocked`；
+- 不因存在脚手架而将工程误判为可发布。
 
 ## 最少验收
 

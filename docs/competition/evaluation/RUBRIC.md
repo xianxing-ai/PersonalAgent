@@ -38,7 +38,7 @@
 每次运行输出到 `--out` 目录：
 
 - `trace-<runId>.manifest.json`：运行元数据（adapter、git HEAD、时间、统计、输出文件）。
-- `trace-<runId>.events.jsonl`：逐事件 JSONL——`run_started` / `case_started` / `check` / `case_finished` / `run_finished`，runtime adapter 另有 `invocation` 事件（原始响应截断至 4KB，绝不伪造响应内容）。
+- `trace-<runId>.events.jsonl`：逐事件 JSONL——`run_started` / `case_started` / `check` / `case_finished` / `run_finished`，runtime adapter 当前不发起调用，不记录原始响应。
 
 Trace 是审计证据：判分结论必须能在 events.jsonl 中逐条对应；manifest 的分数必须与 events 汇总一致（runner 内部自检，不一致即退出码 2）。
 
@@ -47,7 +47,7 @@ Trace 是审计证据：判分结论必须能在 events.jsonl 中逐条对应；
 | adapter | 能判什么 | 不能判什么 |
 | --- | --- | --- |
 | `contract`（离线，默认） | 评测集与整图契约的结构一致性：workflowId 存在、requiredCapabilities ⊆ 图能力、权重和=1、expectedEvidence 非空、依赖用例存在。**验证的是题集质量**，不评测模型行为。 | 模型行为（无法离线判定，一律 unverified） |
-| `runtime`（需已部署 Runtime） | 行为判分：POST `/invocations` 真实调用，判 requiredCapabilities 是否真实出现在调用事件中、expectedEvidence 是否出现、行为检查项依据响应证据判定。 | 无部署时的任何行为结论（全部 unavailable，不做本地模拟替代） |
+| `runtime`（需已部署 Runtime） | 当前缺少可信隔离授权和逐项验证器，不发送调用，行为项为 unverified，用例为 unavailable。 | 无部署时的任何行为结论（全部 unavailable，不做本地模拟替代） |
 
 ## 6. 与 AgentArts 平台评测的关系（比赛口径）
 
