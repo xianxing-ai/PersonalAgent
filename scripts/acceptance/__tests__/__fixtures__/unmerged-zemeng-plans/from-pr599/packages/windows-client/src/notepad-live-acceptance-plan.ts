@@ -303,7 +303,6 @@ export function planNotepadLiveAcceptance(
   const hasReal = options.hasRealMachineEvidence === true;
   const requiredGates = options.requiredGates ?? NOTEPAD_LIVE_ACCEPTANCE_PENDING_GATES;
 
-  const verified: NotepadLiveAcceptanceGate[] = [];
   const pending: NotepadLiveAcceptanceGate[] = [];
   let evidence: NotepadLiveEvidence | undefined;
   let digest: string | undefined;
@@ -346,7 +345,7 @@ export function planNotepadLiveAcceptance(
     closedLoop: false,
     reason: NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON,
     pending: Object.freeze(pending),
-    verifiedGates: Object.freeze(verified),
+    verifiedGates: Object.freeze([]),
     evidenceSummary: evidence ? Object.freeze({
       taskId: typeof evidence.taskId === 'string' ? evidence.taskId : undefined,
       runId: typeof evidence.runId === 'string' ? evidence.runId : undefined,

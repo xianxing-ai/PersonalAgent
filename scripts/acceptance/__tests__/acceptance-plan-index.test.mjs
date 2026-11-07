@@ -13,7 +13,7 @@ import {
   KNOWN_UNMERGED_PRS,
 } from '../types.mjs';
 import { parseMarkdownPlan } from '../parsers/markdown-plan-parser.mjs';
-import { parseCodePlan } from '../parsers/code-plan-parser.mjs';
+import { parseCodePlan, stripCodeCommentsAndStrings, tokenizeCode } from '../parsers/code-plan-parser.mjs';
 import { parseJsonPlan } from '../parsers/json-plan-parser.mjs';
 import { scanAcceptancePlans, matchGlob } from '../scanner.mjs';
 import { formatMarkdownReport, formatJsonReport } from '../formatter.mjs';
@@ -175,6 +175,436 @@ test('parsers: code-plan-parser statically extracts explicit literals and record
   assert.ok(prov.status && prov.status.lineStart > 0);
 });
 
+test('parsers: stripCodeCommentsAndStrings preserves line count and strips comments, strings, and regex', () => {
+  const code = [
+    'const a = 1; // comment closedLoop: true',
+    'const b = /* multi',
+    '   closedLoop: false */ 2;',
+    'const str1 = \'closedLoop=true\';',
+    'const str2 = "closedLoop: true";',
+    'const re = /closedLoop[:=]\\s*true/g;',
+    'const div = 10 / 2 / 5;',
+  ].join('\n');
+
+  const { cleanContent, unclosedSyntax } = stripCodeCommentsAndStrings(code);
+  assert.equal(unclosedSyntax, null);
+  assert.equal(cleanContent.split('\n').length, code.split('\n').length);
+  assert.equal(cleanContent.includes('closedLoop'), false);
+  assert.ok(cleanContent.includes('const a = 1;'));
+  assert.ok(cleanContent.includes('2;'));
+  assert.ok(cleanContent.includes('10 / 2 / 5;'));
+});
+
+test('parsers: template literal expressions preserve inner code while stripping literals and unclosed syntax fails closed', () => {
+  // 模板字面量内部真实代码保留
+  const templateWithExpr = 'const plan = `prefix ${(() => ({ closedLoop: false }))()} suffix`;';
+  const { cleanContent: cleanExpr } = stripCodeCommentsAndStrings(templateWithExpr);
+  assert.ok(cleanExpr.includes('closedLoop: false'));
+  assert.equal(cleanExpr.includes('prefix'), false);
+  assert.equal(cleanExpr.includes('suffix'), false);
+
+  // 嵌套模板字面量
+  const nested = 'let msg = `alpha ${`beta ${foo} gamma`} delta`;';
+  const { cleanContent: cleanNested } = stripCodeCommentsAndStrings(nested);
+  assert.ok(cleanNested.includes('foo'));
+  assert.equal(cleanNested.includes('alpha'), false);
+  assert.equal(cleanNested.includes('beta'), false);
+
+  // 未闭合语法 fail-closed
+  const unclosedTemplate = '`unclosed template string ${foo}';
+  const resUnclosed = stripCodeCommentsAndStrings(unclosedTemplate);
+  assert.equal(resUnclosed.unclosedSyntax, 'unclosed_template_literal');
+
+  const unclosedComment = '/* unclosed multiline comment';
+  const resComment = stripCodeCommentsAndStrings(unclosedComment);
+  assert.equal(resComment.unclosedSyntax, 'unclosed_multiline_comment');
+});
+
+test('parsers: status must be declared within the plan object literal, rejecting distance heuristics and same-line pseudo-strings', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pa-status-test-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  // 1. 负例：目标规划对象内部缺少 status，即便外部有其他对象的 status: 'ready'，坚决报 missing_status
+  const missingStatusCode = `
+    export function planSampleAcceptance() {
+      const helper = { status: 'ready' };
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false
+      };
+    }
+  `;
+  const file1 = path.join(tmpDir, 'missing-status.plan.mjs');
+  fs.writeFileSync(file1, missingStatusCode, 'utf8');
+  const res1 = parseCodePlan(file1, tmpDir);
+  assert.equal(res1.ok, false);
+  assert.ok(res1.missingFields.includes('status'));
+  assert.equal(res1.cannotConfirm?.status?.reason, 'missing_status');
+
+  // 2. 负例：同行仅有字符串伪 status（"status: unavailable"），缺少实际代码属性，严格报 missing_status
+  const pseudoStatusCode = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        description: "note with status: unavailable in string",
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false
+      };
+    }
+  `;
+  const file2 = path.join(tmpDir, 'pseudo-status.plan.mjs');
+  fs.writeFileSync(file2, pseudoStatusCode, 'utf8');
+  const res2 = parseCodePlan(file2, tmpDir);
+  assert.equal(res2.ok, false);
+  assert.ok(res2.missingFields.includes('status'));
+  assert.equal(res2.cannotConfirm?.status?.reason, 'missing_status');
+
+  // 3. 正例：同行包含字符串伪 status 与实际 status 代码赋值，精准识别真实属性赋值
+  const validSameLineCode = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        note: "status: ready", status: 'unavailable',
+        reason: '待真实验收执行',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false
+      };
+    }
+  `;
+  const file3 = path.join(tmpDir, 'valid-sameline-status.plan.mjs');
+  fs.writeFileSync(file3, validSameLineCode, 'utf8');
+  const res3 = parseCodePlan(file3, tmpDir);
+  assert.equal(res3.ok, true);
+  assert.equal(res3.record.status, 'unavailable');
+});
+
+test('parsers: closedLoop detects multiple assignments on the same line and separates string pseudo-fields', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pa-closedloop-test-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  // 1. 负例：同一行存在两个实际代码赋值，必须捕获 2 处赋值并严格报告 ambiguous_closedLoop
+  const sameLineMultiCode = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false, closedLoop: true
+      };
+    }
+  `;
+  const file1 = path.join(tmpDir, 'sameline-multi.plan.mjs');
+  fs.writeFileSync(file1, sameLineMultiCode, 'utf8');
+  const res1 = parseCodePlan(file1, tmpDir);
+  assert.equal(res1.ok, false);
+  assert.ok(res1.missingFields.includes('closedLoop'));
+  assert.equal(res1.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+  assert.equal(res1.cannotConfirm?.closedLoop?.occurrences?.length, 2);
+
+  // 2. 负例：同一行既有字符串伪 closedLoop 又有多个实际赋值
+  const sameLineStringAndMultiCode = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        info: "closedLoop=false", closedLoop: false, closedLoop: true
+      };
+    }
+  `;
+  const file2 = path.join(tmpDir, 'sameline-string-multi.plan.mjs');
+  fs.writeFileSync(file2, sameLineStringAndMultiCode, 'utf8');
+  const res2 = parseCodePlan(file2, tmpDir);
+  assert.equal(res2.ok, false);
+  assert.ok(res2.missingFields.includes('closedLoop'));
+  assert.equal(res2.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+  assert.equal(res2.cannotConfirm?.closedLoop?.occurrences?.length, 2);
+
+  // 3. 正例：同一行包含字符串伪 closedLoop 与单处实际赋值，精确提取单处 false
+  const sameLineStringAndSingleCode = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        reason: '待真实验收执行',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        info: "closedLoop=true", closedLoop: false
+      };
+    }
+  `;
+  const file3 = path.join(tmpDir, 'sameline-string-single.plan.mjs');
+  fs.writeFileSync(file3, sameLineStringAndSingleCode, 'utf8');
+  const res3 = parseCodePlan(file3, tmpDir);
+  assert.equal(res3.ok, true);
+  assert.equal(res3.record.closedLoop, false);
+});
+
+test('parsers: closedLoop and status full value boundary detection rejects dynamic operators and expressions', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pa-boundary-test-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  // 1. 负例：closedLoop: false || true 必须被完整边界检出为动态表达式，严格报 ambiguous_closedLoop
+  const codeOr = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        reason: '待验收',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false || true
+      };
+    }
+  `;
+  const file1 = path.join(tmpDir, 'closedloop-or.plan.mjs');
+  fs.writeFileSync(file1, codeOr, 'utf8');
+  const res1 = parseCodePlan(file1, tmpDir);
+  assert.equal(res1.ok, false);
+  assert.ok(res1.missingFields.includes('closedLoop'));
+  assert.equal(res1.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+  assert.ok(res1.cannotConfirm?.closedLoop?.details.includes('false || true'));
+
+  // 2. 负例：closedLoop: true && condition 必须被完整边界检出为动态表达式，严格报 ambiguous_closedLoop
+  const codeAnd = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        reason: '待验收',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: true && condition
+      };
+    }
+  `;
+  const file2 = path.join(tmpDir, 'closedloop-and.plan.mjs');
+  fs.writeFileSync(file2, codeAnd, 'utf8');
+  const res2 = parseCodePlan(file2, tmpDir);
+  assert.equal(res2.ok, false);
+  assert.ok(res2.missingFields.includes('closedLoop'));
+  assert.equal(res2.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+  assert.ok(res2.cannotConfirm?.closedLoop?.details.includes('true && condition'));
+
+  // 3. 负例：带注释分隔的动态 closedLoop: false /* comment */ || true
+  const codeCommentOr = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        reason: '待验收',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false /* comment */ || true
+      };
+    }
+  `;
+  const file3 = path.join(tmpDir, 'closedloop-comment-or.plan.mjs');
+  fs.writeFileSync(file3, codeCommentOr, 'utf8');
+  const res3 = parseCodePlan(file3, tmpDir);
+  assert.equal(res3.ok, false);
+  assert.ok(res3.missingFields.includes('closedLoop'));
+  assert.equal(res3.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+
+  // 4. 负例：三元表达式 closedLoop: false ? x : y
+  const codeTernary = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        reason: '待验收',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false ? x : y
+      };
+    }
+  `;
+  const file4 = path.join(tmpDir, 'closedloop-ternary.plan.mjs');
+  fs.writeFileSync(file4, codeTernary, 'utf8');
+  const res4 = parseCodePlan(file4, tmpDir);
+  assert.equal(res4.ok, false);
+  assert.ok(res4.missingFields.includes('closedLoop'));
+  assert.equal(res4.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+
+  // 5. 负例：status 字符串后动态拼接 status: 'unavailable' + suffix
+  const codeStatusConcat = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable' + suffix,
+        reason: '待验收',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false
+      };
+    }
+  `;
+  const file5 = path.join(tmpDir, 'status-concat.plan.mjs');
+  fs.writeFileSync(file5, codeStatusConcat, 'utf8');
+  const res5 = parseCodePlan(file5, tmpDir);
+  assert.equal(res5.ok, false);
+  assert.ok(res5.missingFields.includes('status'));
+  assert.equal(res5.cannotConfirm?.status?.reason, 'ambiguous_status');
+
+  // 6. 正例：独立字面量被注释包裹 closedLoop: /* comment */ false /* trailing */
+  const codeCleanWithComments = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: /* c1 */ 'unavailable' /* c2 */,
+        reason: '待验收',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: /* c1 */ false /* c2 */
+      };
+    }
+  `;
+  const file6 = path.join(tmpDir, 'clean-with-comments.plan.mjs');
+  fs.writeFileSync(file6, codeCleanWithComments, 'utf8');
+  const res6 = parseCodePlan(file6, tmpDir);
+  assert.equal(res6.ok, true);
+  assert.equal(res6.record.closedLoop, false);
+  assert.equal(res6.record.status, 'unavailable');
+});
+
+test('parsers: tokenizer handles regex vs division, strings after division, and template interpolation true branch', (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pa-token-test-'));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  // 1. 正则 vs 除法与字符串后除法
+  const tokenCode = 'const reg = () => { return /pattern/g.test(x); }; const div = 10 / 2; const strDiv = "100" / 2;';
+  const { tokens } = tokenizeCode(tokenCode);
+  const regexTokens = tokens.filter((tok) => tok.type === 'regex');
+  const divTokens = tokens.filter((tok) => tok.type === 'punct' && tok.value === '/');
+  assert.equal(regexTokens.length, 1);
+  assert.equal(regexTokens[0].value, 'pattern');
+  assert.equal(divTokens.length, 2);
+
+  // 2. 模板插值内部真实 closedLoop: true 不被吞掉，导致 2 处赋值歧义
+  const templateInterpolationTrueCode = `
+    export function planSampleAcceptance() {
+      return {
+        id: 'sample-plan',
+        title: '示例规划',
+        status: 'unavailable',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop: false,
+        debug: \`\${(() => ({ closedLoop: true }))()}\`
+      };
+    }
+  `;
+  const file1 = path.join(tmpDir, 'template-true-branch.plan.mjs');
+  fs.writeFileSync(file1, templateInterpolationTrueCode, 'utf8');
+  const res1 = parseCodePlan(file1, tmpDir);
+  assert.equal(res1.ok, false);
+  assert.ok(res1.missingFields.includes('closedLoop'));
+  assert.equal(res1.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+  assert.equal(res1.cannotConfirm?.closedLoop?.occurrences?.length, 2);
+});
+
+test('parsers: comment-separated keys, colons, and RHS correctly extract code syntax without hiding true branch', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pa-comments-test-'));
+
+  // 1. 阻止通过注释隐藏 true 分支：closedLoop /* comment */ : true 与 closedLoop: false 组合必须报 ambiguous_closedLoop
+  const hiddenTrueCode = `
+    export function planHiddenTrueAcceptance() {
+      const branchA = {
+        id: 'hidden-true-plan',
+        title: '注释隐藏分支测试',
+        status: 'unavailable',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        closedLoop /* block comment between key and colon */ : true,
+      };
+      const branchB = {
+        closedLoop: false,
+      };
+      return branchA;
+    }
+  `;
+  const file1 = path.join(tmpDir, 'hidden-true.plan.mjs');
+  fs.writeFileSync(file1, hiddenTrueCode, 'utf8');
+  const res1 = parseCodePlan(file1, tmpDir);
+  assert.equal(res1.ok, false);
+  assert.ok(res1.missingFields.includes('closedLoop'));
+  assert.equal(res1.cannotConfirm?.closedLoop?.reason, 'ambiguous_closedLoop');
+  assert.equal(res1.cannotConfirm?.closedLoop?.occurrences?.length, 2);
+
+  // 2. key与冒号、冒号与RHS之间的各种注释组合（blockcomment/linecomment/换行），以及类型定义排除
+  const commentSeparatedCode = `
+    // 接口与类型声明中的注释（必须排除，不当成赋值）
+    interface PlanConfig {
+      closedLoop: /* comment in type */ boolean;
+      readonly /* comment before name */ closedLoop /* comment after name */ : boolean;
+    }
+
+    export function planCommentSeparated() {
+      return {
+        id: 'comment-separated-plan',
+        title: '注释分隔语法测试',
+        // status 键、冒号与 RHS 均被注释分隔
+        status /* comment 1 */ : /* comment 2 */ 'unavailable',
+        reason: '待真实验收执行',
+        requiredEnvironments: ['windows_real_machine'],
+        acceptanceSteps: ['Step 1'],
+        evidenceRequirements: ['Evidence 1'],
+        // closedLoop 键、冒号与 RHS 均被注释分隔并换行
+        closedLoop // line comment after key
+          /* block comment before colon */ : /* block comment before value */
+          // line comment before value
+          false,
+      };
+    }
+  `;
+  const file2 = path.join(tmpDir, 'comment-separated.plan.mjs');
+  fs.writeFileSync(file2, commentSeparatedCode, 'utf8');
+  const res2 = parseCodePlan(file2, tmpDir);
+
+  assert.equal(res2.isPlan, true);
+  assert.equal(res2.ok, true);
+  assert.equal(res2.record.closedLoop, false);
+  assert.equal(res2.record.status, 'unavailable');
+  // 验证 status provenance 精准对应第 13 行
+  assert.equal(res2.record.provenance.status.lineStart, 13);
+  assert.equal(res2.record.provenance.status.value, 'unavailable');
+  // 验证 closedLoop provenance 精准对应第 19 行
+  assert.equal(res2.record.provenance.closedLoop.lineStart, 19);
+  assert.equal(res2.record.provenance.closedLoop.value, false);
+});
+
 test('parsers: parseMarkdownPlan correctly parses valid plan and detects errors', () => {
   const validPath = path.join(FIXTURES_DIR, 'valid-markdown-plan-ACCEPTANCE-PLAN.md');
   const resValid = parseMarkdownPlan(validPath, '.');
@@ -244,6 +674,7 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'scripts/release/packaged-sqlite-smoke.plan.mjs': {
       pr: 594,
@@ -252,6 +683,7 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 160,
+      statusLine: 159,
     },
     // PR #596
     'docs/modules/MOD-29-DEPLOYMENT-READBACK-PLAN-20261107.md': {
@@ -261,15 +693,16 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'packages/agentarts/src/deployment-readback-plan.ts': {
       pr: 596,
-      ok: false,
+      ok: true,
       id: 'deployment-readback-plan',
+      closedLoop: false,
       status: 'unavailable',
-      missingFields: ['closedLoop'],
-      cannotConfirmReason: 'ambiguous_closedLoop',
-      expectedLines: [263, 392],
+      closedLoopLine: 392,
+      statusLine: 391,
     },
     // PR #598
     'docs/modules/MOD-19-RELEASE-ACCEPTANCE-PLANS-20261107.md': {
@@ -279,14 +712,16 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'scripts/release/release-install-upgrade-uninstall.plan.mjs': {
       pr: 598,
       ok: true,
       id: 'release-install-upgrade-uninstall',
       closedLoop: false,
-      status: 'pending',
+      status: 'unavailable',
       closedLoopLine: 255,
+      statusLine: 254,
     },
     // PR #599
     'docs/modules/MOD-16-NOTEPAD-LIVE-ACCEPTANCE-PLAN-20261107.md': {
@@ -296,15 +731,16 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'packages/windows-client/src/notepad-live-acceptance-plan.ts': {
       pr: 599,
-      ok: false,
+      ok: true,
       id: 'notepad-live-acceptance',
+      closedLoop: false,
       status: 'unavailable',
-      missingFields: ['closedLoop'],
-      cannotConfirmReason: 'ambiguous_closedLoop',
-      expectedLines: [127, 346],
+      closedLoopLine: 345,
+      statusLine: 344,
     },
     // PR #602
     'docs/modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md': {
@@ -314,6 +750,7 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'packages/goals/src/privacy-deletion-acceptance-plan.ts': {
       pr: 602,
@@ -322,6 +759,7 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 423,
+      statusLine: 424,
     },
     // PR #604
     'docs/modules/MOD-18-WINDOWS-SANDBOX-ACCEPTANCE-PLAN-20261107.md': {
@@ -331,15 +769,16 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'packages/coding-tools/src/windows-sandbox-acceptance-plan.ts': {
       pr: 604,
-      ok: false,
+      ok: true,
       id: 'windows-sandbox-acceptance-plan',
+      closedLoop: false,
       status: 'unavailable',
-      missingFields: ['closedLoop'],
-      cannotConfirmReason: 'ambiguous_closedLoop',
-      expectedLines: [161, 512],
+      closedLoopLine: 512,
+      statusLine: 511,
     },
     // PR #605
     'docs/modules/F09-CLOUD-PREFIX-ACCEPTANCE-PLAN-20261107.md': {
@@ -349,15 +788,16 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'packages/agentarts/src/f09-cloud-prefix-acceptance-plan.ts': {
       pr: 605,
-      ok: false,
+      ok: true,
       id: 'f09-cloud-prefix-plan',
+      closedLoop: false,
       status: 'unavailable',
-      missingFields: ['closedLoop'],
-      cannotConfirmReason: 'ambiguous_closedLoop',
-      expectedLines: [330, 481],
+      closedLoopLine: 481,
+      statusLine: 480,
     },
     // PR #606
     'docs/modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md': {
@@ -367,15 +807,16 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'packages/coordination/src/cloud-persistent-acceptance-plan.ts': {
       pr: 606,
-      ok: false,
+      ok: true,
       id: 'cloud-persistent-acceptance-plan',
+      closedLoop: false,
       status: 'unavailable',
-      missingFields: ['closedLoop'],
-      cannotConfirmReason: 'ambiguous_closedLoop',
-      expectedLines: [434, 436, 565],
+      closedLoopLine: 565,
+      statusLine: 564,
     },
     // PR #607
     'docs/modules/MOD-04B-AGENTARTS-ACCEPTANCE-PLAN-20261107.md': {
@@ -385,15 +826,16 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
       closedLoop: false,
       status: 'unavailable',
       closedLoopLine: 5,
+      statusLine: 4,
     },
     'packages/coordination/src/mod04b-agentarts-acceptance-plan.ts': {
       pr: 607,
-      ok: false,
+      ok: true,
       id: 'mod04b-agentarts-acceptance-plan',
+      closedLoop: false,
       status: 'unavailable',
-      missingFields: ['closedLoop'],
-      cannotConfirmReason: 'ambiguous_closedLoop',
-      expectedLines: [558, 560, 817],
+      closedLoopLine: 817,
+      statusLine: 816,
     },
   };
 
@@ -440,6 +882,13 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
         exp.closedLoopLine,
         `closedLoop line provenance must match for ${item.originalPath}`,
       );
+      if (exp.statusLine) {
+        assert.equal(
+          res.record.provenance?.status?.lineStart,
+          exp.statusLine,
+          `status line provenance must match for ${item.originalPath}`,
+        );
+      }
       assert.equal(
         res.record.provenance?.closedLoop?.sourcePath,
         path.relative('.', fullPath),
@@ -473,8 +922,8 @@ test('unmerged-18: all 18 real unmerged fixtures are accurately classified and h
   }
 
   assert.equal(planCandidates, 18, 'All 18 files must be recognized as plan candidates');
-  assert.equal(validCount, 12, 'Exactly 12 plans (9 markdown + 3 code) have complete machine declarations');
-  assert.equal(errorCount, 6, 'Exactly 6 code plans report ambiguous_closedLoop due to limits strings');
+  assert.equal(validCount, 18, 'All 18 unmerged plans (9 markdown + 9 code) have complete machine declarations');
+  assert.equal(errorCount, 0, 'No false ambiguous_closedLoop errors remain after lexical string stripping');
 });
 
 test('parsers: strict elimination of id and title fallbacks across markdown, code, and json', () => {

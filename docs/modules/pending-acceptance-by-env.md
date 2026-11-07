@@ -1,11 +1,10 @@
 # 真环境待验收总表
 
-<!-- generatedAt: 2026-11-07T03:40:54.370Z -->
-> 生成时间：`2026-11-07T03:40:54.370Z` · 依据规范：[AGENTS.md](../../AGENTS.md) · [当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md) · 扫描范围：PR #608 分支工作树（@1918e61f，基于 main 祖先 @0e7f3aa1）
+<!-- generatedAt: 2026-11-07T04:56:11.353Z -->
+> 生成时间：`2026-11-07T04:56:11.353Z` · 依据规范：[AGENTS.md](../../AGENTS.md) · [当前接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md) · 扫描范围：仅当前工作树
 
 > [!IMPORTANT]
 > 本总表由离线工具 `scripts/acceptance/build-pending-acceptance-index.mjs` 静态扫描生成。
-> **工作树说明**：本表数据仅说明 PR #608 自身分支工作树（`/workspace/zemeng-review-608-20261107` @ 1918e61f，基于 main 祖先 @ 0e7f3aa1）的实际扫描结果，不代表干净 main 扫描；未合并 PR 的 18 份快照尚未合入主干是独立事实。
 > **核心声明**：仅假设这些文件合入后的离线输入汇总、非真实验收、非已合并主干。
 > **安全红线**：未连接任何真机/华为云环境，未读取密钥凭据，未执行任何规划文本内的指令（所有输入文件纯粹作为静态文本读取，严禁 import/eval/执行）。
 > **诚实原则**：`closedLoop: false` 属于合规待真实验收状态；缺失真环境独立读回证据前，工具绝不推断或背书「已闭环」。
