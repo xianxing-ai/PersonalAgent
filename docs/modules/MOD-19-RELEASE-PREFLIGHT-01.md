@@ -70,7 +70,9 @@ Electron 自带的 Node/V8 运行时与命令行 Node 不是同一可执行环�
 
 ## 当前仓库结论
 
-在基线 `72cc76b` 上，Desktop/Runtime 源入口和版本声明存在，但仓库没有生产打包配置、Windows 安装器定义或发布脚本；独立安装/启动、升级保留数据、卸载及打包后 SQLite 运行证据也未提供。干净工作树未预置所有必要 `dist` 文件时，检查器会先报告 `run_build`，但它不会自行执行构建。
+在基线 `72cc76b` 上，Desktop/Runtime 源入口和版本声明存在，但仓库没有生产打包配置、Windows 安装器定义或发布脚本；打包后 SQLite 运行证据仍未提供。干净工作树未预置所有必要 `dist` 文件时，检查器会先报告 `run_build`，但它不会自行执行构建。
+
+在引入人工验收占位文件（`windows-install-start.json`、`windows-upgrade-data-retention.json`、`windows-uninstall.json`）后，检查器将这三项的状态从 `missing`（`MANUAL_EVIDENCE_MISSING`）更新为 `unverified`（`MANUAL_EVIDENCE_NOT_EXECUTED`）。必须特别说明：**占位文件存在绝不等于验收通过（占位≠验收）**。占位文件仅用于固化离线验收脚手架与核对清单，明确标记为 `status: pending`、`executed: false`、`verified: false`。检查报告的 `releaseStatus` 依然严格维持 `blocked`，`publishable` 固定为 `false`。严禁将占位文件误当作通过证据，也严禁私自将状态修改为 `passed`。
 
 因此本首片工作包进入 `review`；检查报告的 `releaseStatus` 仍是 `blocked`。它提供可重复的准备检查与缺口列表，不把“文件存在”升级成“可以发布”。后续是否实施生产打包配置与候选生成由主对话统一指挥；本首片不会自行转入安装器实现。后续若获授权，还须在隔离用户数据目录完成安装、启动、升级、数据保留、卸载和回滚边界验收，发布授权仍是独立门槛。
 
