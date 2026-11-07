@@ -3,6 +3,9 @@ import {truncateReceiptResult, type CrewReceipt} from './receipts.js';
 import {redactSensitiveText} from './sanitize.js';
 import {CrewKernel, type CrewKernelDispatchInput, type CrewKernelGetTaskInput, type CrewKernelInterruptInput, type CrewKernelListTasksInput} from './kernel.js';
 import {CodexAppServerDriver} from './drivers/codex.js';
+import {ClaudeApiDriver, type ClaudeApiDriverOptions} from './drivers/claude.js';
+import {GrokApiDriver, type GrokApiDriverOptions} from './drivers/grok.js';
+import {EnvCrewApiKeyProvider, apiKeyEnvNames, type CrewApiKeyProvider} from './secrets.js';
 import type {CrewConsentGrantInput} from './consent.js';
 import {CREW_PARENT_AGENT_ID, type CrewAgentRecord, type CrewAgentSpec, type CrewConsentRecord, type CrewDriverId, type CrewTaskRecord} from './store.js';
 import type {CrewDriver, CrewDriverEvent, CrewDriverSession, CrewSpawn} from './driver.js';
@@ -28,7 +31,7 @@ import type {CrewDriver, CrewDriverEvent, CrewDriverSession, CrewSpawn} from './
  * 不是可信证据，可信产物引用（worktree 提交、交接 manifest）留后续 PR。
  */
 
-/** 驱动注册表：本 PR 只注册 codex；claude/grok（API key）与 gemini 留后续。 */
+/** 驱动注册表：P4 后默认注册 codex + claude + grok；gemini/acp-generic 留后续。 */
 export type CrewDriverRegistry = Partial<Record<CrewDriverId, CrewDriver>>;
 
 /** 运行时事件 = 驱动事件 + 关联任务 id。 */
@@ -55,19 +58,39 @@ type CrewTerminalEvent = CompletedTerminal | FailedTerminal | InterruptedTermina
 
 export interface CrewDriverRuntimeOptions {
   readonly now?: () => number;
-  /** 覆盖默认驱动注册表（测试注入 FakeDriver；生产默认只有真实 codex 驱动）。 */
+  /** 覆盖默认驱动注册表（测试注入 FakeDriver；生产默认 codex + claude + grok）。 */
   readonly drivers?: CrewDriverRegistry;
   /** 默认 codex 驱动的进程工厂注入（测试用假子进程模拟协议）。 */
   readonly codexSpawn?: CrewSpawn;
   readonly codexCommand?: string;
+  /**
+   * Claude/Grok API key 来源（默认 `EnvCrewApiKeyProvider`：进程环境变量）。
+   * 受信宿主可注入自己的 CrewApiKeyProvider；key 不落盘、不进日志/回执/事件。
+   */
+  readonly apiKeyProvider?: CrewApiKeyProvider;
+  /** 默认 Claude/Grok 驱动的选项覆盖（测试注入 baseUrl 等；consent 由运行时提供）。 */
+  readonly claudeOptions?: CrewRuntimeApiDriverOptions<ClaudeApiDriverOptions>;
+  readonly grokOptions?: CrewRuntimeApiDriverOptions<GrokApiDriverOptions>;
   /** 整轮任务 deadline（毫秒），默认 10 分钟；到期 interrupt/close 并写 failed 回执。 */
   readonly taskDeadlineMs?: number;
 }
+
+/** 运行时允许覆盖的 API 驱动选项：consent 由运行时统一提供，其余可覆盖。 */
+export type CrewRuntimeApiDriverOptions<T> = Partial<Omit<T, 'consent'>>;
 
 const DEFAULT_TASK_DEADLINE_MS = 10 * 60 * 1000;
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** 驱动启动失败的 unblock 指引：CLI 驱动指安装/登录，API key 驱动指配置环境变量或注入密钥提供器。 */
+function describeDriverUnblock(driverId: CrewDriverId): string {
+  const envNames = apiKeyEnvNames(driverId);
+  if (envNames.length) {
+    return `在环境变量 ${envNames.join(' 或 ')} 配置你自己的 API key（或注入 CrewApiKeyProvider）后由父 agent 重新派单`;
+  }
+  return `在本机安装并登录 ${driverId} 对应的官方 CLI 后由父 agent 重新派单`;
 }
 
 export class CrewDriverRuntime {
@@ -84,15 +107,18 @@ export class CrewDriverRuntime {
     this.taskDeadlineMs = taskDeadlineMs;
   }
 
-  /** 打开（必要时创建）crew 数据库并构建运行时；默认注册表只有真实 codex 驱动。 */
+  /** 打开（必要时创建）crew 数据库并构建运行时；默认注册表 codex + claude + grok。 */
   static open(path: string, options: CrewDriverRuntimeOptions = {}): CrewDriverRuntime {
     const kernel = CrewKernel.open(path, options.now === undefined ? {} : {now: options.now});
+    const apiKeyProvider = options.apiKeyProvider ?? new EnvCrewApiKeyProvider();
     const drivers: CrewDriverRegistry = options.drivers ?? {
       codex: new CodexAppServerDriver({
         consent: kernel.consent,
         ...(options.codexCommand === undefined ? {} : {command: options.codexCommand}),
         ...(options.codexSpawn === undefined ? {} : {spawn: options.codexSpawn}),
       }),
+      claude: new ClaudeApiDriver({consent: kernel.consent, apiKeyProvider, ...(options.claudeOptions ?? {})}),
+      grok: new GrokApiDriver({consent: kernel.consent, apiKeyProvider, ...(options.grokOptions ?? {})}),
     };
     return new CrewDriverRuntime(kernel, drivers, options.taskDeadlineMs ?? DEFAULT_TASK_DEADLINE_MS);
   }
@@ -199,10 +225,10 @@ export class CrewDriverRuntime {
   async runNextTask(agentId: string): Promise<CrewTaskRecord | undefined> {
     const agent = this.kernel.getAgent(agentId);
     if (!agent) throw new CrewError('UNKNOWN_AGENT', `agent ${agentId} is not registered`);
-    // 1. 驱动注册表：未实现的驱动明确不可用（Claude/Grok 的 API key 驱动与 Gemini 留后续 PR）。
+    // 1. 驱动注册表：未实现的驱动明确不可用（gemini / acp-generic 留后续 PR）。
     const driver = this.drivers[agent.driver];
     if (!driver) {
-      throw new CrewError('DRIVER_UNAVAILABLE', `驱动 ${agent.driver} 尚未实现（Claude/Grok 的 API key 驱动与 Gemini 留后续 PR）`);
+      throw new CrewError('DRIVER_UNAVAILABLE', `驱动 ${agent.driver} 尚未实现（Gemini 与其余 ACP 通用驱动留后续 PR）`);
     }
     // 2. 同意门：未同意/已撤销必须拒绝，且不领取任务。
     this.kernel.consent.requireGranted(agent.driver);
@@ -225,7 +251,7 @@ export class CrewDriverRuntime {
         // 截断到回执上限：启动失败的对端错误原文可能很长，不能让提交本身失败卡死任务。
         result: truncateReceiptResult(redactSensitiveText(`驱动无法启动：${describeError(error)}`)),
         evidenceRefs: [],
-        unblock: `在本机安装并登录 ${agent.driver} 对应的官方 CLI 后由父 agent 重新派单`,
+        unblock: describeDriverUnblock(agent.driver),
       });
     }
     this.runningTasks.set(task.taskId, session);

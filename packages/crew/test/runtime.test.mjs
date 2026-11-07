@@ -44,7 +44,7 @@ function registerCoders(runtime) {
   runtime.registerAgent({
     agentId: 'reviewer-y',
     displayName: '评审者',
-    driver: 'claude',
+    driver: 'gemini',
     instructions: '独立审查补丁。',
     workspacePath: '/workspace/crew/reviewer-y',
   });
@@ -78,7 +78,7 @@ test('runNextTask refuses before claiming when the driver has no user consent', 
     );
     const task = runtime.getTask({actorId: CREW_PARENT_AGENT_ID, taskId: 't1'});
     assert.equal(task.status, 'queued', 'the refusal must not claim the task');
-    assert.deepEqual(runtime.listAgents(CREW_PARENT_AGENT_ID).map(a => a.driver), ['codex', 'claude']);
+    assert.deepEqual(runtime.listAgents(CREW_PARENT_AGENT_ID).map(a => a.driver), ['codex', 'gemini']);
   } finally { runtime.close(); }
 });
 
