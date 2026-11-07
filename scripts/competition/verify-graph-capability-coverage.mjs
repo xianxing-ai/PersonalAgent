@@ -13,7 +13,7 @@ import {fileURLToPath} from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(join(here, '..', '..'));
-const CAP_RE = /'(?:([a-z_]+)\.([a-z_.0-9]+))'/g;
+const CAP_RE = /['"](?:([a-z_]+)\.([a-z_.0-9]+))['"]/g;
 
 const DOMAIN_PREFIXES = {
   business: ['todo.', 'reminder.', 'calendar.', 'mail.', 'feeds.', 'notification.', 'research.', 'weather.'],
@@ -44,16 +44,17 @@ function listSources(dir, out = []) {
   return out;
 }
 
-/** 声明文件不算提供者：28 图模板与内嵌数据本身会写出全部能力名。 */
+/** 声明文件与测试文件不算提供者：模板/内嵌数据本身会写出全部能力名，测试夹具只是引用。 */
 const DECLARATION_FILES = /owned-workflow-(templates|data)\.ts$|workflow-wiring\.json$/;
+const TEST_FILES = /(^|\/)(test|tests)\//;
 
-/** 扫描仓库源码中出现的引用能力名（提供者证据；排除声明文件）。 */
+/** 扫描仓库源码中出现的引用能力名（提供者证据；排除声明与测试文件）。 */
 export function scanProvidedCapabilities(repo = repoRoot) {
   const provided = new Map(); // name -> [file]
   const roots = [join(repo, 'packages'), join(repo, 'apps')];
   for (const root of roots) {
     for (const file of listSources(root)) {
-      if (DECLARATION_FILES.test(file)) continue;
+      if (DECLARATION_FILES.test(file) || TEST_FILES.test(file)) continue;
       const text = readFileSync(file, 'utf8');
       for (const match of text.matchAll(CAP_RE)) {
         const name = `${match[1]}.${match[2]}`;

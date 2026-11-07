@@ -19,9 +19,9 @@ test('foundation 域：每个图声明的基础能力都有提供者或缺口登
   assert.ok(result.stats.provided >= 5, `foundation 域应有 ≥5 个已提供能力（实际 ${result.stats.provided}）`);
 });
 
-test('foundation 域：关键提供者真实存在（排除声明文件的自证）', () => {
+test('foundation 域：关键提供者真实存在（排除声明文件的自证）；扫描盲区按登记处理', () => {
   const provided = scanProvidedCapabilities();
-  for (const name of ['memory.query', 'knowledge.search', 'workspace.read_text', 'workspace.run_allowed_command',
+  for (const name of ['knowledge.search', 'workspace.read_text', 'workspace.run_allowed_command',
     'github.bound_pr_diff', 'github.current_head_merge_gate', 'github.issue_snapshot', 'github.merged_repair_readback']) {
     assert.ok(provided.has(name), `${name} 应有提供者`);
   }
@@ -29,6 +29,11 @@ test('foundation 域：关键提供者真实存在（排除声明文件的自证
   for (const name of ['memory.query', 'knowledge.search']) {
     assert.ok(declared.has(name), `${name} 应被 28 图引用`);
   }
+  // memory.query 的提供者是动态命名/接口面（字面量扫描盲区）：必须按缺口登记，注明扫描盲区
+  const registry = JSON.parse(readFileSync(join(repoRoot, 'docs/competition/evidence/graph-capability-gaps.json'), 'utf8'));
+  const memoryQuery = registry.gaps.find((g) => g.name === 'memory.query');
+  assert.ok(memoryQuery, 'memory.query 应在缺口登记（扫描盲区处理）');
+  assert.match(memoryQuery.note, /动态命名|扫描盲区/);
 });
 
 test('foundation 域：缺口登记规模与归属（runtime/policy 面归 goo122）', () => {
