@@ -1,0 +1,46 @@
+appId: com.personalagent.desktop
+productName: PersonalAgent
+
+directories:
+  output: release
+  buildResources: build-resources
+
+files:
+  - electron/**/*
+  - src/**/*
+  - package.json
+  - "!test/**"
+  - "!test-support/**"
+  - "!scripts/**"
+  - "!**/*.test.*"
+  - "!**/*.spec.*"
+  - "!**/*.map"
+  - "!**/.git*"
+  - "!**/.env*"
+  - "!**/credentials*"
+  - "!**/*.pem"
+  - "!**/*.key"
+  - "!**/id_rsa*"
+  - "!**/.cache*"
+
+asar: true
+asarUnpack: []
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: PersonalAgent
+  requestedExecutionLevel: asInvoker
+
+# 图标待补，当前使用 electron-builder 默认配置
+# native/windows-host 资源当前未纳入打包（unavailable），不伪装已打包原生工具
