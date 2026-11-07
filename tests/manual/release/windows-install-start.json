@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "profile": "huawei_ict_agentarts",
+  "acceptanceId": "release-install-start",
+  "status": "pending",
+  "executed": false,
+  "verified": false,
+  "evidenceLevel": "unverified",
+  "target": "Windows 11 x64 NSIS standalone installer",
+  "requiredEnvironment": "Isolated Windows 11 machine with clean user profile (isolated userData)",
+  "notes": "占位文件：尚未在 Windows 真机执行安装与启动验证。本文件仅作为验收脚手架占位，明确未验收（MANUAL_EVIDENCE_NOT_EXECUTED），不作为任何发布证据。",
+  "checklist": [
+    "执行安装包（无管理员提权要求，asInvoker）",
+    "自定义安装路径成功安装",
+    "桌面及开始菜单快捷方式正确生成",
+    "首次启动正常，主进程正确初始化 userData 目录",
+    "打包后 Electron 主进程 SQLite 正常读写"
+  ]
+}
