@@ -4,6 +4,26 @@ import {Buffer} from 'node:buffer';
 import {parseCoordinationRepairCandidate, type CoordinationRepairCandidateResult} from './repair-candidate.js';
 export {parseCoordinationRepairCandidate};
 export type {CoordinationRepairCandidateResult};
+export {
+  assertMod04bAgentArtsEvidence,
+  parseMod04bAgentArtsEvidence,
+  planMod04bAgentArtsAcceptance,
+  MOD04B_AGENTARTS_PROFILE,
+  MOD04B_AGENTARTS_CAPABILITY,
+  MOD04B_AGENTARTS_PENDING_REASON,
+  DEFAULT_MOD04B_AGENTARTS_PENDING_ITEMS,
+} from './mod04b-agentarts-acceptance-plan.js';
+export type {
+  Mod04bAgentRole,
+  Mod04bMultiAgentDetail,
+  Mod04bContinuationEvidence,
+  Mod04bAgentArtsEvidence,
+  Mod04bAgentArtsPendingItem,
+  RealCloudMultiAgentEvidence,
+  PlanMod04bAgentArtsAcceptanceOptions,
+  Mod04bAgentArtsAcceptancePlan,
+  Mod04bStructuralVerification,
+} from './mod04b-agentarts-acceptance-plan.js';
 
 const textResultFields = ['kind', 'text', 'verification'] as const;
 const proposalResultFields = ['kind', 'proposalId', 'toolName', 'toolVersion', 'arguments', 'verification'] as const;

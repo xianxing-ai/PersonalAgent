@@ -27,7 +27,9 @@
     "test:text-smoke": "node test/text-chat-smoke.cjs",
     "test:skills-smoke": "node test/installed-skills-smoke.cjs",
     "test:skills-product-smoke": "node test/installed-skills-product-smoke.cjs",
-    "test:native-reasoning-smoke": "node test/native-reasoning-product-smoke.cjs"
+    "test:native-reasoning-smoke": "node test/native-reasoning-product-smoke.cjs",
+    "package:win": "electron-builder --win nsis --config electron-builder.yml",
+    "check:packaging-scaffold": "node ../../scripts/release/packaging-scaffold.check.mjs ../.."
   },
   "dependencies": {
     "@jackwener/opencli": "1.8.6",
@@ -59,6 +61,26 @@
   },
   "devDependencies": {
     "@personal-agent/testkit": "0.1.0-alpha.1",
-    "electron": "44.2.0"
+    "electron": "44.2.0",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "com.personalagent.desktop",
+    "productName": "PersonalAgent",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "requestedExecutionLevel": "asInvoker"
+    }
   }
 }

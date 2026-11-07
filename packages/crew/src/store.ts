@@ -21,8 +21,13 @@ export const MAX_MESSAGES_PER_MINUTE_PER_PAIR = 30;
 export type CrewDriverId = 'codex' | 'claude' | 'opencode' | 'grok' | 'gemini' | 'acp-generic';
 export type CrewTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled';
 export type CrewMessageKind = 'task' | 'message' | 'interrupt';
+/** 订阅登录方式：本机已登录官方 CLI，或用户自己的 API key。 */
+export type CrewConsentLoginKind = 'local-login' | 'api-key';
 
-const DRIVERS: readonly CrewDriverId[] = ['codex', 'claude', 'opencode', 'grok', 'gemini', 'acp-generic'];
+/** 全部合法驱动 id（注册表、同意记录共用同一枚举）。 */
+export const CREW_DRIVER_IDS: readonly CrewDriverId[] = ['codex', 'claude', 'opencode', 'grok', 'gemini', 'acp-generic'];
+
+const DRIVERS = CREW_DRIVER_IDS;
 
 export interface CrewAgentSpec {
   readonly agentId: string;
@@ -111,6 +116,37 @@ export interface CrewMessageRecord {
   readonly dequeuedAt?: string;
 }
 
+/**
+ * 一家订阅来源（驱动）的用户同意记录。首次启用某家订阅前必须由用户明确同意；
+ * 同意可随时撤销，撤销后驱动不得再启动。记录只存合规元数据（登录方式、条款要点），
+ * 不存储任何凭据。
+ */
+export interface CrewConsentRecord {
+  readonly driverId: CrewDriverId;
+  readonly granted: boolean;
+  readonly loginKind: CrewConsentLoginKind;
+  /** 同意时向用户展示的条款要点摘要（厂商条款、额度来源）。 */
+  readonly termsSummary: string;
+  /** 同意者标识（例如 'user'）。 */
+  readonly grantedBy: string;
+  readonly grantedAt: string;
+  readonly revokedAt?: string;
+  readonly revokeReason?: string;
+  readonly updatedAt: string;
+}
+
+export interface CrewConsentGrantRecordInput {
+  readonly driverId: CrewDriverId;
+  readonly loginKind: CrewConsentLoginKind;
+  readonly termsSummary: string;
+  readonly grantedBy: string;
+}
+
+export interface CrewConsentRevokeRecordInput {
+  readonly driverId: CrewDriverId;
+  readonly reason: string;
+}
+
 export interface CrewStoreOptions {
   readonly now?: () => number;
   /** 每个父 agent 同时处于非终态（queued/running）的任务总数上限；默认 32。 */
@@ -171,6 +207,23 @@ const MIGRATIONS: readonly Migration[] = [{
     ) STRICT;
     CREATE INDEX crew_messages_mailbox_idx ON crew_messages(mailbox_agent_id, message_id);
     CREATE INDEX crew_messages_pair_idx ON crew_messages(sender_agent_id, mailbox_agent_id, message_id DESC);
+  `,
+}, {
+  // P2（#crew-p2）：订阅使用同意记录。每家驱动最多一条记录（upsert），
+  // 撤销后 granted=0 并保留撤销审计字段；不存任何凭据内容。
+  version: 2,
+  sql: `
+    CREATE TABLE crew_consents (
+      driver_id TEXT PRIMARY KEY CHECK (driver_id IN ('codex', 'claude', 'opencode', 'grok', 'gemini', 'acp-generic')),
+      granted INTEGER NOT NULL CHECK (granted IN (0, 1)),
+      login_kind TEXT NOT NULL CHECK (login_kind IN ('local-login', 'api-key')),
+      terms_summary TEXT NOT NULL,
+      granted_by TEXT NOT NULL,
+      granted_at TEXT NOT NULL,
+      revoked_at TEXT,
+      revoke_reason TEXT,
+      updated_at TEXT NOT NULL
+    ) STRICT;
   `,
 }];
 
@@ -248,6 +301,18 @@ interface MessageRow {
   dequeued_at: string | null;
 }
 
+interface ConsentRow {
+  driver_id: string;
+  granted: number;
+  login_kind: string;
+  terms_summary: string;
+  granted_by: string;
+  granted_at: string;
+  revoked_at: string | null;
+  revoke_reason: string | null;
+  updated_at: string;
+}
+
 function agentRecord(row: AgentRow): CrewAgentRecord {
   return {
     agentId: row.agent_id,
@@ -291,6 +356,20 @@ function messageRecord(row: MessageRow): CrewMessageRecord {
     pureAck: row.pure_ack === 1,
     enqueuedAt: row.enqueued_at,
     ...(row.dequeued_at === null ? {} : {dequeuedAt: row.dequeued_at}),
+  };
+}
+
+function consentRecord(row: ConsentRow): CrewConsentRecord {
+  return {
+    driverId: row.driver_id as CrewDriverId,
+    granted: row.granted === 1,
+    loginKind: row.login_kind as CrewConsentLoginKind,
+    termsSummary: row.terms_summary,
+    grantedBy: row.granted_by,
+    grantedAt: row.granted_at,
+    ...(row.revoked_at === null ? {} : {revokedAt: row.revoked_at}),
+    ...(row.revoke_reason === null ? {} : {revokeReason: row.revoke_reason}),
+    updatedAt: row.updated_at,
   };
 }
 
@@ -680,6 +759,74 @@ export class CrewStore {
         return rows.map(row => messageRecord({...row, dequeued_at: now}));
       }
       return rows.map(messageRecord);
+    });
+  }
+
+  /**
+   * 消费某 agent 信箱中对应指定任务的最老一条未消费 task 消息（保留行供审计）。
+   * 驱动运行时代码领取任务后用它把"派单通知"从信箱里消费掉；
+   * interrupt 等其他消息不走这里，留给 MCP 工具层按 P1 语义消费。
+   */
+  dequeueTaskMessage(agentId: string, taskId: string): CrewMessageRecord | undefined {
+    const id = requiredId(agentId, 'agentId');
+    const tid = requiredId(taskId, 'taskId');
+    return this.inTransaction(() => {
+      this.getAgentRow(id);
+      const row = this.db.prepare("SELECT message_id, mailbox_agent_id, sender_agent_id, kind, parent_request_id, root_request_id, task_id, text, attachment_refs_json, expects_reply, hop, pure_ack, enqueued_at, dequeued_at FROM crew_messages WHERE mailbox_agent_id = ? AND task_id = ? AND kind = 'task' AND dequeued_at IS NULL ORDER BY message_id LIMIT 1").get(id, tid) as MessageRow | undefined;
+      if (!row) return undefined;
+      const now = this.iso();
+      this.db.prepare('UPDATE crew_messages SET dequeued_at = ? WHERE message_id = ? AND dequeued_at IS NULL').run(now, row.message_id);
+      return messageRecord({...row, dequeued_at: now});
+    });
+  }
+
+  /** 读取一家驱动的同意记录；从未登记时返回 undefined。 */
+  getConsentRecord(driverId: string): CrewConsentRecord | undefined {
+    const id = requiredId(driverId, 'driverId');
+    const row = this.db.prepare('SELECT driver_id, granted, login_kind, terms_summary, granted_by, granted_at, revoked_at, revoke_reason, updated_at FROM crew_consents WHERE driver_id = ?').get(id) as unknown as ConsentRow | undefined;
+    return row ? consentRecord(row) : undefined;
+  }
+
+  /** 写入/覆盖一家驱动的同意记录（重新同意会清掉上一次撤销的审计字段）。 */
+  saveConsentGrant(input: CrewConsentGrantRecordInput): CrewConsentRecord {
+    if (!DRIVERS.includes(input.driverId)) {
+      throw new CrewError('INVALID_INPUT', `driverId must be one of ${DRIVERS.join(', ')}`);
+    }
+    const loginKinds: readonly CrewConsentLoginKind[] = ['local-login', 'api-key'];
+    if (!loginKinds.includes(input.loginKind)) {
+      throw new CrewError('INVALID_INPUT', `loginKind must be one of ${loginKinds.join(', ')}`);
+    }
+    const termsSummary = requiredText(input.termsSummary, 'termsSummary', 4096);
+    const grantedBy = requiredId(input.grantedBy, 'grantedBy');
+    return this.inTransaction(() => {
+      const now = this.iso();
+      this.db.prepare(`
+        INSERT INTO crew_consents (driver_id, granted, login_kind, terms_summary, granted_by, granted_at, revoked_at, revoke_reason, updated_at)
+        VALUES (?, 1, ?, ?, ?, ?, NULL, NULL, ?)
+        ON CONFLICT(driver_id) DO UPDATE SET
+          granted = 1, login_kind = excluded.login_kind, terms_summary = excluded.terms_summary,
+          granted_by = excluded.granted_by, granted_at = excluded.granted_at,
+          revoked_at = NULL, revoke_reason = NULL, updated_at = excluded.updated_at
+      `).run(input.driverId, input.loginKind, termsSummary, grantedBy, now, now);
+      return consentRecord(this.db.prepare('SELECT driver_id, granted, login_kind, terms_summary, granted_by, granted_at, revoked_at, revoke_reason, updated_at FROM crew_consents WHERE driver_id = ?').get(input.driverId) as unknown as ConsentRow);
+    });
+  }
+
+  /** 撤销一家驱动的同意记录：granted=0 并记录撤销时间与原因；从未登记或已撤销时报错。 */
+  saveConsentRevoke(input: CrewConsentRevokeRecordInput): CrewConsentRecord {
+    const driverId = requiredId(input.driverId, 'driverId');
+    if (!DRIVERS.includes(driverId as CrewDriverId)) {
+      throw new CrewError('INVALID_INPUT', `driverId must be one of ${DRIVERS.join(', ')}`);
+    }
+    const reason = requiredText(input.reason, 'reason', 4096);
+    return this.inTransaction(() => {
+      const row = this.db.prepare('SELECT driver_id, granted, login_kind, terms_summary, granted_by, granted_at, revoked_at, revoke_reason, updated_at FROM crew_consents WHERE driver_id = ?').get(driverId) as unknown as ConsentRow | undefined;
+      if (!row) throw new CrewError('NOT_FOUND', `driver ${driverId} has no consent record`);
+      if (row.granted !== 1) throw new CrewError('CONFLICT', `consent for driver ${driverId} is already revoked`);
+      const now = this.iso();
+      this.db.prepare('UPDATE crew_consents SET granted = 0, revoked_at = ?, revoke_reason = ?, updated_at = ? WHERE driver_id = ?')
+        .run(now, reason, now, driverId);
+      return consentRecord(this.db.prepare('SELECT driver_id, granted, login_kind, terms_summary, granted_by, granted_at, revoked_at, revoke_reason, updated_at FROM crew_consents WHERE driver_id = ?').get(driverId) as unknown as ConsentRow);
     });
   }
 
