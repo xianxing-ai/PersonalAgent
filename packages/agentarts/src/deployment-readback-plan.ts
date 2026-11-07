@@ -71,6 +71,15 @@ export interface DeploymentPendingItem {
   readonly reason: typeof DEPLOYMENT_ACCEPTANCE_PENDING_REASON | string;
 }
 
+export interface DeploymentStructuralVerification {
+  readonly authenticated: boolean;
+  readonly accountBound: boolean;
+  readonly apiCallVerified: boolean;
+  readonly traceReadbackVerified: boolean;
+  readonly missingFields: readonly string[];
+  readonly fullyCovered: boolean;
+}
+
 export interface DeploymentAcceptancePlan {
   readonly profile: 'huawei_ict_agentarts';
   readonly status: 'unavailable' | 'in_progress' | 'ready' | 'verified';
@@ -92,6 +101,7 @@ export interface DeploymentAcceptancePlan {
     readonly verifiedCount: number;
     readonly missingBindings: readonly string[];
   };
+  readonly structuralVerification?: DeploymentStructuralVerification | undefined;
 }
 
 export interface RealCloudEvidence {
@@ -104,7 +114,7 @@ export interface RealCloudEvidence {
 export interface PlanDeploymentAcceptanceOptions {
   readonly receipt: unknown;
   readonly headCommit?: string | undefined;
-  readonly realCloudEvidence?: RealCloudEvidence | boolean | undefined;
+  readonly realCloudEvidence?: RealCloudEvidence | undefined;
   readonly requiredBindings?: readonly string[] | undefined;
   readonly customPendingItems?: readonly string[] | undefined;
 }
@@ -198,176 +208,205 @@ export function parseDeploymentReadbackReceipt(value: unknown): DeploymentReadba
  * status is unavailable, and all pending items require real cloud acceptance.
  */
 export function planDeploymentAcceptance(
-  receiptOrOptions: unknown | PlanDeploymentAcceptanceOptions,
+  receiptOrOptions?: unknown | PlanDeploymentAcceptanceOptions,
   extraOptions?: Omit<PlanDeploymentAcceptanceOptions, 'receipt'>
 ): DeploymentAcceptancePlan {
   let receiptInput: unknown;
   let headCommit: string | undefined;
-  let realCloudEvidence: RealCloudEvidence | boolean | undefined;
+  let realCloudEvidence: unknown;
   let requiredBindings: readonly string[] | undefined;
   let customPendingItems: readonly string[] | undefined;
 
-  if (receiptOrOptions && typeof receiptOrOptions === 'object' && 'receipt' in (receiptOrOptions as Record<string, unknown>)) {
-    const opts = receiptOrOptions as PlanDeploymentAcceptanceOptions;
-    receiptInput = opts.receipt;
-    headCommit = opts.headCommit ?? extraOptions?.headCommit;
-    realCloudEvidence = opts.realCloudEvidence ?? extraOptions?.realCloudEvidence;
-    requiredBindings = opts.requiredBindings ?? extraOptions?.requiredBindings;
-    customPendingItems = opts.customPendingItems ?? extraOptions?.customPendingItems;
+  if (receiptOrOptions && typeof receiptOrOptions === 'object') {
+    const obj = receiptOrOptions as Record<string, unknown>;
+    if ('receipt' in obj) {
+      receiptInput = obj.receipt;
+      headCommit = (obj.headCommit as string | undefined) ?? extraOptions?.headCommit;
+      realCloudEvidence = obj.realCloudEvidence ?? extraOptions?.realCloudEvidence;
+      requiredBindings = (obj.requiredBindings as readonly string[] | undefined) ?? extraOptions?.requiredBindings;
+      customPendingItems = (obj.customPendingItems as readonly string[] | undefined) ?? extraOptions?.customPendingItems;
+    } else if ('profile' in obj) {
+      receiptInput = receiptOrOptions;
+      headCommit = extraOptions?.headCommit;
+      realCloudEvidence = extraOptions?.realCloudEvidence;
+      requiredBindings = extraOptions?.requiredBindings;
+      customPendingItems = extraOptions?.customPendingItems;
+    } else if (Object.keys(obj).length === 0) {
+      receiptInput = undefined;
+      headCommit = extraOptions?.headCommit;
+    } else {
+      receiptInput = receiptOrOptions;
+      headCommit = extraOptions?.headCommit;
+    }
   } else {
     receiptInput = receiptOrOptions;
     headCommit = extraOptions?.headCommit;
-    realCloudEvidence = extraOptions?.realCloudEvidence;
-    requiredBindings = extraOptions?.requiredBindings;
-    customPendingItems = extraOptions?.customPendingItems;
   }
 
-  assertDeploymentReadbackReceipt(receiptInput);
-  const receipt = receiptInput as DeploymentReadbackReceipt;
-
-  const rawGateway = (receipt.gatewayUrl ?? (receipt as { gatewayOrigin?: string }).gatewayOrigin) as string;
-  const gatewayOrigin = new URL(rawGateway).origin;
-  const receiptCommit = receipt.sourceCommit ?? receipt.sourceRevision ?? receipt.sourceCommitShort ?? '';
-
-  let headMatches: boolean | undefined;
-  if (typeof headCommit === 'string' && headCommit.trim().length > 0) {
-    const normalizedHead = headCommit.trim();
-    headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
-  }
-
-  let hasRealCloud = false;
+  // Runtime defense against caller passing boolean for realCloudEvidence
   if (typeof realCloudEvidence === 'boolean') {
-    hasRealCloud = realCloudEvidence;
-  } else if (realCloudEvidence && typeof realCloudEvidence === 'object') {
-    hasRealCloud = realCloudEvidence.authenticated === true && realCloudEvidence.apiCallVerified === true;
+    fail('realCloudEvidence must be an object, boolean is not supported');
   }
 
-  if (receipt.cloudEvidence === false || receipt.evidenceLevel === 'mock') {
-    hasRealCloud = false;
-  }
+  let structuralVerification: DeploymentStructuralVerification | undefined;
 
-  const expectedBindingIds = requiredBindings && requiredBindings.length > 0
-    ? [...requiredBindings]
-    : getOwnedBindings().map(b => b.id);
-  const reportedBindings = receipt.bindings ? new Set(receipt.bindings) : new Set<string>();
-  const missingBindings = expectedBindingIds.filter(id => !reportedBindings.has(id));
-  const verifiedBindingsCount = expectedBindingIds.length - missingBindings.length;
-
-  const verified: string[] = [
-    `契约结构：Profile "${receipt.profile}" 校验通过`,
-    `部署标识：Runtime "${receipt.runtimeName}" (${receipt.runtimeId})，版本 "${receipt.deploymentVersion}"`,
-    `网关与区域：${gatewayOrigin} (${receipt.region})，运行时状态 "${receipt.runtimeStatus}"`,
-  ];
-
-  if (headMatches === true) {
-    verified.push(`代码对齐：当前 HEAD 提交 (${headCommit}) 与部署源提交 (${receiptCommit}) 一致`);
-  }
-
-  if (reportedBindings.size > 0) {
-    verified.push(`绑定核验：上报 ${reportedBindings.size} 项，覆盖目标绑定 ${verifiedBindingsCount}/${expectedBindingIds.length}`);
+  let typedCloudEvidence: RealCloudEvidence | undefined;
+  if (realCloudEvidence !== undefined) {
+    if (!plain(realCloudEvidence)) {
+      fail('realCloudEvidence must be an object');
+    }
+    typedCloudEvidence = realCloudEvidence as unknown as RealCloudEvidence;
   }
 
   const limits: readonly string[] = [
     '本规划仅执行本地契约结构与离线约束校验，未连接华为云或使用真实账号',
     '缺少华为云真实执行证据时，全链路闭环标记为 closedLoop=false，状态标记为 unavailable',
-    '本地 Fake/合成回执不能代替华为云 AgentArts 控制台与在线 Runtime API 的端到端读回',
+    '本地自报/合成回执不能代替华为云 AgentArts 控制台与在线 Runtime API 的端到端读回',
   ];
 
-  if (!hasRealCloud || headMatches === false) {
-    const pendingSpecs: { item: string; description: string }[] = [];
+  const expectedBindingIds = requiredBindings && requiredBindings.length > 0
+    ? [...requiredBindings]
+    : getOwnedBindings().map(b => b.id);
 
-    if (headMatches === false) {
-      pendingSpecs.push({
-        item: 'head_commit_alignment',
-        description: `部署源提交 (${receiptCommit}) 与当前 HEAD (${headCommit}) 不一致，需重新构建部署或核实代码基线`,
-      });
+  let receipt: DeploymentReadbackReceipt | undefined;
+  let gatewayOrigin = '';
+  let receiptCommit = '';
+  let headMatches: boolean | undefined;
+  let verifiedBindingsCount = 0;
+  let missingBindings: readonly string[] = expectedBindingIds;
+  const verified: string[] = [];
+
+  if (receiptInput !== undefined) {
+    assertDeploymentReadbackReceipt(receiptInput);
+    receipt = receiptInput;
+
+    const rawGateway = (receipt.gatewayUrl ?? (receipt as { gatewayOrigin?: string }).gatewayOrigin) as string;
+    gatewayOrigin = new URL(rawGateway).origin;
+    receiptCommit = receipt.sourceCommit ?? receipt.sourceRevision ?? receipt.sourceCommitShort ?? '';
+
+    if (typeof headCommit === 'string' && headCommit.trim().length > 0) {
+      const normalizedHead = headCommit.trim();
+      headMatches = receiptCommit.startsWith(normalizedHead) || normalizedHead.startsWith(receiptCommit);
     }
 
-    pendingSpecs.push(
-      {
-        item: 'huawei_cloud_credentials_readback',
-        description: '华为云账号凭据认证与受信端点绑定读回',
-      },
-      {
-        item: 'runtime_head_deployment_verified',
-        description: '当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回',
-      },
-      {
-        item: 'owned_bindings_invocation_readback',
-        description: '8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回',
-      },
-      {
-        item: 'multi_agent_routing_and_inference',
-        description: 'AgentArts 云端多智能体角色路由与模型推理真实回执',
-      },
-      {
-        item: 'platform_independent_trace_and_cost',
-        description: '平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）',
-      },
-      {
-        item: 'local_policy_evidence_closed_loop',
-        description: '本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环',
-      }
+    const reportedBindings = receipt.bindings ? new Set(receipt.bindings) : new Set<string>();
+    missingBindings = expectedBindingIds.filter(id => !reportedBindings.has(id));
+    verifiedBindingsCount = expectedBindingIds.length - missingBindings.length;
+
+    verified.push(
+      `契约结构：Profile "${receipt.profile}" 校验通过`,
+      `部署标识：Runtime "${receipt.runtimeName}" (${receipt.runtimeId})，版本 "${receipt.deploymentVersion}"`,
+      `网关与区域：${gatewayOrigin} (${receipt.region})，运行时状态 "${receipt.runtimeStatus}"`
     );
 
-    if (customPendingItems) {
-      for (const item of customPendingItems) {
-        pendingSpecs.push({ item, description: item });
-      }
+    if (headMatches === true) {
+      verified.push(`代码对齐：当前 HEAD 提交 (${headCommit}) 与部署源提交 (${receiptCommit}) 一致`);
     }
 
-    const pending: DeploymentPendingItem[] = pendingSpecs.map(spec => ({
-      item: spec.item,
-      description: spec.description,
-      status: 'unavailable' as const,
-      reason: DEPLOYMENT_ACCEPTANCE_PENDING_REASON,
-    }));
+    if (reportedBindings.size > 0) {
+      verified.push(`绑定核验：上报 ${reportedBindings.size} 项，覆盖目标绑定 ${verifiedBindingsCount}/${expectedBindingIds.length}`);
+    }
 
-    return {
-      profile: receipt.profile,
-      status: 'unavailable',
-      closedLoop: false,
-      deploymentVersion: receipt.deploymentVersion,
-      runtimeName: receipt.runtimeName,
-      runtimeId: receipt.runtimeId,
-      gatewayUrl: gatewayOrigin,
-      region: receipt.region,
-      sourceCommit: receiptCommit,
-      headCommit,
-      headMatches,
-      verified,
-      pending,
-      reason: DEPLOYMENT_ACCEPTANCE_PENDING_REASON,
-      limits,
-      bindingsStatus: {
-        expectedCount: expectedBindingIds.length,
-        verifiedCount: verifiedBindingsCount,
-        missingBindings,
-      },
-    };
+    if (typedCloudEvidence) {
+      const missingFields: string[] = [];
+      if (typedCloudEvidence.authenticated !== true) missingFields.push('authenticated');
+      if (typedCloudEvidence.accountBound !== true) missingFields.push('accountBound');
+      if (typedCloudEvidence.apiCallVerified !== true) missingFields.push('apiCallVerified');
+      if (typedCloudEvidence.traceReadbackVerified !== true) missingFields.push('traceReadbackVerified');
+
+      structuralVerification = {
+        authenticated: typedCloudEvidence.authenticated === true,
+        accountBound: typedCloudEvidence.accountBound === true,
+        apiCallVerified: typedCloudEvidence.apiCallVerified === true,
+        traceReadbackVerified: typedCloudEvidence.traceReadbackVerified === true,
+        missingFields: Object.freeze(missingFields),
+        fullyCovered: missingFields.length === 0,
+      };
+
+      if (structuralVerification.fullyCovered) {
+        verified.push('结构核验：自报云证据对象包含认证、API调用、Trace读回及账号绑定全量声明（离线占位，待真云验收）');
+      } else {
+        verified.push(`结构告警：自报云证据对象未完整包含全部结构字段，缺失项: [${missingFields.join(', ')}]`);
+      }
+    }
+  } else {
+    verified.push('离线规划：未提供部署读回回执，已生成 AgentArts 部署读回离线验收规划');
   }
 
-  // Real cloud evidence is present and headMatches !== false
+  const pendingSpecs: { item: string; description: string }[] = [];
+
+  if (receipt && headMatches !== true) {
+    pendingSpecs.push({
+      item: 'head_commit_alignment',
+      description: headMatches === false
+        ? `部署源提交 (${receiptCommit}) 与当前 HEAD (${headCommit}) 不一致，需重新构建部署或核实代码基线`
+        : `未提供当前 HEAD 提交进行代码对齐比对，需显式传入 headCommit 验证对齐`,
+    });
+  }
+
+  pendingSpecs.push(
+    {
+      item: 'huawei_cloud_credentials_readback',
+      description: '华为云账号凭据认证与受信端点绑定读回',
+    },
+    {
+      item: 'runtime_head_deployment_verified',
+      description: '当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回',
+    },
+    {
+      item: 'owned_bindings_invocation_readback',
+      description: missingBindings.length === 0
+        ? '8 工作流 / 3 控制器绑定在已发布 Runtime 的真实端到端调用读回'
+        : `8 工作流 / 3 控制器绑定真实端到端调用读回（缺失绑定: ${missingBindings.join(', ')}）`,
+    },
+    {
+      item: 'multi_agent_routing_and_inference',
+      description: 'AgentArts 云端多智能体角色路由与模型推理真实回执',
+    },
+    {
+      item: 'platform_independent_trace_and_cost',
+      description: '平台独立 TraceId 关联与 Token/计费读回（非本地应用日志）',
+    },
+    {
+      item: 'local_policy_evidence_closed_loop',
+      description: '本地 Policy/ToolGateway 授权到真实目标读回与 Evidence 落盘的完整端到端闭环',
+    }
+  );
+
+  if (customPendingItems) {
+    for (const item of customPendingItems) {
+      pendingSpecs.push({ item, description: item });
+    }
+  }
+
+  const pending: DeploymentPendingItem[] = pendingSpecs.map(spec => ({
+    item: spec.item,
+    description: spec.description,
+    status: 'unavailable' as const,
+    reason: DEPLOYMENT_ACCEPTANCE_PENDING_REASON,
+  }));
+
   return {
-    profile: receipt.profile,
-    status: 'verified',
-    closedLoop: true,
-    deploymentVersion: receipt.deploymentVersion,
-    runtimeName: receipt.runtimeName,
-    runtimeId: receipt.runtimeId,
+    profile: receipt ? receipt.profile : 'huawei_ict_agentarts',
+    status: 'unavailable',
+    closedLoop: false,
+    deploymentVersion: receipt ? receipt.deploymentVersion : '',
+    runtimeName: receipt ? receipt.runtimeName : '',
+    runtimeId: receipt ? receipt.runtimeId : '',
     gatewayUrl: gatewayOrigin,
-    region: receipt.region,
+    region: receipt ? receipt.region : '',
     sourceCommit: receiptCommit,
     headCommit,
     headMatches,
     verified,
-    pending: [],
-    reason: '已验证真实云端读回',
+    pending,
+    reason: DEPLOYMENT_ACCEPTANCE_PENDING_REASON,
     limits,
     bindingsStatus: {
       expectedCount: expectedBindingIds.length,
       verifiedCount: verifiedBindingsCount,
       missingBindings,
     },
+    structuralVerification,
   };
 }

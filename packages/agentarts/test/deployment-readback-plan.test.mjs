@@ -235,10 +235,17 @@ test('planDeploymentAcceptance without real cloud evidence returns closedLoop=fa
 });
 
 test('planDeploymentAcceptance enforces closedLoop=false when receipt indicates mock or cloudEvidence=false', () => {
+  const simulatedCloudEvidence = {
+    authenticated: true,
+    apiCallVerified: true,
+    accountBound: true,
+    traceReadbackVerified: true,
+  };
+
   // mock evidenceLevel
   const mockPlan = planDeploymentAcceptance({
     receipt: validReceipt({ evidenceLevel: 'mock' }),
-    realCloudEvidence: true, // caller cannot override mock receipt
+    realCloudEvidence: simulatedCloudEvidence, // caller cannot override mock receipt
   });
   assert.equal(mockPlan.closedLoop, false);
   assert.equal(mockPlan.status, 'unavailable');
@@ -247,20 +254,11 @@ test('planDeploymentAcceptance enforces closedLoop=false when receipt indicates 
   // cloudEvidence: false
   const noCloudPlan = planDeploymentAcceptance({
     receipt: validReceipt({ cloudEvidence: false }),
-    realCloudEvidence: true,
+    realCloudEvidence: simulatedCloudEvidence,
   });
   assert.equal(noCloudPlan.closedLoop, false);
   assert.equal(noCloudPlan.status, 'unavailable');
   assert.equal(noCloudPlan.reason, '待真云验收');
-
-  // realCloudEvidence: false explicitly
-  const explicitFalsePlan = planDeploymentAcceptance({
-    receipt: validReceipt(),
-    realCloudEvidence: false,
-  });
-  assert.equal(explicitFalsePlan.closedLoop, false);
-  assert.equal(explicitFalsePlan.status, 'unavailable');
-  assert.equal(explicitFalsePlan.reason, '待真云验收');
 });
 
 test('planDeploymentAcceptance verifies HEAD commit alignment', () => {
@@ -280,7 +278,12 @@ test('planDeploymentAcceptance verifies HEAD commit alignment', () => {
   const mismatchPlan = planDeploymentAcceptance({
     receipt,
     headCommit: '0e7f3aa1differentcommit',
-    realCloudEvidence: true, // even if cloud was claimed, commit mismatch prevents closed loop
+    realCloudEvidence: {
+      authenticated: true,
+      apiCallVerified: true,
+      accountBound: true,
+      traceReadbackVerified: true,
+    },
   });
   assert.equal(mismatchPlan.headMatches, false);
   assert.equal(mismatchPlan.closedLoop, false);
@@ -330,6 +333,19 @@ test('planDeploymentAcceptance supports options object and two-argument form', (
   assert.ok(planB.pending.some(p => p.item === 'custom_probe_item' && p.reason === '待真云验收'));
 });
 
+test('planDeploymentAcceptance generates default offline plan with closedLoop=false on empty/no-argument input', () => {
+  const planDefault = planDeploymentAcceptance();
+  assert.equal(planDefault.closedLoop, false);
+  assert.equal(planDefault.status, 'unavailable');
+  assert.equal(planDefault.reason, DEPLOYMENT_ACCEPTANCE_PENDING_REASON);
+  assert.ok(planDefault.pending.length >= 6);
+  assert.equal(planDefault.bindingsStatus.verifiedCount, 0);
+
+  const planEmptyObj = planDeploymentAcceptance({});
+  assert.equal(planEmptyObj.closedLoop, false);
+  assert.equal(planEmptyObj.status, 'unavailable');
+});
+
 test('planDeploymentAcceptance rejects invalid receipt with ProtocolError', () => {
   assert.throws(
     () => planDeploymentAcceptance({ bad: true }),
@@ -342,7 +358,9 @@ test('planDeploymentAcceptance rejects invalid receipt with ProtocolError', () =
   );
 });
 
-test('planDeploymentAcceptance marks closedLoop=true only when authenticated real cloud evidence is simulated', () => {
+test('planDeploymentAcceptance keeps closedLoop=false even with self-reported real cloud evidence object (no external verification authority)', () => {
+  // 依据 AGENTS.md 与可信验收规范：调用方自报属性或纯内存对象不构成真实独立的华为云端到端验证。
+  // 旧测试将自报 realCloudEvidence 等同于真实闭环属于不可信结论，收紧为 closedLoop: false，保留为严格负例。
   const receipt = validReceipt({
     sourceCommit: '4aa8f93f1234567890abcdef1234567890abcdef',
   });
@@ -357,8 +375,63 @@ test('planDeploymentAcceptance marks closedLoop=true only when authenticated rea
     },
   });
 
-  assert.equal(plan.closedLoop, true);
-  assert.equal(plan.status, 'verified');
-  assert.equal(plan.reason, '已验证真实云端读回');
-  assert.deepEqual(plan.pending, []);
+  assert.equal(plan.closedLoop, false);
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.reason, DEPLOYMENT_ACCEPTANCE_PENDING_REASON);
+  assert.equal(plan.structuralVerification?.fullyCovered, true);
+  assert.deepEqual(plan.structuralVerification?.missingFields, []);
+  assert.ok(plan.pending.length > 0);
+  assert.ok(plan.pending.some(p => p.item === 'huawei_cloud_credentials_readback'));
+});
+
+test('planDeploymentAcceptance tracks individual missing fields in structuralVerification', () => {
+  const receipt = validReceipt({
+    sourceCommit: '4aa8f93f1234567890abcdef1234567890abcdef',
+  });
+  const plan = planDeploymentAcceptance({
+    receipt,
+    headCommit: '4aa8f93f',
+    realCloudEvidence: {
+      authenticated: true,
+      // apiCallVerified omitted
+      accountBound: false,
+      traceReadbackVerified: true,
+    },
+  });
+  assert.equal(plan.structuralVerification?.fullyCovered, false);
+  assert.ok(plan.structuralVerification?.missingFields.includes('apiCallVerified'));
+  assert.ok(plan.structuralVerification?.missingFields.includes('accountBound'));
+});
+
+test('planDeploymentAcceptance cross-review blockers: rejects boolean realCloudEvidence, enforces head alignment and bindings coverage', () => {
+  const receipt = validReceipt({
+    sourceCommit: '4aa8f93f1234567890abcdef1234567890abcdef',
+    bindings: ['workflow:F01_news_daily'], // Missing other required bindings!
+  });
+
+  // Blocker 1: boolean realCloudEvidence must be rejected
+  assert.throws(
+    () => planDeploymentAcceptance({ receipt, realCloudEvidence: true }),
+    err => err instanceof ProtocolError && err.code === 'INVALID_ARGUMENT' && err.message.includes('boolean is not supported')
+  );
+
+  // Blocker 2: missing traceReadbackVerified or accountBound reports warning in verified
+  const planIncompleteCloud = planDeploymentAcceptance({
+    receipt,
+    headCommit: '4aa8f93f',
+    realCloudEvidence: {
+      authenticated: true,
+      apiCallVerified: true,
+      // missing accountBound & traceReadbackVerified
+    },
+  });
+  assert.ok(planIncompleteCloud.verified.some(v => v.includes('结构告警：自报云证据对象未完整包含')));
+
+  // Blocker 3: missing bindings must be tracked in owned_bindings_invocation_readback description
+  assert.ok(planIncompleteCloud.bindingsStatus.missingBindings.length > 0);
+  assert.ok(planIncompleteCloud.pending.some(p => p.item === 'owned_bindings_invocation_readback' && p.description.includes('缺失绑定')));
+
+  // Blocker 4: missing headCommit must keep head_commit_alignment pending
+  const planNoHead = planDeploymentAcceptance({ receipt });
+  assert.ok(planNoHead.pending.some(p => p.item === 'head_commit_alignment' && p.description.includes('未提供当前 HEAD 提交')));
 });

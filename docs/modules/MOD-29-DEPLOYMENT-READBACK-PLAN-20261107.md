@@ -41,10 +41,14 @@ reason: 待真云验收
    - 可选字段（`observedAt`、`imageDigest`、`bindings`）合规校验，不合规抛出 `ProtocolError('INVALID_ARGUMENT')`。
 2. `parseDeploymentReadbackReceipt(value: unknown): DeploymentReadbackReceipt`：
    - 包装断言并返回类型化回执对象。
-3. `planDeploymentAcceptance(options: PlanDeploymentAcceptanceOptions): DeploymentAcceptancePlan`：
-   - 校验回执合法性，并比对当前仓库 HEAD commit 对齐状态；
-   - 比对 8 Workflow / 3 Controller（共 11 项）自有资产绑定覆盖率；
-   - **在无真实华为云账号执行证据时，强制返回 `closedLoop: false`，`status: 'unavailable'`，`reason: '待真云验收'`**；
+3. `planDeploymentAcceptance(options?: PlanDeploymentAcceptanceOptions): DeploymentAcceptancePlan`：
+   - 支持无参数/空输入调用，返回语义明确的默认离线规划（`closedLoop: false`，`status: 'unavailable'`，`reason: '待真云验收'`）；
+   - 传入回执时严格执行 `assertDeploymentReadbackReceipt` 结构校验，比对当前 HEAD commit 对齐状态（`headMatches === true`，缺失或不匹配均挂起 `head_commit_alignment`）；
+   - 严格核对 8 Workflow / 3 Controller（共 11 项）自有资产绑定覆盖率（`missingBindings.length === 0`，未全量覆盖时在 `owned_bindings_invocation_readback` 描述中明确保留缺失项）；
+   - **输入门控防御与边界澄清**：
+     - `realCloudEvidence` 仅支持结构化对象，严格删除 `boolean` 重载；运行时传入布尔直接拒绝抛错；
+     - 结构核验要求必须完整声明 `authenticated`、`apiCallVerified`、`traceReadbackVerified` 与 `accountBound` 四项字段；
+     - 当前规划 helper 为离线纯函数，具备契约形状与业务一致性校验，但缺乏对华为云在线服务、平台 TraceId 与计费凭据的独立验签能力；自报对象不构成真实独立验证。因此在缺乏真云环境独立凭证读回时，全链路闭环严格保持 `closedLoop: false`，`status: 'unavailable'`，`reason: '待真云验收'`；
    - 挂起（`pending`）六大华为云端到端真实验收项，每项均标明 `status: 'unavailable'` 与 `reason: '待真云验收'`：
      1. `huawei_cloud_credentials_readback`：华为云账号凭据认证与受信端点绑定读回；
      2. `runtime_head_deployment_verified`：当前 HEAD 提交对应的已发布 ARM64 Runtime 部署版本状态读回；
@@ -93,15 +97,16 @@ reason: 待真云验收
 ## 3. 验证结果
 
 - 编译：`npm run build --workspace=@personal-agent/agentarts` 成功，类型检查无错误。
-- 测试：`node --test packages/agentarts/test/deployment-readback-plan.test.mjs` 13/13 通过：
+- 独立单元测试（本轮实测）：`node --test packages/agentarts/test/deployment-readback-plan.test.mjs` **16/16 全部通过 (0 失败)**：
   - 完整回执与最小回执合法校验；
   - 非对象、错误 Profile、非法名称/ID/版本/网关/提交哈希的严格拒绝；
-  - 离线规划无真实云时断言 `closedLoop: false`、`status: unavailable`、`reason: '待真云验收'`；
+  - 无参数/空输入生成默认离线规划，断言 `closedLoop: false`、`status: unavailable`、`reason: '待真云验收'`；
   - 显式 `mock` / `cloudEvidence: false` 拒绝伪造成闭环；
-  - HEAD commit 对齐核验及失配拒绝；
+  - HEAD commit 对齐核验及失配挂起；
   - 8 工作流 / 3 控制器全覆盖与部分缺失比对；
-  - 模拟真实云证据时分支正确关闭 pending。
-- 全包回归：`npm run test --workspace=@personal-agent/agentarts` 252/252 全部通过。
+  - 自报真实云对象不等于独立可信验证，收紧断言 `closedLoop: false` 并保留全部挂起项；
+  - 跨审查项修复：删除 boolean 重载（运行时传布尔抛错）、missingBindings 门控、HEAD 对齐门控与结构化缺口可观测字段（`structuralVerification`）。
+- 历史全量基线参考：历史记录 252/252 全部通过（本轮仅重跑受影响定向测试，未宣称本轮已跑全量）。
 - 架构门禁：`npm run check:architecture` 3/3 全部通过。
 
 ## 4. 交付与台账状态
