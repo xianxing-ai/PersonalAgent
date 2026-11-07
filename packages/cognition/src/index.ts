@@ -5,6 +5,8 @@ export {ReviewedMeetingFactConsumer, buildMeetingRepairOptions, createCommittedM
   selectMeetingRepairScope} from './reviewed-meeting.js';
 export type {MeetingFactReview, MeetingReviewReadback, MeetingRuntimeFeedback, MeetingReviewedRepairPort,
   MeetingReviewContext, MeetingFactReceiptReader} from './reviewed-meeting.js';
+export {createIndependentReviewRecord, verifyIndependentReviewRecord, reviewPacketSha256} from './independent-review-signature.js';
+export type {IndependentReviewPacket, IndependentReviewRecord, IndependentReviewSignerPort, IndependentReviewVerdict} from './independent-review-signature.js';
 export {createTrustedMeetingSourceRevisionReader} from './reviewed-meeting-source.js';
 export type {TrustedCalendarConfirmedRead, MeetingFactCurrent, TrustedMeetingSourceRevisionReaderOptions} from './reviewed-meeting-source.js';
 export {createInboxPageConsumer, measureTriageClassifier} from './inbox-page-consumer.js';
