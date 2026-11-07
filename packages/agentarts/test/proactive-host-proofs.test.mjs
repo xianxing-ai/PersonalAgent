@@ -15,7 +15,9 @@ test('signed host proofs are deterministic over kind, binding and value body, an
   assert.ok(proofs.verify('event',signed,b));
   assert.equal(proofs.verify('receipt',signed,b),false);
   assert.equal(createProactiveHostProofs(secret+'rotated').verify('event',signed,b),false);
+  // Tamper must flip a significant bit: either via decode-flip-reencode (tamperProof) or flipping the first character.
   for(const changed of [{...signed,payload:{answer:'tampered'}},{...signed,proof:tamperProof(signed.proof)},
+    {...signed,proof:(signed.proof.startsWith('A')?'B':'A')+signed.proof.slice(1)},
     {...signed,proof:Buffer.from('wrong').toString('base64url')}]) assert.equal(proofs.verify('event',changed,b),false);
   for(const [field,other] of [['taskId','other-task'],['sessionId','other-session'],['controlRevision',b.controlRevision+1],
     ['taskDeadline',new Date(Date.now()+120000).toISOString()]]) assert.equal(proofs.verify('event',signed,{...b,[field]:other}),false,field+' is bound');

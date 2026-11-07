@@ -18,6 +18,18 @@ export interface CrewReceipt {
 }
 
 export const MAX_RECEIPT_RESULT = 8192;
+/** 超长截断时保留在尾部的提示，让父 agent 明确结果被截断。 */
+export const RECEIPT_TRUNCATION_SUFFIX = '…（已截断）';
+
+/**
+ * 把 CLI 结果截断到回执上限内（超长的正常回答或错误原文都不得让提交失败）。
+ * 截断后保留尾部提示；未超长时返回原文（trim 后）。
+ */
+export function truncateReceiptResult(text: string, max: number = MAX_RECEIPT_RESULT): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return trimmed.slice(0, Math.max(0, max - RECEIPT_TRUNCATION_SUFFIX.length)) + RECEIPT_TRUNCATION_SUFFIX;
+}
 export const MAX_RECEIPT_UNBLOCK = 4096;
 export const MAX_RECEIPT_EVIDENCE_REFS = 32;
 export const MAX_EVIDENCE_REF = 256;
