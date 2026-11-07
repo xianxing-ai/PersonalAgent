@@ -339,3 +339,20 @@ export function parseCoordinationResult(value: unknown): CoordinationResult {
 }
 
 export {CompetitionCoordinator, UnavailableCloudAgentPort} from './coordinator.js';
+export {
+  assertCloudPersistentEvidence,
+  parseCloudPersistentEvidence,
+  planCloudPersistentAcceptance,
+  CLOUD_PERSISTENT_PENDING_REASON,
+  CLOUD_PERSISTENT_PROFILE,
+  CLOUD_PERSISTENT_PHASES,
+  DEFAULT_CLOUD_PERSISTENT_PENDING_ITEMS,
+} from './cloud-persistent-acceptance-plan.js';
+export type {
+  CloudPersistentEvidence,
+  CloudPersistentPendingItem,
+  CloudPersistentPhase,
+  RealCloudShutdownEvidence,
+  PlanCloudPersistentAcceptanceOptions,
+  CloudPersistentAcceptancePlan,
+} from './cloud-persistent-acceptance-plan.js';
