@@ -1,10 +1,46 @@
 {
   "$comment": "28 图能力缺口登记（2026-11-07，由 scripts/competition/verify-graph-capability-coverage.mjs 强制）：graph 声明但 main 尚无提供者的每个能力名必须在此登记（domain/owners/status/note/sources），否则校验失败。status：open=生产口缺口；in-flight-pr=修复在途；needs-real-environment=需真机/真云。有提供者后应把条目移除（校验会 WARN）。",
-  "version": "2026.11.07.1",
+  "version": "2026.11.07.2",
   "mainHead": "855a90c4",
   "declaredTotal": 109,
   "providedTotal": 23,
   "gaps": [
+    {
+      "name": "calendar.freshness_check",
+      "kind": "tool",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F07"
+      ],
+      "note": "日历新鲜度检查口缺口（F07）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "calendar.registered_write",
+      "kind": "tool",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F07"
+      ],
+      "note": "日历注册写口缺口（F07；现有 calendar.create/update 为连接器操作，host 语义未组合）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
     {
       "name": "calendar.update_and_invalidate_reminder",
       "kind": "host",
@@ -340,6 +376,43 @@
       ]
     },
     {
+      "name": "model.capabilities",
+      "kind": "tool",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01",
+        "F27"
+      ],
+      "note": "模型能力目录接口在 packages/models（接口面）；工具名注册组合待核（扫描盲区）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "responsibility.snapshot",
+      "kind": "host",
+      "domain": "device-cloud",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01"
+      ],
+      "note": "责任快照口的 host 组合缺口（责任生命周期随 F01 缺口交付）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
       "name": "shadow.counterfactual_evidence",
       "kind": "host",
       "domain": "device-cloud",
@@ -572,6 +645,25 @@
       ]
     },
     {
+      "name": "github.bound_ci_failure",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "Potatos498",
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F16"
+      ],
+      "note": "CI 失败绑定 host 口缺口（F16；连接器有 actions.* 只读操作，绑定语义未组合）",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
       "name": "github.registered_close_issue",
       "kind": "host",
       "domain": "foundation",
@@ -781,6 +873,28 @@
         "F04"
       ],
       "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
+      "inFlightPrs": [],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "memory.query",
+      "kind": "tool",
+      "domain": "foundation",
+      "owners": [
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F01",
+        "F03",
+        "F04",
+        "F05",
+        "F27"
+      ],
+      "note": "Memory 公开查询接口在 packages/memory（动态命名/接口面，字面量扫描盲区）；图工具名的注册组合待核",
       "inFlightPrs": [],
       "sources": [
         "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
