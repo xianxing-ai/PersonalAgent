@@ -5,6 +5,7 @@ export {
   MAX_AUTO_DISPATCHES_PER_ROOT_REQUEST,
   MAX_CONCURRENT_TASKS_PER_AGENT,
   MAX_MESSAGE_HOP,
+  CREW_DRIVER_IDS,
   type CrewStoreOptions,
   type CrewAgentSpec,
   type CrewAgentRecord,
@@ -15,6 +16,8 @@ export {
   type CrewMessageRecord,
   type CrewMessageKind,
   type CrewDriverId,
+  type CrewConsentLoginKind,
+  type CrewConsentRecord,
 } from './store.js';
 export {
   parseCrewReceipt,
@@ -40,3 +43,28 @@ export {
   type CrewKernelReceiptInput,
   type CrewKernelReplyInput,
 } from './kernel.js';
+export {
+  CrewStoreConsentProvider,
+  type CrewConsentProvider,
+  type CrewConsentGrantInput,
+} from './consent.js';
+export {
+  createNodeSpawn,
+  type CrewDriver,
+  type CrewDriverEvent,
+  type CrewDriverEventType,
+  type CrewDriverProbe,
+  type CrewDriverSession,
+  type CrewDriverStartInput,
+  type CrewDriverUnsubscribe,
+  type CrewDriverProcess,
+  type CrewSpawn,
+} from './driver.js';
+export {CodexAppServerDriver, CODEX_DRIVER_ID, type CodexDriverOptions} from './drivers/codex.js';
+export {
+  CrewDriverRuntime,
+  openCrewDriverRuntime,
+  type CrewDriverRegistry,
+  type CrewDriverRuntimeOptions,
+  type CrewRuntimeEvent,
+} from './runtime.js';
