@@ -2,6 +2,23 @@ import {createHash} from 'node:crypto';
 export {createWindowsNativeSandboxExecutor, readWindowsNativeHelperAttestation} from './windows-native-sandbox.js';
 export {verifyWindowsNativeSandbox} from './native-sandbox-probe.js';
 export type {WindowsNativeSandboxProbeOptions, WindowsNativeSandboxCapabilities} from './native-sandbox-probe.js';
+export {
+  assertWindowsSandboxEvidence,
+  isWindowsSandboxEvidence,
+  planWindowsSandboxAcceptance,
+  WINDOWS_SANDBOX_ACCEPTANCE_BACKEND,
+  WINDOWS_SANDBOX_ACCEPTANCE_CAPABILITY,
+  WINDOWS_SANDBOX_ACCEPTANCE_PENDING_REASON,
+  WINDOWS_SANDBOX_ACCEPTANCE_PENDING_GATES,
+  WINDOWS_SANDBOX_ACCEPTANCE_LIMITS,
+} from './windows-sandbox-acceptance-plan.js';
+export type {
+  WindowsSandboxAcceptanceGate,
+  WindowsSandboxHelperAttestation,
+  WindowsSandboxEvidence,
+  PlanWindowsSandboxAcceptanceOptions,
+  WindowsSandboxAcceptancePlan,
+} from './windows-sandbox-acceptance-plan.js';
 export type {NativeSandboxMode,NativeSandboxBackend,NativeSandboxNetworkPolicy,TrustedSandboxProfile,
   TrustedSandboxBinding,TrustedSandboxExecutionRequest,SandboxExecutionResult,TrustedSandboxExecutor,
   WindowsNativeSandboxExecutorOptions} from './native-sandbox.js';
