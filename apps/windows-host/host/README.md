@@ -105,6 +105,24 @@ C# fixture 接入原 Node test glob：Windows 必须找到稳定 .NET 8 SDK，�
 结果须按对应提交的日志另行记录；不能预记成功，也不能代替真实 Pipe、UIA、用户接管
 或设备验收。Windows owner 仍可单独运行原 HostFixture 完成定向验证。
 
+2026-11-04 新增跨平台 `WindowsHost.RunJournal` 单测（`host/test/journal/`，`net8.0`）：
+生产 `RunJournal.cs` 原样编入测试程序集（`Compile Include` 链接，不复制副本；本目录的
+`WindowsHost.HostFixture.csproj` 用一行 `Compile Remove="journal/**/*.cs"` 排除该子目录，
+避免双入口），在不依赖 Windows UIA/Win32 的前提下运行。覆盖：开始记录的持久化与重启
+读回、中断 run 保持 `result_unknown`（调用方须转入 `waiting_reconciliation`，不得当作
+verified/refused 或重试写入）、`verified`/`refused`/`cancelled`/`result_unknown` 终态
+回执的 `evidenceRef`/`errorCode` 分工逐字段读回、runId 重放与身份变更拒绝（内存与重启
+两条路径）、重复完成幂等且不追加第二条记录、损坏行/null Identity/空 runId/同 runId 双
+身份/超 64 MiB 文件加载 fail closed、超 8 KiB 记录与超容量追加拒绝且不破坏原日志、
+`PayloadDigest` 长度前缀格式钉死与拼接消歧、日志文件不含正文（只含摘要与不透明身份）、
+并发 Start/Complete 串行化。本轮验证（基线 `main@855a90c4`，Linux、.NET SDK 8.0.427）：
+`dotnet build apps/windows-host/host/test/journal/WindowsHost.RunJournal.csproj -c Release`
+零警告零错误，运行输出 `PASS: RunJournal portable unit tests (persistence, read-back,
+replay guards, capacity, digests)`；`WindowsHost.HostFixture` 在同一环境以
+`-p:EnableWindowsTargeting=true` 编译通过（Linux 只编译不运行）。这仍是纯逻辑与文件
+语义验证：UIA 发现、唯一标签、HWND/PID 快照、前台检查、真实 Pipe/ACL 与用户接管等
+Windows 行为未测，继续按原实机验收清单执行，不得以本测试代替。
+
 `execute` 帧中的 `authorizationRef` 不构成授权；正式调用方必须先在 Runtime 的
 Policy/ToolGateway 中完成任务、工具、参数摘要、目标与期限的授权消费。Host 只接受
 已绑定的可信 Pipe 对端，把同一 `taskId/runId/toolName/toolVersion/authorizationRef/
