@@ -96,6 +96,8 @@ export interface WakeLifecycleOptions {
   readonly clock?: WakeClock;
   /** Explicit local suppression window after an accepted wake; zero disables it. */
   readonly cooldownMs?: number;
+  /** Explicit local suppression window after playback ends to filter late acoustic detections (ms). Defaults to 0. */
+  readonly playbackCooldownMs?: number;
 }
 
 export interface WakeEnableOptions {
@@ -225,6 +227,7 @@ function validSubscription(value: unknown): value is WakeSubscription {
 export class WakeLifecycleController {
   private readonly clock: WakeClock;
   private readonly cooldownMs: number;
+  private readonly playbackCooldownMs: number;
   private readonly onError: (error: WakeError) => void;
   private epoch = 0;
   private nextSessionId = 1;
@@ -254,7 +257,10 @@ export class WakeLifecycleController {
     if (!this.clock || typeof this.clock.now !== 'function' || typeof this.clock.setTimeout !== 'function') {
       throw new WakeLifecycleError('INVALID_ARGUMENT');
     }
+    const playbackCooldownMs = options.playbackCooldownMs ?? 0;
+    if (!finiteTime(playbackCooldownMs)) throw new WakeLifecycleError('INVALID_ARGUMENT');
     this.cooldownMs = cooldownMs;
+    this.playbackCooldownMs = playbackCooldownMs;
     this.onError = typeof options.onError === 'function' ? options.onError : () => {};
   }
 
@@ -360,7 +366,15 @@ export class WakeLifecycleController {
   /** Playback is owned by MOD-14; this only supplies a suppression signal. */
   setPlaybackActive(active: boolean): void {
     if (typeof active !== 'boolean') throw new WakeLifecycleError('INVALID_ARGUMENT');
+    const wasActive = this.playbackActive;
     this.playbackActive = active;
+    if (wasActive && !active && this.playbackCooldownMs > 0) {
+      const now = this.clock.now();
+      const endCooldown = now + this.playbackCooldownMs;
+      if (this.cooldownUntilMs === null || endCooldown > this.cooldownUntilMs) {
+        this.cooldownUntilMs = endCooldown;
+      }
+    }
   }
 
   /**
