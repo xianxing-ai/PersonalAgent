@@ -56,6 +56,18 @@ node scripts/release/preflight.mjs .
 
 Electron 自带的 Node/V8 运行时与命令行 Node 不是同一可执行环境。正式候选必须在打包后的 Electron 主进程中验证至少一次 SQLite 导入、建库/迁移、写入、读回、关闭与重启读回；静态版本匹配和源码中的 `node:sqlite` 引用不能代替该验收。检查器以固定阻塞项 `PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED` 保留这一边界。
 
+### 打包后 SQLite 烟测规划占位与验收边界（2026-11-07）
+
+针对打包后 Electron 主进程 SQLite 验证缺口，仓库已补充纯静态规划与占位脚手架：
+1. `tests/manual/release/windows-electron-sqlite.json`（`status=pending`、`executed=false`、`evidenceLevel=unverified`）；
+2. 静态规划脚本 `scripts/release/packaged-sqlite-smoke.plan.mjs` 及测试 `scripts/release/packaged-sqlite-smoke.plan.test.mjs`；
+3. 直接运行 `node scripts/release/packaged-sqlite-smoke.plan.mjs --check` 用于静态校验规划与占位文件（不改根 package.json）。
+
+**关键安全边界：占位 ≠ 验收。**
+- 静态规划器不执行 Electron 进程（有路径也不拉起）；在非 Windows 或无产物时固定输出 `{ready:false, reason:'unavailable', pending:true}`，直接 CLI 运行返回非 0 退出码表示“不可当作已验收”；
+- 检查器中的 `PACKAGED_ELECTRON_SQLITE_SMOKE_REQUIRED` 保持固定阻断（`blocked`）；
+- 占位文件绝不宣称 `passed`，`publishable` 必须仍为 `false`；真实验收必须在 Windows 真机打包后的 Electron 主进程中完成建库、WAL 模式、读写事务以及重启读回并收集外部证据。
+
 ## 当前仓库结论
 
 在基线 `72cc76b` 上，Desktop/Runtime 源入口和版本声明存在，但仓库没有生产打包配置、Windows 安装器定义或发布脚本；独立安装/启动、升级保留数据、卸载及打包后 SQLite 运行证据也未提供。干净工作树未预置所有必要 `dist` 文件时，检查器会先报告 `run_build`，但它不会自行执行构建。
