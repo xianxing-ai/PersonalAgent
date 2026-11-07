@@ -641,3 +641,26 @@ export type {CiDiscoveredRun, CiRunListRequest, CiRunListResult, CiRunDiscoveryO
   CiRunDiscoveryWorkflowPort} from './dev-workflows/ci-run-discovery.js';
 export type {ToolExecutionPort, CiFixProposal, CiFixGitTools, CiFixOptions,
   CiFixWorkflowPort, CiFixOutcome} from './dev-workflows/ci-fix-types.js';
+export {
+  createArtifactService,
+  ArtifactService,
+  planWindowsRecoveryArtifact,
+  assertRecoveryArtifactBinding,
+  assembleArtifactServiceTools,
+  ARTIFACT_GET_TOOL_NAME,
+  ARTIFACT_LIST_TOOL_NAME,
+  ARTIFACT_CREATE_TOOL_NAME,
+  ARTIFACT_SCOPE,
+} from './artifact-service.js';
+export type {
+  ArtifactRecord,
+  ArtifactKind,
+  ArtifactStatus,
+  ArtifactContentResult,
+  ArtifactReleaseResult,
+  ArtifactServiceOptions,
+  CreateArtifactInput,
+  ListArtifactsFilter,
+  WindowsRecoveryArtifactInput,
+  WindowsRecoveryArtifactPlan,
+} from './artifact-service.js';
