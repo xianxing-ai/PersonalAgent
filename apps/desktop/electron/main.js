@@ -38,6 +38,7 @@ import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFile
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
+import {createOrbHitTestController} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
 import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
@@ -4689,6 +4690,14 @@ app.whenReady().then(async () => {
     {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false});
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
     {frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
+  // MOD-11: clicks over the orb's transparent regions must reach the windows
+  // underneath. The controller samples the cursor in DIPs, keeps capturing
+  // inside the visible shell (hysteresis-stable across fractional DPI) and
+  // forwards everything else; drag states always capture.
+  const orbHitTest = createOrbHitTestController({win:orb, screen, isBusy:()=>dragging!==false,
+    log:event=>desktopHost.log(event,'orb')});
+  orbHitTest.start();
+  orb.on('closed', () => orbHitTest.stop());
   const panelMaterial=bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
