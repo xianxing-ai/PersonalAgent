@@ -88,3 +88,14 @@ export type {
   VoiceSessionState,
   VoiceSessionTerminalReason,
 } from './voice-session.js';
+export {
+  assertVoiceSessionContext,
+  planHuaweiSisAvailability,
+} from './voice-session-boundary.js';
+export type {
+  VoiceSessionContext,
+  ValidatedVoiceSessionContext,
+  AssertVoiceSessionContextOptions,
+  HuaweiSisAvailabilityInput,
+  HuaweiSisAvailabilityPlan,
+} from './voice-session-boundary.js';

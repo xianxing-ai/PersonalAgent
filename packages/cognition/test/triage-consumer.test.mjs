@@ -114,3 +114,74 @@ test('cancelled, deadline, unavailable and malformed response stay deferred', as
   assert.deepEqual(dispatch.mainAgent, []);
   assert.deepEqual(dispatch.review, []);
 });
+
+test('dispatch input shapes are validated before any grouping', async () => {
+  const results = await new LayaTriageService(validFake).classify(request(messages));
+  const seventeenLabels = Object.fromEntries(Array.from({length: 17},
+    (_, index) => [`label${index}`, `Label ${index}`]));
+  const cases = [
+    ['null input', () => prepareTriageDispatch(null)],
+    ['array input', () => prepareTriageDispatch([input(results)])],
+    ['blank namespace', () => prepareTriageDispatch({...input(results), namespace: '  '})],
+    ['single label', () => prepareTriageDispatch({...input(results), labels: {work: 'Work'}})],
+    ['seventeen labels', () => prepareTriageDispatch({...input(results), labels: seventeenLabels})],
+    ['invalid label key', () => prepareTriageDispatch({...input(results), labels: {'1bad': 'Bad', news: 'News'}})],
+    ['blank label text', () => prepareTriageDispatch({...input(results), labels: {work: ' ', news: 'News'}})],
+    ['oversized label text', () => prepareTriageDispatch({...input(results),
+      labels: {work: 'W'.repeat(501), news: 'News'}})],
+    ['result count mismatch', () => prepareTriageDispatch({...input(results), results: results.slice(0, -1)})],
+    ['duplicate message identity', () => prepareTriageDispatch(input(results, [...messages, messages[0]]))],
+    ['result without a message', () => prepareTriageDispatch(input([...results, results[0]],
+      [...messages, {source: 'mail', messageId: 'ghost', sourceRevision: '1', text: 'PRIVATE ghost'}]))],
+    ['oversized source', () => prepareTriageDispatch(input(results,
+      [{...messages[0], source: 'm'.repeat(257)}, ...messages.slice(1)]))],
+    ['blank message ID', () => prepareTriageDispatch(input(results,
+      [{...messages[0], messageId: ''}, ...messages.slice(1)]))],
+    ['oversized text', () => prepareTriageDispatch(input(results,
+      [{...messages[0], text: 'x'.repeat(4001)}, ...messages.slice(1)]))],
+    ['non-boolean high impact', () => prepareTriageDispatch(input(results,
+      [{...messages[0], highImpact: 'yes'}, ...messages.slice(1)]))],
+  ];
+  for (const [name, run] of cases) assert.throws(run, undefined, name);
+  assert.deepEqual(prepareTriageDispatch(input(results)).groups[0].refs[0].messageId, 'routine');
+});
+
+test('receipt metadata beyond the digests is also part of the accepted result identity', async () => {
+  const results = await new LayaTriageService(validFake).classify(request(messages));
+  const replace = (index, patch) => results.map((item, i) => i === index ? {...item, ...patch} : item);
+  for (const patch of [
+    {receipt: {...results[0].receipt, promptVersion: 'mail-triage-v2'}},
+    {receipt: {...results[0].receipt, model: 'large'}},
+    {receipt: {...results[0].receipt, candidateLabels: ['news', 'work']}},
+    {receipt: {...results[0].receipt, candidateLabels: ['work']}},
+    {batching: 'multi_question_v2'},
+    {calibrated: true},
+    {scores: undefined},
+    {impactScores: undefined},
+  ]) assert.throws(() => prepareTriageDispatch(input(replace(0, patch))));
+});
+
+test('high-impact impact answers keep abstained and classified results on the main agent', async () => {
+  const impactMessages = [
+    {source: 'mail', messageId: 'reschedule', sourceRevision: '1', text: 'PRIVATE reschedule summary'},
+    {source: 'mail', messageId: 'unclear-impact', sourceRevision: '2', text: 'PRIVATE unclear summary'},
+  ];
+  const service = new LayaTriageService({async infer(payload) {
+    return {answers: Object.fromEntries(payload.state.events.flatMap((eventItem, index) => [
+      [`category_${index}`, answer('work', eventItem.observation.includes('unclear')
+        ? {work: 0.55, news: 0.45} : {work: 0.9, news: 0.1})],
+      [`impact_${index}`, answer('high_impact', {routine: 0.1, high_impact: 0.9})],
+    ]))};
+  }});
+  const results = await service.classify(request(impactMessages));
+  assert.deepEqual(results.map(item => [item.reason, item.route, item.abstained, item.label]), [
+    ['high_impact', 'main_agent', false, 'work'],
+    ['high_impact', 'main_agent', true, null],
+  ]);
+  const dispatch = prepareTriageDispatch(input(results, impactMessages));
+  assert.deepEqual(dispatch.mainAgent.map(ref => ref.messageId), ['reschedule', 'unclear-impact']);
+  assert.deepEqual(dispatch.groups, []);
+  assert.deepEqual(dispatch.review, []);
+  assert.throws(() => prepareTriageDispatch(input(
+    results.map((item, i) => i === 0 ? {...item, label: 'news'} : item), impactMessages)));
+});
