@@ -669,3 +669,18 @@ export class OwnedAgentOrchestrator {
   }
 }
 export * from './proactive-workflows.js';
+export {
+  assertF09CloudPrefixReceipt,
+  parseF09CloudPrefixReceipt,
+  planF09CloudPrefixAcceptance,
+  F09_ACCEPTANCE_PENDING_REASON,
+  F09_WORKFLOW_NODES,
+} from './f09-cloud-prefix-acceptance-plan.js';
+export type {
+  F09CloudPrefixReceipt,
+  F09SessionAuthReadback,
+  F09PendingItem,
+  F09CloudPrefixAcceptancePlan,
+  PlanF09CloudPrefixAcceptanceOptions,
+  RealCloudEvidence as F09RealCloudEvidence,
+} from './f09-cloud-prefix-acceptance-plan.js';
