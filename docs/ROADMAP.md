@@ -1,5 +1,7 @@
 # 开发计划与进度
 
+> 2026-11-07 离线索引工具：[真环境待验收总表离线索引说明](modules/ACCEPTANCE-PLAN-INDEX-20261107.md) · 工具脚本 `scripts/acceptance/build-pending-acceptance-index.mjs`
+
 ## 2026-10-26 本地工程移交与会话 SQLite（review，历史快照未完整复原）
 
 已实际接收并核验本地源码 ZIP，在 `934b7c44` 的独立工作树准备三方候选，尚未提交、推送或发布。119 份基线原文的长度/SHA256/Git blob ID 均符合 manifest；`b2fb20dd` commit provenance 未核实。来源 A12 中另有 65 项未交付输入与当前 main 不同或缺失，包括 team broker 及部分 provider/模型控制基线；因此不能称完整 Windows 工程已还原或继承 A12 全绿。当前候选的独立根 build 已通过，65 项是历史快照可复原性清单，不是当前候选构建缺文件清单；定向测试结果与平台限制另按实际记录判断。
@@ -425,7 +427,7 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 | MOD-02 | M1 起步门槛 | done | goo122 / PR #1 原始 14 operation；PR #34 增至 17 operation 并完成 Desktop 消费验证；只冻结 Core Runtime Profile 1，不冻结整包 |
 | MOD-03 | M1/M2 | done | goo122 / PR #5 / 合并提交 e14aebf / 7 项 Runtime 测试及评审通过 |
 | MOD-04A | Local Profile 可选模型层 | review | `goo122` / 历史 PR #10、#11、#26 已合并；ModelGateway、Pangu 文本 Provider、JSON 提案适配离线通过；代码保留，但新增 Local 能力不进入当前比赛优先级 |
-| MOD-04B | Competition Coordination；Local Agent 可选 | review | `zemeng` / PR #36、#49、#72（Workflow 输入）、#80（continuation 边界）均已进入 main（2026-09-30 台账核对），离线审批工具循环已验证；真实 AgentArts 调用和多 Agent 结果仍未验收 |
+| MOD-04B | Competition Coordination；Local Agent 可选 | review | `zemeng` / PR #36、#49、#72（Workflow 输入）、#80（continuation 边界）均已进入 main（2026-09-30 台账核对），离线审批工具循环已验证；2026-11-07 补充 cloudPersistent 关机后云持续离线验收规划（无真云关机证据 closedLoop=false，标 unavailable/待真云关机验收，见 [CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107](modules/CLOUD-PERSISTENT-ACCEPTANCE-PLAN-20261107.md)）；真实 AgentArts 调用和多 Agent 结果仍未验收 |
 | MOD-05 | M1/M2 | review | goo122 / PR #7、#26、#49 已合并；任务级 SQLite 授权、参数绑定、审批恢复、工具 Evidence、幂等重放和 Competition 离线工具循环已验证；跨任务持续授权、真实 SecretStore 和真实写入恢复尚未完成 |
 | MOD-06 | M2 | in_progress | main 已有固定官方 filesystem stdio、受控只读映射与断连生命周期，详见 [MCP/Skill MVP](modules/MOD-06-07-MVP.md)；保持 provisional，不含任意服务/写工具；原生与真实云完整消费仍待验收 |
 | MOD-07 | M2 | in_progress | main 已有固定版本化参考摘要、受控调用及 Runtime/SQLite 审批恢复；本机 SKILL.md 安装/启停/使用/卸载和安装资源纯本地预览已由 #346→[PR #320](https://github.com/zemeng5208/PersonalAgent/pull/320) 合入 main `31b0ce5c`，#318 已关闭并保留分支/评审。[安装说明](modules/MOD-07-LOCAL-INSTALLATION-20261009.md) 与[组合集成记录](modules/MOD-06-07-SKILL-WIKI-INTEGRATION-20261013.md) 区分历史与当前证据。原生真人完整流程及真实云消费未验收，不标整个模块 done，不含任意脚本引擎 |
@@ -448,7 +450,7 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 | MOD-24 | M2 | review | `Potatos498` / PR #47 已合并为 `2117908a`；OpenAlex、Fake、缓存三态和三项来源披露已验证，长期真实服务稳定性仍为 conditional |
 | MOD-25 | M2 | done | `Potatos498` / PR #4、#12、#23 与 Runtime 装配 PR #9 已合并；GeoNames 增强下 26 个世界大城市简体查询 26/26 高置信，真实门控测试 66/66；2026-09-30 置信度收口：`PPLA2`–`PPLA5` 次级席位不再无条件判 `high`（新增 `minMinorSeatPopulation` 默认 100000，实测空档 14574↔211151），GeoNames 已证名可佐证任意人口档；`开罗+Cairo` 提示串用例随之修复；manifest 仍为 `conditional`，不等于长期生产稳定性验收 |
 | MOD-26 | M4 起逐平台验收 | todo | `Potatos498` 负责；当前未选定平台工作包，未因分工重置启动 |
-| MOD-27 | M1.6 | review | `zemeng` / main@4b5ec61 已有版本图、SQLite/Fake 原子 `appendBatch`、受控 Goal 工具及公开 Memory 查询/变化流的持久投影与确认消费；真实来源、私人数据授权及删除现场验收未完成，见[当前能力矩阵](modules/MOD-27-28-INTEGRATION-HANDOFF.md#当前源码能力与验收矩阵2026-10-07) |
+| MOD-27 | M1.6 | review | `zemeng` / main@4b5ec61 已有版本图、SQLite/Fake 原子 `appendBatch`、受控 Goal 工具及公开 Memory 查询/变化流的持久投影与确认消费；2026-11-07 补充 privacy-deletion-acceptance-plan 离线契约与规划 helper（无真实授权/删除读回 closedLoop=false，标 unavailable/待真人/真机验收，见 [MOD-27-PRIVACY-DELETION-PLAN-20261107](modules/MOD-27-PRIVACY-DELETION-PLAN-20261107.md)）；真实来源、私人数据授权及删除现场验收未完成，见[当前能力矩阵](modules/MOD-27-28-INTEGRATION-HANDOFF.md#当前源码能力与验收矩阵2026-10-07) |
 | MOD-28 | M1.6 | in_progress | `zemeng` / main@4b5ec61 已有 KEEP/RECHECK/REVISE 回放、事实投影消费、Goal 创建/修订触发及经 Runtime/Policy/CAS 的受控修复；默认 P5 Calendar 尚缺可信来源版本→Fact ref→completed projection 绑定，真实 Laya/AgentArts 与 Evidence 现场闭环未验收，沿 [#212 既有交接](modules/MOD-28-REVIEWED-REPAIR-01.md#默认-p5-会议链与可信来源交接2026-10-07)继续 |
 | MOD-29 | M1.5 第一优先 | in_progress | `zemeng` / AgentArts Runtime 适配与配置入口已有 provisional 实现；历史固定版本已取得有限部署、API 和读回证据，不能作为当前 HEAD 或完整远端业务链的验收；平台独立 trace、评估及当前版本端到端读回仍须分别核验，见[接口目录](interfaces/CURRENT_INTERFACE_CATALOG.md) |
 | MOD-30 | M1.5 第一优先 | in_progress | `zemeng` / PR #49、#72（Workflow 输入）、#80（载荷边界）均已进入 main（2026-09-30 台账核对），工具提案/审批/continuation 离线链可用；新增离线读回形状校验与验收规划（2026-11-07，见 [MOD-30 读回规划](modules/MOD-30-MCP-SKILL-READBACK-20261107.md)），真实 MCP/Skill 与目标系统读回未完成（待真机/真云验收） |
