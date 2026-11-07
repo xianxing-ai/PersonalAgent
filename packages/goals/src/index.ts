@@ -132,3 +132,20 @@ export function isEffective(node: NodeVersion, at: string): boolean {
   const time = timestamp(at);
   return node.state === 'active' && timestamp(node.validFrom) <= time && time < timestamp(node.validUntil);
 }
+
+export {
+  assertPrivacyDeletionReceipt,
+  parsePrivacyDeletionReceipt,
+  planPrivacyDeletionAcceptance,
+  PRIVACY_ACCEPTANCE_PENDING_REASON,
+  PRIVACY_ACCEPTANCE_PENDING_ITEMS,
+  PRIVACY_ACCEPTANCE_LIMITS,
+} from './privacy-deletion-acceptance-plan.js';
+export type {
+  PrivacyDeletionReceipt,
+  PrivacyDeletionReceiptAction,
+  PrivacyDeletionPendingItem,
+  PrivacyDeletionAcceptancePlan,
+  PlanPrivacyDeletionAcceptanceOptions,
+  RealPrivacyAcceptanceEvidence,
+} from './privacy-deletion-acceptance-plan.js';

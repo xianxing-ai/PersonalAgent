@@ -238,3 +238,56 @@ test('durable reader gates pending and foreign batches before advice', async () 
     {readCompletedImpact: token => token === processed.batchToken ? processed : undefined}, request);
   assert.deepEqual(actual.scope.items.map(item => item.node.id), ['goal', 'plan']);
 });
+
+test('malformed advice requests are rejected before the durable reader runs', async () => {
+  const {store, input} = fixture();
+  const {processed, ...request} = input;
+  let readerCalls = 0;
+  const counting = {readCompletedImpact: () => { readerCalls++; return processed; }};
+  const forbidden = {decide() { throw new Error('must not run'); }};
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, counting,
+    {...request, signal: 'not-a-signal'}), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, counting,
+    {...request, signal: AbortSignal.abort()}), {code: 'CANCELLED'});
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, counting,
+    {...request, deadline: 'not-a-date'}), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, counting,
+    {...request, deadline: new Date(Date.now() - 1000).toISOString()}), {code: 'TIMEOUT'});
+  assert.equal(readerCalls, 0, 'lifecycle gates must not consult the durable reader');
+});
+
+test('reader and projection shapes are gated before any advice or preview', async () => {
+  const {store, input} = fixture();
+  const forbidden = {decide() { throw new Error('must not run'); }};
+  const {processed, ...request} = input;
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, null, request),
+    {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, {}, request),
+    {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, reader(processed),
+    {...request, projection: undefined}), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, reader(processed),
+    {...request, projection: {...request.projection, batchToken: '  '}}), {code: 'INVALID_ARGUMENT'});
+  await assert.rejects(() => decideDurableFactProjection(store, forbidden, reader(processed),
+    {...request, projection: {...request.projection, graphRevision: 1.5}}), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => previewDurableFactRepair(store, null, at, request), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => previewDurableFactRepair(store, {}, at, request), {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => previewDurableFactRepair(store, reader(processed), at,
+    {...request, projection: {...request.projection, graphRevision: -1}}), {code: 'INVALID_ARGUMENT'});
+});
+
+test('a store that clamps the durable historical read is a revision conflict, not advice', async () => {
+  const {store, input} = fixture();
+  const {processed, ...request} = input;
+  const forbidden = {decide() { throw new Error('must not run'); }};
+  const clamping = {read: revision => revision === undefined
+    ? store.read() : {...store.read(), revision: revision + 1},
+  append: (expected, nodeInput) => store.append(expected, nodeInput)};
+  await assert.rejects(() => decideDurableFactProjection(clamping, forbidden, reader(processed), request),
+    {code: 'REVISION_CONFLICT'});
+  assert.throws(() => previewDurableFactRepair(clamping, reader(processed), at, {
+    graphNamespace: request.graphNamespace, projection: request.projection,
+    changes: [{node: ref('goal'), summary: 'clamped candidate', reason: 'candidate',
+      dependencies: [ref('memory-fact:meeting', 2)]}]
+  }), {code: 'REVISION_CONFLICT'});
+});

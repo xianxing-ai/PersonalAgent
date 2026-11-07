@@ -18,6 +18,19 @@ export type {RemoteMcpConfigurationBinding,BoundRemoteReadonlyMcpOptions} from '
 export type {PublicReferenceExportQuery, PublicReferenceReadQuery, PublicReferenceExportPreflight, PublicReferenceContentQuery, PublicReferenceTextProjection, PublicReferenceExportAuthorization, PublicReferenceExportOptions} from './public-export.js';
 export {createWorkspaceReferenceExport} from './workspace-export.js';
 export type {WorkspaceReferenceExportOptions} from './workspace-export.js';
+export {
+  assertMcpReadbackReceipt,
+  assertSkillReadbackReceipt,
+  planMcpSkillReadbackAcceptance,
+  normalizeMcpReadResult,
+  PENDING_ACCEPTANCE_ITEMS,
+  PENDING_ACCEPTANCE_REASON,
+} from './mcp-skill-readback.js';
+export type {
+  McpSkillReadbackAcceptancePlan,
+  McpSkillReadbackAcceptanceInput,
+  SkillReadbackReceipt,
+} from './mcp-skill-readback.js';
 
 export const MCP_READ_TOOL_NAME = 'mcp.workspace.read_text';
 export const MCP_READ_TOOL_VERSION = '1.0.0';
