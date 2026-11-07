@@ -22,6 +22,7 @@ export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
 export * from './coding-repair.js';
 export * from './harness-candidates.js';
 export * from './f20-worker-trust.js';
+export * from './f14-native-observation.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
 export * from './workflow-voice-final-transcript.js';
@@ -668,3 +669,18 @@ export class OwnedAgentOrchestrator {
   }
 }
 export * from './proactive-workflows.js';
+export {
+  assertF09CloudPrefixReceipt,
+  parseF09CloudPrefixReceipt,
+  planF09CloudPrefixAcceptance,
+  F09_ACCEPTANCE_PENDING_REASON,
+  F09_WORKFLOW_NODES,
+} from './f09-cloud-prefix-acceptance-plan.js';
+export type {
+  F09CloudPrefixReceipt,
+  F09SessionAuthReadback,
+  F09PendingItem,
+  F09CloudPrefixAcceptancePlan,
+  PlanF09CloudPrefixAcceptanceOptions,
+  RealCloudEvidence as F09RealCloudEvidence,
+} from './f09-cloud-prefix-acceptance-plan.js';
