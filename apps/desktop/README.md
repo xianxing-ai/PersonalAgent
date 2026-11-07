@@ -1,5 +1,8 @@
 # PersonalAgent Desktop
 
+2026-11-07 MOD-19 打包与安装脚手架（review）：
+声明生产打包配置 `electron-builder.yml` 与 `package.json` 的 `build` 字段，配置保守 NSIS（普通用户权限 `asInvoker`、自选安装路径、卸载保留用户数据）；增加 `package:win` 脚本；通过 `scripts/release/packaging-scaffold.check.mjs` 静态校验配置完整性与敏感文件（`.env`、`credentials`、`*.pem` 等）排除。运行命令：`npm run check:packaging-scaffold`。本片仅为脚手架声明，真机安装与打包后内置 SQLite 仍未验收，不可发布。详见 [MOD-19-PACKAGING-SCAFFOLD-20261107](../../docs/modules/MOD-19-PACKAGING-SCAFFOLD-20261107.md)。
+
 2026-10-27～28：普通设置入口、Solid Glass 材质、Windows 窗口圆角、简化配置默认值、默认工作文件夹与工作区星云重绘优化，见[实现与验证边界](docs/SOLID_GLASS_SETTINGS_20261027.md)。
 
 2026-10-27 / Issue #523：在 PR #522 上改用原 Runtime 检查点索引读取持续工作流，后台维护按宿主独立节流和防重入；事件与待办仍走原 120ms 入口。修复前后测量、Windows GUI 与验证边界见[修复记录](docs/DESKTOP_IDLE_POLLING_ISSUE523_20261027.md)。

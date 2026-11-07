@@ -442,7 +442,7 @@ MOD-08 仍 in_progress；完整 Wiki 与真实云验收仍未完成。
 | MOD-16 | 受限记事本执行与实机验收 | in_progress | `zemeng` / Host、Bridge、Runtime 导出与 Desktop 受信确认消费已实现；仅在 Windows 和固定 Host/Bridge 可用时装配受限记事本能力。历史实机证据仅到 `hello_ack`，完整 F9 确认、Policy 授权、UIA 写入及独立读回仍待现场验收，见 [模块记录](modules/MOD-16-WINDOWS-EXECUTION-01.md) |
 | MOD-17 | 只读系统观测与实机验收 | in_progress | `zemeng` / CPU、内存与 uptime 提供者、Runtime 工具注册和 Desktop 只读消费已实现；已有 Windows provider 直读证据，完整 Policy/ToolGateway、AgentArts 与 Desktop 实机闭环未验收，见 [模块记录](modules/MOD-17-COMPUTER-STATUS-01.md) |
 | MOD-18 | M4 | in_progress | `zemeng` / main@4b5ec614 已有 WorkspaceConfigHost 条件注册受限读取/枚举、补丁预览/暂存/应用与固定命令及进程/任务绑定许可；“写入和命令未交付”为历史滞后。Artifact 服务首片（本地生命周期/安全路径/Windows 恢复规划纯函数）已交付并通过 8/8 测试，见 [MOD-18-ARTIFACT-SERVICE](modules/MOD-18-ARTIFACT-SERVICE-20261107.md)；真实项目写入/命令、Windows 真机恢复与 AgentArts 联合验收仍未完成，保持 in_progress；[消费边界](modules/MOD-18-DESKTOP-WORKSPACE-SETTINGS.md) |
-| MOD-19 | M5 | todo | `zemeng` 已确定，未启动 |
+| MOD-19 | M5 | review | `zemeng` / 交付首片打包与安装脚手架（生产 electron-builder.yml、保守 NSIS 定义、package:win 声明、静态安全校验 check 6/6 及未执行的人工验收占位，见 [MOD-19 脚手架](modules/MOD-19-PACKAGING-SCAFFOLD-20261107.md)）；打包后 Electron 内置 SQLite 运行、真机安装/升级/卸载未验收，不可发布 |
 | MOD-20 | M2 本地提醒、M3 日历 | in_progress | `Potatos498` / PR #22 已合并（Fake 日历）；#216 合并 iCal 只读订阅源；MOD-20A 交付 CalDAV 只读提供商（ctag/etag 轮询＋time-range 查询＋TZID 换算，20/20 离线测试，见 2026-09-30 登记）；真实日历账号读回与授权写入仍未验收 |
 | MOD-21 | M3 | review | `Potatos498` / PR #28 已合并为 `42db8f51`；QQ 增量同步、安全发送语义和受控真实读回已有证据，完整账号生命周期与长期稳定性未验收 |
 | MOD-22 | M3 | done | `Potatos498` / PR #8 已合并（RSS 2.0/Atom 增量、趟水位线分页修复、真实源读回验证） |
