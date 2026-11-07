@@ -1,6 +1,6 @@
 // Fixed host command: type-check an isolated example; never execute workspace code.
 const fs=require('node:fs'),path=require('node:path');
-const [compiler,root,schemaFile,codeFile,sampleFile]=process.argv.slice(2);
+const [compiler,pinnedVersion,root,schemaFile,codeFile,sampleFile]=process.argv.slice(2);
 const ts=require(compiler);
 function fail(message){throw Error(message);}
 function inside(base,file){const relative=path.relative(base,file);return !!relative&&relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative);}
@@ -14,7 +14,7 @@ function ordinary(file,base){
   return fs.statSync(file).isFile();
 }
 try {
-  if(!root||fs.realpathSync.native(root)!==root||!schemaFile?.endsWith('.ts')||!codeFile||sampleFile!==codeFile+'.f20-sample.ts')fail('Unsupported fixed F20 TypeScript case');
+  if(!pinnedVersion||ts.version!==pinnedVersion||!root||fs.realpathSync.native(root)!==root||!schemaFile?.endsWith('.ts')||!codeFile||sampleFile!==codeFile+'.f20-sample.ts')fail('Unsupported fixed F20 TypeScript case');
   const sources=[schemaFile,codeFile,sampleFile].map(file=>path.resolve(root,file));
   if(sources.some(file=>!ordinary(file,root)))fail('F20 sources must be ordinary isolated files');
   const options={noEmit:true,strict:true,skipLibCheck:false,allowJs:true,checkJs:true,types:[],
