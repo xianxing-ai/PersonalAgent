@@ -249,7 +249,7 @@ test('planPrivacyDeletionAcceptance strictly prohibits mock from claiming closed
   // Explicit mock option
   const plan2 = planPrivacyDeletionAcceptance({
     mock: true,
-    realAuthorizationEvidence: true,
+    realAuthorizationEvidence: { humanAuthorized: true, onSiteDeletionReadback: true },
     receipt: { ...receipt, evidenceLevel: 'verified' },
   });
   assert.equal(plan2.closedLoop, false);
@@ -267,7 +267,7 @@ test('planPrivacyDeletionAcceptance strictly prohibits mock from claiming closed
   assert.equal(plan3.status, 'unavailable');
 });
 
-test('planPrivacyDeletionAcceptance handles partial evidence correctly', () => {
+test('planPrivacyDeletionAcceptance retains all 5 pending gates even with self-reported options (no on-site verification mechanism)', () => {
   const receipt = {
     receiptId: 'rcpt-partial-01',
     namespace: 'test',
@@ -277,30 +277,34 @@ test('planPrivacyDeletionAcceptance handles partial evidence correctly', () => {
     physicalErasure: true,
   };
 
-  // Case 1: human authorized but no on-site deletion readback
-  const planNoReadback = planPrivacyDeletionAcceptance({
+  // Case 1: Caller claims human authorized - cannot clear pending gate without trusted verification mechanism
+  const planAuthClaim = planPrivacyDeletionAcceptance({
     receipt,
     realUserAuthorization: true,
     realDeletionReadback: false,
   });
-  assert.equal(planNoReadback.closedLoop, false);
-  assert.equal(planNoReadback.status, 'unavailable');
-  assert.ok(planNoReadback.pending.some((p) => p.item === 'on_site_deletion_readback'));
-  assert.ok(!planNoReadback.pending.some((p) => p.item === 'human_user_privacy_authorization'));
+  assert.equal(planAuthClaim.closedLoop, false);
+  assert.equal(planAuthClaim.status, 'unavailable');
+  assert.ok(planAuthClaim.pending.some((p) => p.item === 'human_user_privacy_authorization'));
+  assert.ok(planAuthClaim.pending.some((p) => p.item === 'on_site_deletion_readback'));
+  assert.ok(planAuthClaim.verified.some((v) => v.includes('调用方声明：提供自报真人授权字段')));
 
-  // Case 2: on-site deletion readback but no human authorization
-  const planNoAuth = planPrivacyDeletionAcceptance({
+  // Case 2: Caller claims on-site deletion readback - cannot clear pending gate without durable storage audit
+  const planReadbackClaim = planPrivacyDeletionAcceptance({
     receipt,
     realUserAuthorization: false,
     realDeletionReadback: true,
   });
-  assert.equal(planNoAuth.closedLoop, false);
-  assert.equal(planNoAuth.status, 'unavailable');
-  assert.ok(!planNoAuth.pending.some((p) => p.item === 'on_site_deletion_readback'));
-  assert.ok(planNoAuth.pending.some((p) => p.item === 'human_user_privacy_authorization'));
+  assert.equal(planReadbackClaim.closedLoop, false);
+  assert.equal(planReadbackClaim.status, 'unavailable');
+  assert.ok(planReadbackClaim.pending.some((p) => p.item === 'human_user_privacy_authorization'));
+  assert.ok(planReadbackClaim.pending.some((p) => p.item === 'on_site_deletion_readback'));
+  assert.ok(planReadbackClaim.verified.some((v) => v.includes('调用方声明：提供自报删除读回字段')));
 });
 
-test('planPrivacyDeletionAcceptance completes closedLoop only with genuine verified human and deletion evidence', () => {
+test('planPrivacyDeletionAcceptance keeps closedLoop=false even with self-reported verified options (no hardware durable erasure audit)', () => {
+  // 依据 AGENTS.md 与隐私安全规范：内存自报 verified 对象不构成独立于调用方的真人现场授权或硬件持久存储物理抹除证明。
+  // 旧测试将自报对象等同于闭环属于不可信结论，收紧为 closedLoop: false，保留为严格负例。
   const receipt = {
     receiptId: 'rcpt-verified-01',
     namespace: 'user-vault',
@@ -324,12 +328,11 @@ test('planPrivacyDeletionAcceptance completes closedLoop only with genuine verif
     evidenceLevel: 'verified',
   });
 
-  assert.equal(plan.closedLoop, true);
-  assert.equal(plan.status, 'verified');
-  assert.equal(plan.reason, '真人授权与真机删除现场读回已核验');
-  assert.deepEqual(plan.pending, []);
+  assert.equal(plan.closedLoop, false);
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.reason, PRIVACY_ACCEPTANCE_PENDING_REASON);
+  assert.ok(plan.pending.length > 0);
   assert.ok(plan.verified.length > 0);
-  assert.ok(plan.verified.some((v) => v.includes('现场核验')));
 });
 
 test('planPrivacyDeletionAcceptance rejects invalid receipt passed in options', () => {
@@ -346,4 +349,60 @@ test('planPrivacyDeletionAcceptance rejects invalid receipt passed in options', 
     }),
     (err) => err instanceof GraphError && err.code === 'INVALID_ARGUMENT'
   );
+});
+
+test('planPrivacyDeletionAcceptance cross-review blockers: rejects boolean realAuthorizationEvidence and prevents withdrawal from claiming physical deletion', () => {
+  const withdrawalReceipt = {
+    receiptId: 'rcpt-withdrawal-99',
+    namespace: 'user-vault',
+    targetId: 'fact-01',
+    action: 'withdrawal',
+    graphRevision: 2,
+    physicalErasure: false,
+  };
+
+  // Blocker 1: boolean realAuthorizationEvidence must be rejected
+  assert.throws(
+    () => planPrivacyDeletionAcceptance({ receipt: withdrawalReceipt, realAuthorizationEvidence: true }),
+    err => err instanceof GraphError && err.code === 'INVALID_ARGUMENT' && err.message.includes('boolean is not supported')
+  );
+
+  // Blocker 2: withdrawal receipt must never claim physical deletion readback
+  const simulatedAuth = {
+    humanAuthorized: true,
+    onSiteDeletionReadback: true,
+    evidenceLevel: 'verified',
+  };
+  const planWithdrawal = planPrivacyDeletionAcceptance({
+    receipt: withdrawalReceipt,
+    realAuthorizationEvidence: simulatedAuth,
+  });
+
+  assert.equal(planWithdrawal.closedLoop, false);
+  assert.equal(planWithdrawal.status, 'unavailable');
+  assert.ok(planWithdrawal.verified.some(v => v.includes('结构告警：撤回回执（withdrawal）不可关联物理删除读回证据')));
+  // on_site_deletion_readback is not claimed for withdrawal
+  assert.ok(!planWithdrawal.verified.some(v => v.includes('调用方声明：提供自报删除读回字段')));
+  assert.equal(planWithdrawal.structuralVerification?.isPhysicalDeletion, false);
+  assert.ok(planWithdrawal.structuralVerification?.missingRequirements.includes('action_must_be_privacy_deletion_with_physical_erasure'));
+
+  // Valid physical deletion with simulated authorization
+  const physicalReceipt = {
+    receiptId: 'rcpt-del-99',
+    namespace: 'user-vault',
+    targetId: 'fact-01',
+    action: 'privacy_deletion',
+    graphRevision: 2,
+    physicalErasure: true,
+  };
+  const planPhysical = planPrivacyDeletionAcceptance({
+    receipt: physicalReceipt,
+    realAuthorizationEvidence: simulatedAuth,
+  });
+  assert.equal(planPhysical.structuralVerification?.isPhysicalDeletion, true);
+  assert.equal(planPhysical.structuralVerification?.hasHumanAuth, true);
+  assert.equal(planPhysical.structuralVerification?.hasDeletionReadback, true);
+  assert.equal(planPhysical.structuralVerification?.fullyCovered, true);
+  assert.deepEqual(planPhysical.structuralVerification?.missingRequirements, []);
+  assert.equal(planPhysical.pending.length, 5);
 });

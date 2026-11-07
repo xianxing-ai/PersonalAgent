@@ -73,7 +73,7 @@ export interface RealPrivacyAcceptanceEvidence {
 export interface PlanPrivacyDeletionAcceptanceOptions {
   readonly receipt?: unknown;
   readonly receipts?: readonly unknown[];
-  readonly realAuthorizationEvidence?: RealPrivacyAcceptanceEvidence | boolean | undefined;
+  readonly realAuthorizationEvidence?: RealPrivacyAcceptanceEvidence | undefined;
   readonly realUserAuthorization?: boolean | undefined;
   readonly realDeletionReadback?: boolean | undefined;
   readonly evidenceLevel?: 'mock' | 'conditional' | 'verified' | undefined;
@@ -91,6 +91,14 @@ export interface PrivacyDeletionPendingItem {
   readonly reason: typeof PRIVACY_ACCEPTANCE_PENDING_REASON | string;
 }
 
+export interface PrivacyDeletionStructuralVerification {
+  readonly hasHumanAuth: boolean;
+  readonly hasDeletionReadback: boolean;
+  readonly isPhysicalDeletion: boolean;
+  readonly missingRequirements: readonly string[];
+  readonly fullyCovered: boolean;
+}
+
 export interface PrivacyDeletionAcceptancePlan {
   readonly closedLoop: boolean;
   readonly status: 'unavailable' | 'in_progress' | 'ready' | 'verified';
@@ -100,6 +108,7 @@ export interface PrivacyDeletionAcceptancePlan {
   readonly limits: readonly string[];
   readonly receipt?: PrivacyDeletionReceipt | undefined;
   readonly deletionKind?: PrivacyDeletionReceiptAction | undefined;
+  readonly structuralVerification?: PrivacyDeletionStructuralVerification | undefined;
 }
 
 export const PRIVACY_ACCEPTANCE_PENDING_ITEMS = [
@@ -141,6 +150,10 @@ export const PRIVACY_ACCEPTANCE_LIMITS: readonly string[] = [
   '无真人用户现场授权或无真机删除现场读回时，严禁将 closedLoop 标为 true',
   '禁止使用 mock / fake / synthetic 证据冒充真实闭环，真实缺项统一登记为 status: unavailable、reason: 待真人/真机验收',
 ];
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 function fail(message: string): never {
   throw new GraphError('INVALID_ARGUMENT', message);
@@ -286,32 +299,43 @@ export function planPrivacyDeletionAcceptance(
     receipt = receiptInput;
   }
 
-  // Derive human authorization flag
+  // Runtime defense against caller passing boolean for realAuthorizationEvidence
+  if (typeof realAuthEvidence === 'boolean') {
+    fail('realAuthorizationEvidence must be an object, boolean is not supported');
+  }
+
+  let typedAuthEvidence: RealPrivacyAcceptanceEvidence | undefined;
+  if (realAuthEvidence !== undefined) {
+    if (!isPlainObject(realAuthEvidence)) {
+      fail('realAuthorizationEvidence must be an object');
+    }
+    typedAuthEvidence = realAuthEvidence as unknown as RealPrivacyAcceptanceEvidence;
+  }
+
+  // Derive human authorization flag (only from valid structured object or receipt)
   let hasHumanAuth = false;
   if (typeof realUserAuth === 'boolean') {
     hasHumanAuth = realUserAuth;
-  } else if (typeof realAuthEvidence === 'boolean') {
-    hasHumanAuth = realAuthEvidence;
-  } else if (realAuthEvidence && typeof realAuthEvidence === 'object') {
-    hasHumanAuth = realAuthEvidence.humanAuthorized === true;
+  } else if (typedAuthEvidence) {
+    hasHumanAuth = typedAuthEvidence.humanAuthorized === true;
   } else if (receipt?.realUserAuthorization === true) {
     hasHumanAuth = true;
   }
 
-  // Derive deletion readback flag
+  // Derive deletion readback flag (only valid when receipt.action is privacy_deletion)
   let hasDeletionReadback = false;
-  if (typeof realDeletionReadback === 'boolean') {
-    hasDeletionReadback = realDeletionReadback;
-  } else if (typeof realAuthEvidence === 'boolean') {
-    hasDeletionReadback = realAuthEvidence;
-  } else if (realAuthEvidence && typeof realAuthEvidence === 'object') {
-    hasDeletionReadback = realAuthEvidence.onSiteDeletionReadback === true;
-  } else if (receipt?.realDeletionReadback === true) {
-    hasDeletionReadback = true;
+  if (receipt && receipt.action === 'privacy_deletion' && receipt.physicalErasure === true) {
+    if (typeof realDeletionReadback === 'boolean') {
+      hasDeletionReadback = realDeletionReadback;
+    } else if (typedAuthEvidence) {
+      hasDeletionReadback = typedAuthEvidence.onSiteDeletionReadback === true;
+    } else if (receipt.realDeletionReadback === true) {
+      hasDeletionReadback = true;
+    }
   }
 
   // Resolve evidence level and check mock prohibition
-  const effectiveEvidenceLevel = evidenceLevel ?? (realAuthEvidence && typeof realAuthEvidence === 'object' ? realAuthEvidence.evidenceLevel : undefined) ?? receipt?.evidenceLevel;
+  const effectiveEvidenceLevel = evidenceLevel ?? (typedAuthEvidence ? typedAuthEvidence.evidenceLevel : undefined) ?? receipt?.evidenceLevel;
   if (effectiveEvidenceLevel === 'mock' || isMockExplicit) {
     hasHumanAuth = false;
     hasDeletionReadback = false;
@@ -323,77 +347,87 @@ export function planPrivacyDeletionAcceptance(
     verified.push(`回执校验：${isWithdrawal ? '逻辑撤回' : '隐私物理删除'} 回执格式合规 (ID: ${receipt.receiptId}, namespace: ${receipt.namespace}, target: ${receipt.targetId})`);
     if (isWithdrawal) {
       verified.push('语义区分：明确标识为撤回历史（保留旧版本与摘要），禁止把撤回称为物理删除');
+      if (typeof realDeletionReadback === 'boolean' || typedAuthEvidence?.onSiteDeletionReadback === true) {
+        verified.push('结构告警：撤回回执（withdrawal）不可关联物理删除读回证据，忽略调用方物理删除声明');
+      }
     } else {
       verified.push('擦除语义：明确标识为隐私物理删除（physicalErasure=true），记录擦除版本位置');
     }
   }
 
-  // Check if fully closed loop with genuine human and physical deletion readback evidence
-  const isFullyVerified = hasHumanAuth && hasDeletionReadback && effectiveEvidenceLevel === 'verified';
-
-  if (!isFullyVerified) {
-    const pending: PrivacyDeletionPendingItem[] = [];
-
-    if (!hasHumanAuth) {
-      pending.push({
-        item: 'human_user_privacy_authorization',
-        description: '真人用户隐私授权与敏感范围审查（现场明确授权私人数据访问与擦除范围，严禁模型代签或自动放行）',
-        status: 'unavailable',
-        reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
-      });
-    }
-
-    if (!hasDeletionReadback) {
-      pending.push({
-        item: 'on_site_deletion_readback',
-        description: '删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）',
-        status: 'unavailable',
-        reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
-      });
-    }
-
-    // Always include the cross-cutting security gates when not fully verified
-    pending.push({
+  // Offline verification boundaries:
+  // In pure offline context, passing receipt schema validation and self-reported options
+  // does not substitute for on-site human authorization or durable storage erasure audit.
+  // Hence closedLoop is strictly false and all required pending gates remain open regardless of self-reported flags.
+  const pending: PrivacyDeletionPendingItem[] = [
+    {
+      item: 'human_user_privacy_authorization',
+      description: '真人用户隐私授权与敏感范围审查（现场明确授权私人数据访问与擦除范围，严禁模型代签或自动放行）',
+      status: 'unavailable',
+      reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
+    },
+    {
+      item: 'on_site_deletion_readback',
+      description: '删除现场物理读回与存储清零验证（核实持久化存储中已物理抹除，非仅图谱版本追加或逻辑撤回）',
+      status: 'unavailable',
+      reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
+    },
+    {
       item: 'graph_dependency_erasure_integrity',
       description: '图谱依赖级联处理与断链校验（被删除节点所有后继依赖的清理与一致性核验，旧版本不混淆别名）',
       status: 'unavailable',
       reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
-    });
-    pending.push({
+    },
+    {
       item: 'durable_storage_restart_verification',
       description: '持久化存储进程重启后现场读回（重启后被抹除数据不可恢复，合规性审计凭证完备）',
       status: 'unavailable',
       reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
-    });
-    pending.push({
+    },
+    {
       item: 'cloud_boundary_and_leak_prevention',
       description: '云端与跨进程边界防泄露核验（私人正文绝不上传云端，错误回显与日志不泄露敏感数据）',
       status: 'unavailable',
       reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
-    });
+    },
+  ];
 
-    return {
-      closedLoop: false,
-      status: 'unavailable',
-      reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
-      pending,
-      verified,
-      limits: PRIVACY_ACCEPTANCE_LIMITS,
-      receipt,
-      deletionKind: receipt?.action,
-    };
+  if (hasHumanAuth) {
+    verified.push('调用方声明：提供自报真人授权字段（未进行现场真人独立验签，待真人验收）');
+  }
+  if (hasDeletionReadback) {
+    verified.push('调用方声明：提供自报删除读回字段（未进行存储清零现场独立审计，待现场验收）');
   }
 
-  verified.push('现场核验：真人用户现场授权与真机物理删除读回均已核验');
+  const missingRequirements: string[] = [];
+  const isPhysicalDeletion = receipt?.action === 'privacy_deletion' && receipt.physicalErasure === true;
+  if (!isPhysicalDeletion && receipt) {
+    missingRequirements.push('action_must_be_privacy_deletion_with_physical_erasure');
+  }
+  if (!hasHumanAuth) {
+    missingRequirements.push('missing_human_user_privacy_authorization');
+  }
+  if (!hasDeletionReadback) {
+    missingRequirements.push('missing_on_site_deletion_readback');
+  }
+
+  const structuralVerification: PrivacyDeletionStructuralVerification = {
+    hasHumanAuth,
+    hasDeletionReadback,
+    isPhysicalDeletion: Boolean(isPhysicalDeletion),
+    missingRequirements: Object.freeze(missingRequirements),
+    fullyCovered: missingRequirements.length === 0,
+  };
 
   return {
-    closedLoop: true,
-    status: 'verified',
-    reason: '真人授权与真机删除现场读回已核验',
-    pending: [],
+    closedLoop: false,
+    status: 'unavailable',
+    reason: PRIVACY_ACCEPTANCE_PENDING_REASON,
+    pending,
     verified,
     limits: PRIVACY_ACCEPTANCE_LIMITS,
     receipt,
     deletionKind: receipt?.action,
+    structuralVerification,
   };
 }
