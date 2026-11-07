@@ -21,6 +21,9 @@ import {rankCodingRepairCandidates} from './coding-repair.js';
 export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
 export * from './coding-repair.js';
 export * from './harness-candidates.js';
+export * from './f20-worker-trust.js';
+export * from './f14-native-observation.js';
+export * from './f18-f19-github-hosts.js';
 export * from './workflow-shadow-policy.js';
 export * from './workflow-shadow-release.js';
 export * from './workflow-voice-final-transcript.js';
@@ -43,6 +46,19 @@ export {parseAgentInput, PROMPT_VERSION};
 export {getOwnedBindings} from './bindings.js';
 export type {OwnedBinding} from './bindings.js';
 export type {AgentInput};
+export {
+  assertDeploymentReadbackReceipt,
+  parseDeploymentReadbackReceipt,
+  planDeploymentAcceptance,
+  DEPLOYMENT_ACCEPTANCE_PENDING_REASON,
+} from './deployment-readback-plan.js';
+export type {
+  DeploymentReadbackReceipt,
+  DeploymentPendingItem,
+  DeploymentAcceptancePlan,
+  RealCloudEvidence,
+  PlanDeploymentAcceptanceOptions,
+} from './deployment-readback-plan.js';
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
 export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string;executionModel?:ExecutionModelSelection}
@@ -654,3 +670,18 @@ export class OwnedAgentOrchestrator {
   }
 }
 export * from './proactive-workflows.js';
+export {
+  assertF09CloudPrefixReceipt,
+  parseF09CloudPrefixReceipt,
+  planF09CloudPrefixAcceptance,
+  F09_ACCEPTANCE_PENDING_REASON,
+  F09_WORKFLOW_NODES,
+} from './f09-cloud-prefix-acceptance-plan.js';
+export type {
+  F09CloudPrefixReceipt,
+  F09SessionAuthReadback,
+  F09PendingItem,
+  F09CloudPrefixAcceptancePlan,
+  PlanF09CloudPrefixAcceptanceOptions,
+  RealCloudEvidence as F09RealCloudEvidence,
+} from './f09-cloud-prefix-acceptance-plan.js';

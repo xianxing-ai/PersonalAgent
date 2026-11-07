@@ -707,5 +707,19 @@ export {
   type WakePcmFrame,
   type WakePcmFrameSourcePort,
   type WakePcmFrameSubscription,
+  type WakePcmKeywordSourceOptions,
   type WakePcmKeywordSubscription,
 } from './pcm-keyword-source.js';
+export {
+  checkWakeHardwareAvailability,
+  evaluateWakeKeywordHit,
+  isCooldownSuppressed,
+  isPlaybackSuppressed,
+  matchesWakeKeyword,
+  normalizeWakeLexicon,
+  normalizeWakePhrase,
+  type WakeHardwareAvailabilityResult,
+  type WakeKeywordEvaluationInput,
+  type WakeKeywordEvaluationResult,
+  type WakeKeywordSuppressionReason,
+} from './wake-keyword-logic.js';
