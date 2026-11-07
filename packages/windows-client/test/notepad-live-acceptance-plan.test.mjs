@@ -215,7 +215,7 @@ test('planNotepadLiveAcceptance throws when real evidence shape is corrupted', (
   );
 });
 
-test('planNotepadLiveAcceptance handles partial gates when real evidence is provided', () => {
+test('planNotepadLiveAcceptance keeps all required gates pending even with self-reported win32 evidence (no physical runner execution)', () => {
   // Evidence has F9 confirmation and pipe, but missing native readback and policy grant
   const partialEvidence = makeValidEvidence({
     nativeReadbackVerified: false,
@@ -233,9 +233,13 @@ test('planNotepadLiveAcceptance handles partial gates when real evidence is prov
   assert.equal(plan.closedLoop, false);
   assert.equal(plan.status, 'unavailable');
   assert.equal(plan.reason, NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON);
+  // All gates must strictly remain pending without genuine runner execution
+  assert.equal(plan.pending.includes('f9_confirmation_gate'), true);
+  assert.equal(plan.pending.includes('uia_write'), true);
   assert.equal(plan.pending.includes('independent_readback'), true);
   assert.equal(plan.pending.includes('policy_authorization'), true);
-  assert.equal(plan.verifiedGates.includes('f9_confirmation_gate'), true);
+  assert.equal(plan.pending.includes('windows_host_pipe'), true);
+  assert.deepEqual(plan.verifiedGates, []);
 });
 
 test('planNotepadLiveAcceptance supports custom pending items', () => {
@@ -248,7 +252,9 @@ test('planNotepadLiveAcceptance supports custom pending items', () => {
   assert.equal(plan.pending.includes('custom_device_reboot_gate'), true);
 });
 
-test('planNotepadLiveAcceptance returns verified closedLoop when all real win32 gates are satisfied', () => {
+test('planNotepadLiveAcceptance keeps closedLoop=false and all 5 gates pending even when all simulated win32 gates pass shape assertion', () => {
+  // 依据 AGENTS.md 与真机可信验收规范：内存自报对象不构成独立于调用方的 Windows 实机物理执行证据。
+  // 旧测试将纯 JS 形状等同于真机闭环属于不可信结论，收紧为 closedLoop: false，所有实机门控保持 pending。
   const fullEvidence = makeValidEvidence();
   const plan = planNotepadLiveAcceptance({
     platform: 'win32',
@@ -256,11 +262,11 @@ test('planNotepadLiveAcceptance returns verified closedLoop when all real win32 
     evidence: fullEvidence,
   });
 
-  assert.equal(plan.closedLoop, true);
-  assert.equal(plan.status, 'verified');
-  assert.equal(plan.reason, '已通过 Windows 真机验收');
-  assert.deepEqual(plan.pending, []);
-  assert.equal(plan.verifiedGates.length, 5);
+  assert.equal(plan.closedLoop, false);
+  assert.equal(plan.status, 'unavailable');
+  assert.equal(plan.reason, NOTEPAD_LIVE_ACCEPTANCE_PENDING_REASON);
+  assert.equal(plan.pending.length, 5);
+  assert.deepEqual(plan.verifiedGates, []);
   assert.equal(plan.evidenceSummary?.readbackDigest, validSha);
   assert.equal(plan.evidenceSummary?.taskId, 'task-001');
   assert.equal(plan.evidenceSummary?.targetRef, 'target-1234');

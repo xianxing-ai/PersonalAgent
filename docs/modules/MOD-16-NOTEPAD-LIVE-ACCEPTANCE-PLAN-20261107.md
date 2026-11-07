@@ -71,15 +71,16 @@ MOD-16 负责 Windows 本地受限记事本执行（`computer.notepad.replace_te
       ]
     }
     ```
-- **禁止假成功（Prohibit Fake Success）**：
-  - 调用方即使在参数中传入 `{ closedLoop: true }`，若缺少真机五项门控凭据或处于 Linux/mock 模式，该标志被严格忽略/覆盖，决不输出虚假成功；
-- **五项门控完整性判定**：
-  只有当平台为 `'win32'`、`hasRealMachineEvidence === true`、无 mock 且 `assertNotepadLiveEvidence` 校验通过，并且以下 5 项门控全部达成时，才输出 `closedLoop: true`、`status: 'verified'`：
-  1. `f9_confirmation_gate`：`confirmationGate.confirmed === true`；
-  2. `uia_write`：`source === 'windows-uia'` 或 `uiaWriteVerified === true`；
-  3. `independent_readback`：具备独立读回摘要且 `nativeReadbackVerified === true`；
-  4. `policy_authorization`：`exactGrantConsumed === true` 或 `policyDecision === 'allow'`；
-  5. `windows_host_pipe`：`isolatedJournalReadback === true` 或 `pipeVerified === true`。
+- **禁止假成功与可信来源边界（Prohibit Fake Success & Attestation Boundary）**：
+  - 调用方即使在参数中传入 `{ closedLoop: true }` 或在内存中构造模拟证据对象，若缺少真机实体验收与独立物理审计日志，决不输出虚假闭环；
+  - 本规划工具为离线纯函数，能够执行契约与结构校验，但由于不直接调动 Windows 物理驱动与真实 Host 管道，缺少独立于调用方的权威审计；自报字段不得使待验收门控消失，5 项实机核心门控严格保持 `pending`，全链路闭环严格保持 `closedLoop: false`、`status: 'unavailable'`，待真机验收现场核验；
+- **五项实机门控声明**：
+  1. `f9_confirmation_gate`：确认物理 F9 按键或受信操作者现场确认生效；
+  2. `uia_write`：由独立 WindowsHost 经 UI Automation 对前台单一已确认记事本编辑控件执行文本替换；
+  3. `independent_readback`：具备独立 UIA 读回摘要并计算 SHA-256 摘要核对一致；
+  4. `policy_authorization`：精确凭据/策略授权校验放行（exactGrantConsumed 或 policyDecision 为 allow）；
+  5. `windows_host_pipe`：受信管道通信与隔离日志读回（isolatedJournalReadback 核验）。
+  在离线纯函数中，上述 5 项门控均作为 `pending` 待验收门控留存，不可由自报对象标记为已验证。
 
 ## 验收步骤
 
