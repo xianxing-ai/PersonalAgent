@@ -111,17 +111,52 @@ test('标识缺失或重复时拒绝，不做猜测', async () => {
   } finally {f.unregister();}
 });
 
-test('取消与更新的参数名同时暴露 externalId 与 uid', () => {
+test('写工具（create/cancel/update）的参数名同时暴露 externalId 与 uid', () => {
   const descriptors = new Map();
   const unregister = register({register(tool) {descriptors.set(tool.descriptor.name, tool.descriptor); return () => {};}},
     {provider: new FakeCalendarProvider(), accountRef: 'cal', now: () => NOW});
   try {
-    for (const name of ['calendar.cancel', 'calendar.update']) {
+    for (const name of ['calendar.create', 'calendar.cancel', 'calendar.update']) {
       const properties = descriptors.get(name).inputSchema.properties;
       assert.ok('externalId' in properties, `${name} 必须接受 externalId`);
       assert.ok('uid' in properties, `${name} 保留 uid 以兼容已保存提案`);
     }
   } finally {unregister();}
+});
+
+test('calendar.create 接受 externalId，显式标识重放幂等，改动内容报冲突', async () => {
+  const f = fixture();
+  try {
+    const input = {
+      externalId: 'evt-custom-1',
+      summary: '自定义标识日程',
+      startUtc: '2026-10-21T07:00:00.000Z',
+      endUtc: '2026-10-21T08:00:00.000Z',
+      location: '会议室 A',
+    };
+    const created = await f.host.invoke('calendar.create', input, ctx());
+    assert.equal(created.state, 'created');
+    assert.equal(created.item.externalId, 'evt-custom-1');
+    assert.match(created.item.contentRef, /自定义标识日程/);
+
+    // 同 externalId 同内容重放幂等
+    const replay = await f.host.invoke('calendar.create', input, ctx());
+    assert.equal(replay.state, 'created');
+    assert.equal(replay.item.externalId, 'evt-custom-1');
+    assert.equal(replay.item.dedupeKey, created.item.dedupeKey);
+
+    // 同 externalId 但内容不同报 REVISION_CONFLICT
+    await assert.rejects(
+      f.host.invoke('calendar.create', {...input, summary: '修改后的标题'}, ctx()),
+      error => error.code === 'REVISION_CONFLICT'
+    );
+
+    // 同时传入 externalId 与 uid 拒绝
+    await assert.rejects(
+      f.host.invoke('calendar.create', {...input, uid: 'uid-another'}, ctx()),
+      error => error.code === 'INVALID_ARGUMENT'
+    );
+  } finally { f.unregister(); }
 });
 
 /**

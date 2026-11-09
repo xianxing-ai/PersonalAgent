@@ -135,7 +135,17 @@ export class FakeCalendarProvider implements CalendarProvider {
       const endUtc = assertFakeUtc(input?.endUtc, 'endUtc');
       if (Date.parse(endUtc) <= Date.parse(startUtc)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event endUtc must be after startUtc');
       const uid = input.uid === undefined ? `evt-fake-${++this.nextEventId}` : assertFakeUid(input.uid);
-      if (this.events.has(uid)) throw new ProtocolError('INVALID_ARGUMENT', 'Calendar event UID already exists');
+      if (this.events.has(uid)) {
+        const existing = this.events.get(uid)!;
+        const loc = input.location === undefined ? '' : input.location.trim();
+        const nts = input.notes === undefined ? '' : input.notes.trim();
+        if (existing.title === summary && existing.startUtc === startUtc && existing.endUtc === endUtc
+          && (existing.location ?? '') === loc
+          && (existing.notes ?? '') === nts) {
+          return Promise.resolve(structuredClone(existing));
+        }
+        throw new ProtocolError('REVISION_CONFLICT', 'Calendar event UID already exists with different content');
+      }
       const record: CalendarEventRecord = {
         externalId: uid, calendarId: 'cal-fake', title: summary,
         startUtc, endUtc, timeZone: 'UTC',

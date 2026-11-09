@@ -50,9 +50,22 @@ const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
   },
 };
 
+/**
+ * 读工具返回的事件标识字段叫 `externalId`，写工具历史上叫 `uid`。云端工具目录由
+ * `safeSchema()` 投影，只保留 type/properties/required 等结构字段、**不发送 description**，
+ * 所以模型只能靠字段名判断语义：`calendar.events` 给出 `externalId`，`calendar.cancel` 却要
+ * `uid`，两者不同名又没有说明，模型只能向用户索要一个用户不可能知道的"事件标识"（实测 2026-10-21）。
+ * 两个名字都进 properties、语义相同，模型拿哪个都能对上；`uid` 保留用于已保存提案的回放。
+ */
+const EVENT_ID_PATTERN = '^[^\u0000-\u001f\u007f]+$';
+const eventIdProperties = {
+  externalId: {type: 'string', minLength: 1, maxLength: 512, pattern: EVENT_ID_PATTERN},
+  uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},
+} as const;
+
 const createEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。给 uid 时同 UID 重放幂等。',
+  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。提供 externalId 或 uid 时同标识重放幂等。',
   required: ['summary', 'startUtc', 'endUtc'],
   additionalProperties: false,
   properties: {
@@ -61,22 +74,9 @@ const createEventInputSchema: ToolDescriptor['inputSchema'] = {
     endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
     location: {type: 'string', maxLength: 512},
     notes: {type: 'string', maxLength: 4096},
-    uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$', description: '可选：显式资源 UID（用于重放幂等）；缺省由提供商生成。'},
+    ...eventIdProperties,
   },
 };
-
-/**
- * 读工具返回的事件标识字段叫 `externalId`，写工具历史上叫 `uid`。云端工具目录由
- * `safeSchema()` 投影，只保留 type/properties/required 等结构字段、**不发送 description**，
- * 所以模型只能靠字段名判断语义：`calendar.events` 给出 `externalId`，`calendar.cancel` 却要
- * `uid`，两者不同名又没有说明，模型只能向用户索要一个用户不可能知道的"事件标识"（实测 2026-10-21）。
- * 两个名字都进 properties、语义相同，模型拿哪个都能对上；`uid` 保留用于已保存提案的回放。
- */
-const EVENT_ID_PATTERN = '^[^\\u0000-\\u001f\\u007f]+$';
-const eventIdProperties = {
-  externalId: {type: 'string', minLength: 1, maxLength: 512, pattern: EVENT_ID_PATTERN},
-  uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},
-} as const;
 
 /** 恰好一个标识：两者都给（即使相同）说明调用方意图不明确，直接拒绝而不是猜。 */
 function resolveEventId(raw: {externalId?: unknown; uid?: unknown}): string {
@@ -86,6 +86,16 @@ function resolveEventId(raw: {externalId?: unknown; uid?: unknown}): string {
     throw new ProtocolError('INVALID_ARGUMENT', 'Provide exactly one of externalId or uid');
   }
   return (externalId ?? uid) as string;
+}
+
+/** 可选标识：至多给一个；两者都给直接拒绝而不是猜。缺省返回 undefined 由提供商生成。 */
+function resolveOptionalEventId(raw: {externalId?: unknown; uid?: unknown}): string | undefined {
+  const externalId = typeof raw.externalId === 'string' && raw.externalId.length > 0 ? raw.externalId : undefined;
+  const uid = typeof raw.uid === 'string' && raw.uid.length > 0 ? raw.uid : undefined;
+  if (externalId !== undefined && uid !== undefined) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Provide at most one of externalId or uid');
+  }
+  return externalId ?? uid;
 }
 
 const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
@@ -185,12 +195,13 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         inputSchema: createEventInputSchema, outputSchema: writeOutputSchema,
         idempotencySupport: false, recoverySupport: false},
       execute: async (input: unknown, context) => {
-        const raw = input as {summary: string; startUtc: string; endUtc: string; location?: string; notes?: string; uid?: string};
+        const raw = input as {summary: string; startUtc: string; endUtc: string; location?: string; notes?: string; uid?: string; externalId?: string};
+        const uid = resolveOptionalEventId(raw);
         const record = await writes.createEvent({
           summary: raw.summary, startUtc: raw.startUtc, endUtc: raw.endUtc,
           ...(raw.location === undefined ? {} : {location: raw.location}),
           ...(raw.notes === undefined ? {} : {notes: raw.notes}),
-          ...(raw.uid === undefined ? {} : {uid: raw.uid})},
+          ...(uid === undefined ? {} : {uid})},
           {signal: context.signal, deadline: context.deadline});
         return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'created', summary: '日程已创建，日历中已存在该条目。'};
       },
