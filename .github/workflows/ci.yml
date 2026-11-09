@@ -232,6 +232,8 @@ jobs:
           node apps/agentarts-runtime/scripts/export-bindings.mjs --check
           node --test --test-concurrency=1 packages/contracts/test/agentarts-transport.test.mjs packages/models/test/*.test.mjs packages/coordination/test/*.test.mjs packages/agentarts/test/*.test.mjs apps/agentarts-runtime/test/*.test.mjs
           node --test --test-concurrency=1 tests/integration/owned-agentarts-image.test.mjs
+          # Explicitly selected synthetic-only acceptance helper tests; never glob live/manual tests.
+          npm run test:agentarts-offline
       - name: Generate the allowlist image context
         working-directory: ${{ steps.restore.outputs.directory || github.workspace }}
         if: matrix.kind == 'image'

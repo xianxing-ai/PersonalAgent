@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
+import {readFileSync} from 'node:fs';
 import {AgentArtsCloudAgentPort} from '../../../../packages/coordination/dist/index.js';
 import {createTextDiagnosticFetch, inspectTextResponse} from './text-response-diagnostic.mjs';
 
@@ -12,6 +13,12 @@ const events = [
   message('private-B'), {event: 'workflow_end', data: {answer: 'private-answer-B'}},
   {event: 'task_end'}, {event: 'end'},
 ];
+
+test('parser replay excludes the following exported provider function', () => {
+  const source = readFileSync(new URL('../../../../packages/coordination/dist/agentarts.js', import.meta.url), 'utf8');
+  assert.ok(source.indexOf('export async function parseAgentArtsResponseText') > source.indexOf('function parseResponsePayload'));
+  assert.equal(inspectTextResponse(encode(JSON.stringify(message('synthetic'))), 'application/json').parserOutcome, 'accepted');
+});
 
 test('exact built parser replay distinguishes global/workflow conflicts without content', () => {
   const result = inspectTextResponse(encode(JSON.stringify(events)), 'application/json');
