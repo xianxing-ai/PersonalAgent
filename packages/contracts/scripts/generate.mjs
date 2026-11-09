@@ -61,3 +61,19 @@ for (const [file, content] of [['f05-answer.generated.ts', f05Types], ['f05-answ
     if (current !== content.replaceAll('\r\n', '\n')) throw new Error('Generated F05 answer types/schema are stale; run contracts generate');
   } else await writeFile(path, content);
 }
+const cloudSchema = JSON.parse(await readFile(new URL('../schema/cloud-persistent.json', import.meta.url), 'utf8'));
+// The generator drops parent properties when it sees conditional allOf. Runtime AJV keeps
+// those conditions; the generated host type exposes the common fields and optional bodies.
+const cloudTypeSchema=structuredClone(cloudSchema);
+delete cloudTypeSchema.properties.command.allOf;
+const cloudTypes = await compile(cloudTypeSchema, 'CloudPersistentContracts', {
+  bannerComment: '// Generated from schema/cloud-persistent.json. Do not edit.', unknownAny: true, ignoreMinAndMaxItems: true,
+});
+const cloudRuntime = '// Generated from schema/cloud-persistent.json. Do not edit.\nexport default ' + JSON.stringify(cloudSchema) + ';\n';
+for (const [file, content] of [['cloud-persistent.generated.ts', cloudTypes], ['cloud-persistent.schema.ts', cloudRuntime]]) {
+  const path = new URL('../src/' + file, import.meta.url);
+  if (process.argv.includes('--check')) {
+    const current = (await readFile(path, 'utf8')).replaceAll('\r\n', '\n');
+    if (current !== content.replaceAll('\r\n', '\n')) throw new Error('Generated cloud persistent types/schema are stale; run contracts generate');
+  } else await writeFile(path, content);
+}
