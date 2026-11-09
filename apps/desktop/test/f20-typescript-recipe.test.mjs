@@ -4,7 +4,7 @@ import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {createWorkspaceCommandTool} from '@personal-agent/coding-tools';
-import {createF20TypeScriptRecipe,F20_TYPESCRIPT_RECIPE} from '../electron/f20-typescript-recipe.js';
+import {createF20TypeScriptRecipe,F20_TYPESCRIPT_RECIPE,F20_TYPESCRIPT_VERSION} from '../electron/f20-typescript-recipe.js';
 
 test('fixed F20 recipe compiles the isolated sample against its contract and rejects phantom fields or bypasses',async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'pa-f20-typescript-'));
@@ -17,6 +17,14 @@ test('fixed F20 recipe compiles the isolated sample against its contract and rej
     const recipe=createF20TypeScriptRecipe({rootPath:root,nodeExecutable:process.execPath,input,createWorkspaceCommandTool});
     for(const [sample,passes] of [
       ["import type {Request} from './contract.js'; const request:Request={name:'a'};",true],
+      ["import type {Request as Alias} from './contract.js'; const request:Alias={name:'a'};",true],
+      ["import type {Request} from './contract.js'; type LocalAlias=Request; const request:LocalAlias={name:'a'};",false],
+      ["import type {Request} from './contract.js'; const request:Request={name:3} as unknown as Request;",false],
+      ["import type {Request} from './contract.js'; const request:Request=<any>{name:3};",false],
+      ["import type {Request} from './contract.js'; const name:string|undefined='a'; const request:Request={name:name!};",false],
+      ["import type {Request} from './contract.js'; const base:Request={name:'a'}; const request:Request={...base};",false],
+      ["// @ts-nocheck\nimport type {Request} from './contract.js'; const request:Request={name:'a'};",false],
+      ["import type {Request} from './contract.js'; // @ts-expect-error\nconst request:Request={name:3};",false],
       ["import type {Request} from './contract.js'; const request:Request={name:'a',phantom:true};",false],
       ["import type {Request} from './contract.js'; const request:Request={name:3};",false],
       ["import type {Request} from './contract.js'; const request:Request={name:3} as any;",false],

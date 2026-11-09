@@ -7,6 +7,8 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {resolveNodeExecutable} from './workspace-command-recipes.js';
 
 export const F20_TYPESCRIPT_RECIPE='f20-typescript-sample';
+/** The single compiler identity this recipe accepts; a lockfile change must be reviewed, not silently trusted. */
+export const F20_TYPESCRIPT_VERSION='5.9.3';
 const require=createRequire(import.meta.url);
 const checker=fileURLToPath(new URL('./f20-typescript-check.cjs',import.meta.url));
 const sha=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -20,7 +22,11 @@ export function createF20TypeScriptRecipe({rootPath,nodeExecutable,input,createW
   if(lstatSync(rootPath).isSymbolicLink()||typeof createWorkspaceCommandTool!=='function'
     ||input?.recipeId!==F20_TYPESCRIPT_RECIPE||!relative(input.schemaFile)||!input.schemaFile.endsWith('.ts')||!relative(input.codeFile))
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 requires the fixed TypeScript contract recipe');
-  const files=[node,checker,compiler,...readdirSync(path.dirname(compiler)).filter(name=>/^lib\..*\.d\.ts$/u.test(name)).map(name=>path.join(path.dirname(compiler),name))];
+  const manifest=path.join(path.dirname(path.dirname(compiler)),'package.json');
+  let identity;try{identity=JSON.parse(readFileSync(manifest,'utf8'));}catch{identity=undefined;}
+  if(identity?.name!=='typescript'||identity.version!==F20_TYPESCRIPT_VERSION)
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 requires the pinned TypeScript '+F20_TYPESCRIPT_VERSION+' compiler');
+  const files=[node,checker,compiler,manifest,...readdirSync(path.dirname(compiler)).filter(name=>/^lib\..*\.d\.ts$/u.test(name)).map(name=>path.join(path.dirname(compiler),name))];
   for(const file of files){
     const fromRoot=path.relative(root,file);
     if(lstatSync(file).isSymbolicLink()||!statSync(file).isFile()||realpathSync.native(file)!==file
@@ -30,7 +36,7 @@ export function createF20TypeScriptRecipe({rootPath,nodeExecutable,input,createW
   const pins=files.map(file=>[file,sha(file)]);
   const available=()=>{try{return pins.every(([file,digest])=>!lstatSync(file).isSymbolicLink()&&realpathSync.native(file)===file&&sha(file)===digest);}catch{return false;}};
   const tool=createWorkspaceCommandTool({rootPath:root,recipes:[{id:F20_TYPESCRIPT_RECIPE,executable:node,
-    args:['--preserve-symlinks','--preserve-symlinks-main',checker,compiler,root,input.schemaFile,input.codeFile,input.codeFile+'.f20-sample.ts']}],
+    args:['--preserve-symlinks','--preserve-symlinks-main',checker,compiler,F20_TYPESCRIPT_VERSION,root,input.schemaFile,input.codeFile,input.codeFile+'.f20-sample.ts']}],
     trustedReadRoots:[path.dirname(checker),path.dirname(path.dirname(compiler))],maxDurationMs:30000,maxOutputBytes:4096});
   return {available,tool:{...tool,async execute(value,context){
     if(!available())throw new ProtocolError('REVISION_CONFLICT','F20 trusted compiler changed');
