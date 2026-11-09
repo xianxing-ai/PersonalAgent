@@ -1,5 +1,6 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import {createStageTimeline} from './stage-timeline.mjs';
+import {randomUUID} from 'node:crypto';
 const bad=()=>{throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted AgentArts model proxy configuration');};
 const deniedHeaders=new Set(['host','content-length','connection','cookie','proxy-authorization','transfer-encoding']);
 /** Reuses the existing text Provider/ModelGateway. Inbound gateway auth replaces backend Bearer auth. */
@@ -15,7 +16,8 @@ export function createAgentArtsModelFetch({endpoint,model,authentication,request
     ||!['','Bearer'].includes(authentication.keyPrefix??'')))bad();
   if(authentication.kind==='iam'&&typeof authentication.signRequest!=='function')bad();
   const target=base.href.replace(/\/$/u,'')+'/chat/completions';
-  return async(input,init)=>{
+  const bindings=new WeakMap();
+  const guardedFetch=async(input,init)=>{
     if(String(input)!==target||init?.method!=='POST'||typeof init.body!=='string'||!(init.signal instanceof AbortSignal))bad();
     init.signal.throwIfAborted();const payload=JSON.parse(init.body);
     if(payload.model!==model||payload.stream!==false)bad();
@@ -57,13 +59,20 @@ export function createAgentArtsModelFetch({endpoint,model,authentication,request
     return timeline.run('model.agentarts_proxy',async()=>{
       // No fallback origin, no redirect, no retry of an unknown paid request.
       const response=await request(target,{...init,headers,body:encoded,redirect:'error'});
-      let responseModel=null;
-      if(response.ok){try{const value=await response.clone().json();if(typeof value.model==='string'&&value.model.length<256)responseModel=value.model;}catch{/* Original Provider validates the body. */}}
+      if(bindings.has(response))bad();
+      const correlationId=randomUUID();bindings.set(response,correlationId);
       try{onRecord?.({event:'model_proxy_response',observedAtUtc:new Date().toISOString(),route,configuredModel:model,reasoningEffort:JSON.parse(init.body).reasoning_effort??null,
         ...(payload.response_format?.type==='json_object'?{responseFormat:'json_object'}:{}),
-        responseModel,httpStatus:response.status,requestId:response.headers.get('x-request-id')??response.headers.get('x-hw-request-id')??null,
+        responseModel:null,correlationId,httpStatus:response.status,requestId:response.headers.get('x-request-id')??response.headers.get('x-hw-request-id')??null,
         streaming:false,verification:'response_received_not_platform_trace_readback'});}catch{/* Telemetry is not task state. */}
       return response;
     },{modelRef:model});
   };
+  guardedFetch.recordResponseModel=(response,responseModel)=>{
+    const correlationId=bindings.get(response);if(!correlationId)return;
+    if(typeof responseModel!=='string'||!/^[a-zA-Z0-9._:/-]{1,255}$/u.test(responseModel))return;
+    bindings.delete(response);
+    try{onRecord?.({event:'model_proxy_response_model',correlationId,responseModel:responseModel===model?model:null,modelMismatch:responseModel!==model,verification:'response_received_not_platform_trace_readback'});}catch{/* Telemetry is not task state. */}
+  };
+  return guardedFetch;
 }

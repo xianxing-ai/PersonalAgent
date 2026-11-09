@@ -48,7 +48,8 @@ test('proxy uses mapped model, configured key-name, safe timing and explicit Bai
    return Response.json({model:'domestic-backend-actual-id',choices:[]},{headers:{'x-request-id':'trace-fixture'}});
   }});
  const response=await fetch(endpoint+'/chat/completions',init());assert.equal(response.status,200);assert.equal(calls,1);
- assert.equal(records.find(r=>r.event==='model_proxy_response').responseModel,'domestic-backend-actual-id');
+ assert.equal(records.find(r=>r.event==='model_proxy_response').responseModel,null);
+ assert.equal((await response.json()).model,'domestic-backend-actual-id');
  assert.ok(records.some(r=>r.status==='completed'&&r.finishedAtUtc&&r.wallMs>=0));
  assert.equal(JSON.stringify(records).includes(secret),false);assert.equal(JSON.stringify(records).includes('backend-must-not-leak'),false);
 });

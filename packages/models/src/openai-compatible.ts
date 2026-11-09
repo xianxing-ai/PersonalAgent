@@ -18,6 +18,8 @@ export interface OpenAICompatibleModelProviderOptions {
   apiKey: () => string | Promise<string>;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
+  /** Trusted host telemetry after parsing; must not affect the model result. */
+  onResponseModel?: (response: Response, model: string) => void;
   /** 端点上下文窗口（进 capabilities.contextLimit）；缺省 32k 保守值，按端点如实配置。 */
   contextLimitTokens?: number;
   /** Explicit Competition auxiliary-model configuration, supplied by the trusted host. */
@@ -63,6 +65,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly responseFormat: 'json_object' | undefined;
   private readonly vision: boolean;
   private readonly tokenBudget: (RequestTokenBudgetBinding & {countInputTokens: VisibleRequestTokenBudget['countInputTokens']}) | undefined;
+  private readonly onResponseModel: OpenAICompatibleModelProviderOptions['onResponseModel'];
 
   constructor(options: OpenAICompatibleModelProviderOptions) {
     if (options.vision !== undefined && typeof options.vision !== 'boolean') {
@@ -97,6 +100,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
     if (!Number.isSafeInteger(contextLimitTokens) || contextLimitTokens < 1) {
       throw new ProtocolError('INVALID_ARGUMENT', 'contextLimitTokens must be a positive integer');
     }
+    this.onResponseModel = options.onResponseModel;
     const budget = options.requestTokenBudget;
     if (budget !== undefined) {
       if (!budget || budget.model !== this.model || options.contextLimitTokens === undefined
@@ -256,6 +260,10 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       const rawContent = (message as Record<string, unknown>).content;
       if (typeof rawContent !== 'string' || !rawContent.trim()) {
         throw new ProtocolError('EXTERNAL_FAILURE', 'Model response is missing message content');
+      }
+      if (typeof record.model === 'string' && /^[a-zA-Z0-9._:/-]{1,255}$/u.test(record.model)) {
+        try { this.onResponseModel?.(response, record.model); }
+        catch { /* Telemetry must not affect the model result. */ }
       }
       const usageValue = record.usage;
       const usage = usageValue && typeof usageValue === 'object' ? usageValue as Record<string, unknown> : undefined;
