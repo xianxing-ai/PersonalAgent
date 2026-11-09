@@ -140,8 +140,10 @@ ModelGateway 是唯一模型入口，真实提供者由宿主配置，不会缺�
 使用 `node scripts/cloud-fetch-timeout-command.mjs` 生成可审查 JSON，包含原源码与实际执行源码 SHA-256、Brotli/base64 启动命令数组；加 `--command-only` 只输出平台可粘贴的数组。生成器拒绝超过 10 参数或任一参数超过 256 字节的结果，不读取宿主环境或 secret。启动命令只解压已审查源码、输出 `fetch_timeout_bootstrap` 安全回执，再导入镜像原 `main.mjs`。离线验证：`node --test test/cloud-fetch-timeout-bootstrap.test.mjs`（使用 exact Node 24.15.0）。2026-10-23 已在原 `context-128k-20261022` 镜像配置版 `arm64-fetch30m-1023` 读回 Node 24.15.0 / timeoutMs 1800000 启动回执；真实最高思考请求已超过原 300 秒失败点，完整任务结果仍待该次验收，不等于新生产镜像已发布。
 - `PA_AGENT_WORKFLOW_GOAL_INPUT`：可选的单一旧 Workflow 输入名。
 - `PA_AGENT_DEPLOYMENT_VERSION`：可选的宿主显式固定版本标签，例如 `arm64-194799c6`。仅允许 1～128 个 ASCII 字母、数字、点、下划线、连字符且以字母/数字开头，拒绝 Latest/default/stable/current/unknown 别名或组成段；非法配置启动失败，不回显原值。缺省时回执记 `unknown`，不从模型、URL 或可变 Latest 推定。
-- `PA_AGENT_INBOUND_TOKEN`：可选额外入站保护；至少32字符，调用方走已有Authorization宿主注入。
+- `PA_AGENT_INBOUND_TOKEN`：独立入站保护；至少32字符，调用方通过 Authorization 宿主注入。
 - `PA_AGENT_WSS_AUTH_TOKEN`：可信宿主注入的入站 WSS/状态查询凭据，至少32字符；缺省继承 `PA_AGENT_INBOUND_TOKEN`，二者都缺失时 `/ws` 与状态查询关闭。与模型密钥无关。
+- AgentArts 模式至少配置上述一项，否则启动失败；平台外层认证不能替代镜像内认证。仅配置 WSS token 时，业务 HTTP 必须携带 `X-PA-Agent-Token: Bearer <token>`，否则返回 503；若配置独立 inbound token，未携带内层头的请求通过 `Authorization` 验证该 token。
+  迁移时须先为受信客户端配置内层 token，并确保平台转发该头，再部署新镜像；外层 IAM `Authorization` 不能当作内层 token。该迁移和平台实际转发行为尚须真实环境验收。
 
 `npm run start --workspace=@personal-agent/agentarts-runtime`。
 独立模式只绑定 127.0.0.1，不改变 Desktop 的正式比赛 endpoint。
