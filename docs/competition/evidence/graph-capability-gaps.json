@@ -3,116 +3,8 @@
   "version": "2026.11.07.2",
   "mainHead": "855a90c4",
   "declaredTotal": 109,
-  "providedTotal": 23,
+  "providedTotal": 33,
   "gaps": [
-    {
-      "name": "calendar.freshness_check",
-      "kind": "tool",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F07"
-      ],
-      "note": "日历新鲜度检查口缺口（F07）",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "calendar.registered_write",
-      "kind": "tool",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F07"
-      ],
-      "note": "日历注册写口缺口（F07；现有 calendar.create/update 为连接器操作，host 语义未组合）",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "calendar.update_and_invalidate_reminder",
-      "kind": "host",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F11"
-      ],
-      "note": "calendar.update 生产工具链与真实读回缺口（MOD-20/F11）",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "feeds.validate_and_deduplicate",
-      "kind": "host",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F09"
-      ],
-      "note": "真实 feeds 提供者与会话授权缺口（F09）",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "mail.registered_archive",
-      "kind": "host",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F08"
-      ],
-      "note": "Gateway 真归档缺口（F08）",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "mail.registered_send",
-      "kind": "host",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F08"
-      ],
-      "note": "真 SMTP 发送缺口（F08）",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
     {
       "name": "notification.deliver",
       "kind": "host",
@@ -150,42 +42,6 @@
       "inFlightPrs": [
         574
       ],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "reminder.current_clock_and_revision",
-      "kind": "host",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F06"
-      ],
-      "note": "提醒时钟与版本口缺口（F06）",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "todo.registered_write",
-      "kind": "host",
-      "domain": "business",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F06"
-      ],
-      "note": "生产 invokeTodoCreate 缺口（F06）",
-      "inFlightPrs": [],
       "sources": [
         "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
         "docs/competition/workflow-wiring.json"
@@ -638,25 +494,6 @@
         "F25"
       ],
       "note": "host 端口随 #531 整图接线链交付（未进 main）；缺受信口保持 unavailable，禁止 Fake",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "github.bound_ci_failure",
-      "kind": "host",
-      "domain": "foundation",
-      "owners": [
-        "Potatos498",
-        "goo122"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F16"
-      ],
-      "note": "CI 失败绑定 host 口缺口（F16；连接器有 actions.* 只读操作，绑定语义未组合）",
       "inFlightPrs": [],
       "sources": [
         "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
@@ -1673,24 +1510,6 @@
         "F28"
       ],
       "note": "F28 源码与测试一致性检查口",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
-      "name": "workspace.test_intent_check",
-      "kind": "host",
-      "domain": "foundation",
-      "owners": [
-        "Potatos498"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F16"
-      ],
-      "note": "F16 测试意图检查口",
       "inFlightPrs": [],
       "sources": [
         "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",

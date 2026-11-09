@@ -46,7 +46,7 @@ function listSources(dir, out = []) {
 
 /** 声明文件与测试文件不算提供者：模板/内嵌数据本身会写出全部能力名，测试夹具只是引用。 */
 const DECLARATION_FILES = /owned-workflow-(templates|data)\.ts$|workflow-wiring\.json$/;
-const TEST_FILES = /(^|\/)(test|tests)\//;
+const TEST_FILES = /(^|[\\/])(test|tests)[\\/]/;
 
 /** 扫描仓库源码中出现的引用能力名（提供者证据；排除声明与测试文件）。 */
 export function scanProvidedCapabilities(repo = repoRoot) {
