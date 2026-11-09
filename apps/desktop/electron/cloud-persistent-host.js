@@ -38,7 +38,8 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
     inFlight.add(operationKey);
     try {
     const restrictive=command.operation==='readback'||command.operation==='control'&&['pause','cancel'].includes(command.control.action)
-      ||command.operation==='approval'&&command.approval.decision==='deny'||command.operation==='source'&&command.source.action==='revoke';
+      ||command.operation==='approval'&&command.approval.decision==='deny'||command.operation==='source'&&command.source.action==='revoke'
+      ||command.operation==='notification';
     const config=configuration(),task=source(sourceTaskId,restrictive),originalGoal=hash(task.goal??''),originalConfig=digest(config);
     if(digest(config.value.owner)!==digest(command.owner))fail('REVISION_CONFLICT','原云会话宿主配置已改变');
     const epoch=runtime.readExecutionEpoch(sourceTaskId),controller=new AbortController();
@@ -77,7 +78,7 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
     return send(task.taskId,command,entry,entryKey);
   }
   async function act(operation,input) {
-    if(!input||Object.keys(input).some(k=>!['sourceTaskId','originCommandId','commandId','target','control','approval','source'].includes(k)))
+    if(!input||Object.keys(input).some(k=>!['sourceTaskId','originCommandId','commandId','target','control','approval','source','todo','notification'].includes(k)))
       fail('INVALID_ARGUMENT','云会话操作字段无效');
     const saved=original(input.sourceTaskId,input.originCommandId),deadline=new Date(operation==='readback'?now()+55_000:
       Math.min(now()+55_000,Date.parse(saved.command.submit.taskDeadline))).toISOString();
@@ -94,6 +95,13 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
       if(!known||known.configurationRef!==input.source.configurationRef||known.revision!==input.source.expectedRevision)
         fail('REVISION_CONFLICT','来源选择必须匹配原云会话读回');
     }
+    if(operation==='todo'&&input.todo?.action==='update'){
+      const known=saved.lastReply.todos?.items.find(value=>value.id===input.todo.id);
+      if(!known||known.revision!==input.todo.expectedRevision)fail('REVISION_CONFLICT','待办修改必须匹配原云会话读回');
+    }
+    if(operation==='notification'&&(!Array.isArray(input.notification?.itemIds)
+      ||input.notification.itemIds.some(id=>!saved.lastReply.notifications?.items.some(value=>value.id===id))))
+      fail('UNAUTHORIZED','只能确认原云会话已读回的通知');
     const command=parseCloudPersistentCommand({version:1,commandId:input.commandId??randomUUID(),owner:saved.command.owner,deadline,operation,
       ...(operation==='readback'?{originCommandId:input.originCommandId}:{target:input.target,[operation]:input[operation]})});
     const entryKey=key(input.originCommandId),pending=operation==='readback'?saved:{...saved,transportState:'unknown'};
@@ -116,5 +124,6 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
     }
     return {state:'configured_not_verified',hostId:configured.value.owner.hostId,sourceTasks,sessions};
   }
-  return {status,start,read:input=>act('readback',input),control:input=>act('control',input),approval:input=>act('approval',input),source:input=>act('source',input)};
+  return {status,start,read:input=>act('readback',input),control:input=>act('control',input),approval:input=>act('approval',input),source:input=>act('source',input),
+    todo:input=>act('todo',input),notification:input=>act('notification',input)};
 }

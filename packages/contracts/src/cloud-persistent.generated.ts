@@ -10,7 +10,7 @@ export interface CloudPersistentContracts {
     commandId: Id;
     owner: Owner;
     deadline: Time;
-    operation: "submit" | "control" | "readback" | "approval" | "source";
+    operation: "submit" | "control" | "readback" | "approval" | "source" | "todo" | "notification";
     submit?: {
       originTaskId: Id;
       originRuntimeId: Id;
@@ -31,6 +31,17 @@ export interface CloudPersistentContracts {
       argumentsDigest: Digest;
       expiresAt: Time;
       decision: "allow_once" | "deny";
+    };
+    todo?: {
+      [k: string]: unknown;
+    };
+    notification?: {
+      action: "read";
+      /**
+       * @minItems 1
+       * @maxItems 100
+       */
+      itemIds: string[];
     };
     source?: {
       [k: string]: unknown;
@@ -74,6 +85,59 @@ export interface CloudPersistentContracts {
      * @maxItems 100
      */
     evidenceRefs: Id[];
+    notifications?: {
+      /**
+       * @maxItems 100
+       */
+      items: {
+        id: string;
+        source: string;
+        contentRef: string;
+        occurredAt: Time;
+        receivedAt: Time;
+        readAt?: Time;
+      }[];
+      /**
+       * @maxItems 100
+       */
+      unreadItemIds: string[];
+      /**
+       * @maxItems 100
+       */
+      returnItemIds: string[];
+      interruptionCount: 0;
+      delivery: "waiting_device";
+    };
+    todos?: {
+      /**
+       * @maxItems 32
+       */
+      items: {
+        id: Id;
+        title: string;
+        status: "open" | "done" | "cancelled";
+        revision: number;
+        dueUtc?: Time;
+        remindUtc?: Time;
+        reminderState?: "scheduled" | "delivered" | "missed";
+      }[];
+      /**
+       * @maxItems 32
+       */
+      operations: {
+        commandId: Id;
+        taskId?: Id;
+        state:
+          | "created"
+          | "running"
+          | "waiting_approval"
+          | "waiting_reconciliation"
+          | "cancelling"
+          | "cancelled"
+          | "failed"
+          | "succeeded";
+      }[];
+    };
     /**
      * @maxItems 20
      */

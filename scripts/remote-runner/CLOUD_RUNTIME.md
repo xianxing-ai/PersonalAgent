@@ -10,6 +10,7 @@
 - 独立持久数据目录，不能是 tmpfs，不能指向 Desktop 数据库或其副本。首次云 owner 不能接管已有其他任务的数据库。
 - 固定且干净的源码 release，按根锁文件安装并构建完整依赖。现有 owned AgentArts 镜像只包含控制器依赖，**不包含这套 Runtime/SQLite/Policy**，不能拿它替代此宿主。
 - 原 runner 已安装为 1.2；安装脚本同时部署 `remote-runner-service.mjs`、`local-repo-executor.mjs` 和 `cloud-runtime-transport.mjs`。非交互 SSH 不继承 systemd 环境，所以 runner 在无 `RUNNER_TOKEN` 时只读取固定 `/etc/personal-agent-runner/token`，不执行该文件的 shell 内容。
+- runner 安装器使用仓库当前固定 Node 24.15.0 与 CI 固定 npm 11.12.1，检查实际 systemd 使用的 `/usr/local/bin`。已有 runner 版本号相同但 Node/npm 不符时仍更新这两项，不能因提前返回遗留旧 Node 22；云 installer 在此后从同一 PATH 固定 Node 的绝对执行路径。
 - 已登记 SSH 用户必须已经能访问原 runner journal、凭据和专用 `personal-agent-runner` 组。云 installer 只检查权限，不修改用户、组或策略。私有 socket 为该组 `0660`，目录为 `0750`；不监听公网 TCP。
 - 独立云宿主资格记录必须包含固定 host/runtime、源码 revision、Runtime artifact 身份、持久卷和独立宿主观察的 Evidence 引用。它不能由模型、Renderer 输入或一次 SSH 心跳生成。关机后的真实持续运行证据仍单独验收。
 
@@ -80,6 +81,12 @@ sudo sh scripts/remote-runner/install-cloud-runtime.sh \
 
 ## 实际能力与验收边界
 
-当前固定服务装配原 proactive core（公共上下文、事项、Scheduler）、生产 AgentArts teacher 和上述公开 feeds 消费链；设备离线始终为 false。邮件、日历、待办、GitHub 等其他业务账号/外部副作用工具、云通知和实体设备宿主尚未在此服务装配，属于代码接线缺项；Linux/SSH/持久卷与真实来源验收属于环境/证据缺项。缺少的能力保持 unavailable / waiting_device，不能只改 capability 的 location。
+F06/F12 云持续增量复用原 `TodoService` / `productivity.register`、`createReminderDeliveryHost` 和同一 `RuntimeNotificationHost`。在云会话卡片输入标题与提醒时刻，原 `todo.create` 子任务等待 Policy 的人工一次性审批；完成/取消也携带原 todo revision，经原 `todo.update` 审批。每会话最多 32 次操作，尚未确认的原操作解决前不能新建替代操作。提醒不能延长原会话期限，其他会话不能访问该责任的待办存储。
+
+到期执行仅把原 Scheduler 的 fired 任务送入同一通知服务的持久 feed。原 Todo 的 `reminder.state=delivered` 在这里表示进入宿主通知队列，**不表示 Windows 横幅、声音、设备送达或用户阅读**；卡片明确展示这一区别。原读取回执支持重开核实，不重复入队；暂停保留未发出的操作/计划，取消撤销后续计划。已批准的到期入队在同一维护循环的固定 AgentArts describe 之前执行，平台暂时离线不阻断原本地持久队列。
+
+云端不注册通知渠道或自动写入全局通知策略。原 `getDigest(on_demand)` 供显式读回当前有效未读；原 `getDigest(on_return)` 仍按已有归来策略过滤，未配置时为空。原 `acknowledgeRead` 仅允许该责任当前有效且已读回的条目，既不表示设备送达，也不补发旧通知。独立云存储不会复制 Desktop 的策略、额度或 grant。
+
+当前固定服务装配原 proactive core（公共上下文、事项、Scheduler）、生产 AgentArts teacher、公开 feeds、原待办/提醒和通知持久 feed 消费链；设备可用性始终为 false。邮件、日历、GitHub 等其他业务账号/外部副作用工具和实体设备宿主没有移入此服务；它们按原 Desktop 与固定云图验收，设备依赖离线保持 waiting_device。F06/F12 的独立云持续后半链与完整 IMAGE28 图仍分别验收。Linux/SSH/持久卷与真实关机持续记录仍为环境/证据缺项。
 
 本地 Fixture 检查了 Schema、真实 Runtime/SQLite/Policy、原结果恢复、排他目录、审批篡改、未知控制恢复及 socket/UI 边界。没有调用真实云服务、创建 ECS、使用 SSH 凭据或改变浏览器状态。真实验收必须固定同一 release/endpoint，并在实际关机窗口内取得原云 Scheduler、原工具和读回证据；#531 的 F23/F26、物理设备、WinForms 和独立真人审核门槛保持不变。
