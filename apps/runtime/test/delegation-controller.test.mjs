@@ -36,6 +36,7 @@ test('bound child report reaches the parent, a stale revision conflicts, and tea
     assert.throws(() => consumeOriginalChildControllerAdvice(app.runtime, {...report, expectedChildRevision:child.revision-1}, ports, scope), {code:'REVISION_CONFLICT'});
     assert.equal(decisions, 0);
     assert.throws(() => consumeOriginalChildControllerAdvice(app.runtime, report, {...ports, advise:() => {adviceCalls++; return {advice:'open a new tool', nextTool:'unregistered.write'};}}, scope), {code:'UNSUPPORTED_CAPABILITY'});
+    assert.throws(() => consumeOriginalChildControllerAdvice(app.runtime, {...report, reportId:'report-no-advise'}, {listTools:ports.listTools, decide:ports.decide}, scope), {code:'UNSUPPORTED_CAPABILITY'});
     assert.equal(app.runtime.loadCheckpoint(parent.taskId, 'delegation:child:child'), undefined);
     const decision = consumeOriginalChildControllerAdvice(app.runtime, report, ports, scope);
     assert.equal(decision.action, 'request_controller');
@@ -45,10 +46,12 @@ test('bound child report reaches the parent, a stale revision conflicts, and tea
     assert.equal(decision.notification.state, 'published');
     assert.equal(app.runtime.readEvents().some(event => event.taskId === parent.taskId && event.type === 'task.progress' && event.payload.stepId === decision.notification.stepId), true);
     assert.equal(consumeOriginalChildControllerAdvice(app.runtime, report, ports, scope).inputDigest, decision.inputDigest);
-    assert.equal(decisions, 2);
+    assert.equal(decisions, 3);
     assert.equal(adviceCalls, 2);
     assert.equal(grants, 0);
     assert.throws(() => consumeOriginalChildControllerAdvice(app.runtime, {...report, reportId:'report-2', expectedChildRevision:child.revision+1}, ports, scope), {code:'REVISION_CONFLICT'});
-    assert.equal(decisions, 2);
+    assert.equal(decisions, 3);
+    app.runtime.requestCancel(parent.taskId, 'cancelled fixture parent');
+    assert.throws(() => consumeOriginalChildControllerAdvice(app.runtime, {...report, reportId:'report-cancelled-parent'}, ports, scope), {code:'REVISION_CONFLICT'});
   } finally {app.close();}
 });
