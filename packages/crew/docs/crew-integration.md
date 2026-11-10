@@ -227,6 +227,5 @@ ToolGateway+Policy 处理。两层各自生效：Policy 管“这次工具调用
 - **子 CLI 侧的 MCP 注入**（设计页 P1 的 send_message / list_agents / interrupt_agent
   注入到子 agent 本地 MCP server）：本 PR 的四个工具是**宿主/主 agent 侧**的
   RegisteredTool；注入子 CLI 的反向通道未开工。
-- **互审编排、文件交接 manifest、按 agent 的持久 worktree、信箱视图 UI**：设计页分期
-  留后续；UI 归前端负责人。
+- **文件交接与按 agent 的工作区**：已随 #573 进入 main（独立工作区目录、SHA-256 清单、重启恢复）。本适配器不重复实现这些入口；互审编排和信箱视图 UI 仍留后续，UI 归前端负责人。
 - **crew.dispatch → Policy 首次同意的自动提问流**：3 节是伪代码，宿主接线未实现。
