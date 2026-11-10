@@ -464,9 +464,7 @@ MOD-32 剩余验收：新版本与请求级部署绑定、精确 trace/usage/费
 
 ## 2026-10-07 当前源码与剩余现场验收
 
-本节只核对 main `4b5ec61` 和尚未合并的 [PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302)。
-上方带日期的历史平台及本地回执保持原结论。本轮环境没有云账户绑定/凭据，没有发起
-真实云调用、发布、回退或 GUI 验收；离线通过不续期历史平台健康或升级 capability。
+2026-11-10 核对：本节原文只对照 main `4b5ec61` 与当时尚未合并的 [PR #302](https://github.com/xianxing-ai/PersonalAgent/pull/302)。该 PR 已以 `cc64ebdf` 进入当前 main，表中「#302 未合并增量」现已在主线。上方带日期的历史平台及本地回执保持原结论。合并时没有云账户绑定/凭据，没有发起真实云调用、发布、回退或 GUI 验收；离线通过不续期历史平台健康或升级 capability。
 
 | 交付项 | main 已有代码 / #302 未合并增量 | 剩余现场证据 |
 | --- | --- | --- |
@@ -475,7 +473,6 @@ MOD-32 剩余验收：新版本与请求级部署绑定、精确 trace/usage/费
 | 固定评估和基线重复 | main 已有 [fixed runner](../../tests/manual/agentarts/support/fixed-synthetic-batch.mjs) 与 trace scorer；#302 新增 [paired runner](../../tests/manual/agentarts/support/paired-synthetic-batch.mjs)，显式注入两个端口，1～3 对批次沿用同一 deadline/cancel，只报告实际三标签分类及 await 时长；scorer 只计真实 dense own-data records/events | 独立标注的实际平台输出、固定版本及对照；World/Plan/Review 的源身份、路由、交接、预算和失败分支仍须真实 trace，不能由三标签得分推断多 Agent 优势 |
 | 费用、发布和回退 | 当前端口没有已验证的请求级部署版本、usage/费用或发布回退契约；#302 不增加这些字段 | 原生请求关联、usage 与账单依据、此前已验证版本、实际回退后的绑定/健康/API/trace 读回。没有精确证据时保持 unknown |
 
-上述 main 接线是实现盘点，不表示 MOD27～32 全部完成。#302 的离线补丁必须在合并与
-必要检查后才算 main 增量；真实平台评估、可视化比赛 Demo 和整体验收仍分别判定。
+上述接线是实现盘点，不表示 MOD27～32 全部完成。#302 已合并，仍不代替真实平台评估、可视化比赛 Demo 和整体验收。
 缺少真实嵌套 trace 字段时沿用 [MOD-31 的现有边界](MOD-31-TRACE-EVALUATION-02.md)，
 不创建猜测角色 DTO、虚拟 usage 或“一键回滚”实现。
