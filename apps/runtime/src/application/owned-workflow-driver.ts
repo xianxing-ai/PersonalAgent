@@ -24,7 +24,7 @@ export interface RuntimeOwnedWorkflowDriverState<TInput=unknown> {
 export interface RuntimeOwnedWorkflowDriverOptions<TInput> {
   workflowId:string;checkpointKey:string;mode:NonNullable<OwnedWorkflowAdvanceRequest['mode']>;
   image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>};
-  bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'>;catalog:readonly CoordinationAvailableTool[];
+  bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'> & Partial<Pick<OwnedWorkflowHostBridge,'readReceiptWithShadow'>>;catalog:readonly CoordinationAvailableTool[];
   requestId:(sequence:number)=>string;
   /** Optional trusted local frontier guard, executed before any host submit. */
   authorizeProposal?:(input:{proposal:Proposal;state:RuntimeOwnedWorkflowDriverState<TInput>})=>void|{localTaskId:string;operationId:string}|Promise<void|{localTaskId:string;operationId:string}>;
@@ -103,7 +103,10 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       worker.signal.addEventListener('abort',cancelChild,{once:true});
       try {if(worker.signal.aborted)cancelChild();await application.waitForHostToolTask(local.localTaskId);active();}
       finally {worker.signal.removeEventListener('abort',cancelChild);}
-      const receipt=await timed('host-readback',async()=>options.bridge.readReceipt(binding,proposal),{nodeId:proposal.nodeId,operationId:proposal.operationId});
+      const readHostReceipt=async()=>typeof options.bridge.readReceiptWithShadow==='function'
+        ?options.bridge.readReceiptWithShadow(binding,proposal)
+        :options.bridge.readReceipt(binding,proposal);
+      const receipt=await timed('host-readback',readHostReceipt,{nodeId:proposal.nodeId,operationId:proposal.operationId});
       active();
       if(!receipt||receipt.state==='stopping'||receipt.state==='unknown')return pause(local.localTaskId,proposal.operationId);
       if(receipt.state==='confirmed') {

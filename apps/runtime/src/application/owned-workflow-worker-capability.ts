@@ -237,7 +237,7 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
         // The existing local selector is advisory; it never grants an operation or scope.
       }else fail('UNAUTHORIZED','Workflow operation is outside the fixed F20 case');
       return host.submit(request,item);
-    },readReceipt:host.readReceipt.bind(host)};
+    },readReceipt:host.readReceipt.bind(host),readReceiptWithShadow:host.readReceiptWithShadow.bind(host)};
     const outcome=await runRuntimeOwnedWorkflowDriver(application,context,state,{workflowId:'F20',checkpointKey:key,mode:'main',
       image:options.image,bridge,catalog,requestId:sequence=>'f20-'+hash([scope.taskId,proposal.proposalId,sequence]),
       authorizeProposal:async({proposal:item,state:graph})=>{
