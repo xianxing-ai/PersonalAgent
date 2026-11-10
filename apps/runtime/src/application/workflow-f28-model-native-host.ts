@@ -11,6 +11,9 @@ const text=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0;
 export type F28NativeConfigRoles={research:boolean;analysis:boolean;coder:boolean};
 
 /** F28_N03 host: maps trusted ModelGateway/native declarations to role support; no budget-as-thinking. */
+/** Cancellation, timeout and unknown-result codes keep their meaning; only other port failures become unavailable. */
+const preserved=(error:unknown)=>['CANCELLED','TIMEOUT','RESULT_UNKNOWN'].includes((error as {code?:unknown})?.code as string);
+
 export function createRuntimeF28NativeConfigHost(options?:{
   application:Pick<RuntimeApplication,'runtime'>;
   requiredScopes:readonly string[];
@@ -29,7 +32,9 @@ export function createRuntimeF28NativeConfigHost(options?:{
     assertCurrent:options.assertCurrent,now:options.now});
   const read=async(scope:Scope,context:ToolContext,input:{check:string})=>{
     if(!text(input.check))failOwnedHost('INVALID_ARGUMENT','F28 native config check invalid');
-    const config=await options.readNativeConfig(scope,input);active(context,input);
+    let config:Awaited<ReturnType<NonNullable<typeof options>['readNativeConfig']>>;
+    try {config=await options.readNativeConfig(scope,input);}catch(error){if(preserved(error))throw error;return failOwnedHost('UNSUPPORTED_CAPABILITY','F28 native configuration unavailable');}
+    active(context,input);
     if(!plain(config)||config.check!==input.check||typeof config.research!=='boolean'
       ||typeof config.analysis!=='boolean'||typeof config.coder!=='boolean')
       failOwnedHost('UNSUPPORTED_CAPABILITY','F28 native configuration unavailable');
@@ -69,7 +74,11 @@ export function createRuntimeF28NativeConfigGuard(options?:{
       workflowId:{const:'F28'},nodeId:{const:'F28_N03'},input:{},predecessorOutputs:{type:'object'},predecessorStates:{type:'object'}}},
     outputSchema:{type:'object',additionalProperties:false,required:['state'],properties:{state:{type:'string',enum:['selected','skipped','unknown']}}},
     async execute(input,context){
-      const scope=active(context,input),state=await options.resolveGuardState(scope,input as Parameters<typeof options.resolveGuardState>[1]);active(context,input);
+      const scope=active(context,input);
+      let state:Awaited<ReturnType<NonNullable<typeof options>['resolveGuardState']>>;
+      try {state=await options.resolveGuardState(scope,input as Parameters<typeof options.resolveGuardState>[1]);}
+      catch(error){if(preserved(error))throw error;return failOwnedHost('UNSUPPORTED_CAPABILITY','F28 native config guard unavailable');}
+      active(context,input);
       if(state!=='selected'&&state!=='skipped'&&state!=='unknown')failOwnedHost('UNSUPPORTED_CAPABILITY','F28 native config guard unavailable');
       return {state};
     }});
