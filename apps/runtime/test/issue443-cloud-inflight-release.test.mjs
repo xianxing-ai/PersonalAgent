@@ -7,6 +7,7 @@ import {Client} from '@personal-agent/client';
 import {createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
 import {projectSubagentResult} from '../../desktop/electron/subagent-result-projection.js';
 import {SyntheticWebSocket,identity} from '../../../packages/coordination/test/fixtures/websocket.mjs';
+import {syntheticAgentArtsQuery, syntheticAgentArtsResult, syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 
 /**
  * Fixture replicating GitHub issue #443:
@@ -88,6 +89,7 @@ async function issue443Fixture({
   const options = {
     path,
     now: () => new Date(clock),
+    preparePayload: syntheticPublicPayloadGate,
     gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'termination',
     transport: 'wss',
@@ -97,9 +99,9 @@ async function issue443Fixture({
       if (frame.type !== 'invoke') return;
       socket.accepted(frame);
       try {
-        const query = JSON.parse(frame.payload.query);
+        const query = JSON.parse(syntheticAgentArtsQuery(frame.payload));
         const res = response(query);
-        socket.result(frame, JSON.stringify(res));
+        socket.result(frame, syntheticAgentArtsResult(frame.payload, res));
       } catch (err) {
         if (childFailureMode === 'unknown') {
           socket.disconnect();
