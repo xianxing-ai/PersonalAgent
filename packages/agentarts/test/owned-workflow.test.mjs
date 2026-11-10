@@ -24,6 +24,12 @@ const engine=options=>new OwnedWorkflowEngine({checkpointSecret:secret,selector,
 const next=async (runtime,original,last,extra={})=>runtime.advance({...original,checkpoint:last.checkpoint,...extra});
 const receipt=(proposal,state='confirmed',extra={})=>({...proposal,state,result:{public:'readback'},evidenceRefs:['evidence-1'],proof:'synthetic-signed-host-readback',...extra});
 const proofVerifier={verify:async value=>value.proof==='synthetic-signed-host-readback'};
+const tamperCheckpoint=checkpoint=>{
+  const [payload,signature]=checkpoint.split('.');
+  const buf=Buffer.from(signature,'base64url');
+  buf[0]^=1;
+  return `${payload}.${buf.toString('base64url')}`;
+};
 
 test('all 28 compiled templates preserve 185 distinct detail nodes, dependencies, feedback and host boundaries',()=>{
   const all=getOwnedWorkflowTemplates();assert.equal(all.length,28);
@@ -208,7 +214,7 @@ test('receipt rejects a replaced operation, forged proof, empty evidence and sta
   }
   const rotated=engine({checkpointSecret:'rotated-synthetic-workflow-secret-32-chars'});
   await assert.rejects(next(rotated,original,last),{code:'INVALID_ARGUMENT'});
-  const tampered=last.checkpoint.slice(0,-5)+'abcde';
+  const tampered=tamperCheckpoint(last.checkpoint);
   await assert.rejects(next(runtime,original,last,{checkpoint:tampered}),{code:'INVALID_ARGUMENT'});
 });
 

@@ -50,3 +50,57 @@ test('rejects stale projection and repair outside its RECHECK subset', () => {
     node: ref('unrelated'), summary: 'unrelated edit', reason: 'not affected', dependencies: []
   }]}), {code: 'NOT_APPLICABLE'});
 });
+
+test('rejects projections whose namespace or committed Fact links do not match the stored graph', () => {
+  const {store, input} = fixture();
+  assert.throws(() => selectProjectedRepairScope(store.read(), at, {...input, graphNamespace: 'other-person'}),
+    {code: 'INVALID_ARGUMENT'});
+  assert.throws(() => selectProjectedRepairScope(store.read(), at, {...input,
+    projection: {...input.projection, links: [{eventId: 'synthetic-event', fact: ref('meeting', 2),
+      node: ref('missing-fact', 1)}]}}), {code: 'NOT_APPLICABLE'});
+  assert.throws(() => selectProjectedRepairScope(store.read(), at, {...input,
+    projection: {...input.projection, links: [{eventId: 'synthetic-event', fact: ref('meeting', 2),
+      node: ref('goal', 1)}]}}), {code: 'NOT_APPLICABLE'});
+});
+
+test('rejects malformed projection receipts before the graph is read', () => {
+  const {store, input} = fixture();
+  const projection = input.projection;
+  const malformed = [
+    {...input, graphNamespace: ' '},
+    {...input, unexpected: 'field'},
+    {...input, projection: {...projection, batchToken: ' '}},
+    {...input, projection: {...projection, graphRevision: -1}},
+    {...input, projection: {...projection, graphRevision: 1.5}},
+    {...input, projection: {...projection, links: 'not-an-array'}},
+    {...input, projection: {...projection, extra: 'field'}},
+    {...input, projection: {...projection, links: [{eventId: 'synthetic-event',
+      node: ref('memory-fact:meeting', 2)}]}},
+    {...input, projection: {...projection, links: [{eventId: 'synthetic-event', fact: ref('meeting', 0),
+      node: ref('memory-fact:meeting', 2)}]}},
+    {...input, projection: {...projection, links: [{eventId: 'synthetic-event', fact: ref('meeting', 2),
+      node: ref('memory-fact:meeting', 2), extra: 'field'}]}},
+    {...input, projection: {...projection, links: [{eventId: 'first', fact: ref('meeting', 2),
+      node: ref('memory-fact:meeting', 2)}, {eventId: 'first', fact: ref('meeting', 2),
+      node: ref('memory-fact:meeting', 2)}]}},
+  ];
+  for (const request of malformed) {
+    assert.throws(() => selectProjectedRepairScope(store.read(), at, request), {code: 'INVALID_ARGUMENT'});
+  }
+  const hundred = Array.from({length: 100}, (_, index) => ({eventId: `event-${index}`,
+    fact: ref('meeting', 2), node: ref('memory-fact:meeting', 2)}));
+  assert.deepEqual(
+    selectProjectedRepairScope(store.read(), at, {...input, projection: {...projection, links: hundred}}).items,
+    selectProjectedRepairScope(store.read(), at, input).items);
+  assert.throws(() => selectProjectedRepairScope(store.read(), at, {...input,
+    projection: {...projection, links: [...hundred, {eventId: 'event-100', fact: ref('meeting', 2),
+      node: ref('memory-fact:meeting', 2)}]}}), {code: 'INVALID_ARGUMENT'});
+});
+
+test('previewing on a store without a readable bound snapshot is not applicable', () => {
+  const {input} = fixture();
+  assert.throws(() => previewProjectedRepair({}, at, {...input, changes: [{
+    node: ref('goal'), summary: 'goal for corrected meeting', reason: 'explicit candidate',
+    dependencies: [ref('memory-fact:meeting', 2)]
+  }]}), {code: 'NOT_APPLICABLE'});
+});

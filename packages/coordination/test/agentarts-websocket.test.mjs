@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {AgentArtsBeforeInvokeError, AgentArtsCloudAgentPort, AgentArtsResultUnknownError, CompetitionCoordinator} from '../dist/index.js';
+import {AgentArtsBeforeInvokeError, AgentArtsCloudAgentPort, AgentArtsResultUnknownError,
+  AgentArtsWebSocketTransport, CompetitionCoordinator} from '../dist/index.js';
+import {MAX_AGENTARTS_TRANSPORT_BYTES, MAX_AGENTARTS_RESULT_BYTES} from '@personal-agent/contracts/agentarts-transport';
 import {SyntheticWebSocket, identity, events} from './fixtures/websocket.mjs';
 
 const config = {gatewayUrl: 'https://agentarts.example.test', runtimeName: 'synthetic', transport: 'wss',
@@ -359,3 +361,99 @@ test('a terminal replay must preserve the ordered accepted event before its exac
   try { await assert.rejects(h.port.invoke(request()), AgentArtsResultUnknownError); assert.equal(h.http.length, 0); }
   finally { h.port.close(); }
 });
+
+test('binary, non-UTF-8 and oversized frames fail before any send, credential use or fallback', async t => {
+  for (const [name, payload] of [['binary', [Buffer.from('ready'), true]],
+    ['invalid-utf-8', [Buffer.from([0xff, 0xfe, 0xfd]), false]],
+    ['oversized', [Buffer.alloc(MAX_AGENTARTS_TRANSPORT_BYTES + 1, 0x61), false]]]) {
+    await t.test(name, async () => {
+      const h = harness({autoReady: false});
+      try {
+        const pending = h.port.invoke(request());
+        while (!h.sockets.length) await new Promise(resolve => setImmediate(resolve));
+        h.sockets[0].emit('message', ...payload);
+        await assert.rejects(pending, {code: 'EXTERNAL_FAILURE'});
+        assert.equal(h.sockets[0].sent.length, 0); assert.equal(h.http.length, 0);
+        assert.equal(h.states.some(state => state.state === 'https_fallback'), false);
+      } finally { h.port.close(); }
+    });
+  }
+});
+
+test('a sent invocation rejects binary, non-UTF-8, oversized frames and oversized results as unknown', async t => {
+  for (const [name, afterAccepted] of [
+    ['binary', socket => socket.emit('message', Buffer.from('{"type":"result"}'), true)],
+    ['invalid-utf-8', socket => socket.emit('message', Buffer.from([0xff, 0xfe, 0xfd]), false)],
+    ['oversized-frame', socket => socket.emit('message', Buffer.alloc(MAX_AGENTARTS_TRANSPORT_BYTES + 1, 0x61), false)],
+    ['oversized-result', socket => socket.result(socket.sent.find(frame => frame.type === 'invoke'),
+      'boundary'.repeat(MAX_AGENTARTS_RESULT_BYTES))]]) {
+    await t.test(name, async () => {
+      const h = harness({respond: (frame, socket) => {
+        if (frame.type === 'invoke') { socket.accepted(frame); afterAccepted(socket); }
+      }});
+      try {
+        await assert.rejects(h.port.invoke(request()), error => {
+          assert.ok(error instanceof AgentArtsResultUnknownError);
+          assert.equal(error.receipt.accepted, true); return true;
+        });
+        assert.equal(h.sockets[0].sent.filter(frame => frame.type === 'invoke').length, 1);
+        assert.equal(h.http.length, 0);
+        assert.equal(h.states.some(state => state.state === 'result_unknown'), true);
+      } finally { h.port.close(); }
+    });
+  }
+});
+
+test('the ready handshake must offer invoke and stays unique for the connection', async t => {
+  await t.test('a ready without invoke capability rejects before any send', async () => {
+    const h = harness({autoReady: false});
+    try {
+      const pending = h.port.invoke(request());
+      while (!h.sockets.length) await new Promise(resolve => setImmediate(resolve));
+      h.sockets[0].ready({capabilities: ['status', 'cancel', 'ephemeral-replay']});
+      await assert.rejects(pending, {code: 'EXTERNAL_FAILURE'});
+      assert.equal(h.sockets[0].sent.length, 0); assert.equal(h.http.length, 0);
+      assert.equal(h.states.some(state => state.state === 'https_fallback'), false);
+    } finally { h.port.close(); }
+  });
+  await t.test('a duplicate ready frame after negotiation breaks the connection and stays unknown', async () => {
+    let completed = 0;
+    const h = harness({respond: (frame, socket) => {
+      if (frame.type === 'invoke' && completed === 0) { completed++; socket.accepted(frame); socket.result(frame); }
+    }});
+    try {
+      await h.port.invoke(request());
+      const pending = h.port.invoke(request({revision: 2}));
+      await new Promise(resolve => setImmediate(resolve));
+      h.sockets[0].ready();
+      await assert.rejects(pending, error => {
+        assert.ok(error instanceof AgentArtsResultUnknownError);
+        assert.equal(error.receipt.accepted, false); return true;
+      });
+      assert.equal(h.sockets.length, 1); assert.equal(h.http.length, 0);
+    } finally { h.port.close(); }
+  });
+});
+
+test('one request id binds at most one pending invocation on a pooled connection', async () => {
+  const sockets = [];
+  const transport = new AgentArtsWebSocketTransport(config.websocketUrl, () => {
+    const socket = new SyntheticWebSocket(() => {});
+    sockets.push(socket); return socket;
+  });
+  const init = () => ({method: 'POST', redirect: 'error', signal: new AbortController().signal,
+    body: JSON.stringify({query: 'synthetic duplicate identifier'}),
+    headers: {Authorization: 'Bearer outer', 'X-PA-Agent-Token': 'Bearer inner',
+      'x-hw-agentarts-session-id': 'synthetic-session', 'X-Request-Id': 'synthetic-request',
+      'X-PA-Deadline': new Date(Date.now() + 5000).toISOString(), 'X-Invoke-Mode': 'sync'}});
+  try {
+    const first = transport.invoke(init(), {beforeSend: () => {}});
+    await new Promise(resolve => setImmediate(resolve));
+    await assert.rejects(transport.invoke(init(), {beforeSend: () => {}}),
+      {code: 'EXTERNAL_FAILURE', message: 'AgentArts WebSocket protocol is invalid'});
+    sockets[0].accepted(sockets[0].sent[0]); sockets[0].result(sockets[0].sent[0]);
+    assert.equal(JSON.parse(await (await first).text())[0].data.text, 'Synthetic answer');
+    assert.equal(sockets.length, 1);
+  } finally { transport.close(); }
+});
+

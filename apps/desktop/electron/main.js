@@ -4,6 +4,7 @@ import {readCompetitionExecutionPolicy} from './competition-execution-config.js'
 import {createMailMonitorPreparation} from './mail-monitor-preparation.js';
 import {handleConversationAction} from './conversation-actions.js';
 import {assertConversationProhibitions} from './conversation-prohibitions.js';
+import {handleSessionManagementApi} from './session-management-api.js';
 import {createConversationEnvironmentContext} from './conversation-environment-context.js';
 import {createConversationDelivery} from './conversation-delivery.js';
 import {readReconciliationStatus,readConversationConflictTasks} from './reconciliation-status.js';
@@ -40,6 +41,7 @@ import {existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSy
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
+import {createOrbHitTestController} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
 import {createDesktopHost} from './desktop-host.js';
 import {panelWindowAppearance, bindPanelMaterial} from './panel-material.js';
@@ -4932,6 +4934,16 @@ async function action(event, name, payload) {
     }
     throw Error('不支持的私人记忆操作');
   }
+  // MOD-12 explicit session management API: same trusted-sender boundary and
+  // live-voice invalidation as conversation.*, but with a published operation
+  // catalog and coded failures (see docs/interfaces/DESKTOP_SESSION_MANAGEMENT_API.md).
+  if(typeof name==='string'&&name.startsWith('session.')){
+    if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
+    const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
+    const result=handleSessionManagementApi({name,payload,surface,conversations,tasks,taskSurface,submitting,publish});
+    if(conversations.activeConversationId(surface)!==previousConversationId)liveVoice?.invalidateTextOutput(previousConversationId);
+    return result;
+  }
   if(['conversation.new','conversation.switch','conversation.rename','conversation.archive','conversation.restore','conversation.draft','conversation.readDraft','conversation.prohibitions.update'].includes(name)){
     if(sender!==panel&&sender!==workspace)throw Error('请从受信对话窗口管理会话');
     const surface=sender===workspace?'workspace':'panel',previousConversationId=conversations.activeConversationId(surface);
@@ -5547,6 +5559,14 @@ app.whenReady().then(async () => {
     {frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false});
   panel = windowFor('panel', panelBounds(orb.getBounds(), area),
     {frame: false, alwaysOnTop: true, skipTaskbar: true, resizable: false, hasShadow: false, roundedCorners: true, ...panelWindowAppearance(nativeTheme)});
+  // MOD-11: clicks over the orb's transparent regions must reach the windows
+  // underneath. The controller samples the cursor in DIPs, keeps capturing
+  // inside the visible shell (hysteresis-stable across fractional DPI) and
+  // forwards everything else; drag states always capture.
+  const orbHitTest = createOrbHitTestController({win:orb, screen, isBusy:()=>dragging!==false,
+    log:event=>desktopHost.log(event,'orb')});
+  orbHitTest.start();
+  orb.on('closed', () => orbHitTest.stop());
   const panelMaterial=bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
   panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
@@ -5565,6 +5585,12 @@ app.whenReady().then(async () => {
     catch (error) {
       if(['developer.settings.read','developer.settings.configure','developer.settings.toggle'].includes(args[1]))
         return developerSettingsErrorResponse(error);
+      // MOD-12: keep the published SESSION_* failure codes exact over IPC
+      // (errorDisplay alone would classify them into generic codes).
+      if(typeof args[1]==='string'&&args[1].startsWith('session.')&&typeof error?.code==='string'&&error.code.startsWith('SESSION_')){
+        const failure=errorDisplay(error,'ipc');
+        return {ok:false,error:failure.message,errorCode:error.code};
+      }
       if(typeof args[1]==='string'&&(args[1].startsWith('computer.control.')||args[1]==='computer.vision.configure')){
         const failure=computerControlFailure(error,args[1]);
         return {ok:false,error:failure.message,errorCode:failure.code,stage:failure.stage,

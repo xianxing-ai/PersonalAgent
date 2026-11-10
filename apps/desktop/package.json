@@ -10,7 +10,7 @@
     "prestart": "node scripts/prepare-native-desktop.mjs",
     "build:windows-host": "node scripts/build-windows-host.mjs",
     "dev:fake": "electron . --fake-runtime",
-    "typecheck": "node --check electron/main.js && node --check electron/runtime.js && node --check electron/conversations.js && node --check electron/preload.cjs && node --check electron/additive-conversation-tools.js && node --check electron/async-subagent-host.js && node --check electron/remote-runner-host.js && node --check electron/developer-duty-github.js && node --check src/app/renderer.js && node --check src/features/admin/view.js && node --check src/features/admin/profile.js && node --check src/features/workspace/view.js && node --check src/features/workspace/connectors.js && node --check src/features/orb/orb.js && node --check src/features/conversation/state.js && node --check src/features/conversation/rail.js && node --check src/features/conversation/background-tasks.js && node --check src/features/conversation/remote-runners.js && node --check src/ui/preferences.js",
+    "typecheck": "node --check electron/main.js && node --check electron/runtime.js && node --check electron/conversations.js && node --check electron/session-management-api.js && node --check electron/preload.cjs && node --check electron/additive-conversation-tools.js && node --check electron/async-subagent-host.js && node --check electron/remote-runner-host.js && node --check electron/developer-duty-github.js && node --check electron/orb-hit-testing.js && node --check src/app/renderer.js && node --check src/features/admin/view.js && node --check src/features/admin/profile.js && node --check src/features/workspace/view.js && node --check src/features/workspace/connectors.js && node --check src/features/orb/orb.js && node --check src/features/conversation/state.js && node --check src/features/conversation/rail.js && node --check src/features/conversation/background-tasks.js && node --check src/features/conversation/remote-runners.js && node --check src/ui/preferences.js",
     "dev:text-fake": "electron . --fake-model",
     "test": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter=./test-support/node-test-failure-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stderr test/*.test.mjs",
     "test:smoke": "node test/electron-smoke.cjs",
@@ -27,7 +27,9 @@
     "test:text-smoke": "node test/text-chat-smoke.cjs",
     "test:skills-smoke": "node test/installed-skills-smoke.cjs",
     "test:skills-product-smoke": "node test/installed-skills-product-smoke.cjs",
-    "test:native-reasoning-smoke": "node test/native-reasoning-product-smoke.cjs"
+    "test:native-reasoning-smoke": "node test/native-reasoning-product-smoke.cjs",
+    "package:win": "electron-builder --win nsis --config electron-builder.yml",
+    "check:packaging-scaffold": "node ../../scripts/release/packaging-scaffold.check.mjs ../.."
   },
   "dependencies": {
     "@jackwener/opencli": "1.8.6",
@@ -60,6 +62,26 @@
   },
   "devDependencies": {
     "@personal-agent/testkit": "0.1.0-alpha.1",
-    "electron": "44.2.0"
+    "electron": "44.2.0",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "com.personalagent.desktop",
+    "productName": "PersonalAgent",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "requestedExecutionLevel": "asInvoker"
+    }
   }
 }

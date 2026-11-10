@@ -274,9 +274,9 @@ test('a fresh adoption failure stays FAILED and cannot inherit a selected parent
   await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
 });
 
-test('trial rejects duplicate candidate paths and self-referencing composition before creating a session',async t=>{
+test('trial rejects duplicate candidate paths and self-referencing composition before creating an isolated session',async t=>{
   const f=await trialFixture(t),c=context('child-a');
-  const duplicate={...f.input('candidate-a'),candidateChanges:[{path:'candidate.txt',content:'first'},{path:'candidate.txt',content:'second'}]};
+  const duplicate=f.input('candidate-a');duplicate.patches.push({...duplicate.patches[0],createText:'second'});
   await assert.rejects(f.tool.execute(duplicate,c),{code:'INVALID_ARGUMENT'});
   const self=createHarnessCandidateTrialTool({...f.options,readParentArtifactDigests:async()=>{throw Error('Explicit Fake: must not be read');}});
   await assert.rejects(self.execute({...f.input('candidate-a'),parentTrialRunIds:[c.runId,'other-run']},c),{code:'INVALID_ARGUMENT'});
