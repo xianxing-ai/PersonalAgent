@@ -57,7 +57,7 @@ const eventsOutputSchema: ToolDescriptor['outputSchema'] = {
  * `uid`，两者不同名又没有说明，模型只能向用户索要一个用户不可能知道的"事件标识"（实测 2026-10-21）。
  * 两个名字都进 properties、语义相同，模型拿哪个都能对上；`uid` 保留用于已保存提案的回放。
  */
-const EVENT_ID_PATTERN = '^[^\u0000-\u001f\u007f]+$';
+const EVENT_ID_PATTERN = '^[^\\u0000-\\u001f\\u007f]+$';
 const eventIdProperties = {
   externalId: {type: 'string', minLength: 1, maxLength: 512, pattern: EVENT_ID_PATTERN},
   uid: {type: 'string', minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9@][A-Za-z0-9@._-]*$'},

@@ -3,8 +3,48 @@
   "version": "2026.11.07.2",
   "mainHead": "855a90c4",
   "declaredTotal": 109,
-  "providedTotal": 33,
+  "providedTotal": 31,
   "gaps": [
+    {
+      "name": "mail.registered_archive",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F08"
+      ],
+      "note": "host 口已就绪（packages/agentarts/src/f08-f09-business-hosts.ts），等真实提供者（mail 连接器尚无归档实现）",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "mail.registered_send",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F08"
+      ],
+      "note": "host 口已就绪（packages/agentarts/src/f08-f09-business-hosts.ts，对齐 MailService.send 的 externalId/messageId），等真实提供者接线",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
     {
       "name": "notification.deliver",
       "kind": "host",

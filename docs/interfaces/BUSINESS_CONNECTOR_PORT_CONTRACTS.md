@@ -18,15 +18,13 @@
 | `reminder.current_clock_and_revision` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 提醒真实时钟与版本到期核验 |
 | `mail.inbox` / `mail.reconcile_send` | tool | packages/connectors/mail | 收件与 Sent 对账（reconcile 已有） |
 | `mail.save_draft` / `mail.accounts` / `mail.mark_seen` | tool | packages/connectors/mail | 草稿/账户/已读 |
-| `mail.registered_archive` | host | packages/agentarts/src/f08-f09-business-hosts.ts | Gateway 真归档核验与读回 |
-| `mail.registered_send` | host | packages/agentarts/src/f08-f09-business-hosts.ts | 稳定操作 ID 发送与 unknown 态保真 |
 | `feeds.collect` / `feeds.subscriptions` | tool | packages/connectors/feeds | 订阅抓取与目录 |
 | `feeds.validate_and_deduplicate` | host | packages/agentarts/src/f08-f09-business-hosts.ts | 确定性 SHA-256 哈希去重与格式校验 |
 | `research.search` | tool | packages/connectors/research | 研究搜索 |
 | `weather.forecast` | tool | packages/connectors/weather | 天气查询 |
 | `notifications.events` / `notifications.status` / `notifications.interruption_policy.set` | tool | packages/notifications | 通知事件/状态/中断策略 |
 | `todo.create` / `todo.list` / `todo.update` | tool | packages/productivity | 待办基础操作 |
-| `github.bound_ci_failure` | host | packages/agentarts/src/f16-dev-workflows-hosts.ts | 提交版本与 CI 失败日志绑定读回 |
+| `github.bound_ci_failure` | host | packages/agentarts/src/f16-dev-workflows-hosts.ts | 提交版本与 CI 失败日志绑定读回（对齐 `actions.run.list`/`actions.job.list`/`actions.log.read`） |
 | `workspace.test_intent_check` | host | packages/agentarts/src/f16-dev-workflows-hosts.ts | 审查修复补丁是否保留真实验收意图 |
 | `weather.forecast` | tool（图未引用） | packages/connectors/weather | 连接器提供但当前 F11 未在图中引用；保留提供面 |
 
@@ -34,6 +32,8 @@
 
 | 图能力 | 图 | 缺口（摘要） | 负责 |
 | --- | --- | --- | --- |
+| `mail.registered_archive` | F08 | host 口已就绪（`packages/agentarts/src/f08-f09-business-hosts.ts`），等真实提供者（mail 连接器尚无归档实现） | Potatos498（`registered:open`） |
+| `mail.registered_send` | F08 | host 口已就绪（`packages/agentarts/src/f08-f09-business-hosts.ts`，对齐 `MailService.send` 的 `externalId`/`messageId`），等真实提供者接线 | Potatos498（`registered:open`） |
 | `notification.deliver` | F06/F12 | N05 真实投递回执 | Potatos498 + goo122（#574 在途） |
 | `notification.deliver_when_due` | F12 | 到期投递口（#574 在途） | Potatos498 |
 

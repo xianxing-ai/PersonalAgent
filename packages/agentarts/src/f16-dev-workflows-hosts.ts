@@ -23,7 +23,7 @@ export interface CiFailureBinding {
 }
 
 export interface GithubCiReadPort {
-  execute(operation: 'actions.run.get' | 'actions.job.list' | 'actions.log.read', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
+  execute(operation: 'actions.run.list' | 'actions.job.list' | 'actions.log.read', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
 }
 
 export interface GithubCiFailureHostOptions {
@@ -44,32 +44,92 @@ export function createGithubBoundCiFailureHostPort(options: GithubCiFailureHostO
       if (!binding || !text(binding.owner) || !text(binding.repo) || !text(binding.commitSha)) {
         return fail('unavailable', 'ci_binding_unavailable');
       }
+      const repoSlug = `${binding.owner}/${binding.repo}`;
       try {
-        // 读取指定或最新的 CI 运行记录
-        const run = await options.read.execute('actions.run.get', {
+        // 读取 CI 运行列表并按 runId 或 commitSha 定位目标运行记录（对齐 GitHub 连接器 actions.run.list）
+        const runsResult = await options.read.execute('actions.run.list', {
+          repo: repoSlug,
           owner: binding.owner,
-          repo: binding.repo,
-          commitSha: binding.commitSha,
-          ...(binding.runId ? {runId: binding.runId} : {}),
+          ...(binding.runId !== undefined ? {runId: binding.runId} : {}),
         }, context);
-        if (!isPlainObject(run)) return fail('failed', 'ci_run_not_found');
+        const runList = Array.isArray(runsResult)
+          ? runsResult
+          : isPlainObject(runsResult) && Array.isArray(runsResult.items)
+            ? runsResult.items
+            : isPlainObject(runsResult) && Array.isArray(runsResult.runs)
+              ? runsResult.runs
+              : isPlainObject(runsResult) && typeof runsResult.id === 'number'
+                ? [runsResult]
+                : undefined;
+        if (!runList) return fail('failed', 'ci_runs_malformed');
 
-        // 读取失败的 jobs 与步骤
+        const run = runList.find((item: unknown) => {
+          if (!isPlainObject(item)) return false;
+          if (binding.runId !== undefined) return item.id === binding.runId;
+          const itemSha = typeof item.headSha === 'string' ? item.headSha : typeof item.head_sha === 'string' ? item.head_sha : undefined;
+          return itemSha === binding.commitSha;
+        });
+        if (!isPlainObject(run) || typeof run.id !== 'number') return fail('failed', 'ci_run_not_found');
+
+        // 核对运行记录的 headSha / head_sha 必须与绑定 commitSha 严格一致
+        const runHeadSha = typeof run.headSha === 'string' ? run.headSha : typeof run.head_sha === 'string' ? run.head_sha : undefined;
+        if (!text(runHeadSha) || runHeadSha !== binding.commitSha) {
+          return fail('failed', 'ci_run_head_sha_mismatch', {
+            expectedCommitSha: binding.commitSha,
+            actualCommitSha: runHeadSha ?? null,
+          });
+        }
+
+        // 仅接受真实失败的运行记录，严禁缺省伪造 'failure'
+        if (run.conclusion !== 'failure') {
+          return fail('failed', 'ci_run_not_failed', {
+            runId: run.id,
+            conclusion: run.conclusion ?? null,
+          });
+        }
+
+        // 读取该运行下的 jobs 列表并校验结构
         const jobs = await options.read.execute('actions.job.list', {
+          repo: repoSlug,
           owner: binding.owner,
-          repo: binding.repo,
-          runId: run.id ?? binding.runId,
+          runId: run.id,
         }, context);
-        const jobList = Array.isArray(jobs) ? jobs : isPlainObject(jobs) && Array.isArray(jobs.jobs) ? jobs.jobs : [];
-        const failedJobs = jobList.filter((j: unknown) => isPlainObject(j) && (j.conclusion === 'failure' || j.status === 'completed' && j.conclusion !== 'success'));
+        const jobList = Array.isArray(jobs)
+          ? jobs
+          : isPlainObject(jobs) && Array.isArray(jobs.items)
+            ? jobs.items
+            : isPlainObject(jobs) && Array.isArray(jobs.jobs)
+              ? jobs.jobs
+              : undefined;
+        if (!jobList) return fail('failed', 'ci_jobs_malformed');
 
-        // 读取失败日志
+        const failedJobs = jobList.filter(
+          (j: unknown): j is Record<string, unknown> =>
+            isPlainObject(j) && typeof j.id === 'number' && j.conclusion === 'failure',
+        );
+        const firstFailedJob = failedJobs[0];
+        if (!firstFailedJob) return fail('failed', 'ci_failed_job_not_found');
+
+        // 读取首个失败 job 的日志（对齐 actions.log.read 必填参数 jobId）
+        const primaryJobId = firstFailedJob.id as number;
         const logs = await options.read.execute('actions.log.read', {
+          repo: repoSlug,
           owner: binding.owner,
-          repo: binding.repo,
-          runId: run.id ?? binding.runId,
+          runId: run.id,
+          jobId: primaryJobId,
+          maxChars: maxLogBytes,
         }, context);
-        const logText = typeof logs === 'string' ? logs : isPlainObject(logs) && typeof logs.content === 'string' ? logs.content : '';
+        const logText = typeof logs === 'string'
+          ? logs
+          : isPlainObject(logs) && typeof logs.text === 'string'
+            ? logs.text
+            : isPlainObject(logs) && typeof logs.content === 'string'
+              ? logs.content
+              : undefined;
+        if (typeof logText !== 'string' || logText.trim().length === 0) {
+          return fail('failed', 'ci_log_malformed');
+        }
+
         const truncated = Buffer.byteLength(logText, 'utf8') > maxLogBytes;
         const logExcerpt = Buffer.from(logText, 'utf8').subarray(0, maxLogBytes).toString('utf8');
 
@@ -77,8 +137,9 @@ export function createGithubBoundCiFailureHostPort(options: GithubCiFailureHostO
           state: 'completed' as const,
           value: {
             binding: {...binding},
-            runId: run.id ?? binding.runId,
-            conclusion: run.conclusion ?? 'failure',
+            runId: run.id,
+            headSha: runHeadSha,
+            conclusion: 'failure' as const,
             failedJobCount: failedJobs.length,
             failedJobs: failedJobs.map((j: Record<string, unknown>) => ({
               id: j.id,
@@ -107,6 +168,8 @@ export interface TestIntentCheckOptions {
   resolvePatch?(context: WorkflowNodeContext): string | undefined;
 }
 
+const isTestPath = (headerLine: string): boolean => /test|\.spec\./i.test(headerLine);
+
 /** 审查修复补丁是否保留真实验收意图：严禁删测试、注掉断言、改空断言或跳过用例逃避 CI 检查。 */
 export function createWorkspaceTestIntentCheckHostPort(options?: TestIntentCheckOptions): WorkflowHostPort {
   return {
@@ -130,8 +193,32 @@ export function createWorkspaceTestIntentCheckHostPort(options?: TestIntentCheck
       let checkedAssertions = 0;
 
       for (const line of lines) {
-        if (line.startsWith('diff --git') || line.startsWith('--- ') || line.startsWith('+++ ')) {
-          inTestFile = /test|\.spec\./i.test(line);
+        if (line.startsWith('diff --git ')) {
+          inTestFile = isTestPath(line);
+          continue;
+        }
+        if (line.startsWith('deleted file mode')) {
+          if (inTestFile && !violations.includes('Deleted entire test file')) {
+            violations.push('Deleted entire test file');
+          }
+          continue;
+        }
+        if (line.startsWith('--- ')) {
+          const fromPath = line.slice(4).trim();
+          if (fromPath !== '/dev/null') {
+            inTestFile = inTestFile || isTestPath(fromPath);
+          }
+          continue;
+        }
+        if (line.startsWith('+++ ')) {
+          const toPath = line.slice(4).trim();
+          if (toPath === '/dev/null') {
+            if (inTestFile && !violations.includes('Deleted entire test file')) {
+              violations.push('Deleted entire test file');
+            }
+          } else {
+            inTestFile = inTestFile || isTestPath(toPath);
+          }
           continue;
         }
 
@@ -143,14 +230,19 @@ export function createWorkspaceTestIntentCheckHostPort(options?: TestIntentCheck
               violations.push(`Deleted test or assertion: "${trimmed.slice(0, 80)}"`);
             }
           }
-          // 检查新增的跳过/注掉断言（以 + 开头但不是 +++）
+          // 检查新增的跳过/专注/注掉断言（以 + 开头但不是 +++）
           if (line.startsWith('+') && !line.startsWith('+++')) {
             const trimmed = line.slice(1).trim();
             if (/\/\/\s*(assert|expect)/.test(trimmed)) {
               violations.push(`Commented out assertion: "${trimmed.slice(0, 80)}"`);
             }
-            if (/\b(test\.skip|it\.skip|xit|xtest)\b/.test(trimmed)) {
-              violations.push(`Added test skip: "${trimmed.slice(0, 80)}"`);
+            if (
+              /\b(test|it|describe)\.(skip|only|todo)\b/.test(trimmed) ||
+              /\b(xit|xtest|xdescribe|fit|ftest|fdescribe)\b/.test(trimmed) ||
+              /\{\s*skip\s*:\s*(true|1|['"][^'"]*['"])/.test(trimmed) ||
+              /\b(t|context)\.skip\s*\(/.test(trimmed)
+            ) {
+              violations.push(`Added test skip or focus: "${trimmed.slice(0, 80)}"`);
             }
             if (/\bassert\.(ok|equal|strictEqual)\s*\(\s*true\s*\)/.test(trimmed)) {
               violations.push(`Trivialized assertion: "${trimmed.slice(0, 80)}"`);

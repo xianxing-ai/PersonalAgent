@@ -19,8 +19,13 @@ function fail(state: 'unavailable' | 'failed' | 'unknown', reason: string, extra
 // F06_N03: todo.registered_write
 // ---------------------------------------------------------------------------
 export interface TodoWriteInput {
+  readonly operation?: 'todo.create' | 'todo.update';
+  readonly id?: string;
   readonly title: string;
+  readonly notes?: string;
   readonly dueUtc?: string;
+  readonly remindUtc?: string;
+  readonly status?: 'open' | 'done' | 'cancelled';
   readonly idempotencyKey: string;
   readonly listId?: string;
 }
@@ -38,6 +43,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
   if (typeof options?.write?.execute !== 'function' || typeof options?.resolveWrite !== 'function') {
     throw new TypeError('createTodoRegisteredWriteHostPort 需要 write 端口与 resolveWrite');
   }
+  const idempotencyLedger = new Map<string, {fingerprint: string; receipt: Record<string, unknown>}>();
   return {
     capabilities: ['todo.registered_write'],
     async read(context: WorkflowNodeContext) {
@@ -45,19 +51,61 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
       if (!writeInput || !text(writeInput.title) || !text(writeInput.idempotencyKey)) {
         return fail('unavailable', 'todo_write_input_unavailable');
       }
+      const op = writeInput.operation ?? (text(writeInput.id) ? 'todo.update' : 'todo.create');
+      if (op === 'todo.update' && !text(writeInput.id)) {
+        return fail('unavailable', 'todo_update_id_unavailable');
+      }
+      const fingerprint = createHash('sha256')
+        .update(
+          JSON.stringify({
+            op,
+            id: writeInput.id ?? null,
+            title: writeInput.title,
+            notes: writeInput.notes ?? null,
+            dueUtc: writeInput.dueUtc ?? null,
+            remindUtc: writeInput.remindUtc ?? null,
+            status: writeInput.status ?? null,
+            listId: writeInput.listId ?? null,
+          }),
+        )
+        .digest('hex');
+
+      const existing = idempotencyLedger.get(writeInput.idempotencyKey);
+      if (existing) {
+        if (existing.fingerprint !== fingerprint) {
+          return fail('failed', 'todo_idempotency_conflict', {idempotencyKey: writeInput.idempotencyKey});
+        }
+        return {
+          state: 'completed' as const,
+          value: {
+            receipt: existing.receipt,
+            idempotencyKey: writeInput.idempotencyKey,
+            replayed: true,
+            writtenAt: new Date().toISOString(),
+            source: 'todo_write_receipt',
+          },
+        };
+      }
+
       try {
-        const result = await options.write.execute('todo.create', {
+        // 对齐 packages/productivity 的 todo.create / todo.update 输入 schema（additionalProperties: false）
+        const toolPayload: Record<string, unknown> = {
+          ...(op === 'todo.update' && text(writeInput.id) ? {id: writeInput.id} : {}),
           title: writeInput.title,
-          ...(writeInput.dueUtc ? {dueUtc: writeInput.dueUtc} : {}),
-          ...(writeInput.listId ? {listId: writeInput.listId} : {}),
-          idempotencyKey: writeInput.idempotencyKey,
-        }, context);
+          ...(text(writeInput.notes) ? {notes: writeInput.notes} : {}),
+          ...(text(writeInput.dueUtc) ? {dueUtc: writeInput.dueUtc} : {}),
+          ...(text(writeInput.remindUtc) ? {remindUtc: writeInput.remindUtc} : {}),
+          ...(op === 'todo.update' && text(writeInput.status) ? {status: writeInput.status} : {}),
+        };
+        const result = await options.write.execute(op, toolPayload, context);
         if (!isPlainObject(result)) return fail('failed', 'todo_write_malformed');
+        idempotencyLedger.set(writeInput.idempotencyKey, {fingerprint, receipt: result});
         return {
           state: 'completed' as const,
           value: {
             receipt: result,
             idempotencyKey: writeInput.idempotencyKey,
+            replayed: false,
             writtenAt: new Date().toISOString(),
             source: 'todo_write_receipt',
           },
@@ -106,7 +154,13 @@ export function createReminderClockRevisionHostPort(options: ReminderClockHostOp
         const nowUtc = options.reminderPort.nowUtc ? options.reminderPort.nowUtc() : new Date().toISOString();
         const clockMs = Date.parse(nowUtc);
         const dueMs = Date.parse(reminder.dueUtc);
-        const isDue = Number.isFinite(clockMs) && Number.isFinite(dueMs) && clockMs >= dueMs;
+        if (!Number.isFinite(clockMs) || !Number.isFinite(dueMs)) {
+          return fail('failed', 'reminder_due_utc_invalid', {
+            dueUtc: reminder.dueUtc,
+            clockUtc: nowUtc,
+          });
+        }
+        const isDue = clockMs >= dueMs;
         const revisionMatch = target.expectedRevision === undefined || reminder.revision === target.expectedRevision;
         return {
           state: 'completed' as const,
@@ -140,7 +194,7 @@ export interface CalendarFreshnessTarget {
 }
 
 export interface CalendarWorkflowReadPort {
-  execute(operation: 'calendar.events' | 'calendar.get', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
+  execute(operation: 'calendar.events', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
 }
 
 export interface CalendarFreshnessHostOptions {
@@ -160,13 +214,37 @@ export function createCalendarFreshnessCheckHostPort(options: CalendarFreshnessH
         return fail('unavailable', 'calendar_target_unavailable');
       }
       try {
+        const window = target.window ?? {
+          fromUtc: new Date().toISOString(),
+          toUtc: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        };
+        const page = await options.calendarPort.execute('calendar.events', {
+          accountRef: target.accountRef,
+          fromUtc: window.fromUtc,
+          toUtc: window.toUtc,
+          ...(text(target.externalId) ? {externalId: target.externalId} : {}),
+        }, context);
+
         if (text(target.externalId)) {
-          const event = await options.calendarPort.execute('calendar.get', {
-            accountRef: target.accountRef,
-            externalId: target.externalId,
-          }, context);
-          if (!isPlainObject(event)) return fail('failed', 'calendar_event_not_found');
-          const currentSequence = typeof event.sequence === 'number' ? event.sequence : 0;
+          let event: Record<string, unknown> | undefined;
+          if (isPlainObject(page) && Array.isArray(page.items)) {
+            const matched = page.items.find(
+              (item: unknown) =>
+                isPlainObject(item) &&
+                (item.externalId === target.externalId || item.uid === target.externalId || item.id === target.externalId),
+            );
+            if (isPlainObject(matched)) event = matched;
+          } else if (isPlainObject(page) && (page.externalId === target.externalId || page.uid === target.externalId)) {
+            event = page;
+          }
+          if (!event) return fail('failed', 'calendar_event_not_found');
+          if (typeof event.sequence !== 'number' || !Number.isFinite(event.sequence)) {
+            return fail('unknown', 'calendar_sequence_unavailable', {
+              accountRef: target.accountRef,
+              externalId: target.externalId,
+            });
+          }
+          const currentSequence = event.sequence;
           const fresh = target.expectedSequence === undefined || currentSequence === target.expectedSequence;
           return {
             state: 'completed' as const,
@@ -181,16 +259,8 @@ export function createCalendarFreshnessCheckHostPort(options: CalendarFreshnessH
             },
           };
         }
+
         // 时间窗级新鲜度读回
-        const window = target.window ?? {
-          fromUtc: new Date().toISOString(),
-          toUtc: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-        };
-        const page = await options.calendarPort.execute('calendar.events', {
-          accountRef: target.accountRef,
-          fromUtc: window.fromUtc,
-          toUtc: window.toUtc,
-        }, context);
         if (!isPlainObject(page) || !Array.isArray(page.items)) {
           return fail('failed', 'calendar_window_read_malformed');
         }
@@ -217,6 +287,7 @@ export function createCalendarFreshnessCheckHostPort(options: CalendarFreshnessH
 // F07_N05: calendar.registered_write
 // ---------------------------------------------------------------------------
 export interface CalendarWriteInput {
+  readonly operation?: 'calendar.create' | 'calendar.update';
   readonly accountRef: string;
   readonly summary: string;
   readonly startUtc: string;
@@ -243,12 +314,22 @@ export function createCalendarRegisteredWriteHostPort(options: CalendarRegistere
     capabilities: ['calendar.registered_write'],
     async read(context: WorkflowNodeContext) {
       const writeInput = options.resolveWrite(context);
-      if (!writeInput || !text(writeInput.summary) || !text(writeInput.startUtc) || !text(writeInput.endUtc)) {
+      if (
+        !writeInput ||
+        !text(writeInput.accountRef) ||
+        !text(writeInput.summary) ||
+        !text(writeInput.startUtc) ||
+        !text(writeInput.endUtc)
+      ) {
         return fail('unavailable', 'calendar_write_input_unavailable');
       }
+      const op = writeInput.operation ?? 'calendar.create';
+      if (op === 'calendar.update' && !text(writeInput.externalId)) {
+        return fail('unavailable', 'calendar_update_external_id_unavailable');
+      }
       try {
-        const op = 'calendar.create';
         const result = await options.calendarPort.execute(op, {
+          accountRef: writeInput.accountRef,
           summary: writeInput.summary,
           startUtc: writeInput.startUtc,
           endUtc: writeInput.endUtc,
@@ -261,7 +342,9 @@ export function createCalendarRegisteredWriteHostPort(options: CalendarRegistere
           state: 'completed' as const,
           value: {
             receipt: result,
-            externalId: writeInput.externalId,
+            accountRef: writeInput.accountRef,
+            operation: op,
+            externalId: writeInput.externalId ?? (typeof result.externalId === 'string' ? result.externalId : undefined),
             writtenAt: new Date().toISOString(),
             source: 'calendar_write_receipt',
           },
@@ -309,13 +392,15 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
     capabilities: ['calendar.update_and_invalidate_reminder'],
     async read(context: WorkflowNodeContext) {
       const input = options.resolveInput(context);
-      if (!input || !text(input.externalId) || !text(input.reminderId)) {
+      if (!input || !text(input.accountRef) || !text(input.externalId) || !text(input.reminderId)) {
         return fail('unavailable', 'calendar_update_invalidate_input_unavailable');
       }
       try {
-        // 1. 更新日程属性并递增 SEQUENCE
+        // 1. 更新日程属性并递增 SEQUENCE（透传 accountRef 与 expectedSequence）
         const updateResult = await options.calendarPort.execute('calendar.update', {
+          accountRef: input.accountRef,
           externalId: input.externalId,
+          ...(typeof input.previousSequence === 'number' ? {expectedSequence: input.previousSequence} : {}),
           ...(input.summary ? {summary: input.summary} : {}),
           ...(input.startUtc ? {startUtc: input.startUtc} : {}),
           ...(input.endUtc ? {endUtc: input.endUtc} : {}),
@@ -323,15 +408,38 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
           ...(input.notes ? {notes: input.notes} : {}),
         }, context);
         if (!isPlainObject(updateResult)) return fail('failed', 'calendar_update_malformed');
+        if (
+          typeof input.previousSequence === 'number' &&
+          typeof updateResult.sequence === 'number' &&
+          updateResult.sequence <= input.previousSequence
+        ) {
+          return fail('failed', 'calendar_sequence_not_incremented', {
+            previousSequence: input.previousSequence,
+            currentSequence: updateResult.sequence,
+          });
+        }
 
-        // 2. 作废旧出行提醒
-        const invalidation = await options.invalidationPort.invalidateReminder(
-          input.reminderId,
-          `Superseded by calendar event ${input.externalId} update`,
-          context
-        );
-        if (!isPlainObject(invalidation) || !invalidation.invalidated) {
-          return fail('failed', 'reminder_invalidation_failed');
+        // 2. 作废旧出行提醒（若日历已更新成功但作废提醒失败/未确认，返回 unknown 并携带 calendarReceipt 供对账）
+        try {
+          const invalidation = await options.invalidationPort.invalidateReminder(
+            input.reminderId,
+            `Superseded by calendar event ${input.externalId} update`,
+            context
+          );
+          if (!isPlainObject(invalidation) || !invalidation.invalidated) {
+            return fail('unknown', 'reminder_invalidation_failed', {
+              calendarReceipt: updateResult,
+              reminderId: input.reminderId,
+              externalId: input.externalId,
+            });
+          }
+        } catch (invalidationError) {
+          if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw invalidationError;
+          return fail('unknown', 'reminder_invalidation_failed', {
+            calendarReceipt: updateResult,
+            reminderId: input.reminderId,
+            externalId: input.externalId,
+          });
         }
 
         return {

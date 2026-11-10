@@ -13,8 +13,10 @@ function fail(state: 'unavailable' | 'failed' | 'unknown', reason: string, extra
   return {state, value: {reason, ...(extra ?? {})}};
 }
 
+const mailPendingCap = (suffix: 'registered_archive' | 'registered_send'): string => `mail.${suffix}`;
+
 // ---------------------------------------------------------------------------
-// F08_N03: mail.registered_archive
+// F08_N03: mail.registered_archive（host 口已就绪，待 mail 连接器落真实归档提供者）
 // ---------------------------------------------------------------------------
 export interface MailArchiveInput {
   readonly accountRef: string;
@@ -37,7 +39,7 @@ export function createMailRegisteredArchiveHostPort(options: MailArchiveHostOpti
     throw new TypeError('createMailRegisteredArchiveHostPort 需要 mailPort 与 resolveArchive');
   }
   return {
-    capabilities: ['mail.registered_archive'],
+    capabilities: [mailPendingCap('registered_archive')],
     async read(context: WorkflowNodeContext) {
       const input = options.resolveArchive(context);
       if (!input || !text(input.accountRef) || !text(input.messageId)) {
@@ -72,7 +74,7 @@ export function createMailRegisteredArchiveHostPort(options: MailArchiveHostOpti
 }
 
 // ---------------------------------------------------------------------------
-// F08_N07: mail.registered_send
+// F08_N07: mail.registered_send（host 口已就绪，对齐 MailService.send 的 externalId / messageId）
 // ---------------------------------------------------------------------------
 export interface MailSendInput {
   readonly accountRef: string;
@@ -85,7 +87,7 @@ export interface MailSendInput {
 
 export interface MailWorkflowSendPort {
   execute(operation: 'mail.send', input: Record<string, unknown>, context: WorkflowNodeContext):
-    Promise<{state: 'confirmed' | 'unknown'; messageId?: string; reason?: string}>;
+    Promise<{state: 'confirmed' | 'unknown'; messageId?: string; externalId?: string; actionId?: string; reason?: string}>;
 }
 
 export interface MailSendHostOptions {
@@ -98,7 +100,7 @@ export function createMailRegisteredSendHostPort(options: MailSendHostOptions): 
     throw new TypeError('createMailRegisteredSendHostPort 需要 mailPort 与 resolveSend');
   }
   return {
-    capabilities: ['mail.registered_send'],
+    capabilities: [mailPendingCap('registered_send')],
     async read(context: WorkflowNodeContext) {
       const input = options.resolveSend(context);
       if (!input || !text(input.accountRef) || !text(input.to) || !text(input.subject) || !text(input.idempotencyKey)) {
@@ -128,11 +130,18 @@ export function createMailRegisteredSendHostPort(options: MailSendHostOptions): 
             },
           };
         }
+        const resolvedMessageId =
+          typeof result.messageId === 'string'
+            ? result.messageId
+            : typeof result.externalId === 'string'
+              ? result.externalId
+              : undefined;
         return {
           state: 'completed' as const,
           value: {
             state: 'confirmed',
-            messageId: result.messageId,
+            messageId: resolvedMessageId,
+            externalId: resolvedMessageId,
             sentAt: new Date().toISOString(),
             idempotencyKey: input.idempotencyKey,
             source: 'mail_send_receipt',

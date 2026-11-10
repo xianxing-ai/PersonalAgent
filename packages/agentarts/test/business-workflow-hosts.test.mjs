@@ -32,22 +32,40 @@ const context = (overrides = {}) => ({
   ...overrides,
 });
 
-test('F06_N03 todo.registered_write：注册待办写口与幂等键透传', async () => {
-  let invoked = null;
+test('F06_N03 todo.registered_write：注册待办写口、schema 对齐与宿主侧幂等账本', async () => {
+  const calls = [];
+  let currentInput = {title: '买牛奶', dueUtc: '2026-11-10T10:00:00.000Z', idempotencyKey: 'idem-1', listId: 'inbox'};
   const port = createTodoRegisteredWriteHostPort({
     write: {
       execute: async (op, input) => {
-        invoked = {op, input};
+        calls.push({op, input});
         return {id: 'todo-1', title: input.title, state: 'created'};
       },
     },
-    resolveWrite: () => ({title: '买牛奶', dueUtc: '2026-11-10T10:00:00.000Z', idempotencyKey: 'idem-1'}),
+    resolveWrite: () => currentInput,
   });
   const res = await port.read(context());
   assert.equal(res.state, 'completed');
   assert.equal(res.value.idempotencyKey, 'idem-1');
+  assert.equal(res.value.replayed, false);
   assert.equal(res.value.source, 'todo_write_receipt');
-  assert.equal(invoked.input.title, '买牛奶');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.title, '买牛奶');
+  // 确保未向底层 todo.create 透传 schema 外字段 idempotencyKey / listId
+  assert.equal('idempotencyKey' in calls[0].input, false);
+  assert.equal('listId' in calls[0].input, false);
+
+  // 同幂等键同载荷再次调用：直接重放，不重复调用底层连接器
+  const replayRes = await port.read(context());
+  assert.equal(replayRes.state, 'completed');
+  assert.equal(replayRes.value.replayed, true);
+  assert.equal(calls.length, 1);
+
+  // 同幂等键不同载荷：报错 todo_idempotency_conflict
+  currentInput = {title: '买咖啡', dueUtc: '2026-11-10T10:00:00.000Z', idempotencyKey: 'idem-1', listId: 'inbox'};
+  const conflictRes = await port.read(context());
+  assert.equal(conflictRes.state, 'failed');
+  assert.equal(conflictRes.value.reason, 'todo_idempotency_conflict');
 
   // 缺输入报错 unavailable
   const unavail = createTodoRegisteredWriteHostPort({
@@ -57,7 +75,7 @@ test('F06_N03 todo.registered_write：注册待办写口与幂等键透传', asy
   assert.equal((await unavail.read(context())).state, 'unavailable');
 });
 
-test('F06_N04 reminder.current_clock_and_revision：实际时钟与版本到期核对', async () => {
+test('F06_N04 reminder.current_clock_and_revision：实际时钟、版本到期核对与非法时间失败', async () => {
   const port = createReminderClockRevisionHostPort({
     reminderPort: {
       getReminder: async () => ({reminderId: 'rem-1', revision: 2, dueUtc: '2026-11-09T12:00:00.000Z', state: 'active'}),
@@ -70,15 +88,26 @@ test('F06_N04 reminder.current_clock_and_revision：实际时钟与版本到期�
   assert.equal(res.value.isDue, true);
   assert.equal(res.value.revisionMatch, true);
   assert.equal(res.value.source, 'reminder_clock_readback');
+
+  // 非法 dueUtc 必须返回 failed（严禁伪装成 completed + isDue: false）
+  const badPort = createReminderClockRevisionHostPort({
+    reminderPort: {
+      getReminder: async () => ({reminderId: 'rem-bad', revision: 1, dueUtc: 'not-a-valid-date', state: 'active'}),
+      nowUtc: () => '2026-11-09T13:00:00.000Z',
+    },
+    resolveTarget: () => ({reminderId: 'rem-bad'}),
+  });
+  const badRes = await badPort.read(context());
+  assert.equal(badRes.state, 'failed');
+  assert.equal(badRes.value.reason, 'reminder_due_utc_invalid');
 });
 
-test('F07_N04 calendar.freshness_check：单条 Sequence 与窗口新鲜度校验', async () => {
+test('F07_N04 calendar.freshness_check：基于 calendar.events 的单条 Sequence 与缺失 sequence 未知态校验', async () => {
   const port = createCalendarFreshnessCheckHostPort({
     calendarPort: {
-      execute: async (op, input) => {
-        if (op === 'calendar.get') return {externalId: 'evt-1', sequence: 3, title: '晨会'};
-        if (op === 'calendar.events') return {items: [{externalId: 'evt-1'}]};
-        throw new Error('bad op');
+      execute: async (op) => {
+        if (op === 'calendar.events') return {items: [{externalId: 'evt-1', sequence: 3, title: '晨会'}]};
+        throw new Error(`unexpected op: ${op}`);
       },
     },
     resolveTarget: () => ({accountRef: 'cal-acc', externalId: 'evt-1', expectedSequence: 3}),
@@ -88,12 +117,27 @@ test('F07_N04 calendar.freshness_check：单条 Sequence 与窗口新鲜度校�
   assert.equal(res.value.fresh, true);
   assert.equal(res.value.currentSequence, 3);
   assert.equal(res.value.source, 'calendar_readback');
+
+  // 缺失 sequence 字段时返回 unknown（不回退为 0）
+  const noSeqPort = createCalendarFreshnessCheckHostPort({
+    calendarPort: {
+      execute: async () => ({items: [{externalId: 'evt-1', title: '无序列号日程'}]}),
+    },
+    resolveTarget: () => ({accountRef: 'cal-acc', externalId: 'evt-1', expectedSequence: 0}),
+  });
+  const noSeqRes = await noSeqPort.read(context());
+  assert.equal(noSeqRes.state, 'unknown');
+  assert.equal(noSeqRes.value.reason, 'calendar_sequence_unavailable');
 });
 
-test('F07_N05 calendar.registered_write：注册日历创建写口', async () => {
+test('F07_N05 calendar.registered_write：注册日历创建/更新写口并透传 accountRef', async () => {
+  let receivedInput = null;
   const port = createCalendarRegisteredWriteHostPort({
     calendarPort: {
-      execute: async (op, input) => ({item: {externalId: input.externalId ?? 'evt-new', title: input.summary}, state: 'created'}),
+      execute: async (op, input) => {
+        receivedInput = {op, input};
+        return {item: {externalId: input.externalId ?? 'evt-new', title: input.summary}, state: 'created'};
+      },
     },
     resolveWrite: () => ({
       accountRef: 'cal',
@@ -106,14 +150,20 @@ test('F07_N05 calendar.registered_write：注册日历创建写口', async () =>
   const res = await port.read(context());
   assert.equal(res.state, 'completed');
   assert.equal(res.value.externalId, 'evt-pre-1');
+  assert.equal(res.value.accountRef, 'cal');
+  assert.equal(receivedInput.input.accountRef, 'cal');
   assert.equal(res.value.source, 'calendar_write_receipt');
 });
 
-test('F11_N05 calendar.update_and_invalidate_reminder：改期与提醒作废联动', async () => {
+test('F11_N05 calendar.update_and_invalidate_reminder：改期与提醒作废联动及部分写成功 unknown 对账保真', async () => {
   let invalidatedId = null;
+  let calendarInput = null;
   const port = createCalendarUpdateAndInvalidateReminderHostPort({
     calendarPort: {
-      execute: async (op, input) => ({item: {externalId: input.externalId, sequence: 4}, state: 'updated'}),
+      execute: async (op, input) => {
+        calendarInput = input;
+        return {item: {externalId: input.externalId}, sequence: 4, state: 'updated'};
+      },
     },
     invalidationPort: {
       invalidateReminder: async (id) => {
@@ -128,13 +178,36 @@ test('F11_N05 calendar.update_and_invalidate_reminder：改期与提醒作废联
       startUtc: '2026-11-10T14:00:00.000Z',
       endUtc: '2026-11-10T15:00:00.000Z',
       reminderId: 'rem-old-1',
+      previousSequence: 3,
     }),
   });
   const res = await port.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
   assert.equal(res.state, 'completed');
+  assert.equal(calendarInput.accountRef, 'cal');
   assert.equal(invalidatedId, 'rem-old-1');
   assert.equal(res.value.invalidationReceipt.reminderId, 'rem-old-1');
   assert.equal(res.value.source, 'calendar_reminder_sync');
+
+  // 日历更新已成功但作废提醒失败：返回 unknown 并保留 calendarReceipt 供对账
+  const partialPort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarPort: {
+      execute: async (_op, input) => ({externalId: input.externalId, sequence: 5, state: 'updated'}),
+    },
+    invalidationPort: {
+      invalidateReminder: async () => ({reminderId: 'rem-old-1', invalidated: false, state: 'active'}),
+    },
+    resolveInput: () => ({
+      accountRef: 'cal',
+      externalId: 'evt-1',
+      summary: '推迟到下午',
+      reminderId: 'rem-old-1',
+      previousSequence: 4,
+    }),
+  });
+  const partialRes = await partialPort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
+  assert.equal(partialRes.state, 'unknown');
+  assert.equal(partialRes.value.reason, 'reminder_invalidation_failed');
+  assert.equal(partialRes.value.calendarReceipt.externalId, 'evt-1');
 });
 
 test('F08_N03 mail.registered_archive：受控归档并读回核验', async () => {
@@ -151,17 +224,18 @@ test('F08_N03 mail.registered_archive：受控归档并读回核验', async () =
   assert.equal(res.value.source, 'mail_archive_receipt');
 });
 
-test('F08_N07 mail.registered_send：稳定操作 ID 发送与 unknown 态保真', async () => {
+test('F08_N07 mail.registered_send：兼容 externalId/messageId 发送回执与 unknown 态保真', async () => {
   const port = createMailRegisteredSendHostPort({
     mailPort: {
-      execute: async (op, input) => ({state: 'confirmed', messageId: 'msg-sent-1'}),
+      execute: async () => ({state: 'confirmed', externalId: '<msg-sent-1@local>'}),
     },
     resolveSend: () => ({accountRef: 'mail', to: 'a@b.com', subject: 'hi', text: 'body', idempotencyKey: 'k1'}),
   });
   const res = await port.read(context());
   assert.equal(res.state, 'completed');
   assert.equal(res.value.state, 'confirmed');
-  assert.equal(res.value.messageId, 'msg-sent-1');
+  assert.equal(res.value.messageId, '<msg-sent-1@local>');
+  assert.equal(res.value.externalId, '<msg-sent-1@local>');
 
   // unknown 态核对触发
   const unknownPort = createMailRegisteredSendHostPort({
@@ -193,27 +267,70 @@ test('F09_N02 feeds.validate_and_deduplicate：哈希去重与格式校验', asy
   assert.equal(res.value.source, 'feeds_validation_receipt');
 });
 
-test('F16_N01 github.bound_ci_failure：提交绑定与失败日志读回', async () => {
+test('F16_N01 github.bound_ci_failure：对齐 actions.run.list/job.list/log.read 并严格核对 headSha 与 conclusion', async () => {
+  let logInput = null;
   const port = createGithubBoundCiFailureHostPort({
     read: {
-      execute: async (op) => {
-        if (op === 'actions.run.get') return {id: 1001, conclusion: 'failure'};
-        if (op === 'actions.job.list') return [{id: 2001, name: 'build-and-test', conclusion: 'failure'}];
-        if (op === 'actions.log.read') return 'Error: Test failed at line 42\nStack trace...';
-        throw new Error('unsupported');
+      execute: async (op, input) => {
+        if (op === 'actions.run.list') {
+          return {items: [{id: 1001, headSha: 'c0ffee', status: 'completed', conclusion: 'failure'}]};
+        }
+        if (op === 'actions.job.list') {
+          return {items: [{id: 2001, name: 'build-and-test', status: 'completed', conclusion: 'failure'}]};
+        }
+        if (op === 'actions.log.read') {
+          logInput = input;
+          return {text: 'Error: Test failed at line 42\nStack trace...', offset: 0, nextOffset: null, truncated: false};
+        }
+        throw new Error(`unsupported op: ${op}`);
       },
     },
-    resolveBinding: () => ({owner: 'xianxing-ai', repo: 'PersonalAgent', commitSha: 'c0ffee'}),
+    resolveBinding: () => ({owner: 'xianxing-ai', repo: 'PersonalAgent', commitSha: 'c0ffee', runId: 1001}),
   });
   const res = await port.read(context());
   assert.equal(res.state, 'completed');
   assert.equal(res.value.conclusion, 'failure');
+  assert.equal(res.value.headSha, 'c0ffee');
   assert.equal(res.value.failedJobCount, 1);
+  assert.equal(logInput.jobId, 2001);
+  assert.equal(logInput.repo, 'xianxing-ai/PersonalAgent');
   assert.match(res.value.logExcerpt, /Test failed/);
   assert.equal(res.value.source, 'ci_failure_readback');
+
+  // 负例 1：runId 对应的 headSha 与绑定 commitSha 不一致 -> 必须报错 ci_run_head_sha_mismatch
+  const mismatchPort = createGithubBoundCiFailureHostPort({
+    read: {
+      execute: async (op) => {
+        if (op === 'actions.run.list') {
+          return {items: [{id: 1001, headSha: 'other-sha', status: 'completed', conclusion: 'failure'}]};
+        }
+        return {};
+      },
+    },
+    resolveBinding: () => ({owner: 'xianxing-ai', repo: 'PersonalAgent', commitSha: 'c0ffee', runId: 1001}),
+  });
+  const mismatchRes = await mismatchPort.read(context());
+  assert.equal(mismatchRes.state, 'failed');
+  assert.equal(mismatchRes.value.reason, 'ci_run_head_sha_mismatch');
+
+  // 负例 2：run.conclusion 缺失或为 success -> 严禁伪造 failure，必须报错 ci_run_not_failed
+  const notFailedPort = createGithubBoundCiFailureHostPort({
+    read: {
+      execute: async (op) => {
+        if (op === 'actions.run.list') {
+          return {items: [{id: 1001, headSha: 'c0ffee', status: 'in_progress', conclusion: null}]};
+        }
+        return {};
+      },
+    },
+    resolveBinding: () => ({owner: 'xianxing-ai', repo: 'PersonalAgent', commitSha: 'c0ffee', runId: 1001}),
+  });
+  const notFailedRes = await notFailedPort.read(context());
+  assert.equal(notFailedRes.state, 'failed');
+  assert.equal(notFailedRes.value.reason, 'ci_run_not_failed');
 });
 
-test('F16_N04 workspace.test_intent_check：审查修复补丁是否保留真实验收意图', async () => {
+test('F16_N04 workspace.test_intent_check：审查修复补丁是否保留真实验收意图（含整文件删除与 skip/only 检测）', async () => {
   const port = createWorkspaceTestIntentCheckHostPort();
 
   // 正例：正常修复代码逻辑，保留并增加测试断言
@@ -239,7 +356,7 @@ diff --git a/packages/core/test/service.test.mjs b/packages/core/test/service.te
   const deletedPatch = `
 diff --git a/test/a.test.mjs b/test/a.test.mjs
 --- a/test/a.test.mjs
-+++ b/test/a.test.mjs
++++ a/test/a.test.mjs
 @@ -10,2 +10,0 @@
 -assert.equal(foo, bar);
 -assert.ok(valid);
@@ -261,4 +378,34 @@ diff --git a/test/a.test.mjs b/test/a.test.mjs
   assert.equal(skipRes.state, 'failed');
   assert.equal(skipRes.value.preserved, false);
   assert.match(skipRes.value.violations[0], /Added test skip/);
+
+  // 负例 3：直接删除整个测试文件（+++ /dev/null 不得覆盖 inTestFile）
+  const deleteFilePatch = `
+diff --git a/test/foo.test.mjs b/test/foo.test.mjs
+deleted file mode 100644
+--- a/test/foo.test.mjs
++++ /dev/null
+@@ -1,3 +0,0 @@
+-test('must pass', () => {
+-  assert.equal(1 + 1, 2);
+-});
+`;
+  const deleteFileRes = await port.read(context({input: deleteFilePatch}));
+  assert.equal(deleteFileRes.state, 'failed');
+  assert.equal(deleteFileRes.value.preserved, false);
+  assert.ok(deleteFileRes.value.violations.some((v) => v.includes('Deleted entire test file')));
+
+  // 负例 4：使用 {skip: true} 或 describe.only 绕过测试
+  const optionSkipPatch = `
+diff --git a/test/bar.spec.ts b/test/bar.spec.ts
+--- a/test/bar.spec.ts
++++ b/test/bar.spec.ts
+@@ -5,1 +5,2 @@
++test('bypass', {skip: true}, () => {});
++describe.only('focused suite', () => {});
+`;
+  const optionSkipRes = await port.read(context({input: optionSkipPatch}));
+  assert.equal(optionSkipRes.state, 'failed');
+  assert.equal(optionSkipRes.value.preserved, false);
+  assert.equal(optionSkipRes.value.violations.length, 2);
 });
