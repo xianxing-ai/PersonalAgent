@@ -3,7 +3,11 @@
 # It prepares a headless job executor. It does not open extra inbound ports.
 set -eu
 VERSION=1.2.0
-NODE_VERSION=22.21.0
+# Keep these pins aligned with .node-version and the root CI npm pin.
+NODE_VERSION=24.15.0
+NPM_VERSION=11.12.1
+PATH=/usr/local/bin:$PATH
+export PATH
 PREFIX=/opt/personal-agent-runner
 STATE=/var/lib/personal-agent-runner
 ENV_FILE=/etc/personal-agent-runner/token
@@ -20,7 +24,9 @@ if [ ! -f /etc/personal-agent-runner/model-command.json ]; then
 JSON
   chmod 644 /etc/personal-agent-runner/model-command.json
 fi
-if [ -f "$PREFIX/VERSION" ] && [ "$(cat "$PREFIX/VERSION")" = "$VERSION" ] && command -v node >/dev/null 2>&1; then
+if [ -f "$PREFIX/VERSION" ] && [ "$(cat "$PREFIX/VERSION")" = "$VERSION" ] \
+  && [ -x /usr/local/bin/node ] && [ "$(/usr/local/bin/node --version)" = "v$NODE_VERSION" ] \
+  && [ -x /usr/local/bin/npm ] && [ "$(/usr/local/bin/npm --version)" = "$NPM_VERSION" ]; then
   node "$PREFIX/remote-runner-service.mjs" --verify
   exit 0
 fi
@@ -38,11 +44,14 @@ fi
 NODE_ARCH=$ARCH
 if [ "$ARCH" = "x86_64" ]; then NODE_ARCH=x64; fi
 if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then NODE_ARCH=arm64; fi
-if ! command -v node >/dev/null 2>&1 || ! node -v | grep -q "v$NODE_VERSION"; then
+if [ ! -x /usr/local/bin/node ] || [ "$(/usr/local/bin/node --version)" != "v$NODE_VERSION" ]; then
   TMP=$(mktemp -d)
   curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$NODE_ARCH.tar.xz" -o "$TMP/node.tar.xz"
   tar -xJf "$TMP/node.tar.xz" -C /usr/local --strip-components=1
   rm -rf "$TMP"
+fi
+if [ "$(/usr/local/bin/npm --version)" != "$NPM_VERSION" ]; then
+  /usr/local/bin/npm install --global --prefix /usr/local "npm@$NPM_VERSION"
 fi
 mkdir -p "$PREFIX" "$STATE" "$(dirname "$ENV_FILE")"
 if [ ! -f /etc/personal-agent-runner/model-command.json ]; then

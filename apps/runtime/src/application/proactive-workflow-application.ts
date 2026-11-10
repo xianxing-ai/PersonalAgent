@@ -347,7 +347,7 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
       {kind: 'retrieve_context', toolName: RUNTIME_PROACTIVE_TOOLS.retrieve_context, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location, effect: 'read'},
       {kind: 'update_item', toolName: RUNTIME_PROACTIVE_TOOLS.update_item, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location, effect: 'write'},
       {kind: 'schedule_wake', toolName: RUNTIME_PROACTIVE_TOOLS.schedule_wake, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location, effect: 'write'},
-      ...(options.notificationHost ? [{kind: 'notify' as const, toolName: RUNTIME_PROACTIVE_TOOLS.notify, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location: 'local_device' as const, effect: 'write' as const}] : []),
+      ...(options.notificationHost ? [{kind: 'notify' as const, toolName: RUNTIME_PROACTIVE_TOOLS.notify, toolVersion: RUNTIME_PROACTIVE_TOOL_VERSION, location:location as ToolBinding['location'], effect: 'write' as const}] : []),
       ...(options.bindings ?? []),
     ];
     if (new Set(values.map(value => value.kind)).size !== values.length) fail('INVALID_ARGUMENT', 'Proactive capability binding is duplicated');
@@ -573,10 +573,13 @@ export function createRuntimeProactiveWorkflowHost(runtime: TaskRuntime, tools: 
     const sourceItems = (item?.eventRefs ?? []).map(ref => snapshot.state.entries[ref]?.payload)
       .filter((payload): payload is ProactiveEvent => !!payload && typeof payload === 'object' && 'item' in payload);
     if (!sourceItems.length) return fail('UNSUPPORTED_CAPABILITY', 'Notification requires an original persisted connector item');
-    options.notificationHost.ingest(sourceItems.map(value => value.item));
-    const feed = options.notificationHost.notificationFeed({limit: 100});
-    if (sourceItems.some(value => !feed.items.some(entry => entry.id === value.item.dedupeKey)))
-      return fail('RESULT_UNKNOWN', 'Notification ingest needs original feed readback');
+    for (const {item: sourceItem} of sourceItems) {
+      const notification = {...sourceItem, dedupeKey: 'responsibility-notification:' + digest([options.taskId, sourceItem.source, sourceItem.dedupeKey])};
+      const scope = {kind: 'responsibility' as const, responsibilityId: options.taskId, connectorId: sourceItem.source};
+      options.notificationHost.ingest([notification], {scope, validUntilUtc: options.taskDeadline});
+      if (!options.notificationHost.notificationFeed({scope}).items.some(entry => entry.id === notification.dedupeKey))
+        return fail('RESULT_UNKNOWN', 'Notification ingest needs original responsibility feed readback');
+    }
     return {status: 'completed', resultRef: 'runtime:notification-feed:' + digest(sourceItems.map(value => value.eventId))};
   }
   async function advanceFrontier(input: Context & {requestId: string}, allowCancelledControl = false): Promise<ProactiveWorkflowResult> {
