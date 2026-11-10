@@ -246,3 +246,14 @@ test('complete1.2 Goal impact cannot assert a kind without committed source proj
  const {agent,models}=setup(w,goalPlan());await assert.rejects(agent.invoke(request(query)),{code:'EXTERNAL_FAILURE'});
  assert.equal(models.world.requests.length,1);assert.equal(models.plan.requests.length,0);
 });
+
+test('Plan out-of-bounds substitution exceeding World impact scope is rejected with EXTERNAL_FAILURE', async () => {
+  const p = plan();
+  // Plan tries to revise unrelatedId which was NOT in world().affected_items
+  p.preserved_steps = [];
+  p.revised_steps.push({node: ref(unrelatedId), replacement: '越界修改', reason: '未受影响节点'});
+  p.dependency_updates.push({node: ref(unrelatedId), dependencies: [ref(goalId, 2)], reason: '越界依赖'});
+  const {agent, models} = setup(world(), p);
+  await assert.rejects(agent.invoke(request(payload())), {code: 'EXTERNAL_FAILURE'});
+  assert.equal(models.review.requests.length, 0);
+});
