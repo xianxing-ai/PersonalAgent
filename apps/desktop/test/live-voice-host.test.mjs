@@ -105,6 +105,7 @@ test('normal turns remain listening, transcripts persist, lease renews and expli
     request.onEvent({type:'transcript',id:`a${i}`,role:'assistant',text:'继续听你说'});
     request.onEvent({type:'turn_complete'});
     host.receive({sender:contents,senderFrame:contents.mainFrame},{token,type:'drained'});
+    clock += 351;
     assert.equal(host.snapshot().status,'listening');
     assert.equal(host.hasActive(),true);
   }

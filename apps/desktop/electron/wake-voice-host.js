@@ -4,6 +4,8 @@ import {WakeLifecycleController, createPcmKeywordWakeSignalSource,
 const LEASE_MS = 10 * 60_000;
 const RELEASE_MS = 5000;
 const KEYWORD = '你好小派';
+/** Matches voice echo-guard default tail so late acoustic hits after TTS are not wakes. */
+const PLAYBACK_COOLDOWN_MS = 350;
 
 /** Visible-panel wake ownership. Logical sources share the existing physical microphone host. */
 export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput,
@@ -100,6 +102,14 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
           return record.adapterStart;
         }},
         cooldownMs: 1000,
+        playbackCooldownMs: PLAYBACK_COOLDOWN_MS,
+        clock: {
+          now,
+          setTimeout(callback, delayMs) {
+            const handle = setTimeout(callback, delayMs);
+            return {cancel() { clearTimeout(handle); }};
+          },
+        },
         onWake() {
           if (active !== record || phase !== 'listening' || voiceInput.hasActive()) return;
           void beginCapture(senderId).catch(() => {
