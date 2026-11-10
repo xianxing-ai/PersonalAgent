@@ -18,6 +18,7 @@ const setup = (options = {}) => {
     source,
     clock,
     cooldownMs: options.cooldownMs ?? 0,
+    playbackCooldownMs: options.playbackCooldownMs,
     onWake: event => wakes.push(event),
     onError: error => errors.push(error),
   });
@@ -188,7 +189,7 @@ test('old session callbacks cannot wake a newly enabled session', async () => {
 
 test('playback and explicit cooldown suppress wake events', async () => {
   const {controller, source, clock, wakes} = setup({cooldownMs: 50});
-  await enable(controller);
+  await enable(controller, 500);
   controller.setPlaybackActive(true);
   source.emit({kind: 'wake'});
   assert.equal(wakes.length, 0);
@@ -202,6 +203,21 @@ test('playback and explicit cooldown suppress wake events', async () => {
   clock.advance(1);
   source.emit({kind: 'wake'});
   assert.equal(wakes.length, 2);
+});
+
+test('playbackCooldownMs filters late acoustic detections after playback ends', async () => {
+  const {controller, source, clock, wakes} = setup({cooldownMs: 0, playbackCooldownMs: 40});
+  await enable(controller);
+  controller.setPlaybackActive(true);
+  source.emit({kind: 'wake'});
+  assert.equal(wakes.length, 0, 'suppressed during playback');
+  controller.setPlaybackActive(false);
+  clock.advance(20);
+  source.emit({kind: 'wake'});
+  assert.equal(wakes.length, 0, 'filtered by post-playback acoustic cooldown');
+  clock.advance(21);
+  source.emit({kind: 'wake'});
+  assert.equal(wakes.length, 1, 'accepted after acoustic cooldown window expires');
 });
 
 test('caller deadline is passed to authorization and stops a session at expiry', async () => {

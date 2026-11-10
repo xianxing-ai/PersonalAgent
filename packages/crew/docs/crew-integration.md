@@ -220,9 +220,10 @@ ToolGateway+Policy 处理。两层各自生效：Policy 管“这次工具调用
 
 ## 5. 未做的部分（保持 unavailable / 留后续）
 
-- **Gemini、Claude、Grok（API key）驱动与其余 ACP 客户端**：本 PR 不做；给这些驱动
-  派单会在执行侧得到明确的 `DRIVER_UNAVAILABLE`（“留后续 PR”），`crew.list_agents`
-  仍能列出它们（注册表与执行能力是两回事）。
+- **Gemini 与其余 ACP 客户端（opencode acp、grok agent stdio、acp-generic）**：本 PR 不做；
+  给这些驱动派单会在执行侧得到明确的 `DRIVER_UNAVAILABLE`（“留后续 PR”），`crew.list_agents`
+  仍能列出它们（注册表与执行能力是两回事）。Claude / Grok 的 API key HTTP 驱动已在 main
+  （P4）注册进驱动运行时，本适配器不另写一套；它们同样先过订阅同意门，且尚未对真实服务做实机验证。
 - **子 CLI 侧的 MCP 注入**（设计页 P1 的 send_message / list_agents / interrupt_agent
   注入到子 agent 本地 MCP server）：本 PR 的四个工具是**宿主/主 agent 侧**的
   RegisteredTool；注入子 CLI 的反向通道未开工。

@@ -10,6 +10,12 @@ import {ProactiveWorkflowEngine,proactiveWorkflowDigest,getProactiveWorkflowDesc
 // Host signatures are explicit synthetic provenance fixtures; no real model/account quality claim.
 const mac=value=>{const {proof,...body}=value;return createHmac('sha256','explicit-public-proactive-fixture').update(proactiveWorkflowDigest(body)).digest('hex');};
 const signed=value=>({...value,proof:mac(value)}),valid=async value=>value.proof===mac(value);
+const tamperCheckpoint=checkpoint=>{
+  const [payload,signature]=checkpoint.split('.');
+  const buf=Buffer.from(signature,'base64url');
+  buf[0]^=1;
+  return `${payload}.${buf.toString('base64url')}`;
+};
 const contracts=[false,true].map(qualifiedForMain=>({id:qualifiedForMain?'mature':'triage',version:'v1',criteria:'Use source context and current responsibility; no subscription is not irrelevance',
   qualifiedForMain,batchIndependent:true,candidates:['continue','research','delegate','local_plan','shadow','notify','request_user','defer','ignore'].map(action=>({id:action,action,description:action}))}));
 const caps=['retrieve_context','local_decision_batch','teacher_decision','continue','research','delegate','local_plan','shadow','notify','request_user','update_item','schedule_wake'].map(kind=>({kind,ref:'fixture.'+kind,
@@ -101,7 +107,7 @@ test('forged Evidence, inferred-interest authorization, changed event identity a
   await assert.rejects(f.advance({responsibilities:[responsibility]}),{code:'INVALID_ARGUMENT'});
   const original=f.event('stable');await f.advance({events:[original]});
   await assert.rejects(f.advance({events:[signed({...original,payloadDigest:'b'.repeat(64)})]}),{code:'REVISION_CONFLICT'});
-  await assert.rejects(f.advance({checkpoint:f.latest.checkpoint.slice(0,-3)+'bad'}),{code:'INVALID_ARGUMENT'});
+  await assert.rejects(f.advance({checkpoint:tamperCheckpoint(f.latest.checkpoint)}),{code:'INVALID_ARGUMENT'});
   const descriptor=getProactiveWorkflowDescriptor();assert.equal(descriptor.changesOwnedF01ToF28,false);assert.equal(descriptor.entries.length,4);
   assert.ok(getProactiveWorkflowAdapterRequirements().some(r=>r.kind==='schedule_wake'));
 });

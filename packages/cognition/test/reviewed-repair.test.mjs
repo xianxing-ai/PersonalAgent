@@ -51,3 +51,69 @@ test('rejects changed selection, strategy-as-summary, arbitrary node, dependency
   assert.throws(()=>prepareReviewedRepair(before,at,{...review,graphRevision:3}),{code:'REVISION_CONFLICT'});
   assert.deepEqual(store.read(),before);
 });
+test('Fact withdrawal and expiry propagate to impact analysis and prepareReviewedRepair rejects revision conflict', () => {
+  const {store, review} = fixture();
+  const current = store.read();
+
+  // Withdraw the source fact
+  store.append(current.revision, {
+    id: 'source', kind: 'fact', dependencies: [], summary: 'source withdrawn',
+    sourceRef: 'test/source', sensitivity: 'private', state: 'withdrawn', reason: 'revoked',
+    validFrom: '2026-01-01T00:00:00.000Z', validUntil: '2099-01-01T00:00:00.000Z'
+  });
+
+  const updatedSnapshot = store.read();
+  assert.equal(updatedSnapshot.revision, 5);
+
+  // Older review referencing graphRevision 4 must fail with REVISION_CONFLICT
+  assert.throws(() => prepareReviewedRepair(updatedSnapshot, at, review), {code: 'REVISION_CONFLICT'});
+});
+test('rejects mismatched namespace, empty binding identity and under-reported affected scope',()=>{
+  const {store,review}=fixture(),snapshot=store.read();
+  assert.throws(()=>prepareReviewedRepair(snapshot,at,null),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>prepareReviewedRepair(snapshot,at,{...review,graphNamespace:'other'}),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>prepareReviewedRepair(snapshot,at,{...review,taskId:''}),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>prepareReviewedRepair(snapshot,at,{...review,bindingVersion:''}),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>prepareReviewedRepair(snapshot,at,{...review,affected:'goal,plan'}),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>prepareReviewedRepair(snapshot,at,{...review,affected:[{node:ref('goal')}]}),{code:'INVALID_ARGUMENT'});
+  assert.equal(prepareReviewedRepair(snapshot,at,
+    {...review,selection:{...review.selection,selected:ref('other-option')}}).kind,'unavailable');
+  assert.deepEqual(store.read(),snapshot);
+});
+test('a selected option whose repair predates the graph revision is a conflict',()=>{
+  const {store,review}=fixture();
+  const stale=structuredClone(review);
+  stale.options[0].repair.expectedGraphRevision=3;
+  stale.selectedOption.repair.expectedGraphRevision=3;
+  assert.throws(()=>prepareReviewedRepair(store.read(),at,stale),{code:'REVISION_CONFLICT'});
+});
+test('a reviewed repair beyond the 16-input scope stays unsupported while 16 inputs prepare',()=>{
+  const node=(id,kind,summary,dependencies)=>({id,kind,dependencies,summary,sourceRef:'test/source',
+    sensitivity:'private',state:'active',reason:'original intent',
+    validFrom:'2026-01-01T00:00:00.000Z',validUntil:'2099-01-01T00:00:00.000Z'});
+  const build=count=>{
+    const store=new FakeCoordinationStoreHost().provision('bounded');
+    store.append(store.read().revision,node('source','fact','source revision 0',[]));
+    for(let index=0;index<count;index++) store.append(store.read().revision,
+      node(`goal-${String(index).padStart(2,'0')}`,'goal',`goal ${index} original`,[ref('source',1)]));
+    store.append(store.read().revision,node('source','fact','source revision corrected',[]));
+    return store;
+  };
+  const prepared=(store,count)=>{
+    const option={id:'revise',revision:1,description:'Evaluate the bounded repair',action:'REVISE',
+      repair:{expectedGraphRevision:store.read().revision,
+        changes:Array.from({length:count},(_,index)=>({node:{id:`goal-${String(index).padStart(2,'0')}`,revision:1},
+          summary:`goal ${index} repaired`,reason:'reviewed scope bound',dependencies:[ref('source',2)]}))}};
+    return {taskId:'review-bound',graphNamespace:'bounded',graphRevision:store.read().revision,
+      bindingVersion:'host-v1',affected:option.repair.changes.map(change=>({node:change.node})),
+      options:[option],selectedOption:structuredClone(option),
+      selection:{state:'selected',eligibleForRuntime:true,selected:ref('revise')}};
+  };
+  const within=build(16),withinResult=prepareReviewedRepair(within.read(),at,prepared(within,16));
+  assert.equal(withinResult.kind,'prepared');
+  assert.equal(withinResult.binding.targets.length,16);
+  assert.deepEqual(withinResult.binding.dependencies,[ref('source',2)]);
+  const beyond=build(17);
+  assert.deepEqual(prepareReviewedRepair(beyond.read(),at,prepared(beyond,17)),
+    {kind:'unavailable',reason:'unsupported_scope'});
+});

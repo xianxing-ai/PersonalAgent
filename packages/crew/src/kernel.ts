@@ -32,7 +32,7 @@ export class CrewKernel {
 
   private constructor(store: CrewStore) {
     this.store = store;
-    this.consentProvider = new CrewStoreConsentProvider(store);
+    this.consentProvider = new CrewStoreConsentProvider(store, {codex: 'local-login', claude: 'api-key', grok: 'api-key'});
   }
 
   /** 打开（必要时创建）独立的 crew 数据库并返回内核；数据库与 Runtime 主库分离。 */
