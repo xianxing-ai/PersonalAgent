@@ -64,7 +64,7 @@ test('browse and search return curated details without installing them', t => {
   assert.equal(service.search('Context7').length, 1);
   assert.equal(service.search('Context7')[0].pin.version, '4.6.0');
   assert.equal(service.get('mcp.cloudflare-docs').publicEndpoint, 'https://docs.mcp.cloudflare.com/mcp');
-  assert.equal(service.list({type: 'skill', oneClickInstall: true}).length, 3);
+  assert.equal(service.list({type: 'skill', oneClickInstall: true}).length, 4);
   assert.equal(service.planInstall('mcp.context7').oneClickInstall, false);
   assert.throws(() => service.install({id: 'mcp.context7'}), {code: 'UNSUPPORTED_CAPABILITY'});
   assert.throws(() => service.install({id: 'mcp.github'}), {code: 'UNSUPPORTED_CAPABILITY'});

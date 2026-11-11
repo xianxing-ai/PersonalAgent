@@ -49,6 +49,8 @@
     "@personal-agent/mcp": "0.1.0-alpha.1",
     "@personal-agent/memory": "0.1.0-alpha.1",
     "@personal-agent/notifications": "0.1.0-alpha.1",
+    "@personal-agent/plugin-catalog": "0.1.0-alpha.1",
+    "@personal-agent/policy": "0.1.0-alpha.1",
     "@personal-agent/productivity": "0.1.0-alpha.1",
     "@personal-agent/research": "0.1.0-alpha.1",
     "@personal-agent/runtime": "0.1.0-alpha.1",

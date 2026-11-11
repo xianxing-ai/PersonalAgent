@@ -7,9 +7,19 @@
 
 ## 行为
 
-精选目录提供浏览、搜索、详情、安装计划、安装、启停、更新检查和卸载。Skill 安装调用现有 `readLocalSkillDirectory` 与 `openLocalSkillStore.install`，结果默认停用。MCP 安装只接受与 `MCP_FILESYSTEM_PACKAGE_VERSION` 相同的 `@modelcontextprotocol/server-filesystem@2026.8.31`，并核对 `dist/index.js` 的 sha256。摘要不一致时拒绝。安装不启动子进程，不执行技能目录里的脚本，不把上游写工具注册进 Host。
+精选目录提供浏览、搜索、详情、安装计划、安装、启停、更新检查和卸载。可一键安装的条目从固定 commit 或 npm 包地址下载，摘要不符或下载失败即拒绝，然后再交给现有安装器。Skill 仍调用 `readLocalSkillDirectory` 与 `openLocalSkillStore.install`，结果默认停用。MCP 仍只接受 `MCP_FILESYSTEM_PACKAGE_VERSION` 对应的 filesystem `2026.8.31`，并同时核对下载包与本机入口 sha256。安装不启动子进程，不执行技能目录里的脚本。
 
-高风险条目启用时调用注入的 `PolicyPort.authorize`。工具名是 `plugin-catalog.enable`，参数摘要绑定插件 id 和 sha256。本包不调用 `grant`。
+`pdf` 的完整目录 sha256 已补上，并且能通过现有 1 MiB 安装器；启用因为它带有脚本而需要 Policy 授权。`docx`、`pptx`、`xlsx` 也补了目录 sha256，但分别是 1138571、1149051、1112769 字节，现有安装器拒绝超过 1 MiB 的快照，所以不能一键安装。
+
+高风险启用由 Desktop 在用户确认后调用 `AuthorizationPolicy.grant`，再由目录调用 `PolicyPort.authorize`。工具名是 `plugin-catalog.enable`。目录本身不调用 `grant`。已启用插件通过 `projectEnabledPlugins` 生成 `pending` 提案，并用现有 `assertSkillReadbackReceipt` 与 `planMcpSkillReadbackAcceptance` 读回；`closedLoop` 保持 false，不把提案写成云端已执行。
+
+Desktop 管理后台的「插件」页在原有「本机 Skills」上方增加插件市场。界面只保留搜索、分类、折叠详情，以及当前状态对应的一个主动作（安装、启用、停用、更新、卸载）。没有统计面板、星标、刷新、安装计划或云端同步按钮。详情里只显示许可证、来源、风险和权限声明。
+
+## 界面删减
+
+- 不把安装计划、更新检查、云端同步做成单独按钮；计划和更新状态附在条目上，启用后自动形成待读回提案。
+- 不重复「安装本机 Skill」。市场只下载目录针，本机文件夹安装仍留在原来的本机 Skills 区。
+- 未安装时不显示启用、停用、卸载；已安装时不显示安装。不能一键安装的条目只保留原因，没有按钮。
 
 ## 边界
 

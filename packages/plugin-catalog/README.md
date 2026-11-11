@@ -24,7 +24,7 @@ catalog.search('context7');
 catalog.planInstall('skill.anthropic.frontend-design');
 ```
 
-`install` 成功只表示本机快照或包摘要通过，并且记录为停用。`oneClickInstall: false` 的条目返回 `UNSUPPORTED_CAPABILITY`。没有 commit、版本和 sha256 的清单必须是 `pin.state: 'unpinned'`，并且不能一键安装。
+`installPinned` 从清单里的固定 commit 或 npm 地址下载，摘要不符或下载失败就拒绝，然后才调用现有安装器。`install` 仍接受测试或宿主已经放在本机的目录。两种安装成功都只表示快照已核对并默认停用。没有下载针的一键条目不能走 `installPinned`。
 
 启用高风险条目时，授权的 `toolName` 固定为 `plugin-catalog.enable`，`argumentsDigest` 为 `pluginEnableArgumentsDigest(id, sha256)`。摘要字符串是 `{"id":"<id>","sha256":"<64 hex>"}` 的 SHA-256。低风险说明型技能不消耗授权；写文件、联网写入和执行代码仍不能靠技能正文获得许可。
 

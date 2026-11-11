@@ -38,6 +38,13 @@ export interface PluginPin {
   distributionSha256?: string;
 }
 
+export interface PluginArchive {
+  kind: 'github-directory' | 'npm-tarball';
+  directory?: string;
+  files?: readonly string[];
+  tarballUrl?: string;
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -59,6 +66,7 @@ export interface PluginManifest {
   oneClickInstall: boolean;
   installer: PluginInstaller;
   installBlockReason?: string;
+  archive?: PluginArchive;
   skillName?: string;
   publicEndpoint?: string;
   reviewedAt: string;
@@ -72,7 +80,8 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const manifestKeys = ['id','name','type','sourceRepositoryUrl','license','licenseNotes','pin','author','description','capabilities','permissionDeclarations','riskLevel','enableRequiresAuthorization','maintenanceStatus','maintenanceEvidence','admissionReason','admissionCriteria','oneClickInstall','installer','installBlockReason','skillName','publicEndpoint','reviewedAt','reviewedStars','lastPushedAt','reviewSources'] as const;
+const manifestKeys = ['id','name','type','sourceRepositoryUrl','license','licenseNotes','pin','author','description','capabilities','permissionDeclarations','riskLevel','enableRequiresAuthorization','maintenanceStatus','maintenanceEvidence','admissionReason','admissionCriteria','oneClickInstall','installer','installBlockReason','archive','skillName','publicEndpoint','reviewedAt','reviewedStars','lastPushedAt','reviewSources'] as const;
+const archiveKeys = ['kind','directory','files','tarballUrl'] as const;
 const pinKeys = ['state','commit','version','sha256','sha256Subject','distributionSha256'] as const;
 const capabilityKeys = ['name','effect','admitted','statement'] as const;
 const permissionKeys = ['scope','effect','admitted','requiredForEnable','statement'] as const;
@@ -102,6 +111,31 @@ function optionalHash(value: unknown, label: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || !SHA256.test(value)) fail(`${label} is invalid`);
   return value;
+}
+
+function safeRelative(value: string): boolean {
+  return value.length <= 200 && !value.split('/').some(part => !part || part === '.' || part === '..') && !value.includes('\\') && !value.includes(':');
+}
+
+function parseArchive(value: unknown): PluginArchive {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail('archive is invalid');
+  const archive = value as Record<string, unknown>;
+  exactKeys(archive, archiveKeys, 'archive');
+  if (archive.kind === 'github-directory') {
+    const directory = text(archive.directory, 'archive.directory', 200);
+    if (!/^skills\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(directory)) fail('archive.directory is invalid');
+    if (!Array.isArray(archive.files) || archive.files.length < 1 || archive.files.length > 128) fail('archive.files are invalid');
+    const files = archive.files.map(file => text(file, 'archive.file', 200));
+    if (files.some(file => !safeRelative(file)) || new Set(files).size !== files.length || !files.includes('SKILL.md')) fail('archive.files are invalid');
+    if (archive.tarballUrl !== undefined) fail('github archive cannot include a tarball');
+    return {kind: 'github-directory', directory, files};
+  }
+  if (archive.kind === 'npm-tarball') {
+    const tarballUrl = httpsUrl(archive.tarballUrl, 'archive.tarballUrl');
+    if (archive.directory !== undefined || archive.files !== undefined) fail('npm archive cannot include skill files');
+    return {kind: 'npm-tarball', tarballUrl};
+  }
+  return fail('archive.kind is invalid');
 }
 
 function isHighRisk(effect: string): boolean {
@@ -145,6 +179,10 @@ export function parsePluginManifest(value: unknown): PluginManifest {
   const installBlockReason = data.installBlockReason === undefined ? undefined : text(data.installBlockReason, 'installBlockReason', 800);
   if (!oneClickInstall && !installBlockReason) fail('blocked install requires a reason');
   if (oneClickInstall && installBlockReason) fail('one-click install cannot include a block reason');
+  const archive = data.archive === undefined ? undefined : parseArchive(data.archive);
+  if (archive?.kind === 'github-directory' && archive.directory !== `skills/${skillName}`) fail('skill archive is invalid');
+  if (archive?.kind === 'npm-tarball' && archive.tarballUrl !== `https://registry.npmjs.org/@modelcontextprotocol/server-filesystem/-/server-filesystem-${version}.tgz`) fail('filesystem archive is invalid');
+  if (!oneClickInstall && archive) fail('blocked install cannot include a download archive');
   if (!Array.isArray(data.capabilities) || data.capabilities.length < 1 || data.capabilities.length > 24) fail('capabilities are invalid');
   const capabilities = data.capabilities.map(item => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) fail('capability is invalid');
@@ -202,6 +240,7 @@ export function parsePluginManifest(value: unknown): PluginManifest {
     reviewedAt, reviewSources,
   };
   if (installBlockReason) manifest.installBlockReason = installBlockReason;
+  if (archive) manifest.archive = archive;
   if (skillName) manifest.skillName = skillName;
   if (publicEndpoint) manifest.publicEndpoint = publicEndpoint;
   if (reviewedStars !== undefined) manifest.reviewedStars = reviewedStars as number;

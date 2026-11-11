@@ -31,6 +31,7 @@ test('curated catalog entries are unique, sourced, and install only when a sha25
     'skill.anthropic.brand-guidelines',
     'skill.anthropic.frontend-design',
     'skill.anthropic.internal-comms',
+    'skill.anthropic.pdf',
   ]);
 });
 
@@ -50,6 +51,11 @@ test('reviewed pins stay attached to the commits and hashes read on 2026-11-11',
   assert.equal(byId.get('skill.obra.superpowers').pin.version, '7.0.2');
   assert.equal(byId.get('skill.anthropic.frontend-design').pin.sha256, 'd55d581490111ef10d26da1a769e6ac863094ea6809423578617d8431d793fd1');
   assert.equal(byId.get('skill.anthropic.skill-creator').oneClickInstall, false);
+  assert.equal(byId.get('skill.anthropic.pdf').pin.sha256, '08f04d216f2ae5d823196dd304a9046be3f80b07c695874945fdff827deae63e');
+  assert.equal(byId.get('skill.anthropic.docx').pin.sha256, '2b61a016a59a085aa29e100cbc39812aee1917b3fa85e0ba39581a13589a728b');
+  assert.equal(byId.get('skill.anthropic.pptx').pin.sha256, '7dc6eabcc0c6e6b9b6a45db16aa0463a2bb15f60ddd7fcb361d63f7880ac0e68');
+  assert.equal(byId.get('skill.anthropic.xlsx').pin.sha256, '43b32c1c6e4f4ae4e61ecd4162884bd464e73de5538f0f3e5318c72444531a34');
+  assert.equal(byId.get('skill.anthropic.docx').oneClickInstall, false);
   assert.equal(byId.get('mcp.reference.filesystem').pin.version === byId.get('mcp.pinned.filesystem-readonly').pin.version, false);
 });
 

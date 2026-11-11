@@ -6,8 +6,16 @@ import {ProtocolError} from '@personal-agent/contracts';
 import {MCP_FILESYSTEM_PACKAGE_VERSION} from '@personal-agent/mcp';
 import type {PolicyPort} from '@personal-agent/policy';
 import {openLocalSkillStore, readLocalSkillDirectory} from '@personal-agent/skills';
+import {downloadPinnedFilesystem, materializePinnedSkill, type PinnedDownload} from './download.js';
 import {CURATED_PLUGINS} from './plugins.js';
 import {parsePluginCatalog, type PluginManifest} from './schema.js';
+
+export interface SkillStorePort {
+  install(input: ReturnType<typeof readLocalSkillDirectory>): {name: string; digest: string; installationId: string; enabled: boolean};
+  read(name: string, digest: string): {name: string; digest: string; enabled: boolean};
+  setEnabled(name: string, digest: string, enabled: boolean): void;
+  uninstall(name: string, digest: string): void;
+}
 
 export interface PluginAuthorization {
   authorizationRef: string;
@@ -53,11 +61,13 @@ export interface UpdateStatus {
 
 export interface PluginCatalogServiceOptions {
   catalog?: readonly PluginManifest[];
-  skillStoreFile: string;
+  skillStoreFile?: string;
+  skillStore?: SkillStorePort;
   installationFile: string;
   policy?: PolicyPort;
   now?: () => number;
   resolveFilesystemPackage?: () => string;
+  download?: PinnedDownload;
 }
 
 const require = createRequire(import.meta.url);
@@ -91,7 +101,8 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
   const catalog = parsePluginCatalog([...(options.catalog ?? CURATED_PLUGINS)]);
   const byId = new Map(catalog.map(entry => [entry.id, entry]));
   const now = options.now ?? Date.now;
-  const skillStore = () => openLocalSkillStore(options.skillStoreFile);
+  const opened = options.skillStore ?? openLocalSkillStore(options.skillStoreFile ?? '');
+  const skillStore = () => opened;
 
   function readInstallations(): InstallationRecord[] {
     const file = options.installationFile;
@@ -169,6 +180,33 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
     const digest = createHash('sha256').update(bytes).digest('hex');
     if (!sameHash(digest, entry.pin.sha256)) throw new ProtocolError('INVALID_ARGUMENT', 'filesystem 包入口摘要与目录不一致');
     return {packageVersion: MCP_FILESYSTEM_PACKAGE_VERSION, entrySha256: digest};
+  }
+
+  async function installPinned(id: string, replace = false): Promise<InstallationRecord> {
+    const entry = requireEntry(id);
+    if (!options.download) throw new ProtocolError('UNSUPPORTED_CAPABILITY', '固定版本下载未配置');
+    if (entry.archive?.kind === 'github-directory') {
+      const materialized = await materializePinnedSkill(entry, options.download);
+      try {
+        const bundle = readLocalSkillDirectory(materialized.directory);
+        if (!entry.pin.sha256 || !sameHash(bundle.digest, entry.pin.sha256)) throw new ProtocolError('INVALID_ARGUMENT', '下载内容与录取摘要不一致');
+        const current = readInstallations().find(item => item.catalogId === id);
+        if (current?.skill && current.skill.digest !== bundle.digest) {
+          if (!replace) throw new ProtocolError('REVISION_CONFLICT', '已安装其他版本，需先卸载');
+          skillStore().uninstall(current.skill.name, current.skill.digest);
+        }
+        return install({id, sourceDirectory: materialized.directory});
+      } finally { materialized.remove(); }
+    }
+    if (entry.archive?.kind === 'npm-tarball') {
+      const downloaded = await downloadPinnedFilesystem(entry, options.download);
+      const verified = assertFilesystemPin(entry);
+      if (verified.entrySha256 !== downloaded.entrySha256 || verified.packageVersion !== downloaded.packageVersion) {
+        throw new ProtocolError('INVALID_ARGUMENT', '下载内容与本机钉死包不一致');
+      }
+      return install({id});
+    }
+    throw new ProtocolError('UNSUPPORTED_CAPABILITY', entry.installBlockReason ?? '该插件不能一键安装');
   }
 
   function install(input: {id: string; sourceDirectory?: string}): InstallationRecord {
@@ -267,6 +305,7 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
     get: (id: string) => structuredClone(requireEntry(id)),
     planInstall,
     install,
+    installPinned,
     installations,
     setEnabled,
     checkUpdate,

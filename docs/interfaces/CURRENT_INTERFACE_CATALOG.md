@@ -2,7 +2,7 @@
 
 ## 2026-11-11 插件精选目录（provisional）
 
-`@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录、安装计划和默认停用的安装记录。Skill 复用现有本机目录安装，MCP 只核验已经钉死的 filesystem `2026.8.31` 入口摘要。高风险启用消费调用方事先交给 Policy 的授权，目录不签发授权，也不执行插件脚本。没有新的 Core wire、Desktop 页面或远程目录摘要。Context7、Cloudflare 文档 MCP 和 GitHub MCP 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
+`@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
 
 ## 2026-10-29 MCP 管理任务读回（provisional）
 

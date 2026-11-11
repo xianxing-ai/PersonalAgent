@@ -24,6 +24,7 @@ import {mountAgentArtsModelControls} from '../../app/agentarts-model-controls.js
 import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
 import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
+import {mountPluginCatalogControls} from '../../app/plugin-catalog-controls.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountWikiImportControls} from '../../app/wiki-import-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
@@ -170,7 +171,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls,sisControls,notificationControls,wikiImportControls,computerControls,computerVisionControls;
+  let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
@@ -426,6 +427,8 @@ export function mountAdmin(root, invoke, escape) {
     codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
     referenceControls?.render(data.reference);referenceControls?.show(section==='capabilities');
+    if(section==='capabilities' && data.pluginCatalog) pluginCatalogControls??=mountPluginCatalogControls(root.querySelector('.main'),invoke);
+    pluginCatalogControls?.render(data.pluginCatalog);pluginCatalogControls?.show(section==='capabilities');
     if(section==='capabilities' && data.installedSkills) installedSkillsControls??=mountInstalledSkillsControls(root.querySelector('.main'),invoke);
     installedSkillsControls?.render(data.installedSkills,data.tasks,data.installedSkills?.runtimeAvailable && data.model?.provider==='agentarts' && data.model?.configured && data.model?.enabled!==false);
     installedSkillsControls?.show(section==='capabilities');
