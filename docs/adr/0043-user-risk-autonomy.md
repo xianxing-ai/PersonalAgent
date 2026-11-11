@@ -8,15 +8,17 @@
 
 产品默认自主，只有高风险或不可逆动作才先问。当前运行时只有近似两档：`automaticTools` 里的低风险只读可以直接做，其余进入 `waiting_approval` / `allow_once`。没有“做完再通知”的中间档，也没有用户可调设置。
 
-本决定新增独立配置层 `@personal-agent/autonomy`：
+本决定新增独立配置层 `@personal-agent/autonomy`。产品 Desktop 创建 Runtime 时默认传入自主档。库构造不传或传入 `riskAutonomy: false` 时只保留原来的 `automaticTools`。未列入分类表的工具也继续沿用该白名单。不可逆、外部写和需要在场的动作不会因此自动执行。
+
+中风险只有在执行成功后才经现有桌面通知端口投递。用户点击通知时，宿主提交已经保存的补偿调用，并走原来的一次性审批确认。设置写入桌面加密模块记录。设置页只保留档位、两类覆盖、一个撤销按钮和最近记录。
 
 - 低风险直接做。
-- 中风险只包括有补偿动作的工具：做完立即通知，并保留补偿请求。补偿请求不自己执行工具。
+- 中风险只包括有补偿动作的工具：成功后立即通知。用户点击通知后，宿主才提交已保存的补偿调用。
 - 高风险，以及发消息、付款、删除、对外提交，先问。这些类别不能被覆盖成自动执行。
 - 全局档位为 `conservative` / `balanced` / `autonomous`，默认 `autonomous`。类别覆盖和整档撤销立即影响后续决定。
-- 每次自动执行写审计和通知记录。记录不含工具参数正文。
+- 每次自动执行写审计。中风险成功后另写一条桌面通知。记录不含工具参数正文。
 
-`applyAutonomyGrant` 只在允许自动执行时调用现有 Policy `grant`。Runtime 增加可选 `riskAutonomy` 钩子：未安装时 `automaticTools` 行为不变；安装后由该钩子决定是否走原来的一次性例行授权。钩子本身拒绝外部写、需要在场、不可逆，以及没有补偿的写。Policy 核心没有新的授权算法。
+`applyAutonomyGrant` 只在允许自动执行时调用现有 Policy `grant`。产品 Desktop 默认把自主档交给 Runtime。不传或 `riskAutonomy: false` 时仍按 `automaticTools` 放行。钩子拒绝外部写、需要在场和不可逆动作。Policy 核心没有新的授权算法。
 
 PR #531 的 `standingAutonomy` 是尚未进入 main 的仓库级开发者常驻授权。本决定不复制那套仓库 grant、限额和 observe/suggest 级别，避免在 Policy 核心里做第二份实现。两套钩子名称不同，合并时由 Policy/Runtime 维护者决定调用顺序。
 

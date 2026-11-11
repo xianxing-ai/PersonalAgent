@@ -64,18 +64,27 @@ export interface RiskAutonomyReview {
   disposition: 'execute' | 'execute_and_notify' | 'ask';
   irreversible: boolean;
   compensatable: boolean;
+  catalogued: boolean;
+  blockLegacy: boolean;
 }
 
 export interface RiskAutonomyGate {
   review(input: RiskAutonomyInvocation): RiskAutonomyReview;
   recordGranted(input: RiskAutonomyInvocation & {disposition: 'execute' | 'execute_and_notify'}): void;
+  rememberCompensation?(input: {runId: string; toolName: string; toolVersion: string; arguments: Record<string, unknown>}): void;
 }
 
 export function createRiskAutonomyGate(config: AutonomyPolicyConfig): RiskAutonomyGate {
   return {
     review(input) {
       const decision = config.decide(toClassified(input));
-      return {disposition: decision.disposition, irreversible: decision.irreversible, compensatable: decision.compensatable};
+      return {
+        disposition: decision.disposition,
+        irreversible: decision.irreversible,
+        compensatable: decision.compensatable,
+        catalogued: decision.catalogued,
+        blockLegacy: decision.blockLegacy,
+      };
     },
     recordGranted(input) {
       const decision = config.decide(toClassified(input));
@@ -89,6 +98,9 @@ export function createRiskAutonomyGate(config: AutonomyPolicyConfig): RiskAutono
         argumentsDigest: input.argumentsDigest,
         taskId: input.taskId,
       });
+    },
+    rememberCompensation(input) {
+      config.rememberCompensation(input.runId, {toolName: input.toolName, toolVersion: input.toolVersion, arguments: input.arguments});
     },
   };
 }

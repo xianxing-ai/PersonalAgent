@@ -180,6 +180,7 @@ export function createDesktopNotificationPort(options = {}) {
                 try {
                   persistState(record.id, {clickedAt: current.clickedAt ?? new Date(now()).toISOString()});
                   publishOutcome(record.id);
+                  options.onClick?.(records.find(item => item.id === record.id) ?? current);
                 } catch {}
                 return;
               }
@@ -190,6 +191,7 @@ export function createDesktopNotificationPort(options = {}) {
                 ...(current?.deliveredAt === undefined ? {deliveredAt: clickedAt} : {}),
               });
               publishOutcome(record.id);
+              try { options.onClick?.(records.find(item => item.id === record.id) ?? current); } catch {}
             },
             onFailed: () => {
               if (disposed || settled) return;

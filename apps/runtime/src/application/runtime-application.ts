@@ -381,6 +381,8 @@ export interface RiskAutonomyReview {
   disposition: 'execute' | 'execute_and_notify' | 'ask';
   irreversible: boolean;
   compensatable: boolean;
+  catalogued?: boolean;
+  blockLegacy?: boolean;
 }
 
 /**
@@ -390,6 +392,8 @@ export interface RiskAutonomyReview {
 export interface RiskAutonomyGate {
   review(input: RiskAutonomyInvocation): RiskAutonomyReview | undefined;
   recordGranted?(input: RiskAutonomyInvocation & {disposition: 'execute' | 'execute_and_notify'}): void;
+  rememberCompensation?(input: {runId: string; toolName: string; toolVersion: string; arguments: Record<string, unknown>}): void;
+  notifyGranted?(input: {runId: string}): void;
 }
 
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
@@ -430,11 +434,10 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   /** Trusted host policy for routine operations inside already enabled module scopes. */
   automaticTools?: readonly {toolName: string; toolVersion: string}[];
   /**
-   * 用户可调风险档。未提供时仍只按 automaticTools 放行。
-   * 提供后由该档决定是否例行授权；外部写、在场要求和不可逆动作仍先问。
-   * Policy 的 grant/authorize/revoke 语义不变，请 Policy 维护者复核这段接线。
+   * 产品桌面默认传入自主档。未传入或 false 时只按 automaticTools 放行，避免改掉既有审批测试。
+   * 不可逆、外部写和需要在场的动作不会被该档自动执行。
    */
-  riskAutonomy?: RiskAutonomyGate;
+  riskAutonomy?: RiskAutonomyGate | false;
   /** Opaque identity of trusted Competition configuration, excluding credentials. */
   coordinationBinding?: string;
   /** Trusted synchronous final check; never exposes credentials or changes task identity. */
@@ -627,6 +630,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if(options.harnessCandidates)this.harnessCandidateOptions={...options.harnessCandidates};
     this.storagePath = resolve(options.path);
     this.profile = options.profile ?? 'local';
+    const suppliedRiskAutonomy = options.riskAutonomy;
+    const riskAutonomy: RiskAutonomyGate | undefined = suppliedRiskAutonomy === false || suppliedRiskAutonomy === undefined
+      ? undefined
+      : suppliedRiskAutonomy;
     if (options.competitionMaxSteps !== undefined && (this.profile !== 'huawei_ict_agentarts'
       || !Number.isSafeInteger(options.competitionMaxSteps) || options.competitionMaxSteps < 1)) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Competition step budget must be a positive integer');
@@ -968,23 +975,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           if (routineEligible) routineEligible = repairOk;
           if (!repairOk) commitRepairBlocked = true;
         }
+        const legacyRoutine = routineEligible;
         let riskReview: RiskAutonomyReview | undefined;
-        if (options.riskAutonomy && !authorizationRequired) {
-          const reviewed = options.riskAutonomy.review({
+        if (riskAutonomy && !authorizationRequired) {
+          const reviewed = riskAutonomy.review({
             taskId: invocation.taskId, runId: ref, toolName: tool.name, toolVersion: tool.version,
             sideEffect: tool.sideEffect, recoverySupport: tool.recoverySupport, requiresPresence: tool.requiresPresence === true,
             argumentsDigest: toolArgumentsDigest(invocation.arguments),
           });
           if (reviewed) {
             riskReview = reviewed;
-            const compensatableOrRead = tool.sideEffect === 'read' || reviewed.compensatable === true;
-            routineEligible = reviewed.disposition !== 'ask'
+            const cataloguedAutomatic = reviewed.catalogued === true
+              && reviewed.disposition !== 'ask'
               && (reviewed.disposition === 'execute' || reviewed.disposition === 'execute_and_notify')
               && reviewed.irreversible !== true
               && tool.sideEffect !== 'external_write'
               && tool.requiresPresence !== true
               && !commitRepairBlocked
-              && compensatableOrRead;
+              && (tool.sideEffect === 'read' || reviewed.compensatable === true);
+            if (cataloguedAutomatic) routineEligible = true;
+            else if (reviewed.blockLegacy === true || reviewed.irreversible === true
+              || tool.sideEffect === 'external_write' || tool.requiresPresence === true || commitRepairBlocked) routineEligible = false;
+            else routineEligible = legacyRoutine;
           }
         }
         // A routine grant does not create an Approval object. Persist the original nested
@@ -1015,7 +1027,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
           const argumentsDigest = toolArgumentsDigest(invocation.arguments);
           if (riskReview && (riskReview.disposition === 'execute' || riskReview.disposition === 'execute_and_notify')) {
-            options.riskAutonomy?.recordGranted?.({
+            riskAutonomy?.recordGranted?.({
               taskId: invocation.taskId, runId: ref, toolName: tool.name, toolVersion: tool.version,
               sideEffect: tool.sideEffect, recoverySupport: tool.recoverySupport, requiresPresence: tool.requiresPresence === true,
               argumentsDigest, disposition: riskReview.disposition,
@@ -1064,6 +1076,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           this.runtime.transitionTask(invocation.taskId,'running');
         }
         let result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
+        if (riskReview?.disposition === 'execute_and_notify' && result.state === 'confirmed' && plainObject(result.result)) {
+          const recovery = result.result.recovery;
+          if (plainObject(recovery) && typeof recovery.toolName === 'string' && typeof recovery.toolVersion === 'string'
+            && plainObject(recovery.arguments) && JSON.stringify(recovery.arguments).length <= 4000) {
+            riskAutonomy?.rememberCompensation?.({runId: ref, toolName: recovery.toolName, toolVersion: recovery.toolVersion, arguments: recovery.arguments});
+          }
+        }
+        if (riskReview?.disposition === 'execute_and_notify' && result.state === 'confirmed') {
+          riskAutonomy?.notifyGranted?.({runId: ref});
+        }
         if(tool.name===SUBAGENT_DISPATCH_TOOL_NAME&&readUserTaskDelegation(this.runtime,invocation.taskId)) {
           const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${invocation.taskId}-user-work`);
           if(owner?.state==='succeeded')this.proposeHarnessExperienceFromOwner(owner.taskId);

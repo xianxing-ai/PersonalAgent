@@ -4,7 +4,7 @@
 
 ## 2026-11-11 用户风险档（review）
 
-目标 `huawei_ict_agentarts`，MOD-28，负责人 zemeng5208。独立配置层 `packages/autonomy` 提供保守/平衡/自主、类别覆盖、撤销，以及自动执行审计/通知。不可逆动作不能调成自动。现有 Policy 只在允许时收到 `grant`；Runtime 可选 `riskAutonomy` 未安装时不改变 `automaticTools`。设置界面、持久化和真实通知/回滚未做，接口保持 provisional。见 [工作包](modules/MOD-28-RISK-AUTONOMY-01.md) 与 [ADR-0043](adr/0043-user-risk-autonomy.md)。
+目标 `huawei_ict_agentarts`，MOD-28，负责人 zemeng5208。Runtime 默认使用自主档；`automaticTools` 仍是未列入分类表时的回退。设置写入桌面加密记录。中风险成功后走现有桌面通知，点击通知执行补偿。设置页只保留档位、两类覆盖、一个撤销按钮和最近记录。见 [工作包](modules/MOD-28-RISK-AUTONOMY-01.md) 与 [ADR-0043](adr/0043-user-risk-autonomy.md)。
 
 ## 2026-10-26 本地工程移交与会话 SQLite（review，历史快照未完整复原）
 

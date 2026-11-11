@@ -8,7 +8,11 @@
 
 ## 行为
 
-`AutonomyPolicyConfig` 默认 `autonomous`。低风险直接做；有补偿动作的中风险做完立即通知，并可用 `requestUndo` 取回补偿描述；高风险和不可逆动作返回 `ask`，由现有审批继续处理。
+`AutonomyPolicyConfig` 默认 `autonomous`。产品 Desktop 在创建 Runtime 时传入这一档；库构造不传或传入 `false` 时只保留 `automaticTools`。分类表里的低风险直接做，有补偿的中风险在成功后通知。未列入分类表、且用户没有撤销或改成先问的工具，仍按 `automaticTools` 自动执行。
+
+设置由桌面加密存储 `risk-autonomy.json` 跨重启保留。中风险通知使用现有 `createDesktopNotificationPort`。用户点击通知后，宿主提交已保存的补偿调用，并按原审批接口确认这一次。
+
+设置页在通知页上方，只有档位、收起的「只读 / 可回滚的本地修改」、一个停止或恢复按钮，以及最近记录。没有统计面板、保存按钮或每条记录上的按钮。不可逆动作只用一句话说明，不提供控件。
 
 `setCategoryOverride` 拒绝把 `message_send`、`payment`、`delete`、`external_submit`、`presence`、`local_write` 设成 `execute` 或 `execute_and_notify`。`revoke` 让后续决定全部先问。自动执行写入审计和通知，不保存参数正文。
 

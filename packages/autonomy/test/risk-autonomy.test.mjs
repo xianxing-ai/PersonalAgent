@@ -22,7 +22,8 @@ const grantBase = {
 };
 
 test('the classification table keeps irreversible actions gated and only compensatable writes at medium', () => {
-  assert.equal(classifyTool({toolName: 'weather.forecast'}).tier, 'low');
+  assert.equal(classifyTool({toolName: 'weather.forecast'}).catalogued, true);
+  assert.equal(classifyTool({toolName: 'fixture.read', sideEffect: 'read'}).catalogued, false);
   assert.equal(classifyTool({toolName: 'todo.update'}).tier, 'medium');
   assert.equal(classifyTool({toolName: 'todo.update'}).compensatable, true);
   assert.equal(classifyTool({toolName: 'todo.update', sideEffect: 'local_write'}).compensation?.action, 'todo.update');
@@ -185,7 +186,19 @@ test('the runtime gate rechecks the current settings before recording a grant', 
     taskId: 'task-1', runId: 'run-1', toolName: 'todo.update', toolVersion: '1.0.0',
     sideEffect: 'local_write', recoverySupport: true, requiresPresence: false, argumentsDigest: digest,
   };
-  assert.equal(gate.review(input).disposition, 'execute_and_notify');
+  assert.equal(gate.review({toolName: 'weather.forecast', sideEffect: 'read', toolVersion: '1.0.0', runId: 'r', taskId: 't', recoverySupport: false, requiresPresence: false, argumentsDigest: digest}).blockLegacy, false);
+  const strict = new AutonomyPolicyConfig({stance: 'conservative'});
+  assert.equal(createRiskAutonomyGate(strict).review({toolName: 'weather.forecast', sideEffect: 'read', toolVersion: '1.0.0', runId: 'r', taskId: 't', recoverySupport: false, requiresPresence: false, argumentsDigest: digest}).blockLegacy, true);
+  const store = new MemoryAutonomyConfigStore();
+  const first = new AutonomyPolicyConfig({store});
+  first.setStance('balanced');
+  const second = new AutonomyPolicyConfig({store});
+  assert.equal(second.getSettings().stance, 'balanced');
+  const medium = new AutonomyPolicyConfig();
+  medium.recordAutomatic({toolName: 'todo.update', sideEffect: 'local_write', runId: 'run-undo', toolVersion: '1.0.0', argumentsDigest: digest});
+  const audit = medium.listAudits()[0];
+  medium.rememberCompensation('run-undo', {toolName: 'notes.restore', toolVersion: '1.0.0', arguments: {note: 'back'}});
+  assert.deepEqual(medium.consumeCompensation(audit.auditId).call, {toolName: 'notes.restore', toolVersion: '1.0.0', arguments: {note: 'back'}});
   config.revoke();
   assert.equal(gate.review(input).disposition, 'ask');
   assert.throws(() => gate.recordGranted({...input, disposition: 'execute_and_notify'}), {code: 'UNAUTHORIZED'});

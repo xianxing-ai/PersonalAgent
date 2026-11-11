@@ -14,10 +14,11 @@ function descriptor(name, sideEffect, extra = {}) {
 }
 
 function application(tools, options = {}) {
+  const {executeResult, ...runtimeOptions} = options;
   const executions = [];
   const registered = tools.map(item => ({descriptor: item, execute: async () => {
     executions.push(item.name);
-    return {value: item.name};
+    return executeResult ? executeResult(item) : {value: item.name};
   }}));
   const app = createRuntimeApplication({
     path: ':memory:',
@@ -32,7 +33,7 @@ function application(tools, options = {}) {
       ? {kind: 'text', text: 'Synthetic result', verification: 'unverified'}
       : {kind: 'tool_proposal', proposalId: 'proposal-1', toolName: tools[0].name, toolVersion: '1.0.0',
         arguments: {note: 'ok'}, verification: 'unverified'}},
-    ...options,
+    ...runtimeOptions,
   });
   return {app, executions};
 }
@@ -50,12 +51,39 @@ async function submit(app) {
   throw new Error('Synthetic task did not settle');
 }
 
-test('without a risk gate, a read that is not in automaticTools still waits for approval', async () => {
-  const {app, executions} = application([descriptor('weather.forecast', 'read')]);
+test('turning the risk gate off keeps an unlisted read behind approval', async () => {
+  const {app, executions} = application([descriptor('weather.forecast', 'read')], {riskAutonomy: false});
   try {
     const task = await submit(app);
     assert.equal(task.state, 'waiting_approval');
     assert.deepEqual(executions, []);
+  } finally {app.close();}
+});
+
+test('a host-installed autonomous gate executes a catalogued read and leaves an unknown read waiting', async () => {
+  const gate = createRiskAutonomyGate(new AutonomyPolicyConfig());
+  const known = application([descriptor('weather.forecast', 'read')], {riskAutonomy: gate});
+  try {
+    const task = await submit(known.app);
+    assert.equal(task.state, 'succeeded', task.error?.message);
+    assert.deepEqual(known.executions, ['weather.forecast']);
+  } finally {known.app.close();}
+  const unknown = application([descriptor('fixture.read', 'read')]);
+  try {
+    const task = await submit(unknown.app);
+    assert.equal(task.state, 'waiting_approval');
+    assert.deepEqual(unknown.executions, []);
+  } finally {unknown.app.close();}
+});
+
+test('an automaticTools read that is not in the risk table still runs', async () => {
+  const {app, executions} = application([descriptor('fixture.read', 'read')], {
+    automaticTools: [{toolName: 'fixture.read', toolVersion: '1.0.0'}],
+  });
+  try {
+    const task = await submit(app);
+    assert.equal(task.state, 'succeeded', task.error?.message);
+    assert.deepEqual(executions, ['fixture.read']);
   } finally {app.close();}
 });
 
@@ -139,5 +167,36 @@ test('a conservative gate can force an automaticTools read back to approval', as
     assert.equal(task.state, 'waiting_approval');
     assert.deepEqual(executions, []);
     assert.equal(config.listAudits().length, 0);
+  } finally {app.close();}
+});
+
+test('a finished medium-risk action notifies only after success and keeps the compensation call', async () => {
+  const config = new AutonomyPolicyConfig();
+  const gate = createRiskAutonomyGate(config);
+  const notices = [];
+  const {app} = application([descriptor('todo.update', 'local_write', {
+    recoverySupport: true,
+    outputSchema: {type: 'object', additionalProperties: false, required: ['value'], properties: {
+      value: {type: 'string'},
+      recovery: {type: 'object', additionalProperties: false, required: ['toolName', 'toolVersion', 'arguments'], properties: {
+        toolName: {type: 'string'}, toolVersion: {type: 'string'},
+        arguments: {type: 'object', additionalProperties: false, required: ['note'], properties: {note: {type: 'string'}}},
+      }},
+    }},
+  })], {
+    riskAutonomy: {
+      review: input => gate.review(input),
+      recordGranted: input => gate.recordGranted(input),
+      rememberCompensation: input => gate.rememberCompensation(input),
+      notifyGranted: input => notices.push(input.runId),
+    },
+    executeResult: () => ({value: 'todo.update', recovery: {toolName: 'notes.restore', toolVersion: '1.0.0', arguments: {note: 'back'}}}),
+  });
+  try {
+    const task = await submit(app);
+    assert.equal(task.state, 'succeeded', task.error?.message);
+    assert.equal(notices.length, 1);
+    const audit = config.listAudits().find(item => item.toolName === 'todo.update');
+    assert.deepEqual(config.consumeCompensation(audit.auditId).call, {toolName: 'notes.restore', toolVersion: '1.0.0', arguments: {note: 'back'}});
   } finally {app.close();}
 });

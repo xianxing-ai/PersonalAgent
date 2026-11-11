@@ -95,6 +95,8 @@ export interface RiskClassification {
   compensation?: CompensationAction;
   /** 该分类在任何档位下都不能自动执行。 */
   floorAsk: boolean;
+  /** 名称在默认分类表中。未列入的工具继续走原 automaticTools。 */
+  catalogued: boolean;
 }
 
 const requiredName = (value: string, field: string): string => {
@@ -131,6 +133,7 @@ const irreversibleClassification = (toolName: string, category: IrreversibleCate
   irreversible: true,
   compensatable: false,
   floorAsk: true,
+  catalogued: false,
 });
 
 const copyCompensation = (compensation: CompensationAction | undefined): CompensationAction | undefined =>
@@ -147,6 +150,7 @@ const fromEntry = (entry: RiskTableEntry): RiskClassification => {
     irreversible: entry.irreversible,
     compensatable,
     floorAsk: entry.irreversible || (!compensatable && tier !== 'low'),
+    catalogued: true,
     ...(compensation && compensatable ? {compensation} : {}),
   };
 };
@@ -162,9 +166,9 @@ export function classifyTool(input: ClassifiedToolInput): RiskClassification {
   else if (listed) classification = fromEntry(listed);
   else if (input.sideEffect === 'external_write') classification = irreversibleClassification(toolName, 'external_submit');
   else if (input.requiresPresence === true) {
-    classification = {toolName, category: 'presence', tier: 'high', irreversible: false, compensatable: false, floorAsk: true};
+    classification = {toolName, category: 'presence', tier: 'high', irreversible: false, compensatable: false, floorAsk: true, catalogued: false};
   } else if (input.sideEffect === 'read') {
-    classification = {toolName, category: 'read', tier: 'low', irreversible: false, compensatable: false, floorAsk: false};
+    classification = {toolName, category: 'read', tier: 'low', irreversible: false, compensatable: false, floorAsk: false, catalogued: false};
   } else if (input.sideEffect === 'local_write' && input.recoverySupport === true) {
     classification = {
       toolName,
@@ -173,10 +177,11 @@ export function classifyTool(input: ClassifiedToolInput): RiskClassification {
       irreversible: false,
       compensatable: true,
       floorAsk: false,
+      catalogued: false,
       compensation: {action: `restore:${toolName}`, summary: '按执行前快照回放'},
     };
   } else if (input.sideEffect === 'local_write' || input.sideEffect === undefined) {
-    classification = {toolName, category: 'local_write', tier: 'high', irreversible: false, compensatable: false, floorAsk: true};
+    classification = {toolName, category: 'local_write', tier: 'high', irreversible: false, compensatable: false, floorAsk: true, catalogued: false};
   } else {
     classification = irreversibleClassification(toolName, 'external_submit');
   }
@@ -185,12 +190,12 @@ export function classifyTool(input: ClassifiedToolInput): RiskClassification {
     classification = irreversibleClassification(toolName, 'external_submit');
   }
   if (input.requiresPresence === true && !classification.irreversible) {
-    classification = {toolName, category: 'presence', tier: 'high', irreversible: false, compensatable: false, floorAsk: true};
+    classification = {toolName, category: 'presence', tier: 'high', irreversible: false, compensatable: false, floorAsk: true, catalogued: false};
   }
   if (input.sideEffect === 'read' && !classification.irreversible && classification.category !== 'presence') {
-    classification = {toolName, category: 'read', tier: 'low', irreversible: false, compensatable: false, floorAsk: false};
+    classification = {toolName, category: 'read', tier: 'low', irreversible: false, compensatable: false, floorAsk: false, catalogued: classification.catalogued};
   }
-  return classification;
+  return {...classification, catalogued: Boolean(listed)};
 }
 
 export function isToolCategory(value: string): value is ToolCategory {

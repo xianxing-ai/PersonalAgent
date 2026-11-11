@@ -38,6 +38,9 @@ export interface AutonomyDecision {
   irreversible: boolean;
   compensatable: boolean;
   overrideApplied: boolean;
+  catalogued: boolean;
+  /** 用户撤销、显式先问或不可逆时，不再回退到 automaticTools。 */
+  blockLegacy: boolean;
   reason: string;
   compensation?: RiskClassification['compensation'];
 }
@@ -167,6 +170,7 @@ export class AutonomyPolicyConfig {
   private readonly audits: AutonomyAuditRecord[] = [];
   private readonly notifications: AutonomyNotificationRecord[] = [];
   private readonly auditsByRun = new Map<string, AutonomyAuditRecord>();
+  private readonly compensationByRun = new Map<string, {toolName: string; toolVersion: string; arguments: Record<string, unknown>}>();
   private readonly now: () => Date;
   private readonly idFactory: () => string;
   private readonly store: AutonomyConfigStore | undefined;
@@ -338,6 +342,26 @@ export class AutonomyPolicyConfig {
     return {auditId: audit.auditId, state: 'rollback_requested', compensation: {...audit.compensation}};
   }
 
+  rememberCompensation(runId: string, call: {toolName: string; toolVersion: string; arguments: Record<string, unknown>}): void {
+    const id = requiredToken(runId, 'runId', 200);
+    const audit = this.auditsByRun.get(id);
+    if (!audit?.compensatable) throw new ProtocolError('INVALID_ARGUMENT', 'This action has no compensation');
+    const toolName = requiredToken(call.toolName, 'toolName', 120);
+    const toolVersion = requiredToken(call.toolVersion, 'toolVersion', 80);
+    if (!call.arguments || typeof call.arguments !== 'object' || Array.isArray(call.arguments)) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Compensation arguments are invalid');
+    }
+    if (JSON.stringify(call.arguments).length > 4000) throw new ProtocolError('INVALID_ARGUMENT', 'Compensation arguments are too large');
+    this.compensationByRun.set(id, {toolName, toolVersion, arguments: structuredClone(call.arguments)});
+  }
+
+  consumeCompensation(auditId: string): {auditId: string; state: 'rollback_requested'; call?: {toolName: string; toolVersion: string; arguments: Record<string, unknown>}} {
+    const undo = this.requestUndo(auditId);
+    const audit = this.audits.find(item => item.auditId === undo.auditId);
+    const call = audit ? this.compensationByRun.get(audit.runId) : undefined;
+    return {auditId: undo.auditId, state: 'rollback_requested', ...(call ? {call: {toolName: call.toolName, toolVersion: call.toolVersion, arguments: structuredClone(call.arguments)}} : {})};
+  }
+
   listAudits(): readonly AutonomyAuditRecord[] {
     return this.audits.map(cloneAudit);
   }
@@ -348,6 +372,9 @@ export class AutonomyPolicyConfig {
 
   private decision(classification: RiskClassification, disposition: AutonomyDisposition, overrideApplied: boolean, reason: string): AutonomyDecision {
     const safe = classification.floorAsk || classification.irreversible ? 'ask' : disposition;
+    const blockLegacy = this.snapshot.revoked || classification.irreversible
+      || this.snapshot.categoryOverrides[classification.category] === 'ask'
+      || (this.snapshot.stance !== 'autonomous' && safe === 'ask' && classification.catalogued);
     return {
       disposition: safe,
       stance: this.snapshot.stance,
@@ -356,6 +383,8 @@ export class AutonomyPolicyConfig {
       irreversible: classification.irreversible,
       compensatable: classification.compensatable,
       overrideApplied,
+      catalogued: classification.catalogued,
+      blockLegacy,
       reason: safe === 'ask' && disposition !== 'ask' ? 'action stays gated' : reason,
       ...(classification.compensation ? {compensation: {...classification.compensation}} : {}),
     };
