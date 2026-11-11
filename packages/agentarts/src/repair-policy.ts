@@ -527,6 +527,44 @@ export function appendRepairAttempt(trace: RepairTrace, decision: RepairDecision
   return next;
 }
 
+/** 操作者明确放弃、交给父 agent，或重试一次只读。不能把写入标成可执行。 */
+export function recordOperatorDecision(trace: RepairTrace, input: {
+  strategy: 'stop' | 'request_parent_replan' | 'backoff_retry';
+  reason: string;
+  effect: RepairEffect;
+  classification: FailureClass;
+  observedAt: string;
+  risk?: RepairRisk;
+  requiresApproval?: boolean;
+  executable?: boolean;
+  evidenceRefs?: readonly string[];
+}): RepairTrace {
+  if (!text(input.reason) || !text(input.observedAt) || !Number.isFinite(Date.parse(input.observedAt))) invalid('Invalid operator repair decision');
+  if (input.executable === true && input.effect !== 'read') invalid('Operator retry cannot execute a write');
+  if (input.strategy === 'backoff_retry' && input.effect !== 'read') invalid('Operator retry cannot execute a write');
+  const waiting = input.requiresApproval === true && input.strategy !== 'stop';
+  const decision: RepairDecision = {
+    record: true,
+    observedAt: input.observedAt,
+    classification: input.classification,
+    strategy: input.strategy,
+    reason: input.reason,
+    effect: input.effect,
+    risk: input.risk ?? 'ordinary',
+    requiresApproval: input.requiresApproval === true,
+    executable: waiting ? false : input.executable === true,
+    delayMs: 0,
+    result: waiting ? 'awaiting_approval' : input.strategy === 'stop' ? 'stopped' : 'selected',
+    terminal: !waiting && input.strategy !== 'backoff_retry',
+    budgetExhausted: false,
+    sideEffectsEmitted: 0,
+    fingerprint: `operator|${input.strategy}|${input.observedAt}|${input.effect}`,
+    evidenceRefs: (input.evidenceRefs ?? []).filter(ref => text(ref) && ref.length <= 128).slice(0, 8),
+    writeRetrySafe: false,
+  };
+  return appendRepairAttempt(trace, decision);
+}
+
 export function summarizeRepairFailure(trace: RepairTrace): RepairFailureSummary {
   assertTrace(trace);
   const last = trace.attempts[trace.attempts.length - 1];

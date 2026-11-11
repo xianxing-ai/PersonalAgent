@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {replayFrozenWorkflowTrace,workflowTraceDigest} from '../src/trace-replay.mjs';
+import {planRuntimeTaskFailure} from '@personal-agent/agentarts';
 import {createWorkflowShadowController,signWorkflowShadowRequest,verifyWorkflowShadowResponse} from '../src/shadow-controller.mjs';
 import {createAgentServer} from '../src/server.mjs';
 const receiptSecret='explicit-public-frozen-trace-secret-123456';
@@ -63,6 +64,15 @@ test('identical lookup key with different historical result/state is ambiguous, 
   const original=record(),changed=record({recordId:'second-original-record',result:{content:'different historical result'}});
   assert.throws(()=>replay(frozen([original,changed])),{code:'REVISION_CONFLICT'});
   assert.throws(()=>replay(frozen([original,record({recordId:'another-record',state:'failed'})])),{code:'REVISION_CONFLICT'});
+});
+test('a repair trace is shown with the frozen timeline and is not executed',()=>{
+  const repair=planRuntimeTaskFailure({taskId:'task-1',effect:'read',outcome:'failed',errorCode:'TIMEOUT',occurredAt:new Date(Date.now()-2000).toISOString(),evidenceRefs:['read-1']});
+  const result=replayFrozenWorkflowTrace({...frozen(),repairTrace:repair.trace},active());
+  assert.equal(result.actualToolCalls,0);assert.equal(result.actualModelCalls,0);
+  assert.equal(result.timeline.at(-1).kind,'repair_decision');
+  assert.equal(result.timeline.at(-1).executedDuringReplay,false);
+  assert.equal(result.repairSummary.sideEffectsEmitted,0);
+  assert.equal(replayFrozenWorkflowTrace(frozen(),active()).repairSummary,undefined);
 });
 test('original deadline and cancellation are used without renewing replay lifetime',()=>{
   const input=frozen();assert.throws(()=>replayFrozenWorkflowTrace(input,{...active(),deadline:'2025-01-01T00:00:00Z'}),{code:'TIMEOUT'});

@@ -286,6 +286,10 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .task-progress[data-state="failed"] strong::before {background:var(--danger)}
 .task-progress:is([data-state="waiting_approval"],[data-state="waiting_reconciliation"]) strong::before {background:var(--warn)}
 .panel .task-progress[hidden],.workspace .task-progress[hidden] {display:none}
+.failure-repair {flex-direction:column}
+.failure-repair ol {margin:4px 0 6px;padding-left:1.1em}
+.failure-repair button {margin:0 8px 0 0}
+.failure-repair button:disabled {opacity:.6}
 @media(max-width:540px){.panel .task-progress,.workspace .task-progress {flex-direction:column;gap:4px}}
 .admin .task-record-title {display:block;max-width:28ch;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
 .admin .task-record-id {display:block;margin-top:4px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}

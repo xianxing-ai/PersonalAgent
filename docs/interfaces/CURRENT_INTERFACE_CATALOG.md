@@ -2,7 +2,7 @@
 
 ## 2026-11-11 失败自愈决策（provisional）
 
-`@personal-agent/agentarts` 新增只读决策口：失败分类、指数退避、换策略、父 agent 重新规划、写入不盲重试，以及 `replayRepairTrace` / `summarizeRepairFailure`。crew 父 agent 只消费该决定并派新任务。没有新的 Core wire、数据库迁移或 Policy 授权；回放不执行工具。F13_N04 宿主确认恢复仍缺。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
+`@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
 
 ## 2026-10-29 MCP 管理任务读回（provisional）
 

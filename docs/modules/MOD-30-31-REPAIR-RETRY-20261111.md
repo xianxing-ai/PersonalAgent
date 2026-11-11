@@ -1,6 +1,6 @@
 # MOD-30 / MOD-31 失败自愈与可回放决策（2026-11-11）
 
-目标 profile：`huawei_ict_agentarts`。负责人：zemeng5208。状态：`review`（离线决策与 crew 父派单已接；不是 F13_N04 宿主确认恢复，也不是冻结接口）。
+目标 profile：`huawei_ict_agentarts`。负责人：zemeng5208。状态：`review`（失败路径、F13_N04 宿主确认和对话失败卡片已接；不是冻结接口，也不是真实云验收）。
 
 ## 行为
 
@@ -19,10 +19,26 @@ Owned workflow 只对宿主标记了 `retrySafe` 的失败只读节点应用该�
 
 ## 与 #531 的关系
 
-`codex/image28-full-wiring`（PR #531）仍保留“Repair algorithm unavailable”，并把只读 `trace-replay` 改成从 agentarts 再导出。本次不改 `apps/agentarts-runtime/src/trace-replay.mjs`，也不改 Desktop、Runtime 核心、Policy 核心或业务连接器。自愈回放是旁边的 `repair-replay.mjs`，避免和 #531 的冻结 trace 搬家叠在一起。
+`codex/image28-full-wiring`（PR #531）仍保留“Repair algorithm unavailable”，并准备把冻结 trace 的实现挪走。本次只给 `replayFrozenWorkflowTrace` 增加可选的 `repairTrace`，不改它原来的必填字段。Runtime 只加了 `onTaskFailed`。Desktop 只加当前对话的失败卡片。没有改 Policy 核心或业务连接器。
+
+## Runtime 失败路径与 F13_N04
+
+`TaskRuntime` 增加可选钩子 `onTaskFailed`。任务进入 `failed` 并提交之后，钩子才收到不含目标正文和参数的通知；回调抛错不会撤销已经提交的失败。结果仍待核实的任务不写这份记录，避免把决策当成未完成的副作用。`RuntimeApplication` 用它调用 `planRuntimeTaskFailure`，把记录写入 checkpoint `repair-decision:v1`。
+
+`confirmF13HostRecovery` 只在宿主读回给出证据，并且结果是已生效或未写上时，才把恢复标成 `recovered`、`lockReleased: true`。结果未知或没有证据时保持 `needs_reconcile`。`taskResumed` 固定为 false：失败终态不重开。
+
+外部写入在通知里标成高风险。界面不能自己打开批准。
+
+## 一起查看
+
+`replayFrozenWorkflowTrace` 可以带上 `repairTrace`。原冻结时间线保留，自愈尝试接在后面，`executedDuringReplay` 为 false，工具和模型次数不变。不带该字段时结果与原来相同。
+
+## 界面
+
+只在当前对话放一张失败卡片：分类、原因、每次尝试的时间线，以及当前真正能做的操作。只读且宿主不需要先查状态时显示“重试”；没有放弃时显示“放弃”；不是高风险且尚未放弃时显示“交给父 agent”。高风险只保留“放弃”，并说明要走原有授权。没有设置页，没有退避/预算控件，没有统计面板，没有第二处入口，也没有单独的批准按钮。重试只读会新提交一个任务，原失败任务保持失败。
 
 ## 明确没做
 
-- F13_N04 `runtime.confirmed_recovery` 的宿主确认恢复仍然没有。本决定不释放锁、不把任务标成完成。
 - 没有真实 AgentArts、真实工具或真实账号调用。Fake 通过不等于云端或设备验收。
 - 不改公共 Core wire，不新增数据库迁移，不把接口标成 frozen。
+- 桌面没有接入 crew 进程。交给父 agent 会记下重新规划，不会假装已经派发子任务。
