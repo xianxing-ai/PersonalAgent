@@ -6,7 +6,7 @@ import {createLiveVoiceHost} from '../electron/live-voice-host.js';
 // Actual Desktop hosts; synthetic IPC/device frames and provider events. No real
 // recording, cloud ASR, acoustic echo cancellation or human listening is asserted.
 test('F02 final binds real capture-host readback and exact playback drain turn without promoting acoustic flags',async()=>{
-  let live,mic,request,captureToken,clock=Date.now();const commands=[];
+  let live,mic,request,captureToken,clock=Date.now();const commands=[],transcripts=[];
   const deadline=new Date(clock+60000).toISOString();
   let question={questionId:'original-question',revision:1,state:'pending',taskId:'source',sourceApprovalId:'run',expiresAt:deadline};
   const contents={id:1,mainFrame:{},isDestroyed:()=>false,send(channel,message){
@@ -24,7 +24,7 @@ test('F02 final binds real capture-host readback and exact playback drain turn w
       const ready=mic.binding.start({onFrame:data=>options.onFrame({data})}).then(value=>{sub=value;});
       return {ready,closed,unsubscribe(){void ready.then(()=>sub.release()).then(release);}};
     },dispose:async()=>{}}),createGateway:()=>({async connect(value){request=value;return {sendAudio(){},interrupt(){},close:async()=>{},askUserQuestion:()=>({accepted:true})};}}),
-    createConsumer:()=>({}),client:{},readContext:()=>'',onTranscript(){},readConversationId:()=> 'voice-test',readCurrentQuestion:()=>question,authorizeFinalRead:()=>true});
+    createConsumer:()=>({}),client:{},readContext:()=>'',onTranscript:message=>transcripts.push(message),readConversationId:()=> 'voice-test',readCurrentQuestion:()=>question,authorizeFinalRead:()=>true});
   try{
     await live.start();const queued=live.askCurrentQuestion();assert.equal(queued.state,'queued');assert.equal(queued.questionRevision,1);
     const liveToken=commands.find(item=>item.channel==='desktop:live-command'&&item.type==='start').token;
@@ -42,6 +42,9 @@ test('F02 final binds real capture-host readback and exact playback drain turn w
     live.receive(event,{token:liveToken,type:'drained',drainId:drain.drainId});
     const playback=live.readQuestionDelivery(binding);assert.equal(playback.audioFrames,1);assert.equal(playback.playbackVerified,false);
     clock+=351;
+    request.onEvent({type:'transcript',id:'early',utteranceId:'early',role:'user',source:'input_audio',phase:'final',text:'合成回声'});
+    assert.equal(live.readFinalUserAudio(binding),undefined,'a suppressed utterance cannot be replayed after playback');
+    assert.equal(transcripts.some(message=>message.text==='合成回声'),false);
     request.onEvent({type:'speech_started',utteranceId:'utterance'});
     mic.receive(event,{type:'frame',token:captureToken,data:Uint8Array.of(3,4,5,6)});
     request.onEvent({type:'speech_stopped',utteranceId:'utterance'});
