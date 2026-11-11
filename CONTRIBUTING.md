@@ -1,6 +1,6 @@
 # 协作开发规范
 
-当前开发分工及临时单人接管安排见 [MODULE_ASSIGNMENTS](docs/MODULE_ASSIGNMENTS.md) 文首；下文长期职责保留为基线，独立审核与技术 CI 门槛继续适用。
+当前开发分工见 [MODULE_ASSIGNMENTS](docs/MODULE_ASSIGNMENTS.md)，已恢复按模块分工；独立审核与技术 CI 门槛继续适用。
 
 ## 当前各 MOD 自主接线交付（2026-10-15）
 
