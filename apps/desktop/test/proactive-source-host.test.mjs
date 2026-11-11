@@ -124,7 +124,7 @@ test('未授权目录被拒绝，授权后才扫描，撤销后不再扫描', as
   fx.host.revoke(root);
   fx.setNow(Date.parse('2026-11-11T08:30:00.000Z'));
   await fx.host.tick();
-  assert.deepEqual(seen, ['/work/notes']);
+  assert.deepEqual(seen, [root]);
 });
 
 test('设置界面只有开关、来源、静默、目录授权和只读记录', async () => {
