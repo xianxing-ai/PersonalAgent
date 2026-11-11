@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -9,7 +11,7 @@ for(const revokePrior of [false,true])test(`multiple confirmed tools preserve or
   sideEffect:'read',requiredScopes:['fixture:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true});
  const names=['fixture.first','fixture.second'];
  const messages=[{id:'original',role:'user',content:'今天穿什么出门，预算不超过500元，不要皮革。'}];
- app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'context',
+ app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'context',
   responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',continuationContext:'goal',
   tools:names.map((name,i)=>({descriptor:descriptor(name),execute:async()=>{if(i===1&&revokePrior)firstAllowed=false;return {source:name,value:i===0?'山东青岛市':'14–19°C，小雨'};}})),
   automaticTools:names.map(toolName=>({toolName,toolVersion:'1.0.0'})),

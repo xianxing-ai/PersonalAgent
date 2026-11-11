@@ -5,7 +5,7 @@ import ts from 'typescript';
 import {adminAuxiliaryDocument,recordFollowingNodes} from '../test-support/admin-history-dom.mjs';
 import {errorDisplayText} from '../src/shared/error-display.js';
 
-const element = () => ({dataset: {}, listeners: new Map(), textContent: '', value: '', disabled: false,
+const element = () => ({ownerDocument: globalThis.document, dataset: {}, listeners: new Map(), textContent: '', value: '', disabled: false,
   addEventListener(name, listener) {this.listeners.set(name, listener);}, setAttribute() {}, insertBefore() {},after:recordFollowingNodes,append:recordFollowingNodes});
 async function harness(t, invoke) {
   const keys = ['window', 'document', 'matchMedia'];
@@ -16,6 +16,9 @@ async function harness(t, invoke) {
   }});
   globalThis.window = {addEventListener() {}};
   globalThis.document = adminAuxiliaryDocument();
+  Object.defineProperty(Object.getPrototypeOf(document.createElement('select')), 'options', {
+    get() {return this.querySelectorAll('option');},
+  });
   globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
   const nodes = new Map(['.admin-bar', '#admin-close', 'nav', '#admin-search', '.advanced-nav', '.main',
     '#page-title', '#connection', '#content', '#error'].map(key => [key, element()]));

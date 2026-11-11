@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -19,7 +20,7 @@ function fixture(instructions='Use three bullet points.',hooks={}) {
   writeFileSync(path.join(source,'binary.bin'),Buffer.from([0xff,0x00]));writeFileSync(path.join(source,'control.txt'),'\u0000text');writeFileSync(path.join(source,'large.txt'),'x'.repeat(65537));
   const store=openLocalSkillStore(path.join(root,'installed.json')),candidate=readLocalSkillDirectory(source);
   const confirmations=[],requests=[];let host,confirmAllowed=true,confirmHook=()=>{},credentialRead=()=>{},fetchReply,historyMessages=[];
-  const app=createAgentArtsRuntimeApplication({path:path.join(root,'runtime.sqlite'),
+  const app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(root,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-installed-skill',hostUserNamespace:'synthetic-skill',
     authorizationProvider:{read:async()=>{await credentialRead();return 'Bearer synthetic';}},
     coordinationInput:{prepareCoordinationGoal:async scope=>{host.prepareTask(scope);return hooks.prepare?.(scope)??scope.publicGoal;},
@@ -29,7 +30,7 @@ function fixture(instructions='Use three bullet points.',hooks={}) {
     fetchImpl:async(_url,init)=>{requests.push(JSON.parse(init.body));
       if(fetchReply)return fetchReply(init);
       return new Response(JSON.stringify({event:'message',data:{text:'Synthetic outline reply',index:0}}),{headers:{'content-type':'application/json'}});
-    }});
+    }}));
   const make=()=>createInstalledSkillsHost({store,runtime:app.runtime,selectDirectory:async()=>source,
     validateRunInput:async publicGoal=>compileCoordinationGoal(publicGoal,publicGoal,host.filterContext(app.readConversationContext({
       conversationId:'desktop-workspace',deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal,historyMessages}))),

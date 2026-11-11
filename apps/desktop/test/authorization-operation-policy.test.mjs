@@ -1,7 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {needsMicrophoneApproval,operationSummary,taskOperationBinding} from '../electron/authorization-operation-policy.js';
+import {needsMicrophoneApproval,operationContentConfirmation,operationSummary,taskOperationBinding} from '../electron/authorization-operation-policy.js';
 const source=(name,scopes,args={})=>({toolName:name,toolVersion:'1',scopes,arguments:args,argumentsDigest:JSON.stringify(args)});
+
+test('F23 evaluation report cannot silently publish a candidate configuration',()=>{
+  const candidate={action:'promote',operationId:'original-report',configurationId:'decision',candidateParameters:{modelId:'candidate'}};
+  const original=operationContentConfirmation(source('workflow.host.f23_n04',['workflow:configuration:write'],candidate));
+  assert.match(original.text,/candidateParameters/);assert.match(original.text,/candidate/);
+  assert.notEqual(original.digest,operationContentConfirmation(source('workflow.host.f23_n04',[],
+    {...candidate,candidateParameters:{modelId:'changed'}})).digest);
+  assert.equal(operationContentConfirmation(source('workflow.host.f23_n03',[],{})),undefined);
+});
+
+test('send and publication projections preserve complete registered content and every changed dangerous field',()=>{
+  const text='正文\n'+ '长'.repeat(1000)+'\n尾部 <script>不可省略</script>',args={to:'a@example.test',subject:'主题',text};
+  const original=operationContentConfirmation(source('mail.send',['mail:send'],args));
+  assert.ok(original.text.includes(JSON.stringify(text)));
+  for(const field of ['to','subject','text'])assert.notEqual(original.digest,
+    operationContentConfirmation(source('mail.send',['mail:send'],{...args,[field]:args[field]+'x'})).digest);
+  const pr={repo:'owner/repo',title:'Repair',body:text,head:'fix',base:'main',expectedHeadSha:'a'.repeat(40)};
+  const publication=operationContentConfirmation(source('github.pr.create',['github:write'],pr));
+  for(const value of Object.values(pr))assert.ok(publication.text.includes(JSON.stringify(value)));
+  assert.throws(()=>operationContentConfirmation(source('mail.send',['mail:send'],{to:args.to,subject:'missing text'})),{code:'UNAUTHORIZED'});
+});
+
+test('unknown external writes and deletion show all original targets; credential shapes fail closed',()=>{
+  const external=args=>({...source('vendor.execute',['vendor:write'],args),sideEffect:'external_write'});
+  const result=operationContentConfirmation(external({target:'/data/a',permanent:false,scope:['one','two']}));
+  assert.match(result.text,/\/data\/a/);assert.match(result.text,/"permanent": false/);assert.match(result.text,/"two"/);
+  assert.ok(operationContentConfirmation(source('files.delete',['files:write'],{path:'/data/b',permanent:false})));
+  assert.ok(operationContentConfirmation(source('computer.desktop.type',['computer:desktop:control'],{targetRef:'target',text:'complete',press_enter:true})));
+  for(const key of ['apiKey','password','authorization','securityToken','private_key'])
+    assert.throws(()=>operationContentConfirmation(external({target:'safe',nested:[{[key]:'must-not-display'}]})),{code:'UNAUTHORIZED'});
+  assert.equal(operationContentConfirmation({...source('calendar.update',['calendar:write'],{externalId:'event'}),sideEffect:'external_write'}),undefined);
+  assert.equal(operationContentConfirmation(source('computer.desktop.observe',['computer:desktop:control'],{})),undefined);
+});
 test('sandbox-scoped reads and ordinary local edits reuse while external mutations retain exact arguments',()=>{
   for(const [name,scopes]of [['calendar.events',['calendar:read']],['todo.create',['todo:write']],['workspace.apply_text_patch',['workspace:write']]]){
     assert.equal(taskOperationBinding(source(name,scopes,{id:'a'})),taskOperationBinding(source(name,scopes,{id:'b'})));

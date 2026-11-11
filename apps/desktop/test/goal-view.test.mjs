@@ -46,6 +46,30 @@ const pending = id => ({taskId: id, revision: 1, state: 'waiting_approval',
   approval: {state: 'pending', approvalId: `approval-${id}`, revision: 1,
     expiresAt: '2099-01-01T00:00:00.000Z'}});
 
+test('Plan version control keeps the original click across a lost acknowledgement and never announces completion',async t=>{
+  const plan={...goal('selected-plan'),validUntil:'2099-01-01T00:00:00.000Z'},requests=[];
+  const f=fixture(t,(name,payload)=>{
+    if(name==='goal.list')return {graphRevision:7,goals,plans:[plan]};
+    if(name==='goal.plan.execute'){
+      requests.push(payload);if(requests.length===1)throw Error('Synthetic lost receipt');
+      return {state:'submitted',task:{taskId:'original-plan-root',state:'waiting_reconciliation'}};
+    }
+  });
+  await f.open();await settle();await f.button('执行此版本').onclick();
+  assert.match(f.status(),/核实同一次请求/);await f.button('核实本次受理').onclick();
+  assert.deepEqual(requests[1],requests[0]);assert.deepEqual(requests[0].plan,{id:plan.id,revision:plan.revision});
+  assert.equal(requests[0].expectedGraphRevision,7);assert.equal(Object.hasOwn(requests[0],'summary'),false);
+  assert.equal(f.button('查看原执行任务').disabled,false);assert.doesNotMatch(f.status(),/已完成/);
+  assert.match(f.status(),/original-plan-root/);assert.match(f.status(),/核实/);
+  await f.button('查看原执行任务').onclick();assert.deepEqual(requests[2],requests[0]);
+});
+
+test('an expired Plan still offers its already accepted original task for readback',async t=>{
+  const plan={...goal('expired-plan'),execution:{taskId:'original-root',state:'waiting_reconciliation',conversationId:'original-chat'}};
+  const f=fixture(t,name=>name==='goal.list'?{graphRevision:4,goals,plans:[plan]}:undefined);
+  await f.open();await settle();assert.equal(f.button('查看原执行任务').disabled,false);
+});
+
 function expiryClock(t) {
   const originalNow = Date.now, originalSet = globalThis.setTimeout, originalClear = globalThis.clearTimeout;
   let now = Date.parse('2026-10-08T00:00:00.000Z'), next = 0;

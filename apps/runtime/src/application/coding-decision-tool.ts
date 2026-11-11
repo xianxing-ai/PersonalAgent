@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
-import type {RegisteredTool} from '@personal-agent/contracts';
+import type {RegisteredTool,ToolContext} from '@personal-agent/contracts';
 import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import type {LayaActionChoiceService,LayaActionSelection} from '@personal-agent/cognition';
 import {actionArgumentsDigest} from '@personal-agent/cognition';
@@ -17,6 +17,7 @@ export interface RuntimeCodingDecisionReceipt {
 }
 
 export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaActionChoiceService,'choose'>;
+  readContext?:(context:ToolContext,original:string)=>string;
   save:(key:string,receipt:RuntimeCodingDecisionReceipt)=>void}):RegisteredTool {
   // Each invocation owns its ToolContext, including concurrent host tasks.
   const descriptor=createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Invocation selector unavailable');}}}).descriptor;
@@ -27,8 +28,11 @@ export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaA
     const candidates=input.candidates.map(candidate=>({id:candidate.id,revision:1,kind:'noop' as const,
       description:candidate.description,sources:[],scopeRef:input.requestId,expiresAt:input.deadline,
       risk:'low' as const,argumentsDigest:actionArgumentsDigest({})}));
-    const value=await options.localChooser.choose({context:input.context,deadline:input.deadline,signal:input.signal,candidates});
-    const contextDigest=sha(input.context);
+    const trustedContext=options.readContext?.(context,input.context)??input.context;
+    const value=await options.localChooser.choose({context:trustedContext,deadline:input.deadline,signal:input.signal,candidates});
+    if((options.readContext?.(context,input.context)??input.context)!==trustedContext)
+      throw new ProtocolError('REVISION_CONFLICT','Original local review sources changed');
+    const contextDigest=sha(trustedContext);
     const probability=(item:unknown)=>item===null||typeof item==='number'&&Number.isFinite(item)&&item>=0&&item<=1;
     const reference=(item:{id:string;revision:number}|undefined)=>item&&typeof item.id==='string'&&item.id.length>0&&item.id.length<=256
       &&Number.isSafeInteger(item.revision)&&item.revision>0;
@@ -52,7 +56,7 @@ export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaA
       receipt:{id:value.receipt.id,promptVersion:value.receipt.promptVersion,contextDigest:value.receipt.contextDigest,
         candidates:value.receipt.candidates.map(item=>({candidate:{id:item.candidate.id,revision:item.candidate.revision},digest:item.digest,
           ...(item.exclusion?{exclusion:item.exclusion}:{})}))}};
-    if(selection.receipt.contextDigest!==contextDigest||selection.receipt.id!==toolArgumentsDigest({context:input.context,candidates})
+    if(selection.receipt.contextDigest!==contextDigest||selection.receipt.id!==toolArgumentsDigest({context:trustedContext,candidates})
       ||!isDeepStrictEqual(selection.receipt.candidates.map(item=>({candidate:item.candidate,digest:item.digest})),
         candidates.map(candidate=>({candidate:{id:candidate.id,revision:candidate.revision},digest:toolArgumentsDigest(candidate)}))))
       throw new ProtocolError('EXTERNAL_FAILURE','Local coding decision receipt does not bind the original input');

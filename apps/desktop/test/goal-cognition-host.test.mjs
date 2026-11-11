@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdir,mkdtemp,readFile,rm} from 'node:fs/promises';
@@ -28,12 +29,13 @@ async function terminal(application,id) {
   }
   throw Error('Synthetic task did not settle');
 }
-async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,onTaskCallback=()=>{},largeScope=false}={}) {
+async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,repairProtocolOnly=false,onTaskCallback=()=>{},largeScope=false}={}) {
   const root=fileURLToPath(new URL('../../../.cache/desktop-goal-cognition/',import.meta.url));
   await mkdir(root,{recursive:true});const directory=await mkdtemp(path.join(root,'case-'));
   let host,layaCalls=0,goalWrites=0,updateCalls=0,releaseFetch,time=Date.now(),unavailable=unavailableInitially;const sent=[],announced=[];
-  const application=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+  const application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+    ...(repairProtocolOnly?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json'}:{}),
     ...(controlledRepair?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json',localRepair:{graphNamespace:namespace,bindingVersion:'desktop-reviewed-execution-v1',
       withSourceLock:async work=>work(),reviewedSource:{resolve:input=>{
         const prepared=host.readPreparedRepair(input.sourceTaskId);return prepared?.kind==='prepared' && prepared.binding.reviewTaskId===input.reviewTaskId?prepared:undefined;
@@ -51,10 +53,10 @@ async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCred
       const context=controlledRepair?JSON.parse(payload.query.slice(payload.query.lastIndexOf('\n')+1)).repairContext:undefined;
       const text=context?JSON.stringify({kind:'repair_candidate',candidateVersion:'1.0',
         candidate:{expectedGraphRevision:context.expectedGraphRevision,changes:context.targets.map(item=>({node:item.node,
-          summary:item.summary,reason:'Synthetic semantic review of selected dependency change',dependencies:item.requestedDependencies}))}}):'合成规划已接收';
+          summary:item.summary,reason:'Synthetic semantic review of selected dependency change',dependencies:item.requestedDependencies}))}}):repairProtocolOnly?JSON.stringify({kind:'text',text:'合成规划已接收'}):'合成规划已接收';
       return new Response(JSON.stringify({event:'message',data:{text,index:0}}),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   const store=application.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],'PRIVATE_SOURCE_SENTINEL','private'));
   store.append(1,node('goal','goal',[ref('private-source')],'原目标','private'));
@@ -122,13 +124,13 @@ async function savedGoalCards(t) {
       [key,key===selected?0.98:0.02/(keys.length-1)])),answer_confidence:0.98,confidence:0.5}}};
   }});
   async function open() {
-    application=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+    application=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
       gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
       beforeCompetitionSend:request=>host.assertCloudSend(request),
       authorizationProvider:{read:async()=> 'Bearer synthetic-not-a-key'},
       fetchImpl:async(_url,input)=>{sent.push(JSON.parse(input.body));return new Response(
         JSON.stringify({event:'message',data:{text:'Synthetic saved planning receipt',index:0}}),
-        {headers:{'content-type':'application/json'}});}});
+        {headers:{'content-type':'application/json'}});}}));
     application.runtime.provisionCoordinationStore(namespace);
     facts=application.createCompetitionFactHost({memoryPath:path.join(directory,'memory.sqlite'),
       memoryNamespace:'synthetic-public-memory',graphNamespace:namespace,consumerKey:'saved-cards'});
@@ -394,7 +396,7 @@ test('a selected strategy must still match the offered candidate and host bindin
 });
 
 test('a structured cloud repair translates only this selected scope and preserves private source omission',async t=>{
-  const f=await fixture(t);
+  const f=await fixture(t,{repairProtocolOnly:true});
   f.host().configure({enabled:true,cloudAllowed:true});await f.host().tick();
   const taskId=f.announced[0].taskId;await terminal(f.application,taskId);
   const binding=f.host().readRepairBinding(taskId);assert.ok(binding);

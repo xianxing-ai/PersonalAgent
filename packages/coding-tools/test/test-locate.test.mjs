@@ -7,6 +7,22 @@ import {spawnSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {locateTestFailures} from '../dist/test-locate/locate.js';
 
+for(const name of ['broken.mjs','broken.cjs'])test(`actual fixed Node syntax check localizes ${name} without reading snippets`,async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'pa-f17-node-check-'));
+  try{
+    await writeFile(path.join(root,name),'function broken( {\n');
+    const execution=spawnSync(process.execPath,['--check',name],{cwd:root,encoding:'utf8'});
+    assert.equal(execution.status,1);assert.match(execution.stderr,/SyntaxError/);
+    const report=locateTestFailures(execution.stderr,{root,maxSnippetReads:0});
+    assert.equal(report.totalFailures,1);assert.equal(report.failures[0].reporter,'node-check');
+    assert.equal(report.failures[0].frames[0].file,name);assert.ok(report.failures[0].frames[0].line>0);
+    assert.equal(report.failures[0].frames[0].snippet,undefined);
+    for(const incomplete of ['SyntaxError: invented',execution.stderr.replace(/SyntaxError:/u,'Error:'),
+      execution.stderr.replace(/node:internal\/main\/check_syntax/gu,'untrusted:check')])
+      assert.equal(locateTestFailures(incomplete,{root}).totalFailures,0);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
 async function repo() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'pa-test-locate-'));
   await writeFile(path.join(directory, 'src', 'calc.js').replace(/[/\\]src[/\\]calc\.js$/, ''), '', {flag: 'wx'}).catch(() => {});

@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,mkdtempSync,readdirSync} from 'node:fs';
@@ -65,7 +66,7 @@ test('actual main default-preset action rejects stale catalog, invalid input and
 });
 test('slider -> actual main preference -> Runtime -> synthetic AgentArts request carries the selected model and native effort',async()=>{
   const f=await hostFixture(),requests=[];
-  const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'picker',responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',
+  const app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://synthetic.huaweicloud-agentarts.com',runtimeName:'picker',responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',
     tools:[{descriptor:{name:'fixture.read',version:'1.0.0',inputSchema:{type:'object',properties:{},additionalProperties:false},outputSchema:{type:'object',properties:{}},sideEffect:'read',requiredScopes:[],requiresPresence:false,idempotencySupport:true,recoverySupport:true},execute:async()=>{assert.fail('Preset selection must not execute tools');}}],
     competitionToolAvailability:[{toolName:'fixture.read',toolVersion:'1.0.0',available:()=>true}],
     competitionToolExports:[{toolName:'fixture.read',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-picker-v1',accepts:()=>true,project:({result})=>result}],
@@ -74,7 +75,7 @@ test('slider -> actual main preference -> Runtime -> synthetic AgentArts request
     authorizationProvider:{read:async()=>'Bearer synthetic-only'},fetchImpl:async(url,init)=>{
       assert.equal(url,'https://synthetic.huaweicloud-agentarts.com/runtimes/picker/invocations');requests.push(JSON.parse(JSON.parse(init.body).query));
       return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify({kind:'text',text:'synthetic picker receipt'}),index:0}}),{headers:{'content-type':'application/json'}});
-    }});
+    }}));
   try{
     const client=new Client(app,Date.now);await client.connect();
     for(const depth of [0,1,2,3,4,5]){

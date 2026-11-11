@@ -1,0 +1,14 @@
+{
+  "types": [
+    {
+      "name": "release-notes",
+      "description": "根据已经授权阅读的笔记起草发布说明",
+      "instructions": "只使用已授予的 notes.read。不要新增权限，不要声称已经发布。",
+      "allowedTools": ["notes.read"],
+      "baseRole": "researcher",
+      "maxSteps": 4,
+      "deadlineMs": 120000,
+      "enabled": true
+    }
+  ]
+}

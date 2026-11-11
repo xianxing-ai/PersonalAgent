@@ -3,7 +3,7 @@
 .authorization-question-card,.authorization-sandbox-panel{padding:16px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:14px;background:color-mix(in srgb,currentColor 4%,transparent);min-width:0;overflow-wrap:anywhere}
 .authorization-question-card p{margin:8px 0;line-height:1.55}
 .authorization-question-title{font-size:15px;margin:0 0 8px;font-weight:650;line-height:1.5}
-.authorization-question-summary{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;line-height:1.5}
+.authorization-question-summary{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;line-height:1.5;white-space:pre-wrap}
 .authorization-question-details{margin-top:10px;font-size:13px}
 .authorization-question-details>summary{cursor:pointer;width:fit-content;font-size:12px;opacity:.75}
 .authorization-question-details[open]>summary{margin-bottom:8px}
@@ -22,6 +22,13 @@
 .authorization-question-actions button:disabled,.authorization-sandbox-panel button:disabled{opacity:.5;cursor:default}
 .authorization-question-status{font-size:12px;opacity:.75}
 .authorization-question-status:empty{display:none}
+.workflow-question-card form{display:flex;flex-wrap:wrap;align-items:end;gap:10px}
+.workflow-question-card label{display:grid;gap:6px;flex:1;min-width:140px}
+.workflow-question-card input,.workflow-question-card button{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;min-height:36px;padding:6px 10px;max-width:100%;box-sizing:border-box}
+.workflow-question-card dl{flex-basis:100%;margin:0;overflow-wrap:anywhere}.workflow-question-card dt{font-weight:600}.workflow-question-card dd{margin:2px 0 10px}
+.workflow-question-draft{flex-basis:100%;white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;font:inherit}
+.workflow-question-card :is(input,button):focus-visible{outline:2px solid #3b82f6;outline-offset:3px}
+.workflow-question-card :disabled{opacity:.5;cursor:default}
 .authorization-sandbox-panel{margin:0 0 18px}
 .authorization-sandbox-panel select{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;min-height:36px;padding:6px 10px;max-width:100%}
 .authorization-sandbox-rule{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent)}

@@ -14,8 +14,9 @@ function reader(app,text,live=[]) {
   const node=file.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='readDesktopConversationContext');
   assert.ok(node);
   const box={runtimeApplication:app,ProtocolError:class extends Error {constructor(code,message){super(message);this.code=code;}},
-    conversations:{containsConversation:()=>true,turns:new Map(),session:()=>({surface:'panel'}),messagesFor:()=>text},
-    liveVoice:{historyMessages:()=>live},installedSkillsHost:undefined,knowledgeWatchHost:undefined,coordinationWatchInputs:new Map()};
+    conversations:{containsConversation:()=>true,turns:new Map(),session:()=>({surface:'panel'}),messagesFor:()=>text,prohibitions:()=>({revision:0,items:[]})},
+    liveVoice:{historyMessages:()=>live},installedSkillsHost:undefined,knowledgeWatchHost:undefined,coordinationWatchInputs:new Map(),
+    authorizationQuestionHost:undefined,tasks:new Map()};
   vm.createContext(box);vm.runInContext(node.getText(file)+'\nthis.read=readDesktopConversationContext;',box);
   return (...args)=>box.read(...args);
 }
@@ -69,10 +70,11 @@ test('compaction strictly rejects malformed metadata and extra fields',async t=>
 
 test('metadata changes invalidate the original compaction source digest and committed receipt',async t=>{
   for(const field of ['createdAt','taskState','answerWithheld'])await t.test(field,async()=>{
-    const messages=Array.from({length:8},(_,i)=>({id:'source-'+i,role:i%2?'assistant':'user',
-      content:'original source '.repeat(30),createdAt:'2026-10-20T01:00:00Z',taskState:'failed',answerWithheld:true}));
+    const messages=Array.from({length:8},(_,i)=>({id:'source-'+i,role:i===0?'user':'assistant',
+      content:'original source '.repeat(20),...(i===0?{createdAt:'2026-10-20T01:00:00Z',taskState:'failed',answerWithheld:true}:{})}));
     const f=compaction(messages),result=await compactConversationContext(f.options);
     assert.equal(result.state,'compacted');assert.ok(f.receipt().sourceDigest);result.assertCurrent();
+    assert.deepEqual(result.messages.find(message=>message.id==='source-0'),messages[0]);
     if(field==='createdAt')messages[0].createdAt='2026-10-20T02:00:00Z';
     if(field==='taskState')messages[0].taskState='cancelled';
     if(field==='answerWithheld')delete messages[0].answerWithheld;

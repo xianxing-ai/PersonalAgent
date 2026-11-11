@@ -1,5 +1,6 @@
 import {errorDisplayText} from '../../shared/error-display.js';
 import {mountSessionControls} from '../conversation/session-controls.js';
+import {conflictDecisionMarkup,conflictDecisionPayload} from '../conversation/conflict-decision.js';
 import {mountModelThinkingPicker} from '../conversation/model-thinking-picker.js';
 import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
 import {Orb} from '../orb/orb.js';
@@ -50,16 +51,18 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=errorDisplayText(error);};
   const composer=mountWorkspaceComposer(root.querySelector('.workspace-chat'),invoke,report);
   const draftInput=composer.input;
-  const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose});
+  const prohibitionsRoot=document.createElement('aside');prohibitionsRoot.setAttribute('aria-label','本对话禁止项');
+  const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.workspace-chat').prepend(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,draftInput,invoke,report,{flushBeforeClose,prohibitionsRoot});
   const nativeReasoning=mountModelThinkingPicker(preferences,invoke,report,{readFeedbackRevision:()=>feedbackRevision,clearFeedback:()=>report('')});
   composer.beforeSubmit=async()=>{await nativeReasoning.flush();return sessionControls.flush();};
   composer.onAccepted=token=>sessionControls.submitted(token);
   const center=mountCommandCenter(root,{sessionRoot,preferences,input:draftInput,invoke,report,escape});
+  root.querySelector('.cc-rail').append(prohibitionsRoot);
   const runtimeControls=mountWorkspaceRuntimeControls(root,invoke,report);
   const workspaceApprovals=mountWorkspaceApprovals(conversation,invoke,report,()=>feedbackRevision);
   window.addEventListener('pagehide',()=>nativeReasoning.dispose(),{once:true});
   syncAuxiliaryPanels();
-  const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile]').forEach(button=>{button.disabled=Boolean(button.dataset.reconcile&&current.tasks.find(task=>task.taskId===button.dataset.reconcile)?.reconciliationStatus?.blockedReason)||pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile)&&task.state==='cancelling');});
+  const syncCancelButtons=()=>conversation.querySelectorAll('[data-cancel],[data-reconcile],[data-skip-conflict]').forEach(button=>{button.disabled=Boolean(button.dataset.reconcile&&current.tasks.find(task=>task.taskId===button.dataset.reconcile)?.reconciliationStatus?.blockedReason)||pendingCancelIds.has(button.dataset.cancel??button.dataset.reconcile??button.dataset.skipConflict)||current.tasks.some(task=>task.taskId===(button.dataset.cancel??button.dataset.reconcile??button.dataset.skipConflict)&&task.state==='cancelling');});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body)return;
     const action=['view','copy','cancel','reconcile'].find(key=>focused.dataset[key]);if(!action)return;
@@ -135,8 +138,8 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   };
   root.querySelector('#connector-cards').onkeydown=event=>{if((event.key==='Enter'||event.key===' ')&&event.target.matches('[data-connector]')){event.preventDefault();event.target.click();}};
   conversation.onclick=async event=>{
-    const button=event.target.closest('[data-cancel],[data-reconcile],[data-view],[data-copy]');if(!button)return;
-    try{if(button.dataset.view){inspected=button.dataset.view;renderInspector();}else if(button.dataset.copy){await invoke('clipboard.writeText',resultText(current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultSummary,current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultMetadata));button.title='已复制';}else{const id=button.dataset.cancel??button.dataset.reconcile;if(button.disabled||pendingCancelIds.has(id))return;pendingCancelIds.add(id);syncCancelButtons();try{await invoke(button.dataset.reconcile?'task.reconcile.finish':'task.cancel',id);}finally{pendingCancelIds.delete(id);syncCancelButtons();}}}catch(error){report(error);syncCancelButtons();}
+    const button=event.target.closest('[data-cancel],[data-reconcile],[data-skip-conflict],[data-view],[data-copy]');if(!button)return;
+    try{if(button.dataset.view){inspected=button.dataset.view;renderInspector();}else if(button.dataset.copy){await invoke('clipboard.writeText',resultText(current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultSummary,current.tasks.find(task=>task.taskId===button.dataset.copy)?.resultMetadata));button.title='已复制';}else{const id=button.dataset.cancel??button.dataset.reconcile??button.dataset.skipConflict;if(button.disabled||pendingCancelIds.has(id))return;pendingCancelIds.add(id);syncCancelButtons();try{await invoke(button.dataset.skipConflict?'task.reconcile.skip':button.dataset.reconcile?'task.reconcile.finish':'task.cancel',button.dataset.skipConflict?conflictDecisionPayload(current.tasks.find(task=>task.taskId===id)):id);}finally{pendingCancelIds.delete(id);syncCancelButtons();}}}catch(error){report(error);syncCancelButtons();}
   };
   function renderInspector(){
     const task=current.tasks.find(item=>item.taskId===inspected);
@@ -144,6 +147,26 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     root.querySelector('#conversation-inspector').dataset.taskId=task.taskId;
     syncAuxiliaryPanels();
     root.querySelector('#inspector-content').innerHTML=`<h3>你的消息</h3><p>${escape(task.userMessage||'历史对话')}</p><h3>回答</h3><p>${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state])}</p>${task.resultMetadata?`<h3>模型与验证</h3><p>${escape(task.resultMetadata.profile)} · ${escape(task.resultMetadata.verification)}</p>`:'' }<h3>执行状态</h3><p>${escape(stateNames[task.state]||task.state)}</p>${(task.steps||[]).map(step=>`<p class="inspector-step">${escape(step.label)} · ${escape(step.state)}</p>`).join('')}`;
+    const candidateButton=document.createElement('button'),candidateBody=document.createElement('div');
+    candidateButton.type='button';candidateButton.textContent='查看候选答案';
+    candidateButton.onclick=async()=>{
+      if(candidateButton.disabled)return;candidateButton.disabled=true;
+      try{
+        const value=await invoke('workflow.modelCandidates.read',{taskId:task.taskId});
+        if(inspected!==task.taskId||!root.contains(candidateBody))return;
+        candidateBody.replaceChildren();
+        const note=document.createElement('p');note.textContent='以下为模型候选，尚未核实。';candidateBody.append(note);
+        const candidates=value.results.flatMap(result=>result.candidates);
+        if(!candidates.length)note.textContent='这轮对话暂无已完成的候选答案。';
+        for(const candidate of candidates){
+          const heading=document.createElement('h3'),body=document.createElement('p');
+          heading.textContent=candidate.modelId;body.textContent=candidate.text;body.style.whiteSpace='pre-wrap';
+          candidateBody.append(heading,body);
+        }
+      }catch(error){if(inspected===task.taskId&&root.contains(candidateBody))candidateBody.textContent=errorDisplayText(error);}
+      finally{candidateButton.disabled=false;}
+    };
+    root.querySelector('#inspector-content').append(candidateButton,candidateBody);
   }
   function update(data){
     updateRevision++;
@@ -156,13 +179,13 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     if(document.hidden)orb.stop();
     composer.update(data);
     updateProgress(data.tasks,data.computerControl,
-      {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
+      {questions:data.authorizationQuestions,workflowQuestions:data.workflowQuestions,conversationId:data.conversationState?.activeId});
     root.querySelector('#workspace-greeting').hidden=current.tasks.length>0;root.querySelector('#workspace-intro').hidden=current.tasks.length>0;root.querySelector('#workspace-welcome').classList.toggle('compact',current.tasks.length>0);
     const signature=JSON.stringify(data.tasks);
     if(signature!==lastSignature){
       const focused=conversation.contains(document.activeElement)?document.activeElement:null;
       const atBottom=stage.scrollHeight-stage.scrollTop-stage.clientHeight<90;lastSignature=signature;
-      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??task.reconciliationStatus?.notice??(task.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${task.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">${escape(task.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
+      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}">${task.conflictOnly?'':`<div class="user-message">${escape(task.userMessage||'历史对话')}</div>`}<div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??task.reconciliationStatus?.notice??(task.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${!task.conflictOnly&&task.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">${escape(task.reconciliationStatus.actionLabel)}</button>`:''}`:''}${conflictDecisionMarkup(task,escape,true)}${!task.conflictOnly&&!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
       syncCancelButtons();restoreTaskActionFocus(focused);
       requestAnimationFrame(()=>{if(atBottom)stage.scrollTop=stage.scrollHeight;updateRail();});if(inspected)renderInspector();
     }

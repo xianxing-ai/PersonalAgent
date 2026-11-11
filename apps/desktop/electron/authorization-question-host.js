@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
-import {operationSummary,taskOperationBinding} from './authorization-operation-policy.js';
+import {operationContentConfirmation,operationSummary,requiresContentConfirmation,taskOperationBinding} from './authorization-operation-policy.js';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','原操作的精确授权已失效，未执行或发送新的资料');};
@@ -106,35 +106,46 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       ||value.deadline!==scope.deadline)denied();
     return {...value,signal:scope.signal};
   }
-  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline}={}) {
+  function prepare(scope,{requirements=[],assertCurrent=()=>true,taskConsent,decisionDeadline,contentConfirmation}={}) {
     const source=original(scope),identity=key(source),prior=preparations.get(identity);
     if(operations.has(identity))denied();
     const requested=structuredClone(requirements);
     if(prior&&prior.argumentsDigest!==source.argumentsDigest)denied();
     if(prior?.taskConsent&&taskConsent&&!same(prior.taskConsent,taskConsent))denied();
+    if(contentConfirmation&&(typeof contentConfirmation.text!=='string'||!contentConfirmation.text||contentConfirmation.text.length>950_000
+      ||contentConfirmation.digest!==digest(contentConfirmation.text)||prior?.contentConfirmation&&!same(prior.contentConfirmation,contentConfirmation)))denied();
     if(decisionDeadline!==undefined&&(!Number.isFinite(Date.parse(decisionDeadline))||Date.parse(decisionDeadline)>Date.parse(source.deadline)))denied();
     const merged=new Map((prior?.requirements??[]).map(item=>[item.requirementId,item]));
     for(const requirement of requested){const old=merged.get(requirement.requirementId);if(old&&!same(old,requirement))denied();merged.set(requirement.requirementId,requirement);}
     preparations.set(identity,{...requestFields(source),requirements:[...merged.values()],
       ...((taskConsent??prior?.taskConsent)?{taskConsent:structuredClone(taskConsent??prior.taskConsent)}:{}),
+      ...((contentConfirmation??prior?.contentConfirmation)?{contentConfirmation:structuredClone(contentConfirmation??prior.contentConfirmation)}:{}),
       decisionDeadline:new Date(Math.min(Date.parse(source.deadline),Date.parse(decisionDeadline??source.deadline),
         Date.parse(prior?.decisionDeadline??source.deadline))).toISOString(),
       assertCurrent:()=>assertCurrent()&&(prior?.assertCurrent?.()??true)});
   }
   function buildRequest(source,prepared){
+    const contentConfirmation=operationContentConfirmation(source);
     const tool={requirementId:'tool',kind:'tool',scopes:[...source.scopes],bindingDigest:digest({taskId:source.taskId,runId:source.runId,
       toolName:source.toolName,toolVersion:source.toolVersion,argumentsDigest:source.argumentsDigest,deadline:source.deadline}),
       ...((prepared?.requirements??[]).some(item=>item.requirementId!=='tool'&&item.ruleBindingDigest)
         ?{ruleBindingDigest:digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort()}),
           taskBindingDigest:taskOperationBinding(source)}:{}),
       summary:operationSummary(source)};
-    return {...requestFields(source),...(prepared?.taskConsent?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
+    return {...requestFields(source),...(contentConfirmation?{contentConfirmation}:{}),
+      ...(prepared?.taskConsent?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
       requirements:[tool,...(prepared?.requirements??[]).filter(item=>item.requirementId!=='tool')]};
+  }
+  function withPreparedContent(request,prepared){
+    if(!prepared?.contentConfirmation)return request;
+    const text=[request.contentConfirmation?.text,prepared.contentConfirmation.text].filter(Boolean).join('\n\n');
+    if(text.length>1_000_000)denied();
+    return {...request,contentConfirmation:{digest:digest(text),text}};
   }
   async function requestToolAuthorization(scope) {
     const owner=getApplication(),source=original(scope);let stage='question-service';
     try{
-      const identity=key(source),prepared=preparations.get(identity),request=buildRequest(source,prepared);
+      const identity=key(source),prepared=preparations.get(identity),request=withPreparedContent(buildRequest(source,prepared),prepared);
       const current=()=>getApplication()===application&&(prepared?.assertCurrent?.()??true);
       const api=service();
       stage='original-binding';
@@ -143,7 +154,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       const derived=batchDerivations.get(identity);
       let receipt;
       stage='question-open';
-      if(derived){
+      if(derived&&!request.contentConfirmation){
         if(derived.kind==='intent')getApplication().assertHostIntentQuestionDerivative(derived.parent.request.taskId,source.taskId,derived.operationDigest);
         else getApplication().assertMailReadQuestionPage(derived.parent.request.taskId,source.taskId,derived.batchId);
         const parentConsumer=derived.parent.request.runId+':'+derived.requirementId;
@@ -236,6 +247,17 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     if(!entry||entry.request.taskId!==scope.taskId||entry.request.deadline!==scope.deadline)denied();
     service().assertConsumedResult(entry.receipt,entry.request,requirementId,consumerId);return true;
   }
+  function readConsumedOperation(scope){
+    if(!scope||!scope.signal||scope.signal.aborted||!Number.isFinite(Date.parse(scope.deadline))||now()>=Date.parse(scope.deadline))denied();
+    assertConsumedResult(scope,'tool');
+    const entry=operations.get(key(scope));
+    const {signal,...request}=entry.request;
+    if(signal?.aborted)denied();
+    const copy=structuredClone({request,receipt:entry.receipt});
+    const freeze=value=>{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}};
+    freeze(copy);
+    return Object.freeze({request:Object.freeze({...copy.request,signal}),receipt:copy.receipt});
+  }
   function authorizeConsumedExport(scope,result,requirementId='export'){
     if(getApplication()?.runtime.getTask(scope.taskId).state==='running')return authorizeExport(scope,result,requirementId);
     const entry=operations.get(key(scope));if(!entry||scope.signal?.aborted||entry.request.deadline!==scope.deadline)denied();
@@ -285,14 +307,15 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     }catch(error){if(error?.code==='NOT_FOUND')return false;throw error;}
   }
   return {
-    requiresAuthorization:scope=>preparations.has(key(scope)),
+    requiresAuthorization:scope=>preparations.has(key(scope))||requiresContentConfirmation(scope),
     requiresNativeForAuthorization:scope=>preparations.get(key(scope))?.taskConsent?.requiresNative===true,
-    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
+    prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,readConsumedOperation,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
     readResourceGeneration,rotateResourceGeneration,
     request:(request,current)=>service().request(request,current),
     consume:(...args)=>service().consume(...args),assertRequirement:(...args)=>service().assertRequirement(...args),
     respond:(input,conversationId)=>service().respond(input,conversationId),
     snapshot:conversationId=>closed||!getApplication()?.runtime?[]:service().snapshot(conversationId),
+    refresh:()=>service().refresh(),
     hasPending,
     automaticallyApproves:()=>!closed&&Boolean(getApplication()?.runtime)&&service().sandboxSnapshot().selected.mode==='full-access',
     sandboxSnapshot:()=>service().sandboxSnapshot(),selectSandbox:input=>service().selectSandbox(input),revokeRule:input=>service().revokeRule(input),

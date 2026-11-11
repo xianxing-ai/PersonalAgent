@@ -4,6 +4,7 @@ import type {OwnedWorkflowAdvanceRequest,WorkflowProposal,WorkflowReceipt,Workfl
   WorkflowRevisionIdentity,WorkflowRevisionMigration,WorkflowControlCommand} from './owned-workflows.js';
 import {parseWorkflowSelectionResult,workflowShadowSelectedPlan,workflowShadowSelectionDigest,createWorkflowShadowCheckpointPort,
   createWorkflowShadowHistory,verifyWorkflowShadowBranches,evaluateWorkflowShadowPolicy,constrainWorkflowShadowPolicy} from './workflow-shadow-policy.js';
+import {admitOrdinaryCompetitionSampling,ordinaryCompetitionSamplingKey} from './ordinary-competition-sampling.js';
 import type {WorkflowShadowPolicyConfig,WorkflowShadowResourceSnapshot,WorkflowShadowBranchReceipt,
   WorkflowShadowReceiptVerifier,WorkflowShadowEvaluationReceipt,WorkflowShadowTaskContext} from './workflow-shadow-policy.js';
 
@@ -248,6 +249,16 @@ export class OwnedWorkflowHostBridge {
       // Validate current plan/candidate/context before any durable history append.
       if(main&&shadow&&plan.tier==='isolated'&&policy.comparison.status==='comparable')await history.record(main,shadow);
       this.shadowContext(request);
+      if(plan.mode==='ordinary'&&!comparisonRequested){
+        const qualityOf=(branch:WorkflowShadowBranchReceipt)=>({baselineSha256:branch.baselineSha256,qualityMetricId:branch.qualityMetricId,
+          qualityScore:branch.qualityScore,wallMs:branch.wallMs,modelCalls:branch.modelCalls,evidenceRefs:[...branch.evidenceRefs]});
+        const sampling=admitOrdinaryCompetitionSampling({plan,policy,resources:snapshot.resources,isolation,
+          main:main?qualityOf(main):null,shadow:shadow?qualityOf(shadow):null});
+        const sampleKey=ordinaryCompetitionSamplingKey(proposal.operationId,sampling);
+        this.options.checkpoints.writeOnce(request.taskId,sampleKey,sampling);
+        if(hash(this.options.checkpoints.read(request.taskId,sampleKey))!==hash(sampling))
+          throw new ProtocolError('REVISION_CONFLICT','Original ordinary sampling record changed');
+      }
     }
     const body={version:1 as const,nodeId:proposal.nodeId,decisionRef:proposal.operationId,selectionDigest,context,plan,policy,isolation,
       comparisonRequested,

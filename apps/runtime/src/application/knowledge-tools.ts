@@ -1,4 +1,5 @@
 import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
+import {isDeepStrictEqual} from 'node:util';
 import type {RegisteredTool, ToolContext, ToolHost} from '@personal-agent/contracts';
 import type {KnowledgePort} from '@personal-agent/knowledge';
 import type {ReadOnlyPageVaultPort} from '@personal-agent/knowledge/filesystem';
@@ -7,6 +8,8 @@ import {createKnowledgeWriteTool} from '@personal-agent/knowledge/write';
 import type {KnowledgeNotePatch, KnowledgeWriteReceipt, KnowledgeWritePort, KnowledgeWriteFinalizationAcceptance} from '@personal-agent/knowledge/write';
 import {createKnowledgeWriteProjection} from './knowledge-write-projection.js';
 import type {KnowledgeWriteProjectionPort} from './knowledge-write-projection.js';
+import {readFinalizedKnowledgeWriteEffect} from './workflow-f24-knowledge-ports.js';
+import type {TaskRuntime} from '../index.js';
 
 export interface TrustedKnowledgeBinding {
   sourceId: string; namespace: string; configRevision: number; available: boolean;
@@ -24,7 +27,7 @@ export interface TrustedKnowledgeSource {
   };
 }
 export interface KnowledgeToolTaskBindings {
-  runtime: {
+  runtime: Partial<Pick<TaskRuntime,'getTask'|'readToolExecutions'|'matchesToolExecutionInput'|'readEvidence'>> & {
     loadCheckpoint(taskId: string, key: string): unknown;
     saveCheckpoint(taskId: string, key: string, value: unknown): void;
   };
@@ -105,7 +108,7 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource, proj
   }));
   const exports = tools.map(tool => ({
     toolName: tool.descriptor.name, toolVersion: tool.descriptor.version,
-    exportPolicyVersion: 'knowledge-explicit-public-query-v1',
+    exportPolicyVersion: tool===write?'knowledge-explicit-public-write-v2':'knowledge-explicit-public-query-v1',
     accepts: ({taskId, arguments: args}: {taskId: string; proposalId: string; arguments: Record<string, unknown>}) => {
       const current = source.snapshot();
       if (!permitted(taskId) || args.sourceId !== current.sourceId || args.configRevision !== current.configRevision) return false;
@@ -116,8 +119,21 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource, proj
     project: ({taskId, result, signal}: {taskId: string; proposalId: string; result: unknown; signal: AbortSignal}) => {
       if (signal.aborted || !permitted(taskId)) throw new ProtocolError('SCOPE_DENIED', 'Knowledge cloud export revoked');
       if (tool === write) {
-        const value = result as {sourceId?: string; configRevision?: number; state?: string; changed?: boolean};
+        const value = result as {sourceId?: string; configRevision?: number; state?: string; changed?: boolean;currentSha256?:string};
         const current = source.snapshot();
+        if(value?.state==='applied'||value?.state==='not_applied'){
+          const runtime=application?.runtime,runId='host-tool-'+taskId;
+          const intent=runtime?.loadCheckpoint(taskId,'host-tool-intent') as {namespace?:string;arguments?:Record<string,unknown>}|undefined;
+          const observation=runtime?.loadCheckpoint(taskId,'knowledge-write-readback') as {result?:unknown}|undefined;
+          if(!runtime||typeof runtime.getTask!=='function'||typeof runtime.readToolExecutions!=='function'
+            ||typeof runtime.matchesToolExecutionInput!=='function'||typeof runtime.readEvidence!=='function'||!intent?.namespace
+            ||intent.arguments?.sourceId!==current.sourceId||intent.arguments.configRevision!==current.configRevision
+            ||!current.writeAvailable||!current.allowedNotePaths.includes(String(intent.arguments.path))
+            ||!readFinalizedKnowledgeWriteEffect({runtime:runtime as Parameters<typeof readFinalizedKnowledgeWriteEffect>[0]['runtime'],
+              namespace:intent.namespace,target:{taskId,runId}})||!isDeepStrictEqual(observation?.result,result))
+            throw new ProtocolError('UNAUTHORIZED','Original knowledge reconciliation export is unavailable');
+          return {state:value.state,changed:value.state==='applied'&&value.currentSha256!==intent.arguments.expectedSha256};
+        }
         if (value?.sourceId !== current.sourceId || value.configRevision !== current.configRevision
           || !['verified', 'conflict'].includes(value.state ?? '') || typeof value.changed !== 'boolean') {
           throw new ProtocolError('INVALID_ARGUMENT', 'Invalid knowledge receipt');
@@ -182,6 +198,7 @@ export function createTrustedKnowledgeTools(source: TrustedKnowledgeSource, proj
           const accepted = input.acceptedOriginal;
           projection?.accept(accepted.taskId, accepted.runId, accepted.argumentsDigest, {
             operationId: result.operationId, state: result.outcome === 'applied' ? 'verified' : 'conflict',
+            afterSha256: result.currentSha256,
             changed: result.outcome === 'applied' && result.currentSha256 !==
               (accepted.originalInput as KnowledgeNotePatch).expectedSha256}, accepted.originalInput as KnowledgeNotePatch);
           // Commit the original Runtime result before callers independently recover projections.

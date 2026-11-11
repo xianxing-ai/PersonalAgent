@@ -14,6 +14,8 @@ Profile：`huawei_ict_agentarts`；MOD-11 / MOD-16，zemeng。依赖 Runtime pre
 
 从仓库根目录执行 `npm run build:windows-host --workspace=@personal-agent/desktop`。需要普通 Windows 用户会话及 .NET 8 SDK；脚本串行生成 Host 与 Bridge 的 Release 输出。Desktop 仅使用这两个固定仓库产物路径，Renderer 不能指定 exe。缺少产物时显示不可用，不注册工具。
 
+独立正式自包含资源现由 `npm run build:windows-host --workspace=@personal-agent/desktop -- --publish-native-desktop` 生成：`resources/native-tools/windows-host/{host,bridge}`，固定 .NET / Windows Desktop 8.0.30，完整清单、许可及原协议 Schema 均包含。受信组合方通过 `readWindowsHostComponent(resourcesPath)` 捕获路径和清单，并把 `assertCurrentBundle` 注入原 Runtime transport；每次连接与发帧复核原包。FDD 兼容入口仍要求可被干净环境找到的全局 .NET 8，不依赖继承私有 SDK 环境。正式包不自动等于 Main 已接线或 Notepad 已验收，当前证据见 [独立原生发布记录](../../../docs/competition/evidence/WINDOWS_HOST_SELF_CONTAINED_20261101.md)。
+
 在完成 AgentArts 配置的正式 Desktop 中打开“设置 → 电脑操控”。填写 1～4096 字符的用户文本，点击“新建并准备写入”。Host 在 hello_ack 前记录既有记事本窗口；可信 Desktop 在握手后启动系统记事本。
 
 用户确认它是新建的独立、空白、单标签窗口，将其保持在前台，按 F9 允许本次已填写内容写入。快捷键只在这次准备期间登记，用完即释放；已被其他功能占用时拒绝准备。不关闭、不保存用户窗口。系统记事本若在既有窗口新开标签，必须由用户创建独立新窗口；旧窗口不会成为目标。

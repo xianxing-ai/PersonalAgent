@@ -267,6 +267,7 @@ function freezeJsonSnapshot(value: unknown): void {
 function validateRequest(request: CoordinationRequest, responseMode: 'text' | 'tool-proposal-json',
   initialRequestMode: 'goal' | 'goal-with-tools-json', continuationContext?: 'goal'): {
   taskId: string; revision: number; goal: string; deadline: string;
+  executionEpoch?:number;
   deadlineMs: number; signal: AbortSignal; continuation?: CoordinationContinuation;
   priorContinuations?:readonly CoordinationContinuation[];
   executionModel?:ExecutionModelSelection;
@@ -277,7 +278,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   try {
     const source = asPlainObject(request);
     if (!source) invalid('Invalid AgentArts coordination request');
-    input = {taskId: source.taskId, revision: source.revision, goal: source.goal,
+    input = {taskId: source.taskId, revision: source.revision, goal: source.goal,executionEpoch:source.executionEpoch,
       deadline: source.deadline, signal: source.signal,
       continuation: source.continuation, priorContinuations:source.priorContinuations,
       availableTools: source.availableTools, textOnly:source.textOnly,executionModel:source.executionModel};
@@ -316,6 +317,8 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) {
     invalid('Coordination revision must be a non-negative safe integer');
   }
+  if(input.executionEpoch!==undefined&&(!Number.isSafeInteger(input.executionEpoch)||(input.executionEpoch as number)<0))
+    invalid('Invalid execution epoch');
 
   const goal = input.goal;
   if (typeof goal !== 'string' || goal.trim().length === 0) invalid('Coordination goal must not be empty');
@@ -355,6 +358,7 @@ function validateRequest(request: CoordinationRequest, responseMode: 'text' | 't
   if(priorContinuations && new Set([...priorContinuations.map(item=>item.proposalId),continuation!.proposalId]).size!==priorContinuations.length+1)
     invalid('Duplicate prior continuation');
   return {taskId, revision, goal, deadline, deadlineMs, signal,
+    ...(input.executionEpoch===undefined?{}:{executionEpoch:input.executionEpoch as number}),
     ...(priorContinuations===undefined?{}:{priorContinuations}),
     ...(input.executionModel===undefined?{}:{executionModel:parseExecutionModelSelection(input.executionModel)}),
     ...(input.textOnly ? {textOnly:true as const} : {}),
@@ -1141,6 +1145,9 @@ function parseTextOnlyApplicationResult(text:string,repairCandidateVersion:'1.0'
   return parseCoordinationTextResult({kind:'text',text,verification:'unverified'});
 }
 
+export type AgentArtsPayloadPreparer=(scope:{requestId:string;destination:string;payload:string;deadline:string;
+  signal:AbortSignal;isCurrent:()=>boolean})=>Promise<{assertBeforeSend(actual:{destination:string;payload:string}):void}>;
+
 /** Bounded Competition transport; JSON proposals and WSS require explicit trusted-host opt-in. */
 export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly gatewayOrigin: string;
@@ -1157,6 +1164,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly beforeInitialToolCatalogSend: ((request: CoordinationRequest) => Promise<void>) | undefined;
   private readonly onDiagnostic: ((receipt: AgentArtsFailureDiagnostic) => void) | undefined;
   private readonly websocket: AgentArtsWebSocketTransport | undefined;
+  private readonly websocketUrl:string|undefined;
   /** Derived only from the already validated trusted WSS URL; fallback keeps the same deployment. */
   private readonly websocketDeploymentVersion: string | undefined;
   private readonly websocketAuthorizationProvider: AgentArtsAuthorizationProvider | undefined;
@@ -1167,6 +1175,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
   private readonly identityObserver: AgentArtsRequestIdentityObserver | undefined;
   private readonly taskContinuationContext: ((taskId: string) => 'goal' | undefined) | undefined;
   private closed = false;
+  private readonly preparePayload:AgentArtsPayloadPreparer|undefined;
 
   constructor(
     config: AgentArtsRuntimeConfig,
@@ -1178,6 +1187,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     websocketOptions?: AgentArtsWebSocketOptions,
     identityObserver?: AgentArtsRequestIdentityObserver,
     taskContinuationContext?: (taskId: string) => 'goal' | undefined,
+    preparePayload?:AgentArtsPayloadPreparer,
   ) {
     const validated = validateRuntimeConfig(config);
     if (!authorizationProvider || typeof authorizationProvider.read !== 'function') {
@@ -1236,6 +1246,9 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     this.onWebSocketTerminal = websocketOptions?.onTerminal;
     this.identityObserver = identityObserver;
     this.taskContinuationContext = taskContinuationContext;
+    if(preparePayload!==undefined&&typeof preparePayload!=='function')invalid('Invalid local payload gate');
+    this.preparePayload=preparePayload;
+    this.websocketUrl=validated.websocketUrl;
     this.websocket = validated.websocketUrl === undefined ? undefined
       : new AgentArtsWebSocketTransport(validated.websocketUrl, websocketOptions?.factory, websocketOptions?.onState,
         websocketOptions?.recoverAcceptedStatus===true?(receipt,controls)=>this.queryStatus(receipt,controls):undefined);
@@ -1292,7 +1305,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     if (this.closed) throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'AgentArts transport is closed');
     const selectedContext = this.continuationContext ?? this.taskContinuationContext?.(request.taskId);
     if (selectedContext !== undefined && selectedContext !== 'goal') invalid('AgentArts task continuation selection is invalid');
-    const {taskId, revision, goal, deadline, deadlineMs, signal, continuation, priorContinuations, availableTools, textOnly,executionModel} =
+    const {taskId, revision, executionEpoch, goal, deadline, deadlineMs, signal, continuation, priorContinuations, availableTools, textOnly,executionModel} =
       validateRequest(request, this.responseMode, this.initialRequestMode, selectedContext);
     if (continuation !== undefined && this.beforeSend === undefined) {
       throw new ProtocolError('UNAUTHORIZED', 'AgentArts continuation export guard is unavailable');
@@ -1305,7 +1318,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       invalid('Repair continuation cannot include a tool directory');
     }
     const modelSelection = executionModel===undefined?{}:{executionModel};
-    const query = continuation === undefined
+    const originalQuery = continuation === undefined
       ? !textOnly && availableTools === undefined && executionModel===undefined ? goal : JSON.stringify({goal, availableTools:availableTools??[],...modelSelection})
       : availableTools === undefined && this.repairCandidateVersion === '1.0' && asPlainObject(continuation.result)
         && Object.prototype.hasOwnProperty.call(continuation.result, 'repairContext')
@@ -1313,6 +1326,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         : JSON.stringify({continuation,...(selectedContext==='goal'?{goal,
           ...(availableTools===undefined?{}:{availableTools}),
           ...(priorContinuations?.length?{priorContinuations}:{})}:{}),...modelSelection});
+    const query=executionEpoch===undefined?originalQuery:JSON.stringify({executionEpochVersion:1,executionEpoch,query:originalQuery});
     if(new TextEncoder().encode(query).byteLength>1_100_000)invalid('AgentArts complete query exceeds the byte limit');
     if (continuation === undefined && availableTools !== undefined
       && new TextEncoder().encode(query).byteLength > MAX_INITIAL_QUERY_BYTES) {
@@ -1321,6 +1335,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
     const combined = makeCombinedSignal(signal, deadlineMs);
     const sendRequest: CoordinationRequest = Object.freeze({
       taskId, revision, goal, deadline, signal: combined.signal,
+      ...(executionEpoch===undefined?{}:{executionEpoch}),
       ...(textOnly ? {textOnly:true as const} : {}),
       ...(continuation === undefined ? {} : {continuation}),
       ...(selectedContext==='goal'&&priorContinuations?.length?{priorContinuations}:{}),
@@ -1393,21 +1408,41 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
         signal: combined.signal,
         redirect: 'error',
       };
+      let payloadDestination=this.websocketUrl??url;
+      const preparePayload=()=>this.preparePayload===undefined?undefined:callWithAbort(()=>this.preparePayload!({requestId,destination:payloadDestination,payload:init.body,deadline,
+        signal:combined.signal,isCurrent:()=>{
+          if(this.closed||currentAbortError(combined))return false;
+          try{
+            const result:unknown=this.beforeSend?.(sendRequest);
+            if(result===undefined)return true;
+            void Promise.resolve(result).catch(()=>undefined);
+            return false;
+          }catch{return false;}
+        }}),combined);
+      let payloadLease:Awaited<ReturnType<typeof preparePayload>>;
 
       // WSS rechecks after its asynchronous Upgrade/ready handshake, immediately
       // before exporting a catalog or continuation. HTTPS fallback rechecks too.
       const guards: AgentArtsSendGuards = {
-      ...(availableTools === undefined ? {} : {beforeCatalog: async () => {
-        stage = 'catalog_guard';
-        try {
-          await callWithAbort(() => this.beforeInitialToolCatalogSend!(sendRequest), combined);
-        } catch {
-          throw currentAbortError(combined) ?? new ProtocolError('UNAUTHORIZED', 'AgentArts tool catalog export denied');
+      beforeCatalog: async () => {
+        if(availableTools!==undefined){
+          stage = 'catalog_guard';
+          try {
+            await callWithAbort(() => this.beforeInitialToolCatalogSend!(sendRequest), combined);
+          } catch {
+            throw currentAbortError(combined) ?? new ProtocolError('UNAUTHORIZED', 'AgentArts tool catalog export denied');
+          }
         }
-      }}),
+        payloadLease=await preparePayload();
+      },
       beforeSend: receipt => {
+      stage = 'export_guard';
+      try {
+        payloadLease?.assertBeforeSend({destination:payloadDestination,payload:init.body});
+      } catch {
+        throw currentAbortError(combined) ?? new ProtocolError('UNAUTHORIZED', 'AgentArts payload export permission denied');
+      }
       if (this.beforeSend !== undefined) {
-        stage = 'export_guard';
         try {
           const guardResult: unknown = this.beforeSend(sendRequest);
           if (guardResult !== undefined) {
@@ -1447,6 +1482,7 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       }};
 
       const sendHttps = async (fallback = false): Promise<AgentArtsResponse> => {
+        if(payloadDestination!==url){payloadDestination=url;payloadLease=undefined;}
         await guards.beforeCatalog?.();
         const receipt = fallback ? createAgentArtsUnknownReceipt(init) : undefined;
         guards.beforeSend(receipt);
@@ -1547,12 +1583,19 @@ export class AgentArtsCloudAgentPort implements CloudAgentPort {
       if (bodyAbort) throw bodyAbort;
       stage = 'application_schema';
       try {
+        if(executionEpoch!==undefined){
+          const envelope=asPlainObject(JSON.parse(text));
+          if(!envelope||Object.keys(envelope).sort().join(',')!=='executionEpoch,executionEpochVersion,result'
+            ||envelope.executionEpochVersion!==1||envelope.executionEpoch!==executionEpoch)
+            throw new ProtocolError('REVISION_CONFLICT','Cloud execution epoch is missing or stale');
+          text=this.responseMode==='text'&&typeof envelope.result==='string'?envelope.result:JSON.stringify(envelope.result);
+        }
         const result = this.responseMode === 'tool-proposal-json'
           ? textOnly ? parseTextOnlyApplicationResult(text,this.repairCandidateVersion) : parseApplicationResult(text, this.repairCandidateVersion)
           : parseCoordinationTextResult({kind: 'text', text, verification: 'unverified'});
         if (textOnly && result.kind !== 'text') invalid('Text-only coordination cannot propose tools or repairs');
         if (fallbackReceipt !== undefined) { guards.afterTerminal?.(fallbackReceipt); fallbackStarted = false; }
-        return result;
+        return executionEpoch===undefined?result:{...result,executionEpoch};
       } catch (error) {
         schemaCategory = error instanceof SyntaxError ? 'application_json' : 'application_contract';
         throw currentAbortError(combined) ?? new ProtocolError('EXTERNAL_FAILURE', 'AgentArts response validation failed');

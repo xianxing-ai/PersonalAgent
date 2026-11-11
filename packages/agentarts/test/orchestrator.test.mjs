@@ -83,6 +83,21 @@ test('workflow preparation preserves node output contract and predecessor state 
   assert.deepEqual(data.node.outputFields,['docMarkdown']);assert.deepEqual(data.predecessorStates,{F20_N01:'completed'});
   assert.deepEqual(data.predecessorOutputs,{F20_N01:{content:'public contract'}});
 });
+test('F09 candidate preparation binds the original source operation without claiming authorization',async()=>{
+  const template=getOwnedWorkflowTemplate('F09'),node=template.nodes.find(value=>value.id==='F09_N02');
+  const operation={operationId:'source-operation',toolName:'feeds.collect',toolVersion:'1.0.0'};
+  const {agent,models}=setup();
+  const result=await agent.prepareOwnedWorkflowCandidates({template,node,input:{},predecessorOutputs:{F09_N01:{items:[]}},
+    predecessorStates:{F09_N01:'completed'},predecessorOperations:{F09_N01:operation},availableTools:[{
+      name:'workflow.host.f09_n02',version:'1.0.0',inputSchema:{type:'object',additionalProperties:false,
+        properties:{sourceOperationId:{type:'string'}},required:['sourceOperationId']}}],
+    mode:'main',namespace:'synthetic',...invoke('public feed')});
+  assert.deepEqual(result[0].value,{arguments:{sourceOperationId:operation.operationId}});
+  assert.equal(models.fast.requests.length,0);assert.equal(result[1].abstain,true);
+  await assert.rejects(agent.prepareOwnedWorkflowCandidates({template,node,input:{},predecessorOutputs:{},
+    predecessorStates:{F09_N01:'completed'},availableTools:[],mode:'main',namespace:'synthetic',...invoke('public feed')}),
+    {code:'UNSUPPORTED_CAPABILITY'});
+});
 test('current tool request boundary preserves global downstream requirements without fabricating their outputs',async()=>{
   const template=getOwnedWorkflowTemplate('F20'),node=template.nodes.find(value=>value.id==='F20_N01');
   const input={goal:'Read public-api.json before producing API docs; the path must be extracted from this sentence',codeFile:'public-api.json',

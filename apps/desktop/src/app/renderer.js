@@ -1,10 +1,13 @@
 import {errorDisplayText} from '../shared/error-display.js';
 import {mountSessionControls} from '../features/conversation/session-controls.js';
+import {conflictDecisionMarkup,conflictDecisionPayload} from '../features/conversation/conflict-decision.js';
 import {readDeveloperSettingsDiagnostic} from '../../shared/developer-settings-diagnostics.js';
 import {readComputerControlDiagnostic} from './computer-controls.js';
 import {readComputerVisionDiagnostic} from './computer-vision-controls.js';
 import {mountSubagentConversationPage} from '../features/conversation/subagent-conversations.js';
 import {mountSubagentCompletionNotice} from '../features/conversation/subagent-completion-notice.js';
+import {mountBackgroundTasks} from '../features/conversation/background-tasks.js';
+import {mountRemoteRunners} from '../features/conversation/remote-runners.js';
 import {mountSubagentConversationList} from '../features/conversation/subagent-conversation-list.js';
 import {mountModelThinkingPicker} from '../features/conversation/model-thinking-picker.js';
 import {mountInputPin} from './input-pin.js';
@@ -30,6 +33,7 @@ import {approvalCards,approvalResponse,nextApprovalExpiry} from '../features/con
 import {isStopRequest} from '../features/conversation/stop-request.js';
 import {mountPanelLight} from './panel-light.js';
 import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
+import {mountWorkflowQuestionCards} from '../features/conversation/workflow-question-card.js';
 import {createMessageQueue} from '../features/conversation/message-queue.js';
 import {createSnapshotReceiver} from '../shared/snapshot-receiver.js';
 import {mountRenderBudget} from '../shared/render-budget.js';
@@ -121,7 +125,7 @@ else {
   // requested, so the composer is usable again without waiting for the runtime to unwind.
   const truncatedTaskIds=new Set();
   const truncatedOutput=new Map();
-  const activeTasks=()=>(current?.tasks??[]).filter(task=>!isTerminal(task)&&!task.outputTruncated&&!task.cancelRequested&&!truncatedTaskIds.has(task.taskId));
+  const activeTasks=()=>(current?.tasks??[]).filter(task=>!task.conflictOnly&&!isTerminal(task)&&!task.outputTruncated&&!task.cancelRequested&&!truncatedTaskIds.has(task.taskId));
   let approvalExpiryTimer;
   let errorFeedbackRevision=0;
   const setFeedback=value=>{errorFeedbackRevision++;root.querySelector('#error').textContent=value;};
@@ -165,7 +169,11 @@ else {
     messageQueue.remove(item.id);input.value=(input.value?input.value+'\n':'')+item.text;input.dispatchEvent(new Event('input',{bubbles:true}));renderQueue();input.focus();
   };
   const subagents=mountSubagentCompletionNotice(thread,invoke);
+  const backgroundTasks=mountBackgroundTasks(thread,invoke);
   window.addEventListener('unload',()=>subagents.dispose(),{once:true});
+  window.addEventListener('unload',()=>backgroundTasks.dispose(),{once:true});
+  const remoteRunners=mountRemoteRunners(thread,invoke);
+  window.addEventListener('unload',()=>remoteRunners.dispose(),{once:true});
   // Keep the current status outside history: a long old message must not hide
   // a pending presence request while the task appears to be doing nothing.
   const updateProgress=mountTaskProgress(thread.parentElement,thread,taskId=>invoke('computer.control.confirm',{taskId}));
@@ -173,7 +181,8 @@ else {
   const quickStartItems=[['整理今日计划','列出今天的日程、待办和昨天未完成的事项，整理成一份今日计划。'],['写本周周报','根据最近完成的任务，起草一份本周周报草稿。'],['查看天气提醒','查询明天天气，并给出出行与穿着提醒。'],['起草邮件回复','根据最近收到的邮件，起草一份回复草稿。']];
   quickStart.innerHTML=quickStartItems.map(([label,fill])=>`<button type="button" data-fill="${escape(fill)}">${escape(label)}</button>`).join('');
   quickStart.onclick=e=>{const chip=e.target.closest('button[data-fill]');if(!chip)return;input.value=chip.dataset.fill;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};
-  const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.panel header').after(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,input,invoke,report,{singleMain:true,flushBeforeClose:bridge?.flushDrafts});
+  const prohibitionsRoot=document.createElement('aside');prohibitionsRoot.setAttribute('aria-label','本对话禁止项');root.querySelector('.panel').append(prohibitionsRoot);
+  const sessionRoot=document.createElement('div');sessionRoot.className='conversation-session-root';root.querySelector('.panel header').after(sessionRoot);const sessionControls=mountSessionControls(sessionRoot,input,invoke,report,{singleMain:true,flushBeforeClose:bridge?.flushDrafts,prohibitionsRoot});
   const preserveQueuedDrafts=event=>{
     const entries=messageQueue.list(current?.conversationState?.activeId);if(!entries.length||!bridge?.flushDrafts||event.defaultPrevented)return;
     try{bridge.flushDrafts([{conversationId:current.conversationState.activeId,text:[...entries.map(item=>item.text),input.value].filter(Boolean).join('\n\n')}]);}
@@ -181,7 +190,7 @@ else {
   };
   window.addEventListener('beforeunload',preserveQueuedDrafts);
   window.addEventListener('pa:prepare-quit',preserveQueuedDrafts);
-  const syncCancelButtons=()=>tasksNode.querySelectorAll('[data-action="task.cancel"],[data-action="task.reconcile.finish"]').forEach(button=>{button.disabled=Boolean(button.dataset.action==='task.reconcile.finish'&&current?.tasks.find(task=>task.taskId===button.dataset.id)?.reconciliationStatus?.blockedReason)||pendingCancelIds.has(button.dataset.id)||current?.tasks.some(task=>task.taskId===button.dataset.id&&task.state==='cancelling'&&!task.outputTruncated);});
+  const syncCancelButtons=()=>tasksNode.querySelectorAll('[data-action="task.cancel"],[data-action="task.reconcile.finish"],[data-action="task.reconcile.skip"]').forEach(button=>{button.disabled=Boolean(button.dataset.action==='task.reconcile.finish'&&current?.tasks.find(task=>task.taskId===button.dataset.id)?.reconciliationStatus?.blockedReason)||pendingCancelIds.has(button.dataset.id)||current?.tasks.some(task=>task.taskId===button.dataset.id&&task.state==='cancelling'&&!task.outputTruncated);});
   const restoreTaskActionFocus=focused=>{
     if(!focused||focused.disabled||document.activeElement!==document.body||focused.dataset.approvalDecision)return;
     const action=focused.dataset.action??focused.dataset.uiAction;if(!action)return;
@@ -450,7 +459,7 @@ else {
     catch(err){if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)report(err);}
     finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
   };
-  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on){likedTasks.add(b.dataset.id);capCollection(likedTasks,200);}else likedTasks.delete(b.dataset.id);for(const button of tasksNode.querySelectorAll('[data-ui-action="like"]')){const active=likedTasks.has(button.dataset.id);button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}if(b.dataset.action==='task.cancel'){if(b.disabled)return;const task=current?.tasks.find(item=>item.taskId===b.dataset.id);if(task)stopTask(task);return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
+  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on){likedTasks.add(b.dataset.id);capCollection(likedTasks,200);}else likedTasks.delete(b.dataset.id);for(const button of tasksNode.querySelectorAll('[data-ui-action="like"]')){const active=likedTasks.has(button.dataset.id);button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}if(b.dataset.action==='task.cancel'){if(b.disabled)return;const task=current?.tasks.find(item=>item.taskId===b.dataset.id);if(task)stopTask(task);return;}const cancelling=['task.cancel','task.reconcile.finish','task.reconcile.skip'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,b.dataset.action==='task.reconcile.skip'?conflictDecisionPayload(current.tasks.find(task=>task.taskId===id)):id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
   const syncApprovalButtons=()=>{
     for(const [id,phase] of approvalDecisions)if(phase==='submitted' && !(current?.approvals??[]).some(item=>
       item.approvalId===id && item.state==='pending' && current?.tasks.some(task=>task.taskId===item.taskId && task.state==='waiting_approval')))approvalDecisions.delete(id);
@@ -494,11 +503,13 @@ else {
   });
   render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
     subagents.update(data.subagentTasks??[]);
+    void backgroundTasks.refresh();
+    void remoteRunners.refresh();
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
     renderWake(data);
     updateProgress(data.tasks.filter(task=>!task.outputTruncated),data.computerControl,
-      {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
+      {questions:data.authorizationQuestions,workflowQuestions:data.workflowQuestions,conversationId:data.conversationState?.activeId});
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
     proactiveWorkflowControls.render(data.proactiveWorkflow);
@@ -537,7 +548,7 @@ else {
     const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);
     const thinkingGrid='<span class="thinking-grid" aria-hidden="true">'+[0,1,2,3,4,5,6,7,8].map(index=>`<i data-cell="${index}"></i>`).join('')+'</span>';
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
-    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button><button type="button" data-ui-action="share" data-id="${escape(t.taskId)}" title="分享" aria-label="分享回答">${responseIcons.share}</button><button type="button" data-ui-action="like" data-id="${escape(t.taskId)}" title="点赞" aria-label="点赞回答" aria-pressed="${likedTasks.has(t.taskId)}" class="${likedTasks.has(t.taskId)?'active':''}">${responseIcons.like}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${!terminal&&t.state!=='waiting_reconciliation'?`<div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div>`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div><div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
+    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated||t.conflictOnly;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button><button type="button" data-ui-action="share" data-id="${escape(t.taskId)}" title="分享" aria-label="分享回答">${responseIcons.share}</button><button type="button" data-ui-action="like" data-id="${escape(t.taskId)}" title="点赞" aria-label="点赞回答" aria-pressed="${likedTasks.has(t.taskId)}" class="${likedTasks.has(t.taskId)?'active':''}">${responseIcons.like}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${!terminal&&t.state!=='waiting_reconciliation'?`<div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div>`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div><div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${!t.conflictOnly&&t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${conflictDecisionMarkup(t,escape)}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}};
@@ -547,6 +558,7 @@ else {
 const authorizationThread=root.querySelector(mode==='workspace'?'#workspace-stage':'.thread');
 if(bridge&&authorizationThread) {
   const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
+  const workflowQuestionRoot=document.createElement('div');authorizationThread.append(workflowQuestionRoot);
   const previousRender=render;
   let questionClosed=false,questionSnapshotRevision=0;
   const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onPending:({questionId})=>{
@@ -561,16 +573,21 @@ if(bridge&&authorizationThread) {
     const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
     if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
   }});
+  const workflowQuestions=mountWorkflowQuestionCards(workflowQuestionRoot,{invoke,onChanged:async()=>{
+    const revision=questionSnapshotRevision,snapshot=await invoke('snapshot');
+    if(!questionClosed&&questionSnapshotRevision===revision)render(snapshot);
+  }});
   render=(data,...options)=>{
     questionSnapshotRevision++;
     previousRender(data,...options);
     // Missing conversation identity must not widen the view to another conversation's questions.
     const conversationId=data.conversationState?.activeId;
     questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
+    workflowQuestions.update(data.workflowQuestions,{conversationId});
   };
   render.setAudioLevel=previousRender.setAudioLevel;
   render.setResourceBudget=previousRender.setResourceBudget;
-  window.addEventListener('unload',()=>{questionClosed=true;questions.dispose();},{once:true});
+  window.addEventListener('unload',()=>{questionClosed=true;questions.dispose();workflowQuestions.dispose();},{once:true});
 }
 if(bridge&&(!mode||['panel','workspace'].includes(mode))) {
   const scrollContainer=root.querySelector(mode==='workspace'?'#workspace-stage':'.thread');

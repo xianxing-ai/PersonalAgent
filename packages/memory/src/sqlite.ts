@@ -509,6 +509,19 @@ export class SqliteMemoryHost {
     }
   }
 
+  /** Trusted host current public version. Erasure or a later private head never falls back to history. */
+  readPublicFactHead(namespaceValue: unknown, factIdValue: unknown): FactVersion | undefined {
+    const namespace=text(namespaceValue),factId=text(factIdValue);
+    const row=this.db.prepare(`SELECT f.payload FROM memory_facts f
+      WHERE f.namespace = ? AND f.fact_id = ?
+        AND NOT EXISTS (SELECT 1 FROM memory_erasure_intents e WHERE e.namespace = f.namespace AND e.fact_id = f.fact_id)
+      ORDER BY f.revision DESC LIMIT 1`).get(namespace,factId) as Row | undefined;
+    if(!row)return undefined;
+    const saved=fact(parseJson(rowText(row,'payload')));
+    if(saved.sensitivity!=='public')return queryFail('SCOPE_DENIED');
+    return structuredClone(saved);
+  }
+
   /** Trusted private admin head read; includes withdrawn/expired heads, never older fallback. */
   readUserFactHead(namespaceValue: unknown, factIdValue: unknown): FactVersion | undefined {
     const namespace = text(namespaceValue);

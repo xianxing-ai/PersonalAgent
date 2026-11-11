@@ -1,12 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,realpathSync,rmSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import {createDesktopDeveloperToolsHost} from '../electron/developer-tools-host.js';
 
 const context=()=>({taskId:'synthetic',runId:'log-run',authorizationRef:'log-run',deadline:new Date(Date.now()+60000).toISOString(),
   signal:new AbortController().signal,scopes:['workspace:read']});
+test('production Git push rejects an ordinary SHA-only request before Git or credential access',async()=>{
+  const root=realpathSync(mkdtempSync(path.join(os.tmpdir(),'developer-push-')));let credentialReads=0;
+  const host=createDesktopDeveloperToolsHost({git:{available:()=>true,options:{rootPath:root,repository:'example/fixture',
+    sourceBranch:'codex/fixture',remoteName:'origin',remoteUrl:'https://example.test/fixture.git',allowedPaths:['fixture.txt'],
+    authorName:'Fixture',authorEmail:'fixture@example.test',getCredentials:async()=>{credentialReads++;return undefined;}}}});
+  try{
+    const push=host.tools.find(tool=>tool.descriptor.name==='workspace.git.push');assert.ok(push);
+    await assert.rejects(push.execute({repository:'example/fixture',expectedHeadSha:'a'.repeat(40)},
+      {...context(),scopes:['workspace:git:push']}),{code:'UNAUTHORIZED'});
+    assert.equal(credentialReads,0);
+  }finally{host.close();rmSync(root,{recursive:true,force:true});}
+});
 test('missing trusted configuration is unavailable and never constructs a provider',()=>{
   const host=createDesktopDeveloperToolsHost();assert.deepEqual(host.tools,[]);assert.deepEqual(host.runtimeOptions,{});
   assert.ok(host.unavailable.some(item=>item.capability==='github'));assert.ok(host.unavailable.some(item=>item.capability==='developer.workflows'));host.close();

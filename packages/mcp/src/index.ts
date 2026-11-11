@@ -11,6 +11,7 @@ import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import type {RegisteredTool, ToolContext, ToolHost} from '@personal-agent/contracts';
 export {createPublicReferenceExport} from './public-export.js';
 export {createMcpConnectionManager} from './manager.js';
+export {readReadonlyMcpInstallation} from './installation.js';
 export {createRemoteReadonlyMcpHost,remoteMcpDirectoryDigest,remoteMcpArgumentsDigest} from './remote.js';
 export type {RemoteReadonlyMcpOptions,RemoteMcpRunQuery,RemoteMcpRunReceipt} from './remote.js';
 export {createBoundRemoteReadonlyMcpHost} from './bound-remote.js';

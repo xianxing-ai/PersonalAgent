@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, rm, symlink, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, rm, symlink, writeFile,rename,link} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
@@ -110,4 +110,34 @@ test('search rejects invalid input, cancellation and expired deadline', async t 
   await assert.rejects(vault.search({
     query: 'hello', limit: 1, ...context({deadline: new Date(Date.now() - 1000).toISOString()})
   }), {code: 'TIMEOUT'});
+});
+
+test('synchronous final citation guard checks exact content and refuses stale or foreign sources',async t=>{
+  const {root}=await fixture(t),path=join(root,'notes','one.md');await writeFile(path,'original line\n');
+  const vault=await openReadOnlyVault({vaultId:'synthetic',rootPath:root});
+  const source=(await vault.search({query:'original',limit:1,...context()})).hits[0].source;
+  assert.equal(vault.assertCitationCurrent({source,...context()}),undefined);
+  assert.throws(()=>vault.assertCitationCurrent({source:{...source,vaultId:'foreign'},...context()}),{code:'INVALID_ARGUMENT'});
+  assert.throws(()=>vault.assertCitationCurrent({source:{...source,line:99},...context()}),{code:'SOURCE_CHANGED'});
+  assert.throws(()=>vault.assertCitationCurrent({source,...context({signal:AbortSignal.abort()})}),{code:'CANCELLED'});
+  assert.throws(()=>vault.assertCitationCurrent({source,...context({deadline:new Date(0).toISOString()})}),{code:'TIMEOUT'});
+  await writeFile(path,'modified line\n');
+  assert.throws(()=>vault.assertCitationCurrent({source,...context()}),{code:'SOURCE_CHANGED'});
+  await writeFile(path,Buffer.alloc(512*1024+1,65));
+  assert.throws(()=>vault.assertCitationCurrent({source,...context()}),{code:'LIMIT_EXCEEDED'});
+});
+
+test('synchronous final citation guard preserves original root, link and regular-file boundary',async t=>{
+  for(const replacement of ['root','junction','hardlink','directory']){
+    const {root,outside}=await fixture(t),path=join(root,'notes','one.md');await writeFile(path,'original line\n');
+    const vault=await openReadOnlyVault({vaultId:'synthetic',rootPath:root});
+    const source=(await vault.search({query:'original',limit:1,...context()})).hits[0].source;
+    if(replacement==='root'){await rename(root,root+'-original');await mkdir(join(root,'notes'),{recursive:true});await writeFile(path,'original line\n');}
+    else if(replacement==='junction'){
+      await writeFile(join(outside,'one.md'),'original line\n');await rm(join(root,'notes'),{recursive:true});
+      await symlink(outside,join(root,'notes'),process.platform==='win32'?'junction':'dir');
+    }else if(replacement==='hardlink')await link(path,join(outside,'copy.md'));
+    else{await rm(path);await mkdir(path);}
+    assert.throws(()=>vault.assertCitationCurrent({source,...context()}),error=>['SCOPE_DENIED','SOURCE_UNAVAILABLE'].includes(error.code),replacement);
+  }
 });

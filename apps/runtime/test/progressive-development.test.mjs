@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
@@ -73,7 +74,7 @@ async function fixture(t, {actions = 72, initialSteps = 4, windowSteps = 4, maxS
     getRuntime: () => app.runtime, getTools: () => app.tools,
     runDefaultWorker: (definition, worker, selectedTools) => app.runDefaultSubagentWorker(definition, worker, selectedTools),
     onChildSettled: taskId => app.notifySubagentTaskSettled(taskId)}));
-  const port = new FakeCoordinationPort(request => {
+  const port = new FakeCoordinationPort(syntheticCoordinationExecution(request => {
     const query = actualQuery(request);
     // Exercise the real image-side parser on every exact synthetic handoff.
     const parsed = parseAgentInput(query);
@@ -125,7 +126,7 @@ async function fixture(t, {actions = 72, initialSteps = 4, windowSteps = 4, maxS
       arguments: repeated ? {path: 'repeat.txt', sequence: 0}
         : {path: `file-${String(Math.floor(next / names.length)).padStart(3, '0')}.txt`, sequence: next},
       verification: 'unverified'};
-  });
+  }));
   const open = async () => {
     app = createRuntimeApplication({path: storage, profile: 'huawei_ict_agentarts', coordination: port,
       coordinationBinding: 'synthetic-progressive-development-v1', competitionMaxSteps: initialSteps,

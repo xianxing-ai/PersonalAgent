@@ -43,6 +43,7 @@ import {
 } from './patch-preview.js';
 import {createWorkspacePatchStageToolFromReader} from './patch-stage.js';
 import {createWorkspacePatchApplyToolFromPreview} from './patch-apply.js';
+import {assembleWorkspacePatchScopeTool} from './execution-artifact.js';
 import type {WorkspacePatchApplyHostOptions} from './patch-apply.js';
 export {
   parseWorkspacePatchProcessReady,
@@ -72,6 +73,14 @@ export {
   WORKSPACE_COMMAND_TOOL_VERSION,
 } from './command.js';
 export type {WorkspaceCommandOptions, WorkspaceCommandRecipe, WorkspaceCommandResult, WorkspaceCommandSandbox} from './command.js';
+export {
+  codingVerificationArtifactDigest,
+  registerWorkspacePatchScope,
+  WORKSPACE_PATCH_SCOPE_SCOPE,
+  WORKSPACE_PATCH_SCOPE_TOOL_NAME,
+  WORKSPACE_PATCH_SCOPE_TOOL_VERSION,
+} from './execution-artifact.js';
+export type {CodingVerificationArtifactInput, WorkspacePatchScopeResult} from './execution-artifact.js';
 export {
   MAX_SERIALIZED_WORKSPACE_PATCH_INPUT_BYTES,
   MAX_WORKSPACE_PATCH_EDITS,
@@ -466,6 +475,13 @@ export function createWorkspaceReadTool(options: WorkspaceReadOptions): Register
   };
 }
 
+export function createWorkspacePatchScopeTool(options: WorkspacePatchPreviewOptions & {allowedPaths: readonly string[]}): RegisteredTool {
+  const now = options.now ?? Date.now;
+  const reader = createWorkspaceReadTool({...options, now});
+  const preview = createWorkspacePatchPreviewTool({...options, now});
+  return assembleWorkspacePatchScopeTool({allowedPaths: options.allowedPaths, reader, preview, now});
+}
+
 export function createWorkspacePatchPreviewTool(options: WorkspacePatchPreviewOptions): RegisteredTool {
   const maxReadBytes = boundedInteger(options.maxReadBytes, DEFAULT_MAX_READ_BYTES, 'maxReadBytes', MAX_SCHEMA_BYTES);
   const maxPreviewBytes = boundedInteger(
@@ -648,10 +664,11 @@ export function registerWorkspacePatchApply(
 ): () => void {
   return host.register(createWorkspacePatchApplyTool(options));
 }
-export {createGitTools, registerGitTools, readGitWorkspaceFingerprint,
-  GIT_HEAD_TOOL, GIT_COMMIT_TOOL, GIT_PUSH_TOOL, GIT_READ_SCOPE, GIT_COMMIT_SCOPE, GIT_PUSH_SCOPE} from './dev-workflows/git-tools.js';
+export {createGitTools, createGitToolsWithPublicationPreview, registerGitTools, readGitWorkspaceFingerprint,
+  GIT_HEAD_TOOL, GIT_COMMIT_TOOL, GIT_PUSH_TOOL, GIT_PUBLICATION_READ_TOOL, GIT_READ_SCOPE, GIT_COMMIT_SCOPE, GIT_PUSH_SCOPE} from './dev-workflows/git-tools.js';
 export type {GitFileHash, GitVerificationReceipt, GitToolsOptions, GitHeadResult, GitCommitInput,
-  GitCommitResult, GitPushInput, GitPushResult} from './dev-workflows/git-tools-types.js';
+  GitCommitResult, GitPushInput, GitPushResult, GitPublicationBinding, GitPublicationIntent, GitPublicationPort,
+  GitPublicationPreviewInput,GitPublicationPreview} from './dev-workflows/git-tools-types.js';
 export {runCiFix, createCiFixWorkflow} from './dev-workflows/ci-fix.js';
 export {createCiRunDiscoveryWorkflow} from './dev-workflows/ci-run-discovery.js';
 export type {CiDiscoveredRun, CiRunListRequest, CiRunListResult, CiRunDiscoveryOptions,
