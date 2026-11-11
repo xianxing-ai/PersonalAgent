@@ -427,7 +427,7 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   /** Trusted conversation question host. Answers are not execution grants. */
   requestToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;
     scopes:readonly string[];deadline:string;signal:AbortSignal})=>Promise<'allow_once'|'deny'>;
-  requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;deadline:string;signal:AbortSignal})=>boolean;
+  requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:'read'|'local_write'|'external_write';deadline:string;signal:AbortSignal})=>boolean;
   /** Composition-only tools require a persisted original submitHostToolTask intent, even if a model guesses the name. */
   hostOnlyTools?:readonly string[];
 }
@@ -923,7 +923,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             && this.runtime.matchesToolExecutionInput(record, {arguments: invocation.arguments as Record<string, unknown>, scopeRef: ref}));
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
         if(options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
-          toolName:tool.name,toolVersion:tool.version,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
+          toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
         if (routineEligible && tool.name === 'cognition.commit_repair') {
           const intent = this.runtime.loadCheckpoint(invocation.taskId, LOCAL_REPAIR_CHECKPOINT) as
             {sourceKind?: string; sourceTaskId: string; reviewTaskId: string; binding: unknown} | undefined;
@@ -1324,7 +1324,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         validateToolValue(descriptor.inputSchema,saved.arguments);
         const anchor=this.runtime.loadCheckpoint(taskId,'authorization-question-binding:'+requestedRunId) as {proposalId?:string}|undefined;
         return {taskId,proposalId:anchor?.proposalId??(!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId),runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
-          outputSchema:structuredClone(descriptor.outputSchema)};
+          sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
       }
       if(loop.pending.toolName===CLOUD_SKILL_TOOL_NAME){
         const source=this.runtime.loadCheckpoint(taskId,'authorization-public-reference:'+loop.pending.proposalId) as
@@ -1339,7 +1339,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!descriptor)return undefined;
         return {taskId,proposalId:loop.pending.proposalId,runId:source.candidate.runId,toolName:descriptor.name,toolVersion:descriptor.version,
           arguments:structuredClone(source.candidate.arguments),argumentsDigest:toolArgumentsDigest(source.candidate.arguments),
-          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],outputSchema:structuredClone(descriptor.outputSchema)};
+          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
       }
       const nested=this.resolveOriginalWorkerApproval(taskId,loop.pending);
       const runId=nested?.runId??`competition-tool-${taskId}-${loop.step}`;
@@ -1351,7 +1351,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       validateToolValue(descriptor.inputSchema,args);
       return {taskId,proposalId:loop.pending.proposalId,runId,toolName,toolVersion:descriptor.version,
         arguments:structuredClone(args),argumentsDigest:toolArgumentsDigest(args),deadline,scopes:[...descriptor.requiredScopes],
-        outputSchema:structuredClone(descriptor.outputSchema)};
+        sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
     }catch{return undefined;}
   }
 
