@@ -92,6 +92,15 @@ export type {
 export {createCodeReviewWorkflow, codeReviewChangedLines, codeReviewPublicationCheckpointKey} from './dev-workflows/code-review.js';
 export type {CodeReviewRule, CodeReviewInput, CodeReviewFinding, CodeReviewReport, CodeReviewAccess,
   CodeReviewPreparation, CodeReviewPublication, CodeReviewWorkflow, CodeReviewWorkflowOptions} from './dev-workflows/code-review-types.js';
+export {
+  PERSONAL_DASHBOARD_PERIODS, dashboardReadWindow, dashboardScheduleInput, dueDashboardBoundary,
+  nextDashboardBoundary, personalDashboardConversationId, summarizePersonalDashboard,
+} from './personal-dashboard.js';
+export type {
+  CountSample, DashboardCard, DashboardScheduleInput, DashboardWindow, DisconnectedSource,
+  MailSample, PersonalDashboardPeriod, PersonalDashboardReadings, PersonalDashboardSummary,
+  SourceReading, SpendSample, TimeSample,
+} from './personal-dashboard.js';
 export {createIssueTriageWorkflow, issueFingerprint} from './dev-workflows/issue-triage.js';
 export type {IssueKind, TriageIssue, IssueClassification, IssueTriageRequest, IssueTriageResult,
   IssueListRequest, IssueListResult, IssueRepairPort, IssueTriageOptions} from './dev-workflows/issue-triage-types.js';

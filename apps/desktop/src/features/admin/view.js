@@ -37,15 +37,16 @@ import {windowControlsHtml} from '../../ui/window-controls.js';
 import {matchesSettingSearch} from './setting-search.js';
 import {mountPageMotion} from '../../ui/page-motion.js';
 import {mountAuthorizationSettings} from '../conversation/authorization-settings-controls.js';
+import {personalDashboardHtml} from './personal-dashboard-page.js';
 
 export const sections = {
-  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
+  dashboard: '数据看板', settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: 'Worktrees',
   tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
 };
 
-const primaryPages = ['settings', 'connections', 'authorizations'];
+const primaryPages = ['dashboard', 'settings', 'connections', 'authorizations'];
 const navGroups = [
   {label: '偏好', items: ['appearance', 'voice', 'notifications', 'profile', 'memory', 'shortcuts', 'personalization', 'pets']},
   {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'configuration', 'environment', 'worktrees', 'git', 'hooks']},
@@ -53,6 +54,7 @@ const navGroups = [
 ];
 
 const iconPaths = {
+  dashboard: '<path d="M4 19V9m5 10V5m6 14v-7m5 7V3"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
   import: '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 19h14"/>', profile: '<circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/>',
   appearance: '<circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
@@ -477,7 +479,9 @@ export function mountAdmin(root, invoke, escape) {
     // The HTML and expiry selection must describe the same instant.
     const approvalNow = Date.now();
     let content = '';
-    if (section === 'overview') {
+    if (section === 'dashboard') {
+      content = personalDashboardHtml(data.personalDashboard, escape);
+    } else if (section === 'overview') {
       content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>当前显示任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates, patchRecovery.entries)}`;
     } else if (section === 'capabilities') {
       content = capabilityTable(data);
@@ -513,7 +517,7 @@ export function mountAdmin(root, invoke, escape) {
     // Keep interactive task/model DOM when an unrelated snapshot changes.
     const preferenceKey = section === 'appearance'
       ? `${themePreference()}/${localStorage.getItem('pa-calm')}` : undefined;
-    const retainContent = (['models', 'tasks', 'overview', 'connections'].includes(section)
+    const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections'].includes(section)
       || ['settings', 'appearance'].includes(section) && renderedPreferenceKey === preferenceKey)
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
@@ -657,6 +661,14 @@ export function mountAdmin(root, invoke, escape) {
       catch (error) { input.checked = previous; root.querySelector('#error').textContent = error.message; }
     });
     root.querySelectorAll('[data-jump]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.jump)));
+    const dashboardPeriod = root.querySelector('#dashboard-period');
+    dashboardPeriod?.addEventListener('change', async () => {
+      try {
+        const next = await invoke('personalDashboard.period', {period: dashboardPeriod.value});
+        current = {...current, personalDashboard: next};
+        render(current);
+      } catch (error) { root.querySelector('#error').textContent = error.message; }
+    });
     const themeSelect = root.querySelector('#pref-theme');
     if (themeSelect) {
       themeSelect.value = themePreference();

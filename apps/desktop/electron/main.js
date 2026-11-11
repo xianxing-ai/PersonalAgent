@@ -146,6 +146,7 @@ import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
+import {createPersonalDashboardHost} from './personal-dashboard-host.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
 import {createMailMetadataStorage} from './mail-metadata-storage.js';
 import {createLocalLayaHost} from './laya-local-host.js';
@@ -418,6 +419,7 @@ let calendarMeetingHost;
 let feedsHost;
 let todoHost;
 let todoFailure = '';
+let personalDashboardHost;
 let todoClosing;
 let todoClosed = false;
 let notepadHost;
@@ -822,6 +824,7 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
+    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'},
     goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
@@ -2091,6 +2094,21 @@ async function initializeRuntime() {
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
+      if (!syntheticMvp && runtimeApplication) {
+        try {
+          personalDashboardHost = createPersonalDashboardHost({
+            userData: app.getPath('userData'), safeStorage, namespace,
+            runtime: runtimeApplication.runtime,
+            dispatchTask: runtimeModule.dispatchPersonalDashboardTask,
+            calendarConfig, meetingSnapshot: () => calendarMeetingHost?.snapshot(),
+            mailConfig, now: Date.now, onUpdate: publish,
+            onNotification(item) {
+              if (Notification.isSupported()) new Notification({title: item.title, body: item.body}).show();
+            },
+          });
+          await personalDashboardHost.start();
+        } catch { personalDashboardHost = undefined; }
+      }
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
         toolPresenceHost=createToolPresenceHost({
@@ -3144,7 +3162,7 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
-  eventPoll = setInterval(() => {void pumpEvents(); void todoHost?.tick();
+  eventPoll = setInterval(() => {void pumpEvents(); void todoHost?.tick(); void personalDashboardHost?.tick();
     if(runtimeClosed)return;
     void maintenancePoll.run('proactive',()=>tickProactiveP5());
     void maintenancePoll.run('mail',()=>refreshMail());
@@ -3355,6 +3373,12 @@ async function action(event, name, payload) {
       toolPresenceHost?.refresh();await notepadHost?.refresh();await microphoneCaptureHost?.revoke();
     }
     publish();return result;
+  }
+  if (name === 'personalDashboard.period') {
+    if (sender !== admin || !personalDashboardHost) throw Error('请从管理后台更改汇总周期');
+    const result = personalDashboardHost.setPeriod(payload);
+    publish();
+    return result;
   }
   if(name==='app.startup.read'||name==='app.startup.configure'){
     if(sender!==admin||(name==='app.startup.read'&&payload!==undefined))throw Error('请从可信管理后台设置登录自启');

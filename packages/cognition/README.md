@@ -26,6 +26,8 @@ Owner: zemeng. Profile: huawei_ict_agentarts. Pure local domain increment with
 an optional host-bound persistent-store consumer; no AgentArts, Memory,
 scheduler, tool execution or TaskRuntime state transition.
 
+个人数据看板（`summarizePersonalDashboard` / `dashboardScheduleInput`）只在本地把已授权读数收成趋势，并给出下一次 `ScheduleInput`。它不创建调度器、不写 TaskRuntime、不访问网络。桌面宿主把这条计划登记到既有 Scheduler；日历和邮件没授权时对应卡片不出现。
+
 `ReviewedMeetingFactConsumer` consumes a trusted completed Fact projection and
 the existing Runtime reviewedRepair host. It persists the original review/tool
 identity and impact digest, keeps uncertainty unchanged, and requires tool
