@@ -1873,14 +1873,17 @@ async function initializeInstalledSkills() {
           summary:`${actions[request.action]}；仅已核对内容摘要的此 Skill 版本，不授权其任意工具调用`,
           isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
-    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),onUpdate:publish,
+    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),
+      dataRoot:path.join(app.getPath('userData'),'plugin-data'),
+      violationFile:path.join(app.getPath('userData'),'plugin-sandbox-violations.json'),onUpdate:publish,
       confirm:async request=>{
         const origin=admin,application=runtimeApplication;
         if(!origin || origin.isDestroyed()) return false;
         const actions={install:'安装插件',enable:'启用高风险插件',uninstall:'卸载插件'};
+        const summary=typeof request.summary==='string'&&request.summary.length>0&&request.summary.length<=512
+          ?request.summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`;
         return confirmApplicationAuthorization('plugin.'+request.action,request,{scope:{action:request.action,id:request.id},
-          summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`,
-          isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
+          summary,isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
   }
 }

@@ -28,6 +28,10 @@ catalog.planInstall('skill.anthropic.frontend-design');
 
 启用高风险条目时，授权的 `toolName` 固定为 `plugin-catalog.enable`，`argumentsDigest` 为 `pluginEnableArgumentsDigest(id, sha256)`。摘要字符串是 `{"id":"<id>","sha256":"<64 hex>"}` 的 SHA-256。低风险说明型技能不消耗授权；写文件、联网写入和执行代码仍不能靠技能正文获得许可。
 
+每个条目有 `permissionManifest`，分别声明网络主机、插件数据相对路径、连接器标识和密钥名。空数组表示不授予该类权限。当前精选目录的清单都是空的，因为这些条目没有被承认的运行时网络、文件、连接器或密钥访问。安装确认只出现一次，文案由 `pluginInstallSummary` 生成，并附带这四句白话。确认后的清单写入安装记录。运行时以安装记录和当前目录的交集为准，目录后来新增的权限不会自动生效，安装记录里多写的权限也不会生效。
+
+`createPluginSandbox` 是这个交集的执行边界。未安装、未启用或不在目录中的插件不能访问。网络只允许清单里的 https 主机，重定向不跟随。文件只允许插件数据目录中的已声明相对路径，拒绝 `..`、盘符、UNC 和符号链接。连接器只返回允许或拒绝，不调用连接器实现。未声明的密钥不会读到密钥存储；声明过的密钥值只留在主进程，不写入违规日志。违规追加到有界的本地日志。
+
 ## 目录
 
 录取条目、许可证、commit、版本和 sha256 写在 `src/plugins.ts`。标准和复审流程见 [MOD-30 插件目录录取说明](../../docs/modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
@@ -38,4 +42,4 @@ catalog.planInstall('skill.anthropic.frontend-design');
 
 ## 限制
 
-目录浏览没有接到 Desktop。远程 Context7、Cloudflare 文档 MCP 和 GitHub MCP 只有来源针，没有当前目录摘要，不能安装。真实第三方握手、工具调用和 AgentArts 读回都不在本包的验收范围内。
+Desktop 管理后台在启动已安装技能时创建插件目录宿主，安装确认走原来的授权卡，preload 的 `pluginAccess` 调用 `plugin.guard`。远程 Context7、Cloudflare 文档 MCP 和 GitHub MCP 只有来源针，没有当前目录摘要，不能安装。真实第三方握手、工具调用和 AgentArts 读回都不在本包的验收范围内。沙箱不启动插件脚本，也不把安装器自己的固定地址下载算作插件网络权限。

@@ -28,9 +28,10 @@ function fixture(t) {
 }
 
 test('market cards keep only the action that matches install state', () => {
-  const base = {id: 'skill.example', name: 'Example <skill>', type: 'skill', riskLevel: 'low', description: 'Short', license: 'MIT', sourceRepositoryUrl: 'https://github.com/example/example', permissions: [{statement: '说明'}], oneClickInstall: true, installed: false, enabled: false, updateStatus: 'not-installed'};
+  const base = {id: 'skill.example', name: 'Example <skill>', type: 'skill', riskLevel: 'low', description: 'Short', license: 'MIT', sourceRepositoryUrl: 'https://github.com/example/example', permissions: [{statement: '说明'}], permissionSummary: ['不访问网络。', '不读写文件。', '不使用连接器。', '不读取密钥。'], oneClickInstall: true, installed: false, enabled: false, updateStatus: 'not-installed'};
   assert.match(pluginMarketCardsHtml([base]), /data-plugin="install"/);
-  assert.doesNotMatch(pluginMarketCardsHtml([base]), /data-plugin="enable"|data-plugin="uninstall"|星标/);
+  assert.match(pluginMarketCardsHtml([base]), /不访问网络。不读写文件。不使用连接器。不读取密钥。/);
+  assert.doesNotMatch(pluginMarketCardsHtml([base]), /data-plugin="enable"|data-plugin="uninstall"|星标|权限设置|打开沙箱/);
   assert.match(pluginMarketCardsHtml([base]), /Example &lt;skill&gt;/);
   const installed = {...base, installed: true, enableRequiresAuthorization: true};
   const html = pluginMarketCardsHtml([installed]);
@@ -42,6 +43,7 @@ test('market cards keep only the action that matches install state', () => {
   assert.match(enabled, /data-plugin="disable"/);
   assert.match(enabled, /data-plugin="update"/);
   assert.doesNotMatch(pluginMarketCardsHtml([{...base, oneClickInstall: false, installBlockReason: '不能安装'}]), /data-plugin="install"/);
+  assert.match(pluginMarketCardsHtml([{...base, installed: true, enabled: true, lastBlocked: {kind: 'secret'}}]), /已拦截未声明的密钥/);
 });
 
 test('host installs a downloaded pin into the shared skill store and gates high-risk enable', async t => {

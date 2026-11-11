@@ -1,6 +1,10 @@
 import {randomUUID} from 'node:crypto';
+import path from 'node:path';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
-import {createPluginCatalogService, pluginEnableArgumentsDigest, projectEnabledPlugins} from '@personal-agent/plugin-catalog';
+import {
+  createPluginCatalogService, createPluginSandbox, describePluginPermissions, intersectPermissionGrants,
+  pluginEnableArgumentsDigest, pluginInstallSummary, projectEnabledPlugins, readStoredPermissionGrant,
+} from '@personal-agent/plugin-catalog';
 
 function networkDownload() {
   return {async get(url) {
@@ -10,48 +14,122 @@ function networkDownload() {
   }};
 }
 
+const GUARD_KEYS = new Set(['id', 'kind', 'target', 'fileMode', 'body']);
+
 /** Main-process owner. Downloads only catalog pins, then uses the existing installers. */
-export function createPluginCatalogHost({skillStore, installationFile, confirm, catalog, download = networkDownload(), onUpdate = () => {}}) {
+export function createPluginCatalogHost({
+  skillStore, installationFile, confirm, catalog, download = networkDownload(), onUpdate = () => {},
+  dataRoot, violationFile, readSecret = () => undefined, fetchImpl,
+}) {
   const policy = new InMemoryAuthorizationPolicy();
   const service = createPluginCatalogService({skillStore, installationFile, policy, download, ...(catalog ? {catalog} : {})});
+  const sandbox = createPluginSandbox({
+    dataRoot: dataRoot ?? path.join(path.dirname(installationFile), 'plugin-data'),
+    violationFile: violationFile ?? path.join(path.dirname(installationFile), 'plugin-sandbox-violations.json'),
+    lookup: lookupGrant,
+    readSecret,
+    ...(fetchImpl ? {fetchImpl} : {}),
+  });
   let closed = false;
-  const guard = () => { if (closed) throw Error('插件目录已关闭'); };
+  const guardClosed = () => { if (closed) throw Error('插件目录已关闭'); };
+
+  function lookupGrant(pluginId) {
+    let record;
+    try { record = service.installations().find(item => item.catalogId === pluginId); }
+    catch { return {state: 'missing', grant: readStoredPermissionGrant(undefined)}; }
+    if (!record) return {state: 'missing', grant: readStoredPermissionGrant(undefined)};
+    let entry;
+    try { entry = service.get(pluginId); }
+    catch { return {state: 'removed', grant: readStoredPermissionGrant(undefined)}; }
+    const grant = intersectPermissionGrants(readStoredPermissionGrant(record.permissionGrant), entry.permissionManifest);
+    return {state: record.enabled ? 'enabled' : 'disabled', grant};
+  }
+
   function projection() {
     return projectEnabledPlugins(service.installations(), service.list());
   }
+
   function items() {
     const installed = new Map(service.installations().map(item => [item.catalogId, item]));
+    const blocked = sandbox.lastViolation();
     return service.list().map(entry => {
       const record = installed.get(entry.id);
+      const effective = record
+        ? intersectPermissionGrants(readStoredPermissionGrant(record.permissionGrant), entry.permissionManifest)
+        : entry.permissionManifest;
       return {
         id: entry.id, name: entry.name, type: entry.type, riskLevel: entry.riskLevel, description: entry.description,
         license: entry.license, sourceRepositoryUrl: entry.sourceRepositoryUrl,
         permissions: entry.permissionDeclarations.map(item => ({scope: item.scope, admitted: item.admitted, statement: item.statement})),
+        permissionSummary: describePluginPermissions(effective),
         oneClickInstall: entry.oneClickInstall, installBlockReason: entry.installBlockReason,
         enableRequiresAuthorization: entry.enableRequiresAuthorization,
         installed: Boolean(record), enabled: record?.enabled === true, updateStatus: service.checkUpdate(entry.id).status,
+        ...(blocked?.pluginId === entry.id ? {lastBlocked: {kind: blocked.kind, reason: blocked.reason}} : {}),
       };
     });
   }
+
   function snapshot() {
-    guard();
+    guardClosed();
     const cloud = projection();
     return {available: true, items: items(), proposalCount: cloud.proposals.length, readbackClosedLoop: cloud.acceptance.closedLoop};
   }
+
   async function install(id, replace = false) {
-    guard();
+    guardClosed();
     const entry = service.get(id);
     if (!entry.oneClickInstall) throw Error(entry.installBlockReason ?? '该插件不能一键安装');
-    const allowed = await confirm({action: 'install', id, detail: `${entry.name}\n将下载固定版本并核对摘要，安装后停用。不执行插件脚本。`});
+    const summary = pluginInstallSummary(replace ? '更新' : '安装', entry.name, entry.permissionManifest);
+    const allowed = await confirm({
+      action: 'install', id, summary,
+      detail: `${entry.name}\n将下载固定版本并核对摘要，安装后停用。不执行插件脚本。\n${describePluginPermissions(entry.permissionManifest).join('\n')}`,
+    });
     if (!allowed) return {cancelled: true};
     const record = await service.installPinned(id, replace);
     onUpdate();
     return {installed: true, enabled: record.enabled};
   }
+
+  function guard(payload) {
+    guardClosed();
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(key => !GUARD_KEYS.has(key))) {
+      return {allowed: false, reason: 'invalid'};
+    }
+    const {id, kind, target, fileMode, body} = payload;
+    if (typeof id !== 'string' || typeof target !== 'string' || !['network', 'file', 'connector', 'secret'].includes(kind)) {
+      return {allowed: false, reason: 'invalid'};
+    }
+    if (kind === 'file' && fileMode === 'write') {
+      const written = sandbox.writeFile(id, target, body);
+      if (!written.allowed) onUpdate();
+      return {allowed: written.allowed, reason: written.reason};
+    }
+    if (kind === 'file' && fileMode === 'read') {
+      if (body !== undefined) return {allowed: false, reason: 'invalid'};
+      const read = sandbox.readFile(id, target);
+      if (!read.allowed) onUpdate();
+      return {allowed: read.allowed, reason: read.reason, ...(read.found !== undefined ? {found: read.found} : {})};
+    }
+    if (kind === 'secret') {
+      if (body !== undefined || fileMode !== undefined) return {allowed: false, reason: 'invalid'};
+      const secret = sandbox.readSecret(id, target);
+      if (!secret.allowed) onUpdate();
+      return {allowed: secret.allowed, reason: secret.reason, ...(secret.found !== undefined ? {found: secret.found} : {})};
+    }
+    if (body !== undefined || fileMode !== undefined) return {allowed: false, reason: 'invalid'};
+    const decision = sandbox.decide(id, kind, target);
+    if (!decision.allowed) onUpdate();
+    return {allowed: decision.allowed, reason: decision.reason};
+  }
+
   return {
     snapshot,
+    fetchWithinGrant: (id, url) => sandbox.fetch(id, url),
+    readGrantedSecret: (id, name) => sandbox.readSecret(id, name),
+    readPluginFile: (id, relative) => sandbox.readFile(id, relative),
     async invoke(name, payload) {
-      guard();
+      guardClosed();
       if (name === 'plugin.list' || name === 'plugin.search') {
         const query = payload?.query ?? payload;
         return service.list({query: typeof query === 'string' ? query : payload?.query, type: payload?.type});
@@ -60,6 +138,7 @@ export function createPluginCatalogHost({skillStore, installationFile, confirm, 
       if (name === 'plugin.plan') return service.planInstall(payload?.id);
       if (name === 'plugin.install') return install(payload?.id, false);
       if (name === 'plugin.update') return install(payload?.id, true);
+      if (name === 'plugin.guard') return guard(payload);
       if (name === 'plugin.enable') {
         const id = payload?.id;
         const enabled = payload?.enabled;
