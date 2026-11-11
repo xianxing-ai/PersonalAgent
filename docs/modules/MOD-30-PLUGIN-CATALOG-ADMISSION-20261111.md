@@ -1,0 +1,32 @@
+# MOD-30 插件目录录取与复审（2026-11-11）
+
+- Profile：`huawei_ict_agentarts`。
+- 模块：MOD-30。负责人：zemeng5208。
+- 实现：`packages/plugin-catalog`。状态：`review`。接口：`provisional`。
+- 本说明只约束精选目录。它不把条目变成已冻结能力，也不代替真实 MCP 握手、工具调用或 AgentArts 读回。
+
+## 录取标准
+
+1. 来源必须是复核当时能打开的公开 Git 仓库，地址写成 `https://github.com/<owner>/<repo>`。不能编造仓库、星标、许可证或版本。
+2. 许可证以仓库 LICENSE、包清单或单个技能目录里的 LICENSE.txt 为准。GitHub 报告 `NOASSERTION` 时保留这个结果，并写明实际读到的许可说明。没有许可证，或许可证禁止保留副本的，不进入可安装目录。
+3. 维护状态看默认分支推送时间。复核日前 90 日内有推送记为 `active`；更早记为 `stale`；读不到推送时间记为 `unknown`。星标只作当时快照，不单独构成录取理由。
+4. 固定针至少要有一项来自当次读取：40 位 commit、包或发行版本，或 64 位小写 sha256。三项都没有时，`pin.state` 必须是 `unpinned`。
+5. `unpinned` 不能一键安装。只有来源 commit 或版本、但没有安装器将要核对的 sha256 时，可以保持 `pinned`，同时 `oneClickInstall` 必须为 false，并写明原因。
+6. 一键安装还要同时满足：sha256 覆盖安装器接受的字节，安装器是现有本机 Skill 目录安装或现有 filesystem 包钉死核验。远程托管端点没有目录摘要时，源码 commit 不能代替线上字节。
+7. 官方 `modelcontextprotocol/servers` 参考实现、Context7、Cloudflare 文档 MCP、Apache-2.0 的 Anthropic Agent Skills，以及许可证清楚且仍在维护的高星项目优先。归档或副作用没有读完的服务器只收录、不安装。
+8. 上游版本和本产品已经钉死的 npm 版本不一致时，分成两条记录，不能合成一个制品。
+9. 能力声明区分已承认和未承认。写文件、联网写入、执行代码只要被承认，或者条目风险为 `high`，启用前必须把声明交给 Policy。目录本身不签发授权，也不执行插件脚本。
+
+## 复审
+
+- 新条目或上游大版本进入目录前，重新读取 LICENSE、commit 或 tag、包版本和需要安装的文件字节。
+- 至少每季度复审一次 `active` 条目的默认分支推送时间和许可证。复审日写进 `reviewedAt`。
+- sha256 或版本变化时更新目录针。已安装记录通过 `checkUpdate` 变为 `update-available`，不自动下载、不自动替换。
+- 仓库消失、许可证改为不允许保留副本、或新出现未声明的写文件、联网写入、执行代码时，取消一键安装。已安装项保持原快照，启用继续失败关闭，直到人工卸载或重新授权。
+- 复审记录写明读过的 URL，以及没有做的事。没有重新握手的远程 MCP，不能补写目录摘要，也不能重试上一次结果未知的工具调用。
+
+## 本轮没有录取为可安装的邻近项目
+
+- `anthropics/skills` 的 docx、pdf、pptx、xlsx 在 commit `2c5958ec` 的 LICENSE.txt 已是 Apache-2.0，但技能要求运行脚本来处理文档。本轮没有为这些大目录计算完整 sha256，因此不进入可安装清单。
+- `doc-coauthoring` 在同一 commit 没有 LICENSE.txt，不收录。
+- Context7 与 Cloudflare 文档 MCP 只保留已核对的来源针。2026-10-30 的握手不能当作 2026-11-11 的目录摘要。
