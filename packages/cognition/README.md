@@ -78,6 +78,8 @@ bind current public source, evidence, scope and expiry, and always require fresh
 host validation before any actual subscription. No watcher or permanent memory is
 created here. See [`MVP-TWIN-B-INTEREST-01`](../../docs/modules/MVP-TWIN-B-INTEREST-01.md).
 
+`createProactiveSourceTrigger` 把日历 `calendar.events`、邮件 `mail.inbox` 和用户授权目录的只读变化规范成事件，做去重、限流和静默时段，再交给现有 Laya 动作选择。低风险且 Laya 允许进入运行时的提案调用注入的任务 `submit`；会议改期和任何写操作只请求审批，不能由判断结果自行放行。首次读取只建基线。私人邮件内容和日历标题不进入提案。这是 CW-03 的离线增量，不扩展 `connector.watch`，也不代替真实账号验收。见 [CW-03 来源触发](../../docs/modules/CW-03-PROACTIVE-SOURCE-TRIGGER.md)。
+
 `planKnowledgeReevaluation({namespace, freshness, dependencies, checkpoint})`
 turns existing freshness decisions into exact source/version/content-bound
 consumer rechecks. Stable work keys survive JSON checkpoint replay and repeated
