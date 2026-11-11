@@ -39,12 +39,18 @@ test('F02 final binds real capture-host readback and exact playback drain turn w
     request.onEvent({type:'speech_stopped',utteranceId:'early'});
     request.onEvent({type:'transcript',id:'early',utteranceId:'early',role:'user',source:'input_audio',phase:'final',text:'合成回声'});
     assert.equal(live.readFinalUserAudio(binding),undefined,'old drain must not end protection while playback is pending');
+    request.onEvent({type:'speech_started',utteranceId:'late'});
+    mic.receive(event,{type:'frame',token:captureToken,data:Uint8Array.of(3,4,5,6)});
+    request.onEvent({type:'speech_stopped',utteranceId:'late'});
     live.receive(event,{token:liveToken,type:'drained',drainId:drain.drainId});
     const playback=live.readQuestionDelivery(binding);assert.equal(playback.audioFrames,1);assert.equal(playback.playbackVerified,false);
     clock+=351;
     request.onEvent({type:'transcript',id:'early',utteranceId:'early',role:'user',source:'input_audio',phase:'final',text:'合成回声'});
     assert.equal(live.readFinalUserAudio(binding),undefined,'a suppressed utterance cannot be replayed after playback');
     assert.equal(transcripts.some(message=>message.text==='合成回声'),false);
+    request.onEvent({type:'transcript',id:'late',utteranceId:'late',role:'user',source:'input_audio',phase:'final',text:'延迟回声'});
+    assert.equal(live.readFinalUserAudio(binding),undefined,'audio started during playback must remain suppressed');
+    assert.equal(transcripts.some(message=>message.text==='延迟回声'),false);
     request.onEvent({type:'speech_started',utteranceId:'utterance'});
     mic.receive(event,{type:'frame',token:captureToken,data:Uint8Array.of(3,4,5,6)});
     request.onEvent({type:'speech_stopped',utteranceId:'utterance'});

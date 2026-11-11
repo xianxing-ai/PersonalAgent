@@ -155,7 +155,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     const panel = getPanel();
     if (!panel || panel.isDestroyed() || !panel.isVisible()) throw Error('请先打开 PersonalAgent 面板');
     const controller = new AbortController();
-    const record = {id: randomUUID(), panel, controller,conversationId,startedAt:now(),audioFrames:0,outputAudioFrames:0,startupStage:'playback', phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
+  const record = {id: randomUUID(), panel, controller,conversationId,startedAt:now(),audioFrames:0,outputAudioFrames:0,suppressedUtterances:new Set(),startupStage:'playback', phase: continuing ? 'reconnecting' : 'connecting', playReady: deferred(), playStopped: deferred(),
       workRequests:new Map(),deadline: new Date(now() + SESSION_MS).toISOString()};
     const isCurrent = () => active === record && !controller.signal.aborted && now() < Date.parse(record.deadline);
     const assertCurrent = () => {if (!isCurrent()) throw Error('Live 已停止或到期');};
@@ -187,7 +187,10 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
             record.finalUserAudio=undefined;
             const question=questionFor(record);
             const utterance=typeof event.utteranceId==='string' && /^[\w-]{1,256}$/u.test(event.utteranceId)?event.utteranceId:undefined;
-            if(utterance&&utterance!==record.suppressedUtteranceId)record.suppressedUtteranceId=undefined;
+            if(utterance&&!echoGuard.inspect(now()).deliverable){
+              if(record.suppressedUtterances.size>=256&&!record.suppressedUtterances.has(utterance)){fail('Live 回声保护记录已满');return;}
+              record.suppressedUtterances.add(utterance);record.sessionSpeech=undefined;record.questionSpeech=undefined;return;
+            }
             record.sessionSpeech=utterance?{utteranceId:utterance,startedAt:new Date(now()).toISOString(),frames:record.audioFrames}:undefined;
             record.questionSpeech=utterance
               && question?.state==='pending' && typeof question.questionId==='string' && Number.isSafeInteger(question.revision)
@@ -230,9 +233,12 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           if (event.type === 'transcript') {
             const trimmed = typeof event.text === 'string' ? event.text.trim() : '';
             if (!trimmed) return;
-            if (event.role === 'user' && event.utteranceId && event.utteranceId===record.suppressedUtteranceId) return;
+            if (event.role === 'user' && event.utteranceId && record.suppressedUtterances.has(event.utteranceId)) return;
             if (event.role === 'user' && !echoGuard.inspect(now()).deliverable) {
-              record.suppressedUtteranceId=typeof event.utteranceId==='string'?event.utteranceId:undefined;
+              if(typeof event.utteranceId==='string'){
+                if(record.suppressedUtterances.size>=256&&!record.suppressedUtterances.has(event.utteranceId)){fail('Live 回声保护记录已满');return;}
+                record.suppressedUtterances.add(event.utteranceId);
+              }
               record.questionSpeech=undefined;record.sessionSpeech=undefined;return;
             }
             if (typeof event.id !== 'string' || !/^[\w-]{1,256}$/.test(event.id) || !['user','assistant'].includes(event.role)) {
