@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-11 插件精选目录（provisional）
+
+`@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
+
 ## 2026-10-29 MCP 管理任务读回（provisional）
 
 Desktop 远程 MCP 管理窗口的任务读回只显示原任务状态、工具身份、审批状态和 Evidence 引用，不向 Renderer 返回原始参数或工具结果；原 Runtime 持久记录和原对话审批卡保留。受信配置可显式允许缺少远端 outputSchema，仍固定服务/目录并用本地 Schema 校验 structuredContent；默认严格匹配不变，策略纳入任务授权绑定。真实 Context7 仅完成握手及目录读取，未发起工具调用，不证明其结果兼容；不提升接口冻结或真实验收状态。测试及缺口见 [MOD-06 工作记录](../modules/MOD-06-MCP-SAFETY-20261029.md)。

@@ -324,7 +324,7 @@ const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
-let installedSkillsHost;
+let installedSkillsHost,pluginCatalogHost;
 let remoteMcpConfig,remoteMcpHost,remoteMcpServices,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
@@ -791,6 +791,7 @@ function snapshot(surface) {
       vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
+    pluginCatalog:surface ? undefined : pluginCatalogHost?.snapshot(),
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
@@ -1847,8 +1848,10 @@ async function confirmHarnessExperienceActivation(version,context) {
 async function initializeInstalledSkills() {
   if(competitionMode && !installedSkillsHost) {
     const {openLocalSkillStore}=await import('@personal-agent/skills');
+    const {createPluginCatalogHost}=await import('./plugin-catalog-host.js');
+    const store=openLocalSkillStore(path.join(app.getPath('userData'),'installed-skills.json'));
     installedSkillsHost=createInstalledSkillsHost({
-      store:openLocalSkillStore(path.join(app.getPath('userData'),'installed-skills.json')),onUpdate:publish,
+      store,onUpdate:publish,
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
       validateRunInput:async publicGoal=>{
         const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
@@ -1868,6 +1871,15 @@ async function initializeInstalledSkills() {
         const actions={install:'安装 Skill',enable:'启用 Skill',uninstall:'卸载 Skill',run:'仅本任务使用 Skill'};
         return confirmApplicationAuthorization('skill.'+request.action,request,{scope:{action:request.action,digest:request.digest},
           summary:`${actions[request.action]}；仅已核对内容摘要的此 Skill 版本，不授权其任意工具调用`,
+          isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
+      }});
+    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),onUpdate:publish,
+      confirm:async request=>{
+        const origin=admin,application=runtimeApplication;
+        if(!origin || origin.isDestroyed()) return false;
+        const actions={install:'安装插件',enable:'启用高风险插件',uninstall:'卸载插件'};
+        return confirmApplicationAuthorization('plugin.'+request.action,request,{scope:{action:request.action,id:request.id},
+          summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`,
           isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
   }
@@ -4184,6 +4196,10 @@ async function action(event, name, payload) {
     if(name==='skill.uninstall') return installedSkillsHost.uninstall(payload);
     throw Error('不支持的 Skill 操作');
   }
+  if (typeof name==='string' && name.startsWith('plugin.')) {
+    if(sender!==admin || !competitionMode || !pluginCatalogHost) throw Error('插件目录仅在正式管理后台可用');
+    return pluginCatalogHost.invoke(name,payload);
+  }
   if (sender === orb) throw Error('Action unavailable from orb');
   if (!client) throw Error('Runtime 未连接，此操作尚不可用');
   if (['evidence.list', 'evidence.get', 'authorization.revoke'].includes(name)) {
@@ -4936,6 +4952,7 @@ app.whenReady().then(async () => {
       privateConsumption?.close();
       wikiSourceMonitor?.close();
       installedSkillsHost?.close();
+      pluginCatalogHost?.close();
       coordinationWatchInputs.clear();
       privateMemory?.close();
       learningStore?.close();
