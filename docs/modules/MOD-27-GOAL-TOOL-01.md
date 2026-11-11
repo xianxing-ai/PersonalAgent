@@ -41,8 +41,8 @@ TypeScript 编译与该文件定向测试 4/4 通过，未重复架构检查。
 
 ## Desktop Goal 编辑器身份消费修复（2026-10-07）
 
-本节记录 [PR #302](https://github.com/zemeng5208/PersonalAgent/pull/302) 的续接增量，
-尚未合入 `main@4b5ec61`，不改变上文历史、模块状态或权限边界。
+本节记录 [PR #302](https://github.com/xianxing-ai/PersonalAgent/pull/302) 的续接增量。
+2026-11-10 核对：该 PR 已以 `cc64ebdf` 进入 main；下文相对 `main@4b5ec61` 的差异现已在主线，不改变历史权限边界，也不表示真实来源或现场删除已验收。
 [Goal 编辑器](../../apps/desktop/src/features/conversation/goal-view.js) 对异步读回绑定
 发起时的草稿、目标选择、活动任务和打开视图；切换目标、编辑草稿或关闭重开后，
 旧读回、失败、取消及审批反馈不能覆盖新选择。确认成功后，Goal 身份、内容、原因、
@@ -65,7 +65,7 @@ ID 改为 A、内容仍为 B，生成合法 CAS 的错误目标修订；同一�
 
 ## 有效期精度与未知受理的历史反馈（2026-10-07）
 
-本节仍是 PR #302 续接增量，未将其记为 `main@4b5ec61` 已合并成果。
+本节仍是 PR #302 续接增量的当时记录。2026-11-10 核对：该增量已随 `cc64ebdf` 进入 main，不表示现场验收完成。
 公开 Goal 的有效期为完整 UTC 毫秒时间戳。此前编辑器只显示到分钟，
 仅修订 summary 也会把原有秒、毫秒截断；同一修订仍可能通过图/Goal CAS 并实际写入。
 现在 `datetime-local` 使用 `step="0.001"` 和完整本地时间；选择与 confirmed 读回同时
