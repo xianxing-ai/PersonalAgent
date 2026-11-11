@@ -1,6 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
-import {operationSummary,taskOperationBinding} from './authorization-operation-policy.js';
+import {operationContentConfirmation,operationSummary,requiresContentConfirmation,taskOperationBinding} from './authorization-operation-policy.js';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const denied=()=>{throw new ProtocolError('UNAUTHORIZED','原操作的精确授权已失效，未执行或发送新的资料');};
@@ -122,13 +122,15 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       assertCurrent:()=>assertCurrent()&&(prior?.assertCurrent?.()??true)});
   }
   function buildRequest(source,prepared){
+    const contentConfirmation=operationContentConfirmation(source);
     const tool={requirementId:'tool',kind:'tool',scopes:[...source.scopes],bindingDigest:digest({taskId:source.taskId,runId:source.runId,
       toolName:source.toolName,toolVersion:source.toolVersion,argumentsDigest:source.argumentsDigest,deadline:source.deadline}),
       ...((prepared?.requirements??[]).some(item=>item.requirementId!=='tool'&&item.ruleBindingDigest)
         ?{ruleBindingDigest:digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort()}),
           taskBindingDigest:taskOperationBinding(source)}:{}),
       summary:operationSummary(source)};
-    return {...requestFields(source),...(prepared?.taskConsent?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
+    return {...requestFields(source),...(contentConfirmation?{contentConfirmation}:{}),
+      ...(prepared?.taskConsent?{taskConsent:structuredClone(prepared.taskConsent)}:{}),
       requirements:[tool,...(prepared?.requirements??[]).filter(item=>item.requirementId!=='tool')]};
   }
   async function requestToolAuthorization(scope) {
@@ -143,7 +145,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
       const derived=batchDerivations.get(identity);
       let receipt;
       stage='question-open';
-      if(derived){
+      if(derived&&!request.contentConfirmation){
         if(derived.kind==='intent')getApplication().assertHostIntentQuestionDerivative(derived.parent.request.taskId,source.taskId,derived.operationDigest);
         else getApplication().assertMailReadQuestionPage(derived.parent.request.taskId,source.taskId,derived.batchId);
         const parentConsumer=derived.parent.request.runId+':'+derived.requirementId;
@@ -285,7 +287,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     }catch(error){if(error?.code==='NOT_FOUND')return false;throw error;}
   }
   return {
-    requiresAuthorization:scope=>preparations.has(key(scope)),
+    requiresAuthorization:scope=>preparations.has(key(scope))||requiresContentConfirmation(scope),
     requiresNativeForAuthorization:scope=>preparations.get(key(scope))?.taskConsent?.requiresNative===true,
     prepare,prepareExport,requestToolAuthorization,currentRequirement,authorizeExport,authorizeConsumedExport,assertConsumedResult,deriveMailBatch,deriveHostIntent,readExecutionPolicy,
     readResourceGeneration,rotateResourceGeneration,
@@ -293,6 +295,7 @@ export function createDesktopAuthorizationQuestionHost({createQuestions,getAppli
     consume:(...args)=>service().consume(...args),assertRequirement:(...args)=>service().assertRequirement(...args),
     respond:(input,conversationId)=>service().respond(input,conversationId),
     snapshot:conversationId=>closed||!getApplication()?.runtime?[]:service().snapshot(conversationId),
+    refresh:()=>service().refresh(),
     hasPending,
     automaticallyApproves:()=>!closed&&Boolean(getApplication()?.runtime)&&service().sandboxSnapshot().selected.mode==='full-access',
     sandboxSnapshot:()=>service().sandboxSnapshot(),selectSandbox:input=>service().selectSandbox(input),revokeRule:input=>service().revokeRule(input),
