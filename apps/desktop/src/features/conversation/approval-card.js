@@ -24,6 +24,19 @@ export function approvalCards(task, approvals = [], now = Date.now()) {
   }).join('');
 }
 
+const css = value => globalThis.CSS?.escape ? globalThis.CSS.escape(value) : String(value).replace(/(["\\])/g, '\\$1');
+
+/** Scroll the existing approval card for this task into view. Returns false when it is not rendered yet. */
+export function focusApprovalCard(root, taskId) {
+  if (!root || typeof taskId !== 'string' || !taskId) return false;
+  const card = root.querySelector(`[data-turn="${css(taskId)}"] .approval-card`)
+    ?? root.querySelector(`[data-workspace-approvals="${css(taskId)}"] .approval-card`);
+  if (!card) return false;
+  card.scrollIntoView?.({block: 'center', behavior: 'instant'});
+  (card.querySelector('button:not(:disabled)') ?? card).focus?.({preventScroll: true});
+  return true;
+}
+
 export function approvalResponse(id, decision, tasks, approvals, now = Date.now()) {
   const approval=approvals.find(item=>item.approvalId===id && item.state==='pending');
   const task=approval && tasks.find(item=>item.taskId===approval.taskId);
