@@ -86,6 +86,7 @@ import {createDesktopProactiveConversationTools} from './proactive-conversation-
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createDesktopOperatorBrake, operatorBrakeTrayLabel, OPERATOR_BRAKE_ACTION} from './operator-brake-host.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
@@ -302,6 +303,10 @@ const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
 const notifications = new Map();
 let runtimeApplication;
+const operatorBrake = createDesktopOperatorBrake({
+  getRuntime: () => runtimeApplication?.runtime,
+  continueTask: taskId => runtimeApplication.resumeTask(taskId),
+});
 // The public-reference consent belongs to one Runtime instance. It is bound after the
 // Runtime is created; capturing it earlier left every native export preflight denied.
 let referenceApplication;
@@ -641,6 +646,7 @@ async function stopP5DeviceTelemetry() {
 }
 
 async function tickProactiveP5() {
+  if (operatorBrake.isPaused()) return;
   await proactiveHost?.tick();
   if (proactiveHost?.snapshot().enabled && localLaya?.snapshot().state === 'ready') {
     if (!p5DeviceTelemetrySubscription) await startP5DeviceTelemetry();
@@ -767,6 +773,7 @@ function projectWindowSnapshot(surface,topics=['all']) {
     ...(topics.includes('notifications')?{notifications:[...notifications.values(),...(todoHost?.snapshot().notifications??[])],
       notificationCenter:surface?undefined:notificationApplicationHost?.snapshot()}:{}),
     connection:connectionLabel,
+    operatorBrake:operatorBrake.snapshot(),
     connectionError:(runtimeError||cloudRequestFailureNotice||cloudTransportNotice)?errorDisplayText(runtimeError||cloudRequestFailureNotice||cloudTransportNotice,'runtime'):undefined,
     resourceBudget:resourcePolicy.snapshot(),
   };
@@ -776,6 +783,7 @@ function snapshot(surface) {
   return {
     ...conversationProjection(surface),
     connection: connectionLabel,
+    operatorBrake: operatorBrake.snapshot(),
     connectionError: (runtimeError || cloudRequestFailureNotice || cloudTransportNotice) ? errorDisplayText(runtimeError || cloudRequestFailureNotice || cloudTransportNotice,'runtime') : undefined,
     fakeModel: fakeModelMode,
     fake: fakeMode,
@@ -1105,18 +1113,35 @@ function hidePanel() {
   return panelHiding;
 }
 
+function refreshTrayMenu() {
+  if (!tray) return;
+  const snapshot = operatorBrake.snapshot();
+  tray.setToolTip(snapshot.paused ? 'PersonalAgent · 已暂停' : 'PersonalAgent');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {label: operatorBrakeTrayLabel(snapshot), click: () => {void toggleOperatorBrake();}},
+    {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
+    {label: '打开管理后台', click: () => openAdmin()},
+    {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
+    {type: 'separator'},
+    {label: '退出 PersonalAgent', click: () => app.quit()},
+  ]));
+}
+async function toggleOperatorBrake() {
+  try {
+    if (operatorBrake.isPaused()) await operatorBrake.release();
+    else await operatorBrake.engage();
+    refreshTrayMenu();
+    publish();
+  } catch (error) {
+    runtimeError = error instanceof Error ? error.message : '总暂停切换失败';
+    publish();
+  }
+}
 function createTray() {
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#090c10" stroke="#52c7bd" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="#fff"/><circle cx="9" cy="11" r="1" fill="#fff"/><circle cx="23" cy="11" r="1" fill="#fff"/><circle cx="9" cy="21" r="1" fill="#fff"/><circle cx="23" cy="21" r="1" fill="#fff"/></svg>';
   try {
     tray = new Tray(nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`));
-    tray.setToolTip('PersonalAgent');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
-      {label: '打开管理后台', click: () => openAdmin()},
-      {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
-      {type: 'separator'},
-      {label: '退出 PersonalAgent', click: () => app.quit()},
-    ]));
+    refreshTrayMenu();
     tray.on('click', () => {
       if (panel?.isVisible()) { void hidePanel().catch(reportPanelVoiceFailure); }
       else { pinned = true; openPanel(true); publish(); }
@@ -1919,6 +1944,7 @@ async function initializeLocalAuthorizationControlPlane(){
     requestToolAuthorization:scope=>{authorizationIntentHost.prepareQuestion(scope);return authorizationQuestionHost.requestToolAuthorization(scope);},
     requiresToolAuthorization:()=>true});
   runtime=runtimeApplication.runtime;localAuthorizationOnly=true;
+  operatorBrake.attach();
   runtimeConnection=await register({transport:runtimeApplication,now:Date.now,readEvents:after=>runtimeApplication.readEvents(after),
     readEventBatch:input=>runtimeApplication.readEventBatch(input),
     attachClient:value=>{client=value;return()=>{client=undefined;};}});
@@ -1980,6 +2006,7 @@ async function initializeRuntime() {
       path: dataPaths.runtime,
       text: {mode: 'unavailable', model: modelConfig.model},
     });
+    operatorBrake.attach();
     if (runtimeApplication?.configureThinking) {
       const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
       thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
@@ -2798,11 +2825,11 @@ async function initializeRuntime() {
           configurationRef:runtimeApplication.coordinationConfigurationRef,exclusiveOwner:ownsDesktopInstance===true,
           durableCloudDispatch:agentArtsTransportConfig.transport==='wss',
           canResumeHarnessEvent:request=>harnessEventsHost?.canResumeHarnessEvent(request),
-          resumeOriginalTask:request=>runtimeApplication.resumeStartupTask(request)});
+          resumeOriginalTask:request=>operatorBrake.isPaused()?{accepted:false}:runtimeApplication.resumeStartupTask(request)});
         const recovered=await recovery.recover();startupRecovered=true;
         startupRecoveryStatus={state:'classified',inspectedTasks:recovered.items.length,verification:'not_run'};
       }else startupRecoveryStatus={state:'unavailable',reason:'原任务恢复门禁未装配，历史任务保留核实状态',verification:'not_run'};
-      if(startupRecovered)goalHost.resumeApproved();
+      if(startupRecovered&&!operatorBrake.isPaused())goalHost.resumeApproved();
       if (!syntheticMvp && competitionCatalog && !codingWorkspace.tools.length) competitionFactBridge = createDesktopCompetitionFactBridge({
         application: runtimeApplication, catalog: competitionCatalog,
         runtimePath: dbPath, userNamespace: namespace,
@@ -2822,6 +2849,8 @@ async function initializeRuntime() {
       }
     }
     runtime = runtimeApplication.runtime;
+    operatorBrake.attach();
+    refreshTrayMenu();
     readEvents = after => runtimeApplication.readEvents(after);
   }
   runtimeConnection = await register({
@@ -2853,6 +2882,7 @@ async function initializeRuntime() {
       getWorkflow:()=>proactiveWorkflowApplication,
       recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
       afterNativeMaintenance:(taskId,context)=>harnessEventsHost?.start(taskId,context),
+      isPaused:()=>operatorBrake.isPaused(),
       resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
   }
   connectionLabel = fakeMode
@@ -3144,21 +3174,22 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
-  eventPoll = setInterval(() => {void pumpEvents(); void todoHost?.tick();
+  eventPoll = setInterval(() => {void pumpEvents(); if(!operatorBrake.isPaused())void todoHost?.tick();
     if(runtimeClosed)return;
-    void maintenancePoll.run('proactive',()=>tickProactiveP5());
+    const operatorPaused=operatorBrake.isPaused();
+    void maintenancePoll.run('proactive',()=>operatorPaused?undefined:tickProactiveP5());
     void maintenancePoll.run('mail',()=>refreshMail());
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
-    void maintenancePoll.run('knowledge-schedules',()=>tickKnowledgeSchedules());
-    void maintenancePoll.run('connector-watch',()=>connectorWatchHost?.tick());
-    void maintenancePoll.run('proactive-runtime',()=>proactiveRuntimePump?.tick().then(result=>{
+    void maintenancePoll.run('knowledge-schedules',()=>{if(!operatorPaused)tickKnowledgeSchedules();});
+    void maintenancePoll.run('connector-watch',()=>{if(!operatorPaused)return connectorWatchHost?.tick();});
+    void maintenancePoll.run('proactive-runtime',()=>operatorPaused?undefined:proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
       if(proactiveMaintenanceFailure!==issue){proactiveMaintenanceFailure=issue;publish();}
     }).catch(()=>{
       if(!proactiveMaintenanceFailure){proactiveMaintenanceFailure='原持续任务的唤醒维护暂不可用；未新建任务或重放操作';publish();}
     }));
-    void maintenancePoll.run('wiki',()=>wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();}));}, 120);
+    void maintenancePoll.run('wiki',()=>{if(!operatorPaused)return wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();});});}, 120);
 }
 
 /** Exact payload consent stays in the trusted host and never grants tool permission. */
@@ -3302,6 +3333,13 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
+  if (name === OPERATOR_BRAKE_ACTION) {
+    if (sender !== panel && sender !== workspace) throw Error('请从桌面切换总暂停');
+    const snapshot = await operatorBrake.handleAction(name, payload);
+    refreshTrayMenu();
+    publish();
+    return snapshot;
+  }
   if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond',
     'notifications.confirmation.prepare','voice.confirmation.prepareApproval','voice.confirmation.cancel','voice.confirmation.reconcile'].includes(name))
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
@@ -4248,6 +4286,7 @@ async function action(event, name, payload) {
     return interruptConversation(payload.conversationId,'panel');
   }
   if (name === 'task.submit' || name==='skill.run') {
+    if (operatorBrake.isPaused()) throw Error('总暂停中，新任务不会启动。恢复后从断点继续。');
     const skillRun=name==='skill.run';
     // The redesigned workspace consumes the original trusted Runtime submit path.
     if(!skillRun&&sender===workspace&&!competitionMode&&!fakeMode)throw Error('主工作区任务入口需要 AgentArts 比赛配置；本地模式请使用原主面板');
