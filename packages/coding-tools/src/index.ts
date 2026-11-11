@@ -43,6 +43,7 @@ import {
 } from './patch-preview.js';
 import {createWorkspacePatchStageToolFromReader} from './patch-stage.js';
 import {createWorkspacePatchApplyToolFromPreview} from './patch-apply.js';
+import {assembleWorkspacePatchScopeTool} from './execution-artifact.js';
 import type {WorkspacePatchApplyHostOptions} from './patch-apply.js';
 export {
   parseWorkspacePatchProcessReady,
@@ -72,6 +73,14 @@ export {
   WORKSPACE_COMMAND_TOOL_VERSION,
 } from './command.js';
 export type {WorkspaceCommandOptions, WorkspaceCommandRecipe, WorkspaceCommandResult, WorkspaceCommandSandbox} from './command.js';
+export {
+  codingVerificationArtifactDigest,
+  registerWorkspacePatchScope,
+  WORKSPACE_PATCH_SCOPE_SCOPE,
+  WORKSPACE_PATCH_SCOPE_TOOL_NAME,
+  WORKSPACE_PATCH_SCOPE_TOOL_VERSION,
+} from './execution-artifact.js';
+export type {CodingVerificationArtifactInput, WorkspacePatchScopeResult} from './execution-artifact.js';
 export {
   MAX_SERIALIZED_WORKSPACE_PATCH_INPUT_BYTES,
   MAX_WORKSPACE_PATCH_EDITS,
@@ -464,6 +473,13 @@ export function createWorkspaceReadTool(options: WorkspaceReadOptions): Register
       }
     },
   };
+}
+
+export function createWorkspacePatchScopeTool(options: WorkspacePatchPreviewOptions & {allowedPaths: readonly string[]}): RegisteredTool {
+  const now = options.now ?? Date.now;
+  const reader = createWorkspaceReadTool({...options, now});
+  const preview = createWorkspacePatchPreviewTool({...options, now});
+  return assembleWorkspacePatchScopeTool({allowedPaths: options.allowedPaths, reader, preview, now});
 }
 
 export function createWorkspacePatchPreviewTool(options: WorkspacePatchPreviewOptions): RegisteredTool {

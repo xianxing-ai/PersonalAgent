@@ -29,5 +29,9 @@ test('verification status cannot turn a failed or unknown exit into VALID',()=>{
   assert.deepEqual(parseCodingRepairVerificationReceipt(r),r);
   for(const invalid of [{...r,exitCode:1},{...r,exitCode:null},{...r,status:'FAILED'}])assert.throws(()=>parseCodingRepairVerificationReceipt(invalid),{code:'INVALID_ARGUMENT'});
   assert.equal(parseCodingRepairVerificationReceipt({...r,exitCode:null,status:'UNKNOWN'}).status,'UNKNOWN');
+  const withArtifact={...r,artifactDigest:'b'.repeat(64)};
+  assert.equal(parseCodingRepairVerificationReceipt(withArtifact).artifactDigest,withArtifact.artifactDigest);
+  assert.throws(()=>parseCodingRepairVerificationReceipt({...r,artifactDigest:'not-a-digest'}),{code:'INVALID_ARGUMENT'});
+  assert.equal(Object.hasOwn(parseCodingRepairVerificationReceipt(r),'artifactDigest'),false);
   assert.equal(parseCodingRepairPublishReadback({version:1,sessionId:'coding-session',state:'unknown',files:[],evidenceRefs:[]}).state,'unknown');
 });
