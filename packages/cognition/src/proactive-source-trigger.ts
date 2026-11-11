@@ -179,6 +179,11 @@ export interface ProactiveSourceTriggerOptions {
   readonly horizonMs?: number;
   readonly conversationId?: string;
   readonly now?: () => number;
+  /**
+   * 可选风险适配。PR #630 的 `@personal-agent/autonomy` 尚未进入 main，这里不复制其实现。
+   * `ask` 只会把结果收紧为高风险；`execute` 不能把改期或写操作降成自动执行。
+   */
+  readonly risk?: {decide(input: {readonly kind: ChangeKind; readonly sideEffect: TriggerSideEffect}): 'execute' | 'ask'};
 }
 
 interface ApprovalRecord {
@@ -737,7 +742,8 @@ export function createProactiveSourceTrigger(options: ProactiveSourceTriggerOpti
           outcomes.push({source: event.source, status: 'unmatched', eventId: event.eventId, kind: event.kind});
           continue;
         }
-        const risk = effectiveTriggerRisk(event.kind, rule);
+        let risk = effectiveTriggerRisk(event.kind, rule);
+        if (options.risk?.decide({kind: event.kind, sideEffect: rule.sideEffect}) === 'ask') risk = 'high';
         const goal = renderGoal(rule, event);
         const propose: LayaActionCandidate = {id: `act-${rule.id}`, revision: 1, kind: 'escalate', description: goal, risk,
           scopeRef: `proactive:${rule.id}`, expiresAt: input.deadline, sources: [{id: event.eventId, revision: 1}],

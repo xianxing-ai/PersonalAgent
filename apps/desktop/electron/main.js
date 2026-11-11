@@ -89,6 +89,7 @@ import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createProactiveSourceHost} from './proactive-source-host.js';
 import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
@@ -368,7 +369,7 @@ let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
-let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
+let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
@@ -817,6 +818,7 @@ function snapshot(surface) {
     p5: p5StatusSnapshot(),
     knowledgeWatch: knowledgeWatchHost?.snapshot() ?? null,
     mail: mailSnapshot(),
+    proactiveTasks: proactiveSourceHost?.snapshot(),
     calendar: calendarMeetingHost?.snapshot() ?? calendarConfig?.snapshot(),
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
@@ -3132,6 +3134,17 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
+  if (!proactiveSourceHost) proactiveSourceHost = createProactiveSourceHost({
+    getApplication: () => runtimeApplication,
+    getTools: () => connectorConversationTools?.tools ?? [],
+    submitTask: async input => {
+      const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
+      const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
+      return {taskId: result.taskId, state: result.state ?? 'created'};
+    },
+    namespace: desktopHost.userNamespace,
+    onUpdate: publish,
+  });
   eventPoll = setInterval(() => {void pumpEvents(); void todoHost?.tick();
     if(runtimeClosed)return;
     void maintenancePoll.run('proactive',()=>tickProactiveP5());
@@ -3139,6 +3152,7 @@ async function initializeRuntime() {
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
     void maintenancePoll.run('knowledge-schedules',()=>tickKnowledgeSchedules());
     void maintenancePoll.run('connector-watch',()=>connectorWatchHost?.tick());
+    void maintenancePoll.run('proactive-source',()=>proactiveSourceHost?.tick());
     void maintenancePoll.run('proactive-runtime',()=>proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
@@ -3295,6 +3309,13 @@ async function action(event, name, payload) {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
+  }
+  if (name === 'proactiveTasks.update' || name === 'proactiveTasks.authorize' || name === 'proactiveTasks.revoke') {
+    if (sender !== admin) throw new Error('请从设置页管理主动任务');
+    if (!proactiveSourceHost) throw new Error('主动任务尚未就绪');
+    if (name === 'proactiveTasks.update') return proactiveSourceHost.update(payload);
+    if (name === 'proactiveTasks.authorize') return proactiveSourceHost.authorize(payload?.root);
+    return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
   if (name === 'snapshot.resync') {
