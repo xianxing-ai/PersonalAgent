@@ -525,7 +525,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | AgentArts | 平台原生知识、MCP/Skill 及未验真实业务 | main 已有 provisional CloudAgentPort、Workflow 输入及 HTTPS/WSS 工具提案循环；固定版本文件读取/审批续答和有限主子模型委派已取得独立证据。平台原生知识、MCP/Skill、全域多 Agent 质量和其余业务场景仍未由这些证据验收 | MOD-29～31 `zemeng` |
 | AgentArts | 完整平台 Trace、评估、成本、回滚和比赛端到端证据 | 已有 SWR/部署/精确版本目录、有限平台关联日志、公开文件读取及特定 F15 主图/隔离图的本地 Policy/ToolGateway/Evidence 闭环；只证明对应版本与公开场景，不代表完整 Trace/成本/平台评估、回滚、全部 28 图或比赛验收完成；禁止静默 Local 回退 | MOD-32 `zemeng` |
 | Windows | Named Pipe、DesktopActionPort、资源锁、用户接管 | 内部帧及受限 Host/Client 有 provisional 接线；统一 DesktopActionPort、全部真实应用与用户接管验收仍未完成，见本页 2026-10-24 原生电脑增量 | MOD-16 `zemeng` |
-| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；公共 Artifact 端口未提供，真实用户工作区、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
+| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；包内 `assembleArtifactServiceTools` 可选包含 create/get/list/read/expire/release，默认不注册 ToolHost，公共 Runtime Artifact 端口仍未公布；真实用户工作区、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
 | 分发 | 生产装配、安装、升级、卸载生命周期契约 | 无安装包与隔离安装证据 | MOD-19 `zemeng`、根装配 `goo122` |
 
 生产 Runtime 对 Schema 已知但未公布的 operation 必须返回 `UNSUPPORTED_CAPABILITY`。管理界面可以展示规划项，但必须显示“不可用”，不能通过读取配置文件、私有数据库或启用 Fake 来伪装能力。
