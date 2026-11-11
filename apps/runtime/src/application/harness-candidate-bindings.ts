@@ -78,8 +78,10 @@ export function createRuntimeHarnessCandidateBindings(application:Pick<RuntimeAp
     if(context.signal.aborted||task.cancelRequested)throw new ProtocolError('CANCELLED','Original harness caller cancelled');
     if(!Number.isFinite(Date.parse(context.deadline))||now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Original harness deadline expired');
     const scope=options.resolveHarnessScope(context);
+    const hostDeadline=context.runId==='host-tool-'+context.taskId
+      ?(runtime.loadCheckpoint(context.taskId,'application-tool-invocation:'+context.runId) as {deadline?:string}|undefined)?.deadline:undefined;
     if(!scope||scope.actualTaskId!==context.taskId||scope.scopeRef!==context.authorizationRef||scope.deadline!==context.deadline
-      ||task.state!=='running'||runtime.loadCheckpoint(context.taskId,'application-deadline')!==context.deadline)
+      ||task.state!=='running'||(runtime.loadCheckpoint(context.taskId,'application-deadline')??hostDeadline)!==context.deadline)
       denied('Original harness execution scope unavailable');
     return structuredClone(scope!);
   }

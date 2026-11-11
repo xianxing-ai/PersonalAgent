@@ -1,5 +1,6 @@
 import {existsSync,mkdirSync,readFileSync,renameSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {createAgentArtsTransportConfig} from './agentarts-transport-config.js';
 
 const transportEnvironment=value=>({PA_AGENTARTS_TRANSPORT:value.transport,
@@ -22,6 +23,21 @@ function validateBinding(value) {
 }
 function validatePreferences(value){ if(!value||Object.keys(value).some(k=>!['catalogRevision','defaultModelId','defaultSubmodelId','reasoningEffort','submodelReasoningEffort'].includes(k))||!/^[a-f0-9]{64}$/.test(value.catalogRevision)||['defaultModelId','defaultSubmodelId'].some(k=>typeof value[k]!=='string'||!value[k]||value[k].length>200)||['reasoningEffort','submodelReasoningEffort'].some(k=>value[k]!==undefined&&(typeof value[k]!=='string'||value[k].length>30)))throw Error('模型偏好格式无效');return structuredClone(value);
 }
+
+function validateReleaseBinding(value,version) {
+  const uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(v);
+  const repository=value?.registryRepository??(typeof value?.imageReference==='string'?value.imageReference.split('@')[0]:undefined);
+  if(!value||Object.keys(value).some(key=>!['runtimeId','endpointId','endpointName','imageReference','registryRepository'].includes(key))
+    ||!uuid(value.runtimeId)||!uuid(value.endpointId)||typeof value.endpointName!=='string'
+    ||!/^[A-Za-z][A-Za-z0-9-]{0,46}[A-Za-z0-9]$/u.test(value.endpointName)||/^(latest|current|default)$/iu.test(value.endpointName)
+    ||typeof version!=='string'||!/^[a-z0-9][a-z0-9-]{0,22}[a-z0-9]$/u.test(version)||/^(latest|current|default)$/iu.test(version)
+    ||value.endpointName!==version
+    ||typeof repository!=='string'||!/^swr\.cn-southwest-2\.myhuaweicloud\.com\/[a-z0-9._-]+\/[a-z0-9._/-]+$/u.test(repository)
+    ||value.imageReference!==undefined&&(typeof value.imageReference!=='string'||!value.imageReference.startsWith(repository+'@')
+      ||!/@sha256:[a-f0-9]{64}$/u.test(value.imageReference)))
+    throw Error('发布绑定必须来自当前固定版本、运行时、端点和 SWR 镜像摘要');
+  return {...structuredClone(value),registryRepository:repository};
+}
 /** Reads `?endpoint=<version>` from a pasted pinned address without normalizing the URL. */
 function pinFromUrl(value) {
   const query = value.indexOf('?');
@@ -42,6 +58,7 @@ function validate(value) {
     ...(value.appToken===undefined?{}:{appToken:value.appToken}),
     ...(value.deploymentVersion===undefined?{}:{deploymentVersion:value.deploymentVersion}),
     ...(value.modelPreferences===undefined?{}:{modelPreferences:validatePreferences(value.modelPreferences)}),
+    ...(value.releaseBinding===undefined?{}:{releaseBinding:validateReleaseBinding(value.releaseBinding,value.deploymentVersion)}),
     ...(value.transport===undefined?{}:{transport:value.transport}),
     ...(value.websocketUrl===undefined?{}:{websocketUrl:value.websocketUrl}),
     ...(value.allowHttpsFallback===undefined?{}:{allowHttpsFallback:value.allowHttpsFallback})};
@@ -50,12 +67,13 @@ function validate(value) {
 /** Host-only storage; snapshots never return either credential value. */
 export function createAgentArtsConfig({userData,safeStorage,environment=process.env,fetchImpl=globalThis.fetch}) {
   const file=path.join(userData,'agentarts-config.json');
-  let saved,failure='';
+  let saved,failure='',configurationRef=randomUUID(),egressHost;
   const defaults={gatewayUrl:environment.PA_AGENTARTS_GATEWAY_URL??'',runtimeName:environment.PA_AGENTARTS_RUNTIME_NAME??''};
   try {
     if (existsSync(file)) {
       const data=JSON.parse(readFileSync(file,'utf8'));
       if (data.version!==1 || !safeStorage.isEncryptionAvailable() || typeof data.encrypted!=='string') throw Error();
+      if(data.reference!==undefined){if(typeof data.reference!=='string'||!/^[a-f0-9-]{36}$/u.test(data.reference))throw Error();configurationRef=data.reference;}
       saved=validate(JSON.parse(safeStorage.decryptString(Buffer.from(data.encrypted,'base64'))));
     } else if (environment.PA_AGENTARTS_AUTHORIZATION) saved=validate({...defaults,authorization:environment.PA_AGENTARTS_AUTHORIZATION});
   } catch {failure='AgentArts 配置不可用，请在设置中重新保存';}
@@ -85,6 +103,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
     return {configured:Boolean(saved)&&!transportFailure,runtimeReady:Boolean(runtimeBinding()),
       gatewayUrl:saved?.gatewayUrl??defaults.gatewayUrl,runtimeName:saved?.runtimeName??defaults.runtimeName,
       appTokenConfigured:Boolean(saved?.appToken||environment.PA_AGENTARTS_APP_TOKEN),deploymentVersion:saved?.deploymentVersion??'',
+      releaseBinding:saved?.releaseBinding?structuredClone(saved.releaseBinding):null,
       deploymentSelection:saved?.deploymentVersion===undefined?'latest':'pinned',canRestoreDefaultConnection:Boolean(saved),
       ...(transport??{transport:preferences.transport}),
       websocketUrl:transport?.transport==='https'?'':transport?.websocketUrl??saved?.websocketUrl??environment.PA_AGENTARTS_WSS_URL??'',
@@ -94,10 +113,20 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       reason:failure||transportFailure||(saved?'已配置；真实连通以任务结果为准':'请配置 AgentArts 网关、运行时名称和 Authorization')};
   };
   const config={snapshot,runtimeBinding,isTransportCurrent,
+    setEgressHost(host){if(typeof host?.prepare!=='function')throw Error('本机出机门禁不可用');egressHost=host;},
+    // Opaque identity only; consumers cannot obtain a credential or an execution grant.
+    readCredentialReference(){return saved?'agentarts:'+configurationRef:undefined;},
+    readReleaseBinding(){return saved?.releaseBinding?Object.freeze({...structuredClone(saved.releaseBinding),
+      gatewayUrl:saved.gatewayUrl,runtimeName:saved.runtimeName,version:saved.deploymentVersion,configurationRef}):undefined;},
     transportConfig(binding) {
       const initial=currentTransport();
       // Keep the HTTPS destination guard even without WSS options.
       return createAgentArtsTransportConfig({binding,fetchImpl,environment:effectiveEnvironment(),transportPreferences:readTransportPreferences(),
+        preparePayload:async scope=>{
+          const host=egressHost,reference=configurationRef;
+          if(!host)throw Object.assign(Error('本机出机门禁尚未装配'),{code:'UNSUPPORTED_CAPABILITY'});
+          return host.prepare({...scope,isCurrent:()=>egressHost===host&&configurationRef===reference&&isTransportCurrent(initial)&&scope.isCurrent()});
+        },
         configurationProvider:{read:()=>readTransportOptions(binding)},readAppToken:()=>{
           assertBinding(binding,initial);
           return readTransportOptions(binding).appToken??effectiveEnvironment().PA_AGENTARTS_APP_TOKEN;
@@ -105,7 +134,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
     },
     readTransportPreferences,
     readModelPreferences(){return saved?.modelPreferences?structuredClone(saved.modelPreferences):undefined;},
-    saveModelPreferences(value){value=validatePreferences(value);if(!safeStorage.isEncryptionAvailable())throw Error('本机安全存储不可用');if(!saved)throw Error(snapshot().reason);const next={...saved,modelPreferences:structuredClone(value)};const encrypted=safeStorage.encryptString(JSON.stringify(next)).toString('base64');mkdirSync(userData,{recursive:true});writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted}),'utf8');renameSync(file+'.tmp',file);saved=next;},
+    saveModelPreferences(value){value=validatePreferences(value);if(!safeStorage.isEncryptionAvailable())throw Error('本机安全存储不可用');if(!saved)throw Error(snapshot().reason);const next={...saved,modelPreferences:structuredClone(value)};const encrypted=safeStorage.encryptString(JSON.stringify(next)).toString('base64');mkdirSync(userData,{recursive:true});writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted,reference:configurationRef}),'utf8');renameSync(file+'.tmp',file);saved=next;},
     binding(){if (!saved) throw Error(snapshot().reason);return {gatewayUrl:saved.gatewayUrl,runtimeName:saved.runtimeName};},
     readAuthorization(binding,transport) {assertBinding(binding,transport);return saved.authorization;},
     readTransportOptions,
@@ -117,7 +146,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
         appToken:saved.appToken,deploymentVersion:'',transport:'https',websocketUrl:'',allowHttpsFallback:false});
     },
     configure(input) {
-      if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization','appToken','deploymentVersion','transport','websocketUrl','allowHttpsFallback'].includes(key))) throw Error('AgentArts 配置格式无效');
+      if (!input || Object.keys(input).some(key=>!['gatewayUrl','runtimeName','authorization','appToken','deploymentVersion','transport','websocketUrl','allowHttpsFallback','releaseBinding'].includes(key))) throw Error('AgentArts 配置格式无效');
       if(input.transport!==undefined&&!['wss','https'].includes(input.transport)||input.allowHttpsFallback!==undefined&&typeof input.allowHttpsFallback!=='boolean'||input.websocketUrl!==undefined&&typeof input.websocketUrl!=='string')throw Error('AgentArts 传输配置无效');
       // A credential may be retained only for the same exact destination and deployment.
       const binding=validateBinding(input);
@@ -141,14 +170,16 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
       if(transport==='wss'&&appToken===undefined)throw Error('首次配置 WSS 主通道必须填写“独立镜像访问令牌”（至少 32 位可见字符）');
       const allowHttpsFallback=input.allowHttpsFallback??(sameDeployment?saved?.allowHttpsFallback:undefined);
       const value=validate({...binding,authorization,appToken,deploymentVersion,transport,
+        releaseBinding:input.releaseBinding===null?undefined:input.releaseBinding??(sameDeployment?saved?.releaseBinding:undefined),
         websocketUrl:transport==='https'?undefined:websocketUrl,
         allowHttpsFallback:transport==='https'?false:allowHttpsFallback,
         ...(sameDestination&&deploymentVersion===saved?.deploymentVersion&&saved?.modelPreferences?{modelPreferences:saved.modelPreferences}:{})});
       if (!safeStorage.isEncryptionAvailable()) throw Error('本机安全存储不可用，未保存');
       const encrypted=safeStorage.encryptString(JSON.stringify(value)).toString('base64');
+      const reference=randomUUID();
       mkdirSync(userData,{recursive:true});
-      writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted}),'utf8');renameSync(file+'.tmp',file);
-      saved=value;failure='';return snapshot();
+      writeFileSync(file+'.tmp',JSON.stringify({version:1,encrypted,reference}),'utf8');renameSync(file+'.tmp',file);
+      saved=value;configurationRef=reference;failure='';return snapshot();
     },
     revoke() {
       saved=undefined;failure='';

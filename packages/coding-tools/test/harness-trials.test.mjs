@@ -274,7 +274,7 @@ test('a fresh adoption failure stays FAILED and cannot inherit a selected parent
   await assert.rejects(readFile(path.join(f.source,'candidate.txt')),{code:'ENOENT'});
 });
 
-test('trial rejects duplicate candidate paths and self-referencing composition before isolation',async t=>{
+test('trial rejects duplicate candidate paths and self-referencing composition before creating an isolated session',async t=>{
   const f=await trialFixture(t),c=context('child-a');
   const duplicate=f.input('candidate-a');duplicate.patches.push({...duplicate.patches[0],createText:'second'});
   await assert.rejects(f.tool.execute(duplicate,c),{code:'INVALID_ARGUMENT'});

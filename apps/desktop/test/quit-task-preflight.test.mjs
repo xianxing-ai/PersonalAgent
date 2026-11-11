@@ -118,9 +118,11 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'p5DeviceNotificationHost','notificationApplicationHost','p5Cognition','p5SystemObservationSource','knowledgeWatchHost','wikiSourceMonitor','modelApiHost',
     'privateConsumption','installedSkillsHost','pluginCatalogHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','wikiImportHost','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','mailMonitorPreparation','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
-    'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
+    'publicReferenceConsent','feedsHost','f09FeedGraphHost','workflowGraphComposition','f15ReviewHost','f15ReviewOrigin','f15ReviewViewer','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
     'windowsControlHost','browserControlHost','browserControlClosing','computerVisionHost','computerVisionConfig','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
-    'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing'];
+    'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing',
+    'f18ReviewCases','f18Workflow','f18ActiveRevision','f19IssueCases','f19Workflow','f19ActiveRevision',
+    'f01Workflow','f22Configuration','f22Workflow','f25Configuration','f25Workflow','f08SourceChanges','f08SourceActions','f23DecisionConfiguration'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, clearImmediate, console, app, voiceInput, wakeVoice,
     resourcePoll:undefined,eventContinuation:undefined,snapshotPublisher:createSnapshotPublisher({project:()=>({})}),

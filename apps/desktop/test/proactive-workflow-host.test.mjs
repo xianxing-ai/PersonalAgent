@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {syntheticPublicPayloadGate,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createServer} from 'node:http';
 import {mkdtemp,mkdir,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
@@ -25,16 +26,17 @@ test('Desktop starts original Runtime worker through authenticated signed image 
   const server=createServer(async(req,res)=>{try{
     assert.equal(req.headers.authorization,'Bearer public-outer');assert.equal(req.headers['x-pa-agent-token'],'Bearer public-inner');
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
-    const value=JSON.parse(JSON.parse(Buffer.concat(chunks).toString()).query);requests++;
+    const payload=JSON.parse(Buffer.concat(chunks).toString()),query=JSON.parse(payload.query),bound=query.executionEpochVersion===1;
+    const value=bound?JSON.parse(syntheticAgentArtsQuery(payload)):query;requests++;
     const result=await controller({value,sessionId:req.headers['x-hw-agentarts-session-id'],requestId:req.headers['x-request-id'],
       deadline:req.headers['x-pa-deadline'],signal:new AbortController().signal});
     res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify([
-      {event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]));
+      {event:'message',data:{text:bound?syntheticAgentArtsResult(payload,result):JSON.stringify(result)}},{event:'task_end'},{event:'end'}]));
   }catch{res.writeHead(400);res.end('fixture failed');}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const app=createRuntimeApplication({path:join(folder,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'public-test',proactiveWorkflows:true});
   const host=createDesktopProactiveWorkflowApplication({application:app,localDeviceAvailable:()=>true,readConfiguration:()=>({contractRef:contract.id,
-    adapter:{endpoint:'http://127.0.0.1:'+server.address().port+'/invocations',receiptSecret:secret,
+    adapter:{endpoint:'http://127.0.0.1:'+server.address().port+'/invocations',receiptSecret:secret,preparePayload:syntheticPublicPayloadGate,
       authorizationProvider:{read:async()=>'Bearer public-outer'},hostAuthorizationProvider:{read:async()=>'Bearer public-inner'}}})});
   let parent;
   try {

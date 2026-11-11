@@ -29,6 +29,7 @@ import {mountPluginCatalogControls} from '../../app/plugin-catalog-controls.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountWikiImportControls} from '../../app/wiki-import-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
+import {mountMailSourceControls} from './mail-source-controls.js';
 import {profilePage, bindProfile} from './profile.js';
 import {approvalPresentation, authorizationHistoryHtml, authorizationListHtml, nextApprovalExpiry} from './approval-status.js';
 import {agentArtsModelPage} from './agentarts-model.js';
@@ -172,7 +173,8 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,mailSourceControls;
+  window.addEventListener('unload',()=>mailSourceControls?.dispose(),{once:true});
   let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,briefingControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
@@ -427,6 +429,8 @@ export function mountAdmin(root, invoke, escape) {
     }
     if(memoryLearningRoot) memoryLearningRoot.hidden=section!=='memory';
     memoryLearningControls?.update({status:data.memoryLearning,refs:consumableMemoryRefs});
+    if(section==='memory'&&data.privateMemory)mailSourceControls??=mountMailSourceControls(root.querySelector('.main'),invoke);
+    if(mailSourceControls){mailSourceControls.element.hidden=section!=='memory';mailSourceControls.update(data.tasks);}
     if (section==='worktrees' || section==='environment') codingControls ??= mountWorkspaceControls(root.querySelector('.main'),invoke);
     codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
@@ -614,7 +618,8 @@ export function mountAdmin(root, invoke, escape) {
       button.disabled = true;
       try {
         const result = await invoke('memory.delete', {ref: savedMemory.facts[Number(button.dataset.memoryDelete)].ref});
-        if (result.state === 'deleted' || result.state === 'pending') {
+        if(result.state==='pending'&&['deletion_user_turn','deletion_result_unknown'].includes(result.phase))savedMemory.status=result.message;
+        else if (result.state === 'deleted' || result.state === 'pending') {
           const page = await invoke('memory.listSaved');
           savedMemory = {...page, status: result.state === 'deleted' ? '已删除该记忆的全部版本并完成读回。'
             : result.pendingBackupIds?.length ? '记忆已停止引用；应用备份仍待清理或整篇笔记备份已保留，删除尚未完成。'

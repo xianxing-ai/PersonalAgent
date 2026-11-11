@@ -1,10 +1,56 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, rm} from 'node:fs/promises';
 import {test} from 'node:test';
 import {Client} from '@personal-agent/client';
-import {createAgentArtsRuntimeApplication} from '../dist/application.js';
+import {createAgentArtsRuntimeApplication,createDesktopSubagentDispatchTool} from '../dist/application.js';
 
 const event = text => ({event: 'message', data: {text, index: 0}});
+
+for(const [pinned,complete,available] of [[true,true,true],[false,true,true],[true,false,true],[true,true,false]])
+test(`configured graph catalog requires fixed image and complete available ports (${pinned}/${complete}/${available})`,async()=>{
+  const schema={type:'object',additionalProperties:false,required:[],properties:{}};
+  const probe={descriptor:{name:'computer.system.observe',version:'1.0.0',inputSchema:schema,outputSchema:schema,
+    sideEffect:'read',requiredScopes:['synthetic:probe'],idempotencySupport:false,recoverySupport:false,requiresPresence:false},
+    execute:async()=>{throw Error('Catalog test must not execute the probe');}};
+  let app;const requests=[];
+  const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
+    runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
+  const tools=[probe,dispatch];
+  app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',delegateUserTasks:true,hostUserNamespace:'synthetic-image-composition',
+    gatewayUrl:'https://agentarts.example.test',runtimeName:'pa-runtime',...(pinned?{deploymentVersion:'fixed-v1'}:{}),
+    initialRequestMode:'goal-with-tools-json',responseMode:'tool-proposal-json',tools,
+    authorizationProvider:{read:async()=> 'Bearer synthetic-token'},
+    beforeCompetitionSend:request=>{requests.push(request);},
+    fetchImpl:async()=>new Response(JSON.stringify(event(JSON.stringify({kind:'text',text:'Synthetic catalog reply'}))),
+      {headers:{'content-type':'application/json'}}),
+    configuredWorkflowWorkerPorts:[{workflowId:'F13',toolName:'workflow.system.diagnose',toolVersion:'1.0.0',configurationVersion:'synthetic-v1',
+      requestSchema:schema,inputSchema:schema,resultSchema:schema,publicEnumPaths:[],
+      requiredTools:[{name:probe.descriptor.name,version:'1.0.0'}],sideEffect:'read',available:()=>available,
+      resolveInput:async()=>({}),assertCurrent:()=>{},assertFrontier:()=>true,authorizeExport:async()=>true,
+      ...(complete?{verifyCompletion:async()=>{throw Error('Catalog test must not run a graph');}}:{})}],
+    competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+      available:()=>true,publicEnumPaths:tool===dispatch?['/subtasks/*/role']:[]})),
+    competitionToolExports:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
+      exportPolicyVersion:'synthetic-v1',accepts:()=>true,project:({result})=>result}))});
+  try{
+    const client=new Client(app);await client.connect();const root=await client.call('task.submit',
+      {goal:'Read synthetic graph catalog',conversationId:'synthetic-chat'},{idempotencyKey:'synthetic-image-ports',timeoutMs:60000});
+    for(let attempt=0;attempt<600;attempt++){
+      const tasks=[app.runtime.getTask(root.taskId),...app.readSubagentTasks(root.taskId)];
+      for(const task of tasks)for(const approval of app.runtime.listApprovals({taskId:task.taskId,state:'pending'}).items)
+        await client.call('authorization.respond',{approvalId:approval.approvalId,expectedRevision:approval.revision,decision:'allow_once'});
+      if(app.activeTaskCount===0&&['succeeded','failed','cancelled'].includes(app.runtime.getTask(root.taskId).state))break;
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }
+    const children=app.readSubagentTasks(root.taskId);assert.equal(children.length,1);
+    assert.equal(children[0].state,'succeeded',JSON.stringify(children[0].error));
+    const childRequests=requests.filter(request=>request.taskId===children[0].taskId);assert.ok(childRequests.length);
+    assert.equal(childRequests.some(request=>request.availableTools?.some(tool=>tool.name==='workflow.system.diagnose')),
+      pinned&&complete&&available);
+  }finally{app.close();}
+});
 
 async function terminal(app, taskId, states = ['succeeded', 'failed', 'cancelled']) {
   for (let attempt = 0; attempt < 200; attempt += 1) {
@@ -22,7 +68,7 @@ test(`trusted factory runs the competition HTTP adapter without local fallback (
   const directory = await mkdtemp(new URL('case-', base));
   const calls = [];
   let authorizationReads = 0;
-  const app = createAgentArtsRuntimeApplication({
+  const app = createSyntheticAgentArtsRuntimeApplication({
     path: directory + '/runtime.sqlite',
     gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'pa-runtime',
@@ -73,7 +119,7 @@ test('HTTP 200 stream error after a partial message fails the task without persi
   const base = new URL('../../../.cache/agentarts-application-tests/', import.meta.url);
   await mkdir(base, {recursive: true});
   const directory = await mkdtemp(new URL('stream-error-', base));
-  const app = createAgentArtsRuntimeApplication({
+  const app = createSyntheticAgentArtsRuntimeApplication({
     path: directory + '/runtime.sqlite',
     gatewayUrl: 'https://agentarts.example.test',
     runtimeName: 'pa-runtime',
@@ -130,7 +176,7 @@ test('invalid AgentArts deployment configuration fails before creating Runtime s
 
 test('trusted factory forwards the configured workflow start input', async () => {
   const bodies = [];
-  const app = createAgentArtsRuntimeApplication({
+  const app = createSyntheticAgentArtsRuntimeApplication({
     path: ':memory:', gatewayUrl: 'https://agentarts.example.test', runtimeName: 'workflow',
     workflowGoalInput: 'goal', authorizationProvider: {read: async () => 'Bearer synthetic-token'},
     fetchImpl: async (_url, init) => {
@@ -157,7 +203,7 @@ test('explicit JSON mode binds real adapter sends to current Runtime export perm
   let credentialReads = 0;
   const proposal = {kind: 'tool_proposal', proposalId: 'synthetic-meeting-1',
     toolName: 'fixture.meeting', toolVersion: '1.0.0', arguments: {id: 'synthetic-meeting'}};
-  const app = createAgentArtsRuntimeApplication({
+  const app = createSyntheticAgentArtsRuntimeApplication({
     path: ':memory:', gatewayUrl: 'https://agentarts.example.test', runtimeName: 'workflow',
     responseMode: 'tool-proposal-json', authorizationProvider: {read: async () => {
       credentialReads++;
@@ -243,7 +289,7 @@ test('JSON SSE terminal errors never reach factory approval or tool execution', 
   ]) await t.test(name, async () => {
     let executions = 0;
     let fetches = 0;
-    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+    const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:',
       gatewayUrl: 'https://agentarts.example.test', runtimeName: 'workflow',
       responseMode: 'tool-proposal-json', authorizationProvider: {read: async () => 'Bearer synthetic'},
       competitionToolExports: [{toolName: proposal.toolName, toolVersion: proposal.toolVersion,
@@ -278,7 +324,7 @@ test('opt-in factory sends only the selected public tool catalog and rechecks ho
     let healthy = true;
     const bodies = [];
     const toolName = 'fixture.read';
-    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+    const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:',
       gatewayUrl: 'https://agentarts.example.test', runtimeName: 'workflow',
       responseMode: 'tool-proposal-json', initialRequestMode: 'goal-with-tools-json',
       authorizationProvider: {read: async () => {
@@ -337,7 +383,7 @@ test('factory retains raw adapter synchronous validation of the host send guard'
     let guardCalls = 0;
     let release;
     const diagnostics = [];
-    const app = createAgentArtsRuntimeApplication({path: ':memory:',
+    const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:',
       gatewayUrl: 'https://agentarts.example.test', runtimeName: 'send-guard',
       authorizationProvider: {read: async () => 'Bearer synthetic'},
       onDiagnostic: receipt => diagnostics.push(receipt),
@@ -346,13 +392,7 @@ test('factory retains raw adapter synchronous validation of the host send guard'
         assert.equal(Object.isFrozen(request), true);
         if (mode === 'pending') return new Promise(resolve => {release = resolve;});
         if (mode === 'resolved') return Promise.resolve();
-        if (mode === 'rejected') {
-          const rejected = Promise.reject(Error('private-guard-canary'));
-          // Keep the original factory reproduction from producing an unrelated
-          // process rejection; the guard result itself must still be rejected.
-          void rejected.catch(() => undefined);
-          return rejected;
-        }
+        if (mode === 'rejected') return Promise.reject(Error('private-guard-canary'));
         if (mode === 'throw') throw Error('private-guard-canary');
       },
       fetchImpl: async () => {
@@ -367,7 +407,7 @@ test('factory retains raw adapter synchronous validation of the host send guard'
       const {taskId} = await client.call('task.submit', {goal: 'Synthetic send guard', conversationId: 'send-guard'},
         {idempotencyKey: mode});
       const task = await terminal(app, taskId);
-      assert.equal(guardCalls, 1);
+      assert.equal(guardCalls, mode === 'sync' ? 2 : 1);
       assert.equal(fetches, mode === 'sync' ? 1 : 0);
       assert.equal(task.state, mode === 'sync' ? 'succeeded' : 'failed');
       assert.deepEqual(app.runtime.readToolExecutions(taskId), []);
@@ -395,7 +435,7 @@ test('coordination input guards enforce synchronous void before preparation expo
       let release;
       let reject;
       const diagnostics = [];
-      const app = createAgentArtsRuntimeApplication({path: ':memory:',
+      const app = createSyntheticAgentArtsRuntimeApplication({path: ':memory:',
         gatewayUrl: 'https://agentarts.example.test', runtimeName: 'input-guard',
         authorizationProvider: {read: async () => {reads++; return 'Bearer synthetic';}},
         onDiagnostic: receipt => diagnostics.push(receipt),
@@ -431,7 +471,7 @@ test('coordination input guards enforce synchronous void before preparation expo
         const task = await terminal(app, taskId);
         const allowed = mode === 'sync' || mode === 'microtask';
         assert.equal(task.state, allowed ? 'succeeded' : 'failed');
-        assert.equal(guards, allowed ? 2 : phase);
+        assert.equal(guards, allowed ? 3 : phase);
         assert.equal(reads, allowed || phase === 2 ? 1 : 0);
         assert.equal(fetches, allowed ? 1 : 0);
         assert.equal(replies, allowed ? 1 : 0);

@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError} from '@personal-agent/contracts';
+import {getOwnedWorkflowAdapterRequirements,getOwnedWorkflowTemplate} from '@personal-agent/agentarts';
 import type {OwnedWorkflowAdvanceRequest,OwnedWorkflowAdvanceResult,OwnedWorkflowHostBridge,WorkflowReceipt} from '@personal-agent/agentarts';
 import type {CoordinationAvailableTool} from '@personal-agent/coordination';
 import type {WorkerContext,WorkerResult} from '../index.js';
@@ -13,15 +14,20 @@ export interface RuntimeOwnedWorkflowDriverState<TInput=unknown> {
   resolvedValues:Record<string,unknown>;pendingSend?:{requestId:string;digest:string};
   waiting?:{localTaskId:string;operationId:string};
   confirmedHost:Record<string,{localTaskId:string;operationId:string;result:unknown}>;
+  /** Additive per-operation readback; the legacy per-tool index remains for F15 checkpoints. */
+  confirmedOperations?:Record<string,{toolName:string;nodeId?:string;localTaskId:string;operationId:string;result:unknown}>;
   evidenceRefs:string[];timings:{stage:string;startedAt:string;elapsedMs:number;nodeId?:string;operationId?:string}[];
+  unavailable?:{nodeId:string;requiredCapabilities:string[];missingPublishedTools:string[]}[];
 }
 /** Trusted composition only. Input must already have its exact export authorization.
  * Workflow identity, catalog and completion evidence are never chosen by model JSON. */
 export interface RuntimeOwnedWorkflowDriverOptions<TInput> {
   workflowId:string;checkpointKey:string;mode:NonNullable<OwnedWorkflowAdvanceRequest['mode']>;
-  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>};
-  bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'>;catalog:readonly CoordinationAvailableTool[];
+  image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest,context?:{executionEpoch:number;assertCurrent?:()=>void}):Promise<OwnedWorkflowAdvanceResult>};
+  bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'> & Partial<Pick<OwnedWorkflowHostBridge,'readReceiptWithShadow'>>;catalog:readonly CoordinationAvailableTool[];
   requestId:(sequence:number)=>string;
+  /** Optional trusted local frontier guard, executed before any host submit. */
+  authorizeProposal?:(input:{proposal:Proposal;state:RuntimeOwnedWorkflowDriverState<TInput>})=>void|{localTaskId:string;operationId:string}|Promise<void|{localTaskId:string;operationId:string}>;
   authorizeReceipt:(input:{proposal:Proposal;receipt:WorkflowReceipt;localTaskId:string;state:RuntimeOwnedWorkflowDriverState<TInput>})=>Promise<void|WorkflowReceipt>;
   /** Required local verification. Cloud state alone never completes the original task. */
   validateSettled:(state:RuntimeOwnedWorkflowDriverState<TInput>)=>WorkerResult|Promise<WorkerResult>;
@@ -32,6 +38,21 @@ export interface RuntimeOwnedWorkflowDriverOptions<TInput> {
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const plain=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
 
+/** Only the local fixed template and published catalog may populate diagnostics; the
+ * cloud result supplies node IDs, never arbitrary reason or capability strings. */
+function unavailableDiagnostics(workflowId:string,result:OwnedWorkflowAdvanceResult,catalog:readonly CoordinationAvailableTool[]) {
+  const reported=new Set(Array.isArray(result.unavailable)?result.unavailable.flatMap(item=>
+    plain(item)&&typeof item.nodeId==='string'?[item.nodeId]:[]):[]);
+  const requirements=getOwnedWorkflowAdapterRequirements().filter(item=>item.workflowId===workflowId);
+  return (getOwnedWorkflowTemplate(workflowId)?.nodes??[]).filter(node=>reported.has(node.id)).map(node=>{
+    const missingAdapters=requirements.filter(item=>item.nodeId===node.id
+      &&!catalog.some(tool=>tool.name===item.toolName&&tool.version===item.toolVersion)).map(item=>item.toolName);
+    const missingTools=node.capabilities.filter(cap=>cap.kind==='tool'&&!catalog.some(tool=>tool.name===cap.name)).map(cap=>cap.name);
+    return {nodeId:node.id,requiredCapabilities:node.capabilities.map(cap=>`${cap.kind}:${cap.name}`),
+      missingPublishedTools:[...new Set([...missingAdapters,...missingTools])]};
+  });
+}
+
 /** Extracted original F15 frontier consumer. Runs only inside the caller's existing Runtime worker. */
 export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeApplication,worker:WorkerContext,
   state:RuntimeOwnedWorkflowDriverState<TInput>,options:RuntimeOwnedWorkflowDriverOptions<TInput>):Promise<WorkerResult> {
@@ -40,11 +61,19 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
   const binding={taskId:worker.taskId,workflowId:options.workflowId,mode:options.mode,sessionId:state.sessionId,
     deadline:worker.deadline,imageBinding:options.image.bindingId,inputDigest:hash(state.input),catalogDigest:hash(options.catalog)};
   const bindingKey=options.checkpointKey+':driver-binding';
+  const epochKey=bindingKey+':execution-epoch';
+  // Historic checkpoints belong to epoch zero; a replan never adopts an old graph or unknown run.
+  application.runtime.saveCheckpointOnce(worker.taskId,epochKey,worker.loadCheckpoint(bindingKey)===undefined
+    &&!state.result&&!state.checkpoint&&!state.pendingSend&&state.sequence===0
+    ?application.runtime.readExecutionEpoch(worker.taskId):0);
+  const executionEpoch=worker.loadCheckpoint(epochKey) as number;
+  application.runtime.assertExecutionEpoch(worker.taskId,executionEpoch);
   application.runtime.saveCheckpointOnce(worker.taskId,bindingKey,binding);
   if(!isDeepStrictEqual(worker.loadCheckpoint(bindingKey),binding))
     throw new ProtocolError('REVISION_CONFLICT','Original workflow input, lifetime or catalog changed');
   const save=()=>worker.saveCheckpoint(options.checkpointKey,state);
-  const active=()=>{if(worker.signal.aborted||application.runtime.getTask(worker.taskId).cancelRequested)
+  const active=()=>{application.runtime.assertExecutionEpoch(worker.taskId,executionEpoch);
+    if(worker.signal.aborted||application.runtime.getTask(worker.taskId).cancelRequested)
     throw new ProtocolError('CANCELLED','Original graph was cancelled');
     if(!Number.isFinite(Date.parse(worker.deadline))||Date.now()>=Date.parse(worker.deadline))
       throw new ProtocolError('TIMEOUT','Original graph deadline expired');};
@@ -60,19 +89,32 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
     const binding={taskId:worker.taskId,sessionId:state.sessionId,workflowId:options.workflowId,controlRevision:state.controlRevision,deadline:worker.deadline,taskDeadline:worker.deadline};
     const proposals=state.result?.proposals??[];
     state.receipts=[];
+    if(proposals.length&&state.result?.state!=='awaiting_host')
+      throw new ProtocolError('PROTOCOL_MISMATCH','Graph proposed an operation outside the host frontier');
     for(const proposal of proposals) {
       if(proposal.kind!=='tool_proposal')throw new ProtocolError('UNSUPPORTED_CAPABILITY','Graph requires a registered host adapter');
       if(!options.catalog.some(tool=>tool.name===proposal.toolName&&tool.version===proposal.toolVersion))
         throw new ProtocolError('UNAUTHORIZED','Graph requested a tool outside its original published catalog');
+      if(options.authorizeProposal){const waiting=await options.authorizeProposal({proposal,state});active();
+        if(waiting)return pause(waiting.localTaskId,waiting.operationId);}
       const local=options.bridge.submit(binding,proposal);
       // The child may finish asynchronously; wait only for the original registered worker, never replay it.
       const cancelChild=()=>{try{application.runtime.requestCancel(local.localTaskId,'Original graph was cancelled');}catch{/* Original terminal child is retained. */}};
       worker.signal.addEventListener('abort',cancelChild,{once:true});
       try {if(worker.signal.aborted)cancelChild();await application.waitForHostToolTask(local.localTaskId);active();}
       finally {worker.signal.removeEventListener('abort',cancelChild);}
-      const receipt=await timed('host-readback',async()=>options.bridge.readReceipt(binding,proposal),{nodeId:proposal.nodeId,operationId:proposal.operationId});
+      const readHostReceipt=async()=>typeof options.bridge.readReceiptWithShadow==='function'
+        ?options.bridge.readReceiptWithShadow(binding,proposal)
+        :options.bridge.readReceipt(binding,proposal);
+      const receipt=await timed('host-readback',readHostReceipt,{nodeId:proposal.nodeId,operationId:proposal.operationId});
+      active();
       if(!receipt||receipt.state==='stopping'||receipt.state==='unknown')return pause(local.localTaskId,proposal.operationId);
-      if(receipt.state==='confirmed')state.confirmedHost[proposal.toolName]={localTaskId:local.localTaskId,operationId:proposal.operationId,result:structuredClone(receipt.result)};
+      if(receipt.state==='confirmed') {
+        state.confirmedHost[proposal.toolName]={localTaskId:local.localTaskId,operationId:proposal.operationId,result:structuredClone(receipt.result)};
+        state.confirmedOperations??={};
+        state.confirmedOperations[proposal.operationId]={toolName:proposal.toolName,nodeId:proposal.nodeId,localTaskId:local.localTaskId,
+          operationId:proposal.operationId,result:structuredClone(receipt.result)};
+      }
       const authorized=await options.authorizeReceipt({proposal,receipt,localTaskId:local.localTaskId,state});active();
       state.evidenceRefs=[...new Set([...state.evidenceRefs,...receipt.evidenceRefs])];
       state.receipts.push(authorized??receipt);delete state.waiting;save();
@@ -80,6 +122,10 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
     if(state.result?.state==='settled')return options.validateSettled(state);
     if(state.result&&['failed','unavailable','cancelled','unknown','paused','awaiting_user','awaiting_controller'].includes(state.result.state)) {
       if(state.result.state==='unknown'){application.runtime.transitionTask(worker.taskId,'waiting_reconciliation');return {resultSummary:options.workflowId+' original result is unknown; not repeated',evidenceRefs:[]};}
+      if(state.result.state==='unavailable') {
+        state.unavailable=unavailableDiagnostics(options.workflowId,state.result,options.catalog);save();
+        throw new ProtocolError('UNSUPPORTED_CAPABILITY','Graph unavailable: '+JSON.stringify({workflowId:options.workflowId,nodes:state.unavailable}));
+      }
       throw new ProtocolError('UNSUPPORTED_CAPABILITY','Graph stopped: '+state.result.state+' '+(options.stoppedReason?.(state.result)??''));
     }
     if(state.pendingSend) {application.runtime.transitionTask(worker.taskId,'waiting_reconciliation');return {resultSummary:options.workflowId+' original send is unknown; not repeated',evidenceRefs:[]};}
@@ -88,7 +134,7 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       receipts:state.receipts,resolvedValues:state.resolvedValues};
     const snapshot=options.snapshot?.(state);if(snapshot)envelope.snapshot=snapshot;
     state.pendingSend={requestId:envelope.requestId,digest:hash({...envelope,signal:undefined})};save();
-    const result=await timed('image-advance',()=>options.image.advance(envelope));active();
+    const result=await timed('image-advance',()=>options.image.advance(envelope,{executionEpoch,assertCurrent:active}));active();
     if(result.workflowId!==options.workflowId||result.workflowVersion!=='1.0.0'||!result.checkpoint||!Array.isArray(result.proposals)||!plain(result.nodes))
       throw new ProtocolError('PROTOCOL_MISMATCH','Invalid original image graph result');
     state.result=structuredClone(result);state.checkpoint=result.checkpoint;state.sequence++;delete state.pendingSend;save();

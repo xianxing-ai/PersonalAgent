@@ -235,10 +235,14 @@ export class ModelCapabilityRegistry {
   }
 }
 
+export {selectDeveloperModelGateway} from './downgrade.js';
 export class ModelGateway implements ModelPort {
   readonly deployment: ModelDeployment;
 
-  constructor(private readonly provider: ModelProvider, deployment: ModelDeployment = provider.deployment) {
+  /**
+   * 第三参是可选降模配置。不传、shouldDowngrade 不为 true、或没有备用网关时，仍调用构造时的 provider。
+   */
+  constructor(private readonly provider: ModelProvider, deployment: ModelDeployment = provider.deployment, private readonly downgradeOptions?: {fallback?: ModelGateway; shouldDowngrade?: () => boolean}) {
     this.deployment = structuredClone(deployment);
   }
 
@@ -248,6 +252,9 @@ export class ModelGateway implements ModelPort {
   }
 
   async complete(request: ModelRequest): Promise<ModelResult> {
+    if (this.downgradeOptions?.shouldDowngrade?.() === true && this.downgradeOptions.fallback && this.downgradeOptions.fallback !== this) {
+      return this.downgradeOptions.fallback.complete(request);
+    }
     request = {...request, messages: request.messages.map(message => ({...message})),
       tools: structuredClone(request.tools),
       ...(request.requiredCapabilities === undefined ? {} : {requiredCapabilities: [...request.requiredCapabilities]}),

@@ -1,4 +1,5 @@
 import {ProtocolError,ToolNotStartedError,isToolNotStartedError,validateToolValue} from '@personal-agent/contracts';
+import {randomUUID} from 'node:crypto';
 
 const OBSERVE='computer.desktop.observe';
 const reads=new Set([OBSERVE,'computer.desktop.list_windows','computer.desktop.screenshot','computer.desktop.wait','computer.desktop.suggest_control',
@@ -15,7 +16,7 @@ const fail=(code,message)=>{throw new ProtocolError(code,message);};
  * tools. It never grants permission, schedules work, persists state or replays a run.
  * getRuntime returns the original Runtime after main composition has bound it. */
 export function createComputerControlLease({getRuntime,now=Date.now}={}) {
-  let active,settling,closed=false;
+  let active,settling,reservation,closed=false;
   const wrappers=new WeakMap();
   const runtime=()=>{
     let value;
@@ -56,6 +57,10 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
     }while(beforeSequence!==undefined);
     return false;
   }
+  function refreshReservation(){
+    if(!reservation||active||settling)return;
+    try{check(reservation);reservation.assertCurrent();}catch{reservation=undefined;}
+  }
   function wrap(tool) {
     if(!controlled(tool?.descriptor?.name??''))return tool;
     if(wrappers.has(tool))return wrappers.get(tool);
@@ -64,7 +69,12 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
       try{
         check(context);
         if(active)fail('REVISION_CONFLICT','另一个电脑控制引擎正在执行；本次尚未调用设备');
-        source=runtime();refreshSettling(source);
+        source=runtime();refreshSettling(source);refreshReservation();
+        if(reservation){
+          check(reservation);reservation.assertCurrent();
+          if(reservation.authorizeOperation(input,context,tool.descriptor.name)!==true)
+            fail('UNAUTHORIZED','原工作流持有输入锁；此设备操作不属于其精确原子任务');
+        }
         if(write&&(settling||originalUnknown(source)))fail('RESULT_UNKNOWN','原电脑操作尚未核实；禁止新的电脑写入，不会重放原操作');
       }catch(error){
         // Only this trusted wrapper knows the driver has not been called.
@@ -79,6 +89,7 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
       try {
         const result=await tool.execute(input,context);
         check(context);
+        if(reservation){check(reservation);reservation.assertCurrent();}
         validateToolValue(tool.descriptor.outputSchema,result);
         if(write&&(result?.state==='unknown'||result?.state==='result_unknown'))fail('RESULT_UNKNOWN','原电脑操作返回未知状态');
         // Runtime commits confirmed only after the tool promise returns. Retain
@@ -94,9 +105,34 @@ export function createComputerControlLease({getRuntime,now=Date.now}={}) {
   }
   return {
     wrap,wrapTools:tools=>tools.map(wrap),
+    reserveWorkflow(input){
+      check(input);input.assertCurrent?.();
+      if(typeof input.taskId!=='string'||!input.taskId||typeof input.sessionId!=='string'||!input.sessionId
+        ||typeof input.assertCurrent!=='function'||typeof input.authorizeOperation!=='function')
+        fail('INVALID_ARGUMENT','工作流输入锁需要可信原任务与操作核验端口');
+      const source=runtime();refreshSettling(source);refreshReservation();
+      if(active||settling||originalUnknown(source))fail('RESULT_UNKNOWN','原设备操作尚未释放，不能取得工作流输入锁');
+      if(reservation)fail('REVISION_CONFLICT','已有工作流持有输入锁');
+      reservation={...input,leaseId:randomUUID()};
+      return Object.freeze({leaseId:reservation.leaseId,taskId:input.taskId,sessionId:input.sessionId,deadline:input.deadline});
+    },
+    readWorkflowReservation({leaseId,taskId,sessionId}){
+      if(!reservation||reservation.leaseId!==leaseId||reservation.taskId!==taskId||reservation.sessionId!==sessionId)
+        fail('UNAUTHORIZED','原工作流输入锁已不存在');
+      check(reservation);reservation.assertCurrent();
+      return Object.freeze({leaseId,taskId,sessionId,deadline:reservation.deadline});
+    },
+    releaseWorkflow({leaseId,taskId,sessionId}){
+      if(!reservation||reservation.leaseId!==leaseId||reservation.taskId!==taskId||reservation.sessionId!==sessionId)
+        fail('UNAUTHORIZED','不能释放其他工作流的输入锁');
+      refreshSettling(runtime());
+      if(active||settling)fail('RESULT_UNKNOWN','原设备操作仍在执行或尚未确认，不能宣称输入锁已释放');
+      reservation=undefined;
+      return true;
+    },
     snapshot(){
-      try{const source=runtime();refreshSettling(source);return {state:closed?'closed':active?'active':settling||originalUnknown(source)?'blocked':'idle',
-        busy:!!active,writeBlocked:closed||!!active||!!settling||originalUnknown(source)};}
+      try{const source=runtime();refreshSettling(source);refreshReservation();return {state:closed?'closed':active?'active':settling||originalUnknown(source)?'blocked':reservation?'reserved':'idle',
+        busy:!!active,writeBlocked:closed||!!active||!!settling||!!reservation||originalUnknown(source)};}
       catch{return {state:closed?'closed':'unavailable',busy:!!active,writeBlocked:true};}
     },
     close(){closed=true;},

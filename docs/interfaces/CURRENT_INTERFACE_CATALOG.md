@@ -1,5 +1,56 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-04 云待办与通知持久 feed（provisional，真实环境未验）
+
+`cloud-persistent` v1 新增有界 `todo` / `notification` 命令和可选读回字段；旧命令兼容，旧宿主拒绝新操作。Desktop 实际卡片经原 SSH/Runtime 接入 `productivity.register`、原 HostToolTask/Policy、Scheduler/ReminderDeliveryHost 和同一 NotificationService。每责任独立待办存储、通知去重与原 connector scope，未知操作只核实原任务；配置不签 grant。队列入库不表示设备送达，物理渠道仍 `waiting_device`。新增代码和真实未验范围见 [F06/F12 接线记录](../competition/evidence/CLOUD_REMINDER_FEED_20261104.md)，不据此完成 #531 原真实验收。
+
+## 2026-11-03 独立云持续会话宿主（provisional，真实环境未验）
+
+公开 `cloud-persistent` v1 Schema 与 `createCloudPersistentRuntimeHost` 将新会话固定到唯一云 Runtime，复用原 TaskRuntime/SQLite/Policy/Scheduler；Desktop 经原受信 SSH 与出机检查提交、控制、审批和读回。已有本机会话不迁移，原 grant/数据库不复制，默认缺宿主资格配置仍不可用。`createRuntimeProactiveMaintenancePump` 是原 Desktop 维护实现的共享入口，不另建调度器。现服务装配原 core、AgentArts teacher、云本地公共 Memory/Goal/只读 Vault 消费与公开 feeds。来源选择和子读取审批使用同一公开 Schema，tracking 不签工具 grant；每次原 HostToolTask 仍须原 `allow_once`，确认后经共享 `createRuntimeProactiveConfirmedSourceRouter` 入原 eventSink。待办与通知持久 feed 由上文 2026-11-04 增量补齐；邮件/日历/GitHub 账号工具和实体设备没有移入云宿主；没有 Linux/SSH/持久卷或关机后真实验收结论。方案与兼容见 [云持续设计](../design/CLOUD_PERSISTENT_RUNTIME_20261103.md)，操作前提见 [云宿主说明](../../scripts/remote-runner/CLOUD_RUNTIME.md)，#531 完整验收门槛不变。
+
+## 2026-11-02 #533 控制权接线（provisional）
+
+Runtime 增加原检查点持久化的执行世代与最终执行检查，Desktop 接入本对话显式禁止项、完整内容确认、本机出机分类及 F02 原最终语音决定；F16/F19 的可信 Git 预览继续经原 Policy/ToolGateway 执行。普通云传输须回显版本化世代宿主包，F02 N05 的真实授权写入改变模板摘要，旧部署不得当作新能力验收。没有新增依赖、数据库或公开模型授权口；缺乏本地原音频/图像分类时明确不可用。实现、兼容性和本地/真实证据边界见 [控制权接线记录](../competition/evidence/CONTROL_GATES_IMPLEMENTATION_20261102.md)，不据此冻结接口或宣称 #531 真实验收完成。
+
+## 2026-11-01 F21 固定参考能力的隔离验证与启用（provisional）
+
+`createF21WorkflowWorkerPorts` / Desktop `createConfiguredDesktopF21WorkflowPorts` 将五节点接入同一 configured driver、原业务 child/Policy 与原 native command；仅支持既有固定 filesystem MCP 和 reference-summary Skill。新增 `readReadonlyMcpInstallation`、reference 配置读口及 `readOriginalF21Probe` 为只读宿主证据，不能授权或启动进程。启用另经原 `workflow.enable` 精确确认；原 probe/enable 未知以既有 SQLite CAS 固定能力身份阻止新图重放。旧 UI 启停调用保持兼容，无依赖或数据库迁移。真实本机 PSEC/协议检查已通过，固定 AgentArts 整图与真人验收仍待完成，详见 [F21 证据](../competition/evidence/F21_REFERENCE_PROBE_WIRING_20261101.md)。
+
+## 2026-11-01 F10 原研究比较链（provisional）
+
+`createF10WorkflowWorkerPorts` / Desktop `createConfiguredDesktopF10WorkflowPorts` 提供唯一 `workflow.research.compare@1.0.0`：原双 research 子任务及已选公开 knowledge query 经原 Policy/投影，N05 用明确身份的辅助 guarded ModelGateway 审查原引用，N06 仅汇总原回执。OpenAlex 保持 metadata_only，知识只输出原 200 字摘录，原文件版本与目的地在凭据后同步复核；未知模型请求不重发。N02/N03/N04 host 能力使模板摘要改变，旧部署须重新绑定；无数据库迁移或新依赖。生产链 Fixture 1/1 通过，Main/真实云与真人确认验收另计，见 [F10 证据](../competition/evidence/F10_RESEARCH_WIRING_20261101.md)。
+
+## 2026-11-01 F01 原上下文与原生来源选择（provisional）
+
+唯一 `createF01WorkflowWorkerPorts` 与 Desktop `createConfiguredDesktopF01WorkflowPorts` 已提供实际 N02/N04/N05/N06/N07/N08/N09 消费口，复用同一 configured driver、原 Policy 和业务桥；补问公开 `responsibility.clarification` / `workflow.f01.clarification.respond`，回答不代替权限。N06 仅支持至多三个独立原子任务；检索/补问后明确 awaiting_replan，不自动补造新计划。模板摘要随可选 guard/收束依赖变更；原声明目录兼容，不新增 wire/数据库迁移。Main 与真实部署验收按证据跟进。
+
+`readF01ContextBinding` 只读原配置图/用户父任务/模型选择/目的地；Desktop `createF01ContextSelectionHost` 用原 `reference.source` 决定记录绑定单一公开 Fact 版本、精确 query 与既有责任会话，再进入原 `createF01QueryBinding`。`createF01WorkflowContextPorts` 消费原 Memory/proactive/AgentArts 目录，并提供同步来源最终检查；新 `agentarts_catalog` 保留 conditional，旧模型目录形状兼容。缺配置、撤销、过期或原决定不匹配均拒绝，不增加授权层/数据库迁移。代码工厂不作为真实整图验收；[当前证据](../competition/evidence/F01_RESPONSIBILITY_WIRING_20261101.md)。
+
+## 2026-11-01 原生授权决定的精确只读引用（provisional）
+
+Desktop `AuthorizationIntentHost.request` 可选 `onConfirmed` 只在原任务成功、原 `decisionRecorded` 与 Policy/started/exact args 回执全部匹配后接收冻结引用 `{taskId,runId,commandId,action,payloadDigest,scopeDigest,deadline}`；旧 bool 返回和调用兼容。`readConfirmedDecision(reference)` 重新核实同一原 Runtime，SQLite 重开和重复读回不创建任务、不消费第二次 grant；字段替换、原结果污染、过期/失效均拒绝。该引用是历史决定证据，不是新权限；消费方须单独核对当前来源/目的/部署与精确 payload，正文出口不继承来源选择许可。实际原生 Intent/Question/Runtime/Policy 加旧授权与 F04 恢复回归 19/19 通过；点击与来源为 Synthetic，无真实云或真人验收提升。
+
+## 2026-11-01 F01 原责任生命周期（provisional）
+
+`createRuntimeF01LifecycleHost` 与 Desktop `createF01WorkflowLifecyclePorts` 将原 N09 host 的任务、配置输入、Policy allow/started/exact args 绑定到既有 proactive lifecycle CAS；来源指令从原用户父任务派生，不由模型选取。原库新增精确 command digest 的只读 outcome 与责任快照，unknown/重复只读，不再 commit。Desktop 同原会话/部署/期限/取消/来源撤销守卫贯穿 CAS；无新责任库、wire 或迁移，旧 proactive 调用保持兼容。首包只交 N09，完整配置 worker/其余节点/Main 与真实云/真人仍待接线验收，不提升 frozen；[范围及实际验证](../competition/evidence/F01_RESPONSIBILITY_WIRING_20261101.md)。
+
+## 2026-11-01 F05 原来源问答接线（provisional，待真实验收）
+
+`workflow.memory.answer@1.0.0` 经 Runtime 原配置图、Policy 和 ToolGateway 接入 Desktop Main，使用原公共 Memory/Fact、受控 Knowledge 文件及其出口投影。新增 F05 answer v1 Schema 约束引用和来源版本；Knowledge 的 `assertCitationCurrent` 同步复核原文件身份、内容版本及引用范围，用于凭据读取后的最后发送门禁。未知查询不重放，来源变化或配置撤销拒绝继续。实际文件、SQLite、原图与 Main 定向已通过；模型、原生确认和云为显式 Fixture，固定 AgentArts 部署整图及来源支持真实审查尚未验证，不提升 frozen。详见 [F05 证据](../competition/evidence/F05_SOURCED_ANSWER_WIRING_20261101.md)。
+
+## 2026-11-01 F04 原观察的精确恢复出口（provisional）
+
+Runtime `readF04RecoveredWriteExport` 只读限定原用户任务当前 F04 pending N03 的原业务 child、已接受 observation、原参数/配置/会话/期限/父 revision/部署；不选择任意历史操作。Desktop `createF04RecoveryExportConsent().prepare` 通过既有原生 `workflow.export` 单次确认最小 `{state,changed}`，确认前后重验绑定，不恢复旧许可或再次执行写入。普通知识出口与 F24 保持原行为，无 wire/数据库迁移。实际 Runtime/Policy/原生授权宿主及本机文件恢复已定向覆盖，Main 接线、真实 UI/云出机仍由组合验收确认；模型/人类点击和负效果 journal 的 Synthetic 边界见 [F04 接线记录](../competition/evidence/F04_SCOPED_WIKI_WIRING_20261101.md)，不提升 frozen。
+
+## 2026-11-01 原工作流业务操作身份读回（provisional）
+
+`readWorkflowBusinessToolOrigin` 只读证明原图→原 host→原业务 child 的持久父边、intent 摘要、描述符、参数/期限、原 Policy allow 和 executionStarted，返回不可变 origin/reference/record，不返回成功 receipt。unknown 可读原身份而不能继续执行；未授权/未开始/伪造边拒绝。原 `readWorkflowBusinessToolSource` 复用此校验并继续要求 confirmed、原 tool-result 与原输出 Schema，已核实的 reconciliation observation 不冒充原 writer 结果。Runtime 构建及业务桥 35/35 通过，含 SQLite 重开、未知零重放、参数/会话/任务/期限替换与审批拒绝；真实服务与 frozen 状态不变。公开 application 出口由组合树接入。
+
+## 2026-11-01 F04 原公开来源与作用域投影（provisional）
+
+Competition 的 `createF04WorkflowWorkerPorts` 与 Desktop 同名组合工厂消费原 Knowledge search/write、public Fact CAS/Feed/impact。模型只分类原候选；原知识写入与 N04 投影各走既有 Policy。N04 恢复端口只核实原任务/来源/Fact 与已完成影响回执，不重做写入或自行调度。当前公开源单行路径及本地实际文件/SQLite 测试可复现；原知识 unknown 的 F04 接续、私人 scope、Main 实际消费和真实 AgentArts 验收仍待补齐，不提升 frozen。范围与证据见 [F04 接线记录](../competition/evidence/F04_SCOPED_WIKI_WIRING_20261101.md)。
+
+N03 增量：原知识写出口独立升级 `knowledge-explicit-public-write-v2`，只将匹配原 task/input/config、已接受 reconciliation 与 verified observation 的结果投影为 `{state:applied|not_applied,changed}`；保留原 writer verified 输出及 search v1。同步 `readFinalizedKnowledgeWriteEffect` 复用原 F24 核实逻辑，只证明原已接受观察，不提供执行/出机权限。F04 工厂配置 v2 消费原 origin 与该观察，N03/N04 均有新 Node 进程零写恢复测试；Main 新进程原卡失效后重新出机确认及原父任务 UI 消费尚待接线，不能冒充真实产品恢复已通过。
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
@@ -533,7 +584,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | AgentArts | 平台原生知识、MCP/Skill 及未验真实业务 | main 已有 provisional CloudAgentPort、Workflow 输入及 HTTPS/WSS 工具提案循环；固定版本文件读取/审批续答和有限主子模型委派已取得独立证据。平台原生知识、MCP/Skill、全域多 Agent 质量和其余业务场景仍未由这些证据验收 | MOD-29～31 `zemeng` |
 | AgentArts | 完整平台 Trace、评估、成本、回滚和比赛端到端证据 | 已有 SWR/部署/精确版本目录、有限平台关联日志、公开文件读取及特定 F15 主图/隔离图的本地 Policy/ToolGateway/Evidence 闭环；只证明对应版本与公开场景，不代表完整 Trace/成本/平台评估、回滚、全部 28 图或比赛验收完成；禁止静默 Local 回退 | MOD-32 `zemeng` |
 | Windows | Named Pipe、DesktopActionPort、资源锁、用户接管 | 内部帧及受限 Host/Client 有 provisional 接线；统一 DesktopActionPort、全部真实应用与用户接管验收仍未完成，见本页 2026-10-24 原生电脑增量 | MOD-16 `zemeng` |
-| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；包内 `assembleArtifactServiceTools` 可选包含 create/get/list/read/expire/release，默认不注册 ToolHost，公共 Runtime Artifact 端口仍未公布；真实用户工作区、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
+| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；验证回执的本地 `artifactDigest` 不是公共 Artifact 服务或 Evidence。`workspace.patch_scope_check` 只读校验，`behaviorReviewed` 固定为 false。包内 `assembleArtifactServiceTools` 可选包含 create/get/list/read/expire/release，默认不注册 ToolHost，公共 Runtime Artifact 端口仍未公布；真实用户工作区、Windows 独占补丁、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
 | 分发 | 生产装配、安装、升级、卸载生命周期契约 | 无安装包与隔离安装证据 | MOD-19 `zemeng`、根装配 `goo122` |
 
 生产 Runtime 对 Schema 已知但未公布的 operation 必须返回 `UNSUPPORTED_CAPABILITY`。管理界面可以展示规划项，但必须显示“不可用”，不能通过读取配置文件、私有数据库或启用 Fake 来伪装能力。
@@ -686,6 +737,34 @@ Competition 工具提案/Runtime Application/Desktop 装配仍未由此项交付
 截至 2026-09-27，**冻结范围仍只有 Core Runtime Profile 1 的消息、任务、会话与审批只读查询子集；不冻结整套协议、外部模型工具调用或 AgentArts 编排。** main 中已有 Competition 的离线 Coordination/审批工具循环、版本图、原子存储、显式修复预览/提交、受限工作区读取、公开演示知识检索，以及 provisional 的 SQLite 事实查询/变化流、可恢复投影和受信 Fact host 工厂；编码工具的补丁候选与独占 apply 也已合入 package，但尚未生产注册。生产事实自动消费、Runtime Memory capability、真实工作区写入与语音消费仍未完成验收。
 
 在上述 2026-09-27 历史快照中，真实 AgentArts deployment/API/trace、目标系统工具读回、完整 Evidence、真实语音设备和外部事实提供者仍 `unavailable`。Fake、合成评估、HTTP 200、配置成功或平台截图都不能提升这些状态；正式比赛路径不得静默回退 Local。该历史状态不覆盖本页后续登记的固定版本有限真实云调用、工具闭环与语音端口证据；未验的完整 Trace、实体设备和全业务范围仍按各自缺口登记。
+## 2026-10-31 F11 原提醒条件更新（provisional）
+
+公开 `TodoUpdateInput` 与 `todo.update` 描述符增加可选 `expectedRevision` 正整数；现有同步服务在修改前核对，冲突返回 `REVISION_CONFLICT`，不清除当前原/新提醒。省略参数的旧请求保持原行为，无 Core wire 或数据库迁移；Schema/类型源位于 productivity workspace，使用原 TypeScript build 生成声明。F11 只按原 revision 清除，并要求完整原条目/trigger/pending schedule、精确清除后 revision+1、原 Policy 子任务结果和原 schedule cancelled 的读回。详见 [F11 原提醒保护](../competition/evidence/F11_REMINDER_REVISION_20261031.md)。此处不表示 F11 条件补问、整图或真实日历服务已完成验收。
+
+## 2026-10-31 F06 未来提醒原调度读回（provisional）
+
+`workflow.business.f06` 的本机配置版本 `business-20261031-f06-v2` 使用原 `todo.create` 子任务和 Scheduler，输入仍为 `todoTitle`、显式 `remindUtc` 与可选 `due`。完成结果为 `{todoId, reminderState: "scheduled" | "delivered", delivered: boolean}`：未来原条目与 pending schedule 的精确读回返回 `scheduled/false`；只有原持久设备投递证据返回 `delivered/true`。两者不可互换。
+
+公开 `createRuntimeF06ReminderGuard` 适配 `workflow.guard.f06_n05`，仅受信原图条件读取决定跳过/执行；模型候选不能直接选择该分支。N03 checkpoint 兼容增加完整 reminderTrigger；旧配置/模板不自动迁移，摘要或版本变化拒绝原图恢复，不换 ID 重发。无 wire 或数据库迁移，原调度仍可独立恢复未来提醒。实际 Engine/Runtime/SQLite/审批/Todo/Scheduler 本地验证与显式候选/设备 Fixture 分列于 [F06 增量记录](../competition/evidence/F06_FUTURE_REMINDER_20261031.md)，不据此声称云部署或实际 Windows 通知验收完成。
+
+## 2026-11-01 F11 原天气来源消费（provisional）
+
+公开 `createRuntimeF11WeatherSourceHost` 将既有 N01 装配为受信入口，保持 185 节点；N03 保留 N02 并直接依赖 N01。旧完整显式计划请求兼容，新增可选 `weather:{eventId,query}`，query 显式 location/date/units；独立原 `weather.forecast` 子任务与出口投影供 N03 消费，raw 记录仅在本机验证 cache 时效、原事件覆盖与写前版本，不进入图/模型。固定天气动作允许消费原非等值公开投影，其他业务动作仍保留原等值出口约束。F11 配置版本为 `business-20261101-f11-v2`，旧摘要不可复用，无 wire 或迁移。北京公开地点的真实 OpenMeteo 只读探针通过，但日历/模型/云整图及警报、交通、补问分支仍独立未验，见 [F11 天气来源记录](../competition/evidence/F11_WEATHER_SOURCE_20261101.md)。
+
+## 2026-11-01 F08 原知识出口投影（provisional）
+
+公开 `createRuntimeF08KnowledgeSourceHost` 将原 N09 接为受信来源 host，内部仍用独立 `knowledge.search` child/Policy。仅固定 `f08.knowledge.source/send-check/receipt-check` 消费原 prepare/project/final accepts，完整 raw 留本机，N09 仅返回原公开投影；私有/撤销仍拒绝，未扩大原知识出口。F08 配置为 `business-20261101-f08-v2`，原明确公开的 sourceId/configRevision/query enum 才可公布，目录仍为 185 节点。原邮件写入和 source 版本边界保留，无 wire 或迁移；实际知识出口与 Fixture 来源分层记录见 [F08 知识投影](../competition/evidence/F08_KNOWLEDGE_PROJECTION_20261101.md)。
+
+## 2026-10-31 F12 原通知 configured worker（provisional）
+
+2026-11-01 增量：`createF12ExplicitReturnSource` 在 Main 原显式归来 control 成功后记录原 task/session/sourceTask/command/controlRevision checkpoint 标记，F12 复核原已 ack 控制与当前 revision；模型 return、focus/resume、裸摘要调用均不构成该来源。注入同 provider 才公布 on_return + 条件必填 returnSource，配置 `business-20261101-f12-v3`；仅原 N05 Policy 读取有效未读 return digest，不发送、ack 或预占额度，无 wire/迁移。当前主装配与真实 UI 验收由根集成继续，来源与两种实际本地 Engine/Fixture 边界见 [显式归来记录](../competition/evidence/F12_EXPLICIT_RETURN_20261101.md)。
+
+`workflow.business.f12` 绑定原有效未读 feed、层级/legacy 策略与原子轮次，只接 `event` / `on_demand`；公开 `createRuntimeF12ConfiguredReadHosts` 提供原策略、条件与有效摘要读取。N05 capability 与当前设计对齐为 `notification.current_feed_digest`、副作用 read；原投递工厂兼容增加确证 suppressed 的 false 结果及可选结果复核。2026-11-01 保留 `{itemId,trigger}`，增加互斥 `{itemIds,trigger}`；原 N02/N04/N05 同步支持精确多项选择，原 ready batches 完整并集须等于已批准 ID 集，原 CAS 一个轮次投递一条本机摘要，逐项核对来源/已读/撤回/期限。配置版本为 `business-20261101-f12-v2`，无 wire、迁移或新调度，旧配置摘要拒绝恢复。真实用户归来来源、voice 与实际 F12 设备/云整图验收仍缺；本机实际组件和 Fixture 边界见 [F12 接线记录](../competition/evidence/F12_CONFIGURED_NOTIFICATION_20261031.md) 与 [显式多项批次](../competition/evidence/F12_EXPLICIT_BATCH_20261101.md)。
+
+## 2026-10-31 F08 原邮件显式方案（provisional）
+
+`workflow.business.f08` 绑定原完整 inbox、UID epoch/Message-ID、显式回复与知识 source revision，archive/send 独立 child Policy，reconcile 只读原发送。新公开 `createRuntimeF08PreparedPlanHosts` 的 N10 返回 planReady/requiresDecision，不能充当未来 send 的授权；N06/N07 条件、N10 capability 与本机 guards 同步澄清。原 N12 兼容增加 messageId+idempotencyKey 成对身份，旧 sendOperationId 仍接受，混用/替换拒绝；模板/configuration 摘要变化拒绝旧图恢复，无 wire 或迁移。缺 F02 决定来源、F03 修订方、真实邮箱/知识源/云验收仍 unavailable 或未验证，见 [F08 实际组件与 Fixture 证据](../competition/evidence/F08_CONFIGURED_MAIL_20261031.md)。
+
 ## 2026-10-22 对话输入预算扩容（provisional）
 
 按用户选择将 Competition 任务与历史合并输入扩大为 128,000 UTF-16 单元；contracts 公布统一字符预算及 1,100,000 字节初始查询预算，Runtime、Coordination、自有 AgentArts 输入和 Desktop 预检同步消费。不新增 wire 字段或数据库迁移；输出/工具结果/业务投影/帧预算、权限及已配置的模型 token 计量不变。旧检查点预算漂移继续拒绝恢复。远端旧镜像、原生模型窗口和真实长上下文验收不因本机修改自动通过。见 [ADR-0037](../adr/0037-conversation-context-128k.md)。
@@ -701,3 +780,19 @@ Runtime 在原 `goal` / `readRequestContext` 文本内临时附加有界 `capabi
 `@personal-agent/coordination` 兼容导出 `formatAgentArtsFailureDetail`，可选输出从可信错误类型及白名单字段生成的安全原因；HTTP/WSS 诊断不透传任意外部 reason、响应正文或凭据。原 `ProtocolError.code`、未发送/终态/结果未知分类及 unknown 不盲重放语义不变，不新增公开错误码或恢复执行入口。
 
 本轮无 Core wire/Schema 版本或数据库迁移，不提升冻结等级。ARM64 本地容器协议验证与本机夹具/consumer验证分别记录，不等于真实 AgentArts 云部署或 Windows 实体验收；本轮未执行后两项，历史云验收仍只覆盖其原版本范围。逐项命令、结果与未验证边界见[本轮总矩阵](../competition/evidence/IMAGE_RELIABILITY_MATRIX_20261023.md)，不据源码或本地通过宣称镜像已发布、部署已完成或全功能可用。
+
+## 2026-11-01 F12 原 Live 语音通知关联（provisional）
+
+Realtime `speakText` 兼容新增可选 renditionId；原 audio、assistant final transcript、turn_complete 带原 response/rendition 关联。Desktop 原 F12_N04 独立 Policy 执行消费原 NotificationService round 与固定提示，通过已有 Live 会话保存分级回执到原 Runtime checkpoint。Renderer 完成排空仍为 `playbackVerified:false`，voice attempt 保持 unknown，不重播、不标记 feed 已读、不报告硬件已送达。原普通聊天、Question 和 banner 兼容；F12 工厂配置版本为 `business-20261101-f12-v4`，旧配置摘要不可恢复为新图，无新节点、wire 或数据库迁移。Main 惰性注入原 getVoiceHost；实际百炼和物理播放、云整图尚未验证，详见 [F12 语音关联边界与证据](../competition/evidence/F12_VOICE_RENDITION_20261101.md)。
+
+## 2026-11-01 F11 原任务地点补问（provisional）
+
+Desktop `createF11LocationQuestionHost` 在原 N01 TaskRuntime 生命周期中等同一对话的明确文字地点；`readQuestion` 按原 root/graph/host 关系发现，Main 的 `submitReply` 绑定原用户任务上下文、消息 commandId、原参数摘要/期限/revision，以原 checkpoint 原子单次保存。答复不是批准，原天气及写入 child 仍独立 Policy，取消/撤销/过期/来源擦除/替换拒绝，unknown 不重提。F11 配置为 `business-20261101-f11-v3`，完整显式输入兼容，无新节点、wire 或迁移。Main 文字入口与真实语音/云验收尚需分别完成；缺其他决定仍不可用。见 [方案、接口及证据](../competition/evidence/F11_LOCATION_CLARIFICATION_20261101.md)。
+
+## 2026-11-01 F11 原方案明确采用或拒绝（provisional）
+
+新增 Desktop `createF11DecisionQuestionHost` / 注入 `f11DecisionQuestion`，复用原问题检查点和单次文字事件绑定；地点 API 兼容。Runtime `createRuntimeF11DecisionQuestionHost` 在原 N04 等同一对话对完整原方案的 `accept/decline`，图只收到 `{decision}`。采用仍由 N05 分别请求原日历/提醒 Policy；拒绝跳过写入，completion 新增明确 `decision:'declined'` 分支。原答案在子工具执行前重新核对，卡待批时撤销/擦除阻止后续写入，已发生的效果保留。F11 配置为 `business-20261101-f11-v4`，无新节点、wire、数据库迁移或授权层。真实 UI/语音/云及日历整图未由本地 Fixture 证明；见 [接口与行为证据](../competition/evidence/F11_PLAN_DECISION_20261101.md)。
+
+## 2026-11-01 F08 原草稿明确采用或拒绝（provisional）
+
+Desktop `createF08DecisionQuestionHost` / 注入 `f08DecisionQuestion` 消费原 N06 问题生命周期，固定 `mail.decision`、完整原 draft/references 和 `accept/decline`；共用检查只覆盖原任务绑定与单次回答，F11 导出兼容。Runtime 新公开 `createRuntimeF08DecisionQuestionHost`；原 N10 校验端口兼容 boolean 并可返回 `{requiresDecision:boolean}`。采用另经独立 mail.send Policy，拒绝完成明确未发送分支且保留已确认归档；执行前重核原来源，unknown 不重放。配置 `business-20261101-f08-v3`，节点数不变，无新 wire/迁移。文字 Fixture 不代表 F02 真实语音、实际邮箱/AgentArts 或 F03 重规划验收，见 [接口及行为证据](../competition/evidence/F08_EXPLICIT_DECISION_20261101.md)。

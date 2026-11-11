@@ -14,6 +14,7 @@
 | F15 审核配置 UI | `apps/desktop/src`（Renderer 目录，lab） | 审核记录经 `packages/cognition/src/independent-review-signature.ts` 的 `createIndependentReviewRecord` 产生（签名端口注入）；UI 只消费记录，不发明信任 |
 | F18/F19 平台读回展示 | `apps/desktop/electron/main.js` | 消费 `packages/agentarts/src/f18-f19-github-hosts.ts` 的绑定读回结果；`source:'platform_readback'` 才可展示为平台状态 |
 | F22/F26/F28 门控显示 | Desktop f26 端口文件随 #571 堆叠链交付（合并后补引用路径） | 底层 unavailable 时 tools 为空，不暴露发布命令（#571 行为，合并后生效） |
+| 离线评估集名称（`evaluation.dataset_snapshot`） | `packages/connectors/github/src/developer-duty.ts` 的 `buildOfflineEvalSet` | 只产生 `evidenceLevel: fixture` 的离线数据集。这不是 F23 生产 host 注入；真实评估口仍按 graph-capability-gaps.json 保持 open，界面不得把 fixture 显示成平台评估通过 |
 | 语音 echo guard / final 回执（`voice.final_transcript`） | `apps/desktop/electron/main.js` 语音组合 + `packages/voice/src/echo-guard.ts`（PR #584） | TTS 窗口内 `inspect()` 为疑似回声不进 final；final 必须携带已验证回执才作为已确认用户输入 |
 | 责任快照（`responsibility.snapshot`） | 责任生命周期 host 口随 F01 缺口交付（graph-capability-gaps.json 登记） | 落地前对话目录显示 unavailable；落地后按公开口条件注入 |
 

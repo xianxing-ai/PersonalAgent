@@ -165,12 +165,14 @@ export class MailService {
       throw new ProtocolError('INVALID_ARGUMENT', 'Reconciliation requires an RFC Message-ID and original idempotencyKey');
     }
     const prior = this.sendIdempotency.get(JSON.stringify([accountRef, idempotencyKey]));
-    if (prior !== undefined && (await prior.inflight).messageId !== messageId) {
+    // A thrown original attempt must still reach the provider's stable identity check and read-only reconciliation.
+    const priorResult=prior?await Promise.resolve(prior.inflight).catch(()=>undefined):undefined;
+    if (priorResult !== undefined && priorResult.messageId !== messageId) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Message-ID does not belong to the original send key');
     }
     if (this.provider.assertSendIdentity) {
       this.provider.assertSendIdentity(accountRef, messageId, idempotencyKey);
-    } else if (prior === undefined) {
+    } else if (priorResult === undefined) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Original send identity binding is unavailable');
     }
     const result = await this.provider.reconcileSend(accountRef, messageId, idempotencyKey);
@@ -186,7 +188,8 @@ export class MailService {
    * 同键不同输入复用一律拒绝（参数冲突）。跨重启的持久化归宿主（Runtime 按 actionId
    * 存证据；unknown 进入人工核实流程，不自动重发——见 README「重启与恢复」）。
    */
-  async send(accountRef: string, input: {to: string; subject: string; text: string; timeoutMs?: number; idempotencyKey: string}): Promise<ConnectorAction> {
+  async send(accountRef: string, input: {to: string; subject: string; text: string; timeoutMs?: number; idempotencyKey: string},context?:MailOperationContext): Promise<ConnectorAction> {
+    guardMailWrite(context);
     if (typeof input.to !== 'string' || !input.to.includes('@')) throw new ProtocolError('INVALID_ARGUMENT', 'to must be an email address');
     if (typeof input.subject !== 'string' || input.subject.length === 0 || input.subject.length > 500) {
       throw new ProtocolError('INVALID_ARGUMENT', 'subject must be 1..500 characters');
@@ -210,9 +213,9 @@ export class MailService {
       to: input.to,
       subject: input.subject,
       text: input.text,
-      timeoutMs: input.timeoutMs ?? 30_000,
+      timeoutMs: Math.min(input.timeoutMs ?? 30_000,context?.deadline?Date.parse(context.deadline)-(context.now??Date.now)():Infinity),
       idempotencyKey: input.idempotencyKey,
-    });
+    },context);
     this.sendIdempotency.set(mapKey, {fingerprint, inflight});
     const result = await inflight;
     return this.actionFromResult(input.idempotencyKey, input.to, result);

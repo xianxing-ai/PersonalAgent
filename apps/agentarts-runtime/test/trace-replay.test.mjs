@@ -35,6 +35,16 @@ test('actual failed and unknown history stay failed/unknown for debugging',()=>{
   assert.equal(result.actions[0].state,'historical_failed');assert.equal(result.actions[0].historicalState,'failed');
   assert.equal(result.actions[1].state,'historical_unknown');assert.equal('result' in result.actions[1],false);assert.ok(result.actions[1].recordedResult);
 });
+
+test('a different step forks the trace and cannot reuse later matching historical reads',()=>{
+  const first=record({recordId:'first',observedAt:new Date(Date.now()-4000).toISOString()});
+  const second=record({recordId:'second',observedAt:new Date(Date.now()-3000).toISOString(),arguments:{path:'later.txt'},result:{content:'future result'}});
+  const result=replay(frozen([first,second],[action({arguments:{path:'later.txt'}}),action({actionId:'later',arguments:{path:'later.txt'}})]));
+  assert.equal(result.comparisonScope,'single_step');
+  assert.deepEqual(result.actions.map(item=>item.reason),['trace_fork','after_trace_fork']);
+  for(const item of result.actions){assert.equal(item.state,'counterfactual_unknown');assert.equal('result' in item,false);assert.deepEqual(item.originalRecordIds,[]);}
+  assert.equal(result.actualToolCalls,0);
+});
 test('writes are timeline-only; new candidates and missing execution Evidence remain unknown',()=>{
   const write=record({toolName:'workspace.write',effect:'write'});
   const result=replay(frozen([write],[action({toolName:'workspace.write'}),action({actionId:'new-read',arguments:{path:'never-read.txt'}})]));
@@ -82,4 +92,17 @@ test('actual HTTP replay route authenticates frozen export and returns signed da
   assert.equal(result.actions[0].state,'reused_historical_read');assert.equal(result.actualToolCalls,0);
   assert.equal(result.originalTaskDeadline,value.taskDeadline);
   const tampered=structuredClone(value);tampered.snapshot.records[0].result={content:'tampered'};assert.equal((await send(tampered)).status,401);
+});
+
+test('cloud code binds response epoch without exposing the envelope to model instructions',async t=>{
+  const token='explicit-public-epoch-token-123456789';let calls=0;
+  const server=createAgentServer({mode:'standalone-validation',authToken:token,wssAuthToken:token,
+    orchestrator:{async invoke(request){calls++;assert.equal(request.query,'original goal');return {kind:'text',text:'answer'};}}});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const response=await fetch('http://127.0.0.1:'+server.address().port+'/invocations',{method:'POST',
+    headers:{'content-type':'application/json','x-pa-agent-token':'Bearer '+token},
+    body:JSON.stringify({query:JSON.stringify({executionEpochVersion:1,executionEpoch:7,query:'original goal'})})});
+  assert.equal(response.status,200);assert.equal(calls,1);
+  const result=JSON.parse((await response.json())[0].data.text);
+  assert.deepEqual(result,{executionEpochVersion:1,executionEpoch:7,result:{kind:'text',text:'answer'}});
 });

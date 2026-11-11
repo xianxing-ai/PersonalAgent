@@ -32,6 +32,9 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
   const source = element('p', '来源由可信宿主记录。');
   const list = element('div');
   list.setAttribute('aria-label', '已保存的目标');
+  const plans = element('div');
+  plans.setAttribute('aria-label', '已有计划版本');
+  const planRequests=new Map();
   const taskHistory = element('div');
   taskHistory.setAttribute('aria-label', '目标写入任务');
   const taskStatus = element('p');
@@ -61,7 +64,7 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
   const newGoal = action('新建目标', resetDraft);
   const reload = action('刷新目标', () => void refreshGoals());
   const close = action('关闭', () => { changeView(); dialog.close(); });
-  dialog.append(title, status, source, list, taskHistory, taskStatus, taskActions,
+  dialog.append(title, status, source, list, plans, taskHistory, taskStatus, taskActions,
     form, newGoal, reload, close);
 
   let graphRevision = null;
@@ -176,6 +179,36 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
     }
   }
 
+  function renderPlans(items,revision) {
+    plans.replaceChildren();
+    if(items?.length)plans.append(element('p','每个 Plan 版本只受理一次执行；重复点击读取原任务。重新执行需先创建新的 Plan 版本，业务工具仍逐项审批。'));
+    for(const plan of items??[]) {
+      if(typeof plan?.id!=='string'||!Number.isSafeInteger(plan.revision)||typeof plan.summary!=='string')continue;
+      const key=JSON.stringify([plan.id,plan.revision]),row=element('div');
+      row.append(element('span',`${plan.summary} · Plan 版本 ${plan.revision}`));
+      const run=action('执行此版本',async()=>{
+        let request=planRequests.get(key);
+        if(request?.pending)return;
+        if(!request){request={requestId:globalThis.crypto.randomUUID(),revision,pending:false};planRequests.set(key,request);}
+        request.pending=true;run.disabled=true;const ui=context();
+        try {
+          const result=await invoke('goal.plan.execute',{plan:{id:plan.id,revision:plan.revision},expectedGraphRevision:request.revision,requestId:request.requestId});
+          if(result?.state==='declined'){planRequests.delete(key);run.disabled=false;if(current(ui))setStatus('ready','已取消本次计划执行。');return;}
+          if(result?.state!=='submitted'||typeof result.task?.taskId!=='string')throw Error('计划受理结果尚未核实');
+          request.taskId=result.task.taskId;run.textContent='查看原执行任务';run.disabled=false;
+          if(current(ui))setStatus('pending',`计划任务 ${result.task.taskId}：${result.task.state==='waiting_reconciliation'?'等待原结果核实':stateNames[result.task.state]??'已受理'}。请在原对话查看执行状态并审批各项工具。`);
+        } catch(error) {
+          run.disabled=false;run.textContent='核实本次受理';if(current(ui))setStatus('error',`${message(error)}。再次点击只核实同一次请求。`);
+        } finally {request.pending=false;}
+      });
+      const request=planRequests.get(key);
+      run.disabled=Boolean(request?.pending)||!plan.execution&&!request?.taskId&&(plan.state!=='active'||plan.sensitivity==='restricted'
+        ||Date.parse(plan.validFrom)>Date.now()||Date.parse(plan.validUntil)<=Date.now());
+      if(request?.taskId||plan.execution)run.textContent='查看原执行任务';
+      row.append(run);plans.append(row);
+    }
+  }
+
   function setValidity(goal) {
     validFrom.control.value = toLocalTime(goal.validFrom);
     validUntil.control.value = toLocalTime(goal.validUntil);
@@ -196,6 +229,7 @@ export function createGoalControl(invoke, getDraftSummary = () => '') {
       }
       graphRevision = result.graphRevision;
       renderGoals(result.goals);
+      renderPlans(result.plans,result.graphRevision);
       setAvailable(true);
       if (!activeTask) setStatus('ready', '目标列表已从可信宿主读取。');
       return true;

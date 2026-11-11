@@ -146,3 +146,17 @@ export class AuthorizationPolicy implements PolicyPort {
 export class InMemoryAuthorizationPolicy extends AuthorizationPolicy {
   constructor() { super(new MemoryAuthorizationStore()); }
 }
+
+export {
+  AUTONOMY_LEVELS, UNCONFIGURED_AUTONOMY_LEVEL, ENROLLED_AUTONOMY_LEVEL, IRREVERSIBLE_TOOL_NAMES, IRREVERSIBLE_ACTIONS,
+  autonomyRank, assertAutonomyChange, classifyToolRisk, createStandingGrant, revokeStandingGrant, consumeAutonomyUse,
+  decideAutonomy, standingRoutineAllowed,
+} from './autonomy.js';
+export type {
+  AutonomyLevel, ToolRisk, ToolSideEffect, AutonomyScope, AutonomyLimits, StandingAutonomyGrant, AutonomyAudit,
+  AutonomyDecision, StandingRoutineDecision,
+} from './autonomy.js';
+export {wrapUntrusted, renderUntrustedPrompt, argumentsDerivedFromUntrusted, forkPullRequestPolicy, UNTRUSTED_FENCE_START, UNTRUSTED_FENCE_END, UNTRUSTED_SYSTEM_RULE} from './untrusted.js';
+export type {UntrustedContent} from './untrusted.js';
+export {estimateCost, assertBudget, reserveBudget, settleBudget, releaseBudget, budgetSpent} from './budget.js';
+export type {ModelPriceCard, CostBudget, BudgetReservation, BudgetState, BudgetDecision} from './budget.js';

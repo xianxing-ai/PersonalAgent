@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -24,11 +25,11 @@ async function runSequence(proposals){
     competitionToolAvailability:tools.map(t=>({toolName:t.descriptor.name,toolVersion:t.descriptor.version,available:()=>true,publicEnumPaths:t===dispatch?['/subtasks/*/role']:[]})),
     competitionToolExports:tools.map(t=>({toolName:t.descriptor.name,toolVersion:t.descriptor.version,exportPolicyVersion:'synthetic-runids',accepts:()=>true,project:({result})=>result})),
     developerWorkflows:{bindingId:'synthetic-runids',repositories:[repo],maxSteps:20,maxTokens:8000,model,reviewRules:[{id:'correctness',text:'Inspect changed lines'}],available:()=>true,assertCurrent(){},authorizeModelRequest(){},projectResult:value=>value},
-    coordination:{execute:async request=>{
+    coordination:{execute:syntheticCoordinationExecution(async request=>{
       if(app.runtime.getTask(request.taskId).conversationId==='original-ui')return {kind:'text',text:'Synthetic parent summary',verification:'unverified'};
       if(request.continuation)continuations.push(request.continuation);
       const proposal=proposals[continuations.length];return proposal?{kind:'tool_proposal',...proposal,toolVersion:'1.0.0',verification:'unverified'}:{kind:'text',text:'Synthetic sequence completed',verification:'unverified'};
-    }}});
+    })}});
   const client=new Client(app);await client.connect();
   try{
     const parent=await client.call('task.submit',{goal:'Synthetic several developer requests in one worker',conversationId:'original-ui'},{idempotencyKey:'runids',timeoutMs:60000});

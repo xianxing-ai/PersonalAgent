@@ -1,0 +1,26 @@
+{
+  "evidenceLevel": "fixture",
+  "note": "每条 excerpt 必须是 sourcePath 文件中的原文子串。这不是重新下载的 GitHub Actions 日志。in-repo-fixture 来自本仓库夹具；recorded-ci-summary 来自已提交证据里的 priorCi.failure 原文，只保存了结论摘要和 logSha256，原始日志不在仓库中，因此不填写期望分类。",
+  "cases": [
+    {
+      "id": "duty-fixture-log",
+      "sourcePath": "packages/connectors/github/test/fixtures/developer-duty-github.json",
+      "excerpt": "Error: connect ECONNRESET while downloading actions/setup-node",
+      "sourceKind": "in-repo-fixture"
+    },
+    {
+      "id": "wiring-pr-39172889704",
+      "sourcePath": "docs/competition/evidence/conversation-wiring-20261018/validation.json",
+      "excerpt": "root integration 50/51; lifecycle fixture contract mismatch",
+      "sourceKind": "recorded-ci-summary",
+      "recordedRunId": 39172889704
+    },
+    {
+      "id": "wiring-push-39172886287",
+      "sourcePath": "docs/competition/evidence/conversation-wiring-20261018/validation.json",
+      "excerpt": "knowledge 55/56; original PowerShell certificate process killed at 10128ms by 10000ms budget before observed script_enter; exact OS cause unproven",
+      "sourceKind": "recorded-ci-summary",
+      "recordedRunId": 39172886287
+    }
+  ]
+}

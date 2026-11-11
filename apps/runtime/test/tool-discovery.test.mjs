@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {Client} from '@personal-agent/client';
@@ -19,7 +20,7 @@ function fixture(count=65,overrides={}) {
     competitionToolExports:tools.map(({descriptor:d})=>({toolName:d.name,toolVersion:d.version,
       exportPolicyVersion:'synthetic-public-v1',accepts:()=>true,project:({result})=>result})),
     competitionToolAvailability:tools.map(({descriptor:d})=>({toolName:d.name,toolVersion:d.version,available:()=>true})),
-    coordination:{execute:async request=>{
+    coordination:{execute:syntheticCoordinationExecution(async request=>{
       requests.push(request);
       if(request.availableTools) {
         assert.ok(request.availableTools.length<=MAX_AVAILABLE_TOOLS);
@@ -29,7 +30,7 @@ function fixture(count=65,overrides={}) {
         ...(request.priorContinuations?.length?{priorContinuations:request.priorContinuations}:{}),
         ...(request.availableTools?{availableTools:request.availableTools}:{})}));
       return respond(request);
-    }},...overrides});
+    })},...overrides});
   return {app,tools,executions,requests,setRespond:value=>{respond=value;}};
 }
 
