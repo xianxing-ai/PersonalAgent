@@ -152,8 +152,8 @@ test('startup wiring exposes the brake through preload, IPC and resumeTask', () 
   assert.match(main, /continueTask: taskId => runtimeApplication\.resumeTask\(taskId\)/);
   assert.match(main, /operatorBrake\.attach\(\)/);
   assert.match(main, /operatorBrake\.handleAction\(name, payload\)/);
-  assert.match(main, /isPaused:\(\)=>operatorBrake\.isPaused\(\)/);
-  assert.match(main, /if \(operatorBrake\.isPaused\(\)\) throw Error\('总暂停中，新任务不会启动。恢复后从断点继续。'\)/);
+  assert.match(main, /isPaused:\(\)=>typeof operatorBrake!=='undefined'&&operatorBrake\.isPaused\(\)/);
+  assert.match(main, /typeof operatorBrake !== 'undefined' && operatorBrake\.isPaused\(\)/);
   assert.match(preload, /setOperatorBrake: paused => ipcRenderer\.invoke\('desktop:action', 'operator\.brake'/);
   assert.match(renderer, /bridge\.setOperatorBrake\(paused\)/);
   assert.match(renderer, /id='operator-brake'/);

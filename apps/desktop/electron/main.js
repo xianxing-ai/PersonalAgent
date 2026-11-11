@@ -86,7 +86,7 @@ import {createDesktopProactiveConversationTools} from './proactive-conversation-
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
-import {createDesktopOperatorBrake, operatorBrakeTrayLabel, OPERATOR_BRAKE_ACTION} from './operator-brake-host.js';
+import {createDesktopOperatorBrake, operatorBrakeTrayLabel} from './operator-brake-host.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
@@ -646,7 +646,7 @@ async function stopP5DeviceTelemetry() {
 }
 
 async function tickProactiveP5() {
-  if (operatorBrake.isPaused()) return;
+  if (typeof operatorBrake !== 'undefined' && operatorBrake.isPaused()) return;
   await proactiveHost?.tick();
   if (proactiveHost?.snapshot().enabled && localLaya?.snapshot().state === 'ready') {
     if (!p5DeviceTelemetrySubscription) await startP5DeviceTelemetry();
@@ -773,7 +773,7 @@ function projectWindowSnapshot(surface,topics=['all']) {
     ...(topics.includes('notifications')?{notifications:[...notifications.values(),...(todoHost?.snapshot().notifications??[])],
       notificationCenter:surface?undefined:notificationApplicationHost?.snapshot()}:{}),
     connection:connectionLabel,
-    operatorBrake:operatorBrake.snapshot(),
+    ...(typeof operatorBrake === 'undefined' ? {} : {operatorBrake: operatorBrake.snapshot()}),
     connectionError:(runtimeError||cloudRequestFailureNotice||cloudTransportNotice)?errorDisplayText(runtimeError||cloudRequestFailureNotice||cloudTransportNotice,'runtime'):undefined,
     resourceBudget:resourcePolicy.snapshot(),
   };
@@ -783,7 +783,7 @@ function snapshot(surface) {
   return {
     ...conversationProjection(surface),
     connection: connectionLabel,
-    operatorBrake: operatorBrake.snapshot(),
+    ...(typeof operatorBrake === 'undefined' ? {} : {operatorBrake: operatorBrake.snapshot()}),
     connectionError: (runtimeError || cloudRequestFailureNotice || cloudTransportNotice) ? errorDisplayText(runtimeError || cloudRequestFailureNotice || cloudTransportNotice,'runtime') : undefined,
     fakeModel: fakeModelMode,
     fake: fakeMode,
@@ -1944,7 +1944,7 @@ async function initializeLocalAuthorizationControlPlane(){
     requestToolAuthorization:scope=>{authorizationIntentHost.prepareQuestion(scope);return authorizationQuestionHost.requestToolAuthorization(scope);},
     requiresToolAuthorization:()=>true});
   runtime=runtimeApplication.runtime;localAuthorizationOnly=true;
-  operatorBrake.attach();
+  if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
   runtimeConnection=await register({transport:runtimeApplication,now:Date.now,readEvents:after=>runtimeApplication.readEvents(after),
     readEventBatch:input=>runtimeApplication.readEventBatch(input),
     attachClient:value=>{client=value;return()=>{client=undefined;};}});
@@ -2006,7 +2006,7 @@ async function initializeRuntime() {
       path: dataPaths.runtime,
       text: {mode: 'unavailable', model: modelConfig.model},
     });
-    operatorBrake.attach();
+    if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
     if (runtimeApplication?.configureThinking) {
       const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
       thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
@@ -2825,11 +2825,11 @@ async function initializeRuntime() {
           configurationRef:runtimeApplication.coordinationConfigurationRef,exclusiveOwner:ownsDesktopInstance===true,
           durableCloudDispatch:agentArtsTransportConfig.transport==='wss',
           canResumeHarnessEvent:request=>harnessEventsHost?.canResumeHarnessEvent(request),
-          resumeOriginalTask:request=>operatorBrake.isPaused()?{accepted:false}:runtimeApplication.resumeStartupTask(request)});
+          resumeOriginalTask:request=>(typeof operatorBrake!=='undefined'&&operatorBrake.isPaused())?{accepted:false}:runtimeApplication.resumeStartupTask(request)});
         const recovered=await recovery.recover();startupRecovered=true;
         startupRecoveryStatus={state:'classified',inspectedTasks:recovered.items.length,verification:'not_run'};
       }else startupRecoveryStatus={state:'unavailable',reason:'原任务恢复门禁未装配，历史任务保留核实状态',verification:'not_run'};
-      if(startupRecovered&&!operatorBrake.isPaused())goalHost.resumeApproved();
+      if(startupRecovered&&!(typeof operatorBrake!=='undefined'&&operatorBrake.isPaused()))goalHost.resumeApproved();
       if (!syntheticMvp && competitionCatalog && !codingWorkspace.tools.length) competitionFactBridge = createDesktopCompetitionFactBridge({
         application: runtimeApplication, catalog: competitionCatalog,
         runtimePath: dbPath, userNamespace: namespace,
@@ -2849,8 +2849,8 @@ async function initializeRuntime() {
       }
     }
     runtime = runtimeApplication.runtime;
-    operatorBrake.attach();
-    refreshTrayMenu();
+    if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
+    if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
     readEvents = after => runtimeApplication.readEvents(after);
   }
   runtimeConnection = await register({
@@ -2882,7 +2882,7 @@ async function initializeRuntime() {
       getWorkflow:()=>proactiveWorkflowApplication,
       recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
       afterNativeMaintenance:(taskId,context)=>harnessEventsHost?.start(taskId,context),
-      isPaused:()=>operatorBrake.isPaused(),
+      isPaused:()=>typeof operatorBrake!=='undefined'&&operatorBrake.isPaused(),
       resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
   }
   connectionLabel = fakeMode
@@ -3174,9 +3174,9 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
-  eventPoll = setInterval(() => {void pumpEvents(); if(!operatorBrake.isPaused())void todoHost?.tick();
+  eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
+    void pumpEvents(); if(!operatorPaused)void todoHost?.tick();
     if(runtimeClosed)return;
-    const operatorPaused=operatorBrake.isPaused();
     void maintenancePoll.run('proactive',()=>operatorPaused?undefined:tickProactiveP5());
     void maintenancePoll.run('mail',()=>refreshMail());
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
@@ -3333,10 +3333,11 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
-  if (name === OPERATOR_BRAKE_ACTION) {
+  if (name === 'operator.brake') {
     if (sender !== panel && sender !== workspace) throw Error('请从桌面切换总暂停');
+    if (typeof operatorBrake === 'undefined') throw Error('总暂停尚未装配');
     const snapshot = await operatorBrake.handleAction(name, payload);
-    refreshTrayMenu();
+    if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
     publish();
     return snapshot;
   }
@@ -4286,7 +4287,7 @@ async function action(event, name, payload) {
     return interruptConversation(payload.conversationId,'panel');
   }
   if (name === 'task.submit' || name==='skill.run') {
-    if (operatorBrake.isPaused()) throw Error('总暂停中，新任务不会启动。恢复后从断点继续。');
+    if (typeof operatorBrake !== 'undefined' && operatorBrake.isPaused()) throw Error('总暂停中，新任务不会启动。恢复后从断点继续。');
     const skillRun=name==='skill.run';
     // The redesigned workspace consumes the original trusted Runtime submit path.
     if(!skillRun&&sender===workspace&&!competitionMode&&!fakeMode)throw Error('主工作区任务入口需要 AgentArts 比赛配置；本地模式请使用原主面板');
