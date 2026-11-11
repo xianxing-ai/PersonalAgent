@@ -216,18 +216,20 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           if (event.type === 'audio') {
             record.phase = 'speaking';
             record.outputAudioFrames++;
+            record.pendingDrainId = undefined;
             beginSpeechOutput(record.id);
             command(record, {type: 'audio', data: event.data});
             try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
           }
-          if (event.type === 'interrupted') {endSpeechOutput();textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
+          if (event.type === 'interrupted') {record.pendingDrainId=undefined;endSpeechOutput();textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
           if (event.type === 'turn_complete') {
             const delivery=record.questionDelivery;
-            if(notificationEvent?.drainId)command(record,{type:'drain',drainId:notificationEvent.drainId});
+            if(notificationEvent?.drainId)record.pendingDrainId=notificationEvent.drainId;
             else if(delivery?.state==='queued'&&delivery.textMatched&&record.outputAudioFrames>delivery.audioStart){
               delivery.drainId=randomUUID();delivery.state='draining';
-              command(record,{type:'drain',drainId:delivery.drainId});
-            }else command(record, {type: 'drain'});
+              record.pendingDrainId=delivery.drainId;
+            }else record.pendingDrainId=randomUUID();
+            command(record,{type:'drain',drainId:record.pendingDrainId});
             textOutput.flush();
           }
           if (event.type === 'transcript') {
@@ -567,6 +569,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
     if (message.type === 'drained') {
+      if (!record.pendingDrainId || message.drainId !== record.pendingDrainId) return false;
       if(notificationOutput.pending()&&!notificationOutput.drained(message))return true;
       const delivery=record.questionDelivery;
       if(delivery?.state==='draining'&&message.drainId!==delivery.drainId)return true;
@@ -574,6 +577,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
         delivery.state='delivered';delivery.completedAt=new Date(now()).toISOString();
         delivery.audioFrames=record.outputAudioFrames-delivery.audioStart;
       }
+      record.pendingDrainId = undefined;
       endSpeechOutput();
       textOutput.drained();
       if (record.phase === 'speaking') {record.phase = record.workingCount ? 'working' : 'listening'; publish();}

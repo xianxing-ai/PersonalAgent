@@ -64,7 +64,7 @@ for(const mode of ['response','rendition','text','no-audio','interrupted','autho
 test('notification cannot borrow question, another conversation, or a legacy provider accepted result',async t=>{
   const f=await fixture(t,{missingIdentity:true});
   assert.throws(()=>f.host.speakNotification({...f.binding,conversationId:'foreign'},{assertCurrent(){},onReceipt(){}}),/不可播报/);
-  assert.equal(f.speak().state,'unknown');f.render();f.receive({type:'drained'});
+  assert.equal(f.speak().state,'unknown');f.render();f.receive({type:'drained',drainId:f.drain.drainId});
   assert.equal(f.speak().state,'unknown');assert.equal(f.spoken.length,1);
   f.question();assert.equal(f.host.askCurrentQuestion().state,'queued');
   assert.equal(f.host.readNotificationDelivery(f.binding).state,'unknown','a later question cannot supply the original notification receipt');
