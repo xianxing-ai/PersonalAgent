@@ -44,6 +44,17 @@ test('registered repair preview exposes only metadata while the local host retai
   assert.equal(await readFile(path.join(f.user,'math.cjs'),'utf8'),before);
 });
 
+test('preview accepts an originally authorized path in a large target set',async t=>{
+  const f=await fixture(t);
+  const allowedPaths=['math.cjs',...Array.from({length:256},(_,i)=>`other-${i}.txt`)];
+  const input=await f.host.start({mode:'main',allowedPaths},ctx());
+  const before=await readFile(path.join(f.user,'math.cjs'),'utf8');
+  const result=await f.host.preview(input.session.sessionId,[{path:'math.cjs',expectedSha256:hash(before),
+    edits:[{oldText:'a-b',newText:'a+b'}]}],ctx());
+  assert.equal(result.previewed,true);
+  assert.equal(await readFile(path.join(f.user,'math.cjs'),'utf8'),before);
+});
+
 test('real isolated read -> failing node test -> exact incremental patch -> passing test -> original-user CAS delivery',
   {skip:process.platform!=='win32'},async t=>{
   let stage='start';
