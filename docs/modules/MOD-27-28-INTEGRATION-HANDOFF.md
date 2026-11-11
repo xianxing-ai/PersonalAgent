@@ -75,7 +75,7 @@ PR #37 CI 后续修正：2026-09-10 的 run 34430658413 在 npm ci 因缺少两�
 | [SQLite fact projection](../../apps/runtime/src/application/sqlite-fact-projection.ts)、[CompetitionFactHost](../../apps/runtime/src/application/competition-fact-host.ts) | 已消费公开 `MemoryQueryPort` / `FactChangeFeedPort`、持久投影与确认读回，保留 consume/drain、completed impact 和恢复入口；当前 feed/query 固定 `allowedSensitivities: ['public']`，宿主写入来源是公开 Vault。 | 已有公开来源链不代表所有业务来源可用；不能将私人 Calendar 当公开 Vault 输入。真实来源修正、撤回、删除、权限撤销及重启的现场验收仍分别记录。 |
 | [Committed fact consumer](../../packages/cognition/src/committed-fact-consumer.ts)、[Goal cognition host](../../apps/desktop/electron/goal-cognition-host.js) | 已有 KEEP/RECHECK/REVISE 影响回放与精确 completed projection 消费；Goal host 对已确认的创建/修订调用 `reviewGoalCreated` / `reviewGoalRevision`。 | 只复核有依赖的节点；模型建议或投影完成不能单独证明修复已执行，无关依赖不得被改写。 |
 | [Runtime local repair](../../apps/runtime/src/application/local-repair.ts)、[Reviewed repair 接线记录](MOD-28-REVIEWED-REPAIR-01.md#当前源码接线核对2026-10-07) | 已有最小差异预览、可信 Goal 来源绑定及原 Runtime/Policy/原子 CAS/历史读回路径；main 已装配 P8 reviewed source resolver。 | 真实 Laya/AgentArts 候选、云执行、confirmed Evidence 与实际目标读回未由本次核验；未知写入不重发，不能用候选受理或 Fake 成功替代执行结果。 |
-| [默认 P5 Calendar 交接](MOD-28-REVIEWED-REPAIR-01.md#默认-p5-会议链与可信来源交接2026-10-07) | 核心 committed reader 与 Goal 会议 review/repair 端口已具备；main 的 P5 仅注入 `calendarReadPort`，缺可信 meeting binding，仍保存 `requires_review`。 | 沿 #212：Potato 提供可信 Calendar sourceRevision→精确 Fact ref 与旧/新 baseline 顺序，goo 核对原 Memory/projection 的敏感范围与 completed 读回，zemeng 随后复用既有 composition/Goal host 接线；不得新造 Fact 来源、空转发或把无 binding 改为 KEEP。 |
+| [默认 P5 Calendar 交接](MOD-28-REVIEWED-REPAIR-01.md#默认-p5-会议链与可信来源交接2026-10-07) | 2026-11-10：包内 `createTrustedMeetingSourceRevisionReader` 已在 main，未知来源版本仍 fail-closed。默认 P5 组合仍只注入 `calendarReadPort`，未把 Calendar confirmed 读接进该适配器，无 binding 时仍 `requires_review`。 | 沿 #212：Potato 提供可信 Calendar sourceRevision→精确 Fact ref 与旧/新 baseline 顺序，goo 核对原 Memory/projection 的敏感范围与 completed 读回，zemeng 随后复用既有 composition/Goal host 接线；不得新造 Fact 来源、空转发或把无 binding 改为 KEEP。 |
 
 现场验收继续使用上述既有模块记录与 #212 的步骤及负责人，MOD-27 保持 `review`、
 MOD-28 保持 `in_progress`。接口状态以[接口目录](../interfaces/CURRENT_INTERFACE_CATALOG.md)
@@ -94,7 +94,7 @@ MOD-28 保持 `in_progress`。接口状态以[接口目录](../interfaces/CURREN
 
 ## 12:30续接的公开消费契约与前端恢复（2026-10-08）
 
-用户将本轮截止延至北京时间12:30；先行清单邮件已实际发送并核实后，三个原GPT-6.1 Sol执行线在独立工作树继续自有工作。以下八个工作包已精确整合至本地交付分支，以本轮新固定源码的必要完整检查交付；不能借用前述0b3eef9检查或24a1290的两条Windows CI成功元数据。仍沿原#302交付，不自行批准或合并，整体MVP与真实现场验收未完成。
+用户将本轮截止延至北京时间12:30；先行清单邮件已实际发送并核实后，三个原GPT-6.1 Sol执行线在独立工作树继续自有工作。以下八个工作包已精确整合至本地交付分支，以本轮新固定源码的必要完整检查交付；不能借用前述0b3eef9检查或24a1290的两条Windows CI成功元数据。2026-11-10 核对：这段记录的是当时沿 #302 交付、尚未合并的状态。#302 已以 `cc64ebdf` 进入 main。整体 MVP 与真实现场验收仍未完成。
 
 - Mail缓存身份绑定原分类criteriaDigest的精确标签顺序。同序跨locale重开infer0，改序重新分类并通过原公开Dispatch；旧收据仍按原校验拒绝。新增摘要字段会让所有旧配置的checkpoint首次可能miss，含默认标签；旧记录保留，无迁移或改写收据。原三个affected文件33/33，独立Node/disk公开消费者9进程，冻结清单72e2016a。
 - Mail在分块之间取消或到达期限时，用原Laya/Dispatch定义的criteriaDigest生成剩余收据ID。真实AbortController和注入的合成期限时钟分记；剩余项不推理、不存瞬态checkpoint，重开复用已完成项。原三个affected文件38/38、独立Node/disk消费者6进程，de48fe11；没有额外缓存身份变化。
