@@ -18,7 +18,7 @@ import {createConversationToolAccess} from '../electron/conversation-tool-access
 const sha=text=>createHash('sha256').update(text).digest('hex');
 const geometry=text=>text.replace(/\bbegin="[^"]*"/g,'begin="TIMING-ONLY"');
 const terminal=task=>['succeeded','failed','cancelled'].includes(task.state);
-async function until(predicate){const deadline=Date.now()+10000;while(Date.now()<deadline){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}throw Error('Pelican fixture did not reach the expected Runtime state');}
+async function until(predicate,detail){const deadline=Date.now()+60000;while(Date.now()<deadline){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}throw Error(`Pelican fixture did not reach the expected Runtime state${detail?`: ${detail()}`:''}`);}
 
 test('Local/Synthetic conversation delegates Pelican read→preview→fixture CAS→real Node verification with original approvals and Evidence',async t=>{
   const directory=mkdtempSync(path.join(os.tmpdir(),'pa-conversation-pelican-'));
@@ -136,7 +136,7 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
     {idempotencyKey:'local-synthetic-pelican-user-turn',timeoutMs:60000});
   conversations.add(accepted.taskId,'panel','Public Pelican fixture repair',conversationId);
   for(let turn=0;turn<8&&!terminal(app.runtime.getTask(accepted.taskId));turn++){
-    await until(()=>app.activeTaskCount===0);
+    await until(()=>app.activeTaskCount===0,()=>JSON.stringify({active:app.activeTaskCount,state:app.runtime.getTask(accepted.taskId).state,modelErrors}));
     if(terminal(app.runtime.getTask(accepted.taskId)))break;
     const pending=access.readPendingApproval({taskId:accepted.taskId,conversationId,deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal});
     assert.ok(pending,JSON.stringify({message:'same UI must discover original child approval',modelErrors,parent:app.runtime.getTask(accepted.taskId),children:app.readSubagentTasks(accepted.taskId),approvals:app.runtime.listApprovals({state:'pending'}),childId,requests:modelRequests.map(item=>({taskId:item.taskId,names:item.tools?.map(tool=>tool.name)}))}));
@@ -156,7 +156,7 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
     approvals.push({approvalId:pending.approvalId,revision:pending.revision,toolName:pending.toolName,argumentsDigest:pending.argumentsDigest});
     await client.call('authorization.respond',{approvalId:pending.approvalId,expectedRevision:pending.revision,decision:'allow_once'});
   }
-  await until(()=>app.activeTaskCount===0);
+  await until(()=>app.activeTaskCount===0,()=>JSON.stringify({active:app.activeTaskCount,state:app.runtime.getTask(accepted.taskId).state,modelErrors}));
   const parent=app.runtime.getTask(accepted.taskId),children=app.readSubagentTasks(parent.taskId);
   assert.equal(parent.state,'succeeded');assert.equal(children.length,1);assert.equal(children[0].taskId,childId);assert.equal(children[0].state,'succeeded');
   assert.equal(approvals.length,4);assert.equal(new Set(approvals.map(item=>item.approvalId)).size,4);

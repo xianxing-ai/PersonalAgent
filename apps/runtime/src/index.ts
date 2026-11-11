@@ -2298,6 +2298,23 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     return rows.map(scheduleFromRow);
   }
 
+  /** Host-only read. Does not fire, skip, cancel, or submit a task. */
+  listScheduleWindow(input: {from: string; to: string; limit?: number}): ScheduleSnapshot[] {
+    const from = parseTime(input.from, 'from');
+    const to = parseTime(input.to, 'to');
+    if (from > to) throw new RuntimeError('INVALID_ARGUMENT', 'Schedule window is reversed');
+    const limit = input.limit ?? 50;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RuntimeError('INVALID_ARGUMENT', 'limit must be between 1 and 100');
+    const lower = new Date(from).toISOString();
+    const upper = new Date(to).toISOString();
+    const rows = this.db.prepare(`SELECT schedule_id, goal, conversation_id, run_at, time_zone, missed_run_policy, task_idempotency_key, status, task_id FROM task_schedules WHERE status IN ('pending', 'fired') AND run_at >= ? AND run_at < ? ORDER BY run_at, schedule_id LIMIT ?`)
+      .all(lower, upper, limit) as unknown as ScheduleRow[];
+    return rows.map(scheduleFromRow).filter(schedule => {
+      const at = Date.parse(schedule.runAt);
+      return at >= from && at < to;
+    });
+  }
+
   /** Reconcile an exclusively owned reminder conversation, not arbitrary user tasks.
    * Called after the authorized source mutation and before any scheduling tick. A restart
    * must reconstruct this set from that source before recovering overdue reminders. */

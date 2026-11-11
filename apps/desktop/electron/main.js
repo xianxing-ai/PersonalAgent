@@ -198,6 +198,8 @@ import {createVerifyWorkflowReminderBinding} from './f06-reminder-binding.js';
 import {createDesktopWorkflowGraphComposition} from './workflow-graph-composition.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
+import {createDailyBriefingHost} from './daily-briefing-host.js';
+import {presentBriefingDecision} from './briefing-decision.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
 import {createMailMetadataStorage} from './mail-metadata-storage.js';
 import {createLocalLayaHost} from './laya-local-host.js';
@@ -376,7 +378,7 @@ const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
-let installedSkillsHost;
+let installedSkillsHost,pluginCatalogHost;
 let remoteMcpConfig,remoteMcpHost,remoteMcpServices,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
@@ -515,6 +517,8 @@ let remoteRunnerHost;
 let dutyPoll;
 let developerDirectionHost;
 let additiveSurface;
+let dailyBriefingHost;
+let approvalFocus;
 let todoFailure = '';
 let todoClosing;
 let todoClosed = false;
@@ -899,6 +903,7 @@ function snapshot(surface) {
       vaultSelected: obsidianPairing?.memorySource.snapshot().available===true, writeEnabled: memoryLearningHost?.snapshot().writeEnabled===true},
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
+    pluginCatalog:surface ? undefined : pluginCatalogHost?.snapshot(),
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
@@ -929,6 +934,8 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
+    dailyBriefing: surface ? undefined : dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
+    approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
@@ -1145,7 +1152,7 @@ function movePanelGroup(point) {
 }
 
 function openAdmin(page) {
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory','voice','computer'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory','voice','computer','briefing'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -2019,8 +2026,10 @@ async function confirmHarnessExperienceActivation(version,context) {
 async function initializeInstalledSkills() {
   if(competitionMode && !installedSkillsHost) {
     const {openLocalSkillStore}=await import('@personal-agent/skills');
+    const {createPluginCatalogHost}=await import('./plugin-catalog-host.js');
+    const store=openLocalSkillStore(path.join(app.getPath('userData'),'installed-skills.json'));
     installedSkillsHost=createInstalledSkillsHost({
-      store:openLocalSkillStore(path.join(app.getPath('userData'),'installed-skills.json')),onUpdate:publish,
+      store,onUpdate:publish,
       readParentTaskId:taskId=>runtimeApplication?.runtime.loadCheckpoint(taskId,'subtask-parent')?.parentTaskId,
       validateRunInput:async publicGoal=>{
         const {compileCoordinationGoal}=await import('@personal-agent/runtime/application');
@@ -2040,6 +2049,15 @@ async function initializeInstalledSkills() {
         const actions={install:'安装 Skill',enable:'启用 Skill',uninstall:'卸载 Skill',run:'仅本任务使用 Skill'};
         return confirmApplicationAuthorization('skill.'+request.action,request,{scope:{action:request.action,digest:request.digest},
           summary:`${actions[request.action]}；仅已核对内容摘要的此 Skill 版本，不授权其任意工具调用`,
+          isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
+      }});
+    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),onUpdate:publish,
+      confirm:async request=>{
+        const origin=admin,application=runtimeApplication;
+        if(!origin || origin.isDestroyed()) return false;
+        const actions={install:'安装插件',enable:'启用高风险插件',uninstall:'卸载插件'};
+        return confirmApplicationAuthorization('plugin.'+request.action,request,{scope:{action:request.action,id:request.id},
+          summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`,
           isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
   }
@@ -2192,9 +2210,13 @@ async function initializeRuntime() {
       const namespace = desktopHost.userNamespace;
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
-          onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
+          onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);}});
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,
           getVoiceHost:()=>liveVoice,verifyVoiceFinal:command=>voiceSessionFinalHost?.verifyVoiceCommand(command)===true,onUpdate: publish});
+        dailyBriefingHost = createDailyBriefingHost({userData: app.getPath('userData'), namespace,
+          createDeliveryHost: runtimeModule.createReminderDeliveryHost, getRuntime: () => runtimeApplication?.runtime,
+          notify: input => channel.sendAdvisoryNotification(input), onOpen: () => openAdmin('briefing'), onUpdate: publish});
+        void dailyBriefingHost.tick();
       }
       goalHost = createGoalHost(namespace);
       if (!syntheticMvp && calendarConfig) {
@@ -3741,6 +3763,7 @@ async function initializeRuntime() {
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
     void maintenancePoll.run('knowledge-schedules',()=>tickKnowledgeSchedules());
     void maintenancePoll.run('connector-watch',()=>connectorWatchHost?.tick());
+    void maintenancePoll.run('daily-briefing',()=>dailyBriefingHost?.tick());
     void maintenancePoll.run('proactive-runtime',()=>proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
@@ -4989,6 +5012,10 @@ async function action(event, name, payload) {
     if(name==='skill.uninstall') return installedSkillsHost.uninstall(payload);
     throw Error('不支持的 Skill 操作');
   }
+  if (typeof name==='string' && name.startsWith('plugin.')) {
+    if(sender!==admin || !competitionMode || !pluginCatalogHost) throw Error('插件目录仅在正式管理后台可用');
+    return pluginCatalogHost.invoke(name,payload);
+  }
   if (sender === orb) throw Error('Action unavailable from orb');
   if (!client) throw Error('Runtime 未连接，此操作尚不可用');
   if (['evidence.list', 'evidence.get', 'authorization.revoke'].includes(name)) {
@@ -5148,6 +5175,16 @@ async function action(event, name, payload) {
     if (sender !== admin) throw Error('授权历史只能从管理后台读取');
     const page=await readApprovalPage(client, payload);
     return {...page,items:page.items.map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime))};
+  }
+  if (name === 'briefing.update') {
+    if (sender !== admin || !dailyBriefingHost) throw Error('每日简报设置只能从管理后台修改');
+    return dailyBriefingHost.update(payload);
+  }
+  if (name === 'briefing.openDecision') {
+    if (sender !== admin || event.senderFrame !== sender.webContents.mainFrame || !dailyBriefingHost) throw Error('请从每日简报打开审批卡');
+    return presentBriefingDecision({taskId: payload?.taskId, approvalId: payload?.approvalId,
+      tasks: {get: id => tasks.get(id) ?? runtimeApplication?.runtime.getTask(id)}, conversations, sourceSurface: taskSurface,
+      openPanel: () => openPanel(true), openWorkspace, publish, rememberFocus: focus => {approvalFocus = focus;}});
   }
   if (name === 'settings.get') return client.call('settings.get', {namespace: String(payload ?? 'desktop')});
   if (name === 'settings.update') return client.call('settings.update', payload);
@@ -5805,6 +5842,7 @@ app.whenReady().then(async () => {
       privateConsumption?.close();
       wikiSourceMonitor?.close();
       installedSkillsHost?.close();
+      pluginCatalogHost?.close();
       coordinationWatchInputs.clear();
       privateMemory?.close();
       learningStore?.close();

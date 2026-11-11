@@ -1,8 +1,21 @@
-# Crew 子智能体协作底座（P0 存储原语 + P1 协作内核 + P2 驱动层 + P4 Claude/Grok API key 驱动）
+# Crew 子智能体协作底座（P0 存储原语 + P1 协作内核 + P2 驱动层 + P3 工作区与交接 + P4 Claude/Grok API key 驱动 + P5 Runtime 工具适配器）
 
-负责人 `zemeng`（GitHub：`zemeng5208`）。本包是[子智能体协作体系设计](https://github.com/xianxing-ai/PersonalAgent)的 crew 纵向切片：P0（#554）交付命名 agent 注册表、独立 SQLite 任务表、每 agent 持久 FIFO 信箱与固定回执格式；P1（#559）交付协作内核（actor 边界 + dispatch / interrupt / 子间消息）；P2（#565）交付统一驱动接口、Codex 驱动与订阅同意钩子；本 PR 在其上交付 P4：Claude / Grok 的 API key HTTP 驱动。协作与评审规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准；模块归属以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。
+负责人 `zemeng`（GitHub：`zemeng5208`）。本包是[子智能体协作体系设计](https://github.com/xianxing-ai/PersonalAgent)的 crew 纵向切片：P0（#554）交付命名 agent 注册表、独立 SQLite 任务表、每 agent 持久 FIFO 信箱与固定回执格式；P1（#559）交付协作内核（actor 边界 + dispatch / interrupt / 子间消息）；P2（#565）交付统一驱动接口、Codex 驱动与订阅同意钩子；P3（#573）交付每 agent 独立工作区、SHA-256 文件交接与重启恢复；P4 交付 Claude / Grok 的 API key HTTP 驱动；P5 交付 Runtime 工具适配器（`src/runtime-tools.ts`，把 dispatch / send_message / list_agents / interrupt 暴露成与 Runtime `RegisteredTool` 同形状的对象）与集成说明（[docs/crew-integration.md](docs/crew-integration.md)）。协作与评审规则以 [CONTRIBUTING](../../CONTRIBUTING.md) 和 [AGENTS](../../AGENTS.md) 为准；模块归属以 [MODULE_ASSIGNMENTS](../../docs/MODULE_ASSIGNMENTS.md) 为准。主父 agent 派子的逻辑不变：任务根仍只由父发起。
 
-## 当前范围（本 PR：P4 Claude / Grok API key 驱动）
+## Runtime 工具适配器（P5）
+
+`createCrewRuntimeTools({runtime, kernel, actorId})` 产出 `crew.dispatch` / `crew.send_message` / `crew.list_agents` / `crew.interrupt` 四个 `RegisteredTool` 形状的对象（descriptor：name/version/inputSchema/outputSchema/sideEffect/requiredScopes/idempotencySupport/recoverySupport/requiresPresence + `execute(input, context)`），工厂模式与 `subagent.dispatch`（`packages/agents`）一致。crew 不 import contracts/apps：结构兼容的本地镜像类型（`CrewToolDescriptor`/`CrewToolContext`/`CrewRegisteredTool`）逐字段对照 `packages/contracts/src/ports.ts` 与 `generated.ts` 注明出处，兼容性由 `test/runtime-tools.test.mjs` 的形状镜像测试证明；与真实 contracts 的编译期核对发生在 apps/runtime 接线时。语义要点：actor 由受信宿主在工厂参数绑定（不信任模型输入）；`crew.dispatch` 入队前有订阅同意门（未同意/已撤销抛 `CONSENT_REQUIRED`，任务不入队）；错误一律 `CrewError`（`code` + `[CODE] message`）。**本适配器不注册到 ToolGateway、不创建 Runtime 子任务**——apps/runtime 的接线位置、伪代码、需 goo122 配合的事项（错误码映射、Policy 对接、首次同意流）见 [docs/crew-integration.md](docs/crew-integration.md)。
+
+```ts
+import {openCrewDriverRuntime, openCrewKernel, createCrewRuntimeTools, CREW_PARENT_AGENT_ID} from '@personal-agent/crew';
+
+const runtime = openCrewDriverRuntime('/data/crew.sqlite');
+const kernel = openCrewKernel('/data/crew.sqlite'); // 同一路径；send_message/同意门走内核
+const tools = createCrewRuntimeTools({runtime, kernel, actorId: CREW_PARENT_AGENT_ID});
+// tools.tools 逐个交给 ToolHost.register(...)（接线说明见 docs/crew-integration.md）
+```
+
+## 当前范围（P4 Claude / Grok API key 驱动，已在 main；本 PR 为 P5）
 
 在 P2 驱动层之上新增 Claude 驱动（`src/drivers/claude.ts`）、Grok 驱动（`src/drivers/grok.ts`）、API key 密钥提供器（`src/secrets.ts`）与共享 HTTP/SSE 底座（`src/drivers/api-http.ts`），并接入 P2 的订阅同意钩子与驱动运行时。主父 agent 派子的逻辑不变：任务根仍只由父发起，驱动只是子 agent 的执行器。
 
@@ -20,11 +33,11 @@
 
 ## 未做（保持 unavailable，不用假实现冒充）
 
-- **Gemini 与其余 ACP 客户端（opencode acp、grok agent stdio、acp-generic）**：本 PR 不做，注册表查询返回明确的 `DRIVER_UNAVAILABLE`（"留后续 PR"），任务保持排队。Grok 本 PR 只交付 API key 直连官方 HTTP API（按设计页"订阅条款核实前不开订阅模式"），`grok agent stdio` ACP 客户端留后续。
+- **Gemini 与其余 ACP 客户端（opencode acp、grok agent stdio、acp-generic）**：注册表查询返回明确的 `DRIVER_UNAVAILABLE`（"留后续 PR"），任务保持排队。Grok 只交付 API key 直连官方 HTTP API（按设计页"订阅条款核实前不开订阅模式"），`grok agent stdio` ACP 客户端留后续。
 - **未对真实 Codex / Claude / Grok 做实机验证**：三家驱动均为本沙箱无真实凭据环境下的协议级实现——Codex 未经真实 CLI 核对，Claude/Grok 未经真实官方服务核对。单元测试用本地假 HTTP 服务器 / 假子进程模拟协议，不证明任何真实服务已连通；三家实机验证（含产品进程内无任何令牌读写记录、API key 不落盘的实机复核）留待有真实凭据环境的条件下进行。
-- **`subagent.dispatch` 接线**：本包尚未注册为 `RegisteredTool`，未接入 Runtime/ToolGateway/Policy；驱动运行时到 Runtime 子任务的映射留待接线 PR。设置页同意流程与 agent 列表/信箱视图的前端接线归前端负责人。
+- **`subagent.dispatch` 接线**：P5 已交付与 Runtime `RegisteredTool` 同形状的适配器（`src/runtime-tools.ts`）与集成说明（`docs/crew-integration.md`），但**未接入 apps/runtime、未注册到 ToolGateway/Policy**——接线归 goo122（位置与伪代码见集成说明）；适配器不创建 Runtime 子任务，crew 任务与 Runtime 子任务的映射留接线 PR。设置页同意流程与 agent 列表/信箱视图的前端接线归前端负责人。
 - **驱动回执的 evidenceRefs**：模型自报结果不是可信证据，驱动产出的回执 `evidenceRefs` 一律留空，父应按"模型自报"对待；可信产物引用（worktree 提交、交接 manifest）留后续 PR。
-- **互审编排、文件交接 manifest、按 agent 的持久 worktree 隔离**：按设计页分期留后续 PR。
+- **已在 main 的 P3（#573）**：每 agent 独立工作区（`<workspaceRoot>/agents/<agentId>`）、共享目录上的 SHA-256 文件交接，以及重启后把过期未完成任务标为 failed 并写入父信箱。本 PR 不另写一套，公开导出与 P5 的 Runtime 工具适配器并存。互审编排和信箱视图 UI 仍留后续；UI 归前端负责人。
 
 ## 使用
 
@@ -58,7 +71,7 @@ runtime.close();
 import {FakeDriver, createFakeCodexSpawn} from '@personal-agent/crew/testing';
 ```
 
-生产代码只应通过公开入口 `@personal-agent/crew` 使用本包；数据库文件与 Runtime 主库完全独立（迁移版本 2：`crew_agents` / `crew_tasks` / `crew_messages` / `crew_consents`，STRICT 表 + 外键 + WAL）。CLI 驱动只做 spawn + stdio 结构化协议，不抓终端画面，登录只探测不接触；Claude/Grok 只做 HTTPS API 调用，API key 只经认证请求头发往官方端点，不写日志、不落盘、不进回执/事件/错误信息。
+生产代码只应通过公开入口 `@personal-agent/crew` 使用本包；数据库文件与 Runtime 主库完全独立（迁移版本 2 为 `crew_agents` / `crew_tasks` / `crew_messages` / `crew_consents`，版本 3 为 `deadline_at`、`crew_handoff` 与 `crew_parent_inbox`；STRICT 表 + 外键 + WAL）。CLI 驱动只做 spawn + stdio 结构化协议，不抓终端画面，登录只探测不接触；Claude/Grok 只做 HTTPS API 调用，API key 只经认证请求头发往官方端点，不写日志、不落盘、不进回执/事件/错误信息。
 
 ## 技术取舍
 
@@ -68,4 +81,4 @@ import {FakeDriver, createFakeCodexSpawn} from '@personal-agent/crew/testing';
 - 协议字段集中在 `PROTOCOL_*` 常量，未实机验证的部分（codex `loginStatus.requiresLogin` 语义、Claude/Grok SSE 事件字段名与默认模型名）单独标注，实机联调时只需小改。
 - Claude/Grok 会话的对话历史只在内存（随会话释放），失败/被打断的一轮不留在历史里；会话内一轮一个在途请求（并发 send 明确 `CONFLICT`）；整轮请求（含流读取）共享一个超时（`startTurnAbort`），超时与打断共用同一 AbortController 并按旗标区分结算路径。
 - Claude/Grok 的 HTTP 底座共享一个模块（`src/drivers/api-http.ts`：SSE 行解析、厂商错误摘要、超时/打断合并）；错误摘要只提取厂商 `error.message`/`type` 字段并截断，不回显原始响应体，保证密钥与请求头不可能进入错误信息。
-- 测试只覆盖本包行为（SQLite 临时库 + 可注入时钟 + 假子进程/管道协议模拟 + 监听 127.0.0.1 随机端口的本地假 HTTP 服务器，77 条），不依赖外网，不证明任何真实 CLI 或官方 API 已连通。
+- 测试只覆盖本包行为（SQLite 临时库 + 可注入时钟 + 假子进程/管道协议模拟 + 监听 127.0.0.1 随机端口的本地假 HTTP 服务器，129 条，含 P3 工作区/交接/恢复与 `test/runtime-tools.test.mjs` 的 RegisteredTool 形状镜像），不依赖外网，不证明任何真实 CLI 或官方 API 已连通，也不证明 apps/runtime 接线后的全链行为（`validateContract('tool', …)` / ajv schema 校验在不依赖 contracts 的本包内无法执行，见集成说明“已知限制”）。

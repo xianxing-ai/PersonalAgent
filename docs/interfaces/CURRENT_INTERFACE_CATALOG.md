@@ -51,6 +51,9 @@ Runtime `readF04RecoveredWriteExport` 只读限定原用户任务当前 F04 pend
 Competition 的 `createF04WorkflowWorkerPorts` 与 Desktop 同名组合工厂消费原 Knowledge search/write、public Fact CAS/Feed/impact。模型只分类原候选；原知识写入与 N04 投影各走既有 Policy。N04 恢复端口只核实原任务/来源/Fact 与已完成影响回执，不重做写入或自行调度。当前公开源单行路径及本地实际文件/SQLite 测试可复现；原知识 unknown 的 F04 接续、私人 scope、Main 实际消费和真实 AgentArts 验收仍待补齐，不提升 frozen。范围与证据见 [F04 接线记录](../competition/evidence/F04_SCOPED_WIKI_WIRING_20261101.md)。
 
 N03 增量：原知识写出口独立升级 `knowledge-explicit-public-write-v2`，只将匹配原 task/input/config、已接受 reconciliation 与 verified observation 的结果投影为 `{state:applied|not_applied,changed}`；保留原 writer verified 输出及 search v1。同步 `readFinalizedKnowledgeWriteEffect` 复用原 F24 核实逻辑，只证明原已接受观察，不提供执行/出机权限。F04 工厂配置 v2 消费原 origin 与该观察，N03/N04 均有新 Node 进程零写恢复测试；Main 新进程原卡失效后重新出机确认及原父任务 UI 消费尚待接线，不能冒充真实产品恢复已通过。
+## 2026-11-11 插件精选目录（provisional）
+
+`@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
 
 ## 2026-10-29 MCP 管理任务读回（provisional）
 
@@ -577,7 +580,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | AgentArts | 平台原生知识、MCP/Skill 及未验真实业务 | main 已有 provisional CloudAgentPort、Workflow 输入及 HTTPS/WSS 工具提案循环；固定版本文件读取/审批续答和有限主子模型委派已取得独立证据。平台原生知识、MCP/Skill、全域多 Agent 质量和其余业务场景仍未由这些证据验收 | MOD-29～31 `zemeng` |
 | AgentArts | 完整平台 Trace、评估、成本、回滚和比赛端到端证据 | 已有 SWR/部署/精确版本目录、有限平台关联日志、公开文件读取及特定 F15 主图/隔离图的本地 Policy/ToolGateway/Evidence 闭环；只证明对应版本与公开场景，不代表完整 Trace/成本/平台评估、回滚、全部 28 图或比赛验收完成；禁止静默 Local 回退 | MOD-32 `zemeng` |
 | Windows | Named Pipe、DesktopActionPort、资源锁、用户接管 | 内部帧及受限 Host/Client 有 provisional 接线；统一 DesktopActionPort、全部真实应用与用户接管验收仍未完成，见本页 2026-10-24 原生电脑增量 | MOD-16 `zemeng` |
-| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional。验证回执可带本地 `artifactDigest`（执行身份摘要，不是公共 Artifact 服务，也不是 Evidence）。`workspace.patch_scope_check` 只读核对授权路径与预期 SHA，不写文件，且 `behaviorReviewed` 固定为 false。公共 Artifact 端口仍未提供；真实用户工作区、Windows 独占补丁、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
+| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；验证回执的本地 `artifactDigest` 不是公共 Artifact 服务或 Evidence。`workspace.patch_scope_check` 只读校验，`behaviorReviewed` 固定为 false。包内 `assembleArtifactServiceTools` 可选包含 create/get/list/read/expire/release，默认不注册 ToolHost，公共 Runtime Artifact 端口仍未公布；真实用户工作区、Windows 独占补丁、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
 | 分发 | 生产装配、安装、升级、卸载生命周期契约 | 无安装包与隔离安装证据 | MOD-19 `zemeng`、根装配 `goo122` |
 
 生产 Runtime 对 Schema 已知但未公布的 operation 必须返回 `UNSUPPORTED_CAPABILITY`。管理界面可以展示规划项，但必须显示“不可用”，不能通过读取配置文件、私有数据库或启用 Fake 来伪装能力。

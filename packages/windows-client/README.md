@@ -221,3 +221,5 @@ Schema 校验与不可用项等脱敏元数据，不保存 CPU/内存数值、�
 平台自检不打开命名管道、窗口或凭据库：`node packages/windows-client/scripts/check-native-platform.mjs`。
 非 Windows 或缺少 .NET SDK 时结果保持 `acceptance=not_run`，不能当作 MOD-16/17 真机验收。
 步骤见 [CW10 设备记录](../../docs/competition/evidence/CW10_VOICE_WINDOWS_DEVICE_20261103.md)。
+非 Windows 运行该脚本时在加载 provider 之前退出，stderr 为 `UNSUPPORTED_PLATFORM`，并且不创建输出文件。
+`test/mod16-17-offline-gates.test.mjs` 锁定该拒绝，并在 Windows 上构建运行 Host 时序 fixture。其他平台跳过时序用例，跳过不算 UIA 或设备通过。

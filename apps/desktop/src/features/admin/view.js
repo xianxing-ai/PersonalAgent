@@ -6,6 +6,7 @@ import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
+import {mountDailyBriefing} from './daily-briefing.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
 import {mountComputerControls} from '../../app/computer-controls.js';
@@ -24,6 +25,7 @@ import {mountAgentArtsModelControls} from '../../app/agentarts-model-controls.js
 import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
 import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
+import {mountPluginCatalogControls} from '../../app/plugin-catalog-controls.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountWikiImportControls} from '../../app/wiki-import-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
@@ -39,7 +41,7 @@ import {mountPageMotion} from '../../ui/page-motion.js';
 import {mountAuthorizationSettings} from '../conversation/authorization-settings-controls.js';
 
 export const sections = {
-  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
+  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: 'Worktrees',
   tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
@@ -47,7 +49,7 @@ export const sections = {
 
 const primaryPages = ['settings', 'connections', 'authorizations'];
 const navGroups = [
-  {label: '偏好', items: ['appearance', 'voice', 'notifications', 'profile', 'memory', 'shortcuts', 'personalization', 'pets']},
+  {label: '偏好', items: ['appearance', 'voice', 'notifications', 'briefing', 'profile', 'memory', 'shortcuts', 'personalization', 'pets']},
   {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'configuration', 'environment', 'worktrees', 'git', 'hooks']},
   {label: '记录与诊断', items: ['tasks', 'archive', 'analytics']},
 ];
@@ -56,7 +58,8 @@ const iconPaths = {
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
   import: '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 19h14"/>', profile: '<circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/>',
   appearance: '<circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-  voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3"/>', configuration: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+  voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3"/>',
+  briefing: '<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3M8 11h8M8 15h8M8 19h5"/>', configuration: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   personalization: '<path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z"/>',
   pets: '<path d="M6 10 4 6m14 4 2-4M7 9c-3 1-4 4-3 7 1 4 4 5 8 5s7-1 8-5c1-3 0-6-3-7"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/><path d="M10 18h4"/>',
   shortcuts: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M11 9h.01M15 9h.01M7 13h.01M11 13h6M7 17h10"/>',
@@ -172,7 +175,7 @@ export function mountAdmin(root, invoke, escape) {
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,mailSourceControls;
   window.addEventListener('unload',()=>mailSourceControls?.dispose(),{once:true});
-  let installedSkillsControls,sisControls,notificationControls,wikiImportControls,computerControls,computerVisionControls;
+  let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,briefingControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
@@ -378,6 +381,8 @@ export function mountAdmin(root, invoke, escape) {
     sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
     if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
     notificationControls?.render(data.notificationCenter,data.voiceQuestion,data.approvals??[]);notificationControls?.show(section==='notifications');
+    if(section==='briefing') briefingControls??=mountDailyBriefing(root.querySelector('.main'),invoke);
+    briefingControls?.render(data.dailyBriefing);briefingControls?.show(section==='briefing');
     if (section==='computer') computerControls ??= mountComputerControls(root.querySelector('.main'),invoke);
     computerControls?.render(data.computerControl);computerControls?.show(section==='computer');
     if(section==='computer')computerVisionControls??=mountComputerVisionControls(root.querySelector('.main'),invoke);
@@ -430,6 +435,8 @@ export function mountAdmin(root, invoke, escape) {
     codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
     referenceControls?.render(data.reference);referenceControls?.show(section==='capabilities');
+    if(section==='capabilities' && data.pluginCatalog) pluginCatalogControls??=mountPluginCatalogControls(root.querySelector('.main'),invoke);
+    pluginCatalogControls?.render(data.pluginCatalog);pluginCatalogControls?.show(section==='capabilities');
     if(section==='capabilities' && data.installedSkills) installedSkillsControls??=mountInstalledSkillsControls(root.querySelector('.main'),invoke);
     installedSkillsControls?.render(data.installedSkills,data.tasks,data.installedSkills?.runtimeAvailable && data.model?.provider==='agentarts' && data.model?.configured && data.model?.enabled!==false);
     installedSkillsControls?.show(section==='capabilities');
@@ -500,7 +507,7 @@ export function mountAdmin(root, invoke, escape) {
       content = profilePage(data, escape);
     } else if (section === 'memory') {
       content = memoryPage(data);
-    } else if (section === 'computer') {
+    } else if (section === 'computer' || section === 'briefing') {
       content = '';
     } else if (featureSections.includes(section)) {
       content = featurePage(data, section);

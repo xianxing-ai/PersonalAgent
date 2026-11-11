@@ -2,17 +2,11 @@
 
 平台协作权限仅PersonalAgent AgentArts项目及关联资源的查看/编辑/部署/调用/调试/日志/评估管理，不含全云/IAM/其他项目；授权需求不代表已获访问，项目角色与入驻见 [协作访问记录](competition/AGENTARTS_COLLABORATION_ACCESS.md)。公开材料不写真实hid/秘密。
 
-## 2026-10-31 临时单人接管
-
-用户在本轮工作中授权：同步最新仓库，修复并合并全部可合并 PR，随后由 Codex 临时接手所有协作者的开发工作；并明确 #531 必须完成全部接线及真实验收后才能合并。当前执行账号为 `goo122`，Codex 统一承担全部模块的实现、实际调用方接线、测试、Evidence、文档和交付协调，不再因下表的原分区等待其他开发者接线。用户同时允许并行子智能体，子任务使用隔离工作树，结果由主智能体集成。
-
-临时安排覆盖下表及各模块页的开发分工，至用户明确恢复协作分工为止；原负责人、作者和历史验收记录继续保留。开发接管不等于模块完成，不改变 Runtime/Policy/ToolGateway 边界、接口冻结条件、真实账号/设备/云验收门槛，也不替代独立非作者批准或 Owner 的具体审核例外。未完成工作继续在现有 [IMAGE28 待办](competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md) 和各 MOD 记录中维护。
-
-## 2026-10-31 Owner 责任分区修订（临时接管前基线）
+## 2026-10-31 Owner 责任分区修订（现行）
 
 Owner 明确：**`2511375597-lab` 为前端与前端接线责任分区唯一负责人**，并承接 **MOD-10 参赛研究**。
 
-| 原负责人 | 接管前责任分区 |
+| 负责人 | 现行责任分区 |
 | --- | --- |
 | **2511375597-lab** | **全部前端**（`apps/desktop/src/**` Renderer、设置/工作区/对话 UI、样式与交互）；**全部前端接线**（Desktop 组合：`main.js` 中对话工具/设置 IPC/图 host 条件注入、`workspace-controls`、相关 smoke）；**MOD-10**（`docs/research/agentarts`、`docs/research/model-training`，PA-022/PA-026 参赛研究）；并参与审查与合并 |
 | **zemeng5208** | 核心架构/认知、AgentArts **云与编排**、语音/Windows **原生能力包与设备宿主**、编码工具后端、Competition 平台联跑与整图协调；不再默认承担前端 UI/组合接线与 MOD-10 |
@@ -162,7 +156,7 @@ goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私�
 | MOD-27 | 目标、事实与决策图谱 / PA-024 | packages/goals | MOD-02、03、09、04B | 版本化 Goal/Fact/Decision/Plan 依赖图、来源、冲突和回退；不直接读记忆数据库 |
 | MOD-28 | 持续认知与最小计划修复 / PA-025 | packages/cognition | MOD-03、04B、09、27 | 事实变化影响分析；输出 KEEP/RECHECK/REVISE 和最小差异，不直接改 TaskRuntime |
 | MOD-29 | AgentArts 云端基础、身份、MaaS 与部署 / PA-026 | packages/agentarts、apps/agentarts-runtime 与云资源说明 | MOD-02、03、05、16 | 第一优先；CloudAgentPort、项目/Agent/deployment 引用、Fake 和真实 API 读回；凭据不进入云提示或仓库 |
-| MOD-30 | AgentArts Agent/Workflow、知识、MCP/Skill 与工具提案 / PA-026、PA-027 | packages/agentarts/src/owned-workflows.ts 及相关 Workflow 文件、apps/agentarts-runtime | MOD-05、29；本地 MCP/Skills 为可选依赖 | 第一优先；云流程产生受限提案，一条部署 API 经本地 Policy/ToolGateway 和目标系统读回验收 |
+| MOD-30 | AgentArts Agent/Workflow、知识、MCP/Skill 与工具提案 / PA-026、PA-027 | packages/agentarts/src/owned-workflows.ts 及相关 Workflow 文件、apps/agentarts-runtime、packages/plugin-catalog | MOD-05、29；本地 MCP/Skills 为可选依赖 | 第一优先；云流程产生受限提案，一条部署 API 经本地 Policy/ToolGateway 和目标系统读回验收。插件精选目录只调用 MCP/Skills 公开入口，不替代上述云验收 |
 | MOD-31 | AgentArts 多 Agent 与效果评估 / PA-012、PA-027 | packages/agentarts、tests/manual/agentarts/evaluation | MOD-28～30 | 角色必要性、路由、交接、预算、固定评估集、失败降级和完整 trace；不能提升本地权限 |
 | MOD-32 | AgentArts 发布、API、观测与 Competition 验收 / PA-027 | packages/agentarts/src/observability、tests/manual/agentarts | MOD-03、05、19、29～31 | 第一优先；版本、部署、API 实调、profile、日志、成本、回滚、Demo 和本地执行读回证据 |
 
