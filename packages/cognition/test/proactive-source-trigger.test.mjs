@@ -267,10 +267,11 @@ test('新邮件去重、静默暂存，并在静默结束后只提交一次', as
 });
 
 test('同一来源超出限流的变化留到下一个窗口', async () => {
+  const root = path.resolve('/work/notes');
   let entries = [{relativePath: 'a.txt', size: 1, mtimeMs: 1}];
   const scanned = [];
   const run = harness({
-    files: {roots: [{root: '/work/notes', authorized: true}], scan(root) { scanned.push(root); return entries; }},
+    files: {roots: [{root, authorized: true}], scan(dir) { scanned.push(dir); return entries; }},
     rateLimit: {maxPerSource: 1, windowMs: 60_000},
     now: Date.parse('2026-11-11T08:00:00.000Z'),
   });
@@ -279,12 +280,12 @@ test('同一来源超出限流的变化留到下一个窗口', async () => {
   const limited = await run.trigger.tick(live());
   assert.deepEqual(limited.outcomes.map(item => item.status).sort(), ['rate_limited', 'submitted']);
   assert.equal(run.side.submitted.length, 1);
-  assert.equal(JSON.stringify(run.side.submitted).includes('/work/notes'), false);
+  assert.equal(JSON.stringify(run.side.submitted).includes(root), false);
   run.setNow(Date.parse('2026-11-11T08:02:00.000Z'));
   const later = await run.trigger.tick(live());
   assert.equal(later.outcomes.filter(item => item.status === 'submitted').length, 1);
   assert.equal(run.side.submitted.length, 2);
-  assert.deepEqual(scanned, ['/work/notes', '/work/notes', '/work/notes']);
+  assert.deepEqual(scanned, [root, root, root]);
 });
 
 test('没有授权的目录被拒绝，扫描不会开始', async () => {
@@ -311,7 +312,7 @@ test('没有授权的目录被拒绝，扫描不会开始', async () => {
 });
 
 test('只读扫描拒绝越出授权根的符号链接，且不读取文件内容', async () => {
-  const root = '/auth/notes';
+  const root = path.resolve('/auth/notes');
   const calls = [];
   const stat = ({dir = false, file = false, link = false, size = 0, mtimeMs = 1} = {}) => ({
     isDirectory: () => dir, isFile: () => file, isSymbolicLink: () => link, size, mtimeMs,
@@ -333,10 +334,15 @@ test('只读扫描拒绝越出授权根的符号链接，且不读取文件内�
   try {
     await writeFile(path.join(directory, 'a.txt'), SECRET_BYTES);
     await writeFile(outside, 'outside');
-    await symlink(outside, path.join(directory, 'escape'));
     const scan = createNodeReadOnlyDirectoryScan();
-    await assert.rejects(scan(directory), error => error instanceof TriggerError && error.code === 'UNAUTHORIZED');
-    await rm(path.join(directory, 'escape'));
+    const escape = path.join(directory, 'escape');
+    try {
+      await symlink(outside, escape);
+      await assert.rejects(scan(directory), error => error instanceof TriggerError && error.code === 'UNAUTHORIZED');
+      await rm(escape);
+    } catch (error) {
+      if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) throw error;
+    }
     const entries = await scan(directory);
     assert.deepEqual(entries.map(entry => entry.relativePath), ['a.txt']);
     assert.equal(JSON.stringify(entries).includes(SECRET_BYTES), false);

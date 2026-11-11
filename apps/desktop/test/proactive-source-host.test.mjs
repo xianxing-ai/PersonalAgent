@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import {createProactiveSourceHost} from '../electron/proactive-source-host.js';
 import {mountProactiveTaskControls} from '../src/app/proactive-task-controls.js';
 
@@ -115,11 +116,12 @@ test('未授权目录被拒绝，授权后才扫描，撤销后不再扫描', as
   const fx = host({scan: async root => { seen.push(root); return [{relativePath: 'a.txt', size: 1, mtimeMs: 1}]; }});
   assert.throws(() => fx.host.authorize('notes'), /具体目录/);
   assert.throws(() => fx.host.authorize('/'), /具体目录/);
-  fx.host.authorize('/work/notes');
+  const root = path.resolve('/work/notes');
+  fx.host.authorize(root);
   fx.host.update({enabled: true, calendar: false, mail: false});
   await fx.host.tick();
-  assert.deepEqual(seen, ['/work/notes']);
-  fx.host.revoke('/work/notes');
+  assert.deepEqual(seen, [root]);
+  fx.host.revoke(root);
   fx.setNow(Date.parse('2026-11-11T08:30:00.000Z'));
   await fx.host.tick();
   assert.deepEqual(seen, ['/work/notes']);
