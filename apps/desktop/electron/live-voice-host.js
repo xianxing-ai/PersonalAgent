@@ -218,7 +218,6 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           }
           if (event.type === 'interrupted') {endSpeechOutput();textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
           if (event.type === 'turn_complete') {
-            endSpeechOutput();
             const delivery=record.questionDelivery;
             if(notificationEvent?.drainId)command(record,{type:'drain',drainId:notificationEvent.drainId});
             else if(delivery?.state==='queued'&&delivery.textMatched&&record.outputAudioFrames>delivery.audioStart){
@@ -559,6 +558,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     if (message.type === 'drained') {
       if(notificationOutput.pending()&&!notificationOutput.drained(message))return true;
       const delivery=record.questionDelivery;
+      if(delivery?.state==='draining'&&message.drainId!==delivery.drainId)return true;
       if(delivery?.state==='draining'&&message.drainId===delivery.drainId){
         delivery.state='delivered';delivery.completedAt=new Date(now()).toISOString();
         delivery.audioFrames=record.outputAudioFrames-delivery.audioStart;

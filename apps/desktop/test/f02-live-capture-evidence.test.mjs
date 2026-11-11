@@ -33,9 +33,15 @@ test('F02 final binds real capture-host readback and exact playback drain turn w
     request.onEvent({type:'transcript',id:'assistant-question',role:'assistant',phase:'final',text:'请在当前对话的原授权卡中决定；语音回答不会批准。'});
     request.onEvent({type:'turn_complete'});const drain=commands.at(-1);assert.ok(drain.drainId);
     live.receive(event,{token:liveToken,type:'drained',drainId:'older-turn'});assert.equal(live.readQuestionDelivery(binding),undefined);
+    clock+=500;
+    request.onEvent({type:'speech_started',utteranceId:'early'});
+    mic.receive(event,{type:'frame',token:captureToken,data:Uint8Array.of(3,4,5,6)});
+    request.onEvent({type:'speech_stopped',utteranceId:'early'});
+    request.onEvent({type:'transcript',id:'early',utteranceId:'early',role:'user',source:'input_audio',phase:'final',text:'合成回声'});
+    assert.equal(live.readFinalUserAudio(binding),undefined,'old drain must not end protection while playback is pending');
     live.receive(event,{token:liveToken,type:'drained',drainId:drain.drainId});
     const playback=live.readQuestionDelivery(binding);assert.equal(playback.audioFrames,1);assert.equal(playback.playbackVerified,false);
-    clock++;
+    clock+=351;
     request.onEvent({type:'speech_started',utteranceId:'utterance'});
     mic.receive(event,{type:'frame',token:captureToken,data:Uint8Array.of(3,4,5,6)});
     request.onEvent({type:'speech_stopped',utteranceId:'utterance'});
