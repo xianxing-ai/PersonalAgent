@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 隔离修复只读补丁范围核对（provisional）
+
+隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
+
 ## 2026-11-11 插件精选目录（provisional）
 
 `@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
