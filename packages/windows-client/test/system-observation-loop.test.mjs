@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {ProtocolError} from '@personal-agent/contracts';
 import {
+  assertDirectProviderReadEvidence,
   assertSystemObservationFailure,
   assertSystemObservationLoopResult,
   createSystemObservationTool,
@@ -260,4 +261,51 @@ test('Linux platform or missing real machine evidence returns closedLoop=false w
   assert.equal(mockPlan.closedLoop, false);
   assert.equal(mockPlan.reason, '待真机验收');
   assert.deepEqual(mockPlan.pending, ['policy', 'agentarts', 'desktop-ui', 'windows-provider']);
+});
+
+function directProviderEvidence(overrides = {}) {
+  return {
+    evidenceKind: 'direct_provider_read_only',
+    platform: 'win32',
+    nodeVersion: 'v24.15.0',
+    tool: 'computer.system.observe@1.0.0',
+    source: 'node:os',
+    capturedAt: '2026-11-10T00:00:00.000Z',
+    sampledFrom: '2026-11-10T00:00:00.000Z',
+    sampledUntil: '2026-11-10T00:00:00.200Z',
+    requestedSampleWindowMs: 200,
+    actualSampleWindowMs: 200,
+    schemaValid: true,
+    aggregateValuesPresent: true,
+    unavailable: ['process_breakdown', 'disk_io', 'thermal', 'network_activity'],
+    productionAuthorizationVerified: false,
+    agentArtsVerified: false,
+    ...overrides,
+  };
+}
+
+test('direct provider evidence stays redacted and cannot claim a closed loop', () => {
+  assert.doesNotThrow(() => assertDirectProviderReadEvidence(directProviderEvidence()));
+  assert.throws(
+    () => assertDirectProviderReadEvidence(directProviderEvidence({productionAuthorizationVerified: true})),
+    error => error instanceof ProtocolError && error.code === 'INVALID_ARGUMENT',
+  );
+  assert.throws(
+    () => assertDirectProviderReadEvidence(directProviderEvidence({agentArtsVerified: true})),
+    error => error instanceof ProtocolError && error.code === 'INVALID_ARGUMENT',
+  );
+  assert.throws(
+    () => assertDirectProviderReadEvidence(directProviderEvidence({platform: 'linux'})),
+    error => error instanceof ProtocolError && error.code === 'INVALID_ARGUMENT',
+  );
+  assert.throws(
+    () => assertDirectProviderReadEvidence(directProviderEvidence({closedLoop: true})),
+    error => error instanceof ProtocolError && error.code === 'INVALID_ARGUMENT',
+  );
+  assert.throws(
+    () => assertDirectProviderReadEvidence(directProviderEvidence({evidenceKind: 'mock'})),
+    error => error instanceof ProtocolError && error.code === 'INVALID_ARGUMENT',
+  );
+  const plan = planSystemObservationAcceptance({platform: 'win32', evidence: directProviderEvidence()});
+  assert.equal(plan.closedLoop, false);
 });
