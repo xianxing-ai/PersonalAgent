@@ -365,6 +365,33 @@ export interface ThinkingState extends ThinkingConfig {
   };
 }
 
+/** 用户风险档对一次工具调用的输入。缺省钩子时不参与判定。 */
+export interface RiskAutonomyInvocation {
+  taskId: string;
+  runId: string;
+  toolName: string;
+  toolVersion: string;
+  sideEffect: ToolDescriptor['sideEffect'];
+  recoverySupport: boolean;
+  requiresPresence: boolean;
+  argumentsDigest: string;
+}
+
+export interface RiskAutonomyReview {
+  disposition: 'execute' | 'execute_and_notify' | 'ask';
+  irreversible: boolean;
+  compensatable: boolean;
+}
+
+/**
+ * 可选的用户风险档。review 返回 undefined 时保持 automaticTools。
+ * 外部写、需要在场、不可逆，以及没有补偿的写，都不会在这里变成例行授权。
+ */
+export interface RiskAutonomyGate {
+  review(input: RiskAutonomyInvocation): RiskAutonomyReview | undefined;
+  recordGranted?(input: RiskAutonomyInvocation & {disposition: 'execute' | 'execute_and_notify'}): void;
+}
+
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
   /** Host-managed discovery keeps each cloud directory bounded without hiding registered capabilities. */
   competitionToolDiscovery?:true;
@@ -402,6 +429,12 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   thinking?: ThinkingConfig;
   /** Trusted host policy for routine operations inside already enabled module scopes. */
   automaticTools?: readonly {toolName: string; toolVersion: string}[];
+  /**
+   * 用户可调风险档。未提供时仍只按 automaticTools 放行。
+   * 提供后由该档决定是否例行授权；外部写、在场要求和不可逆动作仍先问。
+   * Policy 的 grant/authorize/revoke 语义不变，请 Policy 维护者复核这段接线。
+   */
+  riskAutonomy?: RiskAutonomyGate;
   /** Opaque identity of trusted Competition configuration, excluding credentials. */
   coordinationBinding?: string;
   /** Trusted synchronous final check; never exposes credentials or changes task identity. */
@@ -922,14 +955,37 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             && record.state === 'confirmed' && record.executionStarted && record.policyDecision === 'allow'
             && this.runtime.matchesToolExecutionInput(record, {arguments: invocation.arguments as Record<string, unknown>, scopeRef: ref}));
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
-        if(options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
-          toolName:tool.name,toolVersion:tool.version,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;
-        if (routineEligible && tool.name === 'cognition.commit_repair') {
+        const authorizationRequired = Boolean(options.requestToolAuthorization && options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
+          toolName:tool.name,toolVersion:tool.version,deadline:invocation.deadline,signal:invocation.signal}));
+        if (authorizationRequired) routineEligible = false;
+        let commitRepairBlocked = false;
+        if (tool.name === 'cognition.commit_repair') {
           const intent = this.runtime.loadCheckpoint(invocation.taskId, LOCAL_REPAIR_CHECKPOINT) as
             {sourceKind?: string; sourceTaskId: string; reviewTaskId: string; binding: unknown} | undefined;
           const prepared = intent?.sourceKind === 'goal_review' ? this.localRepair?.reviewedSource?.resolve(intent) : undefined;
-          routineEligible = prepared?.kind === 'prepared' && isDeepStrictEqual(prepared.binding, intent?.binding)
+          const repairOk = prepared?.kind === 'prepared' && isDeepStrictEqual(prepared.binding, intent?.binding)
             && isDeepStrictEqual(invocation.arguments, {intentDigest: toolArgumentsDigest(intent!)});
+          if (routineEligible) routineEligible = repairOk;
+          if (!repairOk) commitRepairBlocked = true;
+        }
+        let riskReview: RiskAutonomyReview | undefined;
+        if (options.riskAutonomy && !authorizationRequired) {
+          const reviewed = options.riskAutonomy.review({
+            taskId: invocation.taskId, runId: ref, toolName: tool.name, toolVersion: tool.version,
+            sideEffect: tool.sideEffect, recoverySupport: tool.recoverySupport, requiresPresence: tool.requiresPresence === true,
+            argumentsDigest: toolArgumentsDigest(invocation.arguments),
+          });
+          if (reviewed) {
+            riskReview = reviewed;
+            const compensatableOrRead = tool.sideEffect === 'read' || reviewed.compensatable === true;
+            routineEligible = reviewed.disposition !== 'ask'
+              && (reviewed.disposition === 'execute' || reviewed.disposition === 'execute_and_notify')
+              && reviewed.irreversible !== true
+              && tool.sideEffect !== 'external_write'
+              && tool.requiresPresence !== true
+              && !commitRepairBlocked
+              && compensatableOrRead;
+          }
         }
         // A routine grant does not create an Approval object. Persist the original nested
         // invocation before granting/executing so confirmed unknown readback can resume it.
@@ -958,6 +1014,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             throw new ProtocolError('CANCELLED', 'Routine task is no longer active');
           }
           const argumentsDigest = toolArgumentsDigest(invocation.arguments);
+          if (riskReview && (riskReview.disposition === 'execute' || riskReview.disposition === 'execute_and_notify')) {
+            options.riskAutonomy?.recordGranted?.({
+              taskId: invocation.taskId, runId: ref, toolName: tool.name, toolVersion: tool.version,
+              sideEffect: tool.sideEffect, recoverySupport: tool.recoverySupport, requiresPresence: tool.requiresPresence === true,
+              argumentsDigest, disposition: riskReview.disposition,
+            });
+            this.runtime.saveCheckpoint(invocation.taskId, `risk-autonomy-audit:${ref}`, {
+              toolName: tool.name, toolVersion: tool.version, disposition: riskReview.disposition,
+              compensatable: riskReview.compensatable, argumentsDigest,
+            });
+          }
           this.runtime.saveCheckpoint(invocation.taskId, decisionKey, {toolName:tool.name,
             toolVersion:tool.version, argumentsDigest, source:'trusted-routine-tool-policy'});
           this.runtime.policy.grant({authorizationRef:ref,taskId:invocation.taskId,toolName:tool.name,

@@ -168,6 +168,8 @@ goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私�
 
 zemeng 必须优先交付 MOD-29/30/32 的 Competition Golden Path，并让模块在没有 goo122 的真实数据库或未合并实现时使用 Fake Memory/Tool/Runtime 独立开发。AgentArts 成功不能直接把本地任务标为完成；Local Agent 新能力当前不作为必交项。
 
+2026-11-11 用户风险档：zemeng 负责 `packages/autonomy`。它输出给现有 Policy `grant`，不改授权核心；Runtime 只增加可选 `riskAutonomy` 钩子。设置界面、业务连接器和 MOD-19 不在该包。详见 [MOD-28-RISK-AUTONOMY-01](modules/MOD-28-RISK-AUTONOMY-01.md)。
+
 2026-10-08 自有镜像工作包目录登记：zemeng 负责 `packages/agentarts/src/{index,input,prompts}.ts`、
 `apps/agentarts-runtime/`、相应模块/根集成测试和迁移文档，依赖既有 contracts/models/coordination 公开 exports。
 为同一包修改根构建/锁文件及 Coordination 期限/续接接线，并提供消费验证；不覆盖 goo122 的协议/本地授权所有权。
