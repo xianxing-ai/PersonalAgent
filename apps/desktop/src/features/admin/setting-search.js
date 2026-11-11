@@ -8,6 +8,7 @@ const aliases = {
   worktrees: '工作树 分支',
   memory: '知识 笔记 记忆',
   voice: '麦克风 语音 Live SIS 唤醒',
+  usage: '预算 用量 上限 费用 降级 暂停',
   shortcuts: '热键 快捷键',
 };
 

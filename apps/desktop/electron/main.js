@@ -125,6 +125,7 @@ import {createPublicReferenceQuestionConsent} from './public-reference-question.
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {createUsageBudgetProduct, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
@@ -333,6 +334,7 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
+let usageBudgetProduct;
 let agentArtsObservationConfig;
 let agentArtsModels;
 let activeCloudBinding;
@@ -829,6 +831,7 @@ function snapshot(surface) {
     coding: codingWorkspace?.snapshot() ?? defaultWorkspaceState,
     reference:surface ? undefined : referenceHost?.snapshot(),
     agentArts: cloudSettings,
+    usageBudget: surface ? undefined : usageBudgetProduct?.snapshot(),
     laya: localLaya?.snapshot() ?? {state:'unavailable', ready:false, reason:'本地模型尚未装配'},
     knowledge: (obsidianPairing?.source ?? knowledgeSourceConfig)?.snapshot()??structuredClone(knowledgeStatus),
     knowledgeSource:surface ? undefined : knowledgeSourceConfig ? {...knowledgeSourceConfig.snapshot(),
@@ -2029,6 +2032,7 @@ async function initializeRuntime() {
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
+        usageBudgetProduct?.bindNotifier(channel);
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
       }
       goalHost = createGoalHost(namespace);
@@ -2577,7 +2581,8 @@ async function initializeRuntime() {
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'},
             {toolName:runtimeModule.DEVELOPER_HARNESS_TOOL_NAME,toolVersion:runtimeModule.DEVELOPER_HARNESS_TOOL_VERSION}] : [])],
         // A missing remote catalog omits only the implicit model; an invalid configured default remains an error.
-        readDefaultExecutionModel:role=>readDesktopExecutionModel(agentArtsModels,undefined,role),
+        readDefaultExecutionModel:role=>usageBudgetProduct?.degradeSelection(readDesktopExecutionModel(agentArtsModels,undefined,role),selection=>agentArtsModels.resolveExecutionModel(selection))
+          ??readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
           if (!conversations?.containsConversation(conversationId)) return undefined;
@@ -2585,11 +2590,17 @@ async function initializeRuntime() {
           const models=modelApiHost?.snapshot();
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
-          const executionModel=readDesktopExecutionModel(agentArtsModels,preference);
+          const selectedModel=readDesktopExecutionModel(agentArtsModels,preference);
+          const executionModel=usageBudgetProduct&&selectedModel?usageBudgetProduct.degradeSelection(selectedModel,selection=>agentArtsModels.resolveExecutionModel(selection)):selectedModel;
           return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
-          if (!proactiveHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-proactive-goals:')) {
+          const task=runtimeApplication.runtime.getTask(request.taskId);
+          const conversationId=typeof task.conversationId==='string'?task.conversationId:'';
+          const proactive=conversationId.startsWith('desktop-proactive')
+            ||runtimeApplication.runtime.loadCheckpoint(request.taskId,'desktop-proactive-workflow-v1')!=null;
+          usageBudgetProduct?.beforeCloudSend({userInitiated:!proactive,modelId:request.executionModel?.modelId});
+          if (!proactiveHost && conversationId.startsWith('desktop-proactive-goals:')) {
             throw Error('目标主动分析宿主尚未就绪');
           }
           proactiveHost?.assertCognitionCloudSend(request);
@@ -3369,6 +3380,10 @@ async function action(event, name, payload) {
     if(sender!==admin || !competitionMode || !agentArtsModels)throw Error('请从模型设置管理 AgentArts 模型');
     const result=name==='agentartsModels.state'?agentArtsModels.snapshot():name==='agentartsModels.refresh'?await agentArtsModels.refresh():agentArtsModels.configure(payload);publish();return result;
   }
+  if (name === 'usageBudget.state' || name === 'usageBudget.configure') {
+    if (sender !== admin || !usageBudgetProduct) throw Error('请从设置页调整用量上限');
+    return usageBudgetProduct.handleAction(name, payload);
+  }
   if (['modelApi.state','modelApi.configure','modelApi.remove','modelApi.harness.configure'].includes(name)) {
     if (sender !== admin || !competitionMode || !modelApiHost) throw Error('请从模型设置管理辅助模型');
     const result = name === 'modelApi.state' ? modelApiHost.snapshot()
@@ -3882,7 +3897,15 @@ async function action(event, name, payload) {
   if (name.startsWith('proactive.workflow.')) {
     if ((sender!==panel&&sender!==admin)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
     if(name==='proactive.workflow.status')return proactiveWorkflowApplication.snapshot();
-    if(name==='proactive.workflow.start')return proactiveWorkflowApplication.start(payload);
+    if(name==='proactive.workflow.start'){
+      const start=()=>proactiveWorkflowApplication.start(payload);
+      if(!usageBudgetProduct)return start();
+      return usageBudgetProduct.withOrigin('autonomous',()=>{
+        const decision=usageBudgetProduct.decide({origin:'autonomous'});
+        if(!decision.allowed)throw Error(decision.prompt);
+        return start();
+      });
+    }
     if(name==='proactive.workflow.control')return proactiveWorkflowApplication.control(payload);
     if(!payload||Object.keys(payload).some(key=>key!=='taskId')||typeof payload.taskId!=='string')throw Error('原持续工作流任务标识无效');
     if(name==='proactive.workflow.resume')return proactiveWorkflowApplication.resume(payload.taskId);
@@ -4275,6 +4298,7 @@ async function action(event, name, payload) {
     if(prepared?.cancelled) return {cancelled:true};
     if(deliveryRequest.interrupted)return {interrupted:true};
     const goal = skillRun?prepared.publicGoal:text.trim();
+    if(!skillRun)usageBudgetProduct?.noteUserSubmit();
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode,contextCompaction:Boolean(harnessContextHost?.runtimeHooks),
       ...(competitionMode?{competitionTimeoutMs:readCompetitionExecutionPolicy().taskTimeoutMs}:{})});
     deliveryRequest.taskId=result.taskId;
@@ -4619,7 +4643,13 @@ app.whenReady().then(async () => {
   sisConfigHost = createDesktopSisConfigHost({userData: app.getPath('userData'), safeStorage});
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
-  agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  usageBudgetProduct = createUsageBudgetProduct({userData: app.getPath('userData'), safeStorage, Notification,
+    onUpdate: () => publish(),
+    candidates: () => (agentArtsModels?.snapshot().catalog?.models ?? [])
+      .filter(model => model.type === 'text' && model.availability !== 'unavailable' && model.available !== false)
+      .map(model => model.id)});
+  agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage,
+    onCloudRun: info => usageBudgetProduct.recordCloud(info)});
   if(competitionMode&&!syntheticMvp) {
     try {
       const created=initializeDefaultWorkspace({userData:app.getPath('userData'),
@@ -4671,11 +4701,12 @@ app.whenReady().then(async () => {
   }});
   if (competitionMode && !syntheticMvp) {
     const {createConfiguredSubagentModelGateway} = await import('@personal-agent/runtime/application');
+    const usageHooks=modelApiUsageHooks(usageBudgetProduct);
     modelApiHost = createModelApiConfig({userData:app.getPath('userData'),safeStorage,
       isDefaultExecutionAvailable:()=>runtimeApplication?.isDefaultSubagentAvailable()===true,
-      createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway});
+      createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway,...usageHooks});
     computerVisionConfig=createComputerVisionConfig({userData:app.getPath('userData'),safeStorage,
-      createGateway:createConfiguredSubagentModelGateway,onUpdate:publish});
+      createGateway:createConfiguredSubagentModelGateway,onUpdate:publish,...usageHooks});
   }
   if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});

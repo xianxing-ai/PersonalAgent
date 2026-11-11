@@ -1,7 +1,8 @@
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 
 /** Trusted main-process options. Neither credentials nor this provider enter Renderer snapshots. */
-export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={},readAppToken}) {
+export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={},readAppToken,onCloudRun}) {
+  if (onCloudRun !== undefined && typeof onCloudRun !== 'function') throw Error('云端用量记录无效');
   const transport=environment.PA_AGENTARTS_TRANSPORT??transportPreferences.transport??'https';
   const fallback=environment.PA_AGENTARTS_HTTPS_FALLBACK??(transportPreferences.allowHttpsFallback===true?'1':'0');
   if (!['https','wss'].includes(transport) || !['0','1'].includes(fallback)) {
@@ -62,7 +63,11 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
         headers.set('X-PA-Agent-Token',`Bearer ${appToken}`);
       }
       if (options.deploymentVersion!==undefined) target.searchParams.set('endpoint',options.deploymentVersion);
-      return fetchImpl(target.href,{...init,headers:Object.fromEntries(headers),redirect:'error'});
+      const send = () => fetchImpl(target.href,{...init,headers:Object.fromEntries(headers),redirect:'error'});
+      if (typeof onCloudRun !== 'function') return send();
+      const started = Date.now();
+      const finish = ok => { try { onCloudRun({durationMs: Math.max(0, Date.now()-started), ok: ok === true}); } catch { /* Usage recording cannot change the cloud response. */ } };
+      return Promise.resolve().then(send).then(response => { finish(response.ok); return response; }, error => { finish(false); throw error; });
     }};
   };
   if (transport==='https') {
