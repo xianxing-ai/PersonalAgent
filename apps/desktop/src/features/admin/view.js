@@ -25,6 +25,7 @@ import {mountModelApiControls} from '../../app/model-api-controls.js';
 import {mountReferenceToolsControls} from '../../app/reference-tools-controls.js';
 import {mountInstalledSkillsControls} from '../../app/installed-skills-controls.js';
 import {mountPluginCatalogControls} from '../../app/plugin-catalog-controls.js';
+import {mountActivityTimeline} from './activity-timeline.js';
 import {mountKnowledgeSourceControls} from '../../app/knowledge-source-controls.js';
 import {mountWikiImportControls} from '../../app/wiki-import-controls.js';
 import {mountMemoryLearningControls} from './memory-learning-controls.js';
@@ -39,13 +40,13 @@ import {mountPageMotion} from '../../ui/page-motion.js';
 import {mountAuthorizationSettings} from '../conversation/authorization-settings-controls.js';
 
 export const sections = {
-  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
+  settings: '常规', activity: '活动', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: 'Worktrees',
   tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
 };
 
-const primaryPages = ['settings', 'connections', 'authorizations'];
+const primaryPages = ['settings', 'activity', 'connections', 'authorizations'];
 const navGroups = [
   {label: '偏好', items: ['appearance', 'voice', 'notifications', 'profile', 'memory', 'shortcuts', 'personalization', 'pets']},
   {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'configuration', 'environment', 'worktrees', 'git', 'hooks']},
@@ -54,6 +55,7 @@ const navGroups = [
 
 const iconPaths = {
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
+  activity: '<circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/>',
   import: '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 19h14"/>', profile: '<circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/>',
   appearance: '<circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3"/>', configuration: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
@@ -171,7 +173,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,wikiImportControls,computerControls,computerVisionControls;
+  let installedSkillsControls,pluginCatalogControls,activityControls,sisControls,notificationControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
@@ -427,6 +429,8 @@ export function mountAdmin(root, invoke, escape) {
     codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
     referenceControls?.render(data.reference);referenceControls?.show(section==='capabilities');
+    if(section==='activity') activityControls??=mountActivityTimeline(root.querySelector('.main'),invoke,escape);
+    activityControls?.render(data.activity);activityControls?.show(section==='activity');
     if(section==='capabilities' && data.pluginCatalog) pluginCatalogControls??=mountPluginCatalogControls(root.querySelector('.main'),invoke);
     pluginCatalogControls?.render(data.pluginCatalog);pluginCatalogControls?.show(section==='capabilities');
     if(section==='capabilities' && data.installedSkills) installedSkillsControls??=mountInstalledSkillsControls(root.querySelector('.main'),invoke);
@@ -499,7 +503,7 @@ export function mountAdmin(root, invoke, escape) {
       content = profilePage(data, escape);
     } else if (section === 'memory') {
       content = memoryPage(data);
-    } else if (section === 'computer') {
+    } else if (section === 'computer' || section === 'activity') {
       content = '';
     } else if (featureSections.includes(section)) {
       content = featurePage(data, section);

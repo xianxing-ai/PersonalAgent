@@ -28,6 +28,8 @@ catalog.planInstall('skill.anthropic.frontend-design');
 
 启用高风险条目时，授权的 `toolName` 固定为 `plugin-catalog.enable`，`argumentsDigest` 为 `pluginEnableArgumentsDigest(id, sha256)`。摘要字符串是 `{"id":"<id>","sha256":"<64 hex>"}` 的 SHA-256。低风险说明型技能不消耗授权；写文件、联网写入和执行代码仍不能靠技能正文获得许可。
 
+可选 `onActivity` 在安装、启用、停用或卸载成功后收到插件 id、动作、风险和代次。不传技能正文或参数。活动时间线由 Desktop 消费这份通知，目录本身不保存时间线。
+
 ## 目录
 
 录取条目、许可证、commit、版本和 sha256 写在 `src/plugins.ts`。标准和复审流程见 [MOD-30 插件目录录取说明](../../docs/modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。

@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-11 活动时间线（provisional）
+
+`@personal-agent/activity` 提供 CW-05 的只追加活动记录。每条有时间、来源、动作摘要、风险、结果，以及触发原因和决策依据。摘要不收录消息正文或参数明文。撤销只在记录了补偿动作、且该来源的补偿执行器已经接入时可用；撤销另写一条结果，不改原行。当前生产接线只有插件目录的安装、启用、停用和卸载。自动执行（#630）、主动触发（#631）和失败自愈（#633）使用同包适配函数，不依赖尚未合入的实现。这不提升 Policy、Runtime、插件目录或 AgentArts 的冻结等级。说明见 [活动时间线](../modules/CW-05-ACTIVITY-TIMELINE.md)。
+
 ## 2026-11-11 插件精选目录（provisional）
 
 `@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。

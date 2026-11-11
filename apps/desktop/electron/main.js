@@ -37,6 +37,7 @@ import {freemem,totalmem,availableParallelism} from 'node:os';
 import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
+import {openDesktopActivity} from './activity-host.js';
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {createOrbHitTestController} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
@@ -324,7 +325,7 @@ const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
-let installedSkillsHost,pluginCatalogHost;
+let installedSkillsHost,pluginCatalogHost,activityProduct;
 let remoteMcpConfig,remoteMcpHost,remoteMcpServices,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
@@ -792,6 +793,7 @@ function snapshot(surface) {
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
     pluginCatalog:surface ? undefined : pluginCatalogHost?.snapshot(),
+    activity:surface ? undefined : activityProduct?.snapshot(),
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
@@ -1874,6 +1876,8 @@ async function initializeInstalledSkills() {
           isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
     pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),onUpdate:publish,
+      onActivity:notice=>activityProduct?.note(notice),
+      onActivityFailure:notice=>activityProduct?.recordFailure(notice),
       confirm:async request=>{
         const origin=admin,application=runtimeApplication;
         if(!origin || origin.isDestroyed()) return false;
@@ -1882,6 +1886,10 @@ async function initializeInstalledSkills() {
           summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`,
           isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
+    activityProduct?.bindPlugin({
+      uninstall:id=>pluginCatalogHost.compensate('uninstall',id),
+      disable:id=>pluginCatalogHost.compensate('disable',id),
+    });
   }
 }
 
@@ -4200,6 +4208,10 @@ async function action(event, name, payload) {
     if(sender!==admin || !competitionMode || !pluginCatalogHost) throw Error('插件目录仅在正式管理后台可用');
     return pluginCatalogHost.invoke(name,payload);
   }
+  if (name === 'activity.undo') {
+    if (sender !== admin || !activityProduct) throw Error('活动记录仅在管理后台可用');
+    return activityProduct.handle(name, payload);
+  }
   if (sender === orb) throw Error('Action unavailable from orb');
   if (!client) throw Error('Runtime 未连接，此操作尚不可用');
   if (['evidence.list', 'evidence.get', 'authorization.revoke'].includes(name)) {
@@ -4596,6 +4608,7 @@ app.whenReady().then(async () => {
   powerMonitor.on('speed-limit-change',value=>{speedLimit=value.limit;sampleResources();});
   powerMonitor.on('on-battery',sampleResources);powerMonitor.on('on-ac',sampleResources);
   desktopHost = createDesktopHost();
+  activityProduct = openDesktopActivity({userData:app.getPath('userData'),onUpdate:publish});
   microphonePermissionGate = createMicrophonePermissionGate({
     expectedPageUrl: pathToFileURL(entry).href,
     isTrustedWindow: contents => contents === panel?.webContents,

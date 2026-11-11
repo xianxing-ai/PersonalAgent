@@ -31,7 +31,7 @@ Owner 明确：**`2511375597-lab` 为前端与前端接线责任分区唯一负�
 | CW-02 AA镜像/新代理/平台 | zemeng5208 / 29、30、32 | in_progress；SWR/云目录/代理已验，下一精确远端版本只读闭环及平台四面逐项验 |
 | CW-03 主动事件持续责任 | zemeng5208 / 27、28、30 | in_progress；四入口HTTP/SQLite fixture已验，下一真实来源责任消费 |
 | CW-04 上下文知识记忆 | goo122 / 08、09 | in_progress；下一公开Vault更正/撤回→主动引用失效，平台provider缺口单列 |
-| CW-05 无人值守/归来 | zemeng5208 / 28、30 | in_progress；下一实际enter/return控制接checkpoint，云持续与设备边界单验 |
+| CW-05 无人值守/归来 | zemeng5208 / 28、30 | in_progress；活动时间线见 [CW-05-ACTIVITY-TIMELINE](modules/CW-05-ACTIVITY-TIMELINE.md)。下一实际 enter/return 控制仍接 checkpoint，云持续与设备边界单验 |
 | CW-06 主影选择收益 | zemeng5208 / 30、31 | in_progress；串行专项双跑已验，下一日常任务收益/sampling真实接线，不把设计当验收 |
 | CW-07 委派/主控升级 | zemeng5208 / 04B、31 | in_progress；下一实际parent-child报告/进度/原授权内teacher建议消费 |
 | CW-08 业务连接器 | Potatos498 / 20–26 | in_progress；下一逐来源真实增量→持久sink→cursor，未选社交平台不自动开工 |

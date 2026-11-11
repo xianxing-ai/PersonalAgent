@@ -1,5 +1,5 @@
 export {createPluginCatalogService, pluginEnableArgumentsDigest} from './service.js';
-export type {InstallPlan, InstallationRecord, PluginAuthorization, PluginCatalogServiceOptions, PluginQuery, SkillStorePort, UpdateStatus} from './service.js';
+export type {InstallPlan, InstallationRecord, PluginActivityNotice, PluginAuthorization, PluginCatalogServiceOptions, PluginQuery, SkillStorePort, UpdateStatus} from './service.js';
 export {projectEnabledPlugins, readBackPluginMcpReceipt} from './proposals.js';
 export type {EnabledPluginProjection, PluginCloudProposal} from './proposals.js';
 export {CURATED_PLUGINS} from './plugins.js';
