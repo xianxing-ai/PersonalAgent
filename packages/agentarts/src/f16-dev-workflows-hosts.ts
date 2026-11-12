@@ -46,30 +46,47 @@ export function createGithubBoundCiFailureHostPort(options: GithubCiFailureHostO
       }
       const repoSlug = `${binding.owner}/${binding.repo}`;
       try {
-        // 读取 CI 运行列表并按 runId 或 commitSha 定位目标运行记录（对齐 GitHub 连接器 actions.run.list）
-        const runsResult = await options.read.execute('actions.run.list', {
-          repo: repoSlug,
-          owner: binding.owner,
-          ...(binding.runId !== undefined ? {runId: binding.runId} : {}),
-        }, context);
-        const runList = Array.isArray(runsResult)
-          ? runsResult
-          : isPlainObject(runsResult) && Array.isArray(runsResult.items)
-            ? runsResult.items
-            : isPlainObject(runsResult) && Array.isArray(runsResult.runs)
-              ? runsResult.runs
-              : isPlainObject(runsResult) && typeof runsResult.id === 'number'
-                ? [runsResult]
-                : undefined;
-        if (!runList) return fail('failed', 'ci_runs_malformed');
+        // 读取 CI 运行列表并按 runId 或 commitSha 定位目标运行记录（严格对齐 schemas.ts：仅传 repo/page/perPage/status）
+        let run: Record<string, unknown> | undefined;
+        let currentPage = 1;
+        const maxPages = 5;
+        while (currentPage <= maxPages) {
+          const runsResult = await options.read.execute('actions.run.list', {
+            repo: repoSlug,
+            page: currentPage,
+            perPage: 100,
+            ...(binding.runId === undefined ? {status: 'failure' as const} : {}),
+          }, context);
+          const runList = Array.isArray(runsResult)
+            ? runsResult
+            : isPlainObject(runsResult) && Array.isArray(runsResult.items)
+              ? runsResult.items
+              : isPlainObject(runsResult) && Array.isArray(runsResult.runs)
+                ? runsResult.runs
+                : isPlainObject(runsResult) && typeof runsResult.id === 'number'
+                  ? [runsResult]
+                  : undefined;
+          if (!runList) return fail('failed', 'ci_runs_malformed');
 
-        const run = runList.find((item: unknown) => {
-          if (!isPlainObject(item)) return false;
-          if (binding.runId !== undefined) return item.id === binding.runId;
-          const itemSha = typeof item.headSha === 'string' ? item.headSha : typeof item.head_sha === 'string' ? item.head_sha : undefined;
-          return itemSha === binding.commitSha;
-        });
-        if (!isPlainObject(run) || typeof run.id !== 'number') return fail('failed', 'ci_run_not_found');
+          const matched = runList.find((item: unknown): item is Record<string, unknown> => {
+            if (!isPlainObject(item)) return false;
+            if (binding.runId !== undefined) return item.id === binding.runId;
+            const itemSha = typeof item.headSha === 'string' ? item.headSha : typeof item.head_sha === 'string' ? item.head_sha : undefined;
+            return itemSha === binding.commitSha;
+          });
+          if (matched) {
+            run = matched;
+            break;
+          }
+          const hasMore =
+            isPlainObject(runsResult) &&
+            runsResult.hasMore === true &&
+            typeof runsResult.nextPage === 'number' &&
+            runsResult.nextPage > currentPage;
+          if (!hasMore) break;
+          currentPage = runsResult.nextPage as number;
+        }
+        if (!isPlainObject(run) || typeof run.id !== 'number') return fail('unavailable', 'ci_run_not_found');
 
         // 核对运行记录的 headSha / head_sha 必须与绑定 commitSha 严格一致
         const runHeadSha = typeof run.headSha === 'string' ? run.headSha : typeof run.head_sha === 'string' ? run.head_sha : undefined;
@@ -88,10 +105,9 @@ export function createGithubBoundCiFailureHostPort(options: GithubCiFailureHostO
           });
         }
 
-        // 读取该运行下的 jobs 列表并校验结构
+        // 读取该运行下的 jobs 列表并校验结构（严格对齐 schemas.ts：仅传 repo 与 runId）
         const jobs = await options.read.execute('actions.job.list', {
           repo: repoSlug,
-          owner: binding.owner,
           runId: run.id,
         }, context);
         const jobList = Array.isArray(jobs)
@@ -110,14 +126,14 @@ export function createGithubBoundCiFailureHostPort(options: GithubCiFailureHostO
         const firstFailedJob = failedJobs[0];
         if (!firstFailedJob) return fail('failed', 'ci_failed_job_not_found');
 
-        // 读取首个失败 job 的日志（对齐 actions.log.read 必填参数 jobId）
+        // 读取首个失败 job 的日志（严格对齐 actions.log.read schema：repo, runId, jobId, maxChars）
         const primaryJobId = firstFailedJob.id as number;
+        const boundedMaxChars = Math.min(Math.max(1, Math.trunc(maxLogBytes)), 65536);
         const logs = await options.read.execute('actions.log.read', {
           repo: repoSlug,
-          owner: binding.owner,
           runId: run.id,
           jobId: primaryJobId,
-          maxChars: maxLogBytes,
+          maxChars: boundedMaxChars,
         }, context);
         const logText = typeof logs === 'string'
           ? logs

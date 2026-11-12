@@ -15,6 +15,31 @@ function fail(state: 'unavailable' | 'failed' | 'unknown', reason: string, extra
   return {state, value: {reason, ...(extra ?? {})}};
 }
 
+/** 从日历事件或写操作回执（含 ConnectorItem.dedupeKey `calendar:calId:extId:seq` 或 item.sequence / 顶层 sequence）提取序列号。 */
+function extractCalendarSequence(record: Record<string, unknown>): number | undefined {
+  if (typeof record.sequence === 'number' && Number.isFinite(record.sequence)) {
+    return record.sequence;
+  }
+  const item = isPlainObject(record.item) ? record.item : record;
+  if (typeof item.sequence === 'number' && Number.isFinite(item.sequence)) {
+    return item.sequence;
+  }
+  if (typeof item.dedupeKey === 'string') {
+    const match = /:(\d+)$/.exec(item.dedupeKey);
+    if (match?.[1] !== undefined) {
+      const parsed = Number(match[1]);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractCalendarAccountRef(record: Record<string, unknown>): string | undefined {
+  if (typeof record.accountRef === 'string') return record.accountRef;
+  if (isPlainObject(record.item) && typeof record.item.accountRef === 'string') return record.item.accountRef;
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // F06_N03: todo.registered_write
 // ---------------------------------------------------------------------------
@@ -34,16 +59,39 @@ export interface TodoWorkflowWritePort {
   execute(operation: 'todo.create' | 'todo.update', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
 }
 
+export interface TodoIdempotencyEntry {
+  readonly fingerprint: string;
+  readonly receipt: Record<string, unknown>;
+}
+
+export interface TodoIdempotencyStore {
+  get(key: string): Promise<TodoIdempotencyEntry | undefined> | TodoIdempotencyEntry | undefined;
+  set(key: string, entry: TodoIdempotencyEntry): Promise<void> | void;
+}
+
 export interface TodoRegisteredWriteOptions {
   readonly write: TodoWorkflowWritePort;
   resolveWrite(context: WorkflowNodeContext): TodoWriteInput | undefined;
+  /** 可选跨重启持久化幂等账本；未提供时默认使用单进程内内存 Map。 */
+  readonly idempotencyStore?: TodoIdempotencyStore;
 }
 
+/**
+ * 待办受控写口：
+ * - 向底层 `todo.create` / `todo.update` 仅传递符合 schema（`additionalProperties: false`）的字段；
+ * - 默认在单进程内通过内存 Map 提供同 `idempotencyKey` 幂等重放与异载荷冲突拒绝，调用方也可注入持久化 `idempotencyStore`。
+ */
 export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOptions): WorkflowHostPort {
   if (typeof options?.write?.execute !== 'function' || typeof options?.resolveWrite !== 'function') {
     throw new TypeError('createTodoRegisteredWriteHostPort 需要 write 端口与 resolveWrite');
   }
-  const idempotencyLedger = new Map<string, {fingerprint: string; receipt: Record<string, unknown>}>();
+  const inMemoryLedger = new Map<string, TodoIdempotencyEntry>();
+  const store: TodoIdempotencyStore = options.idempotencyStore ?? {
+    get: (key) => inMemoryLedger.get(key),
+    set: (key, entry) => {
+      inMemoryLedger.set(key, entry);
+    },
+  };
   return {
     capabilities: ['todo.registered_write'],
     async read(context: WorkflowNodeContext) {
@@ -70,7 +118,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
         )
         .digest('hex');
 
-      const existing = idempotencyLedger.get(writeInput.idempotencyKey);
+      const existing = await store.get(writeInput.idempotencyKey);
       if (existing) {
         if (existing.fingerprint !== fingerprint) {
           return fail('failed', 'todo_idempotency_conflict', {idempotencyKey: writeInput.idempotencyKey});
@@ -99,7 +147,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
         };
         const result = await options.write.execute(op, toolPayload, context);
         if (!isPlainObject(result)) return fail('failed', 'todo_write_malformed');
-        idempotencyLedger.set(writeInput.idempotencyKey, {fingerprint, receipt: result});
+        await store.set(writeInput.idempotencyKey, {fingerprint, receipt: result});
         return {
           state: 'completed' as const,
           value: {
@@ -218,11 +266,10 @@ export function createCalendarFreshnessCheckHostPort(options: CalendarFreshnessH
           fromUtc: new Date().toISOString(),
           toUtc: new Date(Date.now() + 7 * 86_400_000).toISOString(),
         };
+        // 严格对齐 calendar.events inputSchema（仅接受 fromUtc/toUtc/limit/cursor，accountRef 在 host 侧核对）
         const page = await options.calendarPort.execute('calendar.events', {
-          accountRef: target.accountRef,
           fromUtc: window.fromUtc,
           toUtc: window.toUtc,
-          ...(text(target.externalId) ? {externalId: target.externalId} : {}),
         }, context);
 
         if (text(target.externalId)) {
@@ -231,20 +278,25 @@ export function createCalendarFreshnessCheckHostPort(options: CalendarFreshnessH
             const matched = page.items.find(
               (item: unknown) =>
                 isPlainObject(item) &&
-                (item.externalId === target.externalId || item.uid === target.externalId || item.id === target.externalId),
+                (item.externalId === target.externalId || item.uid === target.externalId || item.id === target.externalId) &&
+                (extractCalendarAccountRef(item) === undefined || extractCalendarAccountRef(item) === target.accountRef),
             );
             if (isPlainObject(matched)) event = matched;
-          } else if (isPlainObject(page) && (page.externalId === target.externalId || page.uid === target.externalId)) {
+          } else if (
+            isPlainObject(page) &&
+            (page.externalId === target.externalId || page.uid === target.externalId) &&
+            (extractCalendarAccountRef(page) === undefined || extractCalendarAccountRef(page) === target.accountRef)
+          ) {
             event = page;
           }
           if (!event) return fail('failed', 'calendar_event_not_found');
-          if (typeof event.sequence !== 'number' || !Number.isFinite(event.sequence)) {
+          const currentSequence = extractCalendarSequence(event);
+          if (currentSequence === undefined) {
             return fail('unknown', 'calendar_sequence_unavailable', {
               accountRef: target.accountRef,
               externalId: target.externalId,
             });
           }
-          const currentSequence = event.sequence;
           const fresh = target.expectedSequence === undefined || currentSequence === target.expectedSequence;
           return {
             state: 'completed' as const,
@@ -328,8 +380,8 @@ export function createCalendarRegisteredWriteHostPort(options: CalendarRegistere
         return fail('unavailable', 'calendar_update_external_id_unavailable');
       }
       try {
+        // 严格对齐 calendar.create / calendar.update inputSchema（不向工具载荷注入 accountRef）
         const result = await options.calendarPort.execute(op, {
-          accountRef: writeInput.accountRef,
           summary: writeInput.summary,
           startUtc: writeInput.startUtc,
           endUtc: writeInput.endUtc,
@@ -338,13 +390,27 @@ export function createCalendarRegisteredWriteHostPort(options: CalendarRegistere
           ...(writeInput.notes ? {notes: writeInput.notes} : {}),
         }, context);
         if (!isPlainObject(result)) return fail('failed', 'calendar_write_malformed');
+        const receiptAccountRef = extractCalendarAccountRef(result);
+        if (receiptAccountRef !== undefined && receiptAccountRef !== writeInput.accountRef) {
+          return fail('failed', 'calendar_account_mismatch', {
+            expectedAccountRef: writeInput.accountRef,
+            actualAccountRef: receiptAccountRef,
+          });
+        }
+        const resolvedExternalId =
+          writeInput.externalId ??
+          (isPlainObject(result.item) && typeof result.item.externalId === 'string'
+            ? result.item.externalId
+            : typeof result.externalId === 'string'
+              ? result.externalId
+              : undefined);
         return {
           state: 'completed' as const,
           value: {
             receipt: result,
             accountRef: writeInput.accountRef,
             operation: op,
-            externalId: writeInput.externalId ?? (typeof result.externalId === 'string' ? result.externalId : undefined),
+            externalId: resolvedExternalId,
             writtenAt: new Date().toISOString(),
             source: 'calendar_write_receipt',
           },
@@ -379,6 +445,7 @@ export interface ReminderWorkflowInvalidationPort {
 
 export interface CalendarUpdateAndInvalidateReminderOptions {
   readonly calendarPort: CalendarWorkflowWritePort;
+  readonly calendarReadPort?: CalendarWorkflowReadPort;
   readonly invalidationPort: ReminderWorkflowInvalidationPort;
   resolveInput(context: WorkflowNodeContext): CalendarUpdateAndInvalidateInput | undefined;
 }
@@ -396,11 +463,37 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
         return fail('unavailable', 'calendar_update_invalidate_input_unavailable');
       }
       try {
-        // 1. 更新日程属性并递增 SEQUENCE（透传 accountRef 与 expectedSequence）
+        // 0. 如提供了 previousSequence 且注入了 calendarReadPort，在 host 侧先读回校验写前新鲜度
+        if (typeof input.previousSequence === 'number' && typeof options.calendarReadPort?.execute === 'function') {
+          const prePage = await options.calendarReadPort.execute('calendar.events', {}, context);
+          if (!isPlainObject(prePage) || !Array.isArray(prePage.items)) {
+            return fail('failed', 'calendar_window_read_malformed');
+          }
+          const currentItem = prePage.items.find(
+            (item: unknown): item is Record<string, unknown> =>
+              isPlainObject(item) &&
+              (item.externalId === input.externalId || item.uid === input.externalId) &&
+              (extractCalendarAccountRef(item) === undefined || extractCalendarAccountRef(item) === input.accountRef),
+          );
+          if (!currentItem) return fail('failed', 'calendar_event_not_found');
+          const preSequence = extractCalendarSequence(currentItem);
+          if (preSequence === undefined) {
+            return fail('unknown', 'calendar_sequence_unavailable', {
+              accountRef: input.accountRef,
+              externalId: input.externalId,
+            });
+          }
+          if (preSequence !== input.previousSequence) {
+            return fail('failed', 'calendar_stale_sequence_before_update', {
+              expectedSequence: input.previousSequence,
+              currentSequence: preSequence,
+            });
+          }
+        }
+
+        // 1. 更新日程属性（严格对齐 calendar.update inputSchema：不向工具载荷传 accountRef 或 expectedSequence）
         const updateResult = await options.calendarPort.execute('calendar.update', {
-          accountRef: input.accountRef,
           externalId: input.externalId,
-          ...(typeof input.previousSequence === 'number' ? {expectedSequence: input.previousSequence} : {}),
           ...(input.summary ? {summary: input.summary} : {}),
           ...(input.startUtc ? {startUtc: input.startUtc} : {}),
           ...(input.endUtc ? {endUtc: input.endUtc} : {}),
@@ -408,15 +501,28 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
           ...(input.notes ? {notes: input.notes} : {}),
         }, context);
         if (!isPlainObject(updateResult)) return fail('failed', 'calendar_update_malformed');
-        if (
-          typeof input.previousSequence === 'number' &&
-          typeof updateResult.sequence === 'number' &&
-          updateResult.sequence <= input.previousSequence
-        ) {
-          return fail('failed', 'calendar_sequence_not_incremented', {
-            previousSequence: input.previousSequence,
-            currentSequence: updateResult.sequence,
+        const receiptAccountRef = extractCalendarAccountRef(updateResult);
+        if (receiptAccountRef !== undefined && receiptAccountRef !== input.accountRef) {
+          return fail('failed', 'calendar_account_mismatch', {
+            expectedAccountRef: input.accountRef,
+            actualAccountRef: receiptAccountRef,
           });
+        }
+        const updatedSequence = extractCalendarSequence(updateResult);
+        if (typeof input.previousSequence === 'number') {
+          if (updatedSequence === undefined) {
+            return fail('unknown', 'calendar_sequence_unavailable', {
+              calendarReceipt: updateResult,
+              accountRef: input.accountRef,
+              externalId: input.externalId,
+            });
+          }
+          if (updatedSequence <= input.previousSequence) {
+            return fail('failed', 'calendar_sequence_not_incremented', {
+              previousSequence: input.previousSequence,
+              currentSequence: updatedSequence,
+            });
+          }
         }
 
         // 2. 作废旧出行提醒（若日历已更新成功但作废提醒失败/未确认，返回 unknown 并携带 calendarReceipt 供对账）

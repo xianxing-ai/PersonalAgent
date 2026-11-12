@@ -65,7 +65,7 @@ const eventIdProperties = {
 
 const createEventInputSchema: ToolDescriptor['inputSchema'] = {
   type: 'object',
-  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。提供 externalId 或 uid 时同标识重放幂等。',
+  description: '创建日历事件（external_write，经授权执行）。start/end 为严格 UTC 瞬间；写入后读回核对再返回记录。缺省标识时每次创建新事件（idempotencySupport=false）；显式提供 externalId 或 uid 时按该标识重放幂等。',
   required: ['summary', 'startUtc', 'endUtc'],
   additionalProperties: false,
   properties: {
