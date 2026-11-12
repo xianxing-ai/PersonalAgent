@@ -1,7 +1,5 @@
 # 当前接口目录与冻结登记
 
-> 测试失败定位（provisional）：已有定位器可识别完整的 Node 语法检查诊断，结果 reporter 增加 node-check。Desktop 公开解析入口继续去除源码片段；日志解析不提供执行或额外读取权限。F17 图及真实仓库验收另行交付。
-
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
@@ -355,6 +353,8 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 ## 2. 状态定义与冻结门槛
 
 ### DEV-WORKFLOWS 开发增量（2026-10-03）
+
+> 测试失败定位（provisional）：已有定位器可识别完整的 Node 语法检查诊断，结果 reporter 增加 node-check。Desktop 公开解析入口继续去除源码片段；日志解析不提供执行或额外读取权限。F17 图及真实仓库验收另行交付。
 
 历史上 PR #276 的 MOD-33/34/36/38 Local Profile 增量由 zemeng 启动；2026-10-07 最新分工为 goo122 负责 MOD-33/36/37，Potatos498 负责 MOD-34/35/38，接口范围和历史证据不因交接改变。
 公开 `@personal-agent/github`、`@personal-agent/coding-tools` 的开发修复与受控 Git 工厂、
