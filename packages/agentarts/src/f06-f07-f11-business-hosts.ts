@@ -60,13 +60,22 @@ export interface TodoWorkflowWritePort {
 }
 
 export interface TodoIdempotencyEntry {
+  readonly state?: 'reserved' | 'completed' | 'unknown';
   readonly fingerprint: string;
-  readonly receipt: Record<string, unknown>;
+  readonly receipt?: Record<string, unknown>;
+  readonly reservedAt?: string;
+  readonly completedAt?: string;
+  readonly reason?: string;
 }
 
 export interface TodoIdempotencyStore {
   get(key: string): Promise<TodoIdempotencyEntry | undefined> | TodoIdempotencyEntry | undefined;
   set(key: string, entry: TodoIdempotencyEntry): Promise<void> | void;
+  /** 可选原子预留接口：若 key 已存在则返回既有记录；若不存在则写入预留记录并返回 undefined。 */
+  reserve?(
+    key: string,
+    entry: TodoIdempotencyEntry,
+  ): Promise<TodoIdempotencyEntry | undefined> | TodoIdempotencyEntry | undefined;
 }
 
 export interface TodoRegisteredWriteOptions {
@@ -76,10 +85,108 @@ export interface TodoRegisteredWriteOptions {
   readonly idempotencyStore?: TodoIdempotencyStore;
 }
 
+const todoStoreKeyLocks = new WeakMap<object, Map<string, Promise<void>>>();
+const todoStoreFallbackLedgers = new WeakMap<object, Map<string, TodoIdempotencyEntry>>();
+
+function getTodoStoreKeyLockMap(store: object): Map<string, Promise<void>> {
+  let map = todoStoreKeyLocks.get(store);
+  if (!map) {
+    map = new Map<string, Promise<void>>();
+    todoStoreKeyLocks.set(store, map);
+  }
+  return map;
+}
+
+function getTodoStoreFallbackLedger(store: object): Map<string, TodoIdempotencyEntry> {
+  let ledger = todoStoreFallbackLedgers.get(store);
+  if (!ledger) {
+    ledger = new Map<string, TodoIdempotencyEntry>();
+    todoStoreFallbackLedgers.set(store, ledger);
+  }
+  return ledger;
+}
+
+async function withTodoIdempotencyKeyLock<T>(store: object, key: string, fn: () => Promise<T>): Promise<T> {
+  const locks = getTodoStoreKeyLockMap(store);
+  const previous = locks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = previous.then(
+    () => current,
+    () => current,
+  );
+  locks.set(key, tail);
+  await previous.catch(() => {});
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (locks.get(key) === tail) {
+      locks.delete(key);
+    }
+  }
+}
+
+function isContextAbortedOrExpired(context: WorkflowNodeContext): boolean {
+  return Boolean(context.signal?.aborted) || Date.parse(context.deadline) <= Date.now();
+}
+
+function mergeTodoIdempotencyEntries(
+  persisted: TodoIdempotencyEntry | undefined,
+  cached: TodoIdempotencyEntry | undefined,
+): TodoIdempotencyEntry | undefined {
+  if (!persisted) return cached;
+  if (!cached) return persisted;
+  if (cached.fingerprint === persisted.fingerprint) {
+    if (
+      cached.state === 'completed' ||
+      (cached.state === 'unknown' && isPlainObject(cached.receipt) && !isPlainObject(persisted.receipt))
+    ) {
+      return cached;
+    }
+    if (!isPlainObject(persisted.receipt) && isPlainObject(cached.receipt)) {
+      return {...persisted, receipt: cached.receipt};
+    }
+  }
+  return persisted;
+}
+
+function resolveExistingTodoIdempotencyEntry(
+  existing: TodoIdempotencyEntry,
+  idempotencyKey: string,
+  fingerprint: string,
+) {
+  if (existing.fingerprint !== fingerprint) {
+    return fail('failed', 'todo_idempotency_conflict', {idempotencyKey});
+  }
+  const effectiveState = existing.state ?? (isPlainObject(existing.receipt) ? 'completed' : 'reserved');
+  if (effectiveState === 'completed' && isPlainObject(existing.receipt)) {
+    return {
+      state: 'completed' as const,
+      value: {
+        receipt: existing.receipt,
+        idempotencyKey,
+        replayed: true,
+        writtenAt: new Date().toISOString(),
+        source: 'todo_write_receipt',
+      },
+    };
+  }
+  return fail('unknown', 'todo_write_reconciliation_required', {
+    idempotencyKey,
+    reconciliationRequired: true,
+    previousState: effectiveState,
+    ...(isPlainObject(existing.receipt) ? {receipt: existing.receipt} : {}),
+  });
+}
+
 /**
  * 待办受控写口：
  * - 向底层 `todo.create` / `todo.update` 仅传递符合 schema（`additionalProperties: false`）的字段；
- * - 默认在单进程内通过内存 Map 提供同 `idempotencyKey` 幂等重放与异载荷冲突拒绝，调用方也可注入持久化 `idempotencyStore`。
+ * - 按 `idempotencyKey` 串行化并在执行前持久化 `'reserved'` 预留记录，防止并发重复执行与重启盲目重做；
+ * - 若底层写入已完成但账本落盘失败或写结果不确定，保留回执并返回 `'unknown'` 状态要求对账。
  */
 export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOptions): WorkflowHostPort {
   if (typeof options?.write?.execute !== 'function' || typeof options?.resolveWrite !== 'function') {
@@ -92,6 +199,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
       inMemoryLedger.set(key, entry);
     },
   };
+  const fallbackLedger = getTodoStoreFallbackLedger(store);
   return {
     capabilities: ['todo.registered_write'],
     async read(context: WorkflowNodeContext) {
@@ -103,6 +211,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
       if (op === 'todo.update' && !text(writeInput.id)) {
         return fail('unavailable', 'todo_update_id_unavailable');
       }
+      const idempotencyKey = writeInput.idempotencyKey;
       const fingerprint = createHash('sha256')
         .update(
           JSON.stringify({
@@ -118,25 +227,52 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
         )
         .digest('hex');
 
-      const existing = await store.get(writeInput.idempotencyKey);
-      if (existing) {
-        if (existing.fingerprint !== fingerprint) {
-          return fail('failed', 'todo_idempotency_conflict', {idempotencyKey: writeInput.idempotencyKey});
+      return withTodoIdempotencyKeyLock(store, idempotencyKey, async () => {
+        let persisted: TodoIdempotencyEntry | undefined;
+        let storeGetFailed = false;
+        try {
+          persisted = await store.get(idempotencyKey);
+        } catch (error) {
+          if (isContextAbortedOrExpired(context)) throw error;
+          storeGetFailed = true;
         }
-        return {
-          state: 'completed' as const,
-          value: {
-            receipt: existing.receipt,
-            idempotencyKey: writeInput.idempotencyKey,
-            replayed: true,
-            writtenAt: new Date().toISOString(),
-            source: 'todo_write_receipt',
-          },
-        };
-      }
+        const cached = fallbackLedger.get(idempotencyKey);
+        const existing = mergeTodoIdempotencyEntries(persisted, cached);
+        if (existing) {
+          return resolveExistingTodoIdempotencyEntry(existing, idempotencyKey, fingerprint);
+        }
+        if (storeGetFailed) {
+          return fail('unknown', 'todo_idempotency_store_unavailable', {
+            idempotencyKey,
+            reconciliationRequired: true,
+          });
+        }
 
-      try {
-        // 对齐 packages/productivity 的 todo.create / todo.update 输入 schema（additionalProperties: false）
+        // 1. 写前先持久化可恢复的预留记录；若预留失败则拒绝执行，保证不产生未登记的外部副作用
+        const reservedAt = new Date().toISOString();
+        const reservationEntry: TodoIdempotencyEntry = {
+          state: 'reserved',
+          fingerprint,
+          reservedAt,
+        };
+        try {
+          if (typeof store.reserve === 'function') {
+            const raced = await store.reserve(idempotencyKey, reservationEntry);
+            if (raced) {
+              return resolveExistingTodoIdempotencyEntry(raced, idempotencyKey, fingerprint);
+            }
+          } else {
+            await store.set(idempotencyKey, reservationEntry);
+          }
+          fallbackLedger.set(idempotencyKey, reservationEntry);
+        } catch (error) {
+          if (isContextAbortedOrExpired(context)) throw error;
+          return fail('failed', 'todo_idempotency_reservation_failed', {
+            idempotencyKey,
+          });
+        }
+
+        // 2. 执行底层待办写操作（严格对齐 packages/productivity 的 todo.create / todo.update inputSchema）
         const toolPayload: Record<string, unknown> = {
           ...(op === 'todo.update' && text(writeInput.id) ? {id: writeInput.id} : {}),
           title: writeInput.title,
@@ -145,23 +281,89 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
           ...(text(writeInput.remindUtc) ? {remindUtc: writeInput.remindUtc} : {}),
           ...(op === 'todo.update' && text(writeInput.status) ? {status: writeInput.status} : {}),
         };
-        const result = await options.write.execute(op, toolPayload, context);
-        if (!isPlainObject(result)) return fail('failed', 'todo_write_malformed');
-        await store.set(writeInput.idempotencyKey, {fingerprint, receipt: result});
+        let result: unknown;
+        try {
+          result = await options.write.execute(op, toolPayload, context);
+        } catch (error) {
+          if (isContextAbortedOrExpired(context)) throw error;
+          const uncertainEntry: TodoIdempotencyEntry = {
+            state: 'unknown',
+            fingerprint,
+            reservedAt,
+            reason: 'todo_write_outcome_uncertain',
+          };
+          fallbackLedger.set(idempotencyKey, uncertainEntry);
+          try {
+            await store.set(idempotencyKey, uncertainEntry);
+          } catch {
+            // 写前预留已落盘且内存兜底已记录 unknown，忽略此处的二次存储异常
+          }
+          return fail('unknown', 'todo_write_outcome_uncertain', {
+            idempotencyKey,
+            reconciliationRequired: true,
+          });
+        }
+
+        if (!isPlainObject(result)) {
+          const malformedEntry: TodoIdempotencyEntry = {
+            state: 'unknown',
+            fingerprint,
+            reservedAt,
+            reason: 'todo_write_malformed',
+          };
+          fallbackLedger.set(idempotencyKey, malformedEntry);
+          try {
+            await store.set(idempotencyKey, malformedEntry);
+          } catch {
+            // 写前预留已落盘且内存兜底已记录 unknown，忽略此处的二次存储异常
+          }
+          return fail('unknown', 'todo_write_malformed', {
+            idempotencyKey,
+            reconciliationRequired: true,
+          });
+        }
+
+        // 3. 写入成功后保存完成态回执；若此时账本 set 抛错，保留回执并返回 unknown 要求对账，禁止后续盲目重做
+        const completedAt = new Date().toISOString();
+        const completedEntry: TodoIdempotencyEntry = {
+          state: 'completed',
+          fingerprint,
+          receipt: result,
+          reservedAt,
+          completedAt,
+        };
+        fallbackLedger.set(idempotencyKey, completedEntry);
+        try {
+          await store.set(idempotencyKey, completedEntry);
+        } catch (error) {
+          if (isContextAbortedOrExpired(context)) throw error;
+          const uncertainCommitEntry: TodoIdempotencyEntry = {
+            state: 'unknown',
+            fingerprint,
+            receipt: result,
+            reservedAt,
+            completedAt,
+            reason: 'todo_idempotency_commit_uncertain',
+          };
+          fallbackLedger.set(idempotencyKey, uncertainCommitEntry);
+          return fail('unknown', 'todo_idempotency_commit_uncertain', {
+            idempotencyKey,
+            receipt: result,
+            reconciliationRequired: true,
+          });
+        }
+
         return {
           state: 'completed' as const,
           value: {
             receipt: result,
-            idempotencyKey: writeInput.idempotencyKey,
+            idempotencyKey,
             replayed: false,
-            writtenAt: new Date().toISOString(),
+            writtenAt: completedAt,
             source: 'todo_write_receipt',
           },
         };
-      } catch (error) {
-        if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw error;
-        return fail('failed', 'todo_write_failed');
-      }
+      });
     },
   };
 }
@@ -465,7 +667,15 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
       try {
         // 0. 如提供了 previousSequence 且注入了 calendarReadPort，在 host 侧先读回校验写前新鲜度
         if (typeof input.previousSequence === 'number' && typeof options.calendarReadPort?.execute === 'function') {
-          const prePage = await options.calendarReadPort.execute('calendar.events', {}, context);
+          const prePage = await options.calendarReadPort.execute(
+            'calendar.events',
+            {
+              fromUtc: '1970-01-01T00:00:00.000Z',
+              toUtc: '2999-01-01T00:00:00.000Z',
+              limit: 100,
+            },
+            context,
+          );
           if (!isPlainObject(prePage) || !Array.isArray(prePage.items)) {
             return fail('failed', 'calendar_window_read_malformed');
           }

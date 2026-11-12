@@ -268,6 +268,190 @@ test('F06_N03 todo.registered_write：注册待办写口、schema 对齐与宿�
   assert.equal((await unavail.read(context())).state, 'unavailable');
 });
 
+test('F06_N03 todo.registered_write：并发同键串行化、写前预留落盘、存储失败保留回执/unknown 与跨重启对账', async () => {
+  // 1. 并发同键同载荷（带延迟的 Fake 写端口）：execute 仅调用 1 次，一次 replayed=false，一次 replayed=true
+  let concurrentSameCalls = 0;
+  const concurrentSamePort = createTodoRegisteredWriteHostPort({
+    write: {
+      execute: async (_op, input) => {
+        concurrentSameCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return {id: 'todo-concurrent-1', title: input.title, state: 'created'};
+      },
+    },
+    resolveWrite: () => ({title: '并发同载荷待办', idempotencyKey: 'idem-concurrent-same'}),
+  });
+  const [sameA, sameB] = await Promise.all([
+    concurrentSamePort.read(context()),
+    concurrentSamePort.read(context()),
+  ]);
+  assert.equal(concurrentSameCalls, 1);
+  assert.equal(sameA.state, 'completed');
+  assert.equal(sameB.state, 'completed');
+  assert.deepEqual([sameA.value.replayed, sameB.value.replayed].sort(), [false, true]);
+  assert.equal(sameA.value.receipt.id, 'todo-concurrent-1');
+  assert.equal(sameB.value.receipt.id, 'todo-concurrent-1');
+
+  // 2. 并发同键不同载荷（带延迟的 Fake 写端口）：execute 仅调用 1 次，后到冲突方返回 todo_idempotency_conflict
+  let concurrentDiffCalls = 0;
+  const concurrentDiffPort = createTodoRegisteredWriteHostPort({
+    write: {
+      execute: async (_op, input) => {
+        concurrentDiffCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return {id: 'todo-concurrent-2', title: input.title, state: 'created'};
+      },
+    },
+    resolveWrite: (ctx) => ({
+      title: ctx.requestId === 'req-1' ? '买牛奶' : '买咖啡',
+      idempotencyKey: 'idem-concurrent-diff',
+    }),
+  });
+  const [diffA, diffB] = await Promise.all([
+    concurrentDiffPort.read(context({requestId: 'req-1'})),
+    concurrentDiffPort.read(context({requestId: 'req-2'})),
+  ]);
+  assert.equal(concurrentDiffCalls, 1);
+  assert.equal(diffA.state, 'completed');
+  assert.equal(diffB.state, 'failed');
+  assert.equal(diffB.value.reason, 'todo_idempotency_conflict');
+
+  // 3. 写入成功但完成态账本 set 抛错：首次返回 unknown 并保留 receipt；同进程重试与重启后重试均返回 unknown 要求对账，不重复调用 execute
+  const persistentMap = new Map();
+  let commitFailExecCalls = 0;
+  const commitFailStore = {
+    get: (key) => persistentMap.get(key),
+    set: (key, entry) => {
+      if (entry.state === 'completed') {
+        throw new Error('disk_write_failed_on_commit');
+      }
+      persistentMap.set(key, entry);
+    },
+  };
+  const commitFailPort = createTodoRegisteredWriteHostPort({
+    write: {
+      execute: async (_op, input) => {
+        commitFailExecCalls += 1;
+        return {id: 'todo-commit-fail-1', title: input.title, state: 'created'};
+      },
+    },
+    resolveWrite: () => ({title: '写后落盘失败待办', idempotencyKey: 'idem-commit-fail'}),
+    idempotencyStore: commitFailStore,
+  });
+  const firstCommitFail = await commitFailPort.read(context());
+  assert.equal(commitFailExecCalls, 1);
+  assert.equal(firstCommitFail.state, 'unknown');
+  assert.equal(firstCommitFail.value.reason, 'todo_idempotency_commit_uncertain');
+  assert.equal(firstCommitFail.value.reconciliationRequired, true);
+  assert.equal(firstCommitFail.value.receipt.id, 'todo-commit-fail-1');
+
+  // 同进程内重试同一 key：不再次执行 execute，返回 unknown + receipt 要求对账
+  const retrySameProcess = await commitFailPort.read(context());
+  assert.equal(commitFailExecCalls, 1);
+  assert.equal(retrySameProcess.state, 'unknown');
+  assert.equal(retrySameProcess.value.reason, 'todo_write_reconciliation_required');
+  assert.equal(retrySameProcess.value.reconciliationRequired, true);
+  assert.equal(retrySameProcess.value.receipt.id, 'todo-commit-fail-1');
+
+  // 模拟进程重启（新建实例，底层持久化存储仅保留写前 reserved 记录）：重试同一 key 仍返回 unknown 要求对账，绝不重跑 execute
+  let restartInput = {title: '写后落盘失败待办', idempotencyKey: 'idem-commit-fail'};
+  const restartedPort = createTodoRegisteredWriteHostPort({
+    write: {
+      execute: async () => {
+        commitFailExecCalls += 1;
+        return {id: 'should-not-run'};
+      },
+    },
+    resolveWrite: () => restartInput,
+    idempotencyStore: {
+      get: (key) => persistentMap.get(key),
+      set: (key, entry) => persistentMap.set(key, entry),
+    },
+  });
+  const retryAfterRestart = await restartedPort.read(context());
+  assert.equal(commitFailExecCalls, 1);
+  assert.equal(retryAfterRestart.state, 'unknown');
+  assert.equal(retryAfterRestart.value.reason, 'todo_write_reconciliation_required');
+  assert.equal(retryAfterRestart.value.previousState, 'reserved');
+  assert.equal(retryAfterRestart.value.reconciliationRequired, true);
+
+  // 重启后若以同 key 不同载荷调用：返回 todo_idempotency_conflict，不执行 execute
+  restartInput = {title: '篡改后的待办标题', idempotencyKey: 'idem-commit-fail'};
+  const conflictAfterRestart = await restartedPort.read(context());
+  assert.equal(commitFailExecCalls, 1);
+  assert.equal(conflictAfterRestart.state, 'failed');
+  assert.equal(conflictAfterRestart.value.reason, 'todo_idempotency_conflict');
+
+  // 4. 写前预留落盘即抛错：拒绝执行底层写（execute 调用 0 次，无副作用）
+  let preFailExecCalls = 0;
+  const preFailPort = createTodoRegisteredWriteHostPort({
+    write: {
+      execute: async () => {
+        preFailExecCalls += 1;
+        return {id: 'should-not-run'};
+      },
+    },
+    resolveWrite: () => ({title: '预留失败待办', idempotencyKey: 'idem-pre-fail'}),
+    idempotencyStore: {
+      get: () => undefined,
+      set: () => {
+        throw new Error('store_completely_unavailable');
+      },
+    },
+  });
+  const preFailRes = await preFailPort.read(context());
+  assert.equal(preFailExecCalls, 0);
+  assert.equal(preFailRes.state, 'failed');
+  assert.equal(preFailRes.value.reason, 'todo_idempotency_reservation_failed');
+
+  // 5. 写前预留成功后底层写抛错（结果不确定）：首次返回 unknown，重试返回 unknown 对账且不重复执行 execute
+  let uncertainExecCalls = 0;
+  const uncertainPort = createTodoRegisteredWriteHostPort({
+    write: {
+      execute: async () => {
+        uncertainExecCalls += 1;
+        throw new Error('network_timeout_after_request_sent');
+      },
+    },
+    resolveWrite: () => ({title: '网络超时待办', idempotencyKey: 'idem-uncertain'}),
+  });
+  const firstUncertain = await uncertainPort.read(context());
+  assert.equal(uncertainExecCalls, 1);
+  assert.equal(firstUncertain.state, 'unknown');
+  assert.equal(firstUncertain.value.reason, 'todo_write_outcome_uncertain');
+  const retryUncertain = await uncertainPort.read(context());
+  assert.equal(uncertainExecCalls, 1);
+  assert.equal(retryUncertain.state, 'unknown');
+  assert.equal(retryUncertain.value.reason, 'todo_write_reconciliation_required');
+
+  // 6. 正常完成后跨进程重启：基于持久化账本直接重放 completed，不重复执行 execute
+  const sharedDurableStore = new Map();
+  let durableCalls = 0;
+  const makeDurablePort = () =>
+    createTodoRegisteredWriteHostPort({
+      write: {
+        execute: async (_op, input) => {
+          durableCalls += 1;
+          return {id: 'todo-durable-1', title: input.title, state: 'created'};
+        },
+      },
+      resolveWrite: () => ({title: '持久化待办', idempotencyKey: 'idem-durable-1'}),
+      idempotencyStore: {
+        get: (key) => sharedDurableStore.get(key),
+        set: (key, entry) => sharedDurableStore.set(key, entry),
+      },
+    });
+  const durableFirst = await makeDurablePort().read(context());
+  assert.equal(durableCalls, 1);
+  assert.equal(durableFirst.state, 'completed');
+  assert.equal(durableFirst.value.replayed, false);
+  const durableAfterRestart = await makeDurablePort().read(context());
+  assert.equal(durableCalls, 1);
+  assert.equal(durableAfterRestart.state, 'completed');
+  assert.equal(durableAfterRestart.value.replayed, true);
+  assert.equal(durableAfterRestart.value.receipt.id, 'todo-durable-1');
+});
+
 test('F06_N04 reminder.current_clock_and_revision：实际时钟、版本到期核对与非法时间失败', async () => {
   const port = createReminderClockRevisionHostPort({
     reminderPort: {
