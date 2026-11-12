@@ -1,5 +1,7 @@
 # 当前接口目录与冻结登记
 
+> 测试失败定位（provisional）：已有定位器可识别完整的 Node 语法检查诊断，结果 reporter 增加 node-check。Desktop 公开解析入口继续去除源码片段；日志解析不提供执行或额外读取权限。F17 图及真实仓库验收另行交付。
+
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
