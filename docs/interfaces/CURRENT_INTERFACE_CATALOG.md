@@ -1,5 +1,7 @@
 # 当前接口目录与冻结登记
 
+> 日历窗口内容摘要（provisional）：calendar.events 仅在无 cursor 且结果完整时附带 sourceVersion；分页结果不提供完整窗口摘要。它不是账号身份、全账号修订或条件写令牌；特别是空窗口不包含账号信息，调用方须另外绑定并核验来源。真实日历及 F07 流程验收另行记录。
+
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
