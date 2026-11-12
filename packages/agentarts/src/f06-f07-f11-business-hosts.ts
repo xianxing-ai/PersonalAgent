@@ -68,20 +68,64 @@ export interface TodoIdempotencyEntry {
   readonly reason?: string;
 }
 
+export type TodoIdempotencyReserveResult =
+  | {readonly reserved: true}
+  | {readonly reserved: false; readonly existing?: TodoIdempotencyEntry};
+
+function isTodoIdempotencyEntry(value: unknown): value is TodoIdempotencyEntry {
+  return (
+    isPlainObject(value) &&
+    typeof value.fingerprint === 'string' &&
+    (value.state === undefined || value.state === 'reserved' || value.state === 'completed' || value.state === 'unknown') &&
+    (value.receipt === undefined || isPlainObject(value.receipt))
+  );
+}
+
 export interface TodoIdempotencyStore {
   get(key: string): Promise<TodoIdempotencyEntry | undefined> | TodoIdempotencyEntry | undefined;
   set(key: string, entry: TodoIdempotencyEntry): Promise<void> | void;
-  /** 可选原子预留接口：若 key 已存在则返回既有记录；若不存在则写入预留记录并返回 undefined。 */
-  reserve?(
+  /**
+   * 存储层原子预留接口（如唯一键插入事务或 CAS），必须跨实例/跨进程原子：
+   * - 若 key 尚不存在，原子写入预留记录 entry 并返回 {reserved: true}；
+   * - 若 key 已存在，不覆盖既有记录，返回 {reserved: false, existing?}。
+   * 其他任何返回值均视为契约违约并 fail-closed。
+   */
+  reserve(
     key: string,
     entry: TodoIdempotencyEntry,
-  ): Promise<TodoIdempotencyEntry | undefined> | TodoIdempotencyEntry | undefined;
+  ): Promise<TodoIdempotencyReserveResult> | TodoIdempotencyReserveResult;
+}
+
+/**
+ * 创建基于指定底层 Map 的原子内存幂等账本（仅供单进程测试或显式共享 Map 的隔离验证使用）。
+ */
+export function createInMemoryTodoIdempotencyStore(
+  backingMap: Map<string, TodoIdempotencyEntry> = new Map(),
+): TodoIdempotencyStore {
+  return {
+    get: (key) => backingMap.get(key),
+    set: (key, entry) => {
+      backingMap.set(key, entry);
+    },
+    reserve: (key, entry) => {
+      // 同步“检查 + 写入”在单线程事件循环内不可被打断，共享同一 Map 的多个包装实例之间同样原子
+      const existing = backingMap.get(key);
+      if (existing !== undefined) {
+        return {reserved: false, existing};
+      }
+      backingMap.set(key, entry);
+      return {reserved: true};
+    },
+  };
 }
 
 export interface TodoRegisteredWriteOptions {
   readonly write: TodoWorkflowWritePort;
   resolveWrite(context: WorkflowNodeContext): TodoWriteInput | undefined;
-  /** 可选跨重启持久化幂等账本；未提供时默认使用单进程内内存 Map。 */
+  /**
+   * 跨重启/跨实例持久化幂等账本（必须提供原子 reserve、get、set）。
+   * 未配置或未实现原子 reserve 时，todo.registered_write 将 fail-closed 返回 unavailable。
+   */
   readonly idempotencyStore?: TodoIdempotencyStore;
 }
 
@@ -185,24 +229,29 @@ function resolveExistingTodoIdempotencyEntry(
 /**
  * 待办受控写口：
  * - 向底层 `todo.create` / `todo.update` 仅传递符合 schema（`additionalProperties: false`）的字段；
- * - 按 `idempotencyKey` 串行化并在执行前持久化 `'reserved'` 预留记录，防止并发重复执行与重启盲目重做；
+ * - 强制要求注入具备存储层原子 `reserve` 的 `idempotencyStore`，未配置或缺少原子 `reserve` 时 fail-closed 返回 `'unavailable'`；
+ * - 执行前通过存储层原子 `reserve` 持久化 `'reserved'` 预留记录，防止跨实例/并发重复执行与重启盲目重做；
  * - 若底层写入已完成但账本落盘失败或写结果不确定，保留回执并返回 `'unknown'` 状态要求对账。
  */
 export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOptions): WorkflowHostPort {
   if (typeof options?.write?.execute !== 'function' || typeof options?.resolveWrite !== 'function') {
     throw new TypeError('createTodoRegisteredWriteHostPort 需要 write 端口与 resolveWrite');
   }
-  const inMemoryLedger = new Map<string, TodoIdempotencyEntry>();
-  const store: TodoIdempotencyStore = options.idempotencyStore ?? {
-    get: (key) => inMemoryLedger.get(key),
-    set: (key, entry) => {
-      inMemoryLedger.set(key, entry);
-    },
-  };
-  const fallbackLedger = getTodoStoreFallbackLedger(store);
+  const store = options.idempotencyStore;
+  const fallbackLedger = store && typeof store === 'object' ? getTodoStoreFallbackLedger(store) : undefined;
   return {
     capabilities: ['todo.registered_write'],
     async read(context: WorkflowNodeContext) {
+      if (!store || typeof store !== 'object') {
+        return fail('unavailable', 'todo_idempotency_store_unavailable');
+      }
+      if (
+        typeof store.reserve !== 'function' ||
+        typeof store.get !== 'function' ||
+        typeof store.set !== 'function'
+      ) {
+        return fail('unavailable', 'todo_idempotency_atomic_reserve_required');
+      }
       const writeInput = options.resolveWrite(context);
       if (!writeInput || !text(writeInput.title) || !text(writeInput.idempotencyKey)) {
         return fail('unavailable', 'todo_write_input_unavailable');
@@ -228,49 +277,63 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
         .digest('hex');
 
       return withTodoIdempotencyKeyLock(store, idempotencyKey, async () => {
-        let persisted: TodoIdempotencyEntry | undefined;
-        let storeGetFailed = false;
-        try {
-          persisted = await store.get(idempotencyKey);
-        } catch (error) {
-          if (isContextAbortedOrExpired(context)) throw error;
-          storeGetFailed = true;
-        }
-        const cached = fallbackLedger.get(idempotencyKey);
-        const existing = mergeTodoIdempotencyEntries(persisted, cached);
-        if (existing) {
-          return resolveExistingTodoIdempotencyEntry(existing, idempotencyKey, fingerprint);
-        }
-        if (storeGetFailed) {
-          return fail('unknown', 'todo_idempotency_store_unavailable', {
-            idempotencyKey,
-            reconciliationRequired: true,
-          });
+        const cachedBeforeReserve = fallbackLedger?.get(idempotencyKey);
+        if (cachedBeforeReserve) {
+          let persistedForMerge: TodoIdempotencyEntry | undefined;
+          try {
+            const readBack = await store.get(idempotencyKey);
+            persistedForMerge = isTodoIdempotencyEntry(readBack) ? readBack : undefined;
+          } catch (error) {
+            if (isContextAbortedOrExpired(context)) throw error;
+          }
+          const merged = mergeTodoIdempotencyEntries(persistedForMerge, cachedBeforeReserve) ?? cachedBeforeReserve;
+          return resolveExistingTodoIdempotencyEntry(merged, idempotencyKey, fingerprint);
         }
 
-        // 1. 写前先持久化可恢复的预留记录；若预留失败则拒绝执行，保证不产生未登记的外部副作用
+        // 1. 直接调用存储层原子 reserve 持久化可恢复预留（避免先 get 后 set 的跨实例竞态窗口）
         const reservedAt = new Date().toISOString();
         const reservationEntry: TodoIdempotencyEntry = {
           state: 'reserved',
           fingerprint,
           reservedAt,
         };
+        // 只认显式 {reserved: true} 为抢到预留；undefined、布尔值或其他形状一律 fail-closed，
+        // 避免把“冲突时静默返回 undefined”的存储实现误判为预留成功而重复写入。
+        let reserveOut: unknown;
         try {
-          if (typeof store.reserve === 'function') {
-            const raced = await store.reserve(idempotencyKey, reservationEntry);
-            if (raced) {
-              return resolveExistingTodoIdempotencyEntry(raced, idempotencyKey, fingerprint);
-            }
-          } else {
-            await store.set(idempotencyKey, reservationEntry);
-          }
-          fallbackLedger.set(idempotencyKey, reservationEntry);
+          reserveOut = await store.reserve(idempotencyKey, reservationEntry);
         } catch (error) {
           if (isContextAbortedOrExpired(context)) throw error;
-          return fail('failed', 'todo_idempotency_reservation_failed', {
-            idempotencyKey,
-          });
+          return fail('failed', 'todo_idempotency_reservation_failed', {idempotencyKey});
         }
+        if (!isPlainObject(reserveOut) || typeof reserveOut.reserved !== 'boolean') {
+          return fail('failed', 'todo_idempotency_reservation_malformed', {idempotencyKey});
+        }
+
+        if (!reserveOut.reserved) {
+          // 记录已存在：优先用 reserve 返回的既有记录，否则回读；回读失败时记录确实存在但内容未知，要求对账
+          let existingFromReserve: TodoIdempotencyEntry | undefined;
+          if (isTodoIdempotencyEntry(reserveOut.existing)) {
+            existingFromReserve = reserveOut.existing;
+          } else {
+            try {
+              const readBack = await store.get(idempotencyKey);
+              existingFromReserve = isTodoIdempotencyEntry(readBack) ? readBack : undefined;
+            } catch (error) {
+              if (isContextAbortedOrExpired(context)) throw error;
+            }
+          }
+          const existing = mergeTodoIdempotencyEntries(existingFromReserve, fallbackLedger?.get(idempotencyKey));
+          if (!existing) {
+            return fail('unknown', 'todo_write_reconciliation_required', {
+              idempotencyKey,
+              reconciliationRequired: true,
+            });
+          }
+          return resolveExistingTodoIdempotencyEntry(existing, idempotencyKey, fingerprint);
+        }
+
+        fallbackLedger?.set(idempotencyKey, reservationEntry);
 
         // 2. 执行底层待办写操作（严格对齐 packages/productivity 的 todo.create / todo.update inputSchema）
         const toolPayload: Record<string, unknown> = {
@@ -292,7 +355,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
             reservedAt,
             reason: 'todo_write_outcome_uncertain',
           };
-          fallbackLedger.set(idempotencyKey, uncertainEntry);
+          fallbackLedger?.set(idempotencyKey, uncertainEntry);
           try {
             await store.set(idempotencyKey, uncertainEntry);
           } catch {
@@ -311,7 +374,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
             reservedAt,
             reason: 'todo_write_malformed',
           };
-          fallbackLedger.set(idempotencyKey, malformedEntry);
+          fallbackLedger?.set(idempotencyKey, malformedEntry);
           try {
             await store.set(idempotencyKey, malformedEntry);
           } catch {
@@ -332,7 +395,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
           reservedAt,
           completedAt,
         };
-        fallbackLedger.set(idempotencyKey, completedEntry);
+        fallbackLedger?.set(idempotencyKey, completedEntry);
         try {
           await store.set(idempotencyKey, completedEntry);
         } catch (error) {
@@ -345,7 +408,7 @@ export function createTodoRegisteredWriteHostPort(options: TodoRegisteredWriteOp
             completedAt,
             reason: 'todo_idempotency_commit_uncertain',
           };
-          fallbackLedger.set(idempotencyKey, uncertainCommitEntry);
+          fallbackLedger?.set(idempotencyKey, uncertainCommitEntry);
           return fail('unknown', 'todo_idempotency_commit_uncertain', {
             idempotencyKey,
             receipt: result,
