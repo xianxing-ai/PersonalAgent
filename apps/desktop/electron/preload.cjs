@@ -39,6 +39,17 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     ipcRenderer.on('desktop:update', receive);
     return () => ipcRenderer.removeListener('desktop:update', receive);
   },
+  onTaskActivity: listener => {
+    if (typeof listener !== 'function') throw Error('Activity listener required');
+    const receive = (_event, value) => listener(value);
+    ipcRenderer.on('desktop:task-activity', receive);
+    return () => ipcRenderer.removeListener('desktop:task-activity', receive);
+  },
+  onOpenAssistant: listener => {
+    const receive = (_event, value) => listener(value);
+    ipcRenderer.on('desktop:open-assistant', receive);
+    return () => ipcRenderer.removeListener('desktop:open-assistant', receive);
+  },
   microphone: Object.freeze({
     onCommand: listener => {
       const receive = (_event, command) => listener(command);

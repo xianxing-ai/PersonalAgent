@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import {mkdtemp, rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import {TaskRuntime} from '../dist/index.js';
+import {createRuntimeApplication} from '../dist/application.js';
+
+test('activity coalesces into a readable transcript and injection waits for the next step', async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'pa-activity-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const runtime = new TaskRuntime(path.join(directory, 'runtime.sqlite'));
+  const seen = [];
+  runtime.subscribeActivity(event => seen.push(event.kind));
+  const task = runtime.submitTask({goal: '回答', conversationId: 'desktop', idempotencyKey: 'activity-1'});
+  runtime.transitionTask(task.taskId, 'planning');
+  runtime.transitionTask(task.taskId, 'running');
+  runtime.appendActivity(task.taskId, {kind: 'reasoning', stepId: 's1', text: '先想'});
+  runtime.appendActivity(task.taskId, {kind: 'reasoning', stepId: 's1', text: '清楚'});
+  runtime.appendActivity(task.taskId, {kind: 'tool_call', stepId: 'tool-1', toolName: 'knowledge.search', argsSummary: '{"q":"天气"}', label: '正在搜索知识库'});
+  runtime.appendActivity(task.taskId, {kind: 'tool_result', stepId: 'tool-1', toolName: 'knowledge.search', resultSummary: '晴', durationMs: 12, label: '搜索知识库已完成'});
+  runtime.appendActivity(task.taskId, {kind: 'answer_delta', stepId: 's1', text: '今天'});
+  runtime.flushActivity(task.taskId);
+  const transcript = runtime.readTranscript(task.taskId);
+  assert.equal(transcript.segments.find(segment => segment.kind === 'reasoning').text, '先想清楚');
+  assert.equal(transcript.segments.find(segment => segment.kind === 'tool').resultSummary, '晴');
+  assert.equal(transcript.segments.find(segment => segment.kind === 'tool').durationMs, 12);
+  assert.equal(transcript.segments.find(segment => segment.kind === 'answer').text, '今天');
+  assert.deepEqual(seen, ['reasoning', 'reasoning', 'tool_call', 'tool_result', 'answer_delta']);
+  const injected = runtime.injectUserMessage(task.taskId, '改成明天', 'user', 'req-1');
+  assert.equal(runtime.injectUserMessage(task.taskId, '改成明天', 'user', 'req-1').id, injected.id);
+  assert.throws(() => runtime.injectUserMessage(task.taskId, '另一句', 'user', 'req-1'), {code: 'REVISION_CONFLICT'});
+  assert.deepEqual(runtime.drainUserInjections(task.taskId).map(item => item.text), ['改成明天']);
+  assert.deepEqual(runtime.drainUserInjections(task.taskId), []);
+  runtime.close();
+  const reopened = new TaskRuntime(path.join(directory, 'runtime.sqlite'));
+  assert.equal(reopened.readTranscript(task.taskId).segments.find(segment => segment.kind === 'answer').text, '今天');
+  reopened.close();
+});
+
+test('assistants stay addressable without a parent dispatch and keep mail', async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'pa-assistants-'));
+  t.after(() => rm(directory, {recursive: true, force: true}));
+  const app = createRuntimeApplication({path: path.join(directory, 'runtime.sqlite'), text: {mode: 'fake'}});
+  const listed = app.listAssistants();
+  assert.equal(listed.some(item => item.assistantId === 'coder' && item.displayName === '编码助手'), true);
+  const sent = app.submitAssistantMessage({assistantId: 'coder', text: '看一下类型错误', requestId: 'direct-1'});
+  assert.equal(typeof sent.acceptedTaskId, 'string');
+  const thread = app.readAssistantThread('coder');
+  assert.equal(thread.turns.some(turn => turn.userText === '看一下类型错误'), true);
+  for (let i = 0; i < 50 && app.activeTaskCount > 0; i++) await new Promise(resolve => setTimeout(resolve, 20));
+  app.close();
+  const again = createRuntimeApplication({path: path.join(directory, 'runtime.sqlite'), text: {mode: 'fake'}});
+  assert.equal(again.readAssistantThread('coder').turns.length >= 1, true);
+  again.close();
+});

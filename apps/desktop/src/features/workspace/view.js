@@ -1,7 +1,7 @@
 import {errorDisplayText} from '../../shared/error-display.js';
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {mountModelThinkingPicker} from '../conversation/model-thinking-picker.js';
-import {mountSubagentConversations} from '../conversation/subagent-conversations.js';
+import {answerCardHtml, assistantCardHtml, liveFromTranscript, rememberActivity} from '../conversation/answer-block.js';
 import {Orb} from '../orb/orb.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
 import {mountConversationRail} from '../conversation/rail.js';
@@ -18,6 +18,10 @@ import {mountWorkspaceRuntimeControls} from './runtime-controls.js';
 const paths={settings:'M4 7h10m4 0h2M4 17h2m4 0h10M16 4v6M8 14v6',connectors:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zm11 3h7m-3-3v7',close:'m6 6 12 12M6 18 18 6',maximize:'M5 5h14v14H5z',minimize:'M5 12h14',copy:'M8 8h12v12H8zM16 8V4H4v12h4',view:'M3 5h18v14H3zM9 5v14'};
 const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]}"/></svg>`;
 export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
+  const liveTurns=new Map();
+  let lastData;
+  const paintAssistants=data=>{const node=root.querySelector('.assistant-cards');if(node)node.innerHTML=(data?.assistants??[]).map(item=>assistantCardHtml(item,escape)).join('');};
+  window.desktop?.onTaskActivity?.(event=>{rememberActivity(liveTurns,event);const slot=root.querySelector(`[data-answer-for="${event.taskId}"]`);if(!slot)return;const task=(lastData?.tasks??[]).find(item=>item.taskId===event.taskId);if(!task)return;const wrap=document.createElement('div');wrap.innerHTML=answerCardHtml(task,liveTurns.get(event.taskId),escape);slot.replaceWith(wrap.firstElementChild);});
   let current={tasks:[]},lastSignature='',cardsSignature='',inspected=null;
   let updateRevision=0;
   let connectorsRequested=true;
@@ -29,8 +33,23 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       <aside class="connector-board" aria-label="连接器信息"><header><div><h2>连接器</h2></div><button class="icon-btn" id="connectors-refresh" aria-label="刷新连接器">↻</button></header><div id="connector-cards"></div></aside>
       <aside class="conversation-inspector" id="conversation-inspector" aria-label="对话详情" hidden><header><h2>对话详情</h2><button class="icon-btn" id="inspector-close" aria-label="关闭对话详情">${icon('close')}</button></header><div id="inspector-content"></div></aside></div>
     </main></section>`;
-  const subagents=mountSubagentConversations(root.querySelector('#workspace-stage'),invoke,escape);
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
+  const assistantCards=document.createElement('section');assistantCards.className='assistant-cards';assistantCards.setAttribute('aria-label','子助手');
+  const assistantThread=document.createElement('section');assistantThread.className='assistant-thread';assistantThread.hidden=true;
+  conversation.before(assistantCards);stage.append(assistantThread);
+  const showAssistant=async assistantId=>{
+    const thread=await invoke('assistant.thread',{assistantId});
+    await invoke('assistant.read',{assistantId}).catch(()=>{});
+    conversation.hidden=true;assistantThread.hidden=false;
+    const turns=(thread.turns??[]).map(turn=>`<article class="assistant-turn"><div class="user-message">${escape(turn.userText||turn.goal||'')}</div>${answerCardHtml({...turn,resultSummary:turn.replyText}, liveFromTranscript(turn.transcript), escape)}</article>`).join('');
+    const dispatched=thread.dispatched?`<article class="assistant-turn"><div class="user-message">${escape(thread.dispatched.goal||'')}</div>${answerCardHtml({...thread.dispatched,resultSummary:thread.dispatched.replyText}, liveFromTranscript(thread.dispatched.transcript), escape)}</article>`:'';
+    assistantThread.innerHTML=`<header><strong>${escape(thread.assistant.displayName)}</strong><span>${escape(thread.assistant.instructions||'')}</span><button type="button" data-assistant-back>返回</button><button type="button" data-assistant-stop ${thread.assistant.activeTaskId?'':'disabled'}>停止</button></header><div>${dispatched}${turns}</div><form><textarea aria-label="给这个助手发消息" placeholder="直接和这个助手聊天，运行中发送就是插话"></textarea><button type="submit">发送</button></form>`;
+    assistantThread.querySelector('[data-assistant-back]').onclick=()=>{assistantThread.hidden=true;conversation.hidden=false;};
+    assistantThread.querySelector('[data-assistant-stop]').onclick=()=>{if(thread.assistant.activeTaskId)invoke('task.cancel',thread.assistant.activeTaskId).catch(report);};
+    assistantThread.querySelector('form').onsubmit=async event=>{event.preventDefault();const input=assistantThread.querySelector('textarea');const text=input.value.trim();if(!text)return;await invoke('assistant.submit',{assistantId,text,requestId:crypto.randomUUID()});input.value='';await showAssistant(assistantId);};
+  };
+  assistantCards.onclick=event=>{const id=event.target.closest('[data-assistant-id]')?.dataset.assistantId;if(id)showAssistant(id).catch(report);};
+  window.desktop?.onOpenAssistant?.(value=>{if(value?.assistantId)showAssistant(value.assistantId).catch(report);});
   const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage,taskId=>invoke('computer.control.confirm',{taskId}));
   const preferences=document.createElement('div');preferences.className='conversation-preferences';
   root.querySelector('.workspace-top').after(preferences);
@@ -149,7 +168,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     updateRevision++;
     const sessionChanged=current?.conversationState?.activeId!==data.conversationState?.activeId;if(sessionChanged){inspected=null;syncAuxiliaryPanels(false);}
     current=data;current.tasks ||= [];
-    subagents.update(data.subagentTasks??[]);
+    lastData=data;paintAssistants(data);
     sessionControls.update(data);nativeReasoning.update(data);
     orb.setLevel(data.audioLevel??0);
     orb.setState(visualOrbState(data));
@@ -162,7 +181,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     if(signature!==lastSignature){
       const focused=conversation.contains(document.activeElement)?document.activeElement:null;
       const atBottom=stage.scrollHeight-stage.scrollTop-stage.clientHeight<90;lastSignature=signature;
-      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div><div class="assistant-message">${escape(resultText(task.resultSummary,task.resultMetadata)||task.error?.message||stateNames[task.state]||task.state)}</div><div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??task.reconciliationStatus?.notice??(task.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${task.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">${escape(task.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
+      updateConversationTurns(conversation,data.tasks.map(task=>`<article class="workspace-turn" data-turn="${escape(task.taskId)}"><div class="user-message">${escape(task.userMessage||'历史对话')}</div>${answerCardHtml(task, liveTurns.get(task.taskId), escape)}<div class="response-actions"><button type="button" data-view="${escape(task.taskId)}" title="在对话内查看" aria-label="查看这轮对话">${icon('view')}</button>${task.resultSummary?`<button type="button" data-copy="${escape(task.taskId)}" title="复制回答" aria-label="复制回答">${icon('copy')}</button>`:''}${task.state==='waiting_reconciliation'?`<p class="notice">${escape(task.reconciliationStatus?.blockedReason??task.reconciliationStatus?.notice??(task.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${task.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-reconcile="${escape(task.taskId)}">${escape(task.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!isTerminal(task)?`<button class="turn-action" data-cancel="${escape(task.taskId)}" ${task.state==='cancelling'?'disabled':''}>${task.state==='cancelling'?'正在停止':'停止'}</button>`:''}</div></article>`).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-cancel]',cancelAttribute:'cancel'});
       syncCancelButtons();restoreTaskActionFocus(focused);
       requestAnimationFrame(()=>{if(atBottom)stage.scrollTop=stage.scrollHeight;updateRail();});if(inspected)renderInspector();
     }

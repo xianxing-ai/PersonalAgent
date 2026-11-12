@@ -1,6 +1,7 @@
 import {ProtocolError} from '@personal-agent/contracts';
+import {completeChatCompletion} from './chat-stream.js';
 import {snapshotModelImages} from './index.js';
-import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, ModelUsage, NativeReasoningConfiguration, VisibleRequestTokenBudget, RequestTokenBudgetBinding, ModelRequestBudget, OpenAICompatibleRequestFormat} from './index.js';
+import type {ModelCapabilities, ModelDeployment, ModelMessage, ModelProvider, ModelRequest, ModelResult, NativeReasoningConfiguration, VisibleRequestTokenBudget, RequestTokenBudgetBinding, ModelRequestBudget, OpenAICompatibleRequestFormat} from './index.js';
 
 /**
  * OpenAI 兼容文本 Provider（POST {baseUrl}/chat/completions）。POTATOS-MVP §9.3「约定供应者」：
@@ -48,7 +49,7 @@ function nativeReasoningConfiguration(value: NativeReasoningConfiguration): Nati
 }
 
 function openAiCompatibleCapabilities(contextLimitTokens: number, vision: boolean): ModelCapabilities {
-  return {text: true, streaming: false, toolCalling: false, structuredOutput: false, vision, contextLimit: contextLimitTokens};
+  return {text: true, streaming: true, toolCalling: false, structuredOutput: false, vision, contextLimit: contextLimitTokens};
 }
 
 export class OpenAICompatibleModelProvider implements ModelProvider {
@@ -198,7 +199,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       ...(outputTokens === undefined ? {} : {[native?.outputTokenParameter ?? 'max_tokens']: outputTokens}),
       ...(this.requestFormat === 'huawei-maas-deepseek-thinking-v1' && effort === 'none'
         ? {chat_template_kwargs: {thinking: false}}
-        : effort === undefined ? {} : {reasoning_effort: effort}), stream: false,
+        : effort === undefined ? {} : {reasoning_effort: effort}), stream: true,
     });
     const requestBudget = this.measureBudget(serializedBody, outputTokens);
     const deadlineMs = Date.parse(request.deadline) - Date.now();
@@ -230,51 +231,26 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       if (controller.signal.aborted || Date.parse(request.deadline) <= Date.now()) {
         throw new ProtocolError('TIMEOUT', 'Model request deadline has expired', true);
       }
-      // A trusted injected guarded fetch must recheck the exact export lease immediately before network I/O.
-      const response = await Promise.race([this.request(`${this.baseUrl}/chat/completions`, {
-        method: 'POST',
+      const payload = JSON.parse(serializedBody) as Record<string, unknown>;
+      delete payload.stream;
+      const completion = await completeChatCompletion({
+        request: this.request,
+        url: `${this.baseUrl}/chat/completions`,
         headers: {'content-type': 'application/json', authorization: `Bearer ${key}`},
-        body: serializedBody,
+        payload,
+        streamBody: serializedBody,
         signal: controller.signal,
-      }), interrupted]);
-      if (!response.ok) throw openAiError(response.status, response.headers.get('retry-after'));
-      let body: unknown;
-      try { body = await Promise.race([response.json(), interrupted]); }
-      catch (error) {
-        if (error instanceof ProtocolError) throw error;
-        throw new ProtocolError('EXTERNAL_FAILURE', 'Model endpoint returned invalid JSON');
-      }
-      if (!body || typeof body !== 'object') throw new ProtocolError('EXTERNAL_FAILURE', 'Model endpoint returned an invalid response');
-      const record = body as Record<string, unknown>;
-      const choices = record.choices;
-      if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== 'object') {
-        throw new ProtocolError('EXTERNAL_FAILURE', 'Model response is missing choices');
-      }
-      const choice = choices[0] as Record<string, unknown>;
-      const message = choice.message;
-      if (!message || typeof message !== 'object') throw new ProtocolError('EXTERNAL_FAILURE', 'Model response is missing message');
-      const rawContent = (message as Record<string, unknown>).content;
-      if (typeof rawContent !== 'string' || !rawContent.trim()) {
-        throw new ProtocolError('EXTERNAL_FAILURE', 'Model response is missing message content');
-      }
-      const usageValue = record.usage;
-      const usage = usageValue && typeof usageValue === 'object' ? usageValue as Record<string, unknown> : undefined;
-      const toCount = (value: unknown): number | undefined =>
-        typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-      const promptTokens = toCount(usage?.prompt_tokens);
-      const completionTokens = toCount(usage?.completion_tokens);
-      const totalTokens = toCount(usage?.total_tokens);
-      const parsedUsage: ModelUsage = {
-        ...(promptTokens === undefined ? {} : {promptTokens}),
-        ...(completionTokens === undefined ? {} : {completionTokens}),
-        ...(totalTokens === undefined ? {} : {totalTokens}),
-      };
+        ...(request.onDelta ? {onDelta: request.onDelta} : {}),
+        race: operation => Promise.race([operation, interrupted]),
+        mapStatus: openAiError,
+      });
       return {
-        response: {kind: 'final', text: rawContent},
+        response: {kind: 'final', text: completion.text},
         deployment: structuredClone(this.deployment),
-        ...(Object.keys(parsedUsage).length === 0 ? {} : {usage: parsedUsage}),
+        ...(completion.reasoning ? {reasoning: completion.reasoning} : {}),
+        ...(completion.usage ? {usage: completion.usage} : {}),
         latencyMs: Date.now() - started,
-        stopReason: typeof choice.finish_reason === 'string' ? choice.finish_reason : 'stop',
+        stopReason: completion.finishReason,
         requestBudget,
       };
     } catch (error) {

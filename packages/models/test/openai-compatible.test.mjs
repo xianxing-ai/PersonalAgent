@@ -120,7 +120,7 @@ test('maps a chat completion to a final text result with usage and stop reason',
   assert.equal(seenAuth, 'Bearer sk-test');
   assert.equal(seenBody.model, 'test-model');
   assert.equal(seenBody.max_tokens, 64);
-  assert.equal(seenBody.stream, false);
+  assert.equal(seenBody.stream, true);
   assert.deepEqual(seenBody.messages, [{role: 'user', content: '北京今天天气如何'}]);
   assert.equal(result.response.kind, 'final');
   assert.equal(result.response.text, '北京多云，午后局部阵雨。');

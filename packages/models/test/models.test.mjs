@@ -58,7 +58,7 @@ test('Pangu V2 provider maps a text completion and keeps usage metadata', async 
   const result = await new ModelGateway(provider).complete(request());
   assert.equal(received.url, 'https://pangu.example.test/api/v2/chat/completions');
   assert.equal(received.options.headers.authorization, 'Bearer secret-key');
-  assert.deepEqual(received.body, {model: 'pangu-nlp-n1-32k', messages: [{role: 'user', content: 'hello'}], max_tokens: 20, stream: false});
+  assert.deepEqual(received.body, {model: 'pangu-nlp-n1-32k', messages: [{role: 'user', content: 'hello'}], max_tokens: 20, stream: true});
   assert.deepEqual(result.response, {kind: 'final', text: 'hello'});
   assert.deepEqual(result.usage, {promptTokens: 3, completionTokens: 2, totalTokens: 5});
   assert.equal(result.deployment.provider, 'pangu');
@@ -166,4 +166,38 @@ test('capability probe is recorded before a gateway is enabled', async () => {
   assert.equal(deployment.capabilities.toolCalling, false);
   assert.equal(registry.get('fake', 'fake-deployment', 'fake-model').capabilities.toolCalling, false);
   await assert.rejects(new ModelGateway(provider, deployment).complete(request({tools: [{name: 'fixture.read', version: '1.0.0', inputSchema: {type: 'object'}, outputSchema: {type: 'object'}, sideEffect: 'read', requiredScopes: [], idempotencySupport: true, recoverySupport: true, requiresPresence: false}]})), {code: 'UNSUPPORTED_CAPABILITY'});
+});
+
+test('Pangu streams reasoning and text, then falls back once when the endpoint rejects streaming', async () => {
+  const deltas = [];
+  const provider = new PanguModelProvider(panguOptions(async () => new Response([
+    'data: {"choices":[{"delta":{"reasoning_content":"先想"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"你好"},"finish_reason":"stop"}]}',
+    '',
+    'data: [DONE]',
+    '',
+  ].join('\n'), {status: 200, headers: {'content-type': 'text/event-stream'}})));
+  const streamed = await provider.complete(request({onDelta: delta => deltas.push(delta)}));
+  assert.equal(streamed.response.text, '你好');
+  assert.equal(streamed.reasoning, '先想');
+  assert.deepEqual(deltas, [{kind: 'reasoning', text: '先想'}, {kind: 'text', text: '你好'}]);
+
+  let calls = 0;
+  const fallback = new PanguModelProvider(panguOptions(async (_url, options) => {
+    calls += 1;
+    const body = JSON.parse(options.body);
+    if (calls === 1) {
+      assert.equal(body.stream, true);
+      return new Response(JSON.stringify({error: {message: 'stream is not supported'}}), {status: 400, headers: {'content-type': 'application/json'}});
+    }
+    assert.equal(body.stream, false);
+    return panguResponse({choices: [{message: {content: '回退后的回答', reasoning_content: '想过了'}, finish_reason: 'stop'}]});
+  }));
+  const second = [];
+  const result = await fallback.complete(request({onDelta: delta => second.push(delta)}));
+  assert.equal(calls, 2);
+  assert.equal(result.response.text, '回退后的回答');
+  assert.equal(result.reasoning, '想过了');
+  assert.deepEqual(second.map(item => item.kind), ['reasoning', 'text']);
 });

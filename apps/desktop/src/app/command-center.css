@@ -273,3 +273,4 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 @media(prefers-reduced-motion:reduce) {.command-center * {animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media(forced-colors:active) {.command-center {--cc-bg:Canvas;--cc-rail:Canvas;--cc-panel:Canvas;--cc-soft:Canvas;--cc-hover:Highlight;--cc-line:CanvasText;--cc-text:CanvasText;--cc-muted:CanvasText;--cc-dim:CanvasText;--cc-solid:Canvas;--cc-input:Canvas;--cc-action:ButtonFace;--cc-action-ink:ButtonText;background:Canvas}.command-center button {border:1px solid ButtonText;color:ButtonText}.cc-hero-visual {display:none}}
 @media(forced-colors:active) {.cc-hero {background:Canvas;border-color:CanvasText;box-shadow:none}.cc-hero-field,.cc-hero::before {display:none}.command-center .cc-hero :is(h1,p,small) {color:CanvasText;text-shadow:none}}
+.cc-timeline{display:none}

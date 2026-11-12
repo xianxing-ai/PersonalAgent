@@ -38,7 +38,8 @@ import type {HarnessEventOrigin} from './harness-event-delivery.js';
 import type {RuntimeHarnessExperienceOptions} from './harness-experience.js';
 import {DevWorkflowPatchRecovery} from '../dev-workflows-patch-reconciliation.js';
 import {ToolGateway, toolArgumentsDigest} from '@personal-agent/tool-gateway';
-import {TaskRuntime} from '../index.js';
+import {TaskRuntime, publicFailureMessage} from '../index.js';
+import {isPureAcknowledgement, MAX_MESSAGE_HOP} from '@personal-agent/crew';
 import type {WorkerContext,WorkerResult,SubmitTaskInput} from '../index.js';
 import {createTextApplication, type TextApplication, type TextApplicationOptions} from './text.js';
 import type {ModelMessage, ModelGateway, ReasoningEffort} from '@personal-agent/models';
@@ -3614,8 +3615,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return {parentTaskId:input.parentTaskId,taskId:input.taskId,conversationId:origin.conversationId,
       messages:turns.map(task=>({taskId:task.taskId,userText:readSubagentConversationMessage(this.runtime,task.taskId,origin)!.userText,state:task.state,
         ...(task.state==='succeeded'&&task.resultSummary?{replyText:assistantText(task.resultSummary)}:{}),
-        ...(task.error?{error:{code:task.error.code,retryable:task.error.retryable,message:'子智能体执行未完成，详细错误信息已隐藏'}}:{})})),
-      ...(active?{activeTaskId:active.taskId}:{}),canSubmit:!active&&available,
+        ...(task.error?{error:{code:task.error.code,retryable:task.error.retryable,message:publicFailureMessage(task.error.code, task.error.message)}}:{})})),
+      ...(active?{activeTaskId:active.taskId}:{}),canSubmit:available&&(!active||!['waiting_reconciliation','cancelling'].includes(active.state)),
       ...(!available?{submitUnavailableReason:'原模型、部署或工具绑定不可用或已变化，当前无法发送新消息。'}:{}),
       updatedAt:turns.reduce((latest,task)=>task.updatedAt>latest?task.updatedAt:latest,origin.task.updatedAt)};
   }
@@ -3629,7 +3630,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   /** Fresh host-authored turn; it never reopens a completed task or inherits a tool grant. */
-  submitSubagentConversationMessage(input:SubmitSubagentConversationMessage):{acceptedTaskId:string} {
+  submitSubagentConversationMessage(input:SubmitSubagentConversationMessage):{acceptedTaskId:string; injected?:true} {
     assertConversationScope(input,['text','requestId','deadline']);
     if(typeof input.text!=='string'||!input.text.trim()||!nonEmptyText(input.requestId)||input.requestId.trim()!==input.requestId) {
       throw new ProtocolError('INVALID_ARGUMENT','Subagent message text and request identity are required');
@@ -3650,8 +3651,13 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       return {acceptedTaskId:existing.taskId};
     }
     const turns=listSubagentConversationMessages(this.runtime,origin);
-    if(!isTerminalTask(origin.task)||turns.some(task=>!isTerminalTask(task))) {
-      throw new ProtocolError('REVISION_CONFLICT','This subagent already has an active or unresolved task');
+    const active=!isTerminalTask(origin.task)?origin.task:turns.find(task=>!isTerminalTask(task));
+    if(active) {
+      if(['waiting_reconciliation','cancelling','created'].includes(active.state)) {
+        throw new ProtocolError('REVISION_CONFLICT','This subagent already has an active or unresolved task');
+      }
+      this.runtime.injectUserMessage(active.taskId, input.text.trim(), 'user', input.requestId);
+      return {acceptedTaskId:active.taskId, injected:true};
     }
     const deadline=input.deadline??new Date(this.now().getTime()+this.competitionMessageTimeoutMs).toISOString();
     if(typeof deadline!=='string'||!Number.isFinite(Date.parse(deadline))||Date.parse(deadline)<=this.now().getTime()) {
@@ -3705,7 +3711,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})});
     },{deadline:message.deadline,sideEffect:origin.tools.some(tool=>tool.sideEffect==='external_write')?'external_write'
       :origin.tools.some(tool=>tool.sideEffect==='local_write')?'local_write':'read',...(resume?{resume:true}:{})}))
-      .finally(()=>this.activeTextTasks.delete(taskId));
+      .finally(()=>{this.activeTextTasks.delete(taskId);void this.refreshSubagentParent(message.originTaskId).catch(()=>{});});
     this.activeTextTasks.set(taskId,execution);void execution.catch(()=>{});
   }
 
@@ -4373,6 +4379,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private async refreshSubagentParent(childTaskId: string): Promise<void> {
+    this.noteAssistantConclusion(childTaskId);
     const binding = this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?: string;subtaskId?:string} | undefined;
     if (typeof binding?.parentTaskId !== 'string') return;
     const child=this.runtime.getTask(childTaskId);
@@ -5016,6 +5023,198 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     void execution.catch(() => {
       // TaskRuntime persists the failure. This catch only prevents an unhandled rejection.
     });
+  }
+
+  /** Roster plus the latest dispatched child of the same role, so the list is not only direct chats. */
+  listAssistants() {
+    const assistants=this.runtime.ensureAssistants();
+    return assistants.map(assistant=>{
+      const child=this.latestAssistantChild(assistant.role);
+      if(!child||['succeeded','failed','cancelled'].includes(child.state))return assistant;
+      return {...assistant,status:child.state==='waiting_approval'?'waiting_approval' as const:'working' as const,activeTaskId:child.taskId};
+    });
+  }
+
+  readAssistantThread(assistantId:string): {assistant: ReturnType<TaskRuntime['getAssistant']>; mail: ReturnType<TaskRuntime['listAssistantMail']>; turns: Record<string, unknown>[]; dispatched?: Record<string, unknown>} {
+    const assistant=this.runtime.ensureAssistants().find(item=>item.assistantId===assistantId);
+    if(!assistant)throw new ProtocolError('NOT_FOUND','找不到这个助手');
+    const turns:TaskSnapshot[]=[];
+    let beforeSequence:number|undefined;let snapshotSequence:number|undefined;
+    for(let pageCount=0;pageCount<5;pageCount++) {
+      const page=this.runtime.listTasks({conversationId:assistant.conversationId,limit:50,
+        ...(beforeSequence===undefined?{}:{beforeSequence}),...(snapshotSequence===undefined?{}:{snapshotSequence})});
+      turns.push(...page.items);
+      if(page.nextBeforeSequence===undefined)break;
+      beforeSequence=page.nextBeforeSequence;snapshotSequence=page.snapshotSequence;
+    }
+    const child=this.latestAssistantChild(assistant.role);
+    return {assistant,mail:this.runtime.listAssistantMail(assistantId),
+      turns:[...turns].reverse().map(task=>this.projectAssistantTurn(task)),
+      ...(child?{dispatched:this.projectAssistantTurn(child)}:{})};
+  }
+
+  markAssistantRead(assistantId:string) {
+    this.runtime.ensureAssistants();
+    return this.runtime.updateAssistant(assistantId,{markRead:true});
+  }
+
+  submitAssistantMessage(input:{assistantId:string;text:string;requestId:string;source?:'user'|'peer';hop?:number}):{acceptedTaskId:string;injected?:true} {
+    if(!input||typeof input.text!=='string'||!input.text.trim()||!nonEmptyText(input.requestId)) {
+      throw new ProtocolError('INVALID_ARGUMENT','请写下要发给助手的话');
+    }
+    const assistant=this.runtime.ensureAssistants().find(item=>item.assistantId===input.assistantId);
+    if(!assistant)throw new ProtocolError('NOT_FOUND','找不到这个助手');
+    const activeId=assistant.activeTaskId??this.latestAssistantChild(assistant.role)?.taskId;
+    if(activeId) {
+      try {
+        const active=this.runtime.getTask(activeId);
+        if(!['succeeded','failed','cancelled','waiting_reconciliation','cancelling'].includes(active.state)) {
+          this.runtime.injectUserMessage(active.taskId,input.text.trim(),input.source??'user',input.requestId);
+          return {acceptedTaskId:active.taskId,injected:true};
+        }
+      } catch(error) {
+        if(error instanceof ProtocolError&&error.code==='REVISION_CONFLICT')throw error;
+      }
+    }
+    const idempotencyKey=`assistant-turn-${assistant.assistantId}-${input.requestId}`;
+    const existing=this.runtime.findTaskByIdempotencyKey(idempotencyKey);
+    if(existing)return {acceptedTaskId:existing.taskId};
+    const goal=`[${assistant.displayName}] ${input.text.trim()}`;
+    const deadline=new Date(this.now().getTime()+this.competitionMessageTimeoutMs).toISOString();
+    const task=this.runtime.submitTask({goal,conversationId:assistant.conversationId,idempotencyKey});
+    this.runtime.saveCheckpoint(task.taskId,'assistant-turn',{version:'1.0',assistantId:assistant.assistantId,requestId:input.requestId,userText:input.text.trim(),hop:input.hop??0});
+    this.runtime.updateAssistant(assistant.assistantId,{status:'working',activeTaskId:task.taskId});
+    this.dispatchAssistantTurn(task.taskId,assistant.assistantId,goal,deadline);
+    return {acceptedTaskId:task.taskId};
+  }
+
+  private latestAssistantChild(role:string):TaskSnapshot|undefined {
+    const taskId=this.runtime.findLatestCheckpointValue('subtask-parent','role',role);
+    if(!taskId)return undefined;
+    try {return this.runtime.getTask(taskId);} catch {return undefined;}
+  }
+
+  private projectAssistantTurn(task:TaskSnapshot) {
+    const saved=this.runtime.loadCheckpoint(task.taskId,'assistant-turn') as {userText?:string}|undefined;
+    return {taskId:task.taskId,state:task.state,goal:task.goal,userText:saved?.userText,
+      ...(task.resultSummary?{replyText:task.resultSummary}:{}),
+      ...(task.error?{error:{code:task.error.code,retryable:task.error.retryable,message:publicFailureMessage(task.error.code,task.error.message)}}:{}),
+      transcript:this.runtime.readTranscript(task.taskId),updatedAt:task.updatedAt};
+  }
+
+  private dispatchAssistantTurn(taskId:string,assistantId:string,goal:string,deadline:string):void {
+    if(this.activeTextTasks.has(taskId))return;
+    const finish=()=>{
+      this.activeTextTasks.delete(taskId);
+      try {
+        const task=this.runtime.getTask(taskId);
+        const terminal=['succeeded','failed','cancelled'].includes(task.state);
+        const summary=(task.resultSummary??task.error?.message??'').slice(0,280);
+        this.runtime.updateAssistant(assistantId,{status:task.state==='waiting_approval'?'waiting_approval':'idle',
+          activeTaskId:terminal?null:taskId,...(terminal?{unreadDelta:1,lastSummary:summary||task.state}:{})});
+        this.runtime.flushActivity(taskId);
+        const parent=this.runtime.loadCheckpoint(taskId,'assistant-parent') as {parentTaskId?:string}|undefined;
+        if(terminal&&parent?.parentTaskId) {
+          try {this.runtime.appendActivity(parent.parentTaskId,{kind:'child_summary',stepId:`assistant-summary-${taskId}`,text:summary,label:'子助手结论'});}
+          catch { /* The parent task may already be gone. */ }
+        }
+      } catch { /* The turn row is the source of truth if the roster update loses a race. */ }
+    };
+    if(this.profile==='huawei_ict_agentarts'&&this.coordination) {
+      this.runtime.saveCheckpoint(taskId,'application-profile',this.profile);
+      this.runtime.saveCheckpoint(taskId,'application-deadline',deadline);
+      this.runtime.saveCheckpoint(taskId,'competition-max-steps',this.competitionMaxSteps);
+      const assistantCatalog=this.assistantCatalog();
+      const execution=this.runtime.runTask(taskId,worker=>runCoordinationWorker(this.runtime,this.coordination,this.assistantTools(taskId),taskId,goal,worker,
+        {allowToolContinuations:true,toolExports:this.competitionToolExports,workerCapabilities:this.coordinationWorkers,
+          ...(assistantCatalog?{toolCatalog:assistantCatalog}:{}),
+          ...(this.prepareCompetitionToolExport?{prepareCompetitionToolExport:this.prepareCompetitionToolExport}:{}),
+          ...(this.repairCandidateVersion?{repairCandidateVersion:this.repairCandidateVersion}:{})}),
+        {deadline,sideEffect:'read'}).finally(finish);
+      this.activeTextTasks.set(taskId,execution);void execution.catch(()=>{});
+      return;
+    }
+    const history=this.runtime.readConversationHistory(this.runtime.getAssistant(assistantId).conversationId,taskId,12).flatMap(turn=>{
+      const answer=turn.resultSummary?.trim();
+      return answer?[{role:'user' as const,content:turn.goal},{role:'assistant' as const,content:answer}]:[];
+    });
+    const execution=Promise.resolve().then(()=>this.textApplication.startTask(this.runtime,taskId,goal,
+      history.length?{initialMessages:history}:{})).finally(finish);
+    this.activeTextTasks.set(taskId,execution);void execution.catch(()=>{});
+  }
+
+  private assistantTools(taskId:string):AgentToolPort|undefined {
+    if(!this.tools)return undefined;
+    const descriptors=this.tools.list().filter(tool=>tool.name!=='subagent.dispatch');
+    const message={name:'assistant.message',version:'1.0.0',
+      inputSchema:{type:'object',additionalProperties:false,required:['assistantId','text'],properties:{assistantId:{type:'string'},text:{type:'string'}}},
+      outputSchema:{type:'object',additionalProperties:true},sideEffect:'read' as const,requiredScopes:['agent:delegate'],
+      idempotencySupport:true,recoverySupport:true,requiresPresence:false};
+    return {list:()=>structuredClone([...descriptors,message]),invoke:async invocation=>{
+      if(invocation.toolName!=='assistant.message')return this.tools!.invoke(invocation);
+      const args=invocation.arguments as {assistantId?:unknown;text?:unknown};
+      if(typeof args.assistantId!=='string'||typeof args.text!=='string')throw new ProtocolError('INVALID_ARGUMENT','助手消息需要 assistantId 和 text');
+      return {state:'confirmed' as const,result:this.deliverAssistantMail(taskId,args.assistantId,args.text),evidenceRefs:[]};
+    }};
+  }
+
+  private assistantCatalog() {
+    const base=this.competitionToolCatalog;
+    const tools=this.tools;
+    if(!base||!tools)return undefined;
+    const bound=base.restrict(this.assistantTools('catalog')??tools);
+    const extra={name:'assistant.message',version:'1.0.0',inputSchema:{type:'object',additionalProperties:false,required:['assistantId','text'],properties:{assistantId:{type:'string'},text:{type:'string'}}}};
+    return new Proxy(bound,{get(target,prop,receiver){
+      if(prop==='prepare'||prop==='prepareContinuation')return async(input: {taskId:string;deadline:string;signal:AbortSignal})=>{
+        const listed=await (target[prop] as (value: typeof input)=>Promise<{name:string}[]>).call(target,input);
+        return listed.some(tool=>tool.name===extra.name)?listed:[...listed,extra];
+      };
+      if(prop==='assertProposal')return async(input: {toolName:string;toolVersion:string})=>{
+        if(input.toolName==='assistant.message'&&input.toolVersion==='1.0.0')return;
+        return target.assertProposal(input as never);
+      };
+      const value=Reflect.get(target,prop,receiver);
+      return typeof value==='function'?value.bind(target):value;
+    }}) as typeof bound;
+  }
+
+  private deliverAssistantMail(fromTaskId:string,toAssistantId:string,text:string) {
+    const from=this.runtime.loadCheckpoint(fromTaskId,'assistant-turn') as {assistantId?:string;hop?:number}|undefined;
+    const hop=(from?.hop??0)+1;
+    if(hop>MAX_MESSAGE_HOP)throw new ProtocolError('INVALID_ARGUMENT','助手之间的转发次数已经到上限');
+    const body=text.trim();
+    if(!body)throw new ProtocolError('INVALID_ARGUMENT','消息不能为空');
+    if(isPureAcknowledgement(body)) {
+      this.runtime.postAssistantMail({mailId:randomUUID(),fromAssistantId:from?.assistantId??'unknown',toAssistantId,body,hop});
+      return {delivered:true,started:false,reason:'纯确认不再转发'};
+    }
+    const mail=this.runtime.postAssistantMail({mailId:randomUUID(),fromAssistantId:from?.assistantId??'unknown',toAssistantId,body,hop});
+    const target=this.runtime.getAssistant(toAssistantId);
+    if(target.activeTaskId) {
+      try {this.runtime.injectUserMessage(target.activeTaskId,`来自${from?.assistantId??'其他助手'}：${body}`,'peer',mail.mailId);return {delivered:true,started:false,injected:true};}
+      catch { /* A terminal target falls through to a new turn. */ }
+    }
+    const started=this.submitAssistantMessage({assistantId:toAssistantId,text:`来自其他助手：${body}`,requestId:mail.mailId,source:'peer',hop});
+    this.runtime.consumeAssistantMail(mail.mailId,started.acceptedTaskId);
+    return {delivered:true,started:true,taskId:started.acceptedTaskId};
+  }
+
+  private noteAssistantConclusion(childTaskId:string):void {
+    let child:TaskSnapshot;
+    try {child=this.runtime.getTask(childTaskId);} catch {return;}
+    const saved=this.runtime.loadCheckpoint(childTaskId,'subtask-parent') as {parentTaskId?:string;role?:string;roleLabel?:string}|undefined;
+    if(!saved?.role)return;
+    const assistant=this.runtime.ensureAssistants().find(item=>item.role===saved.role);
+    const summary=(child.resultSummary??child.error?.message??child.state).slice(0,280);
+    if(assistant&&['succeeded','failed','cancelled'].includes(child.state)) {
+      this.runtime.updateAssistant(assistant.assistantId,{status:'idle',activeTaskId:null,unreadDelta:1,lastSummary:summary});
+    } else if(assistant) {
+      this.runtime.updateAssistant(assistant.assistantId,{status:child.state==='waiting_approval'?'waiting_approval':'working',activeTaskId:child.taskId});
+    }
+    if(saved.parentTaskId&&['succeeded','failed','cancelled'].includes(child.state)) {
+      try {this.runtime.appendActivity(saved.parentTaskId,{kind:'child_summary',stepId:`child-summary-${childTaskId}`,text:summary,label:`${saved.roleLabel||assistant?.displayName||'子助手'}的结论`});this.runtime.flushActivity(saved.parentTaskId);}
+      catch { /* Parent transcript is optional when the parent row is gone. */ }
+    }
   }
 }
 
