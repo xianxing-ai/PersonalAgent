@@ -26,6 +26,8 @@
 
 `AuthorizationPolicy` 消费 `AuthorizationStore` 事务端口；Runtime 注入 SQLite 存储，一次性授权的检查和消费在同一事务内完成，重启不会重置次数。`InMemoryAuthorizationPolicy` 保留为隔离测试实现。授权当前仍绑定单个任务和工具，跨任务持续授权管理不是已完成能力。
 
+`appendAudit` / `verifyAudit` 提供哈希链操作记录。每条记录包含序号、时间、动作、对象、上一条哈希和本条哈希。改掉中间任何一条，校验都会停在该序号，并且拒绝继续追加。链本身不保存工具参数或私人内容。
+
 验证：
 
 ```sh

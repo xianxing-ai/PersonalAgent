@@ -1,5 +1,8 @@
 import { ProtocolError } from '@personal-agent/contracts';
 
+export {appendAudit, auditHash, verifyAudit} from './audit-chain.js';
+export type {AuditEvent} from './audit-chain.js';
+
 export interface AuthorizationGrantInput {
   argumentsDigest?: string;
   authorizationRef: string;

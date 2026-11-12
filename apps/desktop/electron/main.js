@@ -55,6 +55,7 @@ import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
+import {createPermissionAuditProduct} from './permission-audit-product.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
 import {createDesktopObsidianPairing} from './obsidian-pairing-host.js';
@@ -324,6 +325,7 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+let permissionAudit;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
 let installedSkillsHost,pluginCatalogHost;
@@ -788,6 +790,7 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
+    assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true}};}})(),
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
@@ -2457,6 +2460,24 @@ async function initializeRuntime() {
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
+      permissionAudit=createPermissionAuditProduct({
+        userData:app.getPath('userData'),
+        list(){
+          const grants=[];
+          const sandbox=authorizationQuestionHost?.sandboxSnapshot();
+          if(sandbox?.selected)grants.push({id:'sandbox',kind:'sandbox',label:sandbox.selected.label||sandbox.selected.mode,revocable:false});
+          for(const rule of sandbox?.rules??[])if(rule.active)grants.push({id:rule.ruleId,kind:'rule',label:rule.summary||'授权规则',revision:rule.revision,revocable:true});
+          if(goalCloudHost?.snapshot()?.sessionAllowed)grants.push({id:'goal-cloud',kind:'goal-cloud',label:'目标管理许可',revocable:true});
+          if(memoryLearningHost?.snapshot()?.writeEnabled)grants.push({id:'memory-write',kind:'memory-write',label:'私人记忆确认写入',revocable:false});
+          return grants;
+        },
+        revoke(grant){
+          if(grant.kind==='rule')return authorizationQuestionHost.revokeRule({ruleId:grant.id,expectedRevision:grant.revision});
+          if(grant.kind==='goal-cloud')return goalCloudHost.revoke();
+          throw Error('这项许可不能撤销');
+        },
+      });
+      conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -3320,6 +3341,13 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
+  if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');
+    if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false}};
+    const result = permissionAudit.handleAction(name, payload);
+    publish();
+    return result;
+  }
   if (name === 'snapshot.resync') {
     if(payload!==undefined)throw Error('状态恢复不接受额外参数');
     snapshotPublisher.resync(sender);return {scheduled:true};
