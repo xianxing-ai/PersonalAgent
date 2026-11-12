@@ -40,6 +40,16 @@ function extractCalendarAccountRef(record: Record<string, unknown>): string | un
   return undefined;
 }
 
+function extractCalendarEtag(record: Record<string, unknown>): string | undefined {
+  if (text(record.etag)) return record.etag.trim();
+  if (text(record.ifMatch)) return record.ifMatch.trim();
+  if (isPlainObject(record.item)) {
+    if (text(record.item.etag)) return record.item.etag.trim();
+    if (text(record.item.ifMatch)) return record.item.ifMatch.trim();
+  }
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // F06_N03: todo.registered_write
 // ---------------------------------------------------------------------------
@@ -788,6 +798,7 @@ export interface CalendarUpdateAndInvalidateInput {
   readonly notes?: string;
   readonly reminderId: string;
   readonly previousSequence?: number;
+  readonly ifMatch?: string;
 }
 
 export interface ReminderWorkflowInvalidationPort {
@@ -800,6 +811,8 @@ export interface CalendarUpdateAndInvalidateReminderOptions {
   readonly boundAccountRef?: string;
   resolveCalendarPort?(accountRef: string, context: WorkflowNodeContext): CalendarWorkflowWritePort | undefined;
   readonly calendarReadPort?: CalendarWorkflowReadPort;
+  readonly boundReadAccountRef?: string;
+  resolveCalendarReadPort?(accountRef: string, context: WorkflowNodeContext): CalendarWorkflowReadPort | undefined;
   readonly invalidationPort: ReminderWorkflowInvalidationPort;
   resolveInput(context: WorkflowNodeContext): CalendarUpdateAndInvalidateInput | undefined;
 }
@@ -819,15 +832,31 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
       if (!input || !text(input.accountRef) || !text(input.externalId) || !text(input.reminderId)) {
         return fail('unavailable', 'calendar_update_invalidate_input_unavailable');
       }
-      // 写前强制核验可信账户绑定：缺失绑定返回 unavailable，账户不匹配返回 failed，底层 execute 调用为 0
+      if (
+        input.previousSequence !== undefined &&
+        (typeof input.previousSequence !== 'number' || !Number.isSafeInteger(input.previousSequence) || input.previousSequence < 0)
+      ) {
+        return fail('unavailable', 'calendar_previous_sequence_invalid');
+      }
+      // 写前强制核验可信写端口账户绑定：缺失绑定返回 unavailable，账户不匹配返回 failed，底层 execute 调用为 0
       const resolvedWritePort = resolveTrustedCalendarWritePort(input.accountRef, options, context);
       if (!resolvedWritePort.ok) {
         return resolvedWritePort.failure;
       }
-      // 写前预读参与写入决策：使用时其账户必须是显式可信绑定，不从写端口推断
-      const needsPreRead = typeof input.previousSequence === 'number' && typeof options.calendarReadPort?.execute === 'function';
-      if (needsPreRead) {
-        const boundReadAccount = options.calendarReadPort?.accountRef;
+      // 提供 previousSequence 时强制要求可信读端口：缺失读端口或缺失可信账户绑定返回 unavailable，账户不匹配返回 failed（写入/提醒调用均为 0）
+      const hasPreviousSequence = typeof input.previousSequence === 'number';
+      const selectedReadPort =
+        typeof options.resolveCalendarReadPort === 'function'
+          ? options.resolveCalendarReadPort(input.accountRef, context)
+          : options.calendarReadPort;
+      if (hasPreviousSequence) {
+        if (!selectedReadPort || typeof selectedReadPort.execute !== 'function') {
+          return fail('unavailable', 'calendar_read_port_unavailable', {
+            expectedAccountRef: input.accountRef,
+            externalId: input.externalId,
+          });
+        }
+        const boundReadAccount = selectedReadPort.accountRef ?? options.boundReadAccountRef;
         if (!text(boundReadAccount)) {
           return fail('unavailable', 'calendar_account_binding_unavailable', {expectedAccountRef: input.accountRef});
         }
@@ -839,10 +868,13 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
         }
       }
       let updateDispatched = false;
+      let preSequence: number | undefined;
+      let preEtag: string | undefined;
+      let effectiveIfMatch: string | undefined = text(input.ifMatch) ? input.ifMatch.trim() : undefined;
       try {
-        // 0. 如提供了 previousSequence 且注入了 calendarReadPort，在 host 侧先读回校验写前新鲜度
-        if (needsPreRead && options.calendarReadPort) {
-          const prePage = await options.calendarReadPort.execute(
+        // 0. 提供 previousSequence 时在 host 侧先读回校验写前新鲜度，并提取写前版本/ETag 供条件写入绑定
+        if (hasPreviousSequence && selectedReadPort) {
+          const prePage = await selectedReadPort.execute(
             'calendar.events',
             {
               fromUtc: '1970-01-01T00:00:00.000Z',
@@ -857,11 +889,11 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
           const currentItem = prePage.items.find(
             (item: unknown): item is Record<string, unknown> =>
               isPlainObject(item) &&
-              (item.externalId === input.externalId || item.uid === input.externalId) &&
+              (item.externalId === input.externalId || item.uid === input.externalId || item.id === input.externalId) &&
               (extractCalendarAccountRef(item) === undefined || extractCalendarAccountRef(item) === input.accountRef),
           );
           if (!currentItem) return fail('failed', 'calendar_event_not_found');
-          const preSequence = extractCalendarSequence(currentItem);
+          preSequence = extractCalendarSequence(currentItem);
           if (preSequence === undefined) {
             return fail('unknown', 'calendar_sequence_unavailable', {
               accountRef: input.accountRef,
@@ -874,9 +906,13 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
               currentSequence: preSequence,
             });
           }
+          preEtag = extractCalendarEtag(currentItem);
+          if (!effectiveIfMatch && preEtag) {
+            effectiveIfMatch = preEtag;
+          }
         }
 
-        // 1. 更新日程属性（严格对齐 calendar.update inputSchema：不向工具载荷传 accountRef 或 expectedSequence）
+        // 1. 更新日程属性（将预读验证过的 expectedSequence / ifMatch 与服务端条件写入绑定，防止预读后到写入前的并发覆盖）
         updateDispatched = true;
         const updateResult = await resolvedWritePort.port.execute('calendar.update', {
           externalId: input.externalId,
@@ -885,9 +921,15 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
           ...(input.endUtc ? {endUtc: input.endUtc} : {}),
           ...(input.location ? {location: input.location} : {}),
           ...(input.notes ? {notes: input.notes} : {}),
+          ...(preSequence !== undefined ? {expectedSequence: preSequence} : {}),
+          ...(effectiveIfMatch ? {ifMatch: effectiveIfMatch} : {}),
         }, context);
         if (!isPlainObject(updateResult)) {
-          return fail('unknown', 'calendar_update_malformed', {reconciliationRequired: true, externalId: input.externalId});
+          return fail('unknown', 'calendar_update_malformed', {
+            reconciliationRequired: true,
+            externalId: input.externalId,
+            reminderId: input.reminderId,
+          });
         }
         const receiptAccountRef = extractCalendarAccountRef(updateResult);
         if (receiptAccountRef !== undefined && receiptAccountRef !== input.accountRef) {
@@ -906,12 +948,30 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
               calendarReceipt: updateResult,
               accountRef: input.accountRef,
               externalId: input.externalId,
+              reconciliationRequired: true,
             });
           }
           if (updatedSequence <= input.previousSequence) {
-            return fail('failed', 'calendar_sequence_not_incremented', {
+            // 写已发生但 sequence 未递增：保留 calendarReceipt 并返回需对账的 unknown，不触发提醒作废
+            return fail('unknown', 'calendar_sequence_not_incremented', {
               previousSequence: input.previousSequence,
               currentSequence: updatedSequence,
+              calendarReceipt: updateResult,
+              accountRef: input.accountRef,
+              externalId: input.externalId,
+              reconciliationRequired: true,
+            });
+          }
+          if (updatedSequence !== input.previousSequence + 1) {
+            // 写已发生但序列号跳变（例如底层未执行条件拦截且期间存在并发修改）：保留 calendarReceipt 返回 unknown 对账
+            return fail('unknown', 'calendar_concurrent_update_detected', {
+              previousSequence: input.previousSequence,
+              expectedSequenceAfterUpdate: input.previousSequence + 1,
+              currentSequence: updatedSequence,
+              calendarReceipt: updateResult,
+              accountRef: input.accountRef,
+              externalId: input.externalId,
+              reconciliationRequired: true,
             });
           }
         }
@@ -928,6 +988,7 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
               calendarReceipt: updateResult,
               reminderId: input.reminderId,
               externalId: input.externalId,
+              reconciliationRequired: true,
             });
           }
         } catch (invalidationError) {
@@ -936,6 +997,7 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
             calendarReceipt: updateResult,
             reminderId: input.reminderId,
             externalId: input.externalId,
+            reconciliationRequired: true,
           });
         }
 
@@ -954,6 +1016,15 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
         };
       } catch (error) {
         if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw error;
+        const code = isPlainObject(error) || error instanceof Error ? (error as {code?: unknown}).code : undefined;
+        if (code === 'REVISION_CONFLICT') {
+          // 服务端条件写（expectedSequence / If-Match）拒绝：写入未发生，提醒不作废，返回 failed
+          return fail('failed', 'calendar_update_revision_conflict', {
+            expectedSequence: input.previousSequence,
+            ...(effectiveIfMatch ? {ifMatch: effectiveIfMatch} : {}),
+            externalId: input.externalId,
+          });
+        }
         // 更新请求已发出且异常无法排除已写入：返回 unknown 要求对账，并且不作废旧提醒
         if (updateDispatched && !calendarWriteDefinitelyNotApplied(error)) {
           return fail('unknown', 'calendar_update_outcome_uncertain', {

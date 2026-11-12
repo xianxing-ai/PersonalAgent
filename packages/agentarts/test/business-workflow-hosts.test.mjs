@@ -771,7 +771,7 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前账户绑�
   const res = await port.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
   assert.equal(res.state, 'completed');
   assert.equal('accountRef' in calendarInput, false);
-  assert.equal('expectedSequence' in calendarInput, false);
+  assert.equal(calendarInput.expectedSequence, 3);
   assert.equal(invalidatedId, 'rem-old-1');
   assert.equal(res.value.invalidationReceipt.reminderId, 'rem-old-1');
   assert.equal(res.value.source, 'calendar_reminder_sync');
@@ -830,6 +830,40 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前账户绑�
   assert.equal(unboundUpdateRes.state, 'unavailable');
   assert.equal(unboundUpdateRes.value.reason, 'calendar_account_binding_unavailable');
 
+  // 负例 0c（提供 previousSequence 但缺失 calendarReadPort）：强制要求可信读端口，缺失即返回 unavailable，写入与提醒作废调用均为 0
+  let missingReadWriteCalls = 0;
+  let missingReadInvalidateCalls = 0;
+  const missingReadPort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarPort: {
+      accountRef: 'cal',
+      execute: async (_op, input) => {
+        missingReadWriteCalls += 1;
+        return {
+          item: {externalId: input.externalId, accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:4'},
+          state: 'updated',
+        };
+      },
+    },
+    invalidationPort: {
+      invalidateReminder: async (id) => {
+        missingReadInvalidateCalls += 1;
+        return {reminderId: id, invalidated: true, state: 'invalidated'};
+      },
+    },
+    resolveInput: () => ({
+      accountRef: 'cal',
+      externalId: 'evt-1',
+      summary: '无读端口不可跳过预读',
+      reminderId: 'rem-old-1',
+      previousSequence: 3,
+    }),
+  });
+  const missingReadRes = await missingReadPort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
+  assert.equal(missingReadRes.state, 'unavailable');
+  assert.equal(missingReadRes.value.reason, 'calendar_read_port_unavailable');
+  assert.equal(missingReadWriteCalls, 0);
+  assert.equal(missingReadInvalidateCalls, 0);
+
   // 负例 1：写前读回的 sequence 与 previousSequence 不一致 -> 写前直接拦截
   let writeCalledOnStale = false;
   const stalePrePort = createCalendarUpdateAndInvalidateReminderHostPort({
@@ -862,8 +896,93 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前账户绑�
   assert.equal(stalePreRes.value.reason, 'calendar_stale_sequence_before_update');
   assert.equal(writeCalledOnStale, false);
 
-  // 负例 2：真实 ConnectorItem 回执里 dedupeKey 的 sequence 未递增 -> 报错 calendar_sequence_not_incremented
+  // 负例 1b（预读后到写入前发生并发更新，服务端条件写 ETag/expectedSequence 拒绝）：不覆盖并发版本且提醒作废调用为 0
+  const realProvider = new FakeCalendarProvider([
+    {
+      externalId: 'evt-race-1',
+      calendarId: 'cal-work',
+      title: '原始会议 v3',
+      startUtc: '2026-11-10T09:00:00.000Z',
+      endUtc: '2026-11-10T10:00:00.000Z',
+      timeZone: 'UTC',
+      startLocal: '2026-11-10T09:00:00',
+      endLocal: '2026-11-10T10:00:00',
+      status: 'confirmed',
+      sequence: 3,
+      updatedUtc: '2026-11-09T08:00:00.000Z',
+    },
+  ]);
+  const realTools = new Map();
+  const unregisterRealCal = registerCalendar(
+    {
+      register(tool) {
+        realTools.set(tool.descriptor.name, tool);
+        return () => {};
+      },
+    },
+    {provider: realProvider, accountRef: 'cal'},
+  );
+  let raceInvalidateCalls = 0;
+  let capturedConditionalWriteInput = null;
+  try {
+    const racePort = createCalendarUpdateAndInvalidateReminderHostPort({
+      calendarReadPort: {
+        accountRef: 'cal',
+        execute: async (op, input, ctx) => {
+          const page = await realTools.get(op).execute(input, ctx);
+          // 模拟写前预读刚返回后、写入执行前，另一客户端并发修改了该日程（sequence 从 3 升至 4）
+          await realProvider.writes.updateEvent({uid: 'evt-race-1', summary: '并发修改后的版本 v4'});
+          return {
+            ...page,
+            items: page.items.map((it) => ({...it, etag: '"evt-race-1:3"'})),
+          };
+        },
+      },
+      calendarPort: {
+        accountRef: 'cal',
+        execute: async (op, input, ctx) => {
+          capturedConditionalWriteInput = input;
+          return realTools.get(op).execute(input, ctx);
+        },
+      },
+      invalidationPort: {
+        invalidateReminder: async (id) => {
+          raceInvalidateCalls += 1;
+          return {reminderId: id, invalidated: true, state: 'invalidated'};
+        },
+      },
+      resolveInput: () => ({
+        accountRef: 'cal',
+        externalId: 'evt-race-1',
+        summary: '本应被拦截的旧版本改期',
+        startUtc: '2026-11-10T14:00:00.000Z',
+        endUtc: '2026-11-10T15:00:00.000Z',
+        reminderId: 'rem-race-1',
+        previousSequence: 3,
+      }),
+    });
+    const raceRes = await racePort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
+    assert.equal(capturedConditionalWriteInput.expectedSequence, 3);
+    assert.equal(capturedConditionalWriteInput.ifMatch, '"evt-race-1:3"');
+    assert.equal(raceRes.state, 'failed');
+    assert.equal(raceRes.value.reason, 'calendar_update_revision_conflict');
+    assert.equal(raceInvalidateCalls, 0);
+    // 确认并发修改的版本 v4 未被覆盖
+    assert.equal(realProvider.getEvent('cal', 'evt-race-1').title, '并发修改后的版本 v4');
+    assert.equal(realProvider.getEvent('cal', 'evt-race-1').sequence, 4);
+  } finally {
+    unregisterRealCal();
+  }
+
+  // 负例 2：写已发生但回执里 dedupeKey 的 sequence 未递增 -> 保留 calendarReceipt 并返回需对账的 unknown（不作废提醒）
+  let nonIncInvalidateCalls = 0;
   const nonIncPort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarReadPort: {
+      accountRef: 'cal',
+      execute: async () => ({
+        items: [{externalId: 'evt-1', accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:4'}],
+      }),
+    },
     calendarPort: {
       accountRef: 'cal',
       execute: async (_op, input) => ({
@@ -872,7 +991,10 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前账户绑�
       }),
     },
     invalidationPort: {
-      invalidateReminder: async (id) => ({reminderId: id, invalidated: true, state: 'invalidated'}),
+      invalidateReminder: async (id) => {
+        nonIncInvalidateCalls += 1;
+        return {reminderId: id, invalidated: true, state: 'invalidated'};
+      },
     },
     resolveInput: () => ({
       accountRef: 'cal',
@@ -883,11 +1005,57 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前账户绑�
     }),
   });
   const nonIncRes = await nonIncPort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
-  assert.equal(nonIncRes.state, 'failed');
+  assert.equal(nonIncRes.state, 'unknown');
   assert.equal(nonIncRes.value.reason, 'calendar_sequence_not_incremented');
+  assert.equal(nonIncRes.value.reconciliationRequired, true);
+  assert.equal(nonIncRes.value.calendarReceipt.item.externalId, 'evt-1');
+  assert.equal(nonIncInvalidateCalls, 0);
+
+  // 负例 2b：写已发生但回执序列号跳变（例如无条件写后端期间被并发更新）-> 保留 calendarReceipt 并返回 unknown 对账
+  let jumpedInvalidateCalls = 0;
+  const jumpedSeqPort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarReadPort: {
+      accountRef: 'cal',
+      execute: async () => ({
+        items: [{externalId: 'evt-1', accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:3'}],
+      }),
+    },
+    calendarPort: {
+      accountRef: 'cal',
+      execute: async (_op, input) => ({
+        item: {externalId: input.externalId, accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:5'},
+        state: 'updated',
+      }),
+    },
+    invalidationPort: {
+      invalidateReminder: async (id) => {
+        jumpedInvalidateCalls += 1;
+        return {reminderId: id, invalidated: true, state: 'invalidated'};
+      },
+    },
+    resolveInput: () => ({
+      accountRef: 'cal',
+      externalId: 'evt-1',
+      summary: '写后跳变检测',
+      reminderId: 'rem-old-1',
+      previousSequence: 3,
+    }),
+  });
+  const jumpedRes = await jumpedSeqPort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
+  assert.equal(jumpedRes.state, 'unknown');
+  assert.equal(jumpedRes.value.reason, 'calendar_concurrent_update_detected');
+  assert.equal(jumpedRes.value.reconciliationRequired, true);
+  assert.equal(jumpedRes.value.calendarReceipt.item.externalId, 'evt-1');
+  assert.equal(jumpedInvalidateCalls, 0);
 
   // 负例 3：日历更新已成功但作废提醒失败 -> 返回 unknown 并保留 calendarReceipt 供对账
   const partialPort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarReadPort: {
+      accountRef: 'cal',
+      execute: async () => ({
+        items: [{externalId: 'evt-1', accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:4'}],
+      }),
+    },
     calendarPort: {
       accountRef: 'cal',
       execute: async (_op, input) => ({
@@ -909,6 +1077,7 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前账户绑�
   const partialRes = await partialPort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
   assert.equal(partialRes.state, 'unknown');
   assert.equal(partialRes.value.reason, 'reminder_invalidation_failed');
+  assert.equal(partialRes.value.reconciliationRequired, true);
   assert.equal(partialRes.value.calendarReceipt.item.externalId, 'evt-1');
 
   // 负例 4：写前绑定通过但更新回执账户异常 -> 不触发提醒作废，保留 calendarReceipt 并返回 unknown 要求对账

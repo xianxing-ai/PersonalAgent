@@ -110,6 +110,8 @@ const updateEventInputSchema: ToolDescriptor['inputSchema'] = {
     endUtc: {type: 'string', pattern: UTC_PATTERN_STRING},
     location: {type: 'string', maxLength: 512},
     notes: {type: 'string', maxLength: 4096},
+    expectedSequence: {type: 'integer', minimum: 0},
+    ifMatch: {type: 'string', minLength: 1, maxLength: 1024},
   },
 };
 
@@ -211,14 +213,16 @@ export function register(host: ToolHost, options: CalendarModuleOptions): () => 
         inputSchema: updateEventInputSchema, outputSchema: writeOutputSchema,
         idempotencySupport: true, recoverySupport: true},
       execute: async (input: unknown, context) => {
-        const raw = input as {externalId?: string; uid?: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string};
+        const raw = input as {externalId?: string; uid?: string; summary?: string; startUtc?: string; endUtc?: string; location?: string; notes?: string; expectedSequence?: number; ifMatch?: string};
         const record = await writes.updateEvent({
           uid: resolveEventId(raw),
           ...(raw.summary === undefined ? {} : {summary: raw.summary}),
           ...(raw.startUtc === undefined ? {} : {startUtc: raw.startUtc}),
           ...(raw.endUtc === undefined ? {} : {endUtc: raw.endUtc}),
           ...(raw.location === undefined ? {} : {location: raw.location}),
-          ...(raw.notes === undefined ? {} : {notes: raw.notes})},
+          ...(raw.notes === undefined ? {} : {notes: raw.notes}),
+          ...(raw.expectedSequence === undefined ? {} : {expectedSequence: raw.expectedSequence}),
+          ...(raw.ifMatch === undefined ? {} : {ifMatch: raw.ifMatch})},
           {signal: context.signal, deadline: context.deadline});
         return {item: eventToItem(record, accountRef, new Date().toISOString()), state: 'updated', summary: '日程已更新，日历中已保存新内容。'};
       },

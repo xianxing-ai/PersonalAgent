@@ -181,3 +181,49 @@ test('写操作回执带无歧义的 summary，区分“已取消”与“操作
     assert.match(again.summary, /原本就不存在/);
   } finally {f.unregister();}
 });
+
+test('calendar.update 支持 expectedSequence 与 ifMatch 条件写，版本不匹配时报 REVISION_CONFLICT 且不覆盖', async () => {
+  const f = fixture();
+  try {
+    const created = await f.host.invoke('calendar.create', {
+      externalId: 'evt-cond-1',
+      summary: '初始版本',
+      startUtc: '2026-10-21T07:00:00.000Z',
+      endUtc: '2026-10-21T08:00:00.000Z',
+    }, ctx());
+    assert.equal(created.item.dedupeKey, 'calendar:cal-fake:evt-cond-1:0');
+
+    // 条件版本匹配（sequence=0, ifMatch="evt-cond-1:0"）-> 更新成功至 sequence=1
+    const updated = await f.host.invoke('calendar.update', {
+      externalId: 'evt-cond-1',
+      summary: '第一次条件更新',
+      expectedSequence: 0,
+      ifMatch: '"evt-cond-1:0"',
+    }, ctx());
+    assert.equal(updated.state, 'updated');
+    assert.equal(updated.item.dedupeKey, 'calendar:cal-fake:evt-cond-1:1');
+
+    // 旧 expectedSequence=0 再次更新 -> REVISION_CONFLICT，不覆盖现有内容
+    await assert.rejects(
+      f.host.invoke('calendar.update', {
+        externalId: 'evt-cond-1',
+        summary: '不应覆盖的过期写入',
+        expectedSequence: 0,
+      }, ctx()),
+      error => error.code === 'REVISION_CONFLICT',
+    );
+    // 旧 ifMatch 再次更新 -> REVISION_CONFLICT
+    await assert.rejects(
+      f.host.invoke('calendar.update', {
+        externalId: 'evt-cond-1',
+        summary: '不应覆盖的过期 ETag 写入',
+        ifMatch: '"evt-cond-1:0"',
+      }, ctx()),
+      error => error.code === 'REVISION_CONFLICT',
+    );
+    assert.equal(f.provider.getEvent('cal', 'evt-cond-1').title, '第一次条件更新');
+    assert.equal(f.provider.getEvent('cal', 'evt-cond-1').sequence, 1);
+  } finally {
+    f.unregister();
+  }
+});
