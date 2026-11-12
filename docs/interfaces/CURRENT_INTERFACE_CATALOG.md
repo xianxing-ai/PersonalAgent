@@ -1,7 +1,5 @@
 # 当前接口目录与冻结登记
 
-> 日历窗口内容摘要（provisional）：calendar.events 仅在无 cursor 且结果完整时附带 sourceVersion；分页结果不提供完整窗口摘要。它不是账号身份、全账号修订或条件写令牌；特别是空窗口不包含账号信息，调用方须另外绑定并核验来源。真实日历及 F07 流程验收另行记录。
-
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
@@ -143,6 +141,8 @@ Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Con
 `RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
 
 ## 2026-10-20 日历写能力消费接线（provisional，离线接线已验）
+
+> 日历窗口内容摘要（provisional）：calendar.events 仅在无 cursor 且结果完整时附带 sourceVersion；分页结果不提供完整窗口摘要。它不是账号身份、全账号修订或条件写令牌；特别是空窗口不包含账号信息，调用方须另外绑定并核验来源。真实日历及 F07 流程验收另行记录。
 
 复用#442@3b1e6d6c已包含的#439可选CalendarProvider.writes与calendar.create/update/cancel接线，沿原Runtime/Policy/ToolGateway保留逐任务批准、配置撤销和完整metadata/result原生出机门禁。#458补充条件写入、实际资源地址校验、删除读回及额外消费验证，见[工作包](../competition/CALENDAR_CONVERSATION_WRITES_20261020.md)。依赖尚未合并主线，真实账号/平台验收未执行，不提升冻结或真实可用等级。无Core wire/数据库迁移，CalDAV响应只增加兼容的可选headers.get端口。
 
