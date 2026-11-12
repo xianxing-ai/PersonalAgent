@@ -86,7 +86,7 @@ test('startup records the goal before submit and reads the route through the exi
   const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
   assert.match(main, /costRoute=createCostRouteProduct/);
   assert.match(main, /readBudget:\(\)=>costRouteBudget/);
-  assert.match(main, /costRoute\?\.noteGoal\(conversationId, goal\)/);
+  assert.match(main, /typeof costRoute !== 'undefined' && costRoute\) costRoute\.noteGoal\(conversationId, goal\)/);
   assert.match(main, /costRoute\?\.apply\(preference, executionModel, conversationId\)/);
   assert.match(main, /name === 'costRoute\.replay'/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action'/);

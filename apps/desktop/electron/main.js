@@ -1463,7 +1463,7 @@ function clearInactiveTaskExitWarning() {
 
 function observeTextTaskOutput(task) {
   if (conversationDelivery.stopped(task)) return;
-  if (terminalTaskStates.has(task.state)) costRoute?.noteRun(task);
+  if (terminalTaskStates.has(task.state) && typeof costRoute !== 'undefined' && costRoute) costRoute.noteRun(task);
   liveVoice?.observeTextTask({...task,resultSummary:resultText(task.resultSummary,taskResultMetadata(task))});
 }
 
@@ -4317,7 +4317,7 @@ async function action(event, name, payload) {
     if(prepared?.cancelled) return {cancelled:true};
     if(deliveryRequest.interrupted)return {interrupted:true};
     const goal = skillRun?prepared.publicGoal:text.trim();
-    costRoute?.noteGoal(conversationId, goal);
+    if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(conversationId, goal);
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode,contextCompaction:Boolean(harnessContextHost?.runtimeHooks),
       ...(competitionMode?{competitionTimeoutMs:readCompetitionExecutionPolicy().taskTimeoutMs}:{})});
     deliveryRequest.taskId=result.taskId;
