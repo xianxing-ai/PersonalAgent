@@ -19,6 +19,8 @@ export interface AuthorizationQuestionRequest {
 }
 export interface AuthorizationSandbox {
   ref:string;label:string;mode:'read-only'|'workspace-write'|'full-access';revision:number;available:boolean;reason?:string;
+  /** Host opt-in. Read-like tool scopes may be allowed once; writes, sends and external processes still ask. */
+  lowRiskAuto?:boolean;
   kind?:'application_policy';native?:AuthorizationNativeExecution;
 }
 export interface AuthorizationNativeExecution {required:boolean;available:boolean;backend:'windows-psec'|'none'|'unavailable';enforced:boolean;
@@ -34,13 +36,13 @@ interface Question {
   decision?:AuthorizationDecision;receiptRef?:string;reason?:string;consumed:Record<string,string>;
   derivedFrom?:string;
   taskConsentFrom?:string;
-  /** A fresh exact receipt from the user's selected full-access policy, not a UI question. */
-  automatic?:'full-access';
+  /** A fresh exact receipt from the user's selected policy, not a UI question. */
+  automatic?:'full-access'|'low-risk';
   taskConsent?:AuthorizationQuestionRequest['taskConsent'];
 }
 interface Rule {ruleId:string;revision:number;active:boolean;toolName:string;toolVersion:string;
   sandboxRef:string;sandboxRevision:number;sandboxLabel:string;requirements:AuthorizationRequirement[];summary:string;}
-interface State {version:1;selectedRef:string;revision:number;questions:Question[];rules:Rule[];}
+interface State {version:1;selectedRef:string;revision:number;questions:Question[];rules:Rule[];profileChosen?:boolean;}
 export interface AuthorizationQuestionsOptions {
   store:TrustedHostStateStore;
   profiles:readonly AuthorizationSandbox[];
@@ -70,6 +72,16 @@ const taskRule=(requirements:AuthorizationRequirement[])=>digest(requirements.ma
   ruleBindingDigest:item.taskBindingDigest??item.ruleBindingDigest})).sort((a,b)=>a.requirementId.localeCompare(b.requirementId)));
 const canReuse=(question:Pick<Question,'requirements'|'taskConsent'>)=>Boolean(question.taskConsent)||reusable(question.requirements);
 const consentNative=(native:AuthorizationNativeExecution|undefined)=>native?.required?native:{required:false};
+const ELEVATED_SCOPE = /(?:write|execute|verify|patch|send|create|delete|update|erase|install|enable|uninstall|configure|withdraw|respond)/iu;
+const READ_SCOPE = /(?:^|[.:])(?:read|list|search|get|status)$/iu;
+/** Conservative gate. Unknown, write, send, export and external-process requests stay pending. */
+export function isLowRiskAuthorizationRequest(request: Omit<AuthorizationQuestionRequest,'signal'>): boolean {
+  if (!request?.requirements?.length) return false;
+  if (request.taskConsent && (request.taskConsent.mode !== 'read-only' || request.taskConsent.requiresNative === true)) return false;
+  if (/send|delete|erase|install|execute|withdraw|configure/iu.test(request.toolName)) return false;
+  return request.requirements.every(requirement => requirement.kind === 'tool' && requirement.scopes.length > 0
+    && requirement.scopes.every(scope => READ_SCOPE.test(scope) && !ELEVATED_SCOPE.test(scope)));
+}
 
 /** Durable user decisions only. Policy grants and exact export leases remain separate consumers. */
 export class AuthorizationQuestions {
@@ -92,6 +104,8 @@ export class AuthorizationQuestions {
         question.state=this.now()>=Date.parse(question.expiresAt)?'expired':'stale';question.reason='host_restarted';question.revision++;
         interrupted.push(structuredClone(question));
       }
+      const preferred=this.options.profiles.find(item=>item.lowRiskAuto===true);
+      if(preferred && state.selectedRef==='default-read-only' && state.profileChosen!==true) state.selectedRef=preferred.ref;
       return interrupted;
     });
     for(const question of interrupted)this.options.onInvalidated?.(question,question.state as 'expired'|'stale');
@@ -180,6 +194,9 @@ export class AuthorizationQuestions {
         conversationId:binding.conversationId,sandbox:profile,baseSandboxRef:selected.ref,ownerBinding:binding.digest,consumed:{}};
       if(selected.mode==='full-access'&&profile.mode==='full-access'){
         question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='full-access';
+      } else if(question.state==='pending' && selected.lowRiskAuto===true && profile.ref===selected.ref
+        && profile.native?.required!==true && isLowRiskAuthorizationRequest(input)){
+        question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='low-risk';
       }
       this.liveBindings.set(question.questionId,()=>!signal.aborted&&assertCurrent());
       this.mutate(state=>{
@@ -364,7 +381,7 @@ export class AuthorizationQuestions {
     const profile=this.options.profiles.find(item=>item.ref===input?.profileRef);
     if(!profile?.available)fail('此沙箱执行后端不可用');
     this.mutate(state=>{if(state.revision!==input.expectedRevision)throw new ProtocolError('REVISION_CONFLICT','沙箱已变化');
-      state.selectedRef=profile!.ref;state.revision++;for(const rule of state.rules)rule.active=false;});
+      state.selectedRef=profile!.ref;state.profileChosen=true;state.revision++;for(const rule of state.rules)rule.active=false;});
     for(const questionId of this.waiters.keys())this.end(questionId,'stale','sandbox_changed');
     this.options.onChange?.();return this.sandboxSnapshot();
   }
