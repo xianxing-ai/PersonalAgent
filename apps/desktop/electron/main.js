@@ -359,6 +359,7 @@ let voiceDisposed = false;
 let voiceDisposal;
 let voiceDisposalFailed = false;
 let goalHost;
+let goalPlan;
 let goalCloudHost;
 let competitionCatalog;
 let competitionFactBridge;
@@ -828,7 +829,7 @@ function snapshot(surface) {
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
     dailyBriefing: surface ? undefined : dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
-    goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
+    goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
     computerControl:computerControlSnapshot(surface),
@@ -2016,6 +2017,7 @@ async function initializeRuntime() {
           path.join(path.dirname(dbPath), 'mvp-synthetic-memory.sqlite'), {decision});
       }
       const {createGoalHost} = await import('./goal-host.js');
+      const {createGoalPlanHost} = await import('./goal-plan-host.js');
       const codingModule=await import('@personal-agent/coding-tools');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
@@ -2042,6 +2044,13 @@ async function initializeRuntime() {
         void dailyBriefingHost.tick();
       }
       goalHost = createGoalHost(namespace);
+      goalPlan = createGoalPlanHost({
+        listGoals: () => goalHost.list(),
+        readChildren: () => {
+          try { return runtimeApplication?.listSubagentConversations?.({limit: 40})?.items ?? []; }
+          catch { return []; }
+        },
+      });
       if (!syntheticMvp && calendarConfig) {
         const calendarReadTool = runtimeModule.createCalendarEventReadTool({
           getBinding: () => {
@@ -4235,6 +4244,14 @@ async function action(event, name, payload) {
     if (name === 'evidence.list') return evidenceHost.list(payload);
     if (name === 'evidence.get') return evidenceHost.get(payload);
     return evidenceHost.revoke(payload);
+  }
+  if (name === 'goal.decompose') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理拆解');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(key => key !== 'goalId') || typeof payload.goalId !== 'string') throw Error('目标拆解参数无效');
+    const result = goalPlan.decompose(payload.goalId);
+    publish();
+    return result;
   }
   if (name.startsWith('goal.')) {
     if (sender !== panel && sender !== workspace) throw Error('Goal 操作只能从面板或工作区调用');
