@@ -21,6 +21,7 @@ export interface TodoCreateInput {
 }
 
 export interface TodoUpdateInput {
+  expectedRevision?: number;
   title?: string;
   notes?: string;
   status?: TodoStatus;
@@ -79,6 +80,12 @@ export class TodoService {
   update(id: string, patch: TodoUpdateInput): TodoItem {
     const current = this.get(id);
     if (!patch || typeof patch !== 'object') throw new ProtocolError('INVALID_ARGUMENT', 'Update patch must be an object');
+    if (patch.expectedRevision !== undefined) {
+      if (!Number.isSafeInteger(patch.expectedRevision) || patch.expectedRevision < 1)
+        throw new ProtocolError('INVALID_ARGUMENT', 'expectedRevision must be a positive integer');
+      if (patch.expectedRevision !== current.revision)
+        throw new ProtocolError('REVISION_CONFLICT', 'Todo changed since the original revision');
+    }
     const next: TodoItem = {...current};
     if (patch.title !== undefined) {
       if (typeof patch.title !== 'string' || patch.title.trim().length === 0 || patch.title.length > 200) {
