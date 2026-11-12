@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {learnPreference, consolidateFacts} from '@personal-agent/learning';
 
 const context = () => ({deadline: new Date(Date.now() + 180_000).toISOString(),
   signal: new AbortController().signal});
@@ -13,6 +14,27 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
   // Only the composition owner can supply the actual application-copy inventory.
   // Unknown/existing unsupported managed copies keep production writes disabled.
   const inventory = () => typeof managedPrivateCopies === 'function' ? managedPrivateCopies() : managedPrivateCopies;
+  let preferences = [];
+  let duplicates = [];
+  let lastPlannedAt = '';
+  async function refreshDuplicates() {
+    if (typeof privateMemory.listSaved !== 'function') { duplicates = []; return; }
+    const page = await privateMemory.listSaved();
+    const facts = (page?.facts ?? []).map(fact => ({
+      id: fact.ref?.id ?? fact.id,
+      revision: fact.ref?.revision ?? fact.revision,
+      summary: fact.summary,
+      state: fact.state,
+    })).filter(fact => typeof fact.id === 'string' && Number.isSafeInteger(fact.revision));
+    duplicates = consolidateFacts(facts).map(group => ({
+      keep: {id: group.keep.id, revision: group.keep.revision},
+      drop: group.drop.map(item => ({id: item.id, revision: item.revision})),
+    }));
+    lastPlannedAt = new Date().toISOString();
+  }
+  const duplicateTimer = setInterval(() => { void refreshDuplicates().catch(() => {}); }, 24 * 60 * 60 * 1000);
+  duplicateTimer.unref?.();
+  void refreshDuplicates().catch(() => {});
   const noManagedCopies = () => {const copies = inventory(); return Array.isArray(copies) && copies.length === 0;};
   const writeReady = () => {
     if (privateErasure) return privateErasure.assertReady(inventory());
@@ -31,8 +53,13 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
         configurationRevision: privateMemory.configurationRevision,
         learningAvailable: Boolean(learningApplication), publicErasureAvailable: Boolean(publicErasure),
         privateTaskErasureAvailable: Boolean(privateErasure),
-        deletionCoverage: 'active_application_databases', externalCopies: 'not_controlled'};
+        deletionCoverage: 'active_application_databases', externalCopies: 'not_controlled',
+        preferences: preferences.map(note => ({kind: note.kind, text: note.text})),
+        duplicateCount: duplicates.reduce((sum, group) => sum + group.drop.length, 0),
+        lastPlannedAt};
     },
+    planDuplicates: refreshDuplicates,
+    close() { clearInterval(duplicateTimer); },
     async recover() {
       // No writes or model calls are retried; public coordinator only follows durable erasure receipts.
       writeReady();
@@ -41,6 +68,22 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
       return {privateResult, publicResult};
     },
     async invoke(name, payload = {}) {
+      if (name === 'learning.feedback') {
+        preferences = learnPreference(preferences, {id: randomUUID(), kind: payload?.kind === 'comment' ? 'comment' : 'correction',
+          text: payload?.text ?? '', about: payload?.about ?? '', at: new Date().toISOString()});
+        return {state: 'learned', count: preferences.length};
+      }
+      if (name === 'learning.consolidate') {
+        await refreshDuplicates();
+        const pending = duplicates.flatMap(group => group.drop);
+        const dropped = [];
+        for (const fact of pending) {
+          const result = await (privateErasure ? privateErasure.withdraw({id: fact.id, revision: fact.revision}) : privateMemory.withdraw({id: fact.id, revision: fact.revision}));
+          dropped.push({id: fact.id, revision: fact.revision, state: result?.state ?? 'unknown'});
+        }
+        await refreshDuplicates();
+        return {state: 'consolidated', dropped};
+      }
       if (name === 'memory.previewSave') { writeReady(); return privateMemory.previewSave(payload.source); }
       if (name === 'memory.save') {
         writeReady();

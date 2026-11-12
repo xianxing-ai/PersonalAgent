@@ -20,6 +20,10 @@
 
 This Competition Profile package stores descriptive workflow candidates. It does not
 execute steps, call tools, train a model, or register a Runtime/Desktop capability.
+`learnPreference` keeps a correction or comment once. `consolidateFacts` groups active
+facts with the same summary and keeps the newest revision. Neither function writes
+storage or withdraws a fact; the Desktop memory host does the withdrawal through the
+existing confirmation.
 
 `SqliteLearningHost.propose()` appends an immutable version with source and operation
 identity. Exact retries return the same version; a stale head or altered retry fails.
