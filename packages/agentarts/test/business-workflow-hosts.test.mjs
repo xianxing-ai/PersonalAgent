@@ -121,6 +121,7 @@ test('契约校验：所有业务与开发 host 端口发出的工具载荷均�
   let calWriteOp = 'calendar.create';
   const calWritePort = createCalendarRegisteredWriteHostPort({
     calendarPort: {
+      accountRef: 'cal',
       execute: async (op, input) => {
         assertValidPayload(op, input);
         return {
@@ -150,6 +151,7 @@ test('契约校验：所有业务与开发 host 端口发出的工具载荷均�
   // 4. calendar.update_and_invalidate_reminder
   const calSyncPort = createCalendarUpdateAndInvalidateReminderHostPort({
     calendarReadPort: {
+      accountRef: 'cal',
       execute: async (op, input) => {
         assertValidPayload(op, input);
         return {
@@ -165,6 +167,7 @@ test('契约校验：所有业务与开发 host 端口发出的工具载荷均�
       },
     },
     calendarPort: {
+      accountRef: 'cal',
       execute: async (op, input) => {
         assertValidPayload(op, input);
         return {
@@ -610,10 +613,11 @@ test('F07_N04 calendar.freshness_check：基于 calendar.events 的 ConnectorIte
   assert.equal(noSeqRes.value.reason, 'calendar_sequence_unavailable');
 });
 
-test('F07_N05 calendar.registered_write：注册日历创建/更新写口且不向工具载荷注入 accountRef', async () => {
+test('F07_N05 calendar.registered_write：注册日历创建/更新写口、写前可信账户绑定核验且不向工具载荷注入 accountRef', async () => {
   let receivedInput = null;
   const port = createCalendarRegisteredWriteHostPort({
     calendarPort: {
+      accountRef: 'cal',
       execute: async (op, input) => {
         receivedInput = {op, input};
         return {item: {externalId: input.externalId ?? 'evt-new', accountRef: 'cal', title: input.summary}, state: 'created'};
@@ -633,18 +637,113 @@ test('F07_N05 calendar.registered_write：注册日历创建/更新写口且不�
   assert.equal(res.value.accountRef, 'cal');
   assert.equal('accountRef' in receivedInput.input, false);
   assert.equal(res.value.source, 'calendar_write_receipt');
+
+  // 负例 1（错账户）：目标账户为 cal-a，但端口绑定为 cal-b -> 写前直接拒绝，execute 调用为 0
+  let wrongAccountCalls = 0;
+  const wrongAccountPort = createCalendarRegisteredWriteHostPort({
+    calendarPort: {
+      accountRef: 'cal-b',
+      execute: async () => {
+        wrongAccountCalls += 1;
+        return {item: {externalId: 'evt-wrong', accountRef: 'cal-b'}, state: 'created'};
+      },
+    },
+    resolveWrite: () => ({
+      accountRef: 'cal-a',
+      summary: '不该写入 B 账户的日程',
+      startUtc: '2026-11-10T09:00:00.000Z',
+      endUtc: '2026-11-10T10:00:00.000Z',
+    }),
+  });
+  const wrongAccountRes = await wrongAccountPort.read(context());
+  assert.equal(wrongAccountCalls, 0);
+  assert.equal(wrongAccountRes.state, 'failed');
+  assert.equal(wrongAccountRes.value.reason, 'calendar_account_mismatch');
+  assert.equal(wrongAccountRes.value.expectedAccountRef, 'cal-a');
+  assert.equal(wrongAccountRes.value.boundAccountRef, 'cal-b');
+
+  // 负例 2（缺失账户绑定）：calendarPort 未声明 accountRef 且未提供 boundAccountRef -> 写前返回 unavailable，execute 调用为 0
+  let unboundCalls = 0;
+  const unboundPort = createCalendarRegisteredWriteHostPort({
+    calendarPort: {
+      execute: async () => {
+        unboundCalls += 1;
+        return {item: {externalId: 'evt-unbound', accountRef: 'cal-a'}, state: 'created'};
+      },
+    },
+    resolveWrite: () => ({
+      accountRef: 'cal-a',
+      summary: '未绑定账户的日程',
+      startUtc: '2026-11-10T09:00:00.000Z',
+      endUtc: '2026-11-10T10:00:00.000Z',
+    }),
+  });
+  const unboundRes = await unboundPort.read(context());
+  assert.equal(unboundCalls, 0);
+  assert.equal(unboundRes.state, 'unavailable');
+  assert.equal(unboundRes.value.reason, 'calendar_account_binding_unavailable');
+
+  // 正反例 3（resolveCalendarPort 按账户选择实例）：存在绑定时调用对应实例，不存在时写前返回 unavailable（execute 为 0）
+  let routedCalls = 0;
+  let targetAcc = 'cal-work';
+  const routedPort = createCalendarRegisteredWriteHostPort({
+    resolveCalendarPort: (acc) =>
+      acc === 'cal-work'
+        ? {
+            accountRef: 'cal-work',
+            execute: async (_op, input) => {
+              routedCalls += 1;
+              return {item: {externalId: 'evt-routed', accountRef: 'cal-work', title: input.summary}, state: 'created'};
+            },
+          }
+        : undefined,
+    resolveWrite: () => ({
+      accountRef: targetAcc,
+      summary: '按账户路由日程',
+      startUtc: '2026-11-10T09:00:00.000Z',
+      endUtc: '2026-11-10T10:00:00.000Z',
+    }),
+  });
+  assert.equal((await routedPort.read(context())).state, 'completed');
+  assert.equal(routedCalls, 1);
+  targetAcc = 'cal-missing';
+  const missingRouteRes = await routedPort.read(context());
+  assert.equal(missingRouteRes.state, 'unavailable');
+  assert.equal(missingRouteRes.value.reason, 'calendar_account_binding_unavailable');
+  assert.equal(routedCalls, 1);
+
+  // 负例 4（写后回执账户异常）：写前绑定匹配但底层返回了异常回执账户 -> 保留 receipt 并返回 unknown 进入可对账状态
+  const postMismatchPort = createCalendarRegisteredWriteHostPort({
+    calendarPort: {
+      accountRef: 'cal-a',
+      execute: async () => ({item: {externalId: 'evt-post-mismatch', accountRef: 'cal-unexpected'}, state: 'created'}),
+    },
+    resolveWrite: () => ({
+      accountRef: 'cal-a',
+      summary: '回执账户异常日程',
+      startUtc: '2026-11-10T09:00:00.000Z',
+      endUtc: '2026-11-10T10:00:00.000Z',
+    }),
+  });
+  const postMismatchRes = await postMismatchPort.read(context());
+  assert.equal(postMismatchRes.state, 'unknown');
+  assert.equal(postMismatchRes.value.reason, 'calendar_account_mismatch');
+  assert.equal(postMismatchRes.value.reconciliationRequired, true);
+  assert.equal(postMismatchRes.value.receipt.item.externalId, 'evt-post-mismatch');
 });
 
-test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前新鲜度核对、item.dedupeKey 序列号核对与部分写 unknown 保真', async () => {
+test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前账户绑定与新鲜度核对、序列号核对及部分写 unknown 保真', async () => {
   let invalidatedId = null;
   let calendarInput = null;
   const port = createCalendarUpdateAndInvalidateReminderHostPort({
     calendarReadPort: {
+      accountRef: 'cal',
       execute: async () => ({
         items: [{externalId: 'evt-1', accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:3'}],
       }),
     },
     calendarPort: {
+      accountRef: 'cal',
       execute: async (_op, input) => {
         calendarInput = input;
         return {
@@ -677,15 +776,71 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前新鲜度�
   assert.equal(res.value.invalidationReceipt.reminderId, 'rem-old-1');
   assert.equal(res.value.source, 'calendar_reminder_sync');
 
+  // 负例 0a（写前错账户）：calendarPort 绑定为 cal-b 而目标为 cal-a -> 写前直接拦截，execute 与 invalidate 均为 0
+  let wrongAccUpdateCalls = 0;
+  let wrongAccInvalidateCalls = 0;
+  const wrongAccUpdatePort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarPort: {
+      accountRef: 'cal-b',
+      execute: async () => {
+        wrongAccUpdateCalls += 1;
+        return {};
+      },
+    },
+    invalidationPort: {
+      invalidateReminder: async (id) => {
+        wrongAccInvalidateCalls += 1;
+        return {reminderId: id, invalidated: true, state: 'invalidated'};
+      },
+    },
+    resolveInput: () => ({
+      accountRef: 'cal-a',
+      externalId: 'evt-1',
+      summary: '错账户改期',
+      reminderId: 'rem-old-1',
+    }),
+  });
+  const wrongAccUpdateRes = await wrongAccUpdatePort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
+  assert.equal(wrongAccUpdateCalls, 0);
+  assert.equal(wrongAccInvalidateCalls, 0);
+  assert.equal(wrongAccUpdateRes.state, 'failed');
+  assert.equal(wrongAccUpdateRes.value.reason, 'calendar_account_mismatch');
+
+  // 负例 0b（写前缺失绑定）：calendarPort 未绑定账户 -> 写前返回 unavailable，execute 调用为 0
+  let unboundUpdateCalls = 0;
+  const unboundUpdatePort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarPort: {
+      execute: async () => {
+        unboundUpdateCalls += 1;
+        return {};
+      },
+    },
+    invalidationPort: {
+      invalidateReminder: async (id) => ({reminderId: id, invalidated: true, state: 'invalidated'}),
+    },
+    resolveInput: () => ({
+      accountRef: 'cal-a',
+      externalId: 'evt-1',
+      summary: '缺失绑定改期',
+      reminderId: 'rem-old-1',
+    }),
+  });
+  const unboundUpdateRes = await unboundUpdatePort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
+  assert.equal(unboundUpdateCalls, 0);
+  assert.equal(unboundUpdateRes.state, 'unavailable');
+  assert.equal(unboundUpdateRes.value.reason, 'calendar_account_binding_unavailable');
+
   // 负例 1：写前读回的 sequence 与 previousSequence 不一致 -> 写前直接拦截
   let writeCalledOnStale = false;
   const stalePrePort = createCalendarUpdateAndInvalidateReminderHostPort({
     calendarReadPort: {
+      accountRef: 'cal',
       execute: async () => ({
         items: [{externalId: 'evt-1', accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:9'}],
       }),
     },
     calendarPort: {
+      accountRef: 'cal',
       execute: async () => {
         writeCalledOnStale = true;
         return {};
@@ -710,6 +865,7 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前新鲜度�
   // 负例 2：真实 ConnectorItem 回执里 dedupeKey 的 sequence 未递增 -> 报错 calendar_sequence_not_incremented
   const nonIncPort = createCalendarUpdateAndInvalidateReminderHostPort({
     calendarPort: {
+      accountRef: 'cal',
       execute: async (_op, input) => ({
         item: {externalId: input.externalId, accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:4'},
         state: 'updated',
@@ -733,6 +889,7 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前新鲜度�
   // 负例 3：日历更新已成功但作废提醒失败 -> 返回 unknown 并保留 calendarReceipt 供对账
   const partialPort = createCalendarUpdateAndInvalidateReminderHostPort({
     calendarPort: {
+      accountRef: 'cal',
       execute: async (_op, input) => ({
         item: {externalId: input.externalId, accountRef: 'cal', dedupeKey: 'calendar:primary:evt-1:5'},
         state: 'updated',
@@ -753,6 +910,111 @@ test('F11_N05 calendar.update_and_invalidate_reminder：host 侧写前新鲜度�
   assert.equal(partialRes.state, 'unknown');
   assert.equal(partialRes.value.reason, 'reminder_invalidation_failed');
   assert.equal(partialRes.value.calendarReceipt.item.externalId, 'evt-1');
+
+  // 负例 4：写前绑定通过但更新回执账户异常 -> 不触发提醒作废，保留 calendarReceipt 并返回 unknown 要求对账
+  let postMismatchInvalidateCalls = 0;
+  const postMismatchUpdatePort = createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarPort: {
+      accountRef: 'cal',
+      execute: async (_op, input) => ({
+        item: {externalId: input.externalId, accountRef: 'cal-other', dedupeKey: 'calendar:primary:evt-1:5'},
+        state: 'updated',
+      }),
+    },
+    invalidationPort: {
+      invalidateReminder: async (id) => {
+        postMismatchInvalidateCalls += 1;
+        return {reminderId: id, invalidated: true, state: 'invalidated'};
+      },
+    },
+    resolveInput: () => ({
+      accountRef: 'cal',
+      externalId: 'evt-1',
+      summary: '推迟到下午',
+      reminderId: 'rem-old-1',
+    }),
+  });
+  const postMismatchUpdateRes = await postMismatchUpdatePort.read(context({template: {workflowId: 'F11'}, node: {id: 'F11_N05'}}));
+  assert.equal(postMismatchInvalidateCalls, 0);
+  assert.equal(postMismatchUpdateRes.state, 'unknown');
+  assert.equal(postMismatchUpdateRes.value.reason, 'calendar_account_mismatch');
+  assert.equal(postMismatchUpdateRes.value.reconciliationRequired, true);
+  assert.equal(postMismatchUpdateRes.value.calendarReceipt.item.externalId, 'evt-1');
+});
+
+test('F07_N05/F11_N05 日历写口：写入可能已发生时返回 unknown 对账，写前可判定未写入时返回 failed', async () => {
+  const writeInput = {accountRef: 'cal', summary: '会议', startUtc: '2026-11-10T09:00:00.000Z', endUtc: '2026-11-10T10:00:00.000Z'};
+  const writePortWith = (execute) => createCalendarRegisteredWriteHostPort({
+    calendarPort: {accountRef: 'cal', execute},
+    resolveWrite: () => writeInput,
+  });
+
+  // 写口：execute 超时/外部失败 -> unknown；参数错误（连接器写前拒绝）-> failed；回执非对象 -> unknown
+  const timeoutRes = await writePortWith(async () => {
+    throw Object.assign(new Error('socket hang up'), {code: 'EXTERNAL_FAILURE'});
+  }).read(context());
+  assert.equal(timeoutRes.state, 'unknown');
+  assert.equal(timeoutRes.value.reason, 'calendar_write_outcome_uncertain');
+  assert.equal(timeoutRes.value.reconciliationRequired, true);
+
+  const invalidRes = await writePortWith(async () => {
+    throw Object.assign(new Error('bad input'), {code: 'INVALID_ARGUMENT'});
+  }).read(context());
+  assert.equal(invalidRes.state, 'failed');
+  assert.equal(invalidRes.value.reason, 'calendar_write_failed');
+
+  const malformedRes = await writePortWith(async () => 'ok').read(context());
+  assert.equal(malformedRes.state, 'unknown');
+  assert.equal(malformedRes.value.reason, 'calendar_write_malformed');
+
+  // 改期写口：预读端口未声明可信账户 -> 写前 unavailable，预读与写入均为 0 次
+  let preReadCalls = 0;
+  let updateCalls = 0;
+  const unboundReadRes = await createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarReadPort: {execute: async () => { preReadCalls += 1; return {items: []}; }},
+    calendarPort: {accountRef: 'cal', execute: async () => { updateCalls += 1; return {}; }},
+    invalidationPort: {invalidateReminder: async (id) => ({reminderId: id, invalidated: true, state: 'invalidated'})},
+    resolveInput: () => ({accountRef: 'cal', externalId: 'evt-1', reminderId: 'rem-1', previousSequence: 3}),
+  }).read(context());
+  assert.equal(unboundReadRes.state, 'unavailable');
+  assert.equal(unboundReadRes.value.reason, 'calendar_account_binding_unavailable');
+  assert.equal(preReadCalls, 0);
+  assert.equal(updateCalls, 0);
+
+  // 改期写口：预读端口绑定其他账户 -> 写前 failed，预读与写入均为 0 次
+  const wrongReadRes = await createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarReadPort: {accountRef: 'cal-other', execute: async () => { preReadCalls += 1; return {items: []}; }},
+    calendarPort: {accountRef: 'cal', execute: async () => { updateCalls += 1; return {}; }},
+    invalidationPort: {invalidateReminder: async (id) => ({reminderId: id, invalidated: true, state: 'invalidated'})},
+    resolveInput: () => ({accountRef: 'cal', externalId: 'evt-1', reminderId: 'rem-1', previousSequence: 3}),
+  }).read(context());
+  assert.equal(wrongReadRes.state, 'failed');
+  assert.equal(wrongReadRes.value.reason, 'calendar_account_mismatch');
+  assert.equal(preReadCalls, 0);
+  assert.equal(updateCalls, 0);
+
+  // 改期写口：更新请求已发出后异常 -> unknown 对账，且不作废旧提醒；写前可判定的参数错误 -> failed
+  let invalidateCalls = 0;
+  const updatePortWith = (execute) => createCalendarUpdateAndInvalidateReminderHostPort({
+    calendarPort: {accountRef: 'cal', execute},
+    invalidationPort: {invalidateReminder: async (id) => { invalidateCalls += 1; return {reminderId: id, invalidated: true, state: 'invalidated'}; }},
+    resolveInput: () => ({accountRef: 'cal', externalId: 'evt-1', summary: '改期', reminderId: 'rem-1'}),
+  });
+  const uncertainUpdate = await updatePortWith(async () => {
+    throw Object.assign(new Error('timeout'), {code: 'EXTERNAL_FAILURE'});
+  }).read(context());
+  assert.equal(uncertainUpdate.state, 'unknown');
+  assert.equal(uncertainUpdate.value.reason, 'calendar_update_outcome_uncertain');
+  assert.equal(uncertainUpdate.value.reconciliationRequired, true);
+  const rejectedUpdate = await updatePortWith(async () => {
+    throw Object.assign(new Error('missing event'), {code: 'NOT_FOUND'});
+  }).read(context());
+  assert.equal(rejectedUpdate.state, 'failed');
+  assert.equal(rejectedUpdate.value.reason, 'calendar_update_invalidate_failed');
+  const malformedUpdate = await updatePortWith(async () => null).read(context());
+  assert.equal(malformedUpdate.state, 'unknown');
+  assert.equal(malformedUpdate.value.reason, 'calendar_update_malformed');
+  assert.equal(invalidateCalls, 0);
 });
 
 test('F08_N03 mail.registered_archive：受控归档并读回核验', async () => {

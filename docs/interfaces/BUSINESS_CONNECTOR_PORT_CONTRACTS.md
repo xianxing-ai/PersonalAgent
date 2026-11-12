@@ -12,8 +12,8 @@
 | `calendar.events` | tool | packages/connectors/calendar（`calendar.events` 操作） | 只读日历查询 |
 | `calendar.create` / `calendar.update` / `calendar.cancel` | tool | packages/connectors/calendar | 受控写操作（经 Policy/审批，支持 externalId 与重放幂等） |
 | `calendar.freshness_check` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 日历序列号与时间窗新鲜度校验 |
-| `calendar.registered_write` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 受控日历创建/更新本地写口与回执 |
-| `calendar.update_and_invalidate_reminder` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 日历改期与旧闹铃失效联动回执 |
+| `calendar.registered_write` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 受控日历创建/更新本地写口与回执（写前强制核验可信账户绑定，缺失绑定返回 `unavailable`，不匹配返回 `failed`） |
+| `calendar.update_and_invalidate_reminder` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 日历改期与旧闹铃失效联动回执（写前强制核验可信账户绑定与序列号新鲜度，写后异常保留回执返回 `unknown` 对账） |
 | `todo.registered_write` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 待办注册写口（带幂等键）；必须注入实现存储层原子 `reserve` 的持久化 `idempotencyStore`，未注入或缺少原子 `reserve` 时返回 `unavailable` |
 | `reminder.current_clock_and_revision` | host | packages/agentarts/src/f06-f07-f11-business-hosts.ts | 提醒真实时钟与版本到期核验 |
 | `mail.inbox` / `mail.reconcile_send` | tool | packages/connectors/mail | 收件与 Sent 对账（reconcile 已有） |

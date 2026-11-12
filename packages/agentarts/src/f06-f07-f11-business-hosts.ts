@@ -507,11 +507,14 @@ export interface CalendarFreshnessTarget {
 }
 
 export interface CalendarWorkflowReadPort {
+  /** 连接器实例在构造时绑定的可信账户标识。 */
+  readonly accountRef?: string;
   execute(operation: 'calendar.events', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
 }
 
 export interface CalendarFreshnessHostOptions {
   readonly calendarPort: CalendarWorkflowReadPort;
+  readonly boundAccountRef?: string;
   resolveTarget(context: WorkflowNodeContext): CalendarFreshnessTarget | undefined;
 }
 
@@ -525,6 +528,13 @@ export function createCalendarFreshnessCheckHostPort(options: CalendarFreshnessH
       const target = options.resolveTarget(context);
       if (!target || !text(target.accountRef)) {
         return fail('unavailable', 'calendar_target_unavailable');
+      }
+      const boundReadAccount = options.calendarPort.accountRef ?? options.boundAccountRef;
+      if (text(boundReadAccount) && boundReadAccount !== target.accountRef) {
+        return fail('failed', 'calendar_account_mismatch', {
+          expectedAccountRef: target.accountRef,
+          boundAccountRef: boundReadAccount,
+        });
       }
       try {
         const window = target.window ?? {
@@ -615,17 +625,82 @@ export interface CalendarWriteInput {
 }
 
 export interface CalendarWorkflowWritePort {
+  /** 连接器实例在构造时绑定的可信账户标识（真实 registerCalendar 在构造时固定 accountRef）。 */
+  readonly accountRef?: string;
   execute(operation: 'calendar.create' | 'calendar.update', input: Record<string, unknown>, context: WorkflowNodeContext): Promise<unknown>;
 }
 
 export interface CalendarRegisteredWriteOptions {
-  readonly calendarPort: CalendarWorkflowWritePort;
+  readonly calendarPort?: CalendarWorkflowWritePort;
+  /** 显式声明固定 calendarPort 绑定的可信账户标识（也可直接在 calendarPort.accountRef 上声明）。 */
+  readonly boundAccountRef?: string;
+  /** 按目标 accountRef 选择对应已绑定账户的连接器实例。 */
+  resolveCalendarPort?(accountRef: string, context: WorkflowNodeContext): CalendarWorkflowWritePort | undefined;
   resolveWrite(context: WorkflowNodeContext): CalendarWriteInput | undefined;
 }
 
+/**
+ * 连接器在写入前就会拒绝的明确错误码（参数、授权、能力、版本冲突、目标不存在）：可判定未写入，返回 failed。
+ * 其余异常（超时、外部失败、未知）无法排除写入已发生，必须返回 unknown 要求对账。
+ */
+const CALENDAR_NOT_APPLIED_CODES = new Set([
+  'INVALID_ARGUMENT', 'UNAUTHORIZED', 'SCOPE_DENIED', 'UNSUPPORTED_CAPABILITY', 'REVISION_CONFLICT', 'NOT_FOUND',
+]);
+function calendarWriteDefinitelyNotApplied(error: unknown): boolean {
+  const code = isPlainObject(error) || error instanceof Error ? (error as {code?: unknown}).code : undefined;
+  return typeof code === 'string' && CALENDAR_NOT_APPLIED_CODES.has(code);
+}
+
+function resolveTrustedCalendarWritePort(
+  targetAccountRef: string,
+  options: {
+    readonly calendarPort?: CalendarWorkflowWritePort;
+    readonly boundAccountRef?: string;
+    resolveCalendarPort?(accountRef: string, context: WorkflowNodeContext): CalendarWorkflowWritePort | undefined;
+  },
+  context: WorkflowNodeContext,
+):
+  | {readonly ok: true; readonly port: CalendarWorkflowWritePort; readonly boundAccountRef: string}
+  | {readonly ok: false; readonly failure: ReturnType<typeof fail>} {
+  const selectedPort =
+    typeof options.resolveCalendarPort === 'function'
+      ? options.resolveCalendarPort(targetAccountRef, context)
+      : options.calendarPort;
+  if (!selectedPort || typeof selectedPort.execute !== 'function') {
+    return {
+      ok: false,
+      failure: fail('unavailable', 'calendar_account_binding_unavailable', {
+        expectedAccountRef: targetAccountRef,
+      }),
+    };
+  }
+  const boundAccountRef = selectedPort.accountRef ?? options.boundAccountRef;
+  if (!text(boundAccountRef)) {
+    return {
+      ok: false,
+      failure: fail('unavailable', 'calendar_account_binding_unavailable', {
+        expectedAccountRef: targetAccountRef,
+      }),
+    };
+  }
+  if (boundAccountRef !== targetAccountRef) {
+    return {
+      ok: false,
+      failure: fail('failed', 'calendar_account_mismatch', {
+        expectedAccountRef: targetAccountRef,
+        boundAccountRef,
+      }),
+    };
+  }
+  return {ok: true, port: selectedPort, boundAccountRef};
+}
+
 export function createCalendarRegisteredWriteHostPort(options: CalendarRegisteredWriteOptions): WorkflowHostPort {
-  if (typeof options?.calendarPort?.execute !== 'function' || typeof options?.resolveWrite !== 'function') {
-    throw new TypeError('createCalendarRegisteredWriteHostPort 需要 calendarPort 与 resolveWrite');
+  if (
+    (typeof options?.calendarPort?.execute !== 'function' && typeof options?.resolveCalendarPort !== 'function') ||
+    typeof options?.resolveWrite !== 'function'
+  ) {
+    throw new TypeError('createCalendarRegisteredWriteHostPort 需要 calendarPort（或 resolveCalendarPort）与 resolveWrite');
   }
   return {
     capabilities: ['calendar.registered_write'],
@@ -644,9 +719,14 @@ export function createCalendarRegisteredWriteHostPort(options: CalendarRegistere
       if (op === 'calendar.update' && !text(writeInput.externalId)) {
         return fail('unavailable', 'calendar_update_external_id_unavailable');
       }
+      // 写前强制核验可信账户绑定：缺失绑定返回 unavailable，账户不匹配返回 failed，底层 execute 调用为 0
+      const resolvedPort = resolveTrustedCalendarWritePort(writeInput.accountRef, options, context);
+      if (!resolvedPort.ok) {
+        return resolvedPort.failure;
+      }
       try {
         // 严格对齐 calendar.create / calendar.update inputSchema（不向工具载荷注入 accountRef）
-        const result = await options.calendarPort.execute(op, {
+        const result = await resolvedPort.port.execute(op, {
           summary: writeInput.summary,
           startUtc: writeInput.startUtc,
           endUtc: writeInput.endUtc,
@@ -654,12 +734,18 @@ export function createCalendarRegisteredWriteHostPort(options: CalendarRegistere
           ...(writeInput.location ? {location: writeInput.location} : {}),
           ...(writeInput.notes ? {notes: writeInput.notes} : {}),
         }, context);
-        if (!isPlainObject(result)) return fail('failed', 'calendar_write_malformed');
+        if (!isPlainObject(result)) {
+          // execute 已返回，写入可能已发生：不能当作普通失败，要求对账
+          return fail('unknown', 'calendar_write_malformed', {reconciliationRequired: true});
+        }
         const receiptAccountRef = extractCalendarAccountRef(result);
         if (receiptAccountRef !== undefined && receiptAccountRef !== writeInput.accountRef) {
-          return fail('failed', 'calendar_account_mismatch', {
+          // 底层写已发生但回执账户异常：保留回执并返回 unknown 要求对账，不丢失已发生的副作用证据
+          return fail('unknown', 'calendar_account_mismatch', {
             expectedAccountRef: writeInput.accountRef,
             actualAccountRef: receiptAccountRef,
+            receipt: result,
+            reconciliationRequired: true,
           });
         }
         const resolvedExternalId =
@@ -682,7 +768,8 @@ export function createCalendarRegisteredWriteHostPort(options: CalendarRegistere
         };
       } catch (error) {
         if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw error;
-        return fail('failed', 'calendar_write_failed');
+        if (calendarWriteDefinitelyNotApplied(error)) return fail('failed', 'calendar_write_failed');
+        return fail('unknown', 'calendar_write_outcome_uncertain', {reconciliationRequired: true});
       }
     },
   };
@@ -709,16 +796,21 @@ export interface ReminderWorkflowInvalidationPort {
 }
 
 export interface CalendarUpdateAndInvalidateReminderOptions {
-  readonly calendarPort: CalendarWorkflowWritePort;
+  readonly calendarPort?: CalendarWorkflowWritePort;
+  readonly boundAccountRef?: string;
+  resolveCalendarPort?(accountRef: string, context: WorkflowNodeContext): CalendarWorkflowWritePort | undefined;
   readonly calendarReadPort?: CalendarWorkflowReadPort;
   readonly invalidationPort: ReminderWorkflowInvalidationPort;
   resolveInput(context: WorkflowNodeContext): CalendarUpdateAndInvalidateInput | undefined;
 }
 
 export function createCalendarUpdateAndInvalidateReminderHostPort(options: CalendarUpdateAndInvalidateReminderOptions): WorkflowHostPort {
-  if (typeof options?.calendarPort?.execute !== 'function' || typeof options?.invalidationPort?.invalidateReminder !== 'function'
-    || typeof options?.resolveInput !== 'function') {
-    throw new TypeError('createCalendarUpdateAndInvalidateReminderHostPort 需要 calendarPort, invalidationPort 与 resolveInput');
+  if (
+    (typeof options?.calendarPort?.execute !== 'function' && typeof options?.resolveCalendarPort !== 'function') ||
+    typeof options?.invalidationPort?.invalidateReminder !== 'function' ||
+    typeof options?.resolveInput !== 'function'
+  ) {
+    throw new TypeError('createCalendarUpdateAndInvalidateReminderHostPort 需要 calendarPort（或 resolveCalendarPort）, invalidationPort 与 resolveInput');
   }
   return {
     capabilities: ['calendar.update_and_invalidate_reminder'],
@@ -727,9 +819,29 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
       if (!input || !text(input.accountRef) || !text(input.externalId) || !text(input.reminderId)) {
         return fail('unavailable', 'calendar_update_invalidate_input_unavailable');
       }
+      // 写前强制核验可信账户绑定：缺失绑定返回 unavailable，账户不匹配返回 failed，底层 execute 调用为 0
+      const resolvedWritePort = resolveTrustedCalendarWritePort(input.accountRef, options, context);
+      if (!resolvedWritePort.ok) {
+        return resolvedWritePort.failure;
+      }
+      // 写前预读参与写入决策：使用时其账户必须是显式可信绑定，不从写端口推断
+      const needsPreRead = typeof input.previousSequence === 'number' && typeof options.calendarReadPort?.execute === 'function';
+      if (needsPreRead) {
+        const boundReadAccount = options.calendarReadPort?.accountRef;
+        if (!text(boundReadAccount)) {
+          return fail('unavailable', 'calendar_account_binding_unavailable', {expectedAccountRef: input.accountRef});
+        }
+        if (boundReadAccount !== input.accountRef) {
+          return fail('failed', 'calendar_account_mismatch', {
+            expectedAccountRef: input.accountRef,
+            boundAccountRef: boundReadAccount,
+          });
+        }
+      }
+      let updateDispatched = false;
       try {
         // 0. 如提供了 previousSequence 且注入了 calendarReadPort，在 host 侧先读回校验写前新鲜度
-        if (typeof input.previousSequence === 'number' && typeof options.calendarReadPort?.execute === 'function') {
+        if (needsPreRead && options.calendarReadPort) {
           const prePage = await options.calendarReadPort.execute(
             'calendar.events',
             {
@@ -765,7 +877,8 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
         }
 
         // 1. 更新日程属性（严格对齐 calendar.update inputSchema：不向工具载荷传 accountRef 或 expectedSequence）
-        const updateResult = await options.calendarPort.execute('calendar.update', {
+        updateDispatched = true;
+        const updateResult = await resolvedWritePort.port.execute('calendar.update', {
           externalId: input.externalId,
           ...(input.summary ? {summary: input.summary} : {}),
           ...(input.startUtc ? {startUtc: input.startUtc} : {}),
@@ -773,12 +886,17 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
           ...(input.location ? {location: input.location} : {}),
           ...(input.notes ? {notes: input.notes} : {}),
         }, context);
-        if (!isPlainObject(updateResult)) return fail('failed', 'calendar_update_malformed');
+        if (!isPlainObject(updateResult)) {
+          return fail('unknown', 'calendar_update_malformed', {reconciliationRequired: true, externalId: input.externalId});
+        }
         const receiptAccountRef = extractCalendarAccountRef(updateResult);
         if (receiptAccountRef !== undefined && receiptAccountRef !== input.accountRef) {
-          return fail('failed', 'calendar_account_mismatch', {
+          // 底层更新已发生但回执账户不一致：保留 calendarReceipt 并返回 unknown 供对账
+          return fail('unknown', 'calendar_account_mismatch', {
             expectedAccountRef: input.accountRef,
             actualAccountRef: receiptAccountRef,
+            calendarReceipt: updateResult,
+            reconciliationRequired: true,
           });
         }
         const updatedSequence = extractCalendarSequence(updateResult);
@@ -836,6 +954,14 @@ export function createCalendarUpdateAndInvalidateReminderHostPort(options: Calen
         };
       } catch (error) {
         if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw error;
+        // 更新请求已发出且异常无法排除已写入：返回 unknown 要求对账，并且不作废旧提醒
+        if (updateDispatched && !calendarWriteDefinitelyNotApplied(error)) {
+          return fail('unknown', 'calendar_update_outcome_uncertain', {
+            reconciliationRequired: true,
+            externalId: input.externalId,
+            reminderId: input.reminderId,
+          });
+        }
         return fail('failed', 'calendar_update_invalidate_failed');
       }
     },
