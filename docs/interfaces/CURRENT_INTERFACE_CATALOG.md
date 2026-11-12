@@ -58,6 +58,8 @@ Competition 可信宿主可显式启用 `competitionExecution:{mode:'progressive
 
 ModelGateway 的可选 host-only `RealtimeSession.speakText(text)` 由用户已开启 Live 的同对话新文字任务消费；原 Runtime 成功终态触发，有界排队、task/revision 去重、切换对话/停止/打断丢弃晚到结果。未开启 Live 或 provider 缺端口明确 unavailable；无新公开 voice wire、授权、provider 或任务循环。accepted 不代表音频/播放已验证；实际 response 参数及 item 删除的云兼容性和实体设备仍未验收，不提升冻结状态。见 [接线及本地验证](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
 
+> F12 语音关联（provisional）：Qwen 本地输出事件及 speakText accepted 可携带可选 renditionId，输出可携带 responseId；旧消费者可忽略。它们只关联本次输出，不证明逐字发声、播放或用户听见。通知宿主、原回执、物理设备及真实云验收仍另行交付。
+
 ## 2026-10-23 会话自动压缩与命令（provisional）
 
 原 `task.submit` 的用户完整输入 `/压缩` / `/compact` 在 Runtime 内执行历史压缩，不走主模型问答或子任务委派。
