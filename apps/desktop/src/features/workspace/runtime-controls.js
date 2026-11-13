@@ -1,4 +1,5 @@
 import {renderPermissionSheet} from './permission-sheet.js';
+import {renderCostRoute} from './cost-route-status.js';
 
 /** Entry points for existing host permissions, non-conflicting permission overview, and Live voice. */
 export function mountWorkspaceRuntimeControls(root,invoke,report){
@@ -9,6 +10,8 @@ export function mountWorkspaceRuntimeControls(root,invoke,report){
   const auditAlert=document.createElement('div');auditAlert.className='notice';auditAlert.hidden=true;auditAlert.setAttribute('role','alert');auditAlert.dataset.auditAlert='';
   const sheet=document.createElement('div');sheet.className='notice';sheet.hidden=true;sheet.dataset.permissionSheet='';sheet.dataset.signature='';
   controls.append(auditAlert,sheet);
+  const costRouteStatus=document.createElement('div');costRouteStatus.className='notice';costRouteStatus.hidden=true;costRouteStatus.dataset.costRoute='';
+  controls.append(costRouteStatus);
   const access=controls.querySelector('.cc-access'),overview=controls.querySelector('.cc-permission-overview'),approval=controls.querySelector('.cc-approval'),live=controls.querySelector('.cc-live');
   let current={},pending=false,closed=false;
   access.onclick=()=>invoke('admin.open',{page:'authorizations'}).catch(report);
@@ -36,6 +39,7 @@ export function mountWorkspaceRuntimeControls(root,invoke,report){
     approval.hidden=count===0;approval.textContent=`待批准 · ${count}`;
     live.disabled=pending;live.setAttribute('aria-pressed',String(data.live?.active===true));
     live.querySelector('span').textContent=data.live?.active?'结束语音':'实时语音';
+    renderCostRoute(costRouteStatus,data.costRoute,invoke,report);
     live.title=data.live?.active?'结束当前实时语音通话':data.live?.configured?'在原语音面板开启实时语音':'打开语音设置，确认音频用途后启用实时语音';
   };
   live.onclick=async()=>{if(pending||closed)return;pending=true;update(current);try{await invoke('workspace.live.toggle');}catch(error){if(!closed)report(error);}finally{pending=false;if(!closed)update(current);}};
