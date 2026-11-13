@@ -66,7 +66,7 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       const send = () => fetchImpl(target.href,{...init,headers:Object.fromEntries(headers),redirect:'error'});
       if (typeof onCloudRun !== 'function') return send();
       const started = Date.now();
-      const finish = ok => { try { onCloudRun({durationMs: Math.max(0, Date.now()-started), ok: ok === true}); } catch { /* Usage recording cannot change the cloud response. */ } };
+      const finish = ok => { try { onCloudRun({durationMs: Math.max(1, Date.now()-started), ok: ok === true}); } catch { /* Usage recording cannot change the cloud response. */ } };
       return Promise.resolve().then(send).then(response => { finish(response.ok); return response; }, error => { finish(false); throw error; });
     }};
   };

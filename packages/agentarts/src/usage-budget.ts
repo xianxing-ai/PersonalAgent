@@ -262,18 +262,18 @@ export function createUsageBudget(options: {
     return {id, body};
   }
 
-  function publishIfNew(view: ReturnType<typeof viewAt>): void {
+  function claimNotice(view: ReturnType<typeof viewAt>, onlyExceeded = false): UsageNotice | undefined {
     const notices = {...(store.loadNotices() ?? {})};
     const exceeded = noticeFor('exceeded', view);
-    const approach = exceeded ? undefined : noticeFor('approach', view);
+    const approach = onlyExceeded || exceeded ? undefined : noticeFor('approach', view);
     const notice = exceeded ?? approach;
-    if (!notice) return;
+    if (!notice) return undefined;
     const dayLevel = level(view.dayYuan, view.policy.dailyLimitYuan);
     const monthLevel = level(view.monthYuan, view.policy.monthlyLimitYuan);
     if (exceeded) {
       if (dayLevel === 'exceeded' && notices.exceededDay === view.period.day
-        && (monthLevel !== 'exceeded' || notices.exceededMonth === view.period.month)) return;
-      if (monthLevel === 'exceeded' && dayLevel !== 'exceeded' && notices.exceededMonth === view.period.month) return;
+        && (monthLevel !== 'exceeded' || notices.exceededMonth === view.period.month)) return undefined;
+      if (monthLevel === 'exceeded' && dayLevel !== 'exceeded' && notices.exceededMonth === view.period.month) return undefined;
       if (dayLevel === 'exceeded') notices.exceededDay = view.period.day;
       if (monthLevel === 'exceeded') notices.exceededMonth = view.period.month;
       if (dayLevel !== 'none') notices.approachDay = view.period.day;
@@ -281,12 +281,17 @@ export function createUsageBudget(options: {
     } else if (approach) {
       const dayNew = dayLevel === 'approach' && notices.approachDay !== view.period.day;
       const monthNew = monthLevel === 'approach' && notices.approachMonth !== view.period.month;
-      if (!dayNew && !monthNew) return;
+      if (!dayNew && !monthNew) return undefined;
       if (dayNew) notices.approachDay = view.period.day;
       if (monthNew) notices.approachMonth = view.period.month;
     }
     store.saveNotices(notices);
-    onNotice?.(notice);
+    return notice;
+  }
+
+  function publishIfNew(view: ReturnType<typeof viewAt>): void {
+    const notice = claimNotice(view, false);
+    if (notice) onNotice?.(notice);
   }
 
   function append(entry: Omit<UsageLedgerEntry, 'seq' | 'estimatedYuan'> & {estimatedYuan: number}, at: string): void {
@@ -314,6 +319,16 @@ export function createUsageBudget(options: {
         action: record.action,
       };
       store.savePolicy(policy);
+      const view = viewAt();
+      const notices = {...(store.loadNotices() ?? {})};
+      const dayLevel = level(view.dayYuan, policy.dailyLimitYuan);
+      const monthLevel = level(view.monthYuan, policy.monthlyLimitYuan);
+      let changedNotices = false;
+      if (dayLevel !== 'exceeded' && notices.exceededDay === view.period.day) { delete notices.exceededDay; changedNotices = true; }
+      if (dayLevel === 'none' && notices.approachDay === view.period.day) { delete notices.approachDay; changedNotices = true; }
+      if (monthLevel !== 'exceeded' && notices.exceededMonth === view.period.month) { delete notices.exceededMonth; changedNotices = true; }
+      if (monthLevel === 'none' && notices.approachMonth === view.period.month) { delete notices.approachMonth; changedNotices = true; }
+      if (changedNotices) store.saveNotices(notices);
       return this.snapshot();
     },
     recordModel(input) {
@@ -349,7 +364,7 @@ export function createUsageBudget(options: {
       return {allowed: true, ...(next ? {modelId: next} : {}), prompt};
     },
     exceededNotice() {
-      return noticeFor('exceeded', viewAt());
+      return claimNotice(viewAt(), true);
     },
   };
 }

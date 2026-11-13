@@ -95,3 +95,18 @@ test('Shanghai calendar day keeps the previous evening out of today', () => {
   morning.recordCloud({durationMs: 1_000});
   assert.match(morning.snapshot().usageLine, /云端 1 秒/);
 });
+
+test('exceededNotice deduplicates across restart and resets when the limit is raised above current spend', () => {
+  const store = memoryStore();
+  const first = createUsageBudget({store, now: () => new Date(noon)});
+  first.configure({dailyLimitYuan: 10, monthlyLimitYuan: null, action: 'pause'});
+  first.recordModel({modelId: 'qwen-max', tokens: 1_000_000});
+  first.configure({dailyLimitYuan: 5, monthlyLimitYuan: null, action: 'pause'});
+  const claimed = first.exceededNotice();
+  assert.ok(claimed?.id.startsWith('usage-budget-exceeded-'));
+  const restarted = createUsageBudget({store, now: () => new Date(noon)});
+  assert.equal(restarted.exceededNotice(), undefined);
+  restarted.configure({dailyLimitYuan: 20, monthlyLimitYuan: null, action: 'pause'});
+  restarted.configure({dailyLimitYuan: 5, monthlyLimitYuan: null, action: 'pause'});
+  assert.ok(restarted.exceededNotice()?.id.startsWith('usage-budget-exceeded-'));
+});

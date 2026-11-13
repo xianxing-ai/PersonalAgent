@@ -143,9 +143,9 @@ export function createComputerVisionConfig({userData,safeStorage,createGateway,f
             if(controller.signal.aborted)cancelled();
           });
           const result=await Promise.race([calls.run(context,()=>gateway.complete({...request,signal:controller.signal})),interrupted]);
-          assertCall(context);
           try { onModelUsage?.({modelId: selected.model, usage: result?.usage, latencyMs: result?.latencyMs}); }
           catch { /* A ledger failure must not rewrite a completed vision result. */ }
+          assertCall(context);
           return result;
         }finally{clearTimeout(timer);removeAbort();sourceSignal.removeEventListener('abort',abort);pending.delete(controller);controller.abort('Vision call closed');}
       }});

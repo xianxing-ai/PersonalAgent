@@ -2597,8 +2597,21 @@ async function initializeRuntime() {
         beforeCompetitionSend:request=> {
           const task=runtimeApplication.runtime.getTask(request.taskId);
           const conversationId=typeof task.conversationId==='string'?task.conversationId:'';
-          const proactive=conversationId.startsWith('desktop-proactive')
+          let proactive=conversationId.startsWith('desktop-proactive')
             ||runtimeApplication.runtime.loadCheckpoint(request.taskId,'desktop-proactive-workflow-v1')!=null;
+          let cursorTaskId=request.taskId;
+          const visited=new Set([cursorTaskId]);
+          while(!proactive&&visited.size<16){
+            const parent=runtimeApplication.runtime.loadCheckpoint(cursorTaskId,'subtask-parent');
+            const parentId=typeof parent?.parentTaskId==='string'?parent.parentTaskId:'';
+            if(!parentId||visited.has(parentId))break;
+            visited.add(parentId);cursorTaskId=parentId;
+            try{
+              const ancestor=runtimeApplication.runtime.getTask(parentId);
+              const ancestorConv=typeof ancestor.conversationId==='string'?ancestor.conversationId:'';
+              if(ancestorConv.startsWith('desktop-proactive')||runtimeApplication.runtime.loadCheckpoint(parentId,'desktop-proactive-workflow-v1')!=null)proactive=true;
+            }catch{break;}
+          }
           usageBudgetProduct?.beforeCloudSend({userInitiated:!proactive,modelId:request.executionModel?.modelId});
           if (!proactiveHost && conversationId.startsWith('desktop-proactive-goals:')) {
             throw Error('目标主动分析宿主尚未就绪');
@@ -3908,7 +3921,15 @@ async function action(event, name, payload) {
     }
     if(name==='proactive.workflow.control')return proactiveWorkflowApplication.control(payload);
     if(!payload||Object.keys(payload).some(key=>key!=='taskId')||typeof payload.taskId!=='string')throw Error('原持续工作流任务标识无效');
-    if(name==='proactive.workflow.resume')return proactiveWorkflowApplication.resume(payload.taskId);
+    if(name==='proactive.workflow.resume'){
+      const resume=()=>proactiveWorkflowApplication.resume(payload.taskId);
+      if(!usageBudgetProduct)return resume();
+      return usageBudgetProduct.withOrigin('autonomous',()=>{
+        const decision=usageBudgetProduct.decide({origin:'autonomous'});
+        if(!decision.allowed)throw Error(decision.prompt);
+        return resume();
+      });
+    }
     if(name==='proactive.workflow.read')return proactiveWorkflowApplication.read(payload.taskId);
     throw Error('持续工作流操作未公布');
   }
@@ -3928,7 +3949,12 @@ async function action(event, name, payload) {
       return proactiveHost.applyCognitionDecision(reviewTaskId);
     }
     if (!payload || Object.keys(payload).some(key => key !== 'id') || typeof payload.id !== 'string') throw Error('主动分析请求无效');
-    return proactiveHost.analyze(payload.id);
+    if (!usageBudgetProduct) return proactiveHost.analyze(payload.id);
+    return usageBudgetProduct.withOrigin('autonomous', () => {
+      const decision = usageBudgetProduct.decide({origin: 'autonomous'});
+      if (!decision.allowed) throw Error(decision.prompt);
+      return proactiveHost.analyze(payload.id);
+    });
   }
   if (name.startsWith('cognition.')) {
     if (name === 'cognition.status') return p5StatusSnapshot();

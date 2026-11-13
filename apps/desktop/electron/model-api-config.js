@@ -214,9 +214,9 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
           }
         }
         const result = await activeGateway.complete({...requestForCall, signal: controller.signal});
-        assertCurrent();
         try { onModelUsage?.({modelId: activeEntry.model, usage: result?.usage, latencyMs: result?.latencyMs}); }
         catch { /* A ledger failure must not rewrite a completed model result. */ }
+        assertCurrent();
         if (sequence === latestRequest && !controller.signal.aborted) requestBudgets.set(id,publicRequestBudget(result.requestBudget,
           activeGateway.deployment?.capabilities?.requestTokenBudget,activeEntry.bindingId));
         return result;

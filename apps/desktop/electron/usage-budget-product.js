@@ -1,3 +1,4 @@
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {createUsageBudgetHost} from './usage-budget-host.js';
 
 /**
@@ -6,6 +7,8 @@ import {createUsageBudgetHost} from './usage-budget-host.js';
  */
 export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, onUpdate, candidates, Notification}) {
   const sent = new Set();
+  const originStore = new AsyncLocalStorage();
+  const currentOrigin = () => originStore.getStore() === 'autonomous' ? 'autonomous' : 'user';
   let notifier = async notice => {
     if (Notification?.isSupported?.()) new Notification({title: 'PersonalAgent 用量', body: notice.body}).show();
   };
@@ -20,7 +23,6 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
     catch { sent.delete(notice.id); }
   }
   function changed() { try { onUpdate?.(); } catch { /* UI refresh must not affect the ledger. */ } }
-  let origin = 'user';
   return {
     snapshot() {
       try { return budget.snapshot(); }
@@ -34,6 +36,7 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
     },
     decide(input) { return budget.decide({...input, candidates: input.candidates ?? candidates?.() ?? []}); },
     beforeLocalCall(info) {
+      const origin = currentOrigin();
       const decision = budget.decide({origin, modelId: info.modelId, candidates: info.models ?? []});
       if (!decision.allowed) throw Error(decision.prompt || '已超过用量上限');
       if (decision.prompt) void emit(budget.exceededNotice());
@@ -43,15 +46,20 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
       const usage = info?.usage ?? {};
       const tokens = Number.isSafeInteger(usage.totalTokens) ? usage.totalTokens
         : (Number.isSafeInteger(usage.promptTokens) ? usage.promptTokens : 0) + (Number.isSafeInteger(usage.completionTokens) ? usage.completionTokens : 0);
-      budget.recordModel({modelId: info.modelId, tokens, origin});
+      budget.recordModel({modelId: info.modelId, tokens, origin: currentOrigin()});
       changed();
     },
     degradeSelection(selection, resolve) {
       if (!selection?.modelId || typeof resolve !== 'function') return selection;
-      const decision = budget.decide({origin: 'user', modelId: selection.modelId, candidates: candidates?.() ?? []});
+      const decision = budget.decide({origin: currentOrigin(), modelId: selection.modelId, candidates: candidates?.() ?? []});
       if (!decision.modelId || decision.modelId === selection.modelId) return selection;
       try { return resolve({modelId: decision.modelId, ...(selection.reasoningEffort ? {reasoningEffort: selection.reasoningEffort} : {})}); }
-      catch { return selection; }
+      catch {
+        if (selection.reasoningEffort) {
+          try { return resolve({modelId: decision.modelId}); } catch {}
+        }
+        return selection;
+      }
     },
     beforeCloudSend({userInitiated, modelId}) {
       const decision = budget.decide({origin: userInitiated ? 'user' : 'autonomous', modelId, candidates: candidates?.() ?? []});
@@ -60,7 +68,8 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
     },
     recordCloud(info) {
       if (!info || !Number.isSafeInteger(info.durationMs) || info.durationMs < 0) return;
-      budget.recordCloud({durationMs: info.durationMs, origin: 'user'});
+      const origin = info.origin === 'autonomous' || info.origin === 'user' ? info.origin : currentOrigin();
+      budget.recordCloud({durationMs: info.durationMs, origin});
       changed();
     },
     noteUserSubmit() {
@@ -68,10 +77,8 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
       if (notice) void emit(notice);
     },
     async withOrigin(next, fn) {
-      const previous = origin;
-      origin = next;
-      try { return await fn(); }
-      finally { origin = previous; }
+      const normalized = next === 'autonomous' ? 'autonomous' : 'user';
+      return originStore.run(normalized, fn);
     },
     handleAction(name, payload) {
       if (name === 'usageBudget.state') {

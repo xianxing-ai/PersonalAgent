@@ -130,5 +130,14 @@ test('startup hooks record a real gateway call, survive restart, drive settings,
   assert.match(main, /usageBudgetProduct\?\.noteUserSubmit\(\)/);
   assert.match(main, /onCloudRun: info => usageBudgetProduct\.recordCloud\(info\)/);
   assert.match(preload, /invoke: \(action, payload\) => ipcRenderer\.invoke\('desktop:action', action, payload\)/);
+  const degraded = finalBudget.degradeSelection(
+    {modelId: 'qwen-max', reasoningEffort: 'high'},
+    selection => {
+      if (selection.reasoningEffort) throw new Error('unsupported reasoningEffort');
+      return selection;
+    },
+  );
+  assert.equal(degraded.modelId, 'qwen-turbo');
+  assert.equal(degraded.reasoningEffort, undefined);
   host.dispose(); blocked.dispose(); downgraded.dispose();
 });
