@@ -144,6 +144,8 @@ Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Con
 
 ## 2026-10-20 日历写能力消费接线（provisional，离线接线已验）
 
+> 日历窗口内容摘要（provisional）：calendar.events 仅在无 cursor 且结果完整时附带 sourceVersion；分页结果不提供完整窗口摘要。它不是账号身份、全账号修订或条件写令牌；特别是空窗口不包含账号信息，调用方须另外绑定并核验来源。真实日历及 F07 流程验收另行记录。
+
 复用#442@3b1e6d6c已包含的#439可选CalendarProvider.writes与calendar.create/update/cancel接线，沿原Runtime/Policy/ToolGateway保留逐任务批准、配置撤销和完整metadata/result原生出机门禁。#458补充条件写入、实际资源地址校验、删除读回及额外消费验证，见[工作包](../competition/CALENDAR_CONVERSATION_WRITES_20261020.md)。依赖尚未合并主线，真实账号/平台验收未执行，不提升冻结或真实可用等级。无Core wire/数据库迁移，CalDAV响应只增加兼容的可选headers.get端口。
 
 ## 2026-10-20 已有邮件/日历工具接入（provisional）
