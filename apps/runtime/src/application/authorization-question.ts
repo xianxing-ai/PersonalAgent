@@ -14,6 +14,7 @@ export interface AuthorizationRequirement {
 export interface AuthorizationQuestionRequest {
   taskId:string;proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;
   deadline:string;signal:AbortSignal;requirements:AuthorizationRequirement[];
+  sideEffect?:'read'|'local_write'|'external_write';
   /** Trusted workflow grouping, never accepted from Renderer or a model proposal. */
   taskConsent?:{taskId:string;bindingDigest:string;summary:string;mode:'read-only'|'workspace-write';requiresNative?:boolean};
 }
@@ -31,6 +32,7 @@ export interface AuthorizationQuestionReceipt {
 interface Question {
   questionId:string;revision:number;state:AuthorizationQuestionState;taskId:string;conversationId:string;
   proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;deadline:string;expiresAt:string;
+  sideEffect?:'read'|'local_write'|'external_write';
   requirements:AuthorizationRequirement[];sandbox:AuthorizationSandbox;ownerBinding:string;
   baseSandboxRef?:string;
   decision?:AuthorizationDecision;receiptRef?:string;reason?:string;consumed:Record<string,string>;
@@ -77,6 +79,7 @@ const READ_SCOPE = /(?:^|[.:])(?:read|list|search|get|status)$/iu;
 /** Conservative gate. Unknown, write, send, export and external-process requests stay pending. */
 export function isLowRiskAuthorizationRequest(request: Omit<AuthorizationQuestionRequest,'signal'>): boolean {
   if (!request?.requirements?.length) return false;
+  if (request.sideEffect !== 'read') return false;
   if (request.taskConsent && (request.taskConsent.mode !== 'read-only' || request.taskConsent.requiresNative === true)) return false;
   if (/send|delete|erase|install|execute|withdraw|configure/iu.test(request.toolName)) return false;
   return request.requirements.every(requirement => requirement.kind === 'tool' && requirement.scopes.length > 0
@@ -104,8 +107,6 @@ export class AuthorizationQuestions {
         question.state=this.now()>=Date.parse(question.expiresAt)?'expired':'stale';question.reason='host_restarted';question.revision++;
         interrupted.push(structuredClone(question));
       }
-      const preferred=this.options.profiles.find(item=>item.lowRiskAuto===true);
-      if(preferred && state.selectedRef==='default-read-only' && state.profileChosen!==true) state.selectedRef=preferred.ref;
       return interrupted;
     });
     for(const question of interrupted)this.options.onInvalidated?.(question,question.state as 'expired'|'stale');
@@ -131,11 +132,13 @@ export class AuthorizationQuestions {
   private input(question:Question):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:question.taskId,proposalId:question.proposalId,runId:question.runId,toolName:question.toolName,
       toolVersion:question.toolVersion,argumentsDigest:question.argumentsDigest,deadline:question.deadline,
+      ...(question.sideEffect!==undefined?{sideEffect:question.sideEffect}:{}),
       requirements:structuredClone(question.requirements),...(question.taskConsent?{taskConsent:structuredClone(question.taskConsent)}:{})};
   }
   private normalize(request:AuthorizationQuestionRequest):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:request.taskId,proposalId:request.proposalId,runId:request.runId,toolName:request.toolName,
       toolVersion:request.toolVersion,argumentsDigest:request.argumentsDigest,deadline:request.deadline,
+      ...(request.sideEffect!==undefined?{sideEffect:request.sideEffect}:{}),
       ...(request.taskConsent?{taskConsent:structuredClone(request.taskConsent)}:{}),
       requirements:request.requirements.map(requirement=>({requirementId:requirement.requirementId,kind:requirement.kind,
         scopes:[...requirement.scopes],bindingDigest:requirement.bindingDigest,summary:requirement.summary,
@@ -157,6 +160,7 @@ export class AuthorizationQuestions {
   }
   private validate(request:AuthorizationQuestionRequest):void {
     if(!request||['taskId','proposalId','runId','toolName','toolVersion'].some(key=>!text(request[key as keyof AuthorizationQuestionRequest]))
+      ||request.sideEffect!==undefined&&!['read','local_write','external_write'].includes(request.sideEffect)
       ||!hash(request.argumentsDigest)||!Number.isFinite(Date.parse(request.deadline))||Date.parse(request.deadline)<=this.now()
       ||!request.signal||request.signal.aborted||!Array.isArray(request.requirements)||request.requirements.length<1||request.requirements.length>24)
       throw new ProtocolError('INVALID_ARGUMENT','Invalid authorization question binding');

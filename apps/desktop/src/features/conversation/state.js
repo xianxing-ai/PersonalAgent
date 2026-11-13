@@ -12,7 +12,7 @@ export function orbStatusLabel(data) {
   const task=currentTask(Array.isArray(data?.tasks)?data.tasks:[]);
   if(task&&(!isTerminal(task)||task.state==='failed'))return stateNames[task.state]??'待机';
   if(data?.wake?.phase==='listening')return '正在聆听';
-  if(data?.live?.active)return liveStatusNames[data.live.status]??'Live 已开启';
+  if(data?.live?.active)return liveStatusNames[data.live.status]??'实时语音已开启';
   return stateNames[task?.state]??'待机';
 }
 // A later completed turn must not hide an earlier task that is still running.

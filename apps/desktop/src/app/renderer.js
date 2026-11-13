@@ -322,7 +322,7 @@ else {
   const setSendMode=hasText=>{
     const busy=pending||activeTasks().length>0,stop=!hasText&&busy;
     sendBtn.dataset.mode=hasText?'send':stop?'stop':'live';
-    sendBtn.title=hasText?(busy?(deliveryMode.value==='queue'?'加入队列':'立即引导'):'发送'):stop?'强制截断当前回答':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';
+    sendBtn.title=hasText?(busy?(deliveryMode.value==='queue'?'加入队列':'立即引导'):'发送'):stop?'强制截断当前回答':current?.live?.active?'关闭实时语音':'开启实时语音';
     sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!stop&&!hasText&&Boolean(current?.live?.active)));
     sendBtn.setAttribute('aria-busy','false');sendBtn.disabled=false;
     deliveryHint.textContent=deliveryMode.value==='queue'?'当前回答结束后依次发送，可随时立即发送':'截断当前回答，结合上下文立即续答';
@@ -501,7 +501,7 @@ else {
       approvalDecisions.set(id,'submitted');syncApprovalButtons();}
     catch(error){approvalDecisions.delete(id);report(error);syncApprovalButtons();}
   });
-  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
+  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'实时语音已开启'):task?stateNames[task.state]:'待机';
     subagents.update(data.subagentTasks??[]);
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
@@ -541,7 +541,7 @@ else {
     for(const id of [...truncatedTaskIds])if(!data.tasks.some(item=>item.taskId===id)){truncatedTaskIds.delete(id);truncatedOutput.delete(id);}
     const hasActiveTask=activeTasks().length>0;
     stopButton.hidden=!hasActiveTask&&!pending&&voiceState!=='speaking'&&!data.live?.active;
-    stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持 Live）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
+    stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持实时语音）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
     root.querySelector('.bubble').hidden=!emptyThread;quickStart.hidden=!emptyThread;
     const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);

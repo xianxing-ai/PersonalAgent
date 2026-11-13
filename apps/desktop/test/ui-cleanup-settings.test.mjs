@@ -74,4 +74,16 @@ test('settings navigation keeps usage reachable and drops placeholder pages', ()
   assert.doesNotMatch(main, /打开管理后台/);
   const hide = main.slice(main.indexOf('function hidePanel'), main.indexOf('function wakePreferenceFile'));
   assert.doesNotMatch(hide, /stopWakeVoice/);
+  const runtimeControls = readFileSync(new URL('../src/features/workspace/runtime-controls.js', import.meta.url), 'utf8');
+  const renderer = readFileSync(new URL('../src/app/renderer.js', import.meta.url), 'utf8');
+  const convState = readFileSync(new URL('../src/features/conversation/state.js', import.meta.url), 'utf8');
+  const liveVoice = readFileSync(new URL('../src/app/live-voice-controls.js', import.meta.url), 'utf8');
+  const settingSearch = readFileSync(new URL('../src/features/admin/setting-search.js', import.meta.url), 'utf8');
+  const remoteMcpView = readFileSync(new URL('../src/remote-mcp/view.js', import.meta.url), 'utf8');
+  for (const [name, src] of [['runtimeControls', runtimeControls], ['renderer', renderer], ['convState', convState], ['liveVoice', liveVoice]]) {
+    const codeOnly = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    assert.doesNotMatch(codeOnly, /\bLive\b/, `${name} should not contain English Live label`);
+  }
+  assert.doesNotMatch(settingSearch, /Live SIS/);
+  assert.doesNotMatch(remoteMcpView, /\$\{item\.id\}|\$\{state\.activeId\}|item\.serverId\+' · '/);
 });

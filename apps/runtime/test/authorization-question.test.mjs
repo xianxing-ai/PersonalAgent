@@ -199,10 +199,19 @@ test('low-risk auto allows a read once and still asks before writes, exports or 
     readBinding:()=>({conversationId:'conversation-1',digest:'owner-1'}),canExecute:()=>true});
   const request=(scopes,extra={})=>({taskId:'task-1',proposalId:'proposal-1',runId:extra.runId??'run-read',toolName:extra.toolName??'mail.inbox',toolVersion:'1',
     argumentsDigest:H,deadline:new Date(now+60000).toISOString(),signal:new AbortController().signal,
+    ...(extra.omitSideEffect?{}:{sideEffect:extra.sideEffect??'read'}),
     requirements:extra.requirements??[{requirementId:'tool',kind:'tool',scopes,bindingDigest:H,summary:'查看'}]});
   const read=await host.request(request(['mail:read']));
   assert.equal(read.decision,'allow_once');
   assert.equal(host.snapshot().some(item=>item.state==='pending'),false);
+  const readLikeLocalWrite=host.request(request(['mail:read'],{runId:'run-local-write',sideEffect:'local_write'}));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
+  assert.equal((await readLikeLocalWrite).decision,'deny');
+  const readWithoutSideEffect=host.request(request(['mail:read'],{runId:'run-no-side-effect',omitSideEffect:true}));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
+  assert.equal((await readWithoutSideEffect).decision,'deny');
   const write=host.request(request(['todo:write'],{runId:'run-write',toolName:'todo.create'}));
   assert.equal(host.snapshot().at(-1).state,'pending');
   host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
@@ -220,19 +229,22 @@ test('low-risk auto allows a read once and still asks before writes, exports or 
   host.close();
 });
 
-test('an untouched read-only default adopts low-risk auto, and an explicit later choice stays',()=>{
-  const saved={state:{version:1,selectedRef:'default-read-only',revision:1,questions:[],rules:[]}};
-  const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
-    compareAndSet(key,previous,next){if(!isDeepStrictEqual(saved[key],previous))return false;saved[key]=structuredClone(next);return true;}};
-  const options={store,profiles:[
+test('new installs default to low-risk auto without silently migrating existing read-only users',()=>{
+  const freshSaved={};
+  const makeStore=target=>({get:key=>target[key]===undefined?undefined:structuredClone(target[key]),
+    compareAndSet(key,previous,next){if(!isDeepStrictEqual(target[key],previous))return false;target[key]=structuredClone(next);return true;}});
+  const baseOptions={profiles:[
     {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
     {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true}],
     defaultProfileRef:'low-risk-auto',available:()=>true,readBinding:()=>undefined,canExecute:()=>false};
-  const host=new AuthorizationQuestions(options);
-  assert.equal(host.sandboxSnapshot().selected.label,'低风险自动');
-  host.selectSandbox({profileRef:'default-read-only',expectedRevision:host.sandboxSnapshot().selected.revision});
-  assert.equal(host.sandboxSnapshot().selected.label,'每次都询问');
-  const again=new AuthorizationQuestions(options);
-  assert.equal(again.sandboxSnapshot().selected.label,'每次都询问');
-  host.close();again.close();
+  const fresh=new AuthorizationQuestions({...baseOptions,store:makeStore(freshSaved)});
+  assert.equal(fresh.sandboxSnapshot().selected.label,'低风险自动');
+  const existingSaved={state:{version:1,selectedRef:'default-read-only',revision:1,questions:[],rules:[]}};
+  const existing=new AuthorizationQuestions({...baseOptions,store:makeStore(existingSaved)});
+  assert.equal(existing.sandboxSnapshot().selected.label,'每次都询问');
+  existing.selectSandbox({profileRef:'low-risk-auto',expectedRevision:existing.sandboxSnapshot().selected.revision});
+  assert.equal(existing.sandboxSnapshot().selected.label,'低风险自动');
+  const again=new AuthorizationQuestions({...baseOptions,store:makeStore(existingSaved)});
+  assert.equal(again.sandboxSnapshot().selected.label,'低风险自动');
+  fresh.close();existing.close();again.close();
 });

@@ -2,7 +2,13 @@ import {errorDisplayText} from '../shared/error-display.js';
 const $=id=>document.getElementById(id);
 let state,task,busy=false;
 const labels={unconfigured:'未配置',unavailable:'安全存储不可用',saved_disconnected:'已保存，默认断开',connected:'本次会话已连接',expired:'凭据已到期',reassembly_required:'配置已变化，请正常退出并重启',identity_conflict:'工具名冲突，请修改配置',revoke_pending:'配置文件清除失败，撤销未完成'};
-const stateLabels={unconfigured:'未配置',unavailable:'安全存储不可用',saved_disconnected:'已保存，默认断开',connected:'本次会话已连接',expired:'凭据已到期',reassembly_required:'请重新打开应用（重启）后使用',identity_conflict:'名称冲突，请换一个名称',revoke_pending:'删除未完成'};
+const stateLabels={unconfigured:'未配置',unavailable:'安全存储不可用',saved_disconnected:'已保存，默认断开',connected:'本次会话已连接',expired:'凭据已到期',reassembly_required:'请重新打开应用（重启）后使用',identity_conflict:'名称冲突，请换一个名称',revoke_pending:'删除未完成',created:'已创建',planning:'规划中',running:'运行中',waiting_approval:'待确认',waiting_reconciliation:'核对中',cancelling:'取消中',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
+function serviceLabel(id,index){
+  if(!id)return '未命名插件';
+  if(id==='legacy')return '默认插件';
+  if(/[^\u0000-\u007f]/.test(id))return id;
+  return typeof index==='number'?`扩展插件 ${index+1}`:'扩展插件';
+}
 function describe(value){
   if(!value||!value.endpoint)return '还没有选择插件文件。';
   const name=value.tool?.descriptor?.name||value.server?.name||'插件';
@@ -15,9 +21,10 @@ function readExpiry(){
 }
 function paint(){
   if(!state)return;
-  if(state.services){const items=state.services.map(item=>{const option=document.createElement('option');option.value=item.id;
-    option.textContent=`${item.id} · ${stateLabels[item.status]??labels[item.status]??'未连接'}`;return option;});
-    if(!state.services.some(item=>item.id===state.activeId)){const option=document.createElement('option');option.value=state.activeId;option.textContent=`${state.activeId} · 新插件`;items.push(option);}
+  const labelMap=new Map();
+  if(state.services){const items=state.services.map((item,index)=>{const option=document.createElement('option');option.value=item.id;const name=serviceLabel(item.id,index);labelMap.set(item.id,name);
+    option.textContent=`${name} · ${stateLabels[item.status]??labels[item.status]??'未连接'}`;return option;});
+    if(!state.services.some(item=>item.id===state.activeId)){const option=document.createElement('option');option.value=state.activeId;option.textContent='新插件';items.push(option);}
     $('server').replaceChildren(...items);$('server').value=state.activeId;}
   $('server').disabled=busy;$('new-server').disabled=busy;$('migrate-server').disabled=busy;
   $('status').textContent=(stateLabels[state.status]??labels[state.status]??'尚未连接')+(state.runtimeAvailable?'':'；Runtime 未初始化，暂不可调用');
@@ -31,7 +38,7 @@ function paint(){
     || (task?.serverId && task.serverId!==state.activeId);
   $('question-notice').hidden=task?.state!=='waiting_approval';
   $('cancel').disabled=busy || !task || ['succeeded','failed','cancelled'].includes(task.state);
-  $('tasks').replaceChildren(...state.tasks.map(item=>{const button=document.createElement('button');button.textContent=`${item.serverId?item.serverId+' · ':''}${stateLabels[item.state]??item.state}`;
+  $('tasks').replaceChildren(...state.tasks.map(item=>{const button=document.createElement('button');const name=item.serverId?(labelMap.get(item.serverId)??serviceLabel(item.serverId)):'';button.textContent=`${name?name+' · ':''}${stateLabels[item.state]??'未知状态'}`;
     button.addEventListener('click',()=>{void act('task',{taskId:item.taskId});});return button;}));
 }
 async function invoke(name,payload){const value=await window.remoteMcp.invoke(name,payload);if(!value.ok)throw Error(errorDisplayText(value.error,'ipc'));return value.value;}
