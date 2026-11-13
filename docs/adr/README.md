@@ -48,3 +48,4 @@
 - [ADR-0040：渐进式云端开发执行与按需工具发现（implementation）](0040-progressive-cloud-development.md)
 - [ADR-0041：Desktop 会话元数据的增量事务持久化（proposed）](0041-desktop-conversation-incremental-persistence.md)
 - [ADR-0042：按任务与沙箱合并核心审批（实施中）](0042-task-scoped-approval-cards.md)
+- [ADR-0043：用户可调的风险分级自主档（proposed）](0043-user-risk-autonomy.md)

@@ -6,6 +6,7 @@ import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
+import {mountRiskAutonomySettings} from './risk-autonomy-settings.js';
 import {mountDailyBriefing} from './daily-briefing.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
@@ -177,7 +178,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
-  let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
+  let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,riskAutonomyControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
@@ -379,7 +380,9 @@ export function mountAdmin(root, invoke, escape) {
     liveControls?.render(data.live);liveControls?.showSettings(section==='voice',section==='voice');
     sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
     if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
+    if(section==='notifications') riskAutonomyControls??=mountRiskAutonomySettings(root.querySelector('.main'),invoke);
     notificationControls?.render(data.notificationCenter,data.voiceQuestion,data.approvals??[]);notificationControls?.show(section==='notifications');
+    riskAutonomyControls?.render(data.riskAutonomy);riskAutonomyControls?.show(section==='notifications');
     if(section==='briefing') briefingControls??=mountDailyBriefing(root.querySelector('.main'),invoke);
     briefingControls?.render(data.dailyBriefing);briefingControls?.show(section==='briefing');
     if(section==='voice') wakeControls??=mountWakeSettings(root.querySelector('.main'),invoke);
