@@ -511,8 +511,12 @@ export class CalDavProvider implements CalendarProvider {
 
   /** 更新事件：GET 现值合并（SEQUENCE 递增）后 PUT，写后读回核对。 */
   async updateEvent(input: {uid: string; summary?: string; startUtc?: string; endUtc?: string;
-    location?: string; notes?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
+    location?: string; notes?: string; expectedSequence?: number; ifMatch?: string}, context?: CalendarReadContext): Promise<CalendarEventRecord> {
     const uid = assertWriteUid(input?.uid);
+    if (input.expectedSequence !== undefined && (!Number.isSafeInteger(input.expectedSequence) || input.expectedSequence < 0)) {
+      throw new ProtocolError('INVALID_ARGUMENT', 'Calendar expectedSequence must be a non-negative integer');
+    }
+    if (input.ifMatch !== undefined) this.writeEtag(input.ifMatch);
     // Reject unrepresentable instants before even reading the original resource.
     if (input.startUtc !== undefined) assertWriteUtc(input.startUtc, 'startUtc');
     if (input.endUtc !== undefined) assertWriteUtc(input.endUtc, 'endUtc');
@@ -520,8 +524,14 @@ export class CalDavProvider implements CalendarProvider {
     if (resourceUrl === undefined) throw new ProtocolError('NOT_FOUND', 'Calendar event UID is absent');
     const {text: current, etag} = await this.writeRequest('GET', resourceUrl, undefined, undefined, context, [200]);
     const version = this.writeEtag(etag);
+    if (input.ifMatch !== undefined && version !== this.writeEtag(input.ifMatch)) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Calendar resource ETag changed before update; original write was not applied');
+    }
     const parsed = parseCalDavEvents(current).find(event => event.uid === uid);
     if (parsed === undefined) throw new ProtocolError('EXTERNAL_FAILURE', 'Calendar event is unreadable after fetch', false);
+    if (input.expectedSequence !== undefined && parsed.sequence !== input.expectedSequence) {
+      throw new ProtocolError('REVISION_CONFLICT', 'Calendar resource sequence changed before update; original write was not applied');
+    }
     if (parsed.allDay && (input.startUtc === undefined) !== (input.endUtc === undefined))
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', 'Changing one boundary of an all-day event would mix DATE and DATE-TIME');
     const merged = {

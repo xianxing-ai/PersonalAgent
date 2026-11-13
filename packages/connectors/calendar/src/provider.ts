@@ -75,6 +75,10 @@ export interface CalendarEventUpdateInput {
   endUtc?: string;
   location?: string;
   notes?: string;
+  /** 写前期望序列号：与服务端/存储当前 sequence 不一致时按 REVISION_CONFLICT 拒绝，防止覆盖并发修改。 */
+  expectedSequence?: number;
+  /** 写前期望强 ETag（If-Match）：与服务端当前资源 ETag 不一致时按 REVISION_CONFLICT 拒绝。 */
+  ifMatch?: string;
 }
 
 /** 可选事件写能力：提供商声明后，register() 才公布 calendar.create/update/cancel 工具。 */
