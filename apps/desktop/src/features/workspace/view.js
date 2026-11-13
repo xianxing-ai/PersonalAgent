@@ -46,7 +46,16 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     assistantThread.innerHTML=`<header><strong>${escape(thread.assistant.displayName)}</strong><span>${escape(thread.assistant.instructions||'')}</span><button type="button" data-assistant-back>返回</button><button type="button" data-assistant-stop ${thread.assistant.activeTaskId?'':'disabled'}>停止</button></header><div>${dispatched}${turns}</div><form><textarea aria-label="给这个助手发消息" placeholder="直接和这个助手聊天，运行中发送就是插话"></textarea><button type="submit">发送</button></form>`;
     assistantThread.querySelector('[data-assistant-back]').onclick=()=>{assistantThread.hidden=true;conversation.hidden=false;};
     assistantThread.querySelector('[data-assistant-stop]').onclick=()=>{if(thread.assistant.activeTaskId)invoke('task.cancel',thread.assistant.activeTaskId).catch(report);};
-    assistantThread.querySelector('form').onsubmit=async event=>{event.preventDefault();const input=assistantThread.querySelector('textarea');const text=input.value.trim();if(!text)return;await invoke('assistant.submit',{assistantId,text,requestId:crypto.randomUUID()});input.value='';await showAssistant(assistantId);};
+    assistantThread.querySelector('form').onsubmit=async event=>{
+      event.preventDefault();
+      const input=assistantThread.querySelector('textarea'),submit=assistantThread.querySelector('button[type="submit"]');
+      const text=input.value.trim();
+      if(!text||submit?.disabled)return;
+      if(submit)submit.disabled=true;
+      try{await invoke('assistant.submit',{assistantId,text,requestId:crypto.randomUUID()});input.value='';await showAssistant(assistantId);}
+      catch(error){report(error);}
+      finally{if(submit)submit.disabled=false;}
+    };
   };
   assistantCards.onclick=event=>{const id=event.target.closest('[data-assistant-id]')?.dataset.assistantId;if(id)showAssistant(id).catch(report);};
   window.desktop?.onOpenAssistant?.(value=>{if(value?.assistantId)showAssistant(value.assistantId).catch(report);});
