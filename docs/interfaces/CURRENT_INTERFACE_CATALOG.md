@@ -4,6 +4,16 @@
 
 `@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
 
+## 隔离修复只读补丁范围核对（provisional）
+
+隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
+
+## 2026-11-11 插件精选目录（provisional）
+
+`@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
+
+同一目录上的权限清单和运行时沙箱仍是 `provisional`。每个条目用 `permissionManifest` 声明网络主机、插件数据路径、连接器标识和密钥名；当前精选条目的四类清单都为空。安装沿用一次授权确认，文案列出这四项白话说明。Desktop 启动时创建的插件宿主在主进程执行沙箱：只放行安装记录与当前目录的交集，拒绝未声明的网络、文件、连接器和密钥，并把违规写入本地日志。密钥值不进入日志、快照或 preload 返回值。这不新增 Core wire，也不把沙箱通过写成插件脚本已执行或连接器已调用。见 [插件沙箱说明](../modules/MOD-30-PLUGIN-SANDBOX-20261111.md)。
+
 ## 2026-10-29 MCP 管理任务读回（provisional）
 
 Desktop 远程 MCP 管理窗口的任务读回只显示原任务状态、工具身份、审批状态和 Evidence 引用，不向 Renderer 返回原始参数或工具结果；原 Runtime 持久记录和原对话审批卡保留。受信配置可显式允许缺少远端 outputSchema，仍固定服务/目录并用本地 Schema 校验 structuredContent；默认严格匹配不变，策略纳入任务授权绑定。真实 Context7 仅完成握手及目录读取，未发起工具调用，不证明其结果兼容；不提升接口冻结或真实验收状态。测试及缺口见 [MOD-06 工作记录](../modules/MOD-06-MCP-SAFETY-20261029.md)。
@@ -529,7 +539,7 @@ Core Runtime Profile 1 **不包含**模型工具调用、工具执行、持续�
 | AgentArts | 平台原生知识、MCP/Skill 及未验真实业务 | main 已有 provisional CloudAgentPort、Workflow 输入及 HTTPS/WSS 工具提案循环；固定版本文件读取/审批续答和有限主子模型委派已取得独立证据。平台原生知识、MCP/Skill、全域多 Agent 质量和其余业务场景仍未由这些证据验收 | MOD-29～31 `zemeng` |
 | AgentArts | 完整平台 Trace、评估、成本、回滚和比赛端到端证据 | 已有 SWR/部署/精确版本目录、有限平台关联日志、公开文件读取及特定 F15 主图/隔离图的本地 Policy/ToolGateway/Evidence 闭环；只证明对应版本与公开场景，不代表完整 Trace/成本/平台评估、回滚、全部 28 图或比赛验收完成；禁止静默 Local 回退 | MOD-32 `zemeng` |
 | Windows | Named Pipe、DesktopActionPort、资源锁、用户接管 | 内部帧及受限 Host/Client 有 provisional 接线；统一 DesktopActionPort、全部真实应用与用户接管验收仍未完成，见本页 2026-10-24 原生电脑增量 | MOD-16 `zemeng` |
-| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；公共 Artifact 端口未提供，真实用户工作区、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
+| 编程 | 正文读取、patch、command、artifact 端口 | 受限读取、patch 和固定命令已有条件接线，保持 provisional；包内 `assembleArtifactServiceTools` 可选包含 create/get/list/read/expire/release，默认不注册 ToolHost，公共 Runtime Artifact 端口仍未公布；真实用户工作区、完整隔离及恢复逐项验收 | MOD-18 `zemeng` |
 | 分发 | 生产装配、安装、升级、卸载生命周期契约 | 无安装包与隔离安装证据 | MOD-19 `zemeng`、根装配 `goo122` |
 
 生产 Runtime 对 Schema 已知但未公布的 operation 必须返回 `UNSUPPORTED_CAPABILITY`。管理界面可以展示规划项，但必须显示“不可用”，不能通过读取配置文件、私有数据库或启用 Fake 来伪装能力。

@@ -532,7 +532,40 @@ export function assertRecoveryArtifactBinding(
 export const ARTIFACT_GET_TOOL_NAME = 'artifact.get';
 export const ARTIFACT_LIST_TOOL_NAME = 'artifact.list';
 export const ARTIFACT_CREATE_TOOL_NAME = 'artifact.create';
+export const ARTIFACT_READ_TOOL_NAME = 'artifact.read';
+export const ARTIFACT_EXPIRE_TOOL_NAME = 'artifact.expire';
+export const ARTIFACT_RELEASE_TOOL_NAME = 'artifact.release';
 export const ARTIFACT_SCOPE = 'artifact:manage';
+
+function assertRunnable(context: ToolContext): void {
+  if (context?.signal?.aborted) {
+    throw new ProtocolError('CANCELLED', 'Artifact tool call was cancelled');
+  }
+  if (typeof context?.deadline === 'string' && Number.isFinite(Date.parse(context.deadline))
+    && Date.parse(context.deadline) <= Date.now()) {
+    throw new ProtocolError('TIMEOUT', 'Artifact tool deadline has passed');
+  }
+}
+
+function readOnlyArtifactId(input: unknown): string {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Artifact tool input must be an object');
+  }
+  const record = input as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (keys.length !== 1 || keys[0] !== 'artifactId' || typeof record.artifactId !== 'string' || !record.artifactId.trim()) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'artifactId must be the only non-empty string field');
+  }
+  return record.artifactId;
+}
+
+function encodeArtifactContent(content: Buffer): {encoding: 'utf8' | 'base64'; content: string} {
+  try {
+    return {encoding: 'utf8', content: new TextDecoder('utf-8', {fatal: true}).decode(content)};
+  } catch {
+    return {encoding: 'base64', content: content.toString('base64')};
+  }
+}
 
 export function assembleArtifactServiceTools(service: ArtifactService): RegisteredTool[] {
   const getTool: RegisteredTool = {
@@ -614,5 +647,94 @@ export function assembleArtifactServiceTools(service: ArtifactService): Register
     },
   };
 
-  return [getTool, listTool, createTool];
+  const readTool: RegisteredTool = {
+    descriptor: {
+      name: ARTIFACT_READ_TOOL_NAME,
+      version: '1.0.0',
+      inputSchema: {
+        type: 'object',
+        required: ['artifactId'],
+        additionalProperties: false,
+        properties: {artifactId: {type: 'string', minLength: 1}},
+      },
+      outputSchema: {
+        type: 'object',
+        required: ['record', 'encoding', 'content'],
+        additionalProperties: false,
+        properties: {
+          record: {type: 'object'},
+          encoding: {enum: ['utf8', 'base64']},
+          content: {type: 'string'},
+        },
+      },
+      sideEffect: 'read',
+      requiredScopes: [ARTIFACT_SCOPE],
+      idempotencySupport: true,
+      recoverySupport: false,
+      requiresPresence: false,
+    },
+    execute: async (input: unknown, context: ToolContext) => {
+      assertRunnable(context);
+      const artifactId = readOnlyArtifactId(input);
+      const loaded = await service.read(artifactId);
+      return {record: loaded.record, ...encodeArtifactContent(Buffer.from(loaded.content))};
+    },
+  };
+
+  const expireTool: RegisteredTool = {
+    descriptor: {
+      name: ARTIFACT_EXPIRE_TOOL_NAME,
+      version: '1.0.0',
+      inputSchema: {
+        type: 'object',
+        required: ['artifactId'],
+        additionalProperties: false,
+        properties: {artifactId: {type: 'string', minLength: 1}},
+      },
+      outputSchema: {type: 'object'},
+      sideEffect: 'local_write',
+      requiredScopes: [ARTIFACT_SCOPE],
+      idempotencySupport: true,
+      recoverySupport: false,
+      requiresPresence: false,
+    },
+    execute: async (input: unknown, context: ToolContext) => {
+      assertRunnable(context);
+      return await service.expire(readOnlyArtifactId(input));
+    },
+  };
+
+  const releaseTool: RegisteredTool = {
+    descriptor: {
+      name: ARTIFACT_RELEASE_TOOL_NAME,
+      version: '1.0.0',
+      inputSchema: {
+        type: 'object',
+        required: ['artifactId'],
+        additionalProperties: false,
+        properties: {artifactId: {type: 'string', minLength: 1}},
+      },
+      outputSchema: {
+        type: 'object',
+        required: ['artifactId', 'released', 'alreadyReleased'],
+        additionalProperties: false,
+        properties: {
+          artifactId: {type: 'string'},
+          released: {type: 'boolean'},
+          alreadyReleased: {type: 'boolean'},
+        },
+      },
+      sideEffect: 'local_write',
+      requiredScopes: [ARTIFACT_SCOPE],
+      idempotencySupport: true,
+      recoverySupport: false,
+      requiresPresence: false,
+    },
+    execute: async (input: unknown, context: ToolContext) => {
+      assertRunnable(context);
+      return await service.release(readOnlyArtifactId(input));
+    },
+  };
+
+  return [getTool, listTool, createTool, readTool, expireTool, releaseTool];
 }

@@ -1329,7 +1329,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         validateToolValue(descriptor.inputSchema,saved.arguments);
         const anchor=this.runtime.loadCheckpoint(taskId,'authorization-question-binding:'+requestedRunId) as {proposalId?:string}|undefined;
         return {taskId,proposalId:anchor?.proposalId??(!completedReceipt&&loop?.pending?loop.pending.proposalId:requestedRunId),runId:requestedRunId,...structuredClone(saved),scopes:[...descriptor.requiredScopes],
-          outputSchema:structuredClone(descriptor.outputSchema)};
+          sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
       }
       if(loop.pending.toolName===CLOUD_SKILL_TOOL_NAME){
         const source=this.runtime.loadCheckpoint(taskId,'authorization-public-reference:'+loop.pending.proposalId) as
@@ -1344,7 +1344,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         if(!descriptor)return undefined;
         return {taskId,proposalId:loop.pending.proposalId,runId:source.candidate.runId,toolName:descriptor.name,toolVersion:descriptor.version,
           arguments:structuredClone(source.candidate.arguments),argumentsDigest:toolArgumentsDigest(source.candidate.arguments),
-          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],outputSchema:structuredClone(descriptor.outputSchema)};
+          deadline:source.candidate.deadline,scopes:[...descriptor.requiredScopes],sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
       }
       const nested=this.resolveOriginalWorkerApproval(taskId,loop.pending);
       const runId=nested?.runId??`competition-tool-${taskId}-${loop.step}`;
@@ -1356,7 +1356,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       validateToolValue(descriptor.inputSchema,args);
       return {taskId,proposalId:loop.pending.proposalId,runId,toolName,toolVersion:descriptor.version,
         arguments:structuredClone(args),argumentsDigest:toolArgumentsDigest(args),deadline,scopes:[...descriptor.requiredScopes],
-        outputSchema:structuredClone(descriptor.outputSchema)};
+        sideEffect:descriptor.sideEffect,outputSchema:structuredClone(descriptor.outputSchema)};
     }catch{return undefined;}
   }
 
