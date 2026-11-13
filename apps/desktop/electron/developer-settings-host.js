@@ -131,8 +131,8 @@ export function createDeveloperSettingsHost({userData,safeStorage,readWorkspace,
         workflowsConfigured:deployment.workflowsConfigured,exportConfirmationConfigured:deployment.exportConfirmationConfigured,
         unavailable:structuredClone(deployment.unavailable??[])}:undefined,
       reason:restoreFailed?'开发加密配置读取失败；未导入任何旧凭据':closed?'开发设置宿主已关闭':
-        !selected?(workspaceRequiresRestart()?'工作区设置已保存，请到「开发 → 环境 / Worktrees」核对并重启装配':
-          '请到「开发 → 环境 / Worktrees」选择本地工作区并重启装配'):record?.enabled&&!current?'配置已保存，但原绑定不可用；请检查模型与工作区':
+        !selected?(workspaceRequiresRestart()?'工作区设置已保存，请到「设置 → 工作文件夹」核对并重启装配':
+          '请到「设置 → 工作文件夹」选择本地工作区并重启装配'):record?.enabled&&!current?'配置已保存，但原绑定不可用；请检查模型与工作区':
           current?'原开发宿主已装配；可执行性仍由每个任务的原授权决定':'开发宿主已停用，保存不授予工具或出机权限'};
   };
 

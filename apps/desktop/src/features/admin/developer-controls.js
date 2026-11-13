@@ -30,8 +30,8 @@ export function mountDeveloperControls(root,invoke){
     view.querySelector('[data-developer-status]').textContent=`${value.available?'代码开发工具已就绪':'代码开发工具未就绪'} · ${value.reason??''}`;
     view.querySelector('[data-developer-workspace]').textContent=value.workspace?.selected
       ?`原工作区：${value.workspace.rootPath}；可用命令：${(value.workspace.recipeIds??[]).join('、')||'未配置'}`
-      :value.workspace?.requiresRestart?'工作区设置已保存但未完成装配，请到「开发 → 环境 / Worktrees」核对并重启应用。'
-        :'请先到「开发 → 环境 / Worktrees」选择本地工作区并重启装配；仓库字段只填写 GitHub owner/repo。';
+      :value.workspace?.requiresRestart?'工作区设置已保存但未完成装配，请到「设置 → 工作文件夹」核对并重启应用。'
+        :'请先到「设置 → 工作文件夹」选择本地工作区并重启装配；仓库字段只填写 GitHub owner/repo。';
     enabled.checked=value.enabled===true;
     if(editing||busy)return;
     const configuration=value.configuration??{},git=configuration.git??{},workflow=configuration.workflows;

@@ -57,10 +57,15 @@ async function read() {
 }
 form.onsubmit=async event=>{
   event.preventDefault();const button=form.querySelector('button');if(closed||!ready||button.disabled)return;button.disabled=true;
-  const patch={};for(const key of Object.keys(current.settings)){const field=form.elements.namedItem(key);patch[key]=field.type==='checkbox'?field.checked:key==='fontScale'?Number(field.value):field.value;}
+  const patch={};for(const key of Object.keys(current.settings)){const field=form.elements.namedItem(key);if(!field){patch[key]=current.settings[key];continue;}patch[key]=field.type==='checkbox'?field.checked:key==='fontScale'?Number(field.value):field.value;}
   try{await window.localDesktop.call('save',patch);if(closed)return;await read();if(!closed)status.textContent=words.saved;}catch(error){if(!closed)status.textContent=error.message;}finally{if(!closed)button.disabled=false;}
 };
 document.querySelector('#refresh').onclick=()=>read().catch(error=>{if(!closed)status.textContent=error.message;});
 document.querySelector('#logs').onclick=()=>{if(closed)return;return window.localDesktop.call('logs').then(error=>{if(error&&!closed)status.textContent=error;}).catch(error=>{if(!closed)status.textContent=error.message;});};
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{if(current)apply(current.settings,current.locale);});
 read().catch(error=>{if(!closed)status.textContent=error.message;});
+window.localDesktop.onPreferences?.(value=>{
+  if(closed||!value?.settings)return;
+  current={...(current??{}),settings:value.settings};
+  apply(value.settings, current.locale||'zh');
+});
