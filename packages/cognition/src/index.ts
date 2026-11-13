@@ -41,6 +41,48 @@ export type {DurableFactProjectionInput, CompletedFactProjectionDecision,
 export {ProactiveDecisionService, DecisionError, INTERVENTIONS} from './proactive-decision.js';
 export type {DecisionPort, DecisionRequest, DecisionEvent, DecisionSuggestion, DecisionRef,
   BoundedDecisionModel, ModelChoice, Intervention} from './proactive-decision.js';
+export {
+  PROACTIVE_SOURCE_TRIGGER_VERSION,
+  DEFAULT_PROACTIVE_TRIGGER_RULES,
+  TriggerError,
+  createProactiveSourceTrigger,
+  createPublicToolReadPort,
+  createNodeReadOnlyDirectoryScan,
+  scanAuthorizedDirectory,
+  assertAuthorizedRoot,
+  isQuietHours,
+  effectiveTriggerRisk,
+  matchTriggerRule,
+  normalizeCalendarChanges,
+  normalizeMailChanges,
+  normalizeFileChanges,
+  isSafeRelativePath,
+} from './proactive-source-trigger.js';
+export type {
+  ChangeSource,
+  ChangeKind,
+  TriggerRule,
+  TriggerStatus,
+  TriggerOutcome,
+  TriggerTickInput,
+  TriggerTickResult,
+  SourceChangeEvent,
+  QuietHours,
+  PublicSourceReadPort,
+  PublicToolInvoke,
+  ProactiveChoicePort,
+  ProactiveTaskPort,
+  ProactiveApprovalPort,
+  ProactiveApprovalRequest,
+  ApprovedResume,
+  AuthorizedDirectory,
+  FileEntry,
+  ReadOnlyDirectoryFs,
+  ProactiveSourceTriggerOptions,
+  ProactiveTriggerState,
+  CalendarMemory,
+  FileMemory,
+} from './proactive-source-trigger.js';
 export {LayaDecisionModel, LocalLayaHttpTransport} from './laya-decision.js';
 export type {LayaInferencePort, LayaPayload} from './laya-decision.js';
 export {decideProjectedFactImpact} from './projected-fact-decision.js';
