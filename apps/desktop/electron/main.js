@@ -147,6 +147,8 @@ import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
+import {createDailyBriefingHost} from './daily-briefing-host.js';
+import {presentBriefingDecision} from './briefing-decision.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
 import {createMailMetadataStorage} from './mail-metadata-storage.js';
 import {createLocalLayaHost} from './laya-local-host.js';
@@ -422,6 +424,8 @@ let calendarConfig;
 let calendarMeetingHost;
 let feedsHost;
 let todoHost;
+let dailyBriefingHost;
+let approvalFocus;
 let todoFailure = '';
 let todoClosing;
 let todoClosed = false;
@@ -830,6 +834,8 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
+    dailyBriefing: surface ? undefined : dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
+    approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
@@ -1046,7 +1052,7 @@ function movePanelGroup(point) {
 }
 
 function openAdmin(page) {
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory','voice','computer'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory','voice','computer','briefing'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -2055,8 +2061,12 @@ async function initializeRuntime() {
       const namespace = desktopHost.userNamespace;
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
-          onOutcome: outcome => notificationApplicationHost?.receipt(outcome)});
+          onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);}});
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
+        dailyBriefingHost = createDailyBriefingHost({userData: app.getPath('userData'), namespace,
+          createDeliveryHost: runtimeModule.createReminderDeliveryHost, getRuntime: () => runtimeApplication?.runtime,
+          notify: input => channel.sendAdvisoryNotification(input), onOpen: () => openAdmin('briefing'), onUpdate: publish});
+        void dailyBriefingHost.tick();
       }
       goalHost = createGoalHost(namespace);
       if (!syntheticMvp && calendarConfig) {
@@ -3182,6 +3192,7 @@ async function initializeRuntime() {
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
     void maintenancePoll.run('knowledge-schedules',()=>{if(!operatorPaused)tickKnowledgeSchedules();});
     void maintenancePoll.run('connector-watch',()=>{if(!operatorPaused)return connectorWatchHost?.tick();});
+    void maintenancePoll.run('daily-briefing',()=>{if(!operatorPaused)return dailyBriefingHost?.tick();});
     void maintenancePoll.run('proactive-runtime',()=>operatorPaused?undefined:proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
@@ -4360,6 +4371,16 @@ async function action(event, name, payload) {
     if (sender !== admin) throw Error('授权历史只能从管理后台读取');
     const page=await readApprovalPage(client, payload);
     return {...page,items:page.items.map(approval=>projectDesktopApproval(approval,runtimeApplication?.runtime))};
+  }
+  if (name === 'briefing.update') {
+    if (sender !== admin || !dailyBriefingHost) throw Error('每日简报设置只能从管理后台修改');
+    return dailyBriefingHost.update(payload);
+  }
+  if (name === 'briefing.openDecision') {
+    if (sender !== admin || event.senderFrame !== sender.webContents.mainFrame || !dailyBriefingHost) throw Error('请从每日简报打开审批卡');
+    return presentBriefingDecision({taskId: payload?.taskId, approvalId: payload?.approvalId,
+      tasks: {get: id => tasks.get(id) ?? runtimeApplication?.runtime.getTask(id)}, conversations, sourceSurface: taskSurface,
+      openPanel: () => openPanel(true), openWorkspace, publish, rememberFocus: focus => {approvalFocus = focus;}});
   }
   if (name === 'settings.get') return client.call('settings.get', {namespace: String(payload ?? 'desktop')});
   if (name === 'settings.update') return client.call('settings.update', payload);
