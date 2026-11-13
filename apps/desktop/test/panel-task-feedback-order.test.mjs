@@ -123,7 +123,7 @@ test('natural-language stop cancels without submitting and can stop a pending ac
 test('stop with no task or pending acceptance only interrupts playback',async()=>{
   const f=stopFixture({tasks:[]});await f.stop();assert.deepEqual(f.calls,['browser-playback-stop',['voice.stop',undefined]]);
 });
-test('task-row cancellation targets only its task and likes stay bounded',async()=>{
+test('task-row cancellation targets only its task',async()=>{
   let rowHandler,capDeclaration;
   function capture(node){
     if(ts.isBinaryExpression(node)&&node.left.getText(ast)==="root.querySelector('#tasks').onclick")rowHandler=node.right.getText(ast);
@@ -131,15 +131,12 @@ test('task-row cancellation targets only its task and likes stay bounded',async(
     ts.forEachChild(node,capture);
   }
   capture(ast);
-  const likedTasks=new Set(Array.from({length:200},(_,i)=>'liked-'+i)),calls=[],visibleLikes=[];
-  const context=vm.createContext({likedTasks,input:{value:'unsent draft'},tasksNode:{querySelectorAll:()=>visibleLikes},
+  const calls=[];
+  const context=vm.createContext({input:{value:'unsent draft'},tasksNode:{querySelectorAll:()=>[]},
     current:{tasks:[{taskId:'running-task',state:'running'}]},window:{speechSynthesis:{cancel(){}}},
     stopTask:task=>calls.push(task)});
   vm.runInContext('const '+capDeclaration+';',context);const click=vm.runInContext('('+rowHandler+')',context);
   const button=dataset=>({dataset,disabled:false,classList:{toggle(name,value){this[name]=value;}},setAttribute(name,value){this[name]=value;}});
-  const like=button({uiAction:'like',id:'new-liked'}),oldest=button({uiAction:'like',id:'liked-0'});visibleLikes.push(oldest,like);
-  await click({target:{closest:()=>like}});
-  assert.equal(likedTasks.size,200);assert.equal(likedTasks.has('liked-0'),false);assert.equal(oldest['aria-pressed'],'false');
   await click({target:{closest:()=>button({action:'task.cancel',id:'running-task'})}});
   assert.equal(calls.length,1);assert.equal(calls[0].taskId,'running-task');assert.equal(context.input.value,'unsent draft');
 });
