@@ -42,6 +42,7 @@ function skillEntry(bundle, overrides = {}) {
     description: '用于安装流程的本地夹具。',
     capabilities: [{name: 'instruction', effect: 'instruction', admitted: true, statement: '只有说明。'}],
     permissionDeclarations: [{scope: 'skill:instruction', effect: 'instruction', admitted: true, requiredForEnable: false, statement: '不授予工具。'}],
+    permissionManifest: {networkHosts: [], filePaths: [], connectors: [], secrets: []},
     riskLevel: 'low',
     enableRequiresAuthorization: false,
     maintenanceStatus: 'active',
@@ -83,6 +84,7 @@ test('skill install stays disabled, rejects a tampered directory, and does not r
   const installed = service.install({id: catalog[0].id, sourceDirectory: source});
   assert.equal(installed.enabled, false);
   assert.equal(installed.skill.digest, bundle.digest);
+  assert.deepEqual(installed.permissionGrant, {networkHosts: [], filePaths: [], connectors: [], secrets: []});
   assert.equal(service.install({id: catalog[0].id, sourceDirectory: source}).skill.installationId, installed.skill.installationId);
   assert.throws(() => readFileSync(path.join(files.root, 'ran.txt'), 'utf8'), {code: 'ENOENT'});
   writeFileSync(path.join(source, 'SKILL.md'), readFileSync(path.join(source, 'SKILL.md'), 'utf8') + 'Tampered.\n');

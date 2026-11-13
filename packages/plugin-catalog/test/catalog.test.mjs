@@ -24,6 +24,7 @@ test('curated catalog entries are unique, sourced, and install only when a sha25
     const admittedHighRisk = [...entry.capabilities, ...entry.permissionDeclarations]
       .some(item => item.admitted && HIGH_RISK.has(item.effect));
     if (entry.riskLevel === 'high' || admittedHighRisk) assert.equal(entry.enableRequiresAuthorization, true);
+    assert.deepEqual(entry.permissionManifest, {networkHosts: [], filePaths: [], connectors: [], secrets: []});
   }
   const installable = CURATED_PLUGINS.filter(entry => entry.oneClickInstall).map(entry => entry.id).sort();
   assert.deepEqual(installable, [
@@ -81,4 +82,18 @@ test('schema rejects unknown fields, unpinned one-click installs, and high-risk 
   ungated.permissionDeclarations = [];
   assert.throws(() => parsePluginManifest(ungated), {code: 'INVALID_ARGUMENT'});
   assert.throws(() => parsePluginCatalog([CURATED_PLUGINS[0], CURATED_PLUGINS[0]]), {code: 'INVALID_ARGUMENT'});
+  const granted = structuredClone(CURATED_PLUGINS.find(entry => entry.id === 'skill.anthropic.frontend-design'));
+  granted.permissionManifest = {networkHosts: ['docs.example.com'], filePaths: ['notes'], connectors: ['calendar.read'], secrets: ['plugin.notes.token']};
+  assert.deepEqual(parsePluginManifest(granted).permissionManifest.networkHosts, ['docs.example.com']);
+  for (const manifest of [
+    {networkHosts: ['localhost'], filePaths: [], connectors: [], secrets: []},
+    {networkHosts: [], filePaths: ['../notes'], connectors: [], secrets: []},
+    {networkHosts: [], filePaths: ['C:/notes'], connectors: [], secrets: []},
+    {networkHosts: ['https://docs.example.com'], filePaths: [], connectors: [], secrets: []},
+  ]) {
+    granted.permissionManifest = manifest;
+    assert.throws(() => parsePluginManifest(granted), {code: 'INVALID_ARGUMENT'});
+  }
+  delete granted.permissionManifest;
+  assert.throws(() => parsePluginManifest(granted), {code: 'INVALID_ARGUMENT'});
 });

@@ -271,6 +271,8 @@ PowerShell 路径、PID 已复用、起始时间不匹配、
 - 用 Node 内置 `spawn` 的 `shell:false`、固定 canonical 工作目录、默认空环境（或由受信宿主注入并经过模式/敏感词校验的受控 `env`）及隐藏窗口执行；不引入 execa 或另一套调度器。运行期限默认 30 秒、至多 120 秒；合并 stdout/stderr 原始字节预算默认 64 KiB、至多 256 KiB。超限、截止或取消会请求终止直接子进程；无法在 2 秒内确认退出时返回未知结果。输出必须完整有效 UTF-8，不截断成功结果。
 - 注册时绑定 canonical 根目录及其设备/目录身份；每次启动前同步复核路径仍解析到该目录、目录身份未变化。根被换为链接、另一个普通目录、文件或已移除时，公开工具拒绝 `SCOPE_DENIED`，不启动命令，也不自动重绑新目录。正常修改工作区内容不会使授权根失效；注册时提供的链接只解析到当时的 canonical 目标。检查仍不能消除复核与 OS 启动之间的路径竞态，不构成 OS 沙箱。
 - 输出 `{recipeId,exitCode,stdout,stderr}` 只证明该直接进程的退出码与收集到的文本；非零码是失败的验证命令，不代表产物已读回、Artifact 已保存或副作用可重试。`ToolGateway` 对 `local_write` 异常统一返回 `RESULT_UNKNOWN`，调用方必须对账。
+- 隔离修复在命令停止后，把本地 `artifactDigest` 写进 `CodingRepairVerificationReceipt`。摘要只覆盖会话、run、recipe、退出码、输入快照和文件路径/SHA，不覆盖状态词、诊断正文或文件内容。随后的 STALE 是派生视图，不改写已保存的摘要。这不是公共 Artifact 服务，也不是 Runtime Evidence。
+- `createWorkspacePatchScopeTool` 提供显式注册的只读 `workspace.patch_scope_check@1.0.0`。可信宿主注入工作区根和授权相对路径；模型只能提交路径、预期 SHA 和精确编辑。路径不在授权集合、敏感路径或逃逸路径直接拒绝。预期 SHA 与当前文件不一致时返回 `verificationStatus=conflict` 且 `scopeReady=false`，不写文件。匹配时 `scopeReady=true`，但 `behaviorReviewed` 固定为 false：范围和摘要一致不等于 API 或格式审查已通过。产品默认 `register()` 不注册该工具。隔离修复预览现有文件时会先调用它，冲突仍是 `REVISION_CONFLICT`。
 - `rootPath` 只是 cwd，不是进程文件系统边界。固定可信命令仍以宿主 OS 账号权限访问文件。在 Windows 上，直接执行 Node/npm 并在超时/取消时调用 `child.kill('SIGKILL')` 仅能终止直接进程，npm 脚本派生的子进程树会成为孤儿进程；为此在 `packages/coding-tools/native/` 下提供了 `WindowsJobProcessHost` 原生助手（基于 .NET 8 与 Win32 Job Object）：
   - 通过 `CreateJobObjectW` 与 `SetInformationJobObject` 设置 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE (0x2000)`，严禁 breakaway；
   - 使用 `CreateProcessW` 配合 `CREATE_SUSPENDED` 创建挂起目标进程与标准管道重定向；

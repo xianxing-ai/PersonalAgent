@@ -26,6 +26,7 @@ function skillEntry(bundle) {
     description: '用于安装流程的本地夹具。',
     capabilities: [{name: 'instruction', effect: 'instruction', admitted: true, statement: '只有说明。'}],
     permissionDeclarations: [{scope: 'skill:instruction', effect: 'instruction', admitted: true, requiredForEnable: false, statement: '不授予工具。'}],
+    permissionManifest: {networkHosts: [], filePaths: [], connectors: [], secrets: []},
     riskLevel: 'low',
     enableRequiresAuthorization: false,
     maintenanceStatus: 'active',
@@ -136,7 +137,7 @@ test('a real plugin install reaches the activity page and survives a restart', a
   assert.match(main, /onActivity:notice=>activityProduct\?\.note\(notice\)/);
   assert.match(main, /activityProduct\.handle\(name, payload\)/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action', action, payload\)/);
-  assert.match(admin, /primaryPages = \['settings', 'activity', 'connections', 'authorizations'\]/);
+  assert.match(admin, /items: \['tasks', 'activity'\]/);
   assert.match(admin, /mountActivityTimeline/);
   rmSync(root, {recursive: true, force: true});
 });

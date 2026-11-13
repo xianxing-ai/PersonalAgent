@@ -6,9 +6,12 @@ const aliases = {
   authorizations: '授权 审批 安全 权限',
   tasks: '进度 执行 Evidence 证据 任务',
   activity: '活动 时间线 撤销 为什么 它替我做了什么',
-  worktrees: '工作树 分支',
+  worktrees: '工作树 分支 工作文件夹',
+  workspace: '工作文件夹 工作区 环境',
+  usage: '用量 计费 预算 额度',
   memory: '知识 笔记 记忆',
-  voice: '麦克风 语音 Live SIS 唤醒',
+  voice: '麦克风 语音 实时语音 听写 唤醒',
+  briefing: '简报 日报 日程 审批 早上',
   shortcuts: '热键 快捷键',
 };
 

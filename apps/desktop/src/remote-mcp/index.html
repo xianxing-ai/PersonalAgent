@@ -2,24 +2,24 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; form-action 'none'; frame-src 'none'; base-uri 'none'">
 <title>远程 MCP 管理</title><link rel="stylesheet" href="style.css"></head>
-<body><main><h1>远程 MCP · 只读服务</h1>
-<p>配置加密保存在本机。连接确认与任务审批分别进行；结果只在本机查看，不自动发送给模型。</p>
+<body><main><h1>远程插件</h1>
+<p>添加一个只读插件。密钥只保存在这台电脑上，每次使用仍会在对话里请你确认。</p>
 <p id="status" role="status"></p><p id="error" role="alert"></p>
-<section><h2>服务列表</h2><label for="server">当前服务</label><select id="server"></select>
-<label for="server-id">新服务 ID（小写字母、数字、短横线）</label><input id="server-id" type="text" autocomplete="off" maxlength="64">
-<button id="new-server">添加服务</button><button id="migrate-server">迁移旧配置</button>
-<p>新配置或迁移完成后请重启应用；各服务仍需分别确认连接和任务授权。</p></section>
-<section><h2>1. 保存服务定义</h2><p>导入已审查的 JSON 定义，固定 HTTPS 地址、服务/工具版本、参数格式和目录摘要。文件不能包含凭据；如配置 PUBLIC 固定输入，请先在本地文件中审核，管理窗口只显示其摘要。</p>
-<button id="import">导入服务定义</button><pre id="definition"></pre>
-<form id="save-form"><label for="token">已签发的短期 token（空白表示不使用凭据）</label>
+<section><h2>已添加的插件</h2><label for="server">当前插件</label><select id="server"></select>
+<label for="server-id">名称（小写字母、数字、短横线）</label><input id="server-id" type="text" autocomplete="off" maxlength="64" placeholder="例如 notes">
+<button id="new-server">添加</button>
+<details><summary>从旧版本搬过来</summary><button id="migrate-server">搬移旧配置</button></details></section>
+<section><h2>插件说明</h2><p>选择已经准备好的插件文件，不用手写配置。</p>
+<button id="import">选择插件文件</button><p id="definition">还没有选择插件文件。</p>
+<form id="save-form"><label for="token">访问令牌（没有就留空）</label>
 <input id="token" type="password" autocomplete="off" spellcheck="false" maxlength="8192">
-<label for="expires">token 到期时间（带时区的 ISO 时间，如 2026-10-17T00:00:00.000Z）</label>
-<input id="expires" type="text" autocomplete="off" placeholder="2026-10-17T00:00:00.000Z">
-<button type="submit" id="save">确认并加密保存</button></form>
-<p>保存或轮换后需重启应用重新装配；不会自动连接。请通过应用正常退出以保存系统加密状态。</p></section>
-<section><h2>2. 本次会话连接</h2><button id="connect">确认连接</button><button id="disconnect">断开</button><button id="revoke">撤销并清除本机配置</button><button id="refresh">刷新状态</button></section>
-<section><h2>3. 逐任务只读调用</h2><p>创建任务后，在主对话授权卡检查工具、参数与权限，再选择同意或拒绝。调用参数会发给已确认的 MCP 服务。</p>
-<form id="run-form"><label for="arguments">业务参数 JSON</label><textarea id="arguments" rows="4">{}</textarea><button id="submit" type="submit">创建审批任务</button></form>
-<label for="task-id">原任务 ID（重启后可读回）</label><input id="task-id" type="text" autocomplete="off"><button id="read-task">读回原任务</button>
-<div id="tasks"></div><p>任务记录显示状态和证据引用，不显示原始参数或工具返回内容。</p><pre id="task-result"></pre><p id="question-notice" hidden>请在原对话授权卡处理这次请求；若原卡已失效，可停止原任务后重新提出。</p><button id="review-question" disabled>在主对话中处理授权</button><button id="cancel" disabled>停止任务</button></section>
+<label for="expires-picker">令牌到期</label>
+<input id="expires-picker" type="datetime-local">
+<input id="expires" type="text" hidden autocomplete="off">
+<button type="submit" id="save">保存</button></form>
+<p id="restart-note"></p></section>
+<section><h2>连接</h2><button id="connect">连接</button><button id="disconnect">断开</button><button id="revoke">删除这个插件</button></section>
+<section><h2>使用一次</h2><p>提出后回到对话里同意或拒绝。没有额外条件就留空。</p>
+<form id="run-form"><div id="argument-fields"></div><label for="arguments">补充条件</label><textarea id="arguments" rows="3" placeholder="一般留空"></textarea><button id="submit" type="submit">提出申请</button></form>
+<div id="tasks"></div><p id="task-result" hidden></p><p id="question-notice" hidden>请回到对话里处理这次请求。</p><button id="review-question" disabled>去对话里处理</button><button id="cancel" disabled>停止</button></section>
 </main><script type="module" src="view.js"></script></body></html>
