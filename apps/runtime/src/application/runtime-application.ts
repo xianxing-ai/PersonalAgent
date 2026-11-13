@@ -47,6 +47,7 @@ import type {QwenRealtimeModelGateway} from '@personal-agent/models';
 import {AgentArtsResultUnknownError,AgentArtsTerminalError,AgentArtsBeforeInvokeError, parseCoordinationRepairCandidate,parseCoordinationContinuation} from '@personal-agent/coordination';
 import type {CoordinationPort, CoordinationRequest, CoordinationRepairCandidateResult} from '@personal-agent/coordination';
 import {parseExecutionModelSelection} from '@personal-agent/coordination';
+import {ASSISTANT_MODEL_UNAVAILABLE} from '../assistant-roster.js';
 import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import {startCoordinationTask,runCoordinationWorker, assertCompetitionExportAllowed, type CompetitionToolExport,type CoordinationWorkerCapabilityPort,type PrepareCompetitionToolExport} from './coordination.js';
 import {coordinationFailureDiagnostic,markCompetitionCloudUnknown,consumeCompetitionCloudReceipt} from './coordination.js';
@@ -5058,6 +5059,19 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     return this.runtime.updateAssistant(assistantId,{markRead:true});
   }
 
+  createAssistant(input:{displayName:string;instructions:string;modelId?:string}) {
+    return this.runtime.createAssistant(input);
+  }
+
+  renameAssistant(assistantId:string, input:{displayName:string;instructions?:string}) {
+    return this.runtime.renameAssistant(assistantId, input);
+  }
+
+  deleteAssistant(assistantId:string) {
+    this.runtime.deleteAssistant(assistantId);
+    return {deleted:true as const, assistantId};
+  }
+
   submitAssistantMessage(input:{assistantId:string;text:string;requestId:string;source?:'user'|'peer';hop?:number}):{acceptedTaskId:string;injected?:true} {
     if(!input||typeof input.text!=='string'||!input.text.trim()||!nonEmptyText(input.requestId)) {
       throw new ProtocolError('INVALID_ARGUMENT','请写下要发给助手的话');
@@ -5083,6 +5097,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     const deadline=new Date(this.now().getTime()+this.competitionMessageTimeoutMs).toISOString();
     const task=this.runtime.submitTask({goal,conversationId:assistant.conversationId,idempotencyKey});
     this.runtime.saveCheckpoint(task.taskId,'assistant-turn',{version:'1.0',assistantId:assistant.assistantId,requestId:input.requestId,userText:input.text.trim(),hop:input.hop??0});
+    if(assistant.modelId) {
+      try {
+        const selected=this.resolveExecutionModel?.({modelId:assistant.modelId});
+        if(!selected) throw new ProtocolError('UNSUPPORTED_CAPABILITY', ASSISTANT_MODEL_UNAVAILABLE);
+        this.runtime.saveCheckpoint(task.taskId,'execution-model',parseExecutionModelSelection(selected));
+      } catch (error) {
+        const message=error instanceof ProtocolError && error.message===ASSISTANT_MODEL_UNAVAILABLE ? error.message : ASSISTANT_MODEL_UNAVAILABLE;
+        this.runtime.transitionTask(task.taskId,'failed',{error:{code:'UNSUPPORTED_CAPABILITY',message,retryable:false}});
+        throw new ProtocolError('UNSUPPORTED_CAPABILITY', message);
+      }
+    }
     this.runtime.updateAssistant(assistant.assistantId,{status:'working',activeTaskId:task.taskId});
     this.dispatchAssistantTurn(task.taskId,assistant.assistantId,goal,deadline);
     return {acceptedTaskId:task.taskId};

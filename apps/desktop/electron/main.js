@@ -3538,6 +3538,25 @@ async function action(event, name, payload) {
     publish();
     return result;
   }
+  if (name === 'assistant.create') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里新建助手');
+    const created = runtimeApplication.createAssistant({displayName: payload?.displayName, instructions: payload?.instructions,
+      ...(typeof payload?.modelId === 'string' && payload.modelId.trim() ? {modelId: payload.modelId.trim()} : {})});
+    publish();
+    return created;
+  }
+  if (name === 'assistant.rename') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里修改助手');
+    const renamed = runtimeApplication.renameAssistant(payload?.assistantId, {displayName: payload?.displayName, instructions: payload?.instructions});
+    publish();
+    return renamed;
+  }
+  if (name === 'assistant.delete') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里删除助手');
+    const removed = runtimeApplication.deleteAssistant(payload?.assistantId);
+    publish();
+    return removed;
+  }
   if (name === 'assistant.read') {
     if (sender !== panel && sender !== workspace) throw Error('请从对话里查看助手');
     return runtimeApplication.markAssistantRead(payload?.assistantId);

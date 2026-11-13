@@ -1,7 +1,8 @@
 import {errorDisplayText} from '../../shared/error-display.js';
 import {mountSessionControls} from '../conversation/session-controls.js';
 import {mountModelThinkingPicker} from '../conversation/model-thinking-picker.js';
-import {answerCardHtml, assistantCardHtml, liveFromTranscript, rememberActivity} from '../conversation/answer-block.js';
+import {answerCardHtml, liveFromTranscript, rememberActivity} from '../conversation/answer-block.js';
+import {assistantThreadActionsHtml, bindAssistantThreadActions, mountAssistantRoster} from '../conversation/assistant-roster-ui.js';
 import {Orb} from '../orb/orb.js';
 import {stateNames,isTerminal,visualOrbState} from '../conversation/state.js';
 import {mountConversationRail} from '../conversation/rail.js';
@@ -20,7 +21,7 @@ const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const liveTurns=new Map();
   let lastData;
-  const paintAssistants=data=>{const node=root.querySelector('.assistant-cards');if(node)node.innerHTML=(data?.assistants??[]).map(item=>assistantCardHtml(item,escape)).join('');};
+  let roster;const paintAssistants=data=>roster?.paint(data?.assistants);
   window.desktop?.onTaskActivity?.(event=>{rememberActivity(liveTurns,event);const slot=root.querySelector(`[data-answer-for="${event.taskId}"]`);if(!slot)return;const task=(lastData?.tasks??[]).find(item=>item.taskId===event.taskId);if(!task)return;const wrap=document.createElement('div');wrap.innerHTML=answerCardHtml(task,liveTurns.get(event.taskId),escape);slot.replaceWith(wrap.firstElementChild);});
   let current={tasks:[]},lastSignature='',cardsSignature='',inspected=null;
   let updateRevision=0;
@@ -34,21 +35,22 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       <aside class="conversation-inspector" id="conversation-inspector" aria-label="对话详情" hidden><header><h2>对话详情</h2><button class="icon-btn" id="inspector-close" aria-label="关闭对话详情">${icon('close')}</button></header><div id="inspector-content"></div></aside></div>
     </main></section>`;
   const conversation=root.querySelector('#workspace-conversation'),stage=root.querySelector('#workspace-stage');
-  const assistantCards=document.createElement('section');assistantCards.className='assistant-cards';assistantCards.setAttribute('aria-label','子助手');
+  const assistantRoster=document.createElement('section');
   const assistantThread=document.createElement('section');assistantThread.className='assistant-thread';assistantThread.hidden=true;
-  conversation.before(assistantCards);stage.append(assistantThread);
+  conversation.before(assistantRoster);stage.append(assistantThread);
   const showAssistant=async assistantId=>{
     const thread=await invoke('assistant.thread',{assistantId});
     await invoke('assistant.read',{assistantId}).catch(()=>{});
     conversation.hidden=true;assistantThread.hidden=false;
     const turns=(thread.turns??[]).map(turn=>`<article class="assistant-turn"><div class="user-message">${escape(turn.userText||turn.goal||'')}</div>${answerCardHtml({...turn,resultSummary:turn.replyText}, liveFromTranscript(turn.transcript), escape)}</article>`).join('');
     const dispatched=thread.dispatched?`<article class="assistant-turn"><div class="user-message">${escape(thread.dispatched.goal||'')}</div>${answerCardHtml({...thread.dispatched,resultSummary:thread.dispatched.replyText}, liveFromTranscript(thread.dispatched.transcript), escape)}</article>`:'';
-    assistantThread.innerHTML=`<header><strong>${escape(thread.assistant.displayName)}</strong><span>${escape(thread.assistant.instructions||'')}</span><button type="button" data-assistant-back>返回</button><button type="button" data-assistant-stop ${thread.assistant.activeTaskId?'':'disabled'}>停止</button></header><div>${dispatched}${turns}</div><form><textarea aria-label="给这个助手发消息" placeholder="直接和这个助手聊天，运行中发送就是插话"></textarea><button type="submit">发送</button></form>`;
+    assistantThread.innerHTML=`<header><strong>${escape(thread.assistant.displayName)}</strong><span>${escape(thread.assistant.instructions||'')}</span>${assistantThreadActionsHtml(thread.assistant)}<button type="button" data-assistant-back>返回</button><button type="button" data-assistant-stop ${thread.assistant.activeTaskId?'':'disabled'}>停止</button></header><div>${dispatched}${turns}</div><form data-assistant-compose><textarea aria-label="给这个助手发消息" placeholder="直接和这个助手聊天，运行中发送就是插话"></textarea><button type="submit">发送</button></form>`;
     assistantThread.querySelector('[data-assistant-back]').onclick=()=>{assistantThread.hidden=true;conversation.hidden=false;};
     assistantThread.querySelector('[data-assistant-stop]').onclick=()=>{if(thread.assistant.activeTaskId)invoke('task.cancel',thread.assistant.activeTaskId).catch(report);};
-    assistantThread.querySelector('form').onsubmit=async event=>{event.preventDefault();const input=assistantThread.querySelector('textarea');const text=input.value.trim();if(!text)return;await invoke('assistant.submit',{assistantId,text,requestId:crypto.randomUUID()});input.value='';await showAssistant(assistantId);};
+    bindAssistantThreadActions(assistantThread, thread.assistant, {invoke, escape, report, onChanged:()=>showAssistant(assistantId), onDeleted:()=>{assistantThread.hidden=true;conversation.hidden=false;}});
+    assistantThread.querySelector('[data-assistant-compose]').onsubmit=async event=>{event.preventDefault();const input=assistantThread.querySelector('textarea');const text=input.value.trim();if(!text)return;await invoke('assistant.submit',{assistantId,text,requestId:crypto.randomUUID()});input.value='';await showAssistant(assistantId);};
   };
-  assistantCards.onclick=event=>{const id=event.target.closest('[data-assistant-id]')?.dataset.assistantId;if(id)showAssistant(id).catch(report);};
+  roster=mountAssistantRoster(assistantRoster,{invoke,escape,report,onOpen:id=>showAssistant(id).catch(report)});
   window.desktop?.onOpenAssistant?.(value=>{if(value?.assistantId)showAssistant(value.assistantId).catch(report);});
   const updateProgress=mountTaskProgress(root.querySelector('.workspace-chat'),stage,taskId=>invoke('computer.control.confirm',{taskId}));
   const preferences=document.createElement('div');preferences.className='conversation-preferences';

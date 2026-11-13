@@ -6,6 +6,8 @@ export interface AssistantRecord {
   role: string;
   instructions: string;
   conversationId: string;
+  origin: 'builtin' | 'user';
+  modelId?: string;
   status: 'idle' | 'working' | 'waiting_approval';
   activeTaskId?: string;
   unreadCount: number;
@@ -34,6 +36,35 @@ export const DEFAULT_ASSISTANTS: readonly {assistantId: string; displayName: str
 
 export const assistantConversationId = (assistantId: string): string => `desktop-assistant:${assistantId}`;
 
+export const ASSISTANT_NAME_REQUIRED = '请填写助手名字';
+export const ASSISTANT_INSTRUCTIONS_REQUIRED = '请填写这个助手负责什么';
+export const ASSISTANT_MODEL_INVALID = '模型标识无效';
+export const ASSISTANT_LIMIT_REACHED = '自定义助手已经达到上限';
+export const ASSISTANT_BUILTIN_LOCKED = '内置助手不能改名或删除';
+export const ASSISTANT_BUSY = '这个助手还在工作，先停止再删除';
+export const ASSISTANT_MODEL_UNAVAILABLE = '所选模型不在当前目录里';
+export const MAX_USER_ASSISTANTS = 24;
+const ASSISTANT_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/;
+
+export function assistantDisplayName(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text || text.length > 40) throw new Error(ASSISTANT_NAME_REQUIRED);
+  return text;
+}
+
+export function assistantInstructions(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text || text.length > 500) throw new Error(ASSISTANT_INSTRUCTIONS_REQUIRED);
+  return text;
+}
+
+export function optionalAssistantModelId(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!ASSISTANT_MODEL_ID.test(text)) throw new Error(ASSISTANT_MODEL_INVALID);
+  return text;
+}
+
 export function assistantFromRow(row: Record<string, unknown>): AssistantRecord {
   return {
     assistantId: String(row.assistant_id),
@@ -41,6 +72,8 @@ export function assistantFromRow(row: Record<string, unknown>): AssistantRecord 
     role: String(row.role),
     instructions: String(row.instructions),
     conversationId: String(row.conversation_id),
+    origin: row.origin === 'user' ? 'user' : 'builtin',
+    ...(row.model_id ? {modelId: String(row.model_id)} : {}),
     status: row.status as AssistantRecord['status'],
     ...(row.active_task_id ? {activeTaskId: String(row.active_task_id)} : {}),
     unreadCount: Number(row.unread_count),
