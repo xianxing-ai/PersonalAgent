@@ -39,10 +39,12 @@ test('Synthetic question shows exact scopes, escapes external text and never emi
   const value=question({title:'<script>private</script>',description:'"scope" & value'}),html=authorizationQuestionMarkup(value,{now:instant});
   assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);assert.match(html,/&quot;scope&quot; &amp;/);
   assert.match(html,/>同意<\/button>/);assert.match(html,/>拒绝<\/button>/);
-  assert.equal((html.match(/data-authorization-decision=/g)??[]).length,2);
-  assert.doesNotMatch(html,/data-authorization-decision="allow_always"|永久允许|<input|<textarea|<select/);
+  assert.equal((html.match(/data-authorization-decision=/g)??[]).length,3);
+  assert.match(html,/data-authorization-decision="allow_always"/);assert.match(html,/以后都允许/);
+  assert.doesNotMatch(html,/永久允许|<input|<textarea|<select/);
   assert.match(html,/<details[^>]*data-authorization-details\s*>/);assert.match(html,/<summary[^>]*>查看详情<\/summary>/);
-  assert.match(html,/Synthetic 只读沙箱/);assert.match(html,/访问待办/);assert.match(html,/todo:write/);
+  assert.match(html,/Synthetic 只读沙箱/);assert.match(html,/访问待办/);assert.match(html,/修改待办/);
+  assert.doesNotMatch(html,/todo:write/);
   for(const decision of ['allow_once','allow_always','deny'])assert.deepEqual(authorizationQuestionResponse(value.questionId,decision,[value],instant),{
     questionId:value.questionId,expectedRevision:2,decision});
   assert.throws(()=>authorizationQuestionResponse(value.questionId,'allow_always',[question({canAlways:false})],instant));
@@ -153,8 +155,8 @@ test('Synthetic safety settings only select available sandbox and revoke exact r
     rules:[{ruleId:'legacy',revision:2,summary:'历史会话受限授权',sandboxLabel:'只读',active:true}]};
   const controls=mountAuthorizationSettings(f.root,async(name,body)=>{calls.push({name,body});return value;});t.after(()=>controls.dispose());
   controls.show(true);await new Promise(resolve=>setImmediate(resolve));assert.equal(calls[0].name,'authorization.sandbox.read');
-  assert.equal(calls[0].body,undefined);assert.match(f.root.html,/受限权限下.*同意或拒绝/);
-  assert.match(f.root.html,/完全访问会自动同意应用授权，不弹卡/);assert.match(f.root.html,/完全访问（自动同意）/);
+  assert.equal(calls[0].body,undefined);assert.match(f.root.html,/低风险自动.*请你确认/);
+  assert.match(f.root.html,/完全访问会自动同意，不弹卡/);assert.match(f.root.html,/完全访问（自动同意）/);
   assert.doesNotMatch(f.root.html,/仅本次、永久允许/);
   assert.doesNotMatch(authorizationSettingsMarkup(value),/type="checkbox"|允许本会话/);
   const select=f.root.querySelector('[data-authorization-profile]');select.value='native';await f.root.fire('change',select);assert.equal(calls.length,1);

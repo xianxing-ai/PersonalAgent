@@ -12,6 +12,7 @@ import {connectorCards,connectorDestination} from './connectors.js';
 import {windowControlsHtml} from '../../ui/window-controls.js';
 import {mountTaskProgress} from '../conversation/task-progress.js';
 import {mountWorkspaceComposer} from '../conversation/workspace-composer.js';
+import {applyOperatorBrake} from '../conversation/operator-brake-view.js';
 import {mountCommandCenter} from './command-center.js';
 import {mountWorkspaceApprovals} from './workspace-approvals.js';
 import {mountWorkspaceRuntimeControls} from './runtime-controls.js';
@@ -185,6 +186,9 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     orb.setState(visualOrbState(data));
     if(document.hidden)orb.stop();
     composer.update(data);
+    let brakeStatus=root.querySelector('#operator-brake-status');
+    if(!brakeStatus){brakeStatus=document.createElement('p');brakeStatus.id='operator-brake-status';brakeStatus.className='notice';brakeStatus.hidden=true;root.querySelector('.workspace-top')?.after(brakeStatus);}
+    applyOperatorBrake({status:brakeStatus,snapshot:data.operatorBrake});
     updateProgress(data.tasks,data.computerControl,
       {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
     root.querySelector('#workspace-greeting').hidden=current.tasks.length>0;root.querySelector('#workspace-intro').hidden=current.tasks.length>0;root.querySelector('#workspace-welcome').classList.toggle('compact',current.tasks.length>0);
