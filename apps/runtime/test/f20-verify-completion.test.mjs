@@ -63,18 +63,33 @@ test('F20 refuses foreign trials, substituted candidates and unbound verificatio
   for(const mutate of [
     value=>{value.binding.trialTaskId='foreign';},value=>{value.session.taskId='foreign';},
     value=>{value.binding.taskId='foreign';},value=>{value.binding.candidateId='another';},
+    value=>{value.session.mode='shared';},
+    value=>{value.binding.parentArtifactDigests=['inherited-parent'];},
+    value=>{value.binding.recipeFingerprint='bad-fingerprint';},
     value=>{value.checkReadback.snapshot.files=value.checkReadback.snapshot.files.filter(file=>file.path!==samplePath);
       value.binding.artifactDigest=harnessCandidateArtifactDigest(value.checkReadback.snapshot);},
     value=>{value.checkReadback.verification[0].evidenceRefs=['foreign-run'];},
     value=>{value.checkReadback.verification[0].files=baseline.files;},
     value=>{value.checkReadback.verification[0].files=structuredClone(checked.files);value.checkReadback.verification[0].files[0].sha256='f'.repeat(64);},
     value=>{value.checkReadback.verification=[];},
+    value=>{value.checkReadback.verification[0].status='FAILED';},
+    value=>{value.checkReadback.verification[0].exitCode=1;},
+    value=>{value.checkReadback.verification[0].packageIds=['foreign-pkg'];},
   ]) {const value=trial();mutate(value);assert.throws(()=>verify(value),{code:'UNAUTHORIZED'});}
   const replaced=expected();replaced.candidate.sampleSnippet='export const replaced = true;';
   assert.throws(()=>verify(trial(),replaced),{code:'UNAUTHORIZED'});
-  const unsafe=expected();unsafe.samplePath='../outside.ts';
-  assert.throws(()=>verify(trial(),unsafe),{code:'UNAUTHORIZED'});
+  for(const badPath of ['../outside.ts','./api.ts','sample.js','sample\0.ts',caseInput.schemaFile,caseInput.codeFile,caseInput.targetDoc]) {
+    const unsafe=expected();unsafe.samplePath=badPath;
+    assert.throws(()=>verify(trial(),unsafe),{code:'UNAUTHORIZED'});
+  }
   assert.throws(()=>verifyF20HarnessCompletion({input:caseInput,read,check:checkReadback(trial()),sourceReads:sources}),{code:'UNAUTHORIZED'});
   assert.throws(()=>verifyF20HarnessCompletion({input:caseInput,read,check:checkReadback(trial()),
     sourceReads:[...sources,readback('extra','private.txt','unrelated')],expected:expected()}),{code:'UNAUTHORIZED'});
+  // Missing codeFile in sourceReads
+  assert.throws(()=>verifyF20HarnessCompletion({input:caseInput,read,check:checkReadback(trial()),
+    sourceReads:[read],expected:expected()}),{code:'UNAUTHORIZED'});
+  // Primary source readback drifted
+  const driftedPrimary=readback('schema-task',caseInput.schemaFile,'different primary content');
+  assert.throws(()=>verifyF20HarnessCompletion({input:caseInput,read:driftedPrimary,check:checkReadback(trial()),
+    sourceReads:sources,expected:expected()}),{code:'UNAUTHORIZED'});
 });
