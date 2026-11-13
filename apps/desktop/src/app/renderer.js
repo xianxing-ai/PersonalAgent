@@ -17,6 +17,7 @@ import {stateNames,isTerminal,currentTask,visualOrbState,orbStatusLabel} from '.
 import {sisStatusLine} from '../features/conversation/sis-status.js';
 import {createFollowLock} from '../features/conversation/follow-lock.js';
 import {mountAdmin} from '../features/admin/view.js';
+import {mountBriefingPanel} from '../features/admin/daily-briefing.js';
 import {mountWorkspace} from '../features/workspace/view.js';
 import {applyPreferences} from '../ui/preferences.js';
 import {mountConversationRail} from '../features/conversation/rail.js';
@@ -29,6 +30,7 @@ import {mountProactiveControls} from './proactive-controls.js';
 import {mountProactiveWorkflowControls} from './proactive-workflow-controls.js';
 import {approvalCards,approvalResponse,focusApprovalCard,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
+import {applyOperatorBrake} from '../features/conversation/operator-brake-view.js';
 import {mountPanelLight} from './panel-light.js';
 import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
 import {createMessageQueue} from '../features/conversation/message-queue.js';
@@ -46,9 +48,15 @@ const voiceFailureStages = Object.freeze({pcm_acquire:'麦克风就绪',session_
   pcm_release:'麦克风释放',audio_buffer:'音频缓冲',recognition:'语音识别',
   consumption:'请求回答',dictation:'填写文字',playback:'云端合成或播报',auto_finish:'自动结束',cleanup:'资源释放',
   initialization:'适配器启动'});
-const responseIcons={copy:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',share:'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>',like:'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10h3Zm3 10h7.2a2 2 0 0 0 1.9-1.4l1.5-5A2 2 0 0 0 18.7 11H15l.6-3.1A3.2 3.2 0 0 0 12.5 4L10 10v10Z"/></svg>'};
+const responseIcons={copy:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'};
 let activeDesktopConversationId;
 let adoptSnapshotRead;
+async function setOperatorBrake(paused) {
+  if (!bridge?.setOperatorBrake) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
+  const response = await bridge.setOperatorBrake(paused);
+  if (!response?.ok) throw Error(errorDisplayText({message: response?.error, code: response?.errorCode}, 'ipc'));
+  return response.value;
+}
 async function invoke(action,payload) {
   if(activeDesktopConversationId&&['task.submit','conversation.model','thinking.update'].includes(action))payload=action==='task.submit'?{...(typeof payload==='string'?{text:payload}:payload),conversationId:payload?.conversationId??activeDesktopConversationId}:{...payload,conversationId:payload?.conversationId??activeDesktopConversationId};
   if(!bridge) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
@@ -108,9 +116,21 @@ else {
   expand.id='panel-expand';expand.className='icon-btn hdr-btn';expand.type='button';
   expand.title='放大到工作区';expand.setAttribute('aria-label','放大到工作区');
   expand.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-7 7M10 20H4v-6m0 6 7-7"/></svg>';
+  const operatorBrakeButton=document.createElement('button');
+  operatorBrakeButton.id='operator-brake';operatorBrakeButton.type='button';operatorBrakeButton.className='operator-brake';
+  const operatorBrakeStatus=document.createElement('p');
+  operatorBrakeStatus.id='operator-brake-status';operatorBrakeStatus.className='notice';operatorBrakeStatus.hidden=true;
+  root.querySelector('#state').after(operatorBrakeButton);
+  root.querySelector('#connection-notice').before(operatorBrakeStatus);
+  let operatorBrakePending=false;
+  operatorBrakeButton.onclick=()=>{
+    if(operatorBrakePending)return;
+    operatorBrakePending=true;operatorBrakeButton.disabled=true;
+    setOperatorBrake(current?.operatorBrake?.paused!==true).then(()=>{},report).finally(()=>{operatorBrakePending=false;operatorBrakeButton.disabled=false;});
+  };
   root.querySelector('#close').before(expand);
   expand.onclick=()=>invoke('workspace.open').catch(error=>{setFeedback(error.message);});
-  let current,pending=false,submitGeneration=0,lastTaskSignature='',draftRevision=0;const likedTasks=new Set();
+  let current,pending=false,submitGeneration=0,lastTaskSignature='',draftRevision=0;
   const liveTurns=new Map();
   // Bounded UI state: these collections only serve the current session and must not grow for the
   // lifetime of a long-running panel (#435).
@@ -140,11 +160,16 @@ else {
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
   const assistantCards=document.createElement('section');assistantCards.className='assistant-cards';assistantCards.setAttribute('aria-label','子助手');tasksNode.before(assistantCards);assistantCards.onclick=event=>{const card=event.target.closest('[data-assistant-id]');if(!card)return;invoke('workspace.openAssistant',{assistantId:card.dataset.assistantId}).catch(report);};
   bridge?.onTaskActivity?.(event=>{rememberActivity(liveTurns,event);const slot=tasksNode.querySelector(`[data-answer-for="${event.taskId}"]`);const task=(current?.tasks??[]).find(item=>item.taskId===event.taskId);if(slot&&task){const wrap=document.createElement('div');wrap.innerHTML=answerCardHtml(task,liveTurns.get(event.taskId),escape);slot.replaceWith(wrap.firstElementChild);}});
-  input.title='发送 /压缩 或 /compact 可压缩当前会话历史；须先在模型设置中启用自动压缩。';
+  const briefingPanel=mountBriefingPanel(thread,invoke);
+  const compact=document.createElement('button');compact.type='button';compact.id='compact';compact.className='compact-entry';compact.textContent='压缩';compact.title='把较早的对话收成摘要';compact.setAttribute('aria-label','压缩对话');
+  form.querySelector('.composer-bar')?.prepend(compact);
+  compact.onclick=()=>{const text=input.value.trim();if(!/^\/(?:压缩|compact)\b/u.test(text))input.value=text?`/压缩 ${text}`:'/压缩 ';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};
+  input.title='也可以输入 /压缩 或 /compact，把较早的对话收成摘要。';
   const messageQueue=createMessageQueue();
   const sendingQueueIds=new Set();
   const deliveryControls=document.createElement('div');deliveryControls.className='message-delivery';
   deliveryControls.innerHTML='<label>发送方式 <select aria-label="对话中发送方式"><option value="queue">排队</option><option value="inject">插话</option><option value="steer">停止并改发</option></select></label><span class="delivery-hint"></span>';
+  deliveryControls.hidden=true;
   form.prepend(deliveryControls);
   const deliveryMode=deliveryControls.querySelector('select'),deliveryHint=deliveryControls.querySelector('.delivery-hint');
   try{const saved=localStorage.getItem('pa-message-delivery');deliveryMode.value=['queue','inject','steer'].includes(saved)?saved:'queue';}catch{}
@@ -152,14 +177,16 @@ else {
   const renderQueue=()=>{
     const entries=messageQueue.list(current?.conversationState?.activeId);queueNode.hidden=!entries.length;
     queueNode.innerHTML=entries.map(item=>`<div class="queued-message" data-queued-id="${item.id}"><span class="queued-text">${escape(item.text)}</span><span class="queued-actions"><button type="button" data-send-now="${item.id}" ${sendingQueueIds.has(item.id)?'disabled':''} title="截断当前回答并发送这条消息">立即发送</button><button type="button" data-remove-queued="${item.id}" ${sendingQueueIds.has(item.id)?'disabled':''} aria-label="移回输入框">编辑</button></span></div>`).join('');
+    syncDeliveryVisibility();
   };
+  const syncDeliveryVisibility=()=>{deliveryControls.hidden=activeTasks().length===0&&messageQueue.list(current?.conversationState?.activeId).length===0;};
   deliveryMode.onchange=()=>{try{localStorage.setItem('pa-message-delivery',deliveryMode.value);}catch{}setSendMode(Boolean(input.value.trim()));};
   const enqueueDraft=()=>{
     const token=sessionControls.capture();messageQueue.add(input.value,current?.conversationState?.activeId);messageQueue.resume();
     void sessionControls.submitted(token).catch(report);renderQueue();setSendMode(Boolean(input.value.trim()));
   };
   const drainQueue=()=>{
-    if(wakeClosed||pending||activeTasks().length||messageQueue.paused)return;
+    if(wakeClosed||pending||current?.operatorBrake?.paused===true||activeTasks().length||messageQueue.paused)return;
     const next=messageQueue.list(current?.conversationState?.activeId)[0];
     if(next)void submitMessage(next.text,{queued:next});
   };
@@ -238,7 +265,7 @@ else {
   const wakeControls=document.createElement('details');
   wakeControls.className='wake-controls';
   const wakeSummary=document.createElement('summary');wakeSummary.textContent='语音唤醒';
-  wakeControls.innerHTML='<div class="wake-control-row"><span>唤醒词：你好小派</span><button type="button" id="wake-toggle" disabled aria-pressed="false">开启 10 分钟</button></div><p id="wake-state" role="status" aria-live="polite">唤醒未开启</p><p class="wake-hint">本次最多 10 分钟；关闭面板停止。唤醒后语音发送到华为 SIS 转文字，仅填草稿，需手动发送。</p>';
+  wakeControls.innerHTML='<div class="wake-control-row"><span>唤醒词：你好小派</span><button type="button" id="wake-toggle" disabled aria-pressed="false">开启唤醒</button></div><p id="wake-state" role="status" aria-live="polite">唤醒未开启</p><p class="wake-hint">收起面板不会关闭唤醒。保持多久在设置的语音页里选择。唤醒后只填草稿，需手动发送。</p>';
   wakeControls.prepend(wakeSummary);
   form.append(wakeControls);
   const wakeButton=wakeControls.querySelector('#wake-toggle'),wakeStatus=wakeControls.querySelector('#wake-state');
@@ -249,7 +276,7 @@ else {
     const listening=phase==='listening';
     const labels={disabled:'唤醒已关闭',enabling:'正在准备唤醒检测与麦克风',listening:'正在聆听“你好小派”',
       disabling:'正在关闭并核实音频释放',unavailable:'唤醒尚未就绪',release_unconfirmed:'音频释放未确认，无法重新开启',disposed:'唤醒已停止'};
-    wakeButton.textContent=listening?'关闭唤醒':phase==='unavailable'?'重试开启 10 分钟':'开启 10 分钟';
+    wakeButton.textContent=listening?'关闭唤醒':'开启唤醒';
     wakeButton.setAttribute('aria-pressed',String(listening));
     wakeButton.disabled=wakePending || Boolean(data?.live?.active) || !data?.voice?.experimental
       || !['disabled','unavailable','listening'].includes(phase)
@@ -318,7 +345,7 @@ else {
   const setSendMode=hasText=>{
     const busy=pending||activeTasks().length>0,stop=!hasText&&busy;
     sendBtn.dataset.mode=hasText?'send':stop?'stop':'live';
-    sendBtn.title=hasText?(busy?(deliveryMode.value==='queue'?'加入队列':'立即引导'):'发送'):stop?'强制截断当前回答':current?.live?.active?'关闭 Live 实时语音':'开启 Live 实时语音';
+    sendBtn.title=hasText?(busy?(deliveryMode.value==='queue'?'加入队列':'立即引导'):'发送'):stop?'强制截断当前回答':current?.live?.active?'关闭实时语音':'开启实时语音';
     sendBtn.setAttribute('aria-label',sendBtn.title);sendBtn.setAttribute('aria-pressed',String(!stop&&!hasText&&Boolean(current?.live?.active)));
     sendBtn.setAttribute('aria-busy','false');sendBtn.disabled=false;
     deliveryHint.textContent=deliveryMode.value==='queue'?'当前回答结束后依次发送，可随时立即发送':'截断当前回答，结合上下文立即续答';
@@ -456,7 +483,7 @@ else {
     catch(err){if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)report(err);}
     finally{if(!wakeClosed&&feedbackRevision===talkFeedbackRevision)talkButton.disabled=Boolean(current?.live?.active)||wakeBlocksCapture(current)||!current?.voice?.experimental||!['unavailable','error','listening','awaiting_speech'].includes(current?.voice?.status);}
   };
-  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='like'){const on=!likedTasks.has(b.dataset.id);if(on){likedTasks.add(b.dataset.id);capCollection(likedTasks,200);}else likedTasks.delete(b.dataset.id);for(const button of tasksNode.querySelectorAll('[data-ui-action="like"]')){const active=likedTasks.has(button.dataset.id);button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));}return;}if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'||uiAction==='share'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{if(uiAction==='share'&&navigator.share){await navigator.share({text});}else{await invoke('clipboard.writeText',text);b.title=uiAction==='copy'?'已复制':'已复制分享文本';b.setAttribute('aria-label',b.title);setTimeout(()=>{b.title=uiAction==='copy'?'复制':'分享';b.setAttribute('aria-label',`${b.title}回答`);},1600);}}catch(err){if(err?.name!=='AbortError')report(err);}return;}if(b.dataset.action==='task.cancel'){if(b.disabled)return;const task=current?.tasks.find(item=>item.taskId===b.dataset.id);if(task)stopTask(task);return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
+  root.querySelector('#tasks').onclick=async e=>{const b=e.target.closest('[data-action],[data-ui-action]');if(!b)return;const uiAction=b.dataset.uiAction;if(uiAction==='locate'){await locateFailure(b);return;}if(uiAction==='copy'){const task=current?.tasks.find(item=>item.taskId===b.dataset.id);const message=current?.messages?.find(item=>item.id===b.dataset.messageId);const text=b.dataset.messageId?message?.text:resultText(task?.resultSummary,task?.resultMetadata);if(!text)return;try{await invoke('clipboard.writeText',text);b.title='已复制';b.setAttribute('aria-label','已复制');setTimeout(()=>{b.title='复制';b.setAttribute('aria-label','复制回答');},1600);}catch(err){if(err?.name!=='AbortError')report(err);}return;}if(b.dataset.action==='task.cancel'){if(b.disabled)return;const task=current?.tasks.find(item=>item.taskId===b.dataset.id);if(task)stopTask(task);return;}const cancelling=['task.cancel','task.reconcile.finish'].includes(b.dataset.action),id=b.dataset.id;if(b.disabled||(cancelling&&pendingCancelIds.has(id)))return;if(cancelling)pendingCancelIds.add(id);if(b.dataset.action==='task.cancel'){truncatedTaskIds.add(id);setSendMode(Boolean(input.value.trim()));}b.disabled=true;try{await invoke(b.dataset.action,id);}catch(err){report(err);}finally{if(cancelling){pendingCancelIds.delete(id);syncCancelButtons();}else b.disabled=false;}};
   const syncApprovalButtons=()=>{
     for(const [id,phase] of approvalDecisions)if(phase==='submitted' && !(current?.approvals??[]).some(item=>
       item.approvalId===id && item.state==='pending' && current?.tasks.some(task=>task.taskId===item.taskId && task.state==='waiting_approval')))approvalDecisions.delete(id);
@@ -498,7 +525,7 @@ else {
       approvalDecisions.set(id,'submitted');syncApprovalButtons();}
     catch(error){approvalDecisions.delete(id);report(error);syncApprovalButtons();}
   });
-  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'Live 已开启'):task?stateNames[task.state]:'待机';
+  render=(data,{preserveFeedback}={})=>{data={...data,tasks:data.tasks.map(task=>{if(task.bodyWithheld){truncatedOutput.delete(task.taskId);truncatedTaskIds.delete(task.taskId);return task;}const cutoff=truncatedOutput.get(task.taskId);return cutoff?{...task,resultSummary:cutoff.resultSummary,steps:cutoff.steps,outputTruncated:true}:task;})};updateVersion++;const changed=current?.conversationState?.activeId!==data.conversationState?.activeId;if(changed){submitGeneration++;pending=false;draftRevision++;locateFeedback.clear();setFeedback('');followLock.reset();}activeDesktopConversationId=data.conversationState?.activeId;current=data;sessionControls.update(data);nativeReasoning.update(data);const task=currentTask(data.tasks.filter(task=>!task.outputTruncated));const connectionNode=root.querySelector('#connection');connectionNode.textContent=data.fakeModel?data.connection+' · Fake Model':data.connection;const liveStates={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};root.querySelector('#state').textContent=data.live?.active?(liveStates[data.live.status]??'实时语音已开启'):task?stateNames[task.state]:'待机';
     subagents.update(data.subagentTasks??[]);
     if(!data.live?.active&&data.tasks.at(-1)?.outputTruncated&&(!task||isTerminal(task)))root.querySelector('#state').textContent='已截断';
     liveControls.render({...data.live,conversationTitle:data.conversationState?.sessions.find(s=>s.id===data.live?.conversationId)?.title});
@@ -523,6 +550,7 @@ else {
     const voiceError=data.voice?.status==='error'?`语音${voiceFailureStage}失败：${voiceFailure?.message??data.voice.reason??'语音处理失败'}`:'';
     if(preserveFeedback===false)setFeedback(data.connectionError||voiceError);
     syncHostFeedback(data.connectionError||voiceError,{preserveFeedback:preserveFeedback!==undefined});
+    syncDeliveryVisibility();briefingPanel.render(data.dailyBriefing,{open:data.briefingOpen===true});
     if(preserveFeedback===false&&hostFeedback)hostFeedbackRevision=errorFeedbackRevision;
     const modelReady=data.model?.status==='ready';
     const modelIdentity=data.fakeModel?(data.model?.label??'Fake Model · 离线测试'):(data.model?.configured&&data.model?.model?data.model.model:(data.model?.label||'模型未配置'));
@@ -537,17 +565,19 @@ else {
     for(const id of [...truncatedTaskIds])if(!data.tasks.some(item=>item.taskId===id)){truncatedTaskIds.delete(id);truncatedOutput.delete(id);}
     const hasActiveTask=activeTasks().length>0;
     stopButton.hidden=!hasActiveTask&&!pending&&voiceState!=='speaking'&&!data.live?.active;
-    stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持 Live）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
+    stopButton.disabled=!hasActiveTask&&voiceState!=='speaking'&&!data.live?.active;stopButton.title=hasActiveTask?(data.live?.active?'停止当前任务并打断回答':'停止当前任务'):data.live?.active?'打断回答（保持实时语音）':voiceState==='speaking'?'停止播报':'停止播报（当前未播放）';stopButton.setAttribute('aria-label',stopButton.title);
     const emptyThread=!(data.tasks.length>0||Boolean(data.messages?.length));
     root.querySelector('.bubble').hidden=!emptyThread;quickStart.hidden=!emptyThread;
     const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);
     const thinkingGrid='<span class="thinking-grid" aria-hidden="true">'+[0,1,2,3,4,5,6,7,8].map(index=>`<i data-cell="${index}"></i>`).join('')+'</span>';
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
-    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button><button type="button" data-ui-action="share" data-id="${escape(t.taskId)}" title="分享" aria-label="分享回答">${responseIcons.share}</button><button type="button" data-ui-action="like" data-id="${escape(t.taskId)}" title="点赞" aria-label="点赞回答" aria-pressed="${likedTasks.has(t.taskId)}" class="${likedTasks.has(t.taskId)?'active':''}">${responseIcons.like}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${answerCardHtml(t, liveTurns.get(t.taskId), escape)}${answer?answerActions:''}${failure&&!answer?`<div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
+    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button></div>`:'';const locateHtml=failure&&!answer?`<div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';const live=liveTurns.get(t.taskId);const hasLiveContent=Boolean(live&&(live.reasoning||live.answer||live.steps?.length||live.summary));const bodyHtml=!terminal&&t.state!=='waiting_reconciliation'&&!hasLiveContent?`<section class="answer-card" data-answer-for="${escape(t.taskId)}"><div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div></section>`:hasLiveContent?`${answerCardHtml(t.outputTruncated?{...t,error:undefined}:t,live,escape)}${answer?answerActions:''}${locateHtml}`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div>${locateHtml}`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${bodyHtml}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;assistantCards.innerHTML=(data.assistants??[]).map(assistant=>assistantCardHtml(assistant,escape)).join('');
     setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
-    if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}};
+    if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    applyOperatorBrake({button:operatorBrakeButton,status:operatorBrakeStatus,state:root.querySelector('#state'),snapshot:data.operatorBrake});
+};
 }
 // These cards belong to the canonical user conversation, including requests from its workers.
 // Keep their DOM outside the task projection so unrelated progress snapshots preserve focus.
