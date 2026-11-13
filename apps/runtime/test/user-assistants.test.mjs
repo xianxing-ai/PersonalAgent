@@ -11,7 +11,7 @@ const catalogRevision = 'a'.repeat(64);
 
 async function directory(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'pa-user-assistant-'));
-  t.after(() => rm(root, {recursive: true, force: true}));
+  t.after(() => rm(root, {recursive: true, force: true, maxRetries: 5, retryDelay: 100}));
   return root;
 }
 
@@ -75,26 +75,30 @@ test('a running user assistant accepts an interruption and still waits for tool 
       return {kind: 'tool_proposal', proposalId: 'user-assistant-1', toolName: descriptor.name, toolVersion: descriptor.version, arguments: {path: 'notes.md'}, verification: 'unverified'};
     }},
   });
-  t.after(() => app.close());
-  const assistant = app.createAssistant({displayName: '审查笔记', instructions: '先指出遗漏'});
-  const sent = app.submitAssistantMessage({assistantId: assistant.assistantId, text: '看一下纪要', requestId: 'busy-1'});
-  const running = await until(() => {
-    const task = app.runtime.getTask(sent.acceptedTaskId);
-    return task.state === 'running' || task.state === 'planning' ? task : undefined;
-  });
-  assert.ok(running);
-  assert.throws(() => app.deleteAssistant(assistant.assistantId), {code: 'REVISION_CONFLICT'});
-  const injected = app.submitAssistantMessage({assistantId: assistant.assistantId, text: '先看预算那段', requestId: 'busy-2'});
-  assert.equal(injected.injected, true);
-  assert.equal(injected.acceptedTaskId, sent.acceptedTaskId);
-  release();
-  const waiting = await until(() => {
-    const task = app.runtime.getTask(sent.acceptedTaskId);
-    return task.state === 'waiting_approval' || task.state === 'failed' ? task : undefined;
-  });
-  assert.equal(waiting.state, 'waiting_approval');
-  assert.equal(executions, 0);
-  assert.equal(app.runtime.readToolExecutions(sent.acceptedTaskId).some(record => record.policyDecision === 'allow' && record.executionStarted), false);
+  try {
+    const assistant = app.createAssistant({displayName: '审查笔记', instructions: '先指出遗漏'});
+    const sent = app.submitAssistantMessage({assistantId: assistant.assistantId, text: '看一下纪要', requestId: 'busy-1'});
+    const running = await until(() => {
+      const task = app.runtime.getTask(sent.acceptedTaskId);
+      return task.state === 'running' || task.state === 'planning' ? task : undefined;
+    });
+    assert.ok(running);
+    assert.throws(() => app.deleteAssistant(assistant.assistantId), {code: 'REVISION_CONFLICT'});
+    const injected = app.submitAssistantMessage({assistantId: assistant.assistantId, text: '先看预算那段', requestId: 'busy-2'});
+    assert.equal(injected.injected, true);
+    assert.equal(injected.acceptedTaskId, sent.acceptedTaskId);
+    release();
+    const waiting = await until(() => {
+      const task = app.runtime.getTask(sent.acceptedTaskId);
+      return task.state === 'waiting_approval' || task.state === 'failed' ? task : undefined;
+    });
+    assert.equal(waiting.state, 'waiting_approval');
+    assert.equal(executions, 0);
+    assert.equal(app.runtime.readToolExecutions(sent.acceptedTaskId).some(record => record.policyDecision === 'allow' && record.executionStarted), false);
+    await until(() => app.activeTaskCount === 0);
+  } finally {
+    app.close();
+  }
 });
 
 test('an optional model is stored and bound on the assistant turn', async t => {
@@ -106,14 +110,17 @@ test('an optional model is stored and bound on the assistant turn', async t => {
     resolveExecutionModel: ({modelId}) => ({catalogRevision, modelId}),
     coordination: {execute: async request => { seen.push(request.executionModel?.modelId); return {kind: 'text', text: '好', verification: 'mock'}; }},
   });
-  t.after(() => app.close());
-  assert.throws(() => app.createAssistant({displayName: '坏模型', instructions: '说明', modelId: '有空格'}), /模型标识无效/);
-  const assistant = app.createAssistant({displayName: '编码笔记', instructions: '只改测试', modelId: 'deepseek-v4-flash'});
-  assert.equal(assistant.modelId, 'deepseek-v4-flash');
-  const sent = app.submitAssistantMessage({assistantId: assistant.assistantId, text: '补一条测试', requestId: 'model-1'});
-  await until(() => seen.length > 0 && app.activeTaskCount === 0);
-  assert.equal(app.runtime.loadCheckpoint(sent.acceptedTaskId, 'execution-model').modelId, 'deepseek-v4-flash');
-  assert.equal(seen[0], 'deepseek-v4-flash');
+  try {
+    assert.throws(() => app.createAssistant({displayName: '坏模型', instructions: '说明', modelId: '有空格'}), /模型标识无效/);
+    const assistant = app.createAssistant({displayName: '编码笔记', instructions: '只改测试', modelId: 'deepseek-v4-flash'});
+    assert.equal(assistant.modelId, 'deepseek-v4-flash');
+    const sent = app.submitAssistantMessage({assistantId: assistant.assistantId, text: '补一条测试', requestId: 'model-1'});
+    await until(() => seen.length > 0 && app.activeTaskCount === 0);
+    assert.equal(app.runtime.loadCheckpoint(sent.acceptedTaskId, 'execution-model').modelId, 'deepseek-v4-flash');
+    assert.equal(seen[0], 'deepseek-v4-flash');
+  } finally {
+    app.close();
+  }
 });
 
 test('version 13 assistant rows survive the user-assistant columns', async t => {
