@@ -29,6 +29,7 @@ import {mountProactiveControls} from './proactive-controls.js';
 import {mountProactiveWorkflowControls} from './proactive-workflow-controls.js';
 import {approvalCards,approvalResponse,focusApprovalCard,nextApprovalExpiry} from '../features/conversation/approval-card.js';
 import {isStopRequest} from '../features/conversation/stop-request.js';
+import {applyOperatorBrake} from '../features/conversation/operator-brake-view.js';
 import {mountPanelLight} from './panel-light.js';
 import {mountAuthorizationQuestionCards,approvalsWithoutQuestionCards} from '../features/conversation/authorization-question-card.js';
 import {createMessageQueue} from '../features/conversation/message-queue.js';
@@ -49,6 +50,12 @@ const voiceFailureStages = Object.freeze({pcm_acquire:'麦克风就绪',session_
 const responseIcons={copy:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>'};
 let activeDesktopConversationId;
 let adoptSnapshotRead;
+async function setOperatorBrake(paused) {
+  if (!bridge?.setOperatorBrake) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
+  const response = await bridge.setOperatorBrake(paused);
+  if (!response?.ok) throw Error(errorDisplayText({message: response?.error, code: response?.errorCode}, 'ipc'));
+  return response.value;
+}
 async function invoke(action,payload) {
   if(activeDesktopConversationId&&['task.submit','conversation.model','thinking.update'].includes(action))payload=action==='task.submit'?{...(typeof payload==='string'?{text:payload}:payload),conversationId:payload?.conversationId??activeDesktopConversationId}:{...payload,conversationId:payload?.conversationId??activeDesktopConversationId};
   if(!bridge) throw Error('桌面桥未连接，请从 PersonalAgent 桌面应用启动');
@@ -108,6 +115,18 @@ else {
   expand.id='panel-expand';expand.className='icon-btn hdr-btn';expand.type='button';
   expand.title='放大到工作区';expand.setAttribute('aria-label','放大到工作区');
   expand.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6m0-6-7 7M10 20H4v-6m0 6 7-7"/></svg>';
+  const operatorBrakeButton=document.createElement('button');
+  operatorBrakeButton.id='operator-brake';operatorBrakeButton.type='button';operatorBrakeButton.className='operator-brake';
+  const operatorBrakeStatus=document.createElement('p');
+  operatorBrakeStatus.id='operator-brake-status';operatorBrakeStatus.className='notice';operatorBrakeStatus.hidden=true;
+  root.querySelector('#state').after(operatorBrakeButton);
+  root.querySelector('#connection-notice').before(operatorBrakeStatus);
+  let operatorBrakePending=false;
+  operatorBrakeButton.onclick=()=>{
+    if(operatorBrakePending)return;
+    operatorBrakePending=true;operatorBrakeButton.disabled=true;
+    setOperatorBrake(current?.operatorBrake?.paused!==true).then(()=>{},report).finally(()=>{operatorBrakePending=false;operatorBrakeButton.disabled=false;});
+  };
   root.querySelector('#close').before(expand);
   expand.onclick=()=>invoke('workspace.open').catch(error=>{setFeedback(error.message);});
   let current,pending=false,submitGeneration=0,lastTaskSignature='',draftRevision=0;
@@ -163,7 +182,7 @@ else {
     void sessionControls.submitted(token).catch(report);renderQueue();setSendMode(Boolean(input.value.trim()));
   };
   const drainQueue=()=>{
-    if(wakeClosed||pending||activeTasks().length||messageQueue.paused)return;
+    if(wakeClosed||pending||current?.operatorBrake?.paused===true||activeTasks().length||messageQueue.paused)return;
     const next=messageQueue.list(current?.conversationState?.activeId)[0];
     if(next)void submitMessage(next.text,{queued:next});
   };
@@ -550,7 +569,9 @@ else {
     if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${!terminal&&t.state!=='waiting_reconciliation'?`<div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div>`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div><div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
-    if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}};
+    if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    applyOperatorBrake({button:operatorBrakeButton,status:operatorBrakeStatus,state:root.querySelector('#state'),snapshot:data.operatorBrake});
+};
 }
 // These cards belong to the canonical user conversation, including requests from its workers.
 // Keep their DOM outside the task projection so unrelated progress snapshots preserve focus.

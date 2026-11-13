@@ -468,3 +468,7 @@ advice. They do not start tracking, grant permission or fetch sources. See
 [`docs/interest-policy.md`](docs/interest-policy.md) for revocation, source validation
 and cache expiry semantics. No real model, background watcher or next-day freshness
 acceptance is claimed.
+
+## 一键暂停（总刹车）
+
+`createOperatorBrake` 是总开关的编排。它只保存暂停记录，并调用宿主已经接好的 checkpoint、abort 和 resume。新任务、Scheduler 和主动触发在暂停期间不被 admit。进行中的运行先留下现有断点再中止。恢复时按同一断点继续。未合入的 PR #630 / #631 / #633 只留可选 `extensions`，本包不依赖它们的代码。桌面启动路径在 `apps/desktop/electron/operator-brake-host.js` 调用这个入口。
