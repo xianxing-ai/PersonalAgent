@@ -92,6 +92,7 @@ import {createDesktopOperatorBrake, operatorBrakeTrayLabel} from './operator-bra
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createProactiveSourceHost} from './proactive-source-host.js';
 import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
@@ -370,6 +371,7 @@ let voiceDisposed = false;
 let voiceDisposal;
 let voiceDisposalFailed = false;
 let goalHost;
+let goalPlan;
 let goalCloudHost;
 let competitionCatalog;
 let competitionFactBridge;
@@ -381,7 +383,7 @@ let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
-let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
+let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
@@ -839,6 +841,7 @@ function snapshot(surface) {
     p5: p5StatusSnapshot(),
     knowledgeWatch: knowledgeWatchHost?.snapshot() ?? null,
     mail: mailSnapshot(),
+    proactiveTasks: proactiveSourceHost?.snapshot(),
     calendar: calendarMeetingHost?.snapshot() ?? calendarConfig?.snapshot(),
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
@@ -846,7 +849,7 @@ function snapshot(surface) {
     personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'},
     dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
-    goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
+    goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
     computerControl:computerControlSnapshot(surface),
@@ -2112,6 +2115,7 @@ async function initializeRuntime() {
           path.join(path.dirname(dbPath), 'mvp-synthetic-memory.sqlite'), {decision});
       }
       const {createGoalHost} = await import('./goal-host.js');
+      const {createGoalPlanHost} = await import('./goal-plan-host.js');
       const codingModule=await import('@personal-agent/coding-tools');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
@@ -2139,6 +2143,21 @@ async function initializeRuntime() {
         void dailyBriefingHost.tick();
       }
       goalHost = createGoalHost(namespace);
+      goalPlan = createGoalPlanHost({
+        userData: app.getPath('userData'),
+        listGoals: () => goalHost.list(),
+        readChildren: () => {
+          try {
+            const items = runtimeApplication?.listSubagentConversations?.({limit: 40})?.items ?? [];
+            return items.map(item => {
+              const binding = runtimeApplication?.runtime?.loadCheckpoint?.(item.taskId, 'subtask-parent');
+              return binding?.subtaskId ? {...item, subtaskId: binding.subtaskId} : item;
+            });
+          } catch {
+            return [];
+          }
+        },
+      });
       if (!syntheticMvp && calendarConfig) {
         const calendarReadTool = runtimeModule.createCalendarEventReadTool({
           getBinding: () => {
@@ -3269,6 +3288,17 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
+  if (!proactiveSourceHost) proactiveSourceHost = createProactiveSourceHost({
+    getApplication: () => runtimeApplication,
+    getTools: () => connectorConversationTools?.tools ?? [],
+    submitTask: async input => {
+      const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
+      const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
+      return {taskId: result.taskId, state: result.state ?? 'created'};
+    },
+    namespace: desktopHost.userNamespace,
+    onUpdate: publish,
+  });
   eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
     void pumpEvents(); if(!operatorPaused){void todoHost?.tick(); void personalDashboardHost?.tick();}
     if(runtimeClosed)return;
@@ -3277,6 +3307,7 @@ async function initializeRuntime() {
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
     void maintenancePoll.run('knowledge-schedules',()=>{if(!operatorPaused)tickKnowledgeSchedules();});
     void maintenancePoll.run('connector-watch',()=>{if(!operatorPaused)return connectorWatchHost?.tick();});
+    void maintenancePoll.run('proactive-source',()=>{if(!operatorPaused)return proactiveSourceHost?.tick();});
     void maintenancePoll.run('daily-briefing',()=>{if(!operatorPaused)return dailyBriefingHost?.tick();});
     void maintenancePoll.run('proactive-runtime',()=>operatorPaused?undefined:proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
@@ -3442,6 +3473,13 @@ async function action(event, name, payload) {
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
+  }
+  if (name === 'proactiveTasks.update' || name === 'proactiveTasks.authorize' || name === 'proactiveTasks.revoke') {
+    if (sender !== admin) throw new Error('请从设置页管理主动任务');
+    if (!proactiveSourceHost) throw new Error('主动任务尚未就绪');
+    if (name === 'proactiveTasks.update') return proactiveSourceHost.update(payload);
+    if (name === 'proactiveTasks.authorize') return proactiveSourceHost.authorize(payload?.root);
+    return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
   if (name === 'snapshot.resync') {
@@ -4379,6 +4417,25 @@ async function action(event, name, payload) {
     if (name === 'evidence.list') return evidenceHost.list(payload);
     if (name === 'evidence.get') return evidenceHost.get(payload);
     return evidenceHost.revoke(payload);
+  }
+  if (name === 'goal.decompose') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理拆解');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(key => key !== 'goalId') || typeof payload.goalId !== 'string') throw Error('目标拆解参数无效');
+    const result = goalPlan.decompose(payload.goalId);
+    publish();
+    return result;
+  }
+  if (name === 'goal.plan.bind') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理关联子任务');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+      || Object.keys(payload).some(key => !['goalId', 'stepId', 'taskId', 'subtaskId'].includes(key))) {
+      throw Error('子任务关联参数无效');
+    }
+    const result = goalPlan.bindChild(payload);
+    publish();
+    return result;
   }
   if (name.startsWith('goal.')) {
     if (sender !== panel && sender !== workspace) throw Error('Goal 操作只能从面板或工作区调用');
