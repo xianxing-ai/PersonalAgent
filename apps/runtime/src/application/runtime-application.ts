@@ -415,6 +415,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   getToolsForSubtask?: (subtask:SubtaskDefinition,worker:WorkerContext,tools:AgentToolPort)=>AgentToolPort|undefined;
   /** Read once at task acceptance; later conversation changes cannot alter this task. */
   readConversationPreference?: (conversationId: string) => (ThinkingConfig & {modelId?: string; configurationRef?:string;executionModel?:ExecutionModelSelection}) | undefined;
+  /** Synchronous trusted preference text. It is not a grant and must not perform I/O. */
+  readPromptPreferences?: (input: {goal: string; audience: 'primary' | 'subagent'}) => string | undefined;
   readDefaultExecutionModel?: (role:'primary'|'subagent')=>ExecutionModelSelection|undefined;
   resolveExecutionModel?: (selection:{modelId:string;reasoningEffort?:ExecutionModelSelection['reasoningEffort']})=>ExecutionModelSelection;
   /** Trusted Desktop-only recovery port; paths and process identity stay in its closure. */
@@ -542,6 +544,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly subagentModels: RuntimeApplicationOptions['subagentModels'];
   private readonly getToolsForSubtask:RuntimeApplicationOptions['getToolsForSubtask'];
   private readonly readConversationPreference: RuntimeApplicationOptions['readConversationPreference'];
+  private readonly readPromptPreferences: RuntimeApplicationOptions['readPromptPreferences'];
   private readonly readDefaultExecutionModel: RuntimeApplicationOptions['readDefaultExecutionModel'];
   private readonly resolveExecutionModel: RuntimeApplicationOptions['resolveExecutionModel'];
   private referenceSkill: ReturnType<typeof createReferenceSummarySkill> | undefined;
@@ -660,6 +663,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.prepareCompetitionToolExport=options.prepareCompetitionToolExport;
     this.getToolsForSubtask=options.getToolsForSubtask;
     this.readConversationPreference = options.readConversationPreference;
+    this.readPromptPreferences = options.readPromptPreferences;
     this.readDefaultExecutionModel = options.readDefaultExecutionModel;
     this.resolveExecutionModel = options.resolveExecutionModel;
     if (options.hostUserNamespace !== undefined && !HOST_ID.test(options.hostUserNamespace)) {
@@ -1965,6 +1969,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     }
   }
 
+  private promptPreferenceText(goal: string, audience: 'primary' | 'subagent'): string {
+    if (typeof this.readPromptPreferences !== 'function') return '';
+    let value: unknown;
+    try { value = this.readPromptPreferences({goal, audience}); }
+    catch { return ''; }
+    if (value !== undefined && typeof (value as {then?: unknown}).then === 'function') {
+      void Promise.resolve(value).catch(() => undefined);
+      return '';
+    }
+    if (typeof value !== 'string') return '';
+    const text = value.trim();
+    return text && text.length <= 2_000 ? text : '';
+  }
+
+  private appendPromptPreferences(taskId: string, goal: string, base: string): string {
+    const audience = this.runtime.loadCheckpoint(taskId, 'subtask-parent') ? 'subagent' as const : 'primary' as const;
+    const text = this.promptPreferenceText(goal, audience);
+    if (!text) return base;
+    const next = `${base}\n\n${text}`;
+    return next.length <= COORDINATION_GOAL_CHARACTER_LIMIT ? next : base;
+  }
+
   private async executeCoordination(port:CoordinationPort, request:CoordinationRequest) {
     const teacherScope=this.teacherScopeFor(request),leaseKey=teacherScope?.leaseKey??request.taskId,
       checkpointKey=teacherScope?.checkpointKey??COMPETITION_CONTEXT_CHECKPOINT;
@@ -2023,7 +2049,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       try {
         this.assertContextHooksAvailable(request.taskId);
         const strategy=experienceText&&request.goal.length+experienceText.length<=COORDINATION_GOAL_CHARACTER_LIMIT?experienceText:'';
-        const goal=request.goal+strategy;
+        const goal=this.appendPromptPreferences(request.taskId, request.goal, request.goal+strategy);
         const withStrategy=this.fitContinuationRequest(goal===request.goal?request:Object.freeze({...request,goal}));
         if(!strategy)this.experienceSendPolicies.delete(request.taskId);
         this.assertInputActive(withStrategy);
@@ -2144,6 +2170,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const candidate=withEnvironment(hostRequestContext+'\n'+capabilities);
         try {const budget=measureCompiledGoal(candidate,hooks.goalTokenBudget);sendGoal=candidate;sendBudget=budget;}
         catch { /* Optional diagnostics cannot evict the original approved task or history. */ }
+      }
+      const beforePreferences = sendGoal;
+      const withPreferences = this.appendPromptPreferences(task.taskId, request.goal, sendGoal);
+      if (withPreferences !== beforePreferences) {
+        try {
+          const budget = measureCompiledGoal(withPreferences, hooks.goalTokenBudget);
+          sendGoal = withPreferences;
+          sendBudget = budget;
+        } catch {
+          /* Optional user preferences cannot evict the approved task or exceed budgets. */
+        }
       }
       this.assertInputActive(request);
       if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
@@ -2470,6 +2507,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       getModelReasoningEfforts:name=>this.subagentModels?.getModelReasoningEfforts?.(name)??[],
       getModelConfigurationRef:(name,taskId)=>this.subagentModels?.getModelConfigurationRef?.(name,taskId),
       getToolsForSubtask:(subtask,worker)=>this.tools?(this.getToolsForSubtask?this.getToolsForSubtask(subtask,worker,this.tools):this.tools):undefined,
+      readPromptPreferences: input => this.promptPreferenceText(input.goal, input.audience) || undefined,
     });
   }
 
@@ -4236,7 +4274,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
       execution=resumeRuntimeSubagentTask({competitionOnly:true,getRuntime:()=>this.runtime,getTools:()=>this.tools,
         runDefaultWorker:(subtask,worker,tools)=>this.runDefaultSubagentWorker(subtask,worker,tools),
         getToolsForSubtask:(subtask,worker)=>this.tools
-          ?(this.getToolsForSubtask?this.getToolsForSubtask(subtask,worker,this.tools):this.tools):undefined},
+          ?(this.getToolsForSubtask?this.getToolsForSubtask(subtask,worker,this.tools):this.tools):undefined,
+        readPromptPreferences: input => this.promptPreferenceText(input.goal, input.audience) || undefined},
         request.taskId,undefined,{assertBeforeFirstSend:assertPrepared}).then(async task=>{
           await this.refreshSubagentParent(request.taskId);return task;
         });
@@ -4285,7 +4324,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         getModelGateway:name=>this.subagentModels?.getModelGateway?.(name,preferred?.configurationRef),
         getModelConfigurationRef:(name,id)=>this.subagentModels?.getModelConfigurationRef?.(name,id),
         getToolsForSubtask:(subtask,worker)=>this.tools?(this.getToolsForSubtask?this.getToolsForSubtask(subtask,worker,this.tools):this.tools):undefined,
-        getModelReasoningEfforts:name=>this.subagentModels?.getModelReasoningEfforts?.(name,preferred?.configurationRef)??[]},
+        getModelReasoningEfforts:name=>this.subagentModels?.getModelReasoningEfforts?.(name,preferred?.configurationRef)??[],
+        readPromptPreferences: input => this.promptPreferenceText(input.goal, input.audience) || undefined},
         taskId).then(() => this.refreshSubagentParent(taskId))
         .finally(() => this.activeTextTasks.delete(taskId));
       this.activeTextTasks.set(taskId, execution);
@@ -5007,10 +5047,15 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         {role: 'assistant' as const, content: answer},
       ] : [];
     });
+    const preferenceText = this.promptPreferenceText(goal, 'primary');
+    const initialMessages: ModelMessage[] = [
+      ...(preferenceText ? [{role: 'system' as const, content: preferenceText}] : []),
+      ...history,
+    ];
     this.runtime.saveCheckpoint(taskId, 'application-goal', goal);
-    this.runtime.saveCheckpoint(taskId, 'application-context', {messages: history});
+    this.runtime.saveCheckpoint(taskId, 'application-context', {messages: initialMessages});
     const execution = Promise.resolve().then(() => application.startTask(this.runtime, taskId, goal, {
-      ...(history.length ? {initialMessages: history} : {}),
+      ...(initialMessages.length ? {initialMessages} : {}),
     })).finally(() => this.activeTextTasks.delete(taskId));
     this.activeTextTasks.set(taskId, execution);
     void execution.catch(() => {

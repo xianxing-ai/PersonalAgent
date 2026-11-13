@@ -37,8 +37,13 @@ export function memoryLearningControlsHtml({status = {}, refs = [], version = nu
       <button class="btn btn-sm" data-ml-action="stop" ${runningTask ? '' : 'disabled'}>停止或核实此任务</button>
       <button class="btn btn-sm btn-danger" data-ml-action="erase" ${version ? '' : 'disabled'}>删除流程</button>
     </div><p class="muted">${status.learningAvailable ? '学习宿主已配置' : '学习宿主未配置'}</p>
-    <h3>纠正与整理</h3>
-    <p>${(status.preferences ?? []).length ? (status.preferences ?? []).map(note => `${note.kind === 'comment' ? '点评' : '纠正'}：${escape(note.text)}`).join('；') : '还没有从纠正里记下偏好。'}</p>
+    <h3>正在生效的偏好</h3>
+    <p class="muted">发送时按与当前问题的相关性，最多带上 6 条。关掉后不再进入提示；撤回后不能再注入。</p>
+    ${(status.preferences ?? []).filter(note => note.withdrawn !== true && note.enabled !== false && note.active !== false).length
+      ? (status.preferences ?? []).filter(note => note.withdrawn !== true && note.enabled !== false && note.active !== false).map(note => `<div class="setting-row"><span>${note.kind === 'comment' ? '点评' : '纠正'}：${escape(note.text)} · 正在生效</span>${note.id ? `<div class="setting-control"><button class="btn btn-sm" data-ml-preference="${escape(note.id)}" data-ml-preference-action="disable">关掉</button><button class="btn btn-sm" data-ml-preference="${escape(note.id)}" data-ml-preference-action="withdraw">撤回</button></div>` : ''}</div>`).join('')
+      : '<p>还没有从纠正里记下偏好。</p>'}
+    ${(status.preferences ?? []).filter(note => note.withdrawn !== true && note.enabled === false).map(note => `<div class="setting-row"><span>${note.kind === 'comment' ? '点评' : '纠正'}：${escape(note.text)} · 已关闭</span>${note.id ? `<button class="btn btn-sm" data-ml-preference="${escape(note.id)}" data-ml-preference-action="enable">启用</button>` : ''}</div>`).join('')}
+    ${(status.preferences ?? []).filter(note => note.withdrawn === true).map(note => `<p>${note.kind === 'comment' ? '点评' : '纠正'}：${escape(note.text)} · 已撤回，不再注入</p>`).join('')}
     <p>${status.duplicateCount ? `有 ${escape(status.duplicateCount)} 条重复记忆可整理` : '没有重复记忆'}</p>
     ${(status.duplicateSuggestions ?? []).flatMap((group, groupIndex) => (group.drop ?? []).map((item, itemIndex) => `<div class="setting-row"><span>重复建议 ${groupIndex + 1}-${itemIndex + 1} · v${escape(item.revision)}（保留 v${escape(group.keep?.revision ?? '?')}）</span><div class="setting-control"><button class="btn btn-sm" data-ml-consolidate-id="${escape(item.id)}" data-ml-consolidate-revision="${escape(item.revision)}">确认撤回</button></div></div>`)).join('')}
     <label>纠正或点评<input name="ml-feedback" maxlength="500" value="${escape(form.feedback ?? '')}"></label>
@@ -83,6 +88,20 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
   root.addEventListener('click', async event => {
     const button = event.target.closest('button');
     if (!button || !root.contains(button) || busy || button.disabled) return;
+    const preferenceAction = button.dataset.mlPreferenceAction;
+    const preferenceId = button.dataset.mlPreference;
+    if (preferenceId && ['disable', 'enable', 'withdraw'].includes(preferenceAction)) {
+      busy = true;
+      button.disabled = true;
+      try {
+        const result = await invoke(`learning.preference.${preferenceAction}`, {id: preferenceId});
+        if (result?.preferences) state.status = {...state.status, preferences: result.preferences};
+        state.message = preferenceAction === 'withdraw' ? '已撤回，这条偏好不再进入提示。' : preferenceAction === 'disable' ? '已关掉，这条偏好不再进入提示。' : '已重新启用。';
+      } catch (error) {
+        state.message = error?.message ?? '操作失败，请刷新后核对。';
+      } finally { busy = false; render(); }
+      return;
+    }
     const action = button.dataset.mlAction;
     const withdraw = button.dataset.mlWithdraw;
     const deletion = button.dataset.mlDelete;

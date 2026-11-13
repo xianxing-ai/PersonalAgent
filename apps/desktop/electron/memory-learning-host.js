@@ -1,5 +1,34 @@
 import {randomUUID} from 'node:crypto';
-import {learnPreference, consolidateFacts} from '@personal-agent/learning';
+import {closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
+import path from 'node:path';
+import {learnPreference, consolidateFacts, setPreferenceEnabled, withdrawPreference, selectPromptPreferences, formatPreferenceSystemPrompt} from '@personal-agent/learning';
+
+export function filePreferenceStore(file) {
+  return {
+    load() {
+      try {
+        const parsed = JSON.parse(readFileSync(file, 'utf8'));
+        return Array.isArray(parsed?.notes) ? parsed.notes : [];
+      } catch { return []; }
+    },
+    save(notes) {
+      mkdirSync(path.dirname(file), {recursive: true});
+      const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+      let fd;
+      try {
+        fd = openSync(temporary, 'w');
+        writeFileSync(fd, JSON.stringify({version: 1, notes}), 'utf8');
+        fsyncSync(fd);
+        closeSync(fd);
+        fd = undefined;
+        renameSync(temporary, file);
+      } finally {
+        if (fd !== undefined) try { closeSync(fd); } catch {}
+        try { unlinkSync(temporary); } catch {}
+      }
+    },
+  };
+}
 
 const context = () => ({deadline: new Date(Date.now() + 180_000).toISOString(),
   signal: new AbortController().signal});
@@ -8,13 +37,26 @@ const versionView = version => version === null ? null : ({workflowId: version.w
   hasEvidence: Boolean(version.evidenceRef)});
 
 /** Trusted admin composition. The shared main/preload owns sender validation and native dialogs. */
+function preferenceNote(value) {
+  if (!value || typeof value.id !== 'string' || typeof value.text !== 'string') return null;
+  const withdrawn = value.withdrawn === true;
+  return {id: value.id, kind: value.kind === 'comment' ? 'comment' : 'correction', text: value.text,
+    about: typeof value.about === 'string' ? value.about : '', at: typeof value.at === 'string' ? value.at : '',
+    enabled: value.enabled !== false && !withdrawn, withdrawn};
+}
+
 export function createMemoryLearningHost({profile, privateMemory, learningApplication,
-  publicErasure, privateErasure, managedPrivateCopies}) {
+  publicErasure, privateErasure, managedPrivateCopies, preferenceStore}) {
   if (profile !== 'huawei_ict_agentarts' || !privateMemory) throw Error('需要 Competition 私人记忆宿主');
   // Only the composition owner can supply the actual application-copy inventory.
   // Unknown/existing unsupported managed copies keep production writes disabled.
   const inventory = () => typeof managedPrivateCopies === 'function' ? managedPrivateCopies() : managedPrivateCopies;
   let preferences = [];
+  try {
+    const loaded = preferenceStore?.load?.();
+    if (Array.isArray(loaded)) preferences = loaded.map(preferenceNote).filter(Boolean);
+  } catch { preferences = []; }
+  const persistPreferences = () => preferenceStore?.save?.(preferences);
   let duplicates = [];
   let lastPlannedAt = '';
   async function refreshDuplicates() {
@@ -54,12 +96,16 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
         learningAvailable: Boolean(learningApplication), publicErasureAvailable: Boolean(publicErasure),
         privateTaskErasureAvailable: Boolean(privateErasure),
         deletionCoverage: 'active_application_databases', externalCopies: 'not_controlled',
-        preferences: preferences.map(note => ({kind: note.kind, text: note.text})),
+        preferences: preferences.map(note => ({id: note.id, kind: note.kind, text: note.text, about: note.about,
+          enabled: note.enabled, withdrawn: note.withdrawn, active: note.enabled && !note.withdrawn})),
         duplicateCount: duplicates.reduce((sum, group) => sum + group.drop.length, 0),
         duplicateSuggestions: duplicates.map(group => ({keep: {...group.keep}, drop: group.drop.map(item => ({...item}))})),
         lastPlannedAt};
     },
     planDuplicates: refreshDuplicates,
+    preferencePrompt(goal) {
+      return formatPreferenceSystemPrompt(selectPromptPreferences(preferences, typeof goal === 'string' ? goal : ''));
+    },
     close() { clearInterval(duplicateTimer); },
     async recover() {
       // No writes or model calls are retried; public coordinator only follows durable erasure receipts.
@@ -72,7 +118,15 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
       if (name === 'learning.feedback') {
         preferences = learnPreference(preferences, {id: randomUUID(), kind: payload?.kind === 'comment' ? 'comment' : 'correction',
           text: payload?.text ?? '', about: payload?.about ?? '', at: new Date().toISOString()});
-        return {state: 'learned', count: preferences.length};
+        persistPreferences();
+        return {state: 'learned', count: preferences.length, preferences: this.snapshot().preferences};
+      }
+      if (name === 'learning.preference.disable' || name === 'learning.preference.enable' || name === 'learning.preference.withdraw') {
+        const id = typeof payload?.id === 'string' ? payload.id : '';
+        preferences = name === 'learning.preference.withdraw' ? withdrawPreference(preferences, id)
+          : setPreferenceEnabled(preferences, id, name === 'learning.preference.enable');
+        persistPreferences();
+        return {state: name === 'learning.preference.withdraw' ? 'withdrawn' : 'updated', preferences: this.snapshot().preferences};
       }
       if (name === 'learning.consolidate') {
         await refreshDuplicates();
