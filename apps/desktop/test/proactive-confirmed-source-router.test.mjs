@@ -14,7 +14,7 @@ import {createDesktopProactiveRuntimePump} from '../electron/proactive-runtime-p
 // Actual Runtime/SQLite/Policy/Evidence and original proactive sink. Feed body, native observation
 // and native classification/grant ports are explicit Synthetic fixtures; no real provider is invoked.
 const until=async predicate=>{for(let n=0;n<300;n++){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}throw Error('Synthetic confirmed source did not settle');};
-async function fixture() {
+async function fixture({allowPartialPages=false}={}) {
   const cache=resolve('.cache/wiring-20261018/core');mkdirSync(cache,{recursive:true});const folder=mkdtempSync(join(cache,'confirmed-source-'));
   const path=join(folder,'runtime.sqlite'),namespace='synthetic-public-user',sourceId='synthetic-public-feed',configurationRef='c'.repeat(64);
   const deadline=new Date(Date.now()+60_000).toISOString(),timestamp=new Date().toISOString();
@@ -52,7 +52,7 @@ async function fixture() {
     workflow={snapshot:()=>({state:'configured_not_verified'}),maintenancePage:()=>({items:[{binding:binding(),
       state:app.runtime.getTask(original.taskId).state,conversationId:'desktop-panel'}]}),acquireMaintenance:async id=>{
       assert.equal(id,original.taskId);return {host,binding:binding()};}};
-    router=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>app,getWorkflow:()=>workflow,namespace,
+    router=createDesktopProactiveConfirmedSourceRouter({getApplication:()=>app,getWorkflow:()=>workflow,namespace,allowPartialPages,
       resolveUserConversation:id=>id===responsibilitySource.taskId?'desktop-panel':app.runtime.getTask(id).conversationId,
       readSourceBinding:()=>({namespace,sourceId,subscriptionId:sourceId,configurationRef,sensitivity:'public',available:true,containsCredentials:false}),readTrackingGrant:grant});
   };
@@ -92,6 +92,23 @@ async function fixture() {
     revoke:()=>{granted=false;},reopen(){app.close();open();},
     close(){app.close();assert.ok(folder.startsWith(cache));rmSync(folder,{recursive:true,force:true});}};
 }
+
+test('Synthetic confirmed pages each retain original receipt and durable ingress without dropping hasMore pages',async()=>{
+  const f=await fixture({allowPartialPages:true});try {
+    f.result.hasMore=true;f.result.nextCursor='synthetic-page-one';
+    const first=await f.read('page-one'),routed=await f.router.routeConfirmedFeed(first,f.context());
+    assert.equal(routed.state,'persisted');assert.equal(routed.hasMore,true);assert.equal(routed.nextCursor,'synthetic-page-one');
+    assert.equal((await f.router.routeConfirmedFeed(first,f.context())).state,'already_persisted');
+    f.result.hasMore=false;f.result.nextCursor='synthetic-page-two';
+    f.result.items[0].record.externalId='public-two';f.result.items[0].record.dedupeKey='synthetic-public-two';
+    const citation=f.result.sourceReceipt.citations[0];citation.externalId='public-two';citation.contentSha256=feedItemContentSha256(f.result.items[0]);
+    f.result.sourceReceipt.contentSha256=createHash('sha256').update(JSON.stringify([citation.contentSha256])).digest('hex');
+    const final=await f.router.routeConfirmedFeed(await f.read('page-two'),f.context());
+    assert.equal(final.state,'persisted');assert.equal(final.hasMore,false);assert.equal(final.nextCursor,'synthetic-page-two');
+    const entries=Object.values(f.host.inspect().application.state.entries).filter(value=>value.event.entry==='connector');
+    assert.equal(entries.length,2);assert.equal(f.providerCalls(),2);
+  }finally{f.close();}
+});
 
 test('Synthetic original confirmed feed Evidence reaches durable sink; repeated receipt and unchanged item never duplicate events',async()=>{
   const f=await fixture();try {

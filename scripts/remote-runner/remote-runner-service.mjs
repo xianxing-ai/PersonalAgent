@@ -2,14 +2,15 @@
 /** Headless executor. One job in, one receipt out. It is not a scheduler. */
 import {createHmac, createHash, randomUUID, timingSafeEqual} from 'node:crypto';
 import {spawn} from 'node:child_process';
-import {mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync} from 'node:fs';
+import {mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, openSync, closeSync, fsyncSync, renameSync, statSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describeRepoTaskExecutor} from './local-repo-executor.mjs';
+import {forwardCloudPersistentJob} from './cloud-runtime-transport.mjs';
 
-export const RUNNER_VERSION = '1.1.0';
+export const RUNNER_VERSION = '1.2.0';
 const MODEL_COMMAND_FILE = process.env.RUNNER_MODEL_COMMAND_FILE || '/etc/personal-agent-runner/model-command.json';
-const KINDS = new Set(['developer-duty', 'async-subagent', 'repo-task', 'heartbeat', 'status', 'cancel']);
+const KINDS = new Set(['developer-duty', 'async-subagent', 'repo-task', 'cloud-persistent', 'heartbeat', 'status', 'cancel']);
 const MARKER = '<!-- personal-agent:duty-status -->';
 
 export function canonical(value) {
@@ -253,7 +254,8 @@ export async function handleRunnerJob(state, message, options = {}) {
   // The production file host persists this reservation before any external operation.
   options.persist?.(state);
   try {
-    const result = message.kind === 'developer-duty' ? await runDuty(state, message, options.fetchImpl)
+    const result = message.kind === 'cloud-persistent' ? receipt(message, await forwardCloudPersistentJob(message, {socketPath: options.cloudRuntimeSocketPath}))
+      : message.kind === 'developer-duty' ? await runDuty(state, message, options.fetchImpl)
       : message.kind === 'repo-task' ? await runRepoTask(message, options) : await runSubagent(message, options);
     const terminal = result.state;
     state.jobs[message.idempotencyKey] = {jobId: message.id, requestDigest, state: terminal, kind: message.kind, receipt: result};
@@ -321,7 +323,16 @@ async function main() {
     return;
   }
   const file = process.env.RUNNER_STATE || '/var/lib/personal-agent-runner/state.json';
-  const token = process.env.RUNNER_TOKEN || '';
+  // A non-interactive SSH command does not inherit systemd's EnvironmentFile.
+  // Read only the existing fixed host credential file; never accept a path/token from a job.
+  let token = process.env.RUNNER_TOKEN;
+  if(!token){
+    const credentialFile=process.env.RUNNER_TOKEN_FILE||'/etc/personal-agent-runner/token';
+    const stat=statSync(credentialFile);
+    if(!stat.isFile()||process.platform!=='win32'&&(stat.mode&0o007)!==0)throw Error('Runner credential file is not private');
+    const value=readFileSync(credentialFile,'utf8').trim(),match=/^RUNNER_TOKEN=([^\s]+)$/u.exec(value);
+    if(!match)throw Error('Runner credential file is unavailable');token=match[1];
+  }
   if (process.argv.includes('--serve')) return serve(file, token);
   const raw = readFileSync(0, 'utf8');
   const message = JSON.parse(raw);
