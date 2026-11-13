@@ -1,5 +1,5 @@
 import {readCompetitionExecutionPolicy} from '../electron/competition-execution-config.js';
-import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import ts from 'typescript';import {Conversations} from '../electron/conversations.js';import {handleConversationAction} from '../electron/conversation-actions.js';import {createConversationDelivery} from '../electron/conversation-delivery.js';
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import ts from 'typescript';import {Conversations} from '../electron/conversations.js';import {handleConversationAction} from '../electron/conversation-actions.js';import {createConversationDelivery} from '../electron/conversation-delivery.js';import {ProtocolError} from '@personal-agent/contracts';
 const source=readFileSync(new URL('../electron/main.js',import.meta.url),'utf8'),ast=ts.createSourceFile('main.js',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);const branches={};function visit(node){if(ts.isIfStatement(node)){const expression=node.expression.getText(ast);if(expression==="name === 'task.submit' || name==='skill.run'")branches.submit=node.getText(ast);if(expression==="name === 'conversation.model'")branches.model=node.getText(ast);if(expression==="name === 'thinking.update'")branches.thinking=node.getText(ast);if(expression==="name === 'authorization.respond'")branches.approval=node.getText(ast);}ts.forEachChild(node,visit);}visit(ast);const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
 // Execute the production cache helper too: task submission now depends on it.
 test('actual main text submission binds the accepted task to Live only after Runtime acceptance',async()=>{
@@ -8,6 +8,48 @@ test('actual main text submission binds the accepted task to Live only after Run
   await f.run();
   assert.deepEqual(tracked,[{taskId:'new-1',conversationId:'desktop-panel'}]);
   assert.equal(f.conversations.conversationIdForTask({taskId:'new-1'}),'desktop-panel');
+});
+test('actual accepted submission records the exact creation event as lossless host state before returning',async()=>{
+  const f=fixture(),createdAt='2026-11-03T14:54:01.778Z';let saved;
+  const task={taskId:'new-1',conversationId:'desktop-panel',state:'running',revision:2,updatedAt:'2026-11-03T14:54:02.000Z',steps:[],evidenceRefs:[]};
+  f.context.runtimeApplication={runtime:{getTask:id=>{assert.equal(id,task.taskId);return task;},readEvents:()=>[
+    {taskId:'another-task',type:'task.created',occurredAt:'2026-11-03T14:53:00.000Z'},
+    {taskId:task.taskId,type:'task.progress',occurredAt:task.updatedAt},
+    {taskId:task.taskId,type:'task.created',occurredAt:createdAt},
+  ]},createHostStateStore:domain=>{assert.equal(domain,'human-turns');return {get:()=>undefined,compareAndSet(key,prior,next){
+    assert.equal(key,'latest');assert.equal(prior,undefined);
+    assert.deepEqual(next,JSON.parse(JSON.stringify(next)),'Host state rejects lossy values such as undefined');
+    saved=next;return true;
+  }};}};
+  f.context.refresh=async id=>{assert.equal(id,task.taskId);return task;};
+  assert.equal((await f.run()).taskId,task.taskId);
+  assert.deepEqual(saved,{conversationId:'desktop-panel',turnId:task.taskId,createdAt});
+  assert.equal(f.calls.length,1,'A receipt failure must not require a second submission');
+});
+test('actual accepted submission rejects a turn whose creation event is absent from Runtime',async()=>{
+  const f=fixture(),task={taskId:'new-1',conversationId:'desktop-panel',state:'running',revision:2,updatedAt:'2026-11-03T14:54:02.000Z',steps:[],evidenceRefs:[]};let receipts=0;
+  f.context.ProtocolError=ProtocolError;
+  f.context.runtimeApplication={runtime:{getTask:id=>{assert.equal(id,task.taskId);return task;},readEvents:()=>[
+    {taskId:'another-task',type:'task.created',occurredAt:'2026-11-03T14:53:00.000Z'},
+    {taskId:task.taskId,type:'task.progress',occurredAt:task.updatedAt},
+  ]},createHostStateStore:domain=>{assert.equal(domain,'human-turns');return {get:()=>undefined,compareAndSet(){receipts++;return true;}};}};
+  f.context.refresh=async id=>{assert.equal(id,task.taskId);return task;};
+  await assert.rejects(f.run(),/原用户回合创建事件不可用/);
+  assert.equal(receipts,0,'A missing creation event must never persist host state');
+  assert.equal(f.calls.length,1,'A receipt failure must not require a second submission');
+});
+test('actual accepted submission rejects a turn whose creation event carries an unparseable timestamp',async()=>{
+  const f=fixture(),task={taskId:'new-1',conversationId:'desktop-panel',state:'running',revision:2,updatedAt:'2026-11-03T14:54:02.000Z',steps:[],evidenceRefs:[]};let receipts=0;
+  f.context.ProtocolError=ProtocolError;
+  f.context.runtimeApplication={runtime:{getTask:id=>{assert.equal(id,task.taskId);return task;},readEvents:()=>[
+    {taskId:'another-task',type:'task.created',occurredAt:'2026-11-03T14:53:00.000Z'},
+    {taskId:task.taskId,type:'task.progress',occurredAt:task.updatedAt},
+    {taskId:task.taskId,type:'task.created',occurredAt:'not-a-date'},
+  ]},createHostStateStore:domain=>{assert.equal(domain,'human-turns');return {get:()=>undefined,compareAndSet(){receipts++;return true;}};}};
+  f.context.refresh=async id=>{assert.equal(id,task.taskId);return task;};
+  await assert.rejects(f.run(),/原用户回合创建事件不可用/);
+  assert.equal(receipts,0,'An unparseable creation timestamp must never persist host state');
+  assert.equal(f.calls.length,1,'A receipt failure must not require a second submission');
 });
 branches.submit='const runtimeApplication=context.runtimeApplication;const harnessContextHost=context.harnessContextHost;'+source.match(/const TASK_GOAL_LIMIT = \d+;/)[0]+['rememberTaskGoal','recordExplicitUserTurn'].map(name=>ast.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text===name).getText(ast)).join('\n')+branches.submit;
 function fixture(){const conversations=new Conversations();const panel={},workspace={},tasks=new Map(),calls=[],submitting=new Set();const context={liveVoice:undefined,name:'task.submit',payload:'goal',sender:panel,panel,workspace,admin:{},competitionMode:true,agentArtsConfig:{snapshot:()=>({configured:true})},fakeMode:true,conversations,submitting,conversationDelivery:createConversationDelivery(submitting),tasks,taskSurface:t=>t.surface,terminalTaskStates:new Set(['succeeded','failed','cancelled']),client:{async call(name,{taskId}){calls.push({operation:name,taskId});return {taskId,cancelAccepted:true,state:'cancelling'};}},readCompetitionExecutionPolicy:()=>readCompetitionExecutionPolicy({}),publish(){},taskGoals:new Map(),pinned:false,async submitConversationTask(_client,request){calls.push(request);return {taskId:'new-'+calls.length};},async refresh(taskId){return {taskId,state:'created'};}};context.interruptConversation=new Function('context','with(context){return '+ast.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='interruptConversation').getText(ast)+'}')(context);return {context,conversations,tasks,calls,run:()=>new AsyncFunction('context','with(context){'+branches.submit+'}')(context)};}
