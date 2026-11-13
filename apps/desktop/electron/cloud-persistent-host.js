@@ -95,6 +95,8 @@ export function createDesktopCloudPersistentHost({application,getRunner,userData
       if(!known||known.configurationRef!==input.source.configurationRef||known.revision!==input.source.expectedRevision)
         fail('REVISION_CONFLICT','来源选择必须匹配原云会话读回');
     }
+    if(operation==='control'&&saved.lastReply&&input.control&&Number.isInteger(saved.lastReply.controlRevision)&&input.control.expectedControlRevision!==saved.lastReply.controlRevision)
+      fail('REVISION_CONFLICT','控制必须匹配原云会话的当前控制版本');
     if(operation==='todo'&&input.todo?.action==='update'){
       const known=saved.lastReply.todos?.items.find(value=>value.id===input.todo.id);
       if(!known||known.revision!==input.todo.expectedRevision)fail('REVISION_CONFLICT','待办修改必须匹配原云会话读回');
