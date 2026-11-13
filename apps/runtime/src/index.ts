@@ -13,7 +13,7 @@ import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
 import {activityEvent, applyTranscript, emptyTranscript, parseTranscript, TRANSCRIPT_CHECKPOINT, INJECTION_CHECKPOINT} from './task-activity.js';
-import {assistantConversationId, assistantFromRow, DEFAULT_ASSISTANTS} from './assistant-roster.js';
+import {ASSISTANT_BUILTIN_LOCKED, ASSISTANT_BUSY, ASSISTANT_LIMIT_REACHED, MAX_USER_ASSISTANTS, assistantConversationId, assistantDisplayName, assistantFromRow, assistantInstructions, optionalAssistantModelId, DEFAULT_ASSISTANTS} from './assistant-roster.js';
 import type {AssistantMail, AssistantRecord} from './assistant-roster.js';
 export type {AssistantMail, AssistantRecord} from './assistant-roster.js';
 export {DEFAULT_ASSISTANTS, assistantConversationId} from './assistant-roster.js';
@@ -346,6 +346,13 @@ export const RUNTIME_MIGRATIONS: readonly Migration[] = [{
     "CREATE TABLE assistants (assistant_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, conversation_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL CHECK (status IN ('idle','working','waiting_approval')), active_task_id TEXT, unread_count INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0), last_summary TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;",
     'CREATE TABLE assistant_mail (mail_id TEXT PRIMARY KEY, from_assistant_id TEXT NOT NULL, to_assistant_id TEXT NOT NULL, body TEXT NOT NULL, hop INTEGER NOT NULL CHECK (hop >= 0), created_at TEXT NOT NULL, consumed_task_id TEXT) STRICT;',
     'CREATE INDEX assistant_mail_to ON assistant_mail(to_assistant_id, created_at);'
+  ].join('\n')
+}, {
+  version: 14,
+  // User-created assistants share the same roster. Origin and model are metadata; turns stay ordinary tasks.
+  sql: [
+    "ALTER TABLE assistants ADD COLUMN origin TEXT NOT NULL DEFAULT 'builtin';",
+    'ALTER TABLE assistants ADD COLUMN model_id TEXT;'
   ].join('\n')
 }];
 
@@ -1899,7 +1906,57 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   listAssistants(): AssistantRecord[] {
-    return (this.db.prepare('SELECT * FROM assistants ORDER BY display_name').all() as Record<string, unknown>[]).map(assistantFromRow);
+    return (this.db.prepare('SELECT * FROM assistants ORDER BY created_at, assistant_id').all() as Record<string, unknown>[]).map(assistantFromRow);
+  }
+
+  createAssistant(input: {displayName: string; instructions: string; modelId?: string}): AssistantRecord {
+    const displayName = this.assistantField(() => assistantDisplayName(input?.displayName));
+    const instructions = this.assistantField(() => assistantInstructions(input?.instructions));
+    const modelId = this.assistantField(() => optionalAssistantModelId(input?.modelId));
+    return this.transaction(() => {
+      const count = this.db.prepare("SELECT COUNT(*) AS total FROM assistants WHERE origin = 'user'").get() as {total: number};
+      if (count.total >= MAX_USER_ASSISTANTS) throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_LIMIT_REACHED);
+      const assistantId = 'user-' + randomUUID().replace(/-/g, '').slice(0, 12);
+      const now = this.timestamp();
+      this.db.prepare(`INSERT INTO assistants (assistant_id, display_name, role, instructions, conversation_id, status, unread_count, origin, model_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'idle', 0, 'user', ?, ?, ?)`).run(
+        assistantId, displayName, `user:${assistantId}`, instructions, assistantConversationId(assistantId), modelId ?? null, now, now);
+      return this.getAssistant(assistantId);
+    });
+  }
+
+  renameAssistant(assistantId: string, input: {displayName: string; instructions?: string}): AssistantRecord {
+    const current = this.getAssistant(assistantId);
+    if (current.origin !== 'user') throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_BUILTIN_LOCKED);
+    const displayName = this.assistantField(() => assistantDisplayName(input?.displayName));
+    const instructions = input?.instructions === undefined ? current.instructions : this.assistantField(() => assistantInstructions(input.instructions));
+    this.db.prepare('UPDATE assistants SET display_name = ?, instructions = ?, updated_at = ? WHERE assistant_id = ? AND origin = \'user\'').run(
+      displayName, instructions, this.timestamp(), current.assistantId);
+    return this.getAssistant(current.assistantId);
+  }
+
+  deleteAssistant(assistantId: string): void {
+    const current = this.getAssistant(assistantId);
+    if (current.origin !== 'user') throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_BUILTIN_LOCKED);
+    this.transaction(() => {
+      const again = this.getAssistant(current.assistantId);
+      if (again.origin !== 'user') throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_BUILTIN_LOCKED);
+      if (this.assistantIsBusy(again)) throw new RuntimeError('REVISION_CONFLICT', ASSISTANT_BUSY);
+      this.db.prepare('DELETE FROM assistant_mail WHERE from_assistant_id = ? OR to_assistant_id = ?').run(again.assistantId, again.assistantId);
+      const removed = this.db.prepare("DELETE FROM assistants WHERE assistant_id = ? AND origin = 'user'").run(again.assistantId);
+      if (removed.changes !== 1) throw new RuntimeError('NOT_FOUND', '找不到这个助手');
+    });
+  }
+
+  private assistantField<T>(read: () => T): T {
+    try { return read(); }
+    catch (error) { throw new RuntimeError('INVALID_ARGUMENT', error instanceof Error ? error.message : '助手信息不完整'); }
+  }
+
+  private assistantIsBusy(assistant: AssistantRecord): boolean {
+    if (!assistant.activeTaskId) return assistant.status !== 'idle';
+    try { return !terminal.has(this.getTask(assistant.activeTaskId).state); }
+    catch { return assistant.status !== 'idle'; }
   }
 
   getAssistant(assistantId: string): AssistantRecord {

@@ -3667,6 +3667,44 @@ async function action(event, name, payload) {
     publish();
     return result;
   }
+  if (name === 'assistant.create') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里新建助手');
+    const clean = requirePlainRecord(payload, ['displayName', 'instructions', 'modelId'], '新建助手参数无效');
+    const displayName = requireCleanText(clean.displayName, '请填写助手名字', 128);
+    const instructions = requireCleanText(clean.instructions, '请填写这个助手负责什么', 2000);
+    let modelId;
+    if (clean.modelId !== undefined && clean.modelId !== null && clean.modelId !== '') {
+      modelId = requireCleanText(clean.modelId, '模型标识无效', 128).trim();
+      if (modelId !== clean.modelId.trim()) throw Error('模型标识无效');
+      const catalog = agentArtsModels?.snapshot().catalog?.models;
+      if (!Array.isArray(catalog) || !catalog.some(item => item.id === modelId && item.type === 'text' && item.availability !== 'unavailable' && item.available !== false)) {
+        throw Error('所选模型不在当前目录里');
+      }
+    }
+    const created = runtimeApplication.createAssistant({displayName, instructions, ...(modelId ? {modelId} : {})});
+    publish();
+    return created;
+  }
+  if (name === 'assistant.rename') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里修改助手');
+    const clean = requirePlainRecord(payload, ['assistantId', 'displayName', 'instructions'], '修改助手参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
+    const displayName = requireCleanText(clean.displayName, '请填写助手名字', 128);
+    const instructions = clean.instructions === undefined ? undefined : requireCleanText(clean.instructions, '请填写这个助手负责什么', 2000);
+    const renamed = runtimeApplication.renameAssistant(assistantId, {displayName, ...(instructions === undefined ? {} : {instructions})});
+    publish();
+    return renamed;
+  }
+  if (name === 'assistant.delete') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里删除助手');
+    const clean = requirePlainRecord(payload, ['assistantId'], '删除助手参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
+    const removed = runtimeApplication.deleteAssistant(assistantId);
+    publish();
+    return removed;
+  }
   if (name === 'assistant.read') {
     if (sender !== panel && sender !== workspace) throw Error('请从对话里查看助手');
     const clean = requirePlainRecord(payload, ['assistantId'], '标记助手已读参数无效');
