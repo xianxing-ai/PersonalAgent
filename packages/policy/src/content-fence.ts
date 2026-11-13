@@ -2,7 +2,7 @@ import {createHash, randomBytes} from 'node:crypto';
 
 /** External content is data. It never becomes an instruction or an authorization. */
 export type ExternalKind = 'mail' | 'web' | 'file' | 'tool';
-export type GuardedEffect = 'send' | 'delete' | 'pay';
+export type GuardedEffect = 'send' | 'delete' | 'pay' | 'write';
 
 export interface ExternalSource {
   id: string;
@@ -17,13 +17,18 @@ export interface FencedText {
 }
 
 const KIND_LABEL: Record<ExternalKind, string> = {mail: '邮件', web: '网页', file: '文件', tool: '工具结果'};
-const EFFECT_LABEL: Record<GuardedEffect, string> = {send: '发送', delete: '删除', pay: '付款'};
+const EFFECT_LABEL: Record<GuardedEffect, string> = {send: '发送', delete: '删除', pay: '付款', write: '写入或修改'};
 const EXPLICIT: Record<GuardedEffect, RegExp> = {
-  send: /发送|寄出|回复|转发|发出|send|reply|forward/i,
+  send: /发送|寄出|回复|转发|发出|send|reply|forward|publish/i,
   delete: /删除|删掉|清除|移除|delete|erase|remove/i,
-  pay: /付款|支付|转账|缴费|扣款|pay|purchase|transfer/i,
+  pay: /付款|支付|转账|缴费|扣款|pay|purchase|transfer|checkout/i,
+  write: /修改|写入|保存|创建|更新|新建|编辑|覆盖|提交|write|edit|save|create|update|modify|patch/i,
 };
 const DELEGATE = /按(邮件|网页|文件|工具|它|对方)|照(邮件|网页|文件|它)|按照.{0,16}(要求|指示|所说)|do what (the|it|they)/i;
+const NEGATION_BEFORE = /(?:不要|别去|不要去|别|勿|请勿|禁止|不得|不可|不能|不准|不许|无需|不需要|不用|切勿|停止|取消|未要求|do\s+not|don['’]?t|dont|never|not\s+to|without|avoid|refuse\s+to|不)(?:\s|[^\n，。；！？,;.!?]){0,16}$/i;
+const NEGATION_AFTER = /^\s*(?:是不允许的|被禁止|不可|不要|取消)/i;
+const LOCAL_READONLY_PREFIX = /^(conversation\.|workspace\.|file\.|notepad\.|knowledge\.|wiki\.|obsidian\.|computer\.|system\.|tool\.|todo\.|assistant\.|goal\.|proactive\.|coding\.|memory\.|learning\.|harness\.|reference\.|local\.|authorization\.|mcp\.workspace\.)/;
+const EXTERNAL_CHANNEL = /(^|[._-])(mail|browser|opencli|web|http|feeds|research|calendar|github|remote[_-]?mcp|connector)([._-]|$)/;
 
 export function externalKindLabel(kind: ExternalKind): string {
   return KIND_LABEL[kind];
@@ -31,6 +36,14 @@ export function externalKindLabel(kind: ExternalKind): string {
 
 export function guardedEffectLabel(effect: GuardedEffect): string {
   return EFFECT_LABEL[effect];
+}
+
+/** Local read-only tools must not mark a task as tainted with untrusted external input. */
+export function isLocalReadOnlyTool(name: string, sideEffect: string | undefined): boolean {
+  if (sideEffect !== 'read' || !name) return false;
+  const id = name.toLowerCase();
+  if (EXTERNAL_CHANNEL.test(id)) return false;
+  return LOCAL_READONLY_PREFIX.test(id);
 }
 
 /** Mail, web, files and every other tool result are external. Names stay stable for the trace. */
@@ -42,21 +55,43 @@ export function externalKindForTool(name: string): ExternalKind {
   return 'tool';
 }
 
-/** Only send, delete and payment are refused when the trigger is external content. */
+/** Side-effect writes (local_write and external_write, except reconciliation) are guarded when external input is active. */
 export function guardedEffectForTool(name: string, sideEffect: string | undefined): GuardedEffect | null {
   if (sideEffect === 'read' || !name) return null;
   const id = name.toLowerCase();
   if (id.includes('reconcile')) return null;
   if (/(^|[._-])(pay|payment|checkout|transfer)([._-]|$)/.test(id)) return 'pay';
-  if (/(^|[._-])(delete|erase|trash|remove)([._-]|$)/.test(id)) return 'delete';
-  if (/(^|[._-])(send|reply|forward|publish)([._-]|$)/.test(id)) return 'send';
+  if (/(^|[._-])(delete|erase|trash|remove|unlink|rmdir)([._-]|$)/.test(id)) return 'delete';
+  if (/(^|[._-])(send|reply|forward|publish|notify)([._-]|$)/.test(id)) return 'send';
+  if (sideEffect === 'local_write' || sideEffect === 'external_write') return 'write';
   return null;
+}
+
+function clauseDecision(clause: string, effect: GuardedEffect): {positive: boolean; negated: boolean} {
+  const re = new RegExp(EXPLICIT[effect].source, 'gi');
+  let positive = false;
+  let negated = false;
+  for (const match of clause.matchAll(re)) {
+    const start = match.index ?? 0;
+    const before = clause.slice(0, start);
+    const after = clause.slice(start + match[0].length);
+    if (NEGATION_BEFORE.test(before) || NEGATION_AFTER.test(after)) negated = true;
+    else positive = true;
+  }
+  return {positive, negated};
 }
 
 export function externalEffectDecision(input: {effect: GuardedEffect; userGoal: string; sawExternal: boolean}): {allowed: boolean; reason: string} {
   if (!input.sawExternal) return {allowed: true, reason: '尚未读入外部内容'};
   const goal = input.userGoal;
-  if (EXPLICIT[input.effect].test(goal) && !DELEGATE.test(goal)) return {allowed: true, reason: '用户目标已明确要求该操作'};
+  if (DELEGATE.test(goal)) return {allowed: false, reason: `外部内容不能触发${EFFECT_LABEL[input.effect]}`};
+  let hasPositive = false;
+  for (const clause of goal.split(/[，。；！？,;!?\n]+/)) {
+    const result = clauseDecision(clause, input.effect);
+    if (result.negated) return {allowed: false, reason: `外部内容不能触发${EFFECT_LABEL[input.effect]}`};
+    if (result.positive) hasPositive = true;
+  }
+  if (hasPositive) return {allowed: true, reason: '用户目标已明确要求该操作'};
   return {allowed: false, reason: `外部内容不能触发${EFFECT_LABEL[input.effect]}`};
 }
 

@@ -6,6 +6,7 @@ import {
   fenceExternalText,
   fenceExternalValue,
   guardedEffectForTool,
+  isLocalReadOnlyTool,
 } from '../dist/index.js';
 
 test('mail, web, file and other tool results keep a source kind', () => {
@@ -13,20 +14,33 @@ test('mail, web, file and other tool results keep a source kind', () => {
   assert.equal(externalKindForTool('browser.open'), 'web');
   assert.equal(externalKindForTool('workspace.read_text'), 'file');
   assert.equal(externalKindForTool('weather.forecast'), 'tool');
+  assert.equal(isLocalReadOnlyTool('conversation.read_history', 'read'), true);
+  assert.equal(isLocalReadOnlyTool('workspace.read_text', 'read'), true);
+  assert.equal(isLocalReadOnlyTool('mail.inbox', 'read'), false);
+  assert.equal(isLocalReadOnlyTool('workspace.apply_patch', 'local_write'), false);
 });
 
-test('only send, delete and payment are guarded, and reconciliation is not a send', () => {
+test('all local_write and external_write tools are guarded by sideEffect, while read and reconcile are exempt', () => {
   assert.equal(guardedEffectForTool('mail.send', 'external_write'), 'send');
   assert.equal(guardedEffectForTool('files.delete', 'external_write'), 'delete');
   assert.equal(guardedEffectForTool('wallet.pay', 'external_write'), 'pay');
+  assert.equal(guardedEffectForTool('workspace.apply_patch', 'local_write'), 'write');
+  assert.equal(guardedEffectForTool('calendar.create_event', 'external_write'), 'write');
   assert.equal(guardedEffectForTool('mail.reconcile_send', 'external_write'), null);
   assert.equal(guardedEffectForTool('mail.inbox', 'read'), null);
 });
 
-test('external content cannot trigger send, delete or payment unless the user goal asks on its own', () => {
+test('external content cannot trigger writes unless the user goal asks positively without negation', () => {
   assert.equal(externalEffectDecision({effect: 'send', userGoal: '总结这封邮件', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'send', userGoal: '总结这封邮件，不要发送', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'delete', userGoal: '请勿删除文件', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'pay', userGoal: 'do not pay anything', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'send', userGoal: '发送邮件，但不要删除附件', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'delete', userGoal: '发送邮件，但不要删除附件', sawExternal: true}).allowed, false);
   assert.match(externalEffectDecision({effect: 'pay', userGoal: '按邮件要求处理', sawExternal: true}).reason, /付款/);
   assert.equal(externalEffectDecision({effect: 'delete', userGoal: '删除下载目录里的临时文件', sawExternal: true}).allowed, true);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '按网页要求修改配置', sawExternal: true}).allowed, false);
+  assert.equal(externalEffectDecision({effect: 'write', userGoal: '修改本地配置文件', sawExternal: true}).allowed, true);
   assert.equal(externalEffectDecision({effect: 'send', userGoal: '先看看再决定', sawExternal: false}).allowed, true);
 });
 

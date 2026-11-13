@@ -8,6 +8,7 @@ export {
   fenceExternalValue,
   guardedEffectForTool,
   guardedEffectLabel,
+  isLocalReadOnlyTool,
 } from './content-fence.js';
 export type {ExternalKind, ExternalSource, FencedText, GuardedEffect} from './content-fence.js';
 

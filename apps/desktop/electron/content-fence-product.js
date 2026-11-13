@@ -1,3 +1,4 @@
+import {ProtocolError} from '@personal-agent/contracts';
 import {
   externalEffectDecision,
   externalKindForTool,
@@ -5,11 +6,12 @@ import {
   fenceExternalValue,
   guardedEffectForTool,
   guardedEffectLabel,
+  isLocalReadOnlyTool,
 } from '@personal-agent/policy';
 
 /**
- * Competition startup wraps the tools already assembled for the runtime.
- * The fence is applied to results; send, delete and payment still use Policy.
+ * Competition startup checks the fence before ToolGateway consumes Policy grants,
+ * and fences external tool results without tainting tasks on local read-only tools.
  */
 export function createContentFenceProduct({readGoal} = {}) {
   const sources = [];
@@ -19,26 +21,33 @@ export function createContentFenceProduct({readGoal} = {}) {
     try { return readGoal?.(taskId) ?? ''; }
     catch { return ''; }
   };
+  const beforeAuthorize = ({taskId, toolName, sideEffect}) => {
+    const effect = guardedEffectForTool(toolName ?? '', sideEffect);
+    if (!effect || !taskId || seen.get(taskId)?.external !== true) return;
+    const decision = externalEffectDecision({effect, userGoal: goalFor(taskId), sawExternal: true});
+    if (decision.allowed) return;
+    blocked = {effect, reason: decision.reason, at: new Date().toISOString()};
+    throw new ProtocolError('SCOPE_DENIED', decision.reason);
+  };
   return {
+    beforeAuthorize,
+    clearTask(taskId) {
+      if (taskId) seen.delete(taskId);
+    },
+    hasExternal(taskId) {
+      return Boolean(taskId && seen.get(taskId)?.external === true);
+    },
     wrapTools(tools) {
       if (!Array.isArray(tools)) throw Error('工具列表无效');
       return tools.map(tool => ({
         get descriptor() { return tool.descriptor; },
         execute: async (input, context) => {
           const name = tool.descriptor?.name ?? '';
-          const effect = guardedEffectForTool(name, tool.descriptor?.sideEffect);
+          const sideEffect = tool.descriptor?.sideEffect;
           const taskId = context?.taskId;
-          if (effect && taskId && seen.get(taskId)?.external === true) {
-            const decision = externalEffectDecision({effect, userGoal: goalFor(taskId), sawExternal: true});
-            if (!decision.allowed) {
-              blocked = {effect, reason: decision.reason, at: new Date().toISOString()};
-              const error = Error(decision.reason);
-              error.code = 'SCOPE_DENIED';
-              throw error;
-            }
-          }
+          beforeAuthorize({taskId, toolName: name, sideEffect});
           const result = await tool.execute(input, context);
-          if (taskId) {
+          if (taskId && !isLocalReadOnlyTool(name, sideEffect)) {
             const kind = externalKindForTool(name);
             const fenced = fenceExternalValue(result, tool.descriptor?.outputSchema, {kind, ref: name});
             seen.set(taskId, {external: true});

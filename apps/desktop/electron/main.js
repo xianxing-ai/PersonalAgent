@@ -2627,6 +2627,8 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
+        beforeToolAuthorize: input => contentFence?.beforeAuthorize(input),
+        onTaskTerminal: taskId => contentFence?.clearTask(taskId),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
         requestToolAuthorization:scope=>{
