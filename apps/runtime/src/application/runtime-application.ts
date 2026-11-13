@@ -556,6 +556,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   private readonly hostUserNamespace: string | undefined;
   private readonly now: () => Date;
   private readonly competitionToolCatalog?: RuntimeCompetitionToolCatalog;
+  private readonly assistantCompetitionToolCatalog?: RuntimeCompetitionToolCatalog;
   private readonly storagePath: string;
   private readonly observationSessions: SystemObservationSessions;
   private readonly mailReadSessions: MailReadSessions;
@@ -853,7 +854,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           for (const tool of createRuntimeProactiveWorkflowTools((taskId, sessionId) => this.proactiveHosts.get(JSON.stringify([taskId, sessionId])))) gateway.register(tool);
         }
         if (this.localRepair) gateway.register(createLocalRepairTool(() => this.runtime, this.localRepair));
-        return {list:()=>gateway!.list(),invoke:invocation=>{
+        return {list:()=>gateway!.list(),
+          listPublic:()=>gateway!.list().filter(tool=>tool.name!==ASSISTANT_MESSAGE_TOOL_NAME),
+          invoke:invocation=>{
           let userPresent=false;try{userPresent=options.isUserPresent?.(invocation.taskId)===true;}catch{/* Missing presence is never inferred. */}
           return gateway!.invoke({...invocation,userPresent});
         }};
@@ -1122,57 +1125,90 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     });
     if (options.competitionToolAvailability !== undefined||discoveryTool) {
       if (!this.tools) throw new ProtocolError('INVALID_ARGUMENT', 'Competition tool catalog needs registered tools');
+      const baseAvailability: CompetitionToolAvailability[] = [
+        ...(options.competitionToolAvailability ?? []),
+        ...(discoveryTool ? [{
+          toolName: TOOL_DISCOVERY_NAME,
+          toolVersion: TOOL_DISCOVERY_VERSION,
+          publicDescription: TOOL_DISCOVERY_DESCRIPTION,
+          available: () => true,
+        }] : []),
+        ...(harnessHost ? [{
+          toolName: DEVELOPER_HARNESS_TOOL_NAME,
+          toolVersion: DEVELOPER_HARNESS_TOOL_VERSION,
+          publicEnumPaths: ['/tasks/*/role'],
+          available: (input: {taskId: string; deadline: string; signal: AbortSignal}) =>
+            developerHarnessAvailable(harnessHost, input.taskId, input.deadline, input.signal),
+        }] : []),
+        ...harnessCandidateTools.map(tool => ({
+          toolName: tool.descriptor.name,
+          toolVersion: tool.descriptor.version,
+          available: (input: {taskId: string; deadline: string; signal: AbortSignal}) => {
+            if (!harnessHost || input.signal.aborted) return false;
+            try {
+              const peer = readRuntimeSubagentSibling(this.runtime, input.taskId);
+              if (!peer) return developerHarnessAvailable(harnessHost, input.taskId, input.deadline, input.signal);
+              this.assertDeveloperHarnessExecutorCurrent(input.taskId);
+              return tool.descriptor.name !== HARNESS_PREPARE_ADOPTION_TOOL && peer.binding.deadline === input.deadline
+                && this.runtime.getTask(input.taskId).state === 'running';
+            } catch { return false; }
+          },
+        })),
+      ];
+      const workerCapabilities = [...(this.codingRepair ? [{
+        toolName: 'coding.repair.workflow',
+        toolVersion: '1.0.0',
+        publicEnumPaths: ['/subtasks/*/role', '/subtasks/*/reasoningEffort', '/codingRepair/mode'],
+        sideEffect: 'local_write' as const,
+        requiredTool: {name: 'coding.repair.workflow', version: '1.0.0'},
+        describeRegistered: () => ({name: 'coding.repair.workflow', version: '1.0.0', inputSchema: codingRepairWorkflowInputSchema()}),
+        describe: async (input: {taskId: string; revision: number; deadline: string; signal: AbortSignal}) => {
+          const binding = options.competitionToolAvailability?.find(item => item.toolName === 'coding.repair.start' && item.toolVersion === '1.0.0');
+          if (!this.codingRepair?.projectSource || !this.codingRepair.authorizeMetadata || !binding || !await binding.available(input)) return undefined;
+          return this.codingWorker?.describe(input) ?? {name: 'coding.repair.workflow', version: '1.0.0', inputSchema: codingRepairWorkflowInputSchema()};
+        },
+      }] : []), {
+        toolName: CLOUD_SKILL_TOOL_NAME,
+        toolVersion: CLOUD_SKILL_TOOL_VERSION,
+        publicEnumPaths: CLOUD_SKILL_PUBLIC_ENUM_PATHS,
+        requiredTool: {name: 'mcp.workspace.read_text', version: '1.0.0'},
+        describeRegistered: () => this.cloudSkill ? {name: CLOUD_SKILL_TOOL_NAME, version: CLOUD_SKILL_TOOL_VERSION, inputSchema: CLOUD_SKILL_CHOICE_SCHEMA} : undefined,
+        describe: (input: {taskId: string; revision: number; deadline: string; signal: AbortSignal}) => this.cloudSkill?.cloudSkillCatalog(input) ?? Promise.resolve(undefined),
+      }, ...DEVELOPER_WORKFLOW_KINDS.map(kind => ({
+        toolName: developerWorkflowToolName(kind),
+        toolVersion: '1.0.0',
+        publicEnumPaths: [],
+        sideEffect: kind === 'ci_list' || kind === 'issue_list' || kind === 'test_locate' ? 'read' as const : 'external_write' as const,
+        requiredTool: {name: 'github.repo.get', version: this.tools!.list().find(tool => tool.name === 'github.repo.get')?.version ?? 'unavailable'},
+        describeRegistered: () => this.developerWorkflows || this.readDeveloperWorkflows ? {name: developerWorkflowToolName(kind), version: '1.0.0', inputSchema: developerWorkflowInputSchema(kind)} : undefined,
+        describe: async (input: {taskId: string; revision: number; deadline: string; signal: AbortSignal}) => {
+          const configuration = this.developerWorkflowsFor(input);
+          if (!configuration || !developerWorkflowConfigured(configuration, kind)) return undefined;
+          if (kind === 'ci_fix' && !this.developerPatchRecovery) return undefined;
+          const descriptors = this.taskTools(input.taskId)?.list() ?? [];
+          if (developerWorkflowRequiredTools(configuration, kind).some(name => !descriptors.some(tool => tool.name === name))) return undefined;
+          configuration.assertCurrent(input);
+          return await configuration.available(kind, input) ? {name: developerWorkflowToolName(kind), version: '1.0.0', inputSchema: developerWorkflowInputSchema(kind)} : undefined;
+        },
+      }))];
+      const userPresentGate = options.isUserPresent === undefined ? undefined : (taskId: string) => {
+        try { return options.isUserPresent?.(taskId) === true; } catch { return false; }
+      };
+      const discoveryEnabled = options.competitionToolDiscovery === true;
       this.competitionToolCatalog = new RuntimeCompetitionToolCatalog(
-        this.runtime, this.tools, this.competitionToolExports,[...(options.competitionToolAvailability??[]),...(discoveryTool?[{
-          toolName:TOOL_DISCOVERY_NAME,toolVersion:TOOL_DISCOVERY_VERSION,publicDescription:TOOL_DISCOVERY_DESCRIPTION,
-          available:()=>true,
-        }]:[]),
-          ...(harnessHost?[{toolName:DEVELOPER_HARNESS_TOOL_NAME,toolVersion:DEVELOPER_HARNESS_TOOL_VERSION,
-            publicEnumPaths:['/tasks/*/role'],available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>
-              developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal)}]:[]),
-          ...harnessCandidateTools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,
-            available:(input:{taskId:string;deadline:string;signal:AbortSignal})=>{
-              if(!harnessHost||input.signal.aborted)return false;
-              try {
-                const peer=readRuntimeSubagentSibling(this.runtime,input.taskId);
-                if(!peer)return developerHarnessAvailable(harnessHost,input.taskId,input.deadline,input.signal);
-                this.assertDeveloperHarnessExecutorCurrent(input.taskId);
-                return tool.descriptor.name!==HARNESS_PREPARE_ADOPTION_TOOL&&peer.binding.deadline===input.deadline
-                  &&this.runtime.getTask(input.taskId).state==='running';
-              }catch{return false;}
-            }})),
-          ...(this.profile==='huawei_ict_agentarts'?[{
-            toolName:ASSISTANT_MESSAGE_TOOL_NAME,
-            toolVersion:ASSISTANT_MESSAGE_TOOL_VERSION,
-            publicDescription:'向另一个长期助手转发一条协作消息（仅限助手对话）。',
-            available:({taskId}:{taskId:string})=>this.runtime.loadCheckpoint(taskId,'assistant-turn')!==undefined,
-          }]:[]),
-          ],[...(this.codingRepair?[{toolName:'coding.repair.workflow',toolVersion:'1.0.0',
-            publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort','/codingRepair/mode'],sideEffect:'local_write' as const,
-            requiredTool:{name:'coding.repair.workflow',version:'1.0.0'},
-            describeRegistered:()=>({name:'coding.repair.workflow',version:'1.0.0',inputSchema:codingRepairWorkflowInputSchema()}),
-            describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
-              const binding=options.competitionToolAvailability?.find(item=>item.toolName==='coding.repair.start'&&item.toolVersion==='1.0.0');
-              if(!this.codingRepair?.projectSource||!this.codingRepair.authorizeMetadata||!binding||!await binding.available(input))return undefined;
-              return this.codingWorker?.describe(input)??{name:'coding.repair.workflow',version:'1.0.0',inputSchema:codingRepairWorkflowInputSchema()};
-            }}]:[]),{
-          toolName:CLOUD_SKILL_TOOL_NAME,toolVersion:CLOUD_SKILL_TOOL_VERSION,publicEnumPaths:CLOUD_SKILL_PUBLIC_ENUM_PATHS,
-          requiredTool:{name:'mcp.workspace.read_text',version:'1.0.0'},
-          describeRegistered:()=>this.cloudSkill?{name:CLOUD_SKILL_TOOL_NAME,version:CLOUD_SKILL_TOOL_VERSION,inputSchema:CLOUD_SKILL_CHOICE_SCHEMA}:undefined,
-          describe:input=>this.cloudSkill?.cloudSkillCatalog(input)??Promise.resolve(undefined),
-        },...DEVELOPER_WORKFLOW_KINDS.map(kind=>({toolName:developerWorkflowToolName(kind),toolVersion:'1.0.0',publicEnumPaths:[],
-          sideEffect:kind==='ci_list'||kind==='issue_list'||kind==='test_locate'?'read' as const:'external_write' as const,
-          requiredTool:{name:'github.repo.get',version:this.tools!.list().find(tool=>tool.name==='github.repo.get')?.version??'unavailable'},
-          describeRegistered:()=>this.developerWorkflows||this.readDeveloperWorkflows?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined,
-          describe:async(input:{taskId:string;revision:number;deadline:string;signal:AbortSignal})=>{
-            const configuration=this.developerWorkflowsFor(input);
-            if(!configuration||!developerWorkflowConfigured(configuration,kind))return undefined;
-            if(kind==='ci_fix'&&!this.developerPatchRecovery)return undefined;
-            const descriptors=this.taskTools(input.taskId)?.list()??[];
-            if(developerWorkflowRequiredTools(configuration,kind).some(name=>!descriptors.some(tool=>tool.name===name)))return undefined;
-            configuration.assertCurrent(input);
-            return await configuration.available(kind,input)?{name:developerWorkflowToolName(kind),version:'1.0.0',inputSchema:developerWorkflowInputSchema(kind)}:undefined;
-          }}))],options.isUserPresent===undefined?undefined:taskId=>{try{return options.isUserPresent?.(taskId)===true;}catch{return false;}},options.competitionToolDiscovery===true);
+        this.runtime, this.tools, this.competitionToolExports, baseAvailability, workerCapabilities, userPresentGate, discoveryEnabled);
+      if (this.profile === 'huawei_ict_agentarts') {
+        this.assistantCompetitionToolCatalog = new RuntimeCompetitionToolCatalog(
+          this.runtime, this.tools, this.competitionToolExports, [
+            ...baseAvailability,
+            {
+              toolName: ASSISTANT_MESSAGE_TOOL_NAME,
+              toolVersion: ASSISTANT_MESSAGE_TOOL_VERSION,
+              publicDescription: '向另一个长期助手转发一条协作消息（仅限助手对话）。',
+              available: ({taskId}: {taskId: string}) => this.runtime.loadCheckpoint(taskId, 'assistant-turn') !== undefined,
+            },
+          ], workerCapabilities, userPresentGate, discoveryEnabled);
+      }
     }
     this.textApplication = createTextApplication({...options.text, ...(this.tools ? {tools: this.tools} : {})});
     if(options.knowledgeWriteReconciliation && this.hostUserNamespace) {
@@ -5270,7 +5306,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
   }
 
   private assistantCatalog(taskId:string) {
-    const base=this.competitionToolCatalog;
+    const base=this.assistantCompetitionToolCatalog??this.competitionToolCatalog;
     const tools=this.assistantTools(taskId);
     if(!base||!tools)return undefined;
     return base.restrict(tools);

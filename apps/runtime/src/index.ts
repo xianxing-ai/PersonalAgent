@@ -182,6 +182,7 @@ export interface RuntimeToolInvocation {
 
 export interface RuntimeToolGateway {
   list(): ToolDescriptor[];
+  listPublic?(): ToolDescriptor[];
   invoke(invocation: RuntimeToolInvocation): Promise<unknown>;
 }
 
@@ -1084,7 +1085,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
         case 'capability.list': {
           if (!this.toolGateway) throw new RuntimeError('UNSUPPORTED_CAPABILITY', 'Tool gateway is not configured');
           const manifests = request.payload.kind === undefined || request.payload.kind === 'tool'
-            ? this.toolGateway.list()
+            ? (this.toolGateway.listPublic?.() ?? this.toolGateway.list())
             : [];
           data = {
             manifests,
