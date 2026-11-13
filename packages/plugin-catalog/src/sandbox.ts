@@ -51,19 +51,23 @@ function isSymlink(target: string): boolean {
   try { return lstatSync(target).isSymbolicLink(); } catch { return false; }
 }
 
+function existsOrSymlink(target: string): boolean {
+  try { lstatSync(target); return true; } catch { return false; }
+}
+
 function contained(root: string, target: string): boolean {
   const base = path.resolve(root);
   if (!pathStaysInside(base, target)) return false;
-  if (existsSync(base) && isSymlink(base)) return false;
+  if (isSymlink(base)) return false;
   let cursor = target;
-  while (!existsSync(cursor)) {
+  while (!existsOrSymlink(cursor)) {
     const parent = path.dirname(cursor);
     if (parent === cursor) return false;
-    // A not-yet-created directory is inside when its lexical path stays under the root.
-    if (path.resolve(parent) === base) return true;
+    if (path.resolve(parent) === base) { cursor = parent; break; }
     if (!pathStaysInside(base, parent)) return false;
     cursor = parent;
   }
+  if (!existsOrSymlink(cursor) && path.resolve(cursor) === base) return !isSymlink(base);
   let current = cursor;
   while (true) {
     if (isSymlink(current) || !pathStaysInside(base, current)) return false;
@@ -100,12 +104,13 @@ export function createPluginSandbox(options: PluginSandboxOptions) {
 
   function log(event: PluginSandboxViolation) {
     const file = options.violationFile;
+    const temporary = `${file}.tmp-${process.pid}`;
     try {
-      if ((existsSync(file) && isSymlink(file)) || (existsSync(`${file}.tmp`) && isSymlink(`${file}.tmp`))) return;
+      if (isSymlink(file) || isSymlink(temporary)) return;
       mkdirSync(path.dirname(file), {recursive: true});
       const events = [...readViolations(), event].slice(-32);
-      writeFileSync(`${file}.tmp`, JSON.stringify({version: 1, events}), 'utf8');
-      renameSync(`${file}.tmp`, file);
+      writeFileSync(temporary, JSON.stringify({version: 1, events}), 'utf8');
+      renameSync(temporary, file);
     } catch { /* The denial still stands when the log cannot be written. */ }
   }
 
@@ -126,8 +131,9 @@ export function createPluginSandbox(options: PluginSandboxOptions) {
   function pluginDirectory(pluginId: string): string | undefined {
     if (!PLUGIN_ID.test(pluginId)) return undefined;
     const root = path.resolve(options.dataRoot);
+    if (isSymlink(root)) return undefined;
     const directory = path.resolve(root, pluginId);
-    return pathStaysInside(root, directory) ? directory : undefined;
+    return pathStaysInside(root, directory) && !isSymlink(directory) ? directory : undefined;
   }
 
   function fileTarget(pluginId: string, relative: string): string | undefined {
@@ -166,13 +172,18 @@ export function createPluginSandbox(options: PluginSandboxOptions) {
       const events = readViolations();
       return events.at(-1);
     },
+    denyInvalid(pluginId: unknown, kind: unknown, target: unknown): PluginAccessDecision {
+      const normalizedKind: PluginSandboxViolation['kind'] =
+        kind === 'network' || kind === 'file' || kind === 'connector' || kind === 'secret' ? kind : 'invalid';
+      return deny(typeof pluginId === 'string' ? pluginId : 'unknown', normalizedKind, target, 'invalid');
+    },
     decide,
     readFile(pluginId: string, relative: string): PluginAccessDecision {
       const decision = decide(pluginId, 'file', relative, 'read');
       if (!decision.allowed) return decision;
       const target = fileTarget(pluginId, relative);
       if (!target) return deny(pluginId, 'file', relative, 'file');
-      if (!existsSync(target)) return {allowed: true, reason: 'ok', found: false};
+      if (!existsOrSymlink(target)) return {allowed: true, reason: 'ok', found: false};
       if (isSymlink(target) || !lstatSync(target).isFile() || lstatSync(target).size > MAX_TEXT) return deny(pluginId, 'file', relative, 'file');
       let text: string;
       try { text = new TextDecoder('utf-8', {fatal: true}).decode(readFileSync(target)); }
@@ -187,14 +198,16 @@ export function createPluginSandbox(options: PluginSandboxOptions) {
       const directory = pluginDirectory(pluginId);
       const target = directory ? fileTarget(pluginId, relative) : undefined;
       if (!directory || !target) return deny(pluginId, 'file', relative, 'file');
-      if ((existsSync(options.dataRoot) && isSymlink(options.dataRoot)) || (existsSync(directory) && isSymlink(directory))) {
+      if (isSymlink(options.dataRoot) || isSymlink(directory)) {
         return deny(pluginId, 'file', relative, 'file');
       }
       mkdirSync(path.dirname(target), {recursive: true});
-      if (!contained(directory, target) || (existsSync(target) && (isSymlink(target) || !lstatSync(target).isFile()))) {
+      const temporary = `${target}.tmp-${process.pid}`;
+      if (!contained(directory, target) || isSymlink(temporary) || (existsOrSymlink(target) && (isSymlink(target) || !lstatSync(target).isFile()))) {
         return deny(pluginId, 'file', relative, 'file');
       }
-      writeFileSync(target, body, 'utf8');
+      writeFileSync(temporary, body, 'utf8');
+      renameSync(temporary, target);
       return {allowed: true, reason: 'ok'};
     },
     async fetch(pluginId: string, url: string): Promise<PluginAccessDecision> {

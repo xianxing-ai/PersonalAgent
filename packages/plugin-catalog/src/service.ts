@@ -129,7 +129,7 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
   function writeInstallations(entries: InstallationRecord[]) {
     const file = options.installationFile;
     mkdirSync(path.dirname(file), {recursive: true});
-    const temporary = `${file}.tmp`;
+    const temporary = `${file}.tmp-${process.pid}`;
     if ((existsSync(file) && lstatSync(file).isSymbolicLink()) || (existsSync(temporary) && lstatSync(temporary).isSymbolicLink())) {
       throw new ProtocolError('INVALID_ARGUMENT', '插件安装记录不可用');
     }

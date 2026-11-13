@@ -49,9 +49,10 @@ test('market cards keep only the action that matches install state', () => {
 test('host installs a downloaded pin into the shared skill store and gates high-risk enable', async t => {
   const f = fixture(t);
   let allowEnable = false;
+  const confirmRequests = [];
   const host = createPluginCatalogHost({
     catalog: [f.entry], skillStore: f.store, installationFile: f.installationFile,
-    confirm: async request => request.action !== 'enable' || allowEnable,
+    confirm: async request => { confirmRequests.push(request); return request.action !== 'enable' || allowEnable; },
     download: {async get(url) {
       const found = f.bytes.get(url);
       return found ? {status: 200, bytes: found} : {status: 404, bytes: new Uint8Array()};
@@ -62,6 +63,8 @@ test('host installs a downloaded pin into the shared skill store and gates high-
   assert.equal(f.store.list()[0].enabled, false);
   assert.equal(host.snapshot().items.find(item => item.id === f.entry.id).installed, true);
   assert.equal((await host.invoke('plugin.enable', {id: f.entry.id, enabled: true})).cancelled, true);
+  assert.match(confirmRequests.at(-1).detail, /启用需要授权/);
+  assert.doesNotMatch(confirmRequests.at(-1).detail, /plugin-catalog:enable/);
   assert.equal(f.store.list()[0].enabled, false);
   allowEnable = true;
   assert.equal((await host.invoke('plugin.enable', {id: f.entry.id, enabled: true})).enabled, true);

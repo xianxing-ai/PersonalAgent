@@ -98,6 +98,14 @@ test('startup host confirms the permission list once and enforces it', async t =
   assert.match(card, /已拦截未声明的网络/);
   assert.doesNotMatch(card, /data-plugin="(?!disable|uninstall)/);
   assert.equal(card.includes('super-secret-value'), false);
+
+  const invalid = await host.invoke('plugin.guard', {id: 'unknown..plugin', kind: 'shell', target: 'cmd.exe'});
+  assert.equal(invalid.allowed, false);
+  assert.equal(invalid.reason, 'invalid');
+  const violationsAfterInvalid = JSON.parse(readFileSync(f.violationFile, 'utf8'));
+  assert.equal(violationsAfterInvalid.events.at(-1).reason, 'invalid');
+  const cardAfterOtherViolation = pluginMarketCardsHtml(host.snapshot().items.filter(item => item.id === id));
+  assert.match(cardAfterOtherViolation, /已拦截未声明的网络/);
 });
 
 test('preload pluginAccess and startup wiring use the plugin guard', () => {

@@ -51,9 +51,10 @@ export function createPluginCatalogHost({
 
   function items() {
     const installed = new Map(service.installations().map(item => [item.catalogId, item]));
-    const blocked = sandbox.lastViolation();
+    const latestByPlugin = new Map(sandbox.violations().map(violation => [violation.pluginId, violation]));
     return service.list().map(entry => {
       const record = installed.get(entry.id);
+      const blocked = latestByPlugin.get(entry.id);
       const effective = record
         ? intersectPermissionGrants(readStoredPermissionGrant(record.permissionGrant), entry.permissionManifest)
         : entry.permissionManifest;
@@ -65,7 +66,7 @@ export function createPluginCatalogHost({
         oneClickInstall: entry.oneClickInstall, installBlockReason: entry.installBlockReason,
         enableRequiresAuthorization: entry.enableRequiresAuthorization,
         installed: Boolean(record), enabled: record?.enabled === true, updateStatus: service.checkUpdate(entry.id).status,
-        ...(blocked?.pluginId === entry.id ? {lastBlocked: {kind: blocked.kind, reason: blocked.reason}} : {}),
+        ...(blocked ? {lastBlocked: {kind: blocked.kind, reason: blocked.reason}} : {}),
       };
     });
   }
@@ -93,12 +94,17 @@ export function createPluginCatalogHost({
 
   function guard(payload) {
     guardClosed();
+    const denyInvalid = () => {
+      const denied = sandbox.denyInvalid(payload?.id, payload?.kind, payload?.target);
+      onUpdate();
+      return {allowed: false, reason: denied.reason};
+    };
     if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(key => !GUARD_KEYS.has(key))) {
-      return {allowed: false, reason: 'invalid'};
+      return denyInvalid();
     }
     const {id, kind, target, fileMode, body} = payload;
     if (typeof id !== 'string' || typeof target !== 'string' || !['network', 'file', 'connector', 'secret'].includes(kind)) {
-      return {allowed: false, reason: 'invalid'};
+      return denyInvalid();
     }
     if (kind === 'file' && fileMode === 'write') {
       const written = sandbox.writeFile(id, target, body);
@@ -106,18 +112,18 @@ export function createPluginCatalogHost({
       return {allowed: written.allowed, reason: written.reason};
     }
     if (kind === 'file' && fileMode === 'read') {
-      if (body !== undefined) return {allowed: false, reason: 'invalid'};
+      if (body !== undefined) return denyInvalid();
       const read = sandbox.readFile(id, target);
       if (!read.allowed) onUpdate();
       return {allowed: read.allowed, reason: read.reason, ...(read.found !== undefined ? {found: read.found} : {})};
     }
     if (kind === 'secret') {
-      if (body !== undefined || fileMode !== undefined) return {allowed: false, reason: 'invalid'};
+      if (body !== undefined || fileMode !== undefined) return denyInvalid();
       const secret = sandbox.readSecret(id, target);
       if (!secret.allowed) onUpdate();
       return {allowed: secret.allowed, reason: secret.reason, ...(secret.found !== undefined ? {found: secret.found} : {})};
     }
-    if (body !== undefined || fileMode !== undefined) return {allowed: false, reason: 'invalid'};
+    if (body !== undefined || fileMode !== undefined) return denyInvalid();
     const decision = sandbox.decide(id, kind, target);
     if (!decision.allowed) onUpdate();
     return {allowed: decision.allowed, reason: decision.reason};
@@ -125,9 +131,21 @@ export function createPluginCatalogHost({
 
   return {
     snapshot,
-    fetchWithinGrant: (id, url) => sandbox.fetch(id, url),
-    readGrantedSecret: (id, name) => sandbox.readSecret(id, name),
-    readPluginFile: (id, relative) => sandbox.readFile(id, relative),
+    async fetchWithinGrant(id, url) {
+      const result = await sandbox.fetch(id, url);
+      if (!result.allowed) onUpdate();
+      return result;
+    },
+    readGrantedSecret(id, name) {
+      const result = sandbox.readSecret(id, name);
+      if (!result.allowed) onUpdate();
+      return result;
+    },
+    readPluginFile(id, relative) {
+      const result = sandbox.readFile(id, relative);
+      if (!result.allowed) onUpdate();
+      return result;
+    },
     async invoke(name, payload) {
       guardClosed();
       if (name === 'plugin.list' || name === 'plugin.search') {
@@ -144,8 +162,10 @@ export function createPluginCatalogHost({
         const enabled = payload?.enabled;
         const entry = service.get(id);
         if (enabled && entry.enableRequiresAuthorization) {
-          const scopes = entry.permissionDeclarations.filter(item => item.requiredForEnable).map(item => item.scope);
-          const allowed = await confirm({action: 'enable', id, detail: `${entry.name} 是高风险插件。启用需要授权。声明范围：${scopes.join('、') || '无'}。这不授予写文件、联网写入或执行代码。`});
+          const requiredDeclarations = entry.permissionDeclarations.filter(item => item.requiredForEnable);
+          const scopes = requiredDeclarations.map(item => item.scope);
+          const statements = requiredDeclarations.map(item => item.statement || item.scope);
+          const allowed = await confirm({action: 'enable', id, detail: `${entry.name} 是高风险插件。启用需要授权。声明范围：${statements.join('、') || '无'}。这不授予写文件、联网写入或执行代码。`});
           if (!allowed) return {cancelled: true};
           const authorizationRef = randomUUID();
           policy.grant({
