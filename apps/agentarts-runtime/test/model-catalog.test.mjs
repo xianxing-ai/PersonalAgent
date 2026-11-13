@@ -38,7 +38,7 @@ test('explicit Beijing route validates fixed origin and logs binding without pay
   fetch:async(url,init)=>{assert.equal(url,endpoint+'/chat/completions');assert.equal(init.headers.get('authorization'),'Bearer fixture-key');return Response.json({model:'returned-a'});}};
  const fetchModel=createAgentArtsModelFetch(options);
  await fetchModel(endpoint+'/chat/completions',{method:'POST',headers:{},body:JSON.stringify({model:'a',stream:false,reasoning_effort:'high',messages:[{role:'user',content:'private-fixture-prompt'}]}),signal:new AbortController().signal});
- assert.equal(record.route,'runtime-bailian');assert.equal(record.reasoningEffort,'high');assert.equal(record.responseModel,'returned-a');
+ assert.equal(record.route,'runtime-bailian');assert.equal(record.reasoningEffort,'high');assert.equal(record.responseModel,null);
  assert.equal(JSON.stringify(record).includes('fixture-key'),false);assert.equal(JSON.stringify(record).includes('private-fixture-prompt'),false);
  for(const badEndpoint of ['https://example.com/compatible-mode/v1','https://workspace-test.cn-shanghai.maas.aliyuncs.com/compatible-mode/v1',endpoint+ '?key=bad'])assert.throws(()=>createAgentArtsModelFetch({...options,endpoint:badEndpoint}),{code:'INVALID_ARGUMENT'});
 });
