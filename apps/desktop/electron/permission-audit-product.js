@@ -1,15 +1,41 @@
 import {appendAudit, verifyAudit} from '@personal-agent/policy';
-import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
+
+/** Write JSON atomically in the target directory: unique temp file -> fsync -> rename. */
+function atomicWriteJson(file, value) {
+  mkdirSync(path.dirname(file), {recursive: true});
+  const tempFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  let fd;
+  let renamed = false;
+  try {
+    fd = openSync(tempFile, 'w');
+    writeFileSync(fd, JSON.stringify(value), 'utf8');
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = undefined;
+    renameSync(tempFile, file);
+    renamed = true;
+  } finally {
+    if (fd !== undefined) {
+      try { closeSync(fd); } catch {}
+    }
+    if (!renamed && existsSync(tempFile)) {
+      try { rmSync(tempFile, {force: true}); } catch {}
+    }
+  }
+}
 
 /**
  * One permission list for the assistant, plus a hash-chained operation log.
  * Revocation still calls the existing sandbox rule and goal-cloud revoke ports.
  */
-export function createPermissionAuditProduct({userData, list, revoke, now} = {}) {
+export function createPermissionAuditProduct({userData, list, revoke, now, onUpdate} = {}) {
   const file = userData ? path.join(userData, 'permission-audit.json') : '';
   let events = [];
   let unreadable = false;
+  let skippedCount = 0;
   if (file && existsSync(file)) {
     try {
       const parsed = JSON.parse(readFileSync(file, 'utf8'));
@@ -21,20 +47,48 @@ export function createPermissionAuditProduct({userData, list, revoke, now} = {})
   }
   const clock = now ?? (() => new Date());
   function save(next) {
+    if (file && !unreadable) atomicWriteJson(file, next);
     events = next;
-    if (!file || unreadable) return;
-    mkdirSync(path.dirname(file), {recursive: true});
-    writeFileSync(file, JSON.stringify(events));
   }
   function record(action, subject) {
-    if (unreadable || !verifyAudit(events).intact) return false;
+    if (unreadable || !verifyAudit(events).intact) {
+      skippedCount += 1;
+      onUpdate?.();
+      return false;
+    }
     save(appendAudit(events, {at: clock().toISOString(), action, subject}));
     return true;
   }
   function auditView() {
-    if (unreadable) return {intact: false, brokenAt: 0, count: 0, unreadable: true};
+    if (unreadable) {
+      return {
+        intact: false,
+        brokenAt: 0,
+        count: 0,
+        unreadable: true,
+        recordingStopped: true,
+        skippedCount,
+        warning: `审计日志无法读取，已停止追加新记录（${skippedCount} 条未写入）`,
+      };
+    }
     const checked = verifyAudit(events);
-    return {intact: checked.intact, brokenAt: checked.brokenAt, count: events.length, unreadable: false};
+    return {
+      intact: checked.intact,
+      brokenAt: checked.brokenAt,
+      count: events.length,
+      unreadable: false,
+      recordingStopped: !checked.intact,
+      skippedCount,
+      ...(!checked.intact
+        ? {warning: `审计链在第 ${checked.brokenAt} 条损坏，已停止追加新记录（${skippedCount} 条未写入）`}
+        : {}),
+    };
+  }
+  function failureStatus(error) {
+    if (error?.code === 'TIMEOUT') return 'timeout';
+    if (error?.code === 'UNAUTHORIZED' || error?.code === 'SCOPE_DENIED') return 'denied';
+    if (error?.code === 'CANCELLED') return 'cancelled';
+    return 'failed';
   }
   return {
     observeTools(tools) {
@@ -42,13 +96,41 @@ export function createPermissionAuditProduct({userData, list, revoke, now} = {})
       return tools.map(tool => ({
         get descriptor() { return tool.descriptor; },
         execute: async (input, context) => {
-          const result = await tool.execute(input, context);
           const name = tool.descriptor?.name ?? 'tool';
           const effect = tool.descriptor?.sideEffect ?? 'unknown';
-          record('tool', `${name}:${effect}`.slice(0, 180));
-          return result;
+          let settled = false;
+          const signal = context?.signal;
+          const onAbort = () => {
+            if (settled) return;
+            settled = true;
+            const status = signal?.reason === 'timeout' ? 'timeout' : 'aborted';
+            record('tool', `${name}:${effect}:${status}`.slice(0, 180));
+          };
+          signal?.addEventListener?.('abort', onAbort, {once: true});
+          try {
+            const result = await tool.execute(input, context);
+            if (!settled) {
+              settled = true;
+              const state = result && typeof result === 'object' ? result.state : undefined;
+              const outcome = ['failed', 'denied', 'cancelled', 'timeout', 'unknown'].includes(state) ? state : 'ok';
+              record('tool', `${name}:${effect}:${outcome}`.slice(0, 180));
+            }
+            return result;
+          } catch (error) {
+            if (!settled) {
+              settled = true;
+              record('tool', `${name}:${effect}:${failureStatus(error)}`.slice(0, 180));
+            }
+            throw error;
+          } finally {
+            signal?.removeEventListener?.('abort', onAbort);
+          }
         },
       }));
+    },
+    recordEvent(action, subject) {
+      if (typeof action !== 'string' || !action.trim() || typeof subject !== 'string' || !subject.trim()) return false;
+      return record(action.slice(0, 64), subject.slice(0, 180));
     },
     snapshot() {
       const grants = typeof list === 'function' ? list() : [];
@@ -58,7 +140,6 @@ export function createPermissionAuditProduct({userData, list, revoke, now} = {})
     handleAction(name, payload) {
       if (name === 'assistantPermissions.state') {
         if (payload !== undefined) throw Error('权限状态不接受参数');
-        record('read', 'permissions');
         return this.snapshot();
       }
       if (name === 'assistantPermissions.revoke') {

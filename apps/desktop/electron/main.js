@@ -790,7 +790,7 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
-    assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true}};}})(),
+    assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
@@ -1528,6 +1528,11 @@ function applyEvent(event) {
       tasks.set(event.taskId, structuredClone(event.payload));
       observeTextTaskOutput(event.payload);
       clearInactiveTaskExitWarning();
+      const failureCode = event.type === 'task.failed' ? event.payload?.error?.code : undefined;
+      if (current?.state !== 'failed' && ['UNAUTHORIZED', 'SCOPE_DENIED', 'TIMEOUT', 'CANCELLED'].includes(failureCode)) {
+        const auditAction = failureCode === 'TIMEOUT' ? 'timeout' : failureCode === 'CANCELLED' ? 'cancelled' : 'denied';
+        permissionAudit?.recordEvent(auditAction, `task:${event.taskId}:${failureCode}`);
+      }
     }
     if (event.type === 'task.created' && event.payload.conversationId?.startsWith('knowledge-watch:')
       && event.payload.goal?.startsWith('RECHECK ')) {
@@ -2462,6 +2467,7 @@ async function initializeRuntime() {
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       permissionAudit=createPermissionAuditProduct({
         userData:app.getPath('userData'),
+        onUpdate:()=>publish(),
         list(){
           const grants=[];
           const sandbox=authorizationQuestionHost?.sandboxSnapshot();
@@ -3343,9 +3349,9 @@ async function action(event, name, payload) {
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
   if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');
-    if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false}};
+    if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false, recordingStopped: false, skippedCount: 0}};
     const result = permissionAudit.handleAction(name, payload);
-    publish();
+    if (name === 'assistantPermissions.revoke') publish();
     return result;
   }
   if (name === 'snapshot.resync') {
@@ -3383,7 +3389,11 @@ async function action(event, name, payload) {
     const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
     const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
-    const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
+    const result=authorizationQuestionHost.respond(payload,conversationId);
+    if(payload?.decision==='deny'||result?.decision==='deny'||result?.state==='denied'){
+      permissionAudit?.recordEvent('denied',`question:${question.toolName??payload?.questionId}`);
+    }
+    publish();return result;
   }
   if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
     if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
@@ -4377,6 +4387,9 @@ async function action(event, name, payload) {
     if(sender!==admin){const approval=approvals.get(payload.approvalId),surface=sender===workspace?'workspace':'panel';if(sender!==panel&&sender!==workspace||!approval||approval.taskId!==payload.taskId||!tasks.has(approval.taskId)||!visibleConversationTask(tasks.get(approval.taskId),surface))throw Error('审批不属于当前对话');}
     if(authorizationQuestionHost?.hasPending(payload.approvalId))throw new ProtocolError('UNAUTHORIZED','请在原对话的统一授权卡完成本次决定');
     const result = await client.call('authorization.respond', {approvalId: payload.approvalId, decision: payload.decision, expectedRevision: payload.expectedRevision});
+    if (payload.decision === 'deny') {
+      permissionAudit?.recordEvent('denied', `approval:${payload.taskId ?? payload.approvalId}`);
+    }
     approvals.delete(payload.approvalId);
     if (payload.taskId && tasks.has(payload.taskId)) await refresh(payload.taskId);
     publish();
