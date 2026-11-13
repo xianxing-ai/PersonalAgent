@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('desktop', Object.freeze({
     return () => ipcRenderer.removeListener('desktop:preferences', receive);
   },
   invoke: (action, payload) => ipcRenderer.invoke('desktop:action', action, payload),
+  pluginAccess: request => ipcRenderer.invoke('desktop:action', 'plugin.guard', request),
   ackSnapshot: token => ipcRenderer.send('desktop:snapshot-ack', token),
   flushDrafts: entries => {
     // Only the final close boundary is synchronous; normal editing stays debounced.
