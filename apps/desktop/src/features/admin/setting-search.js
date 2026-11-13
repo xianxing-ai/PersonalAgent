@@ -5,6 +5,7 @@ const aliases = {
   connections: '连接器 邮件 日历 订阅 待办',
   authorizations: '授权 审批 安全 权限',
   tasks: '进度 执行 Evidence 证据 任务',
+  activity: '活动 时间线 撤销 为什么 它替我做了什么',
   worktrees: '工作树 分支 工作文件夹',
   workspace: '工作文件夹 工作区 环境',
   usage: '用量 计费 预算 额度',

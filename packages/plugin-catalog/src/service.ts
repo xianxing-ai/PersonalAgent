@@ -9,7 +9,7 @@ import {openLocalSkillStore, readLocalSkillDirectory} from '@personal-agent/skil
 import {downloadPinnedFilesystem, materializePinnedSkill, type PinnedDownload} from './download.js';
 import {CURATED_PLUGINS} from './plugins.js';
 import {samePermissionGrant, snapshotPermissionGrant} from './permissions.js';
-import {parsePluginCatalog, type PluginManifest} from './schema.js';
+import {parsePluginCatalog, type PluginManifest, type RiskLevel} from './schema.js';
 
 export interface SkillStorePort {
   install(input: ReturnType<typeof readLocalSkillDirectory>): {name: string; digest: string; installationId: string; enabled: boolean};
@@ -61,6 +61,13 @@ export interface UpdateStatus {
   catalog?: PluginManifest['pin'];
 }
 
+export interface PluginActivityNotice {
+  pluginId: string;
+  action: 'install' | 'enable' | 'disable' | 'uninstall';
+  riskLevel: RiskLevel;
+  generation: number;
+}
+
 export interface PluginCatalogServiceOptions {
   catalog?: readonly PluginManifest[];
   skillStoreFile?: string;
@@ -70,6 +77,7 @@ export interface PluginCatalogServiceOptions {
   now?: () => number;
   resolveFilesystemPackage?: () => string;
   download?: PinnedDownload;
+  onActivity?: (notice: PluginActivityNotice) => void;
 }
 
 const require = createRequire(import.meta.url);
@@ -108,6 +116,14 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
   const byId = new Map(catalog.map(entry => [entry.id, entry]));
   const now = options.now ?? Date.now;
   const opened = options.skillStore ?? openLocalSkillStore(options.skillStoreFile ?? '');
+  function notify(record: InstallationRecord, action: PluginActivityNotice['action']) {
+    options.onActivity?.({
+      pluginId: record.catalogId,
+      action,
+      riskLevel: byId.get(record.catalogId)?.riskLevel ?? 'high',
+      generation: record.generation,
+    });
+  }
   const skillStore = () => opened;
 
   function readInstallations(): InstallationRecord[] {
@@ -243,6 +259,7 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
         skill: {name: installed.name, digest: installed.digest, installationId: installed.installationId},
       };
       writeInstallations([...readInstallations().filter(item => item.catalogId !== entry.id), record]);
+      notify(record, 'install');
       return structuredClone(record);
     }
     if (entry.installer === 'pinned-filesystem-readonly') {
@@ -254,6 +271,7 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
         pin: snapshotPin(entry.pin), permissionGrant: granted(entry), mcp: {...verified, surface: 'readonly-filesystem'},
       };
       writeInstallations([...readInstallations().filter(item => item.catalogId !== entry.id), record]);
+      notify(record, 'install');
       return structuredClone(record);
     }
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', '没有可用的现有安装器');
@@ -295,6 +313,7 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
     if (record.skill) skillStore().setEnabled(record.skill.name, record.skill.digest, enabled);
     const next: InstallationRecord = {...record, enabled, generation: record.generation + 1};
     writeInstallations(current.map(item => item.catalogId === id ? next : item));
+    notify(next, enabled ? 'enable' : 'disable');
     return structuredClone(next);
   }
 
@@ -313,6 +332,7 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
     if (!record) throw new ProtocolError('NOT_FOUND', '插件尚未安装');
     if (record.skill) skillStore().uninstall(record.skill.name, record.skill.digest);
     writeInstallations(current.filter(item => item.catalogId !== id));
+    notify(record, 'uninstall');
   }
 
   return {

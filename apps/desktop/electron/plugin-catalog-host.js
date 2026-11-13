@@ -19,10 +19,11 @@ const GUARD_KEYS = new Set(['id', 'kind', 'target', 'fileMode', 'body']);
 /** Main-process owner. Downloads only catalog pins, then uses the existing installers. */
 export function createPluginCatalogHost({
   skillStore, installationFile, confirm, catalog, download = networkDownload(), onUpdate = () => {},
+  onActivity = () => {}, onActivityFailure = () => {},
   dataRoot, violationFile, readSecret = () => undefined, fetchImpl,
 }) {
   const policy = new InMemoryAuthorizationPolicy();
-  const service = createPluginCatalogService({skillStore, installationFile, policy, download, ...(catalog ? {catalog} : {})});
+  const service = createPluginCatalogService({skillStore, installationFile, policy, download, onActivity, ...(catalog ? {catalog} : {})});
   const sandbox = createPluginSandbox({
     dataRoot: dataRoot ?? path.join(path.dirname(installationFile), 'plugin-data'),
     violationFile: violationFile ?? path.join(path.dirname(installationFile), 'plugin-sandbox-violations.json'),
@@ -87,9 +88,24 @@ export function createPluginCatalogHost({
       detail: `${entry.name}\n将下载固定版本并核对摘要，安装后停用。不执行插件脚本。\n${describePluginPermissions(entry.permissionManifest).join('\n')}`,
     });
     if (!allowed) return {cancelled: true};
-    const record = await service.installPinned(id, replace);
-    onUpdate();
-    return {installed: true, enabled: record.enabled};
+    try {
+      const record = await service.installPinned(id, replace);
+      onUpdate();
+      return {installed: true, enabled: record.enabled};
+    } catch (error) {
+      onActivityFailure({pluginId: id, action: 'install', riskLevel: entry.riskLevel});
+      throw error;
+    }
+  }
+  function compensate(action, id) {
+    guardClosed();
+    try {
+      if (action === 'uninstall') service.uninstall(id);
+      else if (action === 'disable') service.setEnabled(id, false);
+      else throw Error('没有可用的补偿');
+    } catch (error) {
+      if (error?.code !== 'NOT_FOUND') throw error;
+    }
   }
 
   function guard(payload) {
@@ -161,36 +177,50 @@ export function createPluginCatalogHost({
         const id = payload?.id;
         const enabled = payload?.enabled;
         const entry = service.get(id);
-        if (enabled && entry.enableRequiresAuthorization) {
-          const requiredDeclarations = entry.permissionDeclarations.filter(item => item.requiredForEnable);
-          const scopes = requiredDeclarations.map(item => item.scope);
-          const statements = requiredDeclarations.map(item => item.statement || item.scope);
-          const allowed = await confirm({action: 'enable', id, detail: `${entry.name} 是高风险插件。启用需要授权。声明范围：${statements.join('、') || '无'}。这不授予写文件、联网写入或执行代码。`});
-          if (!allowed) return {cancelled: true};
-          const authorizationRef = randomUUID();
-          policy.grant({
-            authorizationRef, taskId: `desktop-plugin-${id}`, toolName: 'plugin-catalog.enable', scopes,
-            expiresAt: new Date(Date.now() + 180000).toISOString(), maxUses: 1,
-            argumentsDigest: pluginEnableArgumentsDigest(id, entry.pin.sha256),
-          });
-          const record = service.setEnabled(id, true, {authorizationRef, taskId: `desktop-plugin-${id}`});
+        try {
+          if (enabled && entry.enableRequiresAuthorization) {
+            const requiredDeclarations = entry.permissionDeclarations.filter(item => item.requiredForEnable);
+            const scopes = requiredDeclarations.map(item => item.scope);
+            const statements = requiredDeclarations.map(item => item.statement || item.scope);
+            const allowed = await confirm({action: 'enable', id, detail: `${entry.name} 是高风险插件。启用需要授权。声明范围：${statements.join('、') || '无'}。这不授予写文件、联网写入或执行代码。`});
+            if (!allowed) return {cancelled: true};
+            const authorizationRef = randomUUID();
+            policy.grant({
+              authorizationRef, taskId: `desktop-plugin-${id}`, toolName: 'plugin-catalog.enable', scopes,
+              expiresAt: new Date(Date.now() + 180000).toISOString(), maxUses: 1,
+              argumentsDigest: pluginEnableArgumentsDigest(id, entry.pin.sha256),
+            });
+            const record = service.setEnabled(id, true, {authorizationRef, taskId: `desktop-plugin-${id}`});
+            onUpdate();
+            return {enabled: record.enabled};
+          }
+          const record = service.setEnabled(id, enabled);
           onUpdate();
           return {enabled: record.enabled};
+        } catch (error) {
+          onActivityFailure({pluginId: id, action: enabled ? 'enable' : 'disable', riskLevel: entry.riskLevel});
+          throw error;
         }
-        const record = service.setEnabled(id, enabled);
-        onUpdate();
-        return {enabled: record.enabled};
       }
       if (name === 'plugin.uninstall') {
         const allowed = await confirm({action: 'uninstall', id: payload?.id, detail: '移除已安装快照。不撤销已经发生的外部操作。'});
         if (!allowed) return {cancelled: true};
-        service.uninstall(payload?.id);
-        onUpdate();
-        return {uninstalled: true};
+        try {
+          service.uninstall(payload?.id);
+          onUpdate();
+          return {uninstalled: true};
+        } catch (error) {
+          try {
+            const removed = service.get(payload?.id);
+            onActivityFailure({pluginId: removed.id, action: 'uninstall', riskLevel: removed.riskLevel});
+          } catch { /* 目录里已经没有这条插件时，保留原来的失败。 */ }
+          throw error;
+        }
       }
       if (name === 'plugin.proposals') return projection();
       throw Error('不支持的插件操作');
     },
+    compensate,
     close() { closed = true; },
   };
 }

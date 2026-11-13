@@ -102,6 +102,27 @@ test('skill install stays disabled, rejects a tampered directory, and does not r
   assert.throws(() => service.setEnabled(catalog[0].id, false), {code: 'NOT_FOUND'});
 });
 
+test('successful install and enable emit an activity notice without skill text', t => {
+  mkdirSync(path.resolve('.cache/plugin-catalog-tests'), {recursive: true});
+  const files = workspace(t);
+  const source = writeSkill(files.root, 'fixture-notes');
+  const bundle = readLocalSkillDirectory(source);
+  const notices = [];
+  const service = createPluginCatalogService({
+    ...files,
+    catalog: [skillEntry(bundle)],
+    onActivity: notice => notices.push(structuredClone(notice)),
+  });
+  service.install({id: 'skill.fixture.notes', sourceDirectory: source});
+  service.install({id: 'skill.fixture.notes', sourceDirectory: source});
+  service.setEnabled('skill.fixture.notes', true);
+  assert.deepEqual(notices.map(item => item.action), ['install', 'enable']);
+  assert.equal(notices[0].generation, 1);
+  assert.equal(notices[1].generation, 2);
+  assert.equal(JSON.stringify(notices).includes('Follow the fixture'), false);
+  assert.equal(Object.hasOwn(notices[0], 'description'), false);
+});
+
 test('high-risk enable asks Policy and leaves the plugin disabled when authorization is missing', t => {
   mkdirSync(path.resolve('.cache/plugin-catalog-tests'), {recursive: true});
   const files = workspace(t);

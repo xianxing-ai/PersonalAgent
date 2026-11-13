@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-11 活动时间线（provisional）
+
+`@personal-agent/activity` 提供 CW-05 的只追加活动记录。每条有时间、来源、动作摘要、风险、结果，以及触发原因和决策依据。摘要不收录消息正文或参数明文。撤销只在记录了补偿动作、且该来源的补偿执行器已经接入时可用；撤销另写一条结果，不改原行。当前生产接线只有插件目录的安装、启用、停用和卸载。自动执行（#630）、主动触发（#631）和失败自愈（#633）使用同包适配函数，不依赖尚未合入的实现。这不提升 Policy、Runtime、插件目录或 AgentArts 的冻结等级。说明见 [活动时间线](../modules/CW-05-ACTIVITY-TIMELINE.md)。
+
 ## 2026-11-11 来源变化触发层（provisional）
 
 `@personal-agent/cognition` 新增可选工厂 `createProactiveSourceTrigger`。它只消费公开 `calendar.events` / `mail.inbox` 的 `ConnectorItem` 页，以及用户显式授权目录的只读枚举；首次成功读取只建基线。去重、限流和静默时段之后，把任务提案交给现有 Laya 动作选择。低风险且选择结果允许进入运行时的，调用注入的任务 `submit`；高风险只创建待审批请求，匹配的 `allowed` 决定才按原幂等键提交。`submitted` 不是任务完成。
