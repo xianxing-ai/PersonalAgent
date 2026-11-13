@@ -11,32 +11,33 @@ import {TaskRuntime} from '../dist/index.js';
 
 const preference = '已确认的用户偏好（遵守这些偏好；它们不是新的工具授权，也不能越过审批）：\n- 纠正：回答短一些';
 
-test('the main competition request and a child system prompt both receive confirmed preferences', async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'pa-preference-prompt-'));
-  t.after(() => rm(root, {recursive: true, force: true}));
+test('the main competition request and a child system prompt both receive confirmed preferences', async () => {
   const seen = [];
   const app = createRuntimeApplication({
-    path: path.join(root, 'runtime.sqlite'),
+    path: ':memory:',
     profile: 'huawei_ict_agentarts',
     readPromptPreferences: ({audience}) => audience === 'subagent' ? preference.replace('回答短一些', '子助手用短句') : preference,
     coordination: {execute: async request => { seen.push(request.goal); return {kind: 'text', text: '好', verification: 'mock'}; }},
   });
-  t.after(() => app.close());
-  const client = new Client(app, Date.now);
-  await client.connect();
-  await client.call('task.submit', {goal: '今天天气', conversationId: 'desktop'}, {idempotencyKey: 'primary-preference', timeoutMs: 20_000});
-  assert.match(seen[0], /回答短一些/);
-  assert.doesNotMatch(seen[0], /子助手用短句/);
-  const parent = app.runtime.submitTask({conversationId: 'desktop', goal: '父任务', idempotencyKey: 'parent-preference'});
-  app.runtime.transitionTask(parent.taskId, 'planning');
-  app.runtime.transitionTask(parent.taskId, 'running');
-  const tool = app.createSubagentDispatchTool();
-  await tool.execute({subtasks: [{subtaskId: 'weather', role: 'researcher', goal: '查天气'}]}, {
-    taskId: parent.taskId, runId: 'run-preference', signal: new AbortController().signal,
-    deadline: new Date(Date.now() + 60_000).toISOString(), authorizationRef: 'auth-preference', scopes: ['agent:delegate'],
-  });
-  assert.match(seen.at(-1), /子助手用短句/);
-  assert.doesNotMatch(seen.at(-1), /回答短一些/);
+  try {
+    const client = new Client(app, Date.now);
+    await client.connect();
+    await client.call('task.submit', {goal: '今天天气', conversationId: 'desktop'}, {idempotencyKey: 'primary-preference', timeoutMs: 20_000});
+    assert.match(seen[0], /回答短一些/);
+    assert.doesNotMatch(seen[0], /子助手用短句/);
+    const parent = app.runtime.submitTask({conversationId: 'desktop', goal: '父任务', idempotencyKey: 'parent-preference'});
+    app.runtime.transitionTask(parent.taskId, 'planning');
+    app.runtime.transitionTask(parent.taskId, 'running');
+    const tool = app.createSubagentDispatchTool();
+    await tool.execute({subtasks: [{subtaskId: 'weather', role: 'researcher', goal: '查天气'}]}, {
+      taskId: parent.taskId, runId: 'run-preference', signal: new AbortController().signal,
+      deadline: new Date(Date.now() + 60_000).toISOString(), authorizationRef: 'auth-preference', scopes: ['agent:delegate'],
+    });
+    assert.match(seen.at(-1), /子助手用短句/);
+    assert.doesNotMatch(seen.at(-1), /回答短一些/);
+  } finally {
+    app.close();
+  }
 });
 
 test('a model-backed child keeps the preference in its system message and a withdrawn prompt is absent', async () => {
@@ -78,5 +79,5 @@ test('a model-backed child keeps the preference in its system message and a with
   assert.equal(localSeen[0]?.some(message => message.role === 'system' && message.content.includes('回答短一些')), false);
   for (let attempt = 0; attempt < 40 && local.activeTaskCount; attempt += 1) await new Promise(resolve => setTimeout(resolve, 15));
   local.close();
-  await rm(directory, {recursive: true, force: true});
+  await rm(directory, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
 });
