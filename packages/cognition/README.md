@@ -28,6 +28,8 @@ scheduler, tool execution or TaskRuntime state transition.
 
 个人数据看板（`summarizePersonalDashboard` / `dashboardScheduleInput`）只在本地把已授权读数收成趋势，并给出下一次 `ScheduleInput`。它不创建调度器、不写 TaskRuntime、不访问网络。桌面宿主把这条计划登记到既有 Scheduler；日历和邮件没授权时对应卡片不出现。
 
+`buildDailyBriefing` 根据调用方给出的任务、审批和日程快照生成每日简报。它不复制结果摘要、错误正文、审批参数或邮件正文。主动任务（#631 / CW-03）、风险分级（#630）和失败自愈（#633）只通过可选适配接口接入；未提供时来源为 unavailable，不依赖尚未合入的分支。`planDailyBriefingSchedule` 的字段与 Runtime `ScheduleInput` 结构兼容，由现有 Scheduler 登记。
+
 `ReviewedMeetingFactConsumer` consumes a trusted completed Fact projection and
 the existing Runtime reviewedRepair host. It persists the original review/tool
 identity and impact digest, keeps uncertainty unchanged, and requires tool
@@ -468,3 +470,7 @@ advice. They do not start tracking, grant permission or fetch sources. See
 [`docs/interest-policy.md`](docs/interest-policy.md) for revocation, source validation
 and cache expiry semantics. No real model, background watcher or next-day freshness
 acceptance is claimed.
+
+## 一键暂停（总刹车）
+
+`createOperatorBrake` 是总开关的编排。它只保存暂停记录，并调用宿主已经接好的 checkpoint、abort 和 resume。新任务、Scheduler 和主动触发在暂停期间不被 admit。进行中的运行先留下现有断点再中止。恢复时按同一断点继续。未合入的 PR #630 / #631 / #633 只留可选 `extensions`，本包不依赖它们的代码。桌面启动路径在 `apps/desktop/electron/operator-brake-host.js` 调用这个入口。
