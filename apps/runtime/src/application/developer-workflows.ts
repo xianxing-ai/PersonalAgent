@@ -54,7 +54,7 @@ export function developerWorkflowInputSchema(kind:DeveloperWorkflowKind):Record<
   if(kind==='ci_list'||kind==='issue_list')Object.assign(properties,{page:{type:'integer',minimum:1,maximum:10000},perPage:{type:'integer',minimum:1,maximum:30}});
   if(kind==='ci_fix'){properties.runId={type:'string',minLength:1,maxLength:32};required.push('runId');}
   if(kind==='test_locate') {properties.output={type:'string',minLength:1,maxLength:2_100_000,
-      description:'失败测试输出全文（TAP 或 spec 格式），由确定性解析器定位源码帧；不调用模型。'};
+      description:'失败测试输出全文（TAP、spec 或 Node 语法检查格式），由确定性解析器定位源码帧；不调用模型。'};
     properties.contextLines={type:'integer',minimum:0,maximum:8,description:'源码摘录上下文行数，覆盖组合默认值。'};
     required.push('output');}
   if(kind==='code_review'||kind==='issue_triage'){properties.number={type:'integer',minimum:1};required.push('number');}

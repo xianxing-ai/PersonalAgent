@@ -1,5 +1,7 @@
 # 编程工具：可信工作区能力（MOD-18）
 
+测试失败定位支持 Node 语法检查输出（node --check）的严格格式，并返回 node-check reporter；仍需既有授权和路径约束，不因解析日志获得源码读取权限。
+
 ## Windows 原生进程沙箱（2026-10-21，host-only provisional）
 
 `createWindowsNativeSandboxExecutor()` 使用同一受信 .NET helper 的 PSEC 模式，真正将目标与子孙进程置于 Windows 文件/网络边界，再用 JobObject 管理停止。公开 `TrustedSandboxProfile/ExecutionRequest` 仅接受可信宿主构造；模型不能指定 root、executable、env、sandboxRef 或 revision。`assertCurrent(binding)` 在创建前和挂起目标恢复前复核原 Runtime 租约，不重复消费 Policy grant。

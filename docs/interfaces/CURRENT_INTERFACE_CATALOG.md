@@ -356,6 +356,8 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 
 ### DEV-WORKFLOWS 开发增量（2026-10-03）
 
+> 测试失败定位（provisional）：已有定位器可识别完整的 Node 语法检查诊断，结果 reporter 增加 node-check。Desktop 公开解析入口继续去除源码片段；日志解析不提供执行或额外读取权限。F17 图及真实仓库验收另行交付。
+
 历史上 PR #276 的 MOD-33/34/36/38 Local Profile 增量由 zemeng 启动；2026-10-07 最新分工为 goo122 负责 MOD-33/36/37，Potatos498 负责 MOD-34/35/38，接口范围和历史证据不因交接改变。
 公开 `@personal-agent/github`、`@personal-agent/coding-tools` 的开发修复与受控 Git 工厂、
 `@personal-agent/cognition` 的 Review/Issue 工厂以及 `@personal-agent/runtime/dev-workflows`

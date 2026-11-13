@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import {spawnSync} from 'node:child_process';
 import {createDesktopDeveloperToolsHost} from '../electron/developer-tools-host.js';
 
 const context=()=>({taskId:'synthetic',runId:'log-run',authorizationRef:'log-run',deadline:new Date(Date.now()+60000).toISOString(),
@@ -35,4 +36,20 @@ test('provider registration keeps write presence and dynamic revocation; export 
   online=false;assert.equal(await host.competitionToolAvailability[0].available(context()),false);
   await assert.rejects(host.tools[0].execute({},context()),{code:'UNSUPPORTED_CAPABILITY'});
   host.close();host.close();assert.equal(disposed,1);assert.equal(host.competitionToolExports[0].accepts({}),false);
+});
+
+
+test('registered public parser recognizes actual Node syntax diagnostics without reading source',async()=>{
+  const root=mkdtempSync(path.join(os.tmpdir(),'developer-node-check-'));
+  const source=path.join(root,'private-broken.cjs');writeFileSync(source,'// PRIVATE SOURCE\nfunction broken( {\n');
+  const host=createDesktopDeveloperToolsHost({testLocate:{cacheRootPath:root,available:()=>true}});
+  try{
+    const output=spawnSync(process.execPath,['--check',source],{encoding:'utf8'});
+    assert.equal(output.status,1);assert.match(output.stderr,/SyntaxError/);
+    const tool=host.tools.find(item=>item.descriptor.name==='workspace.locate_test_failures');
+    const report=await tool.execute({output:output.stderr},context());
+    assert.equal(report.totalFailures,1);assert.equal(report.failures[0].reporter,'node-check');
+    assert.ok(report.failures[0].frames.length);assert.ok(report.failures[0].frames.every(frame=>!('snippet' in frame)));
+    assert.equal(JSON.stringify(report).includes('PRIVATE SOURCE'),false);
+  }finally{host.close();rmSync(root,{recursive:true,force:true});}
 });
