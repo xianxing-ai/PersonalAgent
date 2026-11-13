@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-11 失败自愈决策（provisional）
+
+`@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
+
 ## 2026-11-11 来源变化触发层（provisional）
 
 `@personal-agent/cognition` 新增可选工厂 `createProactiveSourceTrigger`。它只消费公开 `calendar.events` / `mail.inbox` 的 `ConnectorItem` 页，以及用户显式授权目录的只读枚举；首次成功读取只建基线。去重、限流和静默时段之后，把任务提案交给现有 Laya 动作选择。低风险且选择结果允许进入运行时的，调用注入的任务 `submit`；高风险只创建待审批请求，匹配的 `allowed` 决定才按原幂等键提交。`submitted` 不是任务完成。

@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {ProtocolError} from '@personal-agent/contracts';
+import {attachRepairTraceToReplay} from './task-failure-repair.js';
 
 const plain=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
 const exact=(value,keys)=>plain(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
@@ -26,7 +27,7 @@ const baseKeys=['recordId','kind','observedAt','sourceVersions','state','result'
  * The calling trusted host authenticates export provenance; current applicability
  * and counterfactual execution are deliberately NOT inferred from old Evidence.
  */
-export function replayFrozenWorkflowTrace({snapshot,requestedActions},{signal,deadline}) {
+export function replayFrozenWorkflowTrace({snapshot,requestedActions,repairTrace},{signal,deadline}) {
   const active=()=>{
     if(!(signal instanceof AbortSignal))fail('INVALID_ARGUMENT','Replay cancellation signal required');
     if(signal.aborted)fail('CANCELLED','Frozen trace replay cancelled');
@@ -97,7 +98,8 @@ export function replayFrozenWorkflowTrace({snapshot,requestedActions},{signal,de
     record,evidenceStatus:record.evidenceRefs.length?'host_exported_evidence_references':'missing_evidence',
     toolEvidence:record.kind==='tool'&&record.evidenceRefs.length>0,executedDuringReplay:false}));
   active();
-  return {snapshotAsOf:snapshot.asOf,sourceVersions:snapshot.sourceVersions,snapshotDigest:workflowTraceDigest(snapshot),timeline,actions,
+  const result={snapshotAsOf:snapshot.asOf,sourceVersions:snapshot.sourceVersions,snapshotDigest:workflowTraceDigest(snapshot),timeline,actions,
     actualToolCalls:0,actualModelCalls:0,authority:'data_only_no_tool_grant',currentResultValidity:'not_independently_verified',
     counterfactualComparison:'unknown',comparisonScope:'single_step',provenance:'host_signed_frozen_export_not_new_execution',trainingPerformed:false};
+  return repairTrace===undefined?result:attachRepairTraceToReplay(result,repairTrace);
 }

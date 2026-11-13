@@ -20,6 +20,24 @@ import {parseWorkflowSelectionResult} from './workflow-shadow-policy.js';
 import {rankCodingRepairCandidates} from './coding-repair.js';
 export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
 export * from './coding-repair.js';
+export {
+  classifyFailure, decideRepair, appendRepairAttempt, emptyRepairTrace, recordOperatorDecision, replayRepairTrace,
+  summarizeRepairFailure, observationFromHostFailure, writeRetryAllowed, REPAIR_TRACE_VERSION, DEFAULT_REPAIR_MAX_ATTEMPTS,
+  DEFAULT_REPAIR_BASE_DELAY_MS, DEFAULT_REPAIR_MAX_DELAY_MS, DEFAULT_REPAIR_MAX_ELAPSED_MS,
+} from './repair-policy.js';
+export {
+  TASK_FAILURE_REPAIR_CHECKPOINT, planRuntimeTaskFailure, confirmF13HostRecovery, applyRepairOperatorChoice,
+  repairCardView, attachRepairTraceToReplay,
+} from './task-failure-repair.js';
+export type {
+  RuntimeTaskFailureNotice, TaskFailureRepairRecord, HostRecoveryReceipt, RepairOperatorResult, RepairCardView,
+  RepairReplayAttachment, TaskFailureEffect, HostRecoveryState,
+} from './task-failure-repair.js';
+export type {
+  FailureClass, FailureSignal, RepairAlternatives, RepairAttempt, RepairDecision, RepairEffect, RepairFailureSummary,
+  RepairObservation, RepairPolicyOptions, RepairReplay, RepairStrategy, RepairTrace, RepairWriteFacts, RepairAttemptResult,
+  RepairRisk, WriteStatus,
+} from './repair-policy.js';
 export * from './harness-candidates.js';
 export * from './f20-worker-trust.js';
 export * from './f14-native-observation.js';

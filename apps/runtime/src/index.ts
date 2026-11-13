@@ -173,10 +173,28 @@ export interface RuntimeToolGateway {
   invoke(invocation: RuntimeToolInvocation): Promise<unknown>;
 }
 
+/** Plain failure facts for a trusted host. No goal text, arguments or credentials. */
+export interface TaskFailureNotice {
+  taskId: string;
+  revision: number;
+  errorCode?: string;
+  effect: 'read' | 'write' | 'none';
+  outcome: 'failed' | 'unknown';
+  risk?: 'ordinary' | 'high';
+  reconciliationOutcome?: 'applied' | 'not_applied' | 'unknown';
+  evidenceRefs: readonly string[];
+  occurredAt: string;
+}
+
 export interface RuntimeOptions {
   now?: () => Date;
   /** Trusted Application lifecycle notification, after the expiry transaction commits. */
   onApprovalsExpired?: (taskIds: readonly string[]) => void;
+  /**
+   * Trusted composition only. Invoked after a failure commit is still visible.
+   * Must not reopen the task or grant approval. Exceptions are ignored.
+   */
+  onTaskFailed?: (notice: TaskFailureNotice) => void;
   idFactory?: () => string;
   toolGateway?: RuntimeToolGateway;
   createToolGateway?: (policy: AuthorizationPolicy) => RuntimeToolGateway;
@@ -410,6 +428,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly activeToolExecutions = new Map<string,string>();
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
+  private readonly onTaskFailed: RuntimeOptions['onTaskFailed'];
   private closed = false;
 
   /** Trusted host handoff observation only; Policy remains the authorization source. */
@@ -547,6 +566,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.policy = new AuthorizationPolicy(new SqliteAuthorizationStore(this.db));
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
+    this.onTaskFailed = options.onTaskFailed;
     this.expirePendingApprovals();
   }
 
@@ -1539,7 +1559,41 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.emit('task.state_changed', next, taskId);
     const terminalType = state === 'succeeded' ? 'task.completed' : state === 'failed' ? 'task.failed' : state === 'cancelled' ? 'task.cancelled' : undefined;
     if (terminalType) this.emit(terminalType, next, taskId);
+    if (state === 'failed') this.notifyTaskFailed(next);
     return next;
+  }
+
+  private taskFailureNotice(task: TaskSnapshot): TaskFailureNotice {
+    const records = this.readToolExecutions(task.taskId);
+    const last = records[records.length - 1];
+    const descriptor = last ? (this.toolGateway?.list() ?? []).find(tool => tool.name === last.toolName && tool.version === last.toolVersion) : undefined;
+    const side = descriptor?.sideEffect;
+    const effect = side === 'read' ? 'read' : side === 'local_write' || side === 'external_write' ? 'write' : 'none';
+    const unknown = task.error?.code === 'RESULT_UNKNOWN' || last?.state === 'unknown' || last?.reconciliationOutcome === 'unknown';
+    return {
+      taskId: task.taskId, revision: task.revision, effect, outcome: unknown ? 'unknown' : 'failed',
+      ...(task.error?.code ? {errorCode: task.error.code} : {}),
+      ...(side === 'external_write' ? {risk: 'high' as const} : {}),
+      ...(last?.reconciliationOutcome ? {reconciliationOutcome: last.reconciliationOutcome} : {}),
+      evidenceRefs: [...task.evidenceRefs], occurredAt: task.updatedAt,
+    };
+  }
+
+  /** After the caller commits. A rolled-back failure is ignored when the task is no longer failed. */
+  private notifyTaskFailed(task: TaskSnapshot): void {
+    if (!this.onTaskFailed) return;
+    let notice: TaskFailureNotice;
+    try { notice = this.taskFailureNotice(task); }
+    catch { return; }
+    queueMicrotask(() => {
+      if (this.closed) return;
+      try {
+        const current = this.getTask(notice.taskId);
+        const stillFailed = current.state === 'failed';
+        if (!stillFailed || current.revision < notice.revision) return;
+        this.onTaskFailed?.(notice);
+      } catch { /* The failure is already durable. */ }
+    });
   }
 
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {

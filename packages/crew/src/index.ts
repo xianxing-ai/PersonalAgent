@@ -51,7 +51,20 @@ export {
   type CrewKernelWorkspaceInput,
   type CrewKernelResolveWorkspacePathInput,
   type CrewKernelPublishHandoffInput,
+  type CrewKernelReplanInput,
+  type CrewParentReplanResult,
 } from './kernel.js';
+export {
+  parentReplanIntent,
+  parseParentReplanDecision,
+  type CrewParentReplanDecision,
+  type CrewParentReplanIntent,
+  type CrewReplanClass,
+  type CrewReplanEffect,
+  type CrewReplanRisk,
+  type CrewReplanStrategy,
+  type CrewWriteStatus,
+} from './parent-replan.js';
 export {
   CrewStoreConsentProvider,
   type CrewConsentProvider,
