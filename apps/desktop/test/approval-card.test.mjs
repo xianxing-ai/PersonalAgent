@@ -9,7 +9,9 @@ test('current pending action renders a usable decision and submits the current r
   assert.match(approvalCards(task,[approval],now),/>同意<\/button>/);
   assert.match(approvalCards(task,[approval],now),/>拒绝<\/button>/);
   assert.match(approvalCards(task,[approval],now),/<details[^>]*><summary>查看详情<\/summary>/);
-  assert.match(approvalCards(task,[approval],now),/workspace\.apply_text_patch/);
+  assert.match(approvalCards(task,[approval],now),/修改工作区文本/);
+  assert.match(approvalCards(task,[approval],now),/修改工作区里的文件/);
+  assert.doesNotMatch(approvalCards(task,[approval],now),/workspace:write|workspace\.apply_text_patch/);
   assert.doesNotMatch(approvalCards(task,[approval],now),/undefined/);
   assert.deepEqual(approvalResponse('grant','allow_once',[task],[approval],now),
     {approvalId:'grant',decision:'allow_once',expectedRevision:3,taskId:'task'});

@@ -103,8 +103,8 @@ test('startup wraps tools and preload still carries desktop actions', () => {
   const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
   const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
   assert.match(main, /dryRun=createDryRunProduct/);
-  assert.match(main, /beforeToolAuthorize: input => dryRun\?\.beforeAuthorize\(input\)/);
-  assert.match(main, /assertToolPrechecked: input => dryRun\?\.assertAuthorized\(input\)/);
+  assert.match(main, /beforeToolAuthorize:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*dryRun\?\.beforeAuthorize\(input\)|[^\n;]*dryRun\?\.beforeAuthorize\(input\))/);
+  assert.match(main, /assertToolPrechecked:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*dryRun\?\.assertAuthorized\(input\)|[^\n;]*dryRun\?\.assertAuthorized\(input\))/);
   assert.match(main, /dryRun\.wrapTools\(conversationTools\)/);
   assert.match(main, /name === 'dryRun\.confirm' \|\| name === 'dryRun\.cancel'/);
   assert.match(main, /dryRun:dryRun\?\.snapshot\(\)/);
