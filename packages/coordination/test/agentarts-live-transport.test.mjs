@@ -11,12 +11,50 @@ const configuration = {gatewayUrl: 'https://agentarts.example.test', runtimeName
   transport: 'wss', websocketUrl: 'wss://agentarts.example.test/runtimes/synthetic/ws', allowHttpsFallback: true};
 const request = (signal = new AbortController().signal, ms = 1500) => ({taskId: 'loopback-session', revision: 1,
   goal: 'Public loopback transport verification', deadline: new Date(Date.now() + ms).toISOString(), signal});
+const IGNORED_CLOSE_ERROR_CODES = new Set(['ECONNRESET', 'ECONNABORTED', 'EPIPE']);
+
+async function closeSockets(sockets, timeoutMs = 200) {
+  const pending = [...sockets]
+    .filter(socket => socket.readyState !== WebSocket.CLOSED)
+    .map(socket => new Promise(resolve => {
+      let timer;
+      const done = () => {
+        clearTimeout(timer);
+        socket.removeListener('close', done);
+        resolve();
+      };
+      socket.once('close', done);
+      if (socket.readyState === WebSocket.CLOSED) { done(); return; }
+      timer = setTimeout(() => {
+        try { socket.terminate(); } catch { /* Best-effort teardown after grace period. */ }
+        done();
+      }, timeoutMs);
+    }));
+  await Promise.all(pending);
+}
+
 async function websocketFixture(t, respond) {
   const server = new WebSocketServer({host: '127.0.0.1', port: 0});
+  let closing = false;
+  let serverError;
+  const sockets = new Set();
+  const isIgnorableCloseError = (error, socket) =>
+    (closing || (socket !== undefined && socket.readyState >= WebSocket.CLOSING))
+    && Boolean(error && typeof error === 'object' && 'code' in error && IGNORED_CLOSE_ERROR_CODES.has(error.code));
+  server.on('error', error => {
+    if (isIgnorableCloseError(error)) return;
+    serverError ??= error;
+  });
   await once(server, 'listening');
   let invokes = 0, fallbacks = 0;
   const diagnostics = [];
   server.on('connection', socket => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    socket.on('error', error => {
+      if (isIgnorableCloseError(error, socket)) return;
+      serverError ??= error;
+    });
     socket.send(JSON.stringify({protocolVersion: version, type: 'ready', serverInstanceId: 'synthetic-instance',
       capabilities: ['invoke', 'status', 'cancel', 'ephemeral-replay'], restartRecovery: false, heartbeatMs: 15000}));
     socket.on('message', raw => {
@@ -31,8 +69,13 @@ async function websocketFixture(t, respond) {
   const port = new AgentArtsCloudAgentPort(configuration, {read: async () => 'Bearer synthetic'},
     async () => { fallbacks++; throw Error('Unexpected HTTPS replay'); }, undefined, undefined,
     receipt => diagnostics.push(receipt), {factory: () => new WebSocket(`ws://127.0.0.1:${server.address().port}`)});
-  t.after(async () => { port.close(); for (const socket of server.clients) socket.terminate();
-    await new Promise(resolve => server.close(resolve)); });
+  t.after(async () => {
+    closing = true;
+    port.close();
+    await closeSockets(sockets);
+    await new Promise(resolve => server.close(resolve));
+    if (serverError) throw serverError;
+  });
   return {port, diagnostics, counts: () => ({invokes, fallbacks})};
 }
 
