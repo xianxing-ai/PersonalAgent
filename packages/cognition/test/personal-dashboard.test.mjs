@@ -75,4 +75,7 @@ test('schedule identity is stable for one period boundary', () => {
   assert.equal(first.missedRunPolicy, 'run_once');
   assert.equal(first.taskIdempotencyKey, first.scheduleId);
   assert.equal(first.runAt, '2026-03-16T00:00:00.000Z');
+  const hostNamespace = 'desktop-user-v1:12345678-1234-4123-8123-123456789abc';
+  const withHostNamespace = dashboardScheduleInput({namespace: hostNamespace, period: 'weekly', runAtMs, timeZone: zone});
+  assert.equal(withHostNamespace.conversationId, `personal-dashboard:${hostNamespace}`);
 });

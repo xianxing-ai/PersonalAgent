@@ -309,7 +309,10 @@ function assertInstant(value: string): void {
 }
 
 function requireToken(value: string, name: string): void {
-  if (typeof value !== 'string' || !value.trim() || value.includes(':')) throw new Error(`${name}无效`);
+  if (typeof value !== 'string' || !value.trim() || value !== value.trim()
+    || /[\s\u0000-\u001f\u007f]/.test(value) || /:(?:daily|weekly|monthly):/.test(value)) {
+    throw new Error(`${name}无效`);
+  }
 }
 
 function signed(value: number, digits: number): string {

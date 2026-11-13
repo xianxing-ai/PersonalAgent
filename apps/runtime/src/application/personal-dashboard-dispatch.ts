@@ -14,6 +14,7 @@ export function dispatchPersonalDashboardTask(
   if (!task.conversationId?.startsWith('personal-dashboard:')) {
     throw new ProtocolError('UNAUTHORIZED', 'Personal dashboard dispatch refused');
   }
+  const baseNow = Math.max(Date.now(), Date.parse(task.updatedAt) || 0);
   return runtime.runTask(taskId, async worker => {
     if (worker.signal.aborted) throw new ProtocolError('CANCELLED', 'Personal dashboard rollup cancelled');
     const result = await consume(worker.signal);
@@ -23,5 +24,5 @@ export function dispatchPersonalDashboardTask(
     }
     worker.saveCheckpoint('personal-dashboard-rollup', {conversationId: task.conversationId});
     return {resultSummary: result.resultSummary};
-  }, {deadline: new Date(Date.now() + 60_000).toISOString(), sideEffect: 'read'});
+  }, {deadline: new Date(baseNow + 60_000).toISOString(), sideEffect: 'read'});
 }

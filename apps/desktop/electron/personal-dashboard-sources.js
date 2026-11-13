@@ -23,6 +23,7 @@ export function createDesktopDashboardSources({
       isAuthorized: () => calendarAuthorized(calendarConfig, meetingSnapshot),
       createService: () => createCalendarService(calendarConfig, createCalendarProvider, now),
       activity,
+      now,
     }, window, signal),
     readMail: (window, signal) => readMail({
       isAuthorized: () => mailAuthorized(mailConfig),
@@ -44,11 +45,14 @@ export async function readTime(port, window, signal) {
 
 export async function readCalendarSamples(port, window, signal) {
   const {service, accountRef} = port.createService();
-  const deadline = new Date(Date.now() + 30_000).toISOString();
+  const nowMs = typeof port.now === 'function' ? port.now() : Date.now();
+  const deadline = new Date(nowMs + 30_000).toISOString();
   const samples = [];
   let cursor;
   for (let page = 0; page < 20; page += 1) {
+    if (signal?.aborted || (port.isAuthorized && !port.isAuthorized())) return {connected: false, samples: []};
     const result = await service.listEvents(accountRef, window, {limit: 100, signal, deadline, ...(cursor ? {cursor} : {})});
+    if (signal?.aborted || (port.isAuthorized && !port.isAuthorized())) return {connected: false, samples: []};
     for (const item of result.items) {
       const [startUtc, endUtc] = String(item.validFor ?? '').split('/');
       if (!startUtc || !endUtc) continue;
@@ -67,13 +71,15 @@ export async function readMail(port, window, signal) {
   const created = port.createService();
   const samples = [];
   let truncated = false;
-  const inbox = await readMailFolder(created, 'INBOX', 'in', window, signal);
+  const inbox = await readMailFolder(port, created, 'INBOX', 'in', window, signal);
+  if (!inbox.authorized) return {connected: false};
   samples.push(...inbox.samples);
   truncated = inbox.truncated;
   let coverage = 'inbound';
-  if (port.includeSent) {
+  if (port.includeSent && port.isAuthorized?.()) {
     try {
-      const sent = await readMailFolder(created, 'Sent Messages', 'out', window, signal);
+      const sent = await readMailFolder(port, created, 'Sent Messages', 'out', window, signal);
+      if (!sent.authorized) return {connected: false};
       samples.push(...sent.samples);
       truncated = truncated || sent.truncated;
       coverage = 'both';
@@ -82,25 +88,27 @@ export async function readMail(port, window, signal) {
   return {connected: true, samples, coverage, truncated};
 }
 
-async function readMailFolder(created, folder, direction, window, signal) {
+async function readMailFolder(port, created, folder, direction, window, signal) {
   const samples = [];
   let cursor;
   let truncated = false;
   const from = Date.parse(window.fromUtc);
   const to = Date.parse(window.toUtc);
   for (let page = 0; page < 20; page += 1) {
+    if (signal?.aborted || (port.isAuthorized && !port.isAuthorized())) return {authorized: false, samples: [], truncated: false};
     const result = await created.service.fetchInbox(created.accountRef, {
       folder, limit: 100, signal, ...(cursor ? {cursor: decodeMailCursor(cursor)} : {}),
     });
+    if (signal?.aborted || (port.isAuthorized && !port.isAuthorized())) return {authorized: false, samples: [], truncated: false};
     for (const item of result.items) {
       const at = Date.parse(item.occurredAt);
       if (at >= from && at < to) samples.push({occurredAt: item.occurredAt, direction});
     }
-    if (!result.hasMore || !result.nextCursor) return {samples, truncated};
+    if (!result.hasMore || !result.nextCursor) return {authorized: true, samples, truncated};
     cursor = result.nextCursor;
   }
   truncated = true;
-  return {samples, truncated};
+  return {authorized: true, samples, truncated};
 }
 
 export async function readSpend(port, window, signal) {
