@@ -21,11 +21,19 @@ const MAX_RECORDS = 200;
 
 const text = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 
+function validNavigation(value) {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (value.kind === 'briefing' && Object.keys(value).length === 1) return true;
+  return value.kind === 'task' && text(value.taskId, 256) && Object.keys(value).length === 2;
+}
+
 function validInput(input) {
   if (typeof input !== 'object' || input === null) return false;
   return text(input.id, 256) && text(input.title, 200) && text(input.body, 2000)
     && (input.source === undefined || text(input.source, 80))
-    && (input.roundId === undefined || text(input.roundId, 256));
+    && (input.roundId === undefined || text(input.roundId, 256))
+    && validNavigation(input.navigation);
 }
 
 /** 默认系统通知器：Electron Notification，懒加载。 */
@@ -121,6 +129,9 @@ export function createDesktopNotificationPort(options = {}) {
       if (existing) {
         if (input.roundId !== undefined && existing.roundId !== undefined && existing.roundId !== input.roundId)
           return {delivered: false, error: '通知 ID 已绑定不同轮次'};
+        if (input.navigation !== undefined && existing.navigation !== undefined
+          && JSON.stringify(existing.navigation) !== JSON.stringify(input.navigation))
+          return {delivered: false, error: '通知 ID 已绑定不同去向'};
         // 幂等重试：不重复弹系统通知；persisted（= unknown）也绝不重发，交 reconcile。
         return existing.state === 'delivered' || existing.state === 'acknowledged'
           ? {delivered: true}
@@ -131,6 +142,7 @@ export function createDesktopNotificationPort(options = {}) {
         id: input.id, title: input.title, body: input.body,
         source: input.source ?? 'desktop', state: 'persisted', queuedAt,
         ...(input.roundId ? {roundId: input.roundId} : {}),
+        ...(input.navigation ? {navigation: input.navigation} : {}),
       };
       try {
         persist([...records, record]);
@@ -190,6 +202,7 @@ export function createDesktopNotificationPort(options = {}) {
                 ...(current?.deliveredAt === undefined ? {deliveredAt: clickedAt} : {}),
               });
               publishOutcome(record.id);
+              try { options.onNavigate?.(records.find(item => item.id === record.id) ?? current); } catch { /* 跳转失败不改变已读回执 */ }
             },
             onFailed: () => {
               if (disposed || settled) return;

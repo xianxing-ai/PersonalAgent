@@ -71,6 +71,8 @@ import {createLiveVoiceHost} from './live-voice-host.js';
 import {needsMicrophoneApproval} from './authorization-operation-policy.js';
 import {workspaceLiveEntry} from './workspace-live-entry.js';
 import {createDesktopWakeVoiceHost} from './wake-voice-host.js';
+import {trayIconBuffer} from './tray-icon.js';
+import {normalizeWakePreference, readWakePreference, wakeLeaseMs, writeWakePreference} from './wake-preference.js';
 import {createDesktopProactiveHost} from './proactive-host.js';
 import {createP5SystemObservationSource} from './p5-system-observation-source.js';
 import {createP5DeviceReceiptStore} from './p5-device-receipt-store.js';
@@ -87,6 +89,7 @@ import {createDesktopProactiveConversationTools} from './proactive-conversation-
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createDesktopOperatorBrake, operatorBrakeTrayLabel} from './operator-brake-host.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
@@ -270,7 +273,7 @@ let model = {
 if (competitionMode) {
   model = {
     ...model,
-    provider: 'agentarts', label: 'AgentArts · Competition Profile', verification: 'unverified',
+    provider: 'agentarts', label: '云端模型', verification: 'unverified',
     baseUrl: '', model: 'AgentArts Runtime', deployment: process.env.PA_AGENTARTS_RUNTIME_NAME ?? '',
     keyConfigured: false,
     reason: 'Competition Runtime 尚未完成初始化；请检查可信主进程配置',
@@ -305,6 +308,10 @@ const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
 const notifications = new Map();
 let runtimeApplication;
+const operatorBrake = createDesktopOperatorBrake({
+  getRuntime: () => runtimeApplication?.runtime,
+  continueTask: taskId => runtimeApplication.resumeTask(taskId),
+});
 // The public-reference consent belongs to one Runtime instance. It is bound after the
 // Runtime is created; capturing it earlier left every native export preflight denied.
 let referenceApplication;
@@ -349,6 +356,9 @@ const runtimeStartup = createDeferredRuntimeStartup({
 let liveVoice;
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
+let wakePreference = {enabled: false, duration: 'untilQuit'};
+let wakePreferenceLoaded = false;
+let panelBriefingRequested = false;
 let wakeQuitHandled = false;
 let wakeQuitUnknown = false;
 let wakeDisposal;
@@ -648,6 +658,7 @@ async function stopP5DeviceTelemetry() {
 }
 
 async function tickProactiveP5() {
+  if (typeof operatorBrake !== 'undefined' && operatorBrake.isPaused()) return;
   await proactiveHost?.tick();
   if (proactiveHost?.snapshot().enabled && localLaya?.snapshot().state === 'ready') {
     if (!p5DeviceTelemetrySubscription) await startP5DeviceTelemetry();
@@ -774,6 +785,7 @@ function projectWindowSnapshot(surface,topics=['all']) {
     ...(topics.includes('notifications')?{notifications:[...notifications.values(),...(todoHost?.snapshot().notifications??[])],
       notificationCenter:surface?undefined:notificationApplicationHost?.snapshot()}:{}),
     connection:connectionLabel,
+    ...(typeof operatorBrake === 'undefined' ? {} : {operatorBrake: operatorBrake.snapshot()}),
     connectionError:(runtimeError||cloudRequestFailureNotice||cloudTransportNotice)?errorDisplayText(runtimeError||cloudRequestFailureNotice||cloudTransportNotice,'runtime'):undefined,
     resourceBudget:resourcePolicy.snapshot(),
   };
@@ -783,6 +795,7 @@ function snapshot(surface) {
   return {
     ...conversationProjection(surface),
     connection: connectionLabel,
+    ...(typeof operatorBrake === 'undefined' ? {} : {operatorBrake: operatorBrake.snapshot()}),
     connectionError: (runtimeError || cloudRequestFailureNotice || cloudTransportNotice) ? errorDisplayText(runtimeError || cloudRequestFailureNotice || cloudTransportNotice,'runtime') : undefined,
     fakeModel: fakeModelMode,
     fake: fakeMode,
@@ -822,6 +835,8 @@ function snapshot(surface) {
       reason:'唤醒音频释放未确认；本进程不能重新启用'} : wakeVoice?.snapshot()
       ?? {state:'disabled', phase:'unavailable', verification:'unverified',
         reason:voiceInitializationFailure?.message ?? '请先连接华为 SIS 语音；唤醒尚未开启'},
+    wakePreference: currentWakePreference(),
+    briefingOpen: panelBriefingRequested,
     proactive: proactiveSnapshot(),
     p5: p5StatusSnapshot(),
     knowledgeWatch: knowledgeWatchHost?.snapshot() ?? null,
@@ -830,7 +845,7 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
-    dailyBriefing: surface ? undefined : dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
+    dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
@@ -1048,7 +1063,9 @@ function movePanelGroup(point) {
 }
 
 function openAdmin(page) {
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory','voice','computer','briefing'].includes(page)) {
+  if (page === 'environment' || page === 'worktrees' || page === 'git') page = 'workspace';
+  if (page === 'overview' || page === 'analytics' || page === 'account') page = 'usage';
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -1056,7 +1073,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
+    {title: 'PersonalAgent · 设置', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
   admin.on('closed', () => { mailMonitorPreparation.cancel(); admin = undefined; });
 }
 
@@ -1107,7 +1124,6 @@ async function stopPanelVoice() {
 function hidePanel() {
   if (panelHiding) return panelHiding;
   panelHiding = (async () => {
-    await stopWakeVoice();
     pinned = false;
     panel?.hide();
     publish();
@@ -1115,18 +1131,89 @@ function hidePanel() {
   return panelHiding;
 }
 
-function createTray() {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#090c10" stroke="#52c7bd" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="#fff"/><circle cx="9" cy="11" r="1" fill="#fff"/><circle cx="23" cy="11" r="1" fill="#fff"/><circle cx="9" cy="21" r="1" fill="#fff"/><circle cx="23" cy="21" r="1" fill="#fff"/></svg>';
+function wakePreferenceFile() {
+  return path.join(app.getPath('userData'), 'wake-preference.json');
+}
+
+function currentWakePreference() {
+  if (!wakePreferenceLoaded) {
+    try { wakePreference = readWakePreference(wakePreferenceFile()); }
+    catch { wakePreference = normalizeWakePreference({}); }
+    wakePreferenceLoaded = true;
+  }
+  return wakePreference;
+}
+
+function saveWakePreference(next) {
+  wakePreference = writeWakePreference(wakePreferenceFile(), next);
+  wakePreferenceLoaded = true;
+  return wakePreference;
+}
+
+async function applyWakePreference(preference = currentWakePreference()) {
+  if (!preference.enabled) {
+    await stopWakeVoice();
+    return preference;
+  }
+  if (wakeVoice?.snapshot()?.phase === 'listening') return preference;
+  if (!wakeVoice || !sisConfigHost?.snapshot().configured || wakeQuitUnknown || voiceConfigurationPending) return preference;
+  await wakeVoice.enableOwned();
+  return preference;
+}
+
+function openBriefing() {
+  panelBriefingRequested = true;
+  pinned = true;
+  openPanel(true);
+  publish();
+}
+
+function openNotificationTarget(record) {
+  const navigation = record?.navigation;
+  if (navigation?.kind === 'briefing') { openBriefing(); return; }
+  if (navigation?.kind === 'task' && navigation.taskId) {
+    void openTaskConversation({payload: {taskId: navigation.taskId},
+      tasks: {get: id => tasks.get(id) ?? runtimeApplication?.runtime.getTask(id)},
+      conversations, sourceSurface: taskSurface, openPanel: () => openPanel(true), openWorkspace, publish,
+    }).catch(() => { pinned = true; openPanel(true); publish(); });
+    return;
+  }
+  pinned = true;
+  openPanel(true);
+  publish();
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const snapshot = operatorBrake.snapshot();
+  tray.setToolTip(snapshot.paused ? 'PersonalAgent · 已暂停' : 'PersonalAgent');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {label: operatorBrakeTrayLabel(snapshot), click: () => {void toggleOperatorBrake();}},
+    {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
+    {label: '打开工作台', click: () => { void openWorkspace(); }},
+    {label: '打开设置', click: () => openAdmin()},
+    {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
+    {type: 'separator'},
+    {label: '退出 PersonalAgent', click: () => app.quit()},
+  ]));
+}
+async function toggleOperatorBrake() {
   try {
-    tray = new Tray(nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`));
-    tray.setToolTip('PersonalAgent');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
-      {label: '打开管理后台', click: () => openAdmin()},
-      {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
-      {type: 'separator'},
-      {label: '退出 PersonalAgent', click: () => app.quit()},
-    ]));
+    if (operatorBrake.isPaused()) await operatorBrake.release();
+    else await operatorBrake.engage();
+    refreshTrayMenu();
+    publish();
+  } catch (error) {
+    runtimeError = error instanceof Error ? error.message : '总暂停切换失败';
+    publish();
+  }
+}
+function createTray() {
+  try {
+    const icon = nativeImage.createFromBuffer(trayIconBuffer());
+    if (icon.isEmpty()) throw Error('托盘图标为空');
+    tray = new Tray(icon);
+    refreshTrayMenu();
     tray.on('click', () => {
       if (panel?.isVisible()) { void hidePanel().catch(reportPanelVoiceFailure); }
       else { pinned = true; openPanel(true); publish(); }
@@ -1784,7 +1871,7 @@ function readDesktopModelApiState() {
   return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience,
     harness:{...value.harness,executionAvailable,
     executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
-      ?'请在「开发 → 环境 / Worktrees」选择本地工作区并重启装配，再启用原本会话读取与结果出机许可':'开发任务规划未启用',
+      ?'请在「设置 → 工作文件夹」选择本地工作区并重新打开应用，再启用原本会话读取与结果出机许可':'开发任务规划未启用',
     contextAvailable:Boolean(harnessContextHost?.runtimeHooks),contextReason:harnessContextFailure}};
 }
 
@@ -1892,14 +1979,17 @@ async function initializeInstalledSkills() {
           summary:`${actions[request.action]}；仅已核对内容摘要的此 Skill 版本，不授权其任意工具调用`,
           isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
-    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),onUpdate:publish,
+    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),
+      dataRoot:path.join(app.getPath('userData'),'plugin-data'),
+      violationFile:path.join(app.getPath('userData'),'plugin-sandbox-violations.json'),onUpdate:publish,
       confirm:async request=>{
         const origin=admin,application=runtimeApplication;
         if(!origin || origin.isDestroyed()) return false;
         const actions={install:'安装插件',enable:'启用高风险插件',uninstall:'卸载插件'};
+        const summary=typeof request.summary==='string'&&request.summary.length>0&&request.summary.length<=512
+          ?request.summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`;
         return confirmApplicationAuthorization('plugin.'+request.action,request,{scope:{action:request.action,id:request.id},
-          summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`,
-          isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
+          summary,isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
   }
 }
@@ -1913,10 +2003,11 @@ function initializeAuthorizationHosts(runtimeModule){
       ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
     available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
-    profiles:[{ref:'default-read-only',label:'应用内只读权限',mode:'read-only',revision:1,available:true},
-      {ref:'workspace-write',label:'应用内受限写入／工作区权限',mode:'workspace-write',revision:1,available:true},
-      {ref:'full-access',label:'完全访问（自动同意；以当前用户权限执行）',mode:'full-access',revision:1,available:true}],
-    defaultProfileRef:'default-read-only',
+    profiles:[{ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+      {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true},
+      {ref:'full-access',label:'完全访问',mode:'full-access',revision:1,available:true}],
+    defaultProfileRef:'low-risk-auto',
     resolveProfile:(request,selected)=>selected.mode==='read-only'&&(request.taskConsent?.mode==='workspace-write'||request.requirements.some(item=>
       item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
         ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
@@ -1938,6 +2029,7 @@ async function initializeLocalAuthorizationControlPlane(){
     requestToolAuthorization:scope=>{authorizationIntentHost.prepareQuestion(scope);return authorizationQuestionHost.requestToolAuthorization(scope);},
     requiresToolAuthorization:()=>true});
   runtime=runtimeApplication.runtime;localAuthorizationOnly=true;
+  if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
   runtimeConnection=await register({transport:runtimeApplication,now:Date.now,readEvents:after=>runtimeApplication.readEvents(after),
     readEventBatch:input=>runtimeApplication.readEventBatch(input),
     attachClient:value=>{client=value;return()=>{client=undefined;};}});
@@ -1999,6 +2091,7 @@ async function initializeRuntime() {
       path: dataPaths.runtime,
       text: {mode: 'unavailable', model: modelConfig.model},
     });
+    if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
     if (runtimeApplication?.configureThinking) {
       const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
       thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
@@ -2047,11 +2140,12 @@ async function initializeRuntime() {
       const namespace = desktopHost.userNamespace;
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
-          onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);}});
+          onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);},
+          onNavigate: openNotificationTarget});
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
         dailyBriefingHost = createDailyBriefingHost({userData: app.getPath('userData'), namespace,
           createDeliveryHost: runtimeModule.createReminderDeliveryHost, getRuntime: () => runtimeApplication?.runtime,
-          notify: input => channel.sendAdvisoryNotification(input), onOpen: () => openAdmin('briefing'), onUpdate: publish});
+          notify: input => channel.sendAdvisoryNotification({...input, navigation: {kind: 'briefing'}}), onOpen: () => openBriefing(), onUpdate: publish});
         void dailyBriefingHost.tick();
       }
       goalHost = createGoalHost(namespace);
@@ -2853,11 +2947,11 @@ async function initializeRuntime() {
           configurationRef:runtimeApplication.coordinationConfigurationRef,exclusiveOwner:ownsDesktopInstance===true,
           durableCloudDispatch:agentArtsTransportConfig.transport==='wss',
           canResumeHarnessEvent:request=>harnessEventsHost?.canResumeHarnessEvent(request),
-          resumeOriginalTask:request=>runtimeApplication.resumeStartupTask(request)});
+          resumeOriginalTask:request=>(typeof operatorBrake!=='undefined'&&operatorBrake.isPaused())?{accepted:false}:runtimeApplication.resumeStartupTask(request)});
         const recovered=await recovery.recover();startupRecovered=true;
         startupRecoveryStatus={state:'classified',inspectedTasks:recovered.items.length,verification:'not_run'};
       }else startupRecoveryStatus={state:'unavailable',reason:'原任务恢复门禁未装配，历史任务保留核实状态',verification:'not_run'};
-      if(startupRecovered)goalHost.resumeApproved();
+      if(startupRecovered&&!(typeof operatorBrake!=='undefined'&&operatorBrake.isPaused()))goalHost.resumeApproved();
       if (!syntheticMvp && competitionCatalog && !codingWorkspace.tools.length) competitionFactBridge = createDesktopCompetitionFactBridge({
         application: runtimeApplication, catalog: competitionCatalog,
         runtimePath: dbPath, userNamespace: namespace,
@@ -2877,6 +2971,8 @@ async function initializeRuntime() {
       }
     }
     runtime = runtimeApplication.runtime;
+    if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
+    if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
     readEvents = after => runtimeApplication.readEvents(after);
   }
   runtimeConnection = await register({
@@ -2908,6 +3004,7 @@ async function initializeRuntime() {
       getWorkflow:()=>proactiveWorkflowApplication,
       recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
       afterNativeMaintenance:(taskId,context)=>harnessEventsHost?.start(taskId,context),
+      isPaused:()=>typeof operatorBrake!=='undefined'&&operatorBrake.isPaused(),
       resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
   }
   connectionLabel = fakeMode
@@ -3200,22 +3297,23 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
-  eventPoll = setInterval(() => {void pumpEvents(); void todoHost?.tick();
+  eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
+    void pumpEvents(); if(!operatorPaused)void todoHost?.tick();
     if(runtimeClosed)return;
-    void maintenancePoll.run('proactive',()=>tickProactiveP5());
+    void maintenancePoll.run('proactive',()=>operatorPaused?undefined:tickProactiveP5());
     void maintenancePoll.run('mail',()=>refreshMail());
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
-    void maintenancePoll.run('knowledge-schedules',()=>tickKnowledgeSchedules());
-    void maintenancePoll.run('connector-watch',()=>connectorWatchHost?.tick());
-    void maintenancePoll.run('daily-briefing',()=>dailyBriefingHost?.tick());
-    void maintenancePoll.run('proactive-runtime',()=>proactiveRuntimePump?.tick().then(result=>{
+    void maintenancePoll.run('knowledge-schedules',()=>{if(!operatorPaused)tickKnowledgeSchedules();});
+    void maintenancePoll.run('connector-watch',()=>{if(!operatorPaused)return connectorWatchHost?.tick();});
+    void maintenancePoll.run('daily-briefing',()=>{if(!operatorPaused)return dailyBriefingHost?.tick();});
+    void maintenancePoll.run('proactive-runtime',()=>operatorPaused?undefined:proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
       if(proactiveMaintenanceFailure!==issue){proactiveMaintenanceFailure=issue;publish();}
     }).catch(()=>{
       if(!proactiveMaintenanceFailure){proactiveMaintenanceFailure='原持续任务的唤醒维护暂不可用；未新建任务或重放操作';publish();}
     }));
-    void maintenancePoll.run('wiki',()=>wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();}));}, 120);
+    void maintenancePoll.run('wiki',()=>{if(!operatorPaused)return wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();});});}, 120);
 }
 
 /** Exact payload consent stays in the trusted host and never grants tool permission. */
@@ -3359,6 +3457,14 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
+  if (name === 'operator.brake') {
+    if (sender !== panel && sender !== workspace) throw Error('请从桌面切换总暂停');
+    if (typeof operatorBrake === 'undefined') throw Error('总暂停尚未装配');
+    const snapshot = await operatorBrake.handleAction(name, payload);
+    if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
+    publish();
+    return snapshot;
+  }
   if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond',
     'notifications.confirmation.prepare','voice.confirmation.prepareApproval','voice.confirmation.cancel','voice.confirmation.reconcile'].includes(name))
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
@@ -3547,6 +3653,10 @@ async function action(event, name, payload) {
       totalFailures: report.totalFailures};
   }
   if (name === 'admin.open') { openAdmin(payload?.page); return; }
+  if (name === 'desktop.appearance') {
+    if (sender !== admin || !payload || !['system','light','dark'].includes(payload.theme) || typeof payload.calm !== 'boolean') throw Error('外观只能从设置页保存');
+    return desktopHost.updateAppearance({theme: payload.theme, calm: payload.calm});
+  }
   if (name === 'conversation.open') {
     if (sender !== admin || payload !== undefined || !panel || panel.isDestroyed()) throw Error('对话面板不可用');
     openPanel(true); return {opened:true};
@@ -3921,7 +4031,7 @@ async function action(event, name, payload) {
     throw Error('不支持的知识源操作');
   }
   if (name === 'knowledge.search') {
-    if(sender!==admin || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识检索仅在管理后台可用');
+    if((sender!==admin && sender!==workspace) || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识检索仅在设置或工作台可用');
     const query=typeof payload?.query==='string'?payload.query.trim():'';
     if(!query) throw Error('检索词不能为空');
     const binding=(obsidianPairing?.source ?? knowledgeSourceConfig).snapshot(),commandId='knowledge-search-'+randomUUID();
@@ -4040,10 +4150,19 @@ async function action(event, name, payload) {
     return voiceInput ? voiceInput.stopSpeaking(sender.webContents.id)
       : {available: false, stopped: false, reason: '语音供应商尚未连接'};
   }
+  if (name === 'voice.wake.preference') {
+    if ((sender !== admin && sender !== panel) || !competitionMode) throw Error('唤醒设置只能从设置或面板修改');
+    const next = normalizeWakePreference(payload);
+    saveWakePreference(next);
+    await applyWakePreference(next);
+    publish();
+    return {preference: currentWakePreference(), wake: snapshot(sender === admin ? undefined : 'panel').wake};
+  }
   if (name === 'voice.wake.enable' || name === 'voice.wake.disable') {
     if (name === 'voice.wake.enable' && voiceStartupHost && !voiceStartupHost.snapshot().resourcesReleased) throw Error('请先结束启动语音');
     if (sender !== panel || !competitionMode || payload !== undefined) throw Error('唤醒只能从可信面板显式操作');
     if (name === 'voice.wake.disable') {
+      saveWakePreference({...currentWakePreference(), enabled: false});
       await stopWakeVoice(); publish(); return snapshot('panel').wake;
     }
     if (!panel.isVisible() || panelHiding || voiceConfigurationPending || wakeQuitUnknown
@@ -4051,6 +4170,7 @@ async function action(event, name, payload) {
       throw Error('请先显示面板并连接华为 SIS 语音');
     }
     pinned = true;
+    saveWakePreference({...currentWakePreference(), enabled: true});
     return wakeVoice.enable(sender.webContents.id);
   }
   if (name === 'voice.configure' || name === 'voice.login') {
@@ -4310,6 +4430,7 @@ async function action(event, name, payload) {
     return interruptConversation(payload.conversationId,'panel');
   }
   if (name === 'task.submit' || name==='skill.run') {
+    if (typeof operatorBrake !== 'undefined' && operatorBrake.isPaused()) throw Error('总暂停中，新任务不会启动。恢复后从断点继续。');
     const skillRun=name==='skill.run';
     // The redesigned workspace consumes the original trusted Runtime submit path.
     if(!skillRun&&sender===workspace&&!competitionMode&&!fakeMode)throw Error('主工作区任务入口需要 AgentArts 比赛配置；本地模式请使用原主面板');
@@ -4475,7 +4596,8 @@ async function initializeSisVoice() {
         conversations.add(taskId, 'panel', goal);
       }});
     const wake = createDesktopWakeVoiceHost({getPanel: () => panel, microphoneHost: microphoneCaptureHost,
-      voiceInput:input, onUpdate: publish, isBusy: () => Boolean(liveVoice?.hasActive() || voiceConfigurationPending || panelHiding)});
+      voiceInput:input, onUpdate: publish, leaseMs: () => wakeLeaseMs(currentWakePreference()),
+      isBusy: () => Boolean(liveVoice?.hasActive() || voiceConfigurationPending || panelHiding)});
     voiceInput = input;
     voicePcmSource = source;
     sisPlaybackHost = playback;
