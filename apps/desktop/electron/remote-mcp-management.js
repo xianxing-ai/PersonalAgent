@@ -100,8 +100,8 @@ export function createRemoteMcpManagement({BrowserWindow,ipcMain,dialog,owner,co
         const source=origin.draft??(!newId?config.hostConfiguration():undefined),epoch=configurationEpoch;if(!source)reject();
         const {binding,...definition}=source;
         const credential=payload.token?{token:payload.token,expiresAt:payload.expiresAt}:undefined;
-        if(!await confirm(origin,'保存 MCP 服务定义','保存加密配置并撤销旧连接？',
-          `地址：${definition.endpoint}\n服务：${definition.server?.name} @ ${definition.server?.version}\n工具：${definition.tool?.descriptor?.name} @ ${definition.tool?.descriptor?.version}\n范围：${JSON.stringify(definition.tool?.descriptor?.requiredScopes)}\n目录 SHA256：${definition.directoryDigest}\n${definition.allowMissingOutputSchema===true?'允许服务未声明输出 Schema；使用此配置中的本地 Schema 校验结构化结果。\n':''}${definition.publicExport?`允许固定输入的 PUBLIC text 有界出机；输入 SHA256：${createHash('sha256').update(JSON.stringify(definition.publicExport.arguments)).digest('hex')}，上限 ${definition.publicExport.maxBytes} 字节。仍需原任务审批和出口许可。\n`:''}保存不联网或授予执行权限；需重启应用重新装配。空 token 表示不使用凭据。`))return state();
+        if(!await confirm(origin,'保存远程插件','把这个插件保存到本机？',
+          `地址：${definition.endpoint}\n名称：${definition.server?.name||definition.tool?.descriptor?.name||'插件'}\n保存后不会自动联网。已经在用的插件可以直接连接；新添加的插件需要重新打开应用。留空的令牌表示不使用凭据。`))return state();
         assertWindow(origin);if(epoch!==configurationEpoch)reject();
         if(newId){const id=newId;services.add(id,{...definition,...(credential?{credential}:{})});select(id);}
         else {config.configure({...definition,...(credential?{credential}:{})});configurationEpoch++;}
