@@ -26,7 +26,7 @@ export function mountWorkspaceRuntimeControls(root,invoke,report){
     approval.hidden=count===0;approval.textContent=`待批准 · ${count}`;
     live.disabled=pending;live.setAttribute('aria-pressed',String(data.live?.active===true));
     live.querySelector('span').textContent=data.live?.active?'结束 Live':'Live';
-    renderCostRoute(costRouteStatus,data.costRoute,invoke);
+    renderCostRoute(costRouteStatus,data.costRoute,invoke,report);
     live.title=data.live?.active?'结束当前 Live 通话':data.live?.configured?'在原语音面板开启 Live':'打开语音设置，确认音频用途后启用 Live';
   };
   live.onclick=async()=>{if(pending||closed)return;pending=true;update(current);try{await invoke('workspace.live.toggle');}catch(error){if(!closed)report(error);}finally{pending=false;if(!closed)update(current);}};

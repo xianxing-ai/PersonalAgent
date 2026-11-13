@@ -50,7 +50,7 @@ import {createMicrophonePermissionGate} from './microphone-permission.js';
 import {readApprovalPage} from './approval-history.js';
 import {projectDesktopApproval} from './approval-projection.js';
 import {createPrivateMemoryController} from './private-memory.js';
-import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
+import {PRIVATE_MEMORY_CONSUMPTION_CHECKPOINT, createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
@@ -791,7 +791,7 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
-    costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[]},
+    costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
@@ -1298,6 +1298,7 @@ async function submitChildConversation(binding,payload){
   installedSkillsHost?.assertTask(binding.taskId);
   const result=await runtimeApplication.submitSubagentConversationMessage({...binding,...payload});
   const task=runtimeApplication.runtime.getTask(result.acceptedTaskId);
+  if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(task.conversationId, task.goal);
   tasks.set(task.taskId,structuredClone(task));rememberTaskGoal(task.taskId,task.goal);
   publish();return result;
 }
@@ -1463,7 +1464,10 @@ function clearInactiveTaskExitWarning() {
 
 function observeTextTaskOutput(task) {
   if (conversationDelivery.stopped(task)) return;
-  if (terminalTaskStates.has(task.state) && typeof costRoute !== 'undefined' && costRoute) costRoute.noteRun(task);
+  if (terminalTaskStates.has(task.state) && typeof costRoute !== 'undefined' && costRoute) {
+    const selectedModelId = runtimeApplication?.runtime?.loadCheckpoint?.(task.taskId, 'execution-model')?.modelId;
+    costRoute.noteRun(task, selectedModelId);
+  }
   liveVoice?.observeTextTask({...task,resultSummary:resultText(task.resultSummary,taskResultMetadata(task))});
 }
 
@@ -1479,6 +1483,7 @@ function tickKnowledgeSchedules() {
   if (!knowledgeWatchHost || !runtimeApplication || Date.now()-lastKnowledgeScheduleTick<1000) return;
   lastKnowledgeScheduleTick=Date.now();
   for (const fired of runtimeApplication.runtime.dispatchDueSchedules(`knowledge-watch:${desktopHost.userNamespace}`)) {
+    if (fired.task && typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(fired.task.conversationId, fired.task.goal);
     if (fired.task) void dispatchKnowledgeFeedCheckTask(fired.task);
   }
 }
@@ -1535,7 +1540,10 @@ function applyEvent(event) {
       && event.payload.goal?.startsWith('RECHECK ')) {
       void dispatchKnowledgeRecheckTask(event.payload);
     }
-    if (event.type === 'task.created') void dispatchKnowledgeFeedCheckTask(event.payload);
+    if (event.type === 'task.created') {
+      if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(event.payload.conversationId, event.payload.goal);
+      void dispatchKnowledgeFeedCheckTask(event.payload);
+    }
   }
   if (event.type === 'approval.requested' && event.payload) approvals.set(event.payload.approvalId, structuredClone(event.payload));
   if (event.type === 'task.cancelled' && event.payload?.taskId) {
@@ -2497,6 +2505,17 @@ async function initializeRuntime() {
         readCatalog:()=>agentArtsModels?.snapshot()?.catalog??null,
         // #636 exposes decide({origin, modelId, candidates}) -> {allowed, modelId, prompt}. Bind that product here; this route does not keep a second ledger.
         readBudget:()=>costRouteBudget,
+        onUpdate:()=>publish(),
+        assertCloudSend:({taskId, conversationId})=>{
+          if(!agentArtsConfig?.snapshot()?.configured)throw Error('云端执行配置未就绪，禁止回放外发');
+          if(!privateConsumption)throw Error('私人记忆云端外发校验尚未就绪，禁止回放');
+          if(taskId&&runtimeApplication?.runtime?.loadCheckpoint?.(taskId,PRIVATE_MEMORY_CONSUMPTION_CHECKPOINT)!=null){
+            throw Error('原任务包含私人记忆外发授权，回放需在新对话重新确认，已拦截');
+          }
+          if(conversationId&&privateConsumption.snapshot(conversationId)?.selected){
+            throw Error('当前对话已勾选私人记忆，请取消勾选后再回放对比');
+          }
+        },
         complete:async({executionModel,goal})=>{
           const models=modelApiHost?.snapshot()?.models??[];
           const entry=models.find(item=>item.available&&(item.model===executionModel.modelId||item.id===executionModel.modelId));
@@ -3164,6 +3183,7 @@ async function initializeRuntime() {
         }
       };
       for (const fired of runtimeApplication.runtime.recoverMissedSchedules(`knowledge-watch:${namespace}`)) {
+        if (fired.task && typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(fired.task.conversationId, fired.task.goal);
         if (fired.task) void dispatchKnowledgeFeedCheckTask(fired.task);
       }
       for (const task of runtimeApplication.runtime.listTasks({conversationId:`knowledge-watch:${namespace}`,states:['created'],limit:100}).items) {
@@ -3346,9 +3366,9 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
-  if (name === 'costRoute.state' || name === 'costRoute.replay') {
+  if (name === 'costRoute.state' || name === 'costRoute.replay' || name === 'costRoute.cancelReplay') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看成本路由');
-    if (!costRoute) return {route: {state: 'idle', reason: '尚未按难度选择模型'}, runs: []};
+    if (!costRoute) return {route: {state: 'idle', reason: '尚未按难度选择模型'}, runs: [], replay: null};
     return costRoute.handleAction(name, payload);
   }
   if (name === 'snapshot.resync') {

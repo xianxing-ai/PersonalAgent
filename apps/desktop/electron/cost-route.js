@@ -82,11 +82,24 @@ export function alternateModel(modelId, catalog, featured = FEATURED_MODELS) {
     ?? '';
 }
 
-export function createCostRouteProduct({readCatalog, readBudget, complete, featured = FEATURED_MODELS} = {}) {
+function displayModelLabel(modelId, catalog, featured = FEATURED_MODELS) {
+  if (typeof modelId !== 'string' || !modelId.trim()) return '目录模型';
+  const meta = featured.find(item => item.id === modelId);
+  if (meta?.tier === 'flagship') return '旗舰强力模型';
+  if (meta?.tier === 'fast') return '轻量快速模型';
+  const inCatalog = Array.isArray(catalog?.models) ? catalog.models.find(item => item?.id === modelId) : undefined;
+  const rank = tier(modelId).rank;
+  if (rank === 0) return '轻量快速模型';
+  if (rank === 2) return '旗舰强力模型';
+  return inCatalog ? '标准均衡模型' : '目录模型';
+}
+
+export function createCostRouteProduct({readCatalog, readBudget, complete, assertCloudSend, onUpdate, featured = FEATURED_MODELS} = {}) {
   const goals = new Map();
   const selections = new Map();
   const runs = [];
   let last = {state: 'idle', reason: '尚未按难度选择模型'};
+  let lastReplay = null;
   function catalog() { return readCatalog?.() ?? null; }
   function budget() { return readBudget?.() ?? null; }
   return {
@@ -94,8 +107,11 @@ export function createCostRouteProduct({readCatalog, readBudget, complete, featu
       if (typeof conversationId === 'string' && conversationId) goals.set(conversationId, String(goal ?? '').slice(0, 4000));
     },
     apply(preference, executionModel, conversationId) {
-      const routed = routeModel({goal: goals.get(conversationId) ?? '', catalog: catalog(), featured, preference, budget: budget()});
-      last = routed;
+      const current = catalog();
+      const routed = routeModel({goal: goals.get(conversationId) ?? '', catalog: current, featured, preference, budget: budget()});
+      last = routed.state === 'selected'
+        ? {...routed, modelLabel: displayModelLabel(routed.modelId, current, featured)}
+        : routed;
       if (routed.state === 'blocked') throw Error(routed.reason);
       if (routed.state !== 'selected') return {preference, executionModel};
       if (typeof conversationId === 'string') selections.set(conversationId, routed.executionModel);
@@ -104,13 +120,14 @@ export function createCostRouteProduct({readCatalog, readBudget, complete, featu
         executionModel: routed.executionModel,
       };
     },
-    noteRun(task) {
+    noteRun(task, fallbackModelId) {
       if (!task?.taskId || !['succeeded', 'failed', 'cancelled'].includes(task.state)) return;
       const selection = selections.get(task.conversationId);
       const record = {
         taskId: task.taskId,
+        conversationId: typeof task.conversationId === 'string' ? task.conversationId : '',
         goal: goals.get(task.conversationId) ?? (typeof task.goal === 'string' ? task.goal.slice(0, 4000) : ''),
-        modelId: selection?.modelId ?? '',
+        modelId: selection?.modelId || (typeof fallbackModelId === 'string' ? fallbackModelId : ''),
         output: typeof task.resultSummary === 'string' ? task.resultSummary.slice(0, 2000) : '',
         state: task.state,
       };
@@ -123,9 +140,18 @@ export function createCostRouteProduct({readCatalog, readBudget, complete, featu
       const current = catalog();
       return {
         route: last.state === 'selected'
-          ? {state: last.state, tier: last.tier, tierLabel: last.tierLabel, modelId: last.modelId, estimatedYuan: last.estimatedYuan, reason: last.reason}
+          ? {state: last.state, tier: last.tier, tierLabel: last.tierLabel, modelId: last.modelId, modelLabel: last.modelLabel ?? displayModelLabel(last.modelId, current, featured), estimatedYuan: last.estimatedYuan, reason: last.reason}
           : {state: last.state, reason: last.reason ?? ''},
-        runs: runs.map(run => ({...run, alternateModelId: alternateModel(run.modelId, current, featured)})),
+        runs: runs.map(run => {
+          const alt = alternateModel(run.modelId, current, featured);
+          return {
+            ...run,
+            modelLabel: displayModelLabel(run.modelId, current, featured),
+            alternateModelId: alt,
+            alternateModelLabel: alt ? displayModelLabel(alt, current, featured) : '',
+          };
+        }),
+        replay: lastReplay ? structuredClone(lastReplay) : null,
       };
     },
     async handleAction(name, payload) {
@@ -133,19 +159,85 @@ export function createCostRouteProduct({readCatalog, readBudget, complete, featu
         if (payload !== undefined) throw Error('成本路由状态不接受参数');
         return this.snapshot();
       }
+      if (name === 'costRoute.cancelReplay') {
+        if (payload !== undefined) throw Error('取消回放不接受参数');
+        lastReplay = null;
+        onUpdate?.();
+        return this.snapshot();
+      }
       if (name !== 'costRoute.replay') throw Error('不支持的成本路由操作');
-      if (!payload || Object.keys(payload).some(key => !['taskId', 'modelId'].includes(key)) || typeof payload.taskId !== 'string' || typeof payload.modelId !== 'string') {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+        || Object.keys(payload).some(key => !['taskId', 'modelId', 'confirmed'].includes(key))
+        || typeof payload.taskId !== 'string' || typeof payload.modelId !== 'string'
+        || (payload.confirmed !== undefined && typeof payload.confirmed !== 'boolean')) {
         throw Error('回放参数无效');
       }
       const run = runs.find(item => item.taskId === payload.taskId);
       if (!run) throw Error('没有可回放的历史任务');
-      const routed = routeModel({goal: run.goal, catalog: catalog(), featured, preference: {modelId: payload.modelId}, budget: budget()});
-      if (routed.state === 'blocked') return {state: 'blocked', reason: routed.reason};
-      if (routed.state !== 'selected') return routed;
-      if (typeof complete !== 'function') return {state: 'unavailable', reason: '回放需要已配置的模型端口，未发起付费调用', executionModel: routed.executionModel};
-      const output = await complete({executionModel: routed.executionModel, goal: run.goal});
-      const text = typeof output?.text === 'string' ? output.text.slice(0, 2000) : '';
-      return {state: 'compared', baseline: {modelId: run.modelId, output: run.output}, candidate: {modelId: routed.executionModel.modelId, output: text}, same: text === run.output};
+      const current = catalog();
+      const routed = routeModel({goal: run.goal, catalog: current, featured, preference: {modelId: payload.modelId}, budget: budget()});
+      if (routed.state === 'blocked') {
+        lastReplay = {state: 'blocked', taskId: run.taskId, reason: routed.reason};
+        onUpdate?.();
+        return lastReplay;
+      }
+      if (routed.state !== 'selected') {
+        lastReplay = {state: routed.state, taskId: run.taskId, reason: routed.reason ?? '候选模型当前不可用'};
+        onUpdate?.();
+        return lastReplay;
+      }
+      try {
+        await assertCloudSend?.({taskId: run.taskId, conversationId: run.conversationId ?? '', goal: run.goal, executionModel: routed.executionModel});
+      } catch (error) {
+        lastReplay = {
+          state: 'failed',
+          taskId: run.taskId,
+          reason: error instanceof Error && error.message ? error.message : '云端外发校验未通过',
+        };
+        onUpdate?.();
+        return lastReplay;
+      }
+      const baselineLabel = displayModelLabel(run.modelId, current, featured);
+      const candidateLabel = displayModelLabel(routed.executionModel.modelId, current, featured);
+      if (payload.confirmed !== true) {
+        lastReplay = {
+          state: 'confirm_required',
+          taskId: run.taskId,
+          modelId: routed.executionModel.modelId,
+          baselineLabel,
+          candidateLabel,
+          estimatedYuan: routed.estimatedYuan,
+          reason: `确认将任务发送到云端「${candidateLabel}」对比回放？预计费用约 ${routed.estimatedYuan} 元（按估算单价）`,
+        };
+        onUpdate?.();
+        return lastReplay;
+      }
+      if (typeof complete !== 'function') {
+        lastReplay = {state: 'unavailable', taskId: run.taskId, reason: '回放需要已配置的模型端口，未发起付费调用', executionModel: routed.executionModel};
+        onUpdate?.();
+        return lastReplay;
+      }
+      try {
+        const output = await complete({executionModel: routed.executionModel, goal: run.goal});
+        const text = typeof output?.text === 'string' ? output.text.slice(0, 2000) : '';
+        lastReplay = {
+          state: 'compared',
+          taskId: run.taskId,
+          same: text === run.output,
+          baseline: {modelId: run.modelId, label: baselineLabel, output: run.output},
+          candidate: {modelId: routed.executionModel.modelId, label: candidateLabel, output: text},
+        };
+        onUpdate?.();
+        return lastReplay;
+      } catch (error) {
+        lastReplay = {
+          state: 'failed',
+          taskId: run.taskId,
+          reason: error instanceof Error && error.message ? error.message : '回放执行失败',
+        };
+        onUpdate?.();
+        return lastReplay;
+      }
     },
   };
 }
