@@ -10,6 +10,7 @@ import {mountDailyBriefing} from './daily-briefing.js';
 import {mountUsageBudget} from './usage-budget.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
+import {mountProactiveTaskControls} from '../../app/proactive-task-controls.js';
 import {mountComputerControls} from '../../app/computer-controls.js';
 import {mountComputerVisionControls} from '../../app/computer-vision-controls.js';
 import {mountMailControls} from '../../app/mail-controls.js';
@@ -176,7 +177,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls;
+  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls;
   let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
@@ -396,6 +397,8 @@ export function mountAdmin(root, invoke, escape) {
     proactiveWorkflowControls?.render(data.proactiveWorkflow);proactiveWorkflowControls?.show(section==='computer');
     if (section==='computer' && data.notepad) notepadControls ??= mountNotepadControls(root.querySelector('.main'),invoke);
     notepadControls?.render(data.notepad);notepadControls?.show(section==='computer');
+    if (section==='connections' && data.proactiveTasks) proactiveTaskControls ??= mountProactiveTaskControls(root.querySelector('.main'),invoke);
+    proactiveTaskControls?.render(data.proactiveTasks);proactiveTaskControls?.show(section==='connections');
     if (section==='connections' && data.mail) mailControls ??= mountMailControls(root.querySelector('.main'),invoke);
     mailControls?.render(data.mail);mailControls?.showSettings(section==='connections');
     if (section==='connections' && data.calendar) calendarControls ??= mountCalendarControls(root.querySelector('.main'),invoke);
