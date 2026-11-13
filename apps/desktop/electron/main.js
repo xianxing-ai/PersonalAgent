@@ -2045,10 +2045,18 @@ async function initializeRuntime() {
       }
       goalHost = createGoalHost(namespace);
       goalPlan = createGoalPlanHost({
+        userData: app.getPath('userData'),
         listGoals: () => goalHost.list(),
         readChildren: () => {
-          try { return runtimeApplication?.listSubagentConversations?.({limit: 40})?.items ?? []; }
-          catch { return []; }
+          try {
+            const items = runtimeApplication?.listSubagentConversations?.({limit: 40})?.items ?? [];
+            return items.map(item => {
+              const binding = runtimeApplication?.runtime?.loadCheckpoint?.(item.taskId, 'subtask-parent');
+              return binding?.subtaskId ? {...item, subtaskId: binding.subtaskId} : item;
+            });
+          } catch {
+            return [];
+          }
         },
       });
       if (!syntheticMvp && calendarConfig) {
@@ -4250,6 +4258,17 @@ async function action(event, name, payload) {
     if (!goalPlan) throw Error('目标拆解尚未就绪');
     if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(key => key !== 'goalId') || typeof payload.goalId !== 'string') throw Error('目标拆解参数无效');
     const result = goalPlan.decompose(payload.goalId);
+    publish();
+    return result;
+  }
+  if (name === 'goal.plan.bind') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理关联子任务');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+      || Object.keys(payload).some(key => !['goalId', 'stepId', 'taskId', 'subtaskId'].includes(key))) {
+      throw Error('子任务关联参数无效');
+    }
+    const result = goalPlan.bindChild(payload);
     publish();
     return result;
   }
