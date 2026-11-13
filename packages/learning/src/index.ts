@@ -3,6 +3,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {openStorage, type Migration} from '@personal-agent/storage';
 export * from './evidence-validator.js';
 export * from './developer-experience.js';
+export * from './preference-memory.js';
 
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const MIGRATIONS: readonly Migration[] = [{version: 1, sql: `

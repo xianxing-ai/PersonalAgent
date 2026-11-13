@@ -37,6 +37,15 @@ export function memoryLearningControlsHtml({status = {}, refs = [], version = nu
       <button class="btn btn-sm" data-ml-action="stop" ${runningTask ? '' : 'disabled'}>停止或核实此任务</button>
       <button class="btn btn-sm btn-danger" data-ml-action="erase" ${version ? '' : 'disabled'}>删除流程</button>
     </div><p class="muted">${status.learningAvailable ? '学习宿主已配置' : '学习宿主未配置'}</p>
+    <h3>纠正与整理</h3>
+    <p>${(status.preferences ?? []).length ? (status.preferences ?? []).map(note => `${note.kind === 'comment' ? '点评' : '纠正'}：${escape(note.text)}`).join('；') : '还没有从纠正里记下偏好。'}</p>
+    <p>${status.duplicateCount ? `有 ${escape(status.duplicateCount)} 条重复记忆可整理` : '没有重复记忆'}</p>
+    ${(status.duplicateSuggestions ?? []).flatMap((group, groupIndex) => (group.drop ?? []).map((item, itemIndex) => `<div class="setting-row"><span>重复建议 ${groupIndex + 1}-${itemIndex + 1} · v${escape(item.revision)}（保留 v${escape(group.keep?.revision ?? '?')}）</span><div class="setting-control"><button class="btn btn-sm" data-ml-consolidate-id="${escape(item.id)}" data-ml-consolidate-revision="${escape(item.revision)}">确认撤回</button></div></div>`)).join('')}
+    <label>纠正或点评<input name="ml-feedback" maxlength="500" value="${escape(form.feedback ?? '')}"></label>
+    <div class="form-actions">
+      <button class="btn btn-sm" data-ml-action="feedback">记下纠正</button>
+      <button class="btn btn-sm" data-ml-action="consolidate">整理记忆</button>
+    </div>
     <p role="status" aria-live="polite">${escape(message)}</p></section>`;
 }
 
@@ -78,7 +87,9 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
     const withdraw = button.dataset.mlWithdraw;
     const deletion = button.dataset.mlDelete;
     const use = button.dataset.mlUse;
-    if (!action && withdraw === undefined && deletion === undefined && use === undefined) return;
+    const consolidateId = button.dataset.mlConsolidateId;
+    const consolidateRevision = button.dataset.mlConsolidateRevision;
+    if (!action && withdraw === undefined && deletion === undefined && use === undefined && !consolidateId) return;
     const value = name => root.querySelector(`[name="ml-${name}"]`)?.value.trim();
     const workflowId = value('workflow');
     const revision = Number(value('revision'));
@@ -91,7 +102,14 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
     let resolvedRevision;
     try {
       let result;
-      if (use !== undefined) {
+      if (consolidateId) {
+        result = await invoke('learning.confirmConsolidate', {ref: {id: consolidateId, revision: Number(consolidateRevision)}});
+        state.status = {
+          ...(state.status ?? {}),
+          duplicateSuggestions: result.suggestions ?? state.status?.duplicateSuggestions ?? [],
+          duplicateCount: (result.suggestions ?? []).reduce((sum, group) => sum + (group.drop?.length ?? 0), 0),
+        };
+      } else if (use !== undefined) {
         const ref=state.refs[Number(use)];
         if (!ref) throw Error('请刷新记忆引用');
         result=await invoke('memory.selectForConversation',{conversationId:button.dataset.conversation,ref});
@@ -114,7 +132,18 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
         if (action === 'run') payload.revision = state.active.revision;
         if (action === 'stop') Object.assign(payload, state.runningTask);
         if (action === 'erase') payload.expectedRevision = revision;
-        result = await invoke(`learning.${action}`, payload);
+        if (action === 'feedback') {
+          const feedback = value('feedback') ?? '';
+          if (!feedback) throw Error('请先填写纠正或点评');
+          result = await invoke('learning.feedback', {kind: 'correction', text: feedback});
+        } else if (action === 'consolidate') {
+          result = await invoke('learning.consolidate');
+          state.status = {
+            ...(state.status ?? {}),
+            duplicateSuggestions: result.suggestions ?? [],
+            duplicateCount: result.duplicateCount ?? 0,
+          };
+        } else result = await invoke(`learning.${action}`, payload);
         if (result.version) state.version = result.version;
         if (action === 'read') {
           state.version = result.version;
@@ -135,7 +164,9 @@ export function mountMemoryLearningControls(root, {invoke, status, refs = [], on
           state.version = null; state.active = null; state.taskId = '';
         }
       }
-      state.message = action === 'stop' ? (result.cancelRequested && state.runningTask
+      state.message = action === 'feedback' ? '已记下这条纠正'
+        : action === 'consolidate' ? (result.duplicateCount ? `已列出 ${result.duplicateCount} 条重复记忆建议，请逐条确认撤回。` : '没有需要合并的重复记忆')
+        : action === 'stop' ? (result.cancelRequested && state.runningTask
         ? `停止请求已受理，任务仍为${taskState(result.state)}，尚未确认停止；可再次点击“停止或核实此任务”读回。`
         : `任务当前为${taskState(result.state)}。`)
         : action === 'read' && !result.version ? '所选版本不存在；当前启用状态已读回。'
