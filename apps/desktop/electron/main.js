@@ -55,6 +55,7 @@ import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
+import {createContentFenceProduct} from './content-fence-product.js';
 import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
@@ -333,6 +334,7 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+let contentFence;
 let costRoute;
 let costRouteBudget=null;
 const harnessExperienceLifetime=new AbortController();
@@ -806,6 +808,7 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
+    contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
@@ -2583,6 +2586,10 @@ async function initializeRuntime() {
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
+      contentFence=createContentFenceProduct({readGoal:taskId=>{
+        try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
+      }});
+      conversationTools=contentFence.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -2778,6 +2785,8 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
+        beforeToolAuthorize: input => contentFence?.beforeAuthorize(input),
+        onTaskTerminal: taskId => contentFence?.clearTask(taskId),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
         requestToolAuthorization:scope=>{
@@ -3510,6 +3519,10 @@ async function action(event, name, payload) {
     return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
+  if (name === 'contentFence.state') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看外部内容围栏');
+    return contentFence?.handleAction(name, payload) ?? {sources: [], blocked: '', blockedLabel: ''};
+  }
   if (name === 'costRoute.state' || name === 'costRoute.replay' || name === 'costRoute.cancelReplay') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看成本路由');
     if (!costRoute) return {route: {state: 'idle', reason: '尚未按难度选择模型'}, runs: [], replay: null};
