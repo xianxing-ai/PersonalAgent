@@ -56,6 +56,7 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
         deletionCoverage: 'active_application_databases', externalCopies: 'not_controlled',
         preferences: preferences.map(note => ({kind: note.kind, text: note.text})),
         duplicateCount: duplicates.reduce((sum, group) => sum + group.drop.length, 0),
+        duplicateSuggestions: duplicates.map(group => ({keep: {...group.keep}, drop: group.drop.map(item => ({...item}))})),
         lastPlannedAt};
     },
     planDuplicates: refreshDuplicates,
@@ -75,14 +76,22 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
       }
       if (name === 'learning.consolidate') {
         await refreshDuplicates();
-        const pending = duplicates.flatMap(group => group.drop);
-        const dropped = [];
-        for (const fact of pending) {
-          const result = await (privateErasure ? privateErasure.withdraw({id: fact.id, revision: fact.revision}) : privateMemory.withdraw({id: fact.id, revision: fact.revision}));
-          dropped.push({id: fact.id, revision: fact.revision, state: result?.state ?? 'unknown'});
+        const suggestions = duplicates.map(group => ({keep: {...group.keep}, drop: group.drop.map(item => ({...item}))}));
+        return {state: 'planned', suggestions, duplicateCount: suggestions.reduce((sum, group) => sum + group.drop.length, 0)};
+      }
+      if (name === 'learning.confirmConsolidate') {
+        const ref = payload?.ref;
+        if (!ref || typeof ref.id !== 'string' || !Number.isSafeInteger(ref.revision)) {
+          throw Error('请选择要确认撤回的重复记忆');
         }
         await refreshDuplicates();
-        return {state: 'consolidated', dropped};
+        const allowed = duplicates.some(group => group.drop.some(item => item.id === ref.id && item.revision === ref.revision));
+        if (!allowed) throw Error('这条重复记忆已不在整理建议中');
+        const target = {id: ref.id, revision: ref.revision};
+        const result = await (privateErasure ? privateErasure.withdraw(target) : privateMemory.withdraw(target));
+        await refreshDuplicates();
+        const suggestions = duplicates.map(group => ({keep: {...group.keep}, drop: group.drop.map(item => ({...item}))}));
+        return {state: result?.state ?? 'unknown', revision: result?.revision ?? target.revision, ref: target, suggestions};
       }
       if (name === 'memory.previewSave') { writeReady(); return privateMemory.previewSave(payload.source); }
       if (name === 'memory.save') {
