@@ -4285,6 +4285,9 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     if (this.proactiveDrivers.has(taskId)) {this.resumeProactiveTask(taskId); return;}
     const proactiveHost = [...this.proactiveHosts.values()].find(host => host.taskId === taskId);
     if (proactiveHost) {proactiveHost.resumeApproved(); return;}
+    // Proactive source gate owns the follow-up submit after the existing approval card.
+    // Resuming here would start an unrelated agent on the approval carrier task.
+    if (this.runtime.loadCheckpoint(taskId, 'proactive-source-gate') !== undefined) return;
     if (this.runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
       throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation before task resume');
     }

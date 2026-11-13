@@ -50,12 +50,13 @@ import {createMicrophonePermissionGate} from './microphone-permission.js';
 import {readApprovalPage} from './approval-history.js';
 import {projectDesktopApproval} from './approval-projection.js';
 import {createPrivateMemoryController} from './private-memory.js';
-import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
+import {PRIVATE_MEMORY_CONSUMPTION_CHECKPOINT, createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
 import {createContentFenceProduct} from './content-fence-product.js';
+import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
 import {createDesktopObsidianPairing} from './obsidian-pairing-host.js';
@@ -93,6 +94,7 @@ import {createDesktopOperatorBrake, operatorBrakeTrayLabel} from './operator-bra
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createProactiveSourceHost} from './proactive-source-host.js';
 import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
@@ -333,6 +335,8 @@ let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 let contentFence;
+let costRoute;
+let costRouteBudget=null;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
 let installedSkillsHost,pluginCatalogHost;
@@ -371,6 +375,7 @@ let voiceDisposed = false;
 let voiceDisposal;
 let voiceDisposalFailed = false;
 let goalHost;
+let goalPlan;
 let goalCloudHost;
 let competitionCatalog;
 let competitionFactBridge;
@@ -382,7 +387,7 @@ let p5DeviceNotificationHost;
 let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
-let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
+let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
@@ -804,6 +809,7 @@ function snapshot(surface) {
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
     contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
+    costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
@@ -840,13 +846,14 @@ function snapshot(surface) {
     p5: p5StatusSnapshot(),
     knowledgeWatch: knowledgeWatchHost?.snapshot() ?? null,
     mail: mailSnapshot(),
+    proactiveTasks: proactiveSourceHost?.snapshot(),
     calendar: calendarMeetingHost?.snapshot() ?? calendarConfig?.snapshot(),
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
     dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
-    goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
+    goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
     computerControl:computerControlSnapshot(surface),
@@ -1384,6 +1391,7 @@ async function submitChildConversation(binding,payload){
   installedSkillsHost?.assertTask(binding.taskId);
   const result=await runtimeApplication.submitSubagentConversationMessage({...binding,...payload});
   const task=runtimeApplication.runtime.getTask(result.acceptedTaskId);
+  if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(task.conversationId, task.goal);
   tasks.set(task.taskId,structuredClone(task));rememberTaskGoal(task.taskId,task.goal);
   publish();return result;
 }
@@ -1549,6 +1557,10 @@ function clearInactiveTaskExitWarning() {
 
 function observeTextTaskOutput(task) {
   if (conversationDelivery.stopped(task)) return;
+  if (terminalTaskStates.has(task.state) && typeof costRoute !== 'undefined' && costRoute) {
+    const selectedModelId = runtimeApplication?.runtime?.loadCheckpoint?.(task.taskId, 'execution-model')?.modelId;
+    costRoute.noteRun(task, selectedModelId);
+  }
   liveVoice?.observeTextTask({...task,resultSummary:resultText(task.resultSummary,taskResultMetadata(task))});
 }
 
@@ -1564,6 +1576,7 @@ function tickKnowledgeSchedules() {
   if (!knowledgeWatchHost || !runtimeApplication || Date.now()-lastKnowledgeScheduleTick<1000) return;
   lastKnowledgeScheduleTick=Date.now();
   for (const fired of runtimeApplication.runtime.dispatchDueSchedules(`knowledge-watch:${desktopHost.userNamespace}`)) {
+    if (fired.task && typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(fired.task.conversationId, fired.task.goal);
     if (fired.task) void dispatchKnowledgeFeedCheckTask(fired.task);
   }
 }
@@ -1620,7 +1633,10 @@ function applyEvent(event) {
       && event.payload.goal?.startsWith('RECHECK ')) {
       void dispatchKnowledgeRecheckTask(event.payload);
     }
-    if (event.type === 'task.created') void dispatchKnowledgeFeedCheckTask(event.payload);
+    if (event.type === 'task.created') {
+      if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(event.payload.conversationId, event.payload.goal);
+      void dispatchKnowledgeFeedCheckTask(event.payload);
+    }
   }
   if (event.type === 'approval.requested' && event.payload) approvals.set(event.payload.approvalId, structuredClone(event.payload));
   if (event.type === 'task.cancelled' && event.payload?.taskId) {
@@ -2112,6 +2128,7 @@ async function initializeRuntime() {
           path.join(path.dirname(dbPath), 'mvp-synthetic-memory.sqlite'), {decision});
       }
       const {createGoalHost} = await import('./goal-host.js');
+      const {createGoalPlanHost} = await import('./goal-plan-host.js');
       const codingModule=await import('@personal-agent/coding-tools');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
@@ -2139,6 +2156,21 @@ async function initializeRuntime() {
         void dailyBriefingHost.tick();
       }
       goalHost = createGoalHost(namespace);
+      goalPlan = createGoalPlanHost({
+        userData: app.getPath('userData'),
+        listGoals: () => goalHost.list(),
+        readChildren: () => {
+          try {
+            const items = runtimeApplication?.listSubagentConversations?.({limit: 40})?.items ?? [];
+            return items.map(item => {
+              const binding = runtimeApplication?.runtime?.loadCheckpoint?.(item.taskId, 'subtask-parent');
+              return binding?.subtaskId ? {...item, subtaskId: binding.subtaskId} : item;
+            });
+          } catch {
+            return [];
+          }
+        },
+      });
       if (!syntheticMvp && calendarConfig) {
         const calendarReadTool = runtimeModule.createCalendarEventReadTool({
           getBinding: () => {
@@ -2589,6 +2621,35 @@ async function initializeRuntime() {
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
       const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
         readApplication:()=>runtimeApplication,question:authorizationQuestionPort});
+      costRoute=createCostRouteProduct({
+        readCatalog:()=>agentArtsModels?.snapshot()?.catalog??null,
+        // #636 exposes decide({origin, modelId, candidates}) -> {allowed, modelId, prompt}. Bind that product here; this route does not keep a second ledger.
+        readBudget:()=>costRouteBudget,
+        onUpdate:()=>publish(),
+        assertCloudSend:({taskId, conversationId})=>{
+          if(!agentArtsConfig?.snapshot()?.configured)throw Error('云端执行配置未就绪，禁止回放外发');
+          if(!privateConsumption)throw Error('私人记忆云端外发校验尚未就绪，禁止回放');
+          if(taskId&&runtimeApplication?.runtime?.loadCheckpoint?.(taskId,PRIVATE_MEMORY_CONSUMPTION_CHECKPOINT)!=null){
+            throw Error('原任务包含私人记忆外发授权，回放需在新对话重新确认，已拦截');
+          }
+          if(conversationId&&privateConsumption.snapshot(conversationId)?.selected){
+            throw Error('当前对话已勾选私人记忆，请取消勾选后再回放对比');
+          }
+        },
+        complete:async({executionModel,goal})=>{
+          const models=modelApiHost?.snapshot()?.models??[];
+          const entry=models.find(item=>item.available&&(item.model===executionModel.modelId||item.id===executionModel.modelId));
+          const gateway=entry?modelApiHost.getModelGateway(entry.id, entry.configurationRef):undefined;
+          if(!gateway?.complete){
+            const error=Error('该模型没有已保存的本地执行配置，未发起付费回放');
+            error.code='UNSUPPORTED_CAPABILITY';
+            throw error;
+          }
+          const result=await gateway.complete({messages:[{role:'user',content:goal}],tools:[],requiredCapabilities:['text'],maxOutputTokens:512,
+            deadline:new Date(Date.now()+20_000).toISOString(),signal:AbortSignal.timeout(20_000)});
+          return {text:typeof result?.response?.text==='string'?result.response.text:''};
+        },
+      });
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         wikiImport:wikiImportHost.runtimeOptions,
@@ -2697,7 +2758,10 @@ async function initializeRuntime() {
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
           const executionModel=readDesktopExecutionModel(agentArtsModels,preference);
-          return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
+          const routed=costRoute?.apply(preference, executionModel, conversationId)??{preference, executionModel};
+          const routedId=routed.preference.modelId || undefined;
+          const routedSelected=models?.models.find(item=>item.id===routedId)??selected;
+          return {...routed.preference,modelId:routedId,...(routed.executionModel!==undefined?{executionModel:routed.executionModel}:{}),configurationRef:routedSelected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
           if (!proactiveHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-proactive-goals:')) {
@@ -3244,6 +3308,7 @@ async function initializeRuntime() {
         }
       };
       for (const fired of runtimeApplication.runtime.recoverMissedSchedules(`knowledge-watch:${namespace}`)) {
+        if (fired.task && typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(fired.task.conversationId, fired.task.goal);
         if (fired.task) void dispatchKnowledgeFeedCheckTask(fired.task);
       }
       for (const task of runtimeApplication.runtime.listTasks({conversationId:`knowledge-watch:${namespace}`,states:['created'],limit:100}).items) {
@@ -3260,6 +3325,17 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
+  if (!proactiveSourceHost) proactiveSourceHost = createProactiveSourceHost({
+    getApplication: () => runtimeApplication,
+    getTools: () => connectorConversationTools?.tools ?? [],
+    submitTask: async input => {
+      const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
+      const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
+      return {taskId: result.taskId, state: result.state ?? 'created'};
+    },
+    namespace: desktopHost.userNamespace,
+    onUpdate: publish,
+  });
   eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
     void pumpEvents(); if(!operatorPaused)void todoHost?.tick();
     if(runtimeClosed)return;
@@ -3268,6 +3344,7 @@ async function initializeRuntime() {
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
     void maintenancePoll.run('knowledge-schedules',()=>{if(!operatorPaused)tickKnowledgeSchedules();});
     void maintenancePoll.run('connector-watch',()=>{if(!operatorPaused)return connectorWatchHost?.tick();});
+    void maintenancePoll.run('proactive-source',()=>{if(!operatorPaused)return proactiveSourceHost?.tick();});
     void maintenancePoll.run('daily-briefing',()=>{if(!operatorPaused)return dailyBriefingHost?.tick();});
     void maintenancePoll.run('proactive-runtime',()=>operatorPaused?undefined:proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
@@ -3434,10 +3511,22 @@ async function action(event, name, payload) {
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
+  if (name === 'proactiveTasks.update' || name === 'proactiveTasks.authorize' || name === 'proactiveTasks.revoke') {
+    if (sender !== admin) throw new Error('请从设置页管理主动任务');
+    if (!proactiveSourceHost) throw new Error('主动任务尚未就绪');
+    if (name === 'proactiveTasks.update') return proactiveSourceHost.update(payload);
+    if (name === 'proactiveTasks.authorize') return proactiveSourceHost.authorize(payload?.root);
+    return proactiveSourceHost.revoke(payload?.root);
+  }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
   if (name === 'contentFence.state') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看外部内容围栏');
     return contentFence?.handleAction(name, payload) ?? {sources: [], blocked: '', blockedLabel: ''};
+  }
+  if (name === 'costRoute.state' || name === 'costRoute.replay' || name === 'costRoute.cancelReplay') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看成本路由');
+    if (!costRoute) return {route: {state: 'idle', reason: '尚未按难度选择模型'}, runs: [], replay: null};
+    return costRoute.handleAction(name, payload);
   }
   if (name === 'snapshot.resync') {
     if(payload!==undefined)throw Error('状态恢复不接受额外参数');
@@ -4369,6 +4458,25 @@ async function action(event, name, payload) {
     if (name === 'evidence.get') return evidenceHost.get(payload);
     return evidenceHost.revoke(payload);
   }
+  if (name === 'goal.decompose') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理拆解');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(key => key !== 'goalId') || typeof payload.goalId !== 'string') throw Error('目标拆解参数无效');
+    const result = goalPlan.decompose(payload.goalId);
+    publish();
+    return result;
+  }
+  if (name === 'goal.plan.bind') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理关联子任务');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+      || Object.keys(payload).some(key => !['goalId', 'stepId', 'taskId', 'subtaskId'].includes(key))) {
+      throw Error('子任务关联参数无效');
+    }
+    const result = goalPlan.bindChild(payload);
+    publish();
+    return result;
+  }
   if (name.startsWith('goal.')) {
     if (sender !== panel && sender !== workspace) throw Error('Goal 操作只能从面板或工作区调用');
     if (!goalHost) throw Error('Goal 写入仅在 Competition Profile 的可信宿主中可用');
@@ -4420,6 +4528,7 @@ async function action(event, name, payload) {
     if(prepared?.cancelled) return {cancelled:true};
     if(deliveryRequest.interrupted)return {interrupted:true};
     const goal = skillRun?prepared.publicGoal:text.trim();
+    if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(conversationId, goal);
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode,contextCompaction:Boolean(harnessContextHost?.runtimeHooks),
       ...(competitionMode?{competitionTimeoutMs:readCompetitionExecutionPolicy().taskTimeoutMs}:{})});
     deliveryRequest.taskId=result.taskId;
