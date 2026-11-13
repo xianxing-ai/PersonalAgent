@@ -92,6 +92,14 @@ export type {
 export {createCodeReviewWorkflow, codeReviewChangedLines, codeReviewPublicationCheckpointKey} from './dev-workflows/code-review.js';
 export type {CodeReviewRule, CodeReviewInput, CodeReviewFinding, CodeReviewReport, CodeReviewAccess,
   CodeReviewPreparation, CodeReviewPublication, CodeReviewWorkflow, CodeReviewWorkflowOptions} from './dev-workflows/code-review-types.js';
+export {createOperatorBrake, OPERATOR_BRAKE_RECORD_VERSION} from './operator-brake.js';
+export type {OperatorRun, OperatorRunKind, OperatorBrakeMarker, OperatorBrakeRecord, OperatorBrakeStore,
+  OperatorBrakeExtension, OperatorBrakeExtensions, OperatorBrakePorts, OperatorBrake} from './operator-brake.js';
+export {buildDailyBriefing, planDailyBriefingSchedule, briefingNotification, DAILY_BRIEFING_GOAL} from './daily-briefing.js';
+export type {DailyBriefingDocument, DailyBriefingInput, DailyBriefingItem, DailyBriefingDecision,
+  DailyBriefingScheduleHighlight, DailyBriefingSchedulePlan, DailyBriefingTaskRef, DailyBriefingApprovalRef,
+  DailyBriefingScheduleRef, DailyBriefingProactiveSource, DailyBriefingRiskSource, DailyBriefingRecoverySource,
+  DailyBriefingRisk} from './daily-briefing.js';
 export {createIssueTriageWorkflow, issueFingerprint} from './dev-workflows/issue-triage.js';
 export type {IssueKind, TriageIssue, IssueClassification, IssueTriageRequest, IssueTriageResult,
   IssueListRequest, IssueListResult, IssueRepairPort, IssueTriageOptions} from './dev-workflows/issue-triage-types.js';

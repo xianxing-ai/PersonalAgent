@@ -9,7 +9,7 @@ export function mountUsageBudget(parent, invoke) {
       <label class="setting-row"><span><b>超限后的处理</b><small>手动发起的任务仍会执行并提示。</small></span><select data-usage="action" aria-label="超限后的处理"><option value="degrade">降级到更便宜的模型</option><option value="pause">暂停非必要的自主任务</option></select></label>
     </div>
     <p data-usage="line"></p>`;
-  parent.append(section);
+  parent.append?.(section);
   const field = name => section.querySelector(`[data-usage="${name}"]`);
   const daily = field('daily'), monthly = field('monthly'), action = field('action'), line = field('line');
   let applying = false;

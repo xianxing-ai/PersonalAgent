@@ -6,6 +6,7 @@ import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
+import {mountDailyBriefing} from './daily-briefing.js';
 import {mountUsageBudget} from './usage-budget.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
@@ -38,26 +39,30 @@ import {windowControlsHtml} from '../../ui/window-controls.js';
 import {matchesSettingSearch} from './setting-search.js';
 import {mountPageMotion} from '../../ui/page-motion.js';
 import {mountAuthorizationSettings} from '../conversation/authorization-settings-controls.js';
+import {mountWakeSettings} from './wake-settings.js';
 
 export const sections = {
-  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', configuration: '配置',
+  settings: '常规', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
-  computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: 'Worktrees',
+  computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: '工作文件夹', workspace: '工作文件夹',
   tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
 };
 
-const primaryPages = ['settings', 'connections', 'authorizations'];
+const primaryPages = ['settings', 'connections', 'authorizations', 'usage'];
 const navGroups = [
-  {label: '偏好', items: ['appearance', 'voice', 'notifications', 'profile', 'memory', 'shortcuts', 'personalization', 'pets']},
-  {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'configuration', 'environment', 'worktrees', 'git', 'hooks']},
-  {label: '记录与诊断', items: ['tasks', 'archive', 'analytics']},
+  {label: '偏好', items: ['appearance', 'voice', 'notifications', 'briefing', 'profile', 'memory', 'shortcuts']},
+  {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'workspace']},
+  {label: '记录', items: ['tasks']},
 ];
+const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', pets:'settings', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
+const canonicalPage = page => pageAliases[page] ?? page;
 
 const iconPaths = {
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
   import: '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 19h14"/>', profile: '<circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/>',
   appearance: '<circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
-  voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3"/>', configuration: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+  voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3"/>',
+  briefing: '<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3M8 11h8M8 15h8M8 19h5"/>', configuration: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   personalization: '<path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z"/>',
   pets: '<path d="M6 10 4 6m14 4 2-4M7 9c-3 1-4 4-3 7 1 4 4 5 8 5s7-1 8-5c1-3 0-6-3-7"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/><path d="M10 18h4"/>',
   shortcuts: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h.01M11 9h.01M15 9h.01M7 13h.01M11 13h6M7 17h10"/>',
@@ -92,8 +97,8 @@ export function taskTable(data, escape, evidenceStates = new Map(), patchStates 
     const evidence = evidenceCount
       ? `<button class="btn btn-sm" data-evidence-task="${escape(task.taskId)}">读取执行元数据</button><div data-evidence-panel="${escape(task.taskId)}">${evidencePanelHtml(evidenceStates.get(task.taskId), escape)}</div>`
       : '<span class="muted">尚无 Evidence 引用。</span>';
-    const title = task.userMessage?.trim() || task.taskId;
-    const identity = `<span class="task-record-title">${escape(title)}</span>${title !== task.taskId ? `<small class="task-record-id">${escape(task.taskId)}</small>` : ''}`;
+    const title = task.userMessage?.trim() || '未命名任务';
+    const identity = `<span class="task-record-title">${escape(title)}</span>`;
     return `<tr><td>${identity}</td><td><span class="task-record-state" data-state="${escape(displayed.state)}">${stateNames[displayed.state] ?? escape(displayed.state)}</span></td><td>${displayed.revision}</td><td>${escape(summary)}</td><td>${workspacePatchRecoveryHtml(task, recovery && recovery.revision < task.revision ? undefined : patchStates.get(task.taskId), escape)}<details data-task-details="${escape(task.taskId)}" ${evidenceStates.has(task.taskId) ? 'open' : ''}><summary>步骤 ${steps.length} 项 · Evidence 引用 ${evidenceCount} 条</summary>${stepList}${evidence}</details></td></tr>`;
   }).join('');
   return `<div class="sheet"><h2>任务记录</h2><p class="muted">只展示 Runtime 任务快照；Evidence 引用数量不代表目标系统已核实。此接口未提供任务来源或云端 trace。</p><div class="table-scroll"><table><thead><tr><th>任务</th><th>状态</th><th>版本</th><th>结果摘要</th><th>步骤与证据</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">还没有任务<br>从悬浮面板开始新的对话</td></tr>'}</tbody></table></div></div>`;
@@ -151,7 +156,7 @@ export function mountAdmin(root, invoke, escape) {
   };
   window.addEventListener('unload', clearApprovalExpiryTimer, {once: true});
   const navButton = id => `<button data-page="${id}" title="${sections[id]}">${icon(id)}<span>${sections[id]}</span></button>`;
-  root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span>${windowControlsHtml('admin')}</header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航"><section class="nav-group primary-nav">${primaryPages.map(navButton).join('')}</section><details class="advanced-nav"><summary>高级设置</summary>${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(navButton).join('')}</section>`).join('')}</details></nav><footer>私人助理 · Windows<br>设置与状态保存在本机</footer></aside><section class="main"><div class="eyebrow">PERSONAL WORKSPACE</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
+  root.innerHTML = `<div class="admin"><header class="admin-bar"><span class="admin-title">PersonalAgent · 设置</span><span class="spacer"></span>${windowControlsHtml('admin')}</header><aside class="side"><div class="side-home"><span class="brand">PersonalAgent</span><span>设置与管理</span></div><label class="admin-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="admin-search" type="search" placeholder="搜索设置…" aria-label="搜索设置"></label><nav aria-label="设置导航"><section class="nav-group primary-nav">${primaryPages.map(navButton).join('')}</section><details class="advanced-nav"><summary>高级设置</summary>${navGroups.map(group => `<section class="nav-group"><h2>${group.label}</h2>${group.items.map(navButton).join('')}</section>`).join('')}</details></nav><footer>私人助理 · Windows<br>设置与状态保存在本机</footer></aside><section class="main"><div class="eyebrow">设置</div><h1 id="page-title"></h1><div class="banner" id="connection"></div><div id="content"></div><p class="error" role="alert" id="error"></p></section></div>`;
   const historySlot=document.createElement('div');root.querySelector('#connection').after(historySlot);
   const historyControls=mountHistoryControls(historySlot,invoke,error=>{root.querySelector('#error').textContent=errorDisplayText(error);},root.querySelector('.main'));
   window.addEventListener('unload',()=>historyControls.dispose(),{once:true});
@@ -172,7 +177,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
   let liveControls,proactiveControls,proactiveWorkflowControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls;
-  let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,wikiImportControls,computerControls,computerVisionControls;
+  let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
   let authorizationSettingsRoot,authorizationSettingsControls;
@@ -232,27 +237,24 @@ export function mountAdmin(root, invoke, escape) {
     const panes = {
       general: ['常规', '管理应用的基础行为与入口',
         settingRow('桌面与窗口', '调整语言、字体缩放和悬浮球行为，或查看窗口诊断', '<button type="button" class="btn btn-sm" id="desktop-local-settings">桌面偏好</button>') +
-        settingRow('工作文件夹', data.coding?.configured ? `当前：${data.coding.displayName}；${data.coding.reason}` : data.coding?.reason ?? '工作文件夹尚未装配', `<button class="btn btn-sm" data-jump="worktrees" ${data.coding?.selectionAvailable===false?'disabled':''}>选择或查看</button>`) +
+        settingRow('工作文件夹', data.coding?.configured ? `当前：${data.coding.displayName}；${data.coding.reason}` : data.coding?.reason ?? '工作文件夹尚未装配', `<button class="btn btn-sm" data-jump="workspace" ${data.coding?.selectionAvailable===false?'disabled':''}>选择或查看</button>`) +
         settingRow('外观', '调整应用主题和动态效果', '<button class="btn btn-sm" data-jump="appearance">外观设置</button>') +
         settingRow('语音设备', '管理语音连接与设备状态', '<button class="btn btn-sm" data-jump="voice">语音设置</button>') +
         settingRow('模型与 API', agentArts ? '在模型页面管理 AgentArts 运行时和本机加密凭据' : '模型、Endpoint 和密钥在独立页面管理', '<button class="btn btn-sm" data-jump="models">打开模型</button>') +
         settingRow('登录 Windows 时启动', data.loginItem?.reason??'启动项状态尚未读回',
           `<label class="switch-control"><input id="login-item-enabled" aria-label="登录 Windows 时启动" type="checkbox" ${data.loginItem?.configured===true?'checked':''} ${data.loginItem?.supported===true?'':'disabled'}><span></span></label><button type="button" class="btn btn-sm" id="login-item-refresh">刷新状态</button>`,data.loginItem?.supported===true?'':'is-unavailable') +
-        settingRow('后台驻留', '关闭面板后托盘仍保持运行', '<span class="value-pill">已启用</span>') +
-        settingRow('退出应用', '结束托盘、ORB 与所有桌面窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
+        settingRow('退出应用', '结束托盘和所有窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
       appearance: ['外观', '选择清晰舒适的界面主题与动效',
-        settingRow('界面主题', '主界面与工作区支持跟随系统；桌面偏好窗口使用独立设置', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
-        settingRow('降低动效', '暂停轨道脉冲并移除界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>') +
-        settingRow('玻璃材质', '标准毛玻璃，由当前设计方案锁定', '<span class="value-pill">标准</span>') +
-        settingRow('ORB-02', '黑核、白色规则点阵、球体模糊关闭', '<span class="value-pill">当前方案</span>')],
+        settingRow('界面主题', '悬浮面板、工作台和桌面设置使用同一套主题', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
+        settingRow('降低动效', '暂停轨道脉冲并移除界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>')],
       interaction: ['交互', '悬浮球、面板与输入行为',
         settingRow('靠近展开', '指针进入 ORB 周围 90px 后展开面板', '<span class="value-pill">90px</span>') +
         settingRow('对话面板宽度', '桌面固定宽度，窄屏自动收缩', '<span class="value-pill">420px</span>') +
         settingRow('任务取消', '只显示 Runtime 回读后的最终状态', '<span class="value-pill">严格确认</span>') +
         settingRow('默认终端', '终端连接器尚未提供选择接口', '<span class="status-note">待接入</span>', 'is-unavailable')],
       voice: ['语音', '听写、原生实时对话和加密凭据',
-        settingRow('麦克风听写', '本地 SIS 适配仅填草稿；经 AgentArts 的 SIS 适配当前不可用', `<span class="value-pill">${data.voice?.configuration?.configured ? '配置已保存' : '未配置'}</span>`) +
-        settingRow('Live 实时语音', data.live?.reason ?? '在下方配置百炼北京业务空间和 API Key', `<span class="value-pill">${data.live?.active ? '通话中' : data.live?.configured ? '已配置' : '未配置'}</span>`) +
+        settingRow('麦克风听写', '本地语音听写仅填草稿；经 AgentArts 的实时听写当前不可用', `<span class="value-pill">${data.voice?.configuration?.configured ? '配置已保存' : '未配置'}</span>`) +
+        settingRow('实时语音', data.live?.reason ?? '在下方配置百炼北京业务空间和 API Key', `<span class="value-pill">${data.live?.active ? '通话中' : data.live?.configured ? '已配置' : '未配置'}</span>`) +
         settingRow('语音播报', '停止播报与任务取消保持独立', '<span class="value-pill">安全隔离</span>')],
       notifications: ['通知', '任务状态与需要用户处理的提醒',
         settingRow('应用内通知', '当前只显示真实 Runtime 状态', '<span class="value-pill">已启用</span>') +
@@ -273,7 +275,7 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('发送消息', '输入框内提交任务', '<kbd>Enter</kbd>') +
         settingRow('换行', '在输入框中插入新行', '<kbd>Shift</kbd><span class="key-plus">＋</span><kbd>Enter</kbd>') +
         settingRow('收起面板', '使用面板右上角关闭按钮', '<span class="value-pill">右上角 ✕</span>') +
-        settingRow('Live 开启 / 关闭', data.live?.shortcut?.reason || '在语音设置中修改全局快捷键', `<kbd>${escape(data.live?.shortcut?.key ?? 'F8')}</kbd><button class="btn btn-sm" data-jump="voice">语音设置</button>`)],
+        settingRow('实时语音开启 / 关闭', data.live?.shortcut?.reason || '在语音设置中修改全局快捷键', `<kbd>${escape(data.live?.shortcut?.key ?? 'F8')}</kbd><button class="btn btn-sm" data-jump="voice">语音设置</button>`)],
       diagnostics: ['诊断与关于', '运行状态、版本边界与应用操作',
         settingRow('Runtime', data.connectionError ? `${data.connection} · ${data.connectionError}` : data.connection, '<button class="btn btn-sm" data-jump="connections">连接状态</button>') +
         settingRow('能力目录', capabilitySummary(data), '<button class="btn btn-sm" data-jump="capabilities">查看目录</button>') +
@@ -360,9 +362,9 @@ export function mountAdmin(root, invoke, escape) {
       && Date.parse(fact.validFrom) <= Date.now() && Date.now() < Date.parse(fact.validUntil)).map(fact => fact.ref);
     clearApprovalExpiryTimer();
     if (Number.isSafeInteger(data.adminNavigation?.revision) && data.adminNavigation.revision >= 0
-      && data.adminNavigation.revision > navigationRevision && Object.hasOwn(sections, data.adminNavigation.page)) {
+      && data.adminNavigation.revision > navigationRevision && Object.hasOwn(sections, canonicalPage(data.adminNavigation.page))) {
       navigationRevision = data.adminNavigation.revision;
-      section = data.adminNavigation.page;
+      section = canonicalPage(data.adminNavigation.page);
       const advanced = root.querySelector(`[data-page="${section}"]`)?.closest('details');
       if (advanced) advanced.open = true;
       else if(primaryPages.includes(section)&&!root.querySelector('#admin-search').value.trim())root.querySelector('.advanced-nav').open=false;
@@ -378,6 +380,10 @@ export function mountAdmin(root, invoke, escape) {
     sisControls?.render(data.voice);sisControls?.showSettings(section==='voice');
     if(section==='notifications') notificationControls??=mountNotificationSettings(root.querySelector('.main'),invoke);
     notificationControls?.render(data.notificationCenter,data.voiceQuestion,data.approvals??[]);notificationControls?.show(section==='notifications');
+    if(section==='briefing') briefingControls??=mountDailyBriefing(root.querySelector('.main'),invoke);
+    briefingControls?.render(data.dailyBriefing);briefingControls?.show(section==='briefing');
+    if(section==='voice') wakeControls??=mountWakeSettings(root.querySelector('.main'),invoke);
+    wakeControls?.render(data.wakePreference, data.wake);wakeControls?.show(section==='voice');
     if(section==='usage') usageBudgetControls??=mountUsageBudget(root.querySelector('.main'),invoke);
     usageBudgetControls?.update(data.usageBudget);usageBudgetControls?.show(section==='usage');
     if (section==='computer') computerControls ??= mountComputerControls(root.querySelector('.main'),invoke);
@@ -400,12 +406,12 @@ export function mountAdmin(root, invoke, escape) {
     todoControls?.render(data.todo);todoControls?.show(section==='connections');
     if(section==='connections' && data.goalCloud) goalCloudControls ??= mountGoalCloudControls(root.querySelector('.main'),invoke);
     goalCloudControls?.render(data.goalCloud);goalCloudControls?.show(section==='connections');
-    if ((section==='connections' || section==='memory') && data.laya && !layaControls) {
+    if (section==='connections' && data.laya && !layaControls) {
       layaRoot=document.createElement('details');layaRoot.className='laya-advanced';
       layaRoot.innerHTML='<summary>高级：本地判断组件</summary>';
       root.querySelector('#error').before(layaRoot);layaControls=mountLayaControls(layaRoot,invoke);
     }
-    if(layaRoot)layaRoot.hidden=section!=='connections' && section!=='memory';
+    if(layaRoot)layaRoot.hidden=section!=='connections';
     layaControls?.render(data.laya);layaControls?.show(section==='connections' || section==='memory');
     if (section==='memory' && data.knowledge) knowledgeControls ??= mountKnowledgeControls(root.querySelector('.main'),invoke);
     knowledgeControls?.render(data.knowledge, data.knowledgeWatch);knowledgeControls?.show(section==='memory');
@@ -426,8 +432,8 @@ export function mountAdmin(root, invoke, escape) {
     }
     if(memoryLearningRoot) memoryLearningRoot.hidden=section!=='memory';
     memoryLearningControls?.update({status:data.memoryLearning,refs:consumableMemoryRefs});
-    if (section==='worktrees' || section==='environment') codingControls ??= mountWorkspaceControls(root.querySelector('.main'),invoke);
-    codingControls?.render(data);codingControls?.show(section==='worktrees' || section==='environment');
+    if (section==='workspace') codingControls ??= mountWorkspaceControls(root.querySelector('.main'),invoke);
+    codingControls?.render(data);codingControls?.show(section==='workspace');
     if(section==='capabilities' && data.reference) referenceControls??=mountReferenceToolsControls(root.querySelector('.main'),invoke);
     referenceControls?.render(data.reference);referenceControls?.show(section==='capabilities');
     if(section==='capabilities' && data.pluginCatalog) pluginCatalogControls??=mountPluginCatalogControls(root.querySelector('.main'),invoke);
@@ -470,7 +476,7 @@ export function mountAdmin(root, invoke, escape) {
       showPage(section);
     };
     const agentArts = data.model?.provider === 'agentarts';
-    const modelTitle = agentArts ? 'AgentArts · Competition Profile'
+    const modelTitle = agentArts ? '云端模型'
       : data.model?.provider === 'fake' ? 'Fake Model · 离线测试' : '盘古大模型 2.0';
     const modelLabel = agentArts
       ? data.model?.configured && data.model?.status !== 'error' ? '已配置' : '不可用'
@@ -482,8 +488,12 @@ export function mountAdmin(root, invoke, escape) {
     let content = '';
     if (section === 'overview') {
       content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>当前显示任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates, patchRecovery.entries)}`;
+    } else if (section === 'workspace') {
+      content = `<section class="feature-page"><div class="settings-heading"><h2>工作文件夹</h2><p>选择这台电脑上用来读写代码的文件夹。环境和工作树不再分成两页。</p></div></section>`;
+    } else if (section === 'usage') {
+      content = `<section class="feature-page usage-page" data-usage-page><div class="settings-heading"><h2>使用情况和计费</h2><p>查看本机已经记录的使用情况。按日、按月的用量上限会显示在这里。</p></div><div data-usage-budget></div><div class="settings-list">${settingRow('当前记录的任务', '只统计本机已保存的任务', `<span class="value-pill">${data.tasks?.length ?? 0}</span>`)}</div></section>`;
     } else if (section === 'capabilities') {
-      content = capabilityTable(data);
+      content = `<details class="developer-fold" data-developer-fold="capabilities"><summary>开发者：已公布能力</summary>${capabilityTable(data)}</details>`;
     } else if (section === 'models') {
       content = modelPage(data);
     } else if (section === 'connections') {
@@ -502,10 +512,8 @@ export function mountAdmin(root, invoke, escape) {
       content = profilePage(data, escape);
     } else if (section === 'memory') {
       content = memoryPage(data);
-    } else if (section === 'computer') {
+    } else if (section === 'computer' || section === 'briefing') {
       content = '';
-    } else if (section === 'usage') {
-      content = `<section class="feature-page"><div class="settings-heading"><h2>使用情况和计费</h2><p>按估算费用同时限制模型调用和云端运行时长。留空表示不限制。</p></div></section>`;
     } else if (featureSections.includes(section)) {
       content = featurePage(data, section);
     } else {
@@ -544,7 +552,7 @@ export function mountAdmin(root, invoke, escape) {
       if(authorizationSettingsRoot.parentElement!==contentRoot.parentElement)contentRoot.before(authorizationSettingsRoot);
     }
     authorizationSettingsControls?.show(section==='authorizations');
-    if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==page)page.append(card);}
+    if(section==='models'){const page=root.querySelector('#content .model-page')??root.querySelector('#content');const host=page&&typeof page.querySelector==='function'?((fold=page.querySelector('[data-developer-fold="models"]'))=>fold||(typeof document<'u'&&document.createElement?(page.append(fold=document.createElement('details')),fold.className='developer-fold',fold.dataset.developerFold='models',fold.innerHTML='<summary>开发者</summary><p class="muted">连接地址、独立接口和调试项。</p>',fold):page))():page;if(host)for(const card of [agentArtsConnectionRoot,agentArtsModelRoot,modelApiRoot])if(card&&card.parentElement!==host)host.append(card);}
     if (section === 'authorizations') {
       const nextExpiry = nextApprovalExpiry(data.approvals, approvalNow);
       if (nextExpiry !== undefined) {
@@ -665,12 +673,14 @@ export function mountAdmin(root, invoke, escape) {
     const themeSelect = root.querySelector('#pref-theme');
     if (themeSelect) {
       themeSelect.value = themePreference();
-      themeSelect.addEventListener('change', () => saveTheme(themeSelect.value));
+      const pushAppearance = () => invoke('desktop.appearance', {theme: themeSelect.value, calm: localStorage.getItem('pa-calm') === 'true'}).catch(() => {});
+      themeSelect.addEventListener('change', () => { saveTheme(themeSelect.value); void pushAppearance(); });
+      if (themeSelect.dataset.bound !== '1') { themeSelect.dataset.bound = '1'; void pushAppearance(); }
     }
     const calmToggle = root.querySelector('#pref-calm');
     if (calmToggle) {
       calmToggle.checked = localStorage.getItem('pa-calm') === 'true';
-      calmToggle.addEventListener('change', () => saveCalm(calmToggle.checked));
+      calmToggle.addEventListener('change', () => { saveCalm(calmToggle.checked); void invoke('desktop.appearance', {theme: root.querySelector('#pref-theme')?.value || 'dark', calm: calmToggle.checked}).catch(() => {}); });
     }
     root.querySelector('#refresh-capabilities')?.addEventListener('click', async () => {
       try { await invoke('capability.list'); } catch (error) { root.querySelector('#error').textContent = error.message; }
@@ -815,7 +825,7 @@ export function mountAdmin(root, invoke, escape) {
     render(current);
   });
   function navigate(page) {
-    section = page;
+    section = canonicalPage(page);
     const target = root.querySelector(`[data-page="${page}"]`);
     const parent = target?.closest('details');
     if (parent) parent.open = true;
