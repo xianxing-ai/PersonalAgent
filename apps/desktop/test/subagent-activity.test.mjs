@@ -54,7 +54,7 @@ test('child conversation reads fresh public task fields and strips raw evidence,
   const detail=await readSubagentConversation({...options,readTask:()=>task});
   assert.deepEqual(detail,{parentTaskId:'parent',taskId:'child',role:'researcher',modelId:'selected-model',reasoningEffort:'high',
     state:'succeeded',goal:'Investigate the requested issue',resultSummary:'Readback result',
-    error:{code:'EXTERNAL_FAILURE',retryable:false,message:'子任务返回错误，详细错误信息已隐藏'},
+    error:{code:'EXTERNAL_FAILURE',retryable:false,message:'外部服务没有成功返回，可以稍后再试。'},
     evidenceRefCount:1,steps:[{label:'Read sources',state:'succeeded'}],transcriptAvailable:false});
   assert.doesNotMatch(JSON.stringify(detail),/private-|not a public transcript|stale summary/);
   detail.steps[0].label='changed in view';

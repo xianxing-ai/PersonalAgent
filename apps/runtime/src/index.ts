@@ -12,6 +12,14 @@ import type {AtomicCoordinationStorePort} from '@personal-agent/goals/store';
 import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
+import {activityEvent, applyTranscript, emptyTranscript, parseTranscript, TRANSCRIPT_CHECKPOINT, INJECTION_CHECKPOINT} from './task-activity.js';
+import {assistantConversationId, assistantFromRow, DEFAULT_ASSISTANTS} from './assistant-roster.js';
+import type {AssistantMail, AssistantRecord} from './assistant-roster.js';
+export type {AssistantMail, AssistantRecord} from './assistant-roster.js';
+export {DEFAULT_ASSISTANTS, assistantConversationId} from './assistant-roster.js';
+import type {TaskActivityEvent, TaskActivityInput, TaskTranscript, UserInjection} from './task-activity.js';
+export type {TaskActivityEvent, TaskActivityInput, TaskTranscript, TranscriptSegment, UserInjection} from './task-activity.js';
+export {publicFailureMessage, redactSecrets, summarizeValue} from './task-activity.js';
 export type {TrustedHostStateStore} from './host-state-store.js';
 export {readRuntimeBuildIdentity} from './build-identity.js';
 export {createRuntimeStartupRecovery} from './application/startup-recovery.js';
@@ -127,6 +135,10 @@ export interface WorkerContext {
   saveCheckpoint(key: string, value: unknown): void;
   loadCheckpoint(key: string): unknown;
   reportProgress(progress: ProgressInput): TaskSnapshot;
+  /** Live thinking, tool and answer deltas. Optional so older workers keep compiling. */
+  noteActivity?(activity: TaskActivityInput): void;
+  /** Messages queued while this task is running. Drained before the next model or cloud step. */
+  takeUserInjections?(): readonly {text: string; source: UserInjection['source']}[];
 }
 
 export interface WorkerResult {
@@ -170,6 +182,7 @@ export interface RuntimeToolInvocation {
 
 export interface RuntimeToolGateway {
   list(): ToolDescriptor[];
+  listPublic?(): ToolDescriptor[];
   invoke(invocation: RuntimeToolInvocation): Promise<unknown>;
 }
 
@@ -326,6 +339,14 @@ export const RUNTIME_MIGRATIONS: readonly Migration[] = [{
 }, {
   version:12,
   sql:"CREATE INDEX task_checkpoints_parent ON task_checkpoints(checkpoint_key,json_extract(value_json,'$.parentTaskId'),task_id);"
+}, {
+  version: 13,
+  // Assistants are long-lived identities. Their turns remain ordinary tasks; this table does not replace the task store.
+  sql: [
+    "CREATE TABLE assistants (assistant_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, conversation_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL CHECK (status IN ('idle','working','waiting_approval')), active_task_id TEXT, unread_count INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0), last_summary TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;",
+    'CREATE TABLE assistant_mail (mail_id TEXT PRIMARY KEY, from_assistant_id TEXT NOT NULL, to_assistant_id TEXT NOT NULL, body TEXT NOT NULL, hop INTEGER NOT NULL CHECK (hop >= 0), created_at TEXT NOT NULL, consumed_task_id TEXT) STRICT;',
+    'CREATE INDEX assistant_mail_to ON assistant_mail(to_assistant_id, created_at);'
+  ].join('\n')
 }];
 
 export class RuntimeError extends Error {
@@ -408,6 +429,10 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly active = new Map<string, AbortController>();
   private readonly runtimeToolTracking = new Set<string>();
   private readonly activeToolExecutions = new Map<string,string>();
+  private activitySequence = 0;
+  private readonly activityListeners = new Set<(event: TaskActivityEvent) => void>();
+  private readonly transcripts = new Map<string, TaskTranscript>();
+  private readonly unflushedDeltas = new Map<string, number>();
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
   private closed = false;
@@ -548,6 +573,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
     this.expirePendingApprovals();
+    if (!this.db.prepare('SELECT 1 FROM assistants LIMIT 1').get()) {
+      this.ensureAssistants();
+    }
   }
 
   /** Trusted host only; provisioning never clears an existing graph. */
@@ -620,6 +648,14 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
 
   listTasks(input: {conversationId?: string; states?: TaskState[]; beforeSequence?: number; snapshotSequence?: number; limit?: number}): Result<'task.list'> {
     return this.selectTaskPage(input);
+  }
+
+  /** Latest task that stored this checkpoint field. Callers still have to check the binding. */
+  findLatestCheckpointValue(checkpointKey: string, jsonField: string, value: string): string | undefined {
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,40}$/.test(jsonField)) throw new RuntimeError('INVALID_ARGUMENT', 'checkpoint field is invalid');
+    const row = this.db.prepare(`SELECT task_id FROM task_checkpoints WHERE checkpoint_key = ? AND json_valid(value_json) AND json_extract(value_json, '$.' || ?) = ? ORDER BY updated_at DESC LIMIT 1`)
+      .get(requireText(checkpointKey, 'checkpoint key'), jsonField, value) as {task_id: string} | undefined;
+    return row?.task_id;
   }
 
   /** Host-only candidate selection. Checkpoint presence is only a query filter; callers must
@@ -869,6 +905,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       }
       this.db.prepare('UPDATE tasks SET goal=?,result_summary=NULL,error_json=NULL,steps_json=? WHERE task_id=?')
         .run('[private-derived body erased]','[]',input.taskId);
+      this.transcripts.delete(input.taskId);
+      this.unflushedDeltas.delete(input.taskId);
       const events=this.db.prepare('SELECT sequence,type,payload_json FROM task_events WHERE task_id=?').all(input.taskId) as {sequence:number;type:Event['type'];payload_json:string}[];
       for(const event of events)this.db.prepare('UPDATE task_events SET payload_json=? WHERE sequence=?')
         .run(JSON.stringify(this.redactEventBody(event.type,JSON.parse(event.payload_json))),event.sequence);
@@ -1151,7 +1189,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
         case 'capability.list': {
           if (!this.toolGateway) throw new RuntimeError('UNSUPPORTED_CAPABILITY', 'Tool gateway is not configured');
           const manifests = request.payload.kind === undefined || request.payload.kind === 'tool'
-            ? this.toolGateway.list()
+            ? (this.toolGateway.listPublic?.() ?? this.toolGateway.list())
             : [];
           data = {
             manifests,
@@ -1762,6 +1800,154 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     }));
   }
 
+  subscribeActivity(listener: (event: TaskActivityEvent) => void): () => void {
+    this.activityListeners.add(listener);
+    return () => this.activityListeners.delete(listener);
+  }
+
+  /** Coalesce thinking, tool and answer text. Deltas are pushed live and flushed as one transcript row. */
+  appendActivity(taskId: string, input: TaskActivityInput): TaskActivityEvent {
+    requireText(taskId, 'taskId');
+    requireText(input.stepId, 'stepId');
+    this.getTask(taskId);
+    const event = activityEvent(taskId, ++this.activitySequence, this.timestamp(), input);
+    const current = this.transcripts.get(taskId) ?? parseTranscript(this.loadCheckpoint(taskId, TRANSCRIPT_CHECKPOINT)) ?? emptyTranscript(event.occurredAt);
+    const next = applyTranscript(current, event);
+    this.transcripts.set(taskId, next);
+    const structural = input.kind !== 'reasoning' && input.kind !== 'answer_delta';
+    const pending = (this.unflushedDeltas.get(taskId) ?? 0) + (structural ? 0 : 1);
+    if (structural || pending >= 12) {
+      this.saveCheckpoint(taskId, TRANSCRIPT_CHECKPOINT, next);
+      this.unflushedDeltas.set(taskId, 0);
+    } else this.unflushedDeltas.set(taskId, pending);
+    for (const listener of this.activityListeners) {
+      try { listener(event); } catch { /* A display subscriber cannot change the task. */ }
+    }
+    return event;
+  }
+
+  flushActivity(taskId: string): void {
+    const transcript = this.transcripts.get(taskId);
+    if (transcript) this.saveCheckpoint(taskId, TRANSCRIPT_CHECKPOINT, transcript);
+    this.unflushedDeltas.set(taskId, 0);
+  }
+
+  readTranscript(taskId: string): TaskTranscript {
+    this.getTask(taskId);
+    return structuredClone(this.transcripts.get(taskId) ?? parseTranscript(this.loadCheckpoint(taskId, TRANSCRIPT_CHECKPOINT)) ?? emptyTranscript(this.timestamp()));
+  }
+
+  injectUserMessage(taskId: string, text: string, source: UserInjection['source'] = 'user', requestId?: string): {id: string; injected: true} {
+    const body = requireText(text, 'text').trim();
+    if (body.length > 16_000) throw new RuntimeError('INVALID_ARGUMENT', 'text is too long');
+    return this.transaction(() => {
+      const task = this.getTask(taskId);
+      if (terminal.has(task.state) || task.state === 'waiting_reconciliation' || task.state === 'cancelling') {
+        throw new RuntimeError('REVISION_CONFLICT', 'This task cannot accept an injected message');
+      }
+      const queued = this.injectionQueue(taskId);
+      const existing = requestId ? queued.find(item => item.requestId === requestId) : undefined;
+      if (existing) {
+        if (existing.text !== body) throw new RuntimeError('REVISION_CONFLICT', 'Injection request is already bound to another message');
+        return {id: existing.id, injected: true as const};
+      }
+      const item: UserInjection = {id: this.idFactory(), text: body, source, ...(requestId ? {requestId} : {}), at: this.timestamp()};
+      this.saveCheckpoint(taskId, INJECTION_CHECKPOINT, [...queued, item]);
+      const log = this.loadCheckpoint(taskId, 'user-injection-log:v1');
+      const entries = Array.isArray(log) ? log : [];
+      this.saveCheckpoint(taskId, 'user-injection-log:v1', [...entries.slice(-19), {text: body, source, at: item.at}]);
+      const looksExternal = source === 'peer'
+        || /"treatment"\s*:\s*"untrusted_data"|\[EXTERNAL\b|BEGIN EXTERNAL|-----BEGIN EXTERNAL/iu.test(body);
+      if (looksExternal) {
+        const existingFence = this.loadCheckpoint(taskId, 'assistant-external-fence') as {sources?: string[]} | undefined;
+        const priorSources = Array.isArray(existingFence?.sources) ? existingFence.sources : [];
+        const tag = source === 'peer' ? 'peer_injection' : 'external_injection';
+        this.saveCheckpoint(taskId, 'assistant-external-fence', {
+          tainted: true,
+          sources: priorSources.includes(tag) ? priorSources : [...priorSources, tag],
+          updatedAt: item.at,
+        });
+      }
+      return {id: item.id, injected: true as const};
+    });
+  }
+
+  drainUserInjections(taskId: string): UserInjection[] {
+    return this.transaction(() => {
+      this.getTask(taskId);
+      const queued = this.injectionQueue(taskId);
+      if (queued.length) this.saveCheckpoint(taskId, INJECTION_CHECKPOINT, []);
+      return queued;
+    });
+  }
+
+  private injectionQueue(taskId: string): UserInjection[] {
+    const value = this.loadCheckpoint(taskId, INJECTION_CHECKPOINT);
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is UserInjection => Boolean(item) && typeof item === 'object' && typeof (item as UserInjection).text === 'string');
+  }
+
+  ensureAssistants(): AssistantRecord[] {
+    const now = this.timestamp();
+    for (const assistant of DEFAULT_ASSISTANTS) {
+      this.db.prepare(`INSERT INTO assistants (assistant_id, display_name, role, instructions, conversation_id, status, unread_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'idle', 0, ?, ?) ON CONFLICT(assistant_id) DO NOTHING`).run(
+        assistant.assistantId, assistant.displayName, assistant.role, assistant.instructions,
+        assistantConversationId(assistant.assistantId), now, now);
+    }
+    return this.listAssistants();
+  }
+
+  listAssistants(): AssistantRecord[] {
+    return (this.db.prepare('SELECT * FROM assistants ORDER BY display_name').all() as Record<string, unknown>[]).map(assistantFromRow);
+  }
+
+  getAssistant(assistantId: string): AssistantRecord {
+    const row = this.db.prepare('SELECT * FROM assistants WHERE assistant_id = ?').get(requireText(assistantId, 'assistantId')) as Record<string, unknown> | undefined;
+    if (!row) throw new RuntimeError('NOT_FOUND', 'Assistant is not registered');
+    return assistantFromRow(row);
+  }
+
+  assistantByRole(role: string): AssistantRecord | undefined {
+    const row = this.db.prepare('SELECT * FROM assistants WHERE role = ? ORDER BY assistant_id LIMIT 1').get(role) as Record<string, unknown> | undefined;
+    return row ? assistantFromRow(row) : undefined;
+  }
+
+  updateAssistant(assistantId: string, patch: {status?: AssistantRecord['status']; activeTaskId?: string | null; unreadDelta?: number; lastSummary?: string | null; markRead?: boolean}): AssistantRecord {
+    const current = this.getAssistant(assistantId);
+    const status = patch.status ?? current.status;
+    const active = patch.activeTaskId === undefined ? current.activeTaskId ?? null : patch.activeTaskId;
+    const unread = patch.markRead ? 0 : Math.max(0, current.unreadCount + (patch.unreadDelta ?? 0));
+    const summary = patch.lastSummary === undefined ? current.lastSummary ?? null : patch.lastSummary;
+    this.db.prepare('UPDATE assistants SET status = ?, active_task_id = ?, unread_count = ?, last_summary = ?, updated_at = ? WHERE assistant_id = ?').run(
+      status, active, unread, summary, this.timestamp(), assistantId);
+    return this.getAssistant(assistantId);
+  }
+
+  postAssistantMail(input: {mailId: string; fromAssistantId: string; toAssistantId: string; body: string; hop: number}): AssistantMail {
+    this.getAssistant(input.fromAssistantId);
+    this.getAssistant(input.toAssistantId);
+    const body = requireText(input.body, 'body');
+    if (!Number.isSafeInteger(input.hop) || input.hop < 0) throw new RuntimeError('INVALID_ARGUMENT', 'hop is invalid');
+    const createdAt = this.timestamp();
+    this.db.prepare('INSERT INTO assistant_mail (mail_id, from_assistant_id, to_assistant_id, body, hop, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+      requireText(input.mailId, 'mailId'), input.fromAssistantId, input.toAssistantId, body, input.hop, createdAt);
+    return {mailId: input.mailId, fromAssistantId: input.fromAssistantId, toAssistantId: input.toAssistantId, body, hop: input.hop, createdAt};
+  }
+
+  listAssistantMail(assistantId: string): AssistantMail[] {
+    this.getAssistant(assistantId);
+    return (this.db.prepare('SELECT * FROM assistant_mail WHERE to_assistant_id = ? OR from_assistant_id = ? ORDER BY created_at').all(assistantId, assistantId) as Record<string, unknown>[]).map(row => ({
+      mailId: String(row.mail_id), fromAssistantId: String(row.from_assistant_id), toAssistantId: String(row.to_assistant_id),
+      body: String(row.body), hop: Number(row.hop), createdAt: String(row.created_at),
+      ...(row.consumed_task_id ? {consumedTaskId: String(row.consumed_task_id)} : {}),
+    }));
+  }
+
+  consumeAssistantMail(mailId: string, taskId: string): void {
+    this.db.prepare('UPDATE assistant_mail SET consumed_task_id = ? WHERE mail_id = ? AND consumed_task_id IS NULL').run(taskId, mailId);
+  }
+
   saveCheckpoint(taskId: string, key: string, value: unknown): void {
     requireText(key, 'checkpoint key');
     this.getTask(taskId);
@@ -2000,7 +2186,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           },
           saveCheckpoint: (key, value) => this.saveCheckpoint(taskId, key, value),
           loadCheckpoint: key => this.loadCheckpoint(taskId, key),
-          reportProgress: progress => this.recordProgress(taskId, progress)
+          reportProgress: progress => this.recordProgress(taskId, progress),
+          noteActivity: activity => this.appendActivity(taskId, activity),
+          takeUserInjections: () => this.drainUserInjections(taskId).map(item => ({text: item.text, source: item.source})),
         }),
         timeout
       ]);
@@ -2043,6 +2231,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     } finally {
       if (timer) clearTimeout(timer);
       this.active.delete(taskId);
+      try { this.flushActivity(taskId); } catch { /* A missing task has nothing to flush. */ }
       // A durable local failure consumes a matched received response as failure,
       // never as cloud business success. Unknown/unconfirmed writes retain holds.
       try {

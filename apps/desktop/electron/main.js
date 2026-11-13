@@ -754,6 +754,7 @@ function conversationProjection(surface) {
       userMessage: task.bodyWithheld?task.goal:taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId) ?? task.goal,
       // UI summary is derived from trusted readback; TaskRuntime still owns state.
       ...(notepadHost?.projectTask(task) ?? {})});}),
+    assistants: fakeMode ? [] : (runtimeApplication?.listAssistants?.() ?? []),
     messages: page.entries.filter(entry=>entry.kind==='message').map(entry=>conversations?.messages.get(entry.id)).filter(Boolean).map(message=>({...message})),
     historyPage:{...historyPages.summary(surface),activeCount:active.length},
     conversationState:surface?conversations?.snapshot(surface):undefined,
@@ -923,24 +924,19 @@ function publishAudioLevel(){
   const level=Number.isFinite(audioLevel)?Math.max(0,Math.min(1,audioLevel)):0;
   for(const win of [orb,panel,admin,workspace])if(win&&!win.isDestroyed()&&win.isVisible()&&!win.isMinimized())win.webContents.send('desktop:audio-level',level);
 }
+function pushTaskActivity(event) {
+  if (runtimeClosed || !event || typeof event.taskId !== 'string') return;
+  for (const win of [panel, workspace, admin]) {
+    if (win && !win.isDestroyed()) win.webContents.send('desktop:task-activity', event);
+  }
+  for (const record of subagentWindows.values()) {
+    if (record.window.isDestroyed()) continue;
+    record.window.webContents.send('desktop:task-activity', event);
+  }
+}
 function publish(topics) {
   if (runtimeClosed) return;
   snapshotPublisher.mark(topics);
-  for(const record of subagentWindows.values()){
-    if(record.window.isDestroyed())continue;
-    // A hidden child keeps its last rendered state. Re-reading every child on every publish made
-    // idle cost grow with the number of open windows, which is what accumulated into stutter.
-    if(!record.window.isVisible()||record.window.isMinimized())continue;
-    const now=Date.now();
-    if(now-(record.checkedAt??0)<500)continue;
-    record.checkedAt=now;
-    let revision='unavailable';
-    try{
-      const conversation=runtimeApplication?.readSubagentConversation(record.binding);
-      revision=conversation?JSON.stringify([conversation.updatedAt,conversation.activeTaskId,conversation.messages.map(t=>[t.taskId,t.state,t.replyText])]):revision;
-    }catch{/* Reader reports missing original records without interrupting other windows. */}
-    if(revision!==record.revision){record.revision=revision;record.window.webContents.send('desktop:update',{subagentTaskChanged:true});}
-  }
 }
 
 function windowFor(mode, bounds, options = {}) {
@@ -2930,6 +2926,7 @@ async function initializeRuntime() {
     if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
     readEvents = after => runtimeApplication.readEvents(after);
   }
+  runtimeApplication?.runtime?.subscribeActivity?.(event => pushTaskActivity(event));
   runtimeConnection = await register({
     transport: fakeMode ? runtime : runtimeApplication,
     now: () => fakeMode ? runtime.clock.now() : Date.now(),
@@ -3617,7 +3614,8 @@ async function action(event, name, payload) {
   if (name === 'task.subagentConversation') {
     if ((sender !== panel && sender !== admin && sender !== workspace) || event.senderFrame !== sender.webContents.mainFrame) throw Error('子对话窗口不可信');
     return readSubagentConversation({payload,tasks:{get:id=>tasks.get(id)??runtimeApplication?.runtime.getTask(id)},readChildren:id=>runtimeApplication?.readSubagentTasks?.(id),
-      readTask:id=>runtimeApplication.runtime.getTask(id)});
+      readTask:id=>runtimeApplication.runtime.getTask(id),
+      readTranscript:id=>runtimeApplication.runtime.readTranscript(id)});
   }
   if(name==='task.openSubagentConversation'){
     if(sender!==panel&&sender!==workspace&&sender!==admin)throw Error('请从主对话或工作区打开子对话');
@@ -3630,6 +3628,58 @@ async function action(event, name, payload) {
   if(name==='subagentConversations.collapseAll'){
     if(![panel,workspace,admin].includes(sender)||payload!==undefined)throw Error('请从主对话或工作区收起子对话');
     const result=await collapseAllSubagentConversations();publish();return result;
+  }
+  const requirePlainRecord = (value, allowedKeys, message) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !allowedKeys.includes(k))) {
+      throw Error(message);
+    }
+    return value;
+  };
+  const requireCleanText = (value, message, maxLength = 16_000) => {
+    if (typeof value !== 'string' || !value.trim() || value.length > maxLength) throw Error(message);
+    return value;
+  };
+  if (name === 'workspace.openAssistant') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里打开助手');
+    const clean = requirePlainRecord(payload, ['assistantId'], '打开助手参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
+    if (sender === panel) await openWorkspace();
+    const target = workspace && !workspace.isDestroyed() ? workspace : sender;
+    target.webContents.send('desktop:open-assistant', {assistantId});
+    return {opened: true, assistantId};
+  }
+  if (name === 'assistant.thread') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里查看助手');
+    const clean = requirePlainRecord(payload, ['assistantId'], '读取助手对话参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
+    return runtimeApplication.readAssistantThread(assistantId);
+  }
+  if (name === 'assistant.submit') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里给助手发消息');
+    const clean = requirePlainRecord(payload, ['assistantId', 'text', 'requestId'], '给助手发消息参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    const text = requireCleanText(clean.text, '请写下要发给助手的话');
+    const requestId = requireCleanText(clean.requestId, '请求标识无效', 128).trim();
+    if (assistantId !== clean.assistantId || requestId !== clean.requestId) throw Error('给助手发消息参数无效');
+    const result = runtimeApplication.submitAssistantMessage({assistantId, text, requestId});
+    publish();
+    return result;
+  }
+  if (name === 'assistant.read') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里查看助手');
+    const clean = requirePlainRecord(payload, ['assistantId'], '标记助手已读参数无效');
+    const assistantId = requireCleanText(clean.assistantId, '请选择一个助手', 128).trim();
+    if (assistantId !== clean.assistantId) throw Error('助手标识格式无效');
+    return runtimeApplication.markAssistantRead(assistantId);
+  }
+  if (name === 'task.transcript') {
+    if (sender !== panel && sender !== workspace) throw Error('请从对话里查看过程');
+    const clean = requirePlainRecord(payload, ['taskId'], '查看执行过程参数无效');
+    const taskId = requireCleanText(clean.taskId, '任务标识无效', 128).trim();
+    if (taskId !== clean.taskId) throw Error('任务标识格式无效');
+    return runtimeApplication.runtime.readTranscript(taskId);
   }
   if (name === 'workspace.open' && sender === panel) { await openWorkspace(); return; }
   if (name === 'workspace.close' && sender === workspace) { workspace.close(); return; }
@@ -4386,7 +4436,7 @@ async function action(event, name, payload) {
     if(skillRun ? sender!==admin || !competitionMode || !installedSkillsHost : sender !== panel && sender !== workspace) throw Error('请从可信界面提交任务');
     const text=typeof payload==='string'?payload:payload?.text;
     if(!skillRun&&payload&&typeof payload==='object'&&(Object.keys(payload).some(k=>!['text','conversationId','delivery'].includes(k))
-      ||payload.delivery!==undefined&&!['steer','send'].includes(payload.delivery)))throw Error('任务提交格式无效');
+      ||payload.delivery!==undefined&&!['steer','send','inject'].includes(payload.delivery)))throw Error('任务提交格式无效');
     if (!skillRun && (typeof text !== 'string' || !text.trim())) throw Error('请输入有效任务');
     const compactCommand=!skillRun&&/^(?:\/压缩|\/compact)$/iu.test(text.trim());
     if(compactCommand&&!harnessContextHost?.runtimeHooks)
@@ -4396,6 +4446,16 @@ async function action(event, name, payload) {
     const surface = skillRun || sender === workspace ? 'workspace' : 'panel';
     const conversationId=conversations.activeConversationId(surface);
     if(!skillRun&&payload?.conversationId!==undefined&&payload.conversationId!==conversationId)throw Error('当前对话已切换，请重新发送');
+    const injecting=!skillRun&&!compactCommand&&payload?.delivery==='inject';
+    if(injecting){
+      const active=[...tasks.values()].find(task=>conversations.conversationIdForTask(task)===conversationId&&taskSurface(task)===surface&&!terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task));
+      if(!active){/* 没有正在跑的任务时，插话就是普通发送。 */}
+      else {
+        const injected=runtimeApplication?.runtime?.injectUserMessage?.(active.taskId,text.trim(),'user');
+        if(!injected)throw Error('当前任务还不能接收插话');
+        return {injected:true,taskId:active.taskId};
+      }
+    }
     const steering=!skillRun&&!compactCommand&&payload?.delivery==='steer';
     const previous=steering?conversationDelivery.interruptPending(conversationId):undefined;
     if (!steering&&(submitting.has(conversationId) || [...tasks.values()].some(task => conversations.conversationIdForTask(task)===conversationId && taskSurface(task) === surface && !terminalTaskStates.has(task.state)&&!conversationDelivery.stopped(task)))) throw Error('请等待当前回答完成，或先停止当前任务');
