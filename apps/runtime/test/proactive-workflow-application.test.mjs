@@ -402,6 +402,36 @@ test('bound child reports and task.progress reach the original controller, stale
   } finally {await f.close();}
 });
 
+test('without controller consumer, bound child report is pending and unavailable: controller_consumer, and reconciliation rejects', async () => {
+  const f = fixture({action: 'delegate'});
+  try {
+    f.host.ingestUserInstruction({sourceTaskId: f.source.taskId}, f.context);
+    const final = await f.run(async worker => {
+      for (let i = 0; i < 4; i++) {
+        const result = await f.next();
+        for (const proposal of result.proposals) assert.equal((await f.host.executeProposal(proposal, {deadline: worker.deadline, signal: worker.signal})).state, 'confirmed');
+      }
+      const child = f.app.runtime.findTaskByIdempotencyKey('subagent-dispatch-' + f.task.taskId + '-child-one');
+      assert.equal(child.state, 'succeeded');
+      // Subagent terminal transition in RuntimeApplication already automatically invoked ingestSubtaskFeedback.
+      const eventId = 'subtask-feedback:' + child.taskId + ':' + child.revision;
+      const stored = f.host.inspect().application.state.controllerReports[eventId];
+      assert.ok(stored);
+      assert.equal(stored.state, 'pending');
+      assert.equal(stored.report.parentTaskId, f.task.taskId);
+      assert.equal(stored.report.childRevision, child.revision);
+      assert.equal(stored.receipt, undefined);
+      assert.equal(f.app.runtime.readEvents().some(event => event.taskId === f.task.taskId && event.type === 'task.progress' && event.payload.stepId === eventId), true);
+      // Calling ingest again while pending correctly fails with RESULT_UNKNOWN
+      await assert.rejects(f.host.ingestSubtaskFeedback({childTaskId: child.taskId, expectedRevision: child.revision}, f.context), {code: 'RESULT_UNKNOWN'});
+      // Reconciling without controller correctly fails with UNSUPPORTED_CAPABILITY
+      await assert.rejects(f.host.reconcileControllerReport(eventId, f.context), {code: 'UNSUPPORTED_CAPABILITY'});
+      return {resultSummary: 'Report pending without controller consumer'};
+    });
+    assert.equal(final.state, 'succeeded', final.error?.message);
+  } finally {await f.close();}
+});
+
 test('one Runtime notification factory returns the same actual service and rejects a second configuration', async () => {
   const f = fixture();
   try {
