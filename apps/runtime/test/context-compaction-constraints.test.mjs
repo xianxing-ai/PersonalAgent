@@ -41,6 +41,13 @@ test('all protected source exceeding budget fails without summarizing',async()=>
   assert.equal(f.sent.length,0);
 });
 
+test('all withheld source within budget remains unchanged without a model call',async()=>{
+  const f=fixture();for(const item of f.source.messages)item.answerWithheld=true;
+  const result=await compactConversationContext(f.options);
+  assert.equal(result.state,'unchanged');assert.deepEqual(result.messages,f.source.messages);
+  assert.equal(f.sent.length,0);
+});
+
 test('an older checkpoint without a prefix binding cannot silently replace the original context',async()=>{
   const f=fixture();f.source.messages[2].content='不要删除';
   const result=await compactConversationContext(f.options);
