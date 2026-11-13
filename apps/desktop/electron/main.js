@@ -54,7 +54,7 @@ import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-h
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
-import {createMemoryLearningHost} from './memory-learning-host.js';
+import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
 import {createDesktopObsidianPairing} from './obsidian-pairing-host.js';
@@ -2370,12 +2370,20 @@ async function initializeRuntime() {
         getRuntime: () => runtimeApplication.runtime,
         getTools: () => runtimeApplication.tools,
         runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools),
+        readPromptPreferences: ({goal}) => {
+          const text = memoryLearningHost?.preferencePrompt?.(goal);
+          return typeof text === 'string' && text.trim() ? text : undefined;
+        },
         fakeModelMode,
       });
       subagentTool.execute = (input, context) => {
         const taskThinking = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-thinking');
         const boundTool=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>runtimeApplication.runtime,
           getTools:()=>runtimeApplication.tools,fakeModelMode,
+          readPromptPreferences: ({goal}) => {
+            const text = memoryLearningHost?.preferencePrompt?.(goal);
+            return typeof text === 'string' && text.trim() ? text : undefined;
+          },
           runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)});
         return boundTool.execute({...input,subtasks:input.subtasks.map(subtask=>({...subtask,
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
@@ -2519,6 +2527,10 @@ async function initializeRuntime() {
           return withNativeReadbackScope({owner:admin},scope=>notepadHost.recoverOriginalRun(
             {taskId,runId,argumentsDigest:intent?.argumentsDigest},scope));
         }}} : {}),
+        readPromptPreferences: ({goal}) => {
+          const text = memoryLearningHost?.preferencePrompt?.(goal);
+          return typeof text === 'string' && text.trim() ? text : undefined;
+        },
         coordinationInput:{
           get contextCompaction(){return harnessContextHost?.runtimeHooks;},
           readRequestContext:readDesktopRequestContext,
@@ -2774,8 +2786,9 @@ async function initializeRuntime() {
         cancelTask:taskId=>runtimeApplication.runtime.requestCancel(taskId,'私人记忆使用已撤回'),
         eraseTaskCopies:scope=>runtimeApplication.eraseTaskCopies(scope),
         readCopyErasureReceipt:taskId=>runtimeApplication.readCopyErasureReceipt(taskId),backups:privateBackups});
+      const preferenceStore=filePreferenceStore(path.join(app.getPath('userData'), 'learning-preferences.json'));
       memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-        learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
+        learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory(),preferenceStore});
       await memoryLearningHost.recover();
       wikiSourceMonitor?.close();
       wikiSourceMonitor=runtimeModule.createWikiSourceMonitor({source:{
@@ -2906,7 +2919,8 @@ async function initializeRuntime() {
         summary:'删除所选公共事实及其绑定版本/投影；已有依赖或未核实状态仍拒绝删除，原擦除审计继续核实'});
     }});
     memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-      learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
+      learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory(),
+      preferenceStore:filePreferenceStore(path.join(app.getPath('userData'), 'learning-preferences.json'))});
     await memoryLearningHost.recover();
   }
   if (competitionMode) {
