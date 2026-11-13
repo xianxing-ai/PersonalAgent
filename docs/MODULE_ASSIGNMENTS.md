@@ -156,7 +156,7 @@ goo122 必须让上述模块在没有真实 Desktop、AgentArts 或 zemeng 私�
 | MOD-27 | 目标、事实与决策图谱 / PA-024 | packages/goals | MOD-02、03、09、04B | 版本化 Goal/Fact/Decision/Plan 依赖图、来源、冲突和回退；不直接读记忆数据库 |
 | MOD-28 | 持续认知与最小计划修复 / PA-025 | packages/cognition | MOD-03、04B、09、27 | 事实变化影响分析；输出 KEEP/RECHECK/REVISE 和最小差异，不直接改 TaskRuntime |
 | MOD-29 | AgentArts 云端基础、身份、MaaS 与部署 / PA-026 | packages/agentarts、apps/agentarts-runtime 与云资源说明 | MOD-02、03、05、16 | 第一优先；CloudAgentPort、项目/Agent/deployment 引用、Fake 和真实 API 读回；凭据不进入云提示或仓库 |
-| MOD-30 | AgentArts Agent/Workflow、知识、MCP/Skill 与工具提案 / PA-026、PA-027 | packages/agentarts/src/owned-workflows.ts 及相关 Workflow 文件、apps/agentarts-runtime | MOD-05、29；本地 MCP/Skills 为可选依赖 | 第一优先；云流程产生受限提案，一条部署 API 经本地 Policy/ToolGateway 和目标系统读回验收 |
+| MOD-30 | AgentArts Agent/Workflow、知识、MCP/Skill 与工具提案 / PA-026、PA-027 | packages/agentarts/src/owned-workflows.ts 及相关 Workflow 文件、apps/agentarts-runtime、packages/plugin-catalog | MOD-05、29；本地 MCP/Skills 为可选依赖 | 第一优先；云流程产生受限提案，一条部署 API 经本地 Policy/ToolGateway 和目标系统读回验收。插件精选目录只调用 MCP/Skills 公开入口，不替代上述云验收 |
 | MOD-31 | AgentArts 多 Agent 与效果评估 / PA-012、PA-027 | packages/agentarts、tests/manual/agentarts/evaluation | MOD-28～30 | 角色必要性、路由、交接、预算、固定评估集、失败降级和完整 trace；不能提升本地权限 |
 | MOD-32 | AgentArts 发布、API、观测与 Competition 验收 / PA-027 | packages/agentarts/src/observability、tests/manual/agentarts | MOD-03、05、19、29～31 | 第一优先；版本、部署、API 实调、profile、日志、成本、回滚、Demo 和本地执行读回证据 |
 

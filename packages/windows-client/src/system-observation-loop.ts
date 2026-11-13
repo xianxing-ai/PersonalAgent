@@ -326,6 +326,84 @@ export function isSystemObservationTimeout(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as {code?: unknown}).code === 'TIMEOUT';
 }
 
+const DIRECT_PROVIDER_EVIDENCE_KEYS = new Set([
+  'evidenceKind',
+  'platform',
+  'nodeVersion',
+  'tool',
+  'source',
+  'capturedAt',
+  'sampledFrom',
+  'sampledUntil',
+  'requestedSampleWindowMs',
+  'actualSampleWindowMs',
+  'schemaValid',
+  'aggregateValuesPresent',
+  'unavailable',
+  'productionAuthorizationVerified',
+  'agentArtsVerified',
+]);
+
+/**
+ * Fail-closed shape check for the redacted direct-provider evidence file.
+ * A passing file is still not a Policy, Desktop, or AgentArts closed loop:
+ * productionAuthorizationVerified and agentArtsVerified must stay false.
+ */
+export function assertDirectProviderReadEvidence(evidence: unknown): void {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Direct provider evidence must be an object');
+  }
+  const record = evidence as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (!DIRECT_PROVIDER_EVIDENCE_KEYS.has(key)) {
+      throw new ProtocolError('INVALID_ARGUMENT', `Unexpected direct provider evidence field '${key}'`);
+    }
+  }
+  if (record.evidenceKind !== 'direct_provider_read_only') {
+    throw new ProtocolError('INVALID_ARGUMENT', 'evidenceKind must be direct_provider_read_only');
+  }
+  if (record.platform !== 'win32') {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Direct provider evidence requires platform win32');
+  }
+  if (typeof record.nodeVersion !== 'string' || !record.nodeVersion.startsWith('v')) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'nodeVersion must be a Node version string');
+  }
+  if (record.tool !== 'computer.system.observe@1.0.0') {
+    throw new ProtocolError('INVALID_ARGUMENT', 'tool must be computer.system.observe@1.0.0');
+  }
+  if (record.source !== 'node:os') {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Direct provider evidence source must be node:os');
+  }
+  for (const key of ['capturedAt', 'sampledFrom', 'sampledUntil'] as const) {
+    if (typeof record[key] !== 'string' || !ISO_TIMESTAMP_PATTERN.test(record[key])) {
+      throw new ProtocolError('INVALID_ARGUMENT', `${key} must be an ISO timestamp`);
+    }
+  }
+  for (const key of ['requestedSampleWindowMs', 'actualSampleWindowMs'] as const) {
+    if (typeof record[key] !== 'number' || !Number.isFinite(record[key]) || record[key] < 0) {
+      throw new ProtocolError('INVALID_ARGUMENT', `${key} must be a non-negative number`);
+    }
+  }
+  if (record.schemaValid !== true || record.aggregateValuesPresent !== true) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'schemaValid and aggregateValuesPresent must be true');
+  }
+  const unavailable = record.unavailable;
+  if (!Array.isArray(unavailable) || unavailable.length !== SYSTEM_OBSERVATION_LOOP_UNAVAILABLE_METRICS.length
+    || SYSTEM_OBSERVATION_LOOP_UNAVAILABLE_METRICS.some((metric, index) => unavailable[index] !== metric)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'unavailable must list the four unsupported metrics in order');
+  }
+  if (record.productionAuthorizationVerified !== false || record.agentArtsVerified !== false) {
+    throw new ProtocolError(
+      'INVALID_ARGUMENT',
+      'Direct provider evidence cannot claim production authorization or AgentArts verification',
+    );
+  }
+  const serialized = JSON.stringify(record);
+  if (/"mock"|synthetic|closedLoop":true|"verified"/i.test(serialized)) {
+    throw new ProtocolError('INVALID_ARGUMENT', 'Direct provider evidence must not claim a synthetic or verified closed loop');
+  }
+}
+
 /**
  * Evaluates whether system observation has achieved verified end-to-end closed loop.
  *

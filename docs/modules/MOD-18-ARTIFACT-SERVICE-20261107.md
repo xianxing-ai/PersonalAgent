@@ -35,7 +35,7 @@
   - 不读取仓库外凭据，不把 Artifact 内容作为 Runtime Evidence 或 Policy 自动批准。
 - **边界与装配**：
   - 明确：这不是 Runtime Evidence，不是 AgentArts 平台 Artifact。
-  - 默认不注册到全局 `ToolHost`。提供可选组装工厂 `assembleArtifactServiceTools(service)`，由外部受信宿主自主按需装配。
+  - 默认不注册到全局 `ToolHost`。提供可选组装工厂 `assembleArtifactServiceTools(service)`，由外部受信宿主自主按需装配。2026-11-10 起该工厂包含 `artifact.read` / `artifact.expire` / `artifact.release`，与 create/get/list 一样不自动注册；过期或已释放的读取仍拒绝，重复 release 幂等。这仍不是公共 Runtime Artifact 端口，也不是 AgentArts 平台 Artifact。
 
 ### 2. Windows 恢复绑定规划 (`planWindowsRecoveryArtifact` / `assertRecoveryArtifactBinding`)
 
