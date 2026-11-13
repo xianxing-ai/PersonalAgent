@@ -130,22 +130,27 @@ export function createOperatorBrake(ports: OperatorBrakePorts): OperatorBrake {
     applyExtensions(ports.extensions, 'hold');
   }
 
+  const currentRecord = (): OperatorBrakeRecord => {
+    try { record = readRecord(ports.store.load()); } catch {}
+    return record;
+  };
+
   const persist = (next: OperatorBrakeRecord): void => {
     ports.store.save(next);
     record = readRecord(ports.store.load());
   };
 
   return {
-    snapshot: () => copy(record),
-    isPaused: () => record.paused,
+    snapshot: () => copy(currentRecord()),
+    isPaused: () => currentRecord().paused,
     admit(kind) {
       if (kind !== 'task' && kind !== 'workflow' && kind !== 'tool' && kind !== 'schedule') {
         throw new Error('Unknown operator brake admission');
       }
-      return record.paused ? {accepted: false, reason: 'operator_paused'} : {accepted: true};
+      return currentRecord().paused ? {accepted: false, reason: 'operator_paused'} : {accepted: true};
     },
     async engage() {
-      if (record.paused) return copy(record);
+      if (currentRecord().paused) return copy(record);
       const pausedAt = ports.now();
       if (typeof pausedAt !== 'string' || !Number.isFinite(Date.parse(pausedAt))) throw new Error('Operator brake clock is invalid');
       // The flag is durable before any abort, so a crash still stays paused.
@@ -164,7 +169,7 @@ export function createOperatorBrake(ports: OperatorBrakePorts): OperatorBrake {
       return copy(record);
     },
     async release() {
-      if (!record.paused) return copy(record);
+      if (!currentRecord().paused) return copy(record);
       const holds = record.holds;
       persist({version: 1, paused: false, holds: []});
       ports.releaseTriggers();

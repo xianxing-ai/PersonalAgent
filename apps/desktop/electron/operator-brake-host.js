@@ -1,7 +1,7 @@
 import {createOperatorBrake} from '@personal-agent/cognition';
 
 export const OPERATOR_BRAKE_ACTION = 'operator.brake';
-const HOLDS = ['planning', 'running', 'waiting_external', 'verifying'];
+const HOLDS = ['created', 'planning', 'running', 'waiting_approval', 'waiting_external', 'verifying'];
 
 /**
  * Product adapter. The panel, tray and startup path all call this object.

@@ -87,7 +87,21 @@ test('operator pause blocks new tasks and schedules, holds the running tool, res
     assert.equal(held.cancelRequested, undefined);
     const marker = runtime.loadCheckpoint(task.taskId, OPERATOR_BRAKE_CHECKPOINT);
     assert.equal(marker.version, '1.0');
+    assert.equal(marker.originalState, 'running');
     assert.equal(marker.cursor.step, 1);
+    runtime.holdForOperatorPause(task.taskId);
+    assert.equal(runtime.loadCheckpoint(task.taskId, OPERATOR_BRAKE_CHECKPOINT).originalState, 'running');
+    await assert.rejects(
+      client.call('tool.invoke', {
+        toolName: 'fixture.read', toolVersion: '1.0.0', arguments: {}, scopeRef: 'auth-read',
+      }, {taskId: task.taskId, idempotencyKey: 'paused-tool-call', timeoutMs: 20000}),
+      error => error.code === 'CANCELLED',
+    );
+    const deniedWhilePaused = runtime.readToolExecutions(task.taskId).find(record => record.evidenceId === 'paused-tool-call');
+    assert.equal(deniedWhilePaused?.state, 'failed');
+    assert.equal(deniedWhilePaused?.errorCode, 'CANCELLED');
+    assert.equal(deniedWhilePaused?.policyDecision, 'deny');
+    assert.equal(deniedWhilePaused?.executionStarted, false);
     assert.equal(runtime.loadCheckpoint(task.taskId, 'agent-loop').step, 1);
     const stopped = await running;
     assert.equal(stopped.state, 'waiting_reconciliation');

@@ -173,7 +173,7 @@ else {
     void sessionControls.submitted(token).catch(report);renderQueue();setSendMode(Boolean(input.value.trim()));
   };
   const drainQueue=()=>{
-    if(wakeClosed||pending||activeTasks().length||messageQueue.paused)return;
+    if(wakeClosed||pending||current?.operatorBrake?.paused===true||activeTasks().length||messageQueue.paused)return;
     const next=messageQueue.list(current?.conversationState?.activeId)[0];
     if(next)void submitMessage(next.text,{queued:next});
   };

@@ -139,6 +139,7 @@ test('desktop brake, IPC handler, scheduler and in-flight tool share one pause',
     assert.equal(restartedRuntime.getSchedule('reminder-2').status, 'pending');
     assert.equal(restartedRuntime.loadCheckpoint(heldId, 'agent-loop').step, 1);
     assert.equal(restartedRuntime.loadCheckpoint(heldId, 'operator-brake:v1').version, '1.0');
+    assert.equal(restartedRuntime.loadCheckpoint(heldId, 'operator-brake:v1').originalState, 'running');
   } finally {
     restartedRuntime.close();
   }

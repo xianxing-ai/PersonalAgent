@@ -448,11 +448,21 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       const task = this.getTask(taskId);
       if (terminal.has(task.state) || task.cancelRequested || task.state === 'cancelling') return task;
       const cursor = this.loadCheckpoint(taskId, 'competition-loop') ?? this.loadCheckpoint(taskId, 'agent-loop');
+      const existing = this.loadCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT) as {
+        version?: string; taskId?: string; originalState?: TaskState; originalRevision?: number; heldAt?: string; cursor?: unknown;
+      } | undefined;
+      if (!operatorHoldStates.has(task.state)) {
+        if (task.state === 'waiting_reconciliation' && existing?.version === '1.0' && existing.taskId === taskId) {
+          if (cursor !== undefined && existing.cursor === undefined) {
+            this.saveCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT, {...existing, cursor});
+          }
+        }
+        return this.getTask(taskId);
+      }
       this.saveCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT, {
         version: '1.0', taskId, originalState: task.state, originalRevision: task.revision, heldAt: this.timestamp(),
         ...(cursor === undefined ? {} : {cursor}),
       });
-      if (!operatorHoldStates.has(task.state)) return this.getTask(taskId);
       return this.updateTask(taskId, 'waiting_reconciliation', {
         error: {code: 'RESULT_UNKNOWN', message: 'Operator pause held the task at its checkpoint', retryable: true},
       }, true);
@@ -1150,7 +1160,34 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           break;
         }
         case 'tool.invoke': {
-          if (this.isOperatorPaused()) throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
+          if (this.isOperatorPaused()) {
+            if (request.taskId) {
+              try {
+                const task = this.getTask(request.taskId);
+                const runId = request.idempotencyKey ?? this.idFactory();
+                const existing = this.db.prepare('SELECT 1 FROM tool_execution_records WHERE evidence_id = ?').get(runId);
+                if (!existing && !terminal.has(task.state)) {
+                  const now = this.timestamp();
+                  this.saveToolExecution({
+                    protocolVersion: PROTOCOL_VERSION,
+                    policyDecision: 'deny',
+                    executionStarted: false,
+                    inputDigest: toolInputDigest(request.taskId, request.payload),
+                    evidenceId: runId,
+                    requestId: request.requestId,
+                    taskId: request.taskId,
+                    toolName: request.payload.toolName,
+                    toolVersion: request.payload.toolVersion,
+                    startedAt: now,
+                    finishedAt: now,
+                    state: 'failed',
+                    errorCode: 'CANCELLED',
+                  });
+                }
+              } catch { /* Task lookup failure still surfaces the pause error below. */ }
+            }
+            throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
+          }
           if (!this.toolGateway) throw new RuntimeError('UNSUPPORTED_CAPABILITY', 'Tool gateway is not configured');
           if (!request.taskId) throw new RuntimeError('INVALID_ARGUMENT', 'tool.invoke requires a taskId');
           const task = this.getTask(request.taskId);
