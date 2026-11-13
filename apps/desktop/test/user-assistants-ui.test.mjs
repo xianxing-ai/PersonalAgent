@@ -7,6 +7,7 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({'&': '&amp;'
 
 test('the roster saves a new assistant from name, description and optional model', async () => {
   const calls = [];
+  const select = {tagName: 'SELECT', value: '', innerHTML: ''};
   const form = {hidden: true, dataset: {assistantCreateForm: ''}, displayName: {value: '笔记'}, instructions: {value: '整理会议'}, modelId: {value: 'deepseek-v4-flash'}, reset() { this.hidden = true; }};
   const cards = {innerHTML: '', addEventListener() {}};
   const status = {textContent: ''};
@@ -15,6 +16,7 @@ test('the roster saves a new assistant from name, description and optional model
     classList: {add() {}}, innerHTML: '', contains: () => true,
     addEventListener(name, handler) { if (name === 'click') click = handler; if (name === 'submit') submit = handler; },
     querySelector(selector) {
+      if (selector.includes('[name="modelId"]')) return select;
       if (selector.includes('create-form')) return form;
       if (selector.includes('assistant-cards')) return cards;
       if (selector.includes('form-status')) return status;
@@ -25,6 +27,9 @@ test('the roster saves a new assistant from name, description and optional model
     invoke: async (name, payload) => { calls.push({name, payload}); return {assistantId: 'user-1'}; },
     escape, report() { throw Error('create should succeed'); }, onOpen(id) { calls.push({name: 'open', payload: id}); },
   });
+  assert.match(container.innerHTML, /<select name="modelId">/);
+  roster.paint([], {agentArtsModels: {catalog: {models: [{id: 'deepseek-v4-flash', displayName: 'DeepSeek V4', type: 'text', available: true}]}}});
+  assert.match(select.innerHTML, /DeepSeek V4/);
   assert.match(container.innerHTML, /新建助手/);
   assert.doesNotMatch(container.innerHTML, /更多|刷新|收起/);
   await click({target: {closest: () => ({dataset: {assistantCreate: ''}})}});

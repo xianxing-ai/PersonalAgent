@@ -7,7 +7,7 @@ export function mountAssistantRoster(container, {invoke, escape, onOpen, report}
 <form class="assistant-create-form" data-assistant-create-form hidden>
 <label>名字<input name="displayName" maxlength="40" required autocomplete="off"></label>
 <label>说明<input name="instructions" maxlength="500" required autocomplete="off"></label>
-<label>模型（可选）<input name="modelId" maxlength="128" autocomplete="off" placeholder="留空则使用当前模型"></label>
+<label>模型（可选）<select name="modelId"><option value="">跟随当前模型</option></select></label>
 <div><button type="submit">保存</button><button type="button" data-assistant-create-cancel>取消</button></div>
 <p class="assistant-form-status" data-assistant-form-status role="status"></p>
 </form><div class="assistant-cards" aria-label="子助手"></div>`;
@@ -43,7 +43,23 @@ export function mountAssistantRoster(container, {invoke, escape, onOpen, report}
     const id = event.target.closest?.('[data-assistant-id]')?.dataset.assistantId;
     if (id) onOpen?.(id);
   });
-  return {paint(assistants) {
+  return {paint(assistants, snapshot) {
+    const select = container.querySelector('[data-assistant-create-form] [name="modelId"]');
+    if (select && select.tagName === 'SELECT') {
+      const models = (snapshot?.agentArtsModels?.catalog?.models ?? []).filter(
+        model => model.type === 'text' && model.availability !== 'unavailable' && model.available !== false,
+      );
+      const current = select.value;
+      const options = [
+        '<option value="">跟随当前模型</option>',
+        ...models.map(model => `<option value="${escape(model.id)}">${escape(model.displayName || model.id)}</option>`),
+      ];
+      if (current && !models.some(model => model.id === current)) {
+        options.push(`<option value="${escape(current)}">${escape(current)}</option>`);
+      }
+      select.innerHTML = options.join('');
+      select.value = current;
+    }
     const node = container.querySelector('.assistant-cards');
     if (node) node.innerHTML = (assistants ?? []).map(item => assistantCardHtml(item, escape)).join('');
   }};

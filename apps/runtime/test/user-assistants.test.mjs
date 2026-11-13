@@ -104,20 +104,30 @@ test('a running user assistant accepts an interruption and still waits for tool 
 test('an optional model is stored and bound on the assistant turn', async t => {
   const root = await directory(t);
   const seen = [];
+  const allowed = new Set(['deepseek-v4-flash']);
   const app = createRuntimeApplication({
     path: path.join(root, 'runtime.sqlite'),
     profile: 'huawei_ict_agentarts',
-    resolveExecutionModel: ({modelId}) => ({catalogRevision, modelId}),
+    resolveExecutionModel: ({modelId}) => {
+      if (!allowed.has(modelId)) throw new Error('missing');
+      return {catalogRevision, modelId};
+    },
     coordination: {execute: async request => { seen.push(request.executionModel?.modelId); return {kind: 'text', text: '好', verification: 'mock'}; }},
   });
   try {
     assert.throws(() => app.createAssistant({displayName: '坏模型', instructions: '说明', modelId: '有空格'}), /模型标识无效/);
+    assert.throws(() => app.createAssistant({displayName: '未上架', instructions: '说明', modelId: 'unknown-model'}), /所选模型不在当前目录里/);
     const assistant = app.createAssistant({displayName: '编码笔记', instructions: '只改测试', modelId: 'deepseek-v4-flash'});
     assert.equal(assistant.modelId, 'deepseek-v4-flash');
     const sent = app.submitAssistantMessage({assistantId: assistant.assistantId, text: '补一条测试', requestId: 'model-1'});
     await until(() => seen.length > 0 && app.activeTaskCount === 0);
     assert.equal(app.runtime.loadCheckpoint(sent.acceptedTaskId, 'execution-model').modelId, 'deepseek-v4-flash');
     assert.equal(seen[0], 'deepseek-v4-flash');
+
+    allowed.delete('deepseek-v4-flash');
+    const beforeCount = app.runtime.listTasks({limit: 50}).items.length;
+    assert.throws(() => app.submitAssistantMessage({assistantId: assistant.assistantId, text: '再补一条', requestId: 'model-2'}), /所选模型不在当前目录里/);
+    assert.equal(app.runtime.listTasks({limit: 50}).items.length, beforeCount);
   } finally {
     app.close();
   }

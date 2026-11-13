@@ -468,6 +468,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
     this.expirePendingApprovals();
+    if (!this.db.prepare('SELECT 1 FROM assistants LIMIT 1').get()) {
+      this.ensureAssistants();
+    }
   }
 
   /** Trusted host only; provisioning never clears an existing graph. */
@@ -1716,6 +1719,21 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       }
       const item: UserInjection = {id: this.idFactory(), text: body, source, ...(requestId ? {requestId} : {}), at: this.timestamp()};
       this.saveCheckpoint(taskId, INJECTION_CHECKPOINT, [...queued, item]);
+      const log = this.loadCheckpoint(taskId, 'user-injection-log:v1');
+      const entries = Array.isArray(log) ? log : [];
+      this.saveCheckpoint(taskId, 'user-injection-log:v1', [...entries.slice(-19), {text: body, source, at: item.at}]);
+      const looksExternal = source === 'peer'
+        || /"treatment"\s*:\s*"untrusted_data"|\[EXTERNAL\b|BEGIN EXTERNAL|-----BEGIN EXTERNAL/iu.test(body);
+      if (looksExternal) {
+        const existingFence = this.loadCheckpoint(taskId, 'assistant-external-fence') as {sources?: string[]} | undefined;
+        const priorSources = Array.isArray(existingFence?.sources) ? existingFence.sources : [];
+        const tag = source === 'peer' ? 'peer_injection' : 'external_injection';
+        this.saveCheckpoint(taskId, 'assistant-external-fence', {
+          tainted: true,
+          sources: priorSources.includes(tag) ? priorSources : [...priorSources, tag],
+          updatedAt: item.at,
+        });
+      }
       return {id: item.id, injected: true as const};
     });
   }

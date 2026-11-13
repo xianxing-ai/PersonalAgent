@@ -21,7 +21,7 @@ const icon=name=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const liveTurns=new Map();
   let lastData;
-  let roster;const paintAssistants=data=>roster?.paint(data?.assistants);
+  let roster;const paintAssistants=data=>roster?.paint(data?.assistants,data);
   window.desktop?.onTaskActivity?.(event=>{rememberActivity(liveTurns,event);const slot=root.querySelector(`[data-answer-for="${event.taskId}"]`);if(!slot)return;const task=(lastData?.tasks??[]).find(item=>item.taskId===event.taskId);if(!task)return;const wrap=document.createElement('div');wrap.innerHTML=answerCardHtml(task,liveTurns.get(event.taskId),escape);slot.replaceWith(wrap.firstElementChild);});
   let current={tasks:[]},lastSignature='',cardsSignature='',inspected=null;
   let updateRevision=0;
@@ -48,7 +48,16 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     assistantThread.querySelector('[data-assistant-back]').onclick=()=>{assistantThread.hidden=true;conversation.hidden=false;};
     assistantThread.querySelector('[data-assistant-stop]').onclick=()=>{if(thread.assistant.activeTaskId)invoke('task.cancel',thread.assistant.activeTaskId).catch(report);};
     bindAssistantThreadActions(assistantThread, thread.assistant, {invoke, escape, report, onChanged:()=>showAssistant(assistantId), onDeleted:()=>{assistantThread.hidden=true;conversation.hidden=false;}});
-    assistantThread.querySelector('[data-assistant-compose]').onsubmit=async event=>{event.preventDefault();const input=assistantThread.querySelector('textarea');const text=input.value.trim();if(!text)return;await invoke('assistant.submit',{assistantId,text,requestId:crypto.randomUUID()});input.value='';await showAssistant(assistantId);};
+    assistantThread.querySelector('[data-assistant-compose]').onsubmit=async event=>{
+      event.preventDefault();
+      const input=assistantThread.querySelector('textarea'),submit=assistantThread.querySelector('button[type="submit"]');
+      const text=input.value.trim();
+      if(!text||submit?.disabled)return;
+      if(submit)submit.disabled=true;
+      try{await invoke('assistant.submit',{assistantId,text,requestId:crypto.randomUUID()});input.value='';await showAssistant(assistantId);}
+      catch(error){report(error);}
+      finally{if(submit)submit.disabled=false;}
+    };
   };
   roster=mountAssistantRoster(assistantRoster,{invoke,escape,report,onOpen:id=>showAssistant(id).catch(report)});
   window.desktop?.onOpenAssistant?.(value=>{if(value?.assistantId)showAssistant(value.assistantId).catch(report);});
