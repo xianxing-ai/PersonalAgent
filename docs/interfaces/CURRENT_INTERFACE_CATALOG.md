@@ -1,5 +1,7 @@
 # 当前接口目录与冻结登记
 
+> 待办条件更新（provisional）：MOD-20 的 todo.update 与 TodoUpdateInput 接受可选正整数 expectedRevision；与当前条目 revision 不一致时返回 REVISION_CONFLICT，保留原条目及提醒。未提供时保留旧行为。该检查仅覆盖现有单进程同步存储边界，不声明跨进程事务；F11 的工作流接线与真实服务验收另行交付。
+
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
