@@ -2560,7 +2560,7 @@ async function initializeRuntime() {
             const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!conversations?.containsConversation(conversationId)) return;
             if (!privateConsumption) throw Error('私人记忆发送门禁尚未装配');
-            privateConsumption.assertCloudSend({...request,goal:scope.preparedGoal});
+            privateConsumption.assertCloudSend(request,scope);
             const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
               .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
             if (coordinationWatchInputs.get(request.taskId)!==JSON.stringify(current)) throw Error('公开事实来源已变化，请重新核实');

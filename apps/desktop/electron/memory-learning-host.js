@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
-import {mkdirSync, readFileSync, renameSync, writeFileSync} from 'node:fs';
+import {closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
-import {learnPreference, consolidateFacts, setPreferenceEnabled, withdrawPreference, withdrawPreferencesMatching, selectPromptPreferences, formatPreferenceSystemPrompt} from '@personal-agent/learning';
+import {learnPreference, consolidateFacts, setPreferenceEnabled, withdrawPreference, selectPromptPreferences, formatPreferenceSystemPrompt} from '@personal-agent/learning';
 
 export function filePreferenceStore(file) {
   return {
@@ -13,9 +13,19 @@ export function filePreferenceStore(file) {
     },
     save(notes) {
       mkdirSync(path.dirname(file), {recursive: true});
-      const temporary = `${file}.tmp`;
-      writeFileSync(temporary, JSON.stringify({version: 1, notes}));
-      renameSync(temporary, file);
+      const temporary = `${file}.${process.pid}.${randomUUID()}.tmp`;
+      let fd;
+      try {
+        fd = openSync(temporary, 'w');
+        writeFileSync(fd, JSON.stringify({version: 1, notes}), 'utf8');
+        fsyncSync(fd);
+        closeSync(fd);
+        fd = undefined;
+        renameSync(temporary, file);
+      } finally {
+        if (fd !== undefined) try { closeSync(fd); } catch {}
+        try { unlinkSync(temporary); } catch {}
+      }
     },
   };
 }
@@ -60,7 +70,7 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
     })).filter(fact => typeof fact.id === 'string' && Number.isSafeInteger(fact.revision));
     duplicates = consolidateFacts(facts).map(group => ({
       keep: {id: group.keep.id, revision: group.keep.revision},
-      drop: group.drop.map(item => ({id: item.id, revision: item.revision, summary: item.summary})),
+      drop: group.drop.map(item => ({id: item.id, revision: item.revision})),
     }));
     lastPlannedAt = new Date().toISOString();
   }
@@ -89,6 +99,7 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
         preferences: preferences.map(note => ({id: note.id, kind: note.kind, text: note.text, about: note.about,
           enabled: note.enabled, withdrawn: note.withdrawn, active: note.enabled && !note.withdrawn})),
         duplicateCount: duplicates.reduce((sum, group) => sum + group.drop.length, 0),
+        duplicateSuggestions: duplicates.map(group => ({keep: {...group.keep}, drop: group.drop.map(item => ({...item}))})),
         lastPlannedAt};
     },
     planDuplicates: refreshDuplicates,
@@ -119,16 +130,22 @@ export function createMemoryLearningHost({profile, privateMemory, learningApplic
       }
       if (name === 'learning.consolidate') {
         await refreshDuplicates();
-        const pending = duplicates.flatMap(group => group.drop);
-        const dropped = [];
-        for (const fact of pending) {
-          const result = await (privateErasure ? privateErasure.withdraw({id: fact.id, revision: fact.revision}) : privateMemory.withdraw({id: fact.id, revision: fact.revision}));
-          if (result?.state === 'withdrawn' && fact.summary) preferences = withdrawPreferencesMatching(preferences, fact.summary);
-          dropped.push({id: fact.id, revision: fact.revision, state: result?.state ?? 'unknown'});
+        const suggestions = duplicates.map(group => ({keep: {...group.keep}, drop: group.drop.map(item => ({...item}))}));
+        return {state: 'planned', suggestions, duplicateCount: suggestions.reduce((sum, group) => sum + group.drop.length, 0)};
+      }
+      if (name === 'learning.confirmConsolidate') {
+        const ref = payload?.ref;
+        if (!ref || typeof ref.id !== 'string' || !Number.isSafeInteger(ref.revision)) {
+          throw Error('请选择要确认撤回的重复记忆');
         }
-        persistPreferences();
         await refreshDuplicates();
-        return {state: 'consolidated', dropped};
+        const allowed = duplicates.some(group => group.drop.some(item => item.id === ref.id && item.revision === ref.revision));
+        if (!allowed) throw Error('这条重复记忆已不在整理建议中');
+        const target = {id: ref.id, revision: ref.revision};
+        const result = await (privateErasure ? privateErasure.withdraw(target) : privateMemory.withdraw(target));
+        await refreshDuplicates();
+        const suggestions = duplicates.map(group => ({keep: {...group.keep}, drop: group.drop.map(item => ({...item}))}));
+        return {state: result?.state ?? 'unknown', revision: result?.revision ?? target.revision, ref: target, suggestions};
       }
       if (name === 'memory.previewSave') { writeReady(); return privateMemory.previewSave(payload.source); }
       if (name === 'memory.save') {

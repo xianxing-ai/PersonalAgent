@@ -81,3 +81,41 @@ test('a model-backed child keeps the preference in its system message and a with
   local.close();
   await rm(directory, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
 });
+
+test('coordinationInput keeps sendBudget and beforeCoordinationSend aligned when preferences are appended', async () => {
+  const checked = [];
+  const sent = [];
+  const app = createRuntimeApplication({
+    path: ':memory:',
+    profile: 'huawei_ict_agentarts',
+    readPromptPreferences: () => preference,
+    coordinationInput: {
+      readRequestContext: () => '{"locale":"zh-CN"}',
+      goalTokenBudget: {tokenizerRef: 'test-chars', contextTokens: 40_000, reservedOutputTokens: 1_000, countTokens: text => text.length},
+      beforeCoordinationSend: (request, scope) => {
+        checked.push({goal: request.goal, publicGoal: scope.publicGoal, preparedGoal: scope.preparedGoal});
+      },
+    },
+    coordination: {
+      execute: async request => {
+        app.assertCompetitionExportAllowed(request);
+        sent.push(request.goal);
+        return {kind: 'text', text: '收到', verification: 'mock'};
+      },
+    },
+  });
+  try {
+    const client = new Client(app, Date.now);
+    await client.connect();
+    await client.call('task.submit', {goal: '今天天气', conversationId: 'desktop'}, {idempotencyKey: 'coord-pref', timeoutMs: 20_000});
+    for (let attempt = 0; attempt < 40 && app.activeTaskCount; attempt += 1) await new Promise(resolve => setTimeout(resolve, 15));
+    assert.equal(checked.length, 2);
+    assert.match(checked[0].goal, /回答短一些/);
+    assert.match(checked[1].goal, /回答短一些/);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0], /回答短一些/);
+  } finally {
+    for (let attempt = 0; attempt < 40 && app.activeTaskCount; attempt += 1) await new Promise(resolve => setTimeout(resolve, 15));
+    app.close();
+  }
+});

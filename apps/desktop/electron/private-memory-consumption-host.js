@@ -101,7 +101,7 @@ export function createPrivateMemoryConsumptionHost({profile, privateMemory, read
       return {state: 'authorized', goal: projected};
     },
     /** Synchronous final beforeCompetitionSend guard, after credential waits and immediately before fetch. */
-    assertCloudSend(request) {
+    assertCloudSend(request, scope) {
       const binding = readTaskBinding(request.taskId);
       const lease = leases.get(request.taskId);
       if (binding === undefined || binding === null) {
@@ -109,6 +109,14 @@ export function createPrivateMemoryConsumptionHost({profile, privateMemory, read
         return;
       }
       if (!lease) throw Error('私人记忆发送授权已失效，请重新确认新任务');
+      if (scope && typeof scope === 'object' && typeof scope.preparedGoal === 'string') {
+        checkLease(lease, {...request, goal: scope.preparedGoal});
+        if (typeof request.goal !== 'string' || (!request.goal.includes(scope.preparedGoal)
+          && !request.goal.includes(JSON.stringify(scope.preparedGoal)))) {
+          throw Error('私人记忆发送范围已变化');
+        }
+        return;
+      }
       checkLease(lease, request);
     },
     releaseTask(taskId) { leases.delete(taskId); },

@@ -33,7 +33,9 @@ export function learnPreference(notes: readonly PreferenceNote[], input: {id: st
   const about = (input.about ?? '').trim().slice(0, 120);
   const key = normalize(text);
   if (notes.some(note => note.kind === kind && normalize(note.text) === key && !note.withdrawn)) return [...notes];
-  return [...notes, {id: input.id, kind, text, about, at: input.at, enabled: true, withdrawn: false}].slice(-30);
+  const next = [...notes, {id: input.id, kind, text, about, at: input.at, enabled: true, withdrawn: false}];
+  const activeIds = new Set(next.filter(note => !note.withdrawn).slice(-30).map(note => note.id));
+  return next.filter(note => note.withdrawn || activeIds.has(note.id));
 }
 
 export function setPreferenceEnabled(notes: readonly PreferenceNote[], id: string, enabled: boolean): PreferenceNote[] {

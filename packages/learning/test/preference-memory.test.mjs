@@ -38,3 +38,20 @@ test('prompt selection keeps relevant enabled notes and drops withdrawn ones', (
   assert.doesNotMatch(prompt, /不要表情|多用列表|代码先写测试/);
   assert.equal(formatPreferenceSystemPrompt(withdrawPreference(notes, 'weather').filter(note => note.id === 'weather')), '');
 });
+
+test('withdrawn preferences do not crowd out the 30-item cap for active preferences', () => {
+  let notes = [];
+  for (let i = 1; i <= 5; i += 1) {
+    notes = withdrawPreference(learnPreference(notes, {id: `w-${i}`, kind: 'correction', text: `已撤回-${i}`, at: '2026-11-12T00:00:00.000Z'}), `w-${i}`);
+  }
+  for (let i = 1; i <= 30; i += 1) {
+    notes = learnPreference(notes, {id: `a-${i}`, kind: 'correction', text: `有效-${i}`, at: '2026-11-12T00:00:00.000Z'});
+  }
+  assert.equal(notes.filter(note => !note.withdrawn).length, 30);
+  assert.equal(notes.filter(note => note.withdrawn).length, 5);
+  assert.equal(notes.some(note => note.id === 'a-1'), true);
+  notes = learnPreference(notes, {id: 'a-31', kind: 'correction', text: '有效-31', at: '2026-11-12T00:00:00.000Z'});
+  assert.equal(notes.filter(note => !note.withdrawn).length, 30);
+  assert.equal(notes.some(note => note.id === 'a-1'), false);
+  assert.equal(notes.some(note => note.id === 'a-31'), true);
+});

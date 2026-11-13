@@ -2171,7 +2171,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         try {const budget=measureCompiledGoal(candidate,hooks.goalTokenBudget);sendGoal=candidate;sendBudget=budget;}
         catch { /* Optional diagnostics cannot evict the original approved task or history. */ }
       }
-      sendGoal=this.appendPromptPreferences(task.taskId, request.goal, sendGoal);
+      const beforePreferences = sendGoal;
+      const withPreferences = this.appendPromptPreferences(task.taskId, request.goal, sendGoal);
+      if (withPreferences !== beforePreferences) {
+        try {
+          const budget = measureCompiledGoal(withPreferences, hooks.goalTokenBudget);
+          sendGoal = withPreferences;
+          sendBudget = budget;
+        } catch {
+          /* Optional user preferences cannot evict the approved task or exceed budgets. */
+        }
+      }
       this.assertInputActive(request);
       if(!this.runtime.saveCheckpointOnce(task.taskId,checkpointKey,binding)) {
         assertCompiledContextUnchanged(this.runtime.loadCheckpoint(task.taskId,checkpointKey),binding);
