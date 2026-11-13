@@ -59,6 +59,8 @@ export type {
   RealCloudEvidence,
   PlanDeploymentAcceptanceOptions,
 } from './deployment-readback-plan.js';
+export {createUsageBudget, cheaperModel, estimateModelYuan, estimateCloudYuan, CLOUD_YUAN_PER_MINUTE, USAGE_BUDGET_APPROACH_RATIO} from './usage-budget.js';
+export type {UsageBudget, UsageBudgetPolicy, UsageBudgetSnapshot, UsageBudgetStore, UsageLedgerEntry, UsageOrigin, UsageBudgetAction, UsageDecision, UsageNotice} from './usage-budget.js';
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
 export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string;executionModel?:ExecutionModelSelection}

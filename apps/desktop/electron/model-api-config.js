@@ -61,7 +61,9 @@ function publicRequestBudget(value, binding, configurationRef) {
 
 /** Trusted main process only. Snapshot is safe for IPC; no endpoint is contacted while saving. */
 export function createModelApiConfig({userData, safeStorage, createGateway, createGuardedGateway,
-  fetchImpl=globalThis.fetch, isDefaultExecutionAvailable, profile = 'huawei_ict_agentarts'}) {
+  fetchImpl=globalThis.fetch, isDefaultExecutionAvailable, profile = 'huawei_ict_agentarts', beforeCall, onModelUsage}) {
+  if (beforeCall !== undefined && typeof beforeCall !== 'function') fail('模型用量门禁无效');
+  if (onModelUsage !== undefined && typeof onModelUsage !== 'function') fail('模型用量记录无效');
   const target = path.join(userData, 'model-api-config.json');
   let entries = new Map(), defaultId, restoreFailed = false, disposed = false;
   let harness={version:1,revision:'unconfigured',enabled:false,context:{enabled:false},events:{enabled:false,quiet:false}};
@@ -189,10 +191,34 @@ export function createModelApiConfig({userData, safeStorage, createGateway, crea
       request.signal.addEventListener('abort', abort, {once: true});
       if (request.signal.aborted) abort();
       try {
-        const result = await modelGateway.complete({...request, signal: controller.signal});
+        let activeEntry = entry, activeGateway = modelGateway;
+        if (beforeCall) {
+          const decision = beforeCall({modelId: entry.model, models: [...entries.values()].filter(item => item.enabled).map(item => item.model)});
+          if (decision?.modelId && decision.modelId !== entry.model) {
+            const alt = [...entries.values()].find(item => item.enabled && item.model === decision.modelId);
+            if (alt && alt !== entry) {
+              const opened = factory({profile, provider: alt.provider, baseUrl: alt.baseUrl, model: alt.model,
+                deployment: `${alt.id}@${alt.bindingId}`,
+                ...(alt.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(alt.nativeReasoning)}),
+                apiKey: () => { if (disposed || !entries.get(alt.id)?.enabled) fail('模型配置已撤销或更改'); return alt.apiKey; }});
+              if (opened && typeof opened.complete === 'function') { activeEntry = alt; activeGateway = opened; }
+            }
+          }
+        }
+        let requestForCall = request;
+        if (activeEntry !== entry && request.reasoningEffort !== undefined) {
+          const efforts = activeEntry.nativeReasoning?.supportedEfforts ?? activeEntry.reasoningEfforts ?? [];
+          if (!efforts.includes(request.reasoningEffort)) {
+            const {reasoningEffort, ...rest} = request;
+            requestForCall = rest;
+          }
+        }
+        const result = await activeGateway.complete({...requestForCall, signal: controller.signal});
+        try { onModelUsage?.({modelId: activeEntry.model, usage: result?.usage, latencyMs: result?.latencyMs}); }
+        catch { /* A ledger failure must not rewrite a completed model result. */ }
         assertCurrent();
         if (sequence === latestRequest && !controller.signal.aborted) requestBudgets.set(id,publicRequestBudget(result.requestBudget,
-          modelGateway.deployment?.capabilities?.requestTokenBudget,entry.bindingId));
+          activeGateway.deployment?.capabilities?.requestTokenBudget,activeEntry.bindingId));
         return result;
       } finally {
         request.signal.removeEventListener('abort', abort); pending.delete(controller);

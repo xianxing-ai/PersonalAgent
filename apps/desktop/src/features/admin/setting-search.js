@@ -7,7 +7,7 @@ const aliases = {
   tasks: '进度 执行 Evidence 证据 任务',
   worktrees: '工作树 分支 工作文件夹',
   workspace: '工作文件夹 工作区 环境',
-  usage: '用量 计费 预算 额度',
+  usage: '用量 计费 预算 额度 上限 费用 降级 暂停',
   memory: '知识 笔记 记忆',
   voice: '麦克风 语音 实时语音 听写 唤醒',
   briefing: '简报 日报 日程 审批 早上',

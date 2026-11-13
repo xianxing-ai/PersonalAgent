@@ -7,6 +7,7 @@ import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
 import {mountDailyBriefing} from './daily-briefing.js';
+import {mountUsageBudget} from './usage-budget.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
 import {mountProactiveTaskControls} from '../../app/proactive-task-controls.js';
@@ -176,7 +177,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls;
   let installedSkillsControls,pluginCatalogControls,sisControls,notificationControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
@@ -293,7 +294,7 @@ export function mountAdmin(root, invoke, escape) {
       configuration: ['配置', '集中查看模型、Runtime 与能力配置。', [['模型网关', data.model?.reason ?? '状态未知', 'models'], ['Runtime', data.connection, 'connections'], ['已公布能力', capabilitySummary(data), 'capabilities']]],
       personalization: ['个性化', '管理回答偏好、工作方式和长期习惯。', [['回答风格', '个性化模块尚未接入 Runtime', '待接入'], ['主动建议', '只在有依据且无需额外授权时提出', '受控'], ['长期偏好', '由记忆模块确认后保存', 'memory']]],
       pets: ['桌面宠物', '管理 ORB-02 与未来可选桌面伙伴。', [['当前伙伴', 'ORB-02 · 黑核与白色规则点阵', '已启用'], ['靠近响应', '进入 90px 范围展开对话', '90px'], ['宠物库', '额外角色资源尚未接入', '待接入']]],
-      usage: ['使用情况和计费', '查看本地任务使用情况与模型供应商计费边界。', [['当前显示任务', `${data.tasks?.length ?? 0} 个`, 'tasks'], ['模型费用', '由模型供应商账户结算，本应用尚未读取账单', '不可用'], ['额度限制', 'Runtime 尚未公开统一用量接口', '待接入']]],
+      usage: ['使用情况和计费', '每日和每月估算上限。', [['当前用量', '由用量设置显示', '待接入']]],
       analytics: ['分析', '查看任务成功率、耗时和能力调用趋势。', [['任务分析', '分析模块尚未接入真实聚合数据', '待接入'], ['模型延迟', data.model?.latencyMs == null ? '尚无真实连接测试结果' : `${data.model.latencyMs} ms`, 'models'], ['连接健康', capabilitySummary(data, 'health'), 'connections']]],
       account: ['账户', '管理本地身份与外部服务连接。', [['PersonalAgent 账户', '当前版本使用本地桌面身份', '本地'], ['外部账户', '通过连接器单独授权，不共享密钥', 'connections'], ['订阅', 'PersonalAgent 尚未提供订阅系统', '不可用']]],
       computer: ['电脑操控', '管理 Windows 桌面操作能力与安全边界。', [['电脑操作', 'Windows Host 模块尚未完成真实接入', '待接入'], ['执行策略', '串行操作，同一资源写入加锁', '受控'], ['授权', '副作用操作必须经过 Runtime 校验', 'authorizations']]],
@@ -384,6 +385,8 @@ export function mountAdmin(root, invoke, escape) {
     briefingControls?.render(data.dailyBriefing);briefingControls?.show(section==='briefing');
     if(section==='voice') wakeControls??=mountWakeSettings(root.querySelector('.main'),invoke);
     wakeControls?.render(data.wakePreference, data.wake);wakeControls?.show(section==='voice');
+    if(section==='usage') usageBudgetControls??=mountUsageBudget(root.querySelector('.main'),invoke);
+    usageBudgetControls?.update(data.usageBudget);usageBudgetControls?.show(section==='usage');
     if (section==='computer') computerControls ??= mountComputerControls(root.querySelector('.main'),invoke);
     computerControls?.render(data.computerControl);computerControls?.show(section==='computer');
     if(section==='computer')computerVisionControls??=mountComputerVisionControls(root.querySelector('.main'),invoke);
@@ -459,7 +462,7 @@ export function mountAdmin(root, invoke, escape) {
     if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
     if(modelApiRoot)modelApiRoot.hidden=section!=='models';
     const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
-    const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
+    const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     // Commit navigation only after its body and mounted controls are ready. A
     // highlighted sidebar alone must never acknowledge a half-rendered page.
     const commitPage = () => {
