@@ -55,6 +55,7 @@ import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost} from './memory-learning-host.js';
+import {createPermissionAuditProduct} from './permission-audit-product.js';
 import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
@@ -333,6 +334,7 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+let permissionAudit;
 let costRoute;
 let costRouteBudget=null;
 const harnessExperienceLifetime=new AbortController();
@@ -806,6 +808,7 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
+    assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
@@ -1625,6 +1628,11 @@ function applyEvent(event) {
       tasks.set(event.taskId, structuredClone(event.payload));
       observeTextTaskOutput(event.payload);
       clearInactiveTaskExitWarning();
+      const failureCode = event.type === 'task.failed' ? event.payload?.error?.code : undefined;
+      if (current?.state !== 'failed' && ['UNAUTHORIZED', 'SCOPE_DENIED', 'TIMEOUT', 'CANCELLED'].includes(failureCode)) {
+        const auditAction = failureCode === 'TIMEOUT' ? 'timeout' : failureCode === 'CANCELLED' ? 'cancelled' : 'denied';
+        permissionAudit?.recordEvent(auditAction, `task:${event.taskId}:${failureCode}`);
+      }
     }
     if (event.type === 'task.created' && event.payload.conversationId?.startsWith('knowledge-watch:')
       && event.payload.goal?.startsWith('RECHECK ')) {
@@ -2583,6 +2591,25 @@ async function initializeRuntime() {
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
+      permissionAudit=createPermissionAuditProduct({
+        userData:app.getPath('userData'),
+        onUpdate:()=>publish(),
+        list(){
+          const grants=[];
+          const sandbox=authorizationQuestionHost?.sandboxSnapshot();
+          if(sandbox?.selected)grants.push({id:'sandbox',kind:'sandbox',label:sandbox.selected.label||sandbox.selected.mode,revocable:false});
+          for(const rule of sandbox?.rules??[])if(rule.active)grants.push({id:rule.ruleId,kind:'rule',label:rule.summary||'授权规则',revision:rule.revision,revocable:true});
+          if(goalCloudHost?.snapshot()?.sessionAllowed)grants.push({id:'goal-cloud',kind:'goal-cloud',label:'目标管理许可',revocable:true});
+          if(memoryLearningHost?.snapshot()?.writeEnabled)grants.push({id:'memory-write',kind:'memory-write',label:'私人记忆确认写入',revocable:false});
+          return grants;
+        },
+        revoke(grant){
+          if(grant.kind==='rule')return authorizationQuestionHost.revokeRule({ruleId:grant.id,expectedRevision:grant.revision});
+          if(grant.kind==='goal-cloud')return goalCloudHost.revoke();
+          throw Error('这项许可不能撤销');
+        },
+      });
+      conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -3510,6 +3537,13 @@ async function action(event, name, payload) {
     return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
+  if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');
+    if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false, recordingStopped: false, skippedCount: 0}};
+    const result = permissionAudit.handleAction(name, payload);
+    if (name === 'assistantPermissions.revoke') publish();
+    return result;
+  }
   if (name === 'costRoute.state' || name === 'costRoute.replay' || name === 'costRoute.cancelReplay') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看成本路由');
     if (!costRoute) return {route: {state: 'idle', reason: '尚未按难度选择模型'}, runs: [], replay: null};
@@ -3550,7 +3584,11 @@ async function action(event, name, payload) {
     const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
     const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
-    const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
+    const result=authorizationQuestionHost.respond(payload,conversationId);
+    if(payload?.decision==='deny'||result?.decision==='deny'||result?.state==='denied'){
+      permissionAudit?.recordEvent('denied',`question:${question.toolName??payload?.questionId}`);
+    }
+    publish();return result;
   }
   if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
     if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
@@ -4579,6 +4617,9 @@ async function action(event, name, payload) {
     if(sender!==admin){const approval=approvals.get(payload.approvalId),surface=sender===workspace?'workspace':'panel';if(sender!==panel&&sender!==workspace||!approval||approval.taskId!==payload.taskId||!tasks.has(approval.taskId)||!visibleConversationTask(tasks.get(approval.taskId),surface))throw Error('审批不属于当前对话');}
     if(authorizationQuestionHost?.hasPending(payload.approvalId))throw new ProtocolError('UNAUTHORIZED','请在原对话的统一授权卡完成本次决定');
     const result = await client.call('authorization.respond', {approvalId: payload.approvalId, decision: payload.decision, expectedRevision: payload.expectedRevision});
+    if (payload.decision === 'deny') {
+      permissionAudit?.recordEvent('denied', `approval:${payload.taskId ?? payload.approvalId}`);
+    }
     approvals.delete(payload.approvalId);
     if (payload.taskId && tasks.has(payload.taskId)) await refresh(payload.taskId);
     publish();
