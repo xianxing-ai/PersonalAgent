@@ -74,7 +74,8 @@ test('the workspace strip shows the fence line from the startup snapshot', () =>
   const stub = () => {
     const node = {hidden: false, textContent: '', title: '', disabled: false, dataset: {}, className: '', children: []};
     node.setAttribute = () => {};
-    node.append = child => node.children.push(child);
+    node.append = (...children) => node.children.push(...children);
+    node.replaceChildren = (...children) => { node.children = children; };
     node.after = () => {};
     node.querySelector = selector => selector === '[data-content-fence]' ? created.find(item => item.dataset.contentFence === '') ?? node : stub();
     return node;
@@ -100,7 +101,7 @@ test('main startup wraps tools and preload still carries the desktop action chan
   const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
   const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');
   assert.match(main, /contentFence=createContentFenceProduct/);
-  assert.match(main, /beforeToolAuthorize: input => contentFence\?\.beforeAuthorize\(input\)/);
+  assert.match(main, /beforeToolAuthorize:\s*(?:async\s*)?(?:\(\s*input\s*\)|input)\s*=>\s*(?:\{[^}]*contentFence\?\.beforeAuthorize\(input\)|[^\n;]*contentFence\?\.beforeAuthorize\(input\))/);
   assert.match(main, /onTaskTerminal: taskId => contentFence\?\.clearTask\(taskId\)/);
   assert.match(main, /conversationTools=contentFence\.wrapTools\(conversationTools\)/);
   assert.match(main, /name === 'contentFence\.state'/);
