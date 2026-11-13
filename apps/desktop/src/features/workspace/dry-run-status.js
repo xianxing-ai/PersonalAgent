@@ -14,10 +14,14 @@ export function renderDryRun(node, snapshot, invoke) {
     button.type = 'button';
     button.textContent = '按预览执行';
     button.onclick = () => invoke('dryRun.confirm', {id: preview.id});
-    node.append(text, button);
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = '取消预览';
+    cancel.onclick = () => invoke('dryRun.cancel', {id: preview.id});
+    node.append(text, button, cancel);
     return;
   }
   const done = document.createElement('p');
-  done.textContent = `${latest.toolName}：${latest.reason}`;
+  done.textContent = `${latest.label || '操作核验'}：${latest.reason}`;
   node.append(done);
 }

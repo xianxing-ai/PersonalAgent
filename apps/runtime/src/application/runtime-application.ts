@@ -430,6 +430,8 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;deadline:string;signal:AbortSignal})=>boolean;
   /** Composition-only tools require a persisted original submitHostToolTask intent, even if a model guesses the name. */
   hostOnlyTools?:readonly string[];
+  beforeToolAuthorize?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect'];arguments:unknown;deadline:string;signal:AbortSignal})=>void|Promise<void>;
+  assertToolPrechecked?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect']})=>void;
 }
 export interface CoordinationGoalScope {taskId:string; conversationId:string; publicGoal:string; deadline:string; signal:AbortSignal;}
 export interface CloudSkillRuntimeHostPort {
@@ -798,6 +800,14 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             }
             this.mailReadSessions.assertPage(mailSession, request.taskId);
           }
+          const descriptor = gateway?.list().find(item => item.name === request.toolName);
+          options.assertToolPrechecked?.({
+            taskId: request.taskId,
+            runId: request.authorizationRef,
+            toolName: request.toolName,
+            toolVersion: descriptor?.version ?? '',
+            sideEffect: descriptor?.sideEffect ?? 'read',
+          });
           return policy.authorize(request);
         }}, now: () => (options.now?.() ?? new Date()).getTime()});
         for (const tool of configuredTools) gateway.register(tool.descriptor.name===WORKSPACE_PATCH_APPLY_TOOL_NAME&&(this.developerWorkflows||this.readDeveloperWorkflows)
@@ -921,6 +931,18 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             && record.taskId===invocation.taskId && record.toolName===tool.name && record.toolVersion===tool.version
             && record.state === 'confirmed' && record.executionStarted && record.policyDecision === 'allow'
             && this.runtime.matchesToolExecutionInput(record, {arguments: invocation.arguments as Record<string, unknown>, scopeRef: ref}));
+        if (!confirmedDispatch) {
+          await options.beforeToolAuthorize?.({
+            taskId: invocation.taskId,
+            runId: ref,
+            toolName: tool.name,
+            toolVersion: tool.version,
+            sideEffect: tool.sideEffect,
+            arguments: invocation.arguments,
+            deadline: invocation.deadline,
+            signal: invocation.signal,
+          });
+        }
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
         if(options.requestToolAuthorization&&options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
           toolName:tool.name,toolVersion:tool.version,deadline:invocation.deadline,signal:invocation.signal}))routineEligible=false;

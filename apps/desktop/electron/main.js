@@ -2625,6 +2625,8 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
+        beforeToolAuthorize: input => dryRun?.beforeAuthorize(input),
+        assertToolPrechecked: input => dryRun?.assertAuthorized(input),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
         requestToolAuthorization:scope=>{
@@ -3325,7 +3327,7 @@ async function action(event, name, payload) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
-  if (name === 'dryRun.state' || name === 'dryRun.confirm') {
+  if (name === 'dryRun.state' || name === 'dryRun.confirm' || name === 'dryRun.cancel') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面确认试运行');
     if (!dryRun) return {pending: [], recent: []};
     return dryRun.handleAction(name, payload);
