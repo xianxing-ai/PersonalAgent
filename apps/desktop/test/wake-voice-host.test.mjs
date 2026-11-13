@@ -11,7 +11,8 @@ function deferred() {
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture({detectorReady = true, microphoneReady = true, releaseFailure = false,
-  detectorFailure = false, detectorNeverClosed = false, authorizeFailure = false, shorterLease} = {}) {
+  detectorFailure = false, detectorNeverClosed = false, authorizeFailure = false, shorterLease,
+  now = Date.now} = {}) {
   const calls = [], captures = [], sessions = [];
   const ready = deferred(); if (microphoneReady) ready.resolve();
   let authorization, voiceActive = false, playback, visible = true, busy = false;
@@ -39,7 +40,7 @@ function fixture({detectorReady = true, microphoneReady = true, releaseFailure =
     subscribePlayback(listener) {playback = listener;listener({playbackActive: false});return () => calls.push('unsubscribe-playback');},
   };
   const host = createDesktopWakeVoiceHost({getPanel: () => panel, microphoneHost, voiceInput,
-    isBusy: () => busy,
+    isBusy: () => busy, now,
     createDetector() {
       calls.push('detector-create');
       return {
@@ -91,9 +92,14 @@ test('detector and physical capture must both be ready; a duplicate enable canno
 });
 
 test('wake and manual dictation consume one host lease and suppress duplicate or playback wakes', async () => {
-  const f = fixture();await f.host.enable(9);
+  let clock = Date.now();
+  const f = fixture({now: () => clock});await f.host.enable(9);
   f.playback(true);f.sessions[0].options.onDetected();await tick();assert.equal(f.captures.length, 0);
   f.playback(false);f.sessions[0].options.onDetected();await tick();
+  assert.equal(f.captures.length, 0);
+  assert.equal(f.host.snapshot().cooldownUntilMs, clock + 350);
+  clock += 350;
+  f.sessions[0].options.onDetected();await tick();
   assert.equal(f.captures.length, 1);assert.equal(f.captures[0].senderId, 9);
   assert.equal(Date.parse(f.captures[0].lease.deadline), f.host.snapshot().expiresAtMs);
   f.sessions[0].options.onDetected();await tick();assert.equal(f.captures.length, 1);

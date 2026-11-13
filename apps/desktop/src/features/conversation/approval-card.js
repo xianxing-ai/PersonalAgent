@@ -1,3 +1,4 @@
+import {describeAction,describeScopes} from '../../shared/scope-phrases.js';
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const expiryMillis=item=>typeof item?.expiresAt==='string'?Date.parse(item.expiresAt):Number.NaN;
 
@@ -19,9 +20,22 @@ export function approvalCards(task, approvals = [], now = Date.now()) {
     const inactive=!validExpiry || expiresAt<=now;
     const buttons=inactive?(validExpiry?'<p role="status">授权已过期</p>':'<p role="status">授权期限无效</p>'):
       `<div class="turn-actions"><button type="button" class="turn-action" data-approval-decision="allow_once" data-approval-id="${escape(item.approvalId)}">同意</button><button type="button" class="turn-action" data-approval-decision="deny" data-approval-id="${escape(item.approvalId)}">拒绝</button></div>`;
-    const action=typeof item.action==='string' && item.action.trim()?item.action:'本次操作';
-    return `<section class="approval-card" role="group" aria-label="操作授权"><strong>允许${escape(action)}？</strong><details class="authorization-question-details"><summary>查看详情</summary><p>权限：${escape(item.scopes.join('、'))}</p><p>${validExpiry?escape(new Date(expiresAt).toLocaleString())+' 前有效':'授权期限无效'}</p></details>${buttons}</section>`;
+    const action=describeAction(item.action);
+    return `<section class="approval-card" role="group" aria-label="操作授权"><strong>允许${escape(action)}？</strong><details class="authorization-question-details"><summary>查看详情</summary><p>${escape(describeScopes(item.scopes))}</p><p>${validExpiry?escape(new Date(expiresAt).toLocaleString())+' 前有效':'授权期限无效'}</p></details>${buttons}</section>`;
   }).join('');
+}
+
+const css = value => globalThis.CSS?.escape ? globalThis.CSS.escape(value) : String(value).replace(/(["\\])/g, '\\$1');
+
+/** Scroll the existing approval card for this task into view. Returns false when it is not rendered yet. */
+export function focusApprovalCard(root, taskId) {
+  if (!root || typeof taskId !== 'string' || !taskId) return false;
+  const card = root.querySelector(`[data-turn="${css(taskId)}"] .approval-card`)
+    ?? root.querySelector(`[data-workspace-approvals="${css(taskId)}"] .approval-card`);
+  if (!card) return false;
+  card.scrollIntoView?.({block: 'center', behavior: 'instant'});
+  (card.querySelector('button:not(:disabled)') ?? card).focus?.({preventScroll: true});
+  return true;
 }
 
 export function approvalResponse(id, decision, tasks, approvals, now = Date.now()) {

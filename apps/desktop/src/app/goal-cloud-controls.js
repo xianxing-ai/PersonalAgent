@@ -2,7 +2,7 @@
 export function mountGoalCloudControls(root,invoke) {
   const section=document.createElement('section');section.className='sheet';
   section.setAttribute('aria-label','主智能体目标管理');
-  section.innerHTML='<h2>主智能体目标管理</h2><p class="notice">在对话中提出查看或修改目标的请求。需要发送目标内容或执行写入时，在该次操作的提问卡中确认；受限目标不会发送。</p><button type="button" class="btn" data-goal-cloud="open">打开对话</button><button type="button" class="btn" data-goal-cloud="disable">撤销已有目标管理许可</button><p class="notice" data-goal-cloud="status" role="status"></p>';
+  section.innerHTML='<h2>主智能体目标管理</h2><p class="notice">在对话中提出查看或修改目标的请求。需要发送目标内容或执行写入时，在该次操作的提问卡中确认；受限目标不会发送。</p><button type="button" class="btn" data-goal-cloud="open">打开对话</button><button type="button" class="btn" data-goal-cloud="disable">撤销已有目标管理许可</button><div data-goal-cloud="plan"></div><button type="button" class="btn" data-goal-cloud="decompose" hidden>拆解当前目标</button><p class="notice" data-goal-cloud="status" role="status"></p>';
   root.append(section);
   const field=name=>section.querySelector(`[data-goal-cloud="${name}"]`);
   let state={},revoking=false,opening=false,unknown=false,hostVersion=0,message='';
@@ -14,8 +14,12 @@ export function mountGoalCloudControls(root,invoke) {
     field('status').textContent=message || (unknown?'目标管理许可撤销结果未获确认；请核对当前状态，或再次明确撤销。'
       :state.reason??'目标工具将在 Runtime 连接后可用');
     field('status').setAttribute('role',unknown||message?'alert':'status');
+    const plan=state.plan;
+    const planNode=field('plan'),split=field('decompose');
+    if(planNode)planNode.textContent=!plan?.subtasks?.length?'':plan.subtasks.map(item=>`${item.summary} · ${{plan:'主计划',fast:'快速子任务',review:'复核'}[item.assignee]??item.assignee} · ${{assigned:'已分派',running:'进行中',done:'完成',blocked:'受阻'}[item.state]??item.state}`).join('；');
+    if(split){split.hidden=!plan?.goalId||Boolean(plan.subtasks?.length);split.disabled=!plan?.goalId;}
   };
-  const accept=value=>{state={available:value.available,sessionAllowed:value.sessionAllowed,reason:value.reason};};
+  const accept=value=>{state={available:value.available,sessionAllowed:value.sessionAllowed,reason:value.reason,plan:value.plan};};
   const render=value=>{
     if(valid(value)) {hostVersion++;accept(value);unknown=false;}
     display();
@@ -26,6 +30,15 @@ export function mountGoalCloudControls(root,invoke) {
     try {await invoke('conversation.open');}
     catch {message='无法打开对话，请从悬浮球进入。';}
     finally {opening=false;display();}
+  };
+  field('decompose').onclick=async()=>{
+    const goalId=state.plan?.goalId;
+    if(!goalId||field('decompose').hidden)return;
+    try{
+      const result=await invoke('goal.decompose',{goalId});
+      if(result?.subtasks){state.plan={...state.plan,subtasks:result.subtasks};message='';}
+    }catch{message='暂时不能拆解这个目标';}
+    display();
   };
   field('disable').onclick=async()=>{
     if(revoking||(!state.sessionAllowed&&!unknown))return;

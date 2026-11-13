@@ -510,10 +510,10 @@ function codeOf(error: unknown): string {
   return 'EXTERNAL_FAILURE';
 }
 
-function checkLive(signal: AbortSignal, deadline: string): void {
+function checkLive(signal: AbortSignal, deadline: string, currentMs = Date.now()): void {
   if (!(signal instanceof AbortSignal)) throw new TriggerError('INVALID_ARGUMENT');
   if (signal.aborted) throw new TriggerError('CANCELLED');
-  if (!utc(deadline) || Date.now() >= Date.parse(deadline)) throw new TriggerError('TIMEOUT');
+  if (!utc(deadline) || currentMs >= Date.parse(deadline)) throw new TriggerError('TIMEOUT');
 }
 
 async function readAllPages(read: PublicSourceReadPort['read'], base: Record<string, unknown>, context: TriggerTickInput): Promise<ConnectorItem[]> {
@@ -672,7 +672,7 @@ export function createProactiveSourceTrigger(options: ProactiveSourceTriggerOpti
     },
     async tick(input: TriggerTickInput): Promise<TriggerTickResult> {
       started = true;
-      checkLive(input.signal, input.deadline);
+      checkLive(input.signal, input.deadline, clock());
       const outcomes: TriggerOutcome[] = [];
       const observedAt = new Date(clock()).toISOString();
       if (!utc(observedAt)) throw new TriggerError('INVALID_ARGUMENT');
@@ -722,7 +722,7 @@ export function createProactiveSourceTrigger(options: ProactiveSourceTriggerOpti
       const queue = [...pending];
       for (const event of queue) {
         if (!pending.some(item => item.eventId === event.eventId)) continue;
-        checkLive(input.signal, input.deadline);
+        checkLive(input.signal, input.deadline, clock());
         if (event.kind === 'calendar.starting_soon') {
           const start = Date.parse(event.occurredAt);
           if (start <= at || start > at + leadMs) {
@@ -795,7 +795,7 @@ export function createProactiveSourceTrigger(options: ProactiveSourceTriggerOpti
     },
     async resumeApproved(input: ApprovedResume): Promise<TriggerOutcome> {
       started = true;
-      checkLive(input.signal, input.deadline);
+      checkLive(input.signal, input.deadline, clock());
       const record = approvals.get(input.eventId);
       if (!record || record.approvalId !== input.approvalId || record.argumentsDigest !== input.argumentsDigest) {
         throw new TriggerError('UNAUTHORIZED');

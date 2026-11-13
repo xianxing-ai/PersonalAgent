@@ -56,3 +56,7 @@ MOD-17 提供 Windows 本地系统状态只读观测（CPU、内存与 uptime �
 | 模块工作区全量测试 | `npm run test --workspace=@personal-agent/windows-client` | 64/64 通过 |
 | 架构约束检查 | `npm run check:architecture` | 3/3 通过 |
 | Git 格式检查 | `git diff --check` | 0 格式警告/冲突 |
+
+## 5. 2026-11-10 直读证据形状（仍非闭环）
+
+`assertDirectProviderReadEvidence` 只接受 `capture-windows-evidence.mjs` 写出的脱敏结构：`evidenceKind` 为 `direct_provider_read_only`、`platform` 为 `win32`、`source` 为 `node:os`，且 `productionAuthorizationVerified` 与 `agentArtsVerified` 必须为 `false`。多余字段、`mock`，或把授权/云验收标成 true，一律拒绝。`planSystemObservationAcceptance` 仍然恒为 `closedLoop: false`。这份校验不代替 Policy、Desktop 或 AgentArts 实机读回，也不在非 Windows 上写出证据文件。
