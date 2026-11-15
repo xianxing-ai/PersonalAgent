@@ -1754,7 +1754,7 @@ export function createKnowledgeWatchHost({
     if (collection.state === 'unchanged' && value.items.length > 0) return null;
     return value;
   }
-  async function refreshSubscribedFeed(request = {}) {
+  async function refreshSubscribedFeed(request = {}, sourceScope) {
     requireReady();
     if (request.signal !== undefined && !(request.signal instanceof AbortSignal)) fail('INVALID_ARGUMENT');
     const signal = request.signal ? AbortSignal.any([controller.signal, request.signal]) : controller.signal;
@@ -1784,7 +1784,7 @@ export function createKnowledgeWatchHost({
       const query = {subscriptionId};
       if (text(cursor)) query.cursor = cursor;
       let result;
-      try { result = await feedCollect(query, signal); }
+      try { result = await feedCollect(query, signal, sourceScope); }
       catch (error) {
         if (ticket !== life || !running || signal.aborted || error?.code === 'CANCELLED') {
           return {accepted: false, reason: 'stopped'};
@@ -2077,7 +2077,7 @@ export function createKnowledgeWatchHost({
             }
           }
           return JSON.stringify(getFeedCheckContext(taskId)) === JSON.stringify(context);
-        }});
+        }}, {trackingTaskIds: [...new Set(context.consumers.map(item => item.consumer.intakeTaskId))]});
       return {...result, taskId, scheduleId: context.schedule.scheduleId, subscriptionId: context.subscriptionId};
     } finally { activeFeedChecks.delete(taskId); }
   }
