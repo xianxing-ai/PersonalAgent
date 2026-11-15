@@ -54,7 +54,7 @@ import {PRIVATE_MEMORY_CONSUMPTION_CHECKPOINT, createPrivateMemoryConsumptionHos
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
-import {createMemoryLearningHost} from './memory-learning-host.js';
+import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
 import {createContentFenceProduct} from './content-fence-product.js';
 import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
@@ -152,6 +152,7 @@ import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
+import {createPersonalDashboardHost} from './personal-dashboard-host.js';
 import {createDailyBriefingHost} from './daily-briefing-host.js';
 import {presentBriefingDecision} from './briefing-decision.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
@@ -439,6 +440,7 @@ let todoHost;
 let dailyBriefingHost;
 let approvalFocus;
 let todoFailure = '';
+let personalDashboardHost;
 let todoClosing;
 let todoClosed = false;
 let notepadHost;
@@ -851,6 +853,7 @@ function snapshot(surface) {
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
+    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'},
     dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
     goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
@@ -2230,6 +2233,21 @@ async function initializeRuntime() {
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
       }
+      if (!syntheticMvp && runtimeApplication) {
+        try {
+          personalDashboardHost = createPersonalDashboardHost({
+            userData: app.getPath('userData'), safeStorage, namespace,
+            runtime: runtimeApplication.runtime,
+            dispatchTask: runtimeModule.dispatchPersonalDashboardTask,
+            calendarConfig, meetingSnapshot: () => calendarMeetingHost?.snapshot(),
+            mailConfig, now: Date.now, onUpdate: publish,
+            onNotification(item) {
+              if (Notification.isSupported()) new Notification({title: item.title, body: item.body}).show();
+            },
+          });
+          await personalDashboardHost.start();
+        } catch { personalDashboardHost = undefined; }
+      }
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
         toolPresenceHost=createToolPresenceHost({
@@ -2499,12 +2517,20 @@ async function initializeRuntime() {
         getRuntime: () => runtimeApplication.runtime,
         getTools: () => runtimeApplication.tools,
         runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools),
+        readPromptPreferences: ({goal}) => {
+          const text = memoryLearningHost?.preferencePrompt?.(goal);
+          return typeof text === 'string' && text.trim() ? text : undefined;
+        },
         fakeModelMode,
       });
       subagentTool.execute = (input, context) => {
         const taskThinking = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-thinking');
         const boundTool=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>runtimeApplication.runtime,
           getTools:()=>runtimeApplication.tools,fakeModelMode,
+          readPromptPreferences: ({goal}) => {
+            const text = memoryLearningHost?.preferencePrompt?.(goal);
+            return typeof text === 'string' && text.trim() ? text : undefined;
+          },
           runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)});
         return boundTool.execute({...input,subtasks:input.subtasks.map(subtask=>({...subtask,
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
@@ -2681,6 +2707,10 @@ async function initializeRuntime() {
           return withNativeReadbackScope({owner:admin},scope=>notepadHost.recoverOriginalRun(
             {taskId,runId,argumentsDigest:intent?.argumentsDigest},scope));
         }}} : {}),
+        readPromptPreferences: ({goal}) => {
+          const text = memoryLearningHost?.preferencePrompt?.(goal);
+          return typeof text === 'string' && text.trim() ? text : undefined;
+        },
         coordinationInput:{
           get contextCompaction(){return harnessContextHost?.runtimeHooks;},
           readRequestContext:readDesktopRequestContext,
@@ -2710,7 +2740,7 @@ async function initializeRuntime() {
             const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!conversations?.containsConversation(conversationId)) return;
             if (!privateConsumption) throw Error('私人记忆发送门禁尚未装配');
-            privateConsumption.assertCloudSend({...request,goal:scope.preparedGoal});
+            privateConsumption.assertCloudSend(request,scope);
             const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
               .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
             if (coordinationWatchInputs.get(request.taskId)!==JSON.stringify(current)) throw Error('公开事实来源已变化，请重新核实');
@@ -2941,8 +2971,9 @@ async function initializeRuntime() {
         cancelTask:taskId=>runtimeApplication.runtime.requestCancel(taskId,'私人记忆使用已撤回'),
         eraseTaskCopies:scope=>runtimeApplication.eraseTaskCopies(scope),
         readCopyErasureReceipt:taskId=>runtimeApplication.readCopyErasureReceipt(taskId),backups:privateBackups});
+      const preferenceStore=filePreferenceStore(path.join(app.getPath('userData'), 'learning-preferences.json'));
       memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-        learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
+        learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory(),preferenceStore});
       await memoryLearningHost.recover();
       wikiSourceMonitor?.close();
       wikiSourceMonitor=runtimeModule.createWikiSourceMonitor({source:{
@@ -3076,7 +3107,8 @@ async function initializeRuntime() {
         summary:'删除所选公共事实及其绑定版本/投影；已有依赖或未核实状态仍拒绝删除，原擦除审计继续核实'});
     }});
     memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-      learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
+      learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory(),
+      preferenceStore:filePreferenceStore(path.join(app.getPath('userData'), 'learning-preferences.json'))});
     await memoryLearningHost.recover();
   }
   if (competitionMode) {
@@ -3337,7 +3369,7 @@ async function initializeRuntime() {
     onUpdate: publish,
   });
   eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
-    void pumpEvents(); if(!operatorPaused)void todoHost?.tick();
+    void pumpEvents(); if(!operatorPaused){void todoHost?.tick(); void personalDashboardHost?.tick();}
     if(runtimeClosed)return;
     void maintenancePoll.run('proactive',()=>operatorPaused?undefined:tickProactiveP5());
     void maintenancePoll.run('mail',()=>refreshMail());
@@ -3574,6 +3606,12 @@ async function action(event, name, payload) {
       toolPresenceHost?.refresh();await notepadHost?.refresh();await microphoneCaptureHost?.revoke();
     }
     publish();return result;
+  }
+  if (name === 'personalDashboard.period') {
+    if (sender !== admin || !personalDashboardHost) throw Error('请从管理后台更改汇总周期');
+    const result = personalDashboardHost.setPeriod(payload);
+    publish();
+    return result;
   }
   if(name==='app.startup.read'||name==='app.startup.configure'){
     if(sender!==admin||(name==='app.startup.read'&&payload!==undefined))throw Error('请从可信管理后台设置登录自启');

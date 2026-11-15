@@ -2,6 +2,7 @@
 const aliases = {
   models: 'API AgentArts 运行时 网关 密钥 模型',
   capabilities: 'MCP Skills 技能 插件 能力',
+  dashboard: '看板 趋势 汇总 周期 花销 邮件 时间',
   connections: '连接器 邮件 日历 订阅 待办',
   authorizations: '授权 审批 安全 权限',
   tasks: '进度 执行 Evidence 证据 任务',

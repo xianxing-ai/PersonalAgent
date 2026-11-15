@@ -26,6 +26,8 @@ Owner: zemeng. Profile: huawei_ict_agentarts. Pure local domain increment with
 an optional host-bound persistent-store consumer; no AgentArts, Memory,
 scheduler, tool execution or TaskRuntime state transition.
 
+个人数据看板（`summarizePersonalDashboard` / `dashboardScheduleInput`）只在本地把已授权读数收成趋势，并给出下一次 `ScheduleInput`。它不创建调度器、不写 TaskRuntime、不访问网络。桌面宿主把这条计划登记到既有 Scheduler；日历和邮件没授权时对应卡片不出现。
+
 `buildDailyBriefing` 根据调用方给出的任务、审批和日程快照生成每日简报。它不复制结果摘要、错误正文、审批参数或邮件正文。主动任务（#631 / CW-03）、风险分级（#630）和失败自愈（#633）只通过可选适配接口接入；未提供时来源为 unavailable，不依赖尚未合入的分支。`planDailyBriefingSchedule` 的字段与 Runtime `ScheduleInput` 结构兼容，由现有 Scheduler 登记。
 
 `ReviewedMeetingFactConsumer` consumes a trusted completed Fact projection and
