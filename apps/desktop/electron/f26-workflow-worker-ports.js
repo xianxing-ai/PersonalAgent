@@ -115,5 +115,6 @@ export function createConfiguredDesktopF26WorkflowPorts({runtimeModule,codingMod
           '-Image',initial.configuration.imageTag,'-RegistryReference',initial.configuration.registryReference,'-ExpectedSourceRevision',initial.configuration.sourceRevision,
           '-Build','-Push','-DockerPath',dockerPath,'-NodePath',nodeExecutable,'-OutputDirectory',initial.output]}]});
       return tool.execute(args,context);}};
+  if(ports.unavailable)return {tools:[],configuredWorkflowWorkerPorts:[],unavailable:ports.unavailable};
   return {tools:[...ports.tools,command],configuredWorkflowWorkerPorts:ports.configuredWorkflowWorkerPorts,unavailable:ports.unavailable};
 }
