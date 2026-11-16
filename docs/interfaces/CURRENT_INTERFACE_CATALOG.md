@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-11 失败自愈决策（provisional）
+
+`@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
+
 ## 2026-11-11 用户风险档（provisional）
 
 `@personal-agent/autonomy` 提供保守 / 平衡 / 自主三档。Runtime 默认使用自主档；传入 `riskAutonomy: false` 时仍只按 `automaticTools`。分类表中的低风险直接做，有补偿的中风险在成功后经现有桌面通知端口投递，点击通知才执行已保存的补偿。未列入分类表的工具继续沿用 `automaticTools`。设置写入桌面加密记录，不新增 wire 或数据库迁移。设置页只有档位、两类覆盖、一个撤销按钮和最近记录。这不提升 Policy 或通知渠道的冻结状态。说明见 [MOD-28-RISK-AUTONOMY-01](../modules/MOD-28-RISK-AUTONOMY-01.md) 和 [ADR-0043](../adr/0043-user-risk-autonomy.md)。

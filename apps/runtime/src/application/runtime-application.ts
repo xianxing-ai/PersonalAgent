@@ -1,4 +1,5 @@
 import {ProtocolError, validateToolValue,validateContract} from '@personal-agent/contracts';
+import {TASK_FAILURE_REPAIR_CHECKPOINT, TASK_FAILURE_READONLY_RETRY_CHECKPOINT, planRuntimeTaskFailure} from '@personal-agent/agentarts';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
@@ -819,6 +820,10 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             .then(()=>this.refreshSubagentParent(taskId)).catch(()=>{});
         }
       },
+      onTaskFailed:notice=>{
+        const prior=this.runtime.loadCheckpoint(notice.taskId,TASK_FAILURE_REPAIR_CHECKPOINT);
+        this.runtime.saveCheckpoint(notice.taskId,TASK_FAILURE_REPAIR_CHECKPOINT,planRuntimeTaskFailure(notice,prior));
+      },
       ...(options.tools || discoveryTool || options.mailReview || this.localRepair || options.proactiveWorkflows || options.workflowShadowRelease || options.voiceFinalTranscript || options.codingRepair || this.readDeveloperHarnessConfiguration ? {createToolGateway: (policy: import('@personal-agent/policy').AuthorizationPolicy) => {
         gateway = new ToolGateway({policy: {authorize: request => {
           this.harnessExperienceRecipes(request.taskId,{
@@ -829,6 +834,17 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           assertUserTaskDelegationInvocation(this.runtime, request);
           this.assertSubagentConversationInvocation(request.taskId,request.toolName);
           this.assertDeveloperHarnessToolScope(request.taskId,request.toolName);
+          const readonlyRetry = this.runtime.loadCheckpoint(request.taskId, TASK_FAILURE_READONLY_RETRY_CHECKPOINT) as
+            {readOnly?: boolean; toolName?: string} | undefined;
+          if (readonlyRetry?.readOnly === true) {
+            const retryDescriptor = gateway?.list().find(item => item.name === request.toolName);
+            if (!retryDescriptor || retryDescriptor.sideEffect !== 'read') {
+              throw new ProtocolError('SCOPE_DENIED', 'Read-only repair retry task cannot authorize write tools');
+            }
+            if (typeof readonlyRetry.toolName === 'string' && request.toolName !== readonlyRetry.toolName) {
+              throw new ProtocolError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool');
+            }
+          }
           // Gate even the generic tool.invoke wire path: a persisted sample
           // grant alone cannot survive its process-local consent lease.
           const session = this.runtime.loadCheckpoint(request.taskId, SYSTEM_OBSERVATION_SESSION_CHECKPOINT);

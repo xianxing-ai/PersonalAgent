@@ -173,10 +173,29 @@ export interface RuntimeToolGateway {
   invoke(invocation: RuntimeToolInvocation): Promise<unknown>;
 }
 
+/** Plain failure facts for a trusted host. No goal text, arguments or credentials. */
+export interface TaskFailureNotice {
+  taskId: string;
+  revision: number;
+  errorCode?: string;
+  effect: 'read' | 'write' | 'none';
+  outcome: 'failed' | 'unknown';
+  risk?: 'ordinary' | 'high';
+  reconciliationOutcome?: 'applied' | 'not_applied' | 'unknown';
+  priorSideEffects?: boolean;
+  evidenceRefs: readonly string[];
+  occurredAt: string;
+}
+
 export interface RuntimeOptions {
   now?: () => Date;
   /** Trusted Application lifecycle notification, after the expiry transaction commits. */
   onApprovalsExpired?: (taskIds: readonly string[]) => void;
+  /**
+   * Trusted composition only. Invoked after a failure commit is still visible.
+   * Must not reopen the task or grant approval. Exceptions are ignored.
+   */
+  onTaskFailed?: (notice: TaskFailureNotice) => void;
   onTaskTerminal?: (taskId: string) => void;
   idFactory?: () => string;
   toolGateway?: RuntimeToolGateway;
@@ -411,6 +430,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly activeToolExecutions = new Map<string,string>();
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
+  private readonly onTaskFailed: RuntimeOptions['onTaskFailed'];
   private readonly onTaskTerminal: RuntimeOptions['onTaskTerminal'];
   private closed = false;
 
@@ -549,6 +569,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.policy = new AuthorizationPolicy(new SqliteAuthorizationStore(this.db));
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
+    this.onTaskFailed = options.onTaskFailed;
     this.onTaskTerminal = options.onTaskTerminal;
     this.expirePendingApprovals();
   }
@@ -1197,6 +1218,22 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           if (task.state !== 'running') {
             throw new RuntimeError('REVISION_CONFLICT', 'Tools can only be invoked for a running task');
           }
+          const readonlyRetry = this.loadCheckpoint(request.taskId, 'repair-readonly-retry:v1') as
+            {readOnly?: boolean; toolName?: string; toolVersion?: string} | undefined;
+          if (readonlyRetry?.readOnly === true) {
+            const invokedDescriptor = (this.toolGateway.list() ?? []).find(
+              item => item.name === request.payload.toolName && item.version === request.payload.toolVersion,
+            );
+            if (!invokedDescriptor || invokedDescriptor.sideEffect !== 'read') {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task cannot invoke write tools');
+            }
+            if (typeof readonlyRetry.toolName === 'string' && request.payload.toolName !== readonlyRetry.toolName) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool');
+            }
+            if (typeof readonlyRetry.toolVersion === 'string' && request.payload.toolVersion !== readonlyRetry.toolVersion) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool version');
+            }
+          }
           const runId = request.idempotencyKey ?? this.idFactory();
           const inputDigest = toolInputDigest(request.taskId, request.payload);
           const previousRow = this.db.prepare('SELECT record_json FROM tool_execution_records WHERE evidence_id = ?').get(runId);
@@ -1545,7 +1582,48 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.emit('task.state_changed', next, taskId);
     const terminalType = state === 'succeeded' ? 'task.completed' : state === 'failed' ? 'task.failed' : state === 'cancelled' ? 'task.cancelled' : undefined;
     if (terminalType) this.emit(terminalType, next, taskId);
+    if (state === 'failed') this.notifyTaskFailed(next);
     return next;
+  }
+
+  private taskFailureNotice(task: TaskSnapshot): TaskFailureNotice {
+    const records = this.readToolExecutions(task.taskId);
+    const last = records[records.length - 1];
+    const tools = this.toolGateway?.list() ?? [];
+    const descriptor = last ? tools.find(tool => tool.name === last.toolName && tool.version === last.toolVersion) : undefined;
+    const side = descriptor?.sideEffect;
+    const effect = side === 'read' ? 'read' : side === 'local_write' || side === 'external_write' ? 'write' : 'none';
+    const priorSideEffects = records.slice(0, -1).some(record => {
+      if (record.executionStarted || record.state === 'confirmed' || record.state === 'unknown') return true;
+      const priorDescriptor = tools.find(tool => tool.name === record.toolName && tool.version === record.toolVersion);
+      return priorDescriptor !== undefined && priorDescriptor.sideEffect !== 'read';
+    });
+    const unknown = task.error?.code === 'RESULT_UNKNOWN' || last?.state === 'unknown' || last?.reconciliationOutcome === 'unknown';
+    return {
+      taskId: task.taskId, revision: task.revision, effect, outcome: unknown ? 'unknown' : 'failed',
+      ...(task.error?.code ? {errorCode: task.error.code} : {}),
+      ...(side === 'external_write' ? {risk: 'high' as const} : {}),
+      ...(last?.reconciliationOutcome ? {reconciliationOutcome: last.reconciliationOutcome} : {}),
+      ...(priorSideEffects ? {priorSideEffects: true} : {}),
+      evidenceRefs: [...task.evidenceRefs], occurredAt: task.updatedAt,
+    };
+  }
+
+  /** After the caller commits. A rolled-back failure is ignored when the task is no longer failed. */
+  private notifyTaskFailed(task: TaskSnapshot): void {
+    if (!this.onTaskFailed) return;
+    let notice: TaskFailureNotice;
+    try { notice = this.taskFailureNotice(task); }
+    catch { return; }
+    queueMicrotask(() => {
+      if (this.closed) return;
+      try {
+        const current = this.getTask(notice.taskId);
+        const stillFailed = current.state === 'failed';
+        if (!stillFailed || current.revision < notice.revision) return;
+        this.onTaskFailed?.(notice);
+      } catch { /* The failure is already durable. */ }
+    });
   }
 
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {

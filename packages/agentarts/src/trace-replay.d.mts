@@ -10,5 +10,5 @@ export interface FrozenWorkflowReplay {
   provenance:'host_signed_frozen_export_not_new_execution';trainingPerformed:false;
 }
 export function workflowTraceDigest(value:unknown):string;
-export function replayFrozenWorkflowTrace(input:{snapshot:FrozenWorkflowTrace;requestedActions:Record<string,unknown>[]},
+export function replayFrozenWorkflowTrace(input:{snapshot:FrozenWorkflowTrace;requestedActions:Record<string,unknown>[];repairTrace?:unknown},
   control:{signal:AbortSignal;deadline:string}):FrozenWorkflowReplay;

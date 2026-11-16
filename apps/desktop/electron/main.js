@@ -11,6 +11,7 @@ import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
+import {createFailureRepairHost} from './failure-repair-host.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {computerControlFailure} from './computer-control-errors.js';
@@ -731,6 +732,14 @@ function privateMemoryController() {
   return privateMemory;
 }
 
+function projectFailureRepair(task) {
+  if (runtimeClosed || !runtimeApplication || (task.state !== 'failed' && task.state !== 'waiting_reconciliation')) return {};
+  try {
+    const repair = createFailureRepairHost(runtimeApplication.runtime).view(task.taskId);
+    return repair ? {repair} : {};
+  } catch { return {}; }
+}
+
 function taskResultMetadata(task) {
   if (runtimeClosed || task.state!=='succeeded' || !runtimeApplication) return undefined;
   const source=runtimeApplication.runtime;
@@ -767,6 +776,7 @@ function conversationProjection(surface) {
       delivery:conversationDelivery,cache:tasks,goals:taskGoals});return ({...structuredClone(task),
       ...(task.error?{error:{...task.error,...errorDisplay(task.error,'task')}}:{}),
       reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
+      ...projectFailureRepair(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: task.createdAt ?? conversations?.turns.get(task.taskId)?.createdAt ?? task.updatedAt,
       userMessage: task.bodyWithheld?task.goal:taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId) ?? task.goal,
@@ -3646,6 +3656,12 @@ async function action(event, name, payload) {
     if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false, recordingStopped: false, skippedCount: 0}};
     const result = permissionAudit.handleAction(name, payload);
     if (name === 'assistantPermissions.revoke') publish();
+    return result;
+  }
+  if (name === 'task.repair') {
+    if (sender !== panel || !runtimeApplication) throw Error('请从当前对话处理失败');
+    const result = createFailureRepairHost(runtimeApplication.runtime).act(payload);
+    publish();
     return result;
   }
   if (name === 'contentFence.state') {
