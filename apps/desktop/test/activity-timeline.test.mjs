@@ -33,7 +33,7 @@ test('the timeline shows why on every row and undo only when compensation can ru
   assert.equal(html.includes('操作没有完成'), false);
   const install = page.items.find(item => item.summary === '安装插件 skill.notes');
   const after = await host.undo(install.id);
-  assert.deepEqual(removed, ['skill.notes']);
+  assert.deepEqual(removed, ['skill.notes:1']);
   assert.equal(after.items[0].result, 'compensated');
   assert.equal(after.items.some(item => item.id === install.id && item.undoable), false);
   const undone = activityTimelineHtml(after, escape, new Set([after.items[0].id]));

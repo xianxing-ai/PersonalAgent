@@ -112,16 +112,8 @@ function isPluginRecordSuperseded(records: readonly ActivityRecord[], index: num
   if (!target) return false;
   const current = parsePluginRecord(target);
   if (!current) return false;
-  const byId = new Map(records.map(item => [item.id, item]));
   for (let i = index + 1; i < records.length; i += 1) {
     const later = records[i]!;
-    if (later.result === 'compensated' && later.compensates) {
-      const undoneTarget = byId.get(later.compensates);
-      const undonePlugin = undoneTarget ? parsePluginRecord(undoneTarget) : undefined;
-      if (undonePlugin && undonePlugin.pluginId === current.pluginId && undonePlugin.action === 'install') {
-        return true;
-      }
-    }
     if (later.result !== 'succeeded') continue;
     const laterPlugin = parsePluginRecord(later);
     if (!laterPlugin || laterPlugin.pluginId !== current.pluginId) continue;
