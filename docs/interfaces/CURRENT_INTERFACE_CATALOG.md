@@ -1,5 +1,9 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-11 用户风险档（provisional）
+
+`@personal-agent/autonomy` 提供保守 / 平衡 / 自主三档。Runtime 默认使用自主档；传入 `riskAutonomy: false` 时仍只按 `automaticTools`。分类表中的低风险直接做，有补偿的中风险在成功后经现有桌面通知端口投递，点击通知才执行已保存的补偿。未列入分类表的工具继续沿用 `automaticTools`。设置写入桌面加密记录，不新增 wire 或数据库迁移。设置页只有档位、两类覆盖、一个撤销按钮和最近记录。这不提升 Policy 或通知渠道的冻结状态。说明见 [MOD-28-RISK-AUTONOMY-01](../modules/MOD-28-RISK-AUTONOMY-01.md) 和 [ADR-0043](../adr/0043-user-risk-autonomy.md)。
+
 ## 2026-11-11 来源变化触发层（provisional）
 
 `@personal-agent/cognition` 新增可选工厂 `createProactiveSourceTrigger`。它只消费公开 `calendar.events` / `mail.inbox` 的 `ConnectorItem` 页，以及用户显式授权目录的只读枚举；首次成功读取只建基线。去重、限流和静默时段之后，把任务提案交给现有 Laya 动作选择。低风险且选择结果允许进入运行时的，调用注入的任务 `submit`；高风险只创建待审批请求，匹配的 `allowed` 决定才按原幂等键提交。`submitted` 不是任务完成。
