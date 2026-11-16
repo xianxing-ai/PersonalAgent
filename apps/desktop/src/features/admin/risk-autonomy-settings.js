@@ -55,7 +55,7 @@ export function mountRiskAutonomySettings(root, invoke) {
     <p data-risk="status" role="status"></p>`;
   root.append(section);
   const field = name => section.querySelector(`[data-risk="${name}"]`);
-  let confirmedSnapshot = {stance: 'autonomous', revoked: false, categories: [], audits: []};
+  let confirmedSnapshot;
   let busy = false;
   const queue = [];
 
@@ -66,13 +66,27 @@ export function mountRiskAutonomySettings(root, invoke) {
     }
   }
 
+  function applyUnconfirmedState() {
+    field('stance').value = '';
+    field('read').value = '';
+    field('local_reversible_write').value = '';
+    setControlsDisabled(true);
+  }
+
   function applyControls(snapshot) {
+    if (!snapshot?.stance) {
+      applyUnconfirmedState();
+      return;
+    }
     field('stance').value = snapshot.stance;
     const overrides = Object.fromEntries((snapshot.categories ?? []).map(item => [item.category, item.override ?? '']));
     field('read').value = overrides.read ?? '';
     field('local_reversible_write').value = overrides.local_reversible_write ?? '';
     field('revoke').textContent = riskAutonomyButtonLabel(snapshot.revoked === true);
   }
+
+  applyUnconfirmedState();
+  field('status').textContent = '尚未收到已确认的自动执行设置';
 
   async function processQueue() {
     if (busy) return;
@@ -84,18 +98,23 @@ export function mountRiskAutonomySettings(root, invoke) {
         try {
           const next = await invoke(action, payload);
           render(next);
-          field('status').textContent = '';
+          if (confirmedSnapshot) field('status').textContent = '';
         } catch (error) {
-          applyControls(confirmedSnapshot);
-          const confirmedLabel = STANCE_LABELS[confirmedSnapshot.stance] ?? confirmedSnapshot.stance;
-          field('status').textContent = `${error.message}（当前已确认设置：${confirmedLabel}）`;
+          if (confirmedSnapshot) {
+            applyControls(confirmedSnapshot);
+            const confirmedLabel = STANCE_LABELS[confirmedSnapshot.stance] ?? confirmedSnapshot.stance;
+            field('status').textContent = `${error.message}（当前已确认设置：${confirmedLabel}）`;
+          } else {
+            applyUnconfirmedState();
+            field('status').textContent = `${error.message}（尚未收到已确认的自动执行设置）`;
+          }
         } finally {
           resolve();
         }
       }
     } finally {
       busy = false;
-      setControlsDisabled(false);
+      setControlsDisabled(!confirmedSnapshot);
     }
   }
 
@@ -113,7 +132,13 @@ export function mountRiskAutonomySettings(root, invoke) {
   field('revoke').onclick = () => run('riskAutonomy.revoke');
 
   function render(snapshot = {}) {
-    if (!snapshot?.stance) return;
+    if (!snapshot?.stance) {
+      if (!confirmedSnapshot) {
+        applyUnconfirmedState();
+        field('status').textContent = '尚未收到已确认的自动执行设置';
+      }
+      return;
+    }
     confirmedSnapshot = {
       stance: snapshot.stance,
       revoked: snapshot.revoked === true,
@@ -121,6 +146,8 @@ export function mountRiskAutonomySettings(root, invoke) {
       audits: (snapshot.audits ?? []).map(item => ({...item})),
     };
     applyControls(confirmedSnapshot);
+    if (!busy) setControlsDisabled(false);
+    field('status').textContent = '';
     const list = field('audits');
     list.replaceChildren();
     const audits = confirmedSnapshot.audits;

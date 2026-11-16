@@ -128,7 +128,7 @@ test('failed save restores the last confirmed setting and concurrent edits are q
     const view = mountRiskAutonomySettings({append() {}}, async (action, payload) => {
       calls.push({action, payload, stanceDisabledWhileBusy: fields.stance.disabled});
       if (payload?.stance === 'conservative') {
-        throw new Error('保存失败');
+        throw new Error(calls.length === 1 ? '未连接' : '保存失败');
       }
       if (payload?.stance === 'balanced') {
         await new Promise(resolve => { releaseFirst = resolve; });
@@ -139,7 +139,22 @@ test('failed save restores the last confirmed setting and concurrent edits are q
       }
       return {stance: 'autonomous', revoked: false, categories: [], audits: []};
     });
+    assert.equal(fields.stance.disabled, true);
+    assert.equal(fields.stance.value, '');
+    assert.match(fields.status.textContent, /尚未收到已确认的自动执行设置/);
+
+    view.render(undefined);
+    assert.equal(fields.stance.disabled, true);
+    fields.stance.value = 'conservative';
+    await fields.stance.onchange();
+    assert.equal(fields.stance.value, '');
+    assert.equal(fields.stance.disabled, true);
+    assert.match(fields.status.textContent, /未连接（尚未收到已确认的自动执行设置）/);
+    assert.doesNotMatch(fields.status.textContent, /当前已确认设置：自主/);
+
     view.render({stance: 'autonomous', revoked: false, categories: [], audits: []});
+    assert.equal(fields.stance.disabled, false);
+    assert.equal(fields.stance.value, 'autonomous');
     fields.stance.value = 'conservative';
     await fields.stance.onchange();
     assert.equal(fields.stance.value, 'autonomous');
@@ -156,7 +171,7 @@ test('failed save restores the last confirmed setting and concurrent edits are q
     assert.equal(fields.stance.disabled, false);
     assert.equal(fields.stance.value, 'balanced');
     assert.equal(fields.read.value, 'ask');
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 4);
   } finally {
     globalThis.document = original;
   }
