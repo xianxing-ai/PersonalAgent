@@ -1,5 +1,11 @@
 # 当前接口目录与冻结登记
 
+## 2026-11-11 来源变化触发层（provisional）
+
+`@personal-agent/cognition` 新增可选工厂 `createProactiveSourceTrigger`。它只消费公开 `calendar.events` / `mail.inbox` 的 `ConnectorItem` 页，以及用户显式授权目录的只读枚举；首次成功读取只建基线。去重、限流和静默时段之后，把任务提案交给现有 Laya 动作选择。低风险且选择结果允许进入运行时的，调用注入的任务 `submit`；高风险只创建待审批请求，匹配的 `allowed` 决定才按原幂等键提交。`submitted` 不是任务完成。
+
+Desktop 宿主在启动后按用户设置轮询，并把低风险提案交给现有 `task.submit`。改期和写操作使用现有 `requestToolApproval` 审批卡；批准时的 revision 与参数摘要必须和提案一致才提交。`resumeTask` 对检查点 `proactive-source-gate` 直接返回，避免审批载体被当成普通对话重跑。这是 Runtime Application 的最小钩子，Policy 核心未改。PR #630 的自主档包尚未进入 main，这里只留 `risk.decide()` 适配点，不复制其实现。设置页在「连接与提醒」，没有新导航。离线测试不提升冻结等级，也不证明真实日历、邮箱、本机目录或 Laya 模型可用。边界见 [CW-03 来源触发](../modules/CW-03-PROACTIVE-SOURCE-TRIGGER.md)。
+
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。

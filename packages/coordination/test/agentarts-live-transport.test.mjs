@@ -13,24 +13,9 @@ const request = (signal = new AbortController().signal, ms = 1500) => ({taskId: 
   goal: 'Public loopback transport verification', deadline: new Date(Date.now() + ms).toISOString(), signal});
 const IGNORED_CLOSE_ERROR_CODES = new Set(['ECONNRESET', 'ECONNABORTED', 'EPIPE']);
 
-async function closeSockets(sockets, timeoutMs = 200) {
-  const pending = [...sockets]
-    .filter(socket => socket.readyState !== WebSocket.CLOSED)
-    .map(socket => new Promise(resolve => {
-      let timer;
-      const done = () => {
-        clearTimeout(timer);
-        socket.removeListener('close', done);
-        resolve();
-      };
-      socket.once('close', done);
-      if (socket.readyState === WebSocket.CLOSED) { done(); return; }
-      timer = setTimeout(() => {
-        try { socket.terminate(); } catch { /* Best-effort teardown after grace period. */ }
-        done();
-      }, timeoutMs);
-    }));
-  await Promise.all(pending);
+function isIgnorableCloseError(error, socket, closing) {
+  const isClosing = closing || (socket !== undefined && socket.readyState >= WebSocket.CLOSING);
+  return isClosing && Boolean(error && typeof error === 'object' && 'code' in error && IGNORED_CLOSE_ERROR_CODES.has(error.code));
 }
 
 async function websocketFixture(t, respond) {
@@ -38,12 +23,8 @@ async function websocketFixture(t, respond) {
   let closing = false;
   let serverError;
   const sockets = new Set();
-  const isIgnorableCloseError = (error, socket) =>
-    (closing || (socket !== undefined && socket.readyState >= WebSocket.CLOSING))
-    && Boolean(error && typeof error === 'object' && 'code' in error && IGNORED_CLOSE_ERROR_CODES.has(error.code));
   server.on('error', error => {
-    if (isIgnorableCloseError(error)) return;
-    serverError ??= error;
+    if (!isIgnorableCloseError(error, undefined, closing)) serverError ??= error;
   });
   await once(server, 'listening');
   let invokes = 0, fallbacks = 0;
@@ -52,8 +33,7 @@ async function websocketFixture(t, respond) {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
     socket.on('error', error => {
-      if (isIgnorableCloseError(error, socket)) return;
-      serverError ??= error;
+      if (!isIgnorableCloseError(error, socket, closing)) serverError ??= error;
     });
     socket.send(JSON.stringify({protocolVersion: version, type: 'ready', serverInstanceId: 'synthetic-instance',
       capabilities: ['invoke', 'status', 'cancel', 'ephemeral-replay'], restartRecovery: false, heartbeatMs: 15000}));
@@ -71,8 +51,16 @@ async function websocketFixture(t, respond) {
     receipt => diagnostics.push(receipt), {factory: () => new WebSocket(`ws://127.0.0.1:${server.address().port}`)});
   t.after(async () => {
     closing = true;
+    const closePromises = [...sockets].map(socket => socket.readyState === WebSocket.CLOSED
+      ? Promise.resolve()
+      : new Promise(resolve => socket.once('close', resolve)));
     port.close();
-    await closeSockets(sockets);
+    for (const socket of sockets) {
+      if (socket.readyState !== WebSocket.CLOSED) {
+        try { socket.terminate(); } catch { /* Best-effort socket cleanup after client port close. */ }
+      }
+    }
+    await Promise.all(closePromises);
     await new Promise(resolve => server.close(resolve));
     if (serverError) throw serverError;
   });
@@ -136,12 +124,18 @@ test('real HTTP stall respects original deadline and earlier caller cancellation
   for (const cancel of [false, true]) await t.test(cancel ? 'caller cancellation' : 'deadline', async t => {
     let entered;
     const arrival = new Promise(resolve => { entered = resolve; });
-    const server = createServer((req, res) => { req.resume(); entered(); });
+    const server = createServer((req, res) => { req.on('error', () => {}); req.resume(); entered(); });
+    let httpError;
+    server.on('error', error => { httpError ??= error; });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); });
     const port = new AgentArtsCloudAgentPort({gatewayUrl: configuration.gatewayUrl, runtimeName: configuration.runtimeName},
       {read: async () => 'Bearer synthetic'}, (_url, init) => fetch(`http://127.0.0.1:${server.address().port}`, init));
-    t.after(() => port.close());
+    t.after(async () => {
+      port.close();
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+      if (httpError) throw httpError;
+    });
     const controller = new AbortController();
     const result = assert.rejects(port.invoke(request(controller.signal, cancel ? 2000 : 200)), {code: cancel ? 'CANCELLED' : 'TIMEOUT'});
     await arrival;
