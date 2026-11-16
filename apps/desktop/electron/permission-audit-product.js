@@ -35,6 +35,7 @@ export function createPermissionAuditProduct({userData, list, revoke, now, onUpd
   const file = userData ? path.join(userData, 'permission-audit.json') : '';
   let events = [];
   let unreadable = false;
+  let writeFailed = false;
   let skippedCount = 0;
   if (file && existsSync(file)) {
     try {
@@ -46,18 +47,37 @@ export function createPermissionAuditProduct({userData, list, revoke, now, onUpd
     }
   }
   const clock = now ?? (() => new Date());
+  function notifyUpdate() {
+    try { onUpdate?.(); } catch {}
+  }
   function save(next) {
-    if (file && !unreadable) atomicWriteJson(file, next);
+    if (file && !unreadable && !writeFailed) {
+      try {
+        atomicWriteJson(file, next);
+      } catch {
+        writeFailed = true;
+        skippedCount += 1;
+        notifyUpdate();
+        return false;
+      }
+    }
     events = next;
+    return true;
   }
   function record(action, subject) {
-    if (unreadable || !verifyAudit(events).intact) {
+    if (unreadable || writeFailed || !verifyAudit(events).intact) {
       skippedCount += 1;
-      onUpdate?.();
+      notifyUpdate();
       return false;
     }
-    save(appendAudit(events, {at: clock().toISOString(), action, subject}));
-    return true;
+    try {
+      return save(appendAudit(events, {at: clock().toISOString(), action, subject}));
+    } catch {
+      writeFailed = true;
+      skippedCount += 1;
+      notifyUpdate();
+      return false;
+    }
   }
   function auditView() {
     if (unreadable) {
@@ -66,17 +86,31 @@ export function createPermissionAuditProduct({userData, list, revoke, now, onUpd
         brokenAt: 0,
         count: 0,
         unreadable: true,
+        writeFailed: false,
         recordingStopped: true,
         skippedCount,
         warning: `审计日志无法读取，已停止追加新记录（${skippedCount} 条未写入）`,
       };
     }
     const checked = verifyAudit(events);
+    if (writeFailed) {
+      return {
+        intact: checked.intact,
+        brokenAt: checked.brokenAt,
+        count: events.length,
+        unreadable: false,
+        writeFailed: true,
+        recordingStopped: true,
+        skippedCount,
+        warning: `审计日志无法写入，已停止追加新记录（${skippedCount} 条未写入）`,
+      };
+    }
     return {
       intact: checked.intact,
       brokenAt: checked.brokenAt,
       count: events.length,
       unreadable: false,
+      writeFailed: false,
       recordingStopped: !checked.intact,
       skippedCount,
       ...(!checked.intact

@@ -70,6 +70,37 @@ test('the product lists grants, avoids writing on status read, atomically writes
   assert.ok(updates >= 1);
 });
 
+test('audit I/O failure after tool execution preserves confirmed or unknown receipts and surfaces recordingStopped', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'pa-audit-io-'));
+  const blockedUserData = path.join(root, 'not-a-directory');
+  writeFileSync(blockedUserData, 'occupied-by-file', 'utf8');
+  let updates = 0;
+  let writeCalls = 0;
+  const product = createPermissionAuditProduct({
+    userData: blockedUserData,
+    onUpdate: () => { updates += 1; },
+    list: () => [],
+    revoke: () => {},
+  });
+  const [confirmedWrite, unknownWrite] = product.observeTools([
+    {descriptor: {name: 'mail.send', sideEffect: 'external_write'}, execute: async () => { writeCalls += 1; return {state: 'confirmed', id: 'receipt-1'}; }},
+    {descriptor: {name: 'calendar.update', sideEffect: 'external_write'}, execute: async () => ({state: 'unknown', reconciliationRequired: true})},
+  ]);
+  const receipt = await confirmedWrite.execute({}, {taskId: 't-io-1'});
+  assert.deepEqual(receipt, {state: 'confirmed', id: 'receipt-1'});
+  assert.equal(writeCalls, 1);
+  const stateAfterFirst = product.snapshot().audit;
+  assert.equal(stateAfterFirst.writeFailed, true);
+  assert.equal(stateAfterFirst.recordingStopped, true);
+  assert.equal(stateAfterFirst.skippedCount, 1);
+  assert.match(stateAfterFirst.warning, /审计日志无法写入，已停止追加新记录/);
+
+  const unknownReceipt = await unknownWrite.execute({}, {taskId: 't-io-2'});
+  assert.deepEqual(unknownReceipt, {state: 'unknown', reconciliationRequired: true});
+  assert.equal(product.snapshot().audit.skippedCount, 2);
+  assert.ok(updates >= 2);
+});
+
 test('permission sheet warns on broken audit chain, includes settings entry, and supports revoke', async () => {
   const original = globalThis.document;
   globalThis.document = {createElement() {
