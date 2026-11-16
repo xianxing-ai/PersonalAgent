@@ -56,6 +56,7 @@ import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
+import {createPermissionAuditProduct} from './permission-audit-product.js';
 import {createContentFenceProduct} from './content-fence-product.js';
 import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
@@ -80,6 +81,8 @@ import {createP5SystemObservationSource} from './p5-system-observation-source.js
 import {createP5DeviceReceiptStore} from './p5-device-receipt-store.js';
 import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
+import {createEncryptedAutonomyStore, createRiskAutonomyHost} from './risk-autonomy-host.js';
+import {createEncryptedModuleStorage} from './encrypted-module-storage.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
 import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
@@ -337,6 +340,7 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+let permissionAudit;
 let contentFence;
 let costRoute;
 let costRouteBudget=null;
@@ -388,7 +392,7 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication, riskAutonomyHost, desktopNotificationPort;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -813,6 +817,7 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
+    assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
     contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
@@ -828,6 +833,7 @@ function snapshot(surface) {
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
+    riskAutonomy: surface ? undefined : riskAutonomyHost?.snapshot(),
     voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: (()=>{const value=structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model);return value.status==='error'?{...value,reason:errorDisplayText(value.reason,'configuration')}:value;})(),
@@ -1636,6 +1642,11 @@ function applyEvent(event) {
       tasks.set(event.taskId, structuredClone(event.payload));
       observeTextTaskOutput(event.payload);
       clearInactiveTaskExitWarning();
+      const failureCode = event.type === 'task.failed' ? event.payload?.error?.code : undefined;
+      if (current?.state !== 'failed' && ['UNAUTHORIZED', 'SCOPE_DENIED', 'TIMEOUT', 'CANCELLED'].includes(failureCode)) {
+        const auditAction = failureCode === 'TIMEOUT' ? 'timeout' : failureCode === 'CANCELLED' ? 'cancelled' : 'denied';
+        permissionAudit?.recordEvent(auditAction, `task:${event.taskId}:${failureCode}`);
+      }
     }
     if (event.type === 'task.created' && event.payload.conversationId?.startsWith('knowledge-watch:')
       && event.payload.goal?.startsWith('RECHECK ')) {
@@ -2071,6 +2082,19 @@ async function initializeLocalLaya() {
     onUpdate:publish});
 }
 
+function ensureRiskAutonomyHost() {
+  if (riskAutonomyHost) return riskAutonomyHost;
+  const storage = createEncryptedModuleStorage({
+    userData: app.getPath('userData'), safeStorage, filename: 'risk-autonomy.json',
+  });
+  riskAutonomyHost = createRiskAutonomyHost({
+    store: createEncryptedAutonomyStore(storage),
+    channel: {sendAdvisoryNotification: input => desktopNotificationPort?.sendAdvisoryNotification(input)},
+    getApplication: () => runtimeApplication,
+  });
+  return riskAutonomyHost;
+}
+
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
   const runtimeRoot=await import('@personal-agent/runtime');
@@ -2162,7 +2186,9 @@ async function initializeRuntime() {
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);},
+          onClick: record => { riskAutonomyHost?.compensate(record.id); },
           onNavigate: openNotificationTarget});
+        desktopNotificationPort = channel;
         usageBudgetProduct?.bindNotifier(channel);
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
         dailyBriefingHost = createDailyBriefingHost({userData: app.getPath('userData'), namespace,
@@ -2624,10 +2650,29 @@ async function initializeRuntime() {
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
+      permissionAudit=createPermissionAuditProduct({
+        userData:app.getPath('userData'),
+        onUpdate:()=>publish(),
+        list(){
+          const grants=[];
+          const sandbox=authorizationQuestionHost?.sandboxSnapshot();
+          if(sandbox?.selected)grants.push({id:'sandbox',kind:'sandbox',label:sandbox.selected.label||sandbox.selected.mode,revocable:false});
+          for(const rule of sandbox?.rules??[])if(rule.active)grants.push({id:rule.ruleId,kind:'rule',label:rule.summary||'授权规则',revision:rule.revision,revocable:true});
+          if(goalCloudHost?.snapshot()?.sessionAllowed)grants.push({id:'goal-cloud',kind:'goal-cloud',label:'目标管理许可',revocable:true});
+          if(memoryLearningHost?.snapshot()?.writeEnabled)grants.push({id:'memory-write',kind:'memory-write',label:'私人记忆确认写入',revocable:false});
+          return grants;
+        },
+        revoke(grant){
+          if(grant.kind==='rule')return authorizationQuestionHost.revokeRule({ruleId:grant.id,expectedRevision:grant.revision});
+          if(grant.kind==='goal-cloud')return goalCloudHost.revoke();
+          throw Error('这项许可不能撤销');
+        },
+      });
       contentFence=createContentFenceProduct({readGoal:taskId=>{
         try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
       }});
       conversationTools=contentFence.wrapTools(conversationTools);
+      conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -2690,6 +2735,7 @@ async function initializeRuntime() {
       });
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
+        riskAutonomy: ensureRiskAutonomyHost().gate,
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
@@ -3054,6 +3100,7 @@ async function initializeRuntime() {
         : createRuntimeApplication;
       runtimeApplication = createApplication({
         path: dbPath,
+        riskAutonomy: ensureRiskAutonomyHost().gate,
         text: {mode: 'unavailable', model: modelConfig.model},
       });
       if (runtimeApplication?.configureThinking) {
@@ -3583,6 +3630,13 @@ async function action(event, name, payload) {
     return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
+  if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');
+    if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false, recordingStopped: false, skippedCount: 0}};
+    const result = permissionAudit.handleAction(name, payload);
+    if (name === 'assistantPermissions.revoke') publish();
+    return result;
+  }
   if (name === 'contentFence.state') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看外部内容围栏');
     return contentFence?.handleAction(name, payload) ?? {sources: [], blocked: '', blockedLabel: ''};
@@ -3627,7 +3681,11 @@ async function action(event, name, payload) {
     const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
     const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
-    const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
+    const result=authorizationQuestionHost.respond(payload,conversationId);
+    if(payload?.decision==='deny'||result?.decision==='deny'||result?.state==='denied'){
+      permissionAudit?.recordEvent('denied',`question:${question.toolName??payload?.questionId}`);
+    }
+    publish();return result;
   }
   if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
     if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
@@ -3900,6 +3958,15 @@ async function action(event, name, payload) {
   if (['todo.authorize','todo.revoke','todo.configureNotifications','todo.dismiss','todo.create','todo.update'].includes(name)) {
     if ((sender !== admin && sender !== workspace && sender !== panel) || !competitionMode || syntheticMvp || !todoHost) throw Error('请从正式应用待办设置操作');
     const result = await todoHost[name.slice(5)](payload); publish(); return result;
+  }
+  if (name === 'riskAutonomy.setStance' || name === 'riskAutonomy.setCategory' || name === 'riskAutonomy.revoke') {
+    if (sender !== admin) throw Error('请从设置页调整自动执行');
+    const host = ensureRiskAutonomyHost();
+    const result = name === 'riskAutonomy.setStance' ? host.setStance(payload?.stance)
+      : name === 'riskAutonomy.setCategory' ? host.setCategory(payload?.category, payload?.disposition)
+      : host.toggleRevoked();
+    publish();
+    return result;
   }
   if (['notifications.get','notifications.configure','notifications.read','notifications.digest'].includes(name)) {
     if (sender!==admin || !competitionMode || syntheticMvp || !notificationApplicationHost) throw Error('请从通知设置页操作');
@@ -4692,6 +4759,9 @@ async function action(event, name, payload) {
     if(sender!==admin){const approval=approvals.get(payload.approvalId),surface=sender===workspace?'workspace':'panel';if(sender!==panel&&sender!==workspace||!approval||approval.taskId!==payload.taskId||!tasks.has(approval.taskId)||!visibleConversationTask(tasks.get(approval.taskId),surface))throw Error('审批不属于当前对话');}
     if(authorizationQuestionHost?.hasPending(payload.approvalId))throw new ProtocolError('UNAUTHORIZED','请在原对话的统一授权卡完成本次决定');
     const result = await client.call('authorization.respond', {approvalId: payload.approvalId, decision: payload.decision, expectedRevision: payload.expectedRevision});
+    if (payload.decision === 'deny') {
+      permissionAudit?.recordEvent('denied', `approval:${payload.taskId ?? payload.approvalId}`);
+    }
     approvals.delete(payload.approvalId);
     if (payload.taskId && tasks.has(payload.taskId)) await refresh(payload.taskId);
     publish();
