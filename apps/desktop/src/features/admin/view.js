@@ -7,6 +7,7 @@ import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
 import {mountDailyBriefing} from './daily-briefing.js';
+import {mountUsageBudget} from './usage-budget.js';
 import {mountProactiveControls} from '../../app/proactive-controls.js';
 import {mountProactiveWorkflowControls} from '../../app/proactive-workflow-controls.js';
 import {mountProactiveTaskControls} from '../../app/proactive-task-controls.js';
@@ -40,10 +41,11 @@ import {windowControlsHtml} from '../../ui/window-controls.js';
 import {matchesSettingSearch} from './setting-search.js';
 import {mountPageMotion} from '../../ui/page-motion.js';
 import {mountAuthorizationSettings} from '../conversation/authorization-settings-controls.js';
+import {personalDashboardHtml} from './personal-dashboard-page.js';
 import {mountWakeSettings} from './wake-settings.js';
 
 export const sections = {
-  settings: '常规', activity: '活动', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
+  dashboard: '数据看板', settings: '常规', activity: '活动', import: '导入', profile: '个人资料', appearance: '外观', voice: '语音', notifications: '通知', briefing: '每日简报', configuration: '配置',
   personalization: '个性化', pets: '桌面宠物', shortcuts: '键盘快捷键', usage: '使用情况和计费', analytics: '分析', account: '账户',
   computer: '电脑操控', capabilities: '插件', browser: '浏览器', hooks: '钩子', connections: '连接与提醒', git: 'Git', environment: '环境', worktrees: '工作文件夹', workspace: '工作文件夹',
   tasks: '任务监控', authorizations: '隐私与权限', models: '模型', memory: '记忆', archive: '已归档任务', overview: '概览',
@@ -53,12 +55,13 @@ const primaryPages = ['settings', 'connections', 'authorizations', 'usage'];
 const navGroups = [
   {label: '偏好', items: ['appearance', 'voice', 'notifications', 'briefing', 'profile', 'memory', 'shortcuts']},
   {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'workspace']},
-  {label: '记录', items: ['tasks', 'activity']},
+  {label: '记录', items: ['dashboard', 'tasks', 'activity']},
 ];
 const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', pets:'settings', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
 const canonicalPage = page => pageAliases[page] ?? page;
 
 const iconPaths = {
+  dashboard: '<path d="M4 19V9m5 10V5m6 14v-7m5 7V3"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21h-4v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H3v-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3h4v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1v4H21a1.7 1.7 0 0 0-1.6 1z"/>',
   activity: '<circle cx="12" cy="12" r="8"/><path d="M12 8v5l3 2"/>',
   import: '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 19h14"/>', profile: '<circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/>',
@@ -178,7 +181,7 @@ export function mountAdmin(root, invoke, escape) {
   remoteMcpButton.textContent='远程 MCP 管理';
   remoteMcpButton.addEventListener('click',()=>invoke('remoteMcp.open').catch(error=>{root.querySelector('#error').textContent=error.message;}));
   root.querySelector('.admin-bar').insertBefore(remoteMcpButton,root.querySelector('.window-controls'));
-  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot;
+  let liveControls,proactiveControls,proactiveWorkflowControls,proactiveTaskControls,mailControls,calendarControls,layaControls,layaRoot,codingControls,agentArtsControls,feedsControls,notepadControls,todoControls,goalCloudControls,knowledgeControls,modelApiControls,agentArtsModelControls,referenceControls,knowledgeSourceControls,memoryLearningControls,memoryLearningRoot,usageBudgetControls;
   let installedSkillsControls,pluginCatalogControls,activityControls,sisControls,notificationControls,briefingControls,wakeControls,wikiImportControls,computerControls,computerVisionControls;
   window.addEventListener('unload',()=>wikiImportControls?.dispose(),{once:true});
   let modelApiSignature,agentArtsModelRoot,agentArtsConnectionRoot,modelApiRoot,renderedContentMarkup,renderedPreferenceKey;
@@ -295,7 +298,7 @@ export function mountAdmin(root, invoke, escape) {
       configuration: ['配置', '集中查看模型、Runtime 与能力配置。', [['模型网关', data.model?.reason ?? '状态未知', 'models'], ['Runtime', data.connection, 'connections'], ['已公布能力', capabilitySummary(data), 'capabilities']]],
       personalization: ['个性化', '管理回答偏好、工作方式和长期习惯。', [['回答风格', '个性化模块尚未接入 Runtime', '待接入'], ['主动建议', '只在有依据且无需额外授权时提出', '受控'], ['长期偏好', '由记忆模块确认后保存', 'memory']]],
       pets: ['桌面宠物', '管理 ORB-02 与未来可选桌面伙伴。', [['当前伙伴', 'ORB-02 · 黑核与白色规则点阵', '已启用'], ['靠近响应', '进入 90px 范围展开对话', '90px'], ['宠物库', '额外角色资源尚未接入', '待接入']]],
-      usage: ['使用情况和计费', '查看本地任务使用情况与模型供应商计费边界。', [['当前显示任务', `${data.tasks?.length ?? 0} 个`, 'tasks'], ['模型费用', '由模型供应商账户结算，本应用尚未读取账单', '不可用'], ['额度限制', 'Runtime 尚未公开统一用量接口', '待接入']]],
+      usage: ['使用情况和计费', '每日和每月估算上限。', [['当前用量', '由用量设置显示', '待接入']]],
       analytics: ['分析', '查看任务成功率、耗时和能力调用趋势。', [['任务分析', '分析模块尚未接入真实聚合数据', '待接入'], ['模型延迟', data.model?.latencyMs == null ? '尚无真实连接测试结果' : `${data.model.latencyMs} ms`, 'models'], ['连接健康', capabilitySummary(data, 'health'), 'connections']]],
       account: ['账户', '管理本地身份与外部服务连接。', [['PersonalAgent 账户', '当前版本使用本地桌面身份', '本地'], ['外部账户', '通过连接器单独授权，不共享密钥', 'connections'], ['订阅', 'PersonalAgent 尚未提供订阅系统', '不可用']]],
       computer: ['电脑操控', '管理 Windows 桌面操作能力与安全边界。', [['电脑操作', 'Windows Host 模块尚未完成真实接入', '待接入'], ['执行策略', '串行操作，同一资源写入加锁', '受控'], ['授权', '副作用操作必须经过 Runtime 校验', 'authorizations']]],
@@ -386,6 +389,8 @@ export function mountAdmin(root, invoke, escape) {
     briefingControls?.render(data.dailyBriefing);briefingControls?.show(section==='briefing');
     if(section==='voice') wakeControls??=mountWakeSettings(root.querySelector('.main'),invoke);
     wakeControls?.render(data.wakePreference, data.wake);wakeControls?.show(section==='voice');
+    if(section==='usage') usageBudgetControls??=mountUsageBudget(root.querySelector('.main'),invoke);
+    usageBudgetControls?.update(data.usageBudget);usageBudgetControls?.show(section==='usage');
     if (section==='computer') computerControls ??= mountComputerControls(root.querySelector('.main'),invoke);
     computerControls?.render(data.computerControl);computerControls?.show(section==='computer');
     if(section==='computer')computerVisionControls??=mountComputerVisionControls(root.querySelector('.main'),invoke);
@@ -463,7 +468,7 @@ export function mountAdmin(root, invoke, escape) {
     if(agentArtsConnectionRoot)agentArtsConnectionRoot.hidden=!showAgentArts;
     if(modelApiRoot)modelApiRoot.hidden=section!=='models';
     const directSettings = {settings: 'general', appearance: 'appearance', voice: 'voice', notifications: 'notifications', shortcuts: 'shortcuts'};
-    const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'usage', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
+    const featureSections = ['import', 'profile', 'configuration', 'personalization', 'pets', 'analytics', 'account', 'computer', 'browser', 'hooks', 'git', 'environment', 'worktrees', 'archive', 'memory'];
     // Commit navigation only after its body and mounted controls are ready. A
     // highlighted sidebar alone must never acknowledge a half-rendered page.
     const commitPage = () => {
@@ -490,7 +495,9 @@ export function mountAdmin(root, invoke, escape) {
     // The HTML and expiry selection must describe the same instant.
     const approvalNow = Date.now();
     let content = '';
-    if (section === 'overview') {
+    if (section === 'dashboard') {
+      content = personalDashboardHtml(data.personalDashboard, escape);
+    } else if (section === 'overview') {
       content = `<p class="muted">把注意力留给重要的事。</p><div class="cards"><div class="card"><span>当前显示任务</span><b>${data.tasks.length}</b></div><div class="card"><span>${modelTitle}</span><b>${modelLabel}</b><span>${escape(modelReason)}</span></div><div class="card"><span>麦克风</span><b>未连接</b><span>语音供应商尚未接入</span></div></div>${taskTable(data, escape, evidenceStates, patchRecovery.entries)}`;
     } else if (section === 'workspace') {
       content = `<section class="feature-page"><div class="settings-heading"><h2>工作文件夹</h2><p>选择这台电脑上用来读写代码的文件夹。环境和工作树不再分成两页。</p></div></section>`;
@@ -530,7 +537,7 @@ export function mountAdmin(root, invoke, escape) {
     // Keep interactive task/model DOM when an unrelated snapshot changes.
     const preferenceKey = section === 'appearance'
       ? `${themePreference()}/${localStorage.getItem('pa-calm')}` : undefined;
-    const retainContent = (['models', 'tasks', 'overview', 'connections'].includes(section)
+    const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections'].includes(section)
       || ['settings', 'appearance'].includes(section) && renderedPreferenceKey === preferenceKey)
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
@@ -674,6 +681,14 @@ export function mountAdmin(root, invoke, escape) {
       catch (error) { input.checked = previous; root.querySelector('#error').textContent = error.message; }
     });
     root.querySelectorAll('[data-jump]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.jump)));
+    const dashboardPeriod = root.querySelector('#dashboard-period');
+    dashboardPeriod?.addEventListener('change', async () => {
+      try {
+        const next = await invoke('personalDashboard.period', {period: dashboardPeriod.value});
+        current = {...current, personalDashboard: next};
+        render(current);
+      } catch (error) { root.querySelector('#error').textContent = error.message; }
+    });
     const themeSelect = root.querySelector('#pref-theme');
     if (themeSelect) {
       themeSelect.value = themePreference();

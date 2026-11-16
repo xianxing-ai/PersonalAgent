@@ -137,7 +137,7 @@ test('a real plugin install reaches the activity page and survives a restart', a
   assert.match(main, /onActivity:notice=>activityProduct\?\.note\(notice\)/);
   assert.match(main, /activityProduct\.handle\(name, payload\)/);
   assert.match(preload, /ipcRenderer\.invoke\('desktop:action', action, payload\)/);
-  assert.match(admin, /items: \['tasks', 'activity'\]/);
+  assert.match(admin, /items: \['dashboard', 'tasks', 'activity'\]/);
   assert.match(admin, /mountActivityTimeline/);
   rmSync(root, {recursive: true, force: true});
 });
