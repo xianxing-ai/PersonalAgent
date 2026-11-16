@@ -15,7 +15,7 @@ test('official MCP read passes original SQLite approval once and Skill recovery 
   try {
     await mcp.start({signal:new AbortController().signal,deadline:new Date(Date.now()+15000).toISOString()});
     const tool={...mcp.tools[0],execute:async(...args)=>{calls++;return mcp.tools[0].execute(...args);}};
-    app=createRuntimeApplication({path:path.join(root,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-reference',tools:[tool],
+    app=createRuntimeApplication({path:path.join(root,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-reference',tools:[tool],riskAutonomy:false,
       coordination:new FakeCoordinationPort(()=>({kind:'text',text:'unused',verification:'mock'}))});
     app.configureReferenceSkill({enabled:true,isToolAvailable:()=>mcp.health().connected,currentConfigurationRef:()=> 'synthetic-config-1',
       assertDispatchBinding(taskId){if(interrupt && calls===1){interrupt=false;app.runtime.transitionTask(taskId,'waiting_reconciliation');throw Error('Synthetic interruption after the confirmed read');}}});

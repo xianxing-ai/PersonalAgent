@@ -81,6 +81,8 @@ import {createP5SystemObservationSource} from './p5-system-observation-source.js
 import {createP5DeviceReceiptStore} from './p5-device-receipt-store.js';
 import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
+import {createEncryptedAutonomyStore, createRiskAutonomyHost} from './risk-autonomy-host.js';
+import {createEncryptedModuleStorage} from './encrypted-module-storage.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
 import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
@@ -390,7 +392,7 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication, riskAutonomyHost, desktopNotificationPort;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
 let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
@@ -839,6 +841,7 @@ function snapshot(surface) {
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
+    riskAutonomy: surface ? undefined : riskAutonomyHost?.snapshot(),
     voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: (()=>{const value=structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model);return value.status==='error'?{...value,reason:errorDisplayText(value.reason,'configuration')}:value;})(),
@@ -2081,6 +2084,19 @@ async function initializeLocalLaya() {
     onUpdate:publish});
 }
 
+function ensureRiskAutonomyHost() {
+  if (riskAutonomyHost) return riskAutonomyHost;
+  const storage = createEncryptedModuleStorage({
+    userData: app.getPath('userData'), safeStorage, filename: 'risk-autonomy.json',
+  });
+  riskAutonomyHost = createRiskAutonomyHost({
+    store: createEncryptedAutonomyStore(storage),
+    channel: {sendAdvisoryNotification: input => desktopNotificationPort?.sendAdvisoryNotification(input)},
+    getApplication: () => runtimeApplication,
+  });
+  return riskAutonomyHost;
+}
+
 async function initializeRuntime() {
   const runtimeModule = await import('@personal-agent/runtime/application');
   const runtimeRoot=await import('@personal-agent/runtime');
@@ -2172,7 +2188,9 @@ async function initializeRuntime() {
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
           onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);},
+          onClick: record => { riskAutonomyHost?.compensate(record.id); },
           onNavigate: openNotificationTarget});
+        desktopNotificationPort = channel;
         usageBudgetProduct?.bindNotifier(channel);
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
         dailyBriefingHost = createDailyBriefingHost({userData: app.getPath('userData'), namespace,
@@ -2719,6 +2737,7 @@ async function initializeRuntime() {
       });
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
+        riskAutonomy: ensureRiskAutonomyHost().gate,
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
@@ -3083,6 +3102,7 @@ async function initializeRuntime() {
         : createRuntimeApplication;
       runtimeApplication = createApplication({
         path: dbPath,
+        riskAutonomy: ensureRiskAutonomyHost().gate,
         text: {mode: 'unavailable', model: modelConfig.model},
       });
       if (runtimeApplication?.configureThinking) {
@@ -3612,17 +3632,17 @@ async function action(event, name, payload) {
     return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
-  if (name === 'task.repair') {
-    if (sender !== panel || !runtimeApplication) throw Error('请从当前对话处理失败');
-    const result = createFailureRepairHost(runtimeApplication.runtime).act(payload);
-    publish();
-    return result;
-  }
   if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');
     if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false, recordingStopped: false, skippedCount: 0}};
     const result = permissionAudit.handleAction(name, payload);
     if (name === 'assistantPermissions.revoke') publish();
+    return result;
+  }
+  if (name === 'task.repair') {
+    if (sender !== panel || !runtimeApplication) throw Error('请从当前对话处理失败');
+    const result = createFailureRepairHost(runtimeApplication.runtime).act(payload);
+    publish();
     return result;
   }
   if (name === 'contentFence.state') {
@@ -3946,6 +3966,15 @@ async function action(event, name, payload) {
   if (['todo.authorize','todo.revoke','todo.configureNotifications','todo.dismiss','todo.create','todo.update'].includes(name)) {
     if ((sender !== admin && sender !== workspace && sender !== panel) || !competitionMode || syntheticMvp || !todoHost) throw Error('请从正式应用待办设置操作');
     const result = await todoHost[name.slice(5)](payload); publish(); return result;
+  }
+  if (name === 'riskAutonomy.setStance' || name === 'riskAutonomy.setCategory' || name === 'riskAutonomy.revoke') {
+    if (sender !== admin) throw Error('请从设置页调整自动执行');
+    const host = ensureRiskAutonomyHost();
+    const result = name === 'riskAutonomy.setStance' ? host.setStance(payload?.stance)
+      : name === 'riskAutonomy.setCategory' ? host.setCategory(payload?.category, payload?.disposition)
+      : host.toggleRevoked();
+    publish();
+    return result;
   }
   if (['notifications.get','notifications.configure','notifications.read','notifications.digest'].includes(name)) {
     if (sender!==admin || !competitionMode || syntheticMvp || !notificationApplicationHost) throw Error('请从通知设置页操作');
