@@ -83,6 +83,7 @@ export type {
   WorkspacePatchReconciliationReadback,
 } from './application/workspace-patch-reconciliation.js';
 export {createReminderDeliveryHost} from './application/reminder-delivery.js';
+export {dispatchPersonalDashboardTask} from './application/personal-dashboard-dispatch.js';
 export {
   createRuntimeSubagentDispatchTool,
   createDesktopSubagentDispatchTool,
