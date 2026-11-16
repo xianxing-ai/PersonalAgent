@@ -55,6 +55,7 @@ import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
+import {createDryRunProduct} from './dry-run-product.js';
 import {createPermissionAuditProduct} from './permission-audit-product.js';
 import {createContentFenceProduct} from './content-fence-product.js';
 import {createCostRouteProduct} from './cost-route.js';
@@ -339,6 +340,7 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+let dryRun;
 let permissionAudit;
 let contentFence;
 let costRoute;
@@ -816,6 +818,7 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
+    dryRun:dryRun?.snapshot()??{pending:[],recent:[]},
     assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
     contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
@@ -2664,6 +2667,8 @@ async function initializeRuntime() {
         try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
       }});
       conversationTools=contentFence.wrapTools(conversationTools);
+      dryRun=createDryRunProduct({onUpdate:()=>{try{publish();}catch{/* 预览通知不能影响工具结果 */}}});
+      conversationTools=dryRun.wrapTools(conversationTools);
       conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2885,7 +2890,8 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
-        beforeToolAuthorize: input => contentFence?.beforeAuthorize(input),
+        beforeToolAuthorize: async input => { contentFence?.beforeAuthorize(input); await dryRun?.beforeAuthorize(input); },
+        assertToolPrechecked: input => dryRun?.assertAuthorized(input),
         onTaskTerminal: taskId => contentFence?.clearTask(taskId),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
@@ -3622,6 +3628,11 @@ async function action(event, name, payload) {
     return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
+  if (name === 'dryRun.state' || name === 'dryRun.confirm' || name === 'dryRun.cancel') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面确认试运行');
+    if (!dryRun) return {pending: [], recent: []};
+    return dryRun.handleAction(name, payload);
+  }
   if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');
     if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false, recordingStopped: false, skippedCount: 0}};
