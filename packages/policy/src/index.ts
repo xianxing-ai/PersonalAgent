@@ -1,5 +1,17 @@
 import { ProtocolError } from '@personal-agent/contracts';
 
+export {
+  externalEffectDecision,
+  externalKindForTool,
+  externalKindLabel,
+  fenceExternalText,
+  fenceExternalValue,
+  guardedEffectForTool,
+  guardedEffectLabel,
+  isLocalReadOnlyTool,
+} from './content-fence.js';
+export type {ExternalKind, ExternalSource, FencedText, GuardedEffect} from './content-fence.js';
+
 export interface AuthorizationGrantInput {
   argumentsDigest?: string;
   authorizationRef: string;

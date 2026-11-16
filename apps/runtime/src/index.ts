@@ -195,6 +195,7 @@ export interface RuntimeOptions {
    * Must not reopen the task or grant approval. Exceptions are ignored.
    */
   onTaskFailed?: (notice: TaskFailureNotice) => void;
+  onTaskTerminal?: (taskId: string) => void;
   idFactory?: () => string;
   toolGateway?: RuntimeToolGateway;
   createToolGateway?: (policy: AuthorizationPolicy) => RuntimeToolGateway;
@@ -429,6 +430,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
   private readonly onTaskFailed: RuntimeOptions['onTaskFailed'];
+  private readonly onTaskTerminal: RuntimeOptions['onTaskTerminal'];
   private closed = false;
 
   /** Trusted host handoff observation only; Policy remains the authorization source. */
@@ -567,6 +569,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
     this.onTaskFailed = options.onTaskFailed;
+    this.onTaskTerminal = options.onTaskTerminal;
     this.expirePendingApprovals();
   }
 
@@ -1327,6 +1330,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       occurredAt,
       payload
     });
+    if ((type === 'task.completed' || type === 'task.failed' || type === 'task.cancelled') && taskId) {
+      try { this.onTaskTerminal?.(taskId); } catch { /* Terminal listener cleanup must not break event persistence. */ }
+    }
     return event;
   }
 
