@@ -433,7 +433,7 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   /** Composition-only tools require a persisted original submitHostToolTask intent, even if a model guesses the name. */
   hostOnlyTools?:readonly string[];
   beforeToolAuthorize?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect'];arguments:unknown;deadline:string;signal:AbortSignal})=>void|Promise<void>;
-  assertToolPrechecked?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect']})=>void;
+  assertToolPrechecked?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect'];argumentsDigest?:string|undefined})=>void;
   onTaskTerminal?:(taskId:string)=>void;
 }
 export interface CoordinationGoalScope {taskId:string; conversationId:string; publicGoal:string; deadline:string; signal:AbortSignal;}
@@ -813,6 +813,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             toolName: request.toolName,
             toolVersion: descriptor?.version ?? '',
             sideEffect: descriptor?.sideEffect ?? 'read',
+            argumentsDigest: request.argumentsDigest,
           });
           return policy.authorize(request);
         }}, now: () => (options.now?.() ?? new Date()).getTime()});

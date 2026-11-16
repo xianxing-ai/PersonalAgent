@@ -6,7 +6,7 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {Client} from '@personal-agent/client';
 import {createRuntimeApplication} from '@personal-agent/runtime/application';
-import {createDryRunProduct, isHighRiskTool, verifyToolResult} from '../electron/dry-run-product.js';
+import {createDryRunProduct, isHighRiskTool, previewToolCall, verifyToolResult} from '../electron/dry-run-product.js';
 import {renderDryRun} from '../src/features/workspace/dry-run-status.js';
 
 function tool(name, sideEffect, execute) {
@@ -14,30 +14,100 @@ function tool(name, sideEffect, execute) {
 }
 const context = () => ({taskId: 'task-1', deadline: new Date(Date.now() + 5_000).toISOString(), signal: new AbortController().signal});
 
-test('a high-risk send waits for the preview and then verifies the tool result', async () => {
+test('a high-risk send waits for the preview, distinguishes target/content while redacting secrets, and verifies the tool result', async () => {
   assert.equal(isHighRiskTool({name: 'workspace.custom_action', sideEffect: 'local_write'}), true);
   assert.equal(isHighRiskTool({name: 'mail.compose_draft', sideEffect: 'external_write'}), true);
   assert.equal(isHighRiskTool({name: 'mail.reconcile_send', sideEffect: 'external_write'}), false);
   assert.equal(isHighRiskTool({name: 'mail.inbox', sideEffect: 'read'}), false);
 
+  const previewA = previewToolCall({name: 'mail.send', sideEffect: 'external_write'}, {to: 'alice@example.com', body: '上午十点评审'});
+  const previewB = previewToolCall({name: 'mail.send', sideEffect: 'external_write'}, {to: 'bob@example.com', body: '下午三点同步'});
+  assert.notEqual(previewA.summary, previewB.summary);
+  assert.notEqual(previewA.argumentsDigest, previewB.argumentsDigest);
+  assert.match(previewA.summary, /收件人：alice@example\.com/);
+  assert.match(previewA.summary, /内容：上午十点评审/);
+  assert.match(previewB.summary, /收件人：bob@example\.com/);
+  assert.match(previewB.summary, /内容：下午三点同步/);
+
   const calls = [];
   const product = createDryRunProduct();
   const [send, read] = product.wrapTools([
-    tool('mail.send', 'external_write', async () => { calls.push('send'); return {id: 'sent-1'}; }),
+    tool('mail.send', 'external_write', async () => { calls.push('send'); return {id: 'sent-1', to: 'person'}; }),
     tool('mail.inbox', 'read', async () => { calls.push('read'); return {id: 'm1'}; }),
   ]);
   assert.deepEqual(await read.execute({}, context()), {id: 'm1'});
-  const running = send.execute({to: 'person'}, context());
+  const running = send.execute({to: 'person', apiKey: 'sk-secret1234567890'}, context());
   const preview = product.snapshot().pending[0];
   assert.match(preview.summary, /发送操作/);
   assert.doesNotMatch(preview.summary, /mail\.send/);
   assert.equal(preview.argumentKeys.includes('to'), true);
-  assert.doesNotMatch(JSON.stringify(preview), /person/);
+  assert.match(preview.summary, /收件人：person/);
+  assert.doesNotMatch(JSON.stringify(preview), /sk-secret1234567890/);
   assert.deepEqual(calls, ['read']);
   product.handleAction('dryRun.confirm', {id: preview.id});
-  assert.deepEqual(await running, {id: 'sent-1'});
+  assert.deepEqual(await running, {id: 'sent-1', to: 'person'});
   assert.deepEqual(calls, ['read', 'send']);
-  assert.match(product.snapshot().recent.at(-1).reason, /未做外部系统读回/);
+  assert.equal(product.snapshot().recent.at(-1).verified, true);
+  assert.match(product.snapshot().recent.at(-1).reason, /已按工具返回字段核对目标与试运行预览一致；未做外部系统读回/);
+});
+
+test('verifyToolResult distinguishes unverified return-only results from matched and mismatched target fields, and confirmed parameters are bound', async () => {
+  const preview = previewToolCall({name: 'mail.send', sideEffect: 'external_write'}, {to: 'alice@example.com', subject: '周报'});
+  const unverified = verifyToolResult({id: 'unrelated-result'});
+  assert.equal(unverified.ok, true);
+  assert.equal(unverified.verified, false);
+  assert.equal(unverified.scope, 'tool_return_only');
+  assert.doesNotMatch(unverified.reason, /已核对工具返回与预览的操作一致/);
+  assert.match(unverified.reason, /仅收到工具返回，未验证目标与预览一致/);
+
+  const missingTarget = verifyToolResult({id: 'unrelated-result'}, preview);
+  assert.equal(missingTarget.ok, true);
+  assert.equal(missingTarget.verified, false);
+  assert.equal(missingTarget.scope, 'tool_return_only');
+
+  const mismatchedTarget = verifyToolResult({id: 'sent-2', to: 'mallory@example.com'}, preview);
+  assert.equal(mismatchedTarget.ok, false);
+  assert.equal(mismatchedTarget.verified, false);
+  assert.match(mismatchedTarget.reason, /不一致/);
+
+  const matchedTarget = verifyToolResult({id: 'sent-1', to: 'alice@example.com'}, preview);
+  assert.equal(matchedTarget.ok, true);
+  assert.equal(matchedTarget.verified, true);
+  assert.equal(matchedTarget.scope, 'tool_result_matched');
+
+  const product = createDryRunProduct();
+  let executed = 0;
+  const [send] = product.wrapTools([
+    tool('mail.send', 'external_write', async () => { executed += 1; return {id: 'sent-1'}; }),
+  ]);
+  const authGate = product.beforeAuthorize({
+    taskId: 'task-bind',
+    runId: 'run-bind',
+    toolName: 'mail.send',
+    sideEffect: 'external_write',
+    arguments: {to: 'alice@example.com', body: '原内容'},
+    deadline: new Date(Date.now() + 5_000).toISOString(),
+  });
+  const pendingId = product.snapshot().pending[0].id;
+  product.handleAction('dryRun.confirm', {id: pendingId});
+  await authGate;
+
+  assert.throws(
+    () => product.assertAuthorized({
+      taskId: 'task-bind',
+      runId: 'run-bind',
+      toolName: 'mail.send',
+      sideEffect: 'external_write',
+      arguments: {to: 'bob@example.com', body: '篡改内容'},
+    }),
+    /不一致/,
+  );
+
+  await assert.rejects(
+    send.execute({to: 'bob@example.com', body: '篡改内容'}, {...context(), taskId: 'task-bind', runId: 'run-bind'}),
+    /不一致/,
+  );
+  assert.equal(executed, 0);
 });
 
 test('a failed, pending or unknown verification never passes and does not retry the side effect', async () => {
