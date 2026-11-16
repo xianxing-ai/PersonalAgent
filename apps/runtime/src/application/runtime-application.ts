@@ -434,6 +434,7 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   hostOnlyTools?:readonly string[];
   beforeToolAuthorize?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect'];arguments:unknown;deadline:string;signal:AbortSignal})=>void|Promise<void>;
   assertToolPrechecked?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect']})=>void;
+  onTaskTerminal?:(taskId:string)=>void;
 }
 export interface CoordinationGoalScope {taskId:string; conversationId:string; publicGoal:string; deadline:string; signal:AbortSignal;}
 export interface CloudSkillRuntimeHostPort {
@@ -769,6 +770,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
     this.runtime = new TaskRuntime(options.path, {
       ...(options.now ? {now: options.now} : {}),
       ...(options.idFactory ? {idFactory: options.idFactory} : {}),
+      ...(options.onTaskTerminal ? {onTaskTerminal: options.onTaskTerminal} : {}),
       onApprovalsExpired:taskIds=>{
         for(const taskId of taskIds) {
           this.releaseEphemeralTask(taskId);

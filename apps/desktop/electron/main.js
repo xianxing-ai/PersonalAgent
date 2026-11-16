@@ -56,6 +56,7 @@ import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
 import {createDryRunProduct} from './dry-run-product.js';
+import {createContentFenceProduct} from './content-fence-product.js';
 import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
@@ -337,6 +338,7 @@ let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 let dryRun;
+let contentFence;
 let costRoute;
 let costRouteBudget=null;
 const harnessExperienceLifetime=new AbortController();
@@ -813,6 +815,7 @@ function snapshot(surface) {
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
     dryRun:dryRun?.snapshot()??{pending:[],recent:[]},
+    contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
@@ -2616,6 +2619,10 @@ async function initializeRuntime() {
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
+      contentFence=createContentFenceProduct({readGoal:taskId=>{
+        try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
+      }});
+      conversationTools=contentFence.wrapTools(conversationTools);
       dryRun=createDryRunProduct({onUpdate:()=>{try{publish();}catch{/* 预览通知不能影响工具结果 */}}});
       conversationTools=dryRun.wrapTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
@@ -2837,8 +2844,9 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
-        beforeToolAuthorize: input => dryRun?.beforeAuthorize(input),
+        beforeToolAuthorize: async input => { contentFence?.beforeAuthorize(input); await dryRun?.beforeAuthorize(input); },
         assertToolPrechecked: input => dryRun?.assertAuthorized(input),
+        onTaskTerminal: taskId => contentFence?.clearTask(taskId),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
         requestToolAuthorization:scope=>{
@@ -3577,6 +3585,10 @@ async function action(event, name, payload) {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面确认试运行');
     if (!dryRun) return {pending: [], recent: []};
     return dryRun.handleAction(name, payload);
+  }
+  if (name === 'contentFence.state') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看外部内容围栏');
+    return contentFence?.handleAction(name, payload) ?? {sources: [], blocked: '', blockedLabel: ''};
   }
   if (name === 'costRoute.state' || name === 'costRoute.replay' || name === 'costRoute.cancelReplay') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看成本路由');
