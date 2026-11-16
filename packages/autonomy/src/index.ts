@@ -30,6 +30,8 @@ export type {
   CategorySettingDescription,
   AutonomySettingsDescription,
   AutonomyAuditRecord,
+  AutonomyExecutionState,
+  AutonomyNotificationState,
   AutonomyNotificationRecord,
   AutomaticExecutionInput,
   AutonomyPolicyConfigOptions,

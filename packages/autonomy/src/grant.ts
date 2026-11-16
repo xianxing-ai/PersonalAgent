@@ -71,7 +71,9 @@ export interface RiskAutonomyReview {
 export interface RiskAutonomyGate {
   review(input: RiskAutonomyInvocation): RiskAutonomyReview;
   recordGranted(input: RiskAutonomyInvocation & {disposition: 'execute' | 'execute_and_notify'}): void;
+  recordExecutionState?(input: {runId: string; state: 'executing' | 'confirmed' | 'failed' | 'unknown'}): void;
   rememberCompensation?(input: {runId: string; toolName: string; toolVersion: string; arguments: Record<string, unknown>}): void;
+  notifyGranted?(input: {runId: string}): void | Promise<void>;
 }
 
 export function createRiskAutonomyGate(config: AutonomyPolicyConfig): RiskAutonomyGate {
@@ -98,6 +100,9 @@ export function createRiskAutonomyGate(config: AutonomyPolicyConfig): RiskAutono
         argumentsDigest: input.argumentsDigest,
         taskId: input.taskId,
       });
+    },
+    recordExecutionState(input) {
+      config.recordExecutionState(input.runId, input.state);
     },
     rememberCompensation(input) {
       config.rememberCompensation(input.runId, {toolName: input.toolName, toolVersion: input.toolVersion, arguments: input.arguments});

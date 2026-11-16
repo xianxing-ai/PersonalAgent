@@ -60,6 +60,9 @@ export interface AutonomySettingsDescription {
   categories: readonly CategorySettingDescription[];
 }
 
+export type AutonomyExecutionState = 'authorized' | 'executing' | 'confirmed' | 'failed' | 'unknown';
+export type AutonomyNotificationState = 'not_applicable' | 'pending' | 'delivered' | 'failed';
+
 export interface AutonomyAuditRecord {
   auditId: string;
   runId: string;
@@ -75,6 +78,9 @@ export interface AutonomyAuditRecord {
   immediate: boolean;
   compensatable: boolean;
   compensation?: RiskClassification['compensation'];
+  executionState: AutonomyExecutionState;
+  notificationState: AutonomyNotificationState;
+  compensationReady: boolean;
   rollback: 'unavailable' | 'available' | 'requested';
 }
 
@@ -312,6 +318,9 @@ export class AutonomyPolicyConfig {
       stance: decision.stance,
       immediate: decision.disposition === 'execute_and_notify',
       compensatable: decision.compensatable,
+      executionState: 'authorized',
+      notificationState: decision.disposition === 'execute_and_notify' ? 'pending' : 'not_applicable',
+      compensationReady: false,
       rollback: decision.compensatable && decision.compensation ? 'available' : 'unavailable',
       ...(input.taskId === undefined ? {} : {taskId: requiredToken(input.taskId, 'taskId', 200)}),
       ...(decision.compensation ? {compensation: {action: decision.compensation.action, summary: decision.compensation.summary}} : {}),
@@ -353,6 +362,30 @@ export class AutonomyPolicyConfig {
     }
     if (JSON.stringify(call.arguments).length > 4000) throw new ProtocolError('INVALID_ARGUMENT', 'Compensation arguments are too large');
     this.compensationByRun.set(id, {toolName, toolVersion, arguments: structuredClone(call.arguments)});
+    audit.compensationReady = true;
+  }
+
+  recordExecutionState(runId: string, state: AutonomyExecutionState): AutonomyAuditRecord | undefined {
+    const id = requiredToken(runId, 'runId', 200);
+    const audit = this.auditsByRun.get(id);
+    if (!audit) return undefined;
+    audit.executionState = state;
+    if (state === 'failed') {
+      audit.compensationReady = false;
+    }
+    return cloneAudit(audit);
+  }
+
+  recordNotificationDelivery(runId: string, delivered: boolean): AutonomyAuditRecord | undefined {
+    const id = requiredToken(runId, 'runId', 200);
+    const audit = this.auditsByRun.get(id);
+    if (!audit) return undefined;
+    audit.notificationState = delivered ? 'delivered' : 'failed';
+    return cloneAudit(audit);
+  }
+
+  hasStoredCompensation(runId: string): boolean {
+    return this.compensationByRun.has(requiredToken(runId, 'runId', 200));
   }
 
   consumeCompensation(auditId: string): {auditId: string; state: 'rollback_requested'; call?: {toolName: string; toolVersion: string; arguments: Record<string, unknown>}} {

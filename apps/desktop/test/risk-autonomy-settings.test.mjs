@@ -91,7 +91,72 @@ test('the settings section only keeps the stance, two category overrides, one re
     view.render({stance: 'autonomous', revoked: true, categories: [], audits: [{toolName: 'todo.update', disposition: 'execute_and_notify', rollback: 'available'}]});
     assert.equal(fields.audits.children.length, 1);
     assert.equal(fields.audits.children[0].textContent.includes('todo.update'), true);
+    assert.match(fields.audits.children[0].textContent, /执行状态未知（未确认可撤销）/);
+    assert.doesNotMatch(fields.audits.children[0].textContent, /已自动完成/);
     assert.equal(fields.audits.children[0].children.length, 0);
+
+    view.render({
+      stance: 'autonomous',
+      revoked: false,
+      categories: [],
+      audits: [
+        {toolName: 'todo.update', disposition: 'execute', executionState: 'authorized', rollback: 'unavailable'},
+        {toolName: 'todo.update', disposition: 'execute_and_notify', executionState: 'confirmed', notificationState: 'delivered', compensationReady: true, rollback: 'available'},
+        {toolName: 'todo.update', disposition: 'execute_and_notify', executionState: 'confirmed', notificationState: 'failed', compensationReady: true, rollback: 'available'},
+        {toolName: 'todo.update', disposition: 'execute', executionState: 'failed', rollback: 'unavailable'},
+      ],
+    });
+    assert.equal(fields.audits.children[0].textContent, 'todo.update · 已授权，等待执行确认');
+    assert.equal(fields.audits.children[1].textContent, 'todo.update · 已确认完成 · 已通知，可在通知中撤销');
+    assert.equal(fields.audits.children[2].textContent, 'todo.update · 已确认完成 · 通知未送达（暂不可从通知撤销）');
+    assert.equal(fields.audits.children[3].textContent, 'todo.update · 执行失败');
+  } finally {
+    globalThis.document = original;
+  }
+});
+
+test('failed save restores the last confirmed setting and concurrent edits are queued rather than dropped', async () => {
+  const fields = {};
+  for (const name of ['stance', 'read', 'local_reversible_write', 'revoke', 'audits', 'status']) fields[name] = element(name);
+  const section = element('section');
+  section.querySelector = selector => fields[selector.match(/data-risk="([^"]+)"/)[1]];
+  const original = globalThis.document;
+  globalThis.document = {createElement: tag => tag === 'section' ? section : element(tag)};
+  const calls = [];
+  let releaseFirst;
+  try {
+    const view = mountRiskAutonomySettings({append() {}}, async (action, payload) => {
+      calls.push({action, payload, stanceDisabledWhileBusy: fields.stance.disabled});
+      if (payload?.stance === 'conservative') {
+        throw new Error('保存失败');
+      }
+      if (payload?.stance === 'balanced') {
+        await new Promise(resolve => { releaseFirst = resolve; });
+        return {stance: 'balanced', revoked: false, categories: [], audits: []};
+      }
+      if (action === 'riskAutonomy.setCategory') {
+        return {stance: 'balanced', revoked: false, categories: [{category: payload.category, override: payload.disposition}], audits: []};
+      }
+      return {stance: 'autonomous', revoked: false, categories: [], audits: []};
+    });
+    view.render({stance: 'autonomous', revoked: false, categories: [], audits: []});
+    fields.stance.value = 'conservative';
+    await fields.stance.onchange();
+    assert.equal(fields.stance.value, 'autonomous');
+    assert.match(fields.status.textContent, /保存失败/);
+    assert.match(fields.status.textContent, /当前已确认设置：自主/);
+
+    fields.stance.value = 'balanced';
+    const first = fields.stance.onchange();
+    assert.equal(fields.stance.disabled, true);
+    fields.read.value = 'ask';
+    const second = fields.read.onchange();
+    releaseFirst();
+    await Promise.all([first, second]);
+    assert.equal(fields.stance.disabled, false);
+    assert.equal(fields.stance.value, 'balanced');
+    assert.equal(fields.read.value, 'ask');
+    assert.equal(calls.length, 3);
   } finally {
     globalThis.document = original;
   }

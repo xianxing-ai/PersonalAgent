@@ -29,15 +29,37 @@ export function createRiskAutonomyHost({store, channel, getApplication}) {
       recordGranted(input) {
         gate.recordGranted(input);
       },
+      recordExecutionState(input) {
+        gate.recordExecutionState?.(input);
+      },
       notifyGranted(input) {
-        const audit = config.listAudits().find(item => item.runId === input.runId);
-        if (!audit?.immediate || !channel) return;
-        void channel.sendAdvisoryNotification({
-          id: `${NOTICE_PREFIX}${audit.auditId}`,
-          title: '已自动完成',
-          body: `${audit.toolName} 已完成。点击此通知可撤销。`,
-          source: 'risk-autonomy',
-        });
+        let audit = config.listAudits().find(item => item.runId === input.runId);
+        if (!audit?.immediate) return;
+        if (audit.executionState === 'authorized' || audit.executionState === 'executing') {
+          audit = config.recordExecutionState(input.runId, 'confirmed') ?? audit;
+        }
+        if (audit.executionState !== 'confirmed') return;
+        if (!channel) {
+          config.recordNotificationDelivery(input.runId, false);
+          return;
+        }
+        const canUndo = config.hasStoredCompensation(input.runId) && audit.rollback === 'available';
+        return Promise.resolve(
+          channel.sendAdvisoryNotification({
+            id: `${NOTICE_PREFIX}${audit.auditId}`,
+            title: '已自动完成',
+            body: canUndo ? `${audit.toolName} 已完成。点击此通知可撤销。` : `${audit.toolName} 已完成（未提供可撤销补偿）。`,
+            source: 'risk-autonomy',
+          }),
+        ).then(
+          receipt => {
+            const delivered = receipt && typeof receipt === 'object' && 'delivered' in receipt ? Boolean(receipt.delivered) : true;
+            config.recordNotificationDelivery(input.runId, delivered);
+          },
+          () => {
+            config.recordNotificationDelivery(input.runId, false);
+          },
+        );
       },
       rememberCompensation(input) {
         config.rememberCompensation(input.runId, {
@@ -61,6 +83,9 @@ export function createRiskAutonomyHost({store, channel, getApplication}) {
           toolName: item.toolName,
           at: item.at,
           disposition: item.disposition,
+          executionState: item.executionState,
+          notificationState: item.notificationState,
+          compensationReady: item.compensationReady,
           rollback: item.rollback,
         })),
       };

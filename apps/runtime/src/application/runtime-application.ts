@@ -392,8 +392,9 @@ export interface RiskAutonomyReview {
 export interface RiskAutonomyGate {
   review(input: RiskAutonomyInvocation): RiskAutonomyReview | undefined;
   recordGranted?(input: RiskAutonomyInvocation & {disposition: 'execute' | 'execute_and_notify'}): void;
+  recordExecutionState?(input: {runId: string; state: 'executing' | 'confirmed' | 'failed' | 'unknown'}): void;
   rememberCompensation?(input: {runId: string; toolName: string; toolVersion: string; arguments: Record<string, unknown>}): void;
-  notifyGranted?(input: {runId: string}): void;
+  notifyGranted?(input: {runId: string}): void | Promise<void>;
 }
 
 export interface RuntimeApplicationOptions { path: string; now?: () => Date; idFactory?: () => string; text?: TextApplicationOptions; tools?: readonly RegisteredTool[]; profile?: 'local' | 'huawei_ict_agentarts'; coordination?: CoordinationPort; competitionToolExports?: readonly CompetitionToolExport[]; competitionToolAvailability?: readonly CompetitionToolAvailability[]; competitionMaxSteps?: number; repairCandidateVersion?: '1.0'; localRepair?: LocalRepairHostOptions; hostUserNamespace?: string;
@@ -1079,7 +1080,28 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             throw new ProtocolError('REVISION_CONFLICT','Original task cannot continue');
           this.runtime.transitionTask(invocation.taskId,'running');
         }
-        let result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
+        const trackedRiskAuto = Boolean(riskReview && (riskReview.disposition === 'execute' || riskReview.disposition === 'execute_and_notify'));
+        if (trackedRiskAuto) {
+          riskAutonomy?.recordExecutionState?.({runId: ref, state: 'executing'});
+        }
+        let result: Awaited<ReturnType<RuntimeToolInvoker['invoke']>>;
+        try {
+          result = await new RuntimeToolInvoker(this.runtime,current).invoke({...invocation, authorizationRef: ref});
+        } catch (error) {
+          if (trackedRiskAuto) {
+            riskAutonomy?.recordExecutionState?.({
+              runId: ref,
+              state: error instanceof ProtocolError && error.code === 'RESULT_UNKNOWN' ? 'unknown' : 'failed',
+            });
+          }
+          throw error;
+        }
+        if (trackedRiskAuto) {
+          riskAutonomy?.recordExecutionState?.({
+            runId: ref,
+            state: result.state === 'confirmed' ? 'confirmed' : result.state === 'unknown' ? 'unknown' : 'failed',
+          });
+        }
         if (riskReview?.disposition === 'execute_and_notify' && result.state === 'confirmed' && plainObject(result.result)) {
           const recovery = result.result.recovery;
           if (plainObject(recovery) && typeof recovery.toolName === 'string' && typeof recovery.toolVersion === 'string'
@@ -1088,7 +1110,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
           }
         }
         if (riskReview?.disposition === 'execute_and_notify' && result.state === 'confirmed') {
-          riskAutonomy?.notifyGranted?.({runId: ref});
+          await riskAutonomy?.notifyGranted?.({runId: ref});
         }
         if(tool.name===SUBAGENT_DISPATCH_TOOL_NAME&&readUserTaskDelegation(this.runtime,invocation.taskId)) {
           const owner=this.runtime.findTaskByIdempotencyKey(`subagent-dispatch-${invocation.taskId}-user-work`);
