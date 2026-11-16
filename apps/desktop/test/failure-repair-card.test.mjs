@@ -4,7 +4,11 @@ import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {TaskRuntime} from '@personal-agent/runtime';
-import {planRuntimeTaskFailure, TASK_FAILURE_REPAIR_CHECKPOINT} from '@personal-agent/agentarts';
+import {
+  planRuntimeTaskFailure,
+  TASK_FAILURE_READONLY_RETRY_CHECKPOINT,
+  TASK_FAILURE_REPAIR_CHECKPOINT,
+} from '@personal-agent/agentarts';
 import {failureRepairModel} from '../src/features/conversation/failure-repair-card.js';
 import {createFailureRepairHost} from '../electron/failure-repair-host.js';
 
@@ -46,6 +50,34 @@ test('manual retry submits a new read and leaves the failed task failed', () => 
     assert.equal(runtime.getTask(task.taskId).state, 'failed');
     assert.equal(runtime.getTask(retried.followUpTaskId).goal, '读取状态');
     assert.notEqual(retried.followUpTaskId, task.taskId);
+    assert.deepEqual(runtime.loadCheckpoint(retried.followUpTaskId, TASK_FAILURE_READONLY_RETRY_CHECKPOINT), {
+      version: 1,
+      sourceTaskId: task.taskId,
+      readOnly: true,
+    });
+
+    const mixedGoalTask = runtime.submitTask({goal: '读取后更新文件', conversationId: 'fixture', idempotencyKey: 'mixed-goal'});
+    runtime.transitionTask(mixedGoalTask.taskId, 'failed', {error: {code: 'TIMEOUT', message: 'timeout', retryable: true}});
+    runtime.saveCheckpoint(mixedGoalTask.taskId, TASK_FAILURE_REPAIR_CHECKPOINT, planRuntimeTaskFailure({
+      taskId: mixedGoalTask.taskId, effect: 'read', outcome: 'failed', errorCode: 'TIMEOUT', occurredAt: at, evidenceRefs: ['read-2'],
+    }));
+    assert.equal(host.view(mixedGoalTask.taskId).canRetryRead, false);
+    const rejectedMixed = host.act({taskId: mixedGoalTask.taskId, action: 'retry'});
+    assert.equal(rejectedMixed.accepted, false);
+    assert.equal(rejectedMixed.followUpTaskId, undefined);
+    assert.match(rejectedMixed.reason, /包含写入或修改操作/);
+
+    const priorSideEffectTask = runtime.submitTask({goal: '读取状态', conversationId: 'fixture', idempotencyKey: 'prior-side-effect'});
+    runtime.transitionTask(priorSideEffectTask.taskId, 'failed', {error: {code: 'TIMEOUT', message: 'timeout', retryable: true}});
+    runtime.saveCheckpoint(priorSideEffectTask.taskId, TASK_FAILURE_REPAIR_CHECKPOINT, planRuntimeTaskFailure({
+      taskId: priorSideEffectTask.taskId, effect: 'read', priorSideEffects: true, outcome: 'failed', errorCode: 'TIMEOUT', occurredAt: at, evidenceRefs: ['read-3'],
+    }));
+    assert.equal(host.view(priorSideEffectTask.taskId).canRetryRead, false);
+    const rejectedPrior = host.act({taskId: priorSideEffectTask.taskId, action: 'retry'});
+    assert.equal(rejectedPrior.accepted, false);
+    assert.equal(rejectedPrior.followUpTaskId, undefined);
+    assert.match(rejectedPrior.reason, /此前步骤已有执行或副作用/);
+
     const risky = planRuntimeTaskFailure({taskId: task.taskId, effect: 'write', outcome: 'failed', risk: 'high', reconciliationOutcome: 'not_applied', occurredAt: at, evidenceRefs: ['write-1']});
     runtime.saveCheckpoint(task.taskId, TASK_FAILURE_REPAIR_CHECKPOINT, risky);
     const blocked = host.act({taskId: task.taskId, action: 'replan'});

@@ -182,6 +182,7 @@ export interface TaskFailureNotice {
   outcome: 'failed' | 'unknown';
   risk?: 'ordinary' | 'high';
   reconciliationOutcome?: 'applied' | 'not_applied' | 'unknown';
+  priorSideEffects?: boolean;
   evidenceRefs: readonly string[];
   occurredAt: string;
 }
@@ -1217,6 +1218,22 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           if (task.state !== 'running') {
             throw new RuntimeError('REVISION_CONFLICT', 'Tools can only be invoked for a running task');
           }
+          const readonlyRetry = this.loadCheckpoint(request.taskId, 'repair-readonly-retry:v1') as
+            {readOnly?: boolean; toolName?: string; toolVersion?: string} | undefined;
+          if (readonlyRetry?.readOnly === true) {
+            const invokedDescriptor = (this.toolGateway.list() ?? []).find(
+              item => item.name === request.payload.toolName && item.version === request.payload.toolVersion,
+            );
+            if (!invokedDescriptor || invokedDescriptor.sideEffect !== 'read') {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task cannot invoke write tools');
+            }
+            if (typeof readonlyRetry.toolName === 'string' && request.payload.toolName !== readonlyRetry.toolName) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool');
+            }
+            if (typeof readonlyRetry.toolVersion === 'string' && request.payload.toolVersion !== readonlyRetry.toolVersion) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool version');
+            }
+          }
           const runId = request.idempotencyKey ?? this.idFactory();
           const inputDigest = toolInputDigest(request.taskId, request.payload);
           const previousRow = this.db.prepare('SELECT record_json FROM tool_execution_records WHERE evidence_id = ?').get(runId);
@@ -1572,15 +1589,22 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private taskFailureNotice(task: TaskSnapshot): TaskFailureNotice {
     const records = this.readToolExecutions(task.taskId);
     const last = records[records.length - 1];
-    const descriptor = last ? (this.toolGateway?.list() ?? []).find(tool => tool.name === last.toolName && tool.version === last.toolVersion) : undefined;
+    const tools = this.toolGateway?.list() ?? [];
+    const descriptor = last ? tools.find(tool => tool.name === last.toolName && tool.version === last.toolVersion) : undefined;
     const side = descriptor?.sideEffect;
     const effect = side === 'read' ? 'read' : side === 'local_write' || side === 'external_write' ? 'write' : 'none';
+    const priorSideEffects = records.slice(0, -1).some(record => {
+      if (record.executionStarted || record.state === 'confirmed' || record.state === 'unknown') return true;
+      const priorDescriptor = tools.find(tool => tool.name === record.toolName && tool.version === record.toolVersion);
+      return priorDescriptor !== undefined && priorDescriptor.sideEffect !== 'read';
+    });
     const unknown = task.error?.code === 'RESULT_UNKNOWN' || last?.state === 'unknown' || last?.reconciliationOutcome === 'unknown';
     return {
       taskId: task.taskId, revision: task.revision, effect, outcome: unknown ? 'unknown' : 'failed',
       ...(task.error?.code ? {errorCode: task.error.code} : {}),
       ...(side === 'external_write' ? {risk: 'high' as const} : {}),
       ...(last?.reconciliationOutcome ? {reconciliationOutcome: last.reconciliationOutcome} : {}),
+      ...(priorSideEffects ? {priorSideEffects: true} : {}),
       evidenceRefs: [...task.evidenceRefs], occurredAt: task.updatedAt,
     };
   }

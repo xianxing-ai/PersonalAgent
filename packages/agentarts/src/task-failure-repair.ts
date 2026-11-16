@@ -5,9 +5,27 @@ import type {RepairFailureSummary, RepairTrace} from './repair-policy.js';
 
 /** Checkpoint key stored by the Runtime failure hook. Not a new wire operation. */
 export const TASK_FAILURE_REPAIR_CHECKPOINT = 'repair-decision:v1';
+/** Checkpoint key bound to a follow-up read-only retry task to restrict its capability and operation identity. */
+export const TASK_FAILURE_READONLY_RETRY_CHECKPOINT = 'repair-readonly-retry:v1';
 
 export type TaskFailureEffect = 'read' | 'write' | 'none';
 export type HostRecoveryState = 'recovered' | 'needs_reconcile' | 'refused' | 'awaiting_approval';
+
+export interface TaskFailureReadonlyRetryBinding {
+  readonly version: 1;
+  readonly sourceTaskId: string;
+  readonly readOnly: true;
+  readonly toolName?: string;
+  readonly toolVersion?: string;
+  readonly inputDigest?: string;
+}
+
+const WRITE_GOAL_PATTERN = /(更新|修改|写入|删除|移除|发送|提交|创建|新建|保存|覆盖|替换|付款|转账|发布|安装|卸载|\b(?:write|update|delete|remove|send|create|save|patch|modify|publish|pay)\b)/i;
+
+export function goalContainsWriteIntent(goal: string): boolean {
+  if (typeof goal !== 'string') return false;
+  return WRITE_GOAL_PATTERN.test(goal);
+}
 
 export interface RuntimeTaskFailureNotice {
   readonly taskId: string;
@@ -18,6 +36,7 @@ export interface RuntimeTaskFailureNotice {
   readonly risk?: 'ordinary' | 'high';
   readonly approvalGranted?: boolean;
   readonly reconciliationOutcome?: 'applied' | 'not_applied' | 'unknown';
+  readonly priorSideEffects?: boolean;
   readonly evidenceRefs?: readonly string[];
   readonly occurredAt: string;
   readonly idempotent?: boolean;
@@ -38,6 +57,7 @@ export interface TaskFailureRepairRecord {
   readonly version: 1;
   readonly effect: TaskFailureEffect;
   readonly risk: 'ordinary' | 'high';
+  readonly priorSideEffects?: boolean;
   readonly trace: RepairTrace;
   readonly recovery: HostRecoveryReceipt;
 }
@@ -126,7 +146,14 @@ export function planRuntimeTaskFailure(notice: RuntimeTaskFailureNotice, prior?:
   const hostOutcome = notice.outcome === 'unknown' || notice.reconciliationOutcome === 'unknown' ? 'unknown'
     : notice.effect === 'read' ? 'not_applied' : status ?? 'absent';
   const recovery = confirmF13HostRecovery({evidenceRefs: observation.evidenceRefs, effect: notice.effect, outcome: hostOutcome}, trace);
-  return {version: 1, effect: notice.effect, risk: notice.risk ?? 'ordinary', trace: recovery.trace, recovery};
+  return {
+    version: 1,
+    effect: notice.effect,
+    risk: notice.risk ?? 'ordinary',
+    ...(notice.priorSideEffects === true ? {priorSideEffects: true} : {}),
+    trace: recovery.trace,
+    recovery,
+  };
 }
 
 function asRecord(value: unknown): TaskFailureRepairRecord | undefined {
@@ -141,6 +168,7 @@ function asRecord(value: unknown): TaskFailureRepairRecord | undefined {
     version: 1,
     effect: value.effect,
     risk: value.risk,
+    ...(value.priorSideEffects === true ? {priorSideEffects: true} : {}),
     trace,
     recovery: {
       state, lockReleased: value.recovery.lockReleased === true, taskResumed: false,
@@ -186,6 +214,9 @@ export function applyRepairOperatorChoice(stored: unknown, choice: {readonly act
     });
     return {record: {...record, trace}, accepted: true, enqueueRead: false, reason: '已交给父 agent 重新规划'};
   }
+  if (record.priorSideEffects === true) {
+    return {record, accepted: false, enqueueRead: false, reason: '此前步骤已有执行或副作用，不能单独重试只读，请交给父 agent 重新规划'};
+  }
   if (record.effect !== 'read' || record.recovery.state === 'needs_reconcile') {
     return {record, accepted: false, enqueueRead: false, reason: record.effect === 'write' ? '写入不在这里重试' : '宿主还没有确认效果；先查状态，不恢复'};
   }
@@ -224,7 +255,7 @@ export function repairCardView(stored: unknown): RepairCardView | undefined {
     risk: record.risk,
     awaitingApproval,
     abandoned,
-    canRetryRead: record.effect === 'read' && !awaitingApproval && !abandoned && record.recovery.state !== 'needs_reconcile',
+    canRetryRead: record.effect === 'read' && record.priorSideEffects !== true && !awaitingApproval && !abandoned && record.recovery.state !== 'needs_reconcile',
     canReplan: !awaitingApproval && !abandoned,
     canAbandon: !abandoned,
     recovery: record.recovery,

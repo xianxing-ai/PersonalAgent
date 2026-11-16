@@ -23,6 +23,13 @@ test('a failed read is classified and can be retried without reopening the task'
   const retried = applyRepairOperatorChoice(record, {action: 'retry'}, at);
   assert.equal(retried.enqueueRead, true);
   assert.equal(retried.record.recovery.taskResumed, false);
+
+  const afterPriorSideEffect = planRuntimeTaskFailure({...readNotice, priorSideEffects: true});
+  assert.equal(card(afterPriorSideEffect).canRetryRead, false);
+  const blockedRetry = applyRepairOperatorChoice(afterPriorSideEffect, {action: 'retry'}, at);
+  assert.equal(blockedRetry.accepted, false);
+  assert.equal(blockedRetry.enqueueRead, false);
+  assert.match(blockedRetry.reason, /此前步骤已有执行或副作用/);
 });
 
 test('an unknown write is reconciled by the host and is not blindly retried', () => {

@@ -26,12 +26,13 @@ export {
   DEFAULT_REPAIR_BASE_DELAY_MS, DEFAULT_REPAIR_MAX_DELAY_MS, DEFAULT_REPAIR_MAX_ELAPSED_MS,
 } from './repair-policy.js';
 export {
-  TASK_FAILURE_REPAIR_CHECKPOINT, planRuntimeTaskFailure, confirmF13HostRecovery, applyRepairOperatorChoice,
+  TASK_FAILURE_REPAIR_CHECKPOINT, TASK_FAILURE_READONLY_RETRY_CHECKPOINT, goalContainsWriteIntent,
+  planRuntimeTaskFailure, confirmF13HostRecovery, applyRepairOperatorChoice,
   repairCardView, attachRepairTraceToReplay,
 } from './task-failure-repair.js';
 export type {
-  RuntimeTaskFailureNotice, TaskFailureRepairRecord, HostRecoveryReceipt, RepairOperatorResult, RepairCardView,
-  RepairReplayAttachment, TaskFailureEffect, HostRecoveryState,
+  RuntimeTaskFailureNotice, TaskFailureRepairRecord, TaskFailureReadonlyRetryBinding, HostRecoveryReceipt,
+  RepairOperatorResult, RepairCardView, RepairReplayAttachment, TaskFailureEffect, HostRecoveryState,
 } from './task-failure-repair.js';
 export type {
   FailureClass, FailureSignal, RepairAlternatives, RepairAttempt, RepairDecision, RepairEffect, RepairFailureSummary,

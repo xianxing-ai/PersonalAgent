@@ -1,5 +1,5 @@
 import {ProtocolError, validateToolValue,validateContract} from '@personal-agent/contracts';
-import {TASK_FAILURE_REPAIR_CHECKPOINT, planRuntimeTaskFailure} from '@personal-agent/agentarts';
+import {TASK_FAILURE_REPAIR_CHECKPOINT, TASK_FAILURE_READONLY_RETRY_CHECKPOINT, planRuntimeTaskFailure} from '@personal-agent/agentarts';
 import {createHash,randomUUID} from 'node:crypto';
 import type {Event, Request, Response, RegisteredTool, TaskSnapshot, ToolDescriptor,ToolContext} from '@personal-agent/contracts';
 import {RuntimeToolInvoker} from '@personal-agent/agents';
@@ -811,6 +811,16 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
             this.mailReadSessions.assertPage(mailSession, request.taskId);
           }
           const descriptor = gateway?.list().find(item => item.name === request.toolName);
+          const readonlyRetry = this.runtime.loadCheckpoint(request.taskId, TASK_FAILURE_READONLY_RETRY_CHECKPOINT) as
+            {readOnly?: boolean; toolName?: string} | undefined;
+          if (readonlyRetry?.readOnly === true) {
+            if (!descriptor || descriptor.sideEffect !== 'read') {
+              throw new ProtocolError('SCOPE_DENIED', 'Read-only repair retry task cannot authorize write tools');
+            }
+            if (typeof readonlyRetry.toolName === 'string' && request.toolName !== readonlyRetry.toolName) {
+              throw new ProtocolError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool');
+            }
+          }
           options.beforeToolAuthorize?.({
             taskId: request.taskId,
             runId: request.authorizationRef,
