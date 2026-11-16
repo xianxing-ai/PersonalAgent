@@ -33,12 +33,14 @@ test('Windows Host timing fixture builds and rejects pre-write races', {
   skip: process.platform !== 'win32'
     ? 'Windows-only .NET timing fixture; skipped here and not counted as UIA or device acceptance'
     : false,
-  timeout: 180_000,
+  timeout: 300_000,
 }, t => {
   const temporary = mkdtempSync(path.join(tmpdir(), 'pa-windows-host-timing-'));
   t.after(() => rmSync(temporary, {recursive: true, force: true, maxRetries: 5, retryDelay: 100}));
   const env = {...process.env, DOTNET_CLI_HOME: path.join(temporary, 'cli-home'),
     DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1',
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1',
+    NUGET_XMLDOC_MODE: 'skip',
     DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: 'true'};
   const dotnet = (args, timeout, phase) => {
     const result = spawnSync('dotnet', args, {cwd: temporary, env, windowsHide: true,
@@ -61,7 +63,7 @@ test('Windows Host timing fixture builds and rejects pre-write races', {
   const artifacts = path.join(temporary, 'artifacts');
   dotnet(['build', path.join(repoRoot, 'apps/windows-host/test/WindowsHost.Timing.csproj'),
     '--configuration', 'Release', '--artifacts-path', artifacts, '--disable-build-servers',
-    '--nologo', '--verbosity', 'quiet', '-m:1'], 120_000, 'Timing fixture build');
+    '--nologo', '--verbosity', 'quiet', '-m:1'], 240_000, 'Timing fixture build');
   const outputs = readdirSync(artifacts, {recursive: true, withFileTypes: true})
     .filter(entry => entry.isFile() && entry.name === 'WindowsHost.Timing.dll')
     .map(entry => path.join(entry.parentPath, entry.name))

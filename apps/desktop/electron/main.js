@@ -56,6 +56,7 @@ import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
 import {createPermissionAuditProduct} from './permission-audit-product.js';
+import {createContentFenceProduct} from './content-fence-product.js';
 import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
@@ -337,6 +338,7 @@ let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
 let permissionAudit;
+let contentFence;
 let costRoute;
 let costRouteBudget=null;
 const harnessExperienceLifetime=new AbortController();
@@ -813,6 +815,7 @@ function snapshot(surface) {
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
     assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
+    contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
@@ -2639,6 +2642,10 @@ async function initializeRuntime() {
           throw Error('这项许可不能撤销');
         },
       });
+      contentFence=createContentFenceProduct({readGoal:taskId=>{
+        try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
+      }});
+      conversationTools=contentFence.wrapTools(conversationTools);
       conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2859,6 +2866,8 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
+        beforeToolAuthorize: input => contentFence?.beforeAuthorize(input),
+        onTaskTerminal: taskId => contentFence?.clearTask(taskId),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
         requestToolAuthorization:scope=>{
@@ -3599,6 +3608,10 @@ async function action(event, name, payload) {
     const result = permissionAudit.handleAction(name, payload);
     if (name === 'assistantPermissions.revoke') publish();
     return result;
+  }
+  if (name === 'contentFence.state') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看外部内容围栏');
+    return contentFence?.handleAction(name, payload) ?? {sources: [], blocked: '', blockedLabel: ''};
   }
   if (name === 'costRoute.state' || name === 'costRoute.replay' || name === 'costRoute.cancelReplay') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看成本路由');

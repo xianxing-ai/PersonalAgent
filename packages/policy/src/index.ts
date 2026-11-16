@@ -2,6 +2,17 @@ import { ProtocolError } from '@personal-agent/contracts';
 
 export {appendAudit, auditHash, verifyAudit} from './audit-chain.js';
 export type {AuditEvent} from './audit-chain.js';
+export {
+  externalEffectDecision,
+  externalKindForTool,
+  externalKindLabel,
+  fenceExternalText,
+  fenceExternalValue,
+  guardedEffectForTool,
+  guardedEffectLabel,
+  isLocalReadOnlyTool,
+} from './content-fence.js';
+export type {ExternalKind, ExternalSource, FencedText, GuardedEffect} from './content-fence.js';
 
 export interface AuthorizationGrantInput {
   argumentsDigest?: string;
