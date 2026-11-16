@@ -19,7 +19,7 @@ import {createFollowLock} from '../features/conversation/follow-lock.js';
 import {mountAdmin} from '../features/admin/view.js';
 import {mountBriefingPanel} from '../features/admin/daily-briefing.js';
 import {mountWorkspace} from '../features/workspace/view.js';
-import {applyPreferences} from '../ui/preferences.js';
+import {applyPreferences,orbVariantPreference,orbStateOverride} from '../ui/preferences.js';
 import {mountConversationRail} from '../features/conversation/rail.js';
 import {resultText} from '../features/conversation/result-text.js';
 import {createGoalControl} from '../features/conversation/goal-view.js';
@@ -75,8 +75,15 @@ async function invoke(action,payload) {
 let render, orb, reportSnapshotFailure, clearSnapshotFailure;
 if(mode==='orb') {
   root.innerHTML='<button class="orb-button" aria-label="打开 PersonalAgent"><canvas aria-hidden="true"></canvas></button>';
-  orb=new Orb(root.querySelector('canvas'),{variant:'matrix',layout:'shell',count:170});
-  const syncMotion=()=>{if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');};syncMotion();
+  orb=new Orb(root.querySelector('canvas'),{variant:orbVariantPreference(),layout:'shell',count:170});
+  let lastOrbData={};
+  const syncMotion=()=>{
+    orb.setVariant(orbVariantPreference());
+    const override=orbStateOverride();
+    orb.setState(override??visualOrbState(lastOrbData));
+    if(override==='listening')orb.setLevel(Math.max(lastOrbData.audioLevel??0,0.68));
+    if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');
+  };syncMotion();
   window.addEventListener('preferences-changed',syncMotion);
   document.addEventListener('visibilitychange',syncMotion);
   window.addEventListener('unload',()=>{window.removeEventListener('preferences-changed',syncMotion);document.removeEventListener('visibilitychange',syncMotion);},{once:true});
@@ -103,7 +110,7 @@ if(mode==='orb') {
   button.addEventListener('lostpointercapture',()=>{if(drag)orbOperation('orb.dragEnd');start=null;drag=false;});
   button.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();orbOperation('orb.open');}});
   button.addEventListener('click',e=>{if(e.detail===0)orbOperation('orb.open');});
-  render=data=>{orb.setLevel(data.audioLevel??0);orb.setState(visualOrbState(data));if(document.hidden)orb.stop();orbLabel=`PersonalAgent · ${orbStatusLabel(data)}`;syncOperationFeedback();};
+  render=data=>{lastOrbData=data??{};const override=orbStateOverride();orb.setVariant(orbVariantPreference());orb.setLevel(override==='listening'?Math.max(data.audioLevel??0,0.68):(data.audioLevel??0));orb.setState(override??visualOrbState(data));if(document.hidden)orb.stop();orbLabel=`PersonalAgent · ${orbStatusLabel(data)}`;syncOperationFeedback();};
 } else if(mode==='admin') render=mountAdmin(root,invoke,escape);
 else if(mode==='workspace') render=mountWorkspace(root,invoke,escape,{flushBeforeClose:bridge?.flushDrafts});
 else if(mode==='subagent') {const page=mountSubagentConversationPage(root,invoke);render=()=>page.refresh();}
