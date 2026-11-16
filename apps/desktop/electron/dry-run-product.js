@@ -89,12 +89,14 @@ export function previewToolCall(descriptor, input) {
   const argumentsDigest = hashToolArguments(input);
   let targetSummary;
   let contentSummary;
+  const targetFields = {};
   const comparableFields = {};
 
   for (const [field, fieldLabel] of TARGET_FIELDS) {
     if (!(field in record)) continue;
     const comparable = normalizeComparableValue(record[field]);
     if (comparable !== undefined && !SENSITIVE_KEY_PATTERN.test(field) && !SENSITIVE_VALUE_PATTERN.test(comparable)) {
+      targetFields[field] = comparable;
       comparableFields[field] = comparable;
     }
     if (!targetSummary) {
@@ -140,13 +142,16 @@ export function previewToolCall(descriptor, input) {
     argumentsDigest,
     ...(targetSummary ? {targetSummary} : {}),
     ...(contentSummary ? {contentSummary} : {}),
+    targetFields,
     comparableFields,
     summary: `将执行${label}（${detailParts.join('；')}）。尚未产生实际写入或外部副作用。`,
   };
 }
 
 export function verifyToolResult(result, preview) {
-  if (result == null) return {ok: false, verified: false, scope: 'tool_result', reason: '工具没有返回可核验的结果'};
+  if (result == null) {
+    return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具没有返回可核验的结果'};
+  }
   if (typeof result === 'object') {
     const state = String(result.state ?? '').toLowerCase();
     const status = String(result.status ?? '').toLowerCase();
@@ -156,38 +161,67 @@ export function verifyToolResult(result, preview) {
       || ['failed', 'pending', 'unknown', 'cancelled', 'cancelling', 'waiting_approval', 'waiting_reconciliation'].includes(state)
       || ['failed', 'pending', 'unknown'].includes(status)
     ) {
-      return {ok: false, verified: false, scope: 'tool_result', reason: '操作结果尚未确认或与试运行预览不一致'};
+      return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '操作结果尚未确认或与试运行预览不一致'};
     }
   }
   if (!preview || typeof preview !== 'object' || typeof result !== 'object') {
-    return {ok: true, verified: false, scope: 'tool_return_only', reason: '仅收到工具返回，未验证目标与预览一致，也未做外部系统读回'};
+    return {ok: true, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_return_only', reason: '仅收到工具返回，未验证目标与预览一致，也未做外部系统读回'};
   }
   if (result.toolName !== undefined && String(result.toolName) !== String(preview.toolName)) {
-    return {ok: false, verified: false, scope: 'tool_result', reason: '工具返回的操作名称与试运行预览不一致'};
+    return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具返回的操作名称与试运行预览不一致'};
   }
   if (result.argumentsDigest !== undefined && String(result.argumentsDigest) !== String(preview.argumentsDigest)) {
-    return {ok: false, verified: false, scope: 'tool_result', reason: '工具返回的参数摘要与试运行预览不一致'};
+    return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具返回的参数摘要与试运行预览不一致'};
   }
   if (result.previewId !== undefined && String(result.previewId) !== String(preview.id)) {
-    return {ok: false, verified: false, scope: 'tool_result', reason: '工具返回的预览标识与试运行预览不一致'};
+    return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具返回的预览标识与试运行预览不一致'};
   }
-  const matchedFields = [];
-  if (result.toolName !== undefined) matchedFields.push('toolName');
-  if (result.argumentsDigest !== undefined) matchedFields.push('argumentsDigest');
-  if (result.previewId !== undefined) matchedFields.push('previewId');
+  const matchedIdentityFields = [];
+  if (result.toolName !== undefined) matchedIdentityFields.push('toolName');
+  if (result.argumentsDigest !== undefined) matchedIdentityFields.push('argumentsDigest');
+  if (result.previewId !== undefined) matchedIdentityFields.push('previewId');
+
   const comparableFields = preview.comparableFields && typeof preview.comparableFields === 'object' ? preview.comparableFields : {};
+  const targetFields = preview.targetFields && typeof preview.targetFields === 'object' ? preview.targetFields : {};
+  const matchedTargetFields = [];
   for (const [field, expected] of Object.entries(comparableFields)) {
     if (result[field] === undefined) continue;
     const actual = normalizeComparableValue(result[field]);
     if (actual !== expected) {
-      return {ok: false, verified: false, scope: 'tool_result', reason: '工具返回的目标或内容与试运行预览不一致'};
+      return {ok: false, verified: false, targetMatched: false, identityMatched: false, scope: 'tool_result', reason: '工具返回的目标或内容与试运行预览不一致'};
     }
-    matchedFields.push(field);
+    if (field in targetFields) {
+      matchedTargetFields.push(field);
+    }
   }
-  if (matchedFields.length === 0) {
-    return {ok: true, verified: false, scope: 'tool_return_only', reason: '仅收到工具返回，未验证目标与预览一致，也未做外部系统读回'};
+  if (matchedTargetFields.length === 0) {
+    if (matchedIdentityFields.length > 0) {
+      return {
+        ok: true,
+        verified: false,
+        targetMatched: false,
+        identityMatched: true,
+        scope: 'operation_identity_only',
+        reason: '仅关联工具或预览标识，未验证实际目标与预览一致，也未做外部系统读回',
+      };
+    }
+    return {
+      ok: true,
+      verified: false,
+      targetMatched: false,
+      identityMatched: false,
+      scope: 'tool_return_only',
+      reason: '仅收到工具返回，未验证目标与预览一致，也未做外部系统读回',
+    };
   }
-  return {ok: true, verified: true, scope: 'tool_result_matched', reason: '已按工具返回字段核对目标与试运行预览一致；未做外部系统读回'};
+  return {
+    ok: true,
+    verified: true,
+    targetMatched: true,
+    identityMatched: matchedIdentityFields.length > 0,
+    scope: 'tool_result_matched',
+    reason: '已按工具返回字段核对目标与试运行预览一致；未做外部系统读回',
+  };
 }
 
 /**

@@ -63,7 +63,24 @@ test('verifyToolResult distinguishes unverified return-only results from matched
   const missingTarget = verifyToolResult({id: 'unrelated-result'}, preview);
   assert.equal(missingTarget.ok, true);
   assert.equal(missingTarget.verified, false);
+  assert.equal(missingTarget.targetMatched, false);
   assert.equal(missingTarget.scope, 'tool_return_only');
+
+  const toolNameOnly = verifyToolResult({toolName: 'mail.send'}, preview);
+  assert.equal(toolNameOnly.ok, true);
+  assert.equal(toolNameOnly.verified, false);
+  assert.equal(toolNameOnly.targetMatched, false);
+  assert.equal(toolNameOnly.identityMatched, true);
+  assert.equal(toolNameOnly.scope, 'operation_identity_only');
+  assert.match(toolNameOnly.reason, /未验证实际目标与预览一致/);
+
+  const previewIdOnly = verifyToolResult({previewId: preview.id}, preview);
+  assert.equal(previewIdOnly.ok, true);
+  assert.equal(previewIdOnly.verified, false);
+  assert.equal(previewIdOnly.targetMatched, false);
+  assert.equal(previewIdOnly.identityMatched, true);
+  assert.equal(previewIdOnly.scope, 'operation_identity_only');
+  assert.match(previewIdOnly.reason, /未验证实际目标与预览一致/);
 
   const mismatchedTarget = verifyToolResult({id: 'sent-2', to: 'mallory@example.com'}, preview);
   assert.equal(mismatchedTarget.ok, false);
@@ -73,6 +90,7 @@ test('verifyToolResult distinguishes unverified return-only results from matched
   const matchedTarget = verifyToolResult({id: 'sent-1', to: 'alice@example.com'}, preview);
   assert.equal(matchedTarget.ok, true);
   assert.equal(matchedTarget.verified, true);
+  assert.equal(matchedTarget.targetMatched, true);
   assert.equal(matchedTarget.scope, 'tool_result_matched');
 
   const product = createDryRunProduct();
