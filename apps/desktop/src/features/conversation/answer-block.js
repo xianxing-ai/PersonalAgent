@@ -10,14 +10,38 @@ export function rememberActivity(store, event) {
   if (!current.startedAt) current.startedAt = Date.now();
   if (event.kind === 'reasoning') current.reasoning += event.text ?? '';
   else if (event.kind === 'answer_delta') current.answer += event.text ?? '';
-  else if (event.kind === 'tool_call') current.steps.push({stepId: event.stepId, label: event.label, toolName: event.toolName, argsSummary: event.argsSummary, state: 'running'});
-  else if (event.kind === 'tool_result') {
-    const step = [...current.steps].reverse().find(item => item.stepId === event.stepId && item.state === 'running') ?? current.steps[current.steps.length - 1];
-    if (step) {
-      step.resultSummary = event.resultSummary;
-      step.durationMs = event.durationMs;
-      step.state = 'completed';
-      step.label = event.label || step.label;
+  else if (event.kind === 'tool_call') {
+    const existing = typeof event.stepId === 'string' && event.stepId.length > 0
+      ? [...current.steps].reverse().find(item => item.stepId === event.stepId && item.unmatchedCall)
+      : undefined;
+    if (existing) {
+      existing.label = event.label || existing.label;
+      existing.toolName = event.toolName || existing.toolName;
+      existing.argsSummary = event.argsSummary;
+      delete existing.unmatchedCall;
+    } else {
+      current.steps.push({stepId: event.stepId, label: event.label, toolName: event.toolName, argsSummary: event.argsSummary, state: 'running'});
+    }
+  } else if (event.kind === 'tool_result') {
+    if (typeof event.stepId === 'string' && event.stepId.length > 0) {
+      const step = [...current.steps].reverse().find(item => item.stepId === event.stepId && item.state === 'running')
+        ?? [...current.steps].reverse().find(item => item.stepId === event.stepId);
+      if (step) {
+        step.resultSummary = event.resultSummary;
+        step.durationMs = event.durationMs;
+        step.state = 'completed';
+        step.label = event.label || step.label;
+      } else {
+        current.steps.push({
+          stepId: event.stepId,
+          label: event.label,
+          toolName: event.toolName,
+          resultSummary: event.resultSummary,
+          durationMs: event.durationMs,
+          state: 'completed',
+          unmatchedCall: true,
+        });
+      }
     }
   } else if (event.kind === 'child_summary' || event.kind === 'user_injection') current.summary = event.text ?? current.summary;
   store.set(event.taskId, current);

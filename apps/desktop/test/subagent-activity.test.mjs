@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectSubagentActivity,openTaskConversation,readSubagentConversation} from '../electron/subagent-activity.js';
 import {liveWorkFeedbackText} from '../src/app/live-voice-controls.js';
+import {rememberActivity} from '../src/features/conversation/answer-block.js';
 
 test('workspace shows voice children from another conversation; panel remains conversation scoped',()=>{
   const tasks=[{taskId:'voice-parent',surface:'panel'},{taskId:'workspace-parent',surface:'workspace'}];
@@ -106,4 +107,28 @@ test('Live feedback distinguishes submitting, accepted, returned and unknown res
   const returned=liveWorkFeedbackText({workRequests:[{state:'result_returned',taskId:'task-1'}]});
   assert.match(returned,/回执已返回/);assert.match(returned,/不代表子任务成功/);
   assert.match(liveWorkFeedbackText({workRequests:[{state:'failed'}]}),/未确认/);
+});
+
+test('rememberActivity binds tool_result strictly by stepId and never overwrites a different running step',()=>{
+  const store=new Map();
+  rememberActivity(store,{taskId:'t1',kind:'tool_call',stepId:'step-b',label:'读取日历',toolName:'calendar.events',argsSummary:'today'});
+  const afterMismatch=rememberActivity(store,{taskId:'t1',kind:'tool_result',stepId:'step-a',label:'读取邮件',resultSummary:'result A',durationMs:12});
+  const stepB=afterMismatch.steps.find(item=>item.stepId==='step-b');
+  const stepA=afterMismatch.steps.find(item=>item.stepId==='step-a');
+  assert.equal(stepB.state,'running');
+  assert.equal(stepB.resultSummary,undefined);
+  assert.equal(stepA.state,'completed');
+  assert.equal(stepA.resultSummary,'result A');
+
+  // Out-of-order tool_call for step-a enriches step-a without duplicating or altering step-b.
+  rememberActivity(store,{taskId:'t1',kind:'tool_call',stepId:'step-a',label:'读取邮件',toolName:'mail.inbox',argsSummary:'inbox'});
+  assert.equal(afterMismatch.steps.length,2);
+  assert.equal(stepA.argsSummary,'inbox');
+  assert.equal(stepA.state,'completed');
+  assert.equal(stepB.state,'running');
+
+  // Missing stepId on tool_result does not mutate step-b.
+  rememberActivity(store,{taskId:'t1',kind:'tool_result',resultSummary:'orphan'});
+  assert.equal(stepB.state,'running');
+  assert.equal(stepB.resultSummary,undefined);
 });
