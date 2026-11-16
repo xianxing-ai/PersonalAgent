@@ -134,6 +134,15 @@ export type {
 export {createCodeReviewWorkflow, codeReviewChangedLines, codeReviewPublicationCheckpointKey} from './dev-workflows/code-review.js';
 export type {CodeReviewRule, CodeReviewInput, CodeReviewFinding, CodeReviewReport, CodeReviewAccess,
   CodeReviewPreparation, CodeReviewPublication, CodeReviewWorkflow, CodeReviewWorkflowOptions} from './dev-workflows/code-review-types.js';
+export {
+  PERSONAL_DASHBOARD_PERIODS, dashboardReadWindow, dashboardScheduleInput, dueDashboardBoundary,
+  nextDashboardBoundary, personalDashboardConversationId, summarizePersonalDashboard,
+} from './personal-dashboard.js';
+export type {
+  CountSample, DashboardCard, DashboardScheduleInput, DashboardWindow, DisconnectedSource,
+  MailSample, PersonalDashboardPeriod, PersonalDashboardReadings, PersonalDashboardSummary,
+  SourceReading, SpendSample, TimeSample,
+} from './personal-dashboard.js';
 export {createOperatorBrake, OPERATOR_BRAKE_RECORD_VERSION} from './operator-brake.js';
 export type {OperatorRun, OperatorRunKind, OperatorBrakeMarker, OperatorBrakeRecord, OperatorBrakeStore,
   OperatorBrakeExtension, OperatorBrakeExtensions, OperatorBrakePorts, OperatorBrake} from './operator-brake.js';

@@ -142,7 +142,7 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
    assert.equal(await admin.locator('.settings-single').count(),1);
    assert.deepEqual(await admin.locator('.primary-nav [data-page]').evaluateAll(buttons=>buttons.map(button=>button.dataset.page)),['settings','connections','authorizations','usage']);
    assert.equal(await admin.locator('.advanced-nav').evaluate(details=>details.open),false);
-   assert.equal(await admin.locator('.nav-icon').count(),16);
+   assert.equal(await admin.locator('.nav-icon').count(),17);
    await admin.locator('.advanced-nav>summary').click();
    await admin.locator('[data-page="appearance"]').click();
    await admin.locator('#pref-theme').selectOption('light');
