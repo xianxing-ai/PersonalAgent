@@ -97,15 +97,15 @@ export function createPluginCatalogHost({
       throw error;
     }
   }
-  function compensate(action, id) {
+  function compensate(action, ref) {
     guardClosed();
-    try {
-      if (action === 'uninstall') service.uninstall(id);
-      else if (action === 'disable') service.setEnabled(id, false);
-      else throw Error('没有可用的补偿');
-    } catch (error) {
-      if (error?.code !== 'NOT_FOUND') throw error;
-    }
+    const match = /^(.+):([1-9][0-9]*)$/.exec(String(ref ?? ''));
+    const id = match ? match[1] : String(ref ?? '');
+    const expectedGeneration = match ? Number(match[2]) : undefined;
+    if (action === 'uninstall') service.uninstall(id, expectedGeneration);
+    else if (action === 'disable') service.setEnabled(id, false, undefined, expectedGeneration);
+    else throw Error('没有可用的补偿');
+    onUpdate();
   }
 
   function guard(payload) {

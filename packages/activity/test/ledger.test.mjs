@@ -40,13 +40,36 @@ test('plugin install and enable can be undone, and the original line stays', asy
   const calls = [];
   await book.undo(installed.id, compensation => { calls.push(compensation); });
   const after = book.list(new Set(['plugin']));
-  assert.deepEqual(calls, [{action: 'uninstall', ref: 'skill.notes'}]);
+  assert.deepEqual(calls, [{action: 'uninstall', ref: 'skill.notes:1'}]);
   assert.equal(after.items[0].result, 'compensated');
   assert.equal(after.items[0].undoable, false);
   assert.equal(after.items.at(-1).undoable, false);
   assert.equal(after.items.at(-1).summary, '安装插件 skill.notes');
   await assert.rejects(book.undo(installed.id, () => {}), {code: 'REVISION_CONFLICT'});
   await assert.rejects(book.undo(failed.id, () => {}), {code: 'UNSUPPORTED_CAPABILITY'});
+});
+
+test('plugin update or uninstall-and-reinstall binds generation and prevents old records from undoing the new version', async t => {
+  const book = ledger(t);
+  const gen1 = fromPluginAction({pluginId: 'demo.plugin', action: 'install', risk: 'low', result: 'succeeded', generation: 1});
+  const gen2 = fromPluginAction({pluginId: 'demo.plugin', action: 'install', risk: 'low', result: 'succeeded', generation: 2});
+  assert.notEqual(gen1.dedupeKey, gen2.dedupeKey);
+  assert.deepEqual(gen1.compensation, {action: 'uninstall', ref: 'demo.plugin:1'});
+  assert.deepEqual(gen2.compensation, {action: 'uninstall', ref: 'demo.plugin:2'});
+
+  const firstInstall = book.append(gen1);
+  const firstEnable = book.append(fromPluginAction({pluginId: 'demo.plugin', action: 'enable', risk: 'low', result: 'succeeded', generation: 2}));
+  book.append(fromPluginAction({pluginId: 'demo.plugin', action: 'uninstall', risk: 'low', result: 'succeeded', generation: 2}));
+  const reinstalled = book.append(fromPluginAction({pluginId: 'demo.plugin', action: 'install', risk: 'low', result: 'succeeded', generation: 3}));
+
+  const page = book.list(new Set(['plugin']));
+  const byId = new Map(page.items.map(item => [item.id, item]));
+  assert.equal(byId.get(firstInstall.id).undoable, false);
+  assert.equal(byId.get(firstEnable.id).undoable, false);
+  assert.equal(byId.get(reinstalled.id).undoable, true);
+
+  await assert.rejects(book.undo(firstInstall.id, () => {}), {code: 'REVISION_CONFLICT'});
+  await assert.rejects(book.undo(firstEnable.id, () => {}), {code: 'REVISION_CONFLICT'});
 });
 
 test('the same plugin generation is not appended twice', t => {

@@ -129,6 +129,21 @@ test('a real plugin install reaches the activity page and survives a restart', a
   assert.equal(installer.installations().find(item => item.catalogId === entry.id).enabled, false);
   assert.match(shown.timeline().innerHTML, /已撤销/);
   assert.equal(shown.timeline().innerHTML.includes(`data-activity-undo="${enable.id}"`), false);
+  await assert.rejects(() => restarted.handle('activity.undo', {id: enable.id}), {code: 'REVISION_CONFLICT'});
+
+  const firstInstallItem = restarted.snapshot().items.find(item => item.summary.startsWith('安装插件'));
+  assert.equal(firstInstallItem.undoable, true);
+  await rebound.invoke('plugin.uninstall', {id: entry.id});
+  installer.install({id: entry.id, sourceDirectory: source});
+  const afterReinstall = restarted.snapshot().items;
+  const oldInstallAfterReinstall = afterReinstall.find(item => item.id === firstInstallItem.id);
+  const newInstallAfterReinstall = afterReinstall.find(item => item.summary.startsWith('安装插件') && item.id !== firstInstallItem.id);
+  assert.equal(oldInstallAfterReinstall.undoable, false);
+  assert.equal(newInstallAfterReinstall.undoable, true);
+  await assert.rejects(() => restarted.handle('activity.undo', {id: firstInstallItem.id}), {code: 'REVISION_CONFLICT'});
+  assert.throws(() => rebound.compensate('uninstall', `${entry.id}:1`), {code: 'REVISION_CONFLICT'});
+  assert.equal(installer.installations().some(item => item.catalogId === entry.id), true);
+
   assert.equal(readFileSync(path.join(root, 'activity-ledger.jsonl'), 'utf8').startsWith(saved), true);
   const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
   const preload = readFileSync(new URL('../electron/preload.cjs', import.meta.url), 'utf8');

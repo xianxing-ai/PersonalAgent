@@ -267,7 +267,7 @@ export function fromPluginAction(input: PluginActivityInput): ActivityDraft {
     },
     ...(result === 'succeeded' ? {dedupeKey: `plugin:${action}:${pluginId}:${generation as number}`} : {}),
     ...((action === 'install' || action === 'enable') && result === 'succeeded'
-      ? {compensation: {action: action === 'install' ? 'uninstall' as const : 'disable' as const, ref: pluginId}}
+      ? {compensation: {action: action === 'install' ? 'uninstall' as const : 'disable' as const, ref: `${pluginId}:${generation as number}`}}
       : {}),
   };
   return withTime(draft, record.at);

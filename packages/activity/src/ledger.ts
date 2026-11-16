@@ -89,6 +89,57 @@ function includes<T extends string>(values: readonly T[], value: unknown): value
   return typeof value === 'string' && values.includes(value as T);
 }
 
+function parsePluginRecord(record: ActivityRecord): {action: string; pluginId: string; generation?: number} | undefined {
+  if (record.source !== 'plugin') return undefined;
+  if (typeof record.dedupeKey === 'string') {
+    const match = /^plugin:(install|enable|disable|uninstall):(.+):([1-9][0-9]*)$/.exec(record.dedupeKey);
+    if (match) {
+      return {action: match[1]!, pluginId: match[2]!, generation: Number(match[3]!)};
+    }
+  }
+  if (record.compensation) {
+    const match = /^(.+):([1-9][0-9]*)$/.exec(record.compensation.ref);
+    const pluginId = match ? match[1]! : record.compensation.ref;
+    const generation = match ? Number(match[2]!) : undefined;
+    const action = record.compensation.action === 'uninstall' ? 'install' : record.compensation.action === 'disable' ? 'enable' : 'other';
+    return {action, pluginId, ...(generation !== undefined ? {generation} : {})};
+  }
+  return undefined;
+}
+
+function isPluginRecordSuperseded(records: readonly ActivityRecord[], index: number): boolean {
+  const target = records[index];
+  if (!target) return false;
+  const current = parsePluginRecord(target);
+  if (!current) return false;
+  const byId = new Map(records.map(item => [item.id, item]));
+  for (let i = index + 1; i < records.length; i += 1) {
+    const later = records[i]!;
+    if (later.result === 'compensated' && later.compensates) {
+      const undoneTarget = byId.get(later.compensates);
+      const undonePlugin = undoneTarget ? parsePluginRecord(undoneTarget) : undefined;
+      if (undonePlugin && undonePlugin.pluginId === current.pluginId && undonePlugin.action === 'install') {
+        return true;
+      }
+    }
+    if (later.result !== 'succeeded') continue;
+    const laterPlugin = parsePluginRecord(later);
+    if (!laterPlugin || laterPlugin.pluginId !== current.pluginId) continue;
+    if (current.action === 'install' && (laterPlugin.action === 'install' || laterPlugin.action === 'uninstall')) {
+      return true;
+    }
+    if (current.action === 'enable' && (
+      laterPlugin.action === 'disable'
+      || laterPlugin.action === 'uninstall'
+      || laterPlugin.action === 'install'
+      || laterPlugin.action === 'enable'
+    )) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function parseRecord(line: string): ActivityRecord {
   let parsed: unknown;
   try { parsed = JSON.parse(line); }
@@ -235,6 +286,7 @@ export function createActivityLedger(options: ActivityLedgerOptions): ActivityLe
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new ProtocolError('INVALID_ARGUMENT', '活动记录范围无效');
     const records = readAll();
     const undone = new Set(records.filter(item => item.compensates && item.result === 'compensated').map(item => item.compensates));
+    const superseded = new Set(records.filter((_item, index) => isPluginRecordSuperseded(records, index)).map(item => item.id));
     const visible = records.slice().reverse().slice(0, limit);
     return {
       earlierKept: records.length > visible.length,
@@ -247,7 +299,7 @@ export function createActivityLedger(options: ActivityLedgerOptions): ActivityLe
         result: item.result,
         why: {trigger: item.why.trigger, basis: item.why.basis},
         undoable: Boolean(item.compensation) && item.result === 'succeeded' && !item.compensates
-          && !undone.has(item.id) && available.has(item.source),
+          && !undone.has(item.id) && !superseded.has(item.id) && available.has(item.source),
       })),
     };
   }
@@ -255,13 +307,17 @@ export function createActivityLedger(options: ActivityLedgerOptions): ActivityLe
   async function undo(id: string, run: (compensation: ActivityCompensation) => void | Promise<void>): Promise<ActivityRecord> {
     if (!RECORD_ID.test(id)) throw new ProtocolError('INVALID_ARGUMENT', '活动记录标识无效');
     const existing = readAll();
-    const target = existing.find(item => item.id === id);
+    const targetIndex = existing.findIndex(item => item.id === id);
+    const target = targetIndex >= 0 ? existing[targetIndex] : undefined;
     if (!target) throw new ProtocolError('NOT_FOUND', '活动记录不存在');
     if (!target.compensation || target.result !== 'succeeded' || target.compensates) {
       throw new ProtocolError('UNSUPPORTED_CAPABILITY', '这条记录没有补偿动作');
     }
     if (existing.some(item => item.compensates === id && item.result === 'compensated')) {
       throw new ProtocolError('REVISION_CONFLICT', '这条记录已经撤销');
+    }
+    if (isPluginRecordSuperseded(existing, targetIndex)) {
+      throw new ProtocolError('REVISION_CONFLICT', '插件版本或状态已变化，旧记录不可撤销');
     }
     await run(target.compensation);
     return append({
