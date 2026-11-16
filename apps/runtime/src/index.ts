@@ -177,6 +177,7 @@ export interface RuntimeOptions {
   now?: () => Date;
   /** Trusted Application lifecycle notification, after the expiry transaction commits. */
   onApprovalsExpired?: (taskIds: readonly string[]) => void;
+  onTaskTerminal?: (taskId: string) => void;
   idFactory?: () => string;
   toolGateway?: RuntimeToolGateway;
   createToolGateway?: (policy: AuthorizationPolicy) => RuntimeToolGateway;
@@ -410,6 +411,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly activeToolExecutions = new Map<string,string>();
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
+  private readonly onTaskTerminal: RuntimeOptions['onTaskTerminal'];
   private closed = false;
 
   /** Trusted host handoff observation only; Policy remains the authorization source. */
@@ -547,6 +549,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.policy = new AuthorizationPolicy(new SqliteAuthorizationStore(this.db));
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
+    this.onTaskTerminal = options.onTaskTerminal;
     this.expirePendingApprovals();
   }
 
@@ -1307,6 +1310,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       occurredAt,
       payload
     });
+    if ((type === 'task.completed' || type === 'task.failed' || type === 'task.cancelled') && taskId) {
+      try { this.onTaskTerminal?.(taskId); } catch { /* Terminal listener cleanup must not break event persistence. */ }
+    }
     return event;
   }
 
