@@ -8,7 +8,8 @@ import type {PolicyPort} from '@personal-agent/policy';
 import {openLocalSkillStore, readLocalSkillDirectory} from '@personal-agent/skills';
 import {downloadPinnedFilesystem, materializePinnedSkill, type PinnedDownload} from './download.js';
 import {CURATED_PLUGINS} from './plugins.js';
-import {parsePluginCatalog, type PluginManifest} from './schema.js';
+import {samePermissionGrant, snapshotPermissionGrant} from './permissions.js';
+import {parsePluginCatalog, type PluginManifest, type RiskLevel} from './schema.js';
 
 export interface SkillStorePort {
   install(input: ReturnType<typeof readLocalSkillDirectory>): {name: string; digest: string; installationId: string; enabled: boolean};
@@ -47,7 +48,9 @@ export interface InstallationRecord {
   installer: PluginManifest['installer'];
   enabled: boolean;
   generation: number;
+  installedGeneration?: number;
   pin: {state: 'pinned'; version?: string; commit?: string; sha256?: string};
+  permissionGrant?: PluginManifest['permissionManifest'];
   skill?: {name: string; digest: string; installationId: string};
   mcp?: {packageVersion: string; entrySha256: string; surface: 'readonly-filesystem'};
 }
@@ -59,6 +62,13 @@ export interface UpdateStatus {
   catalog?: PluginManifest['pin'];
 }
 
+export interface PluginActivityNotice {
+  pluginId: string;
+  action: 'install' | 'enable' | 'disable' | 'uninstall';
+  riskLevel: RiskLevel;
+  generation: number;
+}
+
 export interface PluginCatalogServiceOptions {
   catalog?: readonly PluginManifest[];
   skillStoreFile?: string;
@@ -68,6 +78,7 @@ export interface PluginCatalogServiceOptions {
   now?: () => number;
   resolveFilesystemPackage?: () => string;
   download?: PinnedDownload;
+  onActivity?: (notice: PluginActivityNotice) => void;
 }
 
 const require = createRequire(import.meta.url);
@@ -97,38 +108,77 @@ function pinsMatch(installed: InstallationRecord['pin'], pin: PluginManifest['pi
   return installed.version === pin.version && installed.commit === pin.commit && installed.sha256 === pin.sha256;
 }
 
+function granted(entry: PluginManifest): PluginManifest['permissionManifest'] {
+  return snapshotPermissionGrant(entry.permissionManifest);
+}
+
 export function createPluginCatalogService(options: PluginCatalogServiceOptions) {
   const catalog = parsePluginCatalog([...(options.catalog ?? CURATED_PLUGINS)]);
   const byId = new Map(catalog.map(entry => [entry.id, entry]));
   const now = options.now ?? Date.now;
   const opened = options.skillStore ?? openLocalSkillStore(options.skillStoreFile ?? '');
+  function notify(record: InstallationRecord, action: PluginActivityNotice['action']) {
+    options.onActivity?.({
+      pluginId: record.catalogId,
+      action,
+      riskLevel: byId.get(record.catalogId)?.riskLevel ?? 'high',
+      generation: record.generation,
+    });
+  }
   const skillStore = () => opened;
 
-  function readInstallations(): InstallationRecord[] {
+  function readInstallationState(): {entries: InstallationRecord[]; generations: Record<string, number>} {
     const file = options.installationFile;
-    if (!existsSync(file)) return [];
+    if (!existsSync(file)) return {entries: [], generations: {}};
     if (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile() || lstatSync(file).size > 1_048_576) {
       throw new ProtocolError('INVALID_ARGUMENT', '插件安装记录不可用');
     }
-    const saved = JSON.parse(readFileSync(file, 'utf8')) as {version?: unknown; entries?: unknown};
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as {version?: unknown; entries?: unknown; generations?: unknown};
     if (saved.version !== 1 || !Array.isArray(saved.entries) || saved.entries.length > 32) {
       throw new ProtocolError('INVALID_ARGUMENT', '插件安装记录版本不受支持');
     }
-    return saved.entries.map(entry => {
+    const entries = saved.entries.map(entry => {
       if (!entry || typeof entry !== 'object') throw new ProtocolError('INVALID_ARGUMENT', '插件安装记录无效');
       return entry as InstallationRecord;
     });
+    const generations: Record<string, number> = {};
+    if (saved.generations && typeof saved.generations === 'object' && !Array.isArray(saved.generations)) {
+      for (const [key, val] of Object.entries(saved.generations as Record<string, unknown>)) {
+        if (typeof val === 'number' && Number.isSafeInteger(val) && val >= 0) generations[key] = val;
+      }
+    }
+    for (const entry of entries) {
+      generations[entry.catalogId] = Math.max(generations[entry.catalogId] ?? 0, entry.generation);
+    }
+    return {entries, generations};
   }
 
-  function writeInstallations(entries: InstallationRecord[]) {
+  function readInstallations(): InstallationRecord[] {
+    return readInstallationState().entries;
+  }
+
+  function writeInstallations(entries: InstallationRecord[], extraGenerations: Record<string, number> = {}) {
     const file = options.installationFile;
+    const priorGenerations = existsSync(file) ? readInstallationState().generations : {};
+    const generations: Record<string, number> = {...priorGenerations, ...extraGenerations};
+    for (const entry of entries) {
+      generations[entry.catalogId] = Math.max(generations[entry.catalogId] ?? 0, entry.generation);
+    }
     mkdirSync(path.dirname(file), {recursive: true});
-    const temporary = `${file}.tmp`;
+    const temporary = `${file}.tmp-${process.pid}`;
     if ((existsSync(file) && lstatSync(file).isSymbolicLink()) || (existsSync(temporary) && lstatSync(temporary).isSymbolicLink())) {
       throw new ProtocolError('INVALID_ARGUMENT', '插件安装记录不可用');
     }
-    writeFileSync(temporary, JSON.stringify({version: 1, entries}), 'utf8');
+    writeFileSync(temporary, JSON.stringify({version: 1, entries, generations}), 'utf8');
     renameSync(temporary, file);
+  }
+
+  function retainGrant(record: InstallationRecord, entry: PluginManifest): InstallationRecord {
+    const permissionGrant = granted(entry);
+    if (samePermissionGrant(record.permissionGrant, permissionGrant)) return record;
+    const next = {...record, permissionGrant};
+    writeInstallations(readInstallations().map(item => item.catalogId === record.catalogId ? next : item));
+    return next;
   }
 
   function requireEntry(id: string): PluginManifest {
@@ -152,10 +202,11 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
 
   function planInstall(id: string): InstallPlan {
     const entry = requireEntry(id);
+    const grantStep = '记录本次确认的权限清单；运行时只放行清单中的网络主机、文件范围、连接器和密钥';
     const steps = entry.installer === 'local-skill'
-      ? ['接收本机技能目录', '用现有 readLocalSkillDirectory 做快照', '比对目录 sha256', '调用 openLocalSkillStore.install，保持停用', '不执行目录中的脚本']
+      ? ['接收本机技能目录', '用现有 readLocalSkillDirectory 做快照', '比对目录 sha256', '调用 openLocalSkillStore.install，保持停用', '不执行目录中的脚本', grantStep]
       : entry.installer === 'pinned-filesystem-readonly'
-        ? ['解析已安装的官方 filesystem 包', '核验 MCP_FILESYSTEM_PACKAGE_VERSION 与入口 sha256', '写入停用安装记录', '不启动服务器，不注册写工具']
+        ? ['解析已安装的官方 filesystem 包', '核验 MCP_FILESYSTEM_PACKAGE_VERSION 与入口 sha256', '写入停用安装记录', '不启动服务器，不注册写工具', grantStep]
         : ['拒绝一键安装'];
     const plan: InstallPlan = {id: entry.id, oneClickInstall: entry.oneClickInstall, installer: entry.installer, enableRequiresAuthorization: entry.enableRequiresAuthorization, pin: structuredClone(entry.pin), steps};
     if (entry.installBlockReason) plan.installBlockReason = entry.installBlockReason;
@@ -212,32 +263,39 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
   function install(input: {id: string; sourceDirectory?: string}): InstallationRecord {
     const entry = requireEntry(input.id);
     if (!entry.oneClickInstall || !entry.pin.sha256) throw new ProtocolError('UNSUPPORTED_CAPABILITY', entry.installBlockReason ?? '该插件不能一键安装');
-    const existing = readInstallations().find(item => item.catalogId === entry.id);
+    const state = readInstallationState();
+    const existing = state.entries.find(item => item.catalogId === entry.id);
+    const nextGeneration = Math.max(existing?.generation ?? 0, state.generations[entry.id] ?? 0) + 1;
     if (entry.installer === 'local-skill') {
       if (!input.sourceDirectory) throw new ProtocolError('INVALID_ARGUMENT', '技能安装需要本机目录');
       const bundle = readLocalSkillDirectory(input.sourceDirectory);
       if (bundle.name !== entry.skillName || !sameHash(bundle.digest, entry.pin.sha256)) {
         throw new ProtocolError('INVALID_ARGUMENT', '技能目录摘要与录取针不一致');
       }
-      if (existing?.skill?.digest === bundle.digest) return structuredClone(existing);
+      if (existing?.skill?.digest === bundle.digest) return structuredClone(retainGrant(existing, entry));
       const installed = skillStore().install(bundle);
       if (installed.enabled || installed.digest !== bundle.digest) throw new ProtocolError('PROTOCOL_MISMATCH', '技能安装结果与停用快照不一致');
       const record: InstallationRecord = {
-        catalogId: entry.id, type: 'skill', installer: 'local-skill', enabled: false, generation: 1,
-        pin: snapshotPin(entry.pin), skill: {name: installed.name, digest: installed.digest, installationId: installed.installationId},
+        catalogId: entry.id, type: 'skill', installer: 'local-skill', enabled: false,
+        generation: nextGeneration, installedGeneration: nextGeneration,
+        pin: snapshotPin(entry.pin), permissionGrant: granted(entry),
+        skill: {name: installed.name, digest: installed.digest, installationId: installed.installationId},
       };
-      writeInstallations([...readInstallations().filter(item => item.catalogId !== entry.id), record]);
+      writeInstallations([...state.entries.filter(item => item.catalogId !== entry.id), record], {[entry.id]: nextGeneration});
+      notify(record, 'install');
       return structuredClone(record);
     }
     if (entry.installer === 'pinned-filesystem-readonly') {
       if (input.sourceDirectory) throw new ProtocolError('INVALID_ARGUMENT', 'filesystem 钉死安装不接收外部目录');
       const verified = assertFilesystemPin(entry);
-      if (existing?.mcp?.entrySha256 === verified.entrySha256 && existing.pin.sha256 === entry.pin.sha256) return structuredClone(existing);
+      if (existing?.mcp?.entrySha256 === verified.entrySha256 && existing.pin.sha256 === entry.pin.sha256) return structuredClone(retainGrant(existing, entry));
       const record: InstallationRecord = {
-        catalogId: entry.id, type: 'mcp', installer: 'pinned-filesystem-readonly', enabled: false, generation: 1,
-        pin: snapshotPin(entry.pin), mcp: {...verified, surface: 'readonly-filesystem'},
+        catalogId: entry.id, type: 'mcp', installer: 'pinned-filesystem-readonly', enabled: false,
+        generation: nextGeneration, installedGeneration: nextGeneration,
+        pin: snapshotPin(entry.pin), permissionGrant: granted(entry), mcp: {...verified, surface: 'readonly-filesystem'},
       };
-      writeInstallations([...readInstallations().filter(item => item.catalogId !== entry.id), record]);
+      writeInstallations([...state.entries.filter(item => item.catalogId !== entry.id), record], {[entry.id]: nextGeneration});
+      notify(record, 'install');
       return structuredClone(record);
     }
     throw new ProtocolError('UNSUPPORTED_CAPABILITY', '没有可用的现有安装器');
@@ -247,11 +305,14 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
     return readInstallations().map(entry => structuredClone(entry));
   }
 
-  function setEnabled(id: string, enabled: boolean, authorization?: PluginAuthorization): InstallationRecord {
+  function setEnabled(id: string, enabled: boolean, authorization?: PluginAuthorization, expectedGeneration?: number): InstallationRecord {
     if (typeof enabled !== 'boolean') throw new ProtocolError('INVALID_ARGUMENT', '启用状态无效');
     const current = readInstallations();
     const record = current.find(item => item.catalogId === id);
     if (!record) throw new ProtocolError('NOT_FOUND', '插件尚未安装');
+    if (expectedGeneration !== undefined && (record.generation !== expectedGeneration || record.enabled === enabled)) {
+      throw new ProtocolError('REVISION_CONFLICT', '插件版本或状态已变化，无法撤销旧记录');
+    }
     const entry = byId.get(id);
     if (!entry) throw new ProtocolError('UNSUPPORTED_CAPABILITY', '已安装插件已不在目录中，不能改变启用状态');
     if (record.enabled === enabled) return structuredClone(record);
@@ -278,7 +339,8 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
     }
     if (record.skill) skillStore().setEnabled(record.skill.name, record.skill.digest, enabled);
     const next: InstallationRecord = {...record, enabled, generation: record.generation + 1};
-    writeInstallations(current.map(item => item.catalogId === id ? next : item));
+    writeInstallations(current.map(item => item.catalogId === id ? next : item), {[id]: next.generation});
+    notify(next, enabled ? 'enable' : 'disable');
     return structuredClone(next);
   }
 
@@ -291,12 +353,18 @@ export function createPluginCatalogService(options: PluginCatalogServiceOptions)
     return {id, status, installed: structuredClone(installed.pin), catalog: structuredClone(entry.pin)};
   }
 
-  function uninstall(id: string): void {
-    const current = readInstallations();
+  function uninstall(id: string, expectedGeneration?: number): void {
+    const state = readInstallationState();
+    const current = state.entries;
     const record = current.find(item => item.catalogId === id);
     if (!record) throw new ProtocolError('NOT_FOUND', '插件尚未安装');
+    const installedGen = record.installedGeneration ?? record.generation;
+    if (expectedGeneration !== undefined && installedGen !== expectedGeneration) {
+      throw new ProtocolError('REVISION_CONFLICT', '插件版本已变化，无法撤销旧安装记录');
+    }
     if (record.skill) skillStore().uninstall(record.skill.name, record.skill.digest);
-    writeInstallations(current.filter(item => item.catalogId !== id));
+    writeInstallations(current.filter(item => item.catalogId !== id), {[id]: Math.max(state.generations[id] ?? 0, record.generation)});
+    notify(record, 'uninstall');
   }
 
   return {

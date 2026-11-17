@@ -46,7 +46,7 @@ test('owned graph uses actual SQLite Runtime/Policy/ToolGateway/workspace read a
   const tool=createWorkspaceReadTool({rootPath:directory});
   let executionCount=0;
   const actualTool={descriptor:tool.descriptor,execute:async(...args)=>{executionCount++;return tool.execute(...args);}};
-  const config={path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-public-user',tools:[actualTool]};
+  const config={path:join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'synthetic-public-user',tools:[actualTool],riskAutonomy:false};
   let app=createRuntimeApplication(config);
   try {
     const parent=app.runtime.submitTask({goal:'Read public fixture for graph development',conversationId:'workflow-test',idempotencyKey:'owned-parent'});

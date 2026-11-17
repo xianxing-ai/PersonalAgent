@@ -114,8 +114,12 @@ const {closeDesktop}=require('../test-support/close-desktop.cjs');
     await workspace.locator('.cc-settings').click();
     const admin = await adminOpened;
     await admin.waitForSelector('[data-page="appearance"]',{state:'attached'});
-    for (const removed of ['import', 'browser', 'account', 'usage']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
+    for (const removed of ['import', 'browser', 'account']) assert.equal(await admin.locator(`.side [data-page="${removed}"]`).count(), 0);
+    assert.equal(await admin.locator('.side [data-page="usage"]').count(), 1, 'the usage and billing route remains available');
+    await admin.locator('.side [data-page="usage"]').click();
+    await admin.locator('#content h2').filter({hasText:'使用情况和计费'}).waitFor();
     assert.equal(await admin.locator('.side [data-page="tasks"]').count(), 1, 'the current task monitoring route remains available');
+    await admin.locator('.side [data-page="settings"]').click();
     await admin.locator('[data-jump="appearance"]').click();
     for (const theme of ['dark', 'light']) {
       await admin.locator('#pref-theme').selectOption(theme);

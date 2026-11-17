@@ -14,6 +14,7 @@ export interface AuthorizationRequirement {
 export interface AuthorizationQuestionRequest {
   taskId:string;proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;
   deadline:string;signal:AbortSignal;requirements:AuthorizationRequirement[];
+  sideEffect?:'read'|'local_write'|'external_write';
   /** Trusted workflow grouping, never accepted from Renderer or a model proposal. */
   taskConsent?:{taskId:string;bindingDigest:string;summary:string;mode:'read-only'|'workspace-write';requiresNative?:boolean};
   /** Complete trusted-host projection of dangerous content. Each operation needs an explicit decision. */
@@ -21,6 +22,8 @@ export interface AuthorizationQuestionRequest {
 }
 export interface AuthorizationSandbox {
   ref:string;label:string;mode:'read-only'|'workspace-write'|'full-access';revision:number;available:boolean;reason?:string;
+  /** Host opt-in. Read-like tool scopes may be allowed once; writes, sends and external processes still ask. */
+  lowRiskAuto?:boolean;
   kind?:'application_policy';native?:AuthorizationNativeExecution;
 }
 export interface AuthorizationNativeExecution {required:boolean;available:boolean;backend:'windows-psec'|'none'|'unavailable';enforced:boolean;
@@ -31,19 +34,20 @@ export interface AuthorizationQuestionReceipt {
 interface Question {
   questionId:string;revision:number;state:AuthorizationQuestionState;taskId:string;conversationId:string;
   proposalId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;deadline:string;expiresAt:string;
+  sideEffect?:'read'|'local_write'|'external_write';
   requirements:AuthorizationRequirement[];sandbox:AuthorizationSandbox;ownerBinding:string;
   baseSandboxRef?:string;
   decision?:AuthorizationDecision;receiptRef?:string;reason?:string;consumed:Record<string,string>;
   derivedFrom?:string;
   taskConsentFrom?:string;
-  /** A fresh exact receipt from the user's selected full-access policy, not a UI question. */
-  automatic?:'full-access';
+  /** A fresh exact receipt from the user's selected policy, not a UI question. */
+  automatic?:'full-access'|'low-risk';
   taskConsent?:AuthorizationQuestionRequest['taskConsent'];
   contentConfirmation?:AuthorizationQuestionRequest['contentConfirmation'];
 }
 interface Rule {ruleId:string;revision:number;active:boolean;toolName:string;toolVersion:string;
   sandboxRef:string;sandboxRevision:number;sandboxLabel:string;requirements:AuthorizationRequirement[];summary:string;}
-interface State {version:1;selectedRef:string;revision:number;questions:Question[];rules:Rule[];}
+interface State {version:1;selectedRef:string;revision:number;questions:Question[];rules:Rule[];profileChosen?:boolean;}
 export interface AuthorizationQuestionsOptions {
   store:TrustedHostStateStore;
   profiles:readonly AuthorizationSandbox[];
@@ -74,6 +78,17 @@ const taskRule=(requirements:AuthorizationRequirement[])=>digest(requirements.ma
 const canReuse=(question:Pick<Question,'requirements'|'taskConsent'|'contentConfirmation'>)=>!question.contentConfirmation
   &&(Boolean(question.taskConsent)||reusable(question.requirements));
 const consentNative=(native:AuthorizationNativeExecution|undefined)=>native?.required?native:{required:false};
+const ELEVATED_SCOPE = /(?:write|execute|verify|patch|send|create|delete|update|erase|install|enable|uninstall|configure|withdraw|respond)/iu;
+const READ_SCOPE = /(?:^|[.:])(?:read|list|search|get|status)$/iu;
+/** Conservative gate. Unknown, write, send, export and external-process requests stay pending. */
+export function isLowRiskAuthorizationRequest(request: Omit<AuthorizationQuestionRequest,'signal'>): boolean {
+  if (!request?.requirements?.length) return false;
+  if (request.sideEffect !== 'read') return false;
+  if (request.taskConsent && (request.taskConsent.mode !== 'read-only' || request.taskConsent.requiresNative === true)) return false;
+  if (/send|delete|erase|install|execute|withdraw|configure/iu.test(request.toolName)) return false;
+  return request.requirements.every(requirement => requirement.kind === 'tool' && requirement.scopes.length > 0
+    && requirement.scopes.every(scope => READ_SCOPE.test(scope) && !ELEVATED_SCOPE.test(scope)));
+}
 
 /** Durable user decisions only. Policy grants and exact export leases remain separate consumers. */
 export class AuthorizationQuestions {
@@ -121,12 +136,14 @@ export class AuthorizationQuestions {
   private input(question:Question):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:question.taskId,proposalId:question.proposalId,runId:question.runId,toolName:question.toolName,
       toolVersion:question.toolVersion,argumentsDigest:question.argumentsDigest,deadline:question.deadline,
+      ...(question.sideEffect!==undefined?{sideEffect:question.sideEffect}:{}),
       requirements:structuredClone(question.requirements),...(question.taskConsent?{taskConsent:structuredClone(question.taskConsent)}:{}),
       ...(question.contentConfirmation?{contentConfirmation:structuredClone(question.contentConfirmation)}:{})};
   }
   private normalize(request:AuthorizationQuestionRequest):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:request.taskId,proposalId:request.proposalId,runId:request.runId,toolName:request.toolName,
       toolVersion:request.toolVersion,argumentsDigest:request.argumentsDigest,deadline:request.deadline,
+      ...(request.sideEffect!==undefined?{sideEffect:request.sideEffect}:{}),
       ...(request.taskConsent?{taskConsent:structuredClone(request.taskConsent)}:{}),
       ...(request.contentConfirmation?{contentConfirmation:structuredClone(request.contentConfirmation)}:{}),
       requirements:request.requirements.map(requirement=>({requirementId:requirement.requirementId,kind:requirement.kind,
@@ -149,6 +166,7 @@ export class AuthorizationQuestions {
   }
   private validate(request:AuthorizationQuestionRequest):void {
     if(!request||['taskId','proposalId','runId','toolName','toolVersion'].some(key=>!text(request[key as keyof AuthorizationQuestionRequest]))
+      ||request.sideEffect!==undefined&&!['read','local_write','external_write'].includes(request.sideEffect)
       ||!hash(request.argumentsDigest)||!Number.isFinite(Date.parse(request.deadline))||Date.parse(request.deadline)<=this.now()
       ||!request.signal||request.signal.aborted||!Array.isArray(request.requirements)||request.requirements.length<1||request.requirements.length>24)
       throw new ProtocolError('INVALID_ARGUMENT','Invalid authorization question binding');
@@ -190,6 +208,9 @@ export class AuthorizationQuestions {
         conversationId:binding.conversationId,sandbox:profile,baseSandboxRef:selected.ref,ownerBinding:binding.digest,consumed:{}};
       if(!question.contentConfirmation&&selected.mode==='full-access'&&profile.mode==='full-access'){
         question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='full-access';
+      } else if(!question.contentConfirmation && question.state==='pending' && selected.lowRiskAuto===true && profile.ref===selected.ref
+        && profile.native?.required!==true && isLowRiskAuthorizationRequest(input)){
+        question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='low-risk';
       }
       this.liveBindings.set(question.questionId,()=>!signal.aborted&&assertCurrent());
       this.mutate(state=>{
@@ -375,7 +396,7 @@ export class AuthorizationQuestions {
     const profile=this.options.profiles.find(item=>item.ref===input?.profileRef);
     if(!profile?.available)fail('此沙箱执行后端不可用');
     this.mutate(state=>{if(state.revision!==input.expectedRevision)throw new ProtocolError('REVISION_CONFLICT','沙箱已变化');
-      state.selectedRef=profile!.ref;state.revision++;for(const rule of state.rules)rule.active=false;});
+      state.selectedRef=profile!.ref;state.profileChosen=true;state.revision++;for(const rule of state.rules)rule.active=false;});
     for(const questionId of this.waiters.keys())this.end(questionId,'stale','sandbox_changed');
     this.options.onChange?.();return this.sandboxSnapshot();
   }

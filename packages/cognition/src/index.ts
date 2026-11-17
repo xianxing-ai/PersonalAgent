@@ -41,6 +41,48 @@ export type {DurableFactProjectionInput, CompletedFactProjectionDecision,
 export {ProactiveDecisionService, DecisionError, INTERVENTIONS} from './proactive-decision.js';
 export type {DecisionPort, DecisionRequest, DecisionEvent, DecisionSuggestion, DecisionRef,
   BoundedDecisionModel, ModelChoice, Intervention} from './proactive-decision.js';
+export {
+  PROACTIVE_SOURCE_TRIGGER_VERSION,
+  DEFAULT_PROACTIVE_TRIGGER_RULES,
+  TriggerError,
+  createProactiveSourceTrigger,
+  createPublicToolReadPort,
+  createNodeReadOnlyDirectoryScan,
+  scanAuthorizedDirectory,
+  assertAuthorizedRoot,
+  isQuietHours,
+  effectiveTriggerRisk,
+  matchTriggerRule,
+  normalizeCalendarChanges,
+  normalizeMailChanges,
+  normalizeFileChanges,
+  isSafeRelativePath,
+} from './proactive-source-trigger.js';
+export type {
+  ChangeSource,
+  ChangeKind,
+  TriggerRule,
+  TriggerStatus,
+  TriggerOutcome,
+  TriggerTickInput,
+  TriggerTickResult,
+  SourceChangeEvent,
+  QuietHours,
+  PublicSourceReadPort,
+  PublicToolInvoke,
+  ProactiveChoicePort,
+  ProactiveTaskPort,
+  ProactiveApprovalPort,
+  ProactiveApprovalRequest,
+  ApprovedResume,
+  AuthorizedDirectory,
+  FileEntry,
+  ReadOnlyDirectoryFs,
+  ProactiveSourceTriggerOptions,
+  ProactiveTriggerState,
+  CalendarMemory,
+  FileMemory,
+} from './proactive-source-trigger.js';
 export {LayaDecisionModel, LocalLayaHttpTransport} from './laya-decision.js';
 export type {LayaInferencePort, LayaPayload} from './laya-decision.js';
 export {decideProjectedFactImpact} from './projected-fact-decision.js';
@@ -92,6 +134,18 @@ export type {
 export {createCodeReviewWorkflow, codeReviewChangedLines, codeReviewPublicationCheckpointKey} from './dev-workflows/code-review.js';
 export type {CodeReviewRule, CodeReviewInput, CodeReviewFinding, CodeReviewReport, CodeReviewAccess,
   CodeReviewPreparation, CodeReviewPublication, CodeReviewWorkflow, CodeReviewWorkflowOptions} from './dev-workflows/code-review-types.js';
+export {
+  PERSONAL_DASHBOARD_PERIODS, dashboardReadWindow, dashboardScheduleInput, dueDashboardBoundary,
+  nextDashboardBoundary, personalDashboardConversationId, summarizePersonalDashboard,
+} from './personal-dashboard.js';
+export type {
+  CountSample, DashboardCard, DashboardScheduleInput, DashboardWindow, DisconnectedSource,
+  MailSample, PersonalDashboardPeriod, PersonalDashboardReadings, PersonalDashboardSummary,
+  SourceReading, SpendSample, TimeSample,
+} from './personal-dashboard.js';
+export {createOperatorBrake, OPERATOR_BRAKE_RECORD_VERSION} from './operator-brake.js';
+export type {OperatorRun, OperatorRunKind, OperatorBrakeMarker, OperatorBrakeRecord, OperatorBrakeStore,
+  OperatorBrakeExtension, OperatorBrakeExtensions, OperatorBrakePorts, OperatorBrake} from './operator-brake.js';
 export {buildDailyBriefing, planDailyBriefingSchedule, briefingNotification, DAILY_BRIEFING_GOAL} from './daily-briefing.js';
 export type {DailyBriefingDocument, DailyBriefingInput, DailyBriefingItem, DailyBriefingDecision,
   DailyBriefingScheduleHighlight, DailyBriefingSchedulePlan, DailyBriefingTaskRef, DailyBriefingApprovalRef,
