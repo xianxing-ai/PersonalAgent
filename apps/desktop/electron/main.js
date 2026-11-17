@@ -1094,7 +1094,7 @@ function movePanelGroup(point) {
 function openAdmin(page) {
   if (page === 'environment' || page === 'worktrees' || page === 'git') page = 'workspace';
   if (page === 'overview' || page === 'analytics' || page === 'account') page = 'usage';
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts','dashboard','activity','pets'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -3656,7 +3656,7 @@ async function action(event, name, payload) {
     return result;
   }
   if (name === 'task.repair') {
-    if (sender !== panel || !runtimeApplication) throw Error('请从当前对话处理失败');
+    if ((sender !== panel && sender !== workspace) || !runtimeApplication) throw Error('请从当前对话处理失败');
     const result = createFailureRepairHost(runtimeApplication.runtime).act(payload);
     publish();
     return result;
@@ -4359,7 +4359,7 @@ async function action(event, name, payload) {
   }
   if (name === 'knowledge.status') return snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel').knowledge;
   if (name.startsWith('proactive.workflow.')) {
-    if ((sender!==panel&&sender!==admin)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
+    if ((sender!==panel&&sender!==admin&&sender!==workspace)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
     if(name==='proactive.workflow.status')return proactiveWorkflowApplication.snapshot();
     if(name==='proactive.workflow.start'){
       const start=()=>proactiveWorkflowApplication.start(payload);
@@ -4385,7 +4385,7 @@ async function action(event, name, payload) {
     throw Error('持续工作流操作未公布');
   }
   if (name === 'proactive.configure' || name === 'proactive.analyze' || name === 'proactive.cognition.apply') {
-    if ((sender !== panel && sender !== admin) || !competitionMode || !proactiveHost) throw Error('主动观察仅允许可信设置或面板调用');
+    if ((sender !== panel && sender !== admin && sender !== workspace) || !competitionMode || !proactiveHost) throw Error('主动观察仅允许可信设置或面板调用');
     if (name === 'proactive.configure') {
       const configuration = proactiveHost.configure(payload);
       if (payload?.enabled === false && !proactiveHost.snapshot().enabled) await stopP5DeviceTelemetry();

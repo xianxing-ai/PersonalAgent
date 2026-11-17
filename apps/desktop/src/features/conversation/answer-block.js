@@ -1,7 +1,11 @@
 /** One answer block for the panel, the workspace and an assistant thread. */
 
 export function emptyLive() {
-  return {reasoning: '', answer: '', steps: [], summary: '', startedAt: Date.now()};
+  return {reasoning: '', answer: '', steps: [], summary: '', startedAt: Date.now(), openDisclosures: new Set()};
+}
+
+function stepDisclosureKey(step, index) {
+  return typeof step?.stepId === 'string' && step.stepId.length > 0 ? `step:${step.stepId}` : `step-index:${index}`;
 }
 
 export function rememberActivity(store, event) {
@@ -73,13 +77,70 @@ export function answerCardHtml(task, live, escape) {
   const answer = settled || streamed;
   const steps = live?.steps?.length ? live.steps : [];
   const summary = live?.summary ?? '';
+  const openDisclosures = live?.openDisclosures instanceof Set ? live.openDisclosures : new Set();
+  const thinkingOpen = openDisclosures.has('thinking') ? ' open' : '';
   const thinking = reasoning
-    ? `<details class="thinking-block"><summary>思考过程${seconds(live)}</summary><p class="thinking-body">${escape(reasoning)}</p></details>`
+    ? `<details class="thinking-block" data-disclosure-key="thinking"${thinkingOpen}><summary>思考过程${seconds(live)}</summary><p class="thinking-body">${escape(reasoning)}</p></details>`
     : '';
-  const tools = steps.length ? `<div class="tool-steps">${steps.map(step => `<details class="tool-step"><summary>${escape(step.label || step.toolName || '工具')}</summary><p>${step.argsSummary ? `参数：${escape(step.argsSummary)}` : ''}${step.resultSummary ? `\n结果：${escape(step.resultSummary)}` : ''}${step.durationMs !== undefined ? `\n耗时：${escape(String(step.durationMs))} 毫秒` : ''}</p></details>`).join('')}</div>` : '';
+  const tools = steps.length ? `<div class="tool-steps">${steps.map((step, index) => {
+    const key = stepDisclosureKey(step, index);
+    const stepOpen = openDisclosures.has(key) ? ' open' : '';
+    return `<details class="tool-step" data-disclosure-key="${escape(key)}"${stepOpen}><summary>${escape(step.label || step.toolName || '工具')}</summary><p>${step.argsSummary ? `参数：${escape(step.argsSummary)}` : ''}${step.resultSummary ? `\n结果：${escape(step.resultSummary)}` : ''}${step.durationMs !== undefined ? `\n耗时：${escape(String(step.durationMs))} 毫秒` : ''}</p></details>`;
+  }).join('')}</div>` : '';
   const body = answer ? `<div class="assistant-message">${escape(answer)}</div>` : (task?.error?.message ? `<div class="assistant-error">${escape(task.error.message)}</div>` : '');
   const back = summary ? `<p class="child-summary">结果已回到主对话：${escape(summary)}</p>` : '';
   return `<section class="answer-card" data-answer-for="${escape(task?.taskId ?? '')}">${thinking}${tools}${body}${back}</section>`;
+}
+
+export function syncAnswerCardDisclosures(card, live) {
+  const openKeys = new Set(live?.openDisclosures instanceof Set ? live.openDisclosures : []);
+  for (const details of card?.querySelectorAll?.('details[data-disclosure-key]') ?? []) {
+    const key = details.dataset?.disclosureKey ?? details.getAttribute?.('data-disclosure-key');
+    if (!key) continue;
+    const isOpen = details.open === true || (typeof details.hasAttribute === 'function' && details.hasAttribute('open'));
+    if (isOpen) openKeys.add(key);
+    else openKeys.delete(key);
+  }
+  if (live && typeof live === 'object') live.openDisclosures = openKeys;
+  return openKeys;
+}
+
+export function syncContainerAnswerDisclosures(container, liveTurns) {
+  if (!container || !liveTurns) return;
+  for (const card of container.querySelectorAll?.('[data-answer-for]') ?? []) {
+    const taskId = card.dataset?.answerFor ?? card.getAttribute?.('data-answer-for');
+    if (taskId && liveTurns.has(taskId)) {
+      syncAnswerCardDisclosures(card, liveTurns.get(taskId));
+    }
+  }
+}
+
+export function replaceAnswerCard(slot, task, live, escape, doc = globalThis.document) {
+  if (!slot || !doc) return undefined;
+  const openKeys = syncAnswerCardDisclosures(slot, live);
+  const active = doc.activeElement;
+  const inside = Boolean(active && (typeof slot.contains === 'function' ? slot.contains(active) : active.closest?.('[data-answer-for]') === slot));
+  const activeDetails = inside ? active.closest?.('details[data-disclosure-key]') : undefined;
+  const focusedKey = activeDetails ? (activeDetails.dataset?.disclosureKey ?? activeDetails.getAttribute?.('data-disclosure-key')) : undefined;
+  const wrap = doc.createElement('div');
+  wrap.innerHTML = answerCardHtml(task, live, escape);
+  const nextCard = wrap.firstElementChild ?? wrap.children?.[0];
+  if (!nextCard) return undefined;
+  for (const details of nextCard.querySelectorAll?.('details[data-disclosure-key]') ?? []) {
+    const key = details.dataset?.disclosureKey ?? details.getAttribute?.('data-disclosure-key');
+    if (key && openKeys.has(key)) {
+      details.open = true;
+      details.setAttribute?.('open', '');
+    }
+  }
+  slot.replaceWith(nextCard);
+  if (focusedKey) {
+    const targetDetails = [...(nextCard.querySelectorAll?.('details[data-disclosure-key]') ?? [])].find(
+      item => (item.dataset?.disclosureKey ?? item.getAttribute?.('data-disclosure-key')) === focusedKey,
+    );
+    (targetDetails?.querySelector?.('summary') ?? targetDetails)?.focus?.({preventScroll: true});
+  }
+  return nextCard;
 }
 
 export function assistantStatusLabel(status) {
