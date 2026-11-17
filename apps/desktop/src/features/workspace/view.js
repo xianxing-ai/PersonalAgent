@@ -41,7 +41,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const orbButton=root.querySelector('#workspace-orb');
   const orb=new Orb(orbButton.querySelector('canvas'),{variant:orbVariantPreference(),layout:'shell',count:520,luminous:true});
   orb.setBreathing({min:.52,max:.76,rate:.7});
-  const syncMotion=()=>{orb.setVariant(orbVariantPreference());const override=orbStateOverride();orb.setState(override??visualOrbState(current));if(override==='listening')orb.setLevel(Math.max(current.audioLevel??0,0.68));if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');};syncMotion();window.addEventListener('preferences-changed',syncMotion);
+  const syncMotion=()=>{const variant=typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix');const override=typeof orbStateOverride==='function'?orbStateOverride():((document.documentElement?.dataset?.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null);orb.setVariant?.(variant);if(override){orb.setState(override);if(override==='listening')orb.setLevel(Math.max((typeof current!=='undefined'?current?.audioLevel:0)??0,0.68));}else if(typeof current!=='undefined'&&current&&(current.tasks?.length||current.live))orb.setState(visualOrbState(current));if(document.hidden)orb.stop();else orb.setCalm(document.documentElement.dataset.calm==='true');};syncMotion();window.addEventListener('preferences-changed',syncMotion);
   const visibility=()=>{if(document.hidden)orb.stop();else syncMotion();};document.addEventListener('visibilitychange',visibility);
   let activationTimer;
   window.addEventListener('unload',()=>{clearTimeout(activationTimer);orb.dispose();window.removeEventListener('preferences-changed',syncMotion);document.removeEventListener('visibilitychange',visibility);});
@@ -153,10 +153,9 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     current=data;current.tasks ||= [];
     subagents.update(data.subagentTasks??[]);
     sessionControls.update(data);nativeReasoning.update(data);
-    const override=orbStateOverride();
-    orb.setVariant(orbVariantPreference());
-    orb.setLevel(override==='listening'?Math.max(data.audioLevel??0,0.68):(data.audioLevel??0));
-    orb.setState(override??visualOrbState(data));
+    orb.setVariant?.(typeof orbVariantPreference==='function'?orbVariantPreference():(document.documentElement?.dataset?.orbVariant||'matrix'));
+    orb.setLevel((typeof orbStateOverride==='function'?orbStateOverride():null)==='listening'?Math.max(data.audioLevel??0,0.68):(data.audioLevel??0));
+    orb.setState((typeof orbStateOverride==='function'?orbStateOverride():null)??visualOrbState(data));
     if(document.hidden)orb.stop();
     composer.update(data);
     let brakeStatus=root.querySelector('#operator-brake-status');

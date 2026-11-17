@@ -18,8 +18,9 @@ visit(ast);assert.ok(declarations&&operation&&sync&&render&&unload);
 function fixture(){
   const attributes=new Map(),requests=[];let onUnload;
   const button={setAttribute:(k,v)=>attributes.set(k,v),removeAttribute:k=>attributes.delete(k),set title(v){attributes.set('title',v)}};
-  const orb={state:'idle',setLevel(){},setState(state){this.state=state},stop(){}};
+  const orb={state:'idle',variant:'matrix',setVariant(v){this.variant=v},setLevel(){},setState(state){this.state=state},stop(){}};
   const context=vm.createContext({button,orb,document:{hidden:false},window:{addEventListener:(_e,fn)=>{onUnload=fn}},
+    orbVariantPreference:()=>'matrix',orbStateOverride:()=>null,lastOrbData:{},
     invoke:action=>new Promise((resolve,reject)=>requests.push({action,resolve,reject})),orbStatusLabel:data=>data.label,visualOrbState:data=>data.state});
   vm.runInContext(`${declarations}const syncOperationFeedback=${sync};const orbOperation=${operation};${unload}`,context);
   const run=vm.runInContext('orbOperation',context),update=vm.runInContext(`(${render})`,context);

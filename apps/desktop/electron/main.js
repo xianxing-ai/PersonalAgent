@@ -1098,7 +1098,7 @@ function movePanelGroup(point) {
 function openAdmin(page) {
   if (page === 'environment' || page === 'worktrees' || page === 'git') page = 'workspace';
   if (page === 'overview' || page === 'analytics' || page === 'account') page = 'usage';
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts','dashboard','activity','pets'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
