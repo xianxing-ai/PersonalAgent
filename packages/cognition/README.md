@@ -26,6 +26,8 @@ Owner: zemeng. Profile: huawei_ict_agentarts. Pure local domain increment with
 an optional host-bound persistent-store consumer; no AgentArts, Memory,
 scheduler, tool execution or TaskRuntime state transition.
 
+个人数据看板（`summarizePersonalDashboard` / `dashboardScheduleInput`）只在本地把已授权读数收成趋势，并给出下一次 `ScheduleInput`。它不创建调度器、不写 TaskRuntime、不访问网络。桌面宿主把这条计划登记到既有 Scheduler；日历和邮件没授权时对应卡片不出现。
+
 `buildDailyBriefing` 根据调用方给出的任务、审批和日程快照生成每日简报。它不复制结果摘要、错误正文、审批参数或邮件正文。主动任务（#631 / CW-03）、风险分级（#630）和失败自愈（#633）只通过可选适配接口接入；未提供时来源为 unavailable，不依赖尚未合入的分支。`planDailyBriefingSchedule` 的字段与 Runtime `ScheduleInput` 结构兼容，由现有 Scheduler 登记。
 
 `ReviewedMeetingFactConsumer` consumes a trusted completed Fact projection and
@@ -79,6 +81,8 @@ no tracking option; revocation cannot be overridden by a model. Tracking proposa
 bind current public source, evidence, scope and expiry, and always require fresh
 host validation before any actual subscription. No watcher or permanent memory is
 created here. See [`MVP-TWIN-B-INTEREST-01`](../../docs/modules/MVP-TWIN-B-INTEREST-01.md).
+
+`createProactiveSourceTrigger` 把日历 `calendar.events`、邮件 `mail.inbox` 和用户授权目录的只读变化规范成事件，做去重、限流和静默时段，再交给现有 Laya 动作选择。低风险且 Laya 允许进入运行时的提案调用注入的任务 `submit`；会议改期和任何写操作只请求审批，不能由判断结果自行放行。可选 `risk.decide()` 只能把动作收紧为先问，用来以后接尚未进入 main 的风险档，不复制那份实现。Desktop 宿主 `createProactiveSourceHost` 在启动后接到现有 `task.submit` 和审批卡。首次读取只建基线。私人邮件内容和日历标题不进入提案。不扩展 `connector.watch`，也不代替真实账号验收。见 [CW-03 来源触发](../../docs/modules/CW-03-PROACTIVE-SOURCE-TRIGGER.md)。
 
 `planKnowledgeReevaluation({namespace, freshness, dependencies, checkpoint})`
 turns existing freshness decisions into exact source/version/content-bound
@@ -468,3 +472,7 @@ advice. They do not start tracking, grant permission or fetch sources. See
 [`docs/interest-policy.md`](docs/interest-policy.md) for revocation, source validation
 and cache expiry semantics. No real model, background watcher or next-day freshness
 acceptance is claimed.
+
+## 一键暂停（总刹车）
+
+`createOperatorBrake` 是总开关的编排。它只保存暂停记录，并调用宿主已经接好的 checkpoint、abort 和 resume。新任务、Scheduler 和主动触发在暂停期间不被 admit。进行中的运行先留下现有断点再中止。恢复时按同一断点继续。未合入的 PR #630 / #631 / #633 只留可选 `extensions`，本包不依赖它们的代码。桌面启动路径在 `apps/desktop/electron/operator-brake-host.js` 调用这个入口。

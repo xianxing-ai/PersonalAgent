@@ -29,7 +29,7 @@ const {_electron}=require('playwright');
     await admin.locator('[data-page="settings"]').click();
     assert.equal(await admin.locator('[data-jump="worktrees"]').isDisabled(),true);
     assert.equal(await admin.locator('.advanced-nav').evaluate(node=>node.open),false);
-    assert.deepEqual(await admin.locator('.primary-nav [data-page]').evaluateAll(nodes=>nodes.map(node=>node.dataset.page)),['settings','connections','authorizations']);
+    assert.deepEqual(await admin.locator('.primary-nav [data-page]').evaluateAll(nodes=>nodes.map(node=>node.dataset.page)),['settings','connections','authorizations','usage']);
     await admin.locator('#admin-search').fill('模型');
     assert.equal(await admin.locator('.advanced-nav').evaluate(node=>node.open),true);
     assert.equal(await admin.locator('[data-page="models"]').isVisible(),true);

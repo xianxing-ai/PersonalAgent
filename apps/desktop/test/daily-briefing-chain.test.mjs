@@ -9,7 +9,7 @@ import {createDailyBriefingHost} from '../electron/daily-briefing-host.js';
 import {presentBriefingDecision} from '../electron/briefing-decision.js';
 import {Conversations} from '../electron/conversations.js';
 import {approvalCards, focusApprovalCard} from '../src/features/conversation/approval-card.js';
-import {mountDailyBriefing} from '../src/features/admin/daily-briefing.js';
+import {mountBriefingPanel, mountDailyBriefing} from '../src/features/admin/daily-briefing.js';
 
 const cache = new URL('../../../.cache/daily-briefing-chain/', import.meta.url);
 mkdirSync(cache, {recursive: true});
@@ -33,7 +33,7 @@ test('startup wiring registers the real scheduler, settings IPC and approval jum
   assert.match(main, /name === 'briefing\.update'/);
   assert.match(main, /name === 'briefing\.openDecision'/);
   assert.match(main, /presentBriefingDecision/);
-  assert.match(main, /onOpen: \(\) => openAdmin\('briefing'\)/);
+  assert.match(main, /onOpen: \(\) => openBriefing\(\)/);
   assert.match(preload, /invoke: \(action, payload\) => ipcRenderer\.invoke\('desktop:action'/);
   assert.match(view, /mountDailyBriefing/);
   assert.match(view, /data\.dailyBriefing/);
@@ -109,9 +109,13 @@ test('due scheduler writes a redacted briefing, sends one notification, and the 
       });
       ui.show(true);
       ui.render(host.snapshot());
-      assert.equal(root.querySelector('button')?.textContent?.includes('保存'), false);
-      assert.equal([...root.querySelectorAll('button')].some(button => /刷新|保存/.test(button.textContent)), false);
-      const decision = [...root.querySelectorAll('button')].find(button => button.textContent === '查看审批卡');
+      assert.equal(Boolean(root.querySelector('button')?.textContent?.includes('保存')), false);
+      assert.equal([...root.querySelectorAll('button')].some(button => /刷新|保存|查看审批卡|今天的日程/.test(button.textContent)), false);
+      assert.equal(root.textContent?.includes('今天的日程') ?? [...root.querySelectorAll('h3')].some(node => node.textContent === '今天的日程'), false);
+      const panel = installDocument();
+      const briefing = mountBriefingPanel(panel, async (name, payload) => { calls.push({name, payload}); return snapshot; });
+      briefing.render(host.snapshot(), {open: true});
+      const decision = [...panel.querySelectorAll('button')].find(button => button.textContent === '查看审批卡');
       decision.click();
       assert.deepEqual(calls[0], {name: 'briefing.openDecision', payload: {taskId: waiting.taskId, approvalId: approval.approvalId}});
       const time = root.querySelector('[data-briefing=form]').elements.namedItem('localTime');
@@ -137,8 +141,8 @@ test('due scheduler writes a redacted briefing, sends one notification, and the 
     assert.equal(focusApprovalCard(thread, waiting.taskId), true);
     const card = thread.querySelector('.approval-card');
     assert.equal(card.scrolled, true);
-    assert.match(visibleText(card), /calendar\.respond/);
     assert.match(visibleText(card), /同意/);
+    assert.doesNotMatch(visibleText(card), /calendar\.respond/);
   } finally {
     await host.close();
     runtime.close();
@@ -162,6 +166,7 @@ class Element {
   }
   getAttribute(name) { return this.attributes.get(name) ?? null; }
   append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } }
+  prepend(...children) { for (const child of [...children].reverse()) { child.parentElement = this; this.children.unshift(child); } }
   set innerHTML(value) { this.children = []; parseHtml(value, this); }
   get innerHTML() { return ''; }
   matches(selector) {

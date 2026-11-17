@@ -11,6 +11,7 @@ import {flushConversationDrafts} from './conversation-draft-close.js';
 import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
+import {createFailureRepairHost} from './failure-repair-host.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {computerControlFailure} from './computer-control-errors.js';
@@ -37,6 +38,7 @@ import {freemem,totalmem,availableParallelism} from 'node:os';
 import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
+import {openDesktopActivity} from './activity-host.js';
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {createOrbHitTestController} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
@@ -50,11 +52,15 @@ import {createMicrophonePermissionGate} from './microphone-permission.js';
 import {readApprovalPage} from './approval-history.js';
 import {projectDesktopApproval} from './approval-projection.js';
 import {createPrivateMemoryController} from './private-memory.js';
-import {createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
+import {PRIVATE_MEMORY_CONSUMPTION_CHECKPOINT, createPrivateMemoryConsumptionHost} from './private-memory-consumption-host.js';
 import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
-import {createMemoryLearningHost} from './memory-learning-host.js';
+import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
+import {createDryRunProduct} from './dry-run-product.js';
+import {createPermissionAuditProduct} from './permission-audit-product.js';
+import {createContentFenceProduct} from './content-fence-product.js';
+import {createCostRouteProduct} from './cost-route.js';
 import {createKnowledgeSourceConfig} from './knowledge-source-config.js';
 import {createWikiImportHost} from './wiki-import-host.js';
 import {createDesktopObsidianPairing} from './obsidian-pairing-host.js';
@@ -70,11 +76,15 @@ import {createLiveVoiceHost} from './live-voice-host.js';
 import {needsMicrophoneApproval} from './authorization-operation-policy.js';
 import {workspaceLiveEntry} from './workspace-live-entry.js';
 import {createDesktopWakeVoiceHost} from './wake-voice-host.js';
+import {trayIconBuffer} from './tray-icon.js';
+import {normalizeWakePreference, readWakePreference, wakeLeaseMs, writeWakePreference} from './wake-preference.js';
 import {createDesktopProactiveHost} from './proactive-host.js';
 import {createP5SystemObservationSource} from './p5-system-observation-source.js';
 import {createP5DeviceReceiptStore} from './p5-device-receipt-store.js';
 import {createP5DeviceNotificationHost} from './p5-device-notification-host.js';
 import {createDesktopNotificationPort} from './desktop-notification-port.js';
+import {createEncryptedAutonomyStore, createRiskAutonomyHost} from './risk-autonomy-host.js';
+import {createEncryptedModuleStorage} from './encrypted-module-storage.js';
 import {createDesktopNotificationApplicationHost} from './notification-application-host.js';
 import {createDesktopVoiceCommandHost} from './voice-command-host.js';
 import {createVoiceRuntimeApprovalBridge} from './voice-runtime-approval-bridge.js';
@@ -86,9 +96,11 @@ import {createDesktopProactiveConversationTools} from './proactive-conversation-
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
+import {createDesktopOperatorBrake, operatorBrakeTrayLabel} from './operator-brake-host.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
+import {createProactiveSourceHost} from './proactive-source-host.js';
 import {defaultNotificationSettings} from '../shared/notification-defaults.js';
 import {createConnectorReadOrigin} from './connector-read-origin.js';
 import {createDesktopProactiveConfirmedSourceRouter} from './proactive-confirmed-source-router.js';
@@ -125,6 +137,7 @@ import {createPublicReferenceQuestionConsent} from './public-reference-question.
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
+import {createUsageBudgetProduct, modelApiUsageHooks} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
@@ -146,6 +159,7 @@ import {createDesktopMailReviewHost} from './mail-review-host.js';
 import {createDesktopFeedsHost} from './feeds-host.js';
 import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
+import {createPersonalDashboardHost} from './personal-dashboard-host.js';
 import {createDailyBriefingHost} from './daily-briefing-host.js';
 import {presentBriefingDecision} from './briefing-decision.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
@@ -269,7 +283,7 @@ let model = {
 if (competitionMode) {
   model = {
     ...model,
-    provider: 'agentarts', label: 'AgentArts · Competition Profile', verification: 'unverified',
+    provider: 'agentarts', label: '云端模型', verification: 'unverified',
     baseUrl: '', model: 'AgentArts Runtime', deployment: process.env.PA_AGENTARTS_RUNTIME_NAME ?? '',
     keyConfigured: false,
     reason: 'Competition Runtime 尚未完成初始化；请检查可信主进程配置',
@@ -304,6 +318,10 @@ const terminalTaskStates = new Set(['succeeded', 'failed', 'cancelled']);
 const approvals = new Map();
 const notifications = new Map();
 let runtimeApplication;
+const operatorBrake = createDesktopOperatorBrake({
+  getRuntime: () => runtimeApplication?.runtime,
+  continueTask: taskId => runtimeApplication.resumeTask(taskId),
+});
 // The public-reference consent belongs to one Runtime instance. It is bound after the
 // Runtime is created; capturing it earlier left every native export preflight denied.
 let referenceApplication;
@@ -324,9 +342,14 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
+let dryRun;
+let permissionAudit;
+let contentFence;
+let costRoute;
+let costRouteBudget=null;
 const harnessExperienceLifetime=new AbortController();
 let harnessEventsHost,harnessEventsClosing,harnessEventsClosed=false;
-let installedSkillsHost,pluginCatalogHost;
+let installedSkillsHost,pluginCatalogHost,activityProduct;
 let remoteMcpConfig,remoteMcpHost,remoteMcpServices,remoteMcpManagement,remoteMcpClosing,remoteMcpClosed=false;
 let microphoneCaptureHost;
 let voicePcmSource;
@@ -335,6 +358,7 @@ let sisPlaybackHost;
 let sisConfigHost;
 let liveConfig;
 let agentArtsConfig;
+let usageBudgetProduct;
 let agentArtsObservationConfig;
 let agentArtsModels;
 let activeCloudBinding;
@@ -346,6 +370,9 @@ const runtimeStartup = createDeferredRuntimeStartup({
 let liveVoice;
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
+let wakePreference = {enabled: false, duration: 'untilQuit'};
+let wakePreferenceLoaded = false;
+let panelBriefingRequested = false;
 let wakeQuitHandled = false;
 let wakeQuitUnknown = false;
 let wakeDisposal;
@@ -359,6 +386,7 @@ let voiceDisposed = false;
 let voiceDisposal;
 let voiceDisposalFailed = false;
 let goalHost;
+let goalPlan;
 let goalCloudHost;
 let competitionCatalog;
 let competitionFactBridge;
@@ -367,10 +395,10 @@ let p5Cognition;
 let p5SystemObservationSource;
 let p5DeviceReceiptStore;
 let p5DeviceNotificationHost;
-let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication;
+let notificationApplicationHost, voiceCommandHost, voiceApprovalBridge, proactiveWorkflowApplication, riskAutonomyHost, desktopNotificationPort;
 let conversationToolAccess, proactiveConversationTools;
 let proactiveRuntimePump,proactiveSourceRouter;
-let connectorChangeHost,connectorWatchHost,connectorTriggersClosing,connectorTriggersClosed=false;
+let connectorChangeHost,connectorWatchHost,proactiveSourceHost,connectorTriggersClosing,connectorTriggersClosed=false;
 let harnessExperienceAdminHost;
 let proactiveMaintenanceFailure='',proactiveSourceRoutingFailure='';
 let p5DeviceTelemetrySubscription;
@@ -422,6 +450,7 @@ let todoHost;
 let dailyBriefingHost;
 let approvalFocus;
 let todoFailure = '';
+let personalDashboardHost;
 let todoClosing;
 let todoClosed = false;
 let notepadHost;
@@ -645,6 +674,7 @@ async function stopP5DeviceTelemetry() {
 }
 
 async function tickProactiveP5() {
+  if (typeof operatorBrake !== 'undefined' && operatorBrake.isPaused()) return;
   await proactiveHost?.tick();
   if (proactiveHost?.snapshot().enabled && localLaya?.snapshot().state === 'ready') {
     if (!p5DeviceTelemetrySubscription) await startP5DeviceTelemetry();
@@ -702,6 +732,14 @@ function privateMemoryController() {
   return privateMemory;
 }
 
+function projectFailureRepair(task) {
+  if (runtimeClosed || !runtimeApplication || (task.state !== 'failed' && task.state !== 'waiting_reconciliation')) return {};
+  try {
+    const repair = createFailureRepairHost(runtimeApplication.runtime).view(task.taskId);
+    return repair ? {repair} : {};
+  } catch { return {}; }
+}
+
 function taskResultMetadata(task) {
   if (runtimeClosed || task.state!=='succeeded' || !runtimeApplication) return undefined;
   const source=runtimeApplication.runtime;
@@ -738,6 +776,7 @@ function conversationProjection(surface) {
       delivery:conversationDelivery,cache:tasks,goals:taskGoals});return ({...structuredClone(task),
       ...(task.error?{error:{...task.error,...errorDisplay(task.error,'task')}}:{}),
       reconciliationStatus:readReconciliationStatus(runtimeApplication,task),
+      ...projectFailureRepair(task),
       resultMetadata:taskResultMetadata(task),
       createdAt: task.createdAt ?? conversations?.turns.get(task.taskId)?.createdAt ?? task.updatedAt,
       userMessage: task.bodyWithheld?task.goal:taskGoals.get(task.taskId) ?? conversations?.goal(task.taskId) ?? task.goal,
@@ -771,6 +810,7 @@ function projectWindowSnapshot(surface,topics=['all']) {
     ...(topics.includes('notifications')?{notifications:[...notifications.values(),...(todoHost?.snapshot().notifications??[])],
       notificationCenter:surface?undefined:notificationApplicationHost?.snapshot()}:{}),
     connection:connectionLabel,
+    ...(typeof operatorBrake === 'undefined' ? {} : {operatorBrake: operatorBrake.snapshot()}),
     connectionError:(runtimeError||cloudRequestFailureNotice||cloudTransportNotice)?errorDisplayText(runtimeError||cloudRequestFailureNotice||cloudTransportNotice,'runtime'):undefined,
     resourceBudget:resourcePolicy.snapshot(),
   };
@@ -780,6 +820,7 @@ function snapshot(surface) {
   return {
     ...conversationProjection(surface),
     connection: connectionLabel,
+    ...(typeof operatorBrake === 'undefined' ? {} : {operatorBrake: operatorBrake.snapshot()}),
     connectionError: (runtimeError || cloudRequestFailureNotice || cloudTransportNotice) ? errorDisplayText(runtimeError || cloudRequestFailureNotice || cloudTransportNotice,'runtime') : undefined,
     fakeModel: fakeModelMode,
     fake: fakeMode,
@@ -788,6 +829,10 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
+    dryRun:dryRun?.snapshot()??{pending:[],recent:[]},
+    assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
+    contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
+    costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
     capabilities: structuredClone(capabilities),
     health: structuredClone(health),
     capabilityDirectory: {...capabilityDirectory},
@@ -796,10 +841,12 @@ function snapshot(surface) {
     memoryLearning:surface ? undefined : memoryLearningHost?.snapshot(),
     installedSkills:surface ? undefined : installedSkillsHost?.snapshot(),
     pluginCatalog:surface ? undefined : pluginCatalogHost?.snapshot(),
+    activity:surface ? undefined : activityProduct?.snapshot(),
     remoteMcp:surface ? undefined : remoteMcpHost?.snapshot(),
     loginItem:surface ? undefined : desktopHost?.loginItemSnapshot?.(),
     notifications: [...notifications.values(),...(todoHost?.snapshot().notifications ?? [])],
     notificationCenter: surface ? undefined : notificationApplicationHost?.snapshot(),
+    riskAutonomy: surface ? undefined : riskAutonomyHost?.snapshot(),
     voiceQuestion: surface?voiceQuestionForConversation(conversations?.activeConversationId(surface)):voiceCommandHost?.snapshot(),
     proactiveWorkflow: proactiveWorkflowApplication?.snapshot(),
     model: (()=>{const value=structuredClone(competitionMode?agentArtsModelSnapshot(model,cloudSettings):model);return value.status==='error'?{...value,reason:errorDisplayText(value.reason,'configuration')}:value;})(),
@@ -818,23 +865,28 @@ function snapshot(surface) {
       reason:'唤醒音频释放未确认；本进程不能重新启用'} : wakeVoice?.snapshot()
       ?? {state:'disabled', phase:'unavailable', verification:'unverified',
         reason:voiceInitializationFailure?.message ?? '请先连接华为 SIS 语音；唤醒尚未开启'},
+    wakePreference: currentWakePreference(),
+    briefingOpen: panelBriefingRequested,
     proactive: proactiveSnapshot(),
     p5: p5StatusSnapshot(),
     knowledgeWatch: knowledgeWatchHost?.snapshot() ?? null,
     mail: mailSnapshot(),
+    proactiveTasks: proactiveSourceHost?.snapshot(),
     calendar: calendarMeetingHost?.snapshot() ?? calendarConfig?.snapshot(),
     feeds: feedsHost?.snapshot(),
     weather:weatherCardHost?.snapshot(),
     todo: todoHost?.snapshot() ?? {available:false,items:[],notifications:[],reason:todoFailure || '待办将在 Runtime 连接后可用'},
-    dailyBriefing: surface ? undefined : dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
+    personalDashboard: personalDashboardHost?.snapshot() ?? {available:false,period:'weekly',cards:[],reason:'个人数据看板将在 Runtime 连接后开始汇总'},
+    dailyBriefing: dailyBriefingHost?.snapshot() ?? {available:false, enabled:true, localTime:'08:00', briefing:null},
     approvalFocus: surface === 'panel' || surface === 'workspace' ? approvalFocus : undefined,
-    goalCloud:goalCloudHost?.snapshot() ?? {available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用'},
+    goalCloud:goalCloudHost?{...goalCloudHost.snapshot(),plan:goalPlan?.snapshot()??{goalId:'',revision:0,subtasks:[]}}:{available:false,sessionAllowed:false,reason:'目标工具将在 Runtime 连接后可用',plan:{goalId:'',revision:0,subtasks:[]}},
     notepad: notepadHost?.snapshot() ?? {available:false,busy:false,state:'unavailable',
       reason:'本机执行组件尚未就绪，记事本操作暂不可用。'},
     computerControl:computerControlSnapshot(surface),
     coding: codingWorkspace?.snapshot() ?? defaultWorkspaceState,
     reference:surface ? undefined : referenceHost?.snapshot(),
     agentArts: cloudSettings,
+    usageBudget: surface ? undefined : usageBudgetProduct?.snapshot(),
     laya: localLaya?.snapshot() ?? {state:'unavailable', ready:false, reason:'本地模型尚未装配'},
     knowledge: (obsidianPairing?.source ?? knowledgeSourceConfig)?.snapshot()??structuredClone(knowledgeStatus),
     knowledgeSource:surface ? undefined : knowledgeSourceConfig ? {...knowledgeSourceConfig.snapshot(),
@@ -1044,7 +1096,9 @@ function movePanelGroup(point) {
 }
 
 function openAdmin(page) {
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','git','environment','connections','memory','voice','computer','briefing'].includes(page)) {
+  if (page === 'environment' || page === 'worktrees' || page === 'git') page = 'workspace';
+  if (page === 'overview' || page === 'analytics' || page === 'account') page = 'usage';
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -1052,7 +1106,7 @@ function openAdmin(page) {
   admin = windowFor('admin', {width: Math.min(1120, area.width), height: Math.min(760, area.height)},
     // Resizable windows use native maximize/restore state; transparent Windows
     // windows only resize to the work area without reliably entering that state.
-    {title: 'PersonalAgent · 管理后台', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
+    {title: 'PersonalAgent · 设置', frame: false, transparent: false, backgroundMaterial: 'none', roundedCorners: true, hasShadow: true, minWidth: 600, minHeight: 400});
   admin.on('closed', () => { mailMonitorPreparation.cancel(); admin = undefined; });
 }
 
@@ -1103,7 +1157,6 @@ async function stopPanelVoice() {
 function hidePanel() {
   if (panelHiding) return panelHiding;
   panelHiding = (async () => {
-    await stopWakeVoice();
     pinned = false;
     panel?.hide();
     publish();
@@ -1111,18 +1164,89 @@ function hidePanel() {
   return panelHiding;
 }
 
-function createTray() {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#090c10" stroke="#52c7bd" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="#fff"/><circle cx="9" cy="11" r="1" fill="#fff"/><circle cx="23" cy="11" r="1" fill="#fff"/><circle cx="9" cy="21" r="1" fill="#fff"/><circle cx="23" cy="21" r="1" fill="#fff"/></svg>';
+function wakePreferenceFile() {
+  return path.join(app.getPath('userData'), 'wake-preference.json');
+}
+
+function currentWakePreference() {
+  if (!wakePreferenceLoaded) {
+    try { wakePreference = readWakePreference(wakePreferenceFile()); }
+    catch { wakePreference = normalizeWakePreference({}); }
+    wakePreferenceLoaded = true;
+  }
+  return wakePreference;
+}
+
+function saveWakePreference(next) {
+  wakePreference = writeWakePreference(wakePreferenceFile(), next);
+  wakePreferenceLoaded = true;
+  return wakePreference;
+}
+
+async function applyWakePreference(preference = currentWakePreference()) {
+  if (!preference.enabled) {
+    await stopWakeVoice();
+    return preference;
+  }
+  if (wakeVoice?.snapshot()?.phase === 'listening') return preference;
+  if (!wakeVoice || !sisConfigHost?.snapshot().configured || wakeQuitUnknown || voiceConfigurationPending) return preference;
+  await wakeVoice.enableOwned();
+  return preference;
+}
+
+function openBriefing() {
+  panelBriefingRequested = true;
+  pinned = true;
+  openPanel(true);
+  publish();
+}
+
+function openNotificationTarget(record) {
+  const navigation = record?.navigation;
+  if (navigation?.kind === 'briefing') { openBriefing(); return; }
+  if (navigation?.kind === 'task' && navigation.taskId) {
+    void openTaskConversation({payload: {taskId: navigation.taskId},
+      tasks: {get: id => tasks.get(id) ?? runtimeApplication?.runtime.getTask(id)},
+      conversations, sourceSurface: taskSurface, openPanel: () => openPanel(true), openWorkspace, publish,
+    }).catch(() => { pinned = true; openPanel(true); publish(); });
+    return;
+  }
+  pinned = true;
+  openPanel(true);
+  publish();
+}
+
+function refreshTrayMenu() {
+  if (!tray) return;
+  const snapshot = operatorBrake.snapshot();
+  tray.setToolTip(snapshot.paused ? 'PersonalAgent · 已暂停' : 'PersonalAgent');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {label: operatorBrakeTrayLabel(snapshot), click: () => {void toggleOperatorBrake();}},
+    {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
+    {label: '打开工作台', click: () => { void openWorkspace(); }},
+    {label: '打开设置', click: () => openAdmin()},
+    {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
+    {type: 'separator'},
+    {label: '退出 PersonalAgent', click: () => app.quit()},
+  ]));
+}
+async function toggleOperatorBrake() {
   try {
-    tray = new Tray(nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`));
-    tray.setToolTip('PersonalAgent');
-    tray.setContextMenu(Menu.buildFromTemplate([
-      {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
-      {label: '打开管理后台', click: () => openAdmin()},
-      {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
-      {type: 'separator'},
-      {label: '退出 PersonalAgent', click: () => app.quit()},
-    ]));
+    if (operatorBrake.isPaused()) await operatorBrake.release();
+    else await operatorBrake.engage();
+    refreshTrayMenu();
+    publish();
+  } catch (error) {
+    runtimeError = error instanceof Error ? error.message : '总暂停切换失败';
+    publish();
+  }
+}
+function createTray() {
+  try {
+    const icon = nativeImage.createFromBuffer(trayIconBuffer());
+    if (icon.isEmpty()) throw Error('托盘图标为空');
+    tray = new Tray(icon);
+    refreshTrayMenu();
     tray.on('click', () => {
       if (panel?.isVisible()) { void hidePanel().catch(reportPanelVoiceFailure); }
       else { pinned = true; openPanel(true); publish(); }
@@ -1294,6 +1418,7 @@ async function submitChildConversation(binding,payload){
   installedSkillsHost?.assertTask(binding.taskId);
   const result=await runtimeApplication.submitSubagentConversationMessage({...binding,...payload});
   const task=runtimeApplication.runtime.getTask(result.acceptedTaskId);
+  if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(task.conversationId, task.goal);
   tasks.set(task.taskId,structuredClone(task));rememberTaskGoal(task.taskId,task.goal);
   publish();return result;
 }
@@ -1459,6 +1584,10 @@ function clearInactiveTaskExitWarning() {
 
 function observeTextTaskOutput(task) {
   if (conversationDelivery.stopped(task)) return;
+  if (terminalTaskStates.has(task.state) && typeof costRoute !== 'undefined' && costRoute) {
+    const selectedModelId = runtimeApplication?.runtime?.loadCheckpoint?.(task.taskId, 'execution-model')?.modelId;
+    costRoute.noteRun(task, selectedModelId);
+  }
   liveVoice?.observeTextTask({...task,resultSummary:resultText(task.resultSummary,taskResultMetadata(task))});
 }
 
@@ -1474,6 +1603,7 @@ function tickKnowledgeSchedules() {
   if (!knowledgeWatchHost || !runtimeApplication || Date.now()-lastKnowledgeScheduleTick<1000) return;
   lastKnowledgeScheduleTick=Date.now();
   for (const fired of runtimeApplication.runtime.dispatchDueSchedules(`knowledge-watch:${desktopHost.userNamespace}`)) {
+    if (fired.task && typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(fired.task.conversationId, fired.task.goal);
     if (fired.task) void dispatchKnowledgeFeedCheckTask(fired.task);
   }
 }
@@ -1525,12 +1655,20 @@ function applyEvent(event) {
       tasks.set(event.taskId, structuredClone(event.payload));
       observeTextTaskOutput(event.payload);
       clearInactiveTaskExitWarning();
+      const failureCode = event.type === 'task.failed' ? event.payload?.error?.code : undefined;
+      if (current?.state !== 'failed' && ['UNAUTHORIZED', 'SCOPE_DENIED', 'TIMEOUT', 'CANCELLED'].includes(failureCode)) {
+        const auditAction = failureCode === 'TIMEOUT' ? 'timeout' : failureCode === 'CANCELLED' ? 'cancelled' : 'denied';
+        permissionAudit?.recordEvent(auditAction, `task:${event.taskId}:${failureCode}`);
+      }
     }
     if (event.type === 'task.created' && event.payload.conversationId?.startsWith('knowledge-watch:')
       && event.payload.goal?.startsWith('RECHECK ')) {
       void dispatchKnowledgeRecheckTask(event.payload);
     }
-    if (event.type === 'task.created') void dispatchKnowledgeFeedCheckTask(event.payload);
+    if (event.type === 'task.created') {
+      if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(event.payload.conversationId, event.payload.goal);
+      void dispatchKnowledgeFeedCheckTask(event.payload);
+    }
   }
   if (event.type === 'approval.requested' && event.payload) approvals.set(event.payload.approvalId, structuredClone(event.payload));
   if (event.type === 'task.cancelled' && event.payload?.taskId) {
@@ -1771,7 +1909,7 @@ function readDesktopModelApiState() {
   return {...value,developerSettings:developerSettings?.snapshot(),harnessExperience,
     harness:{...value.harness,executionAvailable,
     executionReason:executionAvailable?'按当前编程工作区的原许可接入':value.harness?.enabled
-      ?'请在「开发 → 环境 / Worktrees」选择本地工作区并重启装配，再启用原本会话读取与结果出机许可':'开发任务规划未启用',
+      ?'请在「设置 → 工作文件夹」选择本地工作区并重新打开应用，再启用原本会话读取与结果出机许可':'开发任务规划未启用',
     contextAvailable:Boolean(harnessContextHost?.runtimeHooks),contextReason:harnessContextFailure}};
 }
 
@@ -1879,15 +2017,24 @@ async function initializeInstalledSkills() {
           summary:`${actions[request.action]}；仅已核对内容摘要的此 Skill 版本，不授权其任意工具调用`,
           isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
-    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),onUpdate:publish,
+    pluginCatalogHost=createPluginCatalogHost({skillStore:store,installationFile:path.join(app.getPath('userData'),'plugin-catalog.json'),
+      dataRoot:path.join(app.getPath('userData'),'plugin-data'),
+      violationFile:path.join(app.getPath('userData'),'plugin-sandbox-violations.json'),onUpdate:publish,
+      onActivity:notice=>activityProduct?.note(notice),
+      onActivityFailure:notice=>activityProduct?.recordFailure(notice),
       confirm:async request=>{
         const origin=admin,application=runtimeApplication;
         if(!origin || origin.isDestroyed()) return false;
         const actions={install:'安装插件',enable:'启用高风险插件',uninstall:'卸载插件'};
+        const summary=typeof request.summary==='string'&&request.summary.length>0&&request.summary.length<=512
+          ?request.summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`;
         return confirmApplicationAuthorization('plugin.'+request.action,request,{scope:{action:request.action,id:request.id},
-          summary:`${actions[request.action] ?? '插件操作'}；只处理已核对摘要的目录版本，不执行插件脚本`,
-          isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
+          summary,isCurrent:()=>origin===admin&&!origin.isDestroyed()&&application===runtimeApplication});
       }});
+    activityProduct?.bindPlugin({
+      uninstall:id=>pluginCatalogHost.compensate('uninstall',id),
+      disable:id=>pluginCatalogHost.compensate('disable',id),
+    });
   }
 }
 
@@ -1900,10 +2047,11 @@ function initializeAuthorizationHosts(runtimeModule){
       ??connectorMailReadOrigin?.read(taskId)?.conversationId
       ??conversations?.activeConversationId('panel'),
     available:()=>Boolean(panel&&!panel.isDestroyed()||workspace&&!workspace.isDestroyed()),onUpdate:publish,
-    profiles:[{ref:'default-read-only',label:'应用内只读权限',mode:'read-only',revision:1,available:true},
-      {ref:'workspace-write',label:'应用内受限写入／工作区权限',mode:'workspace-write',revision:1,available:true},
-      {ref:'full-access',label:'完全访问（自动同意；以当前用户权限执行）',mode:'full-access',revision:1,available:true}],
-    defaultProfileRef:'default-read-only',
+    profiles:[{ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+      {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true},
+      {ref:'workspace-write',label:'受限写入',mode:'workspace-write',revision:1,available:true},
+      {ref:'full-access',label:'完全访问',mode:'full-access',revision:1,available:true}],
+    defaultProfileRef:'low-risk-auto',
     resolveProfile:(request,selected)=>selected.mode==='read-only'&&(request.taskConsent?.mode==='workspace-write'||request.requirements.some(item=>
       item.scopes.some(scope=>/:(?:write|execute|verify|patch|send|create|delete)(?:$|:)/u.test(scope)
         ||scope==='notifications:settings'||/^(?:memory\.(?:save|erase|withdraw)|skill\.(?:install|enable|uninstall)|experience\.activate|workflow\.(?:enable|delete)|facts\.erase|feeds\.classify|knowledge\.(?:configure|pair)|remoteMcp\.configure)$/u.test(scope)))
@@ -1925,6 +2073,7 @@ async function initializeLocalAuthorizationControlPlane(){
     requestToolAuthorization:scope=>{authorizationIntentHost.prepareQuestion(scope);return authorizationQuestionHost.requestToolAuthorization(scope);},
     requiresToolAuthorization:()=>true});
   runtime=runtimeApplication.runtime;localAuthorizationOnly=true;
+  if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
   runtimeConnection=await register({transport:runtimeApplication,now:Date.now,readEvents:after=>runtimeApplication.readEvents(after),
     readEventBatch:input=>runtimeApplication.readEventBatch(input),
     attachClient:value=>{client=value;return()=>{client=undefined;};}});
@@ -1944,6 +2093,19 @@ async function initializeLocalLaya() {
     createService:createLocalInboxClassifier,
     createChooser:({port,getApiKey}) => new LayaActionChoiceService(new LocalLayaHttpTransport(port,getApiKey)),
     onUpdate:publish});
+}
+
+function ensureRiskAutonomyHost() {
+  if (riskAutonomyHost) return riskAutonomyHost;
+  const storage = createEncryptedModuleStorage({
+    userData: app.getPath('userData'), safeStorage, filename: 'risk-autonomy.json',
+  });
+  riskAutonomyHost = createRiskAutonomyHost({
+    store: createEncryptedAutonomyStore(storage),
+    channel: {sendAdvisoryNotification: input => desktopNotificationPort?.sendAdvisoryNotification(input)},
+    getApplication: () => runtimeApplication,
+  });
+  return riskAutonomyHost;
 }
 
 async function initializeRuntime() {
@@ -1986,6 +2148,7 @@ async function initializeRuntime() {
       path: dataPaths.runtime,
       text: {mode: 'unavailable', model: modelConfig.model},
     });
+    if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
     if (runtimeApplication?.configureThinking) {
       const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
       thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
@@ -2016,6 +2179,7 @@ async function initializeRuntime() {
           path.join(path.dirname(dbPath), 'mvp-synthetic-memory.sqlite'), {decision});
       }
       const {createGoalHost} = await import('./goal-host.js');
+      const {createGoalPlanHost} = await import('./goal-plan-host.js');
       const codingModule=await import('@personal-agent/coding-tools');
       const {createWorkspaceReadTool}=codingModule;
       nativeExecutionHost?.close();
@@ -2034,14 +2198,33 @@ async function initializeRuntime() {
       const namespace = desktopHost.userNamespace;
       if (!syntheticMvp) {
         const channel = createDesktopNotificationPort({storageDir: app.getPath('userData'),
-          onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);}});
+          onOutcome: outcome => {notificationApplicationHost?.receipt(outcome); dailyBriefingHost?.noteOutcome(outcome);},
+          onClick: record => { riskAutonomyHost?.compensate(record.id); },
+          onNavigate: openNotificationTarget});
+        desktopNotificationPort = channel;
+        usageBudgetProduct?.bindNotifier(channel);
         notificationApplicationHost = createDesktopNotificationApplicationHost({namespace, channel,question:authorizationQuestionPort,onUpdate: publish});
         dailyBriefingHost = createDailyBriefingHost({userData: app.getPath('userData'), namespace,
           createDeliveryHost: runtimeModule.createReminderDeliveryHost, getRuntime: () => runtimeApplication?.runtime,
-          notify: input => channel.sendAdvisoryNotification(input), onOpen: () => openAdmin('briefing'), onUpdate: publish});
+          notify: input => channel.sendAdvisoryNotification({...input, navigation: {kind: 'briefing'}}), onOpen: () => openBriefing(), onUpdate: publish});
         void dailyBriefingHost.tick();
       }
       goalHost = createGoalHost(namespace);
+      goalPlan = createGoalPlanHost({
+        userData: app.getPath('userData'),
+        listGoals: () => goalHost.list(),
+        readChildren: () => {
+          try {
+            const items = runtimeApplication?.listSubagentConversations?.({limit: 40})?.items ?? [];
+            return items.map(item => {
+              const binding = runtimeApplication?.runtime?.loadCheckpoint?.(item.taskId, 'subtask-parent');
+              return binding?.subtaskId ? {...item, subtaskId: binding.subtaskId} : item;
+            });
+          } catch {
+            return [];
+          }
+        },
+      });
       if (!syntheticMvp && calendarConfig) {
         const calendarReadTool = runtimeModule.createCalendarEventReadTool({
           getBinding: () => {
@@ -2100,6 +2283,21 @@ async function initializeRuntime() {
               title:'PersonalAgent 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
+      }
+      if (!syntheticMvp && runtimeApplication) {
+        try {
+          personalDashboardHost = createPersonalDashboardHost({
+            userData: app.getPath('userData'), safeStorage, namespace,
+            runtime: runtimeApplication.runtime,
+            dispatchTask: runtimeModule.dispatchPersonalDashboardTask,
+            calendarConfig, meetingSnapshot: () => calendarMeetingHost?.snapshot(),
+            mailConfig, now: Date.now, onUpdate: publish,
+            onNotification(item) {
+              if (Notification.isSupported()) new Notification({title: item.title, body: item.body}).show();
+            },
+          });
+          await personalDashboardHost.start();
+        } catch { personalDashboardHost = undefined; }
       }
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
@@ -2370,12 +2568,20 @@ async function initializeRuntime() {
         getRuntime: () => runtimeApplication.runtime,
         getTools: () => runtimeApplication.tools,
         runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools),
+        readPromptPreferences: ({goal}) => {
+          const text = memoryLearningHost?.preferencePrompt?.(goal);
+          return typeof text === 'string' && text.trim() ? text : undefined;
+        },
         fakeModelMode,
       });
       subagentTool.execute = (input, context) => {
         const taskThinking = runtimeApplication.runtime.loadCheckpoint(context.taskId,'task-thinking');
         const boundTool=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>runtimeApplication.runtime,
           getTools:()=>runtimeApplication.tools,fakeModelMode,
+          readPromptPreferences: ({goal}) => {
+            const text = memoryLearningHost?.preferencePrompt?.(goal);
+            return typeof text === 'string' && text.trim() ? text : undefined;
+          },
           runDefaultWorker:(subtask,worker,tools)=>runtimeApplication.runDefaultSubagentWorker(subtask,worker,tools)});
         return boundTool.execute({...input,subtasks:input.subtasks.map(subtask=>({...subtask,
           ...(subtask.thinkingDepth===undefined && taskThinking ? {thinkingDepth:taskThinking.depth} : {}),
@@ -2457,6 +2663,31 @@ async function initializeRuntime() {
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
+      permissionAudit=createPermissionAuditProduct({
+        userData:app.getPath('userData'),
+        onUpdate:()=>publish(),
+        list(){
+          const grants=[];
+          const sandbox=authorizationQuestionHost?.sandboxSnapshot();
+          if(sandbox?.selected)grants.push({id:'sandbox',kind:'sandbox',label:sandbox.selected.label||sandbox.selected.mode,revocable:false});
+          for(const rule of sandbox?.rules??[])if(rule.active)grants.push({id:rule.ruleId,kind:'rule',label:rule.summary||'授权规则',revision:rule.revision,revocable:true});
+          if(goalCloudHost?.snapshot()?.sessionAllowed)grants.push({id:'goal-cloud',kind:'goal-cloud',label:'目标管理许可',revocable:true});
+          if(memoryLearningHost?.snapshot()?.writeEnabled)grants.push({id:'memory-write',kind:'memory-write',label:'私人记忆确认写入',revocable:false});
+          return grants;
+        },
+        revoke(grant){
+          if(grant.kind==='rule')return authorizationQuestionHost.revokeRule({ruleId:grant.id,expectedRevision:grant.revision});
+          if(grant.kind==='goal-cloud')return goalCloudHost.revoke();
+          throw Error('这项许可不能撤销');
+        },
+      });
+      contentFence=createContentFenceProduct({readGoal:taskId=>{
+        try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
+      }});
+      conversationTools=contentFence.wrapTools(conversationTools);
+      dryRun=createDryRunProduct({onUpdate:()=>{try{publish();}catch{/* 预览通知不能影响工具结果 */}}});
+      conversationTools=dryRun.wrapTools(conversationTools);
+      conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
       cloudTransportNotice = '';
@@ -2488,8 +2719,38 @@ async function initializeRuntime() {
       const observationOptions = resolveDesktopAgentArtsObservation(agentArtsObservationConfig);
       const remoteMcpCompetition=createRemoteMcpCompetitionComposition({services:remoteMcpServices,
         readApplication:()=>runtimeApplication,question:authorizationQuestionPort});
+      costRoute=createCostRouteProduct({
+        readCatalog:()=>agentArtsModels?.snapshot()?.catalog??null,
+        // #636 exposes decide({origin, modelId, candidates}) -> {allowed, modelId, prompt}. Bind that product here; this route does not keep a second ledger.
+        readBudget:()=>costRouteBudget,
+        onUpdate:()=>publish(),
+        assertCloudSend:({taskId, conversationId})=>{
+          if(!agentArtsConfig?.snapshot()?.configured)throw Error('云端执行配置未就绪，禁止回放外发');
+          if(!privateConsumption)throw Error('私人记忆云端外发校验尚未就绪，禁止回放');
+          if(taskId&&runtimeApplication?.runtime?.loadCheckpoint?.(taskId,PRIVATE_MEMORY_CONSUMPTION_CHECKPOINT)!=null){
+            throw Error('原任务包含私人记忆外发授权，回放需在新对话重新确认，已拦截');
+          }
+          if(conversationId&&privateConsumption.snapshot(conversationId)?.selected){
+            throw Error('当前对话已勾选私人记忆，请取消勾选后再回放对比');
+          }
+        },
+        complete:async({executionModel,goal})=>{
+          const models=modelApiHost?.snapshot()?.models??[];
+          const entry=models.find(item=>item.available&&(item.model===executionModel.modelId||item.id===executionModel.modelId));
+          const gateway=entry?modelApiHost.getModelGateway(entry.id, entry.configurationRef):undefined;
+          if(!gateway?.complete){
+            const error=Error('该模型没有已保存的本地执行配置，未发起付费回放');
+            error.code='UNSUPPORTED_CAPABILITY';
+            throw error;
+          }
+          const result=await gateway.complete({messages:[{role:'user',content:goal}],tools:[],requiredCapabilities:['text'],maxOutputTokens:512,
+            deadline:new Date(Date.now()+20_000).toISOString(),signal:AbortSignal.timeout(20_000)});
+          return {text:typeof result?.response?.text==='string'?result.response.text:''};
+        },
+      });
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
+        riskAutonomy: ensureRiskAutonomyHost().gate,
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
@@ -2519,6 +2780,10 @@ async function initializeRuntime() {
           return withNativeReadbackScope({owner:admin},scope=>notepadHost.recoverOriginalRun(
             {taskId,runId,argumentsDigest:intent?.argumentsDigest},scope));
         }}} : {}),
+        readPromptPreferences: ({goal}) => {
+          const text = memoryLearningHost?.preferencePrompt?.(goal);
+          return typeof text === 'string' && text.trim() ? text : undefined;
+        },
         coordinationInput:{
           get contextCompaction(){return harnessContextHost?.runtimeHooks;},
           readRequestContext:readDesktopRequestContext,
@@ -2548,7 +2813,7 @@ async function initializeRuntime() {
             const conversationId=parent?.conversationId??runtimeApplication.runtime.getTask(request.taskId).conversationId;
             if (!conversations?.containsConversation(conversationId)) return;
             if (!privateConsumption) throw Error('私人记忆发送门禁尚未装配');
-            privateConsumption.assertCloudSend({...request,goal:scope.preparedGoal});
+            privateConsumption.assertCloudSend(request,scope);
             const current=(knowledgeWatchHost?.dialogueProjection?.()?.items ?? [])
               .filter(item=>item.usableAsCurrentFact === true && item.answer?.kind === 'current_fact');
             if (coordinationWatchInputs.get(request.taskId)!==JSON.stringify(current)) throw Error('公开事实来源已变化，请重新核实');
@@ -2587,7 +2852,8 @@ async function initializeRuntime() {
           ...(!syntheticMvp ? [{toolName:runtimeModule.LOCAL_REPAIR_TOOL,toolVersion:'1.0.0'},
             {toolName:runtimeModule.DEVELOPER_HARNESS_TOOL_NAME,toolVersion:runtimeModule.DEVELOPER_HARNESS_TOOL_VERSION}] : [])],
         // A missing remote catalog omits only the implicit model; an invalid configured default remains an error.
-        readDefaultExecutionModel:role=>readDesktopExecutionModel(agentArtsModels,undefined,role),
+        readDefaultExecutionModel:role=>usageBudgetProduct?.degradeSelection(readDesktopExecutionModel(agentArtsModels,undefined,role),selection=>agentArtsModels.resolveExecutionModel(selection))
+          ??readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
         readConversationPreference: conversationId => {
           if (!conversations?.containsConversation(conversationId)) return undefined;
@@ -2596,10 +2862,32 @@ async function initializeRuntime() {
           const modelId=preference.modelId || undefined;
           const selected=models?.models.find(item=>item.id===modelId);
           const executionModel=readDesktopExecutionModel(agentArtsModels,preference);
-          return {...preference,modelId,...(executionModel!==undefined?{executionModel}:{}),configurationRef:selected?.configurationRef};
+          const routed=costRoute?.apply(preference, executionModel, conversationId)??{preference, executionModel};
+          const routedId=routed.preference.modelId || undefined;
+          const routedSelected=models?.models.find(item=>item.id===routedId)??selected;
+          const finalModel=usageBudgetProduct&&routed.executionModel?usageBudgetProduct.degradeSelection(routed.executionModel,selection=>agentArtsModels.resolveExecutionModel(selection)):routed.executionModel;
+          return {...routed.preference,modelId:routedId,...(finalModel!==undefined?{executionModel:finalModel}:{}),configurationRef:routedSelected?.configurationRef};
         },
         beforeCompetitionSend:request=> {
-          if (!proactiveHost && runtimeApplication.runtime.getTask(request.taskId).conversationId?.startsWith('desktop-proactive-goals:')) {
+          const task=runtimeApplication.runtime.getTask(request.taskId);
+          const conversationId=typeof task.conversationId==='string'?task.conversationId:'';
+          let proactive=conversationId.startsWith('desktop-proactive')
+            ||runtimeApplication.runtime.loadCheckpoint(request.taskId,'desktop-proactive-workflow-v1')!=null;
+          let cursorTaskId=request.taskId;
+          const visited=new Set([cursorTaskId]);
+          while(!proactive&&visited.size<16){
+            const parent=runtimeApplication.runtime.loadCheckpoint(cursorTaskId,'subtask-parent');
+            const parentId=typeof parent?.parentTaskId==='string'?parent.parentTaskId:'';
+            if(!parentId||visited.has(parentId))break;
+            visited.add(parentId);cursorTaskId=parentId;
+            try{
+              const ancestor=runtimeApplication.runtime.getTask(parentId);
+              const ancestorConv=typeof ancestor.conversationId==='string'?ancestor.conversationId:'';
+              if(ancestorConv.startsWith('desktop-proactive')||runtimeApplication.runtime.loadCheckpoint(parentId,'desktop-proactive-workflow-v1')!=null)proactive=true;
+            }catch{break;}
+          }
+          usageBudgetProduct?.beforeCloudSend({userInitiated:!proactive,modelId:request.executionModel?.modelId});
+          if (!proactiveHost && conversationId.startsWith('desktop-proactive-goals:')) {
             throw Error('目标主动分析宿主尚未就绪');
           }
           proactiveHost?.assertCognitionCloudSend(request);
@@ -2620,6 +2908,9 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
+        beforeToolAuthorize: async input => { contentFence?.beforeAuthorize(input); await dryRun?.beforeAuthorize(input); },
+        assertToolPrechecked: input => dryRun?.assertAuthorized(input),
+        onTaskTerminal: taskId => contentFence?.clearTask(taskId),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
         requestToolAuthorization:scope=>{
@@ -2774,8 +3065,9 @@ async function initializeRuntime() {
         cancelTask:taskId=>runtimeApplication.runtime.requestCancel(taskId,'私人记忆使用已撤回'),
         eraseTaskCopies:scope=>runtimeApplication.eraseTaskCopies(scope),
         readCopyErasureReceipt:taskId=>runtimeApplication.readCopyErasureReceipt(taskId),backups:privateBackups});
+      const preferenceStore=filePreferenceStore(path.join(app.getPath('userData'), 'learning-preferences.json'));
       memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-        learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
+        learningApplication,privateErasure,managedPrivateCopies:()=>privateBackups.inventory(),preferenceStore});
       await memoryLearningHost.recover();
       wikiSourceMonitor?.close();
       wikiSourceMonitor=runtimeModule.createWikiSourceMonitor({source:{
@@ -2808,11 +3100,11 @@ async function initializeRuntime() {
           configurationRef:runtimeApplication.coordinationConfigurationRef,exclusiveOwner:ownsDesktopInstance===true,
           durableCloudDispatch:agentArtsTransportConfig.transport==='wss',
           canResumeHarnessEvent:request=>harnessEventsHost?.canResumeHarnessEvent(request),
-          resumeOriginalTask:request=>runtimeApplication.resumeStartupTask(request)});
+          resumeOriginalTask:request=>(typeof operatorBrake!=='undefined'&&operatorBrake.isPaused())?{accepted:false}:runtimeApplication.resumeStartupTask(request)});
         const recovered=await recovery.recover();startupRecovered=true;
         startupRecoveryStatus={state:'classified',inspectedTasks:recovered.items.length,verification:'not_run'};
       }else startupRecoveryStatus={state:'unavailable',reason:'原任务恢复门禁未装配，历史任务保留核实状态',verification:'not_run'};
-      if(startupRecovered)goalHost.resumeApproved();
+      if(startupRecovered&&!(typeof operatorBrake!=='undefined'&&operatorBrake.isPaused()))goalHost.resumeApproved();
       if (!syntheticMvp && competitionCatalog && !codingWorkspace.tools.length) competitionFactBridge = createDesktopCompetitionFactBridge({
         application: runtimeApplication, catalog: competitionCatalog,
         runtimePath: dbPath, userNamespace: namespace,
@@ -2824,6 +3116,7 @@ async function initializeRuntime() {
         : createRuntimeApplication;
       runtimeApplication = createApplication({
         path: dbPath,
+        riskAutonomy: ensureRiskAutonomyHost().gate,
         text: {mode: 'unavailable', model: modelConfig.model},
       });
       if (runtimeApplication?.configureThinking) {
@@ -2832,6 +3125,8 @@ async function initializeRuntime() {
       }
     }
     runtime = runtimeApplication.runtime;
+    if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
+    if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
     readEvents = after => runtimeApplication.readEvents(after);
   }
   runtimeConnection = await register({
@@ -2863,6 +3158,7 @@ async function initializeRuntime() {
       getWorkflow:()=>proactiveWorkflowApplication,
       recoverSources:(taskId,context)=>proactiveSourceRouter?.recoverPending(taskId,context),
       afterNativeMaintenance:(taskId,context)=>harnessEventsHost?.start(taskId,context),
+      isPaused:()=>typeof operatorBrake!=='undefined'&&operatorBrake.isPaused(),
       resolveUserConversation:id=>conversationToolAccess.resolveConversation(id)});
   }
   connectionLabel = fakeMode
@@ -2906,7 +3202,8 @@ async function initializeRuntime() {
         summary:'删除所选公共事实及其绑定版本/投影；已有依赖或未核实状态仍拒绝删除，原擦除审计继续核实'});
     }});
     memoryLearningHost=createMemoryLearningHost({profile:'huawei_ict_agentarts',privateMemory:privateMemoryController(),
-      learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory()});
+      learningApplication,publicErasure,privateErasure,managedPrivateCopies:()=>privateBackups.inventory(),
+      preferenceStore:filePreferenceStore(path.join(app.getPath('userData'), 'learning-preferences.json'))});
     await memoryLearningHost.recover();
   }
   if (competitionMode) {
@@ -3138,6 +3435,7 @@ async function initializeRuntime() {
         }
       };
       for (const fired of runtimeApplication.runtime.recoverMissedSchedules(`knowledge-watch:${namespace}`)) {
+        if (fired.task && typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(fired.task.conversationId, fired.task.goal);
         if (fired.task) void dispatchKnowledgeFeedCheckTask(fired.task);
       }
       for (const task of runtimeApplication.runtime.listTasks({conversationId:`knowledge-watch:${namespace}`,states:['created'],limit:100}).items) {
@@ -3154,22 +3452,35 @@ async function initializeRuntime() {
       if (task.state === 'succeeded') void promptSyntheticRepairCandidate(task.taskId).catch(() => {});
     }
   }
-  eventPoll = setInterval(() => {void pumpEvents(); void todoHost?.tick();
+  if (!proactiveSourceHost) proactiveSourceHost = createProactiveSourceHost({
+    getApplication: () => runtimeApplication,
+    getTools: () => connectorConversationTools?.tools ?? [],
+    submitTask: async input => {
+      const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
+      const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
+      return {taskId: result.taskId, state: result.state ?? 'created'};
+    },
+    namespace: desktopHost.userNamespace,
+    onUpdate: publish,
+  });
+  eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
+    void pumpEvents(); if(!operatorPaused){void todoHost?.tick(); void personalDashboardHost?.tick();}
     if(runtimeClosed)return;
-    void maintenancePoll.run('proactive',()=>tickProactiveP5());
+    void maintenancePoll.run('proactive',()=>operatorPaused?undefined:tickProactiveP5());
     void maintenancePoll.run('mail',()=>refreshMail());
     void maintenancePoll.run('notepad',()=>notepadHost?.refresh());
-    void maintenancePoll.run('knowledge-schedules',()=>tickKnowledgeSchedules());
-    void maintenancePoll.run('connector-watch',()=>connectorWatchHost?.tick());
-    void maintenancePoll.run('daily-briefing',()=>dailyBriefingHost?.tick());
-    void maintenancePoll.run('proactive-runtime',()=>proactiveRuntimePump?.tick().then(result=>{
+    void maintenancePoll.run('knowledge-schedules',()=>{if(!operatorPaused)tickKnowledgeSchedules();});
+    void maintenancePoll.run('connector-watch',()=>{if(!operatorPaused)return connectorWatchHost?.tick();});
+    void maintenancePoll.run('proactive-source',()=>{if(!operatorPaused)return proactiveSourceHost?.tick();});
+    void maintenancePoll.run('daily-briefing',()=>{if(!operatorPaused)return dailyBriefingHost?.tick();});
+    void maintenancePoll.run('proactive-runtime',()=>operatorPaused?undefined:proactiveRuntimePump?.tick().then(result=>{
       const issue=result?.state==='unavailable'||result?.sessions?.some(item=>item.state!=='bound')
         ?'持续任务仍有缺配置、过期或待核实的维护项；未自动重放操作':'';
       if(proactiveMaintenanceFailure!==issue){proactiveMaintenanceFailure=issue;publish();}
     }).catch(()=>{
       if(!proactiveMaintenanceFailure){proactiveMaintenanceFailure='原持续任务的唤醒维护暂不可用；未新建任务或重放操作';publish();}
     }));
-    void maintenancePoll.run('wiki',()=>wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();}));}, 120);
+    void maintenancePoll.run('wiki',()=>{if(!operatorPaused)return wikiSourceMonitor?.tick().then(changed=>{if(changed)publish();});});}, 120);
 }
 
 /** Exact payload consent stays in the trusted host and never grants tool permission. */
@@ -3313,13 +3624,55 @@ async function action(event, name, payload) {
     openMain:()=>openPanel(true),submit:submitChildConversation,cancel:cancelChildConversation});
   const sender = [orb, panel, admin, workspace].find(win => win && !win.isDestroyed() && win.webContents === event.sender);
   if (!sender || event.senderFrame !== sender.webContents.mainFrame) throw Error('Untrusted sender');
+  if (name === 'operator.brake') {
+    if (sender !== panel && sender !== workspace) throw Error('请从桌面切换总暂停');
+    if (typeof operatorBrake === 'undefined') throw Error('总暂停尚未装配');
+    const snapshot = await operatorBrake.handleAction(name, payload);
+    if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
+    publish();
+    return snapshot;
+  }
   if(['todo.authorize','feeds.authorize','goalCloud.authorize','coding.authorize','mail.enable','mail.enableCloud','calendar.respond',
     'notifications.confirmation.prepare','voice.confirmation.prepareApproval','voice.confirmation.cancel','voice.confirmation.reconcile'].includes(name))
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','旧会话允许入口已移除；请在当前对话操作卡中决定本次权限');
   if (competitionMode && ['model.configure', 'model.test', 'model.toggle'].includes(name)) {
     throw Error('Competition Profile 的 AgentArts 配置只允许由可信主进程提供；盘古配置操作不可用');
   }
+  if (name === 'proactiveTasks.update' || name === 'proactiveTasks.authorize' || name === 'proactiveTasks.revoke') {
+    if (sender !== admin) throw new Error('请从设置页管理主动任务');
+    if (!proactiveSourceHost) throw new Error('主动任务尚未就绪');
+    if (name === 'proactiveTasks.update') return proactiveSourceHost.update(payload);
+    if (name === 'proactiveTasks.authorize') return proactiveSourceHost.authorize(payload?.root);
+    return proactiveSourceHost.revoke(payload?.root);
+  }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
+  if (name === 'dryRun.state' || name === 'dryRun.confirm' || name === 'dryRun.cancel') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面确认试运行');
+    if (!dryRun) return {pending: [], recent: []};
+    return dryRun.handleAction(name, payload);
+  }
+  if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');
+    if (!permissionAudit) return {grants: [], audit: {intact: true, brokenAt: 0, count: 0, unreadable: false, recordingStopped: false, skippedCount: 0}};
+    const result = permissionAudit.handleAction(name, payload);
+    if (name === 'assistantPermissions.revoke') publish();
+    return result;
+  }
+  if (name === 'task.repair') {
+    if (sender !== panel || !runtimeApplication) throw Error('请从当前对话处理失败');
+    const result = createFailureRepairHost(runtimeApplication.runtime).act(payload);
+    publish();
+    return result;
+  }
+  if (name === 'contentFence.state') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看外部内容围栏');
+    return contentFence?.handleAction(name, payload) ?? {sources: [], blocked: '', blockedLabel: ''};
+  }
+  if (name === 'costRoute.state' || name === 'costRoute.replay' || name === 'costRoute.cancelReplay') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看成本路由');
+    if (!costRoute) return {route: {state: 'idle', reason: '尚未按难度选择模型'}, runs: [], replay: null};
+    return costRoute.handleAction(name, payload);
+  }
   if (name === 'snapshot.resync') {
     if(payload!==undefined)throw Error('状态恢复不接受额外参数');
     snapshotPublisher.resync(sender);return {scheduled:true};
@@ -3355,7 +3708,11 @@ async function action(event, name, payload) {
     const question=authorizationQuestionHost.snapshot().find(item=>item.questionId===payload?.questionId);
     const conversationId=sender===admin?question?.conversationId:conversations?.activeConversationId(sender===workspace?'workspace':'panel');
     if(!question||question.conversationId!==conversationId)throw Error('此授权请求不属于当前对话');
-    const result=authorizationQuestionHost.respond(payload,conversationId);publish();return result;
+    const result=authorizationQuestionHost.respond(payload,conversationId);
+    if(payload?.decision==='deny'||result?.decision==='deny'||result?.state==='denied'){
+      permissionAudit?.recordEvent('denied',`question:${question.toolName??payload?.questionId}`);
+    }
+    publish();return result;
   }
   if(['authorization.sandbox.read','authorization.sandbox.select','authorization.rule.revoke'].includes(name)){
     if(sender!==admin||!authorizationQuestionHost)throw Error('请从可信授权管理页操作');
@@ -3366,6 +3723,12 @@ async function action(event, name, payload) {
       toolPresenceHost?.refresh();await notepadHost?.refresh();await microphoneCaptureHost?.revoke();
     }
     publish();return result;
+  }
+  if (name === 'personalDashboard.period') {
+    if (sender !== admin || !personalDashboardHost) throw Error('请从管理后台更改汇总周期');
+    const result = personalDashboardHost.setPeriod(payload);
+    publish();
+    return result;
   }
   if(name==='app.startup.read'||name==='app.startup.configure'){
     if(sender!==admin||(name==='app.startup.read'&&payload!==undefined))throw Error('请从可信管理后台设置登录自启');
@@ -3379,6 +3742,10 @@ async function action(event, name, payload) {
   if (['agentartsModels.state','agentartsModels.refresh','agentartsModels.configure'].includes(name)) {
     if(sender!==admin || !competitionMode || !agentArtsModels)throw Error('请从模型设置管理 AgentArts 模型');
     const result=name==='agentartsModels.state'?agentArtsModels.snapshot():name==='agentartsModels.refresh'?await agentArtsModels.refresh():agentArtsModels.configure(payload);publish();return result;
+  }
+  if (name === 'usageBudget.state' || name === 'usageBudget.configure') {
+    if (sender !== admin || !usageBudgetProduct) throw Error('请从设置页调整用量上限');
+    return usageBudgetProduct.handleAction(name, payload);
   }
   if (['modelApi.state','modelApi.configure','modelApi.remove','modelApi.harness.configure'].includes(name)) {
     if (sender !== admin || !competitionMode || !modelApiHost) throw Error('请从模型设置管理辅助模型');
@@ -3496,6 +3863,10 @@ async function action(event, name, payload) {
       totalFailures: report.totalFailures};
   }
   if (name === 'admin.open') { openAdmin(payload?.page); return; }
+  if (name === 'desktop.appearance') {
+    if (sender !== admin || !payload || !['system','light','dark'].includes(payload.theme) || typeof payload.calm !== 'boolean') throw Error('外观只能从设置页保存');
+    return desktopHost.updateAppearance({theme: payload.theme, calm: payload.calm});
+  }
   if (name === 'conversation.open') {
     if (sender !== admin || payload !== undefined || !panel || panel.isDestroyed()) throw Error('对话面板不可用');
     openPanel(true); return {opened:true};
@@ -3614,6 +3985,15 @@ async function action(event, name, payload) {
   if (['todo.authorize','todo.revoke','todo.configureNotifications','todo.dismiss','todo.create','todo.update'].includes(name)) {
     if ((sender !== admin && sender !== workspace && sender !== panel) || !competitionMode || syntheticMvp || !todoHost) throw Error('请从正式应用待办设置操作');
     const result = await todoHost[name.slice(5)](payload); publish(); return result;
+  }
+  if (name === 'riskAutonomy.setStance' || name === 'riskAutonomy.setCategory' || name === 'riskAutonomy.revoke') {
+    if (sender !== admin) throw Error('请从设置页调整自动执行');
+    const host = ensureRiskAutonomyHost();
+    const result = name === 'riskAutonomy.setStance' ? host.setStance(payload?.stance)
+      : name === 'riskAutonomy.setCategory' ? host.setCategory(payload?.category, payload?.disposition)
+      : host.toggleRevoked();
+    publish();
+    return result;
   }
   if (['notifications.get','notifications.configure','notifications.read','notifications.digest'].includes(name)) {
     if (sender!==admin || !competitionMode || syntheticMvp || !notificationApplicationHost) throw Error('请从通知设置页操作');
@@ -3870,7 +4250,7 @@ async function action(event, name, payload) {
     throw Error('不支持的知识源操作');
   }
   if (name === 'knowledge.search') {
-    if(sender!==admin || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识检索仅在管理后台可用');
+    if((sender!==admin && sender!==workspace) || !knowledgeSourceConfig || !knowledgeTools) throw Error('知识检索仅在设置或工作台可用');
     const query=typeof payload?.query==='string'?payload.query.trim():'';
     if(!query) throw Error('检索词不能为空');
     const binding=(obsidianPairing?.source ?? knowledgeSourceConfig).snapshot(),commandId='knowledge-search-'+randomUUID();
@@ -3893,10 +4273,26 @@ async function action(event, name, payload) {
   if (name.startsWith('proactive.workflow.')) {
     if ((sender!==panel&&sender!==admin)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
     if(name==='proactive.workflow.status')return proactiveWorkflowApplication.snapshot();
-    if(name==='proactive.workflow.start')return proactiveWorkflowApplication.start(payload);
+    if(name==='proactive.workflow.start'){
+      const start=()=>proactiveWorkflowApplication.start(payload);
+      if(!usageBudgetProduct)return start();
+      return usageBudgetProduct.withOrigin('autonomous',()=>{
+        const decision=usageBudgetProduct.decide({origin:'autonomous'});
+        if(!decision.allowed)throw Error(decision.prompt);
+        return start();
+      });
+    }
     if(name==='proactive.workflow.control')return proactiveWorkflowApplication.control(payload);
     if(!payload||Object.keys(payload).some(key=>key!=='taskId')||typeof payload.taskId!=='string')throw Error('原持续工作流任务标识无效');
-    if(name==='proactive.workflow.resume')return proactiveWorkflowApplication.resume(payload.taskId);
+    if(name==='proactive.workflow.resume'){
+      const resume=()=>proactiveWorkflowApplication.resume(payload.taskId);
+      if(!usageBudgetProduct)return resume();
+      return usageBudgetProduct.withOrigin('autonomous',()=>{
+        const decision=usageBudgetProduct.decide({origin:'autonomous'});
+        if(!decision.allowed)throw Error(decision.prompt);
+        return resume();
+      });
+    }
     if(name==='proactive.workflow.read')return proactiveWorkflowApplication.read(payload.taskId);
     throw Error('持续工作流操作未公布');
   }
@@ -3916,7 +4312,12 @@ async function action(event, name, payload) {
       return proactiveHost.applyCognitionDecision(reviewTaskId);
     }
     if (!payload || Object.keys(payload).some(key => key !== 'id') || typeof payload.id !== 'string') throw Error('主动分析请求无效');
-    return proactiveHost.analyze(payload.id);
+    if (!usageBudgetProduct) return proactiveHost.analyze(payload.id);
+    return usageBudgetProduct.withOrigin('autonomous', () => {
+      const decision = usageBudgetProduct.decide({origin: 'autonomous'});
+      if (!decision.allowed) throw Error(decision.prompt);
+      return proactiveHost.analyze(payload.id);
+    });
   }
   if (name.startsWith('cognition.')) {
     if (name === 'cognition.status') return p5StatusSnapshot();
@@ -3989,10 +4390,19 @@ async function action(event, name, payload) {
     return voiceInput ? voiceInput.stopSpeaking(sender.webContents.id)
       : {available: false, stopped: false, reason: '语音供应商尚未连接'};
   }
+  if (name === 'voice.wake.preference') {
+    if ((sender !== admin && sender !== panel) || !competitionMode) throw Error('唤醒设置只能从设置或面板修改');
+    const next = normalizeWakePreference(payload);
+    saveWakePreference(next);
+    await applyWakePreference(next);
+    publish();
+    return {preference: currentWakePreference(), wake: snapshot(sender === admin ? undefined : 'panel').wake};
+  }
   if (name === 'voice.wake.enable' || name === 'voice.wake.disable') {
     if (name === 'voice.wake.enable' && voiceStartupHost && !voiceStartupHost.snapshot().resourcesReleased) throw Error('请先结束启动语音');
     if (sender !== panel || !competitionMode || payload !== undefined) throw Error('唤醒只能从可信面板显式操作');
     if (name === 'voice.wake.disable') {
+      saveWakePreference({...currentWakePreference(), enabled: false});
       await stopWakeVoice(); publish(); return snapshot('panel').wake;
     }
     if (!panel.isVisible() || panelHiding || voiceConfigurationPending || wakeQuitUnknown
@@ -4000,6 +4410,7 @@ async function action(event, name, payload) {
       throw Error('请先显示面板并连接华为 SIS 语音');
     }
     pinned = true;
+    saveWakePreference({...currentWakePreference(), enabled: true});
     return wakeVoice.enable(sender.webContents.id);
   }
   if (name === 'voice.configure' || name === 'voice.login') {
@@ -4211,6 +4622,10 @@ async function action(event, name, payload) {
     if(sender!==admin || !competitionMode || !pluginCatalogHost) throw Error('插件目录仅在正式管理后台可用');
     return pluginCatalogHost.invoke(name,payload);
   }
+  if (name === 'activity.undo') {
+    if (sender !== admin || !activityProduct) throw Error('活动记录仅在管理后台可用');
+    return activityProduct.handle(name, payload);
+  }
   if (sender === orb) throw Error('Action unavailable from orb');
   if (!client) throw Error('Runtime 未连接，此操作尚不可用');
   if (['evidence.list', 'evidence.get', 'authorization.revoke'].includes(name)) {
@@ -4236,6 +4651,25 @@ async function action(event, name, payload) {
     if (name === 'evidence.get') return evidenceHost.get(payload);
     return evidenceHost.revoke(payload);
   }
+  if (name === 'goal.decompose') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理拆解');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some(key => key !== 'goalId') || typeof payload.goalId !== 'string') throw Error('目标拆解参数无效');
+    const result = goalPlan.decompose(payload.goalId);
+    publish();
+    return result;
+  }
+  if (name === 'goal.plan.bind') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从目标管理关联子任务');
+    if (!goalPlan) throw Error('目标拆解尚未就绪');
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)
+      || Object.keys(payload).some(key => !['goalId', 'stepId', 'taskId', 'subtaskId'].includes(key))) {
+      throw Error('子任务关联参数无效');
+    }
+    const result = goalPlan.bindChild(payload);
+    publish();
+    return result;
+  }
   if (name.startsWith('goal.')) {
     if (sender !== panel && sender !== workspace) throw Error('Goal 操作只能从面板或工作区调用');
     if (!goalHost) throw Error('Goal 写入仅在 Competition Profile 的可信宿主中可用');
@@ -4259,6 +4693,7 @@ async function action(event, name, payload) {
     return interruptConversation(payload.conversationId,'panel');
   }
   if (name === 'task.submit' || name==='skill.run') {
+    if (typeof operatorBrake !== 'undefined' && operatorBrake.isPaused()) throw Error('总暂停中，新任务不会启动。恢复后从断点继续。');
     const skillRun=name==='skill.run';
     // The redesigned workspace consumes the original trusted Runtime submit path.
     if(!skillRun&&sender===workspace&&!competitionMode&&!fakeMode)throw Error('主工作区任务入口需要 AgentArts 比赛配置；本地模式请使用原主面板');
@@ -4286,6 +4721,8 @@ async function action(event, name, payload) {
     if(prepared?.cancelled) return {cancelled:true};
     if(deliveryRequest.interrupted)return {interrupted:true};
     const goal = skillRun?prepared.publicGoal:text.trim();
+    if(!skillRun)usageBudgetProduct?.noteUserSubmit();
+    if (typeof costRoute !== 'undefined' && costRoute) costRoute.noteGoal(conversationId, goal);
     const result = await submitConversationTask(client, {goal, conversationId}, {competition: competitionMode,contextCompaction:Boolean(harnessContextHost?.runtimeHooks),
       ...(competitionMode?{competitionTimeoutMs:readCompetitionExecutionPolicy().taskTimeoutMs}:{})});
     deliveryRequest.taskId=result.taskId;
@@ -4349,6 +4786,9 @@ async function action(event, name, payload) {
     if(sender!==admin){const approval=approvals.get(payload.approvalId),surface=sender===workspace?'workspace':'panel';if(sender!==panel&&sender!==workspace||!approval||approval.taskId!==payload.taskId||!tasks.has(approval.taskId)||!visibleConversationTask(tasks.get(approval.taskId),surface))throw Error('审批不属于当前对话');}
     if(authorizationQuestionHost?.hasPending(payload.approvalId))throw new ProtocolError('UNAUTHORIZED','请在原对话的统一授权卡完成本次决定');
     const result = await client.call('authorization.respond', {approvalId: payload.approvalId, decision: payload.decision, expectedRevision: payload.expectedRevision});
+    if (payload.decision === 'deny') {
+      permissionAudit?.recordEvent('denied', `approval:${payload.taskId ?? payload.approvalId}`);
+    }
     approvals.delete(payload.approvalId);
     if (payload.taskId && tasks.has(payload.taskId)) await refresh(payload.taskId);
     publish();
@@ -4423,7 +4863,8 @@ async function initializeSisVoice() {
         conversations.add(taskId, 'panel', goal);
       }});
     const wake = createDesktopWakeVoiceHost({getPanel: () => panel, microphoneHost: microphoneCaptureHost,
-      voiceInput:input, onUpdate: publish, isBusy: () => Boolean(liveVoice?.hasActive() || voiceConfigurationPending || panelHiding)});
+      voiceInput:input, onUpdate: publish, leaseMs: () => wakeLeaseMs(currentWakePreference()),
+      isBusy: () => Boolean(liveVoice?.hasActive() || voiceConfigurationPending || panelHiding)});
     voiceInput = input;
     voicePcmSource = source;
     sisPlaybackHost = playback;
@@ -4617,6 +5058,7 @@ app.whenReady().then(async () => {
   powerMonitor.on('speed-limit-change',value=>{speedLimit=value.limit;sampleResources();});
   powerMonitor.on('on-battery',sampleResources);powerMonitor.on('on-ac',sampleResources);
   desktopHost = createDesktopHost();
+  activityProduct = openDesktopActivity({userData:app.getPath('userData'),onUpdate:publish});
   microphonePermissionGate = createMicrophonePermissionGate({
     expectedPageUrl: pathToFileURL(entry).href,
     isTrustedWindow: contents => contents === panel?.webContents,
@@ -4640,7 +5082,14 @@ app.whenReady().then(async () => {
   sisConfigHost = createDesktopSisConfigHost({userData: app.getPath('userData'), safeStorage});
   liveConfig = createLiveVoiceConfig({userData: app.getPath('userData'), safeStorage,competitionMode,
     readAgentArtsState:()=>agentArtsConfig?.snapshot()??{configured:false}});
-  agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage});
+  usageBudgetProduct = createUsageBudgetProduct({userData: app.getPath('userData'), safeStorage, Notification,
+    onUpdate: () => publish(),
+    candidates: () => (agentArtsModels?.snapshot().catalog?.models ?? [])
+      .filter(model => model.type === 'text' && model.availability !== 'unavailable' && model.available !== false)
+      .map(model => model.id)});
+  costRouteBudget = usageBudgetProduct;
+  agentArtsConfig = createAgentArtsConfig({userData: app.getPath('userData'), safeStorage,
+    onCloudRun: info => usageBudgetProduct.recordCloud(info)});
   if(competitionMode&&!syntheticMvp) {
     try {
       const created=initializeDefaultWorkspace({userData:app.getPath('userData'),
@@ -4692,11 +5141,12 @@ app.whenReady().then(async () => {
   }});
   if (competitionMode && !syntheticMvp) {
     const {createConfiguredSubagentModelGateway} = await import('@personal-agent/runtime/application');
+    const usageHooks=modelApiUsageHooks(usageBudgetProduct);
     modelApiHost = createModelApiConfig({userData:app.getPath('userData'),safeStorage,
       isDefaultExecutionAvailable:()=>runtimeApplication?.isDefaultSubagentAvailable()===true,
-      createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway});
+      createGateway:createConfiguredSubagentModelGateway,createGuardedGateway:createConfiguredSubagentModelGateway,...usageHooks});
     computerVisionConfig=createComputerVisionConfig({userData:app.getPath('userData'),safeStorage,
-      createGateway:createConfiguredSubagentModelGateway,onUpdate:publish});
+      createGateway:createConfiguredSubagentModelGateway,onUpdate:publish,...usageHooks});
   }
   if (competitionMode && !syntheticMvp) calendarConfig = createCalendarConfig({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});
   if (competitionMode && !syntheticMvp) feedsHost = createDesktopFeedsHost({userData:app.getPath('userData'),safeStorage,question:authorizationQuestionPort});

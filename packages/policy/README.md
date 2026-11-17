@@ -26,6 +26,10 @@
 
 `AuthorizationPolicy` 消费 `AuthorizationStore` 事务端口；Runtime 注入 SQLite 存储，一次性授权的检查和消费在同一事务内完成，重启不会重置次数。`InMemoryAuthorizationPolicy` 保留为隔离测试实现。授权当前仍绑定单个任务和工具，跨任务持续授权管理不是已完成能力。
 
+`appendAudit` / `verifyAudit` 提供哈希链操作记录。每条记录包含序号、时间、动作、对象、上一条哈希和本条哈希。改掉中间任何一条，校验都会停在该序号，并且拒绝继续追加。链本身不保存工具参数或私人内容。
+
+邮件、网页、文件和工具结果经 `fenceExternalText` / `fenceExternalValue` 加上来源标记。围栏内的文字仍是数据。`externalEffectDecision` 在本任务已经读入外部内容时，拒绝由外部内容触发的发送、删除和付款；用户目标本身写明了该操作，且没有把决定权交给外部内容时，仍交给原有审批。这不新增授权种类，也不把围栏文本当成许可。
+
 验证：
 
 ```sh

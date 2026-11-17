@@ -186,3 +186,65 @@ test('a grouped native check must present the same verified backend before task 
   native={...native,available:false,enforced:false};
   await assert.rejects(f.host.request(f.request({runId:'unavailable',taskConsent:group})),/后端不可用/);f.host.close();
 });
+
+test('low-risk auto allows a read once and still asks before writes, exports or unknown scopes',async()=>{
+  const saved={};
+  const now=Date.parse('2026-10-21T00:00:00Z');
+  const store={get:key=>saved[key]===undefined?undefined:structuredClone(saved[key]),
+    compareAndSet(key,previous,next){if(!isDeepStrictEqual(saved[key],previous))return false;saved[key]=structuredClone(next);return true;}};
+  const host=new AuthorizationQuestions({store,profiles:[
+    {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+    {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true}],
+    defaultProfileRef:'low-risk-auto',now:()=>now,available:()=>true,onChange(){},
+    readBinding:()=>({conversationId:'conversation-1',digest:'owner-1'}),canExecute:()=>true});
+  const request=(scopes,extra={})=>({taskId:'task-1',proposalId:'proposal-1',runId:extra.runId??'run-read',toolName:extra.toolName??'mail.inbox',toolVersion:'1',
+    argumentsDigest:H,deadline:new Date(now+60000).toISOString(),signal:new AbortController().signal,
+    ...(extra.omitSideEffect?{}:{sideEffect:extra.sideEffect??'read'}),
+    requirements:extra.requirements??[{requirementId:'tool',kind:'tool',scopes,bindingDigest:H,summary:'查看'}]});
+  const read=await host.request(request(['mail:read']));
+  assert.equal(read.decision,'allow_once');
+  assert.equal(host.snapshot().some(item=>item.state==='pending'),false);
+  const readLikeLocalWrite=host.request(request(['mail:read'],{runId:'run-local-write',sideEffect:'local_write'}));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
+  assert.equal((await readLikeLocalWrite).decision,'deny');
+  const readWithoutSideEffect=host.request(request(['mail:read'],{runId:'run-no-side-effect',omitSideEffect:true}));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
+  assert.equal((await readWithoutSideEffect).decision,'deny');
+  const write=host.request(request(['todo:write'],{runId:'run-write',toolName:'todo.create'}));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
+  assert.equal((await write).decision,'deny');
+  const exported=host.request(request(['mail:read'],{runId:'run-export',requirements:[
+    {requirementId:'tool',kind:'tool',scopes:['mail:read'],bindingDigest:H,summary:'查看'},
+    {requirementId:'out',kind:'export',scopes:['model:export'],bindingDigest:H,summary:'交给模型'}]}));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
+  await exported;
+  const unknown=host.request(request(['widget:frob'],{runId:'run-unknown',toolName:'widget.frob'}));
+  assert.equal(host.snapshot().at(-1).state,'pending');
+  host.respond({questionId:host.snapshot().at(-1).questionId,expectedRevision:1,decision:'deny'},'conversation-1');
+  await unknown;
+  host.close();
+});
+
+test('new installs default to low-risk auto without silently migrating existing read-only users',()=>{
+  const freshSaved={};
+  const makeStore=target=>({get:key=>target[key]===undefined?undefined:structuredClone(target[key]),
+    compareAndSet(key,previous,next){if(!isDeepStrictEqual(target[key],previous))return false;target[key]=structuredClone(next);return true;}});
+  const baseOptions={profiles:[
+    {ref:'low-risk-auto',label:'低风险自动',mode:'read-only',revision:1,available:true,lowRiskAuto:true},
+    {ref:'default-read-only',label:'每次都询问',mode:'read-only',revision:1,available:true}],
+    defaultProfileRef:'low-risk-auto',available:()=>true,readBinding:()=>undefined,canExecute:()=>false};
+  const fresh=new AuthorizationQuestions({...baseOptions,store:makeStore(freshSaved)});
+  assert.equal(fresh.sandboxSnapshot().selected.label,'低风险自动');
+  const existingSaved={state:{version:1,selectedRef:'default-read-only',revision:1,questions:[],rules:[]}};
+  const existing=new AuthorizationQuestions({...baseOptions,store:makeStore(existingSaved)});
+  assert.equal(existing.sandboxSnapshot().selected.label,'每次都询问');
+  existing.selectSandbox({profileRef:'low-risk-auto',expectedRevision:existing.sandboxSnapshot().selected.revision});
+  assert.equal(existing.sandboxSnapshot().selected.label,'低风险自动');
+  const again=new AuthorizationQuestions({...baseOptions,store:makeStore(existingSaved)});
+  assert.equal(again.sandboxSnapshot().selected.label,'低风险自动');
+  fresh.close();existing.close();again.close();
+});

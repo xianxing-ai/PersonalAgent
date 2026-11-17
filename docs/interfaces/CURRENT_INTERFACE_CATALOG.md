@@ -2,6 +2,24 @@
 
 > 待办条件更新（provisional）：MOD-20 的 todo.update 与 TodoUpdateInput 接受可选正整数 expectedRevision；与当前条目 revision 不一致时返回 REVISION_CONFLICT，保留原条目及提醒。未提供时保留旧行为。该检查仅覆盖现有单进程同步存储边界，不声明跨进程事务；F11 的工作流接线与真实服务验收另行交付。
 
+## 2026-11-11 失败自愈决策（provisional）
+
+`@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
+
+## 2026-11-11 用户风险档（provisional）
+
+`@personal-agent/autonomy` 提供保守 / 平衡 / 自主三档。Runtime 默认使用自主档；传入 `riskAutonomy: false` 时仍只按 `automaticTools`。分类表中的低风险直接做，有补偿的中风险在成功后经现有桌面通知端口投递，点击通知才执行已保存的补偿。未列入分类表的工具继续沿用 `automaticTools`。设置写入桌面加密记录，不新增 wire 或数据库迁移。设置页只有档位、两类覆盖、一个撤销按钮和最近记录。这不提升 Policy 或通知渠道的冻结状态。说明见 [MOD-28-RISK-AUTONOMY-01](../modules/MOD-28-RISK-AUTONOMY-01.md) 和 [ADR-0043](../adr/0043-user-risk-autonomy.md)。
+
+## 2026-11-11 活动时间线（provisional）
+
+`@personal-agent/activity` 提供 CW-05 的只追加活动记录。每条有时间、来源、动作摘要、风险、结果，以及触发原因和决策依据。摘要不收录消息正文或参数明文。撤销只在记录了补偿动作、且该来源的补偿执行器已经接入时可用；撤销另写一条结果，不改原行。当前生产接线只有插件目录的安装、启用、停用和卸载。自动执行（#630）、主动触发（#631）和失败自愈（#633）使用同包适配函数，不依赖尚未合入的实现。这不提升 Policy、Runtime、插件目录或 AgentArts 的冻结等级。说明见 [活动时间线](../modules/CW-05-ACTIVITY-TIMELINE.md)。
+
+## 2026-11-11 来源变化触发层（provisional）
+
+`@personal-agent/cognition` 新增可选工厂 `createProactiveSourceTrigger`。它只消费公开 `calendar.events` / `mail.inbox` 的 `ConnectorItem` 页，以及用户显式授权目录的只读枚举；首次成功读取只建基线。去重、限流和静默时段之后，把任务提案交给现有 Laya 动作选择。低风险且选择结果允许进入运行时的，调用注入的任务 `submit`；高风险只创建待审批请求，匹配的 `allowed` 决定才按原幂等键提交。`submitted` 不是任务完成。
+
+Desktop 宿主在启动后按用户设置轮询，并把低风险提案交给现有 `task.submit`。改期和写操作使用现有 `requestToolApproval` 审批卡；批准时的 revision 与参数摘要必须和提案一致才提交。`resumeTask` 对检查点 `proactive-source-gate` 直接返回，避免审批载体被当成普通对话重跑。这是 Runtime Application 的最小钩子，Policy 核心未改。PR #630 的自主档包尚未进入 main，这里只留 `risk.decide()` 适配点，不复制其实现。设置页在「连接与提醒」，没有新导航。离线测试不提升冻结等级，也不证明真实日历、邮箱、本机目录或 Laya 模型可用。边界见 [CW-03 来源触发](../modules/CW-03-PROACTIVE-SOURCE-TRIGGER.md)。
+
 ## 隔离修复只读补丁范围核对（provisional）
 
 隔离修复预览复用 `workspace.patch_scope_check` 核对授权路径和预期哈希；工具只读，`behaviorReviewed` 始终为 false。验证回执可携带本地 `artifactDigest`，它不是公共 Artifact 服务或 Evidence。真实用户工作区、Windows 独占补丁和 AgentArts 联合验收仍未完成，详见 [本地执行摘要](../modules/MOD-18-EXECUTION-ARTIFACT-20261103.md)。
@@ -9,6 +27,8 @@
 ## 2026-11-11 插件精选目录（provisional）
 
 `@personal-agent/plugin-catalog` 提供 MOD-30 的离线精选目录。可一键安装的条目先下载固定 commit 或包并核对 sha256，再走现有 Skill 目录安装或 filesystem `2026.8.31` 钉死核验，默认停用。高风险启用由 Desktop 取得用户确认后交给 Policy 消费，目录不自己签发授权，也不执行插件脚本。已启用项只生成 pending 提案，并经现有 MCP/Skill 读回校验；`closedLoop` 仍为 false。管理后台「插件」页提供搜索、分类和当前状态对应的操作，没有新的 Core wire。Context7、Cloudflare 文档 MCP、GitHub MCP，以及超过 1 MiB 的 docx/pptx/xlsx 仍不可一键安装。这不提升 MCP、Skills 或 AgentArts 的冻结等级。录取与复审见 [插件目录说明](../modules/MOD-30-PLUGIN-CATALOG-ADMISSION-20261111.md)。
+
+同一目录上的权限清单和运行时沙箱仍是 `provisional`。每个条目用 `permissionManifest` 声明网络主机、插件数据路径、连接器标识和密钥名；当前精选条目的四类清单都为空。安装沿用一次授权确认，文案列出这四项白话说明。Desktop 启动时创建的插件宿主在主进程执行沙箱：只放行安装记录与当前目录的交集，拒绝未声明的网络、文件、连接器和密钥，并把违规写入本地日志。密钥值不进入日志、快照或 preload 返回值。这不新增 Core wire，也不把沙箱通过写成插件脚本已执行或连接器已调用。见 [插件沙箱说明](../modules/MOD-30-PLUGIN-SANDBOX-20261111.md)。
 
 ## 2026-10-29 MCP 管理任务读回（provisional）
 

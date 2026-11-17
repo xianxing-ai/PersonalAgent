@@ -173,10 +173,30 @@ export interface RuntimeToolGateway {
   invoke(invocation: RuntimeToolInvocation): Promise<unknown>;
 }
 
+/** Plain failure facts for a trusted host. No goal text, arguments or credentials. */
+export interface TaskFailureNotice {
+  taskId: string;
+  revision: number;
+  errorCode?: string;
+  effect: 'read' | 'write' | 'none';
+  outcome: 'failed' | 'unknown';
+  risk?: 'ordinary' | 'high';
+  reconciliationOutcome?: 'applied' | 'not_applied' | 'unknown';
+  priorSideEffects?: boolean;
+  evidenceRefs: readonly string[];
+  occurredAt: string;
+}
+
 export interface RuntimeOptions {
   now?: () => Date;
   /** Trusted Application lifecycle notification, after the expiry transaction commits. */
   onApprovalsExpired?: (taskIds: readonly string[]) => void;
+  /**
+   * Trusted composition only. Invoked after a failure commit is still visible.
+   * Must not reopen the task or grant approval. Exceptions are ignored.
+   */
+  onTaskFailed?: (notice: TaskFailureNotice) => void;
+  onTaskTerminal?: (taskId: string) => void;
   idFactory?: () => string;
   toolGateway?: RuntimeToolGateway;
   createToolGateway?: (policy: AuthorizationPolicy) => RuntimeToolGateway;
@@ -243,6 +263,10 @@ interface ScheduleRow {
   task_id: string | null;
 }
 
+export const OPERATOR_BRAKE_CHECKPOINT = 'operator-brake:v1';
+const OPERATOR_BRAKE_NAMESPACE = 'operator-brake';
+const OPERATOR_BRAKE_MESSAGE = '总暂停中，新任务不会启动';
+const operatorHoldStates = new Set<TaskState>(['planning', 'running', 'waiting_external', 'verifying']);
 const terminal = new Set<TaskState>(['succeeded', 'failed', 'cancelled']);
 const baseCapabilities: Operation[] = ['system.handshake', 'task.submit', 'task.get', 'task.list', 'conversation.list', 'approval.list', 'task.cancel', 'event.subscribe'];
 const interrupted = ['planning', 'running', 'waiting_external', 'verifying', 'cancelling'] as const;
@@ -406,12 +430,121 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly activeToolExecutions = new Map<string,string>();
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
+  private readonly onTaskFailed: RuntimeOptions['onTaskFailed'];
+  private readonly onTaskTerminal: RuntimeOptions['onTaskTerminal'];
   private closed = false;
 
   /** Trusted host handoff observation only; Policy remains the authorization source. */
   isToolExecutionActive(record:Pick<ToolExecutionRecord,'taskId'|'evidenceId'|'inputDigest'>):boolean {
     const current=this.activeToolExecutions.get(JSON.stringify([record.taskId,record.evidenceId]));
     return current!==undefined && current===record.inputDigest;
+  }
+
+  /** Process-local workers. The desktop brake aborts these before it returns. */
+  activeTaskIds(): string[] {return [...this.active.keys()];}
+
+  private operatorBrakeStore() {return this.bindTrustedHostState(OPERATOR_BRAKE_NAMESPACE);}
+
+  private readOperatorBrake(): {paused?: boolean} | undefined {
+    const value = this.operatorBrakeStore().get('record');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as {paused?: boolean} : undefined;
+  }
+
+  /** Durable across process restart. The desktop brake is the writer of the full record. */
+  isOperatorPaused(): boolean {return this.readOperatorBrake()?.paused === true;}
+
+  /** Trusted host only. Merges the flag into the existing brake record. */
+  setOperatorPause(paused: boolean): void {
+    if (typeof paused !== 'boolean') throw new RuntimeError('INVALID_ARGUMENT', 'Operator pause must be boolean');
+    const current = this.readOperatorBrake() ?? {};
+    this.operatorBrakeStore().set('record', {...current, version: 1, paused, holds: Array.isArray((current as {holds?: unknown}).holds) ? (current as {holds: unknown[]}).holds : []});
+  }
+
+  /**
+   * Stop one live task without making cancellation terminal.
+   * The existing task checkpoint is kept, and operator-brake:v1 records the hold
+   * so resumeOperatorHold can reopen it. In-flight tool calls see the worker AbortSignal.
+   */
+  holdForOperatorPause(taskId: string): TaskSnapshot {
+    const held = this.transaction(() => {
+      const task = this.getTask(taskId);
+      if (terminal.has(task.state) || task.cancelRequested || task.state === 'cancelling') return task;
+      const cursor = this.loadCheckpoint(taskId, 'competition-loop') ?? this.loadCheckpoint(taskId, 'agent-loop');
+      const existing = this.loadCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT) as {
+        version?: string; taskId?: string; originalState?: TaskState; originalRevision?: number; heldAt?: string; cursor?: unknown;
+      } | undefined;
+      if (!operatorHoldStates.has(task.state)) {
+        if (task.state === 'waiting_reconciliation' && existing?.version === '1.0' && existing.taskId === taskId) {
+          if (cursor !== undefined && existing.cursor === undefined) {
+            this.saveCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT, {...existing, cursor});
+          }
+        }
+        return this.getTask(taskId);
+      }
+      this.saveCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT, {
+        version: '1.0', taskId, originalState: task.state, originalRevision: task.revision, heldAt: this.timestamp(),
+        ...(cursor === undefined ? {} : {cursor}),
+      });
+      return this.updateTask(taskId, 'waiting_reconciliation', {
+        error: {code: 'RESULT_UNKNOWN', message: 'Operator pause held the task at its checkpoint', retryable: true},
+      }, true);
+    });
+    this.active.get(taskId)?.abort();
+    return structuredClone(held);
+  }
+
+  /** Tasks parked by the operator brake and still waiting to continue. */
+  listOperatorHolds(): TaskSnapshot[] {
+    const items: TaskSnapshot[] = [];
+    let before: number | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const result = this.listTaskCheckpointPage({
+        limit: 100, states: ['waiting_reconciliation'],
+        ...(before === undefined ? {} : {beforeSequence: before}),
+      }, [OPERATOR_BRAKE_CHECKPOINT]);
+      items.push(...result.items.filter(task => task.cancelRequested !== true
+        && this.loadCheckpoint(task.taskId, OPERATOR_BRAKE_CHECKPOINT) !== undefined));
+      if (result.nextBeforeSequence === undefined) break;
+      before = result.nextBeforeSequence;
+    }
+    return items;
+  }
+
+  /**
+   * Reopen a held task onto the existing resume path.
+   * Confirmed reads stay. A read aborted by this pause can continue.
+   * An in-flight write stays in reconciliation and is not replayed.
+   */
+  resumeOperatorHold(taskId: string): TaskSnapshot {
+    return structuredClone(this.transaction(() => {
+      const task = this.getTask(taskId);
+      const marker = this.loadCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT) as {version?: string; taskId?: string} | undefined;
+      if (!marker || marker.version !== '1.0' || marker.taskId !== taskId) {
+        throw new RuntimeError('NOT_FOUND', 'Operator pause checkpoint is missing');
+      }
+      if (this.isOperatorPaused() || task.cancelRequested || task.state !== 'waiting_reconciliation' || this.active.has(taskId)) {
+        throw new RuntimeError('REVISION_CONFLICT', 'Paused task cannot resume');
+      }
+      const deadline = this.loadCheckpoint(taskId, 'application-deadline');
+      if (typeof deadline === 'string' && Date.parse(deadline) <= this.now().getTime()) {
+        throw new RuntimeError('TIMEOUT', 'Original task deadline cannot be extended for continuation');
+      }
+      if (this.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
+        throw new RuntimeError('UNAUTHORIZED', 'Cloud result is unknown');
+      }
+      const descriptors = this.toolGateway?.list() ?? [];
+      for (const record of this.readToolExecutions(taskId)) {
+        if (record.state === 'confirmed' && record.executionStarted && record.policyDecision === 'allow'
+          && this.loadCheckpoint(taskId, 'tool-result-' + record.evidenceId) !== undefined) continue;
+        const descriptor = descriptors.find(item => item.name === record.toolName && item.version === record.toolVersion);
+        const read = descriptor?.sideEffect === 'read';
+        const cancelled = record.state === 'failed' && record.errorCode === 'CANCELLED';
+        const abandonedRead = read && record.state === 'started' && !this.isToolExecutionActive(record);
+        if ((read && cancelled) || abandonedRead || (!record.executionStarted && cancelled)) continue;
+        throw new RuntimeError('UNAUTHORIZED', 'In-flight write still needs reconciliation before resume');
+      }
+      return this.updateTask(taskId, 'waiting_approval', {error: null}, false);
+    }));
   }
 
   /** Process-local activity; startup recovery must never adopt a live worker. */
@@ -436,6 +569,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.policy = new AuthorizationPolicy(new SqliteAuthorizationStore(this.db));
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
+    this.onTaskFailed = options.onTaskFailed;
+    this.onTaskTerminal = options.onTaskTerminal;
     this.expirePendingApprovals();
   }
 
@@ -1049,11 +1184,55 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           break;
         }
         case 'tool.invoke': {
+          if (this.isOperatorPaused()) {
+            if (request.taskId) {
+              try {
+                const task = this.getTask(request.taskId);
+                const runId = request.idempotencyKey ?? this.idFactory();
+                const existing = this.db.prepare('SELECT 1 FROM tool_execution_records WHERE evidence_id = ?').get(runId);
+                if (!existing && !terminal.has(task.state)) {
+                  const now = this.timestamp();
+                  this.saveToolExecution({
+                    protocolVersion: PROTOCOL_VERSION,
+                    policyDecision: 'deny',
+                    executionStarted: false,
+                    inputDigest: toolInputDigest(request.taskId, request.payload),
+                    evidenceId: runId,
+                    requestId: request.requestId,
+                    taskId: request.taskId,
+                    toolName: request.payload.toolName,
+                    toolVersion: request.payload.toolVersion,
+                    startedAt: now,
+                    finishedAt: now,
+                    state: 'failed',
+                    errorCode: 'CANCELLED',
+                  });
+                }
+              } catch { /* Task lookup failure still surfaces the pause error below. */ }
+            }
+            throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
+          }
           if (!this.toolGateway) throw new RuntimeError('UNSUPPORTED_CAPABILITY', 'Tool gateway is not configured');
           if (!request.taskId) throw new RuntimeError('INVALID_ARGUMENT', 'tool.invoke requires a taskId');
           const task = this.getTask(request.taskId);
           if (task.state !== 'running') {
             throw new RuntimeError('REVISION_CONFLICT', 'Tools can only be invoked for a running task');
+          }
+          const readonlyRetry = this.loadCheckpoint(request.taskId, 'repair-readonly-retry:v1') as
+            {readOnly?: boolean; toolName?: string; toolVersion?: string} | undefined;
+          if (readonlyRetry?.readOnly === true) {
+            const invokedDescriptor = (this.toolGateway.list() ?? []).find(
+              item => item.name === request.payload.toolName && item.version === request.payload.toolVersion,
+            );
+            if (!invokedDescriptor || invokedDescriptor.sideEffect !== 'read') {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task cannot invoke write tools');
+            }
+            if (typeof readonlyRetry.toolName === 'string' && request.payload.toolName !== readonlyRetry.toolName) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool');
+            }
+            if (typeof readonlyRetry.toolVersion === 'string' && request.payload.toolVersion !== readonlyRetry.toolVersion) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool version');
+            }
           }
           const runId = request.idempotencyKey ?? this.idFactory();
           const inputDigest = toolInputDigest(request.taskId, request.payload);
@@ -1168,6 +1347,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       occurredAt,
       payload
     });
+    if ((type === 'task.completed' || type === 'task.failed' || type === 'task.cancelled') && taskId) {
+      try { this.onTaskTerminal?.(taskId); } catch { /* Terminal listener cleanup must not break event persistence. */ }
+    }
     return event;
   }
 
@@ -1184,6 +1366,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       if (previous.input_json !== inputJson) throw new RuntimeError('REVISION_CONFLICT', 'Idempotency key was reused with different input');
       return taskFromRow(this.taskRow(previous.task_id));
     }
+    if (this.isOperatorPaused()) throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
     const taskId = this.idFactory();
     const updatedAt = this.timestamp();
     this.db.prepare('INSERT INTO tasks (task_id, goal, conversation_id, attachment_refs_json, state, revision, updated_at, steps_json, evidence_refs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
@@ -1399,7 +1582,48 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.emit('task.state_changed', next, taskId);
     const terminalType = state === 'succeeded' ? 'task.completed' : state === 'failed' ? 'task.failed' : state === 'cancelled' ? 'task.cancelled' : undefined;
     if (terminalType) this.emit(terminalType, next, taskId);
+    if (state === 'failed') this.notifyTaskFailed(next);
     return next;
+  }
+
+  private taskFailureNotice(task: TaskSnapshot): TaskFailureNotice {
+    const records = this.readToolExecutions(task.taskId);
+    const last = records[records.length - 1];
+    const tools = this.toolGateway?.list() ?? [];
+    const descriptor = last ? tools.find(tool => tool.name === last.toolName && tool.version === last.toolVersion) : undefined;
+    const side = descriptor?.sideEffect;
+    const effect = side === 'read' ? 'read' : side === 'local_write' || side === 'external_write' ? 'write' : 'none';
+    const priorSideEffects = records.slice(0, -1).some(record => {
+      if (record.executionStarted || record.state === 'confirmed' || record.state === 'unknown') return true;
+      const priorDescriptor = tools.find(tool => tool.name === record.toolName && tool.version === record.toolVersion);
+      return priorDescriptor !== undefined && priorDescriptor.sideEffect !== 'read';
+    });
+    const unknown = task.error?.code === 'RESULT_UNKNOWN' || last?.state === 'unknown' || last?.reconciliationOutcome === 'unknown';
+    return {
+      taskId: task.taskId, revision: task.revision, effect, outcome: unknown ? 'unknown' : 'failed',
+      ...(task.error?.code ? {errorCode: task.error.code} : {}),
+      ...(side === 'external_write' ? {risk: 'high' as const} : {}),
+      ...(last?.reconciliationOutcome ? {reconciliationOutcome: last.reconciliationOutcome} : {}),
+      ...(priorSideEffects ? {priorSideEffects: true} : {}),
+      evidenceRefs: [...task.evidenceRefs], occurredAt: task.updatedAt,
+    };
+  }
+
+  /** After the caller commits. A rolled-back failure is ignored when the task is no longer failed. */
+  private notifyTaskFailed(task: TaskSnapshot): void {
+    if (!this.onTaskFailed) return;
+    let notice: TaskFailureNotice;
+    try { notice = this.taskFailureNotice(task); }
+    catch { return; }
+    queueMicrotask(() => {
+      if (this.closed) return;
+      try {
+        const current = this.getTask(notice.taskId);
+        const stillFailed = current.state === 'failed';
+        if (!stillFailed || current.revision < notice.revision) return;
+        this.onTaskFailed?.(notice);
+      } catch { /* The failure is already durable. */ }
+    });
   }
 
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {
@@ -1816,6 +2040,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     if ((initial.state !== 'created' && !(options.resume && initial.state === 'waiting_approval')) || this.active.has(taskId)) {
       throw new RuntimeError('REVISION_CONFLICT', 'Task is not ready to start');
     }
+    if (this.isOperatorPaused()) throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
     const controller = new AbortController();
     // A new/resumed worker must declare its own path; old process-local proof does not transfer.
     this.runtimeToolTracking.delete(taskId);
@@ -2150,6 +2375,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   private processDue(recovery: boolean, conversationId?: string): ScheduleDispatch[] {
+    if (this.isOperatorPaused()) return [];
     const now = this.timestamp();
     if (conversationId !== undefined) requireText(conversationId, 'conversationId');
     const rows = (conversationId === undefined
