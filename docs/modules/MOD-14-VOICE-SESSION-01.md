@@ -119,8 +119,7 @@ Agent、ModelGateway 或具体供应商。Fake 测试覆盖：
    私自解释为“只停止播报”。
 4. 未来 Runtime adapter 只能把 `consumeTranscript` 映射成显式 `task.submit`；
    `stopSpeaking` 不得接线到 `task.cancel`。真实任务取消仍使用现有公共取消 API。
-5. Desktop 尚未接线，真实麦克风验收尚未执行；在完成可见设备状态、真实 ASR/TTS、
-   打断与数据边界读回前，接口目录继续保持语音能力 `unavailable`。
+5. 撰写时 Desktop 尚未接线，真实麦克风验收尚未执行。2026-11-10 核对：主进程已装配 SIS/Live/唤醒宿主，但 `voice.start`/`voice.stop` wire 仍未公布，真机 ASR/TTS、打断与数据边界读回未完成，接口目录继续保持语音能力 `unavailable`。
 
 ## 2026-09-30：首版 Live 宿主与共享历史修复
 
@@ -168,7 +167,7 @@ apps/desktop/test/live-voice-history.test.mjs` 共 18/18 通过；`git diff --ch
 
 ## 2026-10-07：原面板与浏览器音频生命周期读回
 
-本节是现有 PR #302 的独立消费证据，尚未合入 `main@4b5ec61`，保留前述历史结论。
+本节是 PR #302 的消费证据。2026-11-10 核对：该 PR 已以 `cc64ebdf` 进入 main。下文保留当时的历史结论，不把合成音频记为真机验收。
 使用原 panel HTML、Renderer、bootstrap、CSS/CSP 和 Chromium 原生 WebAudio；
 IPC、Gateway 与桌面快照为显式 Fake；Live 采集回执为 Fake，PCM/WAV 为本地合成静音。
 下述采集链使用浏览器明确的 Fake 设备，MediaStreamTrack/AudioWorklet API 实际运行。

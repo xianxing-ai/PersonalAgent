@@ -1,6 +1,7 @@
 import {mkdirSync, readFileSync, statSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {CrewError} from './errors.js';
+import {parentReplanIntent, type CrewParentReplanIntent} from './parent-replan.js';
 import {CrewStoreConsentProvider, type CrewConsentProvider} from './consent.js';
 import {measureHandoffFile, sha256OfBytes} from './handoff.js';
 import {resolveWithinRoot, singleSegment} from './paths.js';
@@ -172,6 +173,33 @@ export class CrewKernel {
   interruptTask(input: CrewKernelInterruptInput): CrewTaskRecord {
     this.requireParentActor(input.actorId, 'interrupt child tasks');
     return this.store.cancelTask(input.taskId, input.reason);
+  }
+
+  /**
+   * 父根据自愈决定重新规划一个已失败的子任务。
+   * 只在意图是 dispatch 时派一个新任务；不重跑原来的驱动，不重放未知写入。
+   * 批准必须由调用方作为宿主事实传入，本方法不签发授权。
+   */
+  replanChildTask(input: CrewKernelReplanInput): CrewParentReplanResult {
+    this.requireParentActor(input.actorId, 'replan a failed child task');
+    const child = this.store.getTask(input.childTaskId);
+    if (!child) throw new CrewError('NOT_FOUND', `task ${input.childTaskId} does not exist`);
+    if (child.status !== 'failed') {
+      throw new CrewError('CONFLICT', `task ${child.taskId} is ${child.status}; only a failed child can be replanned`);
+    }
+    const intent = parentReplanIntent(input.actorId, input.decision);
+    if (intent.action !== 'dispatch') return {intent};
+    if (intent.parentTaskId !== child.taskId) {
+      throw new CrewError('INVALID_INPUT', 'replan decision childTaskId must match the failed child');
+    }
+    const task = this.dispatchTask({
+      actorId: input.actorId,
+      taskId: input.taskId,
+      parentTaskId: child.taskId,
+      assignedAgentId: input.assignedAgentId,
+      goal: intent.goal,
+    });
+    return {intent, task};
   }
 
   // ── 子执行：领取 / 回执 ───────────────────────────────────────────────
@@ -537,6 +565,19 @@ export interface CrewKernelInterruptInput {
   readonly actorId: string;
   readonly taskId: string;
   readonly reason: string;
+}
+
+export interface CrewKernelReplanInput {
+  readonly actorId: string;
+  readonly childTaskId: string;
+  readonly taskId: string;
+  readonly assignedAgentId: string;
+  readonly decision: unknown;
+}
+
+export interface CrewParentReplanResult {
+  readonly intent: CrewParentReplanIntent;
+  readonly task?: CrewTaskRecord;
 }
 
 export interface CrewKernelReceiptInput {

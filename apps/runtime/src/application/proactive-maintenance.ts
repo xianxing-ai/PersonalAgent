@@ -20,15 +20,18 @@ export function createRuntimeProactiveMaintenancePump(options:{
   recoverSources?(taskId:string,context:Context):Promise<{state:string;deliveries?:unknown[]}|undefined>;
   beforeNativeMaintenance?(taskId:string,context:Context):Promise<void>|void;
   afterNativeMaintenance?(taskId:string,context:Context):Promise<void>|void;
+  isPaused?():boolean;
   now?:()=>number;
 }) {
   if([options.getApplication,options.getWorkflow,options.resolveUserConversation].some(value=>typeof value!=='function'))
     throw Error('Original Runtime, proactive host and structural conversation resolver required');
   if(options.afterNativeMaintenance!==undefined&&typeof options.afterNativeMaintenance!=='function')throw Error('Native maintenance callback must be a function');
+  if(options.isPaused!==undefined&&typeof options.isPaused!=='function')throw Error('Operator pause check must be a function');
   const now=options.now??Date.now,terminal=new Set(['succeeded','failed','cancelled','cancelling']);
   const recovered=new Set<string>(),reentered=new Set<string>();
   let pending:Promise<unknown>|undefined,scanCursor:{beforeSequence:number;snapshotSequence:number}|undefined;
   async function run() {
+    if(options.isPaused?.())return {state:'paused',sessions:[]};
     const application=options.getApplication(),workflow=options.getWorkflow();
     if(!application?.runtime||!workflow||workflow.snapshot().state!=='configured_not_verified')return {state:'unavailable',sessions:[]};
     const runtime=application.runtime,status:Record<string,unknown>[]=[],conversations=new Set<string|undefined>();

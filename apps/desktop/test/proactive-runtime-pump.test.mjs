@@ -7,6 +7,15 @@ import {createDesktopProactiveRuntimePump} from '../electron/proactive-runtime-p
 
 const until=async predicate=>{for(let n=0;n<500;n++){if(await predicate())return;await new Promise(resolve=>setTimeout(resolve,5));}throw Error('Synthetic proactive pump state did not arrive');};
 
+test('shared maintenance preserves the operator pause before accessing the runtime',async()=>{
+  let paused=true,reads=0;
+  const pump=createDesktopProactiveRuntimePump({getApplication:()=>{reads++;return undefined;},getWorkflow:()=>undefined,
+    resolveUserConversation:()=>undefined,isPaused:()=>paused});
+  assert.equal((await pump.tick()).state,'paused');assert.equal(reads,0);
+  paused=false;
+  assert.equal((await pump.tick()).state,'unavailable');assert.equal(reads,1);
+});
+
 test('approved native maintenance runs before unavailable platform acquisition, but not after its original deadline',async()=>{
   let clock=Date.now();const actions=[],binding={taskId:'native',sourceTaskId:'source',imageBinding:'fixed',taskDeadline:new Date(clock+1000).toISOString()};
   const pump=createDesktopProactiveRuntimePump({getApplication:()=>({runtime:{}}),getWorkflow:()=>({

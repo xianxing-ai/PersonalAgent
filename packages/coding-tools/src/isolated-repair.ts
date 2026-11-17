@@ -160,7 +160,7 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     if(patch.expectedSha256===null){const destination=await codingRepairFilePath(p.workspace,patch.path,true);
       try{await lstat(destination);denied('New coding repair file already exists');}catch(error){if((error as {code?:string}).code!=='ENOENT')throw error;}
       return {path:patch.path,beforeSha256:null,afterSha256:repairSha256(patch.createText!),changed:true,previewText:patch.createText};}
-    const scope=createWorkspacePatchScopeTool({rootPath:p.workspace,allowedPaths:journal.allowedPaths,now});
+    const scope=createWorkspacePatchScopeTool({rootPath:p.workspace,allowedPaths:[patch.path],now});
     const assessed=await scope.execute({path:patch.path,expectedSha256:patch.expectedSha256,edits:patch.edits},context) as {verificationStatus?:string;scopeReady?:boolean;behaviorReviewed?:boolean;userChangesPreserved?:boolean};
     if(assessed.verificationStatus!=='matched'||assessed.scopeReady!==true||assessed.behaviorReviewed!==false||assessed.userChangesPreserved!==true)
       throw new ProtocolError('REVISION_CONFLICT','Workspace file content changed since the expected hash');

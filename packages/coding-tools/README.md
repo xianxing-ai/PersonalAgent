@@ -69,7 +69,7 @@ snapshot/verification 元数据；没有新 patch、命令或验证，不用恢�
 
 本包独立依赖安装和必要 contracts/models/agents/github/policy/tool-gateway/coding-tools 定向构建已完成，
 Node 24.15.0、TypeScript 编译通过。依用户“先完成全部代码，再统一验证”的最新优先级，
-`test/harness-trials.test.mjs` 的 13 项回归已保存但尚未执行；未声明实际 Runtime、云端或最终采用验收完成。
+`test/harness-trials.test.mjs` 随本包 `npm test` 一起执行；通过不等于 Runtime、云端或最终采用验收完成。
 
 Desktop 原 `WorkspaceConfigHost` 现公开稳定 `harnessRepairHost` deferred 代理和
 `readHarnessCandidateContext(context,scope)`。代理保留原 root/Node 身份、许可、任务绑定、代次与取消检查，

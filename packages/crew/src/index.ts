@@ -51,7 +51,20 @@ export {
   type CrewKernelWorkspaceInput,
   type CrewKernelResolveWorkspacePathInput,
   type CrewKernelPublishHandoffInput,
+  type CrewKernelReplanInput,
+  type CrewParentReplanResult,
 } from './kernel.js';
+export {
+  parentReplanIntent,
+  parseParentReplanDecision,
+  type CrewParentReplanDecision,
+  type CrewParentReplanIntent,
+  type CrewReplanClass,
+  type CrewReplanEffect,
+  type CrewReplanRisk,
+  type CrewReplanStrategy,
+  type CrewWriteStatus,
+} from './parent-replan.js';
 export {
   CrewStoreConsentProvider,
   type CrewConsentProvider,
@@ -95,3 +108,16 @@ export {
   type CrewRuntimeApiDriverOptions,
   type CrewRuntimeEvent,
 } from './runtime.js';
+export {
+  createCrewRuntimeTools,
+  CREW_DISPATCH_TOOL_NAME,
+  CREW_SEND_MESSAGE_TOOL_NAME,
+  CREW_LIST_AGENTS_TOOL_NAME,
+  CREW_INTERRUPT_TOOL_NAME,
+  CREW_TOOL_VERSION,
+  type CrewRegisteredTool,
+  type CrewRuntimeTools,
+  type CrewRuntimeToolsOptions,
+  type CrewToolContext,
+  type CrewToolDescriptor,
+} from './runtime-tools.js';

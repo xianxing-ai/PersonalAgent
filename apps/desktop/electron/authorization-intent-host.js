@@ -4,7 +4,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 export const AUTHORIZATION_INTENT_TOOL='desktop.authorization.intent';
 export const AUTHORIZATION_INTENT_ACTIONS=Object.freeze([
   'memory.save','memory.erase','memory.withdraw','memory.consume','experience.activate',
-  'skill.install','skill.enable','skill.uninstall','skill.run','reference.catalog','reference.source',
+  'skill.install','skill.enable','skill.uninstall','skill.run','plugin.install','plugin.enable','plugin.uninstall','reference.catalog','reference.source',
   'knowledge.session','knowledge.configure','knowledge.read','knowledge.catalog','workflow.enable','workflow.delete','facts.erase','feeds.classify',
   'mail.review.configure','computer.observation.configure',
   'remoteMcp.configure','knowledge.pair','voice.capture','developer.export','harness.export','workflow.export',

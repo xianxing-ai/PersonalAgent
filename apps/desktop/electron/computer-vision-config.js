@@ -39,7 +39,7 @@ const publicBinding=value=>({revision:value.revision,source:value.source,baseUrl
 const parseJson=(text,label)=>{try{return JSON.parse(text);}catch{fail('PROTOCOL_MISMATCH',`${label} JSON 无效，无法恢复视觉配置`);}};
 
 /** Main-only encrypted optional vision configuration. Saving never contacts a model. */
-export function createComputerVisionConfig({userData,safeStorage,createGateway,fetchImpl=globalThis.fetch,onUpdate=()=>{},profile='huawei_ict_agentarts'}){
+export function createComputerVisionConfig({userData,safeStorage,createGateway,fetchImpl=globalThis.fetch,onUpdate=()=>{},profile='huawei_ict_agentarts',beforeCall,onModelUsage}){
   const file=path.join(userData,'computer-vision-config.json'),pending=new Set(),calls=new AsyncLocalStorage();
   let value={version:1,revision:randomUUID(),enabled:false,source:'agentarts-proxy',baseUrl:'',model:'',apiKey:''},disposed=false,failure,egressHost;
   const diagnostic=(error,stage,secrets=[])=>{
@@ -140,6 +140,7 @@ export function createComputerVisionConfig({userData,safeStorage,createGateway,f
         let removeAbort=()=>{},timer;
         try{
           assertCall(context);
+          if (beforeCall) beforeCall({modelId: selected.model, models: [selected.model]});
           const interrupted=new Promise((_,reject)=>{
             const cancelled=()=>reject(new ProtocolError('CANCELLED','视觉分析已取消或配置已撤销'));
             controller.signal.addEventListener('abort',cancelled,{once:true});removeAbort=()=>controller.signal.removeEventListener('abort',cancelled);
@@ -147,7 +148,10 @@ export function createComputerVisionConfig({userData,safeStorage,createGateway,f
             if(controller.signal.aborted)cancelled();
           });
           const result=await Promise.race([calls.run(context,()=>gateway.complete({...request,signal:controller.signal})),interrupted]);
-          assertCall(context);return result;
+          try { onModelUsage?.({modelId: selected.model, usage: result?.usage, latencyMs: result?.latencyMs}); }
+          catch { /* A ledger failure must not rewrite a completed vision result. */ }
+          assertCall(context);
+          return result;
         }finally{clearTimeout(timer);removeAbort();sourceSignal.removeEventListener('abort',abort);pending.delete(controller);controller.abort('Vision call closed');}
       }});
     },
