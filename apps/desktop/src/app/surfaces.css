@@ -287,6 +287,10 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .task-progress[data-state="failed"] strong::before {background:var(--danger)}
 .task-progress:is([data-state="waiting_approval"],[data-state="waiting_reconciliation"]) strong::before {background:var(--warn)}
 .panel .task-progress[hidden],.workspace .task-progress[hidden] {display:none}
+.failure-repair {flex-direction:column}
+.failure-repair ol {margin:4px 0 6px;padding-left:1.1em}
+.failure-repair button {margin:0 8px 0 0}
+.failure-repair button:disabled {opacity:.6}
 @media(max-width:540px){.panel .task-progress,.workspace .task-progress {flex-direction:column;gap:4px}}
 .admin .task-record-title {display:block;max-width:28ch;font-weight:600;line-height:1.5;overflow-wrap:anywhere}
 .admin .task-record-id {display:block;margin-top:4px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
@@ -603,3 +607,9 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .connector-card footer {display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .connector-inline-action {margin-left:auto;height:24px;padding:0 10px;border-radius:8px;border:1px solid var(--glass-hairline);background:transparent;color:inherit;font-size:11px;cursor:pointer;opacity:.8}
 .connector-inline-action:hover {opacity:1}
+
+.activity-timeline {display:grid;gap:12px}
+.activity-item {display:grid;gap:6px;padding:14px 16px}
+.activity-meta,.activity-why {margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.activity-summary {margin:0;font-size:14px}
+.activity-actions {display:flex;gap:8px}
