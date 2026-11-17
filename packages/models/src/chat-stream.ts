@@ -107,12 +107,14 @@ async function readSse(response: Response, onDelta: ChatTransport['onDelta'], ra
   const reader = response.body?.getReader();
   if (!reader) throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream is missing a body');
   const decoder = new TextDecoder('utf-8', {fatal: false});
-  let buffer = '';
+  let lineBuffer = '';
+  let lastWasCr = false;
+  let eventLines: string[] = [];
   const streamed = {text: '', reasoning: ''};
   let finishReason = 'stop';
   let usage: ModelUsage | undefined;
   const consumeBlock = (block: string): void => {
-    const data = block.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
+    const data = block.split(/\r?\n|\r/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
     if (!data || data === '[DONE]') return;
     let parsed: unknown;
     try { parsed = JSON.parse(data); }
@@ -141,20 +143,50 @@ async function readSse(response: Response, onDelta: ChatTransport['onDelta'], ra
       }
     }
   };
+  const flushEvent = (): void => {
+    if (eventLines.length === 0) return;
+    const block = eventLines.join('\n');
+    eventLines = [];
+    consumeBlock(block);
+  };
+  const consumeText = (chunkText: string): void => {
+    for (let i = 0; i < chunkText.length; i += 1) {
+      const ch = chunkText[i]!;
+      if (ch === '\r') {
+        lastWasCr = true;
+        if (lineBuffer === '') flushEvent();
+        else {
+          eventLines.push(lineBuffer);
+          lineBuffer = '';
+        }
+      } else if (ch === '\n') {
+        if (lastWasCr) {
+          lastWasCr = false;
+          continue;
+        }
+        if (lineBuffer === '') flushEvent();
+        else {
+          eventLines.push(lineBuffer);
+          lineBuffer = '';
+        }
+      } else {
+        lastWasCr = false;
+        lineBuffer += ch;
+      }
+    }
+  };
   try {
     while (true) {
       const part = await race(reader.read());
       if (part.done) break;
-      buffer += decoder.decode(part.value, {stream: true});
-      let split = buffer.indexOf('\n\n');
-      while (split >= 0) {
-        consumeBlock(buffer.slice(0, split));
-        buffer = buffer.slice(split + 2);
-        split = buffer.indexOf('\n\n');
-      }
+      consumeText(decoder.decode(part.value, {stream: true}));
     }
-    buffer += decoder.decode();
-    if (buffer.trim()) consumeBlock(buffer);
+    consumeText(decoder.decode());
+    if (lineBuffer.length > 0) {
+      eventLines.push(lineBuffer);
+      lineBuffer = '';
+    }
+    flushEvent();
   } finally {
     try { reader.releaseLock(); } catch { /* The stream is already closed. */ }
   }

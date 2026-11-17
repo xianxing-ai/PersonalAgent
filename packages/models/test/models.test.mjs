@@ -201,3 +201,58 @@ test('Pangu streams reasoning and text, then falls back once when the endpoint r
   assert.equal(result.reasoning, '想过了');
   assert.deepEqual(second.map(item => item.kind), ['reasoning', 'text']);
 });
+
+test('SSE stream parser handles LF, CRLF, CR, and CR/LF split across chunk boundaries while preserving cancellation', async () => {
+  const frames = [
+    'data: {"choices":[{"delta":{"reasoning_content":"think-"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"hello "}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"world"},"finish_reason":"stop"}]}',
+    '',
+    'data: [DONE]',
+    '',
+  ];
+  for (const eol of ['\n', '\r\n', '\r']) {
+    const deltas = [];
+    const payload = frames.join(eol);
+    const provider = new PanguModelProvider(panguOptions(async () => new Response(payload, {
+      status: 200,
+      headers: {'content-type': 'text/event-stream'},
+    })));
+    const result = await provider.complete(request({onDelta: delta => deltas.push(delta)}));
+    assert.equal(result.response.text, 'hello world');
+    assert.equal(result.reasoning, 'think-');
+    assert.deepEqual(deltas, [
+      {kind: 'reasoning', text: 'think-'},
+      {kind: 'text', text: 'hello '},
+      {kind: 'text', text: 'world'},
+    ]);
+  }
+
+  // Split CRLF across arbitrary chunk boundaries (e.g. ending with \r and next chunk starting with \n\r and next with \n).
+  const splitChunks = [
+    'data: {"choices":[{"delta":{"reasoning_content":"step1"}}]}\r',
+    '\n\r',
+    '\ndata: {"choices":[{"delta":{"content":"hello "}}]}\r\n\r',
+    '\ndata: {"choices":[{"delta":{"content":"world"},"finish_reason":"stop"}]}\r',
+    '\n\r\ndata: [DONE]\r',
+    '\n\r\n',
+  ];
+  const encoder = new TextEncoder();
+  const splitDeltas = [];
+  const splitProvider = new PanguModelProvider(panguOptions(async () => new Response(new ReadableStream({
+    start(controller) {
+      for (const piece of splitChunks) controller.enqueue(encoder.encode(piece));
+      controller.close();
+    },
+  }), {status: 200, headers: {'content-type': 'text/event-stream'}})));
+  const splitResult = await splitProvider.complete(request({onDelta: delta => splitDeltas.push(delta)}));
+  assert.equal(splitResult.response.text, 'hello world');
+  assert.equal(splitResult.reasoning, 'step1');
+  assert.deepEqual(splitDeltas, [
+    {kind: 'reasoning', text: 'step1'},
+    {kind: 'text', text: 'hello '},
+    {kind: 'text', text: 'world'},
+  ]);
+});
