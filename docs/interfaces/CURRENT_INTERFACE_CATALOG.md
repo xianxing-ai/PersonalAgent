@@ -1,5 +1,7 @@
 # 当前接口目录与冻结登记
 
+> 待办条件更新（provisional）：MOD-20 的 todo.update 与 TodoUpdateInput 接受可选正整数 expectedRevision；与当前条目 revision 不一致时返回 REVISION_CONFLICT，保留原条目及提醒。未提供时保留旧行为。该检查仅覆盖现有单进程同步存储边界，不声明跨进程事务；F11 的工作流接线与真实服务验收另行交付。
+
 ## 2026-11-11 失败自愈决策（provisional）
 
 `@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
