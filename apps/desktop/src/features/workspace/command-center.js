@@ -79,8 +79,11 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     local.querySelector('[data-cc-local-title]').textContent=localView==='memory'?'知识与记忆':'任务记录';
     if(localView==='tasks'){
       const tasks=Array.isArray(data.tasks)?data.tasks:[];
-      const navBar='<div class="cc-local-actions"><button type="button" data-cc-admin-page="tasks">任务监控与证据</button><button type="button" data-cc-admin-page="activity">活动记录与撤销</button><button type="button" data-cc-admin-page="dashboard">个人数据看板</button><button type="button" data-cc-admin-page="usage">用量与预算</button><button type="button" data-cc-open-goals>目标与计划图</button></div>';
-      body.innerHTML=navBar+(tasks.length?`<ul class="cc-local-list">${tasks.slice().reverse().map(task=>`<li><button type="button" data-local-task="${escape(task.taskId)}"><strong>${escape(task.userMessage?.trim()||'未命名任务')}</strong><small>${escape(stateNames[task.state]??task.state)}</small></button></li>`).join('')}</ul>`:'<p>还没有任务。回到对话发出第一条消息。</p>');
+      const tasksHtml=tasks.length?`<ul class="cc-local-list">${tasks.slice().reverse().map(task=>`<li><button type="button" data-local-task="${escape(task.taskId)}"><strong>${escape(task.userMessage?.trim()||'未命名任务')}</strong><small>${escape(stateNames[task.state]??task.state)}</small></button></li>`).join('')}</ul>`:'<p>还没有任务。回到对话发出第一条消息。</p>';
+      const tasksSlot=body.querySelector('[data-cc-local-tasks]');
+      if(tasksSlot){tasksSlot.innerHTML=tasksHtml;return;}
+      const navBar='<div class="cc-local-actions"><button type="button" data-cc-admin-page="tasks">任务监控与证据</button><button type="button" data-cc-admin-page="activity">活动记录与撤销</button><button type="button" data-cc-admin-page="dashboard">个人数据看板</button><button type="button" data-cc-admin-page="usage">用量与预算</button><button type="button" data-cc-admin-page="pets">桌面宠物</button><button type="button" data-cc-open-goals>目标与计划图</button><button type="button" data-cc-workflow-catalog>28 图工作流目录</button></div>';
+      body.innerHTML=`${navBar}<div data-cc-catalog-result></div><div data-cc-local-tasks>${tasksHtml}</div>`;
       return;
     }
     const knowledge=data.knowledge;
@@ -95,6 +98,17 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     const adminBtn=event.target.closest('[data-cc-admin-page]');
     if(adminBtn){openAdmin(adminBtn.dataset.ccAdminPage);return;}
     if(event.target.closest('[data-cc-open-goals]')){root.querySelector('.cc-goals')?.click();return;}
+    if(event.target.closest('[data-cc-workflow-catalog]')){
+      const out=local.querySelector('[data-cc-catalog-result]');if(!out)return;
+      out.textContent='正在读取 28 图工作流目录…';
+      try{
+        const catalog=await invoke('workflow.image.catalog');
+        const workflows=Array.isArray(catalog?.workflows)?catalog.workflows:[];
+        out.innerHTML=`<p class="notice">设计工作流 ${escape(catalog?.designWorkflowCount??28)} 项 · 节点 ${escape(catalog?.designNodeCount??185)} 个 · 适配器要求 ${escape(catalog?.adapterRequirementCount??152)} 项</p>`+
+          (workflows.length?`<ul class="cc-local-list">${workflows.map(w=>`<li><div><strong>${escape(w.workflowId)} · ${escape(w.name)}</strong><br><small>${escape(w.nodeCount)} 节点 · 状态：${escape(w.state)} · 不可用原因：${escape((w.unavailableReasons??[]).join('、')||'无')}</small></div></li>`).join('')}</ul>`:`<p class="notice">${escape(catalog?.unavailableReason||'当前模式未返回工作流列表')}</p>`);
+      }catch(error){out.textContent=error?.message??'工作流目录读取失败';}
+      return;
+    }
     if(event.target.closest('[data-cc-watch-check]')){
       const out=local.querySelector('[data-cc-watch-result]');if(!out)return;
       out.textContent='正在读取知识关注状态…';
