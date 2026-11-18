@@ -467,7 +467,7 @@ export interface RuntimeApplicationOptions { path: string; now?: () => Date; idF
   /** Trusted conversation question host. Answers are not execution grants. */
   requestToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;argumentsDigest:string;
     scopes:readonly string[];deadline:string;signal:AbortSignal})=>Promise<'allow_once'|'deny'>;
-  requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;deadline:string;signal:AbortSignal})=>boolean;
+  requiresToolAuthorization?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:'read'|'local_write'|'external_write';deadline:string;signal:AbortSignal})=>boolean;
   /** Composition-only tools require a persisted original submitHostToolTask intent, even if a model guesses the name. */
   hostOnlyTools?:readonly string[];
   beforeToolAuthorize?:(input:{taskId:string;runId:string;toolName:string;toolVersion:string;sideEffect:ToolDescriptor['sideEffect'];arguments:unknown;deadline:string;signal:AbortSignal})=>void|Promise<void>;
@@ -1009,7 +1009,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         }
         let routineEligible = automaticTools.has(JSON.stringify([tool.name, tool.version]));
         const authorizationRequired = Boolean(options.requestToolAuthorization && options.requiresToolAuthorization?.({taskId:invocation.taskId,runId:ref,
-          toolName:tool.name,toolVersion:tool.version,deadline:invocation.deadline,signal:invocation.signal}));
+          toolName:tool.name,toolVersion:tool.version,sideEffect:tool.sideEffect,deadline:invocation.deadline,signal:invocation.signal}));
         if (authorizationRequired) routineEligible = false;
         let commitRepairBlocked = false;
         if (tool.name === 'cognition.commit_repair') {
