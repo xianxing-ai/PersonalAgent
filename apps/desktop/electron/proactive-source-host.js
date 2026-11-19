@@ -24,7 +24,7 @@ function defaults() {
 
 /** Host assembly for the cognition trigger. Reads only public calendar.events and mail.inbox tools. */
 export function createProactiveSourceHost({getApplication, getTools, submitTask, namespace, scan = createNodeReadOnlyDirectoryScan(),
-  chooser, risk, now = Date.now, onUpdate = () => {}}) {
+  chooser, risk, now = Date.now, onUpdate = () => {}, onActivity}) {
   if (typeof getApplication !== 'function' || typeof getTools !== 'function' || typeof submitTask !== 'function' || !namespace) {
     throw new Error('主动任务宿主缺少运行时端口');
   }
@@ -55,11 +55,30 @@ export function createProactiveSourceHost({getApplication, getTools, submitTask,
     if (!application?.runtime) throw new Error('运行时尚未就绪');
     return application.runtime;
   }
+  function emitActivity(outcome) {
+    if (typeof onActivity !== 'function' || !outcome?.eventId) return;
+    if (!['calendar', 'mail', 'file'].includes(outcome.source)) return;
+    const riskLevel = outcome.kind === 'calendar.rescheduled'
+      || outcome.status === 'waiting_approval' || outcome.status === 'review' ? 'high' : 'low';
+    try {
+      // Never forward SourceChangeEvent.summary or message text into the activity ledger.
+      onActivity({
+        at: new Date(now()).toISOString(),
+        eventId: outcome.eventId,
+        source: outcome.source,
+        ...(outcome.kind ? {kind: outcome.kind} : {}),
+        status: outcome.status,
+        ...(outcome.ruleId ? {ruleId: outcome.ruleId} : {}),
+        risk: riskLevel,
+      });
+    } catch { /* Activity recording never interrupts proactive source polling. */ }
+  }
   function remember(outcomes) {
     const rows = outcomes.filter(item => item.eventId).map(item => ({
       at: new Date(now()).toISOString(), source: item.source, status: item.status, summary: item.kind ?? item.status,
     }));
     settings.recent = [...rows, ...settings.recent].slice(0, 8);
+    for (const item of outcomes) emitActivity(item);
   }
   function ports() {
     const invoke = async (name, input, context) => {
@@ -140,8 +159,9 @@ export function createProactiveSourceHost({getApplication, getTools, submitTask,
       let approval;
       try { approval = current.getApproval(record.approvalId); } catch { continue; }
       if (approval.state === 'pending' || approval.argumentsDigest !== record.argumentsDigest) continue;
-      await active.resumeApproved({eventId, approvalId: record.approvalId, revision: record.revision,
+      const resumed = await active.resumeApproved({eventId, approvalId: record.approvalId, revision: record.revision,
         state: approval.state === 'allowed' ? 'allowed' : 'denied', argumentsDigest: record.argumentsDigest, signal, deadline});
+      if (resumed) emitActivity(resumed);
       const gate = settings.gates[eventId];
       if (gate) {
         try { current.requestCancel(gate.taskId, '主动任务审批已处理'); } catch { /* 审批载体取消失败不重放业务任务 */ }
