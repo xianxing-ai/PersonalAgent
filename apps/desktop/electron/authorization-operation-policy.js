@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {ProtocolError} from '@personal-agent/contracts';
 
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 // A task may reuse reads and ordinary edits inside its already selected local
@@ -12,6 +13,47 @@ export function taskOperationBinding(source) {
   const readOnly=source.scopes.length>0&&source.scopes.every(scope=>/:(?:read|list|search|query|status)$/u.test(scope));
   return digest({toolName:source.toolName,toolVersion:source.toolVersion,scopes:[...source.scopes].sort(),
     ...(!readOnly&&!localTaskTools.has(source.toolName)?{argumentsDigest:source.argumentsDigest}:{})});
+}
+
+// These are the registered connector inputs, not model-selected "important" fields.
+// Optional fields remain visible when supplied. Unknown external writes show every
+// original argument locally; injected credentials never belong in this projection.
+const contentFields={
+  'mail.send':['to','subject','text','?account'],
+  'mail.archive':['folder','uid','uidValidity','messageId','?account'],
+  'github.pr.create':['repo','title','body','head','base','expectedHeadSha','?draft'],
+  'github.issue.comment':['repo','number','body'],
+  'github.pr.comment':['repo','number','body'],
+  'github.pr.review.comment':['repo','number','body','commitId','path','line','?expectedBaseSha','?side'],
+  'github.issue.label':['repo','number','labels','expectedUpdatedAt'],
+  'github.registered_merge':['repo','prNumber','headSha','baseSha','mergeMethod'],
+  'github.registered_close_issue':['repo','prNumber','headSha','baseSha','issueId','mergedSha','expectedUpdatedAt','snapshotDigest'],
+  'workspace.git.push':['repository','expectedHeadSha','?publication'],
+};
+const ordinaryExternalTools=new Set(['calendar.create','calendar.update','calendar.cancel','todo.create','todo.update']);
+const desktopWrites=new Set(['activate','click','type','set_value','invoke','select','focus','scroll','move','drag','shortcut','press']
+  .map(name=>'computer.desktop.'+name));
+const credentialField=/(?:password|passwd|secret|token|credential|api[_-]?key|authorization|private[_-]?key|access[_-]?key)/iu;
+function containsCredential(value) {
+  return value!==null&&typeof value==='object'&&Object.entries(value).some(([name,item])=>credentialField.test(name)||containsCredential(item));
+}
+export function requiresContentConfirmation(source) {
+  return Object.hasOwn(contentFields,source.toolName)||desktopWrites.has(source.toolName)
+    ||source.sideEffect==='external_write'&&!ordinaryExternalTools.has(source.toolName)
+    ||/(?:^|[.:_])(?:send|publish|delete|remove|pay|transfer|grant|revoke)(?:$|[.:_])/u.test(source.toolName);
+}
+export function operationContentConfirmation(source) {
+  if(!requiresContentConfirmation(source))return undefined;
+  const fields=Object.hasOwn(contentFields,source.toolName)?contentFields[source.toolName]:undefined;
+  const args=source.arguments;
+  if(!args||typeof args!=='object'||Array.isArray(args)||containsCredential(args)
+    ||fields&&(fields.some(field=>!field.startsWith('?')&&!Object.hasOwn(args,field))
+      ||Object.keys(args).some(name=>!fields.some(field=>field.replace(/^\?/u,'')===name))))
+    throw new ProtocolError('UNAUTHORIZED','无法安全完整展示本次操作内容，未获允许');
+  const projected=fields?Object.fromEntries(fields.map(field=>field.replace(/^\?/u,''))
+    .filter(field=>Object.hasOwn(args,field)).map(field=>[field,args[field]])):args;
+  const text=`请确认本次操作 ${source.toolName} 的完整目标与内容（文本中的转义字符按原值保留）：\n${JSON.stringify(projected,null,2)}`;
+  return {digest:digest(text),text};
 }
 
 const clean=value=>typeof value==='string'?value.replace(/[\x00-\x1f]/gu,' ').trim().slice(0,160):'';

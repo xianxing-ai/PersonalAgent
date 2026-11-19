@@ -64,6 +64,7 @@ test('Windows cleanup control pins the root handle, executable and birth time be
     assert.equal(options.shell,false);assert.equal(options.windowsHide,true);assert.equal(options.timeout,15000);
     assert.equal(options.env.PATH,undefined);assert.equal(options.env.PA_PRIVATE_TOKEN,undefined);
     const script=Buffer.from(args[4],'base64').toString('utf16le');
+    assert.ok(script.indexOf('[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)')<script.indexOf('Write-Output'));
     assert.ok(script.indexOf('$null=$owned.Handle')<script.indexOf('taskkill.exe'));
     assert.ok(script.indexOf('$ticks -ne $binding.startTicks')<script.indexOf('taskkill.exe'));
     assert.ok(script.indexOf('[string]::Equals($image,$binding.executablePath')<script.indexOf('taskkill.exe'));

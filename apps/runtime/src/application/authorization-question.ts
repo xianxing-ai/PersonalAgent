@@ -17,6 +17,8 @@ export interface AuthorizationQuestionRequest {
   sideEffect?:'read'|'local_write'|'external_write';
   /** Trusted workflow grouping, never accepted from Renderer or a model proposal. */
   taskConsent?:{taskId:string;bindingDigest:string;summary:string;mode:'read-only'|'workspace-write';requiresNative?:boolean};
+  /** Complete trusted-host projection of dangerous content. Each operation needs an explicit decision. */
+  contentConfirmation?:{digest:string;text:string};
 }
 export interface AuthorizationSandbox {
   ref:string;label:string;mode:'read-only'|'workspace-write'|'full-access';revision:number;available:boolean;reason?:string;
@@ -41,6 +43,7 @@ interface Question {
   /** A fresh exact receipt from the user's selected policy, not a UI question. */
   automatic?:'full-access'|'low-risk';
   taskConsent?:AuthorizationQuestionRequest['taskConsent'];
+  contentConfirmation?:AuthorizationQuestionRequest['contentConfirmation'];
 }
 interface Rule {ruleId:string;revision:number;active:boolean;toolName:string;toolVersion:string;
   sandboxRef:string;sandboxRevision:number;sandboxLabel:string;requirements:AuthorizationRequirement[];summary:string;}
@@ -72,7 +75,8 @@ const requirementRule=(requirement:AuthorizationRequirement)=>({requirementId:re
 const reusable=(requirements:AuthorizationRequirement[])=>requirements.every(item=>hash(item.ruleBindingDigest));
 const taskRule=(requirements:AuthorizationRequirement[])=>digest(requirements.map(item=>({...requirementRule(item),
   ruleBindingDigest:item.taskBindingDigest??item.ruleBindingDigest})).sort((a,b)=>a.requirementId.localeCompare(b.requirementId)));
-const canReuse=(question:Pick<Question,'requirements'|'taskConsent'>)=>Boolean(question.taskConsent)||reusable(question.requirements);
+const canReuse=(question:Pick<Question,'requirements'|'taskConsent'|'contentConfirmation'>)=>!question.contentConfirmation
+  &&(Boolean(question.taskConsent)||reusable(question.requirements));
 const consentNative=(native:AuthorizationNativeExecution|undefined)=>native?.required?native:{required:false};
 const ELEVATED_SCOPE = /(?:write|execute|verify|patch|send|create|delete|update|erase|install|enable|uninstall|configure|withdraw|respond)/iu;
 const READ_SCOPE = /(?:^|[.:])(?:read|list|search|get|status)$/iu;
@@ -133,13 +137,15 @@ export class AuthorizationQuestions {
     return {taskId:question.taskId,proposalId:question.proposalId,runId:question.runId,toolName:question.toolName,
       toolVersion:question.toolVersion,argumentsDigest:question.argumentsDigest,deadline:question.deadline,
       ...(question.sideEffect!==undefined?{sideEffect:question.sideEffect}:{}),
-      requirements:structuredClone(question.requirements),...(question.taskConsent?{taskConsent:structuredClone(question.taskConsent)}:{})};
+      requirements:structuredClone(question.requirements),...(question.taskConsent?{taskConsent:structuredClone(question.taskConsent)}:{}),
+      ...(question.contentConfirmation?{contentConfirmation:structuredClone(question.contentConfirmation)}:{})};
   }
   private normalize(request:AuthorizationQuestionRequest):Omit<AuthorizationQuestionRequest,'signal'> {
     return {taskId:request.taskId,proposalId:request.proposalId,runId:request.runId,toolName:request.toolName,
       toolVersion:request.toolVersion,argumentsDigest:request.argumentsDigest,deadline:request.deadline,
       ...(request.sideEffect!==undefined?{sideEffect:request.sideEffect}:{}),
       ...(request.taskConsent?{taskConsent:structuredClone(request.taskConsent)}:{}),
+      ...(request.contentConfirmation?{contentConfirmation:structuredClone(request.contentConfirmation)}:{}),
       requirements:request.requirements.map(requirement=>({requirementId:requirement.requirementId,kind:requirement.kind,
         scopes:[...requirement.scopes],bindingDigest:requirement.bindingDigest,summary:requirement.summary,
         ...(requirement.ruleBindingDigest!==undefined?{ruleBindingDigest:requirement.ruleBindingDigest}:{}),
@@ -165,6 +171,10 @@ export class AuthorizationQuestions {
       ||!request.signal||request.signal.aborted||!Array.isArray(request.requirements)||request.requirements.length<1||request.requirements.length>24)
       throw new ProtocolError('INVALID_ARGUMENT','Invalid authorization question binding');
     const ids=new Set<string>();
+    if(request.contentConfirmation&&(!hash(request.contentConfirmation.digest)||typeof request.contentConfirmation.text!=='string'
+      ||!request.contentConfirmation.text.length||request.contentConfirmation.text.length>1_000_000
+      ||request.contentConfirmation.digest!==digest(request.contentConfirmation.text)))
+      throw new ProtocolError('INVALID_ARGUMENT','Invalid trusted content confirmation');
     if(request.taskConsent&&(!text(request.taskConsent.taskId)||!hash(request.taskConsent.bindingDigest)
       ||!text(request.taskConsent.summary)||!['read-only','workspace-write'].includes(request.taskConsent.mode)
       ||request.taskConsent.requiresNative!==undefined&&typeof request.taskConsent.requiresNative!=='boolean'))
@@ -183,7 +193,7 @@ export class AuthorizationQuestions {
       this.validate(request);
       if(this.closed)fail('当前对话授权卡不可用，操作未获允许');
       const signal=request.signal,input=this.normalize(request),binding=this.options.readBinding(input),selected=this.profile();
-      if(selected.mode!=='full-access'&&!this.options.available())fail('当前对话授权卡不可用，操作未获允许');
+      if((input.contentConfirmation||selected.mode!=='full-access')&&!this.options.available())fail('当前对话授权卡不可用，操作未获允许');
       const profileRef=this.options.resolveProfile?.(input,selected)??selected.ref;
       const resolved=this.options.profiles.find(profile=>profile.ref===profileRef);
       if(!resolved||profileRef!==selected.ref&&resolved.mode==='full-access')fail('不允许自动扩大为完全访问');
@@ -196,9 +206,9 @@ export class AuthorizationQuestions {
       const question:Question={questionId:randomUUID(),revision:1,state:'pending',...structuredClone(input),
         expiresAt:new Date(Math.min(Date.parse(request.deadline),Date.parse(decisionDeadline))).toISOString(),
         conversationId:binding.conversationId,sandbox:profile,baseSandboxRef:selected.ref,ownerBinding:binding.digest,consumed:{}};
-      if(selected.mode==='full-access'&&profile.mode==='full-access'){
+      if(!question.contentConfirmation&&selected.mode==='full-access'&&profile.mode==='full-access'){
         question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='full-access';
-      } else if(question.state==='pending' && selected.lowRiskAuto===true && profile.ref===selected.ref
+      } else if(!question.contentConfirmation && question.state==='pending' && selected.lowRiskAuto===true && profile.ref===selected.ref
         && profile.native?.required!==true && isLowRiskAuthorizationRequest(input)){
         question.state='allowed';question.decision='allow_once';question.receiptRef=randomUUID();question.automatic='low-risk';
       }
@@ -210,7 +220,7 @@ export class AuthorizationQuestions {
           &&item.sandboxRef===profile.ref&&item.sandboxRevision===profile.revision
           &&question.requirements.every(requirement=>hash(requirement.ruleBindingDigest))
           &&digest(item.requirements.map(requirementRule))===digest(question.requirements.map(requirementRule)));
-        if(question.state==='pending'&&rule){question.state='allowed';question.decision='allow_always';question.receiptRef=randomUUID();}
+        if(question.state==='pending'&&!question.contentConfirmation&&rule){question.state='allowed';question.decision='allow_always';question.receiptRef=randomUUID();}
         if(question.state==='pending'&&canReuse(question)){
           const consent=state.questions.find(item=>this.taskConsents.has(item.questionId)&&!this.taskConsents.get(item.questionId)!.aborted
             &&item.state==='allowed'&&item.decision==='allow_task'&&item.conversationId===question.conversationId
@@ -260,7 +270,7 @@ export class AuthorizationQuestions {
       if(!item||item.conversationId!==conversationId)fail('此请求不属于当前对话');
       if(item!.revision!==input.expectedRevision||item!.state!=='pending')throw new ProtocolError('REVISION_CONFLICT','授权请求已处理或已变化');
       if(!this.current(item!)){item!.state=this.now()>=Date.parse(item!.expiresAt)?'expired':'stale';item!.revision++;return item!;}
-      const canAlways=item!.requirements.every(requirement=>hash(requirement.ruleBindingDigest));
+      const canAlways=!item!.contentConfirmation&&item!.requirements.every(requirement=>hash(requirement.ruleBindingDigest));
       if(input.decision==='allow_always'&&!canAlways)fail('此请求不能保存为永久规则');
       if(input.decision==='allow_task'&&!canReuse(item!))fail('此请求尚未绑定可复用的任务范围');
       item!.state=input.decision==='deny'?'denied':'allowed';item!.decision=input.decision;item!.revision++;
@@ -328,6 +338,7 @@ export class AuthorizationQuestions {
   deriveConsumedResult(parentReceipt:AuthorizationQuestionReceipt,parentRequest:AuthorizationQuestionRequest,requirementId:string,
     consumerId:string,request:AuthorizationQuestionRequest,assertCurrent:()=>boolean):AuthorizationQuestionReceipt {
     this.assertConsumedResult(parentReceipt,parentRequest,requirementId,consumerId);this.validate(request);
+    if(request.contentConfirmation)fail('本次操作内容需要重新明确确认');
     if(Date.parse(request.deadline)>Date.parse(parentRequest.deadline)||request.toolName!==parentRequest.toolName
       ||request.toolVersion!==parentRequest.toolVersion||request.requirements.length!==parentRequest.requirements.length
       ||request.requirements.some(item=>{
@@ -353,10 +364,10 @@ export class AuthorizationQuestions {
     return this.read().questions.filter(question=>!question.automatic&&!question.derivedFrom&&!question.taskConsentFrom&&(!conversationId||question.conversationId===conversationId)).map(question=>({
       questionId:question.questionId,taskId:question.taskId,conversationId:question.conversationId,sourceApprovalId:question.runId,
       revision:question.revision,state:question.state,
-      title:'同意这项操作？',description:(question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='intent')?.summary
+      title:question.contentConfirmation?'确认本次操作的目标与完整内容':'同意这项操作？',description:(question.contentConfirmation?.text??question.taskConsent?.summary??question.requirements.find(item=>item.requirementId==='intent')?.summary
         ??question.requirements.find(item=>item.requirementId==='tool')?.summary??'完成这项操作。')
         +(question.requirements.some(item=>item.kind==='export')&&!/云端|模型/u.test(question.taskConsent?.summary??'')?' 必要结果将用于本次云端对话。':''),toolName:question.toolName,
-      expiresAt:question.expiresAt,canAlways:question.requirements.every(requirement=>hash(requirement.ruleBindingDigest)),
+      expiresAt:question.expiresAt,canAlways:!question.contentConfirmation&&question.requirements.every(requirement=>hash(requirement.ruleBindingDigest)),
       canReuseTask:canReuse(question),suggestedDecision:canReuse(question)?'allow_task' as const:'allow_once' as const,
       requirements:question.requirements.map(({requirementId,kind,summary,scopes})=>({requirementId,kind,summary,scopes:[...scopes]})),
       sandbox:{kind:'application_policy' as const,label:question.sandbox.label,mode:question.sandbox.mode,revision:question.sandbox.revision,
