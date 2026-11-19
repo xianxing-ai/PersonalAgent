@@ -370,7 +370,7 @@ const runtimeStartup = createDeferredRuntimeStartup({
 let liveVoice;
 let voiceStartupHost, voiceStartupDisposal, voiceStartupDisposed = false;
 let wakeVoice;
-let wakePreference = {enabled: false, duration: 'untilQuit'};
+let wakePreference = {enabled: false, duration: 'hours2'};
 let wakePreferenceLoaded = false;
 let panelBriefingRequested = false;
 let wakeQuitHandled = false;
@@ -1138,13 +1138,17 @@ function reportQuitFailure(message) {
   publish();
 }
 
-async function stopPanelVoice() {
-  const results = await Promise.allSettled([stopWakeVoice()]);
+async function stopPanelVoice({preserveWake = false} = {}) {
+  const keepWake = preserveWake === true
+    && wakeVoice?.snapshot()?.phase === 'listening'
+    && (typeof currentWakePreference !== 'function' || currentWakePreference().enabled === true);
+  const results = keepWake ? [] : await Promise.allSettled([stopWakeVoice()]);
   if (voiceInput?.hasActive()) {
     results.push(...await Promise.allSettled([voiceInput.cancelCapture(panel?.webContents.id)]));
   }
   results.push(...await Promise.allSettled([
-    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(), microphoneCaptureHost?.revoke(),
+    voiceStartupHost?.stop(), liveVoice?.stop(), sisPlaybackHost?.stop(),
+    ...(keepWake ? [] : [microphoneCaptureHost?.revoke()]),
   ]));
   if (results.some(result => result.status === 'rejected') || liveVoice?.hasActive()) throw Error('语音资源释放未确认');
   publish();
@@ -4578,7 +4582,26 @@ async function action(event, name, payload) {
     if (name === 'voice.play') {
       await stopWakeVoice();
       if (wakeVoice?.hasActive()) throw Error('请先关闭唤醒');
-      return voiceInput.playReply(senderId);
+      if (payload === undefined) return voiceInput.playReply(senderId);
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw Error('语音播报参数无效');
+      const keys = Object.keys(payload);
+      if (keys.length !== 1 || !['taskId', 'messageId'].includes(keys[0])) throw Error('语音播报参数无效');
+      let speechText = '';
+      if (typeof payload.taskId === 'string' && payload.taskId.trim()) {
+        const task = tasks.get(payload.taskId);
+        if (!task || taskSurface(task) !== 'panel' || task.bodyWithheld || task.outputTruncated) {
+          throw Error('该任务当前没有可播报的回答');
+        }
+        speechText = resultText(task.resultSummary, taskResultMetadata(task)) ?? '';
+      } else if (typeof payload.messageId === 'string' && payload.messageId.trim()) {
+        const message = conversations?.messages?.get(payload.messageId);
+        if (!message || message.role !== 'assistant' || typeof message.text !== 'string') {
+          throw Error('该消息没有可播报的回答');
+        }
+        speechText = message.text;
+      }
+      if (!speechText.trim()) throw Error('没有可播报的回答正文');
+      return voiceInput.speakText(senderId, speechText);
     }
     throw Error('Unsupported voice action');
   }
@@ -5305,7 +5328,7 @@ app.whenReady().then(async () => {
   orb.on('closed', () => orbHitTest.stop());
   const panelMaterial=bindPanelMaterial(panel, nativeTheme);
   panel.on('close', event => { if (!app.isQuitting) { event.preventDefault(); void hidePanel().catch(reportPanelVoiceFailure); } });
-  panel.on('hide', () => {void stopPanelVoice().catch(reportPanelVoiceFailure);});
+  panel.on('hide', () => {void stopPanelVoice({preserveWake: true}).catch(reportPanelVoiceFailure);});
   panel.webContents.once('did-finish-load', () => {void voiceStartupHost?.start().catch(reportPanelVoiceFailure);});
   powerMonitor.on('suspend', () => {void voiceStartupHost?.suspend().catch(reportPanelVoiceFailure);});
   powerMonitor.on('resume', () => {void voiceStartupHost?.resume().catch(reportPanelVoiceFailure);});

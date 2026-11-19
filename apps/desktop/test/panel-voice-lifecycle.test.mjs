@@ -193,3 +193,22 @@ test('actual Live release unknown rejects aggregate panel stop even when microph
     assert.ok(f.calls.includes('playback-stop'));
   } finally {await live.dispose(); await f.input.dispose();}
 });
+
+test('panel hide preserves active wake lease while stopping panel playback and dictation (L-07)', async () => {
+  const f = fixture();
+  let wakeDisabled = 0;
+  f.context.wakeVoice = {
+    snapshot: () => ({phase: 'listening'}),
+    hasActive: () => false,
+    async disable() { wakeDisabled++; f.calls.push('wake-disable'); },
+  };
+  await f.context.stopPanelVoice({preserveWake: true});
+  assert.equal(wakeDisabled, 0, 'Hiding panel must not stop an active wake lease');
+  assert.equal(f.calls.includes('panel-revoke'), false, 'Hiding panel must not revoke wake microphone lease');
+  assert.ok(f.calls.includes('live-stop') && f.calls.includes('playback-stop'));
+
+  await f.context.stopPanelVoice();
+  assert.equal(wakeDisabled, 1, 'Navigation/destroy stopPanelVoice must still stop wake');
+  assert.ok(f.calls.includes('panel-revoke'));
+  await f.input.dispose();
+});
