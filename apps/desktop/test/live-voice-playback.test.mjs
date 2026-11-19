@@ -97,6 +97,17 @@ test('late source callbacks and audio arriving during close cannot report a comp
   closing.resolve(); await stopping;
 });
 
+test('playback returns the current drain identity only after its audio ends', async () => {
+  const f = fixture();
+  await f.command({type: 'start', token: 'first'});
+  await f.command({type: 'audio', token: 'first', data: Uint8Array.of(0, 0)});
+  await f.command({type: 'drain', token: 'first', drainId: 'current'});
+  assert.equal(f.reports.some(value => value.type === 'drained'), false);
+  f.contexts[0].source.onended();
+  assert.deepEqual(f.reports.at(-1), {token: 'first', type: 'drained', drainId: 'current'});
+  await f.command({type: 'stop', token: 'first'});
+});
+
 test('disposed output ignores queued commands and closes the owned device once', async () => {
   const f = fixture();
   await f.command({type: 'start', token: 'first'});
