@@ -35,6 +35,7 @@ function windowsOwnedProcess(binding,terminate=false,run=spawnSync){
   assert.ok(Number.isSafeInteger(binding.pid)&&binding.pid>0&&binding.pid<=0xffffffff,'valid owned PID required');
   const encoded=Buffer.from(JSON.stringify(binding),'utf8').toString('base64');
   const script=`$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 $binding=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')) | ConvertFrom-Json
 $owned=$null
 try {

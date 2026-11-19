@@ -12,6 +12,13 @@ const question=(extra={})=>({questionId:'synthetic-question',taskId:'task',conve
     {requirementId:'export',kind:'export',summary:'本次结果发送到 AgentArts',scopes:['cloud:context']}],
   sandbox:{label:'Synthetic 只读沙箱',mode:'read-only',revision:3},...extra});
 const deferred=()=>{let resolve,reject;return {promise:new Promise((yes,no)=>{resolve=yes;reject=no;}),resolve,reject};};
+
+test('the existing card displays the complete long content safely with only an exact single-use action',()=>{
+  const description='to: recipient@example.test\n'+ 'full body '.repeat(200)+'<script>TAIL</script>';
+  const html=authorizationQuestionMarkup(question({description,canAlways:false,canReuseTask:false,suggestedDecision:'allow_once'}),{now:instant});
+  assert.ok(html.includes(description.replace(/</g,'&lt;').replace(/>/g,'&gt;')));
+  assert.doesNotMatch(html,/<script>|data-authorization-decision="allow_task"|data-authorization-decision="allow_always"/);
+});
 test('Synthetic first pending question requests discovery once without taking focus or moving history on progress',t=>{
   const f=authorizationDom(),announced=[];const controls=mountAuthorizationQuestionCards(f.root,{now:()=>instant,onPending:value=>announced.push(value)});
   t.after(()=>controls.dispose());const focus=f.document.activeElement;
