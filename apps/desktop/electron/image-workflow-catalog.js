@@ -1,6 +1,7 @@
 import {isDeepStrictEqual} from 'node:util';
 import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {getOwnedWorkflowTemplates,getOwnedWorkflowDesignCoverage,getOwnedWorkflowAdapterRequirements} from '@personal-agent/agentarts';
+import {DEFAULT_WORKFLOW_ENTRY_BINDINGS,normalizeWorkflowEntryBindings} from './workflow-graph-composition.js';
 
 const NAME='workflow.image.catalog',VERSION='1.0.0',SCOPE='workflow:catalog';
 const ids=Array.from({length:28},(_,index)=>'F'+String(index+1).padStart(2,'0'));
@@ -8,10 +9,15 @@ const inputSchema={type:'object',properties:{workflowId:{type:'string',enum:ids}
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
 
 /** Read-only public design/registration inventory. Never invokes a graph or readiness provider. */
-export function createImageWorkflowCatalogHost({getApplication,now=Date.now}={}) {
+export function createImageWorkflowCatalogHost({getApplication,readWorkflowEntries,now=Date.now}={}) {
   if(typeof getApplication!=='function')fail('INVALID_ARGUMENT','Original application reader is required');
+  if(readWorkflowEntries!==undefined&&typeof readWorkflowEntries!=='function')fail('INVALID_ARGUMENT','Workflow entry reader must be a function');
   const templates=getOwnedWorkflowTemplates(),coverage=getOwnedWorkflowDesignCoverage(),requirements=getOwnedWorkflowAdapterRequirements();
   let closed=false;
+  function currentEntries() {
+    if(!readWorkflowEntries)return DEFAULT_WORKFLOW_ENTRY_BINDINGS;
+    return normalizeWorkflowEntryBindings(readWorkflowEntries());
+  }
   function current(scope) {
     if(closed||scope.signal?.aborted)fail('CANCELLED','Workflow catalog request ended');
     const application=getApplication();
@@ -27,19 +33,21 @@ export function createImageWorkflowCatalogHost({getApplication,now=Date.now}={})
     validateToolValue(inputSchema,input);
     // Only compare public required names/versions. Never project arbitrary registry metadata.
     const registered=application.tools.list();
+    const entries=currentEntries();
     const has=(name,version)=>registered.some(tool=>tool.name===name&&(version===undefined||tool.version===version));
     const workflows=templates.filter(template=>!input.workflowId||template.workflowId===input.workflowId).map(template=>{
       const adapters=requirements.filter(item=>item.workflowId===template.workflowId).map(item=>({nodeId:item.nodeId,kind:item.kind,
         toolName:item.toolName,version:item.toolVersion,state:has(item.toolName,item.toolVersion)?'registered_requires_task_authorization':'unavailable'}));
       const requiredTools=[...new Set(template.nodes.flatMap(node=>node.capabilities.filter(cap=>cap.kind==='tool').map(cap=>cap.name)))].map(toolName=>({toolName,
         state:has(toolName)?'registered_requires_task_authorization':'unavailable'}));
-      const entryName=template.workflowId==='F15'?'coding.repair.workflow':undefined,entryRegistered=!!entryName&&has(entryName,'1.0.0');
+      const declaredEntry=entries[template.workflowId];
+      const entryName=declaredEntry?.name,entryVersion=declaredEntry?.version??'1.0.0',entryRegistered=!!entryName&&has(entryName,entryVersion);
       const missingAdapterNames=adapters.filter(item=>item.state==='unavailable').map(item=>item.toolName);
       const missingToolNames=requiredTools.filter(item=>item.state==='unavailable').map(item=>item.toolName);
       return {workflowId:template.workflowId,name:template.name,category:template.category,summary:template.summary,nodeCount:template.nodes.length,
         ...(input.workflowId?{nodes:template.nodes.map(node=>({nodeId:node.id,label:node.label,kind:node.kind}))}:{}),
         state:entryRegistered&&!missingAdapterNames.length&&!missingToolNames.length?'entry_registered_requires_task_authorization':'unavailable',
-        entry:{...(entryName?{name:entryName,version:'1.0.0'}:{}),state:entryRegistered?'entry_registered_requires_task_authorization':'unavailable'},
+        entry:{...(entryName?{name:entryName,version:entryVersion}:{}),state:entryRegistered?'entry_registered_requires_task_authorization':'unavailable'},
         unavailableReasons:[...(!entryRegistered?['conversation_entry_not_registered']:[]),...(missingAdapterNames.length?['host_or_guard_adapter_not_registered']:[]),...(missingToolNames.length?['required_tool_not_registered']:[])],
         adapters,requiredTools,missingAdapterNames,missingToolNames};
     });
