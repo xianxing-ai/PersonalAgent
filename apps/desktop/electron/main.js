@@ -3019,11 +3019,11 @@ async function initializeRuntime() {
       installedSkillsHost.bindRuntime(runtimeApplication.runtime);
       referenceHost.bindApplication(runtimeApplication);
       referenceApplication=runtimeApplication;
-      const cloudSkillSelector=referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
+      referenceHost.configureCloudSkillWorker(runtimeApplication.referenceSkillWorker());
       runtimeApplication.configureCloudSkillSelection({
         cloudSkillCatalog:input=>referenceHost.cloudSkillCatalog(input),
         dispatchCloudSkillProposal:(proposal,context)=>referenceHost.dispatchCloudSkillProposal(proposal,context),
-        assertReceiptAllowed:(selection,receipt,context)=>cloudSkillSelector.assertReceiptAllowed(selection,receipt,context),
+        assertReceiptAllowed:(selection,receipt,context)=>referenceHost.assertCloudSkillReceiptAllowed(selection,receipt,context),
       });
       knowledgeTools.bindApplication(runtimeApplication);
       const {openSqliteLearningHost}=await import('@personal-agent/learning');
