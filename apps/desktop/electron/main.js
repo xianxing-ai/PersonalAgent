@@ -799,8 +799,23 @@ function conversationProjection(surface) {
 function orbSnapshot() {
   const visible=orderedTasks().filter(task=>visibleConversationTask(task,'panel'));
   const task=visible.findLast(task=>!terminalTaskStates.has(task.state))??visible.at(-1);
+  const active=Boolean(task&&!terminalTaskStates.has(task.state));
+  const rawChildren=active&&!fakeMode?(runtimeApplication?.readSubagentTasks?.(task.taskId)??[]):[];
+  const subagentTasks=rawChildren.map(child=>{
+    let state=child?.state??child?.taskState;
+    if(!state&&child?.taskId){try{state=runtimeApplication?.runtime?.getTask?.(child.taskId)?.state;}catch{}}
+    return {taskId:child?.taskId??child?.childTaskId,parentTaskId:task.taskId,state};
+  }).filter(item=>typeof item.taskId==='string'&&item.taskId);
+  const now=Date.now();
+  const pendingUnexpired=item=>item?.state==='pending'&&(!item.expiresAt||!Number.isFinite(Date.parse(item.expiresAt))||Date.parse(item.expiresAt)>now);
+  const relatedIds=new Set(active?[task.taskId,...subagentTasks.map(item=>item.taskId)]:[]);
+  const panelConversationId=conversations?.activeConversationId('panel');
+  const pendingQuestion=active&&(authorizationQuestionHost?.snapshot(panelConversationId)??[]).some(q=>pendingUnexpired(q)
+    &&(relatedIds.has(q.taskId)||(panelConversationId&&q.conversationId===panelConversationId)));
+  const pendingApproval=active&&[...approvals.values()].some(a=>pendingUnexpired(a)&&relatedIds.has(a.taskId));
+  const hasPendingApproval=active&&(task.state==='waiting_approval'||subagentTasks.some(item=>item.state==='waiting_approval')||pendingQuestion||pendingApproval);
   const live=liveVoice?.snapshot()??liveConfig?.snapshot();
-  return {tasks:task?[{taskId:task.taskId,state:task.state}]:[],audioLevel,orbStateOverride,
+  return {tasks:task?[{taskId:task.taskId,state:task.state}]:[],subagentTasks,hasPendingApproval,audioLevel,orbStateOverride,
     live:live?{active:live.active,status:live.status}:undefined,resourceBudget:resourcePolicy.snapshot()};
 }
 function projectWindowSnapshot(surface,topics=['all']) {
