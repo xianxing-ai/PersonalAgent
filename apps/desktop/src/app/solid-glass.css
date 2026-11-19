@@ -1,16 +1,16 @@
-/* Solid, readable panes. The native panel retains its existing DWM backdrop;
-   dense content uses inexpensive opaque layers instead of nested live blurs. */
+/* Solid, readable panes inspired by clean two-tier desktop surfaces (rail + canvas).
+   The native panel retains its DWM backdrop; dense content uses opaque calm layers. */
 :root {
-  --sg-ground:#111215;--sg-rail:#191a1e;--sg-pane:#202126;--sg-card:#25262b;
-  --sg-control:#2c2d33;--sg-hover:#34353c;--sg-line:rgba(255,255,255,.105);
-  --sg-rim:rgba(255,255,255,.105);--sg-shadow:rgba(0,0,0,.24);
-  --sg-scroll:rgba(255,255,255,.15);--sg-scroll-hover:rgba(255,255,255,.28);
+  --sg-ground:#111215;--sg-rail:#15161a;--sg-canvas:#191b20;--sg-pane:#1f2127;--sg-card:#202228;
+  --sg-control:#272931;--sg-hover:#2f323b;--sg-line:rgba(255,255,255,.085);
+  --sg-rim:rgba(255,255,255,.055);--sg-shadow:rgba(0,0,0,.22);
+  --sg-scroll:rgba(255,255,255,.14);--sg-scroll-hover:rgba(255,255,255,.26);
 }
 :root[data-theme="light"] {
-  --sg-ground:#e9ebee;--sg-rail:#eef0f2;--sg-pane:#f4f5f6;--sg-card:#fafbfc;
-  --sg-control:#f3f4f6;--sg-hover:#e6e8eb;--sg-line:rgba(29,35,44,.13);
-  --sg-rim:rgba(255,255,255,.9);--sg-shadow:rgba(35,42,55,.10);
-  --sg-scroll:rgba(29,35,44,.16);--sg-scroll-hover:rgba(29,35,44,.32);
+  --sg-ground:#e9ebee;--sg-rail:#f4f5f7;--sg-canvas:#ffffff;--sg-pane:#f8f9fa;--sg-card:#fafafa;
+  --sg-control:#ffffff;--sg-hover:#eef0f3;--sg-line:rgba(15,23,42,.085);
+  --sg-rim:rgba(255,255,255,.92);--sg-shadow:rgba(15,23,42,.07);
+  --sg-scroll:rgba(15,23,42,.15);--sg-scroll-hover:rgba(15,23,42,.30);
 }
 
 /* Refined thin scrollbars across workspace, settings, and panel surfaces.
@@ -41,116 +41,231 @@
 *::-webkit-scrollbar-corner {background:transparent}
 *::-webkit-scrollbar-button {display:none;width:0;height:0}
 
+/* Admin shell: soft rail + clean inset canvas */
 .admin {background:var(--sg-ground)}
 .admin .admin-bar {background:var(--sg-rail);border-bottom:1px solid var(--sg-line)}
+.admin .admin-bar .btn {min-height:28px;padding:4px 10px;border-radius:8px;font-size:12px;background:transparent;border-color:var(--sg-line);box-shadow:none}
+.admin .admin-bar .btn:hover:not(:disabled) {background:var(--sg-hover)}
 .admin .side {background:var(--sg-rail);border-right:1px solid var(--sg-line)}
-.admin>.main {background:var(--sg-ground)}
+.admin>.main {background:var(--sg-canvas)}
 .admin .side-home {padding:4px 10px 8px}
 .admin .side .brand {letter-spacing:-.025em}
-.admin .admin-search {background:var(--sg-control);border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim)}
-.admin .side nav button {border:1px solid transparent;transition:background-color .15s,border-color .15s,color .15s}
+.admin .admin-search {background:var(--sg-control);border-color:var(--sg-line);box-shadow:none}
+.admin .side nav button {border:1px solid transparent;border-radius:9px;transition:background-color .14s ease,border-color .14s ease,color .14s ease}
 .admin .side nav button:hover {background:var(--sg-hover)}
-.admin .side nav button[aria-current="page"] {background:var(--sg-control);border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim)}
-.admin .primary-nav {display:grid;gap:3px;margin-bottom:16px}
+.admin .side nav button[aria-current="page"] {background:var(--sg-hover);border-color:transparent;box-shadow:none;font-weight:600}
+.admin .primary-nav {display:grid;gap:2px;margin-bottom:14px}
 .admin .advanced-nav {border-top:1px solid var(--sg-line);padding-top:9px}
 .admin .advanced-nav[hidden] {display:none}
-.admin .advanced-nav>summary {display:flex;align-items:center;min-height:38px;padding:8px 10px;border-radius:10px;color:var(--fg-2);font-size:13px;cursor:pointer;list-style:none}
+.admin .advanced-nav>summary {display:flex;align-items:center;min-height:36px;padding:7px 10px;border-radius:9px;color:var(--fg-2);font-size:13px;cursor:pointer;list-style:none;transition:background-color .14s ease}
 .admin .advanced-nav>summary::-webkit-details-marker {display:none}
 .admin .advanced-nav>summary::after {content:'＋';margin-left:auto;color:var(--muted)}
 .admin .advanced-nav[open]>summary::after {content:'−'}
 .admin .advanced-nav>summary:hover {background:var(--sg-hover)}
 .admin .advanced-nav>summary:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-2px}
-.admin :is(.sheet,.settings-list,.model-list,.card,.sis-settings) {
-  background:var(--sg-card);border:1px solid var(--sg-line);
-  box-shadow:inset 0 1px 0 var(--sg-rim),0 8px 24px -14px var(--sg-shadow);
+
+/* Unified single-column rhythm across standard admin pages (connections, authorizations, usage, tasks, etc.) */
+.admin .main[data-surface="standard"] {
+  display:flex;flex-direction:column;align-items:flex-start;gap:12px;
+  padding:32px 44px 72px;box-sizing:border-box;
 }
-.admin :is(.settings-list,.model-list) {border-radius:16px;overflow:hidden}
+.admin .main[data-surface="standard"] > * {
+  width:100%;max-width:760px;box-sizing:border-box;margin:0;
+}
+.admin .main[data-surface="standard"] > .eyebrow {margin-bottom:-8px}
+.admin .main[data-surface="standard"] > #page-title {margin:0 0 2px;font-size:24px;font-weight:620;letter-spacing:-.025em}
+.admin .main[data-surface="standard"] > .banner {margin:0 0 4px;padding:11px 14px;border-radius:10px;background:var(--sg-pane);border-color:var(--sg-line)}
+.admin .main[data-surface="standard"] > #content {display:flex;flex-direction:column;gap:12px}
+.admin .main[data-surface="standard"] > .error:empty {display:none}
+.admin .main[data-section="connections"] > :is(.eyebrow,#page-title) {display:none}
+.admin .main label.setting-row {justify-content:flex-start;gap:10px;min-height:44px;padding:10px 14px}
+.admin .main label.setting-row input:is([type="checkbox"],[type="radio"]) {flex:0 0 16px;width:16px;height:16px;min-width:16px;min-height:16px;margin:0;accent-color:var(--fg)}
+.admin .main[data-surface="settings"] > .sis-settings {
+  width:min(760px,calc(100% - 80px));max-width:760px;margin:0 40px 14px;
+}
+@media(max-width:640px) {
+  .admin .main[data-surface="standard"] {padding:20px 16px 48px}
+  .admin .main[data-surface="settings"] > .sis-settings {width:calc(100% - 32px);margin:0 16px 12px}
+}
+
+/* Calm hairline cards without heavy box-in-box borders */
+.admin :is(.sheet,.settings-list,.model-list,.card,.sis-settings) {
+  background:var(--sg-card);border:1px solid var(--sg-line);border-radius:14px;
+  box-shadow:0 1px 2px var(--sg-shadow);
+}
+.admin .sheet {padding:18px 20px}
+.admin .sheet h2 {font-size:15px;font-weight:620;letter-spacing:-.01em;margin:0 0 8px}
+.admin .sheet > p {margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:1.65;max-width:66ch}
+.admin .sheet > p:last-child {margin-bottom:0}
+.admin :is(.settings-list,.model-list) {border-radius:14px;overflow:hidden}
 .admin :is(.setting-row,.model-item) {border-color:var(--sg-line)}
+
+/* Clean forms: bounded input widths and compact non-stretched buttons */
+.admin .main .settings-form {display:grid;gap:12px;margin:6px 0 4px;max-width:560px;width:100%}
+.admin .main .settings-form label {display:grid;gap:6px;font-size:12px;font-weight:500;color:var(--muted)}
+.admin .main .settings-form > .btn,
+.admin .main .settings-form > button {justify-self:start;width:auto;min-width:96px}
+.admin .main .sheet > .btn,
+.admin .main .sheet > button {align-self:flex-start;width:auto}
 .admin .main :where(.btn,input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea) {
   border-color:var(--sg-line);background-color:var(--sg-control);color:var(--fg);
-  box-shadow:inset 0 1px 0 var(--sg-rim);
+  box-shadow:none;
 }
+.admin .main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea) {
+  min-height:36px;padding:7px 11px;border-radius:9px;font-size:13px;
+  transition:border-color .14s ease,box-shadow .14s ease,background-color .14s ease;
+}
+.admin .main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea):hover:not(:disabled) {
+  border-color:var(--border-strong);
+}
+.admin .main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea):focus-visible {
+  outline:none;border-color:var(--focus-ring);box-shadow:0 0 0 3px var(--accent-soft);
+}
+.admin .main .btn {min-height:34px;padding:6px 14px;border-radius:9px;font-size:12.5px;font-weight:550}
 .admin .main .btn:hover:not(:disabled) {background-color:var(--sg-hover);border-color:var(--border-strong)}
-.admin .main .btn-primary {
+.admin .main .btn-primary,
+.admin .main .settings-form > button[type="submit"]:not(.btn-danger):not(.btn-ghost) {
   background-color:var(--fg);border-color:var(--fg);color:var(--bg);
-  box-shadow:0 2px 10px -2px var(--sg-shadow);
+  box-shadow:0 1px 3px var(--sg-shadow);
 }
-.admin .main .btn-primary:hover:not(:disabled) {background-color:var(--fg-2);border-color:var(--fg-2);color:var(--bg)}
+.admin .main .btn-primary:hover:not(:disabled),
+.admin .main .settings-form > button[type="submit"]:not(.btn-danger):not(.btn-ghost):hover:not(:disabled) {
+  background-color:var(--fg-2);border-color:var(--fg-2);color:var(--bg);
+}
 .admin .main .btn-danger {
-  color:var(--danger);border-color:color-mix(in srgb,var(--danger) 36%,var(--sg-line));
-  background-color:color-mix(in srgb,var(--danger) 7%,var(--sg-control));
+  color:var(--danger);border-color:color-mix(in srgb,var(--danger) 32%,var(--sg-line));
+  background-color:transparent;
 }
 .admin .main .btn-danger:hover:not(:disabled) {
-  background-color:color-mix(in srgb,var(--danger) 14%,var(--sg-control));
-  border-color:color-mix(in srgb,var(--danger) 56%,transparent);
+  background-color:color-mix(in srgb,var(--danger) 10%,transparent);
+  border-color:color-mix(in srgb,var(--danger) 55%,transparent);
 }
+
+/* Compact button row inside sis-fields (mail / calendar / voice panels) */
+.admin .sis-fields {display:flex;flex-wrap:wrap;align-items:center;gap:10px 8px;margin-top:14px}
+.admin .sis-fields > :not(button) {flex:1 0 100%;min-width:0;box-sizing:border-box}
+.admin .sis-fields > button {flex:0 0 auto;width:auto;min-height:34px;padding:6px 14px;border-radius:9px;font-size:12.5px;font-weight:550}
+
+/* Refined collapsible sections: crisp chevron, zero nested box-in-box clutter */
+.admin :is(.connection-diagnostics,.laya-advanced,.sis-settings) > summary {
+  display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px;font-weight:600;
+  color:var(--fg);list-style:none;user-select:none;
+}
+.admin :is(.connection-diagnostics,.laya-advanced,.sis-settings) > summary::-webkit-details-marker {display:none}
+.admin :is(.connection-diagnostics,.laya-advanced,.sis-settings) > summary::before {
+  content:'›';display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;font-size:16px;line-height:1;color:var(--muted);
+  transition:transform .16s ease;
+}
+.admin :is(.connection-diagnostics,.laya-advanced,.sis-settings)[open] > summary::before {transform:rotate(90deg)}
+.admin .laya-advanced {margin:0;padding:15px 18px;border:1px solid var(--sg-line);border-radius:14px;background:var(--sg-card);box-shadow:0 1px 2px var(--sg-shadow)}
+.admin .laya-advanced[hidden] {display:none}
+.admin .laya-advanced > .sheet {margin:14px 0 0;padding:14px 0 0;border:0;border-top:1px solid var(--sg-line);border-radius:0;background:transparent;box-shadow:none}
+
+/* Nested details inside a card use a subtle divider instead of a second outer card */
+.admin .feeds-advanced,
+.admin .sis-advanced,
+.admin .connection-advanced,
+.admin .sis-fields details {
+  margin:14px 0 6px;padding:12px 0 2px;border:0;border-top:1px solid var(--sg-line);
+  border-radius:0;background:transparent;box-shadow:none;
+}
+.admin :is(.feeds-advanced,.sis-advanced,.connection-advanced,.sis-fields details) > summary {
+  display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12.5px;font-weight:580;
+  color:var(--fg-2);list-style:none;user-select:none;
+}
+.admin :is(.feeds-advanced,.sis-advanced,.connection-advanced,.sis-fields details) > summary::-webkit-details-marker {display:none}
+.admin :is(.feeds-advanced,.sis-advanced,.connection-advanced,.sis-fields details) > summary::before {
+  content:'›';display:inline-flex;width:14px;font-size:15px;line-height:1;color:var(--muted);
+  transition:transform .16s ease;
+}
+.admin :is(.feeds-advanced,.sis-advanced,.connection-advanced,.sis-fields details)[open] > summary::before {transform:rotate(90deg)}
+.admin .feeds-advanced p {margin:8px 0;font-size:12px;color:var(--muted)}
+.admin .feeds-advanced label {display:grid;gap:6px;margin:10px 0;max-width:440px;font-size:12px;color:var(--muted)}
+.admin .feeds-advanced input {width:100%;max-width:440px}
+
+/* Connection page header row */
+.admin .connection-intro {
+  display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 16px;
+  margin:0 0 6px;padding-bottom:14px;border-bottom:1px solid var(--sg-line);
+}
+.admin .connection-intro h2 {flex:1 0 100%;margin:0;font-size:22px;font-weight:620;letter-spacing:-.025em}
+.admin .connection-intro p {flex:1 1 380px;margin:0;max-width:60ch;font-size:12.5px;color:var(--muted);line-height:1.6}
+.admin .connection-intro .btn {flex:0 0 auto;align-self:center}
+.admin .connection-diagnostics {padding:15px 18px}
+.admin .connection-diagnostics .row {display:flex;align-items:center;gap:8px;margin-top:14px}
+.admin .connection-diagnostics .row h2 {margin:0;font-size:13.5px}
+
+/* Tables */
 .admin .table-scroll table {width:100%;border-collapse:collapse}
 .admin .table-scroll th {
   font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.02em;
-  border-bottom:1px solid var(--sg-line);padding:9px 10px;text-align:left;
+  border-bottom:1px solid var(--sg-line);padding:9px 10px;text-align:left;background:var(--sg-pane);
 }
-.admin .table-scroll td {padding:9px 10px;border-bottom:1px solid color-mix(in srgb,var(--sg-line) 65%,transparent);vertical-align:top}
+.admin .table-scroll td {padding:10px;border-bottom:1px solid color-mix(in srgb,var(--sg-line) 65%,transparent);vertical-align:top}
 .admin .table-scroll tbody tr:last-child td {border-bottom:0}
 .admin .table-scroll tbody tr:hover {background:color-mix(in srgb,var(--sg-hover) 55%,transparent)}
-.admin .main :is(input,select,textarea):focus-visible {outline:2px solid var(--focus-ring);outline-offset:2px}
-.admin .feeds-advanced {margin:14px 0;padding:12px;border:1px solid var(--sg-line);border-radius:12px;background:var(--sg-pane)}
-.admin .feeds-advanced summary {cursor:pointer;font-weight:600}
-.admin .feeds-advanced label {display:grid;gap:6px;margin:10px 0}
-.admin .feeds-advanced input {width:100%;max-width:420px;padding:8px;border:1px solid var(--sg-line);border-radius:9px}
-.admin .connection-intro {margin:0 0 18px}
-.admin .connection-intro h2 {margin:0 0 8px;font-size:18px}
-.admin .connection-intro p {max-width:650px;color:var(--muted);line-height:1.7}
-.admin :is(.connection-diagnostics,.laya-advanced)>summary {cursor:pointer;font-weight:600}
-.admin .laya-advanced {margin:12px 0;padding:15px;border:1px solid var(--sg-line);border-radius:16px;background:var(--sg-card);box-shadow:inset 0 1px 0 var(--sg-rim)}
-.admin .laya-advanced[hidden] {display:none}
-.admin .laya-advanced>.sheet {margin:12px 0 0}
-.admin .sis-advanced,.admin .connection-advanced {margin:12px 0;padding:12px;border:1px solid var(--sg-line);border-radius:12px;background:var(--sg-pane)}
-.admin :is(.sis-advanced,.connection-advanced)>summary {cursor:pointer;font-weight:600}
 
+/* Floating panel glass */
 .panel {
-  --panel-coat:rgba(24,25,29,.80);--panel-lens:rgba(255,255,255,.075);
-  --panel-hover:rgba(255,255,255,.13);--panel-glint:rgba(255,255,255,.16);
-  --panel-line:rgba(255,255,255,.10);--panel-menu:#292a30;
+  --panel-coat:rgba(24,25,29,.84);--panel-lens:rgba(255,255,255,.07);
+  --panel-hover:rgba(255,255,255,.12);--panel-glint:rgba(255,255,255,.14);
+  --panel-line:rgba(255,255,255,.095);--panel-menu:#272930;
   background:var(--panel-coat);box-shadow:inset 0 1px 0 var(--panel-glint),inset 0 0 0 1px var(--panel-line);
 }
 :root[data-theme="light"] .panel {
-  --panel-coat:rgba(239,241,244,.84);--panel-lens:rgba(255,255,255,.52);
-  --panel-hover:rgba(255,255,255,.72);--panel-glint:rgba(255,255,255,.85);
-  --panel-line:rgba(34,40,50,.12);--panel-menu:#f7f8fa;
+  --panel-coat:rgba(245,246,248,.88);--panel-lens:rgba(255,255,255,.72);
+  --panel-hover:rgba(255,255,255,.92);--panel-glint:rgba(255,255,255,.95);
+  --panel-line:rgba(15,23,42,.10);--panel-menu:#ffffff;
 }
 .panel :is(.quick-start button,.composer,.voice-runtime-controls,.user-message) {
-  background:var(--panel-lens);box-shadow:inset 0 1px 0 var(--panel-glint),0 5px 16px rgba(0,0,0,.06);
+  background:var(--panel-lens);box-shadow:inset 0 1px 0 var(--panel-glint),0 4px 14px rgba(0,0,0,.05);
 }
 .panel :is(.quick-start button,.composer,.voice-runtime-controls) {border:1px solid var(--panel-line)}
 
+/* Workspace (Command Center): Codex-inspired soft rail + clean inset main canvas */
 .command-center {
-  --cc-bg:var(--sg-ground);--cc-rail:var(--sg-rail);--cc-panel:var(--sg-pane);
+  --cc-bg:var(--sg-ground);--cc-rail:var(--sg-rail);--cc-canvas:var(--sg-canvas);--cc-panel:var(--sg-pane);
   --cc-soft:var(--sg-card);--cc-hover:var(--sg-hover);--cc-line:var(--sg-line);
-  --cc-input:var(--sg-card);--cc-solid:var(--sg-card);background:var(--sg-ground);
+  --cc-input:var(--sg-control);--cc-solid:var(--sg-card);background:var(--sg-ground);
 }
 :root[data-theme="light"] .command-center {
-  --cc-bg:var(--sg-ground);--cc-rail:var(--sg-rail);--cc-panel:var(--sg-pane);
+  --cc-bg:var(--sg-ground);--cc-rail:var(--sg-rail);--cc-canvas:var(--sg-canvas);--cc-panel:var(--sg-pane);
   --cc-soft:var(--sg-card);--cc-hover:var(--sg-hover);--cc-line:var(--sg-line);
-  --cc-input:var(--sg-card);--cc-solid:var(--sg-card);
+  --cc-input:#ffffff;--cc-solid:#ffffff;
 }
-.command-center .cc-rail {box-shadow:inset -1px 0 0 var(--sg-line)}
-.command-center :is(.workspace-composer,.connector-card,.cc-search) {
-  border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim),0 8px 22px -15px var(--sg-shadow);
+.command-center .cc-rail {box-shadow:none;border-right:1px solid var(--sg-line)}
+.command-center .workspace-main {
+  background:var(--cc-canvas);border-top:1px solid var(--sg-line);border-left:1px solid var(--sg-line);
+  border-top-left-radius:14px;
 }
-.command-center .workspace-composer:focus-within {border-color:var(--cc-dim);box-shadow:inset 0 1px 0 var(--sg-rim),0 0 0 1px var(--cc-dim)}
+.command-center :is(.connector-card,.cc-search) {
+  border-color:var(--sg-line);box-shadow:none;
+}
+.command-center .workspace-composer {
+  border-color:var(--sg-line);
+  box-shadow:0 8px 26px -14px var(--sg-shadow),0 1px 2px var(--sg-shadow);
+}
+.command-center .workspace-composer:focus-within {
+  border-color:var(--cc-dim);
+  box-shadow:0 10px 30px -14px var(--sg-shadow),0 0 0 1px color-mix(in srgb,var(--cc-dim) 45%,transparent);
+}
 .command-center .connector-card:hover {background:var(--sg-hover)}
-.command-center .cc-hero {border-color:var(--sg-line);box-shadow:inset 0 1px 0 var(--sg-rim),0 8px 24px -14px var(--sg-shadow)}
+.command-center .cc-hero {border-color:var(--sg-line);box-shadow:0 1px 2px var(--sg-shadow)}
 /* Motion is reserved for actual activity; the scene remains sharp and static. */
 .command-center .cc-hero-field {animation:none;filter:none}
 :root[data-theme="light"] .command-center .cc-hero-field {filter:invert(1)}
 
-@media(prefers-reduced-motion:reduce) {.admin .side nav button {transition:none}}
+@media(prefers-reduced-motion:reduce) {
+  .admin .side nav button,
+  .admin summary::before {transition:none}
+}
 @media(prefers-reduced-transparency:reduce) {
   .panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}
   :root[data-theme="light"] .panel {--panel-coat:var(--bg);--panel-lens:var(--surface-2)}
 }
 @media(forced-colors:active) {
-  .admin,.admin .side,.admin>.main,.command-center {background:Canvas;color:CanvasText}
+  .admin,.admin .side,.admin>.main,.command-center,.command-center .workspace-main {background:Canvas;color:CanvasText}
   .admin :is(.sheet,.settings-list,.model-list,.card,.sis-settings),.panel,.command-center :is(.workspace-composer,.connector-card) {background:Canvas;border:1px solid CanvasText;box-shadow:none}
   .admin .side nav button[aria-current="page"] {border-color:Highlight}
   .panel :is(.quick-start button,.composer,.voice-runtime-controls,.user-message) {background:Canvas;color:CanvasText;border:1px solid CanvasText;box-shadow:none}

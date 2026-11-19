@@ -94,7 +94,7 @@
 .panel {grid-template-rows:auto auto auto minmax(32px,1fr) auto}
 .panel>header {grid-row:1;grid-column:1}
 .panel>.conversation-session-root {grid-row:2;grid-column:1;min-height:0;max-height:25vh;overflow:auto}
-.panel>.task-progress {grid-row:3;grid-column:1;margin:0 18px 6px;max-height:28vh;overflow:auto}
+.panel>.task-progress {grid-row:3;grid-column:1;margin:8px 14px 4px;max-height:28vh;overflow:auto}
 .panel>.thread {grid-row:4;grid-column:1;box-sizing:border-box}
 .panel>.composer {grid-row:5;grid-column:1;display:flex;flex-direction:column;min-width:0;max-height:45vh;box-sizing:border-box}
 .panel>.composer>.composer-bar {flex:0 0 auto}
@@ -273,9 +273,9 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .admin .side-home {gap:2px;padding:4px 8px 8px}
 .admin .side .brand {padding:0;font-size:15px;line-height:1.3}
 .admin .side-home > span:last-child {color:var(--muted);font-size:12px}
-.admin .admin-search {min-height:36px;margin:2px 2px 6px;border-radius:10px;padding:0 10px}
+.admin .admin-search {min-height:36px;margin:2px 2px 6px;border-radius:10px;padding:0 10px;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}
 .admin .admin-search input {min-height:32px}
-.admin .admin-search:focus-within {outline:2px solid var(--focus-ring);outline-offset:2px}
+.admin .admin-search:focus-within {outline:none;border-color:var(--focus-ring);box-shadow:0 0 0 3px var(--accent-soft)}
 .admin .admin-search-status {margin:0 8px 8px;color:var(--muted);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .admin .admin-search-status[hidden] {display:none}
 .panel .task-progress,.workspace .task-progress {display:flex;align-items:flex-start;gap:12px;margin:12px 0;padding:12px 14px;border:1px solid var(--glass-border);border-radius:12px;background:var(--surface-2);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
@@ -353,13 +353,13 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
 .admin .notification-settings h2,.admin .notification-settings h3 {margin:0 0 12px}
 .admin .notification-settings h3 {margin-top:20px;font-size:14px}
 @media(max-width:900px) {.admin .main[data-section="notifications"] > .notification-settings {width:calc(100% - 32px);margin:0 16px 24px;padding:16px}.admin .notification-settings .settings-form {grid-template-columns:minmax(0,1fr)}}
-.admin .sis-settings {box-sizing:border-box;width:min(760px,calc(100% - 80px));margin:0 40px;border-radius:16px;padding:16px 18px}
+.admin .sis-settings {box-sizing:border-box;width:100%;max-width:760px;margin:0;border-radius:14px;padding:16px 20px}
 .admin .sis-fields {display:grid;gap:12px}
-.admin .sis-fields label {display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.admin .sis-fields label {display:grid;gap:6px;font-size:12px;color:var(--muted);max-width:520px}
 .admin .sis-fields :is(input,select) {
   min-height:36px;border:1px solid var(--glass-border);border-radius:9px;background:var(--surface-2);color:var(--fg);padding:8px 10px;font:inherit;font-size:13px;
 }
-.admin .sis-fields > button {justify-self:start;min-height:36px;padding:8px 14px;border-radius:9px;font-weight:600}
+.admin .sis-fields > button {justify-self:start;width:auto;min-height:34px;padding:6px 14px;border-radius:9px;font-weight:550}
 @media(max-width:640px) {
   .admin .side {padding-inline:8px}
   .admin .side-home {padding-inline:0}
@@ -368,7 +368,7 @@ pre.knowledge-source-preview {box-sizing:border-box;min-width:0;max-width:100%;m
   .admin .main[data-surface="settings"]:not([data-section="memory"]) :is(.settings-content.settings-single,.feature-page) {padding:22px 16px 48px}
   .admin .settings-list .setting-row {align-items:flex-start;flex-direction:column;gap:10px}
   .admin .settings-list .setting-control {max-width:none;justify-content:flex-start}
-  .admin .sis-settings {width:auto;margin:12px 16px 0}
+  .admin .sis-settings {width:100%;margin:0}
 }
 
 /* Models and memory are their own pages: one column of cards, actions on the left. */
