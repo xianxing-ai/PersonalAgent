@@ -339,7 +339,16 @@ export function mountAdmin(root, invoke, escape) {
     {id: 'error', label: '异常 · Error', detail: '粒子坍缩至黑核视界边缘 + 低频慢闪'},
   ];
   let petsPreviewOrb = null;
-  window.addEventListener('unload', () => { petsPreviewOrb?.dispose(); petsPreviewOrb = null; }, {once: true});
+  const syncPetsPreviewMotion = () => {
+    petsPreviewOrb?.setCalm(document.documentElement.dataset.calm === 'true');
+  };
+  const disposePetsPreview = () => {
+    if (!petsPreviewOrb) return;
+    window.removeEventListener('preferences-changed', syncPetsPreviewMotion);
+    petsPreviewOrb.dispose();
+    petsPreviewOrb = null;
+  };
+  window.addEventListener('unload', disposePetsPreview, {once: true});
 
   function petsPage(data) {
     const activeVariant = orbVariantPreference();
@@ -667,13 +676,10 @@ export function mountAdmin(root, invoke, escape) {
       }
     }
     // Retained nodes already own their listeners. Rebinding would multiply IPC calls.
-    if (section !== 'pets' && petsPreviewOrb) {
-      petsPreviewOrb.dispose();
-      petsPreviewOrb = null;
-    }
+    if (section !== 'pets') disposePetsPreview();
     if (retainContent) { commitPage(); return; }
     if (section === 'pets') {
-      petsPreviewOrb?.dispose();
+      disposePetsPreview();
       const previewCanvas = root.querySelector('#pets-preview-canvas');
       if (previewCanvas && typeof previewCanvas.getContext === 'function') {
         const activeVariant = orbVariantPreference();
@@ -682,6 +688,8 @@ export function mountAdmin(root, invoke, escape) {
         petsPreviewOrb = new Orb(previewCanvas, {variant: activeVariant, layout: 'shell', count: 170});
         petsPreviewOrb.setLevel(effectiveState === 'listening' ? 0.68 : (data.audioLevel ?? 0));
         petsPreviewOrb.setState(effectiveState);
+        syncPetsPreviewMotion();
+        window.addEventListener('preferences-changed', syncPetsPreviewMotion);
       }
       root.querySelectorAll('[data-orb-variant]').forEach(button => button.addEventListener('click', () => {
         saveOrbVariant(button.dataset.orbVariant);

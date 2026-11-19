@@ -111,11 +111,16 @@ async function readSse(response: Response, onDelta: ChatTransport['onDelta'], ra
   let lastWasCr = false;
   let eventLines: string[] = [];
   const streamed = {text: '', reasoning: ''};
-  let finishReason = 'stop';
+  let finishReason: string | undefined;
+  let sawDone = false;
   let usage: ModelUsage | undefined;
   const consumeBlock = (block: string): void => {
     const data = block.split(/\r?\n|\r/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
-    if (!data || data === '[DONE]') return;
+    if (!data || sawDone) return;
+    if (data === '[DONE]') {
+      sawDone = true;
+      return;
+    }
     let parsed: unknown;
     try { parsed = JSON.parse(data); }
     catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream returned invalid JSON'); }
@@ -182,16 +187,13 @@ async function readSse(response: Response, onDelta: ChatTransport['onDelta'], ra
       consumeText(decoder.decode(part.value, {stream: true}));
     }
     consumeText(decoder.decode());
-    if (lineBuffer.length > 0) {
-      eventLines.push(lineBuffer);
-      lineBuffer = '';
-    }
-    flushEvent();
+    // Only a blank line dispatches an SSE event. An event pending at EOF is incomplete.
   } finally {
     try { reader.releaseLock(); } catch { /* The stream is already closed. */ }
   }
+  if (finishReason === undefined && !sawDone) throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream ended before completion');
   if (!streamed.text.trim()) throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream ended without text');
-  return {text: streamed.text, ...(streamed.reasoning ? {reasoning: streamed.reasoning} : {}), finishReason, ...(usage ? {usage} : {})};
+  return {text: streamed.text, ...(streamed.reasoning ? {reasoning: streamed.reasoning} : {}), finishReason: finishReason ?? 'stop', ...(usage ? {usage} : {})};
 }
 
 function streamUnsupported(status: number, body: string): boolean {
