@@ -10,6 +10,9 @@ import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCap
 import type {ExecutionCapacityState} from './execution-capacity.js';
 
 const DEFAULT_COMPETITION_STEPS = 4;
+// Only the Runtime worker can attach input drained from the original task queue.
+const injectedGoalSuffixes = new WeakMap<object, string>();
+export const readInjectedGoalSuffix = (request: object): string => injectedGoalSuffixes.get(request) ?? '';
 const COORDINATION_FAILURE_CODES = new Set([
   'INVALID_ARGUMENT', 'PROTOCOL_MISMATCH', 'UNAUTHORIZED', 'SCOPE_DENIED', 'NOT_FOUND',
   'UNSUPPORTED_CAPABILITY', 'REVISION_CONFLICT', 'RATE_LIMITED', 'TIMEOUT',
@@ -314,6 +317,7 @@ async function exchange(
   onInvokeRevision?: (revision: number) => void,
   priorContinuations?:readonly CoordinationContinuation[],
   onActivity?: (event: {kind: 'reasoning' | 'answer_delta' | 'status'; label: string; text?: string}) => void,
+  injectedGoalSuffix = '',
 ): Promise<CoordinationResult> {
   if (runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
     throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation before another send');
@@ -337,16 +341,18 @@ async function exchange(
         onInvokeRevision?.(revision);
         try {
           if (onActivity) bindAgentArtsActivity(taskId, onActivity);
-          return await port.execute(Object.freeze({
+          const request = Object.freeze({
           taskId,
-          goal,
+          goal: goal + injectedGoalSuffix,
           revision,
           deadline: context.deadline,
           signal: context.signal,
           ...(continuation === undefined ? {} : {continuation}),
           ...(priorContinuations?.length?{priorContinuations:structuredClone(priorContinuations)}:{}),
           ...(availableTools === undefined ? {} : {availableTools: structuredClone(availableTools)}),
-          }));
+          });
+          if (injectedGoalSuffix) injectedGoalSuffixes.set(request, injectedGoalSuffix);
+          return await port.execute(request);
         } catch (error) {
           runtime.saveCheckpoint(taskId, 'competition-coordination-failure',
             coordinationFailureDiagnostic(error, continuation !== undefined));
@@ -481,7 +487,7 @@ export async function runCoordinationWorker(
           + peerInjections.map(item => JSON.stringify({treatment: 'untrusted_data', source: 'peer_assistant', text: item.text})).join('\n')
         );
       }
-      const stepGoal = sections.length === 0 ? goal : `${goal}\n\n${sections.join('\n\n')}`;
+      const injectedGoalSuffix = sections.length === 0 ? '' : `\n\n${sections.join('\n\n')}`;
       if (injected.length > 0) {
         const injectLabel = peerInjections.length && !userInjections.length ? '已收到其他助手消息（受限参考）' : '已带上你的插话';
         context.reportProgress({stepId: `competition-inject-${step}`, label: injectLabel, completedUnits: step - 1, totalUnits: maxSteps});
@@ -542,7 +548,7 @@ export async function runCoordinationWorker(
         context.saveCheckpoint('competition-continuation-window:v1',{version:'1.0',currentProposalId:continuation.proposalId,
           originalReceiptCount:receipts.length,priorCount:priorReceipts.length,omitted:window.omitted});
       }
-      const result = pending ?? await exchange(runtime, port, taskId, stepGoal, context, continuation, () => {
+      const result = pending ?? await exchange(runtime, port, taskId, goal, context, continuation, () => {
         const prior = receipts.find(item => item.proposal.proposalId === continuation?.proposalId);
         for(const priorReceipt of [...priorReceipts,...(prior?[prior]:[])]) {
           const prior=priorReceipt;
@@ -561,7 +567,7 @@ export async function runCoordinationWorker(
           } catch(error) {withholdConfirmedExport(runtime,taskId);throw error;}
         }
       }, availableTools, revision => { proposalRevision = revision; },
-        continuation?priorReceipts.map(item=>item.continuation):undefined, onActivity);
+        continuation?priorReceipts.map(item=>item.continuation):undefined, onActivity, injectedGoalSuffix);
       if (result.kind === 'text') {
         if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: result.text, label: '回答'});
         const completion:unknown=options.assertCompletion?.();
@@ -657,18 +663,21 @@ export async function runCoordinationWorker(
       let exportedResult: unknown = toolResult.result ?? null;
       if (result.verification !== 'mock' && !workerResult) {
         if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'Competition result export cancelled');
+        let stage = 'prepare';
         try {
           await options.prepareCompetitionToolExport?.({phase:'projection',taskId,runId,proposal:structuredClone(result),deadline:context.deadline,signal:context.signal});
+          stage = 'projection';
           exportedResult = await projectResult(exportBinding!, {taskId, proposalId: result.proposalId,
             result: structuredClone(exportedResult), signal: context.signal});
           // Use the existing strict JSON validator: getters, cycles, unsupported
           // values and oversized projections must never reach the cloud adapter.
+          stage = 'json';
           const projected = parseCoordinationContinuation({proposalId: result.proposalId,
             state: 'confirmed', result: exportedResult});
           exportedResult = projected.result;
         } catch {
           withholdConfirmedExport(runtime,taskId);
-          throw new ProtocolError('UNAUTHORIZED', 'Competition result export denied');
+          throw new ProtocolError('UNAUTHORIZED', `Competition result export denied [stage=${stage}]`);
         }
         if (context.signal.aborted) throw new ProtocolError('CANCELLED', 'Competition result export cancelled');
       }
