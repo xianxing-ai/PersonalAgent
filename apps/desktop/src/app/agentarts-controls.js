@@ -6,15 +6,16 @@ export function mountAgentArtsControls(root,invoke) {
   section.insertAdjacentHTML?.('beforeend','<details class="connection-advanced" data-observation-controls><summary>平台观测读回凭据（AK / SK / Application ID）</summary><p class="notice" data-observation-state>未配置观测 AK/SK；平台观测读回保持显式 unavailable。</p><form class="settings-form" data-observation-form><label>Access Key (AK)<input name="accessKey" autocomplete="off" spellcheck="false" minlength="10" maxlength="128" placeholder="华为云 IAM AK（10-128 位字母数字）" required></label><label>Secret Key (SK)<input name="secretKey" type="password" autocomplete="new-password" spellcheck="false" minlength="16" maxlength="256" placeholder="至少 16 位；仅在本机加密保存" required></label><label>Security Token（可选临时令牌）<input name="securityToken" type="password" autocomplete="new-password" spellcheck="false" maxlength="4096" placeholder="临时 AK/SK 时选填"></label><label>Application ID（可选）<input name="applicationId" autocomplete="off" maxlength="64" placeholder="AgentArts 应用 ID（1-64 位字母数字/下划线/连字符）"></label><div class="btn-group"><button type="submit" class="btn btn-sm">保存观测凭据</button><button type="button" class="btn btn-sm btn-danger" data-observation-revoke>清除并撤销观测凭据</button></div><p class="notice" data-observation-status role="status"></p></form></details>');
   root.append(section);const form=section.querySelector('form'),status=section.querySelector('[data-status]'),revokeBtn=section.querySelector('[data-revoke]'),restoreBtn=section.querySelector('[data-restore-default]');let dirty=false,busy=false,canRestoreDefault=false,feedbackKind='host',lastHostReason='',feedbackMessage='';
   const observationBox=section.querySelector('[data-observation-controls]'),observationForm=observationBox?.querySelector?.('[data-observation-form]'),observationState=observationBox?.querySelector?.('[data-observation-state]'),observationStatus=observationBox?.querySelector?.('[data-observation-status]'),observationRevoke=observationBox?.querySelector?.('[data-observation-revoke]');
-  let observationBusy=false,lastObservation={};
-  const displayObservation=(obs={})=>{
-    lastObservation=obs??{};
+  let observationBusy=false,observationDirty=false,lastObservation={};
+  const displayObservation=(obs={},confirmed=false)=>{
+    obs=obs??{};lastObservation=obs;
     if(!observationState)return;
     observationState.textContent=typeof obs.reason==='string'&&obs.reason?obs.reason:(obs.configured?'观测 AK/SK 已配置（需重启应用生效）':'未配置观测 AK/SK；平台观测读回保持显式 unavailable，不复用 invoke Bearer');
-    if(observationForm?.elements?.applicationId&&!observationBusy&&!observationForm.elements.applicationId.value)observationForm.elements.applicationId.value=obs.applicationId??'';
+    if(observationForm?.elements?.applicationId&&(confirmed||(!observationBusy&&!observationDirty)))observationForm.elements.applicationId.value=obs.applicationId??'';
     if(observationRevoke)observationRevoke.disabled=observationBusy||(!obs.configured&&!obs.applicationIdConfigured);
   };
   if(observationForm&&observationStatus){
+    observationForm.addEventListener('input',()=>{observationDirty=true;});
     const clearObservationSecrets=()=>{
       if(observationForm.elements.secretKey)observationForm.elements.secretKey.value='';
       if(observationForm.elements.securityToken)observationForm.elements.securityToken.value='';
@@ -37,7 +38,7 @@ export function mountAgentArtsControls(root,invoke) {
       try{
         const result=await invoke('agentarts.observation.configure',payload);
         if(result?.configured!==true)throw Error('观测凭据配置未获确认');
-        displayObservation(result);
+        observationDirty=false;displayObservation(result,true);
         observationStatus.textContent=result.reason||'观测凭据已加密保存；请重启应用以注入 observationAuthorization。';
       }catch(error){
         if(observationForm.elements.secretKey&&!observationForm.elements.secretKey.value)observationForm.elements.secretKey.value=pendingSecrets.secretKey;
@@ -52,7 +53,7 @@ export function mountAgentArtsControls(root,invoke) {
       try{
         const result=await invoke('agentarts.observation.revoke');
         if(result?.configured!==false)throw Error('撤销结果未获确认');
-        observationForm.reset?.();displayObservation(result);
+        observationForm.reset?.();observationDirty=false;displayObservation(result,true);
         observationStatus.textContent=result.reason||'已清除本机观测 AK/SK。';
       }catch(error){
         observationStatus.textContent=typeof error?.message==='string'&&/观测|撤销|任务/.test(error.message)?error.message:'观测凭据撤销未获确认，请检查状态后重试。';
