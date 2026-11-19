@@ -176,12 +176,13 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           }
           if (event.type === 'audio') {
             record.phase = 'speaking';
+            record.pendingDrainId = undefined;
             beginSpeechOutput(record.id);
             command(record, {type: 'audio', data: event.data});
             try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
           }
-          if (event.type === 'interrupted') {endSpeechOutput();textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
-          if (event.type === 'turn_complete') {endSpeechOutput();command(record, {type: 'drain'});textOutput.flush();}
+          if (event.type === 'interrupted') {record.pendingDrainId=undefined;endSpeechOutput();textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
+          if (event.type === 'turn_complete') {record.pendingDrainId=randomUUID();command(record, {type: 'drain',drainId:record.pendingDrainId});textOutput.flush();}
           if (event.type === 'transcript') {
             const trimmed = typeof event.text === 'string' ? event.text.trim() : '';
             if (!trimmed) return;
@@ -476,6 +477,8 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
     if (message.type === 'drained') {
+      if (!record.pendingDrainId || message.drainId !== record.pendingDrainId) return false;
+      record.pendingDrainId = undefined;
       endSpeechOutput();
       textOutput.drained();
       if (record.phase === 'speaking') {record.phase = record.workingCount ? 'working' : 'listening'; publish();}

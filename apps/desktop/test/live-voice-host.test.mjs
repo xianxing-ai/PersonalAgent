@@ -82,10 +82,11 @@ test('Live work shares desktop-panel and stopping audio never cancels an accepte
 });
 
 test('normal turns remain listening, transcripts persist, lease renews and explicit stop prevents restart', async () => {
-  let host, clock = Date.now(), request, renewal, leasedDeadline, connections = 0, token;
+  let host, clock = Date.now(), request, renewal, leasedDeadline, connections = 0, token, drainId;
   const saved = [], schedules = new Set();
   const contents = {mainFrame:{},isDestroyed:()=>false,send(_channel,message) {
     token = message.token;
+    if (message.type === 'drain') drainId=message.drainId;
     if (['start','stop'].includes(message.type)) queueMicrotask(()=>host.receive(
       {sender:contents,senderFrame:contents.mainFrame},{token:message.token,type:message.type==='start'?'ready':'stopped'}));
   }};
@@ -104,7 +105,7 @@ test('normal turns remain listening, transcripts persist, lease renews and expli
     request.onEvent({type:'audio',data:Uint8Array.of(0,0),responseId:`r${i}`});
     request.onEvent({type:'transcript',id:`a${i}`,role:'assistant',text:'继续听你说'});
     request.onEvent({type:'turn_complete'});
-    host.receive({sender:contents,senderFrame:contents.mainFrame},{token,type:'drained'});
+    host.receive({sender:contents,senderFrame:contents.mainFrame},{token,type:'drained',drainId});
     clock += 351;
     assert.equal(host.snapshot().status,'listening');
     assert.equal(host.hasActive(),true);
@@ -343,8 +344,9 @@ test('accepted work stays working across speech interruption and playback drain 
   fixture.request.onEvent({type:'interrupted'});
   assert.equal(fixture.host.snapshot().status,'working','interrupting speech must not mark background work as idle');
   fixture.request.onEvent({type:'audio',data:new Uint8Array([0,0])});
+  fixture.request.onEvent({type:'turn_complete'});
   fixture.host.receive({sender:fixture.contents,senderFrame:fixture.contents.mainFrame},
-    {token:fixture.commands.find(c=>c.type==='start').token,type:'drained'});
+    {token:fixture.commands.find(c=>c.type==='start').token,type:'drained',drainId:fixture.commands.findLast(c=>c.type==='drain').drainId});
   assert.equal(fixture.host.snapshot().status,'working');
   assert.deepEqual(fixture.host.snapshot().workRequests,[{state:'accepted',taskId:'accepted-task'}]);
   finish({replyText:'已返回任务结果'});
