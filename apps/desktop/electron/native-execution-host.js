@@ -24,8 +24,16 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     try{return Boolean(!closed&&verified?.available&&configuration().identity===verified.configuration.identity
       &&digest(coding.readWindowsNativeHelperAttestation(verified.pins.helperPath))===digest(verified.pins));}catch{return false;}
   }
+  function isF20Trial(scope) {
+    if(scope?.toolName!=='coding.repair.trial')return false;
+    const app=getApplication(),parent=app?.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent');
+    if(!parent?.taskId)return false;
+    const linked=app.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId);
+    return linked?.localTaskId===scope.taskId&&linked.mappedRequest?.toolName==='coding.repair.trial'
+      &&linked.request?.toolName==='workspace.run_allowed_command';
+  }
   async function prepare(scope,{forTaskConsent=false}={}){
-    if(!external(scope.toolName)&&!forTaskConsent)return;
+    if(!external(scope.toolName)&&!forTaskConsent&&!isF20Trial(scope))return;
     const original=getApplication()?.readAuthorizationQuestionInvocation(scope.taskId,scope.runId);if(!original)blocked();
     const config=configuration();
     if(!current()){
@@ -49,7 +57,7 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
       summary:'外部命令在已验证 Windows 进程边界内执行；仅选定工作区与固定工具路径，默认禁止网络'}],assertCurrent:()=>current()});
   }
   function describeExecution(request,profile){
-    const required=Boolean(request?.requirements.some(item=>item.requirementId==='native-execution'))||external(request?.toolName);
+    const required=Boolean(request?.requirements.some(item=>item.requirementId==='native-execution'))||external(request?.toolName)||isF20Trial(request);
     return {required,available:current(),backend:profile.mode==='full-access'?'none':'windows-psec',
       enforced:profile.mode!=='full-access'&&current(),...(verified?.bindingDigest?{bindingDigest:verified.bindingDigest}:{}),
       ...(!current()?{reason:'外部进程需已配置工作区、可信 Node 和通过实际检查的 Windows helper；应用内工具不需要这些配置'}:{})};
@@ -68,16 +76,25 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   }
   function createCommandTool(options){
     const root=realpathSync.native(options.rootPath),rootIdentity=identity(root);
+    const {trustedReadRoots=[],...commandOptions}=options;
+    const supportRoots=trustedReadRoots.map(value=>{
+      const target=realpathSync.native(value),relative=path.relative(root,target);
+      if(!statSync(target).isDirectory()||path.dirname(target)===target||relative!== '..'
+        &&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))blocked();
+      return {path:target,identity:digest(identity(target))};
+    });
     const fixedRecipes=options.recipes.map(recipe=>({executable:realpathSync.native(recipe.executable),args:[...(recipe.args??[])]}));
     const executables=[...new Set(fixedRecipes.map(recipe=>recipe.executable))];
+    const f20Recipe=fixedRecipes.length===1&&options.recipes[0].id==='f20-typescript-sample';
     const executor={async execute(request){
       assertBinding(request);
       const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertBinding});
       return actual.execute(request);
     }};
-    return coding.createWorkspaceCommandTool({...options,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
+    return coding.createWorkspaceCommandTool({...commandOptions,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
       bind(context,executionDeadline){
-        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry||digest(identity(root))!==digest(rootIdentity))blocked();
+        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));
+        if(!entry||digest(identity(root))!==digest(rootIdentity)||supportRoots.some(value=>digest(identity(value.path))!==value.identity))blocked();
         const policy=question.readExecutionPolicy(entry);
         const binding={sandboxRef:policy.ref,revision:policy.revision,taskId:context.taskId,runId:context.runId,
           authorizationRef:context.authorizationRef,argumentsDigest:context.argumentsDigest,deadline:executionDeadline};
@@ -91,19 +108,30 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           &&recipe.args[0]==='--cwd'&&recipe.args[1]===root&&recipe.args[2]==='--exe'
           &&recipe.args[3]===node&&recipe.args[4]==='--');
         const allowedExecutables=usesNodeChild?[...new Set([...executables,node])]:executables;
-        const roots=[systemRoot,...allowedExecutables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath)];
+        const roots=[systemRoot,...allowedExecutables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath),...supportRoots.map(value=>value.path)];
         const profile={sandboxRef:policy.ref,revision:policy.revision,mode,backend:mode==='full-access'?'none':'windows-psec',
           readRoots:[...new Set([...roots,...(mode==='workspace-write'?[]:[root])])],
           writeRoots:mode==='workspace-write'?[root]:[],executableAllowlist:allowedExecutables,
           network:{mode:mode==='full-access'?'unrestricted':'deny'}};
+        if(f20Recipe){
+          const application=getApplication(),f20=application.readF20TrialBinding(context);
+          if(!f20||mode==='full-access'||path.basename(root)!=='workspace')blocked();
+          const original={version:1,taskId:context.taskId,runId:context.runId,argumentsDigest:context.argumentsDigest,
+            sourceDigest:f20.sourceDigest,candidateId:f20.candidateId,root,rootIdentity,binding,profile,recipes:fixedRecipes};
+          const key='f20-native-command:v1:'+context.runId;
+          application.runtime.saveCheckpointOnce(context.taskId,key,original);
+          if(digest(application.runtime.loadCheckpoint(context.taskId,key))!==digest(original))blocked();
+        }
         return {...binding,profile};
       },
       recordResult(context,result){
         // Trusted executor facts only. Never persist command stdout/stderr or target-asserted evidence.
         const runtime=getApplication().runtime;
         const name='native-sandbox-execution:'+context.runId;
+        const original=f20Recipe?runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId):undefined;
         const value={runId:context.runId,argumentsDigest:context.argumentsDigest,backend:result.backend,enforced:result.enforced,
-          outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects};
+          outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects,
+          ...(original?{originalBindingDigest:digest(original)}:{})};
         const previous=runtime.loadCheckpoint(context.taskId,name)??[];
         if(!Array.isArray(previous)||previous.length>=256)throw new ProtocolError('RESULT_UNKNOWN','Native execution audit capacity reached');
         runtime.saveCheckpoint(context.taskId,name,[...previous,value]);

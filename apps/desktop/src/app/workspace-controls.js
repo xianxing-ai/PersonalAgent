@@ -1,4 +1,7 @@
 /** Renderer controls only; the trusted host selects and binds the workspace. */
+const F20_INPUT_REF = 'f20-case';
+const F20_DOC_TEMPLATE = '根据所选契约和实现编写简洁的 API 说明，并给出可通过类型检查的例子。';
+
 export function mountWorkspaceControls(root, invoke) {
   const section = document.createElement('section');
   section.className = 'sheet coding-workspace';
@@ -15,6 +18,12 @@ export function mountWorkspaceControls(root, invoke) {
     <p class="notice">Node --check 只检查所选文件的语法，不运行项目脚本；可执行文件和文件路径由本机宿主固定，Agent 无法指定。</p>
     <p class="notice" data-workspace="project-status"></p>
     <button class="btn" type="button" data-workspace="select-npm">找不到 npm 时选择本机 npm 文件</button>
+    <div data-workspace="f20" hidden>
+      <h3>API 文档检查</h3>
+      <p class="notice" data-workspace="f20-status"></p>
+      <p class="notice" data-workspace="f20-files" hidden></p>
+      <button class="btn" type="button" data-workspace="f20-configure">选择契约、实现和目标文档</button>
+    </div>
     <p class="notice">选择目录和运行组件只保存配置。读取、写入、受限命令和结果出机的具体范围，会在执行请求的对话提问卡一次确认，无需在设置重复允许。</p>
     <p class="notice">项目构建和测试会运行工作区代码。是否具备隔离能力以可信宿主报告的沙箱为准；组件未就绪不能通过卡片放行，每次执行仍经原 Policy 校验。</p>
     <button class="btn" type="button" data-workspace="revoke">撤销工作区授权</button>
@@ -50,6 +59,7 @@ export function mountWorkspaceControls(root, invoke) {
     field('select-node').disabled = busy || unavailable || !configured;
     field('select-file').disabled = busy || unavailable || !configured;
     field('select-npm').disabled = busy || unavailable || !configured || state.nodeConfigured !== true;
+    field('f20-configure').disabled = busy || unavailable || !configured || state.nodeConfigured !== true;
     field('revoke').disabled = busy || unavailable || (!configured && state.cloudExportAllowed !== true);
     updateStatus();
   }
@@ -74,6 +84,20 @@ export function mountWorkspaceControls(root, invoke) {
     field('project-status').textContent = configured
       ? `npm 文件：${state.npmCliConfigured === true ? '已确定' : '未找到，可手动选择'} · ${projectReady && !projectCommands.length ? '项目命令信息待读回' : `项目${projectDescription || '命令'}：${projectReady ? '可授权' : '暂不可用'}`}${typeof state.projectReason === 'string' && state.projectReason ? ` · ${state.projectReason}` : ''}`
       : '选择工作区后才会检查项目构建和测试是否可用。';
+    const f20 = state.f20;
+    field('f20').hidden = !f20;
+    if (f20) {
+      const inputRef = f20.inputRef ?? F20_INPUT_REF;
+      field('f20-status').textContent = f20.configured
+        ? `已配置案例 ${inputRef}。从主对话发送「运行 API 文档检查，案例 ${inputRef}」。`
+        : configured && state.nodeConfigured === true
+          ? '选择 TypeScript 契约、实现和现有目标文档。'
+          : '先选择工作区和本机 Node。';
+      const files = [f20.schemaFile && `契约 ${f20.schemaFile}`, f20.codeFile && `实现 ${f20.codeFile}`,
+        f20.targetDoc && `文档 ${f20.targetDoc}`].filter(Boolean);
+      field('f20-files').hidden = files.length === 0;
+      field('f20-files').textContent = files.join(' · ');
+    }
     updateButtons();
   }
 
@@ -92,7 +116,9 @@ export function mountWorkspaceControls(root, invoke) {
       const result = payload === undefined ? await invoke(action) : await invoke(action, payload);
       if (result && typeof result === 'object' && result.coding && typeof result.coding === 'object'
         && !Array.isArray(result.coding) && typeof result.coding.configured === 'boolean') {
-        feedback = '';
+        feedback = action === 'coding.f20.configure' && (result.cancelled || result.codingSelectionCancelled)
+          ? '已取消选择。'
+          : '';
         render(result);
       } else {
         unconfirmed = true;
@@ -119,6 +145,11 @@ export function mountWorkspaceControls(root, invoke) {
   field('select-node').addEventListener('click', () => run('coding.selectNode'));
   field('select-file').addEventListener('click', () => run('coding.selectCheckFile'));
   field('select-npm').addEventListener('click', () => run('coding.selectNpmCli'));
+  field('f20-configure').addEventListener('click', () => run('coding.f20.configure', {
+    inputRef: state.f20?.inputRef ?? F20_INPUT_REF,
+    docTemplate: F20_DOC_TEMPLATE,
+    recipeId: 'f20-typescript-sample',
+  }));
   field('revoke').addEventListener('click', () => run('coding.revoke'));
 
   render();

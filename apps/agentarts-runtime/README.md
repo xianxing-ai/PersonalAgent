@@ -93,6 +93,8 @@ Python 服务遵循调用方的显式原 deadline，不另行截为 30 秒；仅
 
 受信配置还包括 `PA_AGENT_WORKFLOW_CHECKPOINT_KEY`（至少 32 字节，稳定的宿主密钥，用于图检查点完整性；不授予动作权限），以及既有国内 MaaS 与入站配置。`PA_WORKFLOW_RECEIPT_SECRET` 可注入已有本地 Host 工具任务结果的签名核实器；显式专用密钥优先，未指定时公开 `deriveOwnedWorkflowKeys` 从既有可信 `PA_AGENT_WSS_AUTH_TOKEN` 以 HKDF 不同 purpose 派生稳定的 checkpoint/peer-receipt 子密钥。本地可信桥接宿主用相同安全配置派生；没有任何配置不会生成假信任。签名核对受信 peer 来源和具体原回执，不能代替本地 Policy 或独立外部读回。`LAYA_MODEL_PATH` 在镜像中默认 `/opt/laya/models/multilingual`、`LAYA_PORT=8000`；Python 默认 `/opt/laya/venv/bin/python`，冷启动期限由 `PA_LAYA_STARTUP_TIMEOUT_MS` 配置。`legacy-without-laya` 只在明确 `standalone-validation` 的离线传输夹具中可用，AgentArts 模式拒绝这个值。
 
+WSS 轮换时，镜像宿主的 `PA_AGENT_WSS_AUTH_TOKEN` 与 Desktop 的 `PA_AGENTARTS_APP_TOKEN` 使用同一新令牌。镜像和 Desktop 的受信主进程可独立配置相同的 `PA_WORKFLOW_RECEIPT_SECRET`，镜像从 `PA_AGENT_WORKFLOW_CHECKPOINT_KEY` 读取检查点密钥。原来从已泄漏令牌派生的密钥一并替换。切换固定版本前核对旧任务状态与写入结果，已签名记录留在原部署和任务。发布后用旧令牌验证拒绝，再用新令牌运行固定版本的实际业务验收。
+
 模型资产导出需要显式环境配置：
 
 ```powershell
@@ -142,8 +144,8 @@ ModelGateway 是唯一模型入口，真实提供者由宿主配置，不会缺�
 使用 `node scripts/cloud-fetch-timeout-command.mjs` 生成可审查 JSON，包含原源码与实际执行源码 SHA-256、Brotli/base64 启动命令数组；加 `--command-only` 只输出平台可粘贴的数组。生成器拒绝超过 10 参数或任一参数超过 256 字节的结果，不读取宿主环境或 secret。启动命令只解压已审查源码、输出 `fetch_timeout_bootstrap` 安全回执，再导入镜像原 `main.mjs`。离线验证：`node --test test/cloud-fetch-timeout-bootstrap.test.mjs`（使用 exact Node 24.15.0）。2026-10-23 已在原 `context-128k-20261022` 镜像配置版 `arm64-fetch30m-1023` 读回 Node 24.15.0 / timeoutMs 1800000 启动回执；真实最高思考请求已超过原 300 秒失败点，完整任务结果仍待该次验收，不等于新生产镜像已发布。
 - `PA_AGENT_WORKFLOW_GOAL_INPUT`：可选的单一旧 Workflow 输入名。
 - `PA_AGENT_DEPLOYMENT_VERSION`：可选的宿主显式固定版本标签，例如 `arm64-194799c6`。仅允许 1～128 个 ASCII 字母、数字、点、下划线、连字符且以字母/数字开头，拒绝 Latest/default/stable/current/unknown 别名或组成段；非法配置启动失败，不回显原值。缺省时回执记 `unknown`，不从模型、URL 或可变 Latest 推定。
-- `PA_AGENT_INBOUND_TOKEN`：可选额外入站保护；至少32字符，调用方走已有Authorization宿主注入。
-- `PA_AGENT_WSS_AUTH_TOKEN`：可信宿主注入的入站 WSS/状态查询凭据，至少32字符；缺省继承 `PA_AGENT_INBOUND_TOKEN`，二者都缺失时 `/ws` 与状态查询关闭。与模型密钥无关。
+- `PA_AGENT_INBOUND_TOKEN`：旧 HTTP 内层凭据，至少 32 字符。
+- `PA_AGENT_WSS_AUTH_TOKEN`：可信宿主注入的内层凭据，至少 32 字符；缺省继承 `PA_AGENT_INBOUND_TOKEN`。AgentArts 模式启动须至少配置其中一项。`/invocations` 使用 `X-PA-Agent-Token` 携带内层凭据，平台外层 `Authorization` 单独验证。`/ping` 仍供平台探活。
 
 `npm run start --workspace=@personal-agent/agentarts-runtime`。
 独立模式只绑定 127.0.0.1，不改变 Desktop 的正式比赛 endpoint。
@@ -237,4 +239,4 @@ The trusted `PA_AGENT_MODEL_CATALOG_FILE` alternative reads JSON once at startup
 
 The existing authenticated `/invocations` and WSS invocation query `{modelCatalogVersion:"1.0",action:"list"}` returns the directory using the existing message envelope and inner host credential. Its SHA256 revision binds normalized metadata; `executionModel:{catalogRevision,modelId,reasoningEffort?}` pins a selection. Unknown fields, stale revisions, unknown models and unsupported efforts are rejected. Native effort enters `ModelRequest.reasoningEffort`, never the prompt. Non-text/unavailable models remain visible but cannot execute thought requests. An unverified entry may be attempted; directory visibility does not verify inference authorization or native reasoning support.
 
-`agentarts-proxy` retains the trusted AgentArts inference endpoint/authentication. `runtime-bailian` runs inside the owned AgentArts image and calls the fixed Beijing workspace compatible API using `PA_AGENT_REALTIME_WORKSPACE_ID` and its host-held `PA_AGENT_REALTIME_API_KEY`. This is an explicit route, with no error fallback, redirect or unknown-write retry. Response telemetry binds configured/returned model, requested effort, route and status without recording prompts or credentials. It is response evidence, not a platform trace readback.
+`agentarts-proxy` retains the trusted AgentArts inference endpoint/authentication. `runtime-bailian` runs inside the owned AgentArts image and calls the fixed Beijing workspace compatible API using `PA_AGENT_REALTIME_WORKSPACE_ID` and its host-held `PA_AGENT_REALTIME_API_KEY`. Both routes make a single non-streaming request. The transport receipt records HTTP status and a correlation ID. After the Provider parses a valid completion it records whether the configured model matches, under the same correlation ID. Only a matching configured model ID is recorded.

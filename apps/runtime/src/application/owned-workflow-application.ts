@@ -41,7 +41,11 @@ export interface RuntimeOwnedWorkflowHostOptions {
   assertIsolation?:(taskId:string,isolation:{namespace:string;snapshotDigest:string})=>void;
   shadow?:WorkflowShadowHostPolicy;
   canRetryReadFailure?:NonNullable<ConstructorParameters<typeof OwnedWorkflowHostBridge>[0]['canRetryReadFailure']>;
+  /** F20_N03's public recipe operation executes the same recipe in the bound candidate trial. */
+  mapOperation?:(request:OwnedWorkflowHostRequest)=>OwnedWorkflowHostRequest;
 }
+type OwnedWorkflowHostRequest=Parameters<ConstructorParameters<typeof OwnedWorkflowHostBridge>[0]['host']['submitHostToolTask']>[0];
+type OwnedWorkflowOperationBinding={localTaskId:string;request:OwnedWorkflowHostRequest;mappedRequest?:OwnedWorkflowHostRequest};
 
 /** Existing Runtime application composition; no second scheduler, execution loop or task store. */
 export function createRuntimeOwnedWorkflowHost(application:RuntimeApplication,
@@ -52,26 +56,42 @@ export function createRuntimeOwnedWorkflowHost(application:RuntimeApplication,
     host:{submitHostToolTask:request=>{
       if(!options.parentTaskId)return application.submitHostToolTask(request);
       const originalKey='coding-repair:host:'+request.commandId;
-      const original=application.runtime.loadCheckpoint(options.parentTaskId,originalKey) as {localTaskId:string;request:typeof request}|undefined;
+      const operation=options.mapOperation?.(request)??request;
+      if(operation.commandId!==request.commandId||operation.deadline!==request.deadline)
+        throw new ProtocolError('REVISION_CONFLICT','Original graph operation identity changed');
+      const mappedRequest=operation===request?undefined:structuredClone(operation);
+      const original=application.runtime.loadCheckpoint(options.parentTaskId,originalKey) as OwnedWorkflowOperationBinding|undefined;
       if(original) {
-        if(JSON.stringify(original.request)!==JSON.stringify(request))throw new ProtocolError('REVISION_CONFLICT','Original graph host intent changed');
+        if(JSON.stringify(original.request)!==JSON.stringify(request)||JSON.stringify(original.mappedRequest)!==JSON.stringify(mappedRequest))
+          throw new ProtocolError('REVISION_CONFLICT','Original graph host intent changed');
         const readback=application.readHostToolTask(original.localTaskId);
         if(readback.task.state!=='created')return readback;
-        return application.finalizeHostToolTask({taskId:original.localTaskId,commandId:request.commandId,
-          arguments:request.arguments,expectedTaskRevision:readback.task.revision});
+        return application.finalizeHostToolTask({taskId:original.localTaskId,commandId:operation.commandId,
+          arguments:operation.arguments,expectedTaskRevision:readback.task.revision});
       }
-      const prepared=application.prepareHostToolTask({commandId:request.commandId,toolName:request.toolName,
-        toolVersion:request.toolVersion,deadline:request.deadline});
+      const prepared=application.prepareHostToolTask({commandId:operation.commandId,toolName:operation.toolName,
+        toolVersion:operation.toolVersion,deadline:operation.deadline});
       const binding={taskId:options.parentTaskId,operationId:request.commandId};
       const previous=application.runtime.loadCheckpoint(prepared.taskId,'coding-repair:parent');
       if(previous!==undefined&&JSON.stringify(previous)!==JSON.stringify(binding))
         throw new ProtocolError('REVISION_CONFLICT','Original graph host child changed');
       application.runtime.saveCheckpointOnce(prepared.taskId,'coding-repair:parent',binding);
-      application.runtime.saveCheckpointOnce(options.parentTaskId,originalKey,{localTaskId:prepared.taskId,request:structuredClone(request)});
-      return application.finalizeHostToolTask({taskId:prepared.taskId,commandId:request.commandId,
-        arguments:request.arguments,expectedTaskRevision:prepared.revision});
+      application.runtime.saveCheckpointOnce(options.parentTaskId,originalKey,
+        {localTaskId:prepared.taskId,request:structuredClone(request),...(mappedRequest?{mappedRequest}:{})});
+      return application.finalizeHostToolTask({taskId:prepared.taskId,commandId:operation.commandId,
+        arguments:operation.arguments,expectedTaskRevision:prepared.revision});
     },
-      readHostToolTask:id=>application.readHostToolTask(id)},
+      readHostToolTask:id=>{
+        const readback=application.readHostToolTask(id);
+        if(!options.parentTaskId||!options.mapOperation)return readback;
+        const original=application.runtime.loadCheckpoint(options.parentTaskId,'coding-repair:host:'+readback.commandId) as OwnedWorkflowOperationBinding|undefined;
+        if(!original?.mappedRequest)return readback;
+        const mapped=original.mappedRequest;
+        if(original.localTaskId!==id||readback.commandId!==mapped.commandId
+          ||readback.toolName!==mapped.toolName||readback.toolVersion!==mapped.toolVersion)
+          throw new ProtocolError('UNAUTHORIZED','Mapped graph readback does not match its actual execution');
+        return {...readback,toolName:original.request.toolName,toolVersion:original.request.toolVersion};
+      }},
     checkpoints:{read:(id,key)=>application.runtime.loadCheckpoint(id,key),
       writeOnce:(id,key,value)=>application.runtime.saveCheckpointOnce(id,key,value)},
     assertActive:(id,revision)=>{

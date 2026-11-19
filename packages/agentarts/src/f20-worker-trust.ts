@@ -7,13 +7,28 @@
 // 本模块只做纯绑定/校验/受限构造：不执行命令、不授权发布、不读取云节点状态；
 // 任何前提缺失都以显式错误 fail-closed（unavailable/冲突），不提供“可用”假象。
 import {createHash} from 'node:crypto';
-import {ProtocolError} from '@personal-agent/contracts';
+import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '@personal-agent/contracts/harness-candidates';
 import type {HarnessCandidateContext,HarnessCandidateTrial} from '@personal-agent/contracts/harness-candidates';
 import type {CodingRepairPatch,CodingRepairRecipe,CodingRepairSnapshot} from '@personal-agent/contracts/coding-repair';
 import {codingVerificationCurrent} from './coding-repair.js';
 
 export const F20_WORKER_TRUST_VERSION = '0.1.0' as const;
+
+export interface F20DocumentCandidate {
+  version:1;
+  docMarkdown:string;
+  sampleSnippet:string;
+}
+const documentCandidateSchema = {type:'object',additionalProperties:false,
+  required:['version','docMarkdown','sampleSnippet'],properties:{version:{const:1},
+    docMarkdown:{type:'string',minLength:1,maxLength:262144,pattern:'^[^\\u0000]+$'},
+    sampleSnippet:{type:'string',minLength:1,maxLength:65536,pattern:'^[^\\u0000]+$'}}};
+export function f20DocumentCandidateSchema(){return structuredClone(documentCandidateSchema);}
+export function parseF20DocumentCandidate(value:unknown):F20DocumentCandidate {
+  validateToolValue(documentCandidateSchema,value);
+  return structuredClone(value) as F20DocumentCandidate;
+}
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 const unavailable = (message: string): never => {throw new ProtocolError('UNSUPPORTED_CAPABILITY', message);};

@@ -13,6 +13,7 @@ import type {RepairPolicyOptions,RepairTrace} from './repair-policy.js';
 import {codingRepairConfiguration,createCodingRepairFrontier,compactCodingSnapshot,acceptCodingChecks,parseCodingPatchCandidate,
   analyzeCodingPatches,codingPatchCost,codingPatchRepeated,codingSnapshotFingerprint,codingFailureFingerprint,codingPatchFingerprint,requiredCodingVerification,codingRepairDigestText} from './coding-repair.js';
 import type {CodingRepairFrontier} from './coding-repair.js';
+import {f20DocumentCandidateSchema} from './f20-worker-trust.js';
 
 export type OwnedWorkflowMode = 'main' | 'decision_shadow' | 'trace_replay' | 'isolated';
 export interface WorkflowSelector {
@@ -154,6 +155,10 @@ export function workflowCandidateMetadata(node:OwnedWorkflowNode,tools:readonly 
     selectionBasis:node.kind==='tool'?'published_schema_and_task_arguments'
       :node.kind==='host'?'bound_host_arguments_and_task_scope':'actual_sources_and_current_output_requirements',
     resultEvidenceStage:proposed?'after_actual_execution':'required_for_generated_claims'},
+    ...(['F20_N02','F20_N04'].includes(node.id)?{candidateValueSchema:f20DocumentCandidateSchema(),
+      candidateConstraint:node.id==='F20_N02'
+        ?'Use both original sources. Include the API documentation and a TypeScript example with an explicitly typed object, or abstain.'
+        :'Retain the exact original selected F20 document candidate after the verified check, or abstain.'}:{}),
     publishedTools:tools.filter(tool=>node.capabilities.some(cap=>cap.kind==='tool'&&cap.name===tool.name)
       ||node.kind==='host'&&tool.name===workflowHostToolName(node.id)).map(tool=>copy(tool))};
 }

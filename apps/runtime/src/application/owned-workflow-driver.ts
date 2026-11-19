@@ -13,6 +13,7 @@ export interface RuntimeOwnedWorkflowDriverState<TInput=unknown> {
   resolvedValues:Record<string,unknown>;pendingSend?:{requestId:string;digest:string};
   waiting?:{localTaskId:string;operationId:string};
   confirmedHost:Record<string,{localTaskId:string;operationId:string;result:unknown}>;
+  confirmedOperations?:Record<string,{toolName:string;nodeId?:string;localTaskId:string;operationId:string;result:unknown;exportedResult?:unknown}>;
   evidenceRefs:string[];timings:{stage:string;startedAt:string;elapsedMs:number;nodeId?:string;operationId?:string}[];
 }
 /** Trusted composition only. Input must already have its exact export authorization.
@@ -22,6 +23,7 @@ export interface RuntimeOwnedWorkflowDriverOptions<TInput> {
   image:{bindingId:string;advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult>};
   bridge:Pick<OwnedWorkflowHostBridge,'submit'|'readReceipt'>;catalog:readonly CoordinationAvailableTool[];
   requestId:(sequence:number)=>string;
+  authorizeProposal?:(input:{proposal:Proposal;state:RuntimeOwnedWorkflowDriverState<TInput>})=>void|Promise<void>;
   authorizeReceipt:(input:{proposal:Proposal;receipt:WorkflowReceipt;localTaskId:string;state:RuntimeOwnedWorkflowDriverState<TInput>})=>Promise<void|WorkflowReceipt>;
   /** Required local verification. Cloud state alone never completes the original task. */
   validateSettled:(state:RuntimeOwnedWorkflowDriverState<TInput>)=>WorkerResult|Promise<WorkerResult>;
@@ -64,6 +66,7 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       if(proposal.kind!=='tool_proposal')throw new ProtocolError('UNSUPPORTED_CAPABILITY','Graph requires a registered host adapter');
       if(!options.catalog.some(tool=>tool.name===proposal.toolName&&tool.version===proposal.toolVersion))
         throw new ProtocolError('UNAUTHORIZED','Graph requested a tool outside its original published catalog');
+      await options.authorizeProposal?.({proposal,state});active();
       const local=options.bridge.submit(binding,proposal);
       // The child may finish asynchronously; wait only for the original registered worker, never replay it.
       const cancelChild=()=>{try{application.runtime.requestCancel(local.localTaskId,'Original graph was cancelled');}catch{/* Original terminal child is retained. */}};
@@ -72,8 +75,18 @@ export async function runRuntimeOwnedWorkflowDriver<TInput>(application:RuntimeA
       finally {worker.signal.removeEventListener('abort',cancelChild);}
       const receipt=await timed('host-readback',async()=>options.bridge.readReceipt(binding,proposal),{nodeId:proposal.nodeId,operationId:proposal.operationId});
       if(!receipt||receipt.state==='stopping'||receipt.state==='unknown')return pause(local.localTaskId,proposal.operationId);
-      if(receipt.state==='confirmed')state.confirmedHost[proposal.toolName]={localTaskId:local.localTaskId,operationId:proposal.operationId,result:structuredClone(receipt.result)};
+      if(receipt.state==='confirmed') {
+        const confirmed={localTaskId:local.localTaskId,operationId:proposal.operationId,result:structuredClone(receipt.result)};
+        state.confirmedHost[proposal.toolName]=confirmed;
+        if(options.authorizeProposal){
+          state.confirmedOperations??={};
+          state.confirmedOperations[proposal.operationId]={...confirmed,toolName:proposal.toolName,nodeId:proposal.nodeId};
+        }
+      }
       const authorized=await options.authorizeReceipt({proposal,receipt,localTaskId:local.localTaskId,state});active();
+      const operation=state.confirmedOperations?.[proposal.operationId];
+      if(operation&&authorized&&!isDeepStrictEqual(authorized.result,operation.result))
+        operation.exportedResult=structuredClone(authorized.result);
       state.evidenceRefs=[...new Set([...state.evidenceRefs,...receipt.evidenceRefs])];
       state.receipts.push(authorized??receipt);delete state.waiting;save();
     }

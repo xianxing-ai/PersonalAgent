@@ -115,6 +115,26 @@ test('candidate failure receipts redact malformed fields and reject invalid stag
   assert.equal(lines.length,1);
 });
 
+test('role_validation failure admits only fixed validationReason enums and strips private strings',()=>{
+  const lines=[],write=createRoleReceiptWriter({write:line=>lines.push(line)});
+  for(const validationReason of [
+    'world_report_invalid','plan_report_invalid','plan_scope_exceeded',
+    'plan_unsupported_operation','review_contract_invalid','review_plan_substituted','tool_proposal_invalid',
+  ]) {
+    write({...receipt,role:'plan',status:'failed',failureStage:'role_validation',validationReason,message:'private-model-text'});
+  }
+  assert.equal(lines.length,7);
+  for(const line of lines) assert.equal(line.includes('private-'),false);
+  assert.deepEqual(lines.map(line=>JSON.parse(line).validationReason),[
+    'world_report_invalid','plan_report_invalid','plan_scope_exceeded',
+    'plan_unsupported_operation','review_contract_invalid','review_plan_substituted','tool_proposal_invalid',
+  ]);
+  write({...receipt,role:'plan',status:'failed',failureStage:'role_validation',validationReason:'private-freeform-reason'});
+  assert.equal(Object.hasOwn(JSON.parse(lines[7]),'validationReason'),false);
+  write({...receipt,role:'plan',status:'failed',failureStage:'model_gateway',validationReason:'plan_scope_exceeded'});
+  assert.equal(Object.hasOwn(JSON.parse(lines[8]),'validationReason'),false);
+});
+
 
 test('candidate node ID objects cannot smuggle private fields through string coercion',()=>{
   const lines=[],write=createRoleReceiptWriter({write:line=>lines.push(line)});

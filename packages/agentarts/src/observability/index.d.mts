@@ -1,5 +1,5 @@
 /** Host supplied snapshot of the actual HTTP InvokeRuntime request. */
-export interface InvocationIdentity {readonly requestId:string; readonly sessionId:string; readonly resourceId:string}
+export interface InvocationIdentity {readonly requestId:string; readonly sessionId:string; readonly resourceId:string; readonly traceId?:string}
 export interface RunLogQuery {readonly agentRunId:string; readonly startTime:string; readonly endTime:string; readonly limit:number}
 export interface TraceSpanObservation {
   readonly index:number; readonly spanRef:string|null; readonly parentSpanRef:string|null;
@@ -12,8 +12,8 @@ export interface TraceObservation {
   readonly traceRef:string; readonly total:number; readonly returnedSpanCount:number;
   readonly coverage:'complete'|'partial'; readonly spans:readonly TraceSpanObservation[];
   readonly requestCorrelation:{readonly status:'not_checked'|'mismatch'|'unknown'|'exact_id_match';
-    readonly basis:'trace_id+session_id+resource_id'; readonly scope:'returned_spans';
-    readonly snapshotTrust:'caller_supplied'; readonly requestRef:string|null};
+    readonly basis:'trace_id+session_id+resource_id'|'request_id->trace_id+session_id+resource_id'; readonly scope:'returned_spans';
+    readonly snapshotTrust:'caller_supplied'; readonly requestRef:string|null; readonly expectedTraceRef?:string};
   readonly deploymentVersion:'unavailable'; readonly cost:'unavailable'; readonly usageAggregation:'not_performed';
 }
 export interface RunLogObservation {

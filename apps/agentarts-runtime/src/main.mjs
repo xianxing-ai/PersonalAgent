@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {OwnedAgentOrchestrator, OwnedWorkflowEngine, createOwnedWorkflowReceiptVerifier, deriveOwnedWorkflowKeys, getOwnedBindings,
   WORKFLOW_DECISION_TOOL_NAME,WORKFLOW_DECISION_TOOL_VERSION} from '@personal-agent/agentarts';
 import {ModelGateway} from '@personal-agent/models';
+import {createEvaluationController} from './evaluation-controller.mjs';
 import {createAgentServer} from './server.mjs';
 import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
 import {createRoleReceiptWriter} from './role-receipts.mjs';
@@ -39,6 +40,8 @@ function model(role,entry) {
     requestProfile:entry?.requestProfile??process.env.PA_AGENT_MODEL_REQUEST_PROFILE??'standard',onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')})
     :createOwnedModelFetch({endpoint,model:name});
   return createRequestDeadlineModel({baseUrl:endpoint,model:name,
+    streaming:false,
+    ...(route==='direct-validation'?{}:{onResponseModel:fetch.recordResponseModel}),
     responseFormat:'json_object',
     requestFormat:ownedModelRequestFormat({endpoint,model:name}),fetch,apiKey:readSecret},
     {timeoutMs:process.env.PA_AGENT_TIMEOUT_MS === undefined ? undefined : integer('PA_AGENT_TIMEOUT_MS')});
@@ -82,7 +85,12 @@ try {
     undefined, workflowEngine,executionModels?{executionModels}:undefined);
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
+  const timeoutMode = process.env.PA_AGENT_TIMEOUT_MODE ?? 'request-deadline';
+  if (!['request-deadline','fixed'].includes(timeoutMode)) throw new Error('Invalid runtime timeout mode configuration');
+  if (timeoutMode === 'fixed' && process.env.PA_AGENT_TIMEOUT_MS === undefined) throw new Error('Fixed timeout mode requires explicit timeout');
+  const timeoutMs = process.env.PA_AGENT_TIMEOUT_MS === undefined ? undefined : integer('PA_AGENT_TIMEOUT_MS');
   server = createAgentServer({orchestrator,mode,serviceControllers:{...imageServices.controllers,
+    ...(executionModels?{evaluationVersion:createEvaluationController({executionModels})}:{}),
     wikiVersion:createWikiWorkflowController({model:new ModelGateway(models.plan),onCall:record=>process.stdout.write(JSON.stringify(record)+'\n')})},
     executionModels,
     realtimeProxy:agentRealtimeProxyFromEnvironment(process.env,{onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')}),
@@ -93,8 +101,8 @@ try {
     ...(wssAuthToken ? {wssAuthToken}:{}),
     getBindings:getOwnedBindings,defaultControllerId:process.env.PA_AGENT_DEFAULT_CONTROLLER_ID,
     workflowGoalInput:process.env.PA_AGENT_WORKFLOW_GOAL_INPUT,
-    timeoutMode:'request-deadline',
-    ...(process.env.PA_AGENT_TIMEOUT_MS === undefined ? {} : {timeoutMs:integer('PA_AGENT_TIMEOUT_MS')}),
+    timeoutMode,
+    ...(timeoutMs === undefined ? {} : {timeoutMs}),
     maxConcurrency:integer('PA_AGENT_MAX_CONCURRENCY',8)});
   const port = integer('PORT',8080);
   if (port > 65535) throw new Error('Invalid port');

@@ -109,6 +109,7 @@ import {createKnowledgeWatchHost, createProductionKnowledgeReevaluator} from './
 import {createPublicConnectorHost} from './public-connector-host.js';
 import {createWeatherCardHost} from './weather-card-host.js';
 import {createWorkspaceConfigHost} from './workspace-config-host.js';
+import {createF20WorkflowWorkerPorts} from './f20-workflow-worker-ports.js';
 import {projectDeveloperConversationStatus} from './developer-deployment-config.js';
 import {verifyWindowsRecoveryAcl} from './coding-tool-host.js';
 import {createToolPresenceHost} from './tool-presence-host.js';
@@ -2744,11 +2745,16 @@ async function initializeRuntime() {
           return {text:typeof result?.response?.text==='string'?result.response.text:''};
         },
       });
+      const f20WorkflowWorkerPorts=!syntheticMvp&&readDesktopHarnessVersions()
+        ?createF20WorkflowWorkerPorts({getApplication:()=>runtimeApplication,codingWorkspace,
+          readHarnessVersions:readDesktopHarnessVersions,readReviewerIdentity:()=>localLaya?.readClassifierIdentity?.()})
+        :undefined;
       runtimeApplication = runtimeModule.createAgentArtsRuntimeApplication({
         path: dbPath,
         riskAutonomy: ensureRiskAutonomyHost().gate,
         wikiImport:wikiImportHost.runtimeOptions,
         delegateUserTasks: true,
+        ...(f20WorkflowWorkerPorts?{f20WorkflowWorkerPorts}:{}),
         ...(workflowShadowRelease ? {workflowShadowRelease} : {}),
         ...(voiceFinalTranscript ? {voiceFinalTranscript} : {}),
         ...(observationOptions?.observationAuthorization
@@ -2763,6 +2769,7 @@ async function initializeRuntime() {
         readDeveloperHarnessConfiguration:readDesktopDeveloperHarnessConfiguration,
         ...(codingWorkspace.harnessRepairHost&&typeof codingWorkspace.readHarnessCandidateContext==='function'?{
           harnessCandidates:{host:codingWorkspace.harnessRepairHost,
+            ...(f20WorkflowWorkerPorts?{readF20WorkspaceRef:scope=>codingWorkspace.readF20WorkspaceRef(scope)}:{}),
             readContext:(context,scope)=>codingWorkspace.readHarnessCandidateContext(context,scope),
             reconcileOriginalSession:input=>codingWorkspace.reconcileHarnessOriginalSession(input)},
         }:{}),
@@ -4134,6 +4141,34 @@ async function action(event, name, payload) {
   }
   if (name === 'coding.reconcile') {
     return recoverWorkspacePatch(event, payload);
+  }
+  if(name==='coding.f20.configure'){
+    if(sender!==admin||event.senderFrame!==admin.webContents.mainFrame||!competitionMode||syntheticMvp||!codingWorkspace)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','请从正式应用配置 F20 固定校验');
+    if(!payload||typeof payload!=='object'||Array.isArray(payload)
+      ||Object.keys(payload).sort().join(',')!=='docTemplate,inputRef,recipeId'||payload.recipeId!=='f20-typescript-sample'
+      ||typeof payload.inputRef!=='string'||typeof payload.docTemplate!=='string')
+      throw new ProtocolError('INVALID_ARGUMENT','F20 固定案例格式无效');
+    if(runtimeApplication?.activeTaskCount)throw new ProtocolError('REVISION_CONFLICT','请等待当前任务结束后更改 F20 案例');
+    const owner=admin,binding=codingWorkspace.readWorkspaceBinding();
+    if(!binding)throw new ProtocolError('UNSUPPORTED_CAPABILITY','请先选择编程工作区和可信 Node');
+    const pick=async(title,name,extensions)=>{
+      if(owner.isDestroyed()||admin!==owner)return;
+      const selection=await dialog.showOpenDialog(owner,{title,defaultPath:binding.rootPath,properties:['openFile'],filters:[{name,extensions}]});
+      if(owner.isDestroyed()||admin!==owner||selection.canceled||selection.filePaths.length!==1)return;
+      const relative=path.relative(binding.rootPath,selection.filePaths[0]);
+      if(!relative||relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative))
+        throw new ProtocolError('UNAUTHORIZED','F20 文件必须位于所选工作区内');
+      return relative.split(path.sep).join('/');
+    };
+    const cancelled=()=>({coding:codingWorkspace.snapshot(),cancelled:true});
+    const schemaFile=await pick('选择 F20 TypeScript 契约','TypeScript',['ts']);if(!schemaFile)return cancelled();
+    const codeFile=await pick('选择 F20 实现文件','实现文件',['ts','js','mjs','cjs']);if(!codeFile)return cancelled();
+    const targetDoc=await pick('选择 F20 对应的现有文档','Markdown',['md']);if(!targetDoc)return cancelled();
+    if(!codingWorkspace.isWorkspaceBindingCurrent(binding)||runtimeApplication?.activeTaskCount)
+      throw new ProtocolError('REVISION_CONFLICT','选择文件时工作区或运行状态已变化');
+    codingWorkspace.setF20CaseFromNativeSelection({...payload,schemaFile,codeFile,targetDoc});
+    publish();return {coding:codingWorkspace.snapshot()};
   }
   if (['coding.select','coding.selectNode','coding.selectNpmCli','coding.selectCheckFile','coding.authorize','coding.revoke'].includes(name)) {
     if ((sender !== admin && sender !== workspace) || !competitionMode || syntheticMvp || !codingWorkspace) throw Error('请从正式应用设置配置编程工作区');

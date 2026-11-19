@@ -13,6 +13,8 @@ import {createDesktopCodingToolHost} from './coding-tool-host.js';
 import {findWindowsExecutable} from './windows-executable-discovery.js';
 import {codingRepairExportOperation,projectCodingRepairResult} from './coding-repair-result-export.js';
 import {workspaceRepairProjectionSchema,workspaceWorkflowSummaryProjectionSchema} from './workspace-result-projection.js';
+import {createF20CaseConfiguration} from './f20-case-config-host.js';
+import {createF20TypeScriptRecipe,F20_TYPESCRIPT_RECIPE} from './f20-typescript-recipe.js';
 import {initializeDefaultWorkspace} from './default-workspace.js';
 
 const codingConsentGroups=Object.freeze([
@@ -25,6 +27,11 @@ const codingConsentGroups=Object.freeze([
   {id:'cas-delivery',tools:['coding.repair.publish','coding.repair.reconcile','workflow.host.f15_n06'],
     summary:'将本次已验证修改写回所选文件，并核对原文件版本和写入结果。'},
 ]);
+const projectionObject=properties=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
+const f20CaseExport=projectionObject(Object.fromEntries(['schemaFile','codeFile','recipeId','docTemplate','targetDoc','sourceVersion']
+  .map(key=>[key,{type:'string'}])));
+const f20CompletionExport=projectionObject({workflowId:{const:'F20'},state:{const:'settled'},published:{const:false}});
+const f20CommandExport=projectionObject({recipeId:{const:F20_TYPESCRIPT_RECIPE},exitCode:{const:0},stdout:{const:''},stderr:{const:''}});
 
 function directory(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.startsWith('\\\\')
@@ -119,6 +126,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const confirmedWorkspaceReads=new Map();
   let workspaceReferenceExport;
   let boundRepairPowerShell,repairHostPromise,harnessHostPromise,developerCommand,repairRecipeIds=new Set();
+  const f20Hosts=new Map();
   let dependencyFingerprint,dependencyPreparationReason,dependencyPreparation,dependencySeeded=false,authorizationFailure=false;
   const commandFactory=typeof createWorkspaceCommandTool==='function'?createWorkspaceCommandTool
     :question?undefined:coding.createWorkspaceCommandTool;
@@ -287,21 +295,24 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
   const getRepairHost=async(harness=false,context)=>{
     if(question&&context)await prepareDependencies(context);
     if(dependencyPreparation)await dependencyPreparation;
-    if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || (boundNpmCli&&!boundProjectHelper)
-      || typeof createCommandRecipeTool!=='function'||!commandFactory)throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
-    if(harness?harnessHostPromise:repairHostPromise)return harness?harnessHostPromise:repairHostPromise;
+    const f20=harness&&context?application?.readF20TrialBinding?.(context):undefined;
+    if(!application || !boundRoot || !boundRepairPowerShell || !boundNode || !f20&&(boundNpmCli&&!boundProjectHelper
+      ||typeof createCommandRecipeTool!=='function')||!commandFactory)throw new ProtocolError('UNSUPPORTED_CAPABILITY','隔离编码命令宿主尚未配置');
+    if(f20&&f20Hosts.has(f20.sourceDigest))return f20Hosts.get(f20.sourceDigest);
+    if(!f20&&(harness?harnessHostPromise:repairHostPromise))return harness?harnessHostPromise:repairHostPromise;
     const workspaceId=createHash('sha256').update(boundRoot).digest('hex');
     const preparedFingerprint=dependencyFingerprint,preparationReason=dependencyPreparationReason;
     // Reuse the same host implementation with separate journals: F15 retains owner-mapped
     // sessions, while harness receipts bind the actual executor in the same workspace.
     const pending=coding.createIsolatedCodingRepairHost({workspaceRoot:boundRoot,
-      sessionRoot:path.join(userData,harness?'harness-isolation':'coding-isolation',workspaceId),
+      sessionRoot:path.join(userData,f20?'f20-isolation':harness?'harness-isolation':'coding-isolation',workspaceId),
       workspaceId,patch:{powerShellPath:boundRepairPowerShell,
          ...(boundProjectHelper===undefined?{}:{processIdentityHelperPath:boundProjectHelper}),
         ...(patchHelperScriptPath===undefined?{}:{helperScriptPath:patchHelperScriptPath})},
-      recipes:repairRecipes(),
+      recipes:f20?[{recipeId:F20_TYPESCRIPT_RECIPE,packageIds:[],required:true}]:repairRecipes(),
       ...(harness?{}:{resolveOriginalTaskId:resolveRepairTask}),
       configurationRef:createHash('sha256').update(JSON.stringify({root:boundRoot,node:boundNode,check:boundCheckFile,npm:boundNpmCli,
+        ...(f20?{f20SourceDigest:f20.sourceDigest,f20Input:f20.input}:{}),
         helper:boundProjectHelper,nodeIdentity:String(nodeIdentity?.ino)+':'+String(nodeIdentity?.mtimeNs),
         ...(preparedFingerprint?{dependencyFingerprint:preparedFingerprint}:{})})).digest('hex'),
       readVerificationEvidence:async input=>readRuntimeCodingVerificationEvidence(application,input),
@@ -315,18 +326,21 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
         if(await coding.capturePreparedDependencyFingerprint(isolatedRoot,{deadline,signal})!==preparedFingerprint)
           throw new ProtocolError('REVISION_CONFLICT','隔离依赖输入已变化，不能复用旧验证');
       },
-      createCommandTool:({rootPath})=>createCommandRecipeTool({workspaceRoot:rootPath,authorizedWorkspaceRoot:rootPath,
+      createCommandTool:({rootPath})=>f20?createF20TypeScriptRecipe({rootPath,nodeExecutable:boundNode,input:f20.input,
+        createWorkspaceCommandTool:commandFactory}).tool:createCommandRecipeTool({workspaceRoot:rootPath,authorizedWorkspaceRoot:rootPath,
         nodeExecutable:boundNode,checkFiles:boundCheckFile?[{id:'node-check',path:boundCheckFile}]:[],
         allowProjectScripts:Boolean(boundNpmCli),jobHelperExecutable:boundProjectHelper,npmCliPath:boundNpmCli,
         projectScriptEnvSource,isolateNpmConfiguration:true,createWorkspaceCommandTool:commandFactory,
         nativeNodeResolution:Boolean(question),maxOutputBytes:4096,maxDurationMs:30000,required:true}).tool});
-    if(harness)harnessHostPromise=pending;else repairHostPromise=pending;
+    if(f20)f20Hosts.set(f20.sourceDigest,pending);else if(harness)harnessHostPromise=pending;else repairHostPromise=pending;
     return pending;
   };
   // Stable Main-only proxy. Every call keeps the original consent, task and revocation guards.
   const harnessRepairHost=Object.freeze({...Object.fromEntries(['start','list','read','snapshot','readback','preview','patch','verify','check','publish','reconcile']
     .map(name=>[name,async(...args)=>{
       const context={...args.at(-1)},parameters=structuredClone(args.slice(0,-1)),lease=generation,currentApplication=application;
+      if(application?.readF20TrialBinding?.(context)&&(name==='publish'||name==='start'&&parameters[0]?.mode!=='isolated'))
+        throw new ProtocolError('UNAUTHORIZED','F20 只能验证隔离样例');
       assertHarnessWorkspace(context);
       const controller=new AbortController();inflight.add(controller);
       const scoped={...context,signal:AbortSignal.any([context.signal,controller.signal])};
@@ -444,6 +458,22 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(codingRepairExportOperation(name))return workspaceRepairProjectionSchema(codingRepairExportOperation(name));
     return tool.descriptor.outputSchema;
   }
+  function readF20Operation(scope,source) {
+    const parent=application?.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent');
+    if(!parent)return undefined;
+    const binding=application.readF20WorkflowBinding?.({taskId:parent.taskId,deadline:scope.deadline,signal:scope.signal});
+    if(!binding)return undefined;
+    const linked=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId);
+    const original=linked?.mappedRequest??linked?.request;
+    if(!source||scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId
+      ||original?.toolName!==source.toolName||original.toolVersion!==source.toolVersion
+      ||original.deadline!==scope.deadline||!isDeepStrictEqual(original.arguments,source.arguments)
+      ||!['workspace.read_text','coding.repair.trial','decision.choose_candidate'].includes(source.toolName)
+      ||source.toolName==='workspace.read_text'&&![binding.input.schemaFile,binding.input.codeFile].includes(source.arguments.path)
+      ||source.toolName==='coding.repair.trial'&&linked.request?.toolName!=='workspace.run_allowed_command')
+      throw new ProtocolError('UNAUTHORIZED','F20 操作不属于原固定图');
+    return {binding,operationId:parent.operationId,preflight:parent.operationId.startsWith('f20-source-')};
+  }
   function readCodingDecision(scope,source) {
     if(source?.toolName!=='decision.choose_candidate'||source.toolVersion!=='1.0.0')return undefined;
     const parent=application?.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent');
@@ -451,9 +481,10 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const original=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId)?.request;
     const linked=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId);
     const graph=application.runtime.loadCheckpoint(parent.taskId,'coding-repair:graph');
+    const f20=readF20Operation(scope,source);
     if(scope.runId!=='host-tool-'+scope.taskId||linked?.localTaskId!==scope.taskId||!original
-      ||graph?.version!==1||graph.input?.codingRepair?.session?.taskId!==parent.taskId
-      ||graph.sessionId!==graph.input.codingRepair.session.sessionId
+      ||!f20&&(graph?.version!==1||graph.input?.codingRepair?.session?.taskId!==parent.taskId
+        ||graph.sessionId!==graph.input.codingRepair.session.sessionId)
       ||original.commandId!==parent.operationId||original.toolName!==source.toolName||original.toolVersion!==source.toolVersion
       ||original.deadline!==scope.deadline||!isDeepStrictEqual(original.arguments,source.arguments))
       throw new ProtocolError('UNAUTHORIZED','本地编码判断缺少原 F15 操作关联');
@@ -518,6 +549,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     const source=scope.proposal?{...scope.proposal,argumentsDigest:toolArgumentsDigest(scope.proposal.arguments)}
       :application?.readAuthorizationQuestionInvocation?.(scope.taskId,scope.runId);
     const decision=readCodingDecision(scope,source);
+    const f20=readF20Operation(scope,source);
     const tool=implementations.find(item=>item.descriptor.name===source?.toolName&&item.descriptor.version===source?.toolVersion)
       ??(decision?{descriptor:createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Descriptor only');}}}).descriptor}:undefined);
     const delegated=source?.toolName==='workspace.run_allowed_command'&&source.toolVersion===developerCommand?.descriptor.version;
@@ -537,7 +569,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     if(previous&&previous.signature!==signature)throw new ProtocolError('UNAUTHORIZED','原工作区操作不能替换参数或配置');
     const entry=previous??{scope:request,argumentsDigest:request.argumentsDigest,generation,resource,resourceGeneration,signature,
       ...(decision?{decision}: {})};
-    const taskConsent=readCodingTaskConsent(request,source,resource,resourceGeneration);
+    const taskConsent=f20?undefined:readCodingTaskConsent(request,source,resource,resourceGeneration);
     if(previous&&!isDeepStrictEqual(previous.taskConsent,taskConsent))throw new ProtocolError('UNAUTHORIZED','原编码工作流授权分组不能替换');
     if(taskConsent)entry.taskConsent=taskConsent;
     prepared.set(key,entry);
@@ -548,6 +580,23 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       scopes:descriptor?.requiredScopes??source.scopes??[],bindingDigest:signature,ruleBindingDigest,
       summary:'仅对已选择且仍有效的工作区执行本操作所列读写或固定命令；不开放任意路径、命令或其他任务'}],
       ...(taskConsent?{taskConsent}:{}),assertCurrent:()=>{try{preparedEntry(request);return true;}catch{return false;}}});
+    if(f20) {
+      const prepareExport=(requirementId,projectionSchema,summary)=>question.prepareExport(request,{requirementId,projectionSchema,summary,
+        bindingDigest:hash({signature,requirementId,input:f20.binding.input}),assertCurrent:()=>!!readF20Operation(scope,source)});
+      if(f20.preflight&&source.arguments.path===f20.binding.input.schemaFile) {
+        prepareExport('f20-initial-export',f20CaseExport,'向本次固定 AgentArts 工作流发送所选案例的相对文件名、文档要求和校验配置');
+        prepareExport('f20-completion-export',f20CompletionExport,'向原工作流发送本次本机验证状态');
+      } else if(!f20.preflight) {
+        const original=readTool.descriptor.outputSchema;
+        const schema=decision?decisionProjectionSchema(decision):source.toolName==='coding.repair.trial'?f20CommandExport:
+          {...original,required:[...original.required,'originalSources'],properties:{...original.properties,
+            originalSources:{type:'array',minItems:2,maxItems:2,items:original}}};
+        prepareExport('f20-receipt-export',schema,source.toolName==='workspace.read_text'
+          ?'仅将选定的契约和实现两份源码发送给本次 AgentArts 工作流'
+          :'仅将本步候选选择或隔离检查结果发送给原工作流');
+      }
+      return;
+    }
     const workflowRun=application.runtime.loadCheckpoint(scope.taskId,'coding-repair:graph')?.initialRunId===scope.runId
       ||Boolean(application.runtime.loadCheckpoint(scope.taskId,'coding-repair:parent'));
     if(tool&&workflowRun&&(decision||codingRepairExportOperation(tool.descriptor.name))) {
@@ -838,6 +887,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     finally {inflight.delete(controller);}
   }}));
   const snapshot=() => ({configured:Boolean(savedRoot),selectionAvailable:active && typeof selectDirectory==='function',displayName:savedRoot?path.basename(savedRoot):'',
+    f20:f20Cases.snapshot(),
     nodeConfigured:Boolean(savedNode),checkFileConfigured:Boolean(savedCheckFile),npmCliConfigured:Boolean(savedNpmCli),
     checkFileName:savedCheckFile?path.basename(savedCheckFile):'',
     nodeCheckAvailable:tools.some(tool=>tool.descriptor.name==='workspace.node_check' && enabled(tool)),
@@ -868,7 +918,7 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     try {workspaceReferenceExport?.dispose();} catch { /* No host details escape. */ }
     workspaceReferenceExport=undefined;workspaceExportProposals.clear();confirmedWorkspaceReads.clear();
     for (const controller of inflight) controller.abort();
-    dependencyFingerprint=undefined;dependencyPreparationReason=undefined;dependencyPreparation=undefined;dependencySeeded=false;repairHostPromise=undefined;harnessHostPromise=undefined;
+    dependencyFingerprint=undefined;dependencyPreparationReason=undefined;dependencyPreparation=undefined;dependencySeeded=false;repairHostPromise=undefined;harnessHostPromise=undefined;f20Hosts.clear();
     if(question&&rotate) {
       authorizationFailure=true;
       for(const resource of resources)question.rotateResourceGeneration(resource,question.readResourceGeneration(resource));
@@ -925,21 +975,87 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     return {bindingId,rootPath,metadataExportAllowed:false,available,
       assertCurrent:scope=>{if(!available(scope))throw new ProtocolError('UNAUTHORIZED','原开发工作区许可或配置已变化');},...(command?{command}:{})};
   };
+  const f20Cases=createF20CaseConfiguration({userData,safeStorage,readWorkspace:()=>{
+    const configuration=readDeveloperConfiguration();
+    if(!configuration||!boundNode||!boundRepairPowerShell)return undefined;
+    return {...configuration,recipeIds:[F20_TYPESCRIPT_RECIPE]};
+  }});
+  function assertF20Current(scope) {
+    if(!readDeveloperConfiguration()?.available(scope)||!questionReady()||typeof question.authorizeConsumedExport!=='function')
+      throw new ProtocolError('UNAUTHORIZED','F20 原工作区授权已失效');
+    const binding=application.readF20WorkflowBinding(scope);
+    if(binding) {
+      if(!isDeepStrictEqual(binding.input,f20Cases.resolveInput(binding.inputRef,scope)))
+        throw new ProtocolError('REVISION_CONFLICT','F20 固定案例已变化');
+      for(const read of binding.sourceReads) {
+        const {path:relative,content}=read.confirmed.result;
+        let file=boundRoot;
+        for(const segment of relative.split('/')) {
+          file=path.join(file,segment);
+          if(lstatSync(file).isSymbolicLink())throw new ProtocolError('UNAUTHORIZED','F20 来源不能替换为链接');
+        }
+        if(createHash('sha256').update(readFileSync(file)).digest('hex')!==createHash('sha256').update(content).digest('hex'))
+          throw new ProtocolError('REVISION_CONFLICT','F20 原来源内容已变化');
+      }
+    }
+    return binding;
+  }
+  async function authorizeF20Export(input) {
+    const binding=assertF20Current(input);
+    if(!binding||binding.inputRef!==input.inputRef)return false;
+    const sourceReads=binding.sourceReads.map(item=>item.confirmed.result);
+    const localTaskId=input.localTaskId??binding.sourceReads.find(item=>item.confirmed.result.path===binding.input.schemaFile)?.task.taskId;
+    if(!localTaskId)return false;
+    const read=application.readHostToolTask(localTaskId),runId='host-tool-'+localTaskId;
+    if(read.task.state!=='succeeded'||!read.confirmed?.evidenceRefs.includes(runId)||input.operationId&&input.operationId!==read.commandId)return false;
+    const source=application.readAuthorizationQuestionInvocation(localTaskId,runId,true);
+    const scope={taskId:localTaskId,runId,deadline:input.deadline,signal:input.signal};
+    const operation=readF20Operation(scope,source);
+    if(!operation||operation.preflight!==(input.stage!=='receipt'))return false;
+    let expected;
+    if(input.stage==='initial')expected=binding.input;
+    else if(input.stage==='completion')expected={workflowId:'F20',state:'settled',published:false};
+    else if(read.toolName==='workspace.read_text')expected={...read.confirmed.result,
+      originalSources:[binding.input.schemaFile,binding.input.codeFile].map(path=>sourceReads.find(item=>item.path===path))};
+    else if(read.toolName==='coding.repair.trial')expected={recipeId:F20_TYPESCRIPT_RECIPE,exitCode:0,stdout:'',stderr:''};
+    else expected=read.confirmed.result;
+    if(!isDeepStrictEqual(input.value,expected))return false;
+    const entry=preparedEntry(scope);
+    question.authorizeConsumedExport({...entry.scope,signal:input.signal},input.value,'f20-'+input.stage+'-export');
+    assertF20Current(input);
+    return true;
+  }
+  async function assertF20CompletionSources(request,baseline) {
+    const binding=assertF20Current(request);
+    if(!binding||!isDeepStrictEqual(request.input,binding.input)||request.sourceReads.some(read=>{
+      const {path,content}=read.confirmed.result;
+      return baseline.files.find(file=>file.path===path)?.sha256!==createHash('sha256').update(content).digest('hex');
+    }))return false;
+    const taskId=request.check.task.taskId,runId=request.check.confirmed.runId;
+    const intent=application.runtime.loadCheckpoint(taskId,'f20-native-command:v1:'+runId);
+    const records=application.runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId);
+    return intent?.sourceDigest===binding.sourceDigest&&intent.candidateId===request.candidateId&&Array.isArray(records)
+      &&records.length===1&&records[0].originalBindingDigest===hash(intent)&&records[0].runId===runId
+      &&records[0].backend==='windows-psec'&&records[0].enforced===true&&records[0].executionStarted===true
+      &&records[0].stopped===true&&records[0].exitCode===0;
+  }
   function assertHarnessWorkspace(context) {
     if(dependencyPreparation||dependencyPreparationReason)throw new ProtocolError('UNSUPPORTED_CAPABILITY',dependencyPreparationReason??'原锁定依赖正在准备');
-    assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal);
+    const f20=application?.readF20TrialBinding?.(context);
+    assertHarnessWorkspaceBinding(context?.taskId,context?.deadline,context?.signal,Boolean(f20));
+    if(f20)assertF20Current({taskId:f20.ownerTaskId,deadline:context.deadline,signal:context.signal});
     assertQuestionAccess(context);
   }
-  function assertHarnessWorkspaceBinding(taskId,deadline,signal) {
+  function assertHarnessWorkspaceBinding(taskId,deadline,signal,f20=false) {
     if(!signal||signal.aborted)throw new ProtocolError('CANCELLED','原隔离编码操作已取消');
     if(!Number.isFinite(Date.parse(deadline))||Date.now()>=Date.parse(deadline))throw new ProtocolError('TIMEOUT','原隔离编码操作已过期');
-    assertHarnessWorkspaceAuthorization();
+    assertHarnessWorkspaceAuthorization(f20);
     if(!bound(taskId))throw new ProtocolError('UNAUTHORIZED','原隔离工作区任务绑定已变化');
   }
-  function assertHarnessWorkspaceAuthorization() {
+  function assertHarnessWorkspaceAuthorization(f20=false) {
     if(!application||!readWorkspaceBinding()||(!question&&(consent?.cloudExportAllowed!==true
       ||consent.writeAllowed!==true||consent.commandAllowed!==true))||!boundRepairPowerShell||!commandFactory
-      ||!boundCheckFile&&!boundNpmCli||boundNpmCli&&(!projectIdentityCurrent()||!question&&consent.projectCodeAllowed!==true))
+      ||!f20&&(!boundCheckFile&&!boundNpmCli||boundNpmCli&&(!projectIdentityCurrent()||!question&&consent.projectCodeAllowed!==true)))
       throw new ProtocolError('UNAUTHORIZED','原隔离工作区许可或命令绑定已变化');
   }
   function readHarnessExperienceCurrentSync() {
@@ -996,7 +1112,14 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
       const versions=structuredClone(await readHarnessVersions());
       if(!versions||versions.executionKind!=='real_host')return undefined;
       const baseline=(await coding.captureCodingRepairSnapshot(boundRoot)).snapshot;
-      const recipes=repairRecipes().map(recipe=>({...recipe,packageIds:baseline.packages.map(pkg=>pkg.id)}));
+      const f20=application.readF20TrialBinding?.(context);
+      if(f20&&(f20.input.recipeId!==F20_TYPESCRIPT_RECIPE||f20.sourceDigest!==scope.inputDigest||f20.sourceDigest!==scope.configurationRef
+        ||baseline.files.some(file=>file.path===f20.samplePath)||f20.sourceReads.some(read=>{
+          const {path,content}=read.confirmed.result;
+          return baseline.files.find(file=>file.path===path)?.sha256!==createHash('sha256').update(content).digest('hex');
+        })))return undefined;
+      const recipes=(f20?[{recipeId:F20_TYPESCRIPT_RECIPE,required:true}]:repairRecipes())
+        .map(recipe=>({...recipe,packageIds:baseline.packages.map(pkg=>pkg.id)}));
       if(!recipes.some(recipe=>recipe.required))return undefined;
       const currentVersions=await readHarnessVersions();
       assertHarnessWorkspace(context);
@@ -1046,6 +1169,15 @@ export function createWorkspaceConfigHost({userData,safeStorage,selectDirectory,
     throw new ProtocolError('UNSUPPORTED_CAPABILITY','Workspace result export is unavailable');
   }
   return {tools,snapshot,readWorkspaceBinding,isWorkspaceBindingCurrent,readDeveloperConfiguration,harnessRepairHost,readHarnessCandidateContext,
+    readF20CaseConfiguration:()=>f20Cases.snapshot(),setF20CaseFromNativeSelection:value=>f20Cases.setFromNativeSelection(value),
+    resolveF20Case:(inputRef,scope)=>f20Cases.resolveInput(inputRef,scope),
+    assertF20Current,authorizeF20Export,assertF20CompletionSources,
+    readF20WorkspaceRef:scope=>{assertF20Current(scope);return readDeveloperConfiguration()?.bindingId;},
+    f20Available:scope=>{try{
+      assertF20Current(scope);
+      const selected=f20Cases.snapshot(),input=selected.configured?f20Cases.resolveInput(selected.inputRef,scope):undefined;
+      return !!input&&createF20TypeScriptRecipe({rootPath:boundRoot,nodeExecutable:boundNode,input,createWorkspaceCommandTool:commandFactory}).available();
+    }catch{return false;}},
     reconcileHarnessOriginalSession,readHarnessExperienceCurrentSync,
     prepareAuthorization:scope=>prepareQuestion(scope),
     prepareExport(scope) {

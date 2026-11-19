@@ -1,5 +1,7 @@
 # PersonalAgent Desktop
 
+F20 固定校验使用现有工作文件夹设置。选定工作区、可信 Node 和 PowerShell 后，在「F20 固定校验」选择 TypeScript 契约、实现及对应文档。运行时使用已固定的 AgentArts 版本与已就绪的本机 Laya。在普通主对话中请求「用 F20 验证案例 f20-case」，按原授权卡批准本次来源和隔离检查。TypeScript 检查使用隔离副本和应用随附的固定编译器。成功需要独立核对原文件、候选样例及校验回执，结果只交回对话。
+
 2026-11-07 MOD-19 打包与安装脚手架（review）：
 声明生产打包配置 `electron-builder.yml` 与 `package.json` 的 `build` 字段，配置保守 NSIS（普通用户权限 `asInvoker`、自选安装路径、卸载保留用户数据）；增加 `package:win` 脚本；通过 `scripts/release/packaging-scaffold.check.mjs` 静态校验配置完整性与敏感文件（`.env`、`credentials`、`*.pem` 等）排除。运行命令：`npm run check:packaging-scaffold`。本片仅为脚手架声明，真机安装与打包后内置 SQLite 仍未验收，不可发布。详见 [MOD-19-PACKAGING-SCAFFOLD-20261107](../../docs/modules/MOD-19-PACKAGING-SCAFFOLD-20261107.md)。
 

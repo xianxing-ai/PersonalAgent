@@ -13,6 +13,7 @@ import {AgentArtsRealtimeModelGateway} from '@personal-agent/models';
 import type {RealtimeSocketConstructor} from '@personal-agent/models';
 import {createHash} from 'node:crypto';
 import {createRuntimeOwnedWorkflowImageAdapter} from './owned-workflow-image-adapter.js';
+import type {RuntimeOwnedWorkflowWorkerOptions} from './owned-workflow-worker-capability.js';
 import {createRuntimeWikiImportHost} from './wiki-import.js';
 import type {RuntimeWikiImportOptions,RuntimeWikiImportHost} from './wiki-import.js';
 import {createAgentArtsWikiModel} from './wiki-image-adapter.js';
@@ -68,6 +69,8 @@ export interface AgentArtsRuntimeApplicationOptions
   beforeCompetitionSend?: (request: CoordinationRequest) => void;
   /** Explicit host-only key source for an image configured with a receipt-key override. */
   readOwnedWorkflowReceiptSecret?: (signal:AbortSignal)=>Promise<string>;
+  /** Native F20 case and export providers. Transport remains the application's original pinned image. */
+  f20WorkflowWorkerPorts?:Omit<RuntimeOwnedWorkflowWorkerOptions,'image'>;
   fetchHandlesHostAuthorization?:true;
   wikiImport?:RuntimeWikiImportOptions;
   /** Trusted observation read-back authorization; real reads need an AK/SK signer,
@@ -117,6 +120,7 @@ export function createAgentArtsRuntimeApplication(
     onDiagnostic,
     beforeCompetitionSend,
     readOwnedWorkflowReceiptSecret,
+    f20WorkflowWorkerPorts,
     fetchHandlesHostAuthorization,
     wikiImport,
     observationAuthorization,
@@ -223,6 +227,7 @@ export function createAgentArtsRuntimeApplication(
     ...(repairCandidateVersion === undefined ? {} : {repairCandidateVersion}),
     profile: 'huawei_ict_agentarts',
     ...(runtimeOptions.codingRepair?{}:ownedImage?{codingRepair:{image:ownedImage}}:{}),
+    ...(f20WorkflowWorkerPorts&&ownedImage?{ownedWorkflowWorker:{...f20WorkflowWorkerPorts,image:ownedImage}}:{}),
     ...(assertDeploymentBinding === undefined ? {} : {assertCoordinationBinding: assertDeploymentBinding}),
     // Cloud construction above already validated the same gateway/runtime target.
     // Missing WSS/credentials stays a connect-time error, never a direct API fallback.

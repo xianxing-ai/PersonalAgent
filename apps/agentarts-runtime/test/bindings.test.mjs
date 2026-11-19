@@ -213,7 +213,7 @@ test('trusted default controller preserves legacy HTTP and WS application output
   assert.equal((await output(await post(url,envelope(fast)))).binding.id,fast.id);
   assert.equal(models.fast.requests.length,3);
   for(const defaultControllerId of ['missing',fast.id,''])assert.throws(()=>createAgentServer({mode:'agentarts',
-    orchestrator:realOrchestrator().orchestrator,getBindings:getOwnedBindings,defaultControllerId}),{code:'INVALID_ARGUMENT'});
+    orchestrator:realOrchestrator().orchestrator,wssAuthToken:'a'.repeat(32),getBindings:getOwnedBindings,defaultControllerId}),{code:'INVALID_ARGUMENT'});
 });
 
 test('default controller rejects forged trust and report outputs instead of unwrapping them',async t=>{
