@@ -328,7 +328,7 @@ test('recovery refuses mismatched readback and never retries or exposes private 
   await ui.recover();assert.equal(calls,8,'unconfigured state cannot invent a default destination');
 });
 
-test('AgentArts observation controls save AK/SK securely and revoke without leaking secrets', async t => {
+function observationHarness(t, invoke) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
   t.after(() => { if (previous) Object.defineProperty(globalThis, 'document', previous); else delete globalThis.document; });
   const makeNode = () => ({value: '', checked: false, disabled: false, textContent: '', listeners: new Map(), attributes: new Map(),
@@ -361,8 +361,16 @@ test('AgentArts observation controls save AK/SK securely and revoke without leak
   };
   globalThis.document = {body: {}, activeElement: null, createElement: () => section, addEventListener() {}, removeEventListener() {}};
 
+  const controls = mountAgentArtsControls({append() {}}, invoke);
+  return {controls, section, obsFields, obsForm, obsRevoke, obsState, obsStatus,
+    edit(key, value) { obsFields[key].value = value; obsForm.listeners.get('input')?.({target: obsFields[key]}); },
+    save: () => obsForm.listeners.get('submit')({preventDefault() {}}),
+    revoke: () => obsRevoke.listeners.get('click')()};
+}
+
+test('AgentArts observation controls save AK/SK securely and revoke without leaking secrets', async t => {
   const calls = [];
-  const controls = mountAgentArtsControls({append() {}}, async (action, payload) => {
+  const {controls, section, obsFields, obsForm, obsRevoke, obsStatus} = observationHarness(t, async (action, payload) => {
     calls.push({action, payload: payload ? {...payload} : undefined});
     if (action === 'agentarts.observation.configure') {
       return {configured: true, applicationIdConfigured: true, applicationId: payload.applicationId, reason: '观测凭据已加密保存'};
@@ -390,4 +398,55 @@ test('AgentArts observation controls save AK/SK securely and revoke without leak
   assert.deepEqual(calls[1], {action: 'agentarts.observation.revoke', payload: undefined});
   assert.match(obsStatus.textContent, /已清除/);
   assert.equal(obsRevoke.disabled, true);
+});
+
+test('observation snapshots preserve cleared application drafts and refresh clean saved values', async t => {
+  let resolve;
+  const calls = [];
+  const ui = observationHarness(t, (action, payload) => {
+    calls.push({action, payload: {...payload}});
+    return new Promise(done => { resolve = done; });
+  });
+  const render = applicationId => ui.controls.render({observation: {configured: true, applicationId}});
+  render('saved-app');
+  render('updated-app');
+  assert.equal(ui.obsFields.applicationId.value, 'updated-app');
+  ui.edit('applicationId', '');
+  render('stale-app');
+  assert.equal(ui.obsFields.applicationId.value, '', 'a deliberately cleared draft survives snapshots');
+  ui.edit('accessKey', 'SYNTHETICAK123456');
+  ui.edit('secretKey', 'synthetic-secret-key-0123456');
+  const saving = ui.save();
+  render('stale-app');
+  resolve({configured: true, applicationId: ''});
+  await saving;
+  assert.equal('applicationId' in calls[0].payload, false);
+  assert.equal(ui.obsFields.applicationId.value, '');
+  render('new-saved-app');
+  assert.equal(ui.obsFields.applicationId.value, 'new-saved-app');
+  render('');
+  assert.equal(ui.obsFields.applicationId.value, '', 'host-side revocation clears the clean field');
+  ui.controls.render({observation: null});
+  assert.match(ui.obsState.textContent, /未配置/);
+});
+
+test('failed observation saves retain the draft through refresh and confirmed revocation resets it', async t => {
+  let fail = true;
+  const ui = observationHarness(t, async action => {
+    if (fail) throw Error('synthetic failure');
+    assert.equal(action, 'agentarts.observation.revoke');
+    return {configured: false, applicationIdConfigured: false, applicationId: ''};
+  });
+  ui.controls.render({observation: {configured: true, applicationId: 'saved-app'}});
+  ui.edit('applicationId', '');
+  ui.edit('secretKey', 'synthetic-secret-key-0123456');
+  await ui.save();
+  ui.controls.render({observation: {configured: true, applicationId: 'stale-app'}});
+  assert.equal(ui.obsFields.applicationId.value, '');
+  assert.equal(ui.obsFields.secretKey.value, 'synthetic-secret-key-0123456');
+  fail = false;
+  await ui.revoke();
+  assert.equal(ui.obsFields.secretKey.value, '');
+  ui.controls.render({observation: {configured: true, applicationId: 'fresh-app'}});
+  assert.equal(ui.obsFields.applicationId.value, 'fresh-app');
 });
