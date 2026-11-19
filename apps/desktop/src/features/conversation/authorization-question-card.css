@@ -1,29 +1,34 @@
 .authorization-question-list{display:grid;gap:12px;margin:12px 0;min-width:0}
 .authorization-question-list[hidden]{display:none}
-.authorization-question-card,.authorization-sandbox-panel{padding:16px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:14px;background:color-mix(in srgb,currentColor 4%,transparent);min-width:0;overflow-wrap:anywhere}
-.authorization-question-card p{margin:8px 0;line-height:1.55}
-.authorization-question-title{font-size:15px;margin:0 0 8px;font-weight:650;line-height:1.5}
-.authorization-question-summary{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;line-height:1.5;white-space:pre-wrap}
+.authorization-question-card,.authorization-sandbox-panel{padding:16px 18px;border:1px solid var(--glass-border,color-mix(in srgb,currentColor 16%,transparent));border-radius:14px;background:var(--surface-2,color-mix(in srgb,currentColor 4%,transparent));box-shadow:inset 0 1px 0 color-mix(in srgb,#fff 14%,transparent),0 8px 20px -16px rgba(0,0,0,.28);min-width:0;overflow-wrap:anywhere}
+.authorization-question-card p{margin:8px 0;line-height:1.58}
+.authorization-question-title{font-size:15px;margin:0 0 8px;font-weight:650;letter-spacing:-.01em;line-height:1.45}
+.authorization-question-summary{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13px;line-height:1.55}
 .authorization-question-details{margin-top:10px;font-size:13px}
-.authorization-question-details>summary{cursor:pointer;width:fit-content;font-size:12px;opacity:.75}
+.authorization-question-details>summary{cursor:pointer;width:fit-content;font-size:12px;opacity:.78;transition:opacity .15s ease}
+.authorization-question-details>summary:hover{opacity:1}
 .authorization-question-details[open]>summary{margin-bottom:8px}
-.authorization-question-details>summary:focus-visible{outline:2px solid #3b82f6;outline-offset:3px;border-radius:3px}
-.authorization-question-sandbox{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin:12px 0;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,currentColor 5%,transparent)}
-.authorization-question-sandbox>span,.authorization-question-sandbox small{font-size:12px;opacity:.7}
+.authorization-question-details>summary:focus-visible{outline:2px solid var(--accent,#2563eb);outline-offset:3px;border-radius:4px}
+.authorization-question-sandbox{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;margin:12px 0;padding:10px 12px;border:1px solid var(--glass-hairline,color-mix(in srgb,currentColor 10%,transparent));border-radius:10px;background:color-mix(in srgb,currentColor 4%,transparent)}
+.authorization-question-sandbox>span,.authorization-question-sandbox small{font-size:12px;opacity:.74}
 .authorization-question-requirements{padding:0;list-style:none;display:grid;gap:9px;margin:12px 0}
 .authorization-question-requirements li{display:grid;grid-template-columns:90px minmax(0,1fr);gap:3px 10px}
-.authorization-question-requirements small{grid-column:2;font-size:11px;opacity:.65;overflow-wrap:anywhere}
-.authorization-question-hint{font-size:12px;opacity:.7}
-.authorization-question-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.authorization-question-actions button,.authorization-sandbox-panel button{font:inherit;color:inherit;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;background:transparent;padding:8px 12px;min-height:36px;cursor:pointer}
-.authorization-question-actions .authorization-question-primary{background:#2563eb;border-color:#2563eb;color:#fff}
-.authorization-question-actions button:hover:not(:disabled),.authorization-sandbox-panel button:hover:not(:disabled){filter:brightness(.94);box-shadow:0 1px 4px #0001}
-.authorization-question-actions button:focus-visible,.authorization-sandbox-panel :is(button,select):focus-visible{outline:2px solid #3b82f6;outline-offset:3px}
-.authorization-question-actions button:disabled,.authorization-sandbox-panel button:disabled{opacity:.5;cursor:default}
-.authorization-question-status{font-size:12px;opacity:.75}
+.authorization-question-requirements small{grid-column:2;font-size:11px;opacity:.68;overflow-wrap:anywhere}
+.authorization-question-hint{font-size:12px;opacity:.74}
+.authorization-question-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.authorization-question-actions button,.authorization-sandbox-panel button{font:inherit;color:inherit;border:1px solid var(--glass-border,color-mix(in srgb,currentColor 20%,transparent));border-radius:9px;background:var(--surface-2,transparent);padding:8px 14px;min-height:36px;cursor:pointer;transition:background-color .16s ease,border-color .16s ease,transform .12s ease,box-shadow .16s ease}
+.authorization-question-actions .authorization-question-primary{background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);color:var(--accent-fg,#fff);font-weight:500}
+.authorization-question-actions button:hover:not(:disabled),.authorization-sandbox-panel button:hover:not(:disabled){background:var(--surface-3,color-mix(in srgb,currentColor 8%,transparent));border-color:var(--fg-2,color-mix(in srgb,currentColor 32%,transparent));box-shadow:0 2px 8px -4px rgba(0,0,0,.22)}
+.authorization-question-actions .authorization-question-primary:hover:not(:disabled){background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);filter:brightness(1.06);box-shadow:0 4px 12px -4px rgba(0,0,0,.3)}
+.authorization-question-actions button:active:not(:disabled),.authorization-sandbox-panel button:active:not(:disabled){transform:translateY(1px)}
+.authorization-question-actions button:focus-visible,.authorization-sandbox-panel :is(button,select):focus-visible{outline:2px solid var(--accent,#2563eb);outline-offset:2px}
+.authorization-question-actions button:disabled,.authorization-sandbox-panel button:disabled{opacity:.48;cursor:default}
+.authorization-question-status{font-size:12px;opacity:.78}
 .authorization-question-status:empty{display:none}
 .authorization-sandbox-panel{margin:0 0 18px}
-.authorization-sandbox-panel select{font:inherit;color:inherit;background:transparent;border:1px solid color-mix(in srgb,currentColor 22%,transparent);border-radius:8px;min-height:36px;padding:6px 10px;max-width:100%}
-.authorization-sandbox-rule{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid color-mix(in srgb,currentColor 12%,transparent)}
-.authorization-sandbox-rule p{margin:3px 0}.authorization-sandbox-rule small{opacity:.7}
+.authorization-sandbox-panel select{font:inherit;color:var(--fg,inherit);background:var(--composer-bg,light-dark(#f3f4f6,#24262c));border:1px solid var(--glass-border,color-mix(in srgb,currentColor 20%,transparent));border-radius:9px;min-height:36px;padding:6px 10px;max-width:100%;cursor:pointer;transition:border-color .16s ease}
+.authorization-sandbox-panel select:hover{border-color:var(--fg-2,color-mix(in srgb,currentColor 34%,transparent))}
+.authorization-sandbox-rule{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--glass-hairline,color-mix(in srgb,currentColor 12%,transparent))}
+.authorization-sandbox-rule p{margin:3px 0}.authorization-sandbox-rule small{opacity:.72}
+@media(forced-colors:active){.authorization-question-card,.authorization-sandbox-panel{box-shadow:none;border:1px solid CanvasText}}
 @media(max-width:440px){.authorization-question-card{padding:14px}.authorization-question-actions{display:grid;grid-template-columns:1fr}.authorization-question-requirements li{grid-template-columns:1fr}.authorization-question-requirements small{grid-column:1}.authorization-sandbox-rule{align-items:flex-start;flex-direction:column}}

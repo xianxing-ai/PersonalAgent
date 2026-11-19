@@ -1,6 +1,8 @@
 .history-navigation {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 14px;color:var(--fg-2);font-size:12px}
 .history-navigation[hidden] {display:none}
-.history-navigation button {border:1px solid var(--glass-border);border-radius:8px;background:var(--surface-2,transparent);color:var(--fg);padding:5px 9px;font:inherit}
+.history-navigation button {border:1px solid var(--glass-border);border-radius:9px;background:var(--surface-2,transparent);color:var(--fg);padding:5px 10px;font:inherit;cursor:pointer;transition:background-color .15s ease,border-color .15s ease}
+.history-navigation button:hover:not(:disabled) {background:var(--surface-3,var(--surface-2));border-color:var(--fg-2)}
+.history-navigation button:focus-visible {outline:2px solid var(--accent,var(--fg-2));outline-offset:2px}
 .history-navigation button:disabled {opacity:.45;cursor:default}
 .history-navigation span {flex:1;min-width:80px}
 :root[data-resource-mode="critical"] {--glass-filter:none}
