@@ -56,7 +56,7 @@ import {createPrivateMemoryErasureHost} from './private-memory-erasure-host.js';
 import {createPrivateMemoryBackupHost} from './private-memory-backups.js';
 import {createLiveHistoryFileStore} from './live-history-file-store.js';
 import {createMemoryLearningHost, filePreferenceStore} from './memory-learning-host.js';
-import {createDryRunProduct} from './dry-run-product.js';
+import {createWorkflowShadowPreview, WORKFLOW_SHADOW_PREVIEW} from './workflow-shadow-preview.js';
 import {createPermissionAuditProduct} from './permission-audit-product.js';
 import {createContentFenceProduct} from './content-fence-product.js';
 import {createCostRouteProduct} from './cost-route.js';
@@ -342,7 +342,6 @@ let privateMemory;
 let privateConsumption, privateErasure, privateBackups;
 const coordinationWatchInputs = new Map();
 let memoryLearningHost,learningApplication,learningStore;
-let dryRun;
 let permissionAudit;
 let contentFence;
 let costRoute;
@@ -831,7 +830,10 @@ function snapshot(surface) {
     audioLevel,
     orbStateOverride,
     resourceBudget:resourcePolicy.snapshot(),
-    dryRun:dryRun?.snapshot()??{pending:[],recent:[]},
+    shadowPreview:surface?undefined:{
+      available:competitionMode && !fakeMode && !syntheticMvp,
+      enabled:desktopHost?.settings.shadowPreview===true,
+    },
     assistantPermissions:(()=>{try{return permissionAudit?.snapshot()??{grants:[],audit:{intact:true,brokenAt:0,count:0,unreadable:false,recordingStopped:false,skippedCount:0}};}catch{return {grants:[],audit:{intact:false,brokenAt:0,count:0,unreadable:true,recordingStopped:true,skippedCount:0,warning:'审计日志无法读取，已停止记录'}};}})(),
     contentFence:contentFence?.snapshot()??{sources:[],blocked:'',blockedLabel:''},
     costRoute:costRoute?.snapshot()??{route:{state:'idle',reason:'尚未按难度选择模型'},runs:[],replay:null},
@@ -1095,7 +1097,7 @@ function movePanelGroup(point) {
 function openAdmin(page) {
   if (page === 'environment' || page === 'worktrees' || page === 'git') page = 'workspace';
   if (page === 'overview' || page === 'analytics' || page === 'account') page = 'usage';
-  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts','dashboard','activity','pets'].includes(page)) {
+  if (page && ['settings','profile','models','tasks','capabilities','authorizations','workspace','connections','memory','voice','computer','briefing','usage','appearance','notifications','shortcuts','dashboard','activity','pets','experiments'].includes(page)) {
     adminNavigation = {page, revision:adminNavigation.revision + 1};
   }
   if (admin && !admin.isDestroyed()) { admin.show(); admin.focus(); publish(); return; }
@@ -2659,6 +2661,13 @@ async function initializeRuntime() {
         ...(calendarMeetingHost?.tools??[]),...(feedsHost?.tools??[]),...(notepadHost?.tools??[]),
         ...(todoHost?.tools??[]),...(notificationApplicationHost?.tools??[]),...(subagentTool?[subagentTool]:[]),
         ...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),...(remoteMcpServices?.tools??remoteMcpHost?.tools??[]),authorizationIntentHost.tool];
+      const shadowPreview=syntheticMvp?undefined:createWorkflowShadowPreview({
+        getApplication:()=>runtimeApplication,
+        enabled:()=>desktopHost.settings.shadowPreview===true,
+        ownsTask:taskId=>Boolean(conversationToolAccess.resolveConversation(taskId)),
+        describeTool:(name,version)=>conversationTools.find(tool=>tool.descriptor.name===name&&tool.descriptor.version===version)?.descriptor,
+      });
+      if(shadowPreview)conversationTools.push(shadowPreview.tool);
       if(computerControlLease)conversationTools=computerControlLease.wrapTools(conversationTools);
       permissionAudit=createPermissionAuditProduct({
         userData:app.getPath('userData'),
@@ -2682,8 +2691,6 @@ async function initializeRuntime() {
         try {return runtimeApplication.runtime.getTask(taskId).goal??'';} catch {return '';}
       }});
       conversationTools=contentFence.wrapTools(conversationTools);
-      dryRun=createDryRunProduct({onUpdate:()=>{try{publish();}catch{/* 预览通知不能影响工具结果 */}}});
-      conversationTools=dryRun.wrapTools(conversationTools);
       conversationTools=permissionAudit.observeTools(conversationTools);
       void refreshAgentArtsModelsOnStartup({configuration:agentArtsConfig,models:agentArtsModels,onUpdate:publish});
       activeCloudTransportSignature=JSON.stringify([agentArtsConfig.readTransportPreferences(),agentArtsConfig.snapshot().deploymentVersion]);
@@ -2840,14 +2847,14 @@ async function initializeRuntime() {
         // Module availability/consent, input validation and ToolGateway still run.
         // Explicit names prevent future destructive tools inheriting this policy.
         automaticTools: [...[...(historyTool?[historyTool.tool]:[]),...productTools.tools,...codingWorkspace.tools,...desktopControl.tools,...(imageWorkflowCatalog?.tools??[]),...(developerDeployment?.host.tools??[]),...(goalCloudHost?.tools??[]),...(subagentTool?[subagentTool]:[]),...(knowledgeTools?.tools??[]),...(referenceHost?.tools??[]),
-          ...(todoHost?.tools??[]),...(feedsHost?.tools??[])].filter(tool=>[
+          ...(todoHost?.tools??[]),...(feedsHost?.tools??[]),...(shadowPreview?[shadowPreview.tool]:[])].filter(tool=>[
             'conversation.read_history','weather.forecast','research.search','feeds.collect','feeds.subscriptions',
             'todo.list','todo.create','todo.update','notifications.status',
             'goals.list','goals.get','goals.create','goals.revise',
             'workspace.read_text','workspace.list_entries','workspace.preview_text_patch',
             'workspace.stage_text_patch','workspace.apply_text_patch','workspace.git_diff_check',
             'workspace.node_check','workspace.npm_build','workspace.npm_test',SUBAGENT_DISPATCH_TOOL_NAME,'knowledge.search','mcp.workspace.read_text',
-            'desktop.request_presence','computer.request_access',
+            'desktop.request_presence','computer.request_access',WORKFLOW_SHADOW_PREVIEW,
             'developer.repository_context',
             'workflow.image.catalog',
           ].includes(tool.descriptor.name))
@@ -2858,7 +2865,11 @@ async function initializeRuntime() {
         readDefaultExecutionModel:role=>usageBudgetProduct?.degradeSelection(readDesktopExecutionModel(agentArtsModels,undefined,role),selection=>agentArtsModels.resolveExecutionModel(selection))
           ??readDesktopExecutionModel(agentArtsModels,undefined,role),
         resolveExecutionModel:selection=>agentArtsModels.resolveExecutionModel(selection),
-        readConversationPreference: conversationId => {
+        readConversationPreference: (conversationId, taskId) => {
+          const cognitionModel=conversationId.startsWith('desktop-proactive-goals:')
+            ?proactiveHost?.readCognitionExecutionModel(taskId):undefined;
+          if(cognitionModel)return {...thinking,modelId:cognitionModel.modelId,
+            executionModel:agentArtsModels.resolveExecutionModel(cognitionModel)};
           if (!conversations?.containsConversation(conversationId)) return undefined;
           const preference = conversations.preference(conversationId,{depth:thinking.depth,fast:thinking.fast});
           const models=modelApiHost?.snapshot();
@@ -2914,8 +2925,7 @@ async function initializeRuntime() {
           },
         },
         tools: conversationTools,
-        beforeToolAuthorize: async input => { contentFence?.beforeAuthorize(input); await dryRun?.beforeAuthorize(input); },
-        assertToolPrechecked: input => dryRun?.assertAuthorized(input),
+        beforeToolAuthorize: input => contentFence?.beforeAuthorize(input),
         onTaskTerminal: taskId => contentFence?.clearTask(taskId),
         competitionToolDiscovery:true,
         hostOnlyTools:[AUTHORIZATION_INTENT_TOOL],
@@ -2991,8 +3001,10 @@ async function initializeRuntime() {
           initialRequestMode: 'goal-with-tools-json',
           competitionToolAvailability: (competitionToolAvailabilityList = createConversationToolSurface({
             profile:'huawei_ict_agentarts',tools:conversationTools,
-            competitionToolAvailability:[...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability]})),
-          competitionToolExports: [...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports],
+            competitionToolAvailability:[...(shadowPreview?[shadowPreview.availability]:[]),
+              ...(connectorWatchHost?.competitionToolAvailability??[]),...(historyTool?[historyTool.availability]:[]),...(connectorConversationTools?.competitionToolAvailability??[]),...desktopControl.availability,...(imageWorkflowCatalog?.competitionToolAvailability??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolAvailability : competitionCatalog ? [competitionCatalog.availability] : []), ...(developerDeployment?.host.competitionToolAvailability??[]), ...productTools.competitionToolAvailability.filter(binding=>!systemObservationConversation||binding.toolName!=='computer.system.observe'),...(systemObservationConversation?.competitionToolAvailability??[]), ...feedsHost.competitionToolAvailability, ...(todoHost?.competitionToolAvailability ?? []), ...(goalCloudHost?.competitionToolAvailability ?? []), ...(proactiveConversationTools?.competitionToolAvailability??[]), ...(subagentAvailability ? [subagentAvailability] : []), ...(knowledgeTools?.competitionToolAvailability??[]),...(referenceHost?.competitionToolAvailability??[]),...remoteMcpCompetition.competitionToolAvailability]})),
+          competitionToolExports: [...(shadowPreview?[shadowPreview.exportBinding]:[]),
+            ...(connectorWatchHost?.competitionToolExports??[]),...(historyTool?[historyTool.binding]:[]),...(connectorConversationTools?.competitionToolExports??[]),...desktopControl.exports,...(imageWorkflowCatalog?.competitionToolExports??[]),...(systemObservationConversation?.competitionToolExports??[]),...(codingWorkspace.tools.length ? codingWorkspace.competitionToolExports : competitionCatalog ? [competitionCatalog.export] : []), ...(developerDeployment?.host.competitionToolExports??[]), ...productTools.competitionToolExports, ...feedsHost.competitionToolExports, ...(todoHost?.competitionToolExports ?? []), ...(goalCloudHost?.competitionToolExports ?? []), ...(proactiveConversationTools?.competitionToolExports??[]), ...(subagentExport ? [subagentExport] : []), ...(knowledgeTools?.competitionToolExports??[]),...(referenceHost?.competitionToolExports??[]),...remoteMcpCompetition.competitionToolExports],
         }),
         ...cloudBinding,
         ...agentArtsTransportConfig,
@@ -3189,6 +3201,13 @@ async function initializeRuntime() {
     initialRequestMode: syntheticMvp ? 'goal' : 'goal-with-tools-json',
     client, userData: app.getPath('userData'), namespace: desktopHost.userNamespace, onUpdate: publish,
     goalHost,chooser:localLaya,cognitionReady:()=>localLaya.snapshot().state==='ready',
+    readTeacherExecutionModel:()=>{
+      const conversationId=conversations?.activeConversationId(workspace?.isFocused()?'workspace':'panel');
+      const preference=conversations?.preference(conversationId,thinking);
+      if(preference?.executionModel||preference?.modelId||preference?.modelSelection==='default')
+        return readDesktopExecutionModel(agentArtsModels,preference);
+      return agentArtsModels.resolveExecutionModel({modelId:'deepseek-v4.1-flash-1017'});
+    },
     createCognitionHost:runtimeModule.createProactiveCognitionHost,
     onAnalysisTask: ({taskId, goal}) => {
       if (!conversations.turns.has(taskId)) conversations.add(taskId, 'panel', goal);
@@ -3653,10 +3672,13 @@ async function action(event, name, payload) {
     return proactiveSourceHost.revoke(payload?.root);
   }
   if (name === 'snapshot') return {...(sender===orb?orbSnapshot():snapshot(sender === workspace ? 'workspace' : sender === admin ? undefined : 'panel')),sourceRevision:snapshotPublisher.revision()};
-  if (name === 'dryRun.state' || name === 'dryRun.confirm' || name === 'dryRun.cancel') {
-    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面确认试运行');
-    if (!dryRun) return {pending: [], recent: []};
-    return dryRun.handleAction(name, payload);
+  if (name === 'shadowPreview.configure') {
+    if (sender !== admin || event.senderFrame!==admin.webContents.mainFrame || !competitionMode || fakeMode || syntheticMvp || typeof payload?.enabled !== 'boolean') {
+      throw Error('影子预览设置不可用');
+    }
+    const enabled=desktopHost.configureShadowPreview(payload.enabled);
+    publish();
+    return {available:true,enabled};
   }
   if (name === 'assistantPermissions.state' || name === 'assistantPermissions.revoke') {
     if (sender !== panel && sender !== workspace && sender !== admin) throw Error('请从可信界面查看权限');

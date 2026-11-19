@@ -4,6 +4,8 @@ import {actionArgumentsDigest, analyzeImpact, buildMinimalRepairCandidate, previ
   selectGoalRevisionImpact, selectGoalAncestorImpact, selectProjectedRepairScope} from '@personal-agent/cognition';
 import type {GoalRevisionSelectionRequest, GoalAncestorSelectionRequest, ImpactItem, LayaActionChoiceService,
   LayaActionSelection, ProjectedRepairInput, StoredRepairRequest} from '@personal-agent/cognition';
+import {parseExecutionModelSelection} from '@personal-agent/coordination';
+import type {ExecutionModelSelection} from '@personal-agent/coordination';
 import type {MemoryReadContext} from '@personal-agent/memory';
 import {isEffective} from '@personal-agent/goals';
 import type {GraphSnapshot, NodeRef, NodeVersion} from '@personal-agent/goals';
@@ -46,8 +48,8 @@ export interface ProactiveCognitionReview {
   subjectGoal?: NodeRef;
   options: ProactiveCognitionOption[];
   selectedOption?: ProactiveCognitionOption;
-  /** Low-confidence Laya result routed to the already-offered machine RECHECK option. */
-  machineReview?: {reason: 'uncertain'; action: 'RECHECK'; option: {id: string; revision: number}};
+  /** Laya uncertainty or abstention routed to the already-offered machine RECHECK option. */
+  machineReview?: {reason: 'uncertain' | 'unavailable' | 'invalid_response'; action: 'RECHECK'; option: {id: string; revision: number}};
   selection?: LayaActionSelection;
   /** Structural proposals are inputs to AgentArts semantic reasoning, not completed repairs. */
   semanticReviewRequired: true;
@@ -60,11 +62,14 @@ export interface ProactiveSelectionHandoff {
   exportPolicyVersion: string;
   goal: string;
   deadline: string;
+  executionModel?: ExecutionModelSelection;
 }
 export interface ProactiveSelectionHandoffPort {
+  /** This projection accepts a RECHECK with no local selection receipt. */
+  acceptsLayaAbstention?: true;
   /** Minimize permitted data for AgentArts; return undefined when egress scope is unavailable. */
   prepare(review: ProactiveCognitionReview, context: MemoryReadContext): Promise<{
-    exportPolicyVersion: string; goal: string;
+    exportPolicyVersion: string; goal: string; executionModel?: ExecutionModelSelection;
   } | undefined>;
   /** Read an already-persisted Runtime task by this exact stable command ID. No network or dispatch. */
   read(commandId: string): TaskSnapshot | undefined;
@@ -225,16 +230,23 @@ function expiredPublicFactScope(snapshot: GraphSnapshot, at: string): {facts: No
   return {facts: facts.filter(ref => used.has(refKey(ref))).sort((a, b) => refKey(a).localeCompare(refKey(b))), items};
 }
 
-function uncertainRecheck(review: ProactiveCognitionReview): ProactiveCognitionReview['machineReview'] {
+function machineRecheck(review: ProactiveCognitionReview, acceptsLayaAbstention?: true): ProactiveCognitionReview['machineReview'] {
   const selection = review.selection;
-  if (selection?.state !== 'review' || selection.reason !== 'uncertain'
-    || selection.eligibleForRuntime !== false || !selection.selected
-    || !review.options.some(option => option.id === selection.selected!.id
-      && option.revision === selection.selected!.revision)) return undefined;
+  if (selection?.eligibleForRuntime !== false) return undefined;
+  const selected = selection.selected;
+  const uncertain = selection.state === 'review' && selection.reason === 'uncertain' && selected
+    && review.options.some(option => option.id === selected.id && option.revision === selected.revision);
+  const {reason} = selection;
+  const abstentionReason = reason === 'unavailable' || reason === 'invalid_response' ? reason : undefined;
+  const reviewReason = uncertain ? 'uncertain'
+    : acceptsLayaAbstention && selection.state === 'abstain' && !selected ? abstentionReason : undefined;
+  if (!reviewReason) return undefined;
   const recheck = review.options.filter(option => option.id === 'recheck' && option.action === 'RECHECK'
     && option.repair === undefined && Number.isSafeInteger(option.revision) && option.revision > 0);
-  return recheck.length === 1 ? {reason: 'uncertain', action: 'RECHECK',
-    option: {id: recheck[0]!.id, revision: recheck[0]!.revision}} : undefined;
+  const [option] = recheck;
+  return recheck.length === 1 && option
+    ? {reason: reviewReason, action: 'RECHECK',
+      option: {id: option.id, revision: option.revision}} : undefined;
 }
 
 /** Trusted Competition composition: choose locally, then hand off to AgentArts. No local execution shortcut. */
@@ -332,7 +344,7 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
       const cooldown = runtime.loadCheckpoint(task.taskId, LAYA_COOLDOWN) as {notBefore: number} | undefined;
       return !cooldown || now() >= cooldown.notBefore;
     }
-    return Boolean(handoff && (review.selectedOption || review.machineReview));
+    return Boolean(handoff && (review.selectedOption || machineRecheck(review, handoff.acceptsLayaAbstention)));
   };
   const handoffWork = async (taskId: string, context: MemoryReadContext): Promise<ProactiveReviewReadback> => {
     open(); active(context);
@@ -340,7 +352,7 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
     let result = readback.review;
     if (readback.task.state !== 'succeeded' || !result) return readback;
     let intent = runtime.loadCheckpoint(taskId, HANDOFF) as ProactiveSelectionHandoff | undefined;
-    const machineReview = result.selectedOption ? undefined : uncertainRecheck(result);
+    const machineReview = result.selectedOption ? undefined : machineRecheck(result, handoff?.acceptsLayaAbstention);
     if (!result.selectedOption && !machineReview) return readback;
     if (result.machineReview && JSON.stringify(result.machineReview) !== JSON.stringify(machineReview)) {
       throw new ProtocolError('INVALID_ARGUMENT', 'Invalid persisted machine review');
@@ -363,6 +375,8 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
         commandId: 'proactive-' + toolArgumentsDigest({graphNamespace, bindingVersion, taskId}),
         reviewTaskId: taskId, selectionDigest: toolArgumentsDigest(result),
         exportPolicyVersion: projected.exportPolicyVersion, goal: projected.goal, deadline: context.deadline,
+        ...(machineReview && projected.executionModel !== undefined
+          ? {executionModel: parseExecutionModelSelection(projected.executionModel)} : {}),
       };
       // An overlapping caller may have persisted an envelope while prepare awaited.
       intent = runtime.loadCheckpoint(taskId, HANDOFF) as ProactiveSelectionHandoff | undefined;
@@ -434,12 +448,10 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
         saved = readReview(existing.taskId);
       }
       const selection = saved.review?.selection;
-      const handoffIntent = runtime.loadCheckpoint(existing.taskId, HANDOFF);
+      const handedOff = await handoffReview(existing.taskId, request);
       const layaUnavailable = saved.task.state === 'succeeded' && selection?.state === 'abstain'
         && selection.reason === 'unavailable' && selection.eligibleForRuntime === false;
-      if (layaUnavailable && handoffIntent) return saved;
-      const unavailable = layaUnavailable && !handoffIntent;
-      if (!unavailable) return handoffReview(existing.taskId, request);
+      if (!layaUnavailable || runtime.loadCheckpoint(existing.taskId, HANDOFF)) return handedOff;
       let cooldown = runtime.loadCheckpoint(existing.taskId, LAYA_COOLDOWN) as {notBefore: number} | undefined;
       const current = now();
       if (!Number.isSafeInteger(current) || current < 0) throw new ProtocolError('INVALID_ARGUMENT', 'Invalid cognition clock');
@@ -549,7 +561,7 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
               && option.revision === result.selection!.selected?.revision);
             if (selected) { result.action = selected.action; result.selectedOption = structuredClone(selected); }
           }
-          const machineReview = uncertainRecheck(result);
+          const machineReview = machineRecheck(result, handoff?.acceptsLayaAbstention);
           if (machineReview) result.machineReview = machineReview;
         }
         active(context);
@@ -558,7 +570,7 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
           ? 'Initial Goal planning approach recorded for AgentArts orchestration; no Plan created'
           : 'Laya approach recorded for AgentArts orchestration; no plan executed'};
       }, {deadline: request.deadline, sideEffect: 'read'});
-      const completed = readReview(task.taskId);
+      const completed = await handoffReview(task.taskId, request);
       if (completed.task.state === 'succeeded' && completed.review?.selection?.state === 'abstain'
         && completed.review.selection.reason === 'unavailable'
         && completed.review.selection.eligibleForRuntime === false
@@ -568,7 +580,7 @@ export function createProactiveCognitionHost(options: ProactiveCognitionHostOpti
         runtime.saveCheckpoint(task.taskId, LAYA_COOLDOWN, {notBefore: current + 30_000});
         throw new ProtocolError('EXTERNAL_FAILURE', 'Laya is unavailable; cognition review will retry');
       }
-      return handoffReview(task.taskId, request);
+      return completed;
     } finally { controllers.delete(controller); request.signal.removeEventListener('abort', abort); }
   };
   return Object.freeze({

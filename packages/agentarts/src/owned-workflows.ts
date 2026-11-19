@@ -318,22 +318,25 @@ export class OwnedWorkflowEngine {
     }
     const sourceTool=coding&&node.id==='F15_N01'?'workspace.coding_snapshot':coding&&node.id==='F15_N03'&&coding.readPath?'coding.repair.read':undefined;
     const effectiveNode=sourceTool?{...node,kind:'tool' as const,effect:'read' as const,capabilities:[{kind:'tool' as const,name:sourceTool,boundary:'local' as const}]}:node;
+    const predecessors=node.dependencies.map(dependency=>dependency.nodeId);
+    // N03 already depends on N02. Carry the sealed selected draft into N04 without changing the imported graph.
+    if(template.workflowId==='F20'&&node.id==='F20_N04')predecessors.push('F20_N02');
     return {template:copy(template),node:copy(effectiveNode),input:copy(request.input),...(coding?{codingRepair:coding}:{}),
-      predecessorOutputs:copy(Object.fromEntries(node.dependencies.map(dep=>{
-        const value=state.nodes[dep.nodeId]?.value;
-        if(state.nodes[dep.nodeId]?.inputReference) {
-          if(!inputReferenced(value)||template.nodes.find(item=>item.id===dep.nodeId)?.kind!=='input'||value.valueDigest!==state.inputDigest
+      predecessorOutputs:copy(Object.fromEntries(predecessors.map(nodeId=>{
+        const value=state.nodes[nodeId]?.value;
+        if(state.nodes[nodeId]?.inputReference) {
+          if(!inputReferenced(value)||template.nodes.find(item=>item.id===nodeId)?.kind!=='input'||value.valueDigest!==state.inputDigest
             ||digest(request.input)!==value.valueDigest) invalid('Workflow input reference does not match its sealed original input');
-          return [dep.nodeId,request.input];
+          return [nodeId,request.input];
         }
-        if(referenced(value)&&Object.hasOwn(request.resolvedValues??{},dep.nodeId)) {
-          const restored=request.resolvedValues![dep.nodeId];
+        if(referenced(value)&&Object.hasOwn(request.resolvedValues??{},nodeId)) {
+          const restored=request.resolvedValues![nodeId];
           if(digest(restored)!==value.valueDigest) invalid('Restored result does not match the original signed checkpoint');
-          return [dep.nodeId,restored];
+          return [nodeId,restored];
         }
-        return [dep.nodeId,value??null];
+        return [nodeId,value??null];
       }))),
-      predecessorStates:Object.fromEntries(node.dependencies.map(dep=>[dep.nodeId,state.nodes[dep.nodeId]!.state])),
+      predecessorStates:Object.fromEntries(predecessors.map(nodeId=>[nodeId,state.nodes[nodeId]!.state])),
       availableTools:copy(tools),deadline:request.deadline,signal:request.signal,requestId:request.requestId,
       mode:state.mode,namespace:state.namespace};
   }

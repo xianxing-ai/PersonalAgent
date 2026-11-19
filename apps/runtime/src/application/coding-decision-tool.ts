@@ -6,19 +6,23 @@ import {createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import type {LayaActionChoiceService,LayaActionSelection} from '@personal-agent/cognition';
 import {actionArgumentsDigest} from '@personal-agent/cognition';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
+import type {ExecutionModelSelection} from '@personal-agent/coordination';
 
 /** Local diagnostic only; never part of the selectedId result or its cloud projection. */
 export const CODING_DECISION_CHECKPOINT='coding-repair:local-decision:v1:';
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
+interface WorkflowTeacherDecision {selectedId:string;requestId:string;executionModel:ExecutionModelSelection}
 export interface RuntimeCodingDecisionReceipt {
   version:1;taskId:string;runId:string;requestId:string;argumentsDigest:string;contextDigest:string;candidateDigest:string;deadline:string;
   disposition:'selected'|'review_fallback'|'unavailable';selectedId:string|null;
-  selection:LayaActionSelection;authority:'diagnostic_no_tool_grant';
+  selection:LayaActionSelection;teacher?:WorkflowTeacherDecision;authority:'diagnostic_no_tool_grant';
 }
 
 export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaActionChoiceService,'choose'>;
   readContext?:(context:ToolContext,original:string)=>string;
   selectBoundOperation?:(context:ToolContext,original:string)=>string|undefined;
+  reviewOnAbstain?:(context:ToolContext,input:{context:string;requestId:string;
+    candidates:readonly {id:string;description:string}[]})=>Promise<WorkflowTeacherDecision|undefined>;
   save:(key:string,receipt:RuntimeCodingDecisionReceipt)=>void}):RegisteredTool {
   // Each invocation owns its ToolContext, including concurrent host tasks.
   const descriptor=createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Invocation selector unavailable');}}}).descriptor;
@@ -66,10 +70,16 @@ export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaA
     const eligible=value.state==='selected'&&value.eligibleForRuntime&&value.selected
       &&input.candidates.some(candidate=>candidate.id===value.selected!.id);
     const review=input.candidates.find(candidate=>candidate.id==='owned-review')??input.candidates.find(candidate=>candidate.id==='review');
-    const selectedId=eligible?value.selected!.id:review?.id??null;
+    const layaId=eligible?value.selected!.id:null;
+    const teacher=(!layaId||layaId===review?.id)&&!context.signal.aborted&&Date.now()<Date.parse(context.deadline)
+      ?await options.reviewOnAbstain?.(context,input):undefined;
+    if(teacher&&!input.candidates.some(candidate=>candidate.id===teacher.selectedId))
+      throw new ProtocolError('EXTERNAL_FAILURE','Model review selected an unknown workflow candidate');
+    const selectedId=teacher?.selectedId??layaId??review?.id??null;
     options.save(CODING_DECISION_CHECKPOINT+context.runId,{version:1,taskId:context.taskId,runId:context.runId,requestId:input.requestId,
       argumentsDigest,contextDigest,candidateDigest:toolArgumentsDigest(input.candidates),deadline:context.deadline,
-      disposition:eligible?'selected':review?'review_fallback':'unavailable',selectedId,selection,authority:'diagnostic_no_tool_grant'});
+      disposition:teacher?(selectedId===review?.id?'review_fallback':'selected'):eligible?'selected':review?'review_fallback':'unavailable',
+      selectedId,selection,...(teacher?{teacher}:{}),authority:'diagnostic_no_tool_grant'});
     if(selectedId===null)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Local Laya requires review for this original coding decision');
     return selectedId;
   }}}).execute(argumentsValue,context)};

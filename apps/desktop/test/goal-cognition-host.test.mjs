@@ -28,12 +28,16 @@ async function terminal(application,id) {
   }
   throw Error('Synthetic task did not settle');
 }
-async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,onTaskCallback=()=>{},largeScope=false}={}) {
+async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCredentialRead=false,uncertain=false,unavailableInitially=false,newGoal=false,holdFetch=false,controlledRepair=false,onTaskCallback=()=>{},largeScope=false,teacherModel}={}) {
   const root=fileURLToPath(new URL('../../../.cache/desktop-goal-cognition/',import.meta.url));
   await mkdir(root,{recursive:true});const directory=await mkdtemp(path.join(root,'case-'));
   let host,layaCalls=0,goalWrites=0,updateCalls=0,releaseFetch,time=Date.now(),unavailable=unavailableInitially;const sent=[],announced=[];
   const application=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
     gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',
+    readConversationPreference:(_conversationId,taskId)=>{
+      const executionModel=teacherModel && host.readCognitionExecutionModel(taskId);
+      if(executionModel) return {depth:2,fast:false,executionModel};
+    },
     ...(controlledRepair?{repairCandidateVersion:'1.0',responseMode:'tool-proposal-json',localRepair:{graphNamespace:namespace,bindingVersion:'desktop-reviewed-execution-v1',
       withSourceLock:async work=>work(),reviewedSource:{resolve:input=>{
         const prepared=host.readPreparedRepair(input.sourceTaskId);return prepared?.kind==='prepared' && prepared.binding.reviewTaskId===input.reviewTaskId?prepared:undefined;
@@ -89,6 +93,7 @@ async function fixture(t,{revokeDuringCredentialRead=false,changeGraphDuringCred
       answer_confidence:probability,confidence:0.5}}};
   }});
   const options={application,client,facts,namespace,goalHost,chooser,ready:()=>true,
+    readTeacherExecutionModel:()=>teacherModel,
     createHost:input=>createProactiveCognitionHost({...input,now:()=>time}),onTask:item=>{announced.push(item);onTaskCallback(item);},onUpdate:()=>{updateCalls++;},now:()=>time};
   host=createDesktopGoalCognitionHost(options);
   t.after(async()=>{host.close();facts.close();application.close();await rm(directory,{recursive:true,force:true});});
@@ -248,22 +253,28 @@ test('uncertain Laya selection hands off one explicit machine review without cla
   assert.equal(f.store.read().revision,5);
 });
 
-test('legacy Goal marker resumes after a transient Laya outage without reopening the old terminal task',async t=>{
-  const f=await fixture(t,{unavailableInitially:true});
-  f.host().configure({enabled:true,cloudAllowed:true});await f.host().tick();
-  assert.equal(f.host().snapshot().status,'error');assert.equal(f.layaCalls(),1);
+test('Goal abstention uses the selected model once when cloud review is authorized',async t=>{
+  const teacherModel={catalogRevision:'a'.repeat(64),modelId:'selected-model'};
+  const f=await fixture(t,{unavailableInitially:true,teacherModel});
+  f.host().configure({enabled:true,cloudAllowed:false});await f.host().tick();
+  assert.equal(f.sent.length,0);assert.equal(f.layaCalls(),1);
   const old=f.application.runtime.listTasks({}).items.find(task=>
     f.application.runtime.loadCheckpoint(task.taskId,'proactive-cognition-review-v1')?.selection?.reason==='unavailable');
   assert.ok(old);assert.equal(old.state,'succeeded');
-  // Emulate the marker saved by older Desktop versions before unavailable propagation was fixed.
+  // Keep the original marker when consent changes after a local review.
   f.application.runtime.saveCheckpoint(f.sourceTaskId,'desktop-goal-cognition-review',old.taskId);
-  f.restoreLaya();f.restart().configure({enabled:true,cloudAllowed:true});await f.host().tick();
-  assert.equal(f.layaCalls(),1,'persisted cooldown survives Desktop restart');
-  f.advance(31_000);await f.host().tick();
+  f.host().configure({enabled:true,cloudAllowed:true});await f.host().tick();
   const taskId=f.announced[0]?.taskId;assert.ok(taskId);
   assert.equal((await terminal(f.application,taskId)).state,'succeeded');
-  assert.equal(f.sent.length,1);assert.equal(f.layaCalls(),2);
-  assert.notEqual(f.application.runtime.loadCheckpoint(f.sourceTaskId,'desktop-goal-cognition-review'),old.taskId);
+  assert.equal(f.sent.length,1);assert.equal(f.layaCalls(),1);
+  const {executionModel,goal}=JSON.parse(f.sent[0].query);
+  assert.deepEqual(executionModel,teacherModel);
+  const payload=JSON.parse(goal.slice(goal.indexOf('\n')+1));
+  assert.equal(payload.layaReason,'unavailable');
+  assert.equal(payload.selectedOption,null);
+  assert.equal(payload.repairContext,undefined);
+  assert.doesNotMatch(goal,/PRIVATE_SOURCE_SENTINEL/);
+  assert.equal(f.application.runtime.loadCheckpoint(f.sourceTaskId,'desktop-goal-cognition-review'),old.taskId);
   assert.equal(f.application.runtime.getTask(old.taskId).state,'succeeded');
   f.advance();await f.host().tick();assert.equal(f.sent.length,1);
 });

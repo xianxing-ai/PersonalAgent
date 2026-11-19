@@ -14,7 +14,10 @@ function ordinary(file,base){
   return fs.statSync(file).isFile();
 }
 try {
-  if(!root||fs.realpathSync.native(root)!==root||!schemaFile?.endsWith('.ts')||!codeFile||sampleFile!==codeFile+'.f20-sample.ts')fail('Unsupported fixed F20 TypeScript case');
+  if(!root||!path.isAbsolute(root)||!schemaFile?.endsWith('.ts')||!codeFile||sampleFile!==codeFile+'.f20-sample.ts')fail('Unsupported fixed F20 TypeScript case');
+  // The trusted host pins the canonical root before launching the restricted process.
+  const rootEntry=fs.lstatSync(root);
+  if(!rootEntry.isDirectory()||rootEntry.isSymbolicLink())fail('F20 workspace must be an ordinary isolated directory');
   const sources=[schemaFile,codeFile,sampleFile].map(file=>path.resolve(root,file));
   if(sources.some(file=>!ordinary(file,root)))fail('F20 sources must be ordinary isolated files');
   const options={noEmit:true,strict:true,skipLibCheck:false,allowJs:true,checkJs:true,types:[],

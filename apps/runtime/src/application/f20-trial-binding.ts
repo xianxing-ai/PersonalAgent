@@ -5,6 +5,8 @@ import type {ToolContext} from '@personal-agent/contracts';
 import {parseF20DocumentCandidate} from '@personal-agent/agentarts';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
 import type {RuntimeApplication} from './runtime-application.js';
+import {CODING_DECISION_CHECKPOINT} from './coding-decision-tool.js';
+import type {RuntimeCodingDecisionReceipt} from './coding-decision-tool.js';
 import type {RuntimeF20Input} from './owned-workflow-worker-capability.js';
 import type {RuntimeOwnedWorkflowDriverState} from './owned-workflow-driver.js';
 import {assertF20CandidateSelection} from './f20-candidate-frontier.js';
@@ -153,6 +155,44 @@ export function f20ReviewContext(application:RuntimeApplication,context:ToolCont
     originalSources:saved.sourceReads.map(read=>read.confirmed!.result),originalTrial:trial.confirmed!.result});
 }
 
+/** Build a second opinion from the original cloud prompt and previously exported case results. */
+export function buildOwnedWorkflowTeacherContext(application:RuntimeApplication,context:ToolContext,originalContext:string):
+  {ownerTaskId:string;reviewContext:string}|undefined {
+  const runtime=application.runtime;
+  const parent=runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId:string;operationId:string}|undefined;
+  if(!parent)return undefined;
+  const owner=runtime.getTask(parent.taskId);
+  const operation=runtime.loadCheckpoint(parent.taskId,'coding-repair:host:'+parent.operationId) as
+    {localTaskId:string;request:{toolName:string;deadline:string;arguments?:Record<string,unknown>}}|undefined;
+  if(owner.cancelRequested||owner.state!=='running'||operation?.localTaskId!==context.taskId
+    ||operation.request.toolName!=='decision.choose_candidate'||operation.request.deadline!==context.deadline
+    ||operation.request.arguments?.context!==originalContext)return undefined;
+  const original=JSON.parse(originalContext) as {workflowId:string;nodeId:string;
+    candidateValues:{id:string;value:unknown;abstain?:boolean}[]};
+  if(original.workflowId==='F15'&&runtime.loadCheckpoint(parent.taskId,'coding-repair:worker-capability'))
+    return {ownerTaskId:parent.taskId,reviewContext:originalContext};
+  if(original.workflowId!=='F20'||!['F20_N02','F20_N04'].includes(original.nodeId))return undefined;
+  const saved=readRuntimeF20Binding(application,{taskId:parent.taskId,deadline:context.deadline,signal:context.signal});
+  const confirmed=Object.values(saved?.state.confirmedOperations??{});
+  const read=confirmed.find(item=>item.nodeId==='F20_N01'&&item.toolName==='workspace.read_text');
+  const exported=read?.exportedResult;
+  if(!saved?.sourceDigest||!plain(exported)||!Array.isArray(exported.originalSources))return denied();
+  const sources=exported.originalSources.map((source:unknown)=>{
+    if(!plain(source)||!saved.sourceReads.some(item=>isDeepStrictEqual(item.confirmed?.result,source)))return denied();
+    return {path:source.path,content:source.content};
+  });
+  const candidates=original.candidateValues.filter(candidate=>!candidate.abstain)
+    .map(({id,value})=>({id,...parseF20DocumentCandidate(value)}));
+  const check=confirmed.find(item=>item.nodeId==='F20_N03'&&item.toolName===F20_COMMAND_TOOL)?.exportedResult;
+  if(original.nodeId==='F20_N04'&&(!plain(check)||check.recipeId!==saved.input.recipeId||check.exitCode!==0))denied();
+  return {ownerTaskId:parent.taskId,reviewContext:JSON.stringify({
+    question:original.nodeId==='F20_N02'
+      ?'Which draft accurately describes both sources and has an example suitable for isolated TypeScript checking?'
+      :'Which previously selected draft is fully supported by the original sources and the confirmed isolated TypeScript check?',
+    sources,candidates,...(original.nodeId==='F20_N04'?{typeScriptCheck:{recipeId:saved.input.recipeId,exitCode:0}}:{}),
+  })};
+}
+
 export function verifyF20ReviewCompletion(application:RuntimeApplication,scope:{taskId:string;deadline:string;signal:AbortSignal}) {
   const saved=readRuntimeF20Binding(application,scope);if(!saved)denied();
   const records=Object.values(saved!.state.confirmedOperations??{}).filter(item=>item.nodeId==='F20_N04'&&item.toolName==='decision.choose_candidate');
@@ -160,14 +200,20 @@ export function verifyF20ReviewCompletion(application:RuntimeApplication,scope:{
   const record=records[0]!,readback=application.readHostToolTask(record.localTaskId);
   const operation=application.runtime.loadCheckpoint(scope.taskId,'owned-workflow:operation:'+record.operationId) as {proposal?:{arguments?:{context?:string}}}|undefined;
   const runId='host-tool-'+record.localTaskId,original=operation?.proposal?.arguments?.context;
-  const receipt=application.runtime.loadCheckpoint(record.localTaskId,'coding-repair:local-decision:v1:'+runId) as
-    {disposition?:string;selectedId?:string;contextDigest?:string;argumentsDigest?:string;taskId?:string;runId?:string}|undefined;
+  const receipt=application.runtime.loadCheckpoint(record.localTaskId,CODING_DECISION_CHECKPOINT+runId) as RuntimeCodingDecisionReceipt|undefined;
   if(readback.task.state!=='succeeded'||!readback.confirmed?.evidenceRefs.length||!isDeepStrictEqual(readback.confirmed.result,record.result)
     ||!plain(record.result)||typeof record.result.selectedId!=='string'||typeof original!=='string'||receipt?.disposition!=='selected'
     ||receipt.selectedId!==record.result.selectedId||receipt.taskId!==record.localTaskId||receipt.runId!==runId
     ||receipt.argumentsDigest!==toolArgumentsDigest(operation!.proposal!.arguments!))denied();
   const context=f20ReviewContext(application,{taskId:record.localTaskId,runId,authorizationRef:runId,scopes:[],deadline:scope.deadline,signal:scope.signal},original!);
   if(receipt!.contextDigest!==sha(context))denied();
+  if(receipt!.teacher){
+    const proof=application.runtime.loadCheckpoint(record.localTaskId,'owned-workflow-teacher:v1:'+runId+':result');
+    const {selectedId,requestId,executionModel}=receipt!.teacher;
+    if(!plain(proof)||proof.ownerTaskId!==scope.taskId||proof.runId!==runId||proof.argumentsDigest!==receipt!.argumentsDigest
+      ||proof.deadline!==scope.deadline||proof.selectedId!==selectedId||selectedId!==receipt!.selectedId
+      ||proof.requestId!==requestId||!isDeepStrictEqual(proof.executionModel,executionModel))denied();
+  }
   const values=JSON.parse(original!).candidateValues;
   assertF20CandidateSelection({runtime:application.runtime,parentTaskId:scope.taskId,operationId:record.operationId,
     candidateValues:values,selectedId:(record.result as {selectedId:string}).selectedId});

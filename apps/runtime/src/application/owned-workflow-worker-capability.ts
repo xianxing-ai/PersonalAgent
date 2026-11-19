@@ -267,6 +267,7 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
           fail('UNAUTHORIZED','Original F20 frontier was not verified');active(scope);
       },
       authorizeReceipt:async({proposal:item,receipt,localTaskId,state:graph})=>{
+        if(receipt.state==='failed')fail('EXTERNAL_FAILURE','F20 '+item.nodeId+' '+item.toolName+' failed');
         const check=item.nodeId==='F20_N03'&&item.toolName===F20_COMMAND_TOOL&&receipt.state==='confirmed';
         const sources=item.nodeId==='F20_N01'&&item.toolName==='workspace.read_text'&&receipt.state==='confirmed';
         let projected=receipt.result;
@@ -282,11 +283,12 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
           const trial=parseHarnessCandidateTrial(receipt.result);
           const {candidateId,candidate,samplePath}=selectedCandidate(graph),runId='host-tool-'+localTaskId;
           const expectedSample=createHash('sha256').update(candidate.sampleSnippet).digest('hex');
+          const verification=trial.checkReadback.verification.find(row=>row.recipeId===input.recipeId
+            &&row.evidenceRefs.includes(runId)&&row.files.some(file=>file.path===samplePath&&file.sha256===expectedSample));
           if(trial.session.mode!=='isolated'||trial.session.taskId!==localTaskId||trial.binding.taskId!==scope.taskId
             ||trial.binding.trialTaskId!==localTaskId||trial.binding.candidateId!==candidateId||!receipt.evidenceRefs.includes(runId)
-            ||!trial.checkReadback.verification.some(row=>row.recipeId===input.recipeId&&row.status==='VALID'&&row.exitCode===0
-              &&row.evidenceRefs.includes(runId)&&row.files.some(file=>file.path===samplePath&&file.sha256===expectedSample)))
-            fail('UNAUTHORIZED','F20 candidate recipe did not pass');
+            ||!verification)fail('UNAUTHORIZED','F20 verification receipt does not match the selected trial');
+          if(verification.status!=='VALID'||verification.exitCode!==0)fail('EXTERNAL_FAILURE','F20 isolated TypeScript check failed');
           projected={recipeId:input.recipeId,exitCode:0,stdout:'',stderr:''};
         }
         if(await options.authorizeExport({...scope,stage:'receipt',inputRef,value:structuredClone(projected),localTaskId,operationId:item.operationId})!==true)

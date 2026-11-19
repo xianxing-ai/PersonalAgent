@@ -1,10 +1,19 @@
-import {validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import type {WorkflowNodeContext,WorkflowCandidate} from './owned-workflows.js';
 import {requiredCodingVerification} from './coding-repair.js';
-import {ProtocolError} from '@personal-agent/contracts';
+import {parseF20DocumentCandidate} from './f20-worker-trust.js';
 
-/** Bind an explicit source path to its already-published schema; no semantic inference or tool execution. */
+/** Use existing bound operations and results as candidates without regenerating their contents. */
 export function boundSourceReadCandidates(context:WorkflowNodeContext):readonly WorkflowCandidate[]|undefined {
+  if(context.template.workflowId==='F20'&&context.node.id==='F20_N04'){
+    const input=context.input as {recipeId?:unknown}|undefined;
+    const check=context.predecessorOutputs.F20_N03 as {recipeId?:unknown;exitCode?:unknown}|undefined;
+    if(context.predecessorStates.F20_N02!=='completed'||context.predecessorStates.F20_N03!=='completed'
+      ||typeof input?.recipeId!=='string'||check?.recipeId!==input.recipeId||check.exitCode!==0)
+      throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 review requires the original draft and its confirmed TypeScript check');
+    return [{id:'bound-f20-document',description:'Review the original selected document against its original sources and confirmed TypeScript check.',
+      value:parseF20DocumentCandidate(context.predecessorOutputs.F20_N02)}];
+  }
   const coding=context.codingRepair;
   if(coding&&(['F15_N01','F15_N04','F15_N05','F15_N06'].includes(context.node.id)||context.node.id==='F15_N03'&&coding.readPath)){
     const sessionId=coding.configuration.session.sessionId;

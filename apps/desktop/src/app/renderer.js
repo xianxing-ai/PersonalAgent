@@ -9,7 +9,6 @@ import {mountSubagentConversationList} from '../features/conversation/subagent-c
 import {mountModelThinkingPicker} from '../features/conversation/model-thinking-picker.js';
 import {answerCardHtml, rememberActivity, replaceAnswerCard, syncContainerAnswerDisclosures} from '../features/conversation/answer-block.js';
 import {mountAssistantRoster} from '../features/conversation/assistant-roster-ui.js';
-import {renderDryRun} from '../features/workspace/dry-run-status.js';
 import {renderPermissionSheet} from '../features/workspace/permission-sheet.js';
 import {renderContentFence} from '../features/workspace/content-fence-status.js';
 import {renderCostRoute} from '../features/workspace/cost-route-status.js';
@@ -178,11 +177,10 @@ else {
   const panelPermissionOverviewBtn=document.createElement('button');panelPermissionOverviewBtn.type='button';panelPermissionOverviewBtn.className='turn-action';panelPermissionOverviewBtn.textContent='权限总览';panelPermissionOverviewBtn.setAttribute('aria-label','权限总览与审计');
   const panelAuditAlert=document.createElement('div');panelAuditAlert.className='notice';panelAuditAlert.hidden=true;panelAuditAlert.setAttribute('role','alert');panelAuditAlert.dataset.auditAlert='';
   const panelPermissionSheet=document.createElement('div');panelPermissionSheet.className='notice';panelPermissionSheet.hidden=true;panelPermissionSheet.dataset.permissionSheet='';panelPermissionSheet.dataset.signature='';
-  const panelDryRun=document.createElement('div');panelDryRun.className='notice';panelDryRun.hidden=true;panelDryRun.dataset.dryRun='';
   const panelContentFence=document.createElement('p');panelContentFence.className='notice';panelContentFence.hidden=true;panelContentFence.dataset.contentFence='';
   const panelCostRoute=document.createElement('div');panelCostRoute.className='notice';panelCostRoute.hidden=true;panelCostRoute.dataset.costRoute='';
   panelPermissionOverviewBtn.onclick=()=>{panelPermissionSheet.hidden=!panelPermissionSheet.hidden;if(!panelPermissionSheet.hidden)renderPermissionSheet(panelPermissionSheet,current?.assistantPermissions,invoke,report);};
-  panelRuntimeStrip.append(panelPermissionOverviewBtn,panelAuditAlert,panelPermissionSheet,panelDryRun,panelContentFence,panelCostRoute);
+  panelRuntimeStrip.append(panelPermissionOverviewBtn,panelAuditAlert,panelPermissionSheet,panelContentFence,panelCostRoute);
   tasksNode.before(panelRuntimeStrip);
   tasksNode.addEventListener?.('toggle',()=>syncContainerAnswerDisclosures(tasksNode,liveTurns),true);
   bridge?.onTaskActivity?.(event=>{rememberActivity(liveTurns,event);const slot=tasksNode.querySelector(`[data-answer-for="${event.taskId}"]`);const task=(current?.tasks??[]).find(item=>item.taskId===event.taskId);if(slot&&task)replaceAnswerCard(slot,task,liveTurns.get(event.taskId),escape);});
@@ -566,7 +564,6 @@ else {
     panelAuditAlert.hidden=!panelAuditBroken;
     panelAuditAlert.textContent=panelAuditBroken?`警告：${panelAudit.warning||(panelAudit.unreadable?'审计日志无法读取，已停止记录':`审计链在第 ${panelAudit.brokenAt} 条损坏，已停止追加后续记录`)}`:'';
     renderPermissionSheet(panelPermissionSheet,data.assistantPermissions,invoke,report);
-    renderDryRun(panelDryRun,data.dryRun,invoke);
     renderContentFence(panelContentFence,data.contentFence);
     renderCostRoute(panelCostRoute,data.costRoute,invoke,report);
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
