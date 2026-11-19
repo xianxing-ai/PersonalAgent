@@ -12,6 +12,7 @@ import type {AtomicCoordinationStorePort} from '@personal-agent/goals/store';
 import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
+import {createRuntimeAtomicStatePort} from './atomic-host-state.js';
 import {activityEvent, applyTranscript, emptyTranscript, parseTranscript, TRANSCRIPT_CHECKPOINT, INJECTION_CHECKPOINT} from './task-activity.js';
 import {ASSISTANT_BUILTIN_LOCKED, ASSISTANT_BUSY, ASSISTANT_LIMIT_REACHED, MAX_USER_ASSISTANTS, assistantConversationId, assistantDisplayName, assistantFromRow, assistantInstructions, optionalAssistantModelId, DEFAULT_ASSISTANTS} from './assistant-roster.js';
 import type {AssistantMail, AssistantRecord} from './assistant-roster.js';
@@ -28,6 +29,8 @@ export type {RuntimeStartupRecoveryOptions,RuntimeStartupRecovery,RuntimeStartup
 export {createRuntimeAtomicStatePort} from './atomic-host-state.js';
 export type {RuntimeAtomicStatePort} from './atomic-host-state.js';
 
+export {eraseDependentGraphHistory, verifyPhysicalErasureGraphUnlink} from './fact-erasure.js';
+export type {PhysicalErasureGraphUnlinkReport, VerifyPhysicalErasureGraphUnlinkInput} from './fact-erasure.js';
 export {FactProjectionError} from './fact-projection-store.js';
 export type {
   CompleteFactImpactRequest,
@@ -446,6 +449,20 @@ function scheduleFromRow(row: ScheduleRow): ScheduleSnapshot {
 export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   /** Host metadata shares this SQLite; this port is never registered as a wire operation. */
   bindTrustedHostState(namespace:string) {return bindHostStateStore(this.db,namespace);}
+
+  /** Trusted host only. The guard and complete-value CAS share the same SQLite
+   * write transaction as Policy grants and original TaskRuntime checkpoints.
+   * The guard must synchronously read current authorities and must not mutate. */
+  compareAndSetTrustedHostStateGuarded(namespace:string,key:string,expectedRevision:number|undefined,next:unknown,
+    guard:()=>void):boolean {
+    if(typeof guard!=='function')throw new RuntimeError('INVALID_ARGUMENT','Synchronous host authorization guard required');
+    return this.transaction(()=>{
+      const result:unknown=guard();
+      if(result!==undefined){void Promise.resolve(result).catch(()=>undefined);
+        throw new RuntimeError('UNAUTHORIZED','Host authorization guard must be synchronous');}
+      return createRuntimeAtomicStatePort(this,namespace).compareAndSet(key,expectedRevision,next);
+    });
+  }
   readonly policy: AuthorizationPolicy;
   private readonly db: DatabaseSync;
   private readonly competitionLoopReads=new WeakMap<object,CompetitionLoopReadSnapshot>();
@@ -1280,6 +1297,18 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
             }
           }
           const runId = request.idempotencyKey ?? this.idFactory();
+          const executionEpoch = this.readExecutionEpoch(request.taskId);
+          const assertCurrentExecution = () => {
+            this.assertExecutionEpoch(request.taskId!, executionEpoch);
+            const loop = this.loadCheckpoint(request.taskId!, 'competition-loop') as {executionEpoch?: number} | undefined;
+            if (loop?.executionEpoch !== undefined) this.assertExecutionEpoch(request.taskId!, loop.executionEpoch);
+            const original = this.loadCheckpoint(request.taskId!, 'execution-epoch:run:' + runId) as number | undefined;
+            if (original !== undefined) this.assertExecutionEpoch(request.taskId!, original);
+            const parent = this.loadCheckpoint(request.taskId!, 'execution-parent-epoch') as {taskId: string; epoch: number} | undefined;
+            if (parent) this.assertExecutionEpoch(parent.taskId, parent.epoch);
+          };
+          assertCurrentExecution();
+          this.saveCheckpointOnce(request.taskId, 'execution-epoch:run:' + runId, executionEpoch);
           const inputDigest = toolInputDigest(request.taskId, request.payload);
           const previousRow = this.db.prepare('SELECT record_json FROM tool_execution_records WHERE evidence_id = ?').get(runId);
           if (previousRow) {
@@ -1316,7 +1345,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
               authorizationRef: request.payload.scopeRef,
               deadline: request.deadline,
               signal,
-              onAuthorized: () => { record.policyDecision = 'allow'; record.executionStarted = true; this.saveToolExecution(record); },
+              onAuthorized: () => { assertCurrentExecution(); record.policyDecision = 'allow'; record.executionStarted = true; this.saveToolExecution(record); },
             });
             this.saveToolExecution({...record, state: 'confirmed', finishedAt: this.timestamp()}, result);
             data = {runId, state: 'confirmed', result, evidenceRefs: [runId]};
@@ -1891,6 +1920,45 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     }));
   }
 
+  /** Local execution fence. Legacy tasks start at zero; no cloud response can advance it. */
+  readExecutionEpoch(taskId: string): number {
+    this.getTask(taskId);
+    const epoch = this.loadCheckpoint(taskId, 'execution-epoch') ?? 0;
+    if (!Number.isSafeInteger(epoch) || (epoch as number) < 0)
+      throw new RuntimeError('REVISION_CONFLICT', 'Invalid persisted execution epoch');
+    return epoch as number;
+  }
+
+  advanceExecutionEpoch(taskId: string, input: {requestId: string; reason: 'stop' | 'pause' | 'replan'}): number {
+    requireText(input.requestId, 'execution control requestId');
+    if (!['stop', 'pause', 'replan'].includes(input.reason))
+      throw new RuntimeError('INVALID_ARGUMENT', 'Invalid execution control reason');
+    return this.transaction(() => this.advanceExecutionEpochInTransaction(taskId, input));
+  }
+
+  private advanceExecutionEpochInTransaction(taskId: string, input: {requestId: string; reason: 'stop' | 'pause' | 'replan'}): number {
+    const epoch = this.readExecutionEpoch(taskId), key = 'execution-epoch:advance:' + input.requestId;
+    const prior = this.loadCheckpoint(taskId, key) as {reason: string; epoch: number} | undefined;
+    if (prior) {
+      if (prior.reason !== input.reason) throw new RuntimeError('REVISION_CONFLICT', 'Execution control identity changed');
+      return prior.epoch;
+    }
+    if (!Number.isSafeInteger(epoch + 1)) throw new RuntimeError('REVISION_CONFLICT', 'Execution epoch exhausted');
+    this.saveCheckpoint(taskId, 'execution-epoch', epoch + 1);
+    this.saveCheckpointOnce(taskId, key, {reason: input.reason, epoch: epoch + 1});
+    return epoch + 1;
+  }
+
+  assertExecutionEpoch(taskId: string, expectedEpoch: number): void {
+    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 0)
+      throw new RuntimeError('REVISION_CONFLICT', 'Invalid expected execution epoch');
+    const current = this.readExecutionEpoch(taskId);
+    if (current !== expectedEpoch) {
+      this.saveCheckpointOnce(taskId, 'competition-stale-epoch', {expected: expectedEpoch, current});
+      throw new RuntimeError('REVISION_CONFLICT', 'Execution epoch is stale');
+    }
+  }
+
   subscribeActivity(listener: (event: TaskActivityEvent) => void): () => void {
     this.activityListeners.add(listener);
     return () => this.activityListeners.delete(listener);
@@ -2205,6 +2273,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       const task = taskFromRow(this.taskRow(taskId));
       if (terminal.has(task.state)) return {taskId, state: task.state, cancelAccepted: false};
       if (task.cancelRequested) return {taskId, state: task.state, cancelAccepted: true};
+      this.advanceExecutionEpochInTransaction(taskId, {requestId: 'task.cancel', reason: 'stop'});
       const next = task.state === 'waiting_reconciliation'
         ? this.updateTask(taskId, task.state, {cancelRequested: true}, false)
         : this.updateTask(taskId, 'cancelling', {cancelRequested: true}, true);
