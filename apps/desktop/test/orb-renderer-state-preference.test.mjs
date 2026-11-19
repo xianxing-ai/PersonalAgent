@@ -19,13 +19,13 @@ function visit(node){
 visit(ast);assert.ok(render&&motion&&feedbackDeclarations&&feedbackSync);
 function fixture(){
   const attributes={},events=new Map(),document={hidden:false,documentElement:{dataset:{calm:'false'}}};
-  const orb={running:true,calm:false,setLevel(value){this.level=value;},setState(value){this.state=value;},setCalm(value){this.calm=value;this.running=!value;},stop(){this.running=false;}};
+  const orb={running:true,calm:false,variant:'matrix',setVariant(value){this.variant=value;},setLevel(value){this.level=value;},setState(value){this.state=value;},setCalm(value){this.calm=value;this.running=!value;},stop(){this.running=false;}};
   for(const [name,target] of [['window',{}],['document',document]]){
     target.addEventListener=(event,callback)=>events.set(`${name}:${event}`,callback);
     target.removeEventListener=event=>events.delete(`${name}:${event}`);
     if(name==='window')document.window=target;
   }
-  const context=vm.createContext({orb,document,window:document.window,visualOrbState,orbStatusLabel,button:{setAttribute:(key,value)=>attributes[key]=value,removeAttribute:key=>delete attributes[key],set title(value){attributes.title=value;}}});
+  const context=vm.createContext({orb,document,window:document.window,visualOrbState,orbStatusLabel,orbVariantPreference:()=>document.documentElement.dataset.orbVariant||'matrix',orbStateOverride:()=>(document.documentElement.dataset.orbStateOverride&&document.documentElement.dataset.orbStateOverride!=='auto')?document.documentElement.dataset.orbStateOverride:null,lastOrbData:{},button:{setAttribute:(key,value)=>attributes[key]=value,removeAttribute:key=>delete attributes[key],set title(value){attributes.title=value;}}});
   vm.runInContext(`const ${motion};${feedbackDeclarations}const ${feedbackSync};`,context);for(const statement of registrations)vm.runInContext(statement,context);
   return {orb,document,attributes,events,render:vm.runInContext(`(${render})`,context),sync:()=>vm.runInContext('syncMotion()',context)};
 }

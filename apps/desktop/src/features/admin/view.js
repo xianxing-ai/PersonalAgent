@@ -1,8 +1,9 @@
-import {stateNames} from '../conversation/state.js';
+import {stateNames, visualOrbState} from '../conversation/state.js';
+import {Orb} from '../orb/orb.js';
 import {knowledgeSourceNotReadyMessage} from '../../shared/public-error-messages.js';
 import {errorDisplayText} from '../../shared/error-display.js';
 import {mountHistoryControls} from '../conversation/history-controls.js';
-import {themePreference, saveTheme, saveCalm} from '../../ui/preferences.js';
+import {themePreference, saveTheme, saveCalm, orbVariantPreference, saveOrbVariant, orbStateOverride, saveOrbStateOverride} from '../../ui/preferences.js';
 import {mountLiveVoiceControls} from '../../app/live-voice-controls.js';
 import {mountSisVoiceSettings} from './sis-voice-settings.js';
 import {mountNotificationSettings} from './notification-settings.js';
@@ -55,11 +56,11 @@ export const sections = {
 
 const primaryPages = ['settings', 'connections', 'authorizations', 'usage'];
 const navGroups = [
-  {label: '偏好', items: ['appearance', 'voice', 'notifications', 'briefing', 'profile', 'memory', 'shortcuts']},
+  {label: '偏好', items: ['appearance', 'voice', 'notifications', 'briefing', 'profile', 'memory', 'shortcuts', 'pets']},
   {label: '工具与配置', items: ['models', 'capabilities', 'computer', 'workspace']},
   {label: '记录', items: ['dashboard', 'tasks', 'activity']},
 ];
-const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', pets:'settings', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
+const pageAliases = {worktrees:'workspace', environment:'workspace', git:'workspace', import:'settings', personalization:'profile', analytics:'usage', archive:'tasks', hooks:'capabilities', configuration:'models', account:'profile', browser:'connections', overview:'usage'};
 const canonicalPage = page => pageAliases[page] ?? page;
 
 const iconPaths = {
@@ -254,7 +255,8 @@ export function mountAdmin(root, invoke, escape) {
         settingRow('退出应用', '结束托盘和所有窗口', '<button class="btn btn-danger btn-sm" id="quit">退出应用</button>')],
       appearance: ['外观', '选择清晰舒适的界面主题与动效',
         settingRow('界面主题', '悬浮面板、工作台和桌面设置使用同一套主题', '<select id="pref-theme" aria-label="界面主题"><option value="system">跟随系统</option><option value="dark">深色</option><option value="light">浅色</option></select>') +
-        settingRow('降低动效', '暂停轨道脉冲并移除界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>')],
+        settingRow('降低动效', '暂停轨道脉冲并移除界面位移动效', '<label class="switch-control"><input id="pref-calm" type="checkbox" aria-label="降低动效"><span></span></label>') +
+        settingRow('ORB-02', '黑核、白色规则点阵、球体模糊关闭', '<span class="value-pill">当前方案</span> <button type="button" class="btn btn-sm" data-jump="pets">桌面宠物设置</button>')],
       interaction: ['交互', '悬浮球、面板与输入行为',
         settingRow('靠近展开', '指针进入 ORB 周围 90px 后展开面板', '<span class="value-pill">90px</span>') +
         settingRow('对话面板宽度', '桌面固定宽度，窄屏自动收缩', '<span class="value-pill">420px</span>') +
@@ -316,6 +318,95 @@ export function mountAdmin(root, invoke, escape) {
     const feature = features[id];
     if (!feature) return `<div class="sheet"><h2>${sections[id]}</h2><div class="empty">此模块尚未接入真实服务。</div></div>`;
     return `<section class="feature-page"><div class="settings-heading"><h2>${feature[0]}</h2><p>${escape(feature[1])}</p></div><div class="settings-list">${feature[2].map(([title, detail, target]) => settingRow(title, detail, sections[target] ? `<button class="btn btn-sm" data-jump="${target}">${sections[target]}</button>` : `<span class="${['待接入','不可用','未连接','待设置','未设置'].includes(target) ? 'status-note' : 'value-pill'}">${target}</span>`)).join('')}</div></section>`;
+  }
+
+  const ORB_VARIANT_ITEMS = [
+    {id: 'particle', code: 'ORB-01', name: '粒子球壳', note: '黑核 + 亮白粒子壳，六状态换剪影'},
+    {id: 'matrix', code: 'ORB-02', name: '规则点阵', note: '黑核与白色规则点阵（默认方案）'},
+    {id: 'orbit', code: 'ORB-03', name: '极简轨道', note: '黑核 + 少数绕行亮点，常驻最不干扰'},
+    {id: 'wire', code: 'ORB-04', name: '线框球', note: '经纬线描边，工具感 / 工程感'},
+    {id: 'glass', code: 'ORB-05', name: '玻璃球', note: '透明折射，与玻璃面板同一套材质语言'},
+    {id: 'aura', code: 'ORB-06', name: '亮白光团', note: '无黑核，纯柔光呼吸，最柔和'},
+    {id: 'ink', code: 'ORB-07', name: '墨滴', note: '黑核边缘噪声扰动，生物感'},
+    {id: 'pulse', code: 'ORB-08', name: '脉冲环', note: '黑核 + 向外扩散同心环，状态=环频'},
+  ];
+  const ORB_STATE_ITEMS = [
+    {id: 'auto', label: '自动跟随任务', detail: '随对话、麦克风和授权状态自动切换（默认）'},
+    {id: 'idle', label: '待机 · Idle', detail: '23.44° 地球倾角慢速自转与轻微呼吸'},
+    {id: 'listening', label: '倾听 · Listening', detail: '声波驱动 3D 粒子体积云向外扩散'},
+    {id: 'thinking', label: '思考 · Thinking', detail: '五段关键帧呼吸聚拢 + 0.55 加速自转'},
+    {id: 'executing', label: '执行 · Executing', detail: '壳层扩散 + 明暗呼吸脉冲 + 外部状态环'},
+    {id: 'waiting', label: '等待确认 · Waiting', detail: '球壳收紧至 0.72 + 外圈静止虚线环'},
+    {id: 'error', label: '异常 · Error', detail: '粒子坍缩至黑核视界边缘 + 低频慢闪'},
+  ];
+  let petsPreviewOrb = null;
+  const syncPetsPreviewMotion = () => {
+    petsPreviewOrb?.setCalm(document.documentElement.dataset.calm === 'true');
+  };
+  const disposePetsPreview = () => {
+    if (!petsPreviewOrb) return;
+    window.removeEventListener('preferences-changed', syncPetsPreviewMotion);
+    petsPreviewOrb.dispose();
+    petsPreviewOrb = null;
+  };
+  window.addEventListener('unload', disposePetsPreview, {once: true});
+
+  function petsPage(data) {
+    const activeVariant = orbVariantPreference();
+    const activeState = orbStateOverride() ?? 'auto';
+    const currentVariantItem = ORB_VARIANT_ITEMS.find(item => item.id === activeVariant) ?? ORB_VARIANT_ITEMS[1];
+    const currentStateItem = ORB_STATE_ITEMS.find(item => item.id === activeState) ?? ORB_STATE_ITEMS[0];
+    const liveTaskState = visualOrbState(data);
+    const effectiveState = activeState === 'auto' ? liveTaskState : activeState;
+    const variantButtons = ORB_VARIANT_ITEMS.map(item => {
+      const selected = item.id === activeVariant;
+      return `<button type="button" class="btn btn-sm pets-option-btn ${selected ? 'btn-primary' : ''}" data-orb-variant="${item.id}" aria-pressed="${selected}">
+        <span class="pets-option-name">${escape(item.code)} · ${escape(item.name)}${selected ? ' ✓' : ''}</span>
+        <small class="pets-option-note">${escape(item.note)}</small>
+      </button>`;
+    }).join('');
+    const stateButtons = ORB_STATE_ITEMS.map(item => {
+      const selected = item.id === activeState;
+      return `<button type="button" class="btn btn-sm pets-option-btn ${selected ? 'btn-primary' : ''}" data-orb-state="${item.id}" aria-pressed="${selected}">
+        <span class="pets-option-name">${escape(item.label)}${selected ? ' ✓' : ''}</span>
+        <small class="pets-option-note">${escape(item.detail)}</small>
+      </button>`;
+    }).join('');
+    return `<section class="feature-page">
+      <div class="settings-heading">
+        <h2>桌面宠物</h2>
+        <p>管理 ORB-02 与未来可选桌面伙伴，实时切换 8 种球体形态并预览 6 种动态交互状态。</p>
+      </div>
+      <div class="sheet pets-hero-card">
+        <div class="pets-preview-box" id="pets-preview-trigger" role="button" tabindex="0" title="点击触发一次深呼吸" aria-label="点击触发一次深呼吸">
+          <canvas id="pets-preview-canvas" aria-hidden="true"></canvas>
+        </div>
+        <div class="pets-hero-copy">
+          <div class="pets-hero-title">
+            <strong>${escape(currentVariantItem.code)} · ${escape(currentVariantItem.name)}</strong>
+            <span class="value-pill">已启用</span>
+            <span class="value-pill">当前态：${escape(effectiveState)}</span>
+          </div>
+          <p class="muted">${escape(currentVariantItem.note)} · ${escape(currentStateItem.detail)}</p>
+          <div class="pets-hero-actions">
+            <button type="button" class="btn btn-sm" id="pets-breath-btn">触发深呼吸动效</button>
+            <button type="button" class="btn btn-sm" id="pets-reset-btn">恢复默认 (ORB-02 + 自动状态)</button>
+          </div>
+        </div>
+      </div>
+      <div class="settings-list">
+        ${settingRow('当前伙伴', `${currentVariantItem.code} · ${currentVariantItem.note}`, '<span class="value-pill">已启用</span>')}
+        <div class="setting-row pets-setting-block">
+          <span><b>宠物库 · 8 种伙伴形态切换</b><small>点击下方任意形态即可实时切换桌面悬浮球与大工作区球体外观</small></span>
+          <div class="pets-option-grid">${variantButtons}</div>
+        </div>
+        <div class="setting-row pets-setting-block">
+          <span><b>六态动态预览与联动</b><small>默认随任务状态自动流转；也可手动锁定任意状态用于演示或录屏</small></span>
+          <div class="pets-option-grid">${stateButtons}</div>
+        </div>
+        ${settingRow('靠近响应', '进入 90px 范围展开对话（可在桌面偏好中开关靠近展开与边缘吸附）', '<span class="value-pill">90px</span> <button type="button" class="btn btn-sm" id="desktop-local-settings">桌面偏好</button>')}
+      </div>
+    </section>`;
   }
 
   function memoryPage(data) {
@@ -528,6 +619,8 @@ export function mountAdmin(root, invoke, escape) {
       content = settingsPane(data, directSettings[section]);
     } else if (section === 'profile') {
       content = profilePage(data, escape);
+    } else if (section === 'pets') {
+      content = petsPage(data);
     } else if (section === 'memory') {
       content = memoryPage(data);
     } else if (section === 'computer' || section === 'activity' || section === 'briefing') {
@@ -543,9 +636,12 @@ export function mountAdmin(root, invoke, escape) {
       && !refreshMemory && nextMemoryKey === memoryRenderKey) { commitPage(); return; }
     // Keep interactive task/model DOM when an unrelated snapshot changes.
     const preferenceKey = section === 'appearance'
-      ? `${themePreference()}/${localStorage.getItem('pa-calm')}` : undefined;
+      ? `${themePreference()}/${typeof localStorage !== 'undefined' ? localStorage.getItem('pa-calm') : null}`
+      : section === 'pets'
+        ? `${orbVariantPreference()}/${orbStateOverride() ?? 'auto'}/${visualOrbState(data)}`
+        : undefined;
     const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections'].includes(section)
-      || ['settings', 'appearance'].includes(section) && renderedPreferenceKey === preferenceKey)
+      || ['settings', 'appearance', 'pets'].includes(section) && renderedPreferenceKey === preferenceKey)
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
       ? document.activeElement.parentElement.dataset.taskDetails : undefined;
@@ -582,7 +678,38 @@ export function mountAdmin(root, invoke, escape) {
       }
     }
     // Retained nodes already own their listeners. Rebinding would multiply IPC calls.
+    if (section !== 'pets') disposePetsPreview();
     if (retainContent) { commitPage(); return; }
+    if (section === 'pets') {
+      disposePetsPreview();
+      const previewCanvas = root.querySelector('#pets-preview-canvas');
+      if (previewCanvas && typeof previewCanvas.getContext === 'function') {
+        const activeVariant = orbVariantPreference();
+        const activeOverride = orbStateOverride();
+        const effectiveState = activeOverride ?? visualOrbState(data);
+        petsPreviewOrb = new Orb(previewCanvas, {variant: activeVariant, layout: 'shell', count: 170});
+        petsPreviewOrb.setLevel(effectiveState === 'listening' ? 0.68 : (data.audioLevel ?? 0));
+        petsPreviewOrb.setState(effectiveState);
+        syncPetsPreviewMotion();
+        window.addEventListener('preferences-changed', syncPetsPreviewMotion);
+      }
+      root.querySelectorAll('[data-orb-variant]').forEach(button => button.addEventListener('click', () => {
+        saveOrbVariant(button.dataset.orbVariant);
+        render(current);
+      }));
+      root.querySelectorAll('[data-orb-state]').forEach(button => button.addEventListener('click', () => {
+        saveOrbStateOverride(button.dataset.orbState);
+        render(current);
+      }));
+      const triggerBreath = () => petsPreviewOrb?.playBreath(3.2);
+      root.querySelector('#pets-preview-trigger')?.addEventListener('click', triggerBreath);
+      root.querySelector('#pets-breath-btn')?.addEventListener('click', triggerBreath);
+      root.querySelector('#pets-reset-btn')?.addEventListener('click', () => {
+        saveOrbVariant('matrix');
+        saveOrbStateOverride('auto');
+        render(current);
+      });
+    }
     if (section === 'profile') bindProfile(root, escape);
     root.querySelector('#memory-select-vault')?.addEventListener('click', async event => {
       const button = event.currentTarget;
