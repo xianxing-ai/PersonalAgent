@@ -1,5 +1,7 @@
 # 当前接口目录与冻结登记
 
+> 待办条件更新（provisional）：MOD-20 的 todo.update 与 TodoUpdateInput 接受可选正整数 expectedRevision；与当前条目 revision 不一致时返回 REVISION_CONFLICT，保留原条目及提醒。未提供时保留旧行为。该检查仅覆盖现有单进程同步存储边界，不声明跨进程事务；F11 的工作流接线与真实服务验收另行交付。
+
 ## 2026-11-11 失败自愈决策（provisional）
 
 `@personal-agent/agentarts` 提供失败分类、指数退避、换策略、父 agent 重新规划和 `confirmF13HostRecovery`。Runtime 用可选 `onTaskFailed` 在失败提交后记录 checkpoint `repair-decision:v1`；冻结 trace replay 可以附带同一份自愈记录，回放不执行工具。失败终态不重开。没有新的 Core wire、数据库迁移或 Policy 授权。Fake 测试不提升冻结等级。见 [自愈记录](../modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
@@ -130,6 +132,8 @@ Competition 可信宿主可显式启用 `competitionExecution:{mode:'progressive
 
 ModelGateway 的可选 host-only `RealtimeSession.speakText(text)` 由用户已开启 Live 的同对话新文字任务消费；原 Runtime 成功终态触发，有界排队、task/revision 去重、切换对话/停止/打断丢弃晚到结果。未开启 Live 或 provider 缺端口明确 unavailable；无新公开 voice wire、授权、provider 或任务循环。accepted 不代表音频/播放已验证；实际 response 参数及 item 删除的云兼容性和实体设备仍未验收，不提升冻结状态。见 [接线及本地验证](../../apps/desktop/docs/text-model-voice-output-20261025.md)。
 
+> F12 语音关联（provisional）：Qwen 本地输出事件及 speakText accepted 可携带可选 renditionId，输出可携带 responseId；旧消费者可忽略。它们只关联本次输出，不证明逐字发声、播放或用户听见。通知宿主、原回执、物理设备及真实云验收仍另行交付。
+
 ## 2026-10-23 会话自动压缩与命令（provisional）
 
 原 `task.submit` 的用户完整输入 `/压缩` / `/compact` 在 Runtime 内执行历史压缩，不走主模型问答或子任务委派。
@@ -213,6 +217,8 @@ Desktop 私有 `desktop:draft-close` 仅在原窗口关闭前同步保存原 Con
 `RuntimeProactiveImageAdapterOptions` 兼容增加可信 `config.deploymentVersion` 与 `assertDeploymentBinding`，Desktop 原组合传入已选部署，describe/advance 保留同版 HTTP endpoint，凭据等待期间绑定改变则拒绝发送。原版本未知时不假造已固定版本；现有签名、取消、deadline 与 unknown 核实语义保留。具体接线及离线测试边界见 [修复记录](../../apps/desktop/docs/PR376_REGRESSION_FIXES_20261017.md)；不扩大冻结或真实华为/设备验收范围。
 
 ## 2026-10-20 日历写能力消费接线（provisional，离线接线已验）
+
+> 日历窗口内容摘要（provisional）：calendar.events 仅在无 cursor 且结果完整时附带 sourceVersion；分页结果不提供完整窗口摘要。它不是账号身份、全账号修订或条件写令牌；特别是空窗口不包含账号信息，调用方须另外绑定并核验来源。真实日历及 F07 流程验收另行记录。
 
 复用#442@3b1e6d6c已包含的#439可选CalendarProvider.writes与calendar.create/update/cancel接线，沿原Runtime/Policy/ToolGateway保留逐任务批准、配置撤销和完整metadata/result原生出机门禁。#458补充条件写入、实际资源地址校验、删除读回及额外消费验证，见[工作包](../competition/CALENDAR_CONVERSATION_WRITES_20261020.md)。依赖尚未合并主线，真实账号/平台验收未执行，不提升冻结或真实可用等级。无Core wire/数据库迁移，CalDAV响应只增加兼容的可选headers.get端口。
 
@@ -425,6 +431,8 @@ capability、迁移或依赖。接口保持 provisional，未完成真实用户/
 ## 2. 状态定义与冻结门槛
 
 ### DEV-WORKFLOWS 开发增量（2026-10-03）
+
+> 测试失败定位（provisional）：已有定位器可识别完整的 Node 语法检查诊断，结果 reporter 增加 node-check。Desktop 公开解析入口继续去除源码片段；日志解析不提供执行或额外读取权限。F17 图及真实仓库验收另行交付。
 
 历史上 PR #276 的 MOD-33/34/36/38 Local Profile 增量由 zemeng 启动；2026-10-07 最新分工为 goo122 负责 MOD-33/36/37，Potatos498 负责 MOD-34/35/38，接口范围和历史证据不因交接改变。
 公开 `@personal-agent/github`、`@personal-agent/coding-tools` 的开发修复与受控 Git 工厂、

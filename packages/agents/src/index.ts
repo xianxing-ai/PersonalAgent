@@ -151,9 +151,37 @@ function withModelMetadata(deployment: ModelResult['deployment'], usage: ModelRe
   return `${text} [model=${deployment.provider}/${deployment.deployment}/${deployment.model}; verification=${deployment.verification}; tokens=${tokens}]`;
 }
 
-async function complete(context: AgentWorkerContext, options: AgentRunOptions, messages: readonly ModelMessage[], remainingTokens?: number): Promise<ModelResult> {
+const TOOL_LABELS: Record<string, string> = {
+  'knowledge.search': '搜索知识库',
+  'subagent.dispatch': '派给子助手',
+  'assistant.message': '发给其他助手',
+};
+
+function toolLabel(name: string, phase: 'call' | 'result'): string {
+  const known = TOOL_LABELS[name];
+  if (phase === 'call') return known ? `正在${known}` : `正在调用 ${name}`;
+  return known ? `${known}已完成` : `${name} 已返回`;
+}
+
+function note(context: AgentWorkerContext, activity: {kind: 'reasoning' | 'tool_call' | 'tool_result' | 'answer_delta' | 'user_injection'; stepId: string; label?: string; text?: string; toolName?: string; argsSummary?: string; resultSummary?: string; durationMs?: number}): void {
+  (context as AgentWorkerContext & {noteActivity?: (value: typeof activity) => void}).noteActivity?.(activity);
+}
+
+function takeInjections(context: AgentWorkerContext): {text: string}[] {
+  return (context as AgentWorkerContext & {takeUserInjections?: () => {text: string}[]}).takeUserInjections?.() ?? [];
+}
+
+function summarize(value: unknown): string {
+  let text = '';
+  try { text = typeof value === 'string' ? value : JSON.stringify(value) ?? ''; }
+  catch { text = '[无法显示]'; }
+  return text.length > 180 ? text.slice(0, 179) + '…' : text;
+}
+
+async function complete(context: AgentWorkerContext, options: AgentRunOptions, messages: readonly ModelMessage[], step: number, remainingTokens?: number): Promise<ModelResult> {
   checkRuntime(context);
-  return options.model.complete({
+  let sawReasoning = false;
+  const result = await options.model.complete({
     messages,
     tools: options.tools.list(),
     ...(remainingTokens === undefined ? {} : {maxOutputTokens: remainingTokens}),
@@ -161,7 +189,13 @@ async function complete(context: AgentWorkerContext, options: AgentRunOptions, m
     ...(options.thinkingBudget !== undefined ? {thinkingBudget: options.thinkingBudget} : {}),
     deadline: context.deadline,
     signal: context.signal,
+    onDelta: delta => {
+      if (delta.kind === 'reasoning') sawReasoning = true;
+      note(context, {kind: delta.kind === 'reasoning' ? 'reasoning' : 'answer_delta', stepId: `agent-${step}`, text: delta.text, label: delta.kind === 'reasoning' ? '正在思考' : '正在回答'});
+    },
   });
+  if (result.reasoning && !sawReasoning) note(context, {kind: 'reasoning', stepId: `agent-${step}`, text: result.reasoning, label: '正在思考'});
+  return result;
 }
 
 export async function runAgent(context: AgentWorkerContext, options: AgentRunOptions): Promise<AgentOutcome> {
@@ -188,11 +222,17 @@ export async function runAgent(context: AgentWorkerContext, options: AgentRunOpt
   };
 
   for (let step = saved?.step ?? 1; step <= options.maxSteps; step++) {
-    context.reportProgress({stepId: `agent-${step}`, label: 'model planning', completedUnits: step - 1, totalUnits: options.maxSteps});
+    const injected = pending ? [] : takeInjections(context);
+    if (injected.length) {
+      messages = [...messages, ...injected.map(item => ({role: 'user' as const, content: item.text}))];
+      for (const item of injected) note(context, {kind: 'user_injection', stepId: `agent-inject-${step}`, text: item.text, label: '已带上你的插话'});
+      context.reportProgress({stepId: `agent-inject-${step}`, label: '已带上你的插话', completedUnits: step - 1, totalUnits: options.maxSteps});
+    }
+    context.reportProgress({stepId: `agent-${step}`, label: '正在思考', completedUnits: step - 1, totalUnits: options.maxSteps});
     if (!pending && options.maxTokens !== undefined && usedTokens >= options.maxTokens) throw new ProtocolError('TIMEOUT', 'Agent token budget exhausted');
     let result: ModelResult;
     try {
-      result = pending ?? await complete(context, options, messages, options.maxTokens === undefined ? undefined : options.maxTokens - usedTokens);
+      result = pending ?? await complete(context, options, messages, step, options.maxTokens === undefined ? undefined : options.maxTokens - usedTokens);
     } catch (error) {
       if (!isModelProposalValidationError(error)) throw error;
       // Parsing failed after provider generation, but its usage is unavailable here.
@@ -207,7 +247,7 @@ export async function runAgent(context: AgentWorkerContext, options: AgentRunOpt
     if (options.maxTokens !== undefined && usedTokens > options.maxTokens) throw new ProtocolError('TIMEOUT', 'Agent token budget exhausted');
 
     if (result.response.kind === 'final') {
-      context.reportProgress({stepId: `agent-${step}`, label: 'model answer ready', completedUnits: options.maxSteps, totalUnits: options.maxSteps});
+      context.reportProgress({stepId: `agent-${step}`, label: '正在整理回答', completedUnits: options.maxSteps, totalUnits: options.maxSteps});
       const outcome: AgentOutcome = {
         status: 'succeeded', resultSummary: withModelMetadata(result.deployment, result.usage, result.response.text), evidenceRefs,
         deployment: result.deployment, ...(result.usage === undefined ? {} : {usage: result.usage}), steps: step,
@@ -233,13 +273,21 @@ export async function runAgent(context: AgentWorkerContext, options: AgentRunOpt
     const runId = `agent-run-${context.taskId}-${step}`;
     const authorizationRef = options.authorizationRefFor?.(proposal.toolName, context) ?? runId;
     if (!authorizationRef.trim()) throw new ProtocolError('UNAUTHORIZED', 'Trusted host did not provide an authorization reference');
-    context.reportProgress({stepId: `agent-tool-${step}`, label: `calling ${proposal.toolName}`, completedUnits: step, totalUnits: options.maxSteps});
+    const toolStep = `agent-tool-${step}`;
+    const callLabel = toolLabel(proposal.toolName, 'call');
+    context.reportProgress({stepId: toolStep, label: callLabel, completedUnits: step, totalUnits: options.maxSteps});
+    note(context, {kind: 'tool_call', stepId: toolStep, toolName: proposal.toolName, argsSummary: summarize(proposal.arguments), label: callLabel});
     context.saveCheckpoint('agent-loop', {messages, usedTokens, repairs, evidenceRefs, step, pending: result});
+    const toolStarted = Date.now();
     const toolResult = await options.tools.invoke({
       toolName: proposal.toolName, toolVersion: proposal.toolVersion, arguments: structuredClone(proposal.arguments),
       taskId: context.taskId, runId, authorizationRef, deadline: context.deadline, signal: context.signal,
     });
     evidenceRefs = [...evidenceRefs, ...toolResult.evidenceRefs];
+    const toolDuration = Date.now() - toolStarted;
+    if (toolResult.state !== 'pending') {
+      note(context, {kind: 'tool_result', stepId: toolStep, toolName: proposal.toolName, resultSummary: summarize(toolResult.result ?? toolResult.state), durationMs: toolDuration, label: toolLabel(proposal.toolName, 'result')});
+    }
     if (toolResult.state === 'pending') {
       return {status: 'waiting_approval', resultSummary: 'Tool is awaiting approval', evidenceRefs, deployment: result.deployment, steps: step};
     }

@@ -266,7 +266,7 @@ export async function compactConversationContext(options:ContextCompactionOption
   active();
   const original=snapshot(options),before=measure(options.compile(original.messages),options.goalTokenBudget);
   const cacheBinding=hash([options.cacheConversationId??options.scope.conversationId,
-    original.configurationRef,options.modelConfigurationRef,options.policy,'verbatim-constraints:v1']);
+    original.configurationRef,options.modelConfigurationRef,options.policy,'verbatim-constraints:v2']);
   const previous=options.previous;
   const validCache=previous?.binding===cacheBinding&&previous.prefixCount>0
     &&previous.prefixDigest===hash(original.messages.slice(0,previous.prefixCount));
@@ -279,10 +279,21 @@ export async function compactConversationContext(options:ContextCompactionOption
   const derive=(summaries:readonly string[],digest:string):CompactableContextMessage[]=>summaries.map((text,index)=>({
     id:'context-summary:'+digest+':'+index,role:'assistant',
     content:JSON.stringify({kind:'derived_conversation_summary',treatment:'untrusted_data',text})}));
+  const assemble=(source:readonly CompactableContextMessage[],summaries:readonly string[])=>{
+    const segments=segmentSummarizableContext(source,options.policy.segmentCharacters),derived=derive(summaries,hash(source));
+    if(segments.length!==derived.length)conflict();
+    const result:CompactableContextMessage[]=[];let next=0;
+    for(let i=0;i<source.length;){
+      const segment=segments[next];
+      if(segment?.sourceStart===i){result.push(derived[next]!);i=segment.sourceEnd;next++;}
+      else {result.push(source[i]!);i++;}
+    }
+    return result;
+  };
   const reuse=validCache&&previous.prefixCount<=boundary
     &&(!options.force||previous.prefixCount===boundary)
-    &&fits(measure(options.compile([...derive(previous.summaries,previous.prefixDigest),
-      ...original.messages.slice(0,previous.prefixCount).filter(mustPreserveContextMessage),...original.messages.slice(previous.prefixCount)]),
+    &&fits(measure(options.compile([...assemble(original.messages.slice(0,previous.prefixCount),previous.summaries),
+      ...original.messages.slice(previous.prefixCount)]),
       options.goalTokenBudget),options.policy.triggerCharacters-1);
   if(reuse)boundary=previous.prefixCount;
   const prefix=original.messages.slice(0,boundary),tail=original.messages.slice(boundary);
@@ -328,8 +339,7 @@ export async function compactConversationContext(options:ContextCompactionOption
       lastIdentityDigest:identity(segment.messages.at(-1)!),sourceCharacters:JSON.stringify(segment.messages).length,
       summaryDigest:hash(text),summaryCharacters:text.length});
   }
-  const derived=derive(summaries,hash(prefix));
-  const messages=[...derived,...preserved,...tail],after=measure(options.compile(messages),options.goalTokenBudget);
+  const messages=[...assemble(prefix,summaries),...tail],after=measure(options.compile(messages),options.goalTokenBudget);
   if(after.characters>=before.characters||(after.tokens.state==='measured'&&before.tokens.state==='measured'
     &&after.tokens.inputTokens>=before.tokens.inputTokens))
     throw new ProtocolError('INVALID_ARGUMENT','Conversation summary made no measurable progress');

@@ -70,8 +70,9 @@ test('compaction strictly rejects malformed metadata and extra fields',async t=>
 
 test('metadata changes invalidate the original compaction source digest and committed receipt',async t=>{
   for(const field of ['createdAt','taskState','answerWithheld'])await t.test(field,async()=>{
-    const messages=Array.from({length:8},(_,i)=>({id:'source-'+i,role:i===0?'user':'assistant',
-      content:'original source '.repeat(20),...(i===0?{createdAt:'2026-10-20T01:00:00Z',taskState:'failed',answerWithheld:true}:{})}));
+    // Keep one withheld original and enough ordinary history to produce a real summary.
+    const messages=Array.from({length:8},(_,i)=>({id:'source-'+i,role:i%2?'assistant':'user',
+      content:'original source '.repeat(20),createdAt:'2026-10-20T01:00:00Z',taskState:'failed',...(i===0?{answerWithheld:true}:{})}));
     const f=compaction(messages),result=await compactConversationContext(f.options);
     assert.equal(result.state,'compacted');assert.ok(f.receipt().sourceDigest);result.assertCurrent();
     assert.deepEqual(result.messages.find(message=>message.id==='source-0'),messages[0]);

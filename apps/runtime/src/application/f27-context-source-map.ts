@@ -31,16 +31,24 @@ export function bindF27ContextSourceMap(input:{
     if(receipt.version!==1||receipt.sourceCount!==source.length||receipt.sourceDigest!==hash(source)
       ||!Array.isArray(receipt.segments)||!receipt.segments.length)reject();
     const count=receipt.segments.length,boundary=receipt.prefixCount??source.length-(assembled.length-count);
-    const protectedIndexes=receipt.prefixCount===undefined?[]:source.slice(0,boundary).flatMap((message,index)=>mustPreserveContextMessage(message)?[index]:[]);
-    const originals=[...protectedIndexes.map(index=>source[index]!),...source.slice(boundary)];
-    if(!Number.isSafeInteger(boundary)||boundary<1||boundary>source.length||!isDeepStrictEqual(assembled.slice(count),originals)
+    if(!Number.isSafeInteger(boundary)||boundary<1||boundary>source.length
       ||receipt.tailDigest!==hash(source.slice(boundary)))reject();
     const prefix=source.slice(0,boundary),segments=receipt.prefixCount===undefined
       ?segmentConversationContext(prefix,receipt.policy.segmentCharacters):segmentSummarizableContext(prefix,receipt.policy.segmentCharacters);
     if(segments.length!==count)reject();
-    const summaries:string[]=[];let offset=0;
-    mappings=segments.map((segment,index)=>{
-      const message=assembled[index]!,range=receipt.segments[index]!;
+    const summaries:string[]=[];
+    let sourceIndex=0,segmentIndex=0;
+    mappings=assembled.map(message=>{
+      const segment=segments[segmentIndex];
+      const segmentStart=segment&&('sourceStart' in segment?segment.sourceStart:sourceIndex);
+      if(!segment||segmentStart!==sourceIndex) {
+        const original=source[sourceIndex],origin=origins[sourceIndex];
+        if(!original||!origin||!isDeepStrictEqual(message,original)
+          ||(sourceIndex<boundary&&(receipt.prefixCount===undefined||!mustPreserveContextMessage(original))))reject();
+        const start=sourceIndex++;
+        return {...origin,kind:'original',sourceStart:start,sourceEnd:sourceIndex};
+      }
+      const index=segmentIndex++,range=receipt.segments[index]!;
       let derived:{kind?:unknown;treatment?:unknown;text?:unknown};
       try{derived=JSON.parse(message.content);}catch{return reject();}
       if(!derived||derived.kind!=='derived_conversation_summary'||derived.treatment!=='untrusted_data'||typeof derived.text!=='string'
@@ -50,12 +58,11 @@ export function bindF27ContextSourceMap(input:{
         ||range.sourceCharacters!==JSON.stringify(segment.messages).length||range.summaryDigest!==hash(derived.text)
         ||range.summaryCharacters!==derived.text.length)reject();
       summaries.push(derived.text);
-      const start='sourceStart' in segment?segment.sourceStart as number:offset;offset+=segment.messages.length;
-      return {identityDigest:identity(message),contentDigest:hash(message.content),kind:'summary',sourceStart:start,sourceEnd:start+segment.messages.length};
+      const start=sourceIndex;
+      sourceIndex+=segment.messages.length;
+      return {identityDigest:identity(message),contentDigest:hash(message.content),kind:'summary',sourceStart:start,sourceEnd:sourceIndex};
     });
-    if(receipt.summaryDigest!==hash(summaries)||offset+protectedIndexes.length!==boundary)reject();
-    mappings.push(...protectedIndexes.map(index=>({...origins[index]!,kind:'original' as const,sourceStart:index,sourceEnd:index+1})));
-    mappings.push(...origins.slice(boundary).map((item,index)=>({...item,kind:'original' as const,sourceStart:boundary+index,sourceEnd:boundary+index+1})));
+    if(receipt.summaryDigest!==hash(summaries)||sourceIndex!==source.length||segmentIndex!==count)reject();
   }
   let last=-1;
   const selectedMappings=selected.map(message=>{
