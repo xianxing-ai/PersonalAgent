@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -27,7 +29,7 @@ async function fixture({childTool=false,childFailure=false,wss=false,legacyHold=
     ...(wss?{transport:'wss',websocketUrl:'wss://agentarts.example.test/runtimes/termination/ws',
       websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'},websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
         if(frame.type!=='invoke')return;socket.accepted(frame);
-        try{socket.result(frame,JSON.stringify(response(JSON.parse(frame.payload.query))));}
+        try{socket.result(frame,syntheticAgentArtsResult(frame.payload,response(JSON.parse(syntheticAgentArtsQuery(frame.payload)))));}
         catch{socket.receive({...identity(frame),type:'error',accepted:true,code:'EXTERNAL_FAILURE'});}
       })}:{}),
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',authorizationProvider:{read:async()=>'Bearer synthetic'},
@@ -41,7 +43,7 @@ async function fixture({childTool=false,childFailure=false,wss=false,legacyHold=
       return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify(value),index:0}}),{status:200,headers:{'content-type':'application/json'}});
     }};
   const create=()=>{
-    app=createAgentArtsRuntimeApplication(options);
+    app=createSyntheticAgentArtsRuntimeApplication(options);
     if(legacyHold){const hold=app.holdCompetitionExport.bind(app);app.holdCompetitionExport=id=>hold(id);}
     return app;
   };

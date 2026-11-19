@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
@@ -64,7 +65,7 @@ async function fixture(t, overrides = {}) {
           if (descriptor.name === patchDescriptor.name) assert.deepEqual(result, expectedOutput);
           return result;
         }})),
-      coordination: {async execute(request) {
+      coordination: {execute:syntheticCoordinationExecution(async (request)=>{
         calls.cloud.push({taskId: request.taskId, continuation: request.continuation});
         if (!request.continuation) return proposal('read-1', readTool.descriptor.name, {path: 'demo.mjs'});
         if (request.continuation.proposalId === 'read-1') {
@@ -74,7 +75,7 @@ async function fixture(t, overrides = {}) {
         assert.deepEqual(request.continuation, {proposalId: 'patch-2', state: 'confirmed', result: expectedOutput});
         if (config.holdCompletion) await completion.promise;
         return {kind: 'text', text: 'Explicit Fake cloud received the recovered patch', verification: 'unverified'};
-      }},
+      })},
       workspacePatchReconciliation: {get bindingId() { return config.bindingId; }, async reconcile(input) {
         calls.reconciliation.push(input);
         if (!config.marker) return {path: input.relativePath, state: 'clear'};

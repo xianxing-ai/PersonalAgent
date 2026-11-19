@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {mkdir,mkdtemp,rm,readFile} from 'node:fs/promises';
@@ -68,7 +69,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goa
   const directory=await mkdtemp(new URL('case-',root));
   const owned=repair?repairAgent():agentWith(),sent=[],rejections=[],announced=[]; let credentials=0,submits=0;
   let host,goalWrites=0;
-  const app=createAgentArtsRuntimeApplication({path:path.join(directory,'runtime.sqlite'),
+  const app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:path.join(directory,'runtime.sqlite'),
     ...(repair?{repairCandidateVersion:'1.0'}:{}),
     ...(catalog?{initialRequestMode:'goal-with-tools-json',tools:[{descriptor:{name:'fixture.read',version:'1.0.0',inputSchema:{type:'object',properties:{padding:{type:'string',...(catalogPadding?{enum:['x'.repeat(catalogPadding)]}:{})}},additionalProperties:false},outputSchema:{type:'object',properties:{}},sideEffect:'read',requiredScopes:[],idempotencySupport:true,recoverySupport:true,requiresPresence:false},execute:async()=>({})}],competitionToolExports:[{toolName:'fixture.read',toolVersion:'1.0.0',exportPolicyVersion:'fixture-v1',accepts:()=>true,project:()=>({})}],competitionToolAvailability:[{toolName:'fixture.read',toolVersion:'1.0.0',available:()=>true,publicEnumPaths:['/padding']}]}:{}),gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',responseMode:'tool-proposal-json',
     ...(unknown?{transport:'wss',websocketUrl:'wss://agentarts.example.test/runtimes/synthetic/ws',
@@ -83,7 +84,7 @@ async function hostFixture(t,{uncertain=false,newGoal=false,restricted=false,goa
       catch(error){rejections.push(error.code);throw error;}
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(output)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   const store=app.runtime.provisionCoordinationStore(namespace);
   store.append(0,node('private-source','fact',[],factSummary??(ancillary==='public'?'Public ancillary source':'PRIVATE_SOURCE_SENTINEL'),ancillary??'private'));
   for(let i=0;i<extraCount;i++)store.append(store.read().revision,node('public-fact-'+i,'fact',[],'Public ancillary '+i));

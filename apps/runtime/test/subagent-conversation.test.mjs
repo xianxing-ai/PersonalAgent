@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -16,7 +17,7 @@ function fixture({storage=':memory:',hold,write=false,execute,coordinationInput}
     sideEffect:write?'external_write':'read',requiredScopes:['fixture:read'],requiresPresence:false,idempotencySupport:true,recoverySupport:true};
   const dispatch=createDesktopSubagentDispatchTool({competitionOnly:true,getRuntime:()=>app.runtime,getTools:()=>app.tools,
     runDefaultWorker:(definition,worker,tools)=>app.runDefaultSubagentWorker(definition,worker,tools)});
-  const port=new FakeCoordinationPort(async request=>{
+  const port=new FakeCoordinationPort(syntheticCoordinationExecution(async request=>{
     const task=app.runtime.getTask(request.taskId);
     const compiled=request.goal.startsWith('{')?JSON.parse(request.goal):{publicGoal:request.goal};
     queries.push({request,task,compiled});
@@ -32,7 +33,7 @@ function fixture({storage=':memory:',hold,write=false,execute,coordinationInput}
     }
     if(task.conversationId.startsWith('desktop-subtask:'))return {kind:'text',text:`Original answer ${task.goal}`,verification:'mock'};
     assert.ok(request.continuation);return {kind:'text',text:'Coordinator summary',verification:'mock'};
-  });
+  }));
   const tools=[dispatch,{descriptor,execute:async(input,context)=>{calls.push(context.taskId);return execute?execute(input,context):{value:'public'};}}];
   app=createRuntimeApplication({path:storage,profile:'huawei_ict_agentarts',delegateUserTasks:true,coordination:port,
     coordinationBinding:'original-fixed-source',readDefaultExecutionModel:()=>selected,resolveExecutionModel:()=>currentModel,

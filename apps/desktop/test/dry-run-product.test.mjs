@@ -225,7 +225,7 @@ test('cancelling preview stops before RuntimeApplication requests Policy authori
     competitionToolAvailability: [{toolName: 'notepad.save_note', toolVersion: '1.0.0', available: () => true}],
     competitionToolExports: [{toolName: 'notepad.save_note', toolVersion: '1.0.0', exportPolicyVersion: 'public-v1', accepts: () => true, project: ({result}) => result}],
     coordination: {
-      execute: async () => ({kind: 'tool_proposal', proposalId: 'p-1', toolName: 'notepad.save_note', toolVersion: '1.0.0', arguments: {text: 'hi'}, verification: 'unverified'}),
+      execute: async ({executionEpoch}) => ({kind: 'tool_proposal', proposalId: 'p-1', toolName: 'notepad.save_note', toolVersion: '1.0.0', arguments: {text: 'hi'}, verification: 'unverified', executionEpoch}),
     },
   });
   try {

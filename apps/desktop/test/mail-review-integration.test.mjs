@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync} from 'node:fs';
@@ -20,8 +21,8 @@ for(const invalid of [false,true])test(`real Runtime and full-access question co
     mail:{pendingReviewAnalyses:()=>[...Array.from({length:6006},(_,i)=>({...item,workKey:'historical-'+i})),item],readReviewAnalysis:key=>key===ref.workKey?structuredClone(item):undefined,
       confirmCachedAnalysisAccepted(input){taskId=input.taskId;accepted++;item.state='accepted';},applyCachedAnalysisReview(input){assert.equal(app.runtime.getTask(input.taskId).state,'succeeded');assert.deepEqual(input.review,result);applied++;}}});
   app=createRuntimeApplication({path:path.join(mkdtempSync(new URL('run-',root)),'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'integration',
-    coordination:{execute:async request=>{sends++;assert.equal(request.textOnly,true);assert.equal(request.availableTools,undefined);assert.equal(request.continuation,undefined);
-      app.assertCompetitionExportAllowed({...request});return {kind:'text',text:JSON.stringify(invalid?{...result,PRIVATE_EXTRA:'rejected'}:result),verification:'unverified'};}},
+    coordination:{execute:syntheticCoordinationExecution(async request=>{sends++;assert.equal(request.textOnly,true);assert.equal(request.availableTools,undefined);assert.equal(request.continuation,undefined);
+      app.assertCompetitionExportAllowed({...request});return {kind:'text',text:JSON.stringify(invalid?{...result,PRIVATE_EXTRA:'rejected'}:result),verification:'unverified'};})},
     mailReview:{readEnvelope:(...args)=>host.readEnvelope(...args),assertExport:(...args)=>host.assertExport(...args)},
     requiresToolAuthorization:scope=>scope.toolName==='mail.review'||question.requiresAuthorization(scope),requestToolAuthorization:scope=>{try{host.prepareAuthorization(scope);return question.requestToolAuthorization(scope);}catch(error){authorizationFailure=error.message;throw error;}}});
   t.after(async()=>{await host.close();await settle(()=>app.activeTaskCount===0);question.close();app.close();});

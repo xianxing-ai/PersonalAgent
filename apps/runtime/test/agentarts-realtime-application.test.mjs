@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {syntheticPublicPayloadGate} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {createAgentArtsRuntimeApplication, createRuntimeApplication} from '../dist/application.js';
@@ -28,7 +29,7 @@ test.beforeEach(() => {Socket.instances = [];});
 
 test('Competition factory binds Live to the same AgentArts version and ignores legacy API secrets', async () => {
   let outerReads = 0, innerReads = 0, fetches = 0;
-  const app = createAgentArtsRuntimeApplication({...target, path: ':memory:', realtimeSocket: Socket,
+  const app = createAgentArtsRuntimeApplication({...target, path: ':memory:', realtimeSocket: Socket,preparePayload:syntheticPublicPayloadGate,
     authorizationProvider: {read: async () => {outerReads++; return 'Bearer synthetic-outer';}},
     websocketAuthorizationProvider: {read: async () => {innerReads++; return 'Bearer synthetic-agent';}},
     fetchImpl: async () => {fetches++; throw Error('No HTTP call is permitted in the synthetic Live fixture');}});
@@ -39,7 +40,8 @@ test('Competition factory binds Live to the same AgentArts version and ignores l
     assert.equal(socket.url, target.websocketUrl); assert.equal(socket.protocols, 'pa.realtime.v1');
     assert.equal(outerReads, 1); assert.equal(innerReads, 1); assert.equal(fetches, 0);
     assert.doesNotMatch(JSON.stringify(socket.options), /LOCAL_BAILIAN_SECRET|legacy-api-setting/u);
-    session.sendAudio(Uint8Array.of(0, 1)); assert.equal(socket.sent.at(-1).type, 'input_audio_buffer.append');
+    assert.throws(()=>session.sendAudio(Uint8Array.of(0, 1)),{code:'UNSUPPORTED_CAPABILITY'});
+    assert.equal(socket.sent.some(frame=>frame.type==='input_audio_buffer.append'),false);
   } finally {await session?.close(); app.close();}
 });
 

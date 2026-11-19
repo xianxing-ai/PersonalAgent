@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import {needsMicrophoneApproval,operationContentConfirmation,operationSummary,taskOperationBinding} from '../electron/authorization-operation-policy.js';
 const source=(name,scopes,args={})=>({toolName:name,toolVersion:'1',scopes,arguments:args,argumentsDigest:JSON.stringify(args)});
 
+test('F23 evaluation report cannot silently publish a candidate configuration',()=>{
+  const candidate={action:'promote',operationId:'original-report',configurationId:'decision',candidateParameters:{modelId:'candidate'}};
+  const original=operationContentConfirmation(source('workflow.host.f23_n04',['workflow:configuration:write'],candidate));
+  assert.match(original.text,/candidateParameters/);assert.match(original.text,/candidate/);
+  assert.notEqual(original.digest,operationContentConfirmation(source('workflow.host.f23_n04',[],
+    {...candidate,candidateParameters:{modelId:'changed'}})).digest);
+  assert.equal(operationContentConfirmation(source('workflow.host.f23_n03',[],{})),undefined);
+});
+
 test('send and publication projections preserve complete registered content and every changed dangerous field',()=>{
   const text='正文\n'+ '长'.repeat(1000)+'\n尾部 <script>不可省略</script>',args={to:'a@example.test',subject:'主题',text};
   const original=operationContentConfirmation(source('mail.send',['mail:send'],args));

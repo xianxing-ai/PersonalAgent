@@ -1,6 +1,6 @@
 {
-  "$comment": "28 图能力缺口登记（2026-11-07，由 scripts/competition/verify-graph-capability-coverage.mjs 强制）：graph 声明但 main 尚无提供者的每个能力名必须在此登记（domain/owners/status/note/sources），否则校验失败。status：open=生产口缺口；in-flight-pr=修复在途；needs-real-environment=需真机/真云。有提供者后应把条目移除（校验会 WARN）。",
-  "version": "2026.11.07.2",
+  "$comment": "28 图能力缺口登记（2026-11-07，由 scripts/competition/verify-graph-capability-coverage.mjs 强制）：graph 声明但 main 尚无提供者的每个能力名必须在此登记（domain/owners/status/note/sources），否则校验失败。status：open=生产口缺口；in-flight-pr=修复在途；needs-real-environment=需真机/真云。有提供者后应把条目从 gaps 移到 resolved 并指向实现与测试（留在 gaps 会 WARN）。resolved 只说明源码位置，closedLoop 保持 false。",
+  "version": "2026.11.11.1",
   "mainHead": "855a90c4",
   "declaredTotal": 109,
   "providedTotal": 23,
@@ -1644,24 +1644,6 @@
       ]
     },
     {
-      "name": "workspace.patch_scope_check",
-      "kind": "host",
-      "domain": "foundation",
-      "owners": [
-        "zemeng5208"
-      ],
-      "status": "open",
-      "workflowIds": [
-        "F15"
-      ],
-      "note": "F15 独立红线审查的补丁范围检查口",
-      "inFlightPrs": [],
-      "sources": [
-        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
-        "docs/competition/workflow-wiring.json"
-      ]
-    },
-    {
       "name": "workspace.source_and_test_check",
       "kind": "host",
       "domain": "foundation",
@@ -1696,6 +1678,22 @@
         "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
         "docs/competition/workflow-wiring.json"
       ]
+    }
+  ],
+  "resolved": [
+    {
+      "name": "workspace.patch_scope_check",
+      "owners": [
+        "zemeng5208"
+      ],
+      "implementation": [
+        "packages/coding-tools/src/execution-artifact.ts"
+      ],
+      "tests": [
+        "packages/coding-tools/test/workspace-patch-scope.test.mjs"
+      ],
+      "closedLoop": false,
+      "note": "源码里已有同名补丁范围检查。这不是真机验收，也不是已授权。"
     }
   ]
 }

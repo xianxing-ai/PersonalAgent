@@ -1,13 +1,14 @@
 import {mkdtemp,mkdir,writeFile,readFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {delimiter,join,resolve} from 'node:path';
-import {randomUUID,createHash} from 'node:crypto';
+import {randomUUID,createHash,generateKeyPairSync,sign} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {Client} from '@personal-agent/client';
 import {OwnedWorkflowEngine,createOwnedWorkflowReceiptVerifier,createWorkflowDecisionTool} from '@personal-agent/agentarts';
 import {createIsolatedCodingRepairHost,createIsolatedCodingRepairTools,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
 import {createRuntimeApplication,readRuntimeCodingVerificationEvidence,CODING_REPAIR_WORKFLOW_TOOL} from '@personal-agent/runtime/application';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
+import {createRuntimeCodingRepairSignedReview,codingRepairReviewBytes} from '../../../apps/runtime/dist/application/coding-repair-signed-review.js';
 
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const powerShellPath=process.env.PA_TEST_PWSH??process.env.PATH?.split(delimiter).map(directory=>join(directory,'pwsh.exe')).find(existsSync)??'C:/Program Files/PowerShell/7/pwsh.exe';
@@ -42,7 +43,7 @@ function localFailure(error) {
   return {code,message:'Host operation failed (details withheld)'};
 }
 const until=async(predicate,timeout=60000)=>{const end=Date.now()+timeout;while(Date.now()<end){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Original Runtime graph did not reach the expected state');};
-export function createExplicitFakeCodingRepairImage(target,observed=[]) {
+export function createExplicitFakeCodingRepairImage(target,observed=[],{firstAttemptSuccess=false}={}) {
   const engine=new OwnedWorkflowEngine({checkpointSecret:'explicit-fake-cloud-checkpoint-secret-32',externalHost:true,allowIsolatedProposals:true,
     decisionTool:{name:'decision.choose_candidate',version:'1.0.0'},receiptVerifier:createOwnedWorkflowReceiptVerifier({secret:key}),
     prepareCandidates:async context=>{
@@ -53,8 +54,8 @@ export function createExplicitFakeCodingRepairImage(target,observed=[]) {
       else if(context.node.id==='F15_N02')value={scope:[target],forbiddenActions:['unrelated file changes','verification removal']};
       else if(context.node.id==='F15_N03') {
         const source=c.snapshot.files.find(file=>file.path===target),number=c.round?2:1;
-        value={diagnosis:c.round?'Actual node:test expected 3; repair only the return expression':'First incremental candidate, requiring actual verification',
-          patches:[{path:target,expectedSha256:source.sha256,edits:[{oldText:'()=>'+number,newText:'()=>'+(number+1)}]}]};
+        value={diagnosis:c.round||firstAttemptSuccess?'Actual node:test expected 3; repair only the return expression':'First incremental candidate, requiring actual verification',
+          patches:[{path:target,expectedSha256:source.sha256,edits:[{oldText:'()=>'+number,newText:'()=>'+(firstAttemptSuccess?3:number+1)}]}]};
       }else if(context.node.id==='F15_N04')value={arguments:{sessionId,patches:c.pendingPatch.patches}};
       else if(context.node.id==='F15_N05')value={arguments:{sessionId,patches:c.pendingPatch.patches,recipeIds:['unit']}};
       else if(context.node.id==='F15_N06') {
@@ -65,7 +66,7 @@ export function createExplicitFakeCodingRepairImage(target,observed=[]) {
       }else throw Error('Unexpected F15 node '+context.node.id);
       return [{id:'candidate',description:'Explicit Fake externally generated candidate',value},{id:'review',description:'No supported candidate',value:null,abstain:true}];
     }});
-  return {bindingId:sha('explicit-fake-fixed-image-v1'),receiptSecret:async()=>key,advance:async request=>{
+  return {bindingId:sha('explicit-fake-fixed-image-v1'+(firstAttemptSuccess?':first-attempt-success':'')),receiptSecret:async()=>key,advance:async request=>{
     const begin=Date.now();const result=await engine.advance(request);observed.push({requestId:request.requestId,state:result.state,round:result.codingRepair?.round,
       catalogCount:request.availableTools.length,catalogBytes:Buffer.byteLength(JSON.stringify(request.availableTools)),
       nodes:Object.fromEntries(Object.entries(result.nodes).map(([id,value])=>[id,value.state])),elapsedMs:Date.now()-begin});return result;}};
@@ -114,6 +115,20 @@ export async function runCodingRepairFullGraphFixture(options={}) {
     const tool=original.find(item=>item.descriptor.name==='coding.repair.'+source);tools.push({...tool,descriptor:{...tool.descriptor,name}});
   }
   tools.push(createWorkflowDecisionTool({selector:options.selector??{select:async request=>request.candidates.find(candidate=>candidate.id!=='review').id}}));
+  // This is a synthetic reviewer with a real ephemeral Ed25519 key. The key and
+  // approval are test fixtures, not proof of a real independent human review.
+  let signedReview;
+  if(options.fakeModel===true&&options.disableSyntheticReview!==true){
+    const {publicKey,privateKey}=generateKeyPairSync('ed25519'),reviews=new Map();
+    signedReview=createRuntimeCodingRepairSignedReview(()=>app,{reviewerId:'synthetic-independent-reviewer',authorId:'synthetic-coder',
+      policyId:'synthetic-review-policy-v1',publicKey:publicKey.export({type:'spki',format:'pem'}),assertCurrent:()=>true,
+      read:key=>{const id=JSON.stringify(key);let value=reviews.get(id);if(!value){
+        const review={version:1,...key,reviewerId:'synthetic-independent-reviewer',authorId:'synthetic-coder',policyId:'synthetic-review-policy-v1',
+          decision:'approved',reviewedAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+120000).toISOString()};
+        value={review,signature:sign(null,codingRepairReviewBytes(review),privateKey).toString('base64')};reviews.set(id,value);}
+        return value;}});
+    tools.push(signedReview.tool);
+  }
   const mode=options.mode??'main';
   const coordination=options.coordination??(options.fakeModel===true?new FakeCoordinationPort(request=>{
     if(request.continuation)return {kind:'text',text:'The original F15 child completed with actual verification receipts',verification:'mock'};
@@ -124,7 +139,8 @@ export async function runCodingRepairFullGraphFixture(options={}) {
     coordinationBinding:sha('explicit-fake-original-fixed-deployment'),tools,
     automaticTools:[...tools.filter(tool=>!options.manualApprovalTools?.includes(tool.descriptor.name)).map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version})),{toolName:CODING_REPAIR_WORKFLOW_TOOL,toolVersion:'1.0.0'}],
     competitionToolAvailability:tools.map(tool=>({toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true})),
-    codingRepair:{image:options.image??createExplicitFakeCodingRepairImage(target,observed),authorizeMetadata:()=>{},projectSource:async input=>input.receipt.result},
+    codingRepair:{image:options.image??createExplicitFakeCodingRepairImage(target,observed,{firstAttemptSuccess:options.fakeModel===true&&options.firstAttemptSuccess===true}),authorizeMetadata:()=>{},projectSource:async input=>input.receipt.result,
+      ...(signedReview?{independentReview:signedReview.port,independentReviewProducer:true}:{})},
     ...(options.applicationOptions??{})};
   const createApplication=options.createApplication??createRuntimeApplication;
   app=createApplication(config);options.selector?.bindApplication?.(app);
@@ -139,11 +155,11 @@ export async function runCodingRepairFullGraphFixture(options={}) {
   try {
     let client=new Client(app,Date.now);await client.connect();const begin=Date.now();
     const {taskId}=await client.call('task.submit',{goal:options.fixture?.goal??'Perform the complete F15 minimal repair workflow',conversationId:'synthetic-f15'},
-      {idempotencyKey:'synthetic-f15-'+randomUUID(),timeoutMs:options.fakeModel===true?60000:Date.parse(options.deadline)-Date.now()});
+      {idempotencyKey:'synthetic-f15-'+randomUUID(),timeoutMs:options.fakeModel===true&&options.deadline===undefined?60000:Date.parse(options.deadline)-Date.now()});
     // Cancellation can settle a Runtime task before the original host command has finished unwinding.
     // Capture its report only after both the Runtime workers and fixture-owned host operations settle.
     const waitTask=()=>until(()=>app.activeTaskCount===0&&activeHostOperations===0&&['succeeded','failed','waiting_approval','waiting_reconciliation','cancelled'].includes(app.runtime.getTask(taskId).state),
-      options.fakeModel===true?60000:Math.max(1,Date.parse(app.runtime.loadCheckpoint(taskId,'application-deadline'))-Date.now()));
+      options.fakeModel===true&&options.deadline===undefined?60000:Math.max(1,Date.parse(app.runtime.loadCheckpoint(taskId,'application-deadline'))-Date.now()));
     await waitTask();
     let approvals=0,restarts=0;
     while(options.approveOriginalOperations===true&&app.runtime.getTask(taskId).state==='waiting_approval') {

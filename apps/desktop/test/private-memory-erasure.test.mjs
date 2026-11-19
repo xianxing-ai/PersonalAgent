@@ -34,7 +34,8 @@ async function fixture(t) {
     bindings.push({taskId, binding}); bindings.sort((a, b) => a.taskId < b.taskId ? -1 : 1);
     copies.set(taskId, 'Synthetic private copy');
   };
-  const ports = () => ({privateMemory, consumptionHost: {releaseTask: taskId => released.push(taskId)},
+  // These cases isolate existing copy erasure/readback; the real two-turn gate is covered separately.
+  const ports = () => ({privateMemory,deletionGate:{run:(_operation,_target,perform)=>perform()},consumptionHost: {releaseTask: taskId => released.push(taskId)},
     listBindings: ({limit, afterTaskId}) => {
       const remaining = bindings.filter(item => afterTaskId === undefined || item.taskId > afterTaskId);
       const items = remaining.slice(0, Math.min(limit, 1));

@@ -5,6 +5,7 @@ import {AgentArtsBeforeInvokeError,AgentArtsResultUnknownError,AgentArtsTerminal
 import type {AgentToolPort, ToolInvocationResult} from '@personal-agent/agents';
 import type {TaskRuntime, WorkerContext, WorkerResult} from '../index.js';
 import {isDeepStrictEqual} from 'node:util';
+import {createHash} from 'node:crypto';
 import type {CompetitionAvailableTool, RuntimeCompetitionToolCatalog} from './tool-catalog.js';
 import {advanceExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,parseExecutionCapacity,selectContinuationContext} from './execution-capacity.js';
 import type {ExecutionCapacityState} from './execution-capacity.js';
@@ -203,6 +204,7 @@ export interface CompetitionToolExport {
 }
 
 interface CompetitionCheckpoint {
+  executionEpoch?:number;
   step: number;
   continuation?: CoordinationContinuation;
   pending?: CoordinationToolProposalResult;
@@ -315,6 +317,7 @@ async function exchange(
   priorContinuations?:readonly CoordinationContinuation[],
   onActivity?: (event: {kind: 'reasoning' | 'answer_delta' | 'status'; label: string; text?: string}) => void,
 ): Promise<CoordinationResult> {
+  const executionEpoch=runtime.readExecutionEpoch(taskId);
   if (runtime.loadCheckpoint(taskId, 'competition-cloud-unknown') || runtime.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
     throw new ProtocolError('RESULT_UNKNOWN', 'Original cloud invocation requires reconciliation before another send');
   }
@@ -337,16 +340,21 @@ async function exchange(
         onInvokeRevision?.(revision);
         try {
           if (onActivity) bindAgentArtsActivity(taskId, onActivity);
-          return await port.execute(Object.freeze({
+          const result=await port.execute(Object.freeze({
           taskId,
           goal,
           revision,
+          executionEpoch,
           deadline: context.deadline,
           signal: context.signal,
           ...(continuation === undefined ? {} : {continuation}),
           ...(priorContinuations?.length?{priorContinuations:structuredClone(priorContinuations)}:{}),
           ...(availableTools === undefined ? {} : {availableTools: structuredClone(availableTools)}),
           }));
+          runtime.assertExecutionEpoch(taskId,executionEpoch);
+          if(result.verification!=='mock'&&result.executionEpoch!==executionEpoch)
+            throw new ProtocolError('REVISION_CONFLICT','Cloud proposal belongs to a stale execution epoch');
+          return result;
         } catch (error) {
           runtime.saveCheckpoint(taskId, 'competition-coordination-failure',
             coordinationFailureDiagnostic(error, continuation !== undefined));
@@ -439,12 +447,15 @@ export async function runCoordinationWorker(
       throw new ProtocolError('UNAUTHORIZED','Original Competition execution capacity binding changed');
     let maxSteps=capacity?.windowEndStep??originalMaxSteps;
     const saved = context.loadCheckpoint('competition-loop') as CompetitionCheckpoint | undefined;
+    const executionEpoch=saved?.executionEpoch??0;
+    runtime.assertExecutionEpoch(taskId,executionEpoch);
     let evidenceRefs = saved?.evidenceRefs ?? [];
     let continuation = saved?.continuation;
     let pending = saved?.pending;
     const receipts = saved?.receipts ?? [];
 
     for (let step = saved?.step ?? 1; step <= maxSteps; step++) {
+      runtime.assertExecutionEpoch(taskId,executionEpoch);
       if(capacity&&step===maxSteps) {
         const records=runtime.readToolExecutions(taskId);
         const recordsByEvidence=new Map(records.map(record=>[record.evidenceId,record]));
@@ -562,9 +573,18 @@ export async function runCoordinationWorker(
         }
       }, availableTools, revision => { proposalRevision = revision; },
         continuation?priorReceipts.map(item=>item.continuation):undefined, onActivity);
+      runtime.assertExecutionEpoch(taskId,executionEpoch);
       if (result.kind === 'text') {
         if (!streamedAnswer) context.noteActivity?.({kind: 'answer_delta', stepId: `competition-${step}`, text: result.text, label: '回答'});
-        const completion:unknown=options.assertCompletion?.();
+        let completion:unknown;
+        try {completion=options.assertCompletion?.();}
+        catch(error){
+          runtime.assertExecutionEpoch(taskId,executionEpoch);
+          context.saveCheckpoint('competition-completion-conflict',{version:1,executionEpoch,
+            cloudResultDigest:createHash('sha256').update(JSON.stringify(result)).digest('hex'),
+            localVerdict:'required_delegation_incomplete'});
+          throw error;
+        }
         if(completion!==undefined){void Promise.resolve(completion).catch(()=>undefined);
           throw new ProtocolError('INVALID_ARGUMENT','Competition completion check must be synchronous');}
         return {resultSummary: summary(result.text, result.verification), evidenceRefs};
@@ -591,7 +611,7 @@ export async function runCoordinationWorker(
         }
         continuation = receipt.continuation;
         pending = undefined;
-        context.saveCheckpoint('competition-loop', {step: step + 1, continuation, evidenceRefs, receipts});
+        context.saveCheckpoint('competition-loop', {executionEpoch,step: step + 1, continuation, evidenceRefs, receipts});
         consumeCompetitionCloudReceipt(runtime, taskId);
         continue;
       }
@@ -606,7 +626,7 @@ export async function runCoordinationWorker(
       const inputRevision=pending===undefined?proposalRevision:saved?.pendingRevision??proposalRevision;
       // This is a parsed proposal, not a receipt or permission. Trusted host
       // preflight readers must be able to verify it before any grant/execution.
-      context.saveCheckpoint('competition-loop', {step, continuation, pending: result,pendingRevision:inputRevision,evidenceRefs, receipts});
+      context.saveCheckpoint('competition-loop', {executionEpoch,step, continuation, pending: result,pendingRevision:inputRevision,evidenceRefs, receipts});
       consumeCompetitionCloudReceipt(runtime, taskId);
       const worker=options.workerCapabilities?.accepts(result)?options.workerCapabilities:undefined;
       if(result.verification!=='mock') {
@@ -628,6 +648,7 @@ export async function runCoordinationWorker(
       if(Date.now()>=Date.parse(context.deadline))throw new ProtocolError('TIMEOUT','Export preflight expired');
       const exportBinding=worker?undefined:requireExportBinding(result,taskId,tools,options.toolExports,
         options.toolCatalog!==undefined,'preflight',undefined,context.signal);
+      runtime.assertExecutionEpoch(taskId,executionEpoch);
       const workerResult=worker?await worker.dispatch(result,{...context,revision:inputRevision}):undefined;
       const toolStarted = Date.now();
       const toolArgs = (() => { try { const text = JSON.stringify(result.arguments); return text.length > 180 ? text.slice(0, 179) + '…' : text; } catch { return '[无法显示]'; } })();
@@ -688,7 +709,7 @@ export async function runCoordinationWorker(
         runId,...(workerResult?{workerSelection:workerResult.selection,workerRevision:inputRevision}:{}),
         ...(exportBinding ? {exportPolicyVersion: exportBinding.exportPolicyVersion} : {})});
       pending = undefined;
-      context.saveCheckpoint('competition-loop', {step: step + 1, continuation, evidenceRefs, receipts});
+      context.saveCheckpoint('competition-loop', {executionEpoch,step: step + 1, continuation, evidenceRefs, receipts});
     }
     throw new ProtocolError('TIMEOUT', `Competition coordination reached maxSteps=${maxSteps}`);
 }

@@ -3,6 +3,7 @@ import {mkdir, mkdtemp, readFile, rename, rm, writeFile} from 'node:fs/promises'
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
+import {createHash} from 'node:crypto';
 import {openSqliteMemoryHost} from '@personal-agent/memory/sqlite';
 import {parseWikiCitationReference} from '@personal-agent/knowledge/wiki';
 import {createWikiSourceMonitor} from '@personal-agent/runtime/application';
@@ -187,4 +188,22 @@ test('source-invalidated heads remain discoverable for physical deletion after r
   assert.deepEqual((await f.controller.listSaved()).facts[0].ref, withdrawn.ref);
   assert.deepEqual(await f.controller.delete(withdrawn.ref), {state: 'deleted'});
   assert.equal((await f.controller.listSaved()).facts.length, 0);
+});
+
+test('original write revalidation reads actual Fact versions and refuses a later source revision',async t=>{
+  const f=await fixture(t);await f.save();const before=(await f.controller.listSaved()).facts[0];
+  const original=parseWikiCitationReference(before.sourceRef),body='hello original operation result\n';
+  const after=createHash('sha256').update(body).digest('hex');await writeFile(f.file,body);
+  const input={sourceId:original.sourceId,configRevision:original.configRevision,path:original.path,expectedSha256:after};
+  const receipt=await f.controller.revalidateSource(input,scope());
+  assert.equal(receipt.sourceRevision,after);assert.equal(receipt.coverage,'observed_active_heads');
+  assert.deepEqual(receipt.facts,[{previous:before.ref,current:{...before.ref,revision:2},state:'withdrawn',appended:true,
+    sourceDigest:createHash('sha256').update(before.sourceRef).digest('hex'),sourceRevision:original.revision}]);
+  assert.equal(f.observe().readUserFactHead('desktop-private',before.ref.id).ref.revision,2);
+  assert.equal(JSON.stringify(receipt).includes(before.summary),false,'readback contains no private fact text');
+  await f.restart();assert.deepEqual((await f.controller.revalidateSource(input,scope())).facts,[],
+    'a later read does not invent attribution for an already withdrawn head');
+  await writeFile(f.file,'hello independent later write\n');
+  await assert.rejects(f.controller.revalidateSource(input,scope()),/原写入来源已变化/);
+  assert.equal(f.observe().readUserFactHead('desktop-private',before.ref.id).ref.revision,2);
 });

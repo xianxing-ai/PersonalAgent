@@ -34,7 +34,7 @@ export function createReminderDeliveryHost(options: {
               if (!options.readReceipt(schedule.scheduleId)) options.enqueue(schedule);
               if (!options.readReceipt(schedule.scheduleId)) throw Error('Reminder queue did not confirm persistence');
               context.saveCheckpoint('local-reminder-receipt', {scheduleId:schedule.scheduleId});
-              return {resultSummary:'提醒已进入本机通知队列；尚不代表用户已阅读'};
+              return {resultSummary:'提醒已进入宿主通知队列；尚不代表设备送达或用户已阅读'};
             }, {deadline:new Date(now() + 30_000).toISOString(), sideEffect:'local_write'});
           } else if (task.state === 'waiting_reconciliation' && options.readReceipt(schedule.scheduleId)) {
             // Readback only: unknown writes are never repeated here.

@@ -29,10 +29,10 @@ function application(tools, options = {}) {
       accepts: () => true, project: ({result}) => ({value: result.value}),
     })),
     competitionToolAvailability: tools.map(item => ({toolName: item.name, toolVersion: item.version, available: () => true})),
-    coordination: {execute: async request => request.continuation
+    coordination: {execute: async request => ({...(request.continuation
       ? {kind: 'text', text: 'Synthetic result', verification: 'unverified'}
       : {kind: 'tool_proposal', proposalId: 'proposal-1', toolName: tools[0].name, toolVersion: '1.0.0',
-        arguments: {note: 'ok'}, verification: 'unverified'}},
+        arguments: {note: 'ok'}, verification: 'unverified'}),executionEpoch:request.executionEpoch})},
     ...runtimeOptions,
   });
   return {app, executions};
@@ -50,6 +50,15 @@ async function submit(app) {
   }
   throw new Error('Synthetic task did not settle');
 }
+
+test('standing autonomy cannot override a risk gate that requires a fresh approval',async()=>{
+  const {app,executions}=application([descriptor('weather.forecast','read')],{
+    riskAutonomy:{review:()=>({disposition:'ask',blockLegacy:true,irreversible:false,compensatable:false})},
+    standingAutonomy:()=>({allow:true,mode:'auto',risk:'read'}),
+  });
+  try{assert.equal((await submit(app)).state,'waiting_approval');assert.deepEqual(executions,[]);}
+  finally{app.close();}
+});
 
 test('turning the risk gate off keeps an unlisted read behind approval', async () => {
   const {app, executions} = application([descriptor('weather.forecast', 'read')], {riskAutonomy: false});

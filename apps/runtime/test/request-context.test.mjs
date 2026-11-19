@@ -1,3 +1,5 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
+const createSyntheticAgentArtsRuntimeApplication=options=>createAgentArtsRuntimeApplication(syntheticAgentArtsOptions(options));
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -29,7 +31,7 @@ test('Synthetic credential await cannot replace the trusted context reader or it
     let sends=0,count=10;
     const hooks={beforeCoordinationSend(){},readRequestContext:()=>'{"sampledAtUtc":"Synthetic-clock"}',
       goalTokenBudget:{tokenizerRef:'synthetic-meter',contextTokens:100,reservedOutputTokens:10,countTokens:()=>count}};
-    const app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.invalid',runtimeName:'synthetic',
+    const app=createSyntheticAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.invalid',runtimeName:'synthetic',
       coordinationInput:hooks,authorizationProvider:{read:async()=>{
         await Promise.resolve();if(mutation==='reader')hooks.readRequestContext=()=> 'Changed';else count=11;
         return 'Bearer Synthetic-only';}},fetchImpl:async()=>{sends++;throw Error('Must be rejected before HTTP');}});

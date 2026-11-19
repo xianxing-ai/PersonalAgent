@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {existsSync, realpathSync} from 'node:fs';
-import {mkdir, mkdtemp, rename, symlink} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, rename, symlink} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {dirname, join} from 'node:path';
 import test from 'node:test';
@@ -21,7 +22,7 @@ test('requested native sandbox fails closed on unsupported platforms', {skip: pr
 test('real Windows PSEC boundary, generation guards and lifecycle', {skip: !available && !required && 'Explicit trusted PA_TEST_JOB_HOST_EXE unavailable'}, async t => {
   assert.ok(available, 'Required native boundary test needs Windows and the explicit trusted helper');
   t.diagnostic('Native probe inherited token: '+JSON.stringify(nativeTokenDiagnostic()));
-  const base = realpathSync.native(await mkdtemp(join(tmpdir(), 'personal-agent-psec-')));
+  const base = realpathSync.native(await mkdtemp(join(tmpdir(), 'personal-agent-psec-中文-')));
   const pins = readWindowsNativeHelperAttestation(realpathSync.native(helperPath));
   const node = realpathSync.native(process.execPath), systemRoot = realpathSync.native(process.env.SystemRoot);
   const capabilities = await verifyWindowsNativeSandbox(pins, {probeRootPath:base,nodeExecutable:node,systemRoot,signal:new AbortController().signal});
@@ -38,6 +39,19 @@ test('real Windows PSEC boundary, generation guards and lifecycle', {skip: !avai
         executableAllowlist:[node],network:{mode:'deny'}}, executable:node,argv:['-e',code],env:{SystemRoot:systemRoot,LOCALAPPDATA:workspace},cwd:workspace,...overrides};
   }
   const executor = createWindowsNativeSandboxExecutor({...pins,assertCurrent:()=>{}});
+  await t.test('original UTF-8 JSON preserves Unicode paths and arguments', async () => {
+    const value='中文路径与参数🙂';
+    const result=await executor.execute(request(`require('fs').writeFileSync('中文结果.txt',${JSON.stringify(value)});process.stdout.write(${JSON.stringify(value)})`));
+    assert.equal(result.outcome,'exited');assert.equal(result.exitCode,0);assert.equal(result.enforced,true);
+    assert.equal(result.stdout,value);assert.equal(await readFile(join(workspace,'中文结果.txt'),'utf8'),value);
+  });
+  await t.test('malformed UTF-8 is rejected before target execution', () => {
+    const result=spawnSync(pins.helperPath,['--sandbox-launch'],{env:{},windowsHide:true,timeout:10000,
+      input:Buffer.from([0x7b,0x22,0xc3,0x28,0x22,0x7d,0x0a]),encoding:'utf8'});
+    assert.equal(result.error,undefined);assert.equal(result.status,5);
+    const frame=JSON.parse(result.stdout.trim());
+    assert.equal(frame.type,'result');assert.equal(frame.executionStarted,false);assert.equal(frame.sideEffects,'none');
+  });
   await t.test('rejects ambiguous grants, volume grants, writeable helper, env secrets and unavailable network policy', async () => {
     const valid=request('process.exit(91)');
     for(const changes of [
@@ -67,8 +81,8 @@ test('real Windows PSEC boundary, generation guards and lifecycle', {skip: !avai
   });
   await t.test('timeout kills descendants and output overflow stays unknown', async () => {
     const code="require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});setInterval(()=>{},1000)";
-    const timeout=await executor.execute(request(code,{deadline:new Date(Date.now()+400).toISOString()}));
-    assert.equal(timeout.outcome,'timeout');assert.equal(timeout.stopped,true);
+    const timeout=await executor.execute(request(code));
+    assert.equal(timeout.outcome,'timeout');assert.equal(timeout.executionStarted,true);assert.equal(timeout.stopped,true);
     const overflow=await executor.execute(request("process.stdout.write('x'.repeat(20000));setInterval(()=>{},1000)",{maxOutputBytes:128}));
     assert.equal(overflow.outcome,'unknown');assert.equal(overflow.stopped,true);assert.ok(Buffer.byteLength(overflow.stdout)<=128);
   });

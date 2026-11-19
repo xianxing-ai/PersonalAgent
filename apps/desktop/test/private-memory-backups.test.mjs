@@ -30,6 +30,8 @@ async function fixture(t) {
     memory = createPrivateMemoryController(active, async () => false, async () => {confirmations++; return true;});
     const backups = createPrivateMemoryBackupHost({userData: root, privateMemory: memory});
     const erasure = createPrivateMemoryErasureHost({privateMemory: memory, backups,
+      // Explicit confirmed test scope; deletion-operation-policy.test.mjs covers the original two-turn gate.
+      deletionGate: {run: (_operation, _target, perform) => perform()},
       consumptionHost: {releaseTask() {}}, listBindings: () => ({items: []}), cancelTask() {},
       eraseTaskCopies: async () => {}, readCopyErasureReceipt: () => null});
     return {memory, backups, erasure};

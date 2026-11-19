@@ -38,7 +38,7 @@ function containsCredential(value) {
   return value!==null&&typeof value==='object'&&Object.entries(value).some(([name,item])=>credentialField.test(name)||containsCredential(item));
 }
 export function requiresContentConfirmation(source) {
-  return Object.hasOwn(contentFields,source.toolName)||desktopWrites.has(source.toolName)
+  return source.toolName==='workflow.host.f23_n04'||Object.hasOwn(contentFields,source.toolName)||desktopWrites.has(source.toolName)
     ||source.sideEffect==='external_write'&&!ordinaryExternalTools.has(source.toolName)
     ||/(?:^|[.:_])(?:send|publish|delete|remove|pay|transfer|grant|revoke)(?:$|[.:_])/u.test(source.toolName);
 }

@@ -1,5 +1,8 @@
+import {mountConversationProhibitions} from './conversation-prohibitions.js';
+
 /** Metadata controls and debounced per-conversation drafts; no execution loop. */
-export function mountSessionControls(root,input,invoke,report,{singleMain=false,flushBeforeClose}={}){
+export function mountSessionControls(root,input,invoke,report,{singleMain=false,flushBeforeClose,prohibitionsRoot}={}){
+  const prohibitions=prohibitionsRoot?mountConversationProhibitions(prohibitionsRoot,invoke,report):undefined;
   const box=document.createElement('section');box.className='conversation-sessions';
   // Keep draft persistence for the small workspace without session-management UI.
   box.hidden=singleMain;
@@ -48,6 +51,7 @@ export function mountSessionControls(root,input,invoke,report,{singleMain=false,
   box.querySelector('[data-session-archive]').onclick=()=>action('conversation.archive',{conversationId:active});
   archived.onclick=event=>{const button=event.target.closest('[data-restore-conversation]');if(button)void action('conversation.restore',{conversationId:button.dataset.restoreConversation});};
   function update(value){
+    prohibitions?.update(value);
     if(closed||!value?.conversationState)return false;state=value.conversationState;const changed=active!==state.activeId;
     if(changed){if(!active&&input.value)drafts.set(state.activeId,input.value);active=state.activeId;input.value=drafts.get(active)??state.draft??'';drafts.set(active,input.value);titleDirty=false;}
     const next=JSON.stringify([state.activeId,state.sessions]);
