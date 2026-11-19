@@ -40,6 +40,21 @@ test('explicit JSON mode returns unverified proposal then a separate text invoca
   for (const call of calls) assert.match(call.headers['X-Request-Id'], /^[a-f0-9-]{36}$/);
 });
 
+test('execution epoch travels in the host envelope and rejects missing or stale responses without retry',async()=>{
+  for(const returned of [7,6,undefined]){
+    let sends=0;
+    const {cloud}=setup(async(_url,init)=>{
+      sends++;const envelope=JSON.parse(JSON.parse(init.body).query);
+      assert.deepEqual(envelope,{executionEpochVersion:1,executionEpoch:7,query:'synthetic goal'});
+      return response(returned===undefined?proposal:{executionEpochVersion:1,executionEpoch:returned,result:proposal});
+    });
+    const result=new CompetitionCoordinator(cloud).execute(request({executionEpoch:7}));
+    if(returned===7)assert.deepEqual(await result,{...proposal,verification:'unverified',executionEpoch:7});
+    else await assert.rejects(result,{code:'EXTERNAL_FAILURE'});
+    assert.equal(sends,1);
+  }
+});
+
 test('default text mode neither parses a proposal nor accepts continuation', async () => {
   const {cloud, reads} = setup(async () => response(proposal), {responseMode: undefined});
   assert.deepEqual(await cloud.invoke(request()), {kind: 'text', text: JSON.stringify(proposal), verification: 'unverified'});

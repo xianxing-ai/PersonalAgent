@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {OwnedAgentOrchestrator, OwnedWorkflowEngine, createOwnedWorkflowReceiptVerifier, deriveOwnedWorkflowKeys, getOwnedBindings,
   WORKFLOW_DECISION_TOOL_NAME,WORKFLOW_DECISION_TOOL_VERSION} from '@personal-agent/agentarts';
 import {ModelGateway} from '@personal-agent/models';
+import {createEvaluationController} from './evaluation-controller.mjs';
 import {createAgentServer} from './server.mjs';
 import {createOwnedModelFetch,ownedModelRequestFormat} from './model-fetch.mjs';
 import {createRoleReceiptWriter} from './role-receipts.mjs';
@@ -83,6 +84,7 @@ try {
   const authToken = process.env.PA_AGENT_INBOUND_TOKEN;
   const wssAuthToken = process.env.PA_AGENT_WSS_AUTH_TOKEN;
   server = createAgentServer({orchestrator,mode,serviceControllers:{...imageServices.controllers,
+    ...(executionModels?{evaluationVersion:createEvaluationController({executionModels})}:{}),
     wikiVersion:createWikiWorkflowController({model:new ModelGateway(models.plan),onCall:record=>process.stdout.write(JSON.stringify(record)+'\n')})},
     executionModels,
     realtimeProxy:agentRealtimeProxyFromEnvironment(process.env,{onRecord:record=>process.stdout.write(JSON.stringify(record)+'\n')}),
