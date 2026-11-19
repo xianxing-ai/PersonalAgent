@@ -34,6 +34,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     || !['fixed','request-deadline'].includes(timeoutMode)
     || (!(timeoutMs === undefined && timeoutMode === 'request-deadline') && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2_147_483_647))
     || !Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1
+    || (mode === 'agentarts' && authToken === undefined && wssAuthToken === undefined)
     || (authToken !== undefined && (typeof authToken !== 'string' || authToken.length < 32))) {
     throw new ProtocolError('INVALID_ARGUMENT','Invalid server configuration');
   }
@@ -133,7 +134,7 @@ export function createAgentServer({orchestrator, mode, authToken, wssAuthToken =
     if (!statusRequest && (request.method !== 'POST' || route !== '/invocations')) return json(response,404,{error:{code:'NOT_FOUND'}});
     const innerCredential = request.headers['x-pa-agent-token'] !== undefined;
     const inboundToken = statusRequest || innerCredential ? wssAuthToken : authToken;
-    if (statusRequest && inboundToken === undefined) return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});
+    if ((statusRequest || innerCredential || mode === 'agentarts') && inboundToken === undefined) return json(response,503,{error:{code:'UNSUPPORTED_CAPABILITY'}});
     if (inboundToken !== undefined && !equalInboundToken(request.headers,inboundToken)) return json(response,401,{error:{code:'UNAUTHORIZED'}});
     const invocationSlot = !statusRequest;
     if (invocationSlot && !acquire()) return json(response,429,{error:{code:'RATE_LIMITED'}});
