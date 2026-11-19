@@ -6,6 +6,167 @@
   "providedTotal": 31,
   "gaps": [
     {
+      "name": "calendar.freshness_check",
+      "kind": "tool",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F07"
+      ],
+      "note": "已有日历序列号及时间窗 host 实现，待可信账户读端口和调用方接线（F07）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "calendar.registered_write",
+      "kind": "tool",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F07"
+      ],
+      "note": "已有注册写 host，待可信账户写端口及生产调用方接线（F07）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "calendar.update_and_invalidate_reminder",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F11"
+      ],
+      "note": "已有改期与旧提醒作废 host，待条件日历写、提醒作废及回执接线和真实读回（F11）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "feeds.validate_and_deduplicate",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F09"
+      ],
+      "note": "已有校验去重 host，待可信 feeds 来源接线和外部读回（F09）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "reminder.current_clock_and_revision",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F06"
+      ],
+      "note": "已有提醒时钟及修订 host，待生产调用方接线（F06）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "todo.registered_write",
+      "kind": "host",
+      "domain": "business",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F06"
+      ],
+      "note": "已有注册写 host，待生产待办写端口和持久化原子幂等账本接线（F06）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "github.bound_ci_failure",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "Potatos498",
+        "goo122"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F16"
+      ],
+      "note": "已有提交与 CI 失败日志绑定 host，待 GitHub 可信读端口和生产调用方接线（F16）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
+      "name": "workspace.test_intent_check",
+      "kind": "host",
+      "domain": "foundation",
+      "owners": [
+        "Potatos498"
+      ],
+      "status": "open",
+      "workflowIds": [
+        "F16"
+      ],
+      "note": "已有补丁测试意图检查 host，待可信补丁来源和调用方接线（F16）。",
+      "inFlightPrs": [
+        618
+      ],
+      "sources": [
+        "docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md",
+        "docs/competition/workflow-wiring.json"
+      ]
+    },
+    {
       "name": "mail.registered_archive",
       "kind": "host",
       "domain": "business",
