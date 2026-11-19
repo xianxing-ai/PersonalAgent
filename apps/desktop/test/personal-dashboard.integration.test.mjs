@@ -9,6 +9,7 @@ import {FakeCalendarProvider} from '@personal-agent/calendar';
 import {FakeMailProvider} from '@personal-agent/mail';
 import {createPersonalDashboardHost} from '../electron/personal-dashboard-host.js';
 import {createDesktopDashboardSources, readSpend, readTime} from '../electron/personal-dashboard-sources.js';
+import {personalDashboardHtml} from '../src/features/admin/personal-dashboard-page.js';
 import {adminAuxiliaryDocument, recordFollowingNodes} from '../test-support/admin-history-dom.mjs';
 
 const safeStorage = {
@@ -208,4 +209,57 @@ test('unauthorized calendar and mail stay hidden, while budget and activity adap
   }, window, signal);
   assert.equal(spend.connected, true);
   assert.equal(spend.samples[0].amountMinor, 250);
+});
+
+test('dashboard host initializes after Competition Runtime creation, preserves period across restart, and disables unavailable selector (L-03)', async t => {
+  const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
+  const competitionInit = main.indexOf('createAgentArtsRuntimeApplication(');
+  const dashboardInit = main.indexOf('createPersonalDashboardHost({');
+  const dashboardStart = main.indexOf('personalDashboardHost.start()');
+  assert.ok(competitionInit > 0, 'Competition Runtime creation must exist in main.js');
+  assert.ok(dashboardInit > competitionInit, 'createPersonalDashboardHost must run after Competition Runtime creation');
+  assert.ok(dashboardStart > dashboardInit, 'personalDashboardHost.start() must run after host creation');
+  assert.match(main, /if \(name === 'personalDashboard\.period'\)[\s\S]*?event\.senderFrame !== sender\.webContents\.mainFrame/);
+
+  // Period change persists across a full host + TaskRuntime restart and keeps the new SQLite schedule.
+  const userData = mkdtempSync(path.join(tmpdir(), 'personal-dashboard-restart-'));
+  const clock = Date.parse('2026-03-11T12:00:00.000Z');
+  const sources = {
+    readTime: async () => ({connected: false}),
+    readMail: async () => ({connected: false}),
+    readSpend: async () => ({connected: false}),
+    readBriefing: async () => ({connected: false}),
+  };
+  let runtime = new TaskRuntime(path.join(userData, 'runtime.sqlite'), {now: () => new Date(clock)});
+  try {
+    const first = createPersonalDashboardHost({
+      userData, safeStorage, namespace: 'desk-restart', runtime,
+      dispatchTask: dispatchPersonalDashboardTask, now: () => clock, timeZone: 'UTC', sources,
+    });
+    await first.start();
+    assert.equal(first.snapshot().period, 'weekly');
+    const updated = first.setPeriod({period: 'daily'});
+    assert.equal(updated.available, true);
+    assert.equal(updated.period, 'daily');
+  } finally {
+    runtime.close();
+  }
+
+  runtime = new TaskRuntime(path.join(userData, 'runtime.sqlite'), {now: () => new Date(clock)});
+  t.after(() => runtime.close());
+  const restarted = createPersonalDashboardHost({
+    userData, safeStorage, namespace: 'desk-restart', runtime,
+    dispatchTask: dispatchPersonalDashboardTask, now: () => clock, timeZone: 'UTC', sources,
+  });
+  await restarted.start();
+  const afterRestart = restarted.snapshot();
+  assert.equal(afterRestart.available, true);
+  assert.equal(afterRestart.period, 'daily');
+  const pending = runtime.listSchedules('personal-dashboard:desk-restart').find(item => item.status === 'pending');
+  assert.ok(pending, 'daily schedule must persist in SQLite after restart');
+  assert.match(pending.scheduleId, /:daily:/);
+
+  const escape = value => String(value ?? '');
+  assert.match(personalDashboardHtml({available: false, period: 'weekly', cards: [], reason: '待连接'}, escape), /<select id="dashboard-period"[^>]*disabled>/);
+  assert.doesNotMatch(personalDashboardHtml({available: true, period: 'daily', cards: [], reason: ''}, escape), /<select id="dashboard-period"[^>]*disabled>/);
 });

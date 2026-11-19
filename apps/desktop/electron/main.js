@@ -2112,7 +2112,7 @@ async function initializeRuntime() {
   if(localAuthorizationOnly){
     if(runtimeApplication.activeTaskCount)throw Error('请先完成或取消当前本机授权卡');
     clearInterval(eventPoll);eventPoll=undefined;
-    runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;localAuthorizationOnly=false;
+    runtimeConnection?.dispose();runtimeApplication.close();runtimeApplication=undefined;runtime=undefined;personalDashboardHost=undefined;localAuthorizationOnly=false;
   }
   initializeAuthorizationHosts(runtimeModule);
   conversationToolAccess=createConversationToolAccess({getApplication:()=>runtimeApplication,getConversations:()=>conversations});
@@ -2279,21 +2279,6 @@ async function initializeRuntime() {
               title:'PersonalAgent 待办提醒',body:item.summary.slice(0,2000),source:'productivity'});
           }});}
         catch {todoFailure = '待办存储无法读取，原数据已保留，请恢复本机安全存储';}
-      }
-      if (!syntheticMvp && runtimeApplication) {
-        try {
-          personalDashboardHost = createPersonalDashboardHost({
-            userData: app.getPath('userData'), safeStorage, namespace,
-            runtime: runtimeApplication.runtime,
-            dispatchTask: runtimeModule.dispatchPersonalDashboardTask,
-            calendarConfig, meetingSnapshot: () => calendarMeetingHost?.snapshot(),
-            mailConfig, now: Date.now, onUpdate: publish,
-            onNotification(item) {
-              if (Notification.isSupported()) new Notification({title: item.title, body: item.body}).show();
-            },
-          });
-          await personalDashboardHost.start();
-        } catch { personalDashboardHost = undefined; }
       }
       if(!syntheticMvp){
         computerControlLease=createComputerControlLease({getRuntime:()=>runtimeApplication?.runtime});
@@ -3121,6 +3106,21 @@ async function initializeRuntime() {
       }
     }
     runtime = runtimeApplication.runtime;
+    if (!syntheticMvp && runtimeApplication) {
+      try {
+        personalDashboardHost = createPersonalDashboardHost({
+          userData: app.getPath('userData'), safeStorage, namespace: desktopHost.userNamespace,
+          runtime: runtimeApplication.runtime,
+          dispatchTask: runtimeModule.dispatchPersonalDashboardTask,
+          calendarConfig, meetingSnapshot: () => calendarMeetingHost?.snapshot(),
+          mailConfig, now: Date.now, onUpdate: publish,
+          onNotification(item) {
+            if (Notification.isSupported()) new Notification({title: item.title, body: item.body}).show();
+          },
+        });
+        await personalDashboardHost.start();
+      } catch { personalDashboardHost = undefined; }
+    }
     if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
     if (typeof refreshTrayMenu === 'function') refreshTrayMenu();
     readEvents = after => runtimeApplication.readEvents(after);
@@ -3722,7 +3722,8 @@ async function action(event, name, payload) {
     publish();return result;
   }
   if (name === 'personalDashboard.period') {
-    if (sender !== admin || !personalDashboardHost) throw Error('请从管理后台更改汇总周期');
+    if (sender !== admin || event.senderFrame !== sender.webContents.mainFrame) throw Error('请从管理后台更改汇总周期');
+    if (!personalDashboardHost) throw Error('个人数据看板尚未就绪，请稍候或确认 Runtime 已连接');
     const result = personalDashboardHost.setPeriod(payload);
     publish();
     return result;

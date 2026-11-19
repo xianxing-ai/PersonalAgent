@@ -815,11 +815,16 @@ export function mountAdmin(root, invoke, escape) {
     root.querySelectorAll('[data-jump]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.jump)));
     const dashboardPeriod = root.querySelector('#dashboard-period');
     dashboardPeriod?.addEventListener('change', async () => {
+      const previous = current.personalDashboard?.period ?? 'weekly';
       try {
         const next = await invoke('personalDashboard.period', {period: dashboardPeriod.value});
         current = {...current, personalDashboard: next};
+        root.querySelector('#error').textContent = '';
         render(current);
-      } catch (error) { root.querySelector('#error').textContent = error.message; }
+      } catch (error) {
+        dashboardPeriod.value = previous;
+        root.querySelector('#error').textContent = error.message;
+      }
     });
     const themeSelect = root.querySelector('#pref-theme');
     if (themeSelect) {
