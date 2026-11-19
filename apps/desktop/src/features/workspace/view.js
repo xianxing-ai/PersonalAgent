@@ -48,7 +48,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
   const report=error=>{feedbackRevision++;root.querySelector('#workspace-error').textContent=errorDisplayText(error);};
   const assistantRoster=document.createElement('section');
   const assistantThread=document.createElement('section');assistantThread.className='assistant-thread';assistantThread.hidden=true;
-  conversation.before(assistantRoster);stage.append(assistantThread);
+  conversation.after(assistantRoster);stage.append(assistantThread);
   conversation.addEventListener?.('toggle',()=>syncContainerAnswerDisclosures(conversation,liveTurns),true);
   assistantThread.addEventListener?.('toggle',()=>syncContainerAnswerDisclosures(assistantThread,liveTurns),true);
   const showAssistant=async assistantId=>{

@@ -101,6 +101,8 @@ test('desktop pets page exposes 8 orb variants and 6 dynamic states without inli
     assert.match(view, new RegExp(`id: '${state}'`));
   }
   assert.doesNotMatch(view, /style="/);
+  assert.match(view, /id="load-image-catalog"/);
+  assert.match(view, /invoke\('workflow\.image\.catalog'\)/);
   assert.match(prefs, /export function orbVariantPreference\(/);
   assert.match(prefs, /export function saveOrbVariant\(/);
   assert.match(prefs, /export function orbStateOverride\(/);
