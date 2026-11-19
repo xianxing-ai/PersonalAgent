@@ -8,9 +8,40 @@ export function orbState(task) {
 export const stateNames = {created:'已创建',planning:'思考中',running:'执行中',verifying:'验证中',waiting_approval:'等待授权',waiting_external:'等待外部结果',waiting_reconciliation:'执行异常',cancelling:'正在取消',succeeded:'已完成',failed:'失败',cancelled:'已取消'};
 export const isTerminal = task => ['succeeded','failed','cancelled'].includes(task.state);
 const liveStatusNames={connecting:'正在连接',reconnecting:'正在续接',listening:'正在聆听',speaking:'正在回答',working:'正在处理任务',stopping:'正在关闭',error:'连接失败'};
-export function orbStatusLabel(data) {
+function isPendingUnexpired(item, now = Date.now()) {
+  if (!item || item.state !== 'pending') return false;
+  if (typeof item.expiresAt !== 'string') return true;
+  const expiry = Date.parse(item.expiresAt);
+  return !Number.isFinite(expiry) || expiry > now;
+}
+function hasActiveSubtaskApproval(data, activeTask, now = Date.now()) {
+  if (!activeTask || isTerminal(activeTask)) return false;
+  if (activeTask.state === 'waiting_approval' || data?.hasPendingApproval === true) return true;
+  const subagents = Array.isArray(data?.subagentTasks) ? data.subagentTasks : [];
+  const relatedTaskIds = new Set([activeTask.taskId]);
+  for (const item of subagents) {
+    if (item?.parentTaskId && item.parentTaskId !== activeTask.taskId) continue;
+    const childState = item?.state ?? item?.taskState;
+    if (childState === 'waiting_approval') return true;
+    if (typeof item?.taskId === 'string' && item.taskId) relatedTaskIds.add(item.taskId);
+    if (typeof item?.childTaskId === 'string' && item.childTaskId) relatedTaskIds.add(item.childTaskId);
+  }
+  const activeConversationId = data?.conversationState?.activeId;
+  const questions = Array.isArray(data?.authorizationQuestions) ? data.authorizationQuestions : [];
+  if (questions.some(question => isPendingUnexpired(question, now) && (
+    (typeof question.taskId === 'string' && relatedTaskIds.has(question.taskId))
+    || (activeConversationId && question.conversationId === activeConversationId)
+  ))) return true;
+  const approvals = Array.isArray(data?.approvals) ? data.approvals : [];
+  return approvals.some(approval => isPendingUnexpired(approval, now)
+    && typeof approval.taskId === 'string' && relatedTaskIds.has(approval.taskId));
+}
+export function orbStatusLabel(data, now = Date.now()) {
   const task=currentTask(Array.isArray(data?.tasks)?data.tasks:[]);
-  if(task&&(!isTerminal(task)||task.state==='failed'))return stateNames[task.state]??'待机';
+  if(task&&(!isTerminal(task)||task.state==='failed')) {
+    if(hasActiveSubtaskApproval(data, task, now)) return stateNames.waiting_approval;
+    return stateNames[task.state]??'待机';
+  }
   if(data?.wake?.phase==='listening')return '正在聆听';
   if(data?.live?.active)return liveStatusNames[data.live.status]??'实时语音已开启';
   return stateNames[task?.state]??'待机';
@@ -21,9 +52,11 @@ export function currentTask(tasks) {
 }
 const LIVE_VOICE = new Set(['listening', 'speaking', 'connecting', 'reconnecting']);
 /** Task motion wins over Live. Live speech follows the microphone and playback level. */
-export function visualOrbState(data) {
+export function visualOrbState(data, now = Date.now()) {
   const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
-  const base = data?.orbStateOverride ?? orbState(currentTask(tasks));
+  const activeTask = currentTask(tasks);
+  const derived = hasActiveSubtaskApproval(data, activeTask, now) ? 'waiting' : orbState(activeTask);
+  const base = data?.orbStateOverride ?? derived;
   if (base === 'thinking' || base === 'executing' || base === 'waiting' || base === 'error') return base;
   const live = data?.live;
   if (live?.active && live.status === 'working') return 'executing';
