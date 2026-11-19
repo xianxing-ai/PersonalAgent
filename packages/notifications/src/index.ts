@@ -16,6 +16,14 @@ export type { DrainReport, NotificationBatch, NotificationServiceOptions, Pendin
   NotificationBatchEvent, NotificationBatchEventsPage } from './service.js';
 export { assertPolicyValid, localMinuteOfDay, nextQuietEndMs, quietHoursActive } from './policy.js';
 export type { DigestPolicy, NotificationPolicy, QuietHours } from './policy.js';
+export {
+  defaultNoticeClass, emptyDeveloperDelivery, setDeveloperSubscription, setDeveloperDigestLimits, acceptDeveloperNotice, flushDeveloperDigest,
+  considerDeveloperDigest, deliverElectronNotification,
+} from './developer-delivery.js';
+export type {
+  DeveloperNoticeKind, DeveloperNoticeClass, DeveloperNotice, DeveloperSubscription, DeveloperTimelineEntry,
+  DeveloperDeliveryState, DeveloperDigestLimits, DesktopNoticeChannel, ElectronNotificationPort,
+} from './developer-delivery.js';
 
 export const NOTIFICATIONS_MODULE_VERSION = '0.1.0-alpha.1';
 

@@ -1,0 +1,186 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mountRemoteRunners} from '../src/features/conversation/remote-runners.js';
+
+function fixture(t, handler) {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  t.after(() => {if (original) Object.defineProperty(globalThis, 'document', original); else delete globalThis.document;});
+  class Element {
+    constructor(tag) {this.tag = tag; this.children = []; this.value = ''; this.disabled = false; this.attrs = {};}
+    set textContent(value) {this.text = String(value); this.children = [];}
+    get textContent() {return (this.text ?? '') + this.children.map(child => child.textContent).join('');}
+    set innerHTML(_) {throw Error('HTML interpolation is forbidden');}
+    append(...children) {this.children.push(...children);}
+    replaceChildren(...children) {this.children = children;}
+    setAttribute(key, value) {this.attrs[key] = String(value);}
+  }
+  globalThis.document = {createElement: tag => new Element(tag)};
+  const root = new Element('main'), calls = [];
+  const ui = mountRemoteRunners(root, async (name, payload) => {calls.push({name, payload}); return handler(name, payload);});
+  const all = (node = root) => [node, ...node.children.flatMap(child => all(child))];
+  return {ui, root, calls, all, button: name => all().find(node => node.tag === 'button' && node.textContent === name),
+    field: label => all().find(node => node.attrs['aria-label'] === label)};
+}
+const host = {id: 'cloud-host', name: 'cloud', user: 'runner', address: 'cloud.example', port: 22, enabled: true};
+const source = {taskId: 'source-task', goal: '<原始目标>'};
+const approval = {approvalId: 'approval-1', revision: 3, action: 'calendar.create', arguments: {title: '<待确认>', calendarId: 'work'},
+  argumentsDigest: 'sha256:original-arguments', expiresAt: '2099-01-01T00:00:00Z', state: 'pending'};
+const session = () => ({sourceTaskId: source.taskId, commandId: 'original-submit', transportState: 'confirmed', lastReply: {
+  target: {taskId: 'cloud-task', sessionId: 'cloud-session'}, owner: {hostId: host.id}, controlRevision: 8,
+  task: {state: 'waiting_approval', revision: 4, cancelRequested: false}, approvals: [structuredClone(approval)]}});
+const snapshot = (sessions = []) => ({state: 'configured_not_verified', hostId: host.id, sourceTasks: [source], sessions});
+
+test('cloud reminders and feed use original revisions, explicit read acknowledgement and no device delivery claim',async t=>{
+  const current=session();current.lastReply.todos={items:[{id:'original-todo',title:'<云提醒>',status:'open',revision:3,
+    remindUtc:'2099-01-01T00:00:00Z',reminderState:'delivered'}],operations:[]};
+  current.lastReply.notifications={items:[{id:'original-reminder',source:'productivity',contentRef:'original-todo'}],
+    unreadItemIds:['original-reminder'],returnItemIds:[],interruptionCount:0,delivery:'waiting_device'};
+  const ui=fixture(t,name=>name==='runner.hosts.list'?{hosts:[host]}:name.endsWith('.status')?snapshot([current]):{state:'confirmed',reply:current.lastReply});
+  await ui.ui.refresh();assert.match(ui.root.textContent,/已进入云通知队列，设备尚未送达/);assert.match(ui.root.textContent,/主动打扰 0 次/);
+  ui.field('云待办标题').value='New explicit cloud reminder';ui.field('云提醒时间').value='2099-01-01T12:00';
+  await ui.button('提交云提醒审批').onclick();
+  const created=ui.calls.find(value=>value.name.endsWith('.todo')).payload;
+  assert.equal(created.todo.action,'create');assert.equal(created.todo.title,'New explicit cloud reminder');
+  assert.deepEqual(created.target,current.lastReply.target);assert.equal(created.originCommandId,current.commandId);
+  await ui.button('完成云待办').onclick();
+  const updated=ui.calls.filter(value=>value.name.endsWith('.todo'))[1].payload;
+  assert.deepEqual(updated.todo,{action:'update',id:'original-todo',expectedRevision:3,status:'done'});
+  await ui.button('标记此项已读').onclick();
+  assert.deepEqual(ui.calls.find(value=>value.name.endsWith('.notification')).payload.notification,{action:'read',itemIds:['original-reminder']});
+  current.lastReply.todos.operations=[{commandId:'original-command',taskId:'unknown-child',state:'waiting_reconciliation'}];
+  await ui.ui.refresh();assert.equal(ui.button('提交云提醒审批').disabled,true);assert.equal(ui.button('完成云待办').disabled,true);
+  assert.equal(ui.calls.some(value=>value.name.endsWith('.approval')),false);
+});
+
+test('cloud card uses selected original goal and an explicit deadline, only on its enabled host', async t => {
+  let state = snapshot();
+  const ui = fixture(t, (name) => name === 'runner.hosts.list' ? {hosts: [host, {...host, id: 'other'}]} :
+    name === 'proactive.workflow.cloud.status' ? state : {state: 'unknown'});
+  await ui.ui.refresh();
+  assert.equal(ui.all().filter(node => node.attrs['aria-label'] === '云持续会话').length, 1);
+  assert.match(ui.root.textContent, /不迁移已有会话/);
+  assert.equal(ui.field('原任务目标').children[0].textContent, source.goal);
+  assert.equal(ui.calls.some(call => call.name.endsWith('.start')), false);
+  ui.field('云会话期限（分钟）').value = '0';
+  await ui.button('新建云持续会话').onclick();
+  assert.equal(ui.calls.some(call => call.name.endsWith('.start')), false);
+  ui.field('云会话期限（分钟）').value = '15';
+  const before = Date.now();
+  await ui.button('新建云持续会话').onclick();
+  const submitted = ui.calls.find(call => call.name.endsWith('.start')).payload;
+  assert.deepEqual(Object.keys(submitted).sort(), ['commandId', 'sourceTaskId', 'taskDeadline']);
+  assert.equal(submitted.sourceTaskId, source.taskId);
+  assert.match(submitted.commandId, /^[a-f0-9-]{36}$/);
+  assert.ok(Date.parse(submitted.taskDeadline) >= before + 15 * 60_000);
+  assert.equal(ui.button('新建云持续会话').disabled, true);
+  state = {...snapshot(), sourceTasks: []};
+  await ui.ui.refresh();
+  assert.match(ui.root.textContent, /没有可用的原用户任务/);
+  assert.equal(ui.button('新建云持续会话'), undefined);
+  state = {...snapshot(), hostId: 'unmatched-host'};
+  await ui.ui.refresh();
+  assert.equal(ui.field('云持续会话'), undefined);
+  assert.match(ui.root.textContent, /尚未配置可用宿主/);
+});
+
+test('lost submission reply only permits original readback and never resubmits', async t => {
+  let state = snapshot(), submitted;
+  const ui = fixture(t, (name, payload) => {
+    if (name === 'runner.hosts.list') return {hosts: [host]};
+    if (name.endsWith('.status')) return state;
+    if (name.endsWith('.start')) {submitted = payload; throw Error('synthetic lost reply');}
+    if (name.endsWith('.read')) {
+      state = snapshot([{...session(), commandId: submitted.commandId}]);
+      return {state: 'confirmed'};
+    }
+    throw Error('Unexpected operation');
+  });
+  await ui.ui.refresh();
+  await ui.button('新建云持续会话').onclick();
+  assert.match(ui.root.textContent, /unknown/);
+  await ui.button('新建云持续会话').onclick();
+  assert.equal(ui.calls.filter(call => call.name.endsWith('.start')).length, 1);
+  assert.equal(ui.button('暂停'), undefined);
+  await ui.button('读回原会话').onclick();
+  const read = ui.calls.find(call => call.name.endsWith('.read')).payload;
+  assert.equal(read.originCommandId, submitted.commandId);
+  assert.equal(read.sourceTaskId, submitted.sourceTaskId);
+  assert.notEqual(read.commandId, submitted.commandId);
+  assert.equal('target' in read, false);
+  assert.equal(ui.button('暂停').disabled, false);
+});
+
+test('controls and manual approvals bind the readback target and revisions with complete safe parameters', async t => {
+  const current = session();
+  const ui = fixture(t, name => name === 'runner.hosts.list' ? {hosts: [host]} : name.endsWith('.status') ? snapshot([current]) : {state: 'confirmed'});
+  await ui.ui.refresh();
+  assert.equal(ui.calls.some(call => call.name.endsWith('.approval')), false);
+  assert.equal(ui.all().find(node => node.tag === 'pre').textContent, JSON.stringify(approval.arguments, null, 2));
+  assert.match(ui.root.textContent, /sha256:original-arguments/);
+  await ui.button('暂停').onclick();
+  const control = ui.calls.find(call => call.name.endsWith('.control')).payload;
+  assert.deepEqual(control.target, current.lastReply.target);
+  assert.deepEqual(control.control, {action: 'pause', expectedControlRevision: 8});
+  assert.equal(control.originCommandId, current.commandId);
+  for (const [label, decision] of [['允许一次', 'allow_once'], ['拒绝', 'deny']]) {
+    await ui.button(label).onclick();
+    const sent = ui.calls.filter(call => call.name.endsWith('.approval')).at(-1).payload;
+    assert.deepEqual(sent.target, current.lastReply.target);
+    assert.equal(sent.originCommandId, current.commandId);
+    assert.deepEqual(sent.approval, {approvalId: approval.approvalId, expectedRevision: approval.revision,
+      argumentsDigest: approval.argumentsDigest, expiresAt: approval.expiresAt, decision});
+  }
+  const ids = ui.calls.filter(call => /\.(control|approval)$/.test(call.name)).map(call => call.payload.commandId);
+  assert.equal(new Set(ids).size, ids.length);
+  current.transportState = 'unknown';
+  await ui.ui.refresh();
+  assert.equal(ui.button('暂停'), undefined);
+  assert.equal(ui.button('允许一次').disabled, true);
+  current.transportState = 'confirmed';
+  delete current.lastReply.approvals[0].arguments;
+  await ui.ui.refresh();
+  assert.equal(ui.button('允许一次').disabled, true);
+  assert.match(ui.root.textContent, /审批参数未读回/);
+  current.lastReply.approvals[0].arguments = {};
+  current.lastReply.approvals[0].expiresAt = '2000-01-01T00:00:00Z';
+  await ui.ui.refresh();
+  assert.equal(ui.button('允许一次').disabled, true);
+});
+
+test('pending operations prevent double dispatch and an unavailable status removes cloud controls', async t => {
+  let finish, unavailable = false;
+  const ui = fixture(t, name => {
+    if (name === 'runner.hosts.list') return {hosts: [host]};
+    if (name.endsWith('.status')) {if (unavailable) throw Error('unavailable'); return snapshot([session()]);}
+    if (name.endsWith('.control')) return new Promise(resolve => {finish = resolve;});
+    throw Error('Unexpected operation');
+  });
+  await ui.ui.refresh();
+  const button = ui.button('暂停'), pending = button.onclick();
+  await button.onclick();
+  assert.equal(ui.calls.filter(call => call.name.endsWith('.control')).length, 1);
+  finish({state: 'unknown'});
+  await pending;
+  assert.equal(ui.button('暂停'), undefined);
+  assert.equal(ui.button('新建云持续会话').disabled, true);
+  unavailable = true;
+  await ui.ui.refresh();
+  assert.equal(ui.field('云持续会话'), undefined);
+  assert.match(ui.root.textContent, /云持续会话不可用/);
+});
+
+test('public source tracking is explicit and child approval keeps the original read task identity',async t=>{
+  const current=session();current.lastReply.approvals[0].taskId='original-feed-child';
+  current.lastReply.sources=[{sourceId:'public-feed',title:'Public feed',url:'https://example.org/feed',configurationRef:'original-config',
+    intervalSeconds:900,revision:0,state:'available'}];
+  const ui=fixture(t,name=>name==='runner.hosts.list'?{hosts:[host]}:name.endsWith('.status')?snapshot([current]):{state:'confirmed'});
+  await ui.ui.refresh();assert.equal(ui.calls.some(call=>call.name.endsWith('.source')),false);
+  await ui.button('同意公开订阅跟踪与云端分析').onclick();
+  const sent=ui.calls.find(call=>call.name.endsWith('.source')).payload;
+  assert.deepEqual(sent.target,current.lastReply.target);assert.equal(sent.originCommandId,current.commandId);
+  assert.deepEqual(sent.source,{action:'track',sourceId:'public-feed',configurationRef:'original-config',expectedRevision:0,readAndCloudConsent:true});
+  await ui.button('允许一次').onclick();
+  assert.equal(ui.calls.find(call=>call.name.endsWith('.approval')).payload.approval.taskId,'original-feed-child');
+  current.transportState='unknown';await ui.ui.refresh();
+  assert.equal(ui.button('同意公开订阅跟踪与云端分析').disabled,true);
+});

@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -23,7 +24,7 @@ for(const surface of ['panel','workspace'])test(`Synthetic ${surface} new conver
     publicEnumPaths:['/subtasks/*/role','/subtasks/*/reasoningEffort']};
   const dispatchExport={toolName:'subagent.dispatch',toolVersion:'1.0.0',exportPolicyVersion:'synthetic-public-summary',
     accepts:()=>true,project:({result})=>({total:result.total,summary:result.summary})};
-  app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'synthetic-core',
+  app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',hostUserNamespace:'synthetic-core',
     gatewayUrl:'https://synthetic-agentarts.invalid',runtimeName:'synthetic-no-cloud',
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',competitionMaxSteps:8,
     ...(delegated?{delegateUserTasks:true}:{}),
@@ -39,7 +40,7 @@ for(const surface of ['panel','workspace'])test(`Synthetic ${surface} new conver
         toolVersion:'1.0.0',...proposal}:{kind:'text',text:'Synthetic public Goal persisted and read back'};
       return new Response(JSON.stringify([{event:'message',data:{text:JSON.stringify(result)}},{event:'task_end'},{event:'end'}]),
         {headers:{'content-type':'application/json'}});
-    }});
+    }}));
   host.bind(app);cloud.bindApplication(app);cloud.authorize({goalCloudConsent:true});
   try {
     const client=new Client(app);await client.connect();

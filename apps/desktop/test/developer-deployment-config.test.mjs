@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chmodSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
@@ -60,6 +61,21 @@ test('Local/Synthetic absent configuration is explicit unavailable with no ambie
   const deployment=await createDesktopDeveloperDeployment({createHost:createDesktopDeveloperToolsHost});
   assert.equal(deployment.snapshot().state,'unavailable');assert.deepEqual(deployment.host.tools,[]);
   assert.ok(deployment.host.unavailable.some(item=>item.capability==='github'));deployment.close();
+});
+
+test('actual developer deployment forwards explicit F19 issue-only and close options while F18 gates remain required',async t=>{
+  const f=fixture(t),deployment=await createDesktopDeveloperDeployment({...f.options,confirmExport:async()=>false});
+  t.after(()=>deployment.close());const beforeWrite=()=>{assert.fail('No write in configuration test');};
+  assert.throws(()=>deployment.host.createF18F19Tools({beforeWrite}),{code:'INVALID_ARGUMENT'});
+  const defaults=deployment.host.createF18F19Tools({requiredChecks:['technical-ci'],eligibleReviewers:['reviewer'],beforeWrite});
+  assert.equal(defaults.length,6);assert.equal(defaults.some(tool=>tool.descriptor.name==='github.registered_close_issue'),false);
+  const reads=deployment.host.createF18F19Tools({issueRepairOnly:true,beforeWrite});
+  assert.deepEqual(reads.map(tool=>tool.descriptor.name).sort(),['github.issue_close_readback','github.issue_snapshot','github.merged_pr_readback']);
+  const complete=deployment.host.createF18F19Tools({issueRepairOnly:true,enableIssueClose:true,beforeWrite});
+  assert.equal(complete.length,4);const close=complete.find(tool=>tool.descriptor.name==='github.registered_close_issue');
+  assert.equal(close.descriptor.requiresPresence,true);assert.deepEqual(close.descriptor.requiredScopes,['github:write']);
+  assert.equal(complete.some(tool=>tool.descriptor.name==='github.registered_merge'||tool.descriptor.name==='github.current_head_merge_gate'),false);
+  assert.equal(f.transport.calls,0);
 });
 
 test('trusted GitHub repair links require a separate boolean opt-in and retain exact export policies',async t=>{
@@ -193,9 +209,9 @@ test('Local/Synthetic repository context uses the original Runtime ToolGateway, 
   const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:deployment.host.tools,
     competitionToolAvailability:deployment.host.competitionToolAvailability,competitionToolExports:deployment.host.competitionToolExports,
     prepareCompetitionToolExport:deployment.prepareExport,automaticTools:[{toolName:tool.descriptor.name,toolVersion:tool.descriptor.version}],
-    coordination:{async execute(input){if(input.continuation){assert.deepEqual(input.continuation.result,{repository:'fixture/repo'});
+    coordination:{execute:syntheticCoordinationExecution(async (input)=>{if(input.continuation){assert.deepEqual(input.continuation.result,{repository:'fixture/repo'});
       return {kind:'text',text:'Synthetic configured repository readback',verification:'unverified'};}
-      return {kind:'tool_proposal',proposalId:'configured-repository',toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{},verification:'unverified'};}}});
+      return {kind:'tool_proposal',proposalId:'configured-repository',toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{},verification:'unverified'};})}});
   deployment.host.bind(app);t.after(async()=>{for(let i=0;i<200&&app.activeTaskCount;i++)await new Promise(resolve=>setTimeout(resolve,5));deployment.close();app.close();});
   const client=new Client(app,Date.now);await client.connect();
   const task=await client.call('task.submit',{goal:'Synthetic current repository',conversationId:'synthetic-deployment-ui'},{idempotencyKey:'repository-context-runtime'});

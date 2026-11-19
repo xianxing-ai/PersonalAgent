@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {withheldExportMessage} from '../dist/application.js';
@@ -38,7 +39,7 @@ async function transportFailure(t, {sideEffect = 'read', replay = false, damageR
     competitionToolAvailability: descriptors.map(item => ({toolName: item.name, toolVersion: item.version, available: () => true})),
     competitionToolExports: descriptors.map(item => ({toolName: item.name, toolVersion: item.version,
       exportPolicyVersion: 'fixture-v1', accepts: () => true, project: ({result}) => result})),
-    coordination: {execute: async request => {
+    coordination: {execute: syntheticCoordinationExecution(async request => {
       requests.push(request);
       if (!request.continuation) return proposal(read);
       if (replay && requests.length === 2) return proposal(write);
@@ -52,7 +53,7 @@ async function transportFailure(t, {sideEffect = 'read', replay = false, damageR
         throw Error('synthetic ordinary continuation transport failure');
       }
       return {kind: 'text', text: 'Confirmed result consumed', verification: 'unverified'};
-    }},
+    })},
   });
   t.after(() => app.close());
   const client = new Client(app, Date.now);

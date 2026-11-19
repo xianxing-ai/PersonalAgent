@@ -1,3 +1,4 @@
+import {syntheticAgentArtsOptions} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Client} from '@personal-agent/client';
@@ -14,7 +15,7 @@ for(const clarification of [false,true,'long'])for(const childFailure of [false,
   runDefaultWorker:(subtask,worker,tools)=>app.runDefaultSubagentWorker(subtask,worker,tools)});
  const read={name:'fixture.read',version:'1.0.0',inputSchema:{type:'object',properties:{},additionalProperties:false},
   outputSchema:{type:'object',properties:{}},sideEffect:'read',requiredScopes:[],requiresPresence:false,idempotencySupport:true,recoverySupport:true};
- app=createAgentArtsRuntimeApplication({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-chat',
+ app=createAgentArtsRuntimeApplication(syntheticAgentArtsOptions({path:':memory:',gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic-chat',
   responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json',delegateUserTasks:true,
   readDefaultExecutionModel:()=>selected,resolveExecutionModel:()=>selected,
   coordinationInput:{readConversationContext:async()=>context,beforeCoordinationSend:()=>{}},
@@ -50,7 +51,7 @@ for(const clarification of [false,true,'long'])for(const childFailure of [false,
     text='哈喽！有什么我可以帮你的吗？';
    }
    return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify({kind:'text',text}),index:0}}),{status:200,headers:{'content-type':'application/json'}});
-  }});
+  }}));
  try{
   const client=new Client(app,Date.now);await client.connect();
   const {taskId}=await client.call('task.submit',{goal,conversationId:'desktop-panel:synthetic-chat'},{idempotencyKey:'synthetic-chat',timeoutMs:15000});

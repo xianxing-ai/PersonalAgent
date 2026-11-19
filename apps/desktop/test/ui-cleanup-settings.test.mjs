@@ -87,3 +87,24 @@ test('settings navigation keeps usage reachable and drops placeholder pages', ()
   assert.doesNotMatch(settingSearch, /Live SIS/);
   assert.doesNotMatch(remoteMcpView, /\$\{item\.id\}|\$\{state\.activeId\}|item\.serverId\+' · '/);
 });
+
+test('desktop pets page exposes 8 orb variants and 6 dynamic states without inline style attributes', () => {
+  const view = readFileSync(new URL('../src/features/admin/view.js', import.meta.url), 'utf8');
+  const prefs = readFileSync(new URL('../src/ui/preferences.js', import.meta.url), 'utf8');
+  assert.match(view, /function petsPage\(data\)/);
+  assert.match(view, /data-orb-variant=/);
+  assert.match(view, /data-orb-state=/);
+  for (const code of ['ORB-01', 'ORB-02', 'ORB-03', 'ORB-04', 'ORB-05', 'ORB-06', 'ORB-07', 'ORB-08']) {
+    assert.match(view, new RegExp(code));
+  }
+  for (const state of ['idle', 'listening', 'thinking', 'executing', 'waiting', 'error']) {
+    assert.match(view, new RegExp(`id: '${state}'`));
+  }
+  assert.doesNotMatch(view, /style="/);
+  assert.match(view, /id="load-image-catalog"/);
+  assert.match(view, /invoke\('workflow\.image\.catalog'\)/);
+  assert.match(prefs, /export function orbVariantPreference\(/);
+  assert.match(prefs, /export function saveOrbVariant\(/);
+  assert.match(prefs, /export function orbStateOverride\(/);
+  assert.match(prefs, /export function saveOrbStateOverride\(/);
+});

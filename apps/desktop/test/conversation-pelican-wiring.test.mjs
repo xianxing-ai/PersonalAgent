@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {Client} from '@personal-agent/client';
 import {validateToolValue,ProtocolError} from '@personal-agent/contracts';
 import {FakeCoordinationPort} from '@personal-agent/coordination/testing';
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import {createWorkspaceReadTool,createWorkspacePatchPreviewTool,createWorkspaceCommandTool} from '@personal-agent/coding-tools';
 import {createRuntimeApplication,createDesktopSubagentDispatchTool} from '@personal-agent/runtime/application';
 import {toolArgumentsDigest} from '@personal-agent/tool-gateway';
@@ -73,7 +74,7 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
   };
   // An explicit script, not a real model. Unverified proposals exercise the real
   // directory/export/Policy path; the script cannot produce approval responses.
-  const coordination=new FakeCoordinationPort(async request=>{
+  const coordination=new FakeCoordinationPort(syntheticCoordinationExecution(async request=>{
     try{
     const child=app.runtime.loadCheckpoint(request.taskId,'subtask-parent');
     modelRequests.push({taskId:request.taskId,tools:structuredClone(request.availableTools),continuation:request.continuation});
@@ -117,7 +118,7 @@ test('Local/Synthetic conversation delegates Pelican read→preview→fixture CA
     assert.deepEqual(continuation.result.proof,{verification:'real-local-node',animationCount:3,begins:['0s','0s','0s'],geometryPreserved:true});
     return {kind:'text',text:'Local/Synthetic child confirmed public fixture CAS and real local Node verification.',verification:'mock'};
     }catch(error){modelErrors.push(error.message);throw error;}
-  });
+  }));
   app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',delegateUserTasks:true,
     coordination,coordinationBinding:'explicit-local-synthetic-pelican-script-v1',competitionMaxSteps:8,tools,
     automaticTools:[{toolName:dispatch.descriptor.name,toolVersion:dispatch.descriptor.version}],

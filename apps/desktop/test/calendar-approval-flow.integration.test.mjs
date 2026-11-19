@@ -1,3 +1,4 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync,mkdtempSync} from 'node:fs';
@@ -27,12 +28,12 @@ for(const [mode,denyWrite] of [['workspace-write',false],['workspace-write',true
     tools:host.tools,competitionToolAvailability:host.competitionToolAvailability,competitionToolExports:host.competitionToolExports,
     prepareCompetitionToolExport:scope=>host.prepareExport(scope),requiresToolAuthorization:scope=>question.requiresAuthorization(scope),
     requestToolAuthorization:scope=>question.requestToolAuthorization(scope),competitionMaxSteps:8,
-    coordination:{async execute(request){
+    coordination:{execute:syntheticCoordinationExecution(async (request)=>{
       if(request.continuation)exports.push(structuredClone(request.continuation));
       const next=operations[step++];if(!next)return {kind:'text',text:'Synthetic complete',verification:'mock'};
       const descriptor=host.tools.find(tool=>tool.descriptor.name===next[0]).descriptor;
       return {kind:'tool_proposal',proposalId:'synthetic-'+step,toolName:descriptor.name,toolVersion:descriptor.version,arguments:next[1],verification:'unverified'};
-    }}});
+    })}});
   const client=new Client(app);await client.connect();
   try{
     const submitted=await client.call('task.submit',{goal:'Synthetic change one calendar event',conversationId:'Synthetic conversation'},{idempotencyKey:'calendar-flow'});

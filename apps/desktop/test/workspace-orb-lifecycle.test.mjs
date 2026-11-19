@@ -36,7 +36,7 @@ function fixture() {
     start() { if (!this.calm) this.running = true; }, _draw() {}, _params() { return {}; }, _observer: {disconnect() { cleared.push('observer'); }},
   });
   const document = Object.assign(target('document'), {hidden: false, documentElement: {dataset: {calm: 'false'}}});
-  const context = vm.createContext({orb, document, window: target('window'), visualOrbState, activationTimer: 42, clearTimeout: timer => cleared.push(timer)});
+  const context = vm.createContext({orb, document, window: target('window'), visualOrbState, orbVariantPreference: () => document.documentElement.dataset.orbVariant || 'matrix', orbStateOverride: () => (document.documentElement.dataset.orbStateOverride && document.documentElement.dataset.orbStateOverride !== 'auto') ? document.documentElement.dataset.orbStateOverride : null, current: {tasks: []}, activationTimer: 42, clearTimeout: timer => cleared.push(timer)});
   vm.runInContext(`const syncMotion=${motion};const visibility=${visibility};${registrations.join('\n')}`, context);
   const dispatch = (name, event) => listeners.get(`${name}:${event}`)?.();
   const render = vm.runInContext(`data=>{${update}}`, context);

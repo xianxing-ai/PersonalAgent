@@ -22,6 +22,42 @@ function fixture(){
   }
   return {lease,source,tasks,records,record,setAvailable:value=>{available=value;}};
 }
+
+test('one workflow reservation admits only its precise next child and releases only after original confirmation',async()=>{
+  const f=fixture(),lease=f.lease();let calls=0;
+  const owner={...context({taskId:'graph'}),sessionId:'session',assertCurrent(){},
+    authorizeOperation:(_args,scope,name)=>scope.taskId==='child'&&scope.runId==='child-run'&&name==='browser.type'};
+  const reserved=lease.reserveWorkflow(owner),action=lease.wrap(tool('browser.type',async()=>{calls++;return {state:'observed'};}));
+  assert.equal(lease.snapshot().state,'reserved');
+  assert.throws(()=>lease.reserveWorkflow({...owner,taskId:'sibling'}),{code:'REVISION_CONFLICT'});
+  await assert.rejects(action.execute({},context({taskId:'sibling'})),notStartedWorkflow);
+  const child=context({taskId:'child',runId:'child-run'}),record=f.record('browser.type',child);
+  await action.execute({},child);assert.equal(calls,1);
+  assert.throws(()=>lease.releaseWorkflow(reserved),{code:'RESULT_UNKNOWN'});
+  record.state='confirmed';assert.equal(lease.releaseWorkflow(reserved),true);
+  assert.equal(lease.snapshot().state,'idle');
+  assert.throws(()=>lease.readWorkflowReservation(reserved),{code:'UNAUTHORIZED'});
+});
+const notStartedWorkflow=error=>error instanceof ToolNotStartedError&&error.code==='UNAUTHORIZED';
+
+test('revoked workflow reservation releases only an idle owner and restart cannot restore its identity',async()=>{
+  const f=fixture(),lease=f.lease(),abort=new AbortController();
+  const reserved=lease.reserveWorkflow({...context({taskId:'graph',signal:abort.signal}),sessionId:'session',assertCurrent(){},authorizeOperation:()=>true});
+  assert.throws(()=>f.lease().readWorkflowReservation(reserved),{code:'UNAUTHORIZED'});
+  abort.abort();assert.equal(lease.snapshot().state,'idle');
+  assert.throws(()=>lease.readWorkflowReservation(reserved),{code:'UNAUTHORIZED'});
+});
+
+test('workflow cancellation cannot release an unknown original device effect',async()=>{
+  const f=fixture(),lease=f.lease(),abort=new AbortController();
+  const reserved=lease.reserveWorkflow({...context({taskId:'graph',signal:abort.signal}),sessionId:'session',assertCurrent(){},authorizeOperation:()=>true});
+  const record=f.record('browser.click');
+  const action=lease.wrap(tool('browser.click',async()=>{throw new ProtocolError('RESULT_UNKNOWN','Synthetic dispatched effect');}));
+  await assert.rejects(action.execute({},context()),{code:'RESULT_UNKNOWN'});
+  record.state='unknown';f.tasks.push({taskId:'task-1',state:'waiting_reconciliation'});abort.abort();
+  assert.throws(()=>lease.releaseWorkflow(reserved),{code:'RESULT_UNKNOWN'});
+  assert.equal(lease.snapshot().state,'blocked');assert.equal(f.lease().snapshot().state,'blocked');
+});
 test('two different computer engines share one immediate lease without changing descriptors or unrelated tools',async()=>{
   const f=fixture(),lease=f.lease();let release,notepadCalls=0,mcpCalls=0;
   const notepad=tool('computer.notepad.replace_text',async()=>{notepadCalls++;await new Promise(resolve=>{release=resolve;});return {state:'observed'};});

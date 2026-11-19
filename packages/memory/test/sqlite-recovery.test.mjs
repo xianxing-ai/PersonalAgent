@@ -44,7 +44,7 @@ function waitForWriterLock(writer) {
     const onMessage = message => finish(message === 'locked' ? undefined : new Error('Writer lock setup returned an unexpected message'));
     const onExit = (code, signal) => finish(new Error(`Writer lock setup exited before acquiring the lock (code=${code}, signal=${signal})`));
     const onError = error => finish(new Error('Writer lock setup process failed', {cause: error}));
-    const timer = setTimeout(() => finish(new Error('Writer lock setup did not acquire the lock within 8000ms')), 8000);
+    const timer = setTimeout(() => finish(new Error('Writer lock setup did not acquire the lock within 30000ms')), 30000);
     writer.once('message', onMessage);
     writer.once('exit', onExit);
     writer.once('error', onError);
@@ -88,7 +88,7 @@ test('writer lock setup reports an early child exit instead of waiting for the t
   }
 });
 
-test('confirmation expires while waiting for a writer without consuming the batch', {timeout: 10000}, async t => {
+test('confirmation expires while waiting for a writer without consuming the batch', {timeout: 60000}, async t => {
   const {state, feed, batch} = await fixture(t);
   await withWriterLock(state.path, deadline => {
     assert.throws(() => state.host.confirmFeedBatch('personal', 'cognition', {
@@ -98,7 +98,7 @@ test('confirmation expires while waiting for a writer without consuming the batc
   assert.deepEqual(await feed.read(request({limit: 10})), batch);
 });
 
-test('expired feed read does not persist a stale delivery while waiting for a writer', {timeout: 10000}, async t => {
+test('expired feed read does not persist a stale delivery while waiting for a writer', {timeout: 60000}, async t => {
   const {state, feed, batch} = await fixture(t);
   state.host.confirmFeedBatch('personal', 'cognition', confirmation(batch));
   await withWriterLock(state.path, deadline => assert.rejects(

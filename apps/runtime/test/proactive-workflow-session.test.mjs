@@ -37,6 +37,17 @@ test('committed checkpoint and exact request receipt survive actual SQLite resta
  }finally{resumed.close();}
 });
 
+test('a new execution epoch cannot rebind an old cloud proposal even with an identical body and a fresh request',async()=>{
+ const f=fixture({executionEpoch:0});
+ try{
+  await f.session.advance(request('old-epoch'));
+  const current=createProactiveWorkflowSession({...f.options,executionEpoch:1});
+  await assert.rejects(current.advance(request('new-epoch')),{code:'REVISION_CONFLICT'});
+  assert.equal(current.inspect().state.proposalEpochs[proposal.proposalId],0);
+  assert.equal(current.inspect().state.requests['new-epoch'].state,'pending');
+ }finally{f.runtime.close();}
+});
+
 test('CAS loser never releases image proposals; interrupted image intent is durable and never blindly retried',async()=>{
  let f;
  f=fixture({advancePort:async()=>{

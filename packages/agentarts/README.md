@@ -1,5 +1,7 @@
 # 自有 AgentArts 编排包
 
+2026-11-03 代码增量（MOD-29～32，CW-02 / CW-06 / F23 / F26）：精确部署上的一次已授权只读关联、日常 Competition sampling 台账、平台分数与原输出绑定、ARM64 构建计划与控制面核对。全部通过可注入端口；缺端口为 unavailable，不填默认分数、不把 `run` 或控制面 READY 当成已执行或探针通过。真实华为云、SWR、Docker 与 AK/SK 均未在本增量中调用。说明与自检命令见 [代码增量记录](../../docs/competition/evidence/CW02_CW06_F23_F26_CODE_20261103.md)。
+
 2026-11-11：失败自愈决策在 `src/repair-policy.ts` 与 `src/task-failure-repair.ts`（MOD-30/31）。瞬时失败指数退避，可修正失败换参数、换工具、降级只读或请求父 agent 重新规划；写入没有幂等、幂等键或补偿时不重试，未知结果先查状态。F13_N04 只在宿主读回有证据时确认恢复，并且不重开失败任务。回放不执行副作用。详见 [自愈记录](../../docs/modules/MOD-30-31-REPAIR-RETRY-20261111.md)。
 
 2026-11-11 用量上限：`createUsageBudget` 记录只追加的模型 token 与云端时长估算，并在超限时给出降级或暂停决定。Desktop 启动路径负责加密账本、真实调用门禁和通知。估算不是账单，接口未冻结。见 [MOD-31 记录](../../docs/modules/MOD-31-USAGE-BUDGET-01.md)。

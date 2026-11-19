@@ -1,4 +1,6 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
+import {syntheticPublicPayloadGate,syntheticAgentArtsQuery,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
 import {mkdtemp,rm} from 'node:fs/promises';
 import os from 'node:os';
@@ -14,8 +16,8 @@ async function wait(app,id,predicate){for(let i=0;i<200;i++){const task=app.runt
 async function fixture(t,execute){
   const directory=await mkdtemp(path.join(os.tmpdir(),'pa-mail-review-'));let app,allowed=true,sends=0,guards=0,closed=false;
   const options={path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',hostUserNamespace:'mail-user',
-    coordination:{execute:async request=>{sends++;app.assertCompetitionExportAllowed({...request,signal:new AbortController().signal});
-      return execute?execute(request):{kind:'text',text:JSON.stringify(answer),verification:'unverified'};}},
+    coordination:{execute:syntheticCoordinationExecution(async request=>{sends++;app.assertCompetitionExportAllowed({...request,signal:new AbortController().signal});
+      return execute?execute(request):{kind:'text',text:JSON.stringify(answer),verification:'unverified'};})},
     coordinationInput:{beforeCoordinationSend(){throw Error('Mail must not borrow conversation history');}},
     mailReview:{readEnvelope:async original=>({binding:original,labelKeys:['work','newsletter'],headers:{subject:'PUBLIC_HEADER_ONLY'}}),
       assertExport(original,envelope){guards++;assert.deepEqual(original,binding);assert.deepEqual(envelope.binding,binding);
@@ -37,6 +39,7 @@ test('strict mail review JSON accepts only caller labels and exact enum fields',
 });
 test('host mail review waits for Policy and sends no tools or history; persists safe result only',async t=>{
   const f=await fixture(t,async request=>{
+    assert.equal(request.executionEpoch,0);
     assert.equal(request.textOnly,true);assert.equal(request.availableTools,undefined);assert.equal(request.continuation,undefined);
     assert.equal(request.priorContinuations,undefined);
     assert.deepEqual(Object.keys(JSON.parse(request.goal)).sort(),['headers','instruction','labelKeys']);
@@ -46,9 +49,33 @@ test('host mail review waits for Policy and sends no tools or history; persists 
   assert.deepEqual(f.app.runtime.loadCheckpoint(id,MAIL_REVIEW_RESULT),{binding,result:answer});assert.equal(f.sends,1);assert.ok(f.guards>=3);
   assert.equal(f.app.runtime.getTask(id).goal,'Host tool mail.review');
   assert.equal(JSON.stringify(f.app.runtime.loadCheckpoint(id,'mail-review-attempt:v1')).includes('PUBLIC_HEADER_ONLY'),false);
+  assert.equal(f.app.runtime.loadCheckpoint(id,'mail-review-attempt:v1').executionEpoch,0);
   f.submit();assert.equal(f.sends,1);
   assert.throws(()=>f.app.assertCompetitionExportAllowed({taskId:id,revision:f.app.runtime.getTask(id).revision,
     goal:'PUBLIC_HEADER_ONLY',textOnly:true,deadline:new Date(Date.now()+60000).toISOString(),signal:new AbortController().signal}),{code:'UNAUTHORIZED'});
+});
+test('mail source await cannot upgrade its original operation to a replanned epoch',async t=>{
+  const f=await fixture(t),read=f.options.mailReview.readEnvelope;
+  f.options.mailReview.readEnvelope=async(original,context)=>{
+    const envelope=await read(original,context);
+    f.app.runtime.advanceExecutionEpoch(context.taskId,{requestId:'mail-source-replan',reason:'replan'});
+    return envelope;
+  };
+  const id=f.submit().task.taskId;await f.approve(id);
+  await wait(f.app,id,task=>['failed','waiting_reconciliation'].includes(task.state));
+  const [operation]=f.app.runtime.readToolExecutions(id);
+  assert.equal(f.app.runtime.loadCheckpoint(id,'execution-epoch:run:'+operation.evidenceId),0);
+  assert.equal(f.app.runtime.readExecutionEpoch(id),1);assert.equal(f.sends,0);
+  assert.equal(f.app.runtime.loadCheckpoint(id,MAIL_REVIEW_RESULT),undefined);
+});
+test('direct mail exchange refuses missing and stale result epochs',async t=>{
+  for(const executionEpoch of [undefined,1])await t.test(String(executionEpoch),async t=>{
+    const f=await fixture(t,async()=>({kind:'text',text:JSON.stringify(answer),verification:'unverified',executionEpoch}));
+    const id=f.submit().task.taskId;await f.approve(id);
+    await wait(f.app,id,task=>['failed','waiting_reconciliation'].includes(task.state));
+    assert.equal(f.sends,1);assert.equal(f.app.runtime.loadCheckpoint(id,MAIL_REVIEW_RESULT),undefined);
+    assert.equal(f.app.runtime.loadCheckpoint(id,'mail-review-attempt:v1').executionEpoch,0);
+  });
 });
 test('revoked exact export prevents cloud dispatch after tool approval',async t=>{
   const f=await fixture(t);const id=f.submit().task.taskId;f.revoke();await f.approve(id);
@@ -81,7 +108,7 @@ test('actual AgentArts adapter rechecks copied lease before HTTP and accepts no 
     responseMode:'tool-proposal-json',initialRequestMode:'goal-with-tools-json'}, {read:async()=> 'Bearer fixture'},async(_url,init)=>{
       sends++;const wire=JSON.parse(init.body);assert.equal(typeof wire.query,'string');assert.match(wire.query,/PUBLIC_HEADER_ONLY/);
       assert.equal(wire.query.includes('workspace.'),false);
-      return new Response(JSON.stringify({event:'message',data:{text:JSON.stringify({kind:'text',text:JSON.stringify(answer)})}}),
+      return new Response(JSON.stringify({event:'message',data:{text:syntheticAgentArtsResult(wire,{kind:'text',text:JSON.stringify(answer)})}}),
         {headers:{'content-type':'application/json'}});
     },request=>f.app.assertCompetitionExportAllowed(request),()=>{throw Error('No catalog permitted');});
   // The original injected port is immutable to application code; its fixture delegate selects the real adapter.
@@ -104,20 +131,20 @@ test('cancellation during credential wait prevents actual HTTP and result public
 test('production WSS mail composition binds dispatch and preserves unknown sends',async t=>{
   for(const disconnect of [false,true])await t.test(disconnect?'unknown is not retried':'raw review JSON is consumed',async()=>{
     let app,sends=0;
-    app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'mail-wss',
+    app=createAgentArtsRuntimeApplication({path:':memory:',hostUserNamespace:'mail-wss',preparePayload:syntheticPublicPayloadGate,
       gatewayUrl:'https://agentarts.example.test',runtimeName:'synthetic',transport:'wss',
       websocketUrl:'wss://agentarts.example.test/runtimes/synthetic/ws',responseMode:'tool-proposal-json',
       authorizationProvider:{read:async()=>'Bearer synthetic-outer'},
       websocketAuthorizationProvider:{read:async()=>'Bearer synthetic-inner'},
       websocketFactory:()=>new SyntheticWebSocket((frame,socket)=>{
         if(frame.type!=='invoke')return;sends++;
-        const input=parseAgentInput(frame.payload.query);
+        const input=parseAgentInput(syntheticAgentArtsQuery(frame.payload));
         assert.equal(input.kind,'initial');assert.deepEqual(input.availableTools,[]);
         assert.equal(JSON.parse(input.goal).headers.subject,'PUBLIC_HEADER_ONLY');
         const task=app.runtime.listTasks({}).items[0];
         const dispatch=app.runtime.loadCheckpoint(task.taskId,'competition-cloud-dispatch-context');
         assert.equal(dispatch.loop.maxSteps,1);assert.equal(dispatch.catalog,null);
-        socket.accepted(frame);if(disconnect)socket.disconnect();else socket.result(frame,JSON.stringify(answer));
+        socket.accepted(frame);if(disconnect)socket.disconnect();else socket.result(frame,syntheticAgentArtsResult(frame.payload,answer));
       }),fetchImpl:async()=>{throw Error('Unexpected HTTPS');},
       mailReview:{readEnvelope:async original=>({binding:original,labelKeys:['work','newsletter'],headers:{subject:'PUBLIC_HEADER_ONLY'}}),assertExport(){}}});
     try {

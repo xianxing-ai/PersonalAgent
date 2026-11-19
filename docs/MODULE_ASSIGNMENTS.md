@@ -36,7 +36,7 @@ Owner 明确：**`2511375597-lab` 为前端与前端接线责任分区唯一负�
 | CW-07 委派/主控升级 | zemeng5208 / 04B、31 | in_progress；下一实际parent-child报告/进度/原授权内teacher建议消费 |
 | CW-08 业务连接器 | Potatos498 / 20–26 | in_progress；下一逐来源真实增量→持久sink→cursor，未选社交平台不自动开工 |
 | CW-09 通知静默频次 | Potatos498 / 23 | in_progress；下一真实渠道投递/ack，fixture静默0send及quota不作实机证明 |
-| CW-10 语音输入与控制 | zemeng5208 / 13、14、15 | in_progress；下一步核验当前会话的final输入/控制命令及物理设备；人工业务批准走原对话审批卡，完全访问按既有策略自动同意；语音不直接批准，SIS经AA未验 |
+| CW-10 语音输入与控制 | zemeng5208 / 13、14、15 | in_progress；当前会话 final 可区分为用户输入或精确静默/恢复命令，语音不调用 authorization.respond；物理设备、回声与 SIS 经 AA 仍未验，见 [CW10 设备记录](competition/evidence/CW10_VOICE_WINDOWS_DEVICE_20261103.md) |
 
 以上输入消费仍由原Runtime/Policy/ToolGateway/Evidence/Scheduler负责权限和事实状态。当前接口保持provisional/unavailable；实际两条公共编码链41条Evidence、本机Laya未达150ms、协调锚点created和远端全链未验等限制见接线包。状态不是整个MOD完成声明；PR/提交由根本轮另行处理。
 

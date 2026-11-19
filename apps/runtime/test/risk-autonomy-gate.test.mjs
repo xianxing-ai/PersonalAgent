@@ -29,10 +29,10 @@ function application(tools, options = {}) {
       accepts: () => true, project: ({result}) => ({value: result.value}),
     })),
     competitionToolAvailability: tools.map(item => ({toolName: item.name, toolVersion: item.version, available: () => true})),
-    coordination: {execute: async request => request.continuation
+    coordination: {execute: async request => ({...(request.continuation
       ? {kind: 'text', text: 'Synthetic result', verification: 'unverified'}
       : {kind: 'tool_proposal', proposalId: 'proposal-1', toolName: tools[0].name, toolVersion: '1.0.0',
-        arguments: {note: 'ok'}, verification: 'unverified'}},
+        arguments: {note: 'ok'}, verification: 'unverified'}),executionEpoch:request.executionEpoch})},
     ...runtimeOptions,
   });
   return {app, executions};

@@ -44,6 +44,7 @@ async function fixture(t) {
       voicePorts:{createVoicePcmFrameSourcePort:noResource,createRuntimeClientTranscriptConsumer:noResource,
         createWindowsSystemSpeechPorts:()=>({output:{speak:noResource},async dispose(){}})},
       voiceStartupHost:undefined,voiceStartupDisposed:false,voiceStartupDisposal:undefined,
+      notificationApplicationHost:undefined,voiceSessionFinalHost:undefined,
       createDesktopVoiceStartupHost:options=>{const host=createDesktopVoiceStartupHost(options);startupHosts.push(host);return host;},
       liveVoice:undefined,panel:undefined,liveConfig:{snapshot:()=>({configured:false}),current:()=>undefined},
       microphoneCaptureHost:{get binding(){return noResource();},snapshot:()=>({busy:false})},

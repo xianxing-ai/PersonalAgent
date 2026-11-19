@@ -1,4 +1,6 @@
+import {syntheticCoordinationExecution} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import test from 'node:test';
+import {syntheticPublicPayloadGate,syntheticAgentArtsResult} from '../../../tests/helpers/synthetic-agentarts.mjs';
 import assert from 'node:assert/strict';
 import {ProtocolError} from '@personal-agent/contracts';
 import {InMemoryAuthorizationPolicy} from '@personal-agent/policy';
@@ -153,8 +155,8 @@ function delegatedFixture(startedWrite=true) {
       toolVersion:tool.descriptor.version,available:({taskId})=>!startedWrite&&tool===write
         &&app.runtime.getTask(taskId).conversationId.startsWith('desktop-subtask:')?new Promise(()=>{}):true,
       ...(tool===dispatch?{publicEnumPaths:['/subtasks/*/role']}: {})})),
-    coordination:{execute:async()=>{cloudCalls++;return {kind:'tool_proposal',proposalId:'child-write',toolName:write.descriptor.name,
-      toolVersion:write.descriptor.version,arguments:{},verification:'unverified'};}}});
+    coordination:{execute:syntheticCoordinationExecution(async()=>{cloudCalls++;return {kind:'tool_proposal',proposalId:'child-write',toolName:write.descriptor.name,
+      toolVersion:write.descriptor.version,arguments:{},verification:'unverified'};})}});
   return {app,counts:()=>({executions,cloudCalls})};
 }
 async function approveChild(app,id) {
@@ -202,7 +204,7 @@ test('an unrelated child cannot promote a waiting parent even when its checkpoin
 });
 
 function cloudOptions(tools,factory) {
-  return {path:':memory:',gatewayUrl:'https://synthetic.invalid',runtimeName:'synthetic',transport:'wss',
+  return {path:':memory:',gatewayUrl:'https://synthetic.invalid',runtimeName:'synthetic',transport:'wss',preparePayload:syntheticPublicPayloadGate,
     websocketUrl:'wss://synthetic.invalid/runtimes/synthetic/ws',allowHttpsFallback:false,
     authorizationProvider:{read:async()=>'Bearer synthetic'},websocketAuthorizationProvider:{read:async()=>'Bearer synthetic'},
     websocketFactory:factory,fetchImpl:async()=>{throw Error('Synthetic test forbids real fetch');},
@@ -233,7 +235,7 @@ for(const sideEffect of ['read','local_write'])test(`typed never-sent continuati
     if(++connections>1)throw Error('Synthetic later connect failure');
     return new SyntheticWebSocket((frame,socket)=>{
       if(frame.type!=='invoke')return;
-      socket.accepted(frame);socket.result(frame,JSON.stringify({kind:'tool_proposal',proposalId:'original-tool',
+      socket.accepted(frame);socket.result(frame,syntheticAgentArtsResult(frame.payload,{kind:'tool_proposal',proposalId:'original-tool',
         toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{}}));
       queueMicrotask(()=>socket.disconnect());
     });
@@ -263,8 +265,8 @@ test('a generic adapter error after a confirmed read does not gain the never-sen
   const app=createRuntimeApplication({path:':memory:',profile:'huawei_ict_agentarts',tools:[tool],competitionToolExports:exportsFor([tool]),
     automaticTools:[{toolName:tool.descriptor.name,toolVersion:tool.descriptor.version}],
     competitionToolAvailability:[{toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,available:()=>true}],
-    coordination:{execute:async request=>{if(request.continuation)throw new ProtocolError('EXTERNAL_FAILURE','Synthetic generic error');
-      return {kind:'tool_proposal',proposalId:'original',toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{},verification:'unverified'};}}});
+    coordination:{execute:syntheticCoordinationExecution(async request=>{if(request.continuation)throw new ProtocolError('EXTERNAL_FAILURE','Synthetic generic error');
+      return {kind:'tool_proposal',proposalId:'original',toolName:tool.descriptor.name,toolVersion:tool.descriptor.version,arguments:{},verification:'unverified'};})}});
   try {
     const id=await submit(app,'generic-adapter',5000),task=await settled(app,id);
     assert.equal(task.state,'waiting_reconciliation');assert.equal(task.error.code,'UNAUTHORIZED');

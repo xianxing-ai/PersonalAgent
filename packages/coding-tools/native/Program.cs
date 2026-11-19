@@ -184,6 +184,8 @@ internal static partial class Program
 
     public static int Main(string[] args)
     {
+        Console.InputEncoding = new UTF8Encoding(false, true);
+        Console.OutputEncoding = new UTF8Encoding(false);
         if (args.Length == 1 && args[0] == "--sandbox-launch") return RunSandbox();
         if (args.Length == 1 && args[0] == "--sandbox-diagnostics") return DiagnoseSandbox();
         if (args.Length == 1 && args[0] == "--sandbox-support")

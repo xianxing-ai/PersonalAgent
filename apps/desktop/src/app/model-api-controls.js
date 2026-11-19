@@ -1,5 +1,6 @@
 import {mountHarnessControls} from './harness-controls.js';
 import {mountDeveloperControls} from '../features/admin/developer-controls.js';
+import {mountDeveloperDirectionControls} from '../features/admin/developer-direction-controls.js';
 import {mountHarnessExperienceControls} from '../features/admin/harness-experience-controls.js';
 
 /** Safe presentation only; the trusted host independently enforces the declaration. */
@@ -68,6 +69,7 @@ export function mountModelApiControls(root, invoke) {
   root.append(settings);
   const harness=mountHarnessControls(root,invoke);
   const developer=mountDeveloperControls(root,invoke);
+  const direction=mountDeveloperDirectionControls(root,invoke);
   const experienceRoot=document.createElement('div');root.append(experienceRoot);
   let experience=mountHarnessExperienceControls(experienceRoot,{invoke});
   const field = name => settings.querySelector(`[data-model-api="${name}"]`);
@@ -102,6 +104,7 @@ export function mountModelApiControls(root, invoke) {
     state = value;
     harness.render(value);
     developer.render(value.developerSettings);
+    void direction.render().catch(()=>{});
     experience?.update(value.harnessExperience??{available:false,entries:[],reason:'开发经验尚未接通'});
     field('defaultExecution').textContent = value.defaultExecution?.reason
       ?? '默认 AgentArts 子任务执行器尚未公布；独立 API 按子对话明确选型使用';
@@ -165,10 +168,10 @@ export function mountModelApiControls(root, invoke) {
     state = value;
     if (!destinationChanged) field('requestBudget').textContent = describeModelRequestBudget(state.models?.find(entry=>entry.id===field('saved').value));
   }, showSettings(show) {
-    settings.hidden = !show;harness.showSettings(show);developer.showSettings(show);experienceRoot.hidden=!show;
+    settings.hidden = !show;harness.showSettings(show);developer.showSettings(show);direction.showSettings(show);experienceRoot.hidden=!show;
     if(show&&!experience)experience=mountHarnessExperienceControls(experienceRoot,{invoke,status:state.harnessExperience});
     else if(!show&&experience){experience.dispose();experience=undefined;experienceRoot.replaceChildren();}
   }, close() {
-    closed = true; field('key').value = ''; settings.remove();harness.close();developer.close();experience?.dispose();experienceRoot.remove();
+    closed = true; field('key').value = ''; settings.remove();harness.close();developer.close();direction.close();experience?.dispose();experienceRoot.remove();
   }};
 }

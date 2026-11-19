@@ -6,7 +6,7 @@ import {ProtocolError} from '@personal-agent/contracts';
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const blocked=()=>{throw new ProtocolError('UNSUPPORTED_CAPABILITY','当前外部进程隔离后端或原授权不可用，未降级为普通进程');};
 const external=name=>['workspace.run_allowed_command','workspace.node_check','workspace.npm_build','workspace.npm_test',
-  'workspace.git_diff_check','coding.repair.verify','coding.repair.check','workflow.host.f15_n05'].includes(name);
+  'workspace.git_diff_check','workspace.f19_regression_command','workspace.f21_mcp_probe','workspace.f26_release','coding.repair.verify','coding.repair.check','coding.repair.trial','workflow.host.f15_n05'].includes(name);
 const identity=value=>{const target=realpathSync.native(value),stat=statSync(target,{bigint:true});
   return [target,String(stat.dev),String(stat.ino),String(stat.birthtimeNs)];};
 
@@ -46,7 +46,9 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
     question.prepare(scope,{requirements:[{requirementId:'native-execution',kind:'tool',scopes:['workspace:execute'],
       bindingDigest:digest([scope.taskId,scope.runId,scope.argumentsDigest,verified.bindingDigest]),
       ruleBindingDigest:digest(['native-execution',verified.bindingDigest,scope.toolName]),
-      summary:'外部命令在已验证 Windows 进程边界内执行；仅选定工作区与固定工具路径，默认禁止网络'}],assertCurrent:()=>current()});
+      summary:scope.toolName==='workspace.f21_mcp_probe'?'固定 MCP 公开样本探测；请选择只读隔离，禁止网络与文件写入'
+        :scope.toolName==='workspace.f26_release'?'固定 ARM64 镜像构建与 SWR 发布；需要明确完整权限，Docker daemon 与网络不受文件隔离限制'
+        :'外部命令在已验证 Windows 进程边界内执行；仅选定工作区与固定工具路径，默认禁止网络'}],assertCurrent:()=>current()});
   }
   function describeExecution(request,profile){
     const required=Boolean(request?.requirements.some(item=>item.requirementId==='native-execution'))||external(request?.toolName);
@@ -68,16 +70,35 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
   }
   function createCommandTool(options){
     const root=realpathSync.native(options.rootPath),rootIdentity=identity(root);
+    // Main may add immutable compiler/support directories; tool input cannot supply them.
+    const {trustedReadRoots=[],readF19Binding,readF21Binding,beforeF21Probe,readF26Binding,beforeF26Release,...commandOptions}=options;
+    if(readF19Binding!==undefined&&typeof readF19Binding!=='function')blocked();
+    if(readF21Binding!==undefined&&(typeof readF21Binding!=='function'||readF19Binding!==undefined))blocked();
+    if(beforeF21Probe!==undefined&&(!readF21Binding||typeof beforeF21Probe!=='function'))blocked();
+    if(readF26Binding!==undefined&&(typeof readF26Binding!=='function'||readF19Binding||readF21Binding||typeof beforeF26Release!=='function'))blocked();
+    const readFixedBinding=readF19Binding??readF21Binding??readF26Binding,journal=readF26Binding?'f26-native-command:v1:':readF21Binding?'f21-native-command:v1:':'f19-native-command:v1:';
+    if(!Array.isArray(trustedReadRoots)||trustedReadRoots.length>4)blocked();
+    const supportRoots=trustedReadRoots.map(value=>{const target=realpathSync.native(value),relative=path.relative(root,target);
+      if(!statSync(target).isDirectory()||path.dirname(target)===target||relative!== '..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative))blocked();
+      return {path:target,identity:digest(identity(target))};});
     const fixedRecipes=options.recipes.map(recipe=>({executable:realpathSync.native(recipe.executable),args:[...(recipe.args??[])]}));
     const executables=[...new Set(fixedRecipes.map(recipe=>recipe.executable))];
-    const executor={async execute(request){
+    const assertCommand=request=>{
       assertBinding(request);
-      const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertBinding});
+      if(readFixedBinding){
+        const original=getApplication().runtime.loadCheckpoint(request.taskId,journal+request.runId);
+        if(!original||digest(original.source)!==digest(readFixedBinding(request))||digest(identity(root))!==digest(rootIdentity))blocked();
+      }
+    };
+    const executor={async execute(request){
+      assertCommand(request);
+      const actual=coding.createWindowsNativeSandboxExecutor({...verified.pins,assertCurrent:assertCommand});
       return actual.execute(request);
     }};
-    return coding.createWorkspaceCommandTool({...options,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
+    return coding.createWorkspaceCommandTool({...commandOptions,env:{LOCALAPPDATA:localAppData,...options.env,SystemRoot:systemRoot},trustedSandbox:{executor,
       bind(context,executionDeadline){
-        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry||digest(identity(root))!==digest(rootIdentity))blocked();
+        const entry=runs.get(JSON.stringify([context.taskId,context.runId]));if(!entry||digest(identity(root))!==digest(rootIdentity)
+          ||supportRoots.some(value=>digest(identity(value.path))!==value.identity))blocked();
         const policy=question.readExecutionPolicy(entry);
         const binding={sandboxRef:policy.ref,revision:policy.revision,taskId:context.taskId,runId:context.runId,
           authorizationRef:context.authorizationRef,argumentsDigest:context.argumentsDigest,deadline:executionDeadline};
@@ -91,24 +112,96 @@ export function createDesktopNativeExecutionHost({coding,question,getApplication
           &&recipe.args[0]==='--cwd'&&recipe.args[1]===root&&recipe.args[2]==='--exe'
           &&recipe.args[3]===node&&recipe.args[4]==='--');
         const allowedExecutables=usesNodeChild?[...new Set([...executables,node])]:executables;
-        const roots=[systemRoot,...allowedExecutables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath)];
+        const roots=[systemRoot,...allowedExecutables.map(file=>path.dirname(file)),path.dirname(verified.pins.helperPath),...supportRoots.map(value=>value.path)];
         const profile={sandboxRef:policy.ref,revision:policy.revision,mode,backend:mode==='full-access'?'none':'windows-psec',
           readRoots:[...new Set([...roots,...(mode==='workspace-write'?[]:[root])])],
           writeRoots:mode==='workspace-write'?[root]:[],executableAllowlist:allowedExecutables,
           network:{mode:mode==='full-access'?'unrestricted':'deny'}};
+        const application=getApplication(),f20=application.readF20TrialBinding?.(context);
+        if(f20){
+          if(fixedRecipes.length!==1||options.recipes[0].id!=='f20-typescript-sample')blocked();
+          const original={version:1,taskId:context.taskId,runId:context.runId,argumentsDigest:context.argumentsDigest,
+              sourceDigest:f20.sourceDigest,candidateId:f20.candidateId,root,rootIdentity,configuration:verified.configuration.identity,
+              workspaceIdentity:digest([identity(verified.configuration.rootPath),identity(verified.configuration.nodeExecutable)]),
+              pins:verified.pins,binding,profile,recipes:fixedRecipes};
+          const key='f20-native-command:v1:'+context.runId;
+          application.runtime.saveCheckpointOnce(context.taskId,key,original);
+          if(digest(application.runtime.loadCheckpoint(context.taskId,key))!==digest(original))blocked();
+        }
+        if(readFixedBinding){
+          const source=readFixedBinding(context);
+          if(f20||fixedRecipes.length!==1||mode!==(readF26Binding?'full-access':'read-only')||!source||source.root!==root
+            ||source.recipeId!==options.recipes[0].id||source.taskId!==context.taskId||source.runId!==context.runId
+            ||source.argumentsDigest!==context.argumentsDigest||readF21Binding&&source.recipeId!=='f21-filesystem-protocol'||readF26Binding&&source.recipeId!=='f26-owned-image-release')blocked();
+          if(beforeF21Probe){const result=beforeF21Probe(context);if(result!==undefined){void Promise.resolve(result).catch(()=>{});blocked();}}
+          if(beforeF26Release){const result=beforeF26Release(context);if(result!==undefined){void Promise.resolve(result).catch(()=>{});blocked();}}
+          const original={version:1,taskId:context.taskId,runId:context.runId,argumentsDigest:context.argumentsDigest,
+            source:structuredClone(source),root,rootIdentity,pins:verified.pins,binding,profile,recipes:fixedRecipes,
+            ...(readF21Binding?{configuration:verified.configuration.identity}:{})};
+          const key=journal+context.runId;
+          application.runtime.saveCheckpointOnce(context.taskId,key,original);
+          if(digest(application.runtime.loadCheckpoint(context.taskId,key))!==digest(original))blocked();
+        }
         return {...binding,profile};
       },
       recordResult(context,result){
         // Trusted executor facts only. Never persist command stdout/stderr or target-asserted evidence.
         const runtime=getApplication().runtime;
         const name='native-sandbox-execution:'+context.runId;
+        const original=runtime.loadCheckpoint(context.taskId,'f20-native-command:v1:'+context.runId)
+          ??runtime.loadCheckpoint(context.taskId,'f19-native-command:v1:'+context.runId)
+          ??runtime.loadCheckpoint(context.taskId,'f21-native-command:v1:'+context.runId)
+          ??runtime.loadCheckpoint(context.taskId,'f26-native-command:v1:'+context.runId);
         const value={runId:context.runId,argumentsDigest:context.argumentsDigest,backend:result.backend,enforced:result.enforced,
-          outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects};
+          outcome:result.outcome,exitCode:result.exitCode,executionStarted:result.executionStarted,stopped:result.stopped,sideEffects:result.sideEffects,
+          ...(original?{originalBindingDigest:digest(original)}:{})};
         const previous=runtime.loadCheckpoint(context.taskId,name)??[];
         if(!Array.isArray(previous)||previous.length>=256)throw new ProtocolError('RESULT_UNKNOWN','Native execution audit capacity reached');
         runtime.saveCheckpoint(context.taskId,name,[...previous,value]);
       }}});
   }
-  return {prepare,describeExecution,createCommandTool,close(){closed=true;runs.clear();verified=undefined;},
+  /** Consumes only a persisted stopped fact from the original trusted executor. Never probes or launches a process. */
+  async function readOriginalCommandStopState({session,runId}){
+    try{
+      if(closed||runId!=='host-tool-'+session.taskId+'-verify-f20-typescript-sample')return 'unknown';
+      const app=getApplication(),task=app.runtime.getTask(session.taskId),origin=app.readF20RecoveryBinding(session.taskId,task.revision);
+      if(!origin||digest(origin.session.session)!==digest(session))return 'unknown';
+      const original=app.runtime.loadCheckpoint(session.taskId,'f20-native-command:v1:'+origin.request.trialRunId);
+      const results=app.runtime.loadCheckpoint(session.taskId,'native-sandbox-execution:'+origin.request.trialRunId);
+      if(!original||original.version!==1||original.taskId!==session.taskId||original.runId!==origin.request.trialRunId
+        ||original.sourceDigest!==origin.f20.sourceDigest||original.candidateId!==origin.f20.candidateId
+        ||original.argumentsDigest!==app.runtime.loadCheckpoint(session.taskId,'application-tool-invocation:'+original.runId)?.argumentsDigest
+        ||original.workspaceIdentity!==digest([identity(configuration().rootPath),identity(configuration().nodeExecutable)])||path.basename(original.root)!=='workspace'
+        ||path.basename(path.dirname(original.root))!==session.sessionId||digest(identity(original.root))!==digest(original.rootIdentity)
+        ||digest(coding.readWindowsNativeHelperAttestation(original.pins.helperPath))!==digest(original.pins)
+        ||original.profile.backend!=='windows-psec'||original.profile.network.mode!=='deny'
+        ||!Array.isArray(results)||results.length!==1)return 'unknown';
+      const result=results[0];
+      return result.runId===original.runId&&result.argumentsDigest===original.argumentsDigest
+        &&result.originalBindingDigest===digest(original)&&result.backend==='windows-psec'&&result.enforced===true
+        &&result.executionStarted===true&&result.stopped===true?'stopped':'unknown';
+    }catch{return 'unknown';}
+  }
+  function readOriginalF21Probe({taskId,runId,sourceDigest}){
+    try{const runtime=getApplication().runtime,original=runtime.loadCheckpoint(taskId,'f21-native-command:v1:'+runId),records=runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId);
+      if(!original||original.taskId!==taskId||original.runId!==runId||digest(original.source)!==sourceDigest||original.configuration!==configuration().identity
+        ||digest(identity(original.root))!==digest(original.rootIdentity)||digest(coding.readWindowsNativeHelperAttestation(original.pins.helperPath))!==digest(original.pins)
+        ||original.profile.mode!=='read-only'||original.profile.backend!=='windows-psec'||original.profile.network.mode!=='deny'||!Array.isArray(records)||records.length!==1)return;
+      const record=records[0];if(record.runId!==runId||record.originalBindingDigest!==digest(original)||record.argumentsDigest!==original.argumentsDigest
+        ||record.backend!=='windows-psec'||record.enforced!==true||record.executionStarted!==true||record.stopped!==true||record.outcome!=='exited')return;
+      return Object.freeze({taskId,runId,sourceDigest,backend:'windows-psec',enforced:true,stopped:true,exitCode:record.exitCode,auditDigest:digest(record)});
+    }catch{return undefined;}
+  }
+  function readOriginalF26Release({taskId,runId,sourceDigest}){
+    try{const runtime=getApplication().runtime,original=runtime.loadCheckpoint(taskId,'f26-native-command:v1:'+runId),records=runtime.loadCheckpoint(taskId,'native-sandbox-execution:'+runId);
+      if(!original||original.taskId!==taskId||original.runId!==runId||digest(original.source)!==sourceDigest||digest(identity(original.root))!==digest(original.rootIdentity)
+        ||digest(coding.readWindowsNativeHelperAttestation(original.pins.helperPath))!==digest(original.pins)||original.profile.mode!=='full-access'
+        ||original.profile.backend!=='none'||!Array.isArray(records)||records.length!==1)return;
+      const record=records[0];if(record.runId!==runId||record.originalBindingDigest!==digest(original)||record.argumentsDigest!==original.argumentsDigest
+        ||record.backend!=='none'||record.enforced!==false||record.executionStarted!==true||record.stopped!==true||record.outcome!=='exited')return;
+      return Object.freeze({taskId,runId,sourceDigest,backend:'none',enforced:false,stopped:true,exitCode:record.exitCode,auditDigest:digest(record)});
+    }catch{return undefined;}
+  }
+  return {prepare,describeExecution,createCommandTool,readOriginalCommandStopState,readOriginalF21Probe,readOriginalF26Release,close(){closed=true;runs.clear();verified=undefined;},
     environment:()=>({SystemRoot:systemRoot,LOCALAPPDATA:localAppData})};
 }
