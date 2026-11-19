@@ -7,7 +7,8 @@ const denied=()=>{throw new ProtocolError('UNAUTHORIZED','原操作的精确授�
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const key=scope=>JSON.stringify([scope.taskId,scope.runId]);
 const requestFields=scope=>({taskId:scope.taskId,proposalId:scope.proposalId,runId:scope.runId,toolName:scope.toolName,
-  toolVersion:scope.toolVersion,argumentsDigest:scope.argumentsDigest,deadline:scope.deadline,signal:scope.signal});
+  toolVersion:scope.toolVersion,argumentsDigest:scope.argumentsDigest,deadline:scope.deadline,signal:scope.signal,
+  ...(scope.sideEffect!==undefined?{sideEffect:scope.sideEffect}:{})});
 const questionFailureReasons=Object.freeze({
   'Host state must be bounded lossless JSON':'state_not_lossless_json',
   'Host state must be lossless JSON':'state_not_lossless_json',

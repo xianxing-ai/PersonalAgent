@@ -11,13 +11,18 @@ export function pluginMarketCardsHtml(items = []) {
     if (item.installed && item.enabled) actions.push(['disable', '停用']);
     if (item.installed) actions.push(['uninstall', '卸载']);
     const permissions = (item.permissions ?? []).map(permission => `<li>${escape(permission.statement)}</li>`).join('');
+    const summaryLines = item.permissionSummary ?? [];
+    const summary = summaryLines.map(line => `<li>${escape(line)}</li>`).join('');
+    const blockedKind = {network: '网络', file: '文件', connector: '连接器', secret: '密钥'};
     const blocked = !item.installed && !item.oneClickInstall ? `<p class="muted">${escape(item.installBlockReason || '不能一键安装')}</p>` : '';
     const authorization = item.installed && !item.enabled && item.enableRequiresAuthorization ? '<p class="muted">启用需要授权。</p>' : '';
+    const violation = item.lastBlocked ? `<p class="muted">已拦截未声明的${escape(blockedKind[item.lastBlocked.kind] ?? '访问')}。</p>` : '';
+    const brief = summaryLines.length ? `<p class="muted">${escape(summaryLines.join(''))}</p>` : '';
     return `<article class="card"><details><summary><h3>${escape(item.name)}</h3></summary>
       <p>类型：${escape(typeLabel[item.type] ?? item.type)} · 风险：${escape(riskLabel[item.riskLevel] ?? item.riskLevel)}</p>
       <p>许可证：${escape(item.license)}</p><p>来源：${escape(item.sourceRepositoryUrl)}</p>
-      <ul>${permissions}</ul></details>
-      <p>${escape(item.description)}</p>${blocked}${authorization}
+      <ul>${summary}${permissions}</ul></details>
+      <p>${escape(item.description)}</p>${brief}${blocked}${authorization}${violation}
       <div class="form-actions">${actions.map(([action, label]) => `<button class="btn btn-sm" data-plugin="${action}" data-id="${escape(item.id)}">${label}</button>`).join('')}</div></article>`;
   }).join('') || '<p>没有匹配的插件。</p>';
 }

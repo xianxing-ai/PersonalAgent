@@ -2,7 +2,7 @@
 export function agentArtsModelSnapshot(previous, settings) {
   const configured=settings?.configured===true;
   return {...previous,
-    provider:'agentarts',label:'AgentArts · Competition Profile',
+    provider:'agentarts',label:'云端模型',
     status:configured?'configured':'unconfigured',verification:'unverified',
     baseUrl:settings?.gatewayUrl??'',model:'AgentArts Runtime',deployment:settings?.runtimeName??'',
     configured,keyConfigured:configured,persisted:false,enabled:true,

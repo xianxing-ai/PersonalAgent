@@ -1,7 +1,8 @@
 import {deriveOwnedWorkflowKeys} from '@personal-agent/agentarts';
 
 /** Trusted main-process options. Neither credentials nor this provider enter Renderer snapshots. */
-export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={},readAppToken,preparePayload:prepareEgressPayload}) {
+export function createAgentArtsTransportConfig({binding,environment=process.env,configurationProvider,fetchImpl=globalThis.fetch,transportPreferences={},readAppToken,onCloudRun,preparePayload:prepareEgressPayload}) {
+  if (onCloudRun !== undefined && typeof onCloudRun !== 'function') throw Error('云端用量记录无效');
   const transport=environment.PA_AGENTARTS_TRANSPORT??transportPreferences.transport??'https';
   const fallback=environment.PA_AGENTARTS_HTTPS_FALLBACK??(transportPreferences.allowHttpsFallback===true?'1':'0');
   if (!['https','wss'].includes(transport) || !['0','1'].includes(fallback)) {
@@ -101,13 +102,20 @@ export function createAgentArtsTransportConfig({binding,environment=process.env,
       }
       if (options.deploymentVersion!==undefined) target.searchParams.set('endpoint',options.deploymentVersion);
       const finalInit={...init,headers:Object.fromEntries(headers),redirect:'error'};
-      if(!preparePayload)return fetchImpl(target.href,finalInit);
+      const send=()=>{
+        if (typeof onCloudRun !== 'function') return fetchImpl(target.href,finalInit);
+        const started = Date.now();
+        const finish = ok => { try { onCloudRun({durationMs: Math.max(1, Date.now()-started), ok: ok === true}); } catch { /* Usage recording cannot change the cloud response. */ } };
+        return Promise.resolve().then(()=>fetchImpl(target.href,finalInit))
+          .then(response => { finish(response.ok); return response; }, error => { finish(false); throw error; });
+      };
+      if(!preparePayload)return send();
       const scope={requestId:headers.get('X-Request-Id'),destination:target.href,payload:finalInit.body,
         deadline:headers.get('X-PA-Deadline'),signal:finalInit.signal,
         isCurrent:()=>!finalInit.signal?.aborted&&JSON.stringify(currentOptions())===JSON.stringify(options)};
       return Promise.resolve(preparePayload(scope)).then(lease=>{
         lease.assertBeforeSend({destination:target.href,payload:finalInit.body});
-        return fetchImpl(target.href,finalInit);
+        return send();
       });
     }};
   };

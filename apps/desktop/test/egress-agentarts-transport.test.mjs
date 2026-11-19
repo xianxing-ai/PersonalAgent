@@ -5,16 +5,18 @@ import {createAgentArtsConfig} from '../electron/agentarts-config.js';
 import {createDesktopEgressHost} from '../electron/egress-host.js';
 
 test('AgentArts production configuration gates actual fixed endpoint/body for ordinary and paired invocations',async()=>{
-  const base=new URL('../../../.cache/egress-agentarts/',import.meta.url);mkdirSync(base,{recursive:true});const sent=[],seen=[];
+  const base=new URL('../../../.cache/egress-agentarts/',import.meta.url);mkdirSync(base,{recursive:true});const sent=[],seen=[],cloudRuns=[];
   const config=createAgentArtsConfig({userData:mkdtempSync(base),environment:{},
     safeStorage:{isEncryptionAvailable:()=>true,encryptString:value=>Buffer.from(value).reverse(),decryptString:value=>Buffer.from(value).reverse().toString()},
-    fetchImpl:async(url,init)=>{sent.push({url,body:init.body});return {status:200};}});
+    onCloudRun:record=>cloudRuns.push(record),
+    fetchImpl:async(url,init)=>{sent.push({url,body:init.body});return {status:200,ok:true};}});
   config.configure({gatewayUrl:'https://explicit-fixture.huaweicloud-agentarts.com',runtimeName:'fixture',authorization:'Bearer fixture-outer',transport:'https',deploymentVersion:'fixed-v1'});
   const binding=config.binding(),transport=config.transportConfig(binding),url=binding.gatewayUrl+'/runtimes/fixture/invocations';
   let requestSequence=0;
   const init=payload=>({method:'POST',redirect:'error',body:JSON.stringify({query:JSON.stringify(payload)}),signal:new AbortController().signal,
     headers:{Authorization:'Bearer fixture-outer','X-Request-Id':`fixture-request-${++requestSequence}`,'X-PA-Deadline':new Date(Date.now()+60000).toISOString()}});
   await assert.rejects(transport.fetchImpl(url,init({goal:'public'})),error=>error.code==='UNSUPPORTED_CAPABILITY');assert.equal(sent.length,0);
+  assert.equal(cloudRuns.length,0);
   config.setEgressHost(createDesktopEgressHost({classifyLocally:scope=>{seen.push(scope);return 'public';}}));
   await transport.fetchImpl(url,init({goal:'public fixture'}));
   await transport.fetchImpl(url+'?endpoint=fixed-v1',init({evaluationVersion:1,samples:[{input:'public fixture'}]}));
@@ -28,4 +30,5 @@ test('AgentArts production configuration gates actual fixed endpoint/body for or
   assert.equal(seen.at(-1).destination,url+'?endpoint=fixed-v1');
   active=false;
   await assert.rejects(transport.fetchImpl(url,original),error=>error.code==='UNAUTHORIZED');assert.equal(sent.length,2);
+  assert.deepEqual(cloudRuns.map(({ok})=>ok),[true,true]);
 });

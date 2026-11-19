@@ -36,7 +36,7 @@ test('complete serialized provider body reaches the meter after tool schema and 
   assert.match(body.messages[3].content,/Untrusted tool result data: 已确认回执/);
   assert.equal(body.model,'synthetic');assert.deepEqual(body.thinking,{type:'enabled'});
   assert.equal(body.reasoning_effort,'high');assert.equal(body.max_completion_tokens,20);
-  assert.equal(Object.hasOwn(body,'max_tokens'),false);assert.equal(body.stream,false);
+  assert.equal(Object.hasOwn(body,'max_tokens'),false);assert.equal(body.stream,true);
   assert.deepEqual(result.requestBudget,{scope:'provider-body',model:'synthetic',tokenizerRef:'synthetic-meter:v1',
     configurationRef:'fixture-config:v1',contextTokens:100,reservedOutputTokens:20,
     state:'measured',inputTokens:80,hiddenContext:'unknown'});

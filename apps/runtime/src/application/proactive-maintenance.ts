@@ -20,6 +20,7 @@ export function createRuntimeProactiveMaintenancePump(options:{
   recoverSources?(taskId:string,context:Context):Promise<{state:string;deliveries?:unknown[]}|undefined>;
   beforeNativeMaintenance?(taskId:string,context:Context):Promise<void>|void;
   afterNativeMaintenance?(taskId:string,context:Context):Promise<void>|void;
+  isPaused?():boolean;
   now?:()=>number;
 }) {
   if([options.getApplication,options.getWorkflow,options.resolveUserConversation].some(value=>typeof value!=='function'))
@@ -29,6 +30,7 @@ export function createRuntimeProactiveMaintenancePump(options:{
   const recovered=new Set<string>(),reentered=new Set<string>();
   let pending:Promise<unknown>|undefined,scanCursor:{beforeSequence:number;snapshotSequence:number}|undefined;
   async function run() {
+    if(options.isPaused?.())return {state:'paused',sessions:[]};
     const application=options.getApplication(),workflow=options.getWorkflow();
     if(!application?.runtime||!workflow||workflow.snapshot().state!=='configured_not_verified')return {state:'unavailable',sessions:[]};
     const runtime=application.runtime,status:Record<string,unknown>[]=[],conversations=new Set<string|undefined>();

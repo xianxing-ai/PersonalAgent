@@ -20,6 +20,25 @@ import {parseWorkflowSelectionResult} from './workflow-shadow-policy.js';
 import {rankCodingRepairCandidates} from './coding-repair.js';
 export {OwnedWorkflowEngine,workflowJoinReady} from './owned-workflows.js';
 export * from './coding-repair.js';
+export {
+  classifyFailure, decideRepair, appendRepairAttempt, emptyRepairTrace, recordOperatorDecision, replayRepairTrace,
+  summarizeRepairFailure, observationFromHostFailure, writeRetryAllowed, REPAIR_TRACE_VERSION, DEFAULT_REPAIR_MAX_ATTEMPTS,
+  DEFAULT_REPAIR_BASE_DELAY_MS, DEFAULT_REPAIR_MAX_DELAY_MS, DEFAULT_REPAIR_MAX_ELAPSED_MS,
+} from './repair-policy.js';
+export {
+  TASK_FAILURE_REPAIR_CHECKPOINT, TASK_FAILURE_READONLY_RETRY_CHECKPOINT, goalContainsWriteIntent,
+  planRuntimeTaskFailure, confirmF13HostRecovery, applyRepairOperatorChoice,
+  repairCardView, attachRepairTraceToReplay,
+} from './task-failure-repair.js';
+export type {
+  RuntimeTaskFailureNotice, TaskFailureRepairRecord, TaskFailureReadonlyRetryBinding, HostRecoveryReceipt,
+  RepairOperatorResult, RepairCardView, RepairReplayAttachment, TaskFailureEffect, HostRecoveryState,
+} from './task-failure-repair.js';
+export type {
+  FailureClass, FailureSignal, RepairAlternatives, RepairAttempt, RepairDecision, RepairEffect, RepairFailureSummary,
+  RepairObservation, RepairPolicyOptions, RepairReplay, RepairStrategy, RepairTrace, RepairWriteFacts, RepairAttemptResult,
+  RepairRisk, WriteStatus,
+} from './repair-policy.js';
 export * from './harness-candidates.js';
 export * from './f20-worker-trust.js';
 export * from './f14-native-observation.js';
@@ -64,6 +83,8 @@ export type {
   RealCloudEvidence,
   PlanDeploymentAcceptanceOptions,
 } from './deployment-readback-plan.js';
+export {createUsageBudget, cheaperModel, estimateModelYuan, estimateCloudYuan, CLOUD_YUAN_PER_MINUTE, USAGE_BUDGET_APPROACH_RATIO} from './usage-budget.js';
+export type {UsageBudget, UsageBudgetPolicy, UsageBudgetSnapshot, UsageBudgetStore, UsageLedgerEntry, UsageOrigin, UsageBudgetAction, UsageDecision, UsageNotice} from './usage-budget.js';
 
 export type AgentRole = 'fast' | 'world' | 'plan' | 'review';
 export interface AgentInvocation {query: string; deadline: string; signal: AbortSignal; sessionId: string; requestId: string;executionModel?:ExecutionModelSelection}

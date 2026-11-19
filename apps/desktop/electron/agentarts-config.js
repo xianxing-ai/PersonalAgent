@@ -65,7 +65,7 @@ function validate(value) {
 }
 
 /** Host-only storage; snapshots never return either credential value. */
-export function createAgentArtsConfig({userData,safeStorage,environment=process.env,fetchImpl=globalThis.fetch}) {
+export function createAgentArtsConfig({userData,safeStorage,environment=process.env,fetchImpl=globalThis.fetch,onCloudRun}) {
   const file=path.join(userData,'agentarts-config.json');
   let saved,failure='',configurationRef=randomUUID(),egressHost;
   const defaults={gatewayUrl:environment.PA_AGENTARTS_GATEWAY_URL??'',runtimeName:environment.PA_AGENTARTS_RUNTIME_NAME??''};
@@ -121,7 +121,7 @@ export function createAgentArtsConfig({userData,safeStorage,environment=process.
     transportConfig(binding) {
       const initial=currentTransport();
       // Keep the HTTPS destination guard even without WSS options.
-      return createAgentArtsTransportConfig({binding,fetchImpl,environment:effectiveEnvironment(),transportPreferences:readTransportPreferences(),
+      return createAgentArtsTransportConfig({binding,fetchImpl,environment:effectiveEnvironment(),transportPreferences:readTransportPreferences(),onCloudRun,
         preparePayload:async scope=>{
           const host=egressHost,reference=configurationRef;
           if(!host)throw Object.assign(Error('本机出机门禁尚未装配'),{code:'UNSUPPORTED_CAPABILITY'});

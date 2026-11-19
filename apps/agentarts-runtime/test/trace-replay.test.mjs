@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {replayFrozenWorkflowTrace,workflowTraceDigest} from '../src/trace-replay.mjs';
+import {planRuntimeTaskFailure} from '@personal-agent/agentarts';
 import {createWorkflowShadowController,signWorkflowShadowRequest,verifyWorkflowShadowResponse} from '../src/shadow-controller.mjs';
 import {createAgentServer} from '../src/server.mjs';
 const receiptSecret='explicit-public-frozen-trace-secret-123456';
@@ -29,13 +30,12 @@ test('exact historical read returns original record/result/Evidence without new 
   assert.equal(result.currentResultValidity,'not_independently_verified');assert.equal(result.counterfactualComparison,'unknown');
 });
 test('actual failed and unknown history stay failed/unknown for debugging',()=>{
-  const failed=record({recordId:'original-failed',toolName:'fixture.failed',state:'failed',result:{error:'observed failure'}});
-  const unknown=record({recordId:'original-unknown',toolName:'fixture.unknown',state:'unknown',result:{reason:'original readback unresolved'}});
+  const failed=record({recordId:'original-failed',observedAt:new Date(Date.now()-4000).toISOString(),toolName:'fixture.failed',state:'failed',result:{error:'observed failure'}});
+  const unknown=record({recordId:'original-unknown',observedAt:new Date(Date.now()-3000).toISOString(),toolName:'fixture.unknown',state:'unknown',result:{reason:'original readback unresolved'}});
   const result=replay(frozen([failed,unknown],[action({actionId:'failed',toolName:'fixture.failed'}),action({actionId:'unknown',toolName:'fixture.unknown'})]));
   assert.equal(result.actions[0].state,'historical_failed');assert.equal(result.actions[0].historicalState,'failed');
   assert.equal(result.actions[1].state,'historical_unknown');assert.equal('result' in result.actions[1],false);assert.ok(result.actions[1].recordedResult);
 });
-
 test('a different step forks the trace and cannot reuse later matching historical reads',()=>{
   const first=record({recordId:'first',observedAt:new Date(Date.now()-4000).toISOString()});
   const second=record({recordId:'second',observedAt:new Date(Date.now()-3000).toISOString(),arguments:{path:'later.txt'},result:{content:'future result'}});
@@ -44,6 +44,16 @@ test('a different step forks the trace and cannot reuse later matching historica
   assert.deepEqual(result.actions.map(item=>item.reason),['trace_fork','after_trace_fork']);
   for(const item of result.actions){assert.equal(item.state,'counterfactual_unknown');assert.equal('result' in item,false);assert.deepEqual(item.originalRecordIds,[]);}
   assert.equal(result.actualToolCalls,0);
+});
+test('different calls at the same timestamp cannot establish their historical order',()=>{
+  const observedAt=new Date(Date.now()-3000).toISOString();
+  const first=record({recordId:'first',observedAt});
+  const second=record({recordId:'second',observedAt,arguments:{path:'later.txt'},result:{content:'later'}});
+  for(const records of [[first,second],[second,first]]){
+    const result=replay(frozen(records,[action()]));
+    assert.equal(result.actions[0].state,'counterfactual_unknown');
+    assert.equal('result' in result.actions[0],false);
+  }
 });
 test('writes are timeline-only; new candidates and missing execution Evidence remain unknown',()=>{
   const write=record({toolName:'workspace.write',effect:'write'});
@@ -73,6 +83,15 @@ test('identical lookup key with different historical result/state is ambiguous, 
   const original=record(),changed=record({recordId:'second-original-record',result:{content:'different historical result'}});
   assert.throws(()=>replay(frozen([original,changed])),{code:'REVISION_CONFLICT'});
   assert.throws(()=>replay(frozen([original,record({recordId:'another-record',state:'failed'})])),{code:'REVISION_CONFLICT'});
+});
+test('a repair trace is shown with the frozen timeline and is not executed',()=>{
+  const repair=planRuntimeTaskFailure({taskId:'task-1',effect:'read',outcome:'failed',errorCode:'TIMEOUT',occurredAt:new Date(Date.now()-2000).toISOString(),evidenceRefs:['read-1']});
+  const result=replayFrozenWorkflowTrace({...frozen(),repairTrace:repair.trace},active());
+  assert.equal(result.actualToolCalls,0);assert.equal(result.actualModelCalls,0);
+  assert.equal(result.timeline.at(-1).kind,'repair_decision');
+  assert.equal(result.timeline.at(-1).executedDuringReplay,false);
+  assert.equal(result.repairSummary.sideEffectsEmitted,0);
+  assert.equal(replayFrozenWorkflowTrace(frozen(),active()).repairSummary,undefined);
 });
 test('original deadline and cancellation are used without renewing replay lifetime',()=>{
   const input=frozen();assert.throws(()=>replayFrozenWorkflowTrace(input,{...active(),deadline:'2025-01-01T00:00:00Z'}),{code:'TIMEOUT'});
