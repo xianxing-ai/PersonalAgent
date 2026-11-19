@@ -3,6 +3,17 @@
 <!-- current-design-20261013 -->
 > 本文按所记版本阅读，API/阶段/验收事实保留。当前依据：[完整主架构](../../design/workflow-architecture-20261013/DESIGN.md) · [28功能流程](../../design/workflow-architecture-20261013/WORKFLOWS.md) · [连通图](../../design/workflow-architecture-20261013/index.html) · [接口状态](../../interfaces/CURRENT_INTERFACE_CATALOG.md) · [协作规则](../../../CONTRIBUTING.md)。当前实验为本机Laya有限候选判断，资格不足升级原受信teacher，国内执行模型经AgentArts调用；自有ARM64镜像串行编排，架构未最终定型。历史部署方案不覆盖当前决定，模板数量不等于业务验收；旧双人本机阅读不作为现行要求。设计不等于实现；非作者有效Approve和真实检查仍须满足。
 
+## 2026-11-19 多赛事材料口径与主线源码映射更新
+
+本节由 `2511375597-lab` 基于 `main@ac68fbf9` 只读核对仓库现状，**未重新访问赛事官网或账号系统，不修改下文既有官方截止日期或历史 403 失败记录**；用于修正下文 2026-10-07 段落中已过时的源码位置描述（如当时记载“`packages/agentarts` 尚不存在”“没有观测管理客户端”），并明确多赛事复用同一代码库时的材料与证据边界：
+
+1. **源码目录现行映射（替代 10-07 规划状态描述）**：
+   - 编排与工作流包：`packages/agentarts/`（已合入 28 图工作流清单、观测签名与离线校验）、`apps/agentarts-runtime/`（自有高代码容器运行时与 WSS/HTTPS 入口）、`packages/coordination/`（云端调用适配与状态协调）；
+   - 桌面端与观测配置：`apps/desktop/electron/agentarts-config.js`、`agentarts-observation-config.js`、`image-workflow-catalog.js` 以及前端 [结构对照文档](../../../apps/desktop/docs/FRONTEND_STRUCTURE_20261116.md)。
+2. **多赛事材料复用与严格隔离原则**：
+   - **华为 ICT 创新赛·赛题 2**：仍须严格按 `huawei_ict_agentarts` 口径取证，证明云端平台真实承担智能体构建、编排、部署与评估，并附精确部署版本与平台 Trace 读回；禁止用本地 Fake、离线脚本或前端 UI 演示冒充平台验收。
+   - **其他综合 AI / 软件创新赛事**：对外主展示聚焦个人认知智能体架构、端云协同混合编排、零信任本地 Runtime/Policy/Evidence 闭环、多模态交互体验与可复现桌面 Demo（与根 [README](../../../README.md) 现行通用表述对齐），但各赛事提交材料必须如实标注“合成验证 / 本地可信执行 / 真实云端实测”三层边界，不得夸大未验证项。
+
 ## 2026-10-13 研究更新入口
 
 当前自有镜像能力与证据分层见 [自有镜像研究](2026-owned-image-research.md)，
