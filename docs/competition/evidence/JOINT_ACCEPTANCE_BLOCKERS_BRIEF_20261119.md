@@ -2,7 +2,7 @@
 
 > 目标 Profile：`huawei_ict_agentarts` · 主线基线：`f33ef383` · 分工依据：`docs/MODULE_ASSIGNMENTS.md`（已恢复四人按模块分工）
 >
-> 详细任务包、文件线索、依赖与验收门槛见：[联合验收卡顿项与可用化分工清单](JOINT_ACCEPTANCE_TASK_ASSIGNMENTS_20261119.md) · 实测依据见：[真机与 AgentArts 联合验收报告](JOINT_ACCEPTANCE_REPORT_20261119.md)。
+> 详细任务包、文件线索、依赖与验收门槛见：[联合验收卡顿项与可用化分工清单](JOINT_ACCEPTANCE_TASK_ASSIGNMENTS_20261119.md) · **28 图逐图与 PR #531 未完成项专项分工见**：[28 图与 PR #531 四人分工清单](IMAGE28_AND_PR531_TASK_ASSIGNMENTS_20261119.md) · 实测依据见：[真机与 AgentArts 联合验收报告](JOINT_ACCEPTANCE_REPORT_20261119.md)。
 >
 > **状态说明**：本简报与清单对应的 PR 为 **Draft（未完成前禁止合并）**，用于统筹四位协作者将当前模块推进到“实际能用可用”。**MOD-19（第 6、7 项打包与安装）继续暂停**，**MOD-26 社交扩展未选平台继续不自动开工**。
 
@@ -53,9 +53,27 @@
 
 | 协作者 | 任务包范围 | Wave 1 立即并行开工项（无上游阻塞） |
 | --- | --- | --- |
-| **goo122** | `G-01`～`G-06`（6 项） | `G-01`（#658 围栏失配 + 插话 `REVISION_CONFLICT`）→ `G-02`（#11 `system_observation` 出站）→ `G-03`（#22 自主来源透传） |
-| **2511375597-lab** | `L-01`～`L-09`（9 项） | `L-01`（#15 云 Skill 选择器）→ `L-02`（#21 简报审批跳转）→ `L-03`（#24 看板装配顺序）→ `L-04`（#22 排程来源 + WSS 记账）→ `L-06`（#649/#669/#666） |
-| **Potatos498** | `P-01`～`P-06`（6 项） | `P-01`（#26 CalDAV `RESULT_UNKNOWN` 回归）→ `P-02`（#24 日历 `sessionAllowed` 与邮件看板会话 scope） |
-| **zemeng5208** | `Z-01`～`Z-10`（10 项） | `Z-04`（#02 记事本 UIA 诊断修复）→ `Z-05`（#04 悬浮球点击穿透）→ `Z-01`（5 项失败绑定 + 最新 HEAD ARM64 镜像发布）→ `Z-03`（Trace 匹配修复 + 评估 0 分排查） |
+| **goo122** | `G-01`～`G-06` + `S531-G1`～`G4` | `G-01`（#658 围栏失配 + 插话 `REVISION_CONFLICT`）→ `G-02`（#11 `system_observation` 出站）→ `G-03`（#22 自主来源透传）→ `#641` base 切回 `main` 与 `#645` 推进 |
+| **2511375597-lab** | `L-01`～`L-09` + `S531-L1`～`L2` | `L-01`（#15 云 Skill 选择器）→ `L-02`（#21 简报审批跳转）→ `L-03`（#24 看板装配顺序）→ `L-04`（#22 排程来源 + WSS 记账）→ `S531-L1`（解除 `image-workflow-catalog.js` 单入口硬编码）+ 审并 `#672/#673/#674` |
+| **Potatos498** | `P-01`～`P-06` + `S531-P1`～`P2` | `P-01`（#26 CalDAV `RESULT_UNKNOWN` 回归）→ `P-02`（#24 日历 `sessionAllowed` 与邮件看板会话 scope）→ 推动 **#618**（10 项业务/开发 host）合入 `main` 并补生产调用方接线 |
+| **zemeng5208** | `Z-01`～`Z-10` + `S531-Z1`～`Z3` | `Z-04`（#02 记事本 UIA 诊断修复）→ `Z-05`（#04 悬浮球点击穿透）→ `S531-Z1` / `Z-01`（收敛镜像漂移 + 5 项失败绑定 + 最新 `main` ARM64 镜像发布 + 轮换 WSS 令牌）→ `Z-03`（Trace 匹配修复 + 评估 0 分排查） |
 
 > **共享文件串行约定**：`apps/desktop/electron/main.js` 与 `apps/desktop/src/**` 组合接线由 `2511375597-lab` 串行收口；`apps/runtime/src/application/` 与 `packages/contracts/` 由 `goo122` 把关兼容；`apps/agentarts-runtime/` 与云端 `Latest` 切换由 `zemeng5208` 统一发版。
+
+---
+
+## 三、28 图 0/28 根因、开放 PR 与 PR #531 未完成项速览
+
+1. **为什么 28 图目前是 0/28 可运行**：
+   - `main` 的 `apps/desktop/electron/image-workflow-catalog.js` 仅硬编码声明了 `F15` 入口，其余 27 图无 `conversation_entry`；
+   - `origin/main` 的 `graph-capability-gaps.json` 仍有 **92 项能力缺口**（共声明 109 项、主线仅提供 23 项）；
+   - 大量已写好的 `f01-*.js`～`f28-*.js` 与 10 项业务 host 仍滞留在未合并的 **#531（CONFLICTING）/ #641（延续基线）/ #618（Potatos498）** 中；
+   - 线上最新镜像 `f26-644c7416f5b0e98d`（源码 `644c7416`）出自早期 `#531` 分支，既不是 `main` 祖先也不是 `#531` 当前 head 祖先，与 `main` 存在双向模板/服务端代码漂移（`644c7416` 有 `evaluation-controller.mjs` 和新版 F06/F08/F11，但 F10/F20 模板能力名落后于 `main`）。
+2. **开放 PR 优先清仓**：先审并 `#672/#673/#674`（前端/MOD-10）、`#618`（10 项业务/开发 host）与 `#645`（Windows Job 完整性）；`#615` 随新镜像审并，`#614`（破坏性内层鉴权）待平台转发核实后解冻；`#531` 严禁整包硬合，由 `goo122` 将 `#641` base 切回 `main` 后按四人模块拆图回主线。
+3. **#531 / #641 剩余未完成项归属**：
+   - **`goo122`（`S531-G1`～`G4`）**：`#641` 切回 `main`、#535/#547 控制闸门与无人值守 checkpoint、**F03 CAS 崩溃原子回执恢复**、F01/F04/F05/F10/F16–F19/F21/F23–F25/F27（含适配 `#664` 交织顺序）Runtime 底座切片；
+   - **`Potatos498`（`S531-P1`～`P2`）**：合入 `#618` 并补齐 F06/F07（修 `#648` 空窗口账号绑定）/F08（真发送与 UIDPLUS）/F09/F11/F12 真实账号/设备读回与 F16/F19 修复链；
+   - **`2511375597-lab`（`S531-L1`～`L2`）**：解除 `image-workflow-catalog.js` 单入口硬编码、分批条件注入 `f01-f28` 到 `workflow-graph-composition.js`、`#531` 补问卡/审核/禁止项/F20 UI 切片；
+   - **`zemeng5208`（`S531-Z1`～`Z3`）**：收口镜像双向漂移并从 `main` 发布新版 ARM64 镜像（F26）与轮换泄露凭据、补齐 F22 非回放 shadow 模式与 F23 真实平台评估、合回 `#543` 云持续宿主并完成真关机续跑、完成 F15 独立真人 Ed25519 签名与 WinForms 真机目视、F18/F19 真 GitHub 读回、F20 worker 信任闭环与 F02/F13/F14/MOD-16/MOD-17 真机验收。
+
+> 完整的 F01–F28 逐图分工表与四步解锁路线见 [IMAGE28_AND_PR531_TASK_ASSIGNMENTS_20261119.md](IMAGE28_AND_PR531_TASK_ASSIGNMENTS_20261119.md)。

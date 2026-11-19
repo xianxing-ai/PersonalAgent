@@ -1,6 +1,6 @@
 # PersonalAgent 联合验收卡顿项与可用化分工清单（2026-11-19）
 
-> 依据：[卡顿项与分工简报](JOINT_ACCEPTANCE_BLOCKERS_BRIEF_20261119.md) · [真机与 AgentArts 联合验收报告](JOINT_ACCEPTANCE_REPORT_20261119.md) · 现行分工基线 `docs/MODULE_ASSIGNMENTS.md`（主线 `f33ef383`，2026-10-31 责任分区修订，已恢复四人按模块分工） · `docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md`（另参考测试机原始记录 `JOINT_CHECKLIST_STATUS_20261112.md` 与 `JOINT_LIVE_PREPARATION_20261111.md`）。
+> 依据：[卡顿项与分工简报](JOINT_ACCEPTANCE_BLOCKERS_BRIEF_20261119.md) · **[28 图逐图与 PR #531 未完成项分工清单](IMAGE28_AND_PR531_TASK_ASSIGNMENTS_20261119.md)** · [真机与 AgentArts 联合验收报告](JOINT_ACCEPTANCE_REPORT_20261119.md) · 现行分工基线 `docs/MODULE_ASSIGNMENTS.md`（主线 `f33ef383`，2026-10-31 责任分区修订，已恢复四人按模块分工） · `docs/competition/evidence/IMAGE28_COLLABORATOR_OPEN_WORK_20261031.md`（另参考测试机原始记录 `JOINT_CHECKLIST_STATUS_20261112.md` 与 `JOINT_LIVE_PREPARATION_20261111.md`）。
 >
 > **目标 Profile**：`huawei_ict_agentarts`。本文件将 2026-11-19 联合验收（原清单 27 项 + 新合并 PR 增量 7 组，共 34 项）中尚未“实际能用可用”的卡顿项按现有四人分工拆解为可独立推进、可验收的交付工作包。本文件不改变 `MODULE_ASSIGNMENTS.md` 长期模块归属，不替代技术 CI 与非作者审查，也不把任务计划记作已完成；**MOD-19（第 6、7 项打包与安装）按安排继续暂停**，**MOD-26 社交扩展未选平台继续不自动开工**。
 
@@ -192,4 +192,4 @@
 | #657/#659/#666 | 偏好、默认权限与天气 | 主路径过（出站/异常缺口） | G-05 / P-05 / L-06 | goo122、Potatos498 | 2511375597-lab |
 | #658 | 流式回答、独立助手与插话 | 围栏失配 + 插话修订冲突 | G-01 | goo122 | zemeng5208、2511375597-lab |
 | #669 | 桌面宠物与任务状态 | 绘制过（子任务审批态漏映射） | L-06 | 2511375597-lab | goo122 |
-| #671 | 28 图、观测设置与真实答案 | 目录过（28 图与观测不可用） | Z-10 / Z-03 / G-06 / P-06 / L-08 | zemeng5208（统筹） | 全员按图分工 |
+| #671 | 28 图、观测设置与真实答案 | 目录过（28 图 0/28 可运行与观测不可用） | Z-10 / Z-03 / G-06 / P-06 / L-08 + `S531-*`（详见 [28 图与 #531 分工清单](IMAGE28_AND_PR531_TASK_ASSIGNMENTS_20261119.md)） | zemeng5208（统筹） | 全员按图分工 |
