@@ -3,7 +3,7 @@ import {isAbsolute, resolve, relative, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {ProtocolError} from '@personal-agent/contracts';
 
-/** Deterministic failure locator for `node --test` output; no model, no side effects. */
+/** Deterministic failure locator for Node test/check output; no model, no side effects. */
 export interface TestFailureFrame {
   file: string;
   line: number;
@@ -17,7 +17,7 @@ export interface TestFailure {
   error: string;
   frames: TestFailureFrame[];
   timedOut: boolean;
-  reporter: 'spec' | 'tap';
+  reporter: 'spec' | 'tap' | 'node-check';
 }
 
 export interface TestFailureReport {
@@ -52,7 +52,7 @@ const STACK_LOCATION = /^(.+?):(\d+)(?::(\d+))?$/u;
 const MAX_SOURCE_BYTES = 1024 * 1024;
 const INTERNAL = /(^|\/)node:internal\//u;
 const NODE_MODULES = /(^|\/)node_modules\//u;
-const SOURCE_FILE = /\.m?[jt]sx?$/u;
+const SOURCE_FILE = /\.[cm]?[jt]sx?$/u;
 
 function invalid(message: string): never { throw new ProtocolError('INVALID_ARGUMENT', message); }
 
@@ -199,6 +199,19 @@ function parseTap(output: string, root: string): RawFailure[] {
   return failures.filter(failure => !failure.container);
 }
 
+/** Original fixed node --check diagnostics. Require its location, error and Node
+ * check_syntax frame; arbitrary stderr or a lone error title is not a test report. */
+function parseNodeCheck(output:string,root:string):RawFailure[] {
+  if(!/^\s+at (?:\S+ )?\(?node:internal\/main\/check_syntax:\d+:\d+\)?\s*$/mu.test(output)
+    ||!/^Node\.js v\d+\.\d+\.\d+\s*$/mu.test(output))return [];
+  const lines=output.split(/\r?\n/u),index=lines.findIndex(line=>/^SyntaxError: \S/u.test(line));
+  if(index<0)return [];
+  const location=lines.slice(Math.max(0,index-5),index).find(line=>STACK_LOCATION.test(line)&&extractFrames([line],root).length===1);
+  if(!location)return [];
+  const frames=extractFrames([location],root);
+  return [{name:'Node syntax check: '+frames[0]!.file,errorLines:[lines[index]!],frames,timedOut:false}];
+}
+
 function readSnippet(file: string, line: number, context: number, root: string, allowedPaths: readonly string[]): string | undefined {
   let fd: number | undefined;
   try {
@@ -259,7 +272,9 @@ export function locateTestFailures(output: string, options: TestLocateOptions = 
   let snippetReads = 0;
   const root = realpathSync.native(options.root ?? process.cwd());
   const isTap = /^TAP version/mu.test(output) || /^not ok /mu.test(output);
-  const parsed = isTap ? parseTap(output, root) : parseSpec(output, root);
+  const testParsed = isTap ? parseTap(output, root) : parseSpec(output, root);
+  const nodeCheck = !isTap && testParsed.length===0 ? parseNodeCheck(output,root) : [];
+  const parsed = nodeCheck.length ? nodeCheck : testParsed;
   const seen = new Set<string>();
   const failures: TestFailure[] = parsed
     .filter(f => f.name.length > 0 && f.name.length <= 4096)
@@ -269,7 +284,7 @@ export function locateTestFailures(output: string, options: TestLocateOptions = 
       name: f.name,
       error: f.errorLines.join('\n').slice(0, 2000) || '(no error message captured)',
       timedOut: f.timedOut,
-      reporter: isTap ? 'tap' as const : 'spec' as const,
+      reporter: isTap ? 'tap' as const : nodeCheck.length ? 'node-check' as const : 'spec' as const,
       frames: f.frames.map((frame, index): TestFailureFrame => {
         // Being inside the workspace root is not read permission: only trusted
         // prefixes open files, within one whole-report read budget.

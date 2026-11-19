@@ -21,7 +21,7 @@ test('admin task monitor reads steps and Evidence counts without exposing refs o
     evidenceRefs: ['secret-ref'], resultSummary: '等待用户授权'}]}, escape);
   assert.match(html, /等待授权/);
   assert.match(html, /class="task-record-title">总结 &lt;script&gt;报告&lt;\/script&gt;/);
-  assert.match(html, /class="task-record-id">task-1/);
+  assert.doesNotMatch(html, /class="task-record-id"/);
   assert.doesNotMatch(html, /<script>/);
   assert.match(html, /步骤 1 项 · Evidence 引用 1 条/);
   assert.match(html, /&lt;private&gt;/);

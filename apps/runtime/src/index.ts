@@ -12,6 +12,14 @@ import type {AtomicCoordinationStorePort} from '@personal-agent/goals/store';
 import {bindFactProjectionStore} from './fact-projection-store.js';
 import type {FactProjectionStore} from './fact-projection-store.js';
 import {bindHostStateStore} from './host-state-store.js';
+import {activityEvent, applyTranscript, emptyTranscript, parseTranscript, TRANSCRIPT_CHECKPOINT, INJECTION_CHECKPOINT} from './task-activity.js';
+import {ASSISTANT_BUILTIN_LOCKED, ASSISTANT_BUSY, ASSISTANT_LIMIT_REACHED, MAX_USER_ASSISTANTS, assistantConversationId, assistantDisplayName, assistantFromRow, assistantInstructions, optionalAssistantModelId, DEFAULT_ASSISTANTS} from './assistant-roster.js';
+import type {AssistantMail, AssistantRecord} from './assistant-roster.js';
+export type {AssistantMail, AssistantRecord} from './assistant-roster.js';
+export {DEFAULT_ASSISTANTS, assistantConversationId} from './assistant-roster.js';
+import type {TaskActivityEvent, TaskActivityInput, TaskTranscript, UserInjection} from './task-activity.js';
+export type {TaskActivityEvent, TaskActivityInput, TaskTranscript, TranscriptSegment, UserInjection} from './task-activity.js';
+export {publicFailureMessage, redactSecrets, summarizeValue} from './task-activity.js';
 export type {TrustedHostStateStore} from './host-state-store.js';
 export {readRuntimeBuildIdentity} from './build-identity.js';
 export {createRuntimeStartupRecovery} from './application/startup-recovery.js';
@@ -127,6 +135,10 @@ export interface WorkerContext {
   saveCheckpoint(key: string, value: unknown): void;
   loadCheckpoint(key: string): unknown;
   reportProgress(progress: ProgressInput): TaskSnapshot;
+  /** Live thinking, tool and answer deltas. Optional so older workers keep compiling. */
+  noteActivity?(activity: TaskActivityInput): void;
+  /** Messages queued while this task is running. Drained before the next model or cloud step. */
+  takeUserInjections?(): readonly {text: string; source: UserInjection['source']}[];
 }
 
 export interface WorkerResult {
@@ -170,13 +182,34 @@ export interface RuntimeToolInvocation {
 
 export interface RuntimeToolGateway {
   list(): ToolDescriptor[];
+  listPublic?(): ToolDescriptor[];
   invoke(invocation: RuntimeToolInvocation): Promise<unknown>;
+}
+
+/** Plain failure facts for a trusted host. No goal text, arguments or credentials. */
+export interface TaskFailureNotice {
+  taskId: string;
+  revision: number;
+  errorCode?: string;
+  effect: 'read' | 'write' | 'none';
+  outcome: 'failed' | 'unknown';
+  risk?: 'ordinary' | 'high';
+  reconciliationOutcome?: 'applied' | 'not_applied' | 'unknown';
+  priorSideEffects?: boolean;
+  evidenceRefs: readonly string[];
+  occurredAt: string;
 }
 
 export interface RuntimeOptions {
   now?: () => Date;
   /** Trusted Application lifecycle notification, after the expiry transaction commits. */
   onApprovalsExpired?: (taskIds: readonly string[]) => void;
+  /**
+   * Trusted composition only. Invoked after a failure commit is still visible.
+   * Must not reopen the task or grant approval. Exceptions are ignored.
+   */
+  onTaskFailed?: (notice: TaskFailureNotice) => void;
+  onTaskTerminal?: (taskId: string) => void;
   idFactory?: () => string;
   toolGateway?: RuntimeToolGateway;
   createToolGateway?: (policy: AuthorizationPolicy) => RuntimeToolGateway;
@@ -243,6 +276,10 @@ interface ScheduleRow {
   task_id: string | null;
 }
 
+export const OPERATOR_BRAKE_CHECKPOINT = 'operator-brake:v1';
+const OPERATOR_BRAKE_NAMESPACE = 'operator-brake';
+const OPERATOR_BRAKE_MESSAGE = '总暂停中，新任务不会启动';
+const operatorHoldStates = new Set<TaskState>(['planning', 'running', 'waiting_external', 'verifying']);
 const terminal = new Set<TaskState>(['succeeded', 'failed', 'cancelled']);
 const baseCapabilities: Operation[] = ['system.handshake', 'task.submit', 'task.get', 'task.list', 'conversation.list', 'approval.list', 'task.cancel', 'event.subscribe'];
 const interrupted = ['planning', 'running', 'waiting_external', 'verifying', 'cancelling'] as const;
@@ -322,6 +359,21 @@ export const RUNTIME_MIGRATIONS: readonly Migration[] = [{
 }, {
   version:12,
   sql:"CREATE INDEX task_checkpoints_parent ON task_checkpoints(checkpoint_key,json_extract(value_json,'$.parentTaskId'),task_id);"
+}, {
+  version: 13,
+  // Assistants are long-lived identities. Their turns remain ordinary tasks; this table does not replace the task store.
+  sql: [
+    "CREATE TABLE assistants (assistant_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL, instructions TEXT NOT NULL, conversation_id TEXT NOT NULL UNIQUE, status TEXT NOT NULL CHECK (status IN ('idle','working','waiting_approval')), active_task_id TEXT, unread_count INTEGER NOT NULL DEFAULT 0 CHECK (unread_count >= 0), last_summary TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;",
+    'CREATE TABLE assistant_mail (mail_id TEXT PRIMARY KEY, from_assistant_id TEXT NOT NULL, to_assistant_id TEXT NOT NULL, body TEXT NOT NULL, hop INTEGER NOT NULL CHECK (hop >= 0), created_at TEXT NOT NULL, consumed_task_id TEXT) STRICT;',
+    'CREATE INDEX assistant_mail_to ON assistant_mail(to_assistant_id, created_at);'
+  ].join('\n')
+}, {
+  version: 14,
+  // User-created assistants share the same roster. Origin and model are metadata; turns stay ordinary tasks.
+  sql: [
+    "ALTER TABLE assistants ADD COLUMN origin TEXT NOT NULL DEFAULT 'builtin';",
+    'ALTER TABLE assistants ADD COLUMN model_id TEXT;'
+  ].join('\n')
 }];
 
 export class RuntimeError extends Error {
@@ -404,14 +456,127 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   private readonly active = new Map<string, AbortController>();
   private readonly runtimeToolTracking = new Set<string>();
   private readonly activeToolExecutions = new Map<string,string>();
+  private activitySequence = 0;
+  private readonly activityListeners = new Set<(event: TaskActivityEvent) => void>();
+  private readonly transcripts = new Map<string, TaskTranscript>();
+  private readonly unflushedDeltas = new Map<string, number>();
   private approvalExpiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly onApprovalsExpired: RuntimeOptions['onApprovalsExpired'];
+  private readonly onTaskFailed: RuntimeOptions['onTaskFailed'];
+  private readonly onTaskTerminal: RuntimeOptions['onTaskTerminal'];
   private closed = false;
 
   /** Trusted host handoff observation only; Policy remains the authorization source. */
   isToolExecutionActive(record:Pick<ToolExecutionRecord,'taskId'|'evidenceId'|'inputDigest'>):boolean {
     const current=this.activeToolExecutions.get(JSON.stringify([record.taskId,record.evidenceId]));
     return current!==undefined && current===record.inputDigest;
+  }
+
+  /** Process-local workers. The desktop brake aborts these before it returns. */
+  activeTaskIds(): string[] {return [...this.active.keys()];}
+
+  private operatorBrakeStore() {return this.bindTrustedHostState(OPERATOR_BRAKE_NAMESPACE);}
+
+  private readOperatorBrake(): {paused?: boolean} | undefined {
+    const value = this.operatorBrakeStore().get('record');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as {paused?: boolean} : undefined;
+  }
+
+  /** Durable across process restart. The desktop brake is the writer of the full record. */
+  isOperatorPaused(): boolean {return this.readOperatorBrake()?.paused === true;}
+
+  /** Trusted host only. Merges the flag into the existing brake record. */
+  setOperatorPause(paused: boolean): void {
+    if (typeof paused !== 'boolean') throw new RuntimeError('INVALID_ARGUMENT', 'Operator pause must be boolean');
+    const current = this.readOperatorBrake() ?? {};
+    this.operatorBrakeStore().set('record', {...current, version: 1, paused, holds: Array.isArray((current as {holds?: unknown}).holds) ? (current as {holds: unknown[]}).holds : []});
+  }
+
+  /**
+   * Stop one live task without making cancellation terminal.
+   * The existing task checkpoint is kept, and operator-brake:v1 records the hold
+   * so resumeOperatorHold can reopen it. In-flight tool calls see the worker AbortSignal.
+   */
+  holdForOperatorPause(taskId: string): TaskSnapshot {
+    const held = this.transaction(() => {
+      const task = this.getTask(taskId);
+      if (terminal.has(task.state) || task.cancelRequested || task.state === 'cancelling') return task;
+      const cursor = this.loadCheckpoint(taskId, 'competition-loop') ?? this.loadCheckpoint(taskId, 'agent-loop');
+      const existing = this.loadCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT) as {
+        version?: string; taskId?: string; originalState?: TaskState; originalRevision?: number; heldAt?: string; cursor?: unknown;
+      } | undefined;
+      if (!operatorHoldStates.has(task.state)) {
+        if (task.state === 'waiting_reconciliation' && existing?.version === '1.0' && existing.taskId === taskId) {
+          if (cursor !== undefined && existing.cursor === undefined) {
+            this.saveCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT, {...existing, cursor});
+          }
+        }
+        return this.getTask(taskId);
+      }
+      this.saveCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT, {
+        version: '1.0', taskId, originalState: task.state, originalRevision: task.revision, heldAt: this.timestamp(),
+        ...(cursor === undefined ? {} : {cursor}),
+      });
+      return this.updateTask(taskId, 'waiting_reconciliation', {
+        error: {code: 'RESULT_UNKNOWN', message: 'Operator pause held the task at its checkpoint', retryable: true},
+      }, true);
+    });
+    this.active.get(taskId)?.abort();
+    return structuredClone(held);
+  }
+
+  /** Tasks parked by the operator brake and still waiting to continue. */
+  listOperatorHolds(): TaskSnapshot[] {
+    const items: TaskSnapshot[] = [];
+    let before: number | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const result = this.listTaskCheckpointPage({
+        limit: 100, states: ['waiting_reconciliation'],
+        ...(before === undefined ? {} : {beforeSequence: before}),
+      }, [OPERATOR_BRAKE_CHECKPOINT]);
+      items.push(...result.items.filter(task => task.cancelRequested !== true
+        && this.loadCheckpoint(task.taskId, OPERATOR_BRAKE_CHECKPOINT) !== undefined));
+      if (result.nextBeforeSequence === undefined) break;
+      before = result.nextBeforeSequence;
+    }
+    return items;
+  }
+
+  /**
+   * Reopen a held task onto the existing resume path.
+   * Confirmed reads stay. A read aborted by this pause can continue.
+   * An in-flight write stays in reconciliation and is not replayed.
+   */
+  resumeOperatorHold(taskId: string): TaskSnapshot {
+    return structuredClone(this.transaction(() => {
+      const task = this.getTask(taskId);
+      const marker = this.loadCheckpoint(taskId, OPERATOR_BRAKE_CHECKPOINT) as {version?: string; taskId?: string} | undefined;
+      if (!marker || marker.version !== '1.0' || marker.taskId !== taskId) {
+        throw new RuntimeError('NOT_FOUND', 'Operator pause checkpoint is missing');
+      }
+      if (this.isOperatorPaused() || task.cancelRequested || task.state !== 'waiting_reconciliation' || this.active.has(taskId)) {
+        throw new RuntimeError('REVISION_CONFLICT', 'Paused task cannot resume');
+      }
+      const deadline = this.loadCheckpoint(taskId, 'application-deadline');
+      if (typeof deadline === 'string' && Date.parse(deadline) <= this.now().getTime()) {
+        throw new RuntimeError('TIMEOUT', 'Original task deadline cannot be extended for continuation');
+      }
+      if (this.loadCheckpoint(taskId, 'competition-cloud-unknown') || this.loadCheckpoint(taskId, 'competition-cloud-inflight')) {
+        throw new RuntimeError('UNAUTHORIZED', 'Cloud result is unknown');
+      }
+      const descriptors = this.toolGateway?.list() ?? [];
+      for (const record of this.readToolExecutions(taskId)) {
+        if (record.state === 'confirmed' && record.executionStarted && record.policyDecision === 'allow'
+          && this.loadCheckpoint(taskId, 'tool-result-' + record.evidenceId) !== undefined) continue;
+        const descriptor = descriptors.find(item => item.name === record.toolName && item.version === record.toolVersion);
+        const read = descriptor?.sideEffect === 'read';
+        const cancelled = record.state === 'failed' && record.errorCode === 'CANCELLED';
+        const abandonedRead = read && record.state === 'started' && !this.isToolExecutionActive(record);
+        if ((read && cancelled) || abandonedRead || (!record.executionStarted && cancelled)) continue;
+        throw new RuntimeError('UNAUTHORIZED', 'In-flight write still needs reconciliation before resume');
+      }
+      return this.updateTask(taskId, 'waiting_approval', {error: null}, false);
+    }));
   }
 
   /** Process-local activity; startup recovery must never adopt a live worker. */
@@ -436,7 +601,12 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.policy = new AuthorizationPolicy(new SqliteAuthorizationStore(this.db));
     this.toolGateway = options.createToolGateway?.(this.policy) ?? options.toolGateway;
     this.onApprovalsExpired = options.onApprovalsExpired;
+    this.onTaskFailed = options.onTaskFailed;
+    this.onTaskTerminal = options.onTaskTerminal;
     this.expirePendingApprovals();
+    if (!this.db.prepare('SELECT 1 FROM assistants LIMIT 1').get()) {
+      this.ensureAssistants();
+    }
   }
 
   /** Trusted host only; provisioning never clears an existing graph. */
@@ -509,6 +679,14 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
 
   listTasks(input: {conversationId?: string; states?: TaskState[]; beforeSequence?: number; snapshotSequence?: number; limit?: number}): Result<'task.list'> {
     return this.selectTaskPage(input);
+  }
+
+  /** Latest task that stored this checkpoint field. Callers still have to check the binding. */
+  findLatestCheckpointValue(checkpointKey: string, jsonField: string, value: string): string | undefined {
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,40}$/.test(jsonField)) throw new RuntimeError('INVALID_ARGUMENT', 'checkpoint field is invalid');
+    const row = this.db.prepare(`SELECT task_id FROM task_checkpoints WHERE checkpoint_key = ? AND json_valid(value_json) AND json_extract(value_json, '$.' || ?) = ? ORDER BY updated_at DESC LIMIT 1`)
+      .get(requireText(checkpointKey, 'checkpoint key'), jsonField, value) as {task_id: string} | undefined;
+    return row?.task_id;
   }
 
   /** Host-only candidate selection. Checkpoint presence is only a query filter; callers must
@@ -758,6 +936,8 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       }
       this.db.prepare('UPDATE tasks SET goal=?,result_summary=NULL,error_json=NULL,steps_json=? WHERE task_id=?')
         .run('[private-derived body erased]','[]',input.taskId);
+      this.transcripts.delete(input.taskId);
+      this.unflushedDeltas.delete(input.taskId);
       const events=this.db.prepare('SELECT sequence,type,payload_json FROM task_events WHERE task_id=?').all(input.taskId) as {sequence:number;type:Event['type'];payload_json:string}[];
       for(const event of events)this.db.prepare('UPDATE task_events SET payload_json=? WHERE sequence=?')
         .run(JSON.stringify(this.redactEventBody(event.type,JSON.parse(event.payload_json))),event.sequence);
@@ -1040,7 +1220,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
         case 'capability.list': {
           if (!this.toolGateway) throw new RuntimeError('UNSUPPORTED_CAPABILITY', 'Tool gateway is not configured');
           const manifests = request.payload.kind === undefined || request.payload.kind === 'tool'
-            ? this.toolGateway.list()
+            ? (this.toolGateway.listPublic?.() ?? this.toolGateway.list())
             : [];
           data = {
             manifests,
@@ -1049,11 +1229,55 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           break;
         }
         case 'tool.invoke': {
+          if (this.isOperatorPaused()) {
+            if (request.taskId) {
+              try {
+                const task = this.getTask(request.taskId);
+                const runId = request.idempotencyKey ?? this.idFactory();
+                const existing = this.db.prepare('SELECT 1 FROM tool_execution_records WHERE evidence_id = ?').get(runId);
+                if (!existing && !terminal.has(task.state)) {
+                  const now = this.timestamp();
+                  this.saveToolExecution({
+                    protocolVersion: PROTOCOL_VERSION,
+                    policyDecision: 'deny',
+                    executionStarted: false,
+                    inputDigest: toolInputDigest(request.taskId, request.payload),
+                    evidenceId: runId,
+                    requestId: request.requestId,
+                    taskId: request.taskId,
+                    toolName: request.payload.toolName,
+                    toolVersion: request.payload.toolVersion,
+                    startedAt: now,
+                    finishedAt: now,
+                    state: 'failed',
+                    errorCode: 'CANCELLED',
+                  });
+                }
+              } catch { /* Task lookup failure still surfaces the pause error below. */ }
+            }
+            throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
+          }
           if (!this.toolGateway) throw new RuntimeError('UNSUPPORTED_CAPABILITY', 'Tool gateway is not configured');
           if (!request.taskId) throw new RuntimeError('INVALID_ARGUMENT', 'tool.invoke requires a taskId');
           const task = this.getTask(request.taskId);
           if (task.state !== 'running') {
             throw new RuntimeError('REVISION_CONFLICT', 'Tools can only be invoked for a running task');
+          }
+          const readonlyRetry = this.loadCheckpoint(request.taskId, 'repair-readonly-retry:v1') as
+            {readOnly?: boolean; toolName?: string; toolVersion?: string} | undefined;
+          if (readonlyRetry?.readOnly === true) {
+            const invokedDescriptor = (this.toolGateway.list() ?? []).find(
+              item => item.name === request.payload.toolName && item.version === request.payload.toolVersion,
+            );
+            if (!invokedDescriptor || invokedDescriptor.sideEffect !== 'read') {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task cannot invoke write tools');
+            }
+            if (typeof readonlyRetry.toolName === 'string' && request.payload.toolName !== readonlyRetry.toolName) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool');
+            }
+            if (typeof readonlyRetry.toolVersion === 'string' && request.payload.toolVersion !== readonlyRetry.toolVersion) {
+              throw new RuntimeError('SCOPE_DENIED', 'Read-only repair retry task is restricted to the original read tool version');
+            }
           }
           const runId = request.idempotencyKey ?? this.idFactory();
           const inputDigest = toolInputDigest(request.taskId, request.payload);
@@ -1168,6 +1392,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       occurredAt,
       payload
     });
+    if ((type === 'task.completed' || type === 'task.failed' || type === 'task.cancelled') && taskId) {
+      try { this.onTaskTerminal?.(taskId); } catch { /* Terminal listener cleanup must not break event persistence. */ }
+    }
     return event;
   }
 
@@ -1184,6 +1411,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
       if (previous.input_json !== inputJson) throw new RuntimeError('REVISION_CONFLICT', 'Idempotency key was reused with different input');
       return taskFromRow(this.taskRow(previous.task_id));
     }
+    if (this.isOperatorPaused()) throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
     const taskId = this.idFactory();
     const updatedAt = this.timestamp();
     this.db.prepare('INSERT INTO tasks (task_id, goal, conversation_id, attachment_refs_json, state, revision, updated_at, steps_json, evidence_refs_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
@@ -1399,7 +1627,48 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     this.emit('task.state_changed', next, taskId);
     const terminalType = state === 'succeeded' ? 'task.completed' : state === 'failed' ? 'task.failed' : state === 'cancelled' ? 'task.cancelled' : undefined;
     if (terminalType) this.emit(terminalType, next, taskId);
+    if (state === 'failed') this.notifyTaskFailed(next);
     return next;
+  }
+
+  private taskFailureNotice(task: TaskSnapshot): TaskFailureNotice {
+    const records = this.readToolExecutions(task.taskId);
+    const last = records[records.length - 1];
+    const tools = this.toolGateway?.list() ?? [];
+    const descriptor = last ? tools.find(tool => tool.name === last.toolName && tool.version === last.toolVersion) : undefined;
+    const side = descriptor?.sideEffect;
+    const effect = side === 'read' ? 'read' : side === 'local_write' || side === 'external_write' ? 'write' : 'none';
+    const priorSideEffects = records.slice(0, -1).some(record => {
+      if (record.executionStarted || record.state === 'confirmed' || record.state === 'unknown') return true;
+      const priorDescriptor = tools.find(tool => tool.name === record.toolName && tool.version === record.toolVersion);
+      return priorDescriptor !== undefined && priorDescriptor.sideEffect !== 'read';
+    });
+    const unknown = task.error?.code === 'RESULT_UNKNOWN' || last?.state === 'unknown' || last?.reconciliationOutcome === 'unknown';
+    return {
+      taskId: task.taskId, revision: task.revision, effect, outcome: unknown ? 'unknown' : 'failed',
+      ...(task.error?.code ? {errorCode: task.error.code} : {}),
+      ...(side === 'external_write' ? {risk: 'high' as const} : {}),
+      ...(last?.reconciliationOutcome ? {reconciliationOutcome: last.reconciliationOutcome} : {}),
+      ...(priorSideEffects ? {priorSideEffects: true} : {}),
+      evidenceRefs: [...task.evidenceRefs], occurredAt: task.updatedAt,
+    };
+  }
+
+  /** After the caller commits. A rolled-back failure is ignored when the task is no longer failed. */
+  private notifyTaskFailed(task: TaskSnapshot): void {
+    if (!this.onTaskFailed) return;
+    let notice: TaskFailureNotice;
+    try { notice = this.taskFailureNotice(task); }
+    catch { return; }
+    queueMicrotask(() => {
+      if (this.closed) return;
+      try {
+        const current = this.getTask(notice.taskId);
+        const stillFailed = current.state === 'failed';
+        if (!stillFailed || current.revision < notice.revision) return;
+        this.onTaskFailed?.(notice);
+      } catch { /* The failure is already durable. */ }
+    });
   }
 
   transitionTask(taskId: string, state: TaskState, patch: TransitionPatch = {}): TaskSnapshot {
@@ -1622,6 +1891,204 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     }));
   }
 
+  subscribeActivity(listener: (event: TaskActivityEvent) => void): () => void {
+    this.activityListeners.add(listener);
+    return () => this.activityListeners.delete(listener);
+  }
+
+  /** Coalesce thinking, tool and answer text. Deltas are pushed live and flushed as one transcript row. */
+  appendActivity(taskId: string, input: TaskActivityInput): TaskActivityEvent {
+    requireText(taskId, 'taskId');
+    requireText(input.stepId, 'stepId');
+    this.getTask(taskId);
+    const event = activityEvent(taskId, ++this.activitySequence, this.timestamp(), input);
+    const current = this.transcripts.get(taskId) ?? parseTranscript(this.loadCheckpoint(taskId, TRANSCRIPT_CHECKPOINT)) ?? emptyTranscript(event.occurredAt);
+    const next = applyTranscript(current, event);
+    this.transcripts.set(taskId, next);
+    const structural = input.kind !== 'reasoning' && input.kind !== 'answer_delta';
+    const pending = (this.unflushedDeltas.get(taskId) ?? 0) + (structural ? 0 : 1);
+    if (structural || pending >= 12) {
+      this.saveCheckpoint(taskId, TRANSCRIPT_CHECKPOINT, next);
+      this.unflushedDeltas.set(taskId, 0);
+    } else this.unflushedDeltas.set(taskId, pending);
+    for (const listener of this.activityListeners) {
+      try { listener(event); } catch { /* A display subscriber cannot change the task. */ }
+    }
+    return event;
+  }
+
+  flushActivity(taskId: string): void {
+    const transcript = this.transcripts.get(taskId);
+    if (transcript) this.saveCheckpoint(taskId, TRANSCRIPT_CHECKPOINT, transcript);
+    this.unflushedDeltas.set(taskId, 0);
+  }
+
+  readTranscript(taskId: string): TaskTranscript {
+    this.getTask(taskId);
+    return structuredClone(this.transcripts.get(taskId) ?? parseTranscript(this.loadCheckpoint(taskId, TRANSCRIPT_CHECKPOINT)) ?? emptyTranscript(this.timestamp()));
+  }
+
+  injectUserMessage(taskId: string, text: string, source: UserInjection['source'] = 'user', requestId?: string): {id: string; injected: true} {
+    const body = requireText(text, 'text').trim();
+    if (body.length > 16_000) throw new RuntimeError('INVALID_ARGUMENT', 'text is too long');
+    return this.transaction(() => {
+      const task = this.getTask(taskId);
+      if (terminal.has(task.state) || task.state === 'waiting_reconciliation' || task.state === 'cancelling') {
+        throw new RuntimeError('REVISION_CONFLICT', 'This task cannot accept an injected message');
+      }
+      const queued = this.injectionQueue(taskId);
+      const existing = requestId ? queued.find(item => item.requestId === requestId) : undefined;
+      if (existing) {
+        if (existing.text !== body) throw new RuntimeError('REVISION_CONFLICT', 'Injection request is already bound to another message');
+        return {id: existing.id, injected: true as const};
+      }
+      const item: UserInjection = {id: this.idFactory(), text: body, source, ...(requestId ? {requestId} : {}), at: this.timestamp()};
+      this.saveCheckpoint(taskId, INJECTION_CHECKPOINT, [...queued, item]);
+      const log = this.loadCheckpoint(taskId, 'user-injection-log:v1');
+      const entries = Array.isArray(log) ? log : [];
+      this.saveCheckpoint(taskId, 'user-injection-log:v1', [...entries.slice(-19), {text: body, source, at: item.at}]);
+      const looksExternal = source === 'peer'
+        || /"treatment"\s*:\s*"untrusted_data"|\[EXTERNAL\b|BEGIN EXTERNAL|-----BEGIN EXTERNAL/iu.test(body);
+      if (looksExternal) {
+        const existingFence = this.loadCheckpoint(taskId, 'assistant-external-fence') as {sources?: string[]} | undefined;
+        const priorSources = Array.isArray(existingFence?.sources) ? existingFence.sources : [];
+        const tag = source === 'peer' ? 'peer_injection' : 'external_injection';
+        this.saveCheckpoint(taskId, 'assistant-external-fence', {
+          tainted: true,
+          sources: priorSources.includes(tag) ? priorSources : [...priorSources, tag],
+          updatedAt: item.at,
+        });
+      }
+      return {id: item.id, injected: true as const};
+    });
+  }
+
+  drainUserInjections(taskId: string): UserInjection[] {
+    return this.transaction(() => {
+      this.getTask(taskId);
+      const queued = this.injectionQueue(taskId);
+      if (queued.length) this.saveCheckpoint(taskId, INJECTION_CHECKPOINT, []);
+      return queued;
+    });
+  }
+
+  private injectionQueue(taskId: string): UserInjection[] {
+    const value = this.loadCheckpoint(taskId, INJECTION_CHECKPOINT);
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is UserInjection => Boolean(item) && typeof item === 'object' && typeof (item as UserInjection).text === 'string');
+  }
+
+  ensureAssistants(): AssistantRecord[] {
+    const now = this.timestamp();
+    for (const assistant of DEFAULT_ASSISTANTS) {
+      this.db.prepare(`INSERT INTO assistants (assistant_id, display_name, role, instructions, conversation_id, status, unread_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'idle', 0, ?, ?) ON CONFLICT(assistant_id) DO NOTHING`).run(
+        assistant.assistantId, assistant.displayName, assistant.role, assistant.instructions,
+        assistantConversationId(assistant.assistantId), now, now);
+    }
+    return this.listAssistants();
+  }
+
+  listAssistants(): AssistantRecord[] {
+    return (this.db.prepare('SELECT * FROM assistants ORDER BY created_at, assistant_id').all() as Record<string, unknown>[]).map(assistantFromRow);
+  }
+
+  createAssistant(input: {displayName: string; instructions: string; modelId?: string}): AssistantRecord {
+    const displayName = this.assistantField(() => assistantDisplayName(input?.displayName));
+    const instructions = this.assistantField(() => assistantInstructions(input?.instructions));
+    const modelId = this.assistantField(() => optionalAssistantModelId(input?.modelId));
+    return this.transaction(() => {
+      const count = this.db.prepare("SELECT COUNT(*) AS total FROM assistants WHERE origin = 'user'").get() as {total: number};
+      if (count.total >= MAX_USER_ASSISTANTS) throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_LIMIT_REACHED);
+      const assistantId = 'user-' + randomUUID().replace(/-/g, '').slice(0, 12);
+      const now = this.timestamp();
+      this.db.prepare(`INSERT INTO assistants (assistant_id, display_name, role, instructions, conversation_id, status, unread_count, origin, model_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'idle', 0, 'user', ?, ?, ?)`).run(
+        assistantId, displayName, `user:${assistantId}`, instructions, assistantConversationId(assistantId), modelId ?? null, now, now);
+      return this.getAssistant(assistantId);
+    });
+  }
+
+  renameAssistant(assistantId: string, input: {displayName: string; instructions?: string}): AssistantRecord {
+    const current = this.getAssistant(assistantId);
+    if (current.origin !== 'user') throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_BUILTIN_LOCKED);
+    const displayName = this.assistantField(() => assistantDisplayName(input?.displayName));
+    const instructions = input?.instructions === undefined ? current.instructions : this.assistantField(() => assistantInstructions(input.instructions));
+    this.db.prepare('UPDATE assistants SET display_name = ?, instructions = ?, updated_at = ? WHERE assistant_id = ? AND origin = \'user\'').run(
+      displayName, instructions, this.timestamp(), current.assistantId);
+    return this.getAssistant(current.assistantId);
+  }
+
+  deleteAssistant(assistantId: string): void {
+    const current = this.getAssistant(assistantId);
+    if (current.origin !== 'user') throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_BUILTIN_LOCKED);
+    this.transaction(() => {
+      const again = this.getAssistant(current.assistantId);
+      if (again.origin !== 'user') throw new RuntimeError('INVALID_ARGUMENT', ASSISTANT_BUILTIN_LOCKED);
+      if (this.assistantIsBusy(again)) throw new RuntimeError('REVISION_CONFLICT', ASSISTANT_BUSY);
+      this.db.prepare('DELETE FROM assistant_mail WHERE from_assistant_id = ? OR to_assistant_id = ?').run(again.assistantId, again.assistantId);
+      const removed = this.db.prepare("DELETE FROM assistants WHERE assistant_id = ? AND origin = 'user'").run(again.assistantId);
+      if (removed.changes !== 1) throw new RuntimeError('NOT_FOUND', '找不到这个助手');
+    });
+  }
+
+  private assistantField<T>(read: () => T): T {
+    try { return read(); }
+    catch (error) { throw new RuntimeError('INVALID_ARGUMENT', error instanceof Error ? error.message : '助手信息不完整'); }
+  }
+
+  private assistantIsBusy(assistant: AssistantRecord): boolean {
+    if (!assistant.activeTaskId) return assistant.status !== 'idle';
+    try { return !terminal.has(this.getTask(assistant.activeTaskId).state); }
+    catch { return assistant.status !== 'idle'; }
+  }
+
+  getAssistant(assistantId: string): AssistantRecord {
+    const row = this.db.prepare('SELECT * FROM assistants WHERE assistant_id = ?').get(requireText(assistantId, 'assistantId')) as Record<string, unknown> | undefined;
+    if (!row) throw new RuntimeError('NOT_FOUND', 'Assistant is not registered');
+    return assistantFromRow(row);
+  }
+
+  assistantByRole(role: string): AssistantRecord | undefined {
+    const row = this.db.prepare('SELECT * FROM assistants WHERE role = ? ORDER BY assistant_id LIMIT 1').get(role) as Record<string, unknown> | undefined;
+    return row ? assistantFromRow(row) : undefined;
+  }
+
+  updateAssistant(assistantId: string, patch: {status?: AssistantRecord['status']; activeTaskId?: string | null; unreadDelta?: number; lastSummary?: string | null; markRead?: boolean}): AssistantRecord {
+    const current = this.getAssistant(assistantId);
+    const status = patch.status ?? current.status;
+    const active = patch.activeTaskId === undefined ? current.activeTaskId ?? null : patch.activeTaskId;
+    const unread = patch.markRead ? 0 : Math.max(0, current.unreadCount + (patch.unreadDelta ?? 0));
+    const summary = patch.lastSummary === undefined ? current.lastSummary ?? null : patch.lastSummary;
+    this.db.prepare('UPDATE assistants SET status = ?, active_task_id = ?, unread_count = ?, last_summary = ?, updated_at = ? WHERE assistant_id = ?').run(
+      status, active, unread, summary, this.timestamp(), assistantId);
+    return this.getAssistant(assistantId);
+  }
+
+  postAssistantMail(input: {mailId: string; fromAssistantId: string; toAssistantId: string; body: string; hop: number}): AssistantMail {
+    this.getAssistant(input.fromAssistantId);
+    this.getAssistant(input.toAssistantId);
+    const body = requireText(input.body, 'body');
+    if (!Number.isSafeInteger(input.hop) || input.hop < 0) throw new RuntimeError('INVALID_ARGUMENT', 'hop is invalid');
+    const createdAt = this.timestamp();
+    this.db.prepare('INSERT INTO assistant_mail (mail_id, from_assistant_id, to_assistant_id, body, hop, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+      requireText(input.mailId, 'mailId'), input.fromAssistantId, input.toAssistantId, body, input.hop, createdAt);
+    return {mailId: input.mailId, fromAssistantId: input.fromAssistantId, toAssistantId: input.toAssistantId, body, hop: input.hop, createdAt};
+  }
+
+  listAssistantMail(assistantId: string): AssistantMail[] {
+    this.getAssistant(assistantId);
+    return (this.db.prepare('SELECT * FROM assistant_mail WHERE to_assistant_id = ? OR from_assistant_id = ? ORDER BY created_at').all(assistantId, assistantId) as Record<string, unknown>[]).map(row => ({
+      mailId: String(row.mail_id), fromAssistantId: String(row.from_assistant_id), toAssistantId: String(row.to_assistant_id),
+      body: String(row.body), hop: Number(row.hop), createdAt: String(row.created_at),
+      ...(row.consumed_task_id ? {consumedTaskId: String(row.consumed_task_id)} : {}),
+    }));
+  }
+
+  consumeAssistantMail(mailId: string, taskId: string): void {
+    this.db.prepare('UPDATE assistant_mail SET consumed_task_id = ? WHERE mail_id = ? AND consumed_task_id IS NULL').run(taskId, mailId);
+  }
+
   saveCheckpoint(taskId: string, key: string, value: unknown): void {
     requireText(key, 'checkpoint key');
     this.getTask(taskId);
@@ -1816,6 +2283,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     if ((initial.state !== 'created' && !(options.resume && initial.state === 'waiting_approval')) || this.active.has(taskId)) {
       throw new RuntimeError('REVISION_CONFLICT', 'Task is not ready to start');
     }
+    if (this.isOperatorPaused()) throw new RuntimeError('CANCELLED', OPERATOR_BRAKE_MESSAGE);
     const controller = new AbortController();
     // A new/resumed worker must declare its own path; old process-local proof does not transfer.
     this.runtimeToolTracking.delete(taskId);
@@ -1859,7 +2327,9 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
           },
           saveCheckpoint: (key, value) => this.saveCheckpoint(taskId, key, value),
           loadCheckpoint: key => this.loadCheckpoint(taskId, key),
-          reportProgress: progress => this.recordProgress(taskId, progress)
+          reportProgress: progress => this.recordProgress(taskId, progress),
+          noteActivity: activity => this.appendActivity(taskId, activity),
+          takeUserInjections: () => this.drainUserInjections(taskId).map(item => ({text: item.text, source: item.source})),
         }),
         timeout
       ]);
@@ -1902,6 +2372,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
     } finally {
       if (timer) clearTimeout(timer);
       this.active.delete(taskId);
+      try { this.flushActivity(taskId); } catch { /* A missing task has nothing to flush. */ }
       // A durable local failure consumes a matched received response as failure,
       // never as cloud business success. Unknown/unconfirmed writes retain holds.
       try {
@@ -2150,6 +2621,7 @@ export class TaskRuntime implements TaskPort, EventPort, SchedulerPort {
   }
 
   private processDue(recovery: boolean, conversationId?: string): ScheduleDispatch[] {
+    if (this.isOperatorPaused()) return [];
     const now = this.timestamp();
     if (conversationId !== undefined) requireText(conversationId, 'conversationId');
     const rows = (conversationId === undefined

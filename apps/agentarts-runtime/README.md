@@ -1,5 +1,7 @@
 # 自有 AgentArts Runtime 镜像
 
+历史 trace 回放通过受信 shadow 控制器校验原始签名后调用 `@personal-agent/agentarts/trace-replay`。回放只逐步关联历史记录；分叉后或历史步骤时间相同、无法确定顺序时保持 unknown，不执行工具或模型，也不证明当前结果有效。算法与 HTTP 签名链的合成测试不代表真实 AgentArts 部署验收。
+
 `wikiVersion: 1` 是受内层宿主凭据保护的 provisional 编译/问答服务，经同一 `/invocations` 和 ModelGateway 执行，不持有本机文件路径或工具授权。请求绑定摘要、阶段和输出预算；资料作为不可信输入，响应标记为 `unverified` 并由调用方重新检查引用。新的云端镜像必须先经明确授权发布并实测，旧镜像不因此获得 Wiki 能力；详情见 [ADR-0038](../../docs/adr/0038-llm-wiki-import.md)。
 
 <!-- architecture-scope-20261013 -->

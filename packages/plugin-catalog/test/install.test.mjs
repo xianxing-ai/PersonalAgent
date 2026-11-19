@@ -42,6 +42,7 @@ function skillEntry(bundle, overrides = {}) {
     description: '用于安装流程的本地夹具。',
     capabilities: [{name: 'instruction', effect: 'instruction', admitted: true, statement: '只有说明。'}],
     permissionDeclarations: [{scope: 'skill:instruction', effect: 'instruction', admitted: true, requiredForEnable: false, statement: '不授予工具。'}],
+    permissionManifest: {networkHosts: [], filePaths: [], connectors: [], secrets: []},
     riskLevel: 'low',
     enableRequiresAuthorization: false,
     maintenanceStatus: 'active',
@@ -83,6 +84,7 @@ test('skill install stays disabled, rejects a tampered directory, and does not r
   const installed = service.install({id: catalog[0].id, sourceDirectory: source});
   assert.equal(installed.enabled, false);
   assert.equal(installed.skill.digest, bundle.digest);
+  assert.deepEqual(installed.permissionGrant, {networkHosts: [], filePaths: [], connectors: [], secrets: []});
   assert.equal(service.install({id: catalog[0].id, sourceDirectory: source}).skill.installationId, installed.skill.installationId);
   assert.throws(() => readFileSync(path.join(files.root, 'ran.txt'), 'utf8'), {code: 'ENOENT'});
   writeFileSync(path.join(source, 'SKILL.md'), readFileSync(path.join(source, 'SKILL.md'), 'utf8') + 'Tampered.\n');
@@ -98,6 +100,27 @@ test('skill install stays disabled, rejects a tampered directory, and does not r
   updated.uninstall(catalog[0].id);
   assert.equal(updated.checkUpdate(catalog[0].id).status, 'not-installed');
   assert.throws(() => service.setEnabled(catalog[0].id, false), {code: 'NOT_FOUND'});
+});
+
+test('successful install and enable emit an activity notice without skill text', t => {
+  mkdirSync(path.resolve('.cache/plugin-catalog-tests'), {recursive: true});
+  const files = workspace(t);
+  const source = writeSkill(files.root, 'fixture-notes');
+  const bundle = readLocalSkillDirectory(source);
+  const notices = [];
+  const service = createPluginCatalogService({
+    ...files,
+    catalog: [skillEntry(bundle)],
+    onActivity: notice => notices.push(structuredClone(notice)),
+  });
+  service.install({id: 'skill.fixture.notes', sourceDirectory: source});
+  service.install({id: 'skill.fixture.notes', sourceDirectory: source});
+  service.setEnabled('skill.fixture.notes', true);
+  assert.deepEqual(notices.map(item => item.action), ['install', 'enable']);
+  assert.equal(notices[0].generation, 1);
+  assert.equal(notices[1].generation, 2);
+  assert.equal(JSON.stringify(notices).includes('Follow the fixture'), false);
+  assert.equal(Object.hasOwn(notices[0], 'description'), false);
 });
 
 test('high-risk enable asks Policy and leaves the plugin disabled when authorization is missing', t => {
