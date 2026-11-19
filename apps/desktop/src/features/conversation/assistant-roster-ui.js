@@ -1,13 +1,15 @@
 import {assistantCardHtml} from './answer-block.js';
+import {groupTextModels, modelOptionLabel, textModels} from '../../../shared/thinking-selection.js';
 
 /** One create control beside the existing assistant cards. Built-in cards stay a single open button. */
 export function mountAssistantRoster(container, {invoke, escape, onOpen, report}) {
+  const defaultModelOption = '<option value="">使用默认子模型</option>';
   container.classList?.add?.('assistant-roster');
   container.innerHTML = `<button type="button" class="assistant-create" data-assistant-create>新建助手</button>
 <form class="assistant-create-form" data-assistant-create-form hidden>
 <label>名字<input name="displayName" maxlength="40" required autocomplete="off"></label>
 <label>说明<input name="instructions" maxlength="500" required autocomplete="off"></label>
-<label>模型（可选）<select name="modelId"><option value="">跟随当前模型</option></select></label>
+<label>模型（可选）<select name="modelId">${defaultModelOption}</select></label>
 <div><button type="submit">保存</button><button type="button" data-assistant-create-cancel>取消</button></div>
 <p class="assistant-form-status" data-assistant-form-status role="status"></p>
 </form><div class="assistant-cards" aria-label="子助手"></div>`;
@@ -46,19 +48,14 @@ export function mountAssistantRoster(container, {invoke, escape, onOpen, report}
   return {paint(assistants, snapshot) {
     const select = container.querySelector('[data-assistant-create-form] [name="modelId"]');
     if (select && select.tagName === 'SELECT') {
-      const models = (snapshot?.agentArtsModels?.catalog?.models ?? []).filter(
-        model => model.type === 'text' && model.availability !== 'unavailable' && model.available !== false,
-      );
+      const groups = groupTextModels(textModels(snapshot?.agentArtsModels?.catalog));
       const current = select.value;
-      const options = [
-        '<option value="">跟随当前模型</option>',
-        ...models.map(model => `<option value="${escape(model.id)}">${escape(model.displayName || model.id)}</option>`),
-      ];
-      if (current && !models.some(model => model.id === current)) {
-        options.push(`<option value="${escape(current)}">${escape(current)}</option>`);
-      }
-      select.innerHTML = options.join('');
-      select.value = current;
+      const options = groups.map(({label, models}) => {
+        const entries = models.map(model => `<option value="${escape(model.id)}">${escape(modelOptionLabel(model))}</option>`);
+        return `<optgroup label="${escape(label)}">${entries.join('')}</optgroup>`;
+      });
+      select.innerHTML = defaultModelOption + options.join('');
+      select.value = groups.some(({models}) => models.some(model => model.id === current)) ? current : '';
     }
     const node = container.querySelector('.assistant-cards');
     if (node) node.innerHTML = (assistants ?? []).map(item => assistantCardHtml(item, escape)).join('');

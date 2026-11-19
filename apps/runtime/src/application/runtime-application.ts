@@ -13,7 +13,7 @@ import {createRuntimeCodingRepairWorkerCapability} from './coding-repair-worker-
 import {createRuntimeOwnedWorkflowWorkerCapability,runtimeOwnedWorkflowWorkerConfigured,
   OWNED_WORKFLOW_WORKER_TOOL,OWNED_WORKFLOW_WORKER_VERSION} from './owned-workflow-worker-capability.js';
 import type {RuntimeOwnedWorkflowWorkerOptions,RuntimeOwnedWorkflowWorkerCapability} from './owned-workflow-worker-capability.js';
-import {readRuntimeF20Binding,readRuntimeF20TrialBinding,f20ReviewContext} from './f20-trial-binding.js';
+import {readRuntimeF20Binding,readRuntimeF20TrialBinding,f20ReviewContext,selectBoundF20Operation} from './f20-trial-binding.js';
 import {capabilityContext} from './capability-context.js';
 import {createRuntimeToolDiscoveryTool,TOOL_DISCOVERY_NAME,TOOL_DISCOVERY_VERSION,TOOL_DISCOVERY_DESCRIPTION} from './tool-discovery.js';
 import {createExecutionCapacity,EXECUTION_CAPACITY_CHECKPOINT,selectContinuationContext} from './execution-capacity.js';
@@ -817,6 +817,7 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         &&!options.tools?.some(tool=>tool.descriptor.name==='decision.choose_candidate')
         ?[createRuntimeCodingDecisionTool({localChooser:options.proactiveDecision.localChooser,
           readContext:(context,original)=>f20ReviewContext(this,context,original),
+          selectBoundOperation:(context,original)=>selectBoundF20Operation(this,context,original),
           save:(key,receipt)=>{
             if(!this.runtime.saveCheckpointOnce(receipt.taskId,key,receipt)
               &&!isDeepStrictEqual(this.runtime.loadCheckpoint(receipt.taskId,key),receipt))
@@ -5528,6 +5529,8 @@ export class RuntimeApplication implements RuntimeApplicationTransport {
         const message = error instanceof ProtocolError && error.message === ASSISTANT_MODEL_UNAVAILABLE ? error.message : ASSISTANT_MODEL_UNAVAILABLE;
         throw new ProtocolError('UNSUPPORTED_CAPABILITY', message);
       }
+    } else if (this.profile === 'huawei_ict_agentarts') {
+      resolvedModel = this.readDefaultExecutionModel?.('subagent');
     }
     const deadline=new Date(this.now().getTime()+this.competitionMessageTimeoutMs).toISOString();
     const task=this.runtime.submitTask({goal,conversationId:assistant.conversationId,idempotencyKey});

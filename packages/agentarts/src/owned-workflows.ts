@@ -157,7 +157,7 @@ export function workflowCandidateMetadata(node:OwnedWorkflowNode,tools:readonly 
     resultEvidenceStage:proposed?'after_actual_execution':'required_for_generated_claims'},
     ...(['F20_N02','F20_N04'].includes(node.id)?{candidateValueSchema:f20DocumentCandidateSchema(),
       candidateConstraint:node.id==='F20_N02'
-        ?'Use both original sources. Include the API documentation and a TypeScript example with an explicitly typed object, or abstain.'
+        ?'Use both original sources. Document the observable behavior the implementation actually performs, including exact return values and defaults. Do not infer operations, side effects, or response semantics from names or from the existing documentation. Mark any unsupported feature as proposed or unverified. Include the API documentation and a TypeScript example with an explicitly typed object, or abstain.'
         :'Retain the exact original selected F20 document candidate after the verified check, or abstain.'}:{}),
     publishedTools:tools.filter(tool=>node.capabilities.some(cap=>cap.kind==='tool'&&cap.name===tool.name)
       ||node.kind==='host'&&tool.name===workflowHostToolName(node.id)).map(tool=>copy(tool))};

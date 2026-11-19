@@ -18,6 +18,7 @@ export interface RuntimeCodingDecisionReceipt {
 
 export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaActionChoiceService,'choose'>;
   readContext?:(context:ToolContext,original:string)=>string;
+  selectBoundOperation?:(context:ToolContext,original:string)=>string|undefined;
   save:(key:string,receipt:RuntimeCodingDecisionReceipt)=>void}):RegisteredTool {
   // Each invocation owns its ToolContext, including concurrent host tasks.
   const descriptor=createWorkflowDecisionTool({selector:{select:async()=>{throw Error('Invocation selector unavailable');}}}).descriptor;
@@ -25,6 +26,8 @@ export function createRuntimeCodingDecisionTool(options:{localChooser:Pick<LayaA
     const argumentsDigest=toolArgumentsDigest(argumentsValue);
     if(context.argumentsDigest!==undefined&&context.argumentsDigest!==argumentsDigest)
       throw new ProtocolError('UNAUTHORIZED','Original coding decision arguments changed');
+    const boundOperation=options.selectBoundOperation?.(context,input.context);
+    if(boundOperation!==undefined)return boundOperation;
     const candidates=input.candidates.map(candidate=>({id:candidate.id,revision:1,kind:'noop' as const,
       description:candidate.description,sources:[],scopeRef:input.requestId,expiresAt:input.deadline,
       risk:'low' as const,argumentsDigest:actionArgumentsDigest({})}));

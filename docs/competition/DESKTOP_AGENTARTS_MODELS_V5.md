@@ -42,11 +42,11 @@ Live 音频发送异常保留安全错误码与帧格式元数据，区分帧无
 
 ## 模型目录与子任务
 
-镜像通过 `PA_AGENT_MODEL_CATALOG_FILE` 或内联 `PA_AGENT_MODEL_CATALOG` 读取受信目录，两者互斥。镜像中的 `apps/agentarts-runtime/src/default-model-catalog.json` 是验收候选清单。正式目录按来源和厂商保留已实测通过的最新旗舰与 Flash 档，每个来源、厂商、档位各保留一款。AgentArts 保持默认来源，华为 MaaS 使用独立的直连凭据。同一型号可在两个来源中各有一个独立入口。百炼仅在正式目录明确配置并验证专用型号后显示。
+镜像通过 `PA_AGENT_MODEL_CATALOG_FILE` 或内联 `PA_AGENT_MODEL_CATALOG` 读取受信目录，两者互斥。`apps/agentarts-runtime/src/default-model-catalog.json` 记录 Z-01 用户实测通过的五条模型入口。正式目录按来源和厂商保留已实测通过的最新旗舰与 Flash 档，每个来源、厂商、档位各保留一款。AgentArts 保持默认来源，华为 MaaS 使用独立的直连凭据。同一型号可在两个来源中各有一个独立入口。模型菜单展示来源、型号和档位。
 
 目录通过原有鉴权 `/invocations` 读取，query 为 `{modelCatalogVersion:"1.0",action:"list"}`。目录的 SHA256 revision 与 `executionModel:{catalogRevision,modelId,reasoningEffort?}` 绑定。`id` 用于应用选择和会话记录，`providerModelId` 用于上游推理请求。小窗、工作区、模型设置、自动路由与子任务候选使用同一目录的 `available` 文本条目。已保存的旧选择失效时，用户可以在当前目录重新选择。
 
-主模型可看到目录元数据，并通过原 `subagent.dispatch` 提出子任务、模型与可选 `reasoningEffort`。新增字段兼容旧输入；缺省时旧摘要不变。Runtime 校验并将最终选择写入原任务 checkpoint，恢复使用原选择。`thinkingDepth` 继续表示预算，不代替原生 effort。工作区从 `readSubagentTasks()` 展示真实父子任务、模型、状态和 Evidence 引用，不另建调度器。
+主模型可看到目录元数据，并通过原 `subagent.dispatch` 提出子任务、模型与可选 `reasoningEffort`。新建助手也从同一目录按来源选模，未指定模型的助手使用桌面默认子模型。Runtime 校验并将最终选择写入原任务 checkpoint，恢复使用原选择。`thinkingDepth` 继续表示预算，不代替原生 effort。工作区从 `readSubagentTasks()` 展示父子任务、模型、状态和 Evidence 引用。
 
 ## 部署与验收
 

@@ -3,6 +3,7 @@ import {ProtocolError,validateToolValue} from '@personal-agent/contracts';
 import {getOwnedWorkflowTemplates,getOwnedWorkflowDesignCoverage,getOwnedWorkflowAdapterRequirements} from '@personal-agent/agentarts';
 
 const NAME='workflow.image.catalog',VERSION='1.0.0',SCOPE='workflow:catalog';
+const SOURCE='local_public_design_and_original_registry';
 const ids=Array.from({length:28},(_,index)=>'F'+String(index+1).padStart(2,'0'));
 const inputSchema={type:'object',properties:{workflowId:{type:'string',enum:ids}},additionalProperties:false};
 const fail=(code,message)=>{throw new ProtocolError(code,message);};
@@ -11,6 +12,10 @@ const fail=(code,message)=>{throw new ProtocolError(code,message);};
 export function createImageWorkflowCatalogHost({getApplication,now=Date.now}={}) {
   if(typeof getApplication!=='function')fail('INVALID_ARGUMENT','Original application reader is required');
   const templates=getOwnedWorkflowTemplates(),coverage=getOwnedWorkflowDesignCoverage(),requirements=getOwnedWorkflowAdapterRequirements();
+  const outputSchema={type:'object',properties:{
+    source:{const:SOURCE},projectionSha256:{const:coverage.projectionSha256},
+    workflows:{type:'array',items:{type:'object',properties:{summary:{enum:[...new Set(templates.map(template=>template.summary))]}}}},
+  }};
   let closed=false;
   function current(scope) {
     if(closed||scope.signal?.aborted)fail('CANCELLED','Workflow catalog request ended');
@@ -33,17 +38,23 @@ export function createImageWorkflowCatalogHost({getApplication,now=Date.now}={})
         toolName:item.toolName,version:item.toolVersion,state:has(item.toolName,item.toolVersion)?'registered_requires_task_authorization':'unavailable'}));
       const requiredTools=[...new Set(template.nodes.flatMap(node=>node.capabilities.filter(cap=>cap.kind==='tool').map(cap=>cap.name)))].map(toolName=>({toolName,
         state:has(toolName)?'registered_requires_task_authorization':'unavailable'}));
-      const entryName=template.workflowId==='F15'?'coding.repair.workflow':undefined,entryRegistered=!!entryName&&has(entryName,'1.0.0');
+      const f20=template.workflowId==='F20';
+      const entryName=f20?'workflow.image.execute':template.workflowId==='F15'?'coding.repair.workflow':undefined;
+      const entryRegistered=f20
+        ?application.readConversationToolCapabilities?.().some(tool=>tool.name===entryName&&tool.version==='1.0.0')===true
+        :!!entryName&&has(entryName,'1.0.0');
       const missingAdapterNames=adapters.filter(item=>item.state==='unavailable').map(item=>item.toolName);
       const missingToolNames=requiredTools.filter(item=>item.state==='unavailable').map(item=>item.toolName);
+      // The F20 conversation worker binds the existing local tools directly.
+      const missingGenericAdapter=!f20&&missingAdapterNames.length>0;
       return {workflowId:template.workflowId,name:template.name,category:template.category,summary:template.summary,nodeCount:template.nodes.length,
         ...(input.workflowId?{nodes:template.nodes.map(node=>({nodeId:node.id,label:node.label,kind:node.kind}))}:{}),
-        state:entryRegistered&&!missingAdapterNames.length&&!missingToolNames.length?'entry_registered_requires_task_authorization':'unavailable',
+        state:entryRegistered&&!missingGenericAdapter&&!missingToolNames.length?'entry_registered_requires_task_authorization':'unavailable',
         entry:{...(entryName?{name:entryName,version:'1.0.0'}:{}),state:entryRegistered?'entry_registered_requires_task_authorization':'unavailable'},
-        unavailableReasons:[...(!entryRegistered?['conversation_entry_not_registered']:[]),...(missingAdapterNames.length?['host_or_guard_adapter_not_registered']:[]),...(missingToolNames.length?['required_tool_not_registered']:[])],
+        unavailableReasons:[...(!entryRegistered?['conversation_entry_not_registered']:[]),...(missingGenericAdapter?['host_or_guard_adapter_not_registered']:[]),...(missingToolNames.length?['required_tool_not_registered']:[])],
         adapters,requiredTools,missingAdapterNames,missingToolNames};
     });
-    const value={source:'local_public_design_and_original_registry',templateVersion:coverage.templateVersion,
+    const value={source:SOURCE,templateVersion:coverage.templateVersion,
       projectionSha256:coverage.projectionSha256,designWorkflowCount:coverage.workflowCount,designNodeCount:coverage.nodeCount,
       adapterRequirementCount:requirements.length,hostRequirementCount:requirements.filter(item=>item.kind==='host').length,
       guardRequirementCount:requirements.filter(item=>item.kind==='guard').length,...(input.workflowId?{requestedWorkflowId:input.workflowId}:{}),
@@ -51,14 +62,14 @@ export function createImageWorkflowCatalogHost({getApplication,now=Date.now}={})
     if(Buffer.byteLength(JSON.stringify(value),'utf8')>65536)fail('INVALID_ARGUMENT','Public workflow catalog exceeds its result bound');
     return value;
   }
-  const tool={descriptor:{name:NAME,version:VERSION,inputSchema,outputSchema:{type:'object'},sideEffect:'read',requiredScopes:[SCOPE],
+  const tool={descriptor:{name:NAME,version:VERSION,inputSchema,outputSchema,sideEffect:'read',requiredScopes:[SCOPE],
     requiresPresence:false,idempotencySupport:true,recoverySupport:true},execute:async(input,context)=>{
     if(!context.authorizationRef||!context.scopes?.includes(SCOPE))fail('SCOPE_DENIED','Original catalog read authorization is required');
     return read(input,current(context));
   }};
   return {tools:[tool],competitionToolAvailability:[{toolName:NAME,toolVersion:VERSION,publicEnumPaths:['/workflowId'],
     available:scope=>{try{current(scope);return true;}catch{return false;}}}],
-    competitionToolExports:[{toolName:NAME,toolVersion:VERSION,exportPolicyVersion:'public-image-design-registry-v1',
+    competitionToolExports:[{toolName:NAME,toolVersion:VERSION,exportPolicyVersion:'public-image-design-registry-v2',
       accepts:scope=>{try{validateToolValue(inputSchema,scope.arguments);current(scope);return true;}catch{return false;}},
       project:scope=>{const application=current(scope),expected=read(scope.result?.requestedWorkflowId===undefined?{}:{workflowId:scope.result.requestedWorkflowId},application);
         if(!isDeepStrictEqual(scope.result,expected))fail('UNAUTHORIZED','Public workflow catalog snapshot changed');return expected;}}],

@@ -267,7 +267,7 @@ export function createRuntimeOwnedWorkflowWorkerCapability(application:RuntimeAp
           fail('UNAUTHORIZED','Original F20 frontier was not verified');active(scope);
       },
       authorizeReceipt:async({proposal:item,receipt,localTaskId,state:graph})=>{
-        const check=item.nodeId==='F20_N03'&&receipt.state==='confirmed';
+        const check=item.nodeId==='F20_N03'&&item.toolName===F20_COMMAND_TOOL&&receipt.state==='confirmed';
         const sources=item.nodeId==='F20_N01'&&item.toolName==='workspace.read_text'&&receipt.state==='confirmed';
         let projected=receipt.result;
         if(sources) {

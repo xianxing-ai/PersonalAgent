@@ -24,7 +24,7 @@ export function groupTextModels(models){
 
 export function modelOptionLabel(model){
   const tier=model.tier==='flagship'?'旗舰':model.tier==='flash'?'Flash 轻量':'';
-  return [model.displayName,tier,model.availability==='unverified'?'待验收':''].filter(Boolean).join(' · ');
+  return [model.displayName,tier].filter(Boolean).join(' · ');
 }
 
 export function defaultModelId(catalog,preferences,role){

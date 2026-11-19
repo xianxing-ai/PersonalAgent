@@ -103,6 +103,26 @@ function readTrialBinding(application:RuntimeApplication,context:ToolContext,rec
   return {...saved,ownerTaskId:parent.taskId,candidateId,candidate,samplePath};
 }
 
+/** Choose only an operation already fixed by the case. Its execution still goes through the graph and Policy. */
+export function selectBoundF20Operation(application:RuntimeApplication,context:ToolContext,originalContext:string):string|undefined {
+  const runtime=application.runtime,parent=runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId:string;operationId:string}|undefined;
+  if(!parent)return undefined;
+  const saved=readRuntimeF20Binding(application,{taskId:parent.taskId,deadline:context.deadline,signal:context.signal});
+  if(!saved)return undefined;
+  const proposal=saved.state.result?.proposals.find(item=>item.operationId===parent.operationId);
+  if(!proposal||!['F20_N01','F20_N03'].includes(proposal.nodeId))return undefined;
+  if(proposal.kind!=='tool_proposal'||proposal.toolName!=='decision.choose_candidate'
+    ||proposal.arguments.context!==originalContext||saved.state.result?.nodes[proposal.nodeId]?.state!=='waiting_receipt'
+    ||!saved.sourceDigest)denied();
+  const selection=JSON.parse(originalContext) as {candidateValues:{id:string;value:unknown;abstain?:boolean}[]};
+  const expected=proposal.nodeId==='F20_N01'
+    ?{toolName:'workspace.read_text',toolVersion:'1.0.0',arguments:{path:saved.input.schemaFile}}
+    :{toolName:F20_COMMAND_TOOL,toolVersion:'1.0.0',arguments:{recipeId:saved.input.recipeId}};
+  const selected=selection.candidateValues.find(candidate=>!candidate.abstain&&isDeepStrictEqual(candidate.value,expected));
+  if(!selected)throw new ProtocolError('UNSUPPORTED_CAPABILITY','F20 did not propose the exact configured operation');
+  return selected.id;
+}
+
 /** Local model review sees independently read original sources, never cloud-supplied source replacements. */
 export function f20ReviewContext(application:RuntimeApplication,context:ToolContext,originalContext:string):string {
   const runtime=application.runtime,parent=runtime.loadCheckpoint(context.taskId,'coding-repair:parent') as {taskId?:string;operationId?:string}|undefined;
