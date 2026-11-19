@@ -12,7 +12,8 @@ export function personalDashboardHtml(data, escape) {
   const cards = Array.isArray(view.cards) && view.cards.length
     ? `<div class="dashboard-cards">${view.cards.map(card => cardHtml(card, escape)).join('')}</div>`
     : `<p class="empty">${escape(view.reason || '还没有汇总。连接并授权日历、邮件或花销后，到点才会出现对应趋势。')}</p>`;
-  return `<section class="dashboard-page"><label class="dashboard-period">汇总周期<select id="dashboard-period" aria-label="汇总周期">${options}</select></label>${note}${when}${cards}</section>`;
+  const disabled = view.available === false ? ' disabled' : '';
+  return `<section class="dashboard-page"><label class="dashboard-period">汇总周期<select id="dashboard-period" aria-label="汇总周期"${disabled}>${options}</select></label>${note}${when}${cards}</section>`;
 }
 
 function cardHtml(card, escape) {
