@@ -16,8 +16,10 @@ interface ChatTransport {
   payload: Record<string, unknown>;
   /** Exact first request body, including stream:true, so a token meter can bind the sent bytes. */
   streamBody?: string;
+  streaming?: boolean;
   signal: AbortSignal;
   onDelta?: (delta: ModelDelta) => void;
+  onResponseModel?: (response: Response, model: string) => void;
   /** Race credential/abort promises the caller already owns. */
   race<T>(operation: Promise<T>): Promise<T>;
   mapStatus: (status: number, retryAfter: string | null) => ProtocolError;
@@ -103,7 +105,7 @@ function applyDelta(choice: Record<string, unknown>, onDelta: ChatTransport['onD
   }
 }
 
-async function readSse(response: Response, onDelta: ChatTransport['onDelta'], race: ChatTransport['race']): Promise<ChatCompletionBody & {usage?: ModelUsage}> {
+async function readSse(response: Response, {onDelta, race, onResponseModel}: ChatTransport): Promise<ChatCompletionBody & {usage?: ModelUsage}> {
   const reader = response.body?.getReader();
   if (!reader) throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream is missing a body');
   const decoder = new TextDecoder('utf-8', {fatal: false});
@@ -113,6 +115,8 @@ async function readSse(response: Response, onDelta: ChatTransport['onDelta'], ra
   const streamed = {text: '', reasoning: ''};
   let finishReason: string | undefined;
   let sawDone = false;
+  let responseModel: string | undefined;
+  let modelChanged = false;
   let usage: ModelUsage | undefined;
   const consumeBlock = (block: string): void => {
     const data = block.split(/\r?\n|\r/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
@@ -127,6 +131,10 @@ async function readSse(response: Response, onDelta: ChatTransport['onDelta'], ra
     if (!parsed || typeof parsed !== 'object') throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream returned an invalid event');
     const record = parsed as Record<string, unknown>;
     if (record.error) throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream reported a failure', true);
+    if (typeof record.model === 'string') {
+      if (responseModel !== undefined && responseModel !== record.model) modelChanged = true;
+      responseModel = record.model;
+    }
     const nextUsage = usageFrom(record.usage);
     if (nextUsage) usage = nextUsage;
     const choices = record.choices;
@@ -193,7 +201,13 @@ async function readSse(response: Response, onDelta: ChatTransport['onDelta'], ra
   }
   if (finishReason === undefined && !sawDone) throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream ended before completion');
   if (!streamed.text.trim()) throw new ProtocolError('EXTERNAL_FAILURE', 'Model stream ended without text');
+  if (!modelChanged) reportResponseModel(onResponseModel, response, responseModel);
   return {text: streamed.text, ...(streamed.reasoning ? {reasoning: streamed.reasoning} : {}), finishReason: finishReason ?? 'stop', ...(usage ? {usage} : {})};
+}
+
+function reportResponseModel(observer: ChatTransport['onResponseModel'], response: Response, model: unknown): void {
+  if (typeof model !== 'string' || !/^[a-zA-Z0-9._:/-]{1,255}$/u.test(model)) return;
+  try { observer?.(response, model); } catch { /* Telemetry must not affect the model result. */ }
 }
 
 function streamUnsupported(status: number, body: string): boolean {
@@ -208,8 +222,9 @@ export async function completeChatCompletion(transport: ChatTransport): Promise<
     body: stream && transport.streamBody ? transport.streamBody : JSON.stringify({...transport.payload, stream}),
     signal: transport.signal,
   })));
-  let response = await post(true);
-  if (!response.ok) {
+  const streaming = transport.streaming !== false;
+  let response = await post(streaming);
+  if (!response.ok && streaming) {
     let detail = '';
     try { detail = await response.text(); } catch { detail = ''; }
     if (streamUnsupported(response.status, detail)) response = await post(false);
@@ -219,7 +234,7 @@ export async function completeChatCompletion(transport: ChatTransport): Promise<
   const media = response.headers?.get('content-type') ?? '';
   const streamed = {text: '', reasoning: ''};
   if (media.includes('text/event-stream') && response.body && typeof response.body.getReader === 'function') {
-    return readSse(response, transport.onDelta, transport.race);
+    return readSse(response, transport);
   }
   let body: unknown;
   try { body = await transport.race(response.json()); }
@@ -227,5 +242,7 @@ export async function completeChatCompletion(transport: ChatTransport): Promise<
     if (error instanceof ProtocolError) throw error;
     throw new ProtocolError('EXTERNAL_FAILURE', 'Model endpoint returned invalid JSON');
   }
-  return parseCompletion(body, transport.onDelta, streamed);
+  const completion = parseCompletion(body, transport.onDelta, streamed);
+  reportResponseModel(transport.onResponseModel, response, (body as Record<string, unknown>).model);
+  return completion;
 }

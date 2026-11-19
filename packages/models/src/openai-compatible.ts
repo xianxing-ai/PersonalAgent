@@ -19,6 +19,10 @@ export interface OpenAICompatibleModelProviderOptions {
   apiKey: () => string | Promise<string>;
   fetch?: typeof globalThis.fetch;
   timeoutMs?: number;
+  /** Disable streaming for a trusted route that accepts only JSON completions. */
+  streaming?: boolean;
+  /** Trusted host telemetry after parsing; must not affect the model result. */
+  onResponseModel?: (response: Response, model: string) => void;
   /** 端点上下文窗口（进 capabilities.contextLimit）；缺省 32k 保守值，按端点如实配置。 */
   contextLimitTokens?: number;
   /** Explicit Competition auxiliary-model configuration, supplied by the trusted host. */
@@ -63,9 +67,12 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
   private readonly requestFormat: OpenAICompatibleRequestFormat | undefined;
   private readonly responseFormat: 'json_object' | undefined;
   private readonly vision: boolean;
+  private readonly streaming: boolean;
   private readonly tokenBudget: (RequestTokenBudgetBinding & {countInputTokens: VisibleRequestTokenBudget['countInputTokens']}) | undefined;
+  private readonly onResponseModel: OpenAICompatibleModelProviderOptions['onResponseModel'];
 
   constructor(options: OpenAICompatibleModelProviderOptions) {
+    this.streaming = options.streaming !== false;
     if (options.vision !== undefined && typeof options.vision !== 'boolean') {
       throw new ProtocolError('INVALID_ARGUMENT', 'Model vision declaration must be boolean');
     }
@@ -98,6 +105,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
     if (!Number.isSafeInteger(contextLimitTokens) || contextLimitTokens < 1) {
       throw new ProtocolError('INVALID_ARGUMENT', 'contextLimitTokens must be a positive integer');
     }
+    this.onResponseModel = options.onResponseModel;
     const budget = options.requestTokenBudget;
     if (budget !== undefined) {
       if (!budget || budget.model !== this.model || options.contextLimitTokens === undefined
@@ -118,7 +126,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       deployment: typeof options.deployment === 'string' && options.deployment.trim() ? options.deployment.trim() : this.model,
       model: this.model,
       verification: 'conditional',
-      capabilities: {...openAiCompatibleCapabilities(contextLimitTokens, this.vision),
+      capabilities: {...openAiCompatibleCapabilities(contextLimitTokens, this.vision), streaming: this.streaming,
         ...(this.requestFormat === undefined ? {} : {requestFormat: this.requestFormat}),
         ...(this.tokenBudget === undefined ? {} : {requestTokenBudget: this.budgetBinding()}),
         ...(this.nativeReasoning === undefined ? {} : {nativeReasoning: structuredClone(this.nativeReasoning)})},
@@ -199,7 +207,7 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
       ...(outputTokens === undefined ? {} : {[native?.outputTokenParameter ?? 'max_tokens']: outputTokens}),
       ...(this.requestFormat === 'huawei-maas-deepseek-thinking-v1' && effort === 'none'
         ? {chat_template_kwargs: {thinking: false}}
-        : effort === undefined ? {} : {reasoning_effort: effort}), stream: true,
+        : effort === undefined ? {} : {reasoning_effort: effort}), stream: this.streaming,
     });
     const requestBudget = this.measureBudget(serializedBody, outputTokens);
     const deadlineMs = Date.parse(request.deadline) - Date.now();
@@ -239,8 +247,10 @@ export class OpenAICompatibleModelProvider implements ModelProvider {
         headers: {'content-type': 'application/json', authorization: `Bearer ${key}`},
         payload,
         streamBody: serializedBody,
+        streaming: this.streaming,
         signal: controller.signal,
         ...(request.onDelta ? {onDelta: request.onDelta} : {}),
+        ...(this.onResponseModel ? {onResponseModel: this.onResponseModel} : {}),
         race: operation => Promise.race([operation, interrupted]),
         mapStatus: openAiError,
       });
