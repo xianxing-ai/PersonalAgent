@@ -134,6 +134,15 @@ test('candidate and excluded-directory aliases cannot bypass workspace or recove
   assert.equal(fixture.find('C:\\install',{excludedDirectories:['C:\\not-created\\recovery']}),'C:\\install\\pwsh.exe');
 });
 
+test('trailing separator in excluded directories isolates the repository root without prefix overreach',()=>{
+  // fileURLToPath reports the Windows repository root with a trailing separator.
+  const fixture=windowsFixture();fixture.add('C:\\repo\\bin\\pwsh.exe');fixture.add('C:\\later\\pwsh.exe');
+  assert.equal(fixture.find('C:\\repo\\bin;C:\\later',{excludedDirectories:['C:\\repo\\']}),undefined);
+  assert.equal(fixture.lookups.some(value=>value.startsWith('C:\\later')),false);
+  const sibling=windowsFixture();sibling.add('C:\\repo','directory');sibling.add('C:\\repo-tools\\pwsh.exe');
+  assert.equal(sibling.find('C:\\repo-tools',{excludedDirectories:['C:\\repo\\']}),'C:\\repo-tools\\pwsh.exe');
+});
+
 test('real Windows Unicode file discovery performs no executable invocation',{skip:process.platform!=='win32'},t=>{
   const base=mkdtempSync(path.join(os.tmpdir(),'desktop-unicode-discovery-'));
   t.after(()=>rmSync(base,{recursive:true,force:true}));

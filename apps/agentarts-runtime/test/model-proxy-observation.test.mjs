@@ -11,7 +11,7 @@ const reply=actual=>Response.json({model:actual,choices:[{message:{content:'ok'}
 test('concurrent replies bind locally without upstream request IDs and do not log unknown model text',async()=>{
  const records=[];let n=0;
  const guarded=createAgentArtsModelFetch({endpoint,model,authentication:{kind:'api_key',headerName:'x-key',readSecret:()=> 'fixture-secret'},onRecord:r=>records.push(r),fetch:async()=>reply(++n===1?model:'unknown-secret-model')});
- const provider=new OpenAICompatibleModelProvider({baseUrl:endpoint,model,apiKey:()=> 'fixture-secret',fetch:guarded,onResponseModel:(response,value)=>guarded.recordResponseModel(response,value)});
+ const provider=new OpenAICompatibleModelProvider({baseUrl:endpoint,model,streaming:false,apiKey:()=> 'fixture-secret',fetch:guarded,onResponseModel:(response,value)=>guarded.recordResponseModel(response,value)});
  const [a,b]=await Promise.all([provider.complete(request(new AbortController().signal)),provider.complete(request(new AbortController().signal))]);
  assert.equal(a.response.text,'ok');assert.equal(b.response.text,'ok');
  const received=records.filter(r=>r.event==='model_proxy_response');const observed=records.filter(r=>r.event==='model_proxy_response_model');
@@ -28,7 +28,7 @@ test('concurrent replies bind locally without upstream request IDs and do not lo
 test('failed and cancelled responses never invent a model observation',async()=>{
  const records=[];let calls=0;
  const guarded=createAgentArtsModelFetch({endpoint,model,authentication:{kind:'api_key',headerName:'x-key',readSecret:()=> 'fixture-secret'},onRecord:r=>records.push(r),fetch:async()=>++calls===1?new Response('',{status:401}):new Response(new ReadableStream({pull(){return new Promise(()=>{});}}))});
- const provider=new OpenAICompatibleModelProvider({baseUrl:endpoint,model,apiKey:()=> 'fixture-secret',fetch:guarded,onResponseModel:(response,value)=>guarded.recordResponseModel(response,value)});
+ const provider=new OpenAICompatibleModelProvider({baseUrl:endpoint,model,streaming:false,apiKey:()=> 'fixture-secret',fetch:guarded,onResponseModel:(response,value)=>guarded.recordResponseModel(response,value)});
  await assert.rejects(provider.complete(request(new AbortController().signal)),{code:'UNAUTHORIZED'});
  const c=new AbortController();const pending=provider.complete(request(c.signal));setTimeout(()=>c.abort(),20);
  await assert.rejects(pending,{code:'CANCELLED'});
@@ -42,4 +42,20 @@ test('proxy returns headers without waiting for a slow response body',async()=>{
   const result=await Promise.race([guarded(endpoint+'/chat/completions',{method:'POST',headers:{},body:JSON.stringify({model,stream:false}),signal:new AbortController().signal}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('response body blocked proxy')),300);})]);
   assert.equal(result,response);assert.equal(response.bodyUsed,false);
  } finally {clearTimeout(timer);}
+});
+
+test('streaming observations require completion and retain the parsed response identity',async()=>{
+ const observed=[],responses=[];
+ const chunk=`data: ${JSON.stringify({model,choices:[{delta:{content:'ok'}}]})}\n\n`;
+ const provider=new OpenAICompatibleModelProvider({baseUrl:endpoint,model,apiKey:()=> 'fixture-secret',
+   fetch:async()=>{
+     const response=new Response(chunk+(responses.length===0?'data: [DONE]\n\n':''),{headers:{'content-type':'text/event-stream'}});
+     responses.push(response);
+     return response;
+   },onResponseModel:(response,value)=>observed.push([response,value])});
+ assert.equal((await provider.complete(request(new AbortController().signal))).response.text,'ok');
+ await assert.rejects(provider.complete(request(new AbortController().signal)),{code:'EXTERNAL_FAILURE'});
+ assert.equal(observed.length,1);
+ assert.equal(observed[0][0],responses[0]);
+ assert.equal(observed[0][1],model);
 });

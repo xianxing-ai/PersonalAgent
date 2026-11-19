@@ -4,10 +4,12 @@ import {WakeLifecycleController, createPcmKeywordWakeSignalSource,
 const LEASE_MS = 10 * 60_000;
 const RELEASE_MS = 5000;
 const KEYWORD = '你好小派';
+/** Matches voice echo-guard default tail so late acoustic hits after TTS are not wakes. */
+const PLAYBACK_COOLDOWN_MS = 350;
 
-/** Visible-panel wake ownership. Logical sources share the existing physical microphone host. */
+/** Panel-owned wake. Hiding the panel does not end an active lease. */
 export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput,
-  onUpdate = () => {}, isBusy = () => false, now = Date.now,
+  onUpdate = () => {}, isBusy = () => false, now = Date.now, leaseMs = () => LEASE_MS,
   createSource = createVoicePcmFrameSourcePort,
   createDetector = () => createWindowsSystemSpeechKeywordDetector({keyword: KEYWORD})}) {
   let active, phase = 'disabled', reason = '唤醒默认关闭', disposed = false, releaseUnknown = false;
@@ -16,11 +18,11 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
     sessionId: null, expiresAtMs: null, playbackActive: false, cooldownUntilMs: null}),
     phase, reason, verification: 'unverified'});
 
-  function panelFor(senderId) {
+  function panelFor(senderId, {allowHidden = false} = {}) {
     const panel = getPanel();
     if (!Number.isSafeInteger(senderId) || senderId <= 0 || !panel || panel.isDestroyed()
-      || !panel.isVisible() || panel.webContents.isDestroyed() || panel.webContents.id !== senderId) {
-      throw Error('唤醒只允许从可见可信面板启用');
+      || (!allowHidden && !panel.isVisible()) || panel.webContents.isDestroyed() || panel.webContents.id !== senderId) {
+      throw Error('唤醒只允许从可信面板启用');
     }
     return panel;
   }
@@ -62,7 +64,7 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
   }
 
   async function beginCapture(senderId) {
-    panelFor(senderId);
+    panelFor(senderId, {allowHidden: true});
     const record = active;
     if (!record || phase !== 'listening' || record.senderId !== senderId || record.controller.signal.aborted
       || now() >= record.expiresAtMs || isBusy()) throw Error('唤醒麦克风租约当前不可用');
@@ -70,12 +72,13 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
       deadline: new Date(record.expiresAtMs).toISOString()});
   }
 
-  async function enable(senderId) {
-    panelFor(senderId);
+  async function enable(senderId, {allowHidden = false} = {}) {
+    panelFor(senderId, {allowHidden});
     if (disposed) throw Error('唤醒宿主已关闭');
     if (releaseUnknown) throw Error(reason);
     if (active || isBusy() || voiceInput.hasActive()) throw Error('请先结束当前语音或唤醒操作');
-    const record = {senderId, controller: new AbortController(), expiresAtMs: now() + LEASE_MS};
+    const lease = Number(leaseMs());
+    const record = {senderId, controller: new AbortController(), expiresAtMs: now() + (Number.isFinite(lease) && lease >= 60_000 ? lease : LEASE_MS)};
     active = record; phase = 'enabling'; reason = '正在检查唤醒检测器和麦克风'; publish();
     try {
       const grant = await microphoneHost.authorize({deadline: new Date(record.expiresAtMs).toISOString(),purpose:'wake',signal:record.controller.signal});
@@ -92,7 +95,7 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
         authorization: {async check({signal, deadlineAtMs}) {
           if (signal.aborted || record.controller.signal.aborted || active !== record
             || now() >= record.expiresAtMs || deadlineAtMs > record.expiresAtMs) return {kind: 'denied', reason: 'expired'};
-          panelFor(senderId);
+          panelFor(senderId, {allowHidden: true});
           return {kind: 'allowed', expiresAtMs: record.expiresAtMs, revocationSignal: record.controller.signal};
         }},
         source: {subscribe(listener, context) {
@@ -100,6 +103,14 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
           return record.adapterStart;
         }},
         cooldownMs: 1000,
+        playbackCooldownMs: PLAYBACK_COOLDOWN_MS,
+        clock: {
+          now,
+          setTimeout(callback, delayMs) {
+            const handle = setTimeout(callback, delayMs);
+            return {cancel() { clearTimeout(handle); }};
+          },
+        },
         onWake() {
           if (active !== record || phase !== 'listening' || voiceInput.hasActive()) return;
           void beginCapture(senderId).catch(() => {
@@ -120,7 +131,7 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
       if (result.kind !== 'listening' || active !== record || record.controller.signal.aborted || record.stopPromise) {
         throw Error('唤醒来源不可用');
       }
-      panelFor(senderId);
+      panelFor(senderId, {allowHidden});
       phase = 'listening'; reason = '已开启唤醒，说“你好小派”开始听写'; publish();
       return snapshot();
     } catch {
@@ -143,6 +154,12 @@ export function createDesktopWakeVoiceHost({getPanel, microphoneHost, voiceInput
     return disable();
   }
 
-  return {enable, disable, dispose, beginCapture, snapshot,
+  async function enableOwned() {
+    const panel = getPanel();
+    if (!panel || panel.isDestroyed() || panel.webContents.isDestroyed()) throw Error('悬浮面板尚未就绪');
+    return enable(panel.webContents.id, {allowHidden: true});
+  }
+
+  return {enable, enableOwned, disable, dispose, beginCapture, snapshot,
     hasActive: () => Boolean(active || releaseUnknown)};
 }

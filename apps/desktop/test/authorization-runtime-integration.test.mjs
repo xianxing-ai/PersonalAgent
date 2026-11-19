@@ -233,3 +233,40 @@ test('one original workflow decision derives distinct exact payload/run receipts
   assert.equal(app.runtime.listTasks({limit:100}).items.length,3);
   intent.close();question.close();await wait(()=>app.activeTaskCount===0);app.close();
 });
+
+
+test('actual Runtime passes registered external write risk to the exact content card',async t=>{
+  let app,writes=0;
+  const directory=mkdtempSync(new URL('external-content-',cache));
+  const question=createDesktopAuthorizationQuestionHost({createQuestions:options=>new AuthorizationQuestions(options),getApplication:()=>app,
+    namespace:'Synthetic external',resolveConversation:()=> 'Synthetic external conversation',available:()=>true,
+    profiles:[{ref:'app',label:'Synthetic full access',mode:'full-access',revision:1,available:true}],defaultProfileRef:'app'});
+  const descriptor={name:'vendor.execute',version:'1.0.0',sideEffect:'external_write',inputSchema:{type:'object'},
+    outputSchema:{type:'object'},requiredScopes:['vendor:write'],idempotencySupport:true,recoverySupport:true,requiresPresence:false};
+  app=createRuntimeApplication({path:path.join(directory,'runtime.sqlite'),profile:'huawei_ict_agentarts',
+    tools:[{descriptor,execute:async()=>{writes++;return {ok:true};}}],
+    competitionToolAvailability:[{toolName:descriptor.name,toolVersion:descriptor.version,available:()=>true}],
+    competitionToolExports:[{toolName:descriptor.name,toolVersion:descriptor.version,exportPolicyVersion:'synthetic-v1',
+      accepts:()=>true,project:({result})=>result}],
+    requiresToolAuthorization:scope=>question.requiresAuthorization(scope),
+    requestToolAuthorization:scope=>question.requestToolAuthorization(scope),
+    coordination:{async execute(request){return request.continuation?{kind:'text',text:'Synthetic done',verification:'mock'}:
+      {kind:'tool_proposal',proposalId:'proposal-'+request.taskId,toolName:descriptor.name,toolVersion:descriptor.version,
+       arguments:{target:'/synthetic/target',body:'exact content'},verification:'unverified'};}}});
+  t.after(async()=>{question.close();await wait(()=>app.activeTaskCount===0);app.close();});
+  const client=new Client(app);await client.connect();
+  const submitted=await client.call('task.submit',{goal:'Synthetic external operation',conversationId:'Synthetic external conversation'},
+    {idempotencyKey:'synthetic-external'});
+  const result=await wait(()=>{
+    const card=question.snapshot().find(item=>item.state==='pending');if(card)return {card};
+    const task=app.runtime.getTask(submitted.taskId);if(['failed','succeeded'].includes(task.state))return {task};
+  });
+  assert.ok(result.card,JSON.stringify(result.task));
+  assert.equal(writes,0);
+  assert.match(result.card.description,/\/synthetic\/target/);
+  assert.match(result.card.description,/exact content/);
+  assert.equal(result.card.canAlways,false);assert.equal(result.card.canReuseTask,false);
+  question.respond({questionId:result.card.questionId,expectedRevision:result.card.revision,decision:'allow_once'},result.card.conversationId);
+  await wait(()=>['succeeded','failed'].includes(app.runtime.getTask(submitted.taskId).state));
+  assert.equal(app.runtime.getTask(submitted.taskId).state,'succeeded');assert.equal(writes,1);
+});

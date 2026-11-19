@@ -11,6 +11,9 @@ import {
   planWindowsRecoveryArtifact,
   assertRecoveryArtifactBinding,
   assembleArtifactServiceTools,
+  ARTIFACT_READ_TOOL_NAME,
+  ARTIFACT_EXPIRE_TOOL_NAME,
+  ARTIFACT_RELEASE_TOOL_NAME,
   ARTIFACT_GET_TOOL_NAME,
   ARTIFACT_LIST_TOOL_NAME,
   ARTIFACT_CREATE_TOOL_NAME,
@@ -285,11 +288,15 @@ test('assembleArtifactServiceTools: provides unattached tools without auto-regis
   const service = createArtifactService();
   const tools = assembleArtifactServiceTools(service);
 
-  assert.equal(tools.length, 3);
+  assert.equal(tools.length, 6);
   const names = tools.map(t => t.descriptor.name);
   assert.ok(names.includes(ARTIFACT_GET_TOOL_NAME));
   assert.ok(names.includes(ARTIFACT_LIST_TOOL_NAME));
   assert.ok(names.includes(ARTIFACT_CREATE_TOOL_NAME));
+  assert.ok(names.includes(ARTIFACT_READ_TOOL_NAME));
+  assert.ok(names.includes(ARTIFACT_EXPIRE_TOOL_NAME));
+  assert.ok(names.includes(ARTIFACT_RELEASE_TOOL_NAME));
+  assert.equal(tools.every(tool => tool.descriptor.requiredScopes.includes('artifact:manage')), true);
 
   // Verify create tool works through standard execute interface
   const createTool = tools.find(t => t.descriptor.name === ARTIFACT_CREATE_TOOL_NAME);
@@ -314,4 +321,32 @@ test('assembleArtifactServiceTools: provides unattached tools without auto-regis
   const getTool = tools.find(t => t.descriptor.name === ARTIFACT_GET_TOOL_NAME);
   const toolFetched = await getTool.execute({artifactId: toolCreated.artifactId}, mockContext);
   assert.equal(toolFetched.artifactId, toolCreated.artifactId);
+
+  const readTool = tools.find(t => t.descriptor.name === ARTIFACT_READ_TOOL_NAME);
+  const loaded = await readTool.execute({artifactId: toolCreated.artifactId}, mockContext);
+  assert.equal(loaded.encoding, 'utf8');
+  assert.equal(loaded.content, 'echo test');
+  await assert.rejects(
+    readTool.execute({artifactId: toolCreated.artifactId, extra: true}, mockContext),
+    /artifactId must be the only/,
+  );
+  const aborted = new AbortController();
+  aborted.abort();
+  await assert.rejects(
+    readTool.execute({artifactId: toolCreated.artifactId}, {...mockContext, signal: aborted.signal}),
+    /cancelled/i,
+  );
+
+  const expireTool = tools.find(t => t.descriptor.name === ARTIFACT_EXPIRE_TOOL_NAME);
+  const expired = await expireTool.execute({artifactId: toolCreated.artifactId}, mockContext);
+  assert.equal(expired.status, 'expired');
+  await assert.rejects(readTool.execute({artifactId: toolCreated.artifactId}, mockContext), /expired/i);
+
+  const releaseTool = tools.find(t => t.descriptor.name === ARTIFACT_RELEASE_TOOL_NAME);
+  const released = await releaseTool.execute({artifactId: toolCreated.artifactId}, mockContext);
+  assert.equal(released.released, true);
+  assert.equal(released.alreadyReleased, false);
+  const again = await releaseTool.execute({artifactId: toolCreated.artifactId}, mockContext);
+  assert.equal(again.alreadyReleased, true);
+  assert.equal(again.released, false);
 });

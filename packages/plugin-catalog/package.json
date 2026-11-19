@@ -1,0 +1,19 @@
+{
+  "name": "@personal-agent/plugin-catalog",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "exports": {".": {"types": "./dist/index.d.ts", "import": "./dist/index.js"}},
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server-filesystem": "2026.8.31",
+    "@personal-agent/contracts": "0.1.0-alpha.1",
+    "@personal-agent/mcp": "0.1.0-alpha.1",
+    "@personal-agent/policy": "0.1.0-alpha.1",
+    "@personal-agent/skills": "0.1.0-alpha.1"
+  }
+}

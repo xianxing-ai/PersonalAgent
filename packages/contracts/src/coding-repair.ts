@@ -11,7 +11,9 @@ export interface CodingRepairDiagnostic {message:string;source:string;path?:stri
 export type CodingRepairVerificationStatus='VALID'|'STALE'|'FAILED'|'UNKNOWN';
 export interface CodingRepairVerificationReceipt {version:1;sessionId:string;runId:string;recipeId:string;packageIds:string[];
   inputSnapshotId:string;files:CodingRepairFile[];exitCode:number|null;status:CodingRepairVerificationStatus;
-  evidenceRefs:string[];diagnostics:CodingRepairDiagnostic[];packageGraphDigest?:string}
+  evidenceRefs:string[];diagnostics:CodingRepairDiagnostic[];packageGraphDigest?:string;
+  /** SHA-256 of the local execution identity. Not a public Artifact service id and not Evidence. */
+  artifactDigest?:string}
 export interface CodingRepairPatch {path:string;expectedSha256:string|null;edits:{oldText:string;newText:string}[];createText?:string}
 export interface CodingRepairPublishRequest {version:1;sessionId:string;baselineSnapshotId:string;snapshotId:string;paths:string[];verificationRunIds:string[]}
 export interface CodingRepairPublishReadback {version:1;sessionId:string;state:'published'|'conflict'|'unknown'|'not_started';
@@ -64,13 +66,14 @@ export function parseCodingRepairDiagnostic(value:unknown):CodingRepairDiagnosti
     ...(v.line===undefined?{}:{line:v.line as number}),...(v.column===undefined?{}:{column:v.column as number}),...(v.code===undefined?{}:{code:text(v.code)})};
 }
 export function parseCodingRepairVerificationReceipt(value:unknown):CodingRepairVerificationReceipt {
-  const v=record(value);keys(v,['version','sessionId','runId','recipeId','packageIds','inputSnapshotId','files','exitCode','status','evidenceRefs','diagnostics'],['packageGraphDigest']);
+  const v=record(value);keys(v,['version','sessionId','runId','recipeId','packageIds','inputSnapshotId','files','exitCode','status','evidenceRefs','diagnostics'],['packageGraphDigest','artifactDigest']);
   if(v.version!==1||!['VALID','STALE','FAILED','UNKNOWN'].includes(String(v.status))
     ||v.exitCode!==null&&!Number.isSafeInteger(v.exitCode)||v.status==='VALID'&&v.exitCode!==0||v.status==='FAILED'&&(v.exitCode===null||v.exitCode===0))fail();
   return {version:1,sessionId:id(v.sessionId),runId:id(v.runId),recipeId:id(v.recipeId),packageIds:unique(v.packageIds,id),
     inputSnapshotId:id(v.inputSnapshotId),files:array(v.files,file),exitCode:v.exitCode as number|null,status:v.status as CodingRepairVerificationStatus,
     evidenceRefs:unique(v.evidenceRefs,text),diagnostics:array(v.diagnostics,parseCodingRepairDiagnostic),
-    ...(v.packageGraphDigest===undefined?{}:{packageGraphDigest:sha(v.packageGraphDigest)??fail()})};
+    ...(v.packageGraphDigest===undefined?{}:{packageGraphDigest:sha(v.packageGraphDigest)??fail()}),
+    ...(v.artifactDigest===undefined?{}:{artifactDigest:sha(v.artifactDigest)??fail()})};
 }
 export function parseCodingRepairPatch(value:unknown):CodingRepairPatch {
   const v=record(value);keys(v,['path','expectedSha256','edits'],['createText']);

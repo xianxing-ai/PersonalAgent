@@ -1,0 +1,17 @@
+[
+  {
+    "Id": "sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+    "RepoDigests": [
+      "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004"
+    ],
+    "Os": "linux",
+    "Architecture": "amd64",
+    "Config": {
+      "User": "node",
+      "WorkingDir": "/opt/personal-agent",
+      "Labels": {
+        "org.opencontainers.image.revision": "a93734c195ceaff56d3e7a5654e320f3007b35f3"
+      }
+    }
+  }
+]

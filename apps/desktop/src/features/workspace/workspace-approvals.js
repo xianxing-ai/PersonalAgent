@@ -1,10 +1,11 @@
-import {approvalCards,approvalResponse,nextApprovalExpiry} from '../conversation/approval-card.js';
+import {approvalCards,approvalResponse,focusApprovalCard,nextApprovalExpiry} from '../conversation/approval-card.js';
 import {approvalsWithoutQuestionCards} from '../conversation/authorization-question-card.js';
 
 // Application authorization questions remain mounted by the existing renderer.
 export function mountWorkspaceApprovals(conversation,invoke,report,readRevision){
   let snapshot={tasks:[],approvals:[]},timer,closed=false;
   const pending=new Set();
+  let focusedApproval;
   const approvals=()=>approvalsWithoutQuestionCards(snapshot.approvals,snapshot.authorizationQuestions,snapshot.conversationState?.activeId);
   function project(){
     clearTimeout(timer);const visible=approvals();
@@ -13,6 +14,8 @@ export function mountWorkspaceApprovals(conversation,invoke,report,readRevision)
       if(slot.dataset.signature!==html){slot.dataset.signature=html;slot.innerHTML=html;}
       for(const button of slot.querySelectorAll('[data-approval-decision]'))button.disabled=pending.has(button.dataset.approvalId);
     }
+    const focus=snapshot.approvalFocus;
+    if(focus?.taskId&&focus.taskId!==focusedApproval&&focusApprovalCard(conversation,focus.taskId))focusedApproval=focus.taskId;
     const next=nextApprovalExpiry(snapshot.tasks,visible);
     if(next!==undefined)timer=setTimeout(project,Math.max(1,next-Date.now()+1));
   }

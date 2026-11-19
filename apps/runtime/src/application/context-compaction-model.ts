@@ -1,7 +1,7 @@
 import {ProtocolError} from '@personal-agent/contracts';
 import type {ModelPort,ModelRequest,ModelResult} from '@personal-agent/models';
 import type {ContextSummaryRequest} from './context-compaction.js';
-import {awaitContextCompactionScope} from './context-compaction.js';
+import {awaitContextCompactionScope,mustPreserveContextMessage} from './context-compaction.js';
 
 /** Source material is always a user data block, never appended to this instruction. */
 export const CONTEXT_SUMMARY_SYSTEM='Summarize only the supplied prior conversation data for an execution subagent. '
@@ -35,6 +35,8 @@ export function createContextModelSummarizer(options:ContextSummaryModelOptions)
     throw new ProtocolError('INVALID_ARGUMENT','Trusted summary model configuration is invalid');
   const original=JSON.stringify({configurationRef:options.configurationRef,deployment:options.model.deployment,maxOutputTokens:options.maxOutputTokens});
   return async input=>{
+    if(input.segment.messages.some(mustPreserveContextMessage))
+      throw new ProtocolError('UNAUTHORIZED','Constraints and pending operations must remain verbatim, not model summaries');
     if(!options.guardedComplete)throw new ProtocolError('UNSUPPORTED_CAPABILITY','Summary model lacks a final synchronous provider send guard');
     if(!Number.isFinite(Date.parse(input.scope.deadline)))throw new ProtocolError('INVALID_ARGUMENT','Summary model deadline is invalid');
     const active=()=>{

@@ -92,14 +92,18 @@ test('current observation readback binds only confirmed node metrics to the acti
 
 test('one inflight sample only; stopping aborts the tool and revokes its grant', async () => {
   let signal;
+  let markStarted;
+  const started = new Promise(resolve => { markStarted = resolve; });
   const f = await setup(async (_input, context) => {
     signal = context.signal;
+    markStarted();
     return new Promise((_resolve, reject) => context.signal.addEventListener('abort', () => reject(Error('aborted')), {once: true}));
   });
   try {
     const session = f.app.startSystemObservationSession(f.request());
     const first = f.app.sampleSystemObservationSession(session.sessionId);
     assert.equal(f.app.sampleSystemObservationSession(session.sessionId).state, 'busy');
+    await started;
     f.app.stopSystemObservationSession(session.sessionId);
     await idle(f.app);
     assert.equal(signal.aborted, true);

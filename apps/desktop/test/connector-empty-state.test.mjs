@@ -36,6 +36,12 @@ test('a ready weather tool without a result offers a query instead of claiming a
  assert.match(card,/待查询/);assert.match(card,/尚未获取数据/);assert.doesNotMatch(card,/未连接|实时|已连接/);
  const zero=connectorCards({weather:{temp:0,city:'<城市>'}},escape).split('</article>')[0];assert.match(zero,/0<span>/);assert.match(zero,/&lt;城市&gt;/);
 });
+test('weather failure text is displayed as text when no forecast is available',()=>{
+ const reason='<img src=x onerror=alert(1)>';
+ const card=connectorCards({weather:{reason}},escape).split('</article>')[0];
+ assert.match(card,/查询失败/);assert.match(card,/&lt;img src=x onerror=alert\(1\)&gt;/);
+ assert.doesNotMatch(card,/<img src=x/);
+});
 test('ready empty todo and unconfigured subscriptions explain the missing data without inventing an outage',()=>{
  const html=connectorCards({todo:{available:true,items:[]},feeds:{configured:false,available:false,subscriptions:[]}},escape);
  assert.match(html,/待添加订阅/);assert.match(html,/本地待办已就绪/);assert.doesNotMatch(html,/连接服务后|订阅服务未连接/);

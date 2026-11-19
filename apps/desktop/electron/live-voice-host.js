@@ -1,4 +1,5 @@
 import {createHash, randomUUID} from 'node:crypto';
+import {createVoiceEchoGuard} from '@personal-agent/voice';
 import {pcmLevel} from './audio-level.js';
 import {createLiveVoiceHistory} from './live-voice-history.js';
 import {createLiveTextOutput} from './live-text-output.js';
@@ -42,6 +43,17 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
   prepareTaskApproval = async () => null,
   now = Date.now, schedule = setTimeout, unschedule = clearTimeout}) {
   let active, enabled = false, lastError = '', releaseUnknown = false;
+  const echoGuard = createVoiceEchoGuard({now});
+  let speechReplyId = null;
+  const beginSpeechOutput = (replyId) => {
+    if (speechReplyId) return;
+    speechReplyId = echoGuard.beginSpeechOutput(replyId).replyId;
+  };
+  const endSpeechOutput = () => {
+    if (!speechReplyId) return;
+    echoGuard.endSpeechOutput(speechReplyId);
+    speechReplyId = null;
+  };
   const textOutput=createLiveTextOutput({readSession:()=>active,now,onUpdate:()=>publish()});
   let lastDiagnostic={stage:'idle',status:'idle'},audioSendFailure;
   const diagnose=(stage,status,code,metadata={})=>{
@@ -82,6 +94,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     return record.closingSession;
   };
   async function releaseActive() {
+    endSpeechOutput();
     textOutput.clear();
     const record = active;
     if (!record) return snapshot();
@@ -163,14 +176,16 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
           }
           if (event.type === 'audio') {
             record.phase = 'speaking';
+            beginSpeechOutput(record.id);
             command(record, {type: 'audio', data: event.data});
             try { onLevel(pcmLevel(event.data)); } catch { /* Loudness is visual and must not stop playback. */ }
           }
-          if (event.type === 'interrupted') {textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
-          if (event.type === 'turn_complete') {command(record, {type: 'drain'});textOutput.flush();}
+          if (event.type === 'interrupted') {endSpeechOutput();textOutput.clear();record.phase = record.workingCount ? 'working' : 'listening'; command(record, {type: 'clear'});}
+          if (event.type === 'turn_complete') {endSpeechOutput();command(record, {type: 'drain'});textOutput.flush();}
           if (event.type === 'transcript') {
             const trimmed = typeof event.text === 'string' ? event.text.trim() : '';
             if (!trimmed) return;
+            if (event.role === 'user' && !echoGuard.inspect(now()).deliverable) return;
             if (typeof event.id !== 'string' || !/^[\w-]{1,256}$/.test(event.id) || !['user','assistant'].includes(event.role)) {
               fail('Live 转写缺少有效消息标识'); return;
             }
@@ -461,6 +476,7 @@ export function createLiveVoiceHost({getPanel, config, microphoneHost, createSou
     if (message.type === 'ready') record.playReady.resolve();
     if (message.type === 'stopped') record.playStopped.resolve();
     if (message.type === 'drained') {
+      endSpeechOutput();
       textOutput.drained();
       if (record.phase === 'speaking') {record.phase = record.workingCount ? 'working' : 'listening'; publish();}
       textOutput.flush();
