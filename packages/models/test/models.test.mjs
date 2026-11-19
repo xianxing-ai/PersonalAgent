@@ -256,3 +256,49 @@ test('SSE stream parser handles LF, CRLF, CR, and CR/LF split across chunk bound
     {kind: 'text', text: 'world'},
   ]);
 });
+
+test('SSE only completes after a terminated finish reason or DONE event', async (t) => {
+  const delta = 'data: {"choices":[{"delta":{"content":"hello"}}]}';
+  const finish = 'data: {"choices":[{"delta":{},"finish_reason":"length"}]}';
+  const dangling = 'data: {"choices":[{"delta":{"content":"unfinished"}}]}';
+  const providerFor = payload => new PanguModelProvider(panguOptions(async () => new Response(payload, {
+    status: 200,
+    headers: {'content-type': 'text/event-stream'},
+  })));
+
+  await t.test('complete CRLF finish reason preserves stop reason and usage', async () => {
+    const usage = 'data: {"choices":[],"usage":{"total_tokens":5}}';
+    const payload = `${delta}\r\n\r\n${finish}\r\n\r\n${usage}\r\n\r\n`;
+    const result = await providerFor(payload).complete(request());
+    assert.equal(result.response.text, 'hello');
+    assert.equal(result.stopReason, 'length');
+    assert.equal(result.usage.totalTokens, 5);
+  });
+
+  await t.test('complete LF DONE permits completion and discards the dangling event', async () => {
+    const deltas = [];
+    const result = await providerFor(`${delta}\n\ndata: [DONE]\n\n${dangling}\n`).complete(request({
+      onDelta: item => deltas.push(item),
+    }));
+    assert.equal(result.response.text, 'hello');
+    assert.equal(result.stopReason, 'stop');
+    assert.deepEqual(deltas, [{kind: 'text', text: 'hello'}]);
+  });
+
+  const incomplete = {code: 'EXTERNAL_FAILURE', message: 'Model stream ended before completion'};
+  await t.test('EOF without a blank line discards the pending delta', async () => {
+    const deltas = [];
+    await assert.rejects(providerFor(dangling).complete(request({onDelta: item => deltas.push(item)})), incomplete);
+    assert.deepEqual(deltas, []);
+  });
+  await t.test('a nonterminal delta followed by EOF is a failure even if displayed', async () => {
+    const deltas = [];
+    await assert.rejects(providerFor(`${delta}\r\n\r\n`).complete(request({onDelta: item => deltas.push(item)})), incomplete);
+    assert.deepEqual(deltas, [{kind: 'text', text: 'hello'}]);
+  });
+  await t.test('unterminated finish and DONE events cannot complete a stream', async () => {
+    for (const end of [finish, 'data: [DONE]']) {
+      await assert.rejects(providerFor(`${delta}\n\n${end}\n`).complete(request()), incomplete);
+    }
+  });
+});
