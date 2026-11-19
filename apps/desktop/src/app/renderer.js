@@ -613,7 +613,9 @@ else {
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
     refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;roster.paint(data.assistants,data);
     setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
-    if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    if(emptyThread){followLock.markProgrammatic();thread.scrollTop=0;}
+    else if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    if(emptyThread&&taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();}
     applyOperatorBrake({button:operatorBrakeButton,status:operatorBrakeStatus,state:root.querySelector('#state'),snapshot:data.operatorBrake});
 };
 }

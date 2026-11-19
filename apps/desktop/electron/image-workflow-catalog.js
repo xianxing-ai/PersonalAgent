@@ -62,5 +62,11 @@ export function createImageWorkflowCatalogHost({getApplication,now=Date.now}={})
       accepts:scope=>{try{validateToolValue(inputSchema,scope.arguments);current(scope);return true;}catch{return false;}},
       project:scope=>{const application=current(scope),expected=read(scope.result?.requestedWorkflowId===undefined?{}:{workflowId:scope.result.requestedWorkflowId},application);
         if(!isDeepStrictEqual(scope.result,expected))fail('UNAUTHORIZED','Public workflow catalog snapshot changed');return expected;}}],
+    snapshot(input={}) {
+      if(closed)fail('CANCELLED','Workflow catalog request ended');
+      const application=getApplication();
+      if(!application?.runtime||typeof application.tools?.list!=='function')fail('UNSUPPORTED_CAPABILITY','Original tool registry is unavailable');
+      return read(input??{},application);
+    },
     close(){closed=true;}};
 }

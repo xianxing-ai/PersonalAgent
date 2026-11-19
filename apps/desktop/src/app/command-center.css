@@ -272,6 +272,11 @@ html:has(.command-center),body:has(.command-center),#root:has(.command-center) {
 .command-center .cc-local-search {flex-wrap:wrap}
 .command-center .cc-local-search input {flex:1;min-width:160px;border:0;background:transparent;color:inherit}
 .command-center .cc-compact {border:0;background:transparent;color:var(--cc-muted);font-size:12px;padding:0 8px}
+.command-center .cc-goals,.command-center .operator-brake {border:1px solid var(--cc-line);border-radius:999px;background:var(--cc-soft);color:var(--cc-text);font-size:11px;padding:4px 11px;min-height:26px;cursor:pointer}
+.command-center .cc-goals:hover,.command-center .operator-brake:hover {background:var(--cc-hover)}
+.command-center .cc-local-actions {display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 6px}
+.command-center .cc-local-actions button {padding:6px 12px;border:1px solid var(--cc-line);border-radius:999px;background:var(--cc-soft);color:var(--cc-text);font-size:11.5px;cursor:pointer}
+.command-center .cc-local-actions button:hover {background:var(--cc-hover)}
 @media(min-width:1600px) {.cc-hero {flex-basis:282px;padding-inline:36px}.cc-hero-visual {left:74%;transform:translate(-50%,-50%) scale(1.3)}}
 @media(max-width:1150px) {.cc-hero {flex-basis:226px;padding-inline:22px}.cc-hero-visual {transform:translate(-50%,-50%) scale(.95)}}
 @media(max-width:760px) {.cc-hero-visual {transform:translate(-50%,-50%) scale(.85)}}
