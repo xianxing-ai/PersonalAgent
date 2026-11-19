@@ -38,7 +38,7 @@ import {freemem,totalmem,availableParallelism} from 'node:os';
 import {existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync} from 'node:fs';
 import {EventCursor} from '@personal-agent/client';
 import {register, requestTaskCancellation, submitConversationTask} from './runtime.js';
-import {openDesktopActivity} from './activity-host.js';
+import {openDesktopActivity, projectRepairActivityFromCheckpoint} from './activity-host.js';
 import {panelBounds, clampOrb, draggedGroupBounds, placeOrb} from './placement.js';
 import {createOrbHitTestController} from './orb-hit-testing.js';
 import {Conversations} from './conversations.js';
@@ -738,6 +738,18 @@ function projectFailureRepair(task) {
     const repair = createFailureRepairHost(runtimeApplication.runtime).view(task.taskId);
     return repair ? {repair} : {};
   } catch { return {}; }
+}
+
+function recordTaskRepairActivity(taskId) {
+  if (runtimeClosed || !runtimeApplication?.runtime || !activityProduct || typeof taskId !== 'string' || !taskId) return;
+  try {
+    const checkpoint = runtimeApplication.runtime.loadCheckpoint(taskId, 'repair-decision:v1');
+    const executions = typeof runtimeApplication.runtime.readToolExecutions === 'function'
+      ? runtimeApplication.runtime.readToolExecutions(taskId) : [];
+    const lastTool = Array.isArray(executions) ? executions.at(-1)?.toolName : undefined;
+    const projected = projectRepairActivityFromCheckpoint(taskId, checkpoint, lastTool);
+    if (projected) activityProduct.recordRepair(projected);
+  } catch { /* Activity recording never interrupts task state projection or repair actions. */ }
 }
 
 function taskResultMetadata(task) {
@@ -1656,6 +1668,9 @@ function applyEvent(event) {
         const auditAction = failureCode === 'TIMEOUT' ? 'timeout' : failureCode === 'CANCELLED' ? 'cancelled' : 'denied';
         permissionAudit?.recordEvent(auditAction, `task:${event.taskId}:${failureCode}`);
       }
+      if (event.type === 'task.failed' || event.payload?.state === 'waiting_reconciliation') {
+        recordTaskRepairActivity(event.taskId);
+      }
     }
     if (event.type === 'task.created' && event.payload.conversationId?.startsWith('knowledge-watch:')
       && event.payload.goal?.startsWith('RECHECK ')) {
@@ -2100,6 +2115,14 @@ function ensureRiskAutonomyHost() {
     store: createEncryptedAutonomyStore(storage),
     channel: {sendAdvisoryNotification: input => desktopNotificationPort?.sendAdvisoryNotification(input)},
     getApplication: () => runtimeApplication,
+    onActivity: record => activityProduct?.recordAutonomy(record),
+  });
+  activityProduct?.bindAutonomy({
+    revert: auditId => {
+      const result = riskAutonomyHost.compensateAudit(auditId);
+      if (!result?.executed) throw Error('自动执行补偿已不可用');
+      publish();
+    },
   });
   return riskAutonomyHost;
 }
@@ -3459,6 +3482,7 @@ async function initializeRuntime() {
     },
     namespace: desktopHost.userNamespace,
     onUpdate: publish,
+    onActivity: outcome => activityProduct?.recordProactive(outcome),
   });
   eventPoll = setInterval(() => {const operatorPaused=typeof operatorBrake!=='undefined'&&operatorBrake.isPaused();
     void pumpEvents(); if(!operatorPaused){void todoHost?.tick(); void personalDashboardHost?.tick();}
@@ -3658,6 +3682,7 @@ async function action(event, name, payload) {
   if (name === 'task.repair') {
     if ((sender !== panel && sender !== workspace) || !runtimeApplication) throw Error('请从当前对话处理失败');
     const result = createFailureRepairHost(runtimeApplication.runtime).act(payload);
+    if (typeof payload?.taskId === 'string') recordTaskRepairActivity(payload.taskId);
     publish();
     return result;
   }
@@ -5177,6 +5202,15 @@ app.whenReady().then(async () => {
   powerMonitor.on('on-battery',sampleResources);powerMonitor.on('on-ac',sampleResources);
   desktopHost = createDesktopHost();
   activityProduct = openDesktopActivity({userData:app.getPath('userData'),onUpdate:publish});
+  activityProduct.bindRepair({
+    stopRetry: taskId => {
+      if (runtimeClosed || !runtimeApplication?.runtime) throw Error('运行时尚未就绪');
+      const result = createFailureRepairHost(runtimeApplication.runtime).act({taskId, action: 'abandon'});
+      if (!result?.accepted) throw Error(result?.reason || '停止重试未受理');
+      recordTaskRepairActivity(taskId);
+      publish();
+    },
+  });
   microphonePermissionGate = createMicrophonePermissionGate({
     expectedPageUrl: pathToFileURL(entry).href,
     isTrustedWindow: contents => contents === panel?.webContents,

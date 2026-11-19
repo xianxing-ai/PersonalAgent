@@ -19,9 +19,30 @@ export function createEncryptedAutonomyStore(storage) {
  * 产品宿主：持久化档位，中风险做完后走桌面通知端口。
  * 用户点击该通知时，才执行已记下的补偿调用。
  */
-export function createRiskAutonomyHost({store, channel, getApplication}) {
+export function createRiskAutonomyHost({store, channel, getApplication, onActivity}) {
   const config = new AutonomyPolicyConfig({store});
   const gate = createRiskAutonomyGate(config);
+  const compensationTools = new Map();
+  function emitActivity(runId) {
+    if (typeof onActivity !== 'function') return;
+    const audit = config.listAudits().find(item => item.runId === runId);
+    if (!audit || (audit.executionState !== 'confirmed' && audit.executionState !== 'failed')) return;
+    const compensationToolName = compensationTools.get(runId) ?? audit.compensation?.toolName;
+    try {
+      onActivity({
+        at: audit.at,
+        auditId: audit.auditId,
+        toolName: audit.toolName,
+        tier: audit.tier,
+        disposition: audit.disposition,
+        compensatable: Boolean(audit.compensatable),
+        rollback: audit.rollback,
+        reason: `档位 ${audit.stance} · 类别 ${audit.category}`,
+        ...(typeof compensationToolName === 'string' && compensationToolName ? {compensationToolName} : {}),
+        result: audit.executionState === 'failed' ? 'failed' : 'succeeded',
+      });
+    } catch { /* Activity recording never alters tool execution or notification outcomes. */ }
+  }
   return {
     config,
     gate: {
@@ -31,6 +52,7 @@ export function createRiskAutonomyHost({store, channel, getApplication}) {
       },
       recordExecutionState(input) {
         gate.recordExecutionState?.(input);
+        emitActivity(input.runId);
       },
       notifyGranted(input) {
         let audit = config.listAudits().find(item => item.runId === input.runId);
@@ -39,6 +61,7 @@ export function createRiskAutonomyHost({store, channel, getApplication}) {
           audit = config.recordExecutionState(input.runId, 'confirmed') ?? audit;
         }
         if (audit.executionState !== 'confirmed') return;
+        emitActivity(input.runId);
         if (!channel) {
           config.recordNotificationDelivery(input.runId, false);
           return;
@@ -62,6 +85,9 @@ export function createRiskAutonomyHost({store, channel, getApplication}) {
         );
       },
       rememberCompensation(input) {
+        if (typeof input?.runId === 'string' && typeof input?.toolName === 'string' && input.toolName) {
+          compensationTools.set(input.runId, input.toolName);
+        }
         config.rememberCompensation(input.runId, {
           toolName: input.toolName,
           toolVersion: input.toolVersion,
@@ -103,6 +129,10 @@ export function createRiskAutonomyHost({store, channel, getApplication}) {
       if (config.getSettings().revoked) config.restore();
       else config.revoke();
       return this.snapshot();
+    },
+    compensateAudit(auditId) {
+      if (typeof auditId !== 'string' || !auditId) return {executed: false};
+      return this.compensate(`${NOTICE_PREFIX}${auditId}`);
     },
     compensate(notificationId) {
       if (typeof notificationId !== 'string' || !notificationId.startsWith(NOTICE_PREFIX)) return {executed: false};
