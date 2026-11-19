@@ -13,7 +13,7 @@ export type {CompetitionCloudRequestIdentityRecord, CompetitionCloudRequestIdent
   CompetitionCloudIdentitySelection} from './application/coordination.js';
 export type {StartSystemObservationSessionRequest, SystemObservationSession} from './application/system-observation-session.js';
 export {createSystemObservationTool} from '@personal-agent/windows-client';
-export type {RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostToolTaskRequest,
+export type {RiskAutonomyGate, RiskAutonomyInvocation, RiskAutonomyReview, RuntimeApplicationOptions, RuntimeApplicationTransport, SubmitHostToolTaskRequest,
   PrepareHostToolTaskRequest, FinalizeHostToolTaskRequest, HostToolTaskReadback,
   RevokeHostAuthorizationRequest, RevokeHostAuthorizationResult,
   CoordinationGoalScope, CoordinationInputHooks, ConversationContextMessage, WindowsHostTaskReconciliation,
@@ -83,6 +83,7 @@ export type {
   WorkspacePatchReconciliationReadback,
 } from './application/workspace-patch-reconciliation.js';
 export {createReminderDeliveryHost} from './application/reminder-delivery.js';
+export {dispatchPersonalDashboardTask} from './application/personal-dashboard-dispatch.js';
 export {
   createRuntimeSubagentDispatchTool,
   createDesktopSubagentDispatchTool,

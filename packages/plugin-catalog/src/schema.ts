@@ -1,4 +1,5 @@
 import {ProtocolError} from '@personal-agent/contracts';
+import {parsePermissionManifest, type PluginPermissionManifest} from './permissions.js';
 
 export const HIGH_RISK_EFFECTS = ['filesystem.write', 'network.write', 'code.execute'] as const;
 export const CAPABILITY_EFFECTS = ['instruction', 'read', 'network.read', ...HIGH_RISK_EFFECTS] as const;
@@ -57,6 +58,7 @@ export interface PluginManifest {
   description: string;
   capabilities: readonly PluginCapability[];
   permissionDeclarations: readonly PermissionDeclaration[];
+  permissionManifest: PluginPermissionManifest;
   riskLevel: RiskLevel;
   enableRequiresAuthorization: boolean;
   maintenanceStatus: MaintenanceStatus;
@@ -80,7 +82,7 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const manifestKeys = ['id','name','type','sourceRepositoryUrl','license','licenseNotes','pin','author','description','capabilities','permissionDeclarations','riskLevel','enableRequiresAuthorization','maintenanceStatus','maintenanceEvidence','admissionReason','admissionCriteria','oneClickInstall','installer','installBlockReason','archive','skillName','publicEndpoint','reviewedAt','reviewedStars','lastPushedAt','reviewSources'] as const;
+const manifestKeys = ['id','name','type','sourceRepositoryUrl','license','licenseNotes','pin','author','description','capabilities','permissionDeclarations','permissionManifest','riskLevel','enableRequiresAuthorization','maintenanceStatus','maintenanceEvidence','admissionReason','admissionCriteria','oneClickInstall','installer','installBlockReason','archive','skillName','publicEndpoint','reviewedAt','reviewedStars','lastPushedAt','reviewSources'] as const;
 const archiveKeys = ['kind','directory','files','tarballUrl'] as const;
 const pinKeys = ['state','commit','version','sha256','sha256Subject','distributionSha256'] as const;
 const capabilityKeys = ['name','effect','admitted','statement'] as const;
@@ -206,6 +208,7 @@ export function parsePluginManifest(value: unknown): PluginManifest {
     return {scope: text(permission.scope, 'permission.scope', 120), effect: effect as PermissionDeclaration['effect'], admitted: permission.admitted, requiredForEnable: permission.requiredForEnable, statement: text(permission.statement, 'permission.statement', 600)};
   });
   if (new Set(permissionDeclarations.map(item => item.scope)).size !== permissionDeclarations.length) fail('permission scopes must be unique');
+  const permissionManifest = parsePermissionManifest(data.permissionManifest);
   const riskLevel = data.riskLevel;
   if (!(RISK_LEVELS as readonly string[]).includes(String(riskLevel))) fail('riskLevel is invalid');
   if (typeof data.enableRequiresAuthorization !== 'boolean') fail('enableRequiresAuthorization is invalid');
@@ -234,7 +237,7 @@ export function parsePluginManifest(value: unknown): PluginManifest {
     id, name: text(data.name, 'name', 120), type, sourceRepositoryUrl,
     license: text(data.license, 'license', 80), licenseNotes: text(data.licenseNotes, 'licenseNotes', 800),
     pin, author: text(data.author, 'author', 160), description: text(data.description, 'description', 2000),
-    capabilities, permissionDeclarations, riskLevel: riskLevel as RiskLevel, enableRequiresAuthorization: data.enableRequiresAuthorization,
+    capabilities, permissionDeclarations, permissionManifest, riskLevel: riskLevel as RiskLevel, enableRequiresAuthorization: data.enableRequiresAuthorization,
     maintenanceStatus: maintenanceStatus as MaintenanceStatus, maintenanceEvidence: text(data.maintenanceEvidence, 'maintenanceEvidence', 800),
     admissionReason: text(data.admissionReason, 'admissionReason', 2000), admissionCriteria, oneClickInstall, installer: installer as PluginInstaller,
     reviewedAt, reviewSources,

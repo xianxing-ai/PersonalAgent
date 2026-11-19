@@ -8,6 +8,8 @@ import type {OwnedWorkflowNode,OwnedWorkflowTemplate} from './owned-workflow-tem
 import {parseWorkflowSelectionResult,workflowShadowSelectedPlan,workflowShadowSelectionDigest} from './workflow-shadow-policy.js';
 import type {WorkflowSelectionResult,WorkflowShadowSelectedPlan,WorkflowShadowEvaluationReceipt} from './workflow-shadow-policy.js';
 import {parseCodingRepairSnapshot,parseCodingRepairPublishReadback} from '@personal-agent/contracts/coding-repair';
+import {appendRepairAttempt,decideRepair,emptyRepairTrace,observationFromHostFailure} from './repair-policy.js';
+import type {RepairPolicyOptions,RepairTrace} from './repair-policy.js';
 import {codingRepairConfiguration,createCodingRepairFrontier,compactCodingSnapshot,acceptCodingChecks,parseCodingPatchCandidate,
   analyzeCodingPatches,codingPatchCost,codingPatchRepeated,codingSnapshotFingerprint,codingFailureFingerprint,codingPatchFingerprint,requiredCodingVerification,codingRepairDigestText} from './coding-repair.js';
 import type {CodingRepairFrontier} from './coding-repair.js';
@@ -84,6 +86,8 @@ interface StepState {state:NodeState;value?:unknown;proposal?:WorkflowProposal;e
   /** Engine-owned marker: a user value which resembles a reference remains ordinary input data. */
   inputReference?:true;
   retrySafe?:true;previousAttempts?:readonly {proposal:WorkflowProposal;state:NodeState;value?:unknown;evidenceRefs:readonly string[]}[];
+  /** Decision trace for a failed attempt. Replay reads it; it never re-executes the attempt. */
+  repairTrace?:RepairTrace;repairHoldUntil?:string;
   shadow?:{plan:WorkflowShadowSelectedPlan;selectionDigest:string;evaluation?:WorkflowShadowEvaluationReceipt};
   /** Sealed original alternatives; a decision receipt is not a business-tool receipt. */
   pendingSelection?:readonly WorkflowCandidate[];selectedCandidate?:WorkflowCandidate;pendingGuard?:true}
@@ -168,7 +172,7 @@ export class OwnedWorkflowEngine {
   private readonly secret:Buffer;
   constructor(private readonly options:{selector?:WorkflowSelector;decisionTool?:{name:string;version:string};externalHost?:boolean;
     allowIsolatedProposals?:boolean;prepareCandidates:(context:WorkflowNodeContext)=>Promise<readonly WorkflowCandidate[]>;
-    checkpointSecret:string;host?:WorkflowHostPort;receiptVerifier?:WorkflowReceiptVerifier}) {
+    checkpointSecret:string;host?:WorkflowHostPort;receiptVerifier?:WorkflowReceiptVerifier;repair?:RepairPolicyOptions}) {
     if(typeof options.checkpointSecret!=='string'||Buffer.byteLength(options.checkpointSecret)<32
       ||(Boolean(options.selector)===Boolean(options.decisionTool))
       ||(options.selector!==undefined&&typeof options.selector.select!=='function')
@@ -255,8 +259,8 @@ export class OwnedWorkflowEngine {
         for(const node of template.nodes) {
           const step=state.nodes[node.id]!;
           if(affected.has(node.id)&&step.state==='failed'&&step.retrySafe&&step.proposal?.effect==='read') {
-            // Repair/retry policy is awaiting the user's algorithm. An attestation alone is not a retry decision.
-            step.reason='Repair algorithm unavailable; original failed operation and evidence retained';
+            // A retrySafe attestation is not itself a retry. The repair policy classifies the failure first.
+            this.considerReadRepair(state,node.id);
             continue;
           }
           // A cloud proposal does not prove local submission. After revision change it is readback-only,
@@ -396,7 +400,10 @@ export class OwnedWorkflowEngine {
         :copy(receipt.result);
       step.evidenceRefs=[...new Set([...(step.evidenceRefs??[]),...receipt.evidenceRefs])];delete step.reason;
       if(receipt.state==='failed'&&expected.effect==='read'&&plain(receipt.result)&&plain(receipt.result.failure)
-        &&receipt.result.failure.retrySafe===true) step.retrySafe=true;
+        &&receipt.result.failure.retrySafe===true) {
+        step.retrySafe=true;
+        this.considerReadRepair(state,receipt.nodeId);
+      }
       if(state.codingRepair&&receipt.state==='confirmed')this.admitCodingReceipt(state,receipt);
     }
   }
@@ -523,7 +530,9 @@ export class OwnedWorkflowEngine {
   private proposal(context:WorkflowNodeContext,state:CheckpointState,candidate:WorkflowCandidate):WorkflowProposal {
     if(!plain(candidate.value)) throw new ProtocolError('EXTERNAL_FAILURE','Invalid workflow operation candidate');
     const value=candidate.value;
+    const retryOrdinal=state.nodes[context.node.id]?.previousAttempts?.length??0;
     const operationId='wf-'+digest([state.taskId,state.controlRevision,state.workflowId,context.node.id,state.inputDigest,state.mode,state.namespace,
+      ...(retryOrdinal>0?[retryOrdinal]:[]),
       ...(state.codingRepair?[state.codingRepair.round,codingSnapshotFingerprint(state.codingRepair.snapshot),digest(value)]:[])]).slice(0,48);
     const inputDigest=digest(value),base={nodeId:context.node.id,proposalId:operationId,operationId,inputDigest,
       originControlRevision:state.controlRevision,...this.isolation(state),
@@ -616,6 +625,49 @@ export class OwnedWorkflowEngine {
   private isolation(state:CheckpointState):{isolation?:{namespace:string;snapshotDigest:string}} {
     return state.mode==='isolated'?{isolation:{namespace:state.namespace,snapshotDigest:state.snapshotDigest}}:{};
   }
+  private repairNow():number {
+    const now=this.options.repair?.now?.()??Date.now();
+    if(!Number.isFinite(now)) invalid('Invalid repair clock');
+    return now;
+  }
+  /** Classify a failed read and record the decision. Only an ordinary, approved, zero-delay read backoff may be tried again. */
+  private considerReadRepair(state:CheckpointState,nodeId:string):void {
+    const step=state.nodes[nodeId];
+    if(!step||step.state!=='failed'||step.retrySafe!==true||!step.proposal||step.proposal.effect!=='read') return;
+    const observation=observationFromHostFailure(step.value,{effect:'read',retrySafe:true,evidenceRefs:step.evidenceRefs??[],
+      parentCanReplan:this.options.repair?.parentCanReplan!==false});
+    const trace=step.repairTrace??emptyRepairTrace();
+    const decision=decideRepair(observation,trace,{...this.options.repair,now:()=>this.repairNow()});
+    if(decision.record) step.repairTrace=appendRepairAttempt(trace,decision);
+    const reopen=decision.strategy==='backoff_retry'&&decision.executable&&decision.effect==='read'
+      &&decision.result==='selected'&&decision.delayMs===0;
+    if(reopen) {
+      const previousAttempts=[...(step.previousAttempts??[]),{proposal:step.proposal,state:'failed' as const,
+        ...(step.value===undefined?{}:{value:step.value}),evidenceRefs:[...(step.evidenceRefs??[])]}];
+      const repairTrace=step.repairTrace;
+      state.nodes[nodeId]={state:'pending',previousAttempts,...(repairTrace?{repairTrace}:{}),retrySafe:true};
+      return;
+    }
+    step.reason=decision.reason;
+    if(decision.strategy==='backoff_retry'&&decision.result==='selected'&&decision.delayMs>0&&decision.retryNotBefore)
+      step.repairHoldUntil=decision.retryNotBefore;
+    else delete step.repairHoldUntil;
+  }
+  /** Release a backoff hold without issuing a write. The next proposal id includes the failed attempt. */
+  private releaseRepairHolds(state:CheckpointState):void {
+    const now=this.repairNow();
+    for(const nodeId of Object.keys(state.nodes)) {
+      const step=state.nodes[nodeId];
+      if(!step||step.state!=='failed'||!step.repairHoldUntil||step.retrySafe!==true||!step.proposal||step.proposal.effect!=='read') continue;
+      if(Date.parse(step.repairHoldUntil)>now) continue;
+      const last=step.repairTrace?.attempts.at(-1);
+      if(!last||last.strategy!=='backoff_retry'||!last.executable||last.effect!=='read') continue;
+      const previousAttempts=[...(step.previousAttempts??[]),{proposal:step.proposal,state:'failed' as const,
+        ...(step.value===undefined?{}:{value:step.value}),evidenceRefs:[...(step.evidenceRefs??[])]}];
+      const repairTrace=step.repairTrace;
+      state.nodes[nodeId]={state:'pending',previousAttempts,...(repairTrace?{repairTrace}:{}),retrySafe:true};
+    }
+  }
   async advance(request:OwnedWorkflowAdvanceRequest):Promise<OwnedWorkflowAdvanceResult> {
     if(request.resultFits!==undefined&&typeof request.resultFits!=='function')invalid('Invalid trusted workflow result bound');
     if(!Number.isFinite(Date.parse(request.deadline)))invalid('Invalid invocation deadline');
@@ -661,6 +713,7 @@ export class OwnedWorkflowEngine {
     }
     if(state.hostControl&&state.hostControl.status!=='running')return this.delivery(template,state,request);
     if(Object.values(state.nodes).some(step=>step.state==='waiting_receipt'||step.state==='stopping')) return this.delivery(template,state,request);
+    this.releaseRepairHolds(state);
     const ready:OwnedWorkflowNode[]=[];
     for(const node of template.nodes) {
       const step=state.nodes[node.id]!;if(step.state!=='pending') continue;
@@ -714,9 +767,12 @@ export class OwnedWorkflowEngine {
       }
       };
       const {id,result}=await run();
-      state.nodes[id]={...result,...(state.nodes[id]!.evidenceRefs?{evidenceRefs:state.nodes[id]!.evidenceRefs}:{}),
-        ...(state.nodes[id]!.shadow?{shadow:state.nodes[id]!.shadow}:{}),
-        ...(state.nodes[id]!.previousAttempts?{previousAttempts:state.nodes[id]!.previousAttempts}:{})};
+      const prior=state.nodes[id]!;
+      state.nodes[id]={...result,...(prior.evidenceRefs?{evidenceRefs:prior.evidenceRefs}:{}),
+        ...(prior.shadow?{shadow:prior.shadow}:{}),
+        ...(prior.previousAttempts?{previousAttempts:prior.previousAttempts}:{}),
+        ...(prior.repairTrace?{repairTrace:prior.repairTrace}:{}),
+        ...(prior.retrySafe?{retrySafe:true}:{})};
       if(!this.deliverable(template,state,request)) {
         // The cloud has not executed a business operation. Do not expose an undeliverable
         // proposal or retain branch choices selected by a candidate which was never emitted.

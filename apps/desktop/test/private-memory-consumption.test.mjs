@@ -145,4 +145,18 @@ test('native consent cannot survive Vault change or cancellation; managed-copy i
   await assert.rejects(bridge.invoke('memory.previewSave', {source: f.source}), /副本/);
   await assert.rejects(bridge.invoke('memory.delete', {ref}), /副本/);
   assert.equal((await f.privateMemory.listSaved()).facts.length, 1);
+  bridge.close();
+});
+
+test('assertCloudSend with scope validates sendGoal carrying appended preferences and rejects stripped scope', async t => {
+  const f = await fixture(t);
+  const ref = (await f.privateMemory.listSaved()).facts[0].ref;
+  f.host.select({conversationId: 'synthetic-conversation', ref});
+  const request = f.task('scope-check');
+  const prepared = await f.host.prepare(request);
+  assert.equal(prepared.state, 'authorized');
+  const scope = {publicGoal: request.goal, preparedGoal: prepared.goal};
+  const sendGoal = `${prepared.goal}\n\n已确认的用户偏好：\n- 纠正：回答短一些`;
+  assert.doesNotThrow(() => f.host.assertCloudSend({...request, goal: sendGoal}, scope));
+  assert.throws(() => f.host.assertCloudSend({...request, goal: 'tampered without prepared goal'}, scope), /范围/);
 });

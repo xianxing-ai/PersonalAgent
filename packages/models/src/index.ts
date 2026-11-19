@@ -1,4 +1,5 @@
 import { ProtocolError, validateToolValue } from '@personal-agent/contracts';
+import {completeChatCompletion} from './chat-stream.js';
 import {createHash} from 'node:crypto';
 import type { ToolDescriptor } from '@personal-agent/contracts';
 export {StructuredToolProvider} from './structured-tools.js';
@@ -8,6 +9,7 @@ export type {RealtimeEvent, RealtimeRequest, RealtimeSession, RealtimeSocket,
 export {AgentArtsRealtimeModelGateway, createAgentArtsRealtimeConnection} from './agentarts-realtime.js';
 export type {AgentArtsRealtimeModelGatewayOptions, RealtimeAuthorizationProvider} from './agentarts-realtime.js';
 export {OpenAICompatibleModelProvider} from './openai-compatible.js';
+export {completeChatCompletion};
 export type {OpenAICompatibleModelProviderOptions} from './openai-compatible.js';
 
 export type ModelCapability = 'text' | 'streaming' | 'toolCalling' | 'structuredOutput' | 'vision';
@@ -134,6 +136,11 @@ export type ModelRequestBudget =
   | {state: 'unmeasured'; scope: 'provider-body'; hiddenContext: 'unknown'}
   | (RequestTokenBudgetBinding & {state: 'measured'; inputTokens: number; hiddenContext: 'unknown'});
 
+export interface ModelDelta {
+  kind: 'text' | 'reasoning';
+  text: string;
+}
+
 export interface ModelRequest {
   messages: readonly ModelMessage[];
   images?: readonly ModelImageInput[];
@@ -144,11 +151,15 @@ export interface ModelRequest {
   thinkingBudget?: number;
   deadline: string;
   signal: AbortSignal;
+  /** Incremental text or reasoning. Providers that cannot stream still call this once per field. */
+  onDelta?: (delta: ModelDelta) => void;
 }
 
 export interface ModelResult {
   response: ModelResponse;
   deployment: ModelDeployment;
+  /** Provider reasoning/thinking text when the endpoint returned it. Not evidence of a verified tool. */
+  reasoning?: string;
   usage?: ModelUsage;
   latencyMs: number;
   stopReason: string;
@@ -328,6 +339,7 @@ export class FakeModelProvider implements ModelProvider {
     if (!step) throw new ProtocolError('EXTERNAL_FAILURE', 'Fake model has no response step remaining');
     const response = typeof step === 'function' ? await step(request) : step;
     validateResponse(response);
+    if (response.kind === 'final') request.onDelta?.({kind: 'text', text: response.text});
     return {response: structuredClone(response), deployment: structuredClone(this.deployment), usage: {promptTokens: 1, completionTokens: 1, totalTokens: 2}, latencyMs: 0, stopReason: 'fixture'};
   }
 }
@@ -354,12 +366,7 @@ export interface PanguModelProviderOptions {
 }
 
 function panguCapabilities(): ModelCapabilities {
-  return {text: true, streaming: false, toolCalling: false, structuredOutput: false, vision: false};
-}
-
-function panguText(value: unknown, field: string): string {
-  if (typeof value !== 'string' || !value.trim()) throw new ProtocolError('EXTERNAL_FAILURE', `Pangu response is missing ${field}`);
-  return value;
+  return {text: true, streaming: true, toolCalling: false, structuredOutput: false, vision: false};
 }
 
 function panguError(status: number, retryAfter: string | null): ProtocolError {
@@ -434,44 +441,31 @@ export class PanguModelProvider implements ModelProvider {
     request.signal.addEventListener('abort', abort, {once: true});
     const started = Date.now();
     try {
-      const response = await this.request(panguCompletionsUrl(this.baseUrl), {
-        method: 'POST',
-        headers: {'content-type': 'application/json', authorization: `Bearer ${key}`},
-        body: JSON.stringify({
-          model: this.model,
-          messages,
-          ...(request.maxOutputTokens === undefined ? {} : {max_tokens: request.maxOutputTokens}),
-          ...(request.reasoningEffort !== undefined ? {reasoning_effort: request.reasoningEffort} : {}),
-          stream: false,
-        }),
-        signal: controller.signal,
+      const serialized = JSON.stringify({
+        model: this.model,
+        messages,
+        ...(request.maxOutputTokens === undefined ? {} : {max_tokens: request.maxOutputTokens}),
+        ...(request.reasoningEffort !== undefined ? {reasoning_effort: request.reasoningEffort} : {}),
+        stream: true,
       });
-      if (!response.ok) throw panguError(response.status, response.headers.get('retry-after'));
-      let body: unknown;
-      try { body = await response.json(); } catch { throw new ProtocolError('EXTERNAL_FAILURE', 'Pangu returned invalid JSON'); }
-      if (!body || typeof body !== 'object') throw new ProtocolError('EXTERNAL_FAILURE', 'Pangu returned an invalid response');
-      const record = body as Record<string, unknown>;
-      const choices = record.choices;
-      if (!Array.isArray(choices) || !choices[0] || typeof choices[0] !== 'object') throw new ProtocolError('EXTERNAL_FAILURE', 'Pangu response is missing choices');
-      const choice = choices[0] as Record<string, unknown>;
-      const message = choice.message;
-      if (!message || typeof message !== 'object') throw new ProtocolError('EXTERNAL_FAILURE', 'Pangu response is missing message');
-      const text = panguText((message as Record<string, unknown>).content, 'message content');
-      const usageValue = record.usage;
-      const usage = usageValue && typeof usageValue === 'object' ? usageValue as Record<string, unknown> : undefined;
-      const toCount = (value: unknown): number | undefined => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-      const promptTokens = toCount(usage?.prompt_tokens);
-      const completionTokens = toCount(usage?.completion_tokens);
-      const totalTokens = toCount(usage?.total_tokens);
-      const parsedUsage: ModelUsage = {
-        ...(promptTokens === undefined ? {} : {promptTokens}),
-        ...(completionTokens === undefined ? {} : {completionTokens}),
-        ...(totalTokens === undefined ? {} : {totalTokens}),
-      };
+      const payload = JSON.parse(serialized) as Record<string, unknown>;
+      delete payload.stream;
+      const completion = await completeChatCompletion({
+        request: this.request,
+        url: panguCompletionsUrl(this.baseUrl),
+        headers: {'content-type': 'application/json', authorization: `Bearer ${key}`},
+        payload,
+        streamBody: serialized,
+        signal: controller.signal,
+        ...(request.onDelta ? {onDelta: request.onDelta} : {}),
+        race: operation => operation,
+        mapStatus: (status, retryAfter) => panguError(status, retryAfter),
+      });
       return {
-        response: {kind: 'final', text}, deployment: structuredClone(this.deployment),
-        ...(Object.keys(parsedUsage).length === 0 ? {} : {usage: parsedUsage}),
-        latencyMs: Date.now() - started, stopReason: typeof choice.finish_reason === 'string' ? choice.finish_reason : 'stop',
+        response: {kind: 'final', text: completion.text}, deployment: structuredClone(this.deployment),
+        ...(completion.reasoning ? {reasoning: completion.reasoning} : {}),
+        ...(completion.usage ? {usage: completion.usage} : {}),
+        latencyMs: Date.now() - started, stopReason: completion.finishReason,
       };
     } catch (error) {
       if (error instanceof ProtocolError) throw error;

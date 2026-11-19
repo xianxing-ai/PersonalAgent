@@ -63,18 +63,88 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   const inline=mountInlineSubagents(chat,invoke,report,binding=>{leadButton.setAttribute('aria-pressed',String(!binding));for(const button of team.querySelectorAll('[data-child-task]'))button.setAttribute('aria-pressed',String(Boolean(binding&&button.dataset.childTask===binding.taskId&&button.dataset.parentTask===binding.parentTaskId)));});
   const closeSidebar=()=>{shell.classList.remove('cc-sidebar-open');railToggle.setAttribute('aria-expanded','false');};
   leadButton.setAttribute('aria-pressed','true');leadButton.onclick=()=>{inline.main();closeSidebar();};
-  const originalChildren=root.querySelector('.subagent-conversations');team.querySelector('.cc-child-actions').append(originalChildren);
+  const originalChildren=root.querySelector('.subagent-conversations');if(originalChildren)team.querySelector('.cc-child-actions').append(originalChildren);
   const history=document.createElement('aside');history.className='cc-history';history.id='cc-history';history.hidden=true;history.setAttribute('aria-label','历史会话');history.innerHTML=`<header><h2>对话历史</h2><button type="button" aria-label="关闭历史会话">${centerIcon('close')}</button></header>`;history.append(sessionRoot);layout.append(history);
   rail.querySelector('.cc-history-toggle').setAttribute('aria-controls','cc-history');rail.querySelector('.cc-history-toggle').setAttribute('aria-expanded','false');
   const toggleHistory=()=>{history.hidden=!history.hidden;rail.querySelector('.cc-history-toggle').setAttribute('aria-expanded',String(!history.hidden));};
   rail.querySelector('.cc-history-toggle').onclick=toggleHistory;search.onclick=()=>{if(history.hidden)toggleHistory();history.querySelector('[data-session-list]').focus();};history.querySelector('header button').onclick=()=>{history.hidden=true;rail.querySelector('.cc-history-toggle').setAttribute('aria-expanded','false');search.focus();};
   const openAdmin=page=>invoke('admin.open',{page}).catch(report);
-  rail.querySelector('.cc-new-chat').onclick=()=>{inline.main();closeSidebar();sessionRoot.querySelector('[data-session-new]').click();input.focus();};
-  rail.querySelector('.cc-settings').onclick=()=>openAdmin('settings');side.querySelector('[data-cc-records]').onclick=()=>openAdmin('tasks');
-  rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')openAdmin(key);else{history.hidden=true;inline.main();input.focus();}};
+  const local=document.createElement('section');local.className='cc-local';local.hidden=true;local.setAttribute('aria-label','工作台内容');
+  local.innerHTML='<header><h2 data-cc-local-title></h2><button type="button" data-cc-local-back>返回对话</button></header><div data-cc-local-body></div>';
+  main.append(local);
+  let localView='home',lastData={};
+  const showHome=()=>{localView='home';local.hidden=true;hero.hidden=false;layout.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav==='home'?'page':'false');};
+  const paintLocal=data=>{
+    const body=local.querySelector('[data-cc-local-body]');
+    local.querySelector('[data-cc-local-title]').textContent=localView==='memory'?'知识与记忆':'任务记录';
+    if(localView==='tasks'){
+      const tasks=Array.isArray(data.tasks)?data.tasks:[];
+      const navBar='<div class="cc-local-actions"><button type="button" data-cc-admin-page="tasks">任务监控与证据</button><button type="button" data-cc-admin-page="activity">活动记录与撤销</button><button type="button" data-cc-admin-page="dashboard">个人数据看板</button><button type="button" data-cc-admin-page="usage">用量与预算</button><button type="button" data-cc-open-goals>目标与计划图</button></div>';
+      body.innerHTML=navBar+(tasks.length?`<ul class="cc-local-list">${tasks.slice().reverse().map(task=>`<li><button type="button" data-local-task="${escape(task.taskId)}"><strong>${escape(task.userMessage?.trim()||'未命名任务')}</strong><small>${escape(stateNames[task.state]??task.state)}</small></button></li>`).join('')}</ul>`:'<p>还没有任务。回到对话发出第一条消息。</p>');
+      return;
+    }
+    const knowledge=data.knowledge;
+    const statusText=knowledge?.reason||(knowledge?'知识库已连接。':'知识库还没有连接。');
+    const status=body.querySelector('[data-cc-memory-status]');
+    if(status){status.textContent=statusText;return;}
+    body.innerHTML=`<div class="cc-local-actions"><button type="button" data-cc-admin-page="memory">私人记忆与知识源设置</button><button type="button" data-cc-watch-check>查看知识关注</button><button type="button" data-cc-cognition-check>查看认知提议与回执</button></div><p data-cc-memory-status>${escape(statusText)}</p><form class="cc-local-search"><label>查找笔记<input name="query" type="search" maxlength="200" placeholder="输入要找的内容"></label><button type="submit">查找</button></form><div data-cc-memory-result></div><div data-cc-watch-result></div><div data-cc-cognition-result></div>`;
+  };
+  const showLocal=key=>{localView=key;hero.hidden=true;layout.hidden=true;local.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav===key?'page':'false');paintLocal(lastData);closeSidebar();};
+  local.querySelector('[data-cc-local-back]').onclick=()=>{showHome();input.focus();};
+  local.addEventListener('click',async event=>{
+    const adminBtn=event.target.closest('[data-cc-admin-page]');
+    if(adminBtn){openAdmin(adminBtn.dataset.ccAdminPage);return;}
+    if(event.target.closest('[data-cc-open-goals]')){root.querySelector('.cc-goals')?.click();return;}
+    if(event.target.closest('[data-cc-watch-check]')){
+      const out=local.querySelector('[data-cc-watch-result]');if(!out)return;
+      out.textContent='正在读取知识关注状态…';
+      try{
+        const status=await invoke('knowledge.watch.status');
+        const watches=status?.state!=='unavailable'?await invoke('knowledge.watch.list').catch(()=>[]):[];
+        const pending=status?.state!=='unavailable'?await invoke('knowledge.watch.pending').catch(()=>[]):[];
+        out.textContent=`关注状态：${status?.health?.reason??status?.reason??(status?.running?'运行中':'未运行')} · 关注项 ${Array.isArray(watches)?watches.length:0} 个 · 待确认 ${Array.isArray(pending)?pending.length:0} 条`;
+      }catch(error){out.textContent=error?.message??'知识关注尚未就绪';}
+      return;
+    }
+    if(event.target.closest('[data-cc-cognition-check]')){
+      const out=local.querySelector('[data-cc-cognition-result]');if(!out)return;
+      out.textContent='正在读取认知提议与回执…';
+      try{
+        const status=await invoke('cognition.status');
+        const proposals=await invoke('cognition.proposals.list').catch(()=>[]);
+        const receipts=await invoke('cognition.receipts.list').catch(()=>[]);
+        const proposalRows=(Array.isArray(proposals)?proposals:[]).map(p=>`<div class="notice"><span>${escape(p.summary||p.eventId||'待处理提议')}</span> <button type="button" data-cc-cognition-apply="${escape(p.eventId||'')}" data-cc-cognition-source="${escape(p.source||'')}">应用提议</button></div>`).join('');
+        out.innerHTML=`<p>${escape(status?.reason??'认知状态已读取')} · 待处理提议 ${Array.isArray(proposals)?proposals.length:0} 项 · 会议回执 ${Array.isArray(receipts)?receipts.length:0} 条</p>${proposalRows}`;
+      }catch(error){out.textContent=error?.message??'认知组合尚未就绪';}
+      return;
+    }
+    const applyBtn=event.target.closest('[data-cc-cognition-apply]');
+    if(applyBtn){
+      applyBtn.disabled=true;
+      try{await invoke('cognition.proposals.apply',{eventId:applyBtn.dataset.ccCognitionApply,source:applyBtn.dataset.ccCognitionSource});}
+      catch(error){report(error);}
+      finally{applyBtn.disabled=false;}
+      return;
+    }
+    const button=event.target.closest('[data-local-task]');if(!button)return;showHome();const turn=[...root.querySelectorAll('[data-turn]')].find(item=>item.dataset.turn===button.dataset.localTask);turn?.scrollIntoView({block:'center'});
+  });
+  local.addEventListener('submit',event=>{
+    const form=event.target.closest('.cc-local-search');if(!form)return;event.preventDefault();
+    const query=form.elements.namedItem('query').value.trim();const result=local.querySelector('[data-cc-memory-result]');
+    if(!query){result.textContent='请先输入要找的内容。';return;}
+    result.textContent='正在查找…';
+    invoke('knowledge.search',{query,limit:5}).then(value=>{
+      const hits=Array.isArray(value?.hits)?value.hits:Array.isArray(value)?value:[];
+      result.textContent=hits.length?hits.slice(0,5).map(hit=>hit.title||hit.path||hit.excerpt||'找到一条笔记').join('\n'):'没有找到匹配的笔记。';
+    }).catch(error=>{result.textContent=error?.message||'没有找到。';});
+  });
+  rail.querySelector('.cc-new-chat').onclick=()=>{showHome();inline.main();closeSidebar();sessionRoot.querySelector('[data-session-new]').click();input.focus();};
+  rail.querySelector('.cc-settings').onclick=()=>openAdmin('settings');side.querySelector('[data-cc-records]').onclick=()=>showLocal('tasks');
+  rail.querySelector('nav').onclick=event=>{const button=event.target.closest('[data-cc-nav]');if(!button)return;const key=button.dataset.ccNav;if(key==='tasks'||key==='memory')showLocal(key);else{history.hidden=true;showHome();inline.main();input.focus();}};
   const form=root.querySelector('.workspace-composer'),actions=form.querySelector('.workspace-composer-actions');
   input.placeholder='给 PersonalAgent 发送消息…';actions.prepend(preferences);
-  input.title='发送 /压缩 或 /compact 可压缩当前会话历史；须先在模型设置中启用自动压缩。';
+  input.title='也可以输入 /压缩 或 /compact，把较早的对话收成摘要。';
+  const compact=document.createElement('button');compact.type='button';compact.className='cc-compact';compact.textContent='压缩';compact.title='把较早的对话收成摘要';compact.setAttribute('aria-label','压缩对话');compact.onclick=()=>{const text=input.value.trim();if(!/^\/(?:压缩|compact)\b/u.test(text))input.value=text?`/压缩 ${text}`:'/压缩 ';input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();};actions.prepend(compact);
   const tools=document.createElement('button');tools.type='button';tools.className='cc-tools';tools.setAttribute('aria-label','连接器与工具');tools.title='连接器与工具';tools.innerHTML=centerIcon('plus');tools.onclick=()=>{showCards();board.querySelector('#connectors-refresh').focus({preventScroll:true});};actions.prepend(tools);
   const voice=document.createElement('button');voice.type='button';voice.className='cc-voice';voice.setAttribute('aria-label','打开语音设置');voice.title='语音设置';voice.innerHTML=centerIcon('voice');voice.onclick=()=>openAdmin('voice');actions.insertBefore(voice,actions.querySelector('[data-send]'));
   const send=actions.querySelector('[data-send]');send.textContent='↑';send.setAttribute('aria-label','发送任务');
@@ -105,8 +175,9 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
     if(mainConversationId&&mainConversationId!==data.conversationState?.activeId)inline.main();mainConversationId=data.conversationState?.activeId;
     const state=commandCenterState(data);welcome.hidden=Boolean(state.tasks.length);shell.classList.toggle('cc-has-tasks',Boolean(state.tasks.length));
     const runtime=data.runtime?.mode??data.runtime?.state??data.runtime;const fake=runtime==='fake'||data.fakeMode===true||String(data.connection??'').startsWith('Fake Runtime');
-    hero.querySelector('[data-cc-preview]').textContent=fake?'本地效果预览 · 模拟运行':'';
-    rail.querySelector('[data-cc-runtime]').textContent=fake?'模拟预览环境':data.agentArtsConfigured===false?'等待配置比赛 Runtime':'本地工作台';
+    hero.querySelector('[data-cc-preview]').textContent=fake?'本地预览':'';
+    rail.querySelector('[data-cc-runtime]').textContent=fake?'本地预览':'工作台';
+    lastData=data;if(localView!=='home')paintLocal(data);
     rail.querySelector('[data-cc-count]').textContent=`${state.active} 项进行中 · ${state.children.length} 条协作记录`;
     const active=state.latest&&!isTerminal(state.latest)&&!state.latest.outputTruncated&&!state.latest.cancelRequested;
     heading.querySelector('[data-cc-session]').textContent=data.conversationState?.sessions?.find(s=>s.id===data.conversationState?.activeId)?.title??'当前会话';
