@@ -21,20 +21,36 @@ export function approvalCards(task, approvals = [], now = Date.now()) {
     const buttons=inactive?(validExpiry?'<p role="status">授权已过期</p>':'<p role="status">授权期限无效</p>'):
       `<div class="turn-actions"><button type="button" class="turn-action" data-approval-decision="allow_once" data-approval-id="${escape(item.approvalId)}">同意</button><button type="button" class="turn-action" data-approval-decision="deny" data-approval-id="${escape(item.approvalId)}">拒绝</button></div>`;
     const action=describeAction(item.action);
-    return `<section class="approval-card" role="group" aria-label="操作授权"><strong>允许${escape(action)}？</strong><details class="authorization-question-details"><summary>查看详情</summary><p>${escape(describeScopes(item.scopes))}</p><p>${validExpiry?escape(new Date(expiresAt).toLocaleString())+' 前有效':'授权期限无效'}</p></details>${buttons}</section>`;
+    return `<section class="approval-card" data-approval-id="${escape(item.approvalId)}" role="group" aria-label="操作授权"><strong>允许${escape(action)}？</strong><details class="authorization-question-details"><summary>查看详情</summary><p>${escape(describeScopes(item.scopes))}</p><p>${validExpiry?escape(new Date(expiresAt).toLocaleString())+' 前有效':'授权期限无效'}</p></details>${buttons}</section>`;
   }).join('');
 }
 
 const css = value => globalThis.CSS?.escape ? globalThis.CSS.escape(value) : String(value).replace(/(["\\])/g, '\\$1');
 
-/** Scroll the existing approval card for this task into view. Returns false when it is not rendered yet. */
-export function focusApprovalCard(root, taskId) {
-  if (!root || typeof taskId !== 'string' || !taskId) return false;
-  const card = root.querySelector(`[data-turn="${css(taskId)}"] .approval-card`)
+function matchingApprovalCard(root, taskId, approvalId) {
+  const candidates = [
+    ...root.querySelectorAll('.approval-card'),
+    ...root.querySelectorAll('.authorization-question-card'),
+  ];
+  if (typeof approvalId === 'string' && approvalId) {
+    const exact = candidates.find(node => node.getAttribute?.('data-approval-id') === approvalId
+      || Boolean(node.querySelector?.(`[data-approval-id="${css(approvalId)}"]`)));
+    if (exact) return exact;
+  }
+  const byTurn = root.querySelector(`[data-turn="${css(taskId)}"] .approval-card`)
     ?? root.querySelector(`[data-workspace-approvals="${css(taskId)}"] .approval-card`);
+  if (byTurn) return byTurn;
+  return candidates.find(node => node.getAttribute?.('data-task-id') === taskId) ?? null;
+}
+
+/** Scroll the existing approval or authorization question card into view. Returns false when not rendered yet. */
+export function focusApprovalCard(root, taskId, approvalId) {
+  if (!root || typeof taskId !== 'string' || !taskId) return false;
+  const card = matchingApprovalCard(root, taskId, approvalId);
   if (!card) return false;
   card.scrollIntoView?.({block: 'center', behavior: 'instant'});
-  (card.querySelector('button:not(:disabled)') ?? card).focus?.({preventScroll: true});
+  const primary = [...(card.querySelectorAll?.('button') ?? [])].find(button => !button.disabled);
+  (primary ?? card.querySelector?.('.authorization-question-title') ?? card).focus?.({preventScroll: true});
   return true;
 }
 

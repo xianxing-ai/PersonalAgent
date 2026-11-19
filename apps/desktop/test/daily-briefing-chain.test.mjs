@@ -6,9 +6,10 @@ import {TaskRuntime} from '@personal-agent/runtime';
 import {createReminderDeliveryHost} from '@personal-agent/runtime/application';
 import {createDesktopNotificationPort} from '../electron/desktop-notification-port.js';
 import {createDailyBriefingHost} from '../electron/daily-briefing-host.js';
-import {presentBriefingDecision} from '../electron/briefing-decision.js';
+import {isBriefingDecisionAllowed, isTrustedBriefingDecisionSender, presentBriefingDecision} from '../electron/briefing-decision.js';
 import {Conversations} from '../electron/conversations.js';
 import {approvalCards, focusApprovalCard} from '../src/features/conversation/approval-card.js';
+import {authorizationQuestionMarkup} from '../src/features/conversation/authorization-question-card.js';
 import {mountBriefingPanel, mountDailyBriefing} from '../src/features/admin/daily-briefing.js';
 
 const cache = new URL('../../../.cache/daily-briefing-chain/', import.meta.url);
@@ -32,6 +33,8 @@ test('startup wiring registers the real scheduler, settings IPC and approval jum
   assert.match(main, /maintenancePoll\.run\('daily-briefing'/);
   assert.match(main, /name === 'briefing\.update'/);
   assert.match(main, /name === 'briefing\.openDecision'/);
+  assert.match(main, /isTrustedBriefingDecisionSender\(sender,\s*event\.senderFrame,\s*\[admin,\s*panel,\s*workspace\]\)/);
+  assert.match(main, /isBriefingDecisionAllowed\(dailyBriefingHost\.snapshot\(\)\?\.briefing\?\.decisions,\s*payload\)/);
   assert.match(main, /presentBriefingDecision/);
   assert.match(main, /onOpen: \(\) => openBriefing\(\)/);
   assert.match(preload, /invoke: \(action, payload\) => ipcRenderer\.invoke\('desktop:action'/);
@@ -147,6 +150,75 @@ test('due scheduler writes a redacted briefing, sends one notification, and the 
     await host.close();
     runtime.close();
   }
+});
+
+test('briefing.openDecision trusts panel/workspace/admin main frames, validates briefing items, and focuses exact approval/question cards (L-02)', async () => {
+  const adminFrame = {id: 'admin-main'};
+  const panelFrame = {id: 'panel-main'};
+  const workspaceFrame = {id: 'workspace-main'};
+  const subframe = {id: 'subframe'};
+  const admin = {webContents: {mainFrame: adminFrame}};
+  const panel = {webContents: {mainFrame: panelFrame}};
+  const workspace = {webContents: {mainFrame: workspaceFrame}};
+  const foreign = {webContents: {mainFrame: {id: 'other'}}};
+  const allowed = [admin, panel, workspace];
+  assert.equal(isTrustedBriefingDecisionSender(panel, panelFrame, allowed), true);
+  assert.equal(isTrustedBriefingDecisionSender(workspace, workspaceFrame, allowed), true);
+  assert.equal(isTrustedBriefingDecisionSender(admin, adminFrame, allowed), true);
+  assert.equal(isTrustedBriefingDecisionSender(panel, subframe, allowed), false);
+  assert.equal(isTrustedBriefingDecisionSender(foreign, foreign.webContents.mainFrame, allowed), false);
+  assert.equal(isTrustedBriefingDecisionSender(null, panelFrame, allowed), false);
+
+  const decisions = [{taskId: 'task-1', approvalId: 'approval-a'}, {taskId: 'task-1', approvalId: 'approval-b'}];
+  assert.equal(isBriefingDecisionAllowed(decisions, {taskId: 'task-1', approvalId: 'approval-b'}), true);
+  assert.equal(isBriefingDecisionAllowed(decisions, {taskId: 'task-1'}), true);
+  assert.equal(isBriefingDecisionAllowed(decisions, {taskId: 'task-1', approvalId: 'approval-unknown'}), false);
+  assert.equal(isBriefingDecisionAllowed(decisions, {taskId: 'task-foreign', approvalId: 'approval-a'}), false);
+  assert.equal(isBriefingDecisionAllowed(null, {taskId: 'task-1'}), false);
+
+  // Repeated clicks on the same decision produce distinct monotonic focusId values.
+  const conversations = new Conversations();
+  conversations.add('task-1', 'panel', '确认会议');
+  const focuses = [];
+  const common = {
+    taskId: 'task-1', approvalId: 'approval-b',
+    tasks: {get: id => ({taskId: id, conversationId: 'desktop-panel'})},
+    conversations, sourceSurface: () => 'panel',
+    openPanel: async () => {}, openWorkspace: async () => {}, publish() {},
+    rememberFocus: value => focuses.push(value),
+  };
+  await presentBriefingDecision(common);
+  await presentBriefingDecision(common);
+  assert.equal(focuses.length, 2);
+  assert.equal(focuses[0].approvalId, 'approval-b');
+  assert.ok(Number.isSafeInteger(focuses[0].focusId) && focuses[1].focusId > focuses[0].focusId);
+
+  // Exact approvalId matching distinguishes two approval cards on the same task.
+  const now = Date.parse('2026-11-11T00:30:00.000Z');
+  const task = {taskId: 'task-1', state: 'waiting_approval'};
+  const approvals = [
+    {approvalId: 'approval-a', taskId: 'task-1', state: 'pending', action: 'calendar.respond', scopes: ['calendar:write'], expiresAt: new Date(now + 60_000).toISOString()},
+    {approvalId: 'approval-b', taskId: 'task-1', state: 'pending', action: 'mail.send', scopes: ['mail:send'], expiresAt: new Date(now + 60_000).toISOString()},
+  ];
+  const thread = elementFromHtml(`<div><article class="task turn" data-turn="task-1">${approvalCards(task, approvals, now)}</article></div>`);
+  assert.equal(focusApprovalCard(thread, 'task-1', 'approval-b'), true);
+  const cards = thread.querySelectorAll('.approval-card');
+  assert.equal(cards.length, 2);
+  assert.equal(Boolean(cards[0].scrolled), false);
+  assert.equal(cards[1].scrolled, true);
+
+  // Unified authorization question card matching by sourceApprovalId or taskId.
+  const questionHtml = authorizationQuestionMarkup({
+    questionId: 'q-1', revision: 1, state: 'pending', taskId: 'task-q', sourceApprovalId: 'approval-q',
+    title: '允许发送邮件？', description: '发送给目标收件人', expiresAt: new Date(now + 60_000).toISOString(),
+    requirements: [{requirementId: 'tool', kind: 'tool', summary: '发送邮件', scopes: ['mail:send']}],
+  }, {now});
+  const questionRoot = elementFromHtml(`<div>${questionHtml}</div>`);
+  assert.equal(focusApprovalCard(questionRoot, 'task-q', 'approval-q'), true);
+  const qCard = questionRoot.querySelector('.authorization-question-card');
+  assert.equal(qCard.scrolled, true);
+  assert.equal(qCard.getAttribute('data-approval-id'), 'approval-q');
+  assert.equal(qCard.getAttribute('data-task-id'), 'task-q');
 });
 
 function installDocument() {

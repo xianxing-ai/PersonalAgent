@@ -161,7 +161,7 @@ import {createDesktopNotepadHost} from './notepad-host.js';
 import {createDesktopTodoHost} from './todo-host.js';
 import {createPersonalDashboardHost} from './personal-dashboard-host.js';
 import {createDailyBriefingHost} from './daily-briefing-host.js';
-import {presentBriefingDecision} from './briefing-decision.js';
+import {isBriefingDecisionAllowed, isTrustedBriefingDecisionSender, presentBriefingDecision} from './briefing-decision.js';
 import {createDesktopGoalCloudHost} from './goal-cloud-host.js';
 import {createMailMetadataStorage} from './mail-metadata-storage.js';
 import {createLocalLayaHost} from './laya-local-host.js';
@@ -1066,7 +1066,11 @@ function openPanel(focus = false) {
   if (!focus && workspace && !workspace.isDestroyed() && workspace.isVisible()) return;
   placePanel(panelBounds(orb.getBounds(), screen.getDisplayMatching(orb.getBounds()).workArea));
   applyShape(panel, 40);
-  if (focus) panel.show(); else panel.showInactive();
+  if (focus) {
+    if (panel.isMinimized?.()) panel.restore();
+    panel.show();
+    panel.focus?.();
+  } else panel.showInactive();
   away = 0;
 }
 
@@ -4892,10 +4896,12 @@ async function action(event, name, payload) {
     return dailyBriefingHost.update(payload);
   }
   if (name === 'briefing.openDecision') {
-    if (sender !== admin || event.senderFrame !== sender.webContents.mainFrame || !dailyBriefingHost) throw Error('请从每日简报打开审批卡');
+    if (!dailyBriefingHost || !isTrustedBriefingDecisionSender(sender, event.senderFrame, [admin, panel, workspace])) throw Error('请从每日简报打开审批卡');
+    if (!isBriefingDecisionAllowed(dailyBriefingHost.snapshot()?.briefing?.decisions, payload)) throw Error('该审批项已不在当前每日简报中');
+    panelBriefingRequested = false;
     return presentBriefingDecision({taskId: payload?.taskId, approvalId: payload?.approvalId,
       tasks: {get: id => tasks.get(id) ?? runtimeApplication?.runtime.getTask(id)}, conversations, sourceSurface: taskSurface,
-      openPanel: () => openPanel(true), openWorkspace, publish, rememberFocus: focus => {approvalFocus = focus;}});
+      openPanel: () => { pinned = true; return openPanel(true); }, openWorkspace, publish, rememberFocus: focus => {approvalFocus = focus;}});
   }
   if (name === 'settings.get') return client.call('settings.get', {namespace: String(payload ?? 'desktop')});
   if (name === 'settings.update') return client.call('settings.update', payload);

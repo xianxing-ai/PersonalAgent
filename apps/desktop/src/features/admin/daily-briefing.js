@@ -44,7 +44,7 @@ export function mountDailyBriefing(root, invoke) {
   body.addEventListener('click', event => {
     const button = event.target.closest('[data-briefing-task]');
     if (!button) return;
-    void invoke('briefing.openDecision', {taskId: button.getAttribute('data-briefing-task'), approvalId: button.getAttribute('data-briefing-approval')});
+    Promise.resolve(invoke('briefing.openDecision', {taskId: button.getAttribute('data-briefing-task'), approvalId: button.getAttribute('data-briefing-approval')})).catch(() => {});
   });
   return {
     show(visible) { section.hidden = !visible; },
@@ -71,7 +71,7 @@ export function mountBriefingPanel(root, invoke) {
   body.addEventListener('click', event => {
     const button = event.target.closest('[data-briefing-task]');
     if (!button) return;
-    void invoke('briefing.openDecision', {taskId: button.getAttribute('data-briefing-task'), approvalId: button.getAttribute('data-briefing-approval')});
+    Promise.resolve(invoke('briefing.openDecision', {taskId: button.getAttribute('data-briefing-task'), approvalId: button.getAttribute('data-briefing-approval')})).catch(() => {});
   });
   return {
     render(snapshot, {open = false} = {}) {
