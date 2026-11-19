@@ -611,10 +611,14 @@ else {
     syncContainerAnswerDisclosures(tasksNode,liveTurns);
     if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button></div>`:'';const locateHtml=failure&&!answer?`<div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';const live=liveTurns.get(t.taskId);const hasLiveContent=Boolean(live&&(live.reasoning||live.answer||live.steps?.length||live.summary));const bodyHtml=!terminal&&t.state!=='waiting_reconciliation'&&!hasLiveContent?`<section class="answer-card" data-answer-for="${escape(t.taskId)}"><div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div></section>`:hasLiveContent?`${answerCardHtml(t.outputTruncated?{...t,error:undefined}:t,live,escape)}${answer?answerActions:''}${locateHtml}`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div>${locateHtml}`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${bodyHtml}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
-    refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;roster.paint(data.assistants,data);
+    refreshApprovalCards();scheduleApprovalExpiry();
+    const approvalFocus=data.approvalFocus,approvalFocusKey=approvalFocus?.focusId??(approvalFocus?.taskId?`${approvalFocus.taskId}:${approvalFocus.approvalId??''}`:undefined);
+    let focusedCardThisRender=false;
+    if(approvalFocus?.taskId&&approvalFocusKey!==focusedApproval&&focusApprovalCard(tasksNode,approvalFocus.taskId,approvalFocus.approvalId)){focusedApproval=approvalFocusKey;focusedCardThisRender=true;followLock.markProgrammatic();}
+    roster.paint(data.assistants,data);
     setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
     if(emptyThread){followLock.markProgrammatic();thread.scrollTop=0;}
-    else if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
+    else if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();if(!focusedCardThisRender)requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
     if(emptyThread&&taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();}
     applyOperatorBrake({button:operatorBrakeButton,status:operatorBrakeStatus,state:root.querySelector('#state'),snapshot:data.operatorBrake});
 };
@@ -625,7 +629,7 @@ const authorizationThread=root.querySelector(mode==='workspace'?'#workspace-stag
 if(bridge&&authorizationThread) {
   const questionRoot=document.createElement('div');authorizationThread.append(questionRoot);
   const previousRender=render;
-  let questionClosed=false,questionSnapshotRevision=0;
+  let questionClosed=false,questionSnapshotRevision=0,focusedQuestionApproval;
   const questions=mountAuthorizationQuestionCards(questionRoot,{invoke,onPending:({questionId})=>{
     // Run after the ordinary task projection's follow-to-bottom callback. A new
     // question must be discoverable at its heading, without repeatedly moving
@@ -644,6 +648,11 @@ if(bridge&&authorizationThread) {
     // Missing conversation identity must not widen the view to another conversation's questions.
     const conversationId=data.conversationState?.activeId;
     questions.update(conversationId?data.authorizationQuestions:[],{conversationId});
+    const focus=data.approvalFocus,focusKey=focus?.focusId??(focus?.taskId?`${focus.taskId}:${focus.approvalId??''}`:undefined);
+    if(focus?.taskId&&focusKey!==focusedQuestionApproval&&focusApprovalCard(questionRoot,focus.taskId,focus.approvalId)){
+      focusedQuestionApproval=focusKey;
+      requestAnimationFrame(()=>{if(!questionClosed)focusApprovalCard(questionRoot,focus.taskId,focus.approvalId);});
+    }
   };
   render.setAudioLevel=previousRender.setAudioLevel;
   render.setResourceBudget=previousRender.setResourceBudget;
