@@ -103,6 +103,11 @@ test('desktop pets page exposes 8 orb variants and 6 dynamic states without inli
   assert.doesNotMatch(view, /style="/);
   assert.match(view, /id="load-image-catalog"/);
   assert.match(view, /invoke\('workflow\.image\.catalog'\)/);
+  assert.match(view, /notifications:\s*'<path /);
+  assert.match(view, /workspace:\s*'<path /);
+  assert.match(view, /'capabilities'\].includes\(section\)/);
+  const workspaceView = readFileSync(new URL('../src/features/workspace/view.js', import.meta.url), 'utf8');
+  assert.match(workspaceView, /data\.todo,data\.calendar,data\.feeds/);
   assert.match(prefs, /export function orbVariantPreference\(/);
   assert.match(prefs, /export function saveOrbVariant\(/);
   assert.match(prefs, /export function orbStateOverride\(/);

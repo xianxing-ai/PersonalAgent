@@ -187,7 +187,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
       draftInput.focus();
     }else invoke('admin.open',{page:destination.page}).catch(report);
   };
-  root.querySelector('#connector-cards').onkeydown=event=>{if((event.key==='Enter'||event.key===' ')&&event.target.matches('[data-connector]')){event.preventDefault();event.target.click();}};
+  root.querySelector('#connector-cards').onkeydown=event=>{if((event.key==='Enter'||event.key===' ')&&event.target.matches('[data-connector], .notification-card')){event.preventDefault();event.target.click();}};
   const projectLocateFeedback=()=>{
     for(const button of conversation.querySelectorAll('[data-locate-id]')) {
       const request=locateFeedback.get(button.dataset.locateId);
@@ -273,7 +273,7 @@ export function mountWorkspace(root,invoke,escape,{flushBeforeClose}={}){
     }
     for(const turn of conversation.querySelectorAll('[data-turn]')){if(!turn.querySelector('[data-workspace-approvals]')){const slot=document.createElement('div');slot.dataset.workspaceApprovals=turn.dataset.turn;turn.querySelector('.response-actions').before(slot);}}
     workspaceApprovals.update(data);center.update(data);runtimeControls.update(data);
-    const nextCards=JSON.stringify([data.capabilities,data.health,data.notifications,data.todo,data.feeds,data.mail,data.knowledge,data.weather]);if(cardsSignature!==nextCards){cardsSignature=nextCards;root.querySelector('#connector-cards').innerHTML=connectorCards(data,escape);}
+    const nextCards=JSON.stringify([data.capabilities,data.health,data.notifications,data.todo,data.calendar,data.feeds,data.mail,data.knowledge,data.weather]);if(cardsSignature!==nextCards){cardsSignature=nextCards;root.querySelector('#connector-cards').innerHTML=connectorCards(data,escape);}
   }
   update.setAudioLevel=level=>orb.setLevel(level);
   update.setResourceBudget=budget=>orb.setResourceBudget(budget);
