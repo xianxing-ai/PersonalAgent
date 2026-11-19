@@ -16,7 +16,7 @@ test('business 域：每个图声明的业务能力都有提供者或缺口登�
   const result = verifyCapabilityCoverage({domain: 'business'});
   assert.deepEqual(result.errors, [], `business 域覆盖校验失败：\n${result.errors.join('\n')}`);
   assert.ok(result.stats.checked >= 10, `business 域应至少 10 个图能力（实际 ${result.stats.checked}）`);
-  assert.ok(result.stats.provided >= 5, `business 域应有 ≥5 个已提供能力（实际 ${result.stats.provided}）`);
+  assert.ok(result.stats.provided >= 11, `business 域应有 ≥11 个已提供能力（实际 ${result.stats.provided}）`);
 });
 
 test('business 域：工具能力前缀必须映射到既有连接器/服务包', () => {
@@ -39,7 +39,7 @@ test('business 域：工具能力前缀必须映射到既有连接器/服务包'
 test('business 域：登记缺口条目状态合法且域正确（notification.deliver 允许 #574 在途）', () => {
   const result = verifyCapabilityCoverage({domain: 'business'});
   const registered = result.rows.filter((r) => r.status.startsWith('registered:'));
-  assert.ok(registered.length >= 6, `business 域应有 ≥6 个登记缺口（实际 ${registered.length}）`);
+  assert.ok(registered.length >= 4, `business 域缺口登记应至少 4 条（实际 ${registered.length}）`);
   for (const row of registered) {
     assert.equal(domainOf(row.name), 'business', `${row.name} 的域应为 business`);
     assert.ok(['registered:open', 'registered:in-flight-pr', 'registered:needs-real-environment'].includes(row.status), `${row.name} 状态非法`);
@@ -53,9 +53,9 @@ test('负例：从登记中移除一条业务缺口 → 校验必须失败并点
   mkdirSync(join(tmp, 'docs/competition/evidence'), {recursive: true});
   copyFileSync(join(repoRoot, 'docs/competition/workflow-wiring.json'), join(tmp, 'docs/competition/workflow-wiring.json'));
   const registry = JSON.parse(readFileSync(join(repoRoot, 'docs/competition/evidence/graph-capability-gaps.json'), 'utf8'));
-  const tampered = {...registry, gaps: registry.gaps.filter((g) => g.name !== 'todo.registered_write')};
+  const tampered = {...registry, gaps: registry.gaps.filter((g) => g.name !== 'notification.deliver')};
   writeFileSync(join(tmp, 'docs/competition/evidence/graph-capability-gaps.json'), JSON.stringify(tampered));
   const result = verifyCapabilityCoverage({domain: 'business', repo: tmp});
   assert.equal(result.ok, false);
-  assert.ok(result.errors.some((e) => e.includes('todo.registered_write')), `应点名缺登记能力：${result.errors.join('; ')}`);
+  assert.ok(result.errors.some((e) => e.includes('notification.deliver')), `应点名缺登记能力：${result.errors.join('; ')}`);
 });
