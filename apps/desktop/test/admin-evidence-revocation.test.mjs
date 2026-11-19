@@ -268,10 +268,10 @@ test('an older host navigation snapshot cannot undo a newer navigation or local 
   ui.render({...ui.base,adminNavigation:{page:'tasks',revision:5}});
   ui.render({...ui.base,adminNavigation:{page:'settings',revision:4}});
   assert.match(ui.html(),/任务记录/);
-  ui.root.querySelector('nav').listeners.get('click')({target:{closest:()=>({dataset:{page:'configuration'}})}});
-  assert.match(ui.html(),/<h2>配置<\/h2>/);
+  ui.root.querySelector('nav').listeners.get('click')({target:{closest:()=>({dataset:{page:'usage'}})}});
+  assert.match(ui.html(),/<h2>使用情况和计费<\/h2>/);
   ui.render({...ui.base,adminNavigation:{page:'tasks',revision:5}});
-  assert.match(ui.html(),/<h2>配置<\/h2>/,'an unrelated snapshot at the same host revision preserves the local page');
+  assert.match(ui.html(),/<h2>使用情况和计费<\/h2>/,'an unrelated snapshot at the same host revision preserves the local page');
   ui.render({...ui.base,adminNavigation:{page:'settings',revision:6}});
   assert.match(ui.html(),/<h2>常规<\/h2>/,'a genuinely newer host navigation still applies');
 });

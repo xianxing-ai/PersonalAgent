@@ -1,0 +1,15 @@
+[
+  {
+    "Id": "sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004",
+    "RepoDigests": [
+      "swr.cn-southwest-2.myhuaweicloud.com/zemeng5208-personal-agent/personal-agent-owned@sha256:e99a48652f0dc58c6235775ef2577ead81362857e8b722c9eb18a0b4f9b1c004"
+    ],
+    "Os": "linux",
+    "Architecture": "arm64",
+    "Config": {
+      "User": "node",
+      "WorkingDir": "/opt/personal-agent",
+      "Labels": {}
+    }
+  }
+]

@@ -8,7 +8,8 @@ import {harnessCandidateArtifactDigest,harnessCandidateRecipeFingerprint} from '
 import type {HarnessTrialRecovery} from '@personal-agent/contracts/harness-candidates';
 import type {CodingRepairInput,CodingRepairPatch,CodingRepairPublishReadback,CodingRepairPublishRequest,CodingRepairRecipe,CodingRepairCheckReadback,
   CodingRepairSession,CodingRepairSnapshot,CodingRepairVerificationReceipt} from '@personal-agent/contracts/coding-repair';
-import {createWorkspaceReadTool,createWorkspaceListTool,createWorkspacePatchPreviewTool,createWorkspacePatchApplyTool} from './index.js';
+import {createWorkspaceReadTool,createWorkspaceListTool,createWorkspacePatchPreviewTool,createWorkspacePatchApplyTool,
+  createWorkspacePatchScopeTool,codingVerificationArtifactDigest} from './index.js';
 import type {WorkspacePatchApplyHostOptions} from './patch-apply.js';
 import {reconcileWorkspacePatchApply} from './patch-reconcile.js';
 import {captureCodingRepairSnapshot,codingRepairFilePath,codingRepairRelativePath,repairSha256,affectedCodingRepairPackages,codingRepairPackageGraphDigest} from './repair-verification.js';
@@ -159,7 +160,11 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     if(patch.expectedSha256===null){const destination=await codingRepairFilePath(p.workspace,patch.path,true);
       try{await lstat(destination);denied('New coding repair file already exists');}catch(error){if((error as {code?:string}).code!=='ENOENT')throw error;}
       return {path:patch.path,beforeSha256:null,afterSha256:repairSha256(patch.createText!),changed:true,previewText:patch.createText};}
-    return createWorkspacePatchPreviewTool({rootPath:p.workspace}).execute(patch,context);
+    const scope=createWorkspacePatchScopeTool({rootPath:p.workspace,allowedPaths:[patch.path],now});
+    const assessed=await scope.execute({path:patch.path,expectedSha256:patch.expectedSha256,edits:patch.edits},context) as {verificationStatus?:string;scopeReady?:boolean;behaviorReviewed?:boolean;userChangesPreserved?:boolean};
+    if(assessed.verificationStatus!=='matched'||assessed.scopeReady!==true||assessed.behaviorReviewed!==false||assessed.userChangesPreserved!==true)
+      throw new ProtocolError('REVISION_CONFLICT','Workspace file content changed since the expected hash');
+    return createWorkspacePatchPreviewTool({rootPath:p.workspace,now}).execute(patch,context);
   }
   async function applyPatch(journal:RepairJournal,value:CodingRepairPatch,context:ToolContext):Promise<unknown> {
     requireStopped(journal);const patch=parseCodingRepairPatch(value);const preview=await previewPatch(journal,patch,context) as {afterSha256:string};
@@ -192,6 +197,7 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
     catch(error){const receipt:CodingRepairVerificationReceipt={version:1,sessionId:journal.session.sessionId,runId,recipeId,
       packageIds:[...recipe.packageIds],inputSnapshotId:before.snapshot.snapshotId,files:before.snapshot.files,exitCode:null,status:'UNKNOWN',evidenceRefs:[],diagnostics:[{source:'command',message:'Original command did not return a stopped, current result'}]};
       receipt.packageGraphDigest=codingRepairPackageGraphDigest(before.snapshot);
+      receipt.artifactDigest=codingVerificationArtifactDigest(receipt);
       journal.verification.push({receipt,snapshot:before.snapshot,originTaskId:context.taskId,originRunId:context.runId});await save(journal);throw error;}
     if(output.recipeId!==recipeId||!Number.isSafeInteger(output.exitCode)||typeof output.stdout!=='string'||typeof output.stderr!=='string')throw new ProtocolError('RESULT_UNKNOWN','Repair command output is invalid');
     let dependenciesCurrent=true;
@@ -201,6 +207,7 @@ export async function createIsolatedCodingRepairHost(inputOptions:IsolatedCoding
       inputSnapshotId:before.snapshot.snapshotId,files:before.snapshot.files,exitCode:output.exitCode,status:!same?'STALE':output.exitCode===0?'VALID':'FAILED',evidenceRefs:[],
       diagnostics:output.exitCode===0?[]:[{source:'command',message:(output.stderr||output.stdout||'Verification command failed').slice(0,8192)}]};
     receipt.packageGraphDigest=codingRepairPackageGraphDigest(before.snapshot);
+    receipt.artifactDigest=codingVerificationArtifactDigest(receipt);
     journal.verification.push({receipt,snapshot:before.snapshot,originTaskId:context.taskId,originRunId:context.runId});delete journal.unknown;await save(journal);return clone(receipt);
   }
   const host:IsolatedCodingRepairHost={

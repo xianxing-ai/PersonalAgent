@@ -2,7 +2,7 @@
 // 运行：node --test packages/agentarts/test/business-workflow-hosts.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {validateToolValue} from '@personal-agent/contracts';
+import {ProtocolError, validateToolValue} from '@personal-agent/contracts';
 import {FakeStorage} from '@personal-agent/testkit';
 import {
   register as registerCalendar,
@@ -1223,6 +1223,26 @@ test('F08_N07 mail.registered_send：兼容 externalId/messageId 发送回执与
   assert.equal(unk.state, 'unknown');
   assert.equal(unk.value.state, 'unknown');
   assert.equal(unk.value.idempotencyKey, 'k2');
+});
+
+test('F08_N07 requires reconciliation for exceptions and malformed send receipts', async () => {
+  const invoke = execute => createMailRegisteredSendHostPort({
+    mailPort: {execute},
+    resolveSend: () => ({accountRef: 'mail', to: 'a@b.com', subject: 'hi', text: 'body', idempotencyKey: 'send-original'}),
+  }).read(context());
+  for (const execute of [
+    async () => { throw new ProtocolError('RESULT_UNKNOWN', 'provider did not confirm'); },
+    async () => { throw new Error('transport ended'); },
+    async () => ({actionId: 'action-original'}),
+  ]) {
+    const result = await invoke(execute);
+    assert.equal(result.state, 'unknown');
+    assert.equal(result.value.idempotencyKey, 'send-original');
+    assert.equal(result.value.reconciliationRequired, true);
+    if (result.value.reason === 'mail_send_malformed_result') assert.equal(result.value.actionId, 'action-original');
+  }
+  const rejected = await invoke(async () => { throw new ProtocolError('SCOPE_DENIED', 'not dispatched'); });
+  assert.equal(rejected.state, 'failed');
 });
 
 test('F09_N02 feeds.validate_and_deduplicate：哈希去重与格式校验', async () => {

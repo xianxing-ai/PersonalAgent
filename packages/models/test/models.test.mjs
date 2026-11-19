@@ -58,7 +58,7 @@ test('Pangu V2 provider maps a text completion and keeps usage metadata', async 
   const result = await new ModelGateway(provider).complete(request());
   assert.equal(received.url, 'https://pangu.example.test/api/v2/chat/completions');
   assert.equal(received.options.headers.authorization, 'Bearer secret-key');
-  assert.deepEqual(received.body, {model: 'pangu-nlp-n1-32k', messages: [{role: 'user', content: 'hello'}], max_tokens: 20, stream: false});
+  assert.deepEqual(received.body, {model: 'pangu-nlp-n1-32k', messages: [{role: 'user', content: 'hello'}], max_tokens: 20, stream: true});
   assert.deepEqual(result.response, {kind: 'final', text: 'hello'});
   assert.deepEqual(result.usage, {promptTokens: 3, completionTokens: 2, totalTokens: 5});
   assert.equal(result.deployment.provider, 'pangu');
@@ -166,4 +166,139 @@ test('capability probe is recorded before a gateway is enabled', async () => {
   assert.equal(deployment.capabilities.toolCalling, false);
   assert.equal(registry.get('fake', 'fake-deployment', 'fake-model').capabilities.toolCalling, false);
   await assert.rejects(new ModelGateway(provider, deployment).complete(request({tools: [{name: 'fixture.read', version: '1.0.0', inputSchema: {type: 'object'}, outputSchema: {type: 'object'}, sideEffect: 'read', requiredScopes: [], idempotencySupport: true, recoverySupport: true, requiresPresence: false}]})), {code: 'UNSUPPORTED_CAPABILITY'});
+});
+
+test('Pangu streams reasoning and text, then falls back once when the endpoint rejects streaming', async () => {
+  const deltas = [];
+  const provider = new PanguModelProvider(panguOptions(async () => new Response([
+    'data: {"choices":[{"delta":{"reasoning_content":"先想"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"你好"},"finish_reason":"stop"}]}',
+    '',
+    'data: [DONE]',
+    '',
+  ].join('\n'), {status: 200, headers: {'content-type': 'text/event-stream'}})));
+  const streamed = await provider.complete(request({onDelta: delta => deltas.push(delta)}));
+  assert.equal(streamed.response.text, '你好');
+  assert.equal(streamed.reasoning, '先想');
+  assert.deepEqual(deltas, [{kind: 'reasoning', text: '先想'}, {kind: 'text', text: '你好'}]);
+
+  let calls = 0;
+  const fallback = new PanguModelProvider(panguOptions(async (_url, options) => {
+    calls += 1;
+    const body = JSON.parse(options.body);
+    if (calls === 1) {
+      assert.equal(body.stream, true);
+      return new Response(JSON.stringify({error: {message: 'stream is not supported'}}), {status: 400, headers: {'content-type': 'application/json'}});
+    }
+    assert.equal(body.stream, false);
+    return panguResponse({choices: [{message: {content: '回退后的回答', reasoning_content: '想过了'}, finish_reason: 'stop'}]});
+  }));
+  const second = [];
+  const result = await fallback.complete(request({onDelta: delta => second.push(delta)}));
+  assert.equal(calls, 2);
+  assert.equal(result.response.text, '回退后的回答');
+  assert.equal(result.reasoning, '想过了');
+  assert.deepEqual(second.map(item => item.kind), ['reasoning', 'text']);
+});
+
+test('SSE stream parser handles LF, CRLF, CR, and CR/LF split across chunk boundaries while preserving cancellation', async () => {
+  const frames = [
+    'data: {"choices":[{"delta":{"reasoning_content":"think-"}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"hello "}}]}',
+    '',
+    'data: {"choices":[{"delta":{"content":"world"},"finish_reason":"stop"}]}',
+    '',
+    'data: [DONE]',
+    '',
+  ];
+  for (const eol of ['\n', '\r\n', '\r']) {
+    const deltas = [];
+    const payload = frames.join(eol);
+    const provider = new PanguModelProvider(panguOptions(async () => new Response(payload, {
+      status: 200,
+      headers: {'content-type': 'text/event-stream'},
+    })));
+    const result = await provider.complete(request({onDelta: delta => deltas.push(delta)}));
+    assert.equal(result.response.text, 'hello world');
+    assert.equal(result.reasoning, 'think-');
+    assert.deepEqual(deltas, [
+      {kind: 'reasoning', text: 'think-'},
+      {kind: 'text', text: 'hello '},
+      {kind: 'text', text: 'world'},
+    ]);
+  }
+
+  // Split CRLF across arbitrary chunk boundaries (e.g. ending with \r and next chunk starting with \n\r and next with \n).
+  const splitChunks = [
+    'data: {"choices":[{"delta":{"reasoning_content":"step1"}}]}\r',
+    '\n\r',
+    '\ndata: {"choices":[{"delta":{"content":"hello "}}]}\r\n\r',
+    '\ndata: {"choices":[{"delta":{"content":"world"},"finish_reason":"stop"}]}\r',
+    '\n\r\ndata: [DONE]\r',
+    '\n\r\n',
+  ];
+  const encoder = new TextEncoder();
+  const splitDeltas = [];
+  const splitProvider = new PanguModelProvider(panguOptions(async () => new Response(new ReadableStream({
+    start(controller) {
+      for (const piece of splitChunks) controller.enqueue(encoder.encode(piece));
+      controller.close();
+    },
+  }), {status: 200, headers: {'content-type': 'text/event-stream'}})));
+  const splitResult = await splitProvider.complete(request({onDelta: delta => splitDeltas.push(delta)}));
+  assert.equal(splitResult.response.text, 'hello world');
+  assert.equal(splitResult.reasoning, 'step1');
+  assert.deepEqual(splitDeltas, [
+    {kind: 'reasoning', text: 'step1'},
+    {kind: 'text', text: 'hello '},
+    {kind: 'text', text: 'world'},
+  ]);
+});
+
+test('SSE only completes after a terminated finish reason or DONE event', async (t) => {
+  const delta = 'data: {"choices":[{"delta":{"content":"hello"}}]}';
+  const finish = 'data: {"choices":[{"delta":{},"finish_reason":"length"}]}';
+  const dangling = 'data: {"choices":[{"delta":{"content":"unfinished"}}]}';
+  const providerFor = payload => new PanguModelProvider(panguOptions(async () => new Response(payload, {
+    status: 200,
+    headers: {'content-type': 'text/event-stream'},
+  })));
+
+  await t.test('complete CRLF finish reason preserves stop reason and usage', async () => {
+    const usage = 'data: {"choices":[],"usage":{"total_tokens":5}}';
+    const payload = `${delta}\r\n\r\n${finish}\r\n\r\n${usage}\r\n\r\n`;
+    const result = await providerFor(payload).complete(request());
+    assert.equal(result.response.text, 'hello');
+    assert.equal(result.stopReason, 'length');
+    assert.equal(result.usage.totalTokens, 5);
+  });
+
+  await t.test('complete LF DONE permits completion and discards the dangling event', async () => {
+    const deltas = [];
+    const result = await providerFor(`${delta}\n\ndata: [DONE]\n\n${dangling}\n`).complete(request({
+      onDelta: item => deltas.push(item),
+    }));
+    assert.equal(result.response.text, 'hello');
+    assert.equal(result.stopReason, 'stop');
+    assert.deepEqual(deltas, [{kind: 'text', text: 'hello'}]);
+  });
+
+  const incomplete = {code: 'EXTERNAL_FAILURE', message: 'Model stream ended before completion'};
+  await t.test('EOF without a blank line discards the pending delta', async () => {
+    const deltas = [];
+    await assert.rejects(providerFor(dangling).complete(request({onDelta: item => deltas.push(item)})), incomplete);
+    assert.deepEqual(deltas, []);
+  });
+  await t.test('a nonterminal delta followed by EOF is a failure even if displayed', async () => {
+    const deltas = [];
+    await assert.rejects(providerFor(`${delta}\r\n\r\n`).complete(request({onDelta: item => deltas.push(item)})), incomplete);
+    assert.deepEqual(deltas, [{kind: 'text', text: 'hello'}]);
+  });
+  await t.test('unterminated finish and DONE events cannot complete a stream', async () => {
+    for (const end of [finish, 'data: [DONE]']) {
+      await assert.rejects(providerFor(`${delta}\n\n${end}\n`).complete(request()), incomplete);
+    }
+  });
 });

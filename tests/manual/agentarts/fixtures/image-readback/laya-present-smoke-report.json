@@ -1,0 +1,13 @@
+{
+  "kind": "local_arm64_image_discovery_smoke",
+  "pingStatus": 200,
+  "os": "linux",
+  "architecture": "arm64",
+  "user": 1000,
+  "workflowCount": 28,
+  "nodeCount": 185,
+  "observed": [
+    { "workflowId": "F01", "templateDigest": "bbeec83a0161b95a8dbef9e48ab0fa31563b5aed35db46320e784bd5a7c03679", "nodeCount": 9 }
+  ],
+  "embeddedLayaPathPresent": true
+}

@@ -27,7 +27,7 @@ const definitions = [
       return {
         status: data.weather?.busy?'查询中':data.weather?.reason?'查询失败':ready?'待查询':'未就绪',
         preview: previews.weather,
-        footer: data.weather?.reason??(ready?'天气查询入口已接入；尚未获取数据':'天气查询能力尚未就绪'),
+        footer: escape(data.weather?.reason??(ready?'天气查询入口已接入；尚未获取数据':'天气查询能力尚未就绪')),
       };
     },
   },

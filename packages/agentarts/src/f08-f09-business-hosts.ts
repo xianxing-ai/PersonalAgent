@@ -3,6 +3,7 @@
 // F08_N07 mail.registered_send
 // F09_N02 feeds.validate_and_deduplicate
 import {createHash} from 'node:crypto';
+import {isProtocolError} from '@personal-agent/contracts';
 import type {WorkflowHostPort, WorkflowNodeContext} from './owned-workflows.js';
 
 const text = (value: unknown): value is string => typeof value === 'string' && !!value.trim();
@@ -106,6 +107,15 @@ export function createMailRegisteredSendHostPort(options: MailSendHostOptions): 
       if (!input || !text(input.accountRef) || !text(input.to) || !text(input.subject) || !text(input.idempotencyKey)) {
         return fail('unavailable', 'mail_send_input_unavailable');
       }
+      const uncertain = (reason: string, receipt?: Record<string, unknown>) => fail('unknown', reason, {
+        state: 'unknown',
+        idempotencyKey: input.idempotencyKey,
+        reconciliationRequired: true,
+        source: 'mail_send_receipt',
+        ...(text(receipt?.actionId) ? {actionId: receipt.actionId} : {}),
+        ...(text(receipt?.messageId) ? {messageId: receipt.messageId} : {}),
+        ...(text(receipt?.externalId) ? {externalId: receipt.externalId} : {}),
+      });
       try {
         const result = await options.mailPort.execute('mail.send', {
           accountRef: input.accountRef,
@@ -116,19 +126,11 @@ export function createMailRegisteredSendHostPort(options: MailSendHostOptions): 
           timeoutMs: input.timeoutMs ?? 15_000,
         }, context);
         if (!isPlainObject(result) || !['confirmed', 'unknown'].includes(result.state)) {
-          return fail('failed', 'mail_send_malformed_result');
+          return uncertain('mail_send_malformed_result', isPlainObject(result) ? result : undefined);
         }
         // PA-014 规范：unknown 不是失败，严禁盲目重发，返回 unknown 态以触发对账
         if (result.state === 'unknown') {
-          return {
-            state: 'unknown' as const,
-            value: {
-              state: 'unknown',
-              reason: result.reason ?? 'transport_timeout_needs_reconciliation',
-              idempotencyKey: input.idempotencyKey,
-              source: 'mail_send_receipt',
-            },
-          };
+          return uncertain(result.reason ?? 'transport_timeout_needs_reconciliation', result);
         }
         const resolvedMessageId =
           typeof result.messageId === 'string'
@@ -148,8 +150,10 @@ export function createMailRegisteredSendHostPort(options: MailSendHostOptions): 
           },
         };
       } catch (error) {
-        if (context.signal.aborted || Date.parse(context.deadline) <= Date.now()) throw error;
-        return fail('failed', 'mail_send_failed');
+        if (isProtocolError(error) && ['INVALID_ARGUMENT', 'UNAUTHORIZED', 'SCOPE_DENIED'].includes(error.code)) {
+          return fail('failed', 'mail_send_failed');
+        }
+        return uncertain('mail_send_outcome_uncertain');
       }
     },
   };

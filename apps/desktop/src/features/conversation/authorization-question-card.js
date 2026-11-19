@@ -1,3 +1,4 @@
+import {describeScopes} from '../../shared/scope-phrases.js';
 export const escapeAuthorizationText=value=>String(value??'').replace(/[&<>"']/g,char=>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const states={pending:'',allowed:'已同意',denied:'已拒绝',
@@ -38,13 +39,14 @@ export function authorizationQuestionMarkup(question,{now=Date.now(),busy=false,
     <p class="authorization-question-summary">${escape(summary)}</p>
     ${authorizationQuestionDefaultDecision(question)==='allow_task'?'<p class="authorization-question-hint">本任务内相同范围不再询问。</p>':''}
     <details class="authorization-question-details" data-authorization-details ${expanded?'open':''}><summary data-authorization-details-toggle>查看详情</summary>
-      <p>${escape(question.description)}</p><div class="authorization-question-sandbox"><span>应用内权限</span><strong>${escape(question.sandbox?.label||'未提供权限配置')}</strong><small>${escape(question.sandbox?.mode)} · 版本 ${escape(question.sandbox?.revision)}</small></div>
+      <p>${escape(question.description)}</p><div class="authorization-question-sandbox"><span>应用内权限</span><strong>${escape(question.sandbox?.label||'未提供权限配置')}</strong></div>
       ${nativeMarkup(question.sandbox?.native,escape)}
-      <ul class="authorization-question-requirements">${question.requirements.map(item=>`<li><strong>${escape(kinds[item.kind])}</strong><span>${escape(item.summary)}</span><small>${escape(item.scopes.join(' · '))}</small></li>`).join('')}</ul>
-      <p class="authorization-question-hint">工具：${escape(question.toolName)} · ${Number.isFinite(Date.parse(question.expiresAt))?escape(new Date(question.expiresAt).toLocaleString()):'期限不可用'} 前有效</p>
+      <ul class="authorization-question-requirements">${question.requirements.map(item=>`<li><strong>${escape(kinds[item.kind])}</strong><span>${escape(item.summary)}</span><small>${escape(describeScopes(item.scopes))}</small></li>`).join('')}</ul>
+      <p class="authorization-question-hint">${Number.isFinite(Date.parse(question.expiresAt))?escape(new Date(question.expiresAt).toLocaleString()):'期限不可用'} 前有效</p>
       <p class="authorization-question-hint">${authorizationQuestionDefaultDecision(question)==='allow_task'?'本任务相同范围不再询问。':'仅用于本次操作。'}</p>
     </details>
     <div class="authorization-question-actions"><button type="button" class="authorization-question-primary" data-authorization-decision="${authorizationQuestionDefaultDecision(question)}" ${!active||busy?'disabled':''}>同意</button>
+      ${question.canAlways===true?`<button type="button" data-authorization-decision="allow_always" ${!active||busy?'disabled':''}>以后都允许</button>`:''}
       <button type="button" data-authorization-decision="deny" ${!active||busy?'disabled':''}>拒绝</button></div>
     <p class="authorization-question-status" role="status" aria-live="polite">${escape(feedback||status)}</p></section>`;
 }
