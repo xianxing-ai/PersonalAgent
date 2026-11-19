@@ -129,6 +129,7 @@ export function mountAdmin(root, invoke, escape) {
   let memorySearch = {query: '', hits: [], truncated: false, status: ''};
   const memorySummaries = new Map();
   let savedMemory = {facts: [], status: ''};
+  let imageCatalogHtml = '';
   let renderedSection, memoryRenderKey;
   let historyGeneration = 0;
   async function loadHistory(reset = false) {
@@ -602,7 +603,8 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'usage') {
       content = `<section class="feature-page usage-page" data-usage-page><div class="settings-heading"><h2>使用情况和计费</h2><p>查看本机已经记录的使用情况。按日、按月的用量上限会显示在这里。</p></div><div data-usage-budget></div><div class="settings-list">${settingRow('当前记录的任务', '只统计本机已保存的任务', `<span class="value-pill">${data.tasks?.length ?? 0}</span>`)}</div></section>`;
     } else if (section === 'capabilities') {
-      content = `<details class="developer-fold" data-developer-fold="capabilities"><summary>开发者：已公布能力</summary>${capabilityTable(data)}</details>`;
+      content = `<div class="sheet"><div class="row"><h2>28 图工作流设计目录（F01–F28）</h2><span class="spacer"></span><button class="btn btn-sm" id="load-image-catalog">读取 28 图目录</button></div><p class="muted">从可信目录宿主实时读回 28 张工作流设计与 185 个节点的注册情况；缺少公开适配器或对话入口的图会如实标为「不可用」。</p><div id="image-catalog-result">${imageCatalogHtml}</div></div>`
+        + `<details class="developer-fold" data-developer-fold="capabilities"><summary>开发者：已公布能力</summary>${capabilityTable(data)}</details>`;
     } else if (section === 'models') {
       content = modelPage(data);
     } else if (section === 'connections') {
@@ -838,6 +840,31 @@ export function mountAdmin(root, invoke, escape) {
     }
     root.querySelector('#refresh-capabilities')?.addEventListener('click', async () => {
       try { await invoke('capability.list'); } catch (error) { root.querySelector('#error').textContent = error.message; }
+    });
+    root.querySelector('#load-image-catalog')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const box = root.querySelector('#image-catalog-result');
+      if (!box) return;
+      button.disabled = true;
+      box.textContent = '正在读取 28 图工作流目录…';
+      try {
+        const catalog = await invoke('workflow.image.catalog');
+        const workflows = Array.isArray(catalog?.workflows) ? catalog.workflows : [];
+        const summary = `<p class="muted">设计工作流 ${escape(catalog?.designWorkflowCount ?? 28)} 项 · 节点 ${escape(catalog?.designNodeCount ?? 185)} 个 · 适配器需求 ${escape(catalog?.adapterRequirementCount ?? 152)} 项${catalog?.unavailableReason ? ` · ${escape(catalog.unavailableReason)}` : ''}</p>`;
+        if (!workflows.length) {
+          imageCatalogHtml = `${summary}<p class="muted">${escape(catalog?.unavailableReason || '当前模式未装配 28 图目录宿主')}</p>`;
+        } else {
+          const rows = workflows.map(item => `<tr><td>${escape(item.workflowId)}</td><td>${escape(item.name)}</td><td>${escape(item.nodeCount)}</td><td>${badge(item.state === 'unavailable' ? '不可用' : '已注册（需任务授权）', item.state)}</td><td>${escape((item.unavailableReasons ?? []).join('、') || '—')}</td></tr>`).join('');
+          imageCatalogHtml = `${summary}<div class="table-scroll"><table><thead><tr><th>编号</th><th>工作流</th><th>节点数</th><th>状态</th><th>缺口 / 说明</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        }
+        if (root.querySelector('#image-catalog-result')) root.querySelector('#image-catalog-result').innerHTML = imageCatalogHtml;
+      } catch (error) {
+        const msg = error?.message || '28 图目录读取失败';
+        imageCatalogHtml = `<p class="muted">${escape(msg)}</p>`;
+        if (root.querySelector('#image-catalog-result')) root.querySelector('#image-catalog-result').innerHTML = imageCatalogHtml;
+      } finally {
+        button.disabled = false;
+      }
     });
     const modelForm = root.querySelector('#model-config-form');
     modelForm?.addEventListener('submit', async event => {

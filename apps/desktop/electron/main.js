@@ -5133,6 +5133,26 @@ async function action(event, name, payload) {
     if(!['start','read','control','approval','source','todo','notification'].includes(action))throw Error('未知云持续会话操作');
     return cloudPersistentWorkflowHost[action](payload);
   }
+  if (name === 'workflow.image.catalog') {
+    if (sender !== panel && sender !== workspace && sender !== admin) throw Error('工作流目录仅允许可信窗口调用');
+    if (imageWorkflowCatalog?.snapshot) return imageWorkflowCatalog.snapshot(payload ?? {});
+    const {getOwnedWorkflowTemplates, getOwnedWorkflowDesignCoverage, getOwnedWorkflowAdapterRequirements} = await import('@personal-agent/agentarts');
+    const templates = getOwnedWorkflowTemplates(), coverage = getOwnedWorkflowDesignCoverage(), requirements = getOwnedWorkflowAdapterRequirements();
+    const workflows = templates.filter(t => !payload?.workflowId || t.workflowId === payload.workflowId).map(t => ({
+      workflowId: t.workflowId, name: t.name, category: t.category, summary: t.summary, nodeCount: t.nodes.length,
+      state: 'unavailable', unavailableReasons: ['runtime_or_agentarts_unconfigured'],
+    }));
+    return {
+      source: 'local_public_design_inventory',
+      templateVersion: coverage.templateVersion,
+      projectionSha256: coverage.projectionSha256,
+      designWorkflowCount: coverage.workflowCount,
+      designNodeCount: coverage.nodeCount,
+      adapterRequirementCount: requirements.length,
+      unavailableReason: syntheticMvp ? '当前为离线模拟模式，仅展示 28 图公共设计清单（全部不可用）' : '尚未连接 AgentArts 主智能体；各工作流均如实保持「不可用」',
+      workflows,
+    };
+  }
   if (name.startsWith('proactive.workflow.')) {
     if ((sender!==panel&&sender!==admin&&sender!==workspace)||!competitionMode||!proactiveWorkflowApplication)throw Error('持续工作流仅允许可信设置或面板调用');
     if(name==='proactive.workflow.status')return proactiveWorkflowApplication.snapshot();
@@ -5565,7 +5585,7 @@ async function action(event, name, payload) {
   }
   if (name.startsWith('goal.')) {
     if (sender !== panel && sender !== workspace) throw Error('Goal 操作只能从面板或工作区调用');
-    if (!goalHost) throw Error('Goal 写入仅在 Competition Profile 的可信宿主中可用');
+    if (!goalHost) throw Error('持续目标宿主尚未启动或未配置主智能体，当前不可用');
     if (name === 'goal.list') return goalHost.list();
     if (name === 'goal.get') return goalHost.get(payload);
     if (name === 'goal.create') return goalHost.create(payload);
