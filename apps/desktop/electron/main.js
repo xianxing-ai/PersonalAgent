@@ -137,7 +137,7 @@ import {createPublicReferenceQuestionConsent} from './public-reference-question.
 import {createWorkspaceCommandRecipeTool} from './workspace-command-recipes.js';
 import {createAgentArtsModelSettings,readDesktopExecutionModel,refreshAgentArtsModelsOnStartup} from './agentarts-model-settings.js';
 import {createAgentArtsConfig} from './agentarts-config.js';
-import {createUsageBudgetProduct, modelApiUsageHooks} from './usage-budget-product.js';
+import {createUsageBudgetProduct, isAutonomousRuntimeTask, modelApiUsageHooks, PROACTIVE_SOURCE_TASK_CHECKPOINT} from './usage-budget-product.js';
 import {initializeDefaultWorkspace,readSavedWorkspaceStatus} from './default-workspace.js';
 import {createAgentArtsObservationConfig} from './agentarts-observation-config.js';
 import {resolveDesktopAgentArtsObservation} from './agentarts-observation-auth.js';
@@ -2867,21 +2867,7 @@ async function initializeRuntime() {
         beforeCompetitionSend:request=> {
           const task=runtimeApplication.runtime.getTask(request.taskId);
           const conversationId=typeof task.conversationId==='string'?task.conversationId:'';
-          let proactive=conversationId.startsWith('desktop-proactive')
-            ||runtimeApplication.runtime.loadCheckpoint(request.taskId,'desktop-proactive-workflow-v1')!=null;
-          let cursorTaskId=request.taskId;
-          const visited=new Set([cursorTaskId]);
-          while(!proactive&&visited.size<16){
-            const parent=runtimeApplication.runtime.loadCheckpoint(cursorTaskId,'subtask-parent');
-            const parentId=typeof parent?.parentTaskId==='string'?parent.parentTaskId:'';
-            if(!parentId||visited.has(parentId))break;
-            visited.add(parentId);cursorTaskId=parentId;
-            try{
-              const ancestor=runtimeApplication.runtime.getTask(parentId);
-              const ancestorConv=typeof ancestor.conversationId==='string'?ancestor.conversationId:'';
-              if(ancestorConv.startsWith('desktop-proactive')||runtimeApplication.runtime.loadCheckpoint(parentId,'desktop-proactive-workflow-v1')!=null)proactive=true;
-            }catch{break;}
-          }
+          const proactive=isAutonomousRuntimeTask(runtimeApplication.runtime,request.taskId);
           usageBudgetProduct?.beforeCloudSend({userInitiated:!proactive,modelId:request.executionModel?.modelId});
           if (!proactiveHost && conversationId.startsWith('desktop-proactive-goals:')) {
             throw Error('目标主动分析宿主尚未就绪');
@@ -3008,6 +2994,7 @@ async function initializeRuntime() {
         const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
         thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
       }
+      usageBudgetProduct?.bindRuntime?.(() => runtimeApplication?.runtime);
       wikiImportHost.bind(runtimeApplication.wikiImport);
       if (syntheticRepairHost) await syntheticRepairHost.initialize(runtimeApplication.runtime);
       if (mailHost) {mailHost.bindApplication(runtimeApplication); mailConfig.markBound(configuredMail.revision);}
@@ -3119,6 +3106,7 @@ async function initializeRuntime() {
         const state = runtimeApplication.configureThinking({depth: thinking.depth, fast: thinking.fast});
         thinking = {depth: state.depth, fast: state.fast, applied: true, maxSteps: state.maxSteps, reason: state.reason};
       }
+      usageBudgetProduct?.bindRuntime?.(() => runtimeApplication?.runtime);
     }
     runtime = runtimeApplication.runtime;
     if (typeof operatorBrake !== 'undefined') operatorBrake.attach();
@@ -3453,9 +3441,20 @@ async function initializeRuntime() {
     getApplication: () => runtimeApplication,
     getTools: () => connectorConversationTools?.tools ?? [],
     submitTask: async input => {
-      const conversationId = conversations?.activeConversationId('panel') || input.conversationId;
-      const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
-      return {taskId: result.taskId, state: result.state ?? 'created'};
+      const conversationId = typeof input.conversationId === 'string' && input.conversationId.trim()
+        ? input.conversationId.trim() : `proactive-source:${desktopHost.userNamespace}`;
+      const submit = async () => {
+        const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
+        try {
+          runtimeApplication?.runtime?.saveCheckpoint?.(result.taskId, PROACTIVE_SOURCE_TASK_CHECKPOINT, {
+            version: 1,
+            source: 'proactive-source',
+            conversationId,
+          });
+        } catch { /* Autonomous conversationId prefix already enforces budget gating. */ }
+        return {taskId: result.taskId, state: result.state ?? 'created'};
+      };
+      return usageBudgetProduct ? usageBudgetProduct.withOrigin('autonomous', submit) : submit();
     },
     namespace: desktopHost.userNamespace,
     onUpdate: publish,

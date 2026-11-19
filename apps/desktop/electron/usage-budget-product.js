@@ -1,6 +1,39 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {createUsageBudgetHost} from './usage-budget-host.js';
 
+export const PROACTIVE_SOURCE_TASK_CHECKPOINT = 'desktop-proactive-source-v1';
+
+export function isAutonomousConversationId(conversationId) {
+  return typeof conversationId === 'string'
+    && (conversationId.startsWith('desktop-proactive') || conversationId.startsWith('proactive-source:'));
+}
+
+export function isAutonomousRuntimeTask(runtime, taskId) {
+  if (!runtime || typeof taskId !== 'string' || !taskId) return false;
+  const isDirectAutonomous = id => {
+    try {
+      const task = runtime.getTask(id);
+      if (isAutonomousConversationId(task?.conversationId)) return true;
+    } catch {
+      return false;
+    }
+    return runtime.loadCheckpoint(id, 'desktop-proactive-workflow-v1') != null
+      || runtime.loadCheckpoint(id, PROACTIVE_SOURCE_TASK_CHECKPOINT) != null;
+  };
+  if (isDirectAutonomous(taskId)) return true;
+  let cursorTaskId = taskId;
+  const visited = new Set([cursorTaskId]);
+  while (visited.size < 16) {
+    const parent = runtime.loadCheckpoint(cursorTaskId, 'subtask-parent');
+    const parentId = typeof parent?.parentTaskId === 'string' ? parent.parentTaskId : '';
+    if (!parentId || visited.has(parentId)) break;
+    visited.add(parentId);
+    cursorTaskId = parentId;
+    if (isDirectAutonomous(parentId)) return true;
+  }
+  return false;
+}
+
 /**
  * Desktop startup adapter. main.js constructs this once and passes the same
  * hooks into model calls, cloud transport, proactive admission and IPC.
@@ -9,6 +42,7 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
   const sent = new Set();
   const originStore = new AsyncLocalStorage();
   const currentOrigin = () => originStore.getStore() === 'autonomous' ? 'autonomous' : 'user';
+  let readRuntime;
   let notifier = async notice => {
     if (Notification?.isSupported?.()) new Notification({title: 'PersonalAgent 用量', body: notice.body}).show();
   };
@@ -66,9 +100,15 @@ export function createUsageBudgetProduct({userData, safeStorage, now, timeZone, 
       if (!decision.allowed) throw Error(decision.prompt || '已超过用量上限');
       if (userInitiated && decision.prompt) void emit(budget.exceededNotice());
     },
+    bindRuntime(getter) {
+      if (getter !== undefined && typeof getter !== 'function') throw Error('用量运行时读取器无效');
+      readRuntime = getter;
+    },
     recordCloud(info) {
       if (!info || !Number.isSafeInteger(info.durationMs) || info.durationMs < 0) return;
-      const origin = info.origin === 'autonomous' || info.origin === 'user' ? info.origin : currentOrigin();
+      const origin = info.origin === 'autonomous' || info.origin === 'user'
+        ? info.origin
+        : (info.taskId && isAutonomousRuntimeTask(readRuntime?.(), info.taskId) ? 'autonomous' : currentOrigin());
       budget.recordCloud({durationMs: info.durationMs, origin});
       changed();
     },

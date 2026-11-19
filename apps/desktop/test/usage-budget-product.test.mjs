@@ -2,10 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdirSync, mkdtempSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {createConfiguredSubagentModelGateway} from '@personal-agent/runtime/application';
+import {Client} from '@personal-agent/client';
+import {createAgentArtsRuntimeApplication, createConfiguredSubagentModelGateway} from '@personal-agent/runtime/application';
+import {SyntheticWebSocket} from '../../../packages/coordination/test/fixtures/websocket.mjs';
 import {createModelApiConfig} from '../electron/model-api-config.js';
 import {createAgentArtsTransportConfig} from '../electron/agentarts-transport-config.js';
-import {createUsageBudgetProduct, modelApiUsageHooks} from '../electron/usage-budget-product.js';
+import {createProactiveSourceHost} from '../electron/proactive-source-host.js';
+import {
+  createUsageBudgetProduct,
+  isAutonomousRuntimeTask,
+  modelApiUsageHooks,
+  PROACTIVE_SOURCE_TASK_CHECKPOINT,
+} from '../electron/usage-budget-product.js';
 import {mountUsageBudget} from '../src/features/admin/usage-budget.js';
 
 const safeStorage = {isEncryptionAvailable: () => true, encryptString: value => Buffer.from(value).reverse(),
@@ -140,4 +148,181 @@ test('startup hooks record a real gateway call, survive restart, drive settings,
   assert.equal(degraded.modelId, 'qwen-turbo');
   assert.equal(degraded.reasoningEffort, undefined);
   host.dispose(); blocked.dispose(); downgraded.dispose();
+});
+
+async function waitForTaskSettlement(app, taskId) {
+  for (let attempt = 0; attempt < 300; attempt++) {
+    const task = app.runtime.getTask(taskId);
+    if (['succeeded', 'failed', 'waiting_reconciliation'].includes(task.state)) return task;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  throw new Error('Synthetic cloud task did not settle');
+}
+
+function readUsageLedger(directory) {
+  const envelope = JSON.parse(readFileSync(path.join(directory, 'usage-budget.json'), 'utf8'));
+  return JSON.parse(safeStorage.decryptString(Buffer.from(envelope.encrypted, 'base64'))).ledger;
+}
+
+test('WSS cloud runs record duration to usage-budget.json across restart without double-counting HTTPS fallback (L-04)', async () => {
+  const base = new URL('../../../.cache/usage-budget-tests/', import.meta.url);
+  mkdirSync(base, {recursive: true});
+  const directory = mkdtempSync(base);
+  const current = product(directory);
+  const binding = {gatewayUrl: 'https://synthetic.huaweicloud-agentarts.com', runtimeName: 'owned-preview'};
+  const wssUrl = 'wss://synthetic.huaweicloud-agentarts.com/runtimes/owned-preview/ws';
+  const appToken = 'synthetic-inner-token-for-wss-usage-test-123456';
+  const outer = {read: async () => 'Bearer synthetic-outer-no-real-credential'};
+  const transport = createAgentArtsTransportConfig({
+    binding,
+    environment: {PA_AGENTARTS_TRANSPORT: 'wss', PA_AGENTARTS_WSS_URL: wssUrl, PA_AGENTARTS_HTTPS_FALLBACK: '1'},
+    configurationProvider: {read: () => ({appToken})},
+    fetchImpl: async () => {
+      await new Promise(resolve => setTimeout(resolve, 15));
+      return new Response(JSON.stringify([{event: 'message', data: {text: 'HTTPS fallback ok'}}, {event: 'task_end'}, {event: 'end'}]),
+        {status: 200, headers: {'content-type': 'application/json'}});
+    },
+    onCloudRun: info => current.recordCloud(info),
+  });
+  assert.equal(typeof transport.onWebSocketCloudRun, 'function');
+  assert.doesNotMatch(JSON.stringify(transport), /synthetic-inner|Bearer/);
+
+  let mode = 'wss_ok';
+  const app = createAgentArtsRuntimeApplication({
+    ...binding,
+    ...transport,
+    path: ':memory:',
+    authorizationProvider: outer,
+    websocketFactory: () => {
+      if (mode === 'fallback') {
+        const socket = new SyntheticWebSocket(undefined, {autoReady: false});
+        queueMicrotask(() => socket.emit('unexpected-response', undefined, {statusCode: 404, resume() {}}));
+        return socket;
+      }
+      return new SyntheticWebSocket((frame, socket) => {
+        if (frame.type !== 'invoke') return;
+        socket.accepted(frame);
+        setTimeout(() => {
+          if (mode === 'wss_disconnect') socket.disconnect();
+          else socket.result(frame, 'Synthetic WSS usage ok');
+        }, 15);
+      });
+    },
+  });
+  current.bindRuntime(() => app.runtime);
+  const client = new Client(app);
+  await client.connect();
+  try {
+    const first = await client.call('task.submit', {goal: 'WSS normal task', conversationId: 'desktop-panel'}, {idempotencyKey: 'l04-wss-1'});
+    assert.equal((await waitForTaskSettlement(app, first.taskId)).state, 'succeeded');
+    let ledger = readUsageLedger(directory);
+    assert.equal(ledger.length, 1);
+    assert.equal(ledger[0].kind, 'cloud_runtime');
+    assert.equal(ledger[0].origin, 'user');
+    assert.ok(ledger[0].durationMs >= 1);
+
+    mode = 'fallback';
+    const second = await client.call('task.submit', {goal: 'WSS fallback task', conversationId: 'desktop-panel'}, {idempotencyKey: 'l04-wss-2'});
+    assert.equal((await waitForTaskSettlement(app, second.taskId)).state, 'succeeded');
+    ledger = readUsageLedger(directory);
+    assert.equal(ledger.length, 2, 'HTTPS fallback after before-invoke WSS failure must record once, not twice');
+
+    mode = 'wss_disconnect';
+    const third = await client.call('task.submit', {goal: 'WSS disconnect task', conversationId: 'desktop-panel'}, {idempotencyKey: 'l04-wss-3'});
+    assert.equal((await waitForTaskSettlement(app, third.taskId)).state, 'waiting_reconciliation');
+    ledger = readUsageLedger(directory);
+    assert.equal(ledger.length, 3, 'Dispatched WSS run that disconnects must still record duration');
+
+    const restarted = product(directory);
+    assert.match(restarted.snapshot().usageLine, /云端 [1-9]/);
+  } finally {
+    app.close();
+  }
+});
+
+test('proactive directory schedule keeps autonomous origin and is blocked before cloud send when over limit (L-04)', async () => {
+  const base = new URL('../../../.cache/usage-budget-tests/', import.meta.url);
+  mkdirSync(base, {recursive: true});
+  const directory = mkdtempSync(base);
+  const current = product(directory);
+  current.handleAction('usageBudget.configure', {dailyLimitYuan: 0.01, monthlyLimitYuan: 100, action: 'pause'});
+  current.recordCloud({durationMs: 120_000, origin: 'user'});
+
+  const binding = {gatewayUrl: 'https://synthetic.huaweicloud-agentarts.com', runtimeName: 'owned-preview'};
+  const wssUrl = 'wss://synthetic.huaweicloud-agentarts.com/runtimes/owned-preview/ws';
+  const appToken = 'synthetic-inner-token-for-wss-proactive-gate-123';
+  const outer = {read: async () => 'Bearer synthetic-outer-no-real-credential'};
+  const transport = createAgentArtsTransportConfig({
+    binding,
+    environment: {PA_AGENTARTS_TRANSPORT: 'wss', PA_AGENTARTS_WSS_URL: wssUrl},
+    configurationProvider: {read: () => ({appToken})},
+    onCloudRun: info => current.recordCloud(info),
+  });
+
+  const sentGoals = [];
+  const app = createAgentArtsRuntimeApplication({
+    ...binding,
+    ...transport,
+    path: ':memory:',
+    authorizationProvider: outer,
+    beforeCompetitionSend: request => {
+      const proactive = isAutonomousRuntimeTask(app.runtime, request.taskId);
+      current.beforeCloudSend({userInitiated: !proactive, modelId: request.executionModel?.modelId});
+    },
+    websocketFactory: () => new SyntheticWebSocket((frame, socket) => {
+      if (frame.type === 'invoke') {
+        sentGoals.push(frame.payload?.query ?? '');
+        socket.accepted(frame);
+        socket.result(frame, 'Allowed manual task');
+      }
+    }),
+  });
+  current.bindRuntime(() => app.runtime);
+  const client = new Client(app);
+  await client.connect();
+  try {
+    let clock = Date.parse('2026-11-11T08:00:00.000Z');
+    let files = [{relativePath: 'notes.md', size: 10, mtimeMs: 1}];
+    const submittedIds = [];
+    const proactiveHost = createProactiveSourceHost({
+      getApplication: () => app,
+      getTools: () => [],
+      scan: async () => files,
+      namespace: 'desktop',
+      now: () => clock,
+      submitTask: async input => {
+        const conversationId = input.conversationId;
+        return current.withOrigin('autonomous', async () => {
+          const result = await client.call('task.submit', {goal: input.goal, conversationId}, {idempotencyKey: input.idempotencyKey});
+          app.runtime.saveCheckpoint(result.taskId, PROACTIVE_SOURCE_TASK_CHECKPOINT, {version: 1, source: 'proactive-source', conversationId});
+          submittedIds.push(result.taskId);
+          return {taskId: result.taskId, state: result.state ?? 'created'};
+        });
+      },
+    });
+    proactiveHost.authorize(path.resolve(directory));
+    proactiveHost.update({enabled: true, calendar: false, mail: false, quiet: false});
+    await proactiveHost.tick();
+    files = [{relativePath: 'notes.md', size: 20, mtimeMs: 2}];
+    clock += 300_000;
+    await proactiveHost.tick();
+
+    assert.equal(submittedIds.length, 1);
+    const autonomousTask = await waitForTaskSettlement(app, submittedIds[0]);
+    assert.equal(autonomousTask.state, 'failed');
+    assert.equal(isAutonomousRuntimeTask(app.runtime, submittedIds[0]), true);
+    assert.equal(sentGoals.length, 0, 'Over-limit autonomous directory task must send zero cloud requests');
+
+    const manual = await client.call('task.submit', {goal: 'Manual user task', conversationId: 'desktop-panel'}, {idempotencyKey: 'l04-manual-1'});
+    assert.equal((await waitForTaskSettlement(app, manual.taskId)).state, 'succeeded');
+    assert.equal(sentGoals.length, 1);
+    assert.equal(readUsageLedger(directory).length, 2, 'Manual WSS run appends one ledger entry while blocked autonomous run adds none');
+
+    const main = readFileSync(new URL('../electron/main.js', import.meta.url), 'utf8');
+    assert.match(main, /isAutonomousRuntimeTask\(runtimeApplication\.runtime,\s*request\.taskId\)/);
+    assert.match(main, /usageBudgetProduct\?\.bindRuntime\?\.\(/);
+    assert.doesNotMatch(main, /createProactiveSourceHost\(\{[\s\S]{0,400}conversations\?\.activeConversationId\('panel'\)/);
+  } finally {
+    app.close();
+  }
 });
