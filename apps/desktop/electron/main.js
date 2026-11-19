@@ -96,7 +96,7 @@ import {createDesktopProactiveConversationTools} from './proactive-conversation-
 import {createDesktopProactiveWorkflowApplication} from './proactive-workflow-host.js';
 import {createDesktopProactiveControllerHost} from './proactive-controller-host.js';
 import {createDesktopProactiveRuntimePump} from './proactive-runtime-pump.js';
-import {createDesktopOperatorBrake, operatorBrakeTrayLabel} from './operator-brake-host.js';
+import {createDesktopOperatorBrake, createOperatorBrakeTrayController} from './operator-brake-host.js';
 import {createMaintenancePoll} from './maintenance-poll.js';
 import {createDesktopConnectorChangeHost} from './connector-change-host.js';
 import {createDesktopConnectorWatchHost} from './connector-watch-host.js';
@@ -1212,30 +1212,31 @@ function openNotificationTarget(record) {
   publish();
 }
 
+const operatorBrakeTray = createOperatorBrakeTrayController({
+  operatorBrake,
+  setToolTip: text => tray?.setToolTip(text),
+  setMenu: (_snapshot, label) => {
+    if (!tray) return;
+    tray.setContextMenu(Menu.buildFromTemplate([
+      {label, click: () => {void toggleOperatorBrake();}},
+      {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
+      {label: '打开工作台', click: () => { void openWorkspace(); }},
+      {label: '打开设置', click: () => openAdmin()},
+      {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
+      {type: 'separator'},
+      {label: '退出 PersonalAgent', click: () => app.quit()},
+    ]));
+  },
+  publish: () => publish(),
+  onError: error => { runtimeError = error instanceof Error ? error.message : '总暂停切换失败'; },
+});
+
 function refreshTrayMenu() {
   if (!tray) return;
-  const snapshot = operatorBrake.snapshot();
-  tray.setToolTip(snapshot.paused ? 'PersonalAgent · 已暂停' : 'PersonalAgent');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    {label: operatorBrakeTrayLabel(snapshot), click: () => {void toggleOperatorBrake();}},
-    {label: '打开悬浮面板', click: () => { pinned = true; openPanel(true); publish(); }},
-    {label: '打开工作台', click: () => { void openWorkspace(); }},
-    {label: '打开设置', click: () => openAdmin()},
-    {label: '桌面设置与恢复', click: () => desktopHost.openSettings()},
-    {type: 'separator'},
-    {label: '退出 PersonalAgent', click: () => app.quit()},
-  ]));
+  return operatorBrakeTray.refresh();
 }
 async function toggleOperatorBrake() {
-  try {
-    if (operatorBrake.isPaused()) await operatorBrake.release();
-    else await operatorBrake.engage();
-    refreshTrayMenu();
-    publish();
-  } catch (error) {
-    runtimeError = error instanceof Error ? error.message : '总暂停切换失败';
-    publish();
-  }
+  return operatorBrakeTray.toggle();
 }
 function createTray() {
   try {
