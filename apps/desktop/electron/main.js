@@ -12,6 +12,7 @@ import {createDraftQuitPreflight} from './draft-quit-preflight.js';
 import {featuredModelChoices} from './featured-model-choices.js';
 import {reconcileTaskFromSurface} from './reconcile-task-action.js';
 import {createFailureRepairHost} from './failure-repair-host.js';
+import {collectTrustedTaskCommandDiagnostics, resolveTaskLocateInput} from './task-locate-diagnostics.js';
 import {withNativeReadbackScope} from './native-readback-scope.js';
 import {ProtocolError} from '@personal-agent/contracts';
 import {computerControlFailure} from './computer-control-errors.js';
@@ -736,7 +737,15 @@ function projectFailureRepair(task) {
   if (runtimeClosed || !runtimeApplication || (task.state !== 'failed' && task.state !== 'waiting_reconciliation')) return {};
   try {
     const repair = createFailureRepairHost(runtimeApplication.runtime).view(task.taskId);
-    return repair ? {repair} : {};
+    const hasCommandDiagnostic = !task.bodyWithheld && Boolean(collectTrustedTaskCommandDiagnostics(
+      runtimeApplication.runtime,
+      task.taskId,
+      {readChildren: id => runtimeApplication?.readSubagentTasks?.(id)},
+    ));
+    return {
+      ...(repair ? {repair} : {}),
+      ...(hasCommandDiagnostic ? {hasCommandDiagnostic: true} : {}),
+    };
   } catch { return {}; }
 }
 
@@ -3850,7 +3859,15 @@ async function action(event, name, payload) {
   if (name === 'task.locate') {
     // MOD-35：对失败任务的错误输出做确定性定位（纯解析，无模型、无副作用）。
     if (sender !== panel && sender !== admin && sender !== workspace) throw Error('Untrusted sender for task.locate');
-    const text = typeof payload?.text === 'string' ? payload.text : '';
+    const text = typeof resolveTaskLocateInput === 'function'
+      ? resolveTaskLocateInput({
+        payload, sender, panel, admin, workspace,
+        tasks: typeof tasks !== 'undefined' ? tasks : undefined,
+        taskSurface: typeof taskSurface === 'function' ? taskSurface : undefined,
+        runtime: typeof runtimeClosed !== 'undefined' && !runtimeClosed ? runtimeApplication?.runtime : undefined,
+        readChildren: id => runtimeApplication?.readSubagentTasks?.(id),
+      })
+      : (typeof payload?.text === 'string' ? payload.text : '');
     if (!text.trim() || text.length > 2 * 1024 * 1024) throw Error('无可定位的错误输出');
     const {locateTestFailures} = await import('@personal-agent/coding-tools');
     const report = locateTestFailures(text, {root: repoRootForLocate(), allowedPaths: [], maxSnippetReads: 0, contextLines: 2});
