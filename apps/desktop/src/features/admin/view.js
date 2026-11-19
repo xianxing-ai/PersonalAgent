@@ -69,6 +69,7 @@ const iconPaths = {
   import: '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 19h14"/>', profile: '<circle cx="12" cy="8" r="3"/><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6"/>',
   appearance: '<circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   voice: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3"/>',
+  notifications: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   briefing: '<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3M8 11h8M8 15h8M8 19h5"/>', configuration: '<path d="M4 7h10m4 0h2M4 17h2m4 0h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
   personalization: '<path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="m18 15 .8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z"/>',
   pets: '<path d="M6 10 4 6m14 4 2-4M7 9c-3 1-4 4-3 7 1 4 4 5 8 5s7-1 8-5c1-3 0-6-3-7"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/><path d="M10 18h4"/>',
@@ -79,6 +80,7 @@ const iconPaths = {
   browser: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/>', hooks: '<path d="M8 4v8a4 4 0 1 0 8 0V7"/><path d="m13 7 3-3 3 3"/>',
   connections: '<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="m8.7 10.7 6.6-3.4m-6.6 6 6.6 3.4"/>', git: '<circle cx="6" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="6" cy="20" r="2"/><path d="M6 6v12m0-8c4 0 4-2 10-2"/>',
   environment: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 2 2-2 2m5 0h5"/>', worktrees: '<path d="M5 4v14m0-8h8a4 4 0 0 0 4-4V4m-4 14h6"/><circle cx="5" cy="4" r="2"/><circle cx="5" cy="20" r="2"/><circle cx="19" cy="18" r="2"/><circle cx="17" cy="4" r="2"/>',
+  workspace: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>',
   authorizations: '<path d="M12 3 5 6v5c0 5 3 8 7 10 4-2 7-5 7-10V6l-7-3z"/><path d="m9 12 2 2 4-4"/>', models: '<path d="M8 4h8l4 4v8l-4 4H8l-4-4V8l4-4z"/><circle cx="12" cy="12" r="3"/>',
   memory: '<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5M5 11v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>', tasks: '<path d="M9 5h10M9 12h10M9 19h10"/><path d="m4 5 1 1 2-2m-3 8 1 1 2-2m-3 8 1 1 2-2"/>',
   archive: '<path d="M4 7h16v13H4zM3 4h18v3H3zM9 11h6"/>',
@@ -129,6 +131,8 @@ export function mountAdmin(root, invoke, escape) {
   const memorySummaries = new Map();
   let savedMemory = {facts: [], status: ''};
   let imageCatalogHtml = '';
+  let imageCatalogLoading = false;
+  const developerFoldOpen = new Map();
   let renderedSection, memoryRenderKey;
   let historyGeneration = 0;
   async function loadHistory(reset = false) {
@@ -178,7 +182,9 @@ export function mountAdmin(root, invoke, escape) {
   });
   root.querySelector('#content').addEventListener('toggle', event => {
     const details = event.target;
-    if (details.isConnected && details.dataset.taskDetails) taskDetails.set(details.dataset.taskDetails, details.open);
+    if (!details.isConnected) return;
+    if (details.dataset.taskDetails) taskDetails.set(details.dataset.taskDetails, details.open);
+    if (details.dataset.developerFold) developerFoldOpen.set(details.dataset.developerFold, details.open);
   }, true);
   const remoteMcpButton=document.createElement('button');remoteMcpButton.type='button';remoteMcpButton.id='remote-mcp-manage';remoteMcpButton.className='btn btn-sm';remoteMcpButton.hidden=true;
   remoteMcpButton.textContent='远程 MCP 管理';
@@ -599,8 +605,8 @@ export function mountAdmin(root, invoke, escape) {
     } else if (section === 'usage') {
       content = `<section class="feature-page usage-page" data-usage-page><div class="settings-heading"><h2>使用情况和计费</h2><p>查看本机已经记录的使用情况。按日、按月的用量上限会显示在这里。</p></div><div data-usage-budget></div><div class="settings-list">${settingRow('当前记录的任务', '只统计本机已保存的任务', `<span class="value-pill">${data.tasks?.length ?? 0}</span>`)}</div></section>`;
     } else if (section === 'capabilities') {
-      content = `<div class="sheet"><div class="row"><h2>28 图工作流设计目录（F01–F28）</h2><span class="spacer"></span><button class="btn btn-sm" id="load-image-catalog">读取 28 图目录</button></div><p class="muted">从可信目录宿主实时读回 28 张工作流设计与 185 个节点的注册情况；缺少公开适配器或对话入口的图会如实标为「不可用」。</p><div id="image-catalog-result">${imageCatalogHtml}</div></div>`
-        + `<details class="developer-fold" data-developer-fold="capabilities"><summary>开发者：已公布能力</summary>${capabilityTable(data)}</details>`;
+      content = `<div class="sheet"><div class="row"><h2>28 图工作流设计目录（F01–F28）</h2><span class="spacer"></span><button class="btn btn-sm" id="load-image-catalog"${imageCatalogLoading ? ' disabled' : ''}>${imageCatalogLoading ? '正在读取…' : '读取 28 图目录'}</button></div><p class="muted">从可信目录宿主实时读回 28 张工作流设计与 185 个节点的注册情况；缺少公开适配器或对话入口的图会如实标为「不可用」。</p><div id="image-catalog-result">${imageCatalogHtml}</div></div>`
+        + `<details class="developer-fold" data-developer-fold="capabilities"${developerFoldOpen.get('capabilities') ? ' open' : ''}><summary>开发者：已公布能力</summary>${capabilityTable(data)}</details>`;
     } else if (section === 'models') {
       content = modelPage(data);
     } else if (section === 'connections') {
@@ -638,7 +644,7 @@ export function mountAdmin(root, invoke, escape) {
       : section === 'pets'
         ? `${orbVariantPreference()}/${orbStateOverride() ?? 'auto'}/${visualOrbState(data)}`
         : undefined;
-    const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections'].includes(section)
+    const retainContent = (['dashboard', 'models', 'tasks', 'overview', 'connections', 'capabilities'].includes(section)
       || ['settings', 'appearance', 'pets'].includes(section) && renderedPreferenceKey === preferenceKey)
       && renderedSection === section && renderedContentMarkup === content;
     const focusedSummary = document.activeElement?.matches?.('[data-task-details] > summary')
@@ -836,12 +842,11 @@ export function mountAdmin(root, invoke, escape) {
     root.querySelector('#refresh-capabilities')?.addEventListener('click', async () => {
       try { await invoke('capability.list'); } catch (error) { root.querySelector('#error').textContent = error.message; }
     });
-    root.querySelector('#load-image-catalog')?.addEventListener('click', async event => {
-      const button = event.currentTarget;
-      const box = root.querySelector('#image-catalog-result');
-      if (!box) return;
-      button.disabled = true;
-      box.textContent = '正在读取 28 图工作流目录…';
+    root.querySelector('#load-image-catalog')?.addEventListener('click', async () => {
+      if (imageCatalogLoading) return;
+      imageCatalogLoading = true;
+      imageCatalogHtml = '<p class="muted">正在读取 28 图工作流目录…</p>';
+      render(current);
       try {
         const catalog = await invoke('workflow.image.catalog');
         const workflows = Array.isArray(catalog?.workflows) ? catalog.workflows : [];
@@ -852,13 +857,12 @@ export function mountAdmin(root, invoke, escape) {
           const rows = workflows.map(item => `<tr><td>${escape(item.workflowId)}</td><td>${escape(item.name)}</td><td>${escape(item.nodeCount)}</td><td>${badge(item.state === 'unavailable' ? '不可用' : '已注册（需任务授权）', item.state)}</td><td>${escape((item.unavailableReasons ?? []).join('、') || '—')}</td></tr>`).join('');
           imageCatalogHtml = `${summary}<div class="table-scroll"><table><thead><tr><th>编号</th><th>工作流</th><th>节点数</th><th>状态</th><th>缺口 / 说明</th></tr></thead><tbody>${rows}</tbody></table></div>`;
         }
-        if (root.querySelector('#image-catalog-result')) root.querySelector('#image-catalog-result').innerHTML = imageCatalogHtml;
       } catch (error) {
         const msg = error?.message || '28 图目录读取失败';
         imageCatalogHtml = `<p class="muted">${escape(msg)}</p>`;
-        if (root.querySelector('#image-catalog-result')) root.querySelector('#image-catalog-result').innerHTML = imageCatalogHtml;
       } finally {
-        button.disabled = false;
+        imageCatalogLoading = false;
+        if (!evidenceClosed && root.isConnected !== false) render(current);
       }
     });
     const modelForm = root.querySelector('#model-config-form');

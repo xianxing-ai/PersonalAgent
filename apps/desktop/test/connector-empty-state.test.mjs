@@ -59,3 +59,20 @@ test('saved knowledge or subscriptions cannot masquerade as an available connect
  const ready=connectorCards({knowledge:{configured:true,available:true,displayName:'long'},feeds:{subscriptions:[{title:'真实来源'}],requiresRestart:false,available:true}},escape);
  assert.match(ready,/本地知识库已挂载/);assert.match(ready,/已接入/);assert.match(ready,/读取时按原流程批准/);
 });
+test('calendar and todo card surfaces saved CalDAV configuration honestly without inventing synced events',()=>{
+ const configured=connectorCards({calendar:{configured:true,readAvailable:true,calendarName:'<工作日程>',reason:'配置已保存，读取需对话确认'}},escape).split('data-connector="calendar"')[1].split('</article>')[0];
+ assert.match(configured,/&lt;工作日程&gt;/);
+ assert.doesNotMatch(configured,/<工作日程>/);
+ assert.match(configured,/已保存配置，读取需对话确认/);
+ assert.doesNotMatch(configured,/待办服务未连接|已实时同步/);
+ const combined=connectorCards({todo:{available:true,items:[{title:'写周报',status:'open'}]},calendar:{configured:true,readAvailable:false,calendarName:'个人日历'}},escape).split('data-connector="calendar"')[1].split('</article>')[0];
+ assert.match(combined,/写周报/);
+ assert.match(combined,/个人日历 · 已保存配置，等待读取宿主/);
+ const unavailable=connectorCards({calendar:{configured:false,status:'unavailable',calendarName:'CalDAV 日历',reason:'日历读取宿主未就绪'}},escape).split('data-connector="calendar"')[1].split('</article>')[0];
+ assert.match(unavailable,/不可用/);
+ assert.match(unavailable,/日历读取宿主未就绪/);
+});
+test('notification connector card exposes keyboard button semantics',()=>{
+ const html=connectorCards({},escape);
+ assert.match(html,/class="connector-card notification-card" role="button" tabindex="0" aria-label="打开通知设置"/);
+});

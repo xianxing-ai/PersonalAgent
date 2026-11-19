@@ -94,50 +94,77 @@ export function mountCommandCenter(root,{sessionRoot,preferences,input,invoke,re
   };
   const showLocal=key=>{localView=key;hero.hidden=true;layout.hidden=true;local.hidden=false;for(const button of rail.querySelectorAll('[data-cc-nav]'))button.setAttribute('aria-current',button.dataset.ccNav===key?'page':'false');paintLocal(lastData);closeSidebar();};
   local.querySelector('[data-cc-local-back]').onclick=()=>{showHome();input.focus();};
+  let catalogReq=0,watchReq=0,cognitionReq=0;
+  const loadCognition=async(button,feedback='')=>{
+    const out=local.querySelector('[data-cc-cognition-result]');if(!out)return;
+    const req=++cognitionReq;
+    if(button)button.disabled=true;
+    out.textContent='正在读取认知提议与回执…';
+    try{
+      const status=await invoke('cognition.status');
+      const proposals=await invoke('cognition.proposals.list').catch(()=>[]);
+      const receipts=await invoke('cognition.receipts.list').catch(()=>[]);
+      if(req!==cognitionReq)return;
+      const proposalRows=(Array.isArray(proposals)?proposals:[]).map(p=>`<div class="notice"><span>${escape(p.summary||p.eventId||'待处理提议')}</span> <button type="button" data-cc-cognition-apply="${escape(p.eventId||'')}" data-cc-cognition-source="${escape(p.source||'')}">应用提议</button></div>`).join('');
+      const prefix=feedback?`<p class="notice" role="status">${escape(feedback)}</p>`:'';
+      out.innerHTML=`${prefix}<p>${escape(status?.reason??'认知状态已读取')} · 待处理提议 ${Array.isArray(proposals)?proposals.length:0} 项 · 会议回执 ${Array.isArray(receipts)?receipts.length:0} 条</p>${proposalRows}`;
+    }catch(error){if(req===cognitionReq)out.textContent=error?.message??'认知组合尚未就绪';}
+    finally{if(button&&button.isConnected)button.disabled=false;}
+  };
   local.addEventListener('click',async event=>{
     const adminBtn=event.target.closest('[data-cc-admin-page]');
     if(adminBtn){openAdmin(adminBtn.dataset.ccAdminPage);return;}
     if(event.target.closest('[data-cc-open-goals]')){root.querySelector('.cc-goals')?.click();return;}
-    if(event.target.closest('[data-cc-workflow-catalog]')){
+    const catalogBtn=event.target.closest('[data-cc-workflow-catalog]');
+    if(catalogBtn){
+      if(catalogBtn.disabled)return;
       const out=local.querySelector('[data-cc-catalog-result]');if(!out)return;
+      const req=++catalogReq;
+      catalogBtn.disabled=true;
       out.textContent='正在读取 28 图工作流目录…';
       try{
         const catalog=await invoke('workflow.image.catalog');
+        if(req!==catalogReq)return;
         const workflows=Array.isArray(catalog?.workflows)?catalog.workflows:[];
         out.innerHTML=`<p class="notice">设计工作流 ${escape(catalog?.designWorkflowCount??28)} 项 · 节点 ${escape(catalog?.designNodeCount??185)} 个 · 适配器要求 ${escape(catalog?.adapterRequirementCount??152)} 项</p>`+
           (workflows.length?`<ul class="cc-local-list">${workflows.map(w=>`<li><div><strong>${escape(w.workflowId)} · ${escape(w.name)}</strong><br><small>${escape(w.nodeCount)} 节点 · 状态：${escape(w.state)} · 不可用原因：${escape((w.unavailableReasons??[]).join('、')||'无')}</small></div></li>`).join('')}</ul>`:`<p class="notice">${escape(catalog?.unavailableReason||'当前模式未返回工作流列表')}</p>`);
-      }catch(error){out.textContent=error?.message??'工作流目录读取失败';}
+      }catch(error){if(req===catalogReq)out.textContent=error?.message??'工作流目录读取失败';}
+      finally{if(catalogBtn.isConnected)catalogBtn.disabled=false;}
       return;
     }
-    if(event.target.closest('[data-cc-watch-check]')){
+    const watchBtn=event.target.closest('[data-cc-watch-check]');
+    if(watchBtn){
+      if(watchBtn.disabled)return;
       const out=local.querySelector('[data-cc-watch-result]');if(!out)return;
+      const req=++watchReq;
+      watchBtn.disabled=true;
       out.textContent='正在读取知识关注状态…';
       try{
         const status=await invoke('knowledge.watch.status');
         const watches=status?.state!=='unavailable'?await invoke('knowledge.watch.list').catch(()=>[]):[];
         const pending=status?.state!=='unavailable'?await invoke('knowledge.watch.pending').catch(()=>[]):[];
+        if(req!==watchReq)return;
         out.textContent=`关注状态：${status?.health?.reason??status?.reason??(status?.running?'运行中':'未运行')} · 关注项 ${Array.isArray(watches)?watches.length:0} 个 · 待确认 ${Array.isArray(pending)?pending.length:0} 条`;
-      }catch(error){out.textContent=error?.message??'知识关注尚未就绪';}
+      }catch(error){if(req===watchReq)out.textContent=error?.message??'知识关注尚未就绪';}
+      finally{if(watchBtn.isConnected)watchBtn.disabled=false;}
       return;
     }
-    if(event.target.closest('[data-cc-cognition-check]')){
-      const out=local.querySelector('[data-cc-cognition-result]');if(!out)return;
-      out.textContent='正在读取认知提议与回执…';
-      try{
-        const status=await invoke('cognition.status');
-        const proposals=await invoke('cognition.proposals.list').catch(()=>[]);
-        const receipts=await invoke('cognition.receipts.list').catch(()=>[]);
-        const proposalRows=(Array.isArray(proposals)?proposals:[]).map(p=>`<div class="notice"><span>${escape(p.summary||p.eventId||'待处理提议')}</span> <button type="button" data-cc-cognition-apply="${escape(p.eventId||'')}" data-cc-cognition-source="${escape(p.source||'')}">应用提议</button></div>`).join('');
-        out.innerHTML=`<p>${escape(status?.reason??'认知状态已读取')} · 待处理提议 ${Array.isArray(proposals)?proposals.length:0} 项 · 会议回执 ${Array.isArray(receipts)?receipts.length:0} 条</p>${proposalRows}`;
-      }catch(error){out.textContent=error?.message??'认知组合尚未就绪';}
+    const cognitionBtn=event.target.closest('[data-cc-cognition-check]');
+    if(cognitionBtn){
+      if(cognitionBtn.disabled)return;
+      await loadCognition(cognitionBtn);
       return;
     }
     const applyBtn=event.target.closest('[data-cc-cognition-apply]');
     if(applyBtn){
+      if(applyBtn.disabled)return;
       applyBtn.disabled=true;
-      try{await invoke('cognition.proposals.apply',{eventId:applyBtn.dataset.ccCognitionApply,source:applyBtn.dataset.ccCognitionSource});}
+      try{
+        await invoke('cognition.proposals.apply',{eventId:applyBtn.dataset.ccCognitionApply,source:applyBtn.dataset.ccCognitionSource});
+        await loadCognition(local.querySelector('[data-cc-cognition-check]'),'已提交该认知提议并刷新当前状态。');
+      }
       catch(error){report(error);}
-      finally{applyBtn.disabled=false;}
+      finally{if(applyBtn.isConnected)applyBtn.disabled=false;}
       return;
     }
     const button=event.target.closest('[data-local-task]');if(!button)return;showHome();const turn=[...root.querySelectorAll('[data-turn]')].find(item=>item.dataset.turn===button.dataset.localTask);turn?.scrollIntoView({block:'center'});
