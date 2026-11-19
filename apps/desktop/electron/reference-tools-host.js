@@ -20,7 +20,23 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
   const descriptor=service.tools[0].descriptor;
   const current=()=>!closed && binding && workspace.isWorkspaceBindingCurrent(binding)
     && service.health().connected ? configurationRef : undefined;
-  let cloudSkill;
+  let cloudSkill,cloudSkillWorker;
+  function createCloudSkillPort(versionedSkillworker) {
+    return createCloudSkillSelectionPort({versionedSkillworker,
+      publicReferenceExport:{currentConfigurationRef:current,
+        readPreflight:query=>{assertTask(query.taskId);return publicReferenceExport?.readPreflight?.(query);},
+        readAuthorization:query=>{assertTask(query.taskId);return publicReferenceExport?.readAuthorization?.(query);},
+        readConfirmed:query=>{assertTask(query.taskId);return publicReferenceExport?.readConfirmed?.(query);}},
+      resolvePublicSource:input=>{
+      assertTask(input.taskId);
+      const ref=current();
+      const source=resolvePublicSkillSource?.({...input,configurationRef:ref});
+      assertTask(input.taskId);
+      if(!source || !ref || source.configurationRef!==ref || current()!==ref)
+        throw new ProtocolError('UNAUTHORIZED','Native public Skill permission is unavailable');
+      return source;
+    }});
+  }
   const exporter=createPublicReferenceExport({currentConfigurationRef:current,
     readPreflight(query) {
       assertTask(query.taskId);
@@ -184,20 +200,8 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
     },
     configureCloudSkillWorker(versionedSkillworker) {
       cloudSkill?.close();
-      cloudSkill=createCloudSkillSelectionPort({versionedSkillworker,
-        publicReferenceExport:{currentConfigurationRef:current,
-          readPreflight:query=>{assertTask(query.taskId);return publicReferenceExport?.readPreflight?.(query);},
-          readAuthorization:query=>{assertTask(query.taskId);return publicReferenceExport?.readAuthorization?.(query);},
-          readConfirmed:query=>{assertTask(query.taskId);return publicReferenceExport?.readConfirmed?.(query);}},
-        resolvePublicSource:input=>{
-        assertTask(input.taskId);
-        const ref=current();
-        const source=resolvePublicSkillSource?.({...input,configurationRef:ref});
-        assertTask(input.taskId);
-        if(!source || !ref || source.configurationRef!==ref || current()!==ref)
-          throw new ProtocolError('UNAUTHORIZED','Native public Skill permission is unavailable');
-        return source;
-      }});
+      cloudSkillWorker=versionedSkillworker;
+      cloudSkill=!closed && cloudSkillWorker ? createCloudSkillPort(cloudSkillWorker) : undefined;
       return cloudSkill;
     },
     async cloudSkillCatalog(input) {
@@ -221,6 +225,11 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
       if(!cloudSkill) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Cloud Skill worker is unavailable');
       bindTask(context.taskId);
       return cloudSkill.dispatch(proposal,context);
+    },
+    assertCloudSkillReceiptAllowed(selection,receipt,context) {
+      if(!cloudSkill) throw new ProtocolError('UNSUPPORTED_CAPABILITY','Cloud Skill worker is unavailable');
+      assertTask(context.taskId);
+      return cloudSkill.assertReceiptAllowed(selection,receipt,context);
     },
     bindApplication(value) {
       application=value;
@@ -246,13 +255,16 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
         try {
           await service.start({signal:controller.signal,deadline:new Date(Date.now()+15000).toISOString()});
           if(!workspace.isWorkspaceBindingCurrent(binding)) throw Error('工作区许可在连接期间已改变');
+          if(!closed && cloudSkillWorker) cloudSkill=createCloudSkillPort(cloudSkillWorker);
         } catch(error) {await stop();throw error;} finally {clearTimeout(timer);}
       }
       onUpdate();return snapshot();
     });},
     setSkillEnabled(enabled) {
       if(typeof enabled!=='boolean' || (enabled && !current())) throw Error('请先连接只读参考服务');
-      application.setReferenceSkillEnabled(enabled);onUpdate();return snapshot();
+      application.setReferenceSkillEnabled(enabled);
+      if(enabled && !closed && !cloudSkill && cloudSkillWorker) cloudSkill=createCloudSkillPort(cloudSkillWorker);
+      onUpdate();return snapshot();
     },
     submit({path}) {
       if(!current() || typeof path!=='string') throw Error('参考读取尚未就绪');
@@ -263,6 +275,6 @@ export function createDesktopReferenceHost({workspace,createMcp,onUpdate=()=>{},
       onUpdate();return {taskId:task.taskId,state:task.state};
     },
     async reconcile(taskId) {assertTask(taskId);const task=await application.reconcileReferenceSkillTask(taskId);onUpdate();return {taskId:task.taskId,state:task.state};},
-    dispose() {return serialize(async()=>{closed=true;exporter.dispose();await stop();await service.dispose();});},
+    dispose() {return serialize(async()=>{closed=true;cloudSkillWorker=undefined;exporter.dispose();await stop();await service.dispose();});},
   };
 }
