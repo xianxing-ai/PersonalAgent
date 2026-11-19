@@ -7,6 +7,12 @@ import {mountSubagentConversationPage} from '../features/conversation/subagent-c
 import {mountSubagentCompletionNotice} from '../features/conversation/subagent-completion-notice.js';
 import {mountSubagentConversationList} from '../features/conversation/subagent-conversation-list.js';
 import {mountModelThinkingPicker} from '../features/conversation/model-thinking-picker.js';
+import {answerCardHtml, rememberActivity, replaceAnswerCard, syncContainerAnswerDisclosures} from '../features/conversation/answer-block.js';
+import {mountAssistantRoster} from '../features/conversation/assistant-roster-ui.js';
+import {renderDryRun} from '../features/workspace/dry-run-status.js';
+import {renderPermissionSheet} from '../features/workspace/permission-sheet.js';
+import {renderContentFence} from '../features/workspace/content-fence-status.js';
+import {renderCostRoute} from '../features/workspace/cost-route-status.js';
 import {mountInputPin} from './input-pin.js';
 import {conversationTimeline} from '../features/conversation/timeline.js';
 import {updateConversationTurns} from '../features/conversation/turn-view.js';
@@ -131,6 +137,7 @@ else {
   root.querySelector('#close').before(expand);
   expand.onclick=()=>invoke('workspace.open').catch(error=>{setFeedback(error.message);});
   let current,pending=false,submitGeneration=0,lastTaskSignature='',draftRevision=0;
+  const liveTurns=new Map();
   // Bounded UI state: these collections only serve the current session and must not grow for the
   // lifetime of a long-running panel (#435).
   const capCollection=(collection,limit)=>{while(collection.size>limit){collection.delete(collection.keys().next().value);}};
@@ -157,6 +164,20 @@ else {
   };
   const report=e=>setFeedback(typeof e==='string'?e:errorDisplayText(e));
   const form=root.querySelector('form'),input=root.querySelector('textarea'),thread=root.querySelector('.thread'),tasksNode=root.querySelector('#tasks');
+  const assistantRoster=document.createElement('section');tasksNode.before(assistantRoster);
+  const roster=mountAssistantRoster(assistantRoster,{invoke,escape,report,onOpen:assistantId=>invoke('workspace.openAssistant',{assistantId}).catch(report)});
+  const panelRuntimeStrip=document.createElement('div');panelRuntimeStrip.className='panel-runtime-strip';
+  const panelPermissionOverviewBtn=document.createElement('button');panelPermissionOverviewBtn.type='button';panelPermissionOverviewBtn.className='turn-action';panelPermissionOverviewBtn.textContent='权限总览';panelPermissionOverviewBtn.setAttribute('aria-label','权限总览与审计');
+  const panelAuditAlert=document.createElement('div');panelAuditAlert.className='notice';panelAuditAlert.hidden=true;panelAuditAlert.setAttribute('role','alert');panelAuditAlert.dataset.auditAlert='';
+  const panelPermissionSheet=document.createElement('div');panelPermissionSheet.className='notice';panelPermissionSheet.hidden=true;panelPermissionSheet.dataset.permissionSheet='';panelPermissionSheet.dataset.signature='';
+  const panelDryRun=document.createElement('div');panelDryRun.className='notice';panelDryRun.hidden=true;panelDryRun.dataset.dryRun='';
+  const panelContentFence=document.createElement('p');panelContentFence.className='notice';panelContentFence.hidden=true;panelContentFence.dataset.contentFence='';
+  const panelCostRoute=document.createElement('div');panelCostRoute.className='notice';panelCostRoute.hidden=true;panelCostRoute.dataset.costRoute='';
+  panelPermissionOverviewBtn.onclick=()=>{panelPermissionSheet.hidden=!panelPermissionSheet.hidden;if(!panelPermissionSheet.hidden)renderPermissionSheet(panelPermissionSheet,current?.assistantPermissions,invoke,report);};
+  panelRuntimeStrip.append(panelPermissionOverviewBtn,panelAuditAlert,panelPermissionSheet,panelDryRun,panelContentFence,panelCostRoute);
+  tasksNode.before(panelRuntimeStrip);
+  tasksNode.addEventListener?.('toggle',()=>syncContainerAnswerDisclosures(tasksNode,liveTurns),true);
+  bridge?.onTaskActivity?.(event=>{rememberActivity(liveTurns,event);const slot=tasksNode.querySelector(`[data-answer-for="${event.taskId}"]`);const task=(current?.tasks??[]).find(item=>item.taskId===event.taskId);if(slot&&task)replaceAnswerCard(slot,task,liveTurns.get(event.taskId),escape);});
   const briefingPanel=mountBriefingPanel(thread,invoke);
   const compact=document.createElement('button');compact.type='button';compact.id='compact';compact.className='compact-entry';compact.textContent='压缩';compact.title='把较早的对话收成摘要';compact.setAttribute('aria-label','压缩对话');
   form.querySelector('.composer-bar')?.prepend(compact);
@@ -165,11 +186,11 @@ else {
   const messageQueue=createMessageQueue();
   const sendingQueueIds=new Set();
   const deliveryControls=document.createElement('div');deliveryControls.className='message-delivery';
-  deliveryControls.innerHTML='<label>发送方式 <select aria-label="对话中发送方式"><option value="steer">引导</option><option value="queue">排队</option></select></label><span class="delivery-hint"></span>';
+  deliveryControls.innerHTML='<label>发送方式 <select aria-label="对话中发送方式"><option value="queue">排队</option><option value="inject">插话</option><option value="steer">停止并改发</option></select></label><span class="delivery-hint"></span>';
   deliveryControls.hidden=true;
   form.prepend(deliveryControls);
   const deliveryMode=deliveryControls.querySelector('select'),deliveryHint=deliveryControls.querySelector('.delivery-hint');
-  try{deliveryMode.value=localStorage.getItem('pa-message-delivery')==='queue'?'queue':'steer';}catch{}
+  try{const saved=localStorage.getItem('pa-message-delivery');deliveryMode.value=['queue','inject','steer'].includes(saved)?saved:'queue';}catch{}
   const queueNode=document.createElement('section');queueNode.className='message-queue';queueNode.setAttribute('aria-label','待发送消息');queueNode.hidden=true;deliveryControls.after(queueNode);
   const renderQueue=()=>{
     const entries=messageQueue.list(current?.conversationState?.activeId);queueNode.hidden=!entries.length;
@@ -363,7 +384,7 @@ else {
   document.addEventListener('click',e=>{if(!modelMenu.hidden&&!e.target.closest('.model-box'))closeModel();if(!bellMenu.hidden&&!e.target.closest('.bell-box'))closeBell();});
   mountInputPin(input,invoke,()=>current?.pinned===true,report);
   input.addEventListener('input',e=>{draftRevision++;setSendMode(Boolean(e.target.value.trim()));});
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(input.value.trim())form.requestSubmit();}});
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();if(input.value.trim())form.requestSubmit();}});
   sendBtn.addEventListener('click',e=>{e.preventDefault();if(sendBtn.disabled)return;if(sendBtn.dataset.mode==='stop'){
     void stopButton.onclick();
   }else if(sendBtn.dataset.mode==='live'){
@@ -412,10 +433,11 @@ else {
       input.value='';input.dispatchEvent(new Event('input',{bubbles:true}));
       return;
     }
-    if((pending||activeTasks().length||messageQueue.list(current?.conversationState?.activeId).length)&&deliveryMode.value==='queue'){enqueueDraft();drainQueue();return;}
-    await submitMessage(input.value,{steer:pending||activeTasks().length>0});
+    const busy=pending||activeTasks().length||messageQueue.list(current?.conversationState?.activeId).length;
+    if(busy&&deliveryMode.value==='queue'){enqueueDraft();drainQueue();return;}
+    await submitMessage(input.value,{steer:busy&&deliveryMode.value==='steer',inject:busy&&deliveryMode.value==='inject'});
   };
-  async function submitMessage(submittedText,{queued,steer=false}={}) {
+  async function submitMessage(submittedText,{queued,steer=false,inject=false}={}) {
     if(/^(?:\/压缩|\/compact)$/iu.test(submittedText.trim())){
       if(pending||activeTasks().length){report('请等待当前任务完成，或先停止任务，再发送 /压缩。');return;}
       steer=false;
@@ -432,7 +454,7 @@ else {
       await nativeReasoning.flush();if(!isCurrent())return;
       if(draftToken)await sessionControls.flush(draftToken);if(!isCurrent())return;
       if(draftToken){void sessionControls.submitted(draftToken).catch(report);}
-      const delivery=steer?'steer':'send';
+      const delivery=steer?'steer':inject?'inject':'send';
       if(queued){messageQueue.remove(queued.id);renderQueue();}
       const request=invoke('task.submit',{text:submittedText,conversationId:submittedConversation,delivery});sent=true;
       const result=await request;receipt=result;if(!isCurrent())return;
@@ -530,6 +552,15 @@ else {
     updateProgress(data.tasks.filter(task=>!task.outputTruncated),data.computerControl,
       {questions:data.authorizationQuestions,conversationId:data.conversationState?.activeId});
     updateRepair(data.tasks.filter(task=>!task.outputTruncated));
+    const panelAudit=data.assistantPermissions?.audit;
+    const panelAuditBroken=Boolean(panelAudit&&(panelAudit.unreadable||panelAudit.intact===false||panelAudit.recordingStopped));
+    panelPermissionOverviewBtn.textContent=panelAuditBroken?'权限总览 · 审计异常':'权限总览';
+    panelAuditAlert.hidden=!panelAuditBroken;
+    panelAuditAlert.textContent=panelAuditBroken?`警告：${panelAudit.warning||(panelAudit.unreadable?'审计日志无法读取，已停止记录':`审计链在第 ${panelAudit.brokenAt} 条损坏，已停止追加后续记录`)}`:'';
+    renderPermissionSheet(panelPermissionSheet,data.assistantPermissions,invoke,report);
+    renderDryRun(panelDryRun,data.dryRun,invoke);
+    renderContentFence(panelContentFence,data.contentFence);
+    renderCostRoute(panelCostRoute,data.costRoute,invoke,report);
     if(!data.live?.active&&!task&&data.wake?.phase==='listening')root.querySelector('#state').textContent='唤醒聆听中';
     proactiveControls.render(data.proactive);
     proactiveWorkflowControls.render(data.proactiveWorkflow);
@@ -569,9 +600,11 @@ else {
     const taskSignature=JSON.stringify([data.tasks.map(t=>[t.taskId,t.reconciliationStatus,t.outputTruncated,t.createdAt,t.state,t.revision,t.userMessage,t.resultSummary,t.error?.message,t.steps?.map(s=>[s.stepId,s.status,s.label])]),data.messages,data.approvals]);
     const thinkingGrid='<span class="thinking-grid" aria-hidden="true">'+[0,1,2,3,4,5,6,7,8].map(index=>`<i data-cell="${index}"></i>`).join('')+'</span>';
     const focused=tasksNode.contains(document.activeElement)?document.activeElement:null;
-    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button></div>`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${!terminal&&t.state!=='waiting_reconciliation'?`<div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div>`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div><div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:''}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
+    syncContainerAnswerDisclosures(tasksNode,liveTurns);
+    if(taskSignature!==lastTaskSignature) updateConversationTurns(tasksNode,conversationTimeline(data.tasks,data.messages).map(entry=>{if(entry.kind==='message'){const m=entry.value;const body=`<div class="${m.role==='user'?'user-message':'assistant-message'}">${escape(m.text)}</div><div class="response-actions"><button type="button" data-ui-action="copy" data-message-id="${escape(m.id)}" title="复制" aria-label="复制语音消息">${responseIcons.copy}</button></div>`;return `<article class="task turn" data-turn="live:${escape(m.id)}">${m.role==='assistant'?`<div class="assistant-turn">${body}</div>`:body}</article>`;}const t=entry.value;const terminal=isTerminal(t)||t.outputTruncated;const waiting=['waiting_approval','waiting_external','waiting_reconciliation','cancelling'].includes(t.state);const activeStep=Array.isArray(t.steps)&&t.steps.length?t.steps[t.steps.length-1]:null;const activity=waiting?stateNames[t.state]:activeStep?.label?activeStep.label:t.state==='verifying'?'整理回答':t.state==='running'?'执行中':'思考中';const answer=resultText(t.resultSummary,t.resultMetadata);const failure=t.outputTruncated?undefined:t.error?.message;const answerActions=answer?`<div class="response-actions"><button type="button" data-ui-action="copy" data-id="${escape(t.taskId)}" title="复制" aria-label="复制回答">${responseIcons.copy}</button></div>`:'';const locateHtml=failure&&!answer?`<div class="locate-block" data-locate-for="${escape(t.taskId)}"><button type="button" class="turn-action" data-ui-action="locate" data-locate-id="${escape(t.taskId)}" data-locate-text="${escape(failure)}" aria-label="定位失败原因">定位失败原因</button><div class="locate-result" hidden></div></div>`:'';const live=liveTurns.get(t.taskId);const hasLiveContent=Boolean(live&&(live.reasoning||live.answer||live.steps?.length||live.summary));const bodyHtml=!terminal&&t.state!=='waiting_reconciliation'&&!hasLiveContent?`<section class="answer-card" data-answer-for="${escape(t.taskId)}"><div class="thinking-line">${thinkingGrid}<span>${escape(activity)}</span></div></section>`:hasLiveContent?`${answerCardHtml(t.outputTruncated?{...t,error:undefined}:t,live,escape)}${answer?answerActions:''}${locateHtml}`:answer?`<div class="assistant-message">${escape(answer)}</div>${answerActions}`:failure?`<div class="assistant-error">${escape(failure)}</div>${locateHtml}`:'';return `<article class="task turn" data-turn="${escape(t.taskId)}">${t.userMessage?`<div class="user-message">${escape(t.userMessage)}</div>`:''}<div class="assistant-turn">${bodyHtml}</div>${t.outputTruncated?`<p class="output-truncated">回答已截断 · 执行状态以任务记录为准</p>${!isTerminal(t)?`<button type="button" class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}">重试停止</button>`:''}`:''}${t.state==='waiting_reconciliation'?`<p class="notice">${escape(t.reconciliationStatus?.blockedReason??t.reconciliationStatus?.notice??(t.reconciliationStatus?.actionLabel?'仅检查原任务已有回执，不会重新执行原操作；能否结束以检查结果为准。':'当前没有该操作的自动核查入口。'))}</p>${t.reconciliationStatus?.actionLabel?`<button type="button" class="turn-action" data-action="task.reconcile.finish" data-id="${escape(t.taskId)}">${escape(t.reconciliationStatus.actionLabel)}</button>`:''}`:''}${!terminal?`<div class="turn-actions"><button class="turn-action" data-action="task.cancel" data-id="${escape(t.taskId)}" ${t.state==='cancelling'?'disabled':''}>停止</button>${data.fake?`<button class="turn-action" data-action="test.advance" data-id="${escape(t.taskId)}">推进联调</button>`:''}</div>`:''}</article>`;}).join(''),{tasks:data.tasks,pendingCancelIds,cancelSelector:'[data-action="task.cancel"]',cancelAttribute:'id'});
     projectLocateFeedback();syncCancelButtons();restoreTaskActionFocus(focused);
-    refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
+    refreshApprovalCards();scheduleApprovalExpiry();if(data.approvalFocus?.taskId&&data.approvalFocus.taskId!==focusedApproval&&focusApprovalCard(tasksNode,data.approvalFocus.taskId))focusedApproval=data.approvalFocus.taskId;roster.paint(data.assistants,data);
+    setSendMode(Boolean(input.value.trim()));renderQueue();queueMicrotask(drainQueue);
     if(taskSignature!==lastTaskSignature){lastTaskSignature=taskSignature;updateRail();requestAnimationFrame(()=>{if(followLock.atBottom){followLock.markProgrammatic();thread.scrollTop=thread.scrollHeight;}});}
     applyOperatorBrake({button:operatorBrakeButton,status:operatorBrakeStatus,state:root.querySelector('#state'),snapshot:data.operatorBrake});
 };

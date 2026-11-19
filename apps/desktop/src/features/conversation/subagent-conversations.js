@@ -41,7 +41,7 @@ export function mountSubagentConversations(root, invoke, escape) {
   });
   collapse.className = 'subagent-conversations-collapse';
   collapse.setAttribute('aria-label', '收起全部子对话窗口');
-  section.append(list, status, more, collapse);
+  section.append(list, status);
   root.append(section);
 
   let tasks = new Map(), buttons = new Map();
@@ -171,8 +171,8 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
   const refreshButton = action('刷新子对话', () => refresh());
   const mainButton = action('返回主对话', () => navigate('subagentConversation.main', '无法返回主对话'));
   const closeButton = action('关闭子对话', () => navigate('subagentConversation.close', '无法关闭子对话'));
-  header.append(title, headerStopButton, closeButton);
-  footer.append(refreshButton, mainButton);
+  header.append(title, closeButton);
+  footer.append(mainButton);
   page.append(header, status, content, composer, footer);
   root.append(page);
 
@@ -194,8 +194,7 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     const busy = closed || navigating;
     input.disabled = busy;
     // A stop request never blocks the composer: the local truncation already released the task.
-    sendButton.disabled = busy || Boolean(sending || activeTaskId)
-      || !canSubmit || !input.value.trim();
+    sendButton.disabled = busy || Boolean(sending) || !canSubmit || !input.value.trim();
     stopButton.disabled = busy || Boolean(sending || cancelling) || !activeTaskId;
     headerStopButton.disabled=stopButton.disabled;
     refreshButton.disabled = busy || Boolean(sending || cancelling);
@@ -204,7 +203,7 @@ export function mountSubagentConversationPage(root, invoke, {embedded=false}={})
     stopButton.setAttribute('aria-busy', String(Boolean(cancelling)));
     headerStopButton.setAttribute('aria-busy',String(Boolean(cancelling)));
     availability.textContent = activeTaskId
-      ? '当前任务正在执行或等待结果，可先编写下一条消息。'
+      ? '正在工作，现在发送会插到下一步。'
       : canSubmit ? '' : submitUnavailableReason || '当前子对话暂不能发送新消息。';
   }
 

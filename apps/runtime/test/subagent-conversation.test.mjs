@@ -119,7 +119,7 @@ test('each message gets fresh Policy approval, persists over restart, and cannot
     assert.equal((await settle(f.app,acceptedTaskId)).state,'waiting_approval');assert.equal(f.calls.length,0);
     const approval=f.app.runtime.getApproval(`competition-tool-${acceptedTaskId}-1`);
     assert.equal(f.app.readSubagentConversation(scope).activeTaskId,acceptedTaskId);
-    assert.equal(f.app.readSubagentConversation(scope).canSubmit,false);
+    assert.equal(f.app.readSubagentConversation(scope).canSubmit,true);
     f.app.close();f=fixture({storage:path.join(directory,'runtime.sqlite')});
     assert.equal(f.app.readSubagentConversation(scope).messages[0].state,'waiting_approval');
     const client=new Client(f.app);await client.connect();
@@ -144,7 +144,7 @@ test('same-agent active sends are serialized and cancel cannot target another in
   try {
     const a=await origin(f,'a'),b=await origin(f,'b');
     const first=f.app.submitSubagentConversationMessage({...a,text:'hold current task',requestId:'hold'});await started;
-    assert.throws(()=>f.app.submitSubagentConversationMessage({...a,text:'competing task',requestId:'competing'}),{code:'REVISION_CONFLICT'});
+    assert.deepEqual(f.app.submitSubagentConversationMessage({...a,text:'competing task',requestId:'competing'}),{acceptedTaskId:first.acceptedTaskId,injected:true});
     const other=f.app.submitSubagentConversationMessage({...b,text:'use tool in B',requestId:'b-read'});
     await until(()=>f.app.runtime.getTask(other.acceptedTaskId).state==='waiting_approval');
     assert.throws(()=>f.app.cancelSubagentConversationTask({...a,executionTaskId:other.acceptedTaskId}));
@@ -169,7 +169,7 @@ test('an active original child is the exact stop target and blocks followup send
       {idempotencyKey:'original',timeoutMs:60000});await started;
     const [child]=f.app.readSubagentTasks(parent.taskId),scope={parentTaskId:parent.taskId,taskId:child.taskId};
     assert.equal(f.app.readSubagentConversation(scope).activeTaskId,child.taskId);
-    assert.throws(()=>f.app.submitSubagentConversationMessage({...scope,text:'too soon',requestId:'early'}),{code:'REVISION_CONFLICT'});
+    assert.deepEqual(f.app.submitSubagentConversationMessage({...scope,text:'too soon',requestId:'early'}),{acceptedTaskId:child.taskId,injected:true});
     assert.equal(f.app.cancelSubagentConversationTask({...scope,executionTaskId:child.taskId}).cancelAccepted,true);
     release();await until(()=>f.app.activeTaskCount===0);
     assert.equal(f.app.runtime.getTask(child.taskId).state,'cancelled');
