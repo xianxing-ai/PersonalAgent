@@ -68,11 +68,14 @@ test('H6 close failure unlocks preflight drafts before retaining the original Ru
 test('connector watches stop before local Laya decisions and Runtime close',async()=>{
   const f=fixture();
   Object.assign(f.context,{connectorWatchHost:{async close(){f.calls.push('connector-watch-close');}},
-    connectorChangeHost:{async close(){f.calls.push('connector-change-close');}}});
+    connectorChangeHost:{async close(){f.calls.push('connector-change-close');}},
+    workflowGraphComposition:{close(){f.calls.push('workflow-graph-close');}}});
   f.app.quit();await tick();await tick();await tick();
   assert.equal(f.exited,true);
   assert.ok(f.calls.indexOf('connector-watch-close')<f.calls.indexOf('connector-change-close'));
   assert.ok(f.calls.indexOf('connector-change-close')<f.calls.indexOf('runtime-close'));
+  assert.ok(f.calls.indexOf('workflow-graph-close')>f.calls.indexOf('runtime-close'));
+  assert.equal(f.calls.filter(call=>call==='workflow-graph-close').length,1);
   assert.equal(f.calls.filter(call=>call==='connector-watch-close').length,1);
 });
 
@@ -119,7 +122,7 @@ function fixture({count = 0, startup = 'ready', voiceFailure = false, liveUnknow
     'privateConsumption','installedSkillsHost','pluginCatalogHost','privateMemory','learningStore','knowledgeSourceConfig','obsidianPairing','wikiImportHost','goalCloudHost','calendarMeetingHost',
     'mailAnalysisHost','mailMonitorPreparation','connectorConversationTools','competitionFactBridge','runtime','competitionCatalog','productTools','codingWorkspace',
     'publicReferenceConsent','feedsHost','syntheticRepairHost','microphonePermissionGate','runtimeConnection','tray',
-    'windowsControlHost','browserControlHost','browserControlClosing','computerVisionHost','computerVisionConfig','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','systemObservationConversation','memoryWatchdog',
+    'windowsControlHost','browserControlHost','browserControlClosing','computerVisionHost','computerVisionConfig','developerDeployment','developerSettings','toolPresenceHost','computerControlLease','imageWorkflowCatalog','workflowGraphComposition','systemObservationConversation','memoryWatchdog',
     'harnessEventsHost','harnessEventsClosing','harnessContextHost','authorizationQuestionHost','authorizationIntentHost','nativeExecutionHost','connectorChangeHost','connectorWatchHost','connectorTriggersClosing'];
   context = vm.createContext({...Object.fromEntries(optional.map(key => [key, undefined])),
     Promise, Error, setTimeout, clearTimeout, clearInterval, clearImmediate, console, app, voiceInput, wakeVoice,
