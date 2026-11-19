@@ -43,7 +43,7 @@ export function isLocalReadOnlyTool(name: string, sideEffect: string | undefined
   if (sideEffect !== 'read' || !name) return false;
   const id = name.toLowerCase();
   if (EXTERNAL_CHANNEL.test(id)) return false;
-  return LOCAL_READONLY_PREFIX.test(id);
+  return id === 'workflow.image.catalog' || LOCAL_READONLY_PREFIX.test(id);
 }
 
 /** Mail, web, files and every other tool result are external. Names stay stable for the trace. */
